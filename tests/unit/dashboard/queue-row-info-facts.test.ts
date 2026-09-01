@@ -9,6 +9,13 @@
  * So the ⓘ now carries both halves of the fact story: why a fact is missing,
  * and — the half it was silently short of — what a present fact says IN FULL.
  * The decision is a pure fold so it is pinned here rather than by a screenshot.
+ *
+ * The SUBTITLE is in that second half for the same reason and by the same
+ * rule. It is the one footer segment whose length the server chooses, and the
+ * footer truncates it (`surfaces/queue.tsx`) so the demo's one-line provenance
+ * line survives an operator's prose note; the popover is then its only
+ * hover-free route to the uncut value. Every other footer segment is a short
+ * token that draws whole and needs no entry.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
@@ -24,6 +31,14 @@ const [base] = FIXTURE_DAY_WIRE.queueSurfaces;
 if (base === undefined) throw new Error("the parity day fixture must serve at least one queue surface");
 
 const LONG_VALUE = "PPSMTCH-2026-08-26-oath-batch-7-amendment-third-pass-final-corrected";
+
+/*
+  Every variant goes through the WIRE SCHEMA rather than being cast into shape.
+  Half these fields are branded (`runNumber.value` is a `PositiveInt`), and a
+  fixture assembled past the parser could pin the fold against a row the server
+  could never send.
+*/
+const surfaceOf = (raw: unknown): QueueSurfaceWire => QueueSurfaceWireSchema.parse(raw);
 
 function withFacts(facts: QueueSurfaceWire["facts"]): QueueSurfaceWire {
   return { ...base, facts };
@@ -41,6 +56,26 @@ describe("the ⓘ's fact list (the chip's clipped value, reachable without a mou
       match?.text,
       LONG_VALUE,
       "the popover exists to un-clip the chip, so it must hold the whole value verbatim",
+    );
+  });
+
+  it("carries a present SUBTITLE's full value — the segment the footer truncates", () => {
+    const entries = rowInfoFacts(surfaceOf({
+      ...base,
+      subtitle: { state: "present", value: LONG_VALUE },
+      facts: { state: "present", value: [{ label: "Match", value: "EID 10873698" }] },
+    }));
+    const subtitle = entries.find((entry) => entry.label === "Subtitle");
+    assert.equal(subtitle?.state, "present");
+    assert.equal(
+      subtitle?.text,
+      LONG_VALUE,
+      "the footer ellipsizes a long subtitle, so the popover must hold the whole value verbatim",
+    );
+    assert.equal(
+      entries[0]?.label,
+      "Subtitle",
+      "it leads the list: the popover reads top-down as the row does",
     );
   });
 
@@ -63,8 +98,8 @@ describe("the ⓘ's fact list (the chip's clipped value, reachable without a mou
     }));
     assert.deepEqual(
       entries.filter((entry) => entry.state === "present").map((entry) => [entry.label, entry.text]),
-      [["Match", "one"], ["Filed", "two"]],
-      "every served fact is listed, in the order the server sent them",
+      [["Subtitle", "person lookup"], ["Match", "one"], ["Filed", "two"]],
+      "every served fact is listed, in the order the server sent them, behind the row's own subtitle",
     );
   });
 });
@@ -95,6 +130,14 @@ const REASONS = {
 const ONE_FACT = { label: "Match", value: "EID 10873698" } as const;
 const ONE_FACT_ENTRY = { label: "Match", state: "present", text: "EID 10873698" } as const;
 
+/**
+ * The present subtitle's own entry. It LEADS every list below, because it is
+ * the row's second identifier and the popover reads top-down as the row does —
+ * so a fold that appended it, or dropped it once the outcome facts arrived, is
+ * red here rather than merely differently ordered.
+ */
+const SUBTITLE_ENTRY = { label: "Subtitle", state: "present", text: "person lookup" } as const;
+
 /** Every field the fold reads, PRESENT — so a single absent arm is the only thing that can fire. */
 const PRESENT_FIELDS = {
   subtitle: { state: "present", value: "person lookup" },
@@ -115,14 +158,6 @@ const operationBase = FIXTURE_DAY_WIRE.queueSurfaces.find(
 );
 if (operationBase === undefined) throw new Error("the parity day fixture must serve at least one operation surface");
 
-/*
-  Every variant goes through the WIRE SCHEMA rather than being cast into shape.
-  Half these fields are branded (`runNumber.value` is a `PositiveInt`), and a
-  fixture assembled past the parser could pin the fold against a row the server
-  could never send.
-*/
-const surfaceOf = (raw: unknown): QueueSurfaceWire => QueueSurfaceWireSchema.parse(raw);
-
 const SINGLE_PRESENT = { ...base, ...PRESENT_FIELDS };
 const OPERATION_PRESENT = {
   ...operationBase,
@@ -134,8 +169,8 @@ const operationSurface = surfaceOf(OPERATION_PRESENT);
 
 describe("the ⓘ's absence arms", () => {
   it("reports NOTHING absent when the server served every field", () => {
-    assert.deepEqual(rowInfoFacts(singleSurface), [ONE_FACT_ENTRY]);
-    assert.deepEqual(rowInfoFacts(operationSurface), [ONE_FACT_ENTRY]);
+    assert.deepEqual(rowInfoFacts(singleSurface), [SUBTITLE_ENTRY, ONE_FACT_ENTRY]);
+    assert.deepEqual(rowInfoFacts(operationSurface), [SUBTITLE_ENTRY, ONE_FACT_ENTRY]);
   });
 
   it("reports the subtitle's own absence, and only it", () => {
@@ -147,6 +182,7 @@ describe("the ⓘ's absence arms", () => {
 
   it("reports the live message's own absence, and only it", () => {
     assert.deepEqual(rowInfoFacts(surfaceOf({ ...SINGLE_PRESENT, liveMessage: ABSENT_FIELDS.liveMessage })), [
+      SUBTITLE_ENTRY,
       { label: "Live message", state: "absent", text: REASONS.liveMessage },
       ONE_FACT_ENTRY,
     ]);
@@ -154,6 +190,7 @@ describe("the ⓘ's absence arms", () => {
 
   it("reports the run number's own absence, and only it", () => {
     assert.deepEqual(rowInfoFacts(surfaceOf({ ...SINGLE_PRESENT, runNumber: ABSENT_FIELDS.runNumber })), [
+      SUBTITLE_ENTRY,
       { label: "Run number", state: "absent", text: REASONS.runNumber },
       ONE_FACT_ENTRY,
     ]);
@@ -161,6 +198,7 @@ describe("the ⓘ's absence arms", () => {
 
   it("reports the outcome's own absence, which leaves no present value to list", () => {
     assert.deepEqual(rowInfoFacts(surfaceOf({ ...SINGLE_PRESENT, facts: ABSENT_FIELDS.facts })), [
+      SUBTITLE_ENTRY,
       { label: "Outcome", state: "absent", text: REASONS.facts },
     ]);
   });
@@ -168,11 +206,11 @@ describe("the ⓘ's absence arms", () => {
   it("reports a GROUP's missing member preview, and only for a group", () => {
     assert.deepEqual(
       rowInfoFacts(surfaceOf({ ...OPERATION_PRESENT, memberPreview: { state: "absent", reason: REASONS.memberPreview } })),
-      [{ label: "Members", state: "absent", text: REASONS.memberPreview }, ONE_FACT_ENTRY],
+      [SUBTITLE_ENTRY, { label: "Members", state: "absent", text: REASONS.memberPreview }, ONE_FACT_ENTRY],
     );
     assert.deepEqual(
       rowInfoFacts(operationSurface),
-      [ONE_FACT_ENTRY],
+      [SUBTITLE_ENTRY, ONE_FACT_ENTRY],
       "a group that HAS a preview has no absence to report",
     );
   });

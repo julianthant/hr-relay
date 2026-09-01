@@ -619,36 +619,65 @@ function RowFooterLine({
         >
           {surface.traceId}
         </span>
-        {/*
-          The subtitle is the one footer segment whose length the SERVER
-          chooses, and it is the segment DESIGN.md wrote the footer rule for:
-          *"A row footer's facts WRAP; they never truncate … so a run with a
-          queue note takes a second line instead of cutting its trace id to
-          `1…`"*. The demo's own span carries `whitespace-nowrap`
-          (`DemoQueue.tsx:715`) and gets away with it because every fixture
-          subtitle is a short identifier — an EID or a document number. This
-          projection serves the run's NOTE here, and a real one measured **1096
-          px inside a 375 px card**: `nowrap` made it neither wrap nor
-          ellipsize, so the card's own `overflow-hidden` cut it mid-word with
-          nothing on screen saying anything was cut — the exact silent-clip this
-          file's `rowChip` comment refuses one element up.
-
-          Wrapping is therefore the port, not a deviation: on a demo-shaped
-          short subtitle the two treatments render identically, and on a long
-          one only this treatment obeys the rule the demo states. The trace chip
-          beside it keeps `nowrap` — it is the segment that may never be cut.
-        */}
-        {showSubtitle && surface.subtitle.state === "present" && (
-          <span className="min-w-0 break-words text-[color:var(--ds-fg-secondary)]" title={surface.subtitle.value}>
-            {surface.subtitle.value}
-          </span>
-        )}
         {/* A first attempt is the ordinary case and says nothing; a re-run is a
             fact about this run that changes how its evidence reads. */}
         {surface.attempt > 1 && <span className="whitespace-nowrap">attempt {surface.attempt}</span>}
         {timing !== undefined && (
           <span className="whitespace-nowrap" {...(timing.title === undefined ? {} : { title: timing.title })}>
             {timing.text}
+          </span>
+        )}
+        {/*
+          The subtitle is the one footer segment whose length the SERVER
+          chooses, and it is the reason this line stopped looking like the
+          demo's.
+
+          DESIGN.md's rule is *"A row footer's facts WRAP; they never truncate
+          … so a run with a queue note takes a second line instead of cutting
+          its trace id to `1…`"*, and it is stated over the demo's own fact set:
+          `time · #run · trace · timing`, four SHORT tokens. The demo has no
+          fifth segment — its `subtitle` IS the trace (`se-140211-9f3a`), which
+          is why its span gets away with a bare `whitespace-nowrap`
+          (`DemoQueue.tsx:715`).
+
+          This projection serves the trace as its own chip and the run's NOTE
+          here, so the footer carries a segment the demo's rule was never
+          written over. A real note measured **1096 px inside a 375 px card**.
+          Two treatments were tried and both are wrong:
+
+           - `nowrap` alone neither wraps nor ellipsizes, so the card's own
+             `overflow-hidden` cut it mid-word with nothing on screen saying
+             anything was cut — the silent clip `rowChip` refuses one element
+             up.
+           - `break-words` obeys the rule's LETTER and turned a one-line footer
+             into a FOUR-line one, with `took 24m 48s` stranded on its own row
+             under two lines of prose and the controls floating beside the
+             first. That is the shape the operator read as *"the queue row does
+             not look like the one from the demo"*.
+
+          So this segment goes LAST and takes `min-w-0 truncate`. Going last
+          is not a reorder of the demo: its four facts keep the demo's exact
+          order, and the one it never had is appended behind them, so the
+          segments that must stay whole claim the line first. `min-w-0
+          truncate` — not `flex-1` — is the other half: `flex-1` sets the base
+          size to zero and hands this segment only the LEFTOVER width, which at
+          the 370 px the queue actually renders at cut `with CRM dates` to
+          `wi…` — a short subtitle the demo draws whole. At its natural base it
+          draws whole whenever it fits, and only a note too long for the line
+          wraps to a second one and ellipsizes there. That IS the demo's rule
+          in its own words: *"a run with a queue note takes a second line"* —
+          ONE second line, not the four `break-words` produced.
+
+          The ellipsis is the visible "something was cut" marker the bare
+          `nowrap` lacked, and the WHOLE value is reachable without a hover —
+          `rowInfoFacts` now carries a present subtitle into the row's ⓘ
+          popover, which is DESIGN.md's own click-to-open, keyboard- and
+          touch-reachable route for load-bearing detail. `title` stays as the
+          mouse's shortcut.
+        */}
+        {showSubtitle && surface.subtitle.state === "present" && (
+          <span className="min-w-0 truncate text-[color:var(--ds-fg-secondary)]" title={surface.subtitle.value}>
+            {surface.subtitle.value}
           </span>
         )}
       </div>

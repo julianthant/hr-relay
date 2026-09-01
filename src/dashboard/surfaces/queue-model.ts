@@ -52,6 +52,17 @@ export function rowInfoFacts(surface: QueueSurfaceWire): readonly RowInfoFact[] 
     facts.push({ label, state: "absent", text });
   };
   if (surface.subtitle.state === "absent") absent("Subtitle", surface.subtitle.reason);
+  // PRESENT, and it is the one present field that needs this. Every other
+  // footer segment is a short token that draws whole; the subtitle is the
+  // segment whose length the SERVER chooses, and since the footer truncates it
+  // (`surfaces/queue.tsx`) the popover is its only hover-free route to the
+  // uncut value — the same argument the `facts` loop below is written for, and
+  // DESIGN.md's own rule that load-bearing detail never lives in a hover-only
+  // surface. It leads the list because it is the row's second IDENTIFIER: the
+  // popover then reads top-down as the row does.
+  if (surface.subtitle.state === "present") {
+    facts.push({ label: "Subtitle", state: "present", text: surface.subtitle.value });
+  }
   if (surface.liveMessage.state === "absent") absent("Live message", surface.liveMessage.reason);
   if (surface.runNumber.state === "absent") absent("Run number", surface.runNumber.reason);
   if (surface.facts.state === "absent") absent("Outcome", surface.facts.reason);
