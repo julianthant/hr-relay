@@ -987,18 +987,21 @@ migration safe (one owner, empty allowlist) is the one already green.
 ### Hygiene closure and remaining scope
 
 - [x] **The rebuild `.env.example` is current and safe to instantiate.** It names the rebuild ports
-  and commands, gives an `umask 077` / `install -m 600` creation sequence, carries the three D286
-  public reference keys, and labels `CAPTURE_PUBLIC_URL` / `CAPTURE_NGROK_URL` as retired, unset
-  legacy aliases rather than supported configuration. Startup enforces the resulting local file
-  boundary as described above.
+  and commands, gives an `umask 077` / `install -m 600` creation sequence, carries the one D300
+  public reference key (the canary's Kuali document number), and labels `CAPTURE_PUBLIC_URL` /
+  `CAPTURE_NGROK_URL` as retired, unset legacy aliases rather than supported configuration. Startup
+  enforces the resulting local file boundary as described above.
 - [ ] **The example remains a curated setup surface, not a generated exhaustive inventory.** It
   intentionally does not enumerate every §3 config binding or provider-family slot. The separate
   `DOCUMENTED_ENVIRONMENT_KEYS` inventory remains hand-maintained, so exhaustive bidirectional
   example-to-binding generation is still open and is not evidence supplied by this closure.
-- [x] **The live canary's person values are no longer hardcoded in tracked fixtures.** D286 moved
-  the employee display name, timekeeper display name, and EID behind exact registered references;
-  ignored `.env` holds their values, while committed config and smoke output carry only public
-  field/reference/key metadata.
+- [x] **The live canary carries no person value at all, hardcoded or registered.** D286 (moved the
+  employee display name, timekeeper display name and EID behind exact registered references) is
+  superseded 2026-09-01 by D300: the canary is now ONE Kuali document number behind one closed
+  registered reference in ignored `.env`; the three person-value references and their smoke retire,
+  and the composed `separations` chain derives every person fact (employee name, document EID, the
+  UCPath subject) live instead. Committed config and smoke output still carry only public
+  field/reference/key metadata. See doc 03b §The canary registry for the normative as-built.
 
 ### 6.1 Explicit single-operator/local scope
 

@@ -1855,13 +1855,15 @@ registry resolves it.
   obligation, the owner), and a strict `workflows` object holding **one arm per workflow that can
   address the subject**. An arm carries that workflow's `kind` (what the subject is FOR, to that
   workflow — `ordinary` for the finalization, `full-chain-dry-run` for the composed chain) and that
-  workflow's public input: only values that are genuinely not sensitive (a Kuali document number)
-  live here, and an EID never does. A subject two workflows can drive is ONE row with two arms —
-  never two entries and never an alias, because an alias puts the workflow choice back into a name.
-  **Today the registry holds exactly one subject** — `finalization-canary`, Kuali doc 4537 — with
-  both arms; doc 03b §The canary registry is its as-built and `docs/migrations/separations.md`
-  §9.31 tabulates the eight labels that retired into history. This is D85 part 3's
-  `TestTargetRegistry`, built.
+  workflow's public input: only values that are genuinely not sensitive live here, and an EID never
+  does. Since D300 the `separations` arm's document is itself a CLOSED reference, never a literal
+  number — `{ state: "configured", reference }` names the registered secret and its env key, so the
+  committed registry chooses no subject on its own; the operator's ignored `.env` does. A subject two
+  workflows can drive is ONE row with two arms — never two entries and never an alias, because an
+  alias puts the workflow choice back into a name. **Today the registry holds exactly one subject** —
+  `finalization-canary` — with both arms; doc 03b §The canary registry is its as-built and
+  `docs/migrations/separations.md` §9.31 tabulates the eight labels that retired into history. This
+  is D85 part 3's `TestTargetRegistry`, built.
 - **`pending` — how the registry says "true, and not ready".** An arm may DECLARE the canonical
   leaves a live read cannot supply, each with its reason (the finalization arm's `transactionNumber`
   exists only once the UCPath filing ② files it; its `timekeeperComments` are composed by the chain;
@@ -1872,10 +1874,14 @@ registry resolves it.
   before any secret is read, because a run that cannot start must not spend a credential. An
   **undeclared** missing leaf is a registry DEFECT and fails by label and date. A leaf cannot be
   both observed and pending; the parser refuses the entry.
-- **`.env`, through `src/domain/secrets.ts`** — the sensitive values. An EID is a real person's
-  identifier; it belongs in the one module permitted to read a credential from `process.env`
-  (`secrets-single-source.test.ts` enforces that it is the only one), and it must never be
-  interpolated into a message (`no-secret-values-in-logs.test.ts` enforces the other half).
+- **`.env`, through `src/domain/secrets.ts`** — the sensitive values. Since D300 (superseding D286)
+  the ONLY registered test-target reference is the canary's Kuali document number, read from `.env`
+  through the one module permitted to read a credential from `process.env`
+  (`secrets-single-source.test.ts` enforces that it is the only one), never interpolated into a
+  message (`no-secret-values-in-logs.test.ts` enforces the other half). The finalization arm's person
+  leaves — employee name, EID, timekeeper name — are never registry- or environment-supplied at all:
+  the composed `separations` chain derives them live, so `separations-kuali-finalization`'s own
+  resolver can only ever answer `blocked`.
 - **A missing subject reports `blocked: needs <label>`, never `failed`.** This is the load-bearing
   rule. A canary is a live thing and it decays: `docs/migrations/separations.md` §9.16 records doc
   4524 — the best-mapped Kuali candidate — having its action COMPLETED between two passes, after

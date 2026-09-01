@@ -7,6 +7,12 @@
 R1 attempt 1 (2026-08-31→09-01) closed BLOCKED at admission — reports/r1.md. Brief reworked to
 rev 2 with a four-precondition dispatch gate; sequence unchanged, nothing consumed.
 
+> **2026-09-01, rev 3.** "Needs first" precondition P3 ("secrets in .env", the three person
+> secrets) is SUPERSEDED by D300: the admission is now the single document-number key
+> `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER` in `.env`, proved by
+> `npm run smoke:test-target-document-number` exit 0. See
+> handoffs/2026-09-01-finish-separations-r1-rev3.md.
+
 ## Units
 
 ### u1 — runtime admission + fresh subject/S7 observation
