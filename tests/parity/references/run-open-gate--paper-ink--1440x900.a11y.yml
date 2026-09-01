@@ -1,7 +1,7 @@
 # run-open-gate--paper-ink--1440x900
 # adapter: fixture
 # fixture: run-open-gate
-# descriptorHash: 4d70bc2ffda6f1628f9fa401ed7361839fed19238923ff9e930ef551a98fab38
+# descriptorHash: 949be141781359be036838eca5b7f420bc85aa3bb55363cd075c30089f9ebb2b
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -260,7 +260,7 @@
       - button "Reject — this is not the right person"
       - 'listitem "9:49 AM: info note: identity-review gate opened for candidate selection"': 9:49 AM identity-review gate opened for candidate selection
     - searchbox "Search logs"
-    - text: 4d70bc2f
+    - text: 949be141
     - button "Run provenance"
     - text: idle
   - complementary "Run data":

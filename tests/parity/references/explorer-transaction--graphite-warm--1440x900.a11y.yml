@@ -1,7 +1,7 @@
 # explorer-transaction--graphite-warm--1440x900
 # adapter: fixture
 # fixture: explorer-transaction
-# descriptorHash: 4d70bc2ffda6f1628f9fa401ed7361839fed19238923ff9e930ef551a98fab38
+# descriptorHash: 949be141781359be036838eca5b7f420bc85aa3bb55363cd075c30089f9ebb2b
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -219,7 +219,7 @@
           - cell "ucpath"
           - cell "from live fresh 4h override forbidden"
     - text: Depends on Nothing — this node may start immediately. Replay checkpoint checkpoint condition always runs Detail projections UCPath shows displayedName
-    - region "ucpath/read-job-summary": runs ucpath/read-job-summary Job Summary Implemented by store ucpath kind browser driver ucpath Subject binding kind person from input emplId identity eid observes ucpath.person-org.displayed-eid match normalized-exact-eid required at before-subject-read Errors employee-not-found subject-mismatch unexpected-page-state Freshness default 4h override forbidden Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios separations-identity-check/single-active-job separations-identity-check/already-terminated-single-row separations-identity-check/already-terminated-multi-row separations-identity-check/concurrent-active-jobs separations-identity-check/unreadable-department separations-identity-check/job-summary-not-found Source contract src/domain/contracts/ucpath/read-job-summary.ts impl src/stores/ucpath/tasks/read-job-summary.ts input 5578ac7d2220output 52e6b39a1c20impl 64290eb92935
+    - region "ucpath/read-job-summary": runs ucpath/read-job-summary Job Summary Implemented by store ucpath kind browser driver ucpath Subject binding kind person from input emplId identity eid observes ucpath.person-org.displayed-eid match normalized-exact-eid required at before-subject-read Errors employee-not-found subject-mismatch unexpected-page-state Freshness default 4h override forbidden Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios separations-identity-check/single-active-job separations-identity-check/already-terminated-single-row separations-identity-check/already-terminated-multi-row separations-identity-check/concurrent-active-jobs separations-identity-check/unreadable-department separations-identity-check/job-summary-not-found Source contract src/domain/contracts/ucpath/read-job-summary.ts impl src/stores/ucpath/tasks/read-job-summary.ts input 5578ac7d2220output 52e6b39a1c20impl 9230210ea312
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - text: app 0.1
