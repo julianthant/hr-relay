@@ -145,10 +145,16 @@ describe("EX114 — the pencil marks the field's own row", () => {
       workflow,
       onEdit: () => undefined,
     }));
-    const label = html.indexOf("Workflow label");
+    // D299 — the row prints the SHORT name and the door keeps the long one, so
+    // each index is asserted FOUND before it is ordered. `indexOf` answering
+    // -1 for a name that moved would satisfy `label < value` on its own, and
+    // the whole claim here is an ordering.
+    const label = html.indexOf("Label");
     const value = html.indexOf(workflow.label, label);
     const action = html.indexOf("Edit workflow label", value);
-    assert.ok(label < value && value < action, "the action must follow its own label and value");
+    assert.ok(label >= 0, "the field row must print its own name");
+    assert.ok(value > label, "the value must follow its own label");
+    assert.ok(action > value, "the action must follow its own label and value");
     assert.equal(html.slice(label, action).includes("</div>"), false, "the action escaped its owning field row");
     assert.equal(html.includes("Edit workflow icon"), true);
     assert.equal(html.includes("Edit workflow category"), true);

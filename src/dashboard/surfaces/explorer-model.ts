@@ -17,6 +17,7 @@ import type {
   ExplorerProposedWorkflowOverride,
   ExplorerTaskWire,
   ExplorerWorkflowWire,
+  SourceLinkWire,
 } from "../../domain/dashboard/explorer.js";
 import type { CommandResult } from "../../domain/commands.js";
 
@@ -29,9 +30,36 @@ const PRESENTATION_FIELD_LABEL: Readonly<Record<ExplorerPresentationField, strin
   "workflow-category": "Workflow category",
 };
 
-/** The one visible label for the presentation row and its matching edit door. */
+/**
+ * The full name of the field, and the one the EDIT DOOR is named after.
+ *
+ * The door's accessible name is `Edit workflow category` and it stays that
+ * whatever the row prints (ref operator-trust §5.4, D283): the door is the
+ * thing a keyboard user arrives at with no section around it, so the word
+ * `workflow` has to be in the name itself.
+ */
 export function explorerPresentationFieldLabel(field: ExplorerPresentationField): string {
   return PRESENTATION_FIELD_LABEL[field];
+}
+
+const PRESENTATION_FIELD_SHORT_LABEL: Readonly<Record<ExplorerPresentationField, string>> = {
+  "workflow-label": "Label",
+  "workflow-icon": "Icon",
+  "workflow-category": "Category",
+};
+
+/**
+ * What the field is CALLED inside the Presentation row (D299).
+ *
+ * Three fields whose every name began `Workflow ` sat in a section headed
+ * `Presentation`, inside a panel headed `Person Lookup v1`, each beside a
+ * button that said `Edit workflow label` — the word `workflow` four times in
+ * one row, in a region whose whole job is three short values. The row drops
+ * the qualifier it is already standing inside; the door keeps it, because a
+ * door is read out of context.
+ */
+export function explorerPresentationFieldShortLabel(field: ExplorerPresentationField): string {
+  return PRESENTATION_FIELD_SHORT_LABEL[field];
 }
 
 /**
@@ -360,6 +388,42 @@ export function nodeBindings(node: ExplorerNodeWire): readonly NodeBinding[] {
 export function nodeLabelBeside(node: ExplorerNodeWire): string | undefined {
   const normalized = node.label.toLowerCase().replace(/[^a-z0-9]+/gu, "-");
   return normalized === String(node.id).toLowerCase() ? undefined : node.label;
+}
+
+/**
+ * How one scenario's walking file is PRINTED in the Scenarios table (D299).
+ *
+ * A resolved file prints its base name. Every row of that table names a file
+ * under the same scenario tree, so the directory was the half of the path that
+ * repeated verbatim down the column while the half that told the rows apart —
+ * `person-lookup` vs `person-lookup-runtime` — sat at the far right of a
+ * chip. The whole path stays on the cell's `title`, and the column is a real
+ * table column, so a reader who wants it has one hover rather than seven
+ * repetitions.
+ *
+ * A MISS prints the whole attempted path and never trims it. The reader's next
+ * move depends on where the explorer looked, and a base name that resolves to
+ * nothing is the plausible-but-absent value ref operator-trust forbids — so the
+ * arm that is an ANSWER is short and the arm that is a FAILURE is complete.
+ */
+export interface ScenarioSourceCell {
+  readonly state: SourceLinkWire["state"];
+  /** what the cell prints */
+  readonly text: string;
+  /** the whole fact, for the cell's hover */
+  readonly title: string;
+}
+
+export function scenarioSourceCell(link: SourceLinkWire): ScenarioSourceCell {
+  if (link.state === "resolved") {
+    const path = String(link.path);
+    return { state: "resolved", text: path.slice(path.lastIndexOf("/") + 1), title: path };
+  }
+  return {
+    state: "unresolved",
+    text: `unresolved: ${String(link.attemptedPath)}`,
+    title: `${String(link.attemptedPath)} — ${link.reason}`,
+  };
 }
 
 /** the systems a transaction node in this graph writes to, for the hazard banner */

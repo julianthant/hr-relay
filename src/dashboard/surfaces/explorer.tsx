@@ -109,6 +109,7 @@ import {
   dsFocus,
   dsIcon,
   dsMotion,
+  dsRadius,
   dsText,
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
@@ -141,6 +142,7 @@ import {
   explorerPresentationChange,
   explorerPresentationDraft,
   explorerPresentationFieldLabel,
+  explorerPresentationFieldShortLabel,
   explorerPresentationValue,
   explorerEditProblemTitle,
   explorerGraphTotals,
@@ -153,6 +155,7 @@ import {
   matchesExplorerValidationDraft,
   nodeBindings,
   nodeLabelBeside,
+  scenarioSourceCell,
   taskSystemLabel,
   unplaceableEditableFields,
   writeSystems,
@@ -421,16 +424,29 @@ function WorkflowIdentityBand({ workflow }: { workflow: ExplorerWorkflowWire }) 
       className="flex-wrap gap-y-[var(--ds-space-tight)] py-[var(--ds-space-snug)]"
     >
       <Chip className="shrink-0" label="code">{workflow.code}</Chip>
-      <Chip className="shrink-0" label="category">{workflow.category}</Chip>
       <Chip className="shrink-0" label="version">{String(workflow.version)}</Chip>
       <Chip className="shrink-0" label="shape">{workflow.surfaceShape}</Chip>
       <Chip className="shrink-0" label="enqueue">{workflow.enqueue}</Chip>
       <Chip className="shrink-0" label="subject">
         {workflow.inputSubject.state === "fixed" ? workflow.inputSubject.value : "derived from input"}
       </Chip>
-      {workflow.systems.map((system) => (
-        <Chip className="shrink-0" key={system} label="system" tone="info">{system}</Chip>
-      ))}
+      {/*
+        ONE chip, however many systems (D299). `system crm` `system ucpath` spent
+        the label twice on a fact the reader had already taken, and the second
+        one is what pushed this band onto a second line — on the workflow with
+        the FEWEST systems. The value is the set, joined; the chip's own hover
+        carries it whole for the day a workflow reaches four.
+      */}
+      {workflow.systems.length > 0 && (
+        <Chip
+          className="shrink-0"
+          label={workflow.systems.length === 1 ? "system" : "systems"}
+          tone="info"
+          title={workflow.systems.join(", ")}
+        >
+          {workflow.systems.join(" · ")}
+        </Chip>
+      )}
     </PanelToolbar>
   );
 }
@@ -711,22 +727,94 @@ function GraphPanel({
           })}
         </ol>
 
-        <section aria-label="Scenarios" className="flex flex-col gap-[var(--ds-space-tight)]">
-          <SectionLabel>Scenarios</SectionLabel>
-          {workflow.scenarios.map((scenario) => (
-            <div
-              key={String(scenario.scenarioId)}
-              className="flex flex-wrap items-baseline gap-x-[var(--ds-space-base)]"
-            >
-              <span className={cn(dsText.body, dsText.nums, "text-[color:var(--ds-fg)]")}>
-                {scenario.scenarioId}
-              </span>
-              <SourceLink label="walks" link={scenario.source} />
-            </div>
-          ))}
-        </section>
+        <ScenariosSection workflow={workflow} />
       </PanelBody>
     </Panel>
+  );
+}
+
+/**
+ * The scenarios registered against this workflow, as a TABLE (D299).
+ *
+ * The list this replaces put each scenario's whole source path in a chip on
+ * the scenario's own row, and both halves of that row repeated: every id began
+ * with the same workflow segment and every chip began `walks
+ * tests/scenario/`, so the two columns the reader was actually comparing — the
+ * case name, and which of the two files walks it — sat at opposite ends of a
+ * ragged line whose width changed on every row. Two real columns align both,
+ * and the word `walks` moves from seven chips into one column head.
+ *
+ * The directory goes with it (`scenarioSourceCell`): resolved files print
+ * their base name and carry the whole path on the cell. An UNRESOLVED link
+ * keeps its warning chip and prints the attempted path whole — that arm is the
+ * one where the reader needs to know where the explorer looked.
+ */
+function ScenariosSection({ workflow }: { workflow: ExplorerWorkflowWire }) {
+  return (
+    <section aria-label="Scenarios" className="flex flex-col gap-[var(--ds-space-tight)]">
+      <div className="flex items-baseline gap-[var(--ds-space-base)]">
+        <SectionLabel>Scenarios</SectionLabel>
+        {/*
+          `registered`, not `scenarios` — the label two words to its left
+          already said the noun, and `Scenarios · 24 scenarios` is the stutter
+          the a11y tree reads out.
+        */}
+        {workflow.scenarios.length > 0 && (
+          <span className={cn(dsText.meta, dsText.nums, "ml-auto text-[color:var(--ds-fg-faint)]")}>
+            {`${String(workflow.scenarios.length)} registered`}
+          </span>
+        )}
+      </div>
+      {/*
+        The empty arm is an ANSWER. The list this replaces rendered a heading
+        over nothing, which reads as a region that failed to draw rather than
+        as a workflow no scenario walks.
+      */}
+      {workflow.scenarios.length === 0 ? (
+        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+          No scenario walks this workflow.
+        </span>
+      ) : (
+        <Table label={`${workflow.label} scenarios`}>
+          <THead>
+            <TR>
+              <TH className="w-px whitespace-nowrap">Scenario</TH>
+              <TH>Walked by</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {workflow.scenarios.map((scenario) => {
+              const source = scenarioSourceCell(scenario.source);
+              return (
+                <TR key={String(scenario.scenarioId)}>
+                  <TD numeric className="whitespace-nowrap text-[color:var(--ds-fg)]">
+                    {scenario.scenarioId}
+                  </TD>
+                  <TD>
+                    {source.state === "resolved" ? (
+                      <span
+                        title={source.title}
+                        className={cn(dsText.body, dsText.nums, dsClip.text, "block min-w-0 text-[color:var(--ds-fg-muted)]")}
+                      >
+                        {source.text}
+                      </span>
+                    ) : (
+                      <Chip
+                        tone="warning"
+                        title={source.title}
+                        icon={<SquareArrowOutUpRight aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}
+                      >
+                        {source.text}
+                      </Chip>
+                    )}
+                  </TD>
+                </TR>
+              );
+            })}
+          </TBody>
+        </Table>
+      )}
+    </section>
   );
 }
 
@@ -1538,25 +1626,57 @@ export function ExplorerPresentationFields({
 }) {
   const rows: readonly ExplorerPresentationField[] = ["workflow-label", "workflow-icon", "workflow-category"];
   return (
-    <section aria-label="Editable workflow presentation" className="border-t border-[color:var(--ds-border-subtle)]">
-      <SectionLabel className="block pt-[var(--ds-space-cozy)]">Presentation</SectionLabel>
-      <dl className="mt-[var(--ds-space-tight)] divide-y divide-[color:var(--ds-border-subtle)]">
+    <section aria-label="Editable workflow presentation" className="flex flex-col gap-[var(--ds-space-tight)] border-t border-[color:var(--ds-border-subtle)] pt-[var(--ds-space-cozy)]">
+      <SectionLabel>Presentation</SectionLabel>
+      {/*
+        THREE FIELDS, ONE LINE (D299). Each of these carries a value of one or
+        two words, and each used to get a full-width row 44px tall with the
+        value stranded beside a 9rem label column and the same sentence —
+        `Edit workflow <field>` — spelled out on the far right. Three of those
+        was the tallest region in the panel, spent on the least of its facts.
+        The pair travels together instead, in the recessed plane the rest of
+        this panel already uses for a fact, and the row wraps rather than
+        scrolls.
+      */}
+      <dl className="m-0 flex min-w-0 flex-wrap gap-[var(--ds-space-base)]">
         {rows.map((field) => (
-          <div key={field} className="flex min-w-0 items-center gap-[var(--ds-space-base)] py-[var(--ds-space-snug)]">
-            <dt className={cn(dsText.meta, "w-32 shrink-0 text-[color:var(--ds-fg-muted)]")}>{explorerPresentationFieldLabel(field)}</dt>
-            <dd className={cn(dsText.ui, "min-w-0 flex-1 truncate text-[color:var(--ds-fg)]")}>
+          <div
+            key={field}
+            className={cn(
+              "flex min-w-0 items-center gap-[var(--ds-space-snug)] border",
+              dsRadius.md,
+              "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)]",
+              "py-[var(--ds-space-hair)] pl-[var(--ds-space-base)] pr-[var(--ds-space-hair)]",
+            )}
+          >
+            {/*
+              The SHORT name. `Workflow label` inside a section headed
+              `Presentation` inside a panel headed `Person Lookup v1` said
+              `workflow` a third time; the door below keeps the long name,
+              because a door is read with no section around it.
+            */}
+            <dt className={cn(dsText.meta, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
+              {explorerPresentationFieldShortLabel(field)}
+            </dt>
+            <dd className={cn(dsText.ui, dsClip.text, "m-0 min-w-0 text-[color:var(--ds-fg)]")}>
               {explorerPresentationValue(workflow, field)}
             </dd>
-            <Button
+            {/*
+              `min-h-11` was unconditional here — a 44px control on a mouse,
+              which is what made these rows as tall as they were. The house
+              answer is the coarse-pointer arm (`settings.tsx` spends it a
+              dozen times): the touch floor where a finger is the pointer, the
+              control's own height where a cursor is.
+            */}
+            <IconButton
               type="button"
               variant="ghost"
               size="sm"
-              className="min-h-11 shrink-0"
+              className="pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+              label={`Edit ${explorerPresentationFieldLabel(field).toLowerCase()}`}
               icon={<Pencil aria-hidden className={dsIcon.sm} />}
               onClick={(event) => onEdit(field, event.currentTarget)}
-            >
-              Edit {explorerPresentationFieldLabel(field).toLowerCase()}
-            </Button>
+            />
           </div>
         ))}
       </dl>

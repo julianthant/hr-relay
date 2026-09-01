@@ -123,9 +123,20 @@ function text(): string {
   return (document.body.textContent ?? "").replace(/\s+/gu, " ");
 }
 
+/**
+ * By ACCESSIBLE name, not by text. D299 made the presentation edit doors
+ * icon-only, so the name a keyboard operator hears — `Edit workflow icon` —
+ * lives on `aria-label` and the button's own subtree is one `aria-hidden`
+ * glyph. Matching text alone would find no door and report it as a missing
+ * control rather than as a renamed one.
+ */
 function button(name: string): HTMLButtonElement {
+  const accessibleName = (candidate: HTMLButtonElement): string => {
+    const own = (candidate.textContent ?? "").trim();
+    return own.length > 0 ? own : (candidate.getAttribute("aria-label") ?? "").trim();
+  };
   const matches = [...document.body.querySelectorAll("button")]
-    .filter((candidate) => (candidate.textContent ?? "").trim() === name);
+    .filter((candidate) => accessibleName(candidate) === name);
   const only = matches[0];
   if (matches.length !== 1 || only === undefined) throw new Error(`expected one button ${name}, found ${String(matches.length)}`);
   return only;

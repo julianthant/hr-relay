@@ -1815,6 +1815,38 @@ new wire field, none is a new stable id, and none is derived from anything the p
 already carry — which is exactly the boundary D275 item 5's rejected alternatives sit outside of
 (B mints vocabulary; C drops stable ids).
 
+#### 5.2.2 How those facts are DRAWN, ruled by D299 (2026-09-01)
+
+§5.2 and §5.2.1 settle WHICH facts the Explorer shows. These four rules settle how the panel spends
+its space on them. Each removes a repetition; none removes a fact.
+
+1. **The identity band names each system once, and never names `category`.** The band draws one
+   chip for the whole `systems` set (`systems crm · ucpath`, singular label at one), because
+   `system crm` `system ucpath` spent the label twice on a fact already taken — and it was the
+   second chip that pushed the band onto a second line on the workflow with the FEWEST systems,
+   against the ONE-row rule §5.2 gives the band. `category` leaves the band outright: it is the
+   same value the Presentation row below serves as editable (§5.3), so the band was printing a
+   second copy of an editable fact, and the two would eventually disagree.
+2. **The Presentation fields are one wrapping row, not one full-width row each.** Three values of a
+   word or two do not each earn a 44px band with the value stranded beside a 9rem label column.
+   The pair travels together on the recessed plane, and the row wraps rather than scrolls.
+3. **The row prints the SHORT field name and the door keeps the long one.** `Label` · `Icon` ·
+   `Category` inside a section headed `Presentation` inside a panel headed with the workflow —
+   the qualifier the row is standing inside is not spelled a fourth time. The edit door stays
+   `Edit workflow label` / `Edit workflow icon` / `Edit workflow category` as its ACCESSIBLE name
+   (§5.4, D283): a door is reached with no section around it. Its 44px floor becomes the
+   coarse-pointer arm the rest of the bundle spends, rather than an unconditional one.
+4. **Scenarios is a two-column table: the id, then the file that walks it.** The list it replaces
+   put the whole source path in a chip on every row, so each row repeated `walks tests/scenario/`
+   and each id repeated the workflow segment, while the two facts a reader compares sat at
+   opposite ends of a line whose width changed on every row. The word `walks` becomes the column
+   head `Walked by`. A **resolved** file prints its base name and carries the whole path on the
+   cell. An **unresolved** one keeps its warning chip and prints the attempted path WHOLE — §5.7's
+   rule that a miss is never silent and never guessed is a rule about the failing arm, so the arm
+   that is an answer may be short and the arm that is a failure may not. A workflow with no
+   registered scenario says so in a sentence; a heading over nothing reads as a region that failed
+   to draw.
+
 ### 5.3 Phase B—safe edits only
 
 <!-- roadmap: def-explorer-edit -->
