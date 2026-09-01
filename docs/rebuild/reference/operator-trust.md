@@ -2234,6 +2234,32 @@ outputs undeclared, and the column then says so by name rather than printing the
 happen to declare. Substituting the common answer for the missing one is the plausible-but-wrong
 value the charter forbids.
 
+**Drawn as arm cards, not a table (2026-09-01, D302).** The census above is unchanged; how it is
+DRAWN is. The demo's `Field · System · Recorded` table exists for a third column that varies per row
+— what one run recorded. Here that column carried the arm's policy, and a policy is the same on every
+output row of its arm: the ported table printed `from live · fresh unbounded · override audited`
+three chips wide on every one of nine rows, and `System` printed the node's own chip nine more times.
+The panel now draws **one `Card` per task arm**, headed by the arm's id, verb and title plus the chips
+that are facts about the whole contract (`no implementation`, `proof`, `checkpoint`, `artifacts`).
+Inside it, **an `Inputs · N` group and an `Outputs · N` group**, in that order, each headed by the
+fact every row of that side shares: inputs are `bound by the graph`; a read arm's outputs carry the
+arm's DEFAULT `from` / `fresh` / `override` (`provenance.default`, `freshness.defaultMaxAge`,
+`freshness.defaultOverride`) or a warning `unknown` when the arm declares no policy; a prepare arm's
+outputs are `not recorded`; a commit arm's are `stored in the transaction checkpoint`. A side with no
+leaf keeps its head and says `none declared` — a card with one group looks like a card that failed to
+draw the other. **A row draws only its departure from the head**: the server's per-field `recorded`
+remains the row's authority, and `contractFieldGroups` (`explorer-model.ts`) compares it facet by
+facet with the head's default, so a `byField` freshness rule is one `fresh` chip on the one row it
+names, and a row whose STATE contradicts its head — the wire does not forbid it — is a warning chip
+naming that state, never folded into the head. Rows are list items (`<ul aria-label="<task> inputs">`)
+at `--ds-h-row`: path (with the D275 item 6 pencil), deviation chips, kind and `sometimes`. The
+`in ·`/`out ·` row prefix is retired with the table, because the group head is the side; the
+`System` column is retired because `nodeBindings` already puts every system an arm binds on the
+node's chip row. No wire field is added or dropped and every `ExplorerFieldRecordedWireSchema` arm
+keeps a slot. The pin is `explorer-contract-groups.test.ts` (the fold, and a render count proving
+the bound is drawn fewer times than there are output rows) and the EX114 pencil test re-homed on
+`</li>`.
+
 **A node's `when`, in words.** §5.7 recorded the conditional line as "runs when the descriptor's own
 when() predicate holds" and named an authored `whenLabel` as the fix. The fix taken instead is
 **D228** (ref workflow-model §3.3): the condition is DECLARED data, the executor evaluates it and the surface

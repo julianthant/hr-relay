@@ -4422,6 +4422,9 @@ fingerprint: a read is one OUTPUT leaf of a `read` arm, a write is one INPUT lea
 and the prepare arm's inputs are deliberately uncounted because it stages the values its commit then
 writes — counting both would report every write twice (`explorer-model.ts:44-70`). `Recorded`
 carries the field's declared PROVENANCE, never a run's value, with a reachable `unknown` arm.
+**D302 (2026-09-01)** redraws that census as one `Card` per task arm with an `Inputs`/`Outputs` group
+each: the side's `Recorded` fact sits on the group head, rows carry only their departure from it, and
+the `Field · System · Recorded` head and the `System` column are retired (ref operator-trust §5.9).
 
 **D228 — a node's `when` is rendered from the rule the executor applies.** `describeNodeCondition`
 is a total projection of the same `NodeCondition` value `evaluateNodeCondition` decides with
