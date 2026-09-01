@@ -14,6 +14,7 @@ import {
   StorageDoctorWireSchema,
   type StorageDoctorWire,
 } from "../../../src/domain/dashboard/storage.js";
+import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/row-catalog-model.js";
 
 class MeasurementFreeResizeObserver {
   observe(): void {}
@@ -83,6 +84,12 @@ async function mountDoctor(report: StorageDoctorWire): Promise<HTMLElement> {
     root.render(createElement(DashboardClientProvider, {
       client,
       children: createElement(SettingsPage, {
+        // D295: the catalog is a Settings section now. No render here opens it,
+        // so these carry the section's defaults rather than a fixture nothing reads.
+        catalogQuery: "",
+        catalogView: DEFAULT_CATALOG_VIEW,
+        onCatalogQuery: () => undefined,
+        onCatalogView: () => undefined,
         storage: STORAGE,
         sections: SECTIONS,
         workflowLabels: new Map<string, string>(),

@@ -15,8 +15,10 @@
  *
  * `TakeoverFrame` (D275 item 2 — ONE shared wrapper, kept as the accessibility
  * and motion convention) now owns it. The generic claims below test that one
- * owner; the two adoption tests prove the last adopters, intake and the UI
- * catalog, actually cross the boundary and keep their truthful first control.
+ * owner; the adoption test proves the last adopter, intake, actually crosses
+ * the boundary and keeps its truthful first control. The UI catalog was the
+ * other one until D295 made it a Settings SECTION — it owns no frame of its
+ * own now, which is what the case below its adoption test pins instead.
  * Three claims, and each was run against a mutation of the exact line it pins:
  *
  * 1. **The frame takes focus on mount.** Deleting the `node.focus(...)` call
@@ -58,14 +60,12 @@ import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection
 import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import {
   IMPORT_SPREADSHEET_DOOR_ID,
-  UI_CATALOG_DOOR_ID,
   restoreDashboardTakeoverFocus,
 } from "../../../src/dashboard/app/dashboard-app-model.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { TakeoverFrame } from "../../../src/dashboard/ds/primitives-layout.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { IntakeWorkspace } from "../../../src/dashboard/surfaces/intake.js";
-import { UiCatalogWorkspace } from "../../../src/dashboard/surfaces/ui-catalog.js";
 
 class MeasurementFreeResizeObserver {
   observe(): void {}
@@ -384,27 +384,30 @@ describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", 
     assert.equal(first.textContent?.trim(), "Close");
   });
 
-  it("UI catalog receives frame focus, then Tab reaches its Close control first", async () => {
-    const client = {
-      uiCatalog: () => Promise.resolve({
-        wireVersion: 1,
-        sourcePath: "generated/ui-catalog.json",
-        schemaVersion: 1,
-        entries: [],
-      }),
-    } as unknown as DashboardClient;
-    await mountSurface(client, createElement(UiCatalogWorkspace, {
-      query: "",
-      onQuery: () => undefined,
-      view: "selectors",
-      onView: () => undefined,
-      onClose: () => undefined,
-    }));
+  /*
+    D295's negative half. The catalog used to be the fifth takeover and is a
+    Settings section now, so the claims invert: it must have NO frame of its
+    own, and the frame it lives in must still own exactly one exit. A second
+    close control inside the content pane would be two exits from one page —
+    which is why `UiCatalogSection` takes no `onClose` at all.
+  */
+  it("the UI catalog draws inside the Settings frame and owns no exit of its own", async () => {
+    await mountDashboard("?settings=ui-catalog");
 
-    const frame = frameOf("UI catalog");
+    const frame = frameOf("Settings");
     assert.equal(document.activeElement, frame);
-    const first = takeFirstTab(frame);
-    assert.equal(first.getAttribute("aria-label"), "Close the UI catalog");
+    assert.equal(
+      document.querySelector('section[aria-label="UI catalog"]'),
+      null,
+      "the catalog must no longer mount a frame of its own",
+    );
+    assert.match(frame.textContent ?? "", /UI catalog/u);
+    assert.equal(takeFirstTab(frame).textContent?.trim(), "Back to the dashboard");
+    assert.equal(
+      document.querySelector('[aria-label="Close the UI catalog"]'),
+      null,
+      "a section may not carry a second exit from the page that contains it",
+    );
   });
 });
 
@@ -418,22 +421,13 @@ describe("closing a route-backed takeover restores its toolbar door", () => {
     assert.equal(document.activeElement, door);
   });
 
-  it("returns catalog focus to UI catalog after the route unmounts", async () => {
-    await mountDashboard("?catalog=");
-    await press(buttonNamed("Close the UI catalog"));
-
-    const door = buttonNamed("UI catalog");
-    assert.equal(door.id, UI_CATALOG_DOOR_ID);
-    assert.equal(document.activeElement, door);
-  });
-
   it("uses the persistent main region when a deep link has no matching door", () => {
     const main = document.createElement("main");
     main.id = "fixture-main-region";
     main.tabIndex = -1;
     document.body.append(main);
 
-    restoreDashboardTakeoverFocus(document, UI_CATALOG_DOOR_ID, main.id);
+    restoreDashboardTakeoverFocus(document, IMPORT_SPREADSHEET_DOOR_ID, main.id);
     assert.equal(document.activeElement, main);
   });
 

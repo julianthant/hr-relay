@@ -410,20 +410,45 @@ describe("the UI catalog search", () => {
 
 describe("the explorer and catalog route keys", () => {
   it("round-trips both keys through the query string", () => {
-    const route = parseRoute("?day=2026-08-09&explore=person-lookup&catalog=kuali%20save");
+    const route = parseRoute(
+      "?day=2026-08-09&explore=person-lookup&settings=ui-catalog&catalog=kuali%20save",
+    );
     assert.equal(route.explore, "person-lookup");
     assert.equal(route.catalog, "kuali save");
     assert.equal(
       routeToSearch(route),
-      "?day=2026-08-09&explore=person-lookup&catalog=kuali+save",
+      "?day=2026-08-09&explore=person-lookup&catalog=kuali+save&settings=ui-catalog",
     );
   });
 
   it("treats an EMPTY catalog value as open-with-no-term, not as absent", () => {
-    const route = parseRoute("?catalog=");
+    const route = parseRoute("?settings=ui-catalog&catalog=");
     assert.equal(route.catalog, "");
-    assert.equal(activeTakeover(route), "catalog");
-    assert.equal(routeToSearch(route), "?catalog=");
+    // D295: the catalog is a Settings SECTION, so `settings` is what owns the
+    // main region and the term is what the section reads.
+    assert.equal(activeTakeover(route), "settings");
+    assert.equal(routeToSearch(route), "?catalog=&settings=ui-catalog");
+  });
+
+  /*
+    D295's other half. The catalog keys are subordinate to `settings`, in BOTH
+    directions — so a bare `?catalog=` opens nothing and is dropped, and a term
+    held over a route whose open section is not the catalog is never written.
+    Without the second half the URL would name a search for a page that is not
+    on screen, which is the same "the address does not describe the screen"
+    defect an unrecognised `?catalogView=` is dropped for.
+  */
+  it("drops a catalog term that no open catalog section would read", () => {
+    assert.deepEqual(parseRoute("?catalog=kuali"), { start: false });
+    assert.equal(activeTakeover(parseRoute("?catalog=kuali")), "none");
+    assert.deepEqual(parseRoute("?settings=storage&catalog=kuali&catalogView=vocabulary"), {
+      start: false,
+      settings: "storage",
+    });
+    assert.equal(
+      routeToSearch({ start: false, settings: "storage", catalog: "kuali" }),
+      "?settings=storage",
+    );
   });
 
   it("addresses Archive's real version registry as the Explorer's destination", () => {
@@ -444,9 +469,10 @@ describe("the explorer and catalog route keys", () => {
   });
 
   it("resolves ONE takeover when a link carries several", () => {
-    assert.equal(activeTakeover(parseRoute("?intake=abc&explore=x&catalog=y")), "intake");
+    assert.equal(activeTakeover(parseRoute("?intake=abc&explore=x&settings=ui-catalog")), "settings");
+    assert.equal(activeTakeover(parseRoute("?intake=abc&explore=x")), "intake");
     assert.equal(activeTakeover(parseRoute("?explore=x&catalog=y")), "explore");
-    assert.equal(activeTakeover(parseRoute("?catalog=y")), "catalog");
+    assert.equal(activeTakeover(parseRoute("?settings=ui-catalog&catalog=y")), "settings");
     assert.equal(activeTakeover(parseRoute("?day=2026-08-09")), "none");
   });
 });

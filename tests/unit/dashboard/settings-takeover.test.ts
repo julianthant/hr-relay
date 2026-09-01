@@ -59,11 +59,13 @@ import {
   DASHBOARD_MAIN_REGION_ID,
   SETTINGS_GEAR_ID,
   SETTINGS_KEYBOARD_SECTION_ID,
+  SETTINGS_UI_CATALOG_SECTION_ID,
   buildSettingsNav,
   resolveSettingsSection,
   settingsCloseFocusTargetId,
   type SettingsSection,
 } from "../../../src/dashboard/surfaces/settings-model.js";
+import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/row-catalog-model.js";
 
 /** Parsed, so a case cannot express a section the bootstrap would refuse. */
 function section(id: string, label: string): SettingsSection {
@@ -122,15 +124,20 @@ describe("the settings route (D272 item 1)", () => {
 });
 
 describe("the settings page's nav (D274 item 5)", () => {
-  it("puts every served section under Status and always offers Help → Keyboard", () => {
+  it("puts every served section under Status and always offers both Help entries", () => {
     const groups = buildSettingsNav([STORAGE]);
     assert.deepEqual(groups.map((group) => group.heading), ["Status", "Help"]);
     assert.deepEqual(groups[0]?.entries.map((entry) => entry.id), ["storage"]);
     assert.equal(groups[0]?.entries[0]?.source, "served");
-    assert.deepEqual(groups[1]?.entries.map((entry) => entry.id), [SETTINGS_KEYBOARD_SECTION_ID]);
-    // The keyboard legend is a fact about THIS bundle's bindings, so it is not
-    // a served section and must never be counted as one.
-    assert.equal(groups[1]?.entries[0]?.source, "client");
+    assert.deepEqual(
+      groups[1]?.entries.map((entry) => entry.id),
+      [SETTINGS_KEYBOARD_SECTION_ID, SETTINGS_UI_CATALOG_SECTION_ID],
+    );
+    // Neither is a SERVED section: `settingsSections` lists the keyboard legend
+    // nowhere (a fact about THIS bundle's bindings) and lists the catalog
+    // nowhere either (D295 — the catalog is not a setting; it is reference
+    // material the operator looks up, and its data comes from its own route).
+    assert.deepEqual(groups[1]?.entries.map((entry) => entry.source), ["client", "client"]);
   });
 
   it("draws no Status heading over an empty list, and Help still stands", () => {
@@ -224,6 +231,12 @@ describe("the settings nav renders real navigation, not buttons (unit F4b findin
   const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
     client: STATIC_SETTINGS_CLIENT,
     children: createElement(SettingsPage, {
+      // D295: the catalog is a Settings section now. No render here opens it,
+      // so these carry the section's defaults rather than a fixture nothing reads.
+      catalogQuery: "",
+      catalogView: DEFAULT_CATALOG_VIEW,
+      onCatalogQuery: () => undefined,
+      onCatalogView: () => undefined,
       storage: HEALTHY_STORAGE,
       sections: [STORAGE],
     // Opened on Keyboard rather than Storage, so this render never reaches
@@ -273,6 +286,12 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
     const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
       client: STATIC_SETTINGS_CLIENT,
       children: createElement(SettingsPage, {
+        // D295: the catalog is a Settings section now. No render here opens it,
+        // so these carry the section's defaults rather than a fixture nothing reads.
+        catalogQuery: "",
+        catalogView: DEFAULT_CATALOG_VIEW,
+        onCatalogQuery: () => undefined,
+        onCatalogView: () => undefined,
         storage: HEALTHY_STORAGE,
         sections: [STORAGE],
       section: "budgets",
@@ -292,6 +311,12 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
     const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
       client: STATIC_SETTINGS_CLIENT,
       children: createElement(SettingsPage, {
+        // D295: the catalog is a Settings section now. No render here opens it,
+        // so these carry the section's defaults rather than a fixture nothing reads.
+        catalogQuery: "",
+        catalogView: DEFAULT_CATALOG_VIEW,
+        onCatalogQuery: () => undefined,
+        onCatalogView: () => undefined,
         storage: HEALTHY_STORAGE,
         sections: [STORAGE, section("budgets", "Budgets")],
       section: "budgets",

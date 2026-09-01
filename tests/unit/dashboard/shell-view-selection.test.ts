@@ -1,8 +1,8 @@
 /**
  * UF-SET-2 — a takeover the Top Bar's switcher does not name presses NOTHING.
  *
- * The defect this pins: `shellView` folded `settings`, `intake` and `catalog`
- * onto `"queue"`, so `ShellViewSwitcher`'s `aria-pressed={view === candidate}`
+ * The defect this pins: `shellView` folded `settings` and `intake` (and, until
+ * D295 moved it inside Settings, the UI catalog) onto `"queue"`, so `ShellViewSwitcher`'s `aria-pressed={view === candidate}`
  * lit `Dashboard` at the same moment the gear was lit — two simultaneous
  * "you are here" claims with a takeover covering the dashboard, and only one of
  * them true. The demo has never done this (legacy `1ec1d870`
@@ -22,13 +22,12 @@ const BASE = { start: false } as const;
 /**
  * The whole `ActiveTakeover` union against the segment the switcher must press
  * for each arm. `satisfies Record<ActiveTakeover, ShellViewSelection>` pins it
- * in both directions: a seventh takeover added to the union fails to compile
+ * in both directions: a sixth takeover added to the union fails to compile
  * here until this table names its segment, and a key the union drops fails too.
  */
 const SEGMENT_OF = {
   settings: "none",
   intake: "none",
-  catalog: "none",
   archive: "archive",
   explore: "explorer",
   activity: "activity",
@@ -40,7 +39,6 @@ describe("the Top Bar switcher's pressed segment", () => {
     for (const [route, takeover] of [
       [{ ...BASE, settings: "storage" }, "settings"],
       [{ ...BASE, intake: "new" }, "intake"],
-      [{ ...BASE, catalog: "" }, "catalog"],
     ] as const) {
       assert.equal(activeTakeover(route), takeover);
       assert.equal(shellViewOf(activeTakeover(route)), "none", `${takeover} must press no segment`);

@@ -11,6 +11,7 @@ import { StorageHealthSummaryWireSchema } from "../../../src/domain/dashboard/bo
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
+import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/row-catalog-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -118,6 +119,12 @@ describe("editable Settings surface", () => {
       root.render(createElement(DashboardClientProvider, {
         client,
         children: createElement(SettingsPage, {
+          // D295: the catalog is a Settings section now. No render here opens it,
+          // so these carry the section's defaults rather than a fixture nothing reads.
+          catalogQuery: "",
+          catalogView: DEFAULT_CATALOG_VIEW,
+          onCatalogQuery: () => undefined,
+          onCatalogView: () => undefined,
           storage: STORAGE,
           sections: [],
           workflowLabels: new Map<string, string>(),
@@ -191,6 +198,12 @@ describe("editable Settings surface", () => {
       root.render(createElement(DashboardClientProvider, {
         client,
         children: createElement(SettingsPage, {
+          // D295: the catalog is a Settings section now. No render here opens it,
+          // so these carry the section's defaults rather than a fixture nothing reads.
+          catalogQuery: "",
+          catalogView: DEFAULT_CATALOG_VIEW,
+          onCatalogQuery: () => undefined,
+          onCatalogView: () => undefined,
           storage: STORAGE,
           sections: [],
           workflowLabels: new Map<string, string>(),
