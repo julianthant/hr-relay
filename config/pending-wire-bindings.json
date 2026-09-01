@@ -19,12 +19,6 @@
       "direction": "declared-unserved",
       "decision": "D184",
       "note": "Ref dashboard-surfaces §1.1's Evidence rail. `buildRunDetail` serves `context.evidenceFacts: 0` with the comment that the evidence service is a later slice, so no composition can populate this arm; the 2g receipt section serves the trust content that exists today."
-    },
-    {
-      "binding": "FrontendBootstrapWireSchema#preflight",
-      "direction": "declared-unserved",
-      "decision": "D184",
-      "note": "Ref frontend-backend-integration §3.1/§5 assign the preflight (doctor) summary and the doctor-rerun command to the Top Bar. `buildBootstrap` composes no preflight service, so the optional field is never present and the Top Bar's Stethoscope popover never mounts — the honest absence, never a fabricated pass verdict. Closes with the ref clock-config-secrets preflight/config service that also serves the rerun command."
     }
   ]
 }
