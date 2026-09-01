@@ -1,0 +1,6 @@
+{
+  "playwright.parity.config.ts": {"sha256":"76b685be64e6eb5d274f66c3cf7ce80984db026a192d125df5dbdf7d8727433b","bytes":3312},
+  "tests/unit/architecture/parity-reference-authority.test.ts": {"sha256":"32605fa75178e57899365e8b15e3102a9fd1e08b36199fed75e40a6cfb4afc04","bytes":24365},
+  "tests/parity/diagnostic-bundle-dialog.spec.ts": {"sha256":"e7e8f710fceaf6cb6b20a9a7e7d1dc2f07e6a0e7074f8572eba08bcaf4b4b3a1","bytes":54909},
+  "tests/parity/run-captures.spec.ts": {"sha256":"e2491b1809873b58aa7e41ec5c80d12e9587eb8ef23ed435e2b1e6974df2aaf2","bytes":25730}
+}

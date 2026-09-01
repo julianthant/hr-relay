@@ -1,0 +1,19 @@
+{
+  "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/loading-lint.log'",
+  "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+  "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/loading-lint.log",
+  "started": "2026-08-30T16:32:49.004Z",
+  "sessions": [
+    61903
+  ],
+  "chunks": [
+    "0cf0ef",
+    "f26efd",
+    "9654cb",
+    "c97bb3",
+    "1dc7ff",
+    "00c361"
+  ],
+  "finished": "2026-08-30T16:33:14.681Z",
+  "exitCode": 0
+}

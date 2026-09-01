@@ -1,0 +1,33 @@
+{
+  "commands": {
+    "focused": "VITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- <exact paths/filter>",
+    "typecheck": "/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck",
+    "lint": "/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint"
+  },
+  "runs": [
+    { "name": "wiring-red", "chunk": "9b2ff3", "exit": 1, "result": "package entry still invoked Playwright directly", "logSha256": "c4ecb3a0acae08cfa32f223b756bf504c46653c9d097bc18f9361e976d43980b", "logBytes": 1465 },
+    { "name": "wiring-green", "chunk": "41a4fd", "exit": 0, "result": "1 passed / 13 skipped", "logSha256": "8eb7a8513638f494ef9d87f37e9333307ed28ea8d2fe5a70607b3a6ff8e11fe5", "logBytes": 440 },
+    { "name": "valid-report-red", "chunk": "fbfecd", "exit": 1, "result": "verifier export absent", "logSha256": "517e9c1952593e0dbe959240425ee66da2184be44e060027f5bd9cedf33fa3b0", "logBytes": 1040 },
+    { "name": "valid-report-green", "chunk": "b31c64", "exit": 0, "result": "1 passed", "logSha256": "98efc711f4206a72f601b636bab2e7b30d498aaa357fef0f1c1eb3429001485e", "logBytes": 351 },
+    { "name": "malformed-red", "chunk": "6bac10", "exit": 1, "result": "raw Zod error was not named as malformed report", "logSha256": "9eafc0085775547367bb970fc42a93e5e4a765362fc6c4389999e60a74b6b086", "logBytes": 1646 },
+    { "name": "malformed-green", "chunk": "554dad", "exit": 0, "result": "1 passed / 1 skipped", "logSha256": "dcc34cc875485f89f97f77255657522e7818e2a04e8d3c9d28826f7a2ceb10a8", "logBytes": 396 },
+    { "name": "command-red", "chunk": "7ba23c", "exit": 1, "result": "5 passed; orchestration export absent", "logSha256": "3741713af52d0fcd6e270f792ba47bdf68ae032189946c2db975942d0f3ea898", "logBytes": 1030 },
+    { "name": "command-green", "chunk": "b630d1", "exit": 0, "result": "forwarded-argument child proof passed", "logSha256": "cc25307caba62ee08609d05bc3c14ceaeb8a694c924c8d34be425e8bfe640019", "logBytes": 397 },
+    { "name": "command-failure-matrix", "chunk": "d2fc1d", "exit": 0, "result": "override/missing/unwritable/stale/primary-order proof passed", "logSha256": "5b304c6cfd34ecedb48ef5c04d30ed29e0e6eb57492d0cd8396585ae6c94d0e6", "logBytes": 568 },
+    { "name": "focused-first", "chunk": "ede2c4", "exit": 0, "result": "21 passed", "logSha256": "fd7ccf7916b1dc55c369a338e318bb3597e8cd94e89e23c2c251b55b1456543a", "logBytes": 620 },
+    { "name": "control-digest-red", "chunk": "5a4b8b", "exit": 1, "result": "digest bypass caused missing expected exception", "logSha256": "5adf08750138168a028be6add73ba1e5b7d22b51e81202e6e797cbd506b0bb96", "logBytes": 1156 },
+    { "name": "control-cardinality-red", "chunk": "74fcfc", "exit": 1, "result": "duplicate attachment bypass caused missing expected exception", "logSha256": "e1575e47c5f74e8ed1b56f35c9402a9e8a3c264452868e1a22600da8f9a9f3ba", "logBytes": 1156 },
+    { "name": "control-stale-red", "chunk": "dbc193", "exit": 1, "result": "prior-identity bypass caused missing expected exception", "logSha256": "9fe5b71087ed9f02ce3917e3ded548408085e6c9aa949bc87d6fb2e87a6f84ba", "logBytes": 1109 },
+    { "name": "control-postverify-red", "chunk": "ea7582", "exit": 1, "result": "post-run verifier bypass returned zero", "logSha256": "0b95b5ff34fcceb2356bc67c3497706f24a1f4e646dd6d50c164343c8b5c3229", "logBytes": 1139 },
+    { "name": "control-override-red", "chunk": "d45797", "exit": 1, "result": "pre-spawn refusal bypass ran child", "logSha256": "0b0c98240491e68e14b2c1b6c46ab6d4eaaefa279d49c6928e276055ae71c3cf", "logBytes": 1051 },
+    { "name": "focused-final-before-typecheck", "chunk": "4ab445", "exit": 0, "result": "21 passed", "logSha256": "3593b6e84dbe031cb2bec961e079e358a73e142098167552d57efffdfc6179dc", "logBytes": 620 },
+    { "name": "typecheck-red", "chunk": "88bbc5", "exit": 2, "result": "test fixture optional path was not represented in its inferred type", "logSha256": "1495d18a1cf6ae3dafcc9df91f64daac587300135634e9a3bf2f4e9d8a6b4a04", "logBytes": 221 },
+    { "name": "focused-after-type-fix", "chunk": "d0bb36", "exit": 0, "result": "21 passed", "logSha256": "95dcdb8252eba4d71de48a72bb6822b69705164f4c8206cc40ac64ea880b025d", "logBytes": 620 },
+    { "name": "typecheck-final", "chunk": "84fb21", "exit": 0, "result": "tsc --noEmit passed", "logSha256": "ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036", "logBytes": 57 },
+    { "name": "lint-final", "chunk": "03ea5d", "exit": 0, "result": "eslint passed with zero warnings", "logSha256": "cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385", "logBytes": 81 },
+    { "name": "focused-final-attached-config", "chunk": "ac4a9a", "exit": 0, "result": "21 passed after attached -c refusal", "logSha256": "2721431aaac2bca8310c76f620202a14d67c5a8451e4955357b4dc1ad7d70008", "logBytes": 620 },
+    { "name": "typecheck-final-attached-config", "chunk": "797c83", "exit": 0, "result": "tsc --noEmit passed", "logSha256": "ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036", "logBytes": 57 },
+    { "name": "lint-final-attached-config", "chunk": "abf0e4", "exit": 0, "result": "eslint passed with zero warnings", "logSha256": "cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385", "logBytes": 81 }
+  ],
+  "sessions": "All commands completed within their initial exec call; no resumable session id was issued."
+}

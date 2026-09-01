@@ -1,0 +1,36 @@
+- main:
+  - complementary "Run data":
+    - region "Extracted fields":
+      - text: The run is now failed — it moved while this data was open, so these values may be stale. Reopen the run to edit.
+      - paragraph: No unsaved changes.
+- dialog "Run capture":
+  - banner:
+    - heading "Run capture" [level=2]
+    - paragraph: Artifact 00000000-0000-4000-8000-00000000c101
+  - figure "Run capture preview":
+    - img "Capture 00000000-0000-4000-8000-00000000c101"
+    - text: Image decoded
+  - term: Artifact
+  - definition: 00000000-0000-4000-8000-00000000c101
+  - term: Media
+  - definition: image · image/png
+  - term: Size
+  - definition: 180 bytes
+  - term: SHA-256
+  - definition: 2fee9676d26f3e8f25514ae9c8a2f1465f9b6059022086277c0e7459d7a41a91
+  - term: Sensitivity
+  - definition: safe
+  - term: Redaction
+  - definition: not-required
+  - term: Dimensions
+  - definition: 10 × 14
+  - list "Capture origins":
+    - listitem: operator-request · 00000000-0000-4000-8000-00000000b101
+    - listitem: failure · 00000000-0000-4000-8000-00000000b102
+    - listitem: unexpected-state · 00000000-0000-4000-8000-00000000b103
+    - listitem: subject-mismatch · 00000000-0000-4000-8000-00000000b104
+    - listitem: recovery-park · 00000000-0000-4000-8000-00000000b105
+  - contentinfo:
+    - button "Close"
+    - link "Download":
+      - /url: http://127.0.0.1:62988/artifacts/v1/00000000-0000-4000-8000-00000000c101

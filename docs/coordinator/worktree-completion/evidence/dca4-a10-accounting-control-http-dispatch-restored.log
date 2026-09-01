@@ -1,0 +1,14 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/run-captures-fixture.test.ts -t advertised exact generic JPEG
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+·--------
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 8 skipped (9)
+   Start at  17:54:50
+   Duration  1.75s (transform 1.04s, setup 0ms, import 1.65s, tests 21ms, environment 0ms)
+

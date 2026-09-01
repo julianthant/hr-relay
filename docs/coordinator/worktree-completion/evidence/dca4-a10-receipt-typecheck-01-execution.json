@@ -1,0 +1,17 @@
+{
+  "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-receipt-typecheck-01.log'",
+  "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+  "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-receipt-typecheck-01.log",
+  "started": "2026-08-31T00:34:47.172Z",
+  "sessions": [
+    11746
+  ],
+  "chunks": [
+    "e333a9",
+    "9e2ce5",
+    "ae9509",
+    "b7a248"
+  ],
+  "finished": "2026-08-31T00:35:00.707Z",
+  "exit": 2
+}

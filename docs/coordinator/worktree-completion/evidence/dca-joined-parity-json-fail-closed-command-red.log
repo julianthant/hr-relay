@@ -1,0 +1,29 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/scripts/verify-parity-json.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+····x·
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > forwards exact arguments through a child command and verifies its fresh report
+TypeError: runParityAndVerify is not a function
+ ❯ tests/unit/scripts/verify-parity-json.test.ts:288:26
+    286|       const forwardedArgs = ["tests/parity/run-captures.spec.ts", "--g…
+    287|
+    288|       const exit = await runParityAndVerify({
+       |                          ^
+    289|         cwd: root,
+    290|         env: {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  12:12:59
+   Duration  145ms (transform 20ms, setup 0ms, import 55ms, tests 20ms, environment 0ms)
+

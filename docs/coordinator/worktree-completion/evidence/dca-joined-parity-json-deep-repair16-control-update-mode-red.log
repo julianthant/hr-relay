@@ -1,0 +1,60 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/scripts/verify-parity-json.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+·········x·node:fs:1334
+  const result = binding.mkdir(
+                         ^
+
+Error: EEXIST: file already exists, mkdir '/var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-parity-json-8DN7yI/tests/parity/.output/results.json'
+    at mkdirSync (node:fs:1334:26)
+    at [eval]:3:9
+    at runScriptInThisContext (node:internal/vm:219:10)
+    at node:internal/process/execution:483:12
+    at [eval]-wrapper:6:24
+    at runScriptInContext (node:internal/process/execution:481:60)
+    at evalFunction (node:internal/process/execution:315:30)
+    at evalTypeScript (node:internal/process/execution:327:3)
+    at node:internal/main/eval_string:71:3 {
+  errno: -17,
+  code: 'EEXIST',
+  syscall: 'mkdir',
+  path: '/var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-parity-json-8DN7yI/tests/parity/.output/results.json'
+}
+
+Node.js v26.1.0
+··
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > forwards exact arguments through a child command and verifies its fresh report
+AssertionError: Expected values to be strictly equal:
+
+null !== '1'
+
+
+- Expected:
+"1"
+
++ Received:
+null
+
+ ❯ tests/unit/scripts/verify-parity-json.test.ts:664:14
+    662|       });
+    663|       assert.equal(updateExit, 0);
+    664|       assert.equal(JSON.parse(readFileSync(modePath, "utf8")), "1");
+       |              ^
+    665|     } finally {
+    666|       rmSync(root, { recursive: true, force: true });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 12 passed (13)
+   Start at  13:22:37
+   Duration  781ms (transform 38ms, setup 0ms, import 65ms, tests 633ms, environment 0ms)
+

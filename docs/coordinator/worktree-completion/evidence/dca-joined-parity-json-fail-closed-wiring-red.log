@@ -1,0 +1,38 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t persists exact body-backed a11y attachments
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+---x----------
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/architecture/parity-reference-authority.test.ts > parity lane reference authority (D132) > persists exact body-backed a11y attachments through the configured reporter
+AssertionError: Expected values to be strictly equal:
++ actual - expected
+
++ 'playwright test --config playwright.parity.config.ts'
+- 'tsx scripts/verify-parity-json.ts'
+
+
+Expected: "tsx scripts/verify-parity-json.ts"
+Received: "playwright test --config playwright.parity.config.ts"
+
+ ❯ tests/unit/architecture/parity-reference-authority.test.ts:243:12
+    241|       scripts: Record<string, string>;
+    242|     };
+    243|     assert.equal(pkg.scripts["test:parity"], "tsx scripts/verify-parit…
+       |            ^
+    244|     assert.equal(pkg.scripts["test:parity:update"], "PARITY_UPDATE=1 t…
+    245|     const verifier = readFileSync(join(REPO_ROOT, "scripts/verify-pari…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 skipped (14)
+   Start at  12:08:02
+   Duration  2.14s (transform 1.11s, setup 0ms, import 2.06s, tests 6ms, environment 0ms)
+

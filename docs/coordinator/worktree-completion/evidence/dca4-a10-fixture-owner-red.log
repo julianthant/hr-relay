@@ -1,0 +1,41 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/run-captures-fixture.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+·········x
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-fixture.test.ts > keeps each diagnostic bundle owned by one run while allowing same-run artifact sharing
+AssertionError: Diagnostic bundle 00000000-0000-4000-8000-00000000b101 is advertised by two different runs
++ actual - expected
+
++ '00000000-0004-4000-8000-000000000004'
+- '00000000-0003-4000-8000-000000000003'
+               ^
+
+
+Expected: "00000000-0003-4000-8000-000000000003"
+Received: "00000000-0004-4000-8000-000000000004"
+
+ ❯ tests/unit/dashboard/run-captures-fixture.test.ts:175:43
+    173|         for (const origin of capture.origins) {
+    174|           const owner = owners.get(origin.bundleId);
+    175|           if (owner !== undefined) assert.equal(owner, runId, `Diagnos…
+       |                                           ^
+    176|           owners.set(origin.bundleId, runId);
+    177|         }
+ ❯ withRunCaptureHttp tests/unit/dashboard/run-captures-fixture.test.ts:18:11
+ ❯ tests/unit/dashboard/run-captures-fixture.test.ts:162:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  18:18:20
+   Duration  1.96s (transform 1.11s, setup 0ms, import 1.82s, tests 55ms, environment 0ms)
+

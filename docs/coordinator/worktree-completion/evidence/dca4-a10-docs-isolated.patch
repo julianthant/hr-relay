@@ -1,0 +1,90 @@
+--- a/docs/rebuild/reference/frontend-backend-integration.md
++++ b/docs/rebuild/reference/frontend-backend-integration.md
+@@ -508,13 +508,15 @@
+ Data lives in the Context rail. Captures live in Receipt and Review where relevant. A backend
+ capability may make a section empty/absent; it may not silently change the approved composition.
+ 
+-**Four of the eleven section arms have no producer, and each is DECLARED** in
++**Three of the eleven section arms have no producer, and each is DECLARED** in
+ `config/pending-wire-bindings.json` rather than left silent (D184, the D107 pattern one layer up):
+ `review` and `people` (no registered descriptor declares those panel kinds; the record store is 2h),
+ `context-evidence` (`buildRunDetail` serves `evidenceFacts: 0` and the evidence service is a later
+-slice), and `captures` (the section lists artifact refs and **nothing serves artifact bytes** —
+-§3.6). `wire-connectivity` fails in both directions over that manifest: an undeclared orphan arm, and
+-a declaration whose binding has become reachable.
++slice). `captures` is a separate asynchronous capability: `readRunDetail` advertises it only after
++verified diagnostic authority reports artifacts for the exact run, and the lazy section plus
++mounted Receipt consumer use exact artifact-resource URLs. The generic resource-status/gallery
++family remains unserved (§3.6). `wire-connectivity` fails in both directions over the pending
++manifest: an undeclared orphan arm, and a declaration whose binding has become reachable.
+ 
+ Logs are served by cursor-paged GET on the section route as strict note/observed/fence rows; the legacy
+ `notes` member is an exact compatibility mirror of that page's note rows while the renderer moves to rows.
+@@ -1303,14 +1305,19 @@
+ `run-identity.tsx`, `advisory.tsx`, `app/use-panel-sections.ts` and `state/use-run-detail.ts` on the
+ client; `queries/run-detail.ts` on the server, with `compose.ts` composing the descriptor view the
+ rail's origins need. Served sections today: `logs`, `receipt`, `failure`, `context-data`,
+-`context-attempts`, `parked-write`, `identity-gate`.
++`context-attempts`, `parked-write`, `identity-gate`, and `captures` when the independent async
++diagnostic-authority read verifies artifacts for the exact run. The mounted Receipt consumer reads
++that lazy section and uses the exact generic artifact-byte route; the initial synchronous
++projection still carries no capture list.
+ 
+-**Generic:** header, timeline, sections, receipt, failure, the rail. **Per-workflow:** the
++**Generic:** header, timeline, sections, receipt, failure, captures, the rail. **Per-workflow:** the
+ `identity-gate` section's packet is separations-shaped in the query today, and Edit Data is
+ declaration-gated (`capabilities.editData`, declared by `person-lookup` alone).
+ 
+-**Left:** `context-evidence` and `captures` (declared-unserved); the per-run subscription step 3
+-replaces (§3.5); and the whole-notes-corpus read on every logs GET (Track D row D5).
++**Left:** `context-evidence` (declared-unserved); the generic artifact resource-status/gallery
++family (§3.6); the per-run subscription step 3 replaces (§3.5); and the whole-notes-corpus read on
++every logs GET (Track D row D5). Browser acceptance and full integration gates for D292 remain
++pending.
+ 
+ The panel's SECOND status/outcome derivation is CLOSED — Track D row **D1**, ratified as **D268**
+ (2026-08-21, `81bfed73`), whose normative text is ref dashboard-surfaces §2.3. `queries/run-detail.ts`
+--- a/docs/rebuild/reference/dashboard-surfaces.md
++++ b/docs/rebuild/reference/dashboard-surfaces.md
+@@ -2934,12 +2934,15 @@
+ built shape is a **served** set (`availableSections` → `tabsFor`), which is stronger than a fixed
+ one, and the served set today is **`Logs` + `Receipt`**.
+ 
+-`RunDetailSectionSchema` declares eleven arms; `availableSections` returns at most seven; and
+-`review`, `people`, `captures` and `context-evidence` are never among them — `buildRunSection`
+-**throws by name** for the first two, and the client draws them as `UnservedTab`. So two of D19's
+-four panel kinds have no distinct set, because the runs that would have them (an OCR packet, a
+-delegated group) cannot be minted (§9.10). That is a surface built ahead of its producer, said
+-plainly rather than left to be discovered by an operator who clicks a tab that is not there.
++`RunDetailSectionSchema` declares eleven arms; `availableSections` can return eight across its
++lifecycle arms; and `review`, `people` and `context-evidence` are never among them —
++`buildRunSection` **throws by name** for the first two, and the client draws them as `UnservedTab`.
++`captures` is different: the live detail's independent async diagnostic-authority read advertises
++it only after exact verification, and its lazy payload renders inside Receipt rather than becoming
++a tab. So two of D19's four panel kinds have no distinct set, because the runs that would have them
++(an OCR packet, a delegated group) cannot be minted (§9.10). That is a surface built ahead of its
++producer, said plainly rather than left to be discovered by an operator who clicks a tab that is
++not there.
+ 
+ `context-evidence` is the odd one: the client FETCHES it whenever it is advertised and hands it to
+ nothing — it is explicitly withheld from the rail and no consumer of `sections["context-evidence"]`
+@@ -3977,7 +3980,7 @@
+ <!-- roadmap: def-search-export -->
+ <!-- roadmap-status: def-search-export -->
+ - [x] the Activity CSV (D240) — the one export this product serves, caveats first, from the served payload
+-- [ ] BE the artifact-bytes route: the ref/resource schemas are complete and nothing serves bytes, which is also what blocks the run-detail `captures` section and any screenshot gallery
++- [ ] BE the generic artifact resource-status/gallery family: DCA1's exact diagnostic-index byte route and D292's mounted Receipt capture consumer are served; `ArtifactResourceWireSchema` status and the generic gallery remain unserved
+ - [ ] BOTH cross-date run search — the top bar filters the SERVED DAY only, and Activity's range is an aggregate rather than a row search (§9.9 owns the day search)
+ - [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164)
+ - [ ] BOTH the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (`ref operator-trust` §2.4); the per-fact half (`retryOf`, `reuse` rows with `ageMs`) already exists
+--- a/src/server/dashboard/queries/run-detail.ts
++++ b/src/server/dashboard/queries/run-detail.ts
+@@ -927,7 +927,7 @@
+   return { state: "available", artifacts: Object.freeze(projected) };
+ }
+ 
+-/** The live route's async read; archive's synchronous projection freeze remains descriptor-free. */
++/** The live route adds async capture verification; Archive's synchronous `buildRunDetail` freeze does not inspect that authority. */
+ export async function readRunDetail(deps: RunDetailQueryDeps, runId: string): Promise<RunDetailWire> {
+   RunIdSchema.parse(runId);
+   requireRun(deps, runId);

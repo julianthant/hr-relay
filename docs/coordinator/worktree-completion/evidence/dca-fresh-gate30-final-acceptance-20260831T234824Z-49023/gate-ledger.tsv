@@ -1,0 +1,2 @@
+gate	command	start_utc	end_utc	duration_seconds	exit
+1	npm run test:coverage			0	127

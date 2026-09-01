@@ -1,0 +1,545 @@
+diff --git a/docs/coordinator/worktree-completion/evidence/dca4-gates/wire-before-AGENTS.md.txt b/AGENTS.md
+index 6191fe9e..501b91c9 100644
+--- a/docs/coordinator/worktree-completion/evidence/dca4-gates/wire-before-AGENTS.md.txt
++++ b/AGENTS.md
+@@ -400,6 +400,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
+ 
+ ### Dated lessons
+ 
++- **2026-08-30 — a returned artifact URL is consumed only when a mounted browser sink receives it.**
++  The Archive route guard drives `ArchivedRunDetail` through Evidence and capture, uses the real
++  query/parser, and credits only strict same-pair native `href`/`src` observations. An unused URL
++  builder earns nothing. Keep scanner roots, patterns and both-direction pending accounting intact;
++  observation failures remain fatal beside orphan-route diagnostics. File-local jsdom proves this
++  parent-to-DOM connection, not shell reachability, downloaded bytes, decode or browser geometry.
++
+ - **2026-08-30 — an exact resource URL still needs its D183 origin declaration.** Register the
+   complete archived-capture wire, not just its unfamiliar paths: UUIDs and state literals are
+   closed, while the exact-id URL and fixed availability copy are repository-authored free text.
+diff --git a/docs/coordinator/worktree-completion/evidence/dca4-gates/wire-before-helper.ts.txt b/tests/unit/architecture/helpers/wire-connectivity.ts
+index 9dda229f..7ec999be 100644
+--- a/docs/coordinator/worktree-completion/evidence/dca4-gates/wire-before-helper.ts.txt
++++ b/tests/unit/architecture/helpers/wire-connectivity.ts
+@@ -187,6 +187,51 @@ export function routeMatches(pattern: string, clientPath: string): boolean {
+   ));
+ }
+ 
++/* ── 4. complete two-direction route accounting ──────────────────────────── */
++
++/** The complete two-way route accounting, shared by the real audit and its controls. */
++export function routeConnectivityProblems(input: {
++  readonly routes: readonly ServedRoute[];
++  readonly references: readonly ClientRouteReference[];
++  readonly pending: readonly PendingWireBinding[];
++  readonly apiRoutesFile: string;
++  readonly clientRoots: readonly string[];
++}): readonly string[] {
++  const { routes, references, pending, apiRoutesFile, clientRoots } = input;
++  const declared = new Map(
++    pending.filter(({ binding }) => binding.startsWith("route:")).map((entry) => [entry.binding.slice("route:".length), entry]),
++  );
++  const problems: string[] = [];
++  for (const reference of references) {
++    if (routes.some(({ path }) => routeMatches(path, reference.path))) continue;
++    problems.push(
++      `${reference.file} calls ${reference.path}, which ${apiRoutesFile} does not register`,
++    );
++  }
++  for (const route of routes) {
++    const key = `${route.method} ${route.path}`;
++    const called = references.some(({ path }) => routeMatches(route.path, path));
++    if (called && declared.has(key)) {
++      problems.push(
++        `${PENDING_WIRE_BINDINGS_PATH} declares route:${key} unconsumed, but a client now calls it`,
++      );
++    }
++    if (!called && !declared.has(key)) {
++      problems.push(
++        `${apiRoutesFile} serves ${key} and no client under ${clientRoots.join(", ")} calls it. `
++        + `Either wire a caller or add {"binding": "route:${key}", "direction": "served-unconsumed", …} `
++        + `to ${PENDING_WIRE_BINDINGS_PATH} naming the consumer that will`,
++      );
++    }
++  }
++  for (const key of declared.keys()) {
++    if (!routes.some((route) => `${route.method} ${route.path}` === key)) {
++      problems.push(`${PENDING_WIRE_BINDINGS_PATH} declares route:${key}, which ${apiRoutesFile} does not serve`);
++    }
++  }
++  return problems;
++}
++
+ /* ── 5. served-descriptor producers ───────────────────────────────────────── */
+ 
+ /** Block and line comments, removed before a producer scan. */
+diff --git a/docs/coordinator/worktree-completion/evidence/dca4-gates/wire-before-test.ts.txt b/tests/unit/architecture/wire-connectivity.test.ts
+index c011d84c..dd0f1d2a 100644
+--- a/docs/coordinator/worktree-completion/evidence/dca4-gates/wire-before-test.ts.txt
++++ b/tests/unit/architecture/wire-connectivity.test.ts
+@@ -1,3 +1,4 @@
++// @vitest-environment jsdom
+ /**
+  * Wire connectivity — ref frontend-backend-integration §8.8, both directions (D107's pattern one layer up).
+  *
+@@ -41,6 +42,9 @@ import { readFileSync } from "node:fs";
+ import { join } from "node:path";
+ import { afterEach, describe, it } from "vitest";
+ import { z } from "zod";
++import { ArchivedRunDetailWireSchema } from "../../../src/domain/dashboard/archive.js";
++import { FIXTURE_ARCHIVE_EVIDENCE_CAPTURE, FIXTURE_ARCHIVE_EVIDENCE_RUN } from "../../parity/helpers/fixture-archive-evidence.js";
++import { archiveBrowserRouteReferences, type ArchiveBrowserProbe } from "./helpers/archive-browser-route-references.js";
+ import { ActionCommandKeySchema } from "../../../src/domain/dashboard/actions.js";
+ import {
+   ParkedWriteDetailWireSchema,
+@@ -70,10 +74,14 @@ import {
+   projectedCommandKeys,
+   normalizeClientPath,
+   readPendingWireBindings,
++  routeConnectivityProblems,
+   routeMatches,
+   servedRoutes,
+   PENDING_WIRE_BINDINGS_PATH,
++  PendingWireBindingSchema,
+   type PendingWireBinding,
++  type ClientRouteReference,
++  type ServedRoute,
+ } from "./helpers/wire-connectivity.js";
+ 
+ const worlds: DashboardWorld[] = [];
+@@ -97,6 +105,82 @@ const CLIENT_ROOTS = ["src/dashboard/client", "src/dashboard/phone/capture-clien
+ 
+ const MANIFEST = readPendingWireBindings();
+ 
++const ARCHIVE_ROUTE = "/artifacts/v1/archive/:runId/:artifactId";
++const GENERIC_ROUTE = "/artifacts/v1/:artifactId";
++const ARCHIVE_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/archive/:runId/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/archive/:runId/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
++const GENERIC_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
++
++function archiveProbe(runId: string = FIXTURE_ARCHIVE_EVIDENCE_RUN.runId, artifactId: string = FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId): ArchiveBrowserProbe {
++  const seed = FIXTURE_ARCHIVE_EVIDENCE_RUN;
++  if (seed.sections.state !== "present") throw new Error("the Archive guard fixture requires frozen sections");
++  const detail = ArchivedRunDetailWireSchema.parse({
++    ...seed, runId, row: { ...seed.row, runId },
++    detail: { ...seed.detail, runId, header: { ...seed.detail.header, runId } },
++    evidence: { ...seed.evidence, artifactIds: [artifactId] },
++    sections: { state: "present", value: { ...seed.sections.value,
++      captures: { state: "present", value: [{ ...FIXTURE_ARCHIVE_EVIDENCE_CAPTURE, artifactId }] },
++    } },
++  });
++  return { detail, response: { runId, artifactId,
++    resource: { state: "available", downloadUrl: `/artifacts/v1/archive/${runId}/${artifactId}` },
++  } };
++}
++
++/** Observation failures remain fatal AND the same accounting still reports orphan routes. */
++async function auditArchiveBrowser(probe: ArchiveBrowserProbe, accounting: {
++  readonly routes?: readonly ServedRoute[];
++  readonly references?: readonly ClientRouteReference[];
++  readonly pending?: readonly PendingWireBinding[];
++} = {}) {
++  const routes = accounting.routes ?? servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8"));
++  const scanned = accounting.references ?? clientRouteReferences(CLIENT_ROOTS.map((root) => join(REPO_ROOT, root)));
++  const observation = await archiveBrowserRouteReferences(probe).then(
++    (references) => ({ state: "observed", references }) as const,
++    (error: unknown) => ({ state: "refused", error }) as const,
++  );
++  const references = [...scanned, ...(observation.state === "observed" ? observation.references : [])];
++  const problems = routeConnectivityProblems({
++    routes, references, pending: accounting.pending ?? MANIFEST, apiRoutesFile: API_ROUTES_FILE, clientRoots: CLIENT_ROOTS,
++  });
++  return { observation, references, problems: [
++    ...(observation.state === "refused"
++      ? [observation.error instanceof Error ? observation.error.message : "Archive browser observation threw a non-Error value"] : []),
++    ...problems,
++  ] };
++}
++
++function withoutNativeSinks(selector: string): NonNullable<ArchiveBrowserProbe["beforeObservation"]> {
++  return (dialog) => {
++    const nodes = [...dialog.querySelectorAll(selector)];
++    assert.ok(nodes.length > 0, "the native-sink negative control found no real sink to remove");
++    const replacements = nodes.map((node) => {
++      const placeholder = document.createComment("A8 temporarily removed native sink");
++      node.replaceWith(placeholder);
++      return { node, placeholder };
++    });
++    return () => { for (const { node, placeholder } of replacements) placeholder.replaceWith(node); };
++  };
++}
++
++function changedNativeAttribute(selector: string, attribute: string, value: string): NonNullable<ArchiveBrowserProbe["beforeObservation"]> {
++  return (dialog) => {
++    const node = dialog.querySelector(selector);
++    assert.ok(node instanceof HTMLElement, "the attribute negative control found no native sink");
++    const before = node.getAttribute(attribute);
++    assert.ok(before !== null, "the native attribute was already missing before the negative control");
++    node.setAttribute(attribute, value);
++    return () => { node.setAttribute(attribute, before); };
++  };
++}
++
++function assertRefusedArchive(result: Awaited<ReturnType<typeof auditArchiveBrowser>>, message: RegExp): void {
++  assert.equal(result.observation.state, "refused", "the invalid browser observation was credited");
++  assert.match(result.problems[0], message);
++  assert.deepEqual(result.problems.slice(1), [ARCHIVE_ORPHAN, GENERIC_ORPHAN]);
++  assert.equal(result.references.some(({ path }) => routeMatches(ARCHIVE_ROUTE, path)), false,
++    "a refused observation still supplied an Archive reference");
++}
++
+ function bindingsFor(prefix: string): readonly PendingWireBinding[] {
+   return MANIFEST.filter(({ binding }) => binding.startsWith(prefix));
+ }
+@@ -373,46 +457,161 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
+     assert.deepEqual(problems, [], `wire connectivity — commands:\n  ${problems.join("\n  ")}`);
+   });
+ 
+-  it("resolves every client-called path to a served route, and declares every uncalled route", () => {
++  it("resolves every client-called path to a served route, and declares every uncalled route", async () => {
+     const routes = servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8"));
+     assert.ok(routes.length > 10, `route extraction from ${API_ROUTES_FILE} found only ${String(routes.length)}`);
+     const references = clientRouteReferences(CLIENT_ROOTS.map((root) => join(REPO_ROOT, root)));
+     assert.ok(references.length > 10, "client path extraction found almost nothing; the scan is broken");
+ 
+-    const declared = new Map(
+-      bindingsFor("route:").map((entry) => [entry.binding.slice("route:".length), entry]),
+-    );
+-    const problems: string[] = [];
+-    for (const reference of references) {
+-      if (routes.some(({ path }) => routeMatches(path, reference.path))) continue;
+-      problems.push(
+-        `${reference.file} calls ${reference.path}, which ${API_ROUTES_FILE} does not register`,
+-      );
+-    }
+-    for (const route of routes) {
+-      const key = `${route.method} ${route.path}`;
+-      const called = references.some(({ path }) => routeMatches(route.path, path));
+-      if (called && declared.has(key)) {
+-        problems.push(
+-          `${PENDING_WIRE_BINDINGS_PATH} declares route:${key} unconsumed, but a client now calls it`,
+-        );
+-      }
+-      if (!called && !declared.has(key)) {
+-        problems.push(
+-          `${API_ROUTES_FILE} serves ${key} and no client under ${CLIENT_ROOTS.join(", ")} calls it. `
+-          + `Either wire a caller or add {"binding": "route:${key}", "direction": "served-unconsumed", …} `
+-          + `to ${PENDING_WIRE_BINDINGS_PATH} naming the consumer that will`,
+-        );
+-      }
+-    }
+-    for (const key of declared.keys()) {
+-      if (!routes.some((route) => `${route.method} ${route.path}` === key)) {
+-        problems.push(`${PENDING_WIRE_BINDINGS_PATH} declares route:${key}, which ${API_ROUTES_FILE} does not serve`);
+-      }
+-    }
++    const { problems } = await auditArchiveBrowser(archiveProbe(), { routes, references });
+     assert.deepEqual(problems, [], `wire connectivity — routes:\n  ${problems.join("\n  ")}`);
+   });
+ 
++  it("A8 credits the actual mounted Archive parent native sinks and leaves the generic route open", async () => {
++    const beforeAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
++    const result = await auditArchiveBrowser(archiveProbe());
++    assert.equal(result.observation.state, "observed", result.problems.join("\n"));
++    if (result.observation.state !== "observed") throw new Error("the Archive observation was refused");
++    assert.deepEqual(result.observation.references.map(({ path }) => path), [
++      "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a",
++      "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a",
++    ]);
++    assert.deepEqual(result.problems, [GENERIC_ORPHAN]);
++    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), beforeAct);
++  });
++
++  it("A8 follows a second distinct run/capture pair instead of a fixture URL constant", async () => {
++    const result = await auditArchiveBrowser(archiveProbe(
++      "00000000-0000-4000-8000-00000000a001", "00000000-0000-4000-8000-00000000a002",
++    ));
++    assert.equal(result.observation.state, "observed", result.problems.join("\n"));
++    if (result.observation.state !== "observed") throw new Error("the second Archive pair was refused");
++    assert.deepEqual(result.observation.references, [
++      { file: "src/dashboard/surfaces/archive.tsx", path: "/artifacts/v1/archive/00000000-0000-4000-8000-00000000a001/00000000-0000-4000-8000-00000000a002" },
++      { file: "src/dashboard/surfaces/archive.tsx", path: "/artifacts/v1/archive/00000000-0000-4000-8000-00000000a001/00000000-0000-4000-8000-00000000a002" },
++    ]);
++    assert.deepEqual(result.problems, [GENERIC_ORPHAN]);
++  });
++
++  for (const [name, selector, message] of [
++    ["download", "a[download]", /missing native download href sink/u],
++    ["image", "img[src]", /missing native image src sink/u],
++    ["both", "a[download], img[src]", /missing native download href sink/u],
++  ] as const) {
++    it(`A8 removing the actual ${name} sinks retains the named observation failure and orphan route`, async () => {
++      const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: withoutNativeSinks(selector) });
++      assertRefusedArchive(result, message);
++    });
++  }
++
++  it("A8 an unused URL builder cannot substitute for removed native consumers", async () => {
++    const unusedBuilder = () => "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a";
++    assert.equal(typeof unusedBuilder, "function"); // Deliberately never called or passed to the collector.
++    const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: withoutNativeSinks("a[download], img[src]") });
++    assertRefusedArchive(result, /missing native download href sink/u);
++  });
++
++  for (const [name, selector, attribute, value] of [
++    ["foreign href", "a[download]", "href", "https://foreign.invalid/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a"],
++    ["mismatched src", "img[src]", "src", "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/00000000-0000-4000-8000-00000000a002"],
++    ["generic href", "a[download]", "href", "/artifacts/v1/aa11bb22-000a-4000-8000-aa11bb22000a"],
++  ] as const) {
++    it(`A8 rejects an observed ${name} through the strict same-pair schema`, async () => {
++      const result = await auditArchiveBrowser({ ...archiveProbe(),
++        beforeObservation: changedNativeAttribute(selector, attribute, value),
++      });
++      assertRefusedArchive(result, /an archived capture download must name its exact runId and artifactId/u);
++    });
++  }
++
++  it("A8 rejects a foreign URL through the real resource response parser", async () => {
++    const probe = archiveProbe();
++    const result = await auditArchiveBrowser({ ...probe, response: {
++      runId: probe.detail.runId, artifactId: FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId,
++      resource: { state: "available", downloadUrl: "https://foreign.invalid/artifact" },
++    } });
++    assertRefusedArchive(result, /Archive browser resource parse failed/u);
++  });
++
++  for (const foreign of ["runId", "artifactId"] as const) {
++    it(`A8 rejects a schema-valid foreign ${foreign} returned to the mounted parent`, async () => {
++      const probe = archiveProbe();
++      const runId = foreign === "runId" ? "00000000-0000-4000-8000-00000000a001" : probe.detail.runId;
++      const artifactId = foreign === "artifactId" ? "00000000-0000-4000-8000-00000000a002" : FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId;
++      const result = await auditArchiveBrowser({ ...probe, response: {
++        runId, artifactId, resource: { state: "available", downloadUrl: `/artifacts/v1/archive/${runId}/${artifactId}` },
++      } });
++      assertRefusedArchive(result, new RegExp(`returned a foreign ${foreign}`, "u"));
++    });
++  }
++
++  for (const location of ["root", "resource"] as const) {
++    it(`A8 the real parser refuses extra ${location} wire keys`, async () => {
++      const probe = archiveProbe();
++      const result = await auditArchiveBrowser({ ...probe, response: {
++        runId: probe.detail.runId, artifactId: FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId,
++        ...(location === "root" ? { unexpected: "A8" } : {}),
++        resource: { state: "available",
++          downloadUrl: "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a",
++          ...(location === "resource" ? { unexpected: "A8" } : {}),
++        },
++      } });
++      assertRefusedArchive(result, /Archive browser resource parse failed/u);
++    });
++  }
++
++  it("A8 a generic one-ID reference cannot satisfy the two-ID Archive route", async () => {
++    const references = clientRouteReferences(CLIENT_ROOTS.map((root) => join(REPO_ROOT, root)));
++    const generic = { file: "A8 synthetic generic-only control", path: "/artifacts/v1/aa11bb22-000a-4000-8000-aa11bb22000a" };
++    assert.equal(routeMatches(GENERIC_ROUTE, generic.path), true);
++    assert.equal(routeMatches(ARCHIVE_ROUTE, generic.path), false);
++    const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: withoutNativeSinks("a[download], img[src]") },
++      { references: [...references, generic] });
++    assert.equal(result.observation.state, "refused");
++    assert.match(result.problems[0], /missing native download href sink/u);
++    assert.deepEqual(result.problems.slice(1), [ARCHIVE_ORPHAN]);
++  });
++
++  it("A8 observed consumers still fail accounting when their server route is missing", async () => {
++    const routes = servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8"));
++    const result = await auditArchiveBrowser(archiveProbe(), { routes: routes.filter(({ path }) => path !== ARCHIVE_ROUTE) });
++    assert.equal(result.observation.state, "observed");
++    const missing = "src/dashboard/surfaces/archive.tsx calls /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a, which src/server/dashboard/routes/api.ts does not register";
++    assert.deepEqual(result.problems, [missing, missing, GENERIC_ORPHAN]);
++  });
++
++  it("A8 a pending entry for a now-consumed Archive route is stale", async () => {
++    const pending = [...MANIFEST, PendingWireBindingSchema.parse({ binding: "route:GET /artifacts/v1/archive/:runId/:artifactId",
++      direction: "served-unconsumed", decision: "D223", note: "A8 negative control, not a persisted exception or consumer waiver.",
++    })];
++    const result = await auditArchiveBrowser(archiveProbe(), { pending });
++    assert.equal(result.observation.state, "observed");
++    assert.deepEqual(result.problems, [
++      "config/pending-wire-bindings.json declares route:GET /artifacts/v1/archive/:runId/:artifactId unconsumed, but a client now calls it",
++      GENERIC_ORPHAN,
++    ]);
++  });
++
++  it("A8 a pending entry for a deleted server route still fails", async () => {
++    const pending = [...MANIFEST, PendingWireBindingSchema.parse({ binding: "route:GET /api/v1/a8-deleted",
++      direction: "served-unconsumed", decision: "D223", note: "A8 negative control, never written to the real pending manifest.",
++    })];
++    const result = await auditArchiveBrowser(archiveProbe(), { pending });
++    assert.equal(result.observation.state, "observed");
++    assert.deepEqual(result.problems, [GENERIC_ORPHAN,
++      "config/pending-wire-bindings.json declares route:GET /api/v1/a8-deleted, which src/server/dashboard/routes/api.ts does not serve",
++    ]);
++  });
++
++  it("A8 observation exceptions remain fatal and cleanup restores the mounted environment", async () => {
++    const beforeAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
++    const beforeChildren = [...document.body.childNodes];
++    const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: () => { throw new Error("A8 observation sentinel"); } });
++    assertRefusedArchive(result, /A8 observation sentinel/u);
++    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), beforeAct);
++    assert.deepEqual([...document.body.childNodes], beforeChildren);
++  });
++
+   /*
+    * The negative controls. Each arm above is run against a synthesized
+    * violation through the SAME entry point, for the reason `ratchet-arms`
+diff --git a/tests/unit/architecture/helpers/archive-browser-route-references.ts b/tests/unit/architecture/helpers/archive-browser-route-references.ts
+new file mode 100644
+index 00000000..b0fce35e
+--- /dev/null
++++ b/tests/unit/architecture/helpers/archive-browser-route-references.ts
+@@ -0,0 +1,154 @@
++/**
++ * DCA4 consumption proof: production parent → Evidence → capture → native href/src.
++ * This observes DOM declarations, not image bytes, decode, layout, or shell reachability.
++ */
++import assert from "node:assert/strict";
++import { act, createElement } from "react";
++import { createRoot, type Root } from "react-dom/client";
++import {
++  ArchivedCaptureResourceWireSchema,
++  type ArchivedCaptureResourceWire,
++  type ArchivedRunDetailWire,
++} from "../../../../src/domain/dashboard/archive.js";
++import { createDashboardQueries } from "../../../../src/dashboard/client/queries.js";
++import { createDashboardTransport } from "../../../../src/dashboard/client/transport.js";
++import { ArchivedRunDetail } from "../../../../src/dashboard/surfaces/archive.js";
++import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
++import type { ClientRouteReference } from "./wire-connectivity.js";
++
++export interface ArchiveBrowserProbe {
++  readonly detail: ArchivedRunDetailWire;
++  /** An external response; the real query parser and hook must accept it. */
++  readonly response: unknown;
++  /** Test-only native-sink controls. Restore the exact nodes/attributes before React cleanup. */
++  readonly beforeObservation?: (dialog: HTMLElement) => () => void;
++}
++
++function onlyButton(scope: ParentNode, name: string): HTMLButtonElement {
++  const matches = [...scope.querySelectorAll("button")].filter((button) => button.textContent?.trim() === name);
++  assert.equal(matches.length, 1, `Archive browser observation needs exactly one ${name} button`);
++  const button = matches[0];
++  assert.ok(button instanceof HTMLButtonElement, `Archive browser observation lost ${name}`);
++  return button;
++}
++
++function errorMessage(error: unknown): string {
++  return error instanceof Error ? error.message : "a non-Error value was thrown";
++}
++
++export async function archiveBrowserRouteReferences(input: ArchiveBrowserProbe): Promise<readonly ClientRouteReference[]> {
++  assert.equal(input.detail.sections.state, "present", "Archive browser probe requires frozen sections");
++  if (input.detail.sections.state !== "present" || input.detail.sections.value.captures.state !== "present") {
++    throw new Error("Archive browser probe requires a frozen capture");
++  }
++  const captures = input.detail.sections.value.captures.value;
++  assert.equal(captures.length, 1, "Archive browser probe must name exactly one frozen capture");
++  const capture = captures[0];
++  assert.ok(capture, "Archive browser probe lost its frozen capture");
++  const runId = input.detail.runId;
++  const artifactId = capture.artifactId;
++  const requested: { runId: string; artifactId: string; signal: AbortSignal | undefined }[] = [];
++  const httpPaths: string[] = [];
++  let returned: ArchivedCaptureResourceWire | undefined;
++  let readError: unknown;
++  const queries = createDashboardQueries(createDashboardTransport({
++    baseUrl: "http://archive-wire.test",
++    fetchImpl: async (url) => {
++      httpPaths.push(url);
++      return Response.json(input.response);
++    },
++  }));
++  const read = async (requestedRun: string, requestedArtifact: string, signal?: AbortSignal) => {
++    requested.push({ runId: requestedRun, artifactId: requestedArtifact, signal });
++    try {
++      const value = await queries.archivedCaptureResource(requestedRun, requestedArtifact, signal);
++      returned = value;
++      return value;
++    } catch (error) {
++      readError = error;
++      throw error;
++    }
++  };
++
++  const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
++  const priorChildren = [...document.body.childNodes];
++  const host = document.createElement("div");
++  let root: Root | undefined;
++  let restoreControl: (() => void) | undefined;
++  let references: readonly ClientRouteReference[] | undefined;
++  const failures: unknown[] = [];
++  Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
++  try {
++    document.body.append(host);
++    const mounted = createRoot(host);
++    root = mounted;
++    await act(async () => {
++      mounted.render(createElement(ToastProvider, {
++        children: createElement(ArchivedRunDetail, {
++          detail: input.detail, sweep: undefined, codes: new Map<string, string>(),
++          busy: false, relaunched: false,
++          onRelaunch: () => { throw new Error("Archive browser probe must not relaunch"); },
++          onDismiss: () => { throw new Error("Archive browser probe must not dismiss the parent"); },
++          onReadCapture: read,
++        }),
++      }));
++    });
++    const tabs = [...host.querySelectorAll("button[role=tab]")].filter((tab) => tab.textContent?.startsWith("Evidence"));
++    assert.equal(tabs.length, 1, "Archive browser observation cannot reach the Evidence tab");
++    const evidenceTab = tabs[0];
++    assert.ok(evidenceTab instanceof HTMLButtonElement, "Archive browser observation lost the Evidence tab");
++    await act(async () => { evidenceTab.click(); });
++    await act(async () => { onlyButton(host, "What it was").click(); });
++
++    assert.deepEqual(requested.map(({ runId: run, artifactId: artifact }) => ({ runId: run, artifactId: artifact })),
++      [{ runId, artifactId }], "Archive parent requested a different capture identity");
++    assert.deepEqual(httpPaths, [`http://archive-wire.test/api/v1/archive/${runId}/captures/${artifactId}/resource`],
++      "Archive query did not request the exact resource path");
++    const dialogs = document.querySelectorAll('[role="dialog"]');
++    assert.equal(dialogs.length, 1, "Archive browser observation did not open exactly one capture dialog");
++    const dialog = dialogs[0];
++    assert.ok(dialog instanceof HTMLElement, "Archive browser observation lost the capture dialog");
++    if (returned === undefined) {
++      throw new Error(`Archive browser resource parse failed: ${dialog.textContent}`, { cause: readError });
++    }
++    assert.equal(returned.runId, runId, "Archive browser resource returned a foreign runId");
++    assert.equal(returned.artifactId, artifactId, "Archive browser resource returned a foreign artifactId");
++    assert.equal(returned.resource.state, "available", `Archive browser resource was refused: ${dialog.textContent}`);
++    if (returned.resource.state !== "available") throw new Error("Archive browser resource is not available");
++    const retainedUrl = returned.resource.downloadUrl;
++
++    restoreControl = input.beforeObservation?.(dialog);
++    const links = dialog.querySelectorAll("a[download][href]");
++    const images = dialog.querySelectorAll("img[src]");
++    assert.equal(links.length, 1, "Archive browser observation missing native download href sink");
++    assert.equal(images.length, 1, "Archive browser observation missing native image src sink");
++    const href = links[0]?.getAttribute("href");
++    const src = images[0]?.getAttribute("src");
++    assert.equal(typeof href, "string", "Archive native href is absent");
++    assert.equal(typeof src, "string", "Archive native src is absent");
++    // The strict same-pair schema validates each OBSERVED attribute, never a manufactured path.
++    references = [href, src].map((path) => {
++      ArchivedCaptureResourceWireSchema.parse({ runId, artifactId, resource: { state: "available", downloadUrl: path } });
++      assert.equal(path, retainedUrl, "Archive native sink differs from the returned retained URL");
++      assert.ok(typeof path === "string");
++      return { file: "src/dashboard/surfaces/archive.tsx", path };
++    });
++  } catch (error) {
++    failures.push(error);
++  } finally {
++    try { restoreControl?.(); } catch (error) { failures.push(error); }
++    try { if (root !== undefined) await act(async () => { root?.unmount(); }); } catch (error) { failures.push(error); }
++    host.remove();
++    try {
++      for (const request of requested) assert.equal(request.signal?.aborted, true, "Archive probe did not cancel its resource request on unmount");
++      assert.deepEqual([...document.body.childNodes], priorChildren, "Archive probe leaked mounted DOM or a portal");
++    } catch (error) { failures.push(error); }
++    if (priorAct === undefined) Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
++    else Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", priorAct);
++  }
++  if (failures.length > 0) {
++    throw new AggregateError(failures, `Archive browser observation failed: ${failures.map(errorMessage).join("; ")}`);
++  }
++  assert.ok(references !== undefined, "Archive browser observation produced no result");
++  return references;
++}

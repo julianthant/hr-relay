@@ -1,0 +1,14 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/archive-evidence-fixture.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+······
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  08:12:44
+   Duration  3.04s (transform 1.97s, setup 0ms, import 2.91s, tests 29ms, environment 0ms)
+

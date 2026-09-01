@@ -1,0 +1,92 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/scripts/verify-parity-json.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+··xx··x·
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > refuses absent, unreadable, malformed, stale, redirected, or incomplete report evidence
+AssertionError: The input did not match the regular expression /report is malformed/u. Input:
+
+'Error: parity JSON report is missing, unsafe, or unreadable at /var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-parity-json-1hQOtP/tests/parity/.output/results.json: parity JSON report directory must have mode 0700: /var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-parity-json-1hQOtP/tests/parity/.output'
+
+
+- Expected:
+/report is malformed/u
+
++ Received:
+Error {
+  "message": "parity JSON report is missing, unsafe, or unreadable at /var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-parity-json-1hQOtP/tests/parity/.output/results.json: parity JSON report directory must have mode 0700: /var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-parity-json-1hQOtP/tests/parity/.output",
+  "cause": Error {
+    "message": "parity JSON report directory must have mode 0700: /var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-parity-json-1hQOtP/tests/parity/.output",
+  },
+}
+
+ ❯ tests/unit/scripts/verify-parity-json.test.ts:190:14
+    188|       mkdirSync(join(path, ".."), { recursive: true });
+    189|       writeFileSync(path, "{");
+    190|       assert.throws(
+       |              ^
+    191|         () => verifyParityJsonReport({ cwd: malformed, runStartedAtMs:…
+    192|         /report is malformed/u,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > refuses corrupt bodies, digest drift, path evidence, duplicates, prefixes, and both orphan directions
+AssertionError: The input did not match the regular expression /exactly one a11y body attachment/u. Input:
+
+'Error: tests/parity/run-captures.spec.ts:1 captures receipt evidence result 0 required a11y evidence receipt.a11y.yml is missing or duplicated; found 2 body attachments'
+
+
+- Expected:
+/exactly one a11y body attachment/u
+
++ Received:
+Error {
+  "message": "tests/parity/run-captures.spec.ts:1 captures receipt evidence result 0 required a11y evidence receipt.a11y.yml is missing or duplicated; found 2 body attachments",
+}
+
+ ❯ assertFixtureRefused tests/unit/scripts/verify-parity-json.test.ts:108:12
+    106|     mutate(report, root);
+    107|     writeReport(root, report);
+    108|     assert.throws(
+       |            ^
+    109|       () => verifyParityJsonReport({ cwd: root, runStartedAtMs: RUN_ST…
+    110|       expected,
+ ❯ tests/unit/scripts/verify-parity-json.test.ts:258:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > fails closed before overrides and after missing, unwritable, stale, or child-failed runs
+AssertionError: The input did not match the regular expression /verification failed:.*missing or unreadable/u. Input:
+
+'Parity JSON evidence verification failed: parity JSON report is stale: the current run did not replace the prior evidence\n'
+
+
+- Expected:
+/verification failed:.*missing or unreadable/u
+
++ Received:
+"Parity JSON evidence verification failed: parity JSON report is stale: the current run did not replace the prior evidence
+"
+
+ ❯ tests/unit/scripts/verify-parity-json.test.ts:396:14
+    394|       });
+    395|       assert.equal(exit, 1);
+    396|       assert.match(messages.join(""), /verification failed:.*missing o…
+       |              ^
+    397|     } finally {
+    398|       rmSync(missingRoot, { recursive: true, force: true });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 5 passed (8)
+   Start at  13:13:04
+   Duration  331ms (transform 31ms, setup 0ms, import 71ms, tests 175ms, environment 0ms)
+

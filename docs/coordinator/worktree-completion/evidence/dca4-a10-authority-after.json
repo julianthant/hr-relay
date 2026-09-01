@@ -1,0 +1,126 @@
+{
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "headUnchanged": true,
+  "branch": "feature/dca4-archive-evidence",
+  "staged": "",
+  "outsideCount": 1846,
+  "outsideDigest": "502f22006cec22f8676440dfc7dc7ef2cdaad7f5bdeda731ca38000a90dd6f2e",
+  "beforeOutsideDigest": "502f22006cec22f8676440dfc7dc7ef2cdaad7f5bdeda731ca38000a90dd6f2e",
+  "changedOutside": [],
+  "own": [
+    {
+      "path": "src/domain/dashboard/artifacts.ts",
+      "beforeBytes": 1936,
+      "beforeSha256": "47ef25033b6741141ed464a3016a8192592d4226ca61da72c2585d955d4099ab",
+      "afterBytes": 1949,
+      "afterSha256": "ed06b62f72cca9733084e18a7613ea47a475a81bdb5df2168cae984105c569e0"
+    },
+    {
+      "path": "src/domain/dashboard/run-detail.ts",
+      "beforeBytes": 51517,
+      "beforeSha256": "ac3c41c87594b261128d1299c1435f6533b90eae4553dde48daf28df12a263bf",
+      "afterBytes": 54114,
+      "afterSha256": "6e988a9379b0446891c0b030dbe94aad4ec0e175653acb1c4fcd66e85c4a5777"
+    },
+    {
+      "path": "src/server/dashboard/compose.ts",
+      "beforeBytes": 53311,
+      "beforeSha256": "f2beed1a2a4f3c2859d705e4df0fb436473d85684fce50ba70fb5eefa31954be",
+      "afterBytes": 53560,
+      "afterSha256": "80d74dc0e80adb6dc3daf50f882e3e8ea829e2e71f9753b9d1dbcf5fdc4ca916"
+    },
+    {
+      "path": "src/server/dashboard/queries/run-detail.ts",
+      "beforeBytes": 86633,
+      "beforeSha256": "f5989ce764440bd32c400062c9b45d90534aef1068bc7735dd334b6ebf3e1eb2",
+      "afterBytes": 93427,
+      "afterSha256": "97b26234cf19e2764bddbb85d3038e8b722ac0f2cda1e1af471226ee414b2e07"
+    },
+    {
+      "path": "src/server/dashboard/routes/api.ts",
+      "beforeBytes": 25033,
+      "beforeSha256": "63d76a39600e5dcf7f45a5b51bc3bb57840de5e4b2b268257ee601d5cc15cddc",
+      "afterBytes": 25053,
+      "afterSha256": "3a02b25c62bd2742575f2fc9779f11f9f22c06645d2d79a074e19ac00caeb0e5"
+    },
+    {
+      "path": "src/dashboard/client/queries.ts",
+      "beforeBytes": 17098,
+      "beforeSha256": "17a5ccb00a1676fe2ce7e198345aab7bee7ed5ad70c326d3a02b4662e4afcf3e",
+      "afterBytes": 18320,
+      "afterSha256": "0fdcaeb5f555bf06b0b05ab35cde4c455ed6235fd1d40d72004932eb7ac7db61"
+    },
+    {
+      "path": "tests/unit/dashboard-wire.test.ts",
+      "beforeBytes": 28264,
+      "beforeSha256": "fe3ff27001b81388a01009c4b6ccf0132af3c5b2f490d05ff8fcf9efa697dac1",
+      "afterBytes": 29641,
+      "afterSha256": "4dfa7e37b90c281e154e3a7590ad48798c6300c3ba09a2141267fdd6fccfa3ad"
+    },
+    {
+      "path": "tests/unit/server/bff-flow.test.ts",
+      "beforeBytes": 54023,
+      "beforeSha256": "984cd28ec4d21064c5ee3004669359999320f6d553d3d211e36e2f7ee13da87d",
+      "afterBytes": 55375,
+      "afterSha256": "a623aa99db0aace1fa66301dfb3cddb43f9daa4ad53fbe4aaa612db227961e4b"
+    },
+    {
+      "path": "tests/unit/server/run-detail-captures.test.ts",
+      "beforeBytes": 0,
+      "beforeSha256": null,
+      "afterBytes": 16947,
+      "afterSha256": "650f8e8d3addb9769cbb99cbba69045c68c3f627098dd49c95b63118ad4aaf6d"
+    },
+    {
+      "path": "tests/unit/dashboard/run-detail-captures-client.test.ts",
+      "beforeBytes": 0,
+      "beforeSha256": null,
+      "afterBytes": 4767,
+      "afterSha256": "2831c8d0c503960ff23be3f8ea8b5085765792621e9d7337477b516bc3f6cdc3"
+    },
+    {
+      "path": "tests/unit/architecture/helpers/redaction-surface-audit.ts",
+      "beforeBytes": 103835,
+      "beforeSha256": "8b5f7eb7b00b5d8749698b319b5851e9a5f08b24e03305e3f97f33cd88aa4b39",
+      "afterBytes": 104685,
+      "afterSha256": "26dd73e1bc53cbeed134643720546c1d6a4ac3b67fd399cb73c0975389d341eb"
+    },
+    {
+      "path": "config/pending-wire-bindings.json",
+      "beforeBytes": 2819,
+      "beforeSha256": "050672c2462f6ce9380cea48756ed38390d3cd6ad2fc0f12e1876b78c4343452",
+      "afterBytes": 2400,
+      "afterSha256": "d15cbaae462919b73fc59969710396911c772ebe78f7e29883e748f86cac119a"
+    },
+    {
+      "path": "AGENTS.md",
+      "beforeBytes": 43973,
+      "beforeSha256": "cd2d36269a801de05af6fa4a6033bd5c6c52b712d7305dbab182faf004991c97",
+      "afterBytes": 44497,
+      "afterSha256": "5eac310e3a7c7ad137a87122e7a35aa2be9d2857a6e14e3a1e5b37766ca1d27b"
+    },
+    {
+      "path": "docs/rebuild/reference/dashboard-surfaces.md",
+      "beforeBytes": 408126,
+      "beforeSha256": "34d0faa318cb46bcf2c6bba0c64a2b0dfd77d138bfcb353e7240b5a3f55b7e5e",
+      "afterBytes": 409644,
+      "afterSha256": "39d2c8dde8604660879e4f3b29a23c3965377380b1acedd97329e9f1a44aca77"
+    },
+    {
+      "path": "docs/rebuild/reference/frontend-backend-integration.md",
+      "beforeBytes": 198169,
+      "beforeSha256": "a5efeff5a72529c8c472c14c90ba1efdbbe314f3ec586360930f68adc3fbf1f7",
+      "afterBytes": 200691,
+      "afterSha256": "117d4a10748ca73ca86d38ee682fbd4d45de6156113bccced39e86c86034b6d3"
+    },
+    {
+      "path": "docs/rebuild/reference/decisions.md",
+      "beforeBytes": 395009,
+      "beforeSha256": "de64eee8cbb24fa3b4b82fb112b9754c46502825ab9eda04ba3f8cad16ab8235",
+      "afterBytes": 395511,
+      "afterSha256": "1dc41560a30f14f5b3cdae2f59fd2d4a0ca615d163d2b22d75e77bec0b0db2a1"
+    }
+  ],
+  "manifestSha256": "66d399b7cc1370018778a9101dd9fedd6dcc478b02bd35b214aabe60288a5a49",
+  "controlsUnchanged": true
+}

@@ -1,0 +1,36 @@
+{
+  "provenance": "Fresh bounded CURRENT identity before remaining05 abort control",
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "branch": "feature/dca4-archive-evidence",
+  "ui": "28f06f9bebdc1bbc85ac7a62367281b0ad3e086ebd7eb92b6936bc95949434bf",
+  "backend": "19f0a93825bda594f033e24135b65667ac536a931bba11450eb438f284e37c6f",
+  "protectedCount": 1622,
+  "protectedDigest": "68ea761f5fb644c0cbf83a42bc4edf005489f1d9a662daea650a6b60efd1b1f6",
+  "spec": {
+    "sha256": "e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0",
+    "bytes": 23317
+  },
+  "refs": {
+    "tests/parity/references/archive-evidence--graphite-warm--1280x720.a11y.yml": "be60674f973994ef46749b1c143c42f0b7798caef950bf1c8d8f4ce345155ee6",
+    "tests/parity/references/archive-evidence--graphite-warm--1280x720.meta.json": "c9f7c4d5f4d00ac261fe8025369603f9c75dd6eaa5a9da0e81f3415a607c7e69",
+    "tests/parity/references/archive-evidence--graphite-warm--1280x720.png": "1515745bbc5ea128ff7d61a74234a3c0fd521f06082648d26a67e92b3fa5ad91",
+    "tests/parity/references/archive-evidence--paper-ink--phone-390x844.a11y.yml": "c455a509f8eef7b08a9e7d22ed4160d5871595c81f2c970db23aa7863d660223",
+    "tests/parity/references/archive-evidence--paper-ink--phone-390x844.meta.json": "469e7558722db7ef27ddccc7773df09e08eec1e324940d3ade2f4507aeb51c7e",
+    "tests/parity/references/archive-evidence--paper-ink--phone-390x844.png": "275ac863a51674e5269c39aea3aea736f34377dbff674d0bf72607ed6a8049c3"
+  },
+  "companions": {
+    "src/dashboard/client/queries.ts": "17a5ccb00a1676fe2ce7e198345aab7bee7ed5ad70c326d3a02b4662e4afcf3e",
+    "src/dashboard/surfaces/archive-model.ts": "52af2d9261568bc6e8bbd2089b15afa0659bff518da130466ccba593b4bb3097",
+    "src/dashboard/surfaces/archive.tsx": "2618ad6247718de74b0847a271abfb80a864bb3359f6679e21e02d0e7c2fa392",
+    "src/dashboard/AGENTS.md": "58ba56deecbea58dde295b0747a1cde30a684f3837e99a8ba6b7c5c78aad9f57",
+    "tests/unit/dashboard/archive-render.test.ts": "e7139505e5d31fd872f3d5d37d5969f645fc845cb07e984bc87bf0d48032651f",
+    "tests/unit/dashboard/archive-detail-render.test.ts": "b8162b72f14ab8bfcacbc5a32c787ead902808b4a113a8facc29797e0231a587",
+    "tests/parity/helpers/fixture-bff.ts": "7164312f74475708a8b26ddbf354be3c2f67e0f6e57566e4d5d568945b68c072",
+    "tests/parity/helpers/fixture-archive-evidence.ts": "3877360ad3540f5579a47c4f4e88be8c366b29332895f4772c53145474792757",
+    "tests/unit/dashboard/archive-evidence-fixture.test.ts": "61aa88751464f01106ac34db39fa9792f37c32480170ec491cfe4abf2cdc1d1f",
+    "tests/unit/dashboard/archive-capture-resource-client.test.ts": "24d91d3aba1b7d22748ac61c6d7ed944fa0b7b8e7c81b9382be464f34e8aeb4f",
+    "tests/unit/server/archive-capture-resource.test.ts": "6853648c074d7f97eae16d83a7f04dccfef4b838ed5879b62e3c4a6d801d1907",
+    "tests/unit/server/archive-capture-routes.test.ts": "e0d7d28094586d8adcebc5612820d5d3da8ccffb60badfca6b06a5eb55092a30",
+    "src/server/dashboard/queries/artifact-bytes.ts": "0d7ffd313015837b8323d55ab98eb29cb0ae07cb72bc8057f8365eb94d12f76c"
+  }
+}

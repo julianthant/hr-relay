@@ -1,0 +1,10 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+···········································································
+
+ Test Files  1 passed (1)
+      Tests  75 passed (75)
+   Start at  02:42:55
+   Duration  4.47s (transform 1.25s, setup 0ms, import 1.83s, tests 2.56s, environment 0ms)
+

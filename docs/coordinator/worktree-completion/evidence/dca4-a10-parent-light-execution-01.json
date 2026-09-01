@@ -1,0 +1,49 @@
+{
+  "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+  "finished": [
+    {
+      "name": "focused-01",
+      "session": 59954,
+      "exit": 0,
+      "chunks": [
+        "9fe962",
+        "99b6fa",
+        "8fd53e"
+      ],
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-parent-focused-01.log",
+      "tests": 302,
+      "files": 14,
+      "duration": "17.91s",
+      "startFromRaw": "18:08:57 PDT",
+      "command": "VITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/server/run-detail-captures.test.ts tests/unit/dashboard/run-detail-captures-client.test.ts tests/unit/dashboard-wire.test.ts tests/unit/server/bff-flow.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts tests/unit/server/archive-capture-resource.test.ts tests/unit/server/archive-capture-routes.test.ts tests/unit/architecture/wire-connectivity.test.ts tests/unit/dashboard/run-captures-app.test.ts tests/unit/dashboard/run-captures-lifecycle.test.ts tests/unit/dashboard/run-captures-fixture.test.ts tests/unit/dashboard/archive-evidence-fixture.test.ts tests/unit/dashboard/parity-fixtures.test.ts"
+    },
+    {
+      "name": "typecheck-01",
+      "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck 2>&1 | tee docs/coordinator/worktree-completion/evidence/dca4-a10-parent-typecheck-01.log",
+      "started": "2026-08-31T01:09:33.750Z",
+      "chunk_id": "3558fc",
+      "wall_time_seconds": 1.001061875,
+      "session_id": 59633,
+      "original_token_count": 15,
+      "output": "\n> hr-automation-rebuild@0.1.0 typecheck\n> tsc --noEmit\n\n",
+      "exit": 0,
+      "terminalChunk": "37c6fa",
+      "finished": "2026-08-31T01:09:59.169Z"
+    }
+  ],
+  "active": {
+    "name": "lint-01",
+    "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint 2>&1 | tee docs/coordinator/worktree-completion/evidence/dca4-a10-parent-lint-01.log",
+    "started": "2026-08-31T01:09:59.170Z",
+    "chunk_id": "0a7e12",
+    "wall_time_seconds": 1.001311958,
+    "session_id": 79893,
+    "original_token_count": 21,
+    "output": "\n> hr-automation-rebuild@0.1.0 lint\n> eslint src tests scripts --max-warnings 0\n\n"
+  },
+  "notes": [
+    "focused command raw direct pipefail+tee; exact UTC invocation timestamp not recorded, raw local start retained",
+    "type/lint timestamps are orchestration timestamps, not OS process timestamps",
+    "six-reviewer native concurrency limit reached on Performance resume; no Performance/Docs dispatch yet"
+  ]
+}

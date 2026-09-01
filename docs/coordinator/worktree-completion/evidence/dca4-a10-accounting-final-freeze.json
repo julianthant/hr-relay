@@ -1,0 +1,134 @@
+{
+  "observedAt": "2026-08-31T01:01:46.532Z",
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "index": "",
+  "protectedCount": 1861,
+  "protectedDigest": "6be0f2781b0cb09f5cfd4fb74e07ef7b8dbaeac8a8e5978eeabbe4126f8358f4",
+  "beforeScopeDigest": "122f4d059c435eaa5842a3d772c9ba49ee16f1fb167d192cc2deb2cc39238d39",
+  "afterScopeDigest": "778973c3b5ec3d44fe0f142047ba17e1fa56a384c6f810f6d82b87d91e1390f3",
+  "scope": {
+    "tests/unit/architecture/wire-connectivity.test.ts": {
+      "sha256": "9eb5bce49b04aae9a71a253705eb058457a9ca599966f8604a7e3fc0cd456648",
+      "bytes": 55135
+    },
+    "tests/unit/architecture/helpers/run-capture-browser-route-references.ts": {
+      "sha256": "4439d5a8f04cad5ec90f138b49c62aaf828d2da9fe1bdd35571833f4b5727c2b",
+      "bytes": 5562
+    },
+    "tests/unit/dashboard/fixtures/run-captures-app-fixture.ts": {
+      "sha256": "356ff3f3c4fb22a7702e19c89fb6df908937c424061844ad87b6b261f4e0c3b2",
+      "bytes": 13248
+    },
+    "tests/parity/helpers/fixture-bff.ts": {
+      "sha256": "393944a843e4b89d27b856b20caf11dc207317d2c78f6cc874d38be6c9866f3e",
+      "bytes": 25096
+    },
+    "tests/parity/helpers/fixture-run-captures.ts": {
+      "sha256": "c66c67d0bd1221782bdaf09a2ecfc404f374983307b3f731e3c0baa3ddfa275f",
+      "bytes": 4820
+    },
+    "tests/unit/dashboard/run-captures-fixture.test.ts": {
+      "sha256": "2d5fc428a1879369de28c8e4ee11307799ba1130f17804973ddfa28475bc06d9",
+      "bytes": 9937
+    },
+    "src/dashboard/AGENTS.md": {
+      "sha256": "41cb89fe5da1c57077379bcd8ea665b48e3f2c44af04f9c2179533ee42691304",
+      "bytes": 12524
+    },
+    "docs/rebuild/reference/dashboard-surfaces.md": {
+      "sha256": "aece0a0788d047af26ab46d08eaa2ced10544c61d89627b835aa53a31a9d5fe6",
+      "bytes": 410490
+    },
+    "docs/rebuild/reference/frontend-backend-integration.md": {
+      "sha256": "c8b78782a27ecdbf213b9b9185a05457707a94f7eb661181bed9cd8378cf25aa",
+      "bytes": 202130
+    }
+  },
+  "namedPins": {
+    "src/dashboard/surfaces/run-captures-model.ts": {
+      "sha256": "001c9058ff9b42a867bb83f5c1503b5f9c6797cb8c9c60624b172e88f532e391",
+      "bytes": 6732
+    },
+    "src/dashboard/surfaces/run-captures.tsx": {
+      "sha256": "2daa099d3ece6c6a8d812ecee002393d7144051bde8294a1f8826c7a9fb89187",
+      "bytes": 6478
+    },
+    "src/dashboard/app/dashboard-app.tsx": {
+      "sha256": "8bbb8db545bfba2cc84418a29c3905c84835542da59d1a9306994ea2ec4c1415",
+      "bytes": 85302
+    },
+    "src/dashboard/surfaces/log-panel.tsx": {
+      "sha256": "4d8a0afd36edeb5a4f74576351c19d2d56457f3c40c2965a3899693fada05b16",
+      "bytes": 111512
+    },
+    "tests/unit/dashboard/run-captures-app.test.ts": {
+      "sha256": "cd76f80e7d4ebee08b3e565444bdad1238ebc70f093a443b0259619a7b68672e",
+      "bytes": 28335
+    },
+    "tests/unit/dashboard/run-captures-lifecycle.test.ts": {
+      "sha256": "a4261b95c82ddf6c7778f26e87848b5edc08ea0353696a921d4ee284e83498bf",
+      "bytes": 3598
+    },
+    "tests/unit/architecture/helpers/wire-connectivity.ts": {
+      "sha256": "a44d56a9919991c3f2441bae0c84befd70cb72bd9e3d8240e73a42d26725fa82",
+      "bytes": 10699
+    },
+    "tests/unit/architecture/helpers/archive-browser-route-references.ts": {
+      "sha256": "dfc1d690788463fb31708f0254c167dd1e8781aa6944e777b14e73da95ddde28",
+      "bytes": 8431
+    },
+    "tests/unit/dashboard/archive-evidence-fixture.test.ts": {
+      "sha256": "61aa88751464f01106ac34db39fa9792f37c32480170ec491cfe4abf2cdc1d1f",
+      "bytes": 13159
+    },
+    "tests/parity/helpers/fixture-archive-evidence.ts": {
+      "sha256": "3877360ad3540f5579a47c4f4e88be8c366b29332895f4772c53145474792757",
+      "bytes": 8467
+    },
+    "tests/unit/fixtures/capture-image-fixtures.ts": {
+      "sha256": "f55de3e413482f74075dafd2f5d130db3cde5556caeacfeef259abfa35d60cfd",
+      "bytes": 8131
+    },
+    "tests/parity/archive-evidence.spec.ts": {
+      "sha256": "e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0",
+      "bytes": 23317
+    },
+    "src/domain/workflow/generated-build-manifest.ts": {
+      "sha256": "66d399b7cc1370018778a9101dd9fedd6dcc478b02bd35b214aabe60288a5a49",
+      "bytes": 318618
+    },
+    "config/pending-wire-bindings.json": {
+      "sha256": "d15cbaae462919b73fc59969710396911c772ebe78f7e29883e748f86cac119a",
+      "bytes": 2400
+    },
+    "tests/parity/references/archive-evidence--graphite-warm--1280x720.a11y.yml": {
+      "sha256": "be60674f973994ef46749b1c143c42f0b7798caef950bf1c8d8f4ce345155ee6",
+      "bytes": 1902
+    },
+    "tests/parity/references/archive-evidence--graphite-warm--1280x720.meta.json": {
+      "sha256": "c9f7c4d5f4d00ac261fe8025369603f9c75dd6eaa5a9da0e81f3415a607c7e69",
+      "bytes": 325
+    },
+    "tests/parity/references/archive-evidence--graphite-warm--1280x720.png": {
+      "sha256": "1515745bbc5ea128ff7d61a74234a3c0fd521f06082648d26a67e92b3fa5ad91",
+      "bytes": 81256
+    },
+    "tests/parity/references/archive-evidence--paper-ink--phone-390x844.a11y.yml": {
+      "sha256": "c455a509f8eef7b08a9e7d22ed4160d5871595c81f2c970db23aa7863d660223",
+      "bytes": 1904
+    },
+    "tests/parity/references/archive-evidence--paper-ink--phone-390x844.meta.json": {
+      "sha256": "469e7558722db7ef27ddccc7773df09e08eec1e324940d3ade2f4507aeb51c7e",
+      "bytes": 326
+    },
+    "tests/parity/references/archive-evidence--paper-ink--phone-390x844.png": {
+      "sha256": "275ac863a51674e5269c39aea3aea736f34377dbff674d0bf72607ed6a8049c3",
+      "bytes": 70974
+    }
+  },
+  "a8ExistingBlock": {
+    "unchanged": true,
+    "sha256": "4e1a4c21c458ee961e0cf6176a5357dc447fedf33e6ffa693b25b1b9fdfffa16"
+  },
+  "beforeMatches": true
+}

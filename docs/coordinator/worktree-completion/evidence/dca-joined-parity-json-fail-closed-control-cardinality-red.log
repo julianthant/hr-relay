@@ -1,0 +1,33 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/scripts/verify-parity-json.test.ts -t refuses corrupt bodies
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+--x----
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > refuses corrupt bodies, digest drift, path evidence, duplicates, prefixes, and both orphan directions
+AssertionError: Missing expected exception.
+
+simple
+
+ ❯ assertFixtureRefused tests/unit/scripts/verify-parity-json.test.ts:104:12
+    102|     mutate(report, root);
+    103|     writeReport(root, report);
+    104|     assert.throws(
+       |            ^
+    105|       () => verifyParityJsonReport({ cwd: root, runStartedAtMs: RUN_ST…
+    106|       expected,
+ ❯ tests/unit/scripts/verify-parity-json.test.ts:215:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 skipped (7)
+   Start at  12:15:24
+   Duration  114ms (transform 20ms, setup 0ms, import 41ms, tests 8ms, environment 0ms)
+

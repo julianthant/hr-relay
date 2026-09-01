@@ -1,0 +1,14 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/scripts/verify-parity-json.test.ts tests/unit/architecture/parity-reference-authority.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+·····Error: EISDIR: illegal operation on a directory, open '/var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-parity-json-nmDLq6/tests/parity/.output/results.json'················
+
+ Test Files  2 passed (2)
+      Tests  21 passed (21)
+   Start at  12:16:33
+   Duration  2.43s (transform 1.04s, setup 0ms, import 1.75s, tests 553ms, environment 0ms)
+

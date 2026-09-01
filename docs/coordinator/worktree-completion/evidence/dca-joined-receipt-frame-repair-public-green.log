@@ -1,0 +1,8 @@
+Command:
+HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npx vitest run tests/unit/dashboard/run-captures-app.test.ts --reporter=dot
+
+Exit: 0
+
+Test Files  1 passed (1)
+Tests  38 passed (38)
+Duration  4.06s

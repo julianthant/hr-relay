@@ -1,0 +1,11 @@
+file:///Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-fixture-owner-identity.mjs:31
+  if(record.priorCoordinationDigest!==before.priorCoordinationDigest||record.priorCoordinationCount!==before.priorCoordinationCount)throw new Error("Prior coordination changed");
+                                                                                                                                          ^
+
+Error: Prior coordination changed
+    at file:///Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-fixture-owner-identity.mjs:31:139
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:636:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v26.1.0

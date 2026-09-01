@@ -1,0 +1,30 @@
+{
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "branch": "feature/dca4-archive-evidence",
+  "parityUpdateUnset": true,
+  "uiHash": "2cae368f56de44b7f6c89665fc08fa1d13e1fbe36510266c198d8fa94c19212d",
+  "backendHash": "19f0a93825bda594f033e24135b65667ac536a931bba11450eb438f284e37c6f",
+  "protectedHash": "a456997fd76e7853baa20eb472615cd551271ee5d5eccc05b4b4153d62f0ccf7",
+  "references": {
+    "tests/parity/references/archive-evidence--graphite-warm--1280x720.a11y.yml": "a68e7077c64edf8642af6bebaf38da8485854a01bebe6ce001468c41eaf8c5c7",
+    "tests/parity/references/archive-evidence--graphite-warm--1280x720.meta.json": "c9f7c4d5f4d00ac261fe8025369603f9c75dd6eaa5a9da0e81f3415a607c7e69",
+    "tests/parity/references/archive-evidence--paper-ink--phone-390x844.a11y.yml": "13ead454b4e80db587015ed444164b5a2a197d22e7abc750b40bd31e9e13f6a5",
+    "tests/parity/references/archive-evidence--paper-ink--phone-390x844.meta.json": "469e7558722db7ef27ddccc7773df09e08eec1e324940d3ade2f4507aeb51c7e"
+  },
+  "companions": {
+    "tests/parity/archive-evidence.spec.ts": "d158e014dd85b42ae6f42fb5d02aaf2a54408f348e4ab008627eb25ce8db6de1",
+    "tests/unit/dashboard/archive-evidence-fixture.test.ts": "61aa88751464f01106ac34db39fa9792f37c32480170ec491cfe4abf2cdc1d1f",
+    "tests/parity/helpers/fixture-archive-evidence.ts": "3877360ad3540f5579a47c4f4e88be8c366b29332895f4772c53145474792757",
+    "tests/unit/dashboard/archive-capture-resource-client.test.ts": "24d91d3aba1b7d22748ac61c6d7ed944fa0b7b8e7c81b9382be464f34e8aeb4f",
+    "tests/unit/server/archive-capture-resource.test.ts": "6853648c074d7f97eae16d83a7f04dccfef4b838ed5879b62e3c4a6d801d1907",
+    "tests/unit/server/archive-capture-routes.test.ts": "e0d7d28094586d8adcebc5612820d5d3da8ccffb60badfca6b06a5eb55092a30"
+  },
+  "intakeHashes": {
+    "docs/coordinator/worktree-completion/evidence/dca4-intake/archive-evidence--graphite-warm--1280x720-darwin.png": "b02cb4260ce632be81ea0c2c81f6ffb8ad38f0eca07a7539204aaf617599dc33",
+    "docs/coordinator/worktree-completion/evidence/dca4-intake/archive-evidence--paper-ink--phone-390x844-darwin.png": "9f4283369844d0af97cff87519ceda0c6edc0def9bdae6ac491f83ee92b452a8",
+    "docs/coordinator/worktree-completion/evidence/dca4-intake/reference-originals/archive-evidence--graphite-warm--1280x720.a11y.yml": "a68e7077c64edf8642af6bebaf38da8485854a01bebe6ce001468c41eaf8c5c7",
+    "docs/coordinator/worktree-completion/evidence/dca4-intake/reference-originals/archive-evidence--graphite-warm--1280x720.meta.json": "c9f7c4d5f4d00ac261fe8025369603f9c75dd6eaa5a9da0e81f3415a607c7e69",
+    "docs/coordinator/worktree-completion/evidence/dca4-intake/reference-originals/archive-evidence--paper-ink--phone-390x844.a11y.yml": "13ead454b4e80db587015ed444164b5a2a197d22e7abc750b40bd31e9e13f6a5",
+    "docs/coordinator/worktree-completion/evidence/dca4-intake/reference-originals/archive-evidence--paper-ink--phone-390x844.meta.json": "469e7558722db7ef27ddccc7773df09e08eec1e324940d3ade2f4507aeb51c7e"
+  }
+}

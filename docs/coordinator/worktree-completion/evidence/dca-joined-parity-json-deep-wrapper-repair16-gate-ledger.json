@@ -1,0 +1,106 @@
+{
+  "commands": {
+    "focused": "env VITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- <exact paths>",
+    "typecheck": "/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run typecheck",
+    "lint": "/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run lint",
+    "roadmap": "npm run roadmap:check",
+    "manifest": "npm run build:manifest:check"
+  },
+  "runs": [
+    {
+      "name": "nested-and-mode-red",
+      "chunk": "8655c5",
+      "exit": 1,
+      "result": "2 failed / 6 passed: flat suite rejected nested describe and update controls were accepted",
+      "log": "dca-joined-parity-json-deep-repair16-red.log",
+      "logSha256": "b24b5c17f88f185223071de481d6d1094c7934cf4588221bf364a6b70d5df870",
+      "logBytes": 3802
+    },
+    {
+      "name": "focused-final",
+      "chunk": "bb1e8f",
+      "exit": 0,
+      "result": "2 files / 27 tests passed",
+      "log": "dca-joined-parity-json-deep-repair16-focused-final.log",
+      "logSha256": "bfffb6fc5c5d6ca395385aea01917ecdc15629cab1faef087472613c97fccf41",
+      "logBytes": 468
+    },
+    {
+      "name": "static-declaration-control",
+      "chunk": "1c9224",
+      "exit": 1,
+      "result": "removing one real selected-test declaration produced its exact missing-name authority failure",
+      "log": "dca-joined-parity-json-deep-repair16-control-static-declaration-red.log",
+      "logSha256": "5cdc885915f53314386e999f20c3d4c7cba15c92fdc686952f29704a590531bc",
+      "logBytes": 1319,
+      "restored": true
+    },
+    {
+      "name": "update-child-mode-control",
+      "chunk": "84c80b",
+      "exit": 1,
+      "result": "removing child PARITY_UPDATE ownership produced null !== 1",
+      "log": "dca-joined-parity-json-deep-repair16-control-update-mode-red.log",
+      "logSha256": "59befc960bc5218bca53c89e3e438ab6df52a4ec6b45572ff7d4782f29f9ce9f",
+      "logBytes": 1955,
+      "restored": true
+    },
+    {
+      "name": "typecheck-red",
+      "chunk": "fc78ae",
+      "exit": 2,
+      "result": "local Stats overload and synthetic recursive fixture types required correction",
+      "log": "dca-joined-parity-json-deep-repair16-typecheck-01.log",
+      "logSha256": "26e61cafd606621d5e9b8fc3effbb01dc95c9fc1ea8dfcb4c138b10fd3a9746f",
+      "logBytes": 1540
+    },
+    {
+      "name": "lint-red",
+      "session": 82194,
+      "chunks": ["44e3b1", "b85709"],
+      "exit": 1,
+      "result": "two local caught-error propagation violations",
+      "log": "dca-joined-parity-json-deep-repair16-lint-01.log",
+      "logSha256": "d1f8b22da61e169acba48a1d06b2e532a8e76dd6989b2d8c43e950ef6b3746cd",
+      "logBytes": 429
+    },
+    {
+      "name": "typecheck-final",
+      "chunk": "97fa10",
+      "exit": 0,
+      "result": "tsc --noEmit passed",
+      "log": "dca-joined-parity-json-deep-repair16-typecheck-final.log",
+      "logSha256": "ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036",
+      "logBytes": 57
+    },
+    {
+      "name": "lint-final",
+      "session": 45409,
+      "chunks": ["524e08", "48f2bf"],
+      "exit": 0,
+      "result": "eslint passed with zero warnings",
+      "log": "dca-joined-parity-json-deep-repair16-lint-final.log",
+      "logSha256": "cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385",
+      "logBytes": 81
+    },
+    {
+      "name": "roadmap-check",
+      "chunk": "22c888",
+      "exit": 0,
+      "result": "docs/roadmap/index.html is fresh",
+      "log": "dca-joined-parity-json-deep-repair16-roadmap-check.log",
+      "logSha256": "5f1fc3bf701099ca19ea3a53dbb9c5f686c1f79210542607773331a523270f37",
+      "logBytes": 122
+    },
+    {
+      "name": "manifest-check",
+      "chunk": "1fa523",
+      "exit": 0,
+      "result": "generated-build-manifest.ts is current",
+      "log": "dca-joined-parity-json-deep-repair16-manifest-check.log",
+      "logSha256": "1746f0c03e199925381c274f5c9e72134e36b5068dacc7450271b8167a86e8d0",
+      "logBytes": 162
+    }
+  ],
+  "browserBuildCoverageParity": "not run by repair16"
+}

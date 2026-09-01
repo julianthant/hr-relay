@@ -1,0 +1,493 @@
+
+> hr-automation-rebuild@0.1.0 test:coverage
+> vitest run --coverage --reporter=dot && tsx scripts/suite-size.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+      Coverage enabled with v8
+
+·················stderr | tests/scenario/intake-pdf-pages.scenario.test.ts > extraction/extract-pdf-pages scenarios > intake/pdf/unreadable — bytes that are not a PDF fail loud
+Warning: Indexing all PDF objects
+
+··················································································································································································(node:53862) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+···············(node:53885) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+·······················································································································································································································································································································································································································W5-MEASURED two-child kernel door: {"spawn1AckMs":458,"spawn2AckMs":867,"birth1EffectMs":455,"birth2EffectMs":409,"sameWorkflowHandoffGapMs":2.05,"concurrentStopsAckMs":14,"stopToObservedExitMs":68}
+··············································································flow type budget: check 2.35s, total 2.99s, memory 261MiB
+···························································································································································································································································································································································································································································································································································································································································································································································································································································································································(node:54776) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+······························································································································································································································································································stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > names the OPPOSITE act once it is open, and reveals the diagnosis
+The current testing environment is not configured to support act(...)
+
+············stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > names the OPPOSITE act once it is open, and reveals the diagnosis
+The current testing environment is not configured to support act(...)
+
+···········stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > names the OPPOSITE act once it is open, and reveals the diagnosis
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > re-hides the diagnosis on a second press
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > re-hides the diagnosis on a second press
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > re-hides the diagnosis on a second press
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > re-hides the diagnosis on a second press
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the classification, once disclosed (E5/E6) > draws `code` ONCE and permanence nowhere — both are head facts now
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the classification, once disclosed (E5/E6) > draws `code` ONCE and permanence nowhere — both are head facts now
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the classification, once disclosed (E5/E6) > draws `code` ONCE and permanence nowhere — both are head facts now
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the observed subject reads as the thing that is wrong (E22) > tones the OBSERVED half in danger and leaves the expected half alone
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the observed subject reads as the thing that is wrong (E22) > tones the OBSERVED half in danger and leaves the expected half alone
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the observed subject reads as the thing that is wrong (E22) > tones the OBSERVED half in danger and leaves the expected half alone
+The current testing environment is not configured to support act(...)
+
+··························································································································································································································································································································································································································································································································································stderr | tests/unit/dashboard/run-detail-timeline-render.test.ts > F6b item 3 — the disclosure trigger names what it controls > flips aria-expanded to true on focus and back to false on blur
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/run-detail-timeline-render.test.ts > F6b item 3 — the disclosure trigger names what it controls > flips aria-expanded to true on focus and back to false on blur
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/run-detail-timeline-render.test.ts > F6b item 3 — the disclosure trigger names what it controls > flips aria-expanded to true on focus and back to false on blur
+The current testing environment is not configured to support act(...)
+
+·········stderr | tests/unit/dashboard/run-detail-timeline-render.test.ts > F6b item 3 — the disclosure trigger names what it controls > flips aria-expanded to true on focus and back to false on blur
+The current testing environment is not configured to support act(...)
+
+··················································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································
+
+ Test Files  338 passed (338)
+      Tests  3996 passed (3996)
+   Start at  16:49:48
+   Duration  67.61s (transform 27.65s, setup 0ms, import 221.49s, tests 343.43s, environment 6.96s)
+
+ % Coverage report from v8
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+-------------------|---------|----------|---------|---------|-------------------
+All files          |   85.15 |    75.43 |   88.57 |   87.21 |                   
+ src               |       0 |      100 |       0 |       0 |                   
+  cli.ts           |       0 |      100 |       0 |       0 | 20-36             
+ src/base          |   88.68 |    82.24 |   95.23 |   90.88 |                   
+  ...mony-lease.ts |   94.44 |    93.33 |     100 |   94.44 | 64                
+  errors.ts        |   88.88 |       80 |     100 |    87.5 | 27                
+  flow.ts          |   97.52 |    87.17 |     100 |   99.04 | 547               
+  ...capability.ts |   91.66 |     90.9 |     100 |    90.9 | 64                
+  session.ts       |   92.59 |      100 |   83.33 |   91.66 | 128,156           
+  store.ts         |   79.74 |    69.23 |     100 |    88.4 | ...37,155,158,180 
+  task.ts          |   79.74 |    77.21 |   92.85 |    84.5 | ...11,316,322,370 
+  workflow.ts      |   88.91 |    82.93 |   94.25 |    90.1 | ...1535,1546,1553 
+ src/control       |   92.43 |    85.57 |   97.29 |   93.45 |                   
+  ...t-registry.ts |      91 |    83.33 |     100 |   92.22 | ...56,361,365,373 
+  ...w-registry.ts |   93.47 |     87.5 |      96 |   94.35 | 399,442-448       
+ src/core          |   87.49 |     76.4 |   92.08 |   89.18 |                   
+  ...ke-handoff.ts |   82.22 |    45.45 |   83.33 |   81.39 | ...52,179,185,231 
+  ...oint-patch.ts |    87.5 |    78.57 |     100 |   91.42 | 38,80,111         
+  ...and-kernel.ts |    88.4 |    81.17 |   96.55 |   88.55 | ...3069,3074,3093 
+  ...rio-runner.ts |   95.52 |    86.53 |     100 |   96.77 | 267,340           
+  ...emony-gate.ts |   80.85 |     67.5 |   81.81 |   86.36 | ...33-336,364-378 
+  ...ce-receipt.ts |   90.67 |    79.07 |   94.82 |   91.07 | ...1397,1402,1477 
+  observed-data.ts |   83.33 |       50 |     100 |      80 | 51                
+  ...-admission.ts |   88.67 |    76.19 |     100 |   90.29 | ...64,288,311,407 
+  ...on-binding.ts |   86.06 |    75.25 |      96 |   90.47 | ...58-361,384-390 
+  run-executor.ts  |   88.84 |    78.49 |   94.91 |   91.18 | ...1518,1558-1559 
+  run-failure.ts   |   90.47 |    78.57 |   83.33 |   90.47 | 61,134            
+  run-fan-out.ts   |   88.46 |    71.42 |     100 |   88.46 | 38,126,210        
+  ...omposition.ts |   55.68 |    54.32 |   33.33 |   56.47 | ...63-282,293,303 
+  ...provenance.ts |   87.14 |    80.64 |   88.46 |   90.47 | ...35,266,276,280 
+  ...horization.ts |    86.2 |       88 |     100 |   92.59 | 62,120            
+  worker-loop.ts   |   91.21 |    85.71 |   95.83 |   92.06 | ...1178,1196-1201 
+  ...r-sessions.ts |   89.36 |    76.55 |   84.61 |   94.02 | ...86,804,859,862 
+  ...e-recovery.ts |   86.84 |    67.74 |   86.66 |   88.18 | ...69,529,560,585 
+  ...on-binding.ts |    78.5 |     67.3 |   94.44 |   78.21 | ...96-224,356-360 
+  ...-sequencer.ts |   87.18 |     68.3 |   97.56 |   89.49 | ...2163,2198,2206 
+ src/dashboard/app |   80.36 |    76.03 |   97.36 |   83.81 |                   
+  bulk-dispatch.ts |     100 |    91.66 |     100 |     100 | 308-311,318       
+  ...d-dispatch.ts |   92.85 |    84.44 |     100 |    92.3 | 130,176,186       
+  ...-app-model.ts |    87.5 |    83.33 |     100 |    87.5 | 31                
+  global-keys.ts   |   30.98 |    38.98 |     100 |   28.81 | 127,132-200       
+  ...y-ceremony.ts |   93.75 |    91.17 |     100 |    93.1 | 221,225           
+  nav-history.ts   |      84 |    66.66 |   77.77 |   90.47 | 101-105           
+  proof-form.ts    |   84.69 |     78.4 |     100 |   90.36 | ...52,159,234-236 
+  url-state.ts     |   90.69 |    87.34 |     100 |     100 | ...63,167,171-173 
+  ...l-sections.ts |   71.69 |    51.51 |     100 |   79.54 | 46,50-64,114      
+ ...shboard/client |   80.78 |    79.37 |    79.1 |   81.78 |                   
+  commands.ts      |   27.77 |      100 |      50 |   27.77 | 75-83,92-107      
+  errors.ts        |   94.11 |    78.57 |     100 |   93.33 | 54                
+  queries.ts       |   83.33 |    90.47 |   71.42 |   82.89 | ...09-413,425-426 
+  subscription.ts  |   77.17 |    66.12 |   84.61 |   80.72 | ...22,131-135,161 
+  transport.ts     |   89.09 |    85.29 |   81.81 |    91.3 | 86,129-130,133    
+ src/dashboard/ds  |   86.95 |        0 |   66.66 |   86.66 |                   
+  theme.ts         |      80 |        0 |   66.66 |   79.31 | 101-105,109-112   
+ src/dashboard/kit |       0 |        0 |       0 |       0 |                   
+  kit-page.tsx     |       0 |        0 |       0 |       0 | 133-1216          
+  main.tsx         |       0 |        0 |     100 |       0 | 29-34             
+ src/dashboard/lib |      50 |       25 |      80 |   47.05 |                   
+  ...ce-storage.ts |   47.05 |       25 |      75 |   43.75 | 33,41-53,69       
+ ...ashboard/phone |      85 |    69.23 |   85.71 |    87.5 |                   
+  ...ure-client.ts |      85 |    69.23 |   85.71 |    87.5 | 160,168,220-230   
+ ...ashboard/state |   88.27 |    70.58 |      94 |   94.28 |                   
+  ...t-context.tsx |   83.33 |       50 |     100 |   83.33 | 34                
+  served-clock.ts  |    91.3 |    88.88 |   77.77 |     100 | 113               
+  use-bootstrap.ts |    64.7 |    33.33 |      80 |   66.66 | 25-30             
+  ...re-session.ts |   87.27 |    58.33 |     100 |     100 | 72-78,118-144     
+  ...hboard-day.ts |   92.85 |       75 |     100 |    92.3 | 39                
+  ...run-detail.ts |   95.34 |    86.95 |     100 |   97.14 | 139               
+ ...board/surfaces |   88.38 |     79.9 |   90.13 |   90.72 |                   
+  actions-model.ts |   93.33 |       50 |    87.5 |    92.3 | 54                
+  ...vity-model.ts |       0 |        0 |       0 |       0 | 14-33             
+  archive-model.ts |   98.02 |    93.18 |   98.03 |   98.91 | 201,675           
+  ...sion-model.ts |   98.68 |    98.07 |     100 |   98.52 | 277               
+  ...rail-model.ts |   96.29 |    92.85 |      90 |   95.65 | 81-85             
+  ...arch-model.ts |   68.57 |    41.66 |   83.33 |   72.41 | 83-100            
+  ...shot-model.ts |   91.37 |    91.11 |      90 |   93.75 | 106-108           
+  ...orer-model.ts |   86.48 |    67.21 |   96.29 |   96.42 | 177-178           
+  format.ts        |    91.3 |    83.78 |     100 |     100 | ...,62-63,140-146 
+  ...rove-model.ts |       0 |        0 |       0 |       0 | 20-21             
+  intake-model.ts  |    81.6 |    67.88 |   88.63 |   82.72 | ...67,570,582,586 
+  ...anel-model.ts |    79.2 |    65.97 |   82.35 |   78.64 | ...04-207,225-273 
+  ...olve-model.ts |       0 |        0 |       0 |       0 | 14-17             
+  queue-model.ts   |   88.13 |    82.25 |    87.5 |   91.48 | ...05,421-424,436 
+  ...alog-model.ts |      96 |     87.5 |     100 |     100 | 139               
+  ...ures-model.ts |   94.25 |    89.23 |     100 |   95.52 | 58,75-76          
+  ...ings-model.ts |   98.43 |     90.9 |     100 |     100 | 185-190,416       
+  shell-model.ts   |   93.77 |    83.57 |   96.55 |   96.11 | ...,209,1026-1033 
+  status-model.ts  |    87.5 |      100 |      80 |    87.5 | 95                
+  ...nce-hazard.ts |      75 |      100 |      75 |      50 | 52                
+  top-bar-model.ts |   45.94 |    34.88 |   43.47 |   47.36 | ...35-222,237-239 
+  trust-model.ts   |   98.21 |    98.59 |     100 |     100 | 30                
+  ...w-category.ts |     100 |       90 |     100 |     100 | 233,236           
+ src/domain        |   91.04 |     81.1 |   93.73 |   92.81 |                   
+  authority.ts     |      92 |    66.66 |     100 |   95.23 | 87                
+  ...nical-json.ts |     100 |    91.66 |     100 |     100 | 25                
+  ...ure-intake.ts |      90 |       50 |     100 |      90 | 84                
+  ...e-operator.ts |   93.93 |    86.36 |     100 |   93.93 | 216-221           
+  ...re-surface.ts |   97.61 |    85.71 |     100 |    97.5 | 193               
+  capture.ts       |   82.35 |    85.29 |     100 |   80.64 | ...25,173,181,184 
+  clock.ts         |    91.3 |    77.77 |   89.47 |    90.9 | 32-34             
+  commands.ts      |    98.3 |    94.44 |     100 |   98.21 | 470               
+  dependencies.ts  |   94.73 |    94.73 |     100 |   94.44 | 42                
+  ...mony-lease.ts |   81.81 |       80 |     100 |   81.81 | 52,55             
+  identifiers.ts   |     100 |      100 |      80 |     100 |                   
+  ledger.ts        |      75 |       50 |     100 |      75 | 60,63,95          
+  ...n-triggers.ts |   97.43 |    95.83 |     100 |     100 | 272               
+  notifications.ts |   75.86 |    67.85 |     100 |   75.86 | ...80,87,90,93,96 
+  preflight.ts     |   94.37 |     87.5 |     100 |   95.12 | ...62,167,183,201 
+  ...-admission.ts |   87.87 |    66.66 |     100 |   87.87 | 40,43,191,194     
+  qr-code.ts       |   98.56 |       96 |     100 |   98.23 | ...68,428,437,636 
+  redaction.ts     |   86.66 |     62.5 |     100 |   90.24 | 118,123-124,141   
+  ...pendencies.ts |   90.94 |    83.56 |     100 |   92.52 | ...49,658,665,667 
+  ...nvironment.ts |   85.16 |    79.46 |     100 |   89.06 | ...01,512,518,526 
+  ...ound-value.ts |      75 |      100 |      50 |      75 | 15                
+  secrets.ts       |   64.32 |    48.03 |    61.7 |   73.24 | ...68-374,407-476 
+  ...provenance.ts |   86.66 |    66.66 |     100 |   86.66 | 89,100            
+  ...ard-period.ts |   99.16 |    98.55 |     100 |     100 | 83                
+  write-safety.ts  |    95.5 |    90.74 |     100 |   96.38 | 105,263,389       
+ ...domain/archive |   86.62 |    81.37 |   93.93 |   87.58 |                   
+  ...resolution.ts |   88.88 |     87.5 |   81.81 |   88.88 | 215-228,273       
+  model.ts         |   84.88 |    82.05 |     100 |   85.89 | ...50,553,595,648 
+  retention.ts     |      90 |    83.33 |     100 |   94.44 | 88                
+  sections.ts      |   85.71 |       50 |     100 |   83.33 | 150,158           
+ src/domain/config |   93.22 |    84.72 |   95.69 |   95.36 |                   
+  fiscal-year.ts   |   92.85 |    77.77 |     100 |     100 | 18-27,41          
+  instance.ts      |   91.83 |     90.9 |     100 |   93.02 | 152,154-158       
+  resolve.ts       |   95.27 |    88.13 |   93.22 |   95.45 | 105-121,257,396   
+  schema.ts        |   94.11 |       75 |     100 |   93.75 | 288,291           
+  ...enerations.ts |    87.5 |       75 |     100 |   94.87 | 172,175           
+ ...main/contracts |   91.13 |    83.92 |      95 |   94.11 |                   
+  base.ts          |   90.34 |    83.92 |   93.75 |   93.54 | ...51,354,411-418 
+ ...ntracts/roster |     100 |       50 |     100 |     100 |                   
+  ...preadsheet.ts |     100 |       50 |     100 |     100 | 49                
+ ...main/dashboard |    91.2 |     82.8 |     100 |   91.63 |                   
+  actions.ts       |   88.23 |    83.33 |     100 |   86.66 | 113,120           
+  activity.ts      |      90 |    73.52 |     100 |   89.39 | ...29,336,418,429 
+  archive.ts       |   95.45 |    95.23 |     100 |   95.23 | 254               
+  bootstrap.ts     |   96.77 |    83.33 |     100 |   96.42 | 234               
+  ...tic-bundle.ts |   85.71 |     92.3 |     100 |   85.71 | 40                
+  explorer.ts      |   93.33 |       75 |     100 |    92.3 | 529,549,560       
+  projection.ts    |      90 |    79.48 |     100 |   89.62 | ...44,750,760,886 
+  run-detail.ts    |   88.31 |    82.69 |     100 |   90.62 | ...1113,1117,1128 
+  subscription.ts  |      90 |     87.5 |     100 |      90 | 42,72,86          
+ src/domain/fields |   90.74 |    83.67 |   97.36 |    96.4 |                   
+  cell-coercion.ts |      95 |    91.66 |     100 |     100 | 116,140,184-206   
+  registry.ts      |   88.23 |       76 |   95.83 |   94.31 | ...82,187,190,867 
+ src/domain/intake |   90.46 |    82.61 |   95.71 |   92.46 |                   
+  enqueue.ts       |   85.71 |       50 |     100 |   84.61 | 98,105,112,118    
+  ...-discovery.ts |   95.29 |    88.09 |     100 |   98.52 | 216               
+  manifest.ts      |   86.63 |    77.86 |     100 |   89.47 | ...34,538,555,609 
+  mapping.ts       |   91.66 |    90.69 |   96.29 |    92.4 | ...90-297,300-309 
+  projection.ts    |    87.8 |    78.57 |   81.81 |   91.42 | 75,96,172         
+  session.ts       |      95 |    95.65 |     100 |   94.73 | 154               
+  suggestions.ts   |   93.84 |    82.97 |     100 |     100 | ...98,113,153,185 
+  validate.ts      |      90 |    72.88 |      85 |   89.47 | ...67-284,315-328 
+ src/domain/kronos |   97.77 |    96.66 |     100 |   99.13 |                   
+  ...n-timecard.ts |   97.77 |    96.66 |     100 |   99.13 | 226               
+ ...omain/matching |   97.54 |    91.76 |     100 |     100 |                   
+  levenshtein.ts   |      90 |     62.5 |     100 |     100 | 13-14,25-33       
+  roster-match.ts  |   97.95 |    96.87 |     100 |     100 | 119               
+ .../normalization |   94.39 |    91.66 |     100 |     100 |                   
+  contact-rules.ts |    92.1 |     92.5 |     100 |     100 | ...45-147,195-197 
+  street-safety.ts |     100 |    78.57 |     100 |     100 | 16,26-39          
+ src/domain/ocr    |   90.47 |    81.75 |      94 |   93.18 |                   
+  extraction.ts    |      87 |    79.41 |   92.85 |   93.02 | 200,203,224-228   
+  form-registry.ts |      82 |       75 |     100 |   82.22 | ...16,321,327,353 
+  instruction.ts   |   94.73 |     87.5 |      80 |   96.87 | 156               
+  stack.ts         |     100 |    95.83 |     100 |     100 | 180               
+ src/domain/run    |   90.19 |    81.67 |   97.22 |   90.62 |                   
+  envelope.ts      |   97.29 |     90.9 |     100 |   97.29 | 187               
+  note-scope.ts    |   96.15 |    92.85 |     100 |   96.15 | 118               
+  record.ts        |   89.58 |    86.04 |     100 |   92.85 | 306,316,331       
+  result.ts        |    90.9 |    78.57 |     100 |      90 | 175,183,190       
+  session.ts       |      80 |       50 |     100 |      80 | 63                
+  start-plan.ts    |   82.75 |       75 |     100 |   81.48 | ...11,115,119,149 
+  worker-pool.ts   |   66.66 |    66.66 |     100 |   66.66 | 42,45             
+  worker.ts        |   85.71 |     62.5 |      75 |   84.61 | 82,96             
+ ...in/separations |   97.12 |    91.59 |   98.55 |   97.91 |                   
+  ...ent-option.ts |     100 |    95.45 |     100 |     100 | 204               
+  ...-selection.ts |      96 |    86.36 |     100 |   95.83 | 141               
+  ...y-approval.ts |     100 |    89.47 |     100 |     100 | 105,148           
+  ...y-evidence.ts |     100 |    94.73 |     100 |     100 | 289,304           
+  ...sification.ts |   90.62 |       85 |     100 |   88.46 | 86,93,126         
+  ...tion-dates.ts |   97.14 |       92 |   96.15 |   98.94 | 206               
+  ...ation-type.ts |   93.93 |     87.5 |     100 |   96.66 | 268               
+ src/domain/trust  |   94.16 |    84.59 |   97.48 |   95.12 |                   
+  advisory.ts      |   94.36 |    83.33 |     100 |   96.77 | 88,250            
+  ...ic-capture.ts |   93.75 |    88.46 |     100 |   97.77 | 105               
+  ...rio-result.ts |   89.65 |    84.21 |     100 |   91.66 | 43,46             
+  ...sification.ts |   96.79 |    81.48 |     100 |   96.94 | 811,854,858,898   
+  ...e-identity.ts |   85.71 |      100 |      80 |   85.71 | 69                
+  ...bligations.ts |   93.33 |    83.33 |     100 |    92.3 | 150               
+  evidence.ts      |   96.36 |    96.22 |     100 |   97.95 | 225               
+  failure.ts       |   81.81 |    66.66 |     100 |   89.47 | 51,98             
+  ...-decisions.ts |    92.3 |       70 |     100 |      92 | 73,195            
+  ...projection.ts |   96.38 |     82.5 |   93.33 |   95.77 | 137,200,203       
+  knowledge.ts     |   90.47 |    91.66 |     100 |   88.88 | 43,69             
+  scenario.ts      |   78.94 |       75 |      75 |   78.94 | 26,52,80-81       
+ src/domain/ui     |    96.9 |    73.75 |   95.65 |   98.11 |                   
+  contracts.ts     |      95 |       75 |     100 |   94.73 | 103               
+  ...ction-list.ts |   89.28 |    65.11 |      90 |   95.65 | 184,251           
+  ...n-document.ts |   95.45 |    83.33 |     100 |   97.61 | 178               
+  ...ob-summary.ts |   83.33 |       50 |     100 |   81.81 | 126,134           
+  ...ermination.ts |     100 |    85.71 |     100 |     100 | 485               
+  ...s-smart-hr.ts |   93.75 |      100 |       0 |   93.75 | 97                
+ ...omain/workflow |   95.19 |    89.68 |    98.4 |   96.47 |                   
+  ...projection.ts |   96.15 |     92.3 |     100 |     100 | 58                
+  ...d-manifest.ts |      84 |       50 |     100 |   80.95 | 60,64,80,90       
+  ...ical-input.ts |    93.1 |    85.71 |     100 |    93.1 | 78,100            
+  checkpoint.ts    |   98.02 |     96.8 |    91.3 |     100 | 340,457,529       
+  completion.ts    |   91.89 |     82.5 |     100 |   94.11 | 255,274,278,308   
+  delegation.ts    |   97.95 |    91.42 |     100 |   97.72 | 80                
+  graph.ts         |   88.23 |       50 |     100 |   88.23 | 151,159           
+  ingress.ts       |   91.12 |    82.89 |     100 |   91.34 | ...76,381,387-388 
+  ...-condition.ts |   97.56 |    95.91 |     100 |     100 | 114,174           
+  ...-execution.ts |    95.5 |       90 |     100 |   98.66 | 408               
+ ...nfra/artifacts |   83.78 |    71.64 |   97.93 |   88.74 |                   
+  ...-projector.ts |   91.42 |    72.72 |     100 |   91.17 | 63,80,87          
+  ...act-writer.ts |   89.85 |    74.02 |     100 |   93.44 | ...35-136,150-153 
+  ...act-reader.ts |   81.46 |    70.38 |   98.38 |   86.95 | ...1130-1131,1183 
+  ...ntion-sink.ts |   92.85 |    80.95 |   93.33 |   96.77 | 95,167            
+ src/infra/browser |   83.64 |    70.96 |   85.29 |   84.55 |                   
+  ...pplication.ts |   89.18 |    85.71 |     100 |   88.57 | 110,140,189-190   
+  ...on-factory.ts |   78.37 |     62.5 |   83.33 |   79.61 | ...55,384,435,440 
+  ...m-bindings.ts |      20 |      100 |       0 |      20 | 60-80             
+  ucsd-sso.ts      |   88.88 |    71.87 |   92.85 |   90.52 | ...00,414,427,432 
+ src/infra/build   |   93.38 |    80.95 |     100 |   96.15 |                   
+  ...d-manifest.ts |   93.38 |    80.95 |     100 |   96.15 | 49,64-65,80       
+ src/infra/capture |   88.81 |    74.12 |   96.96 |   90.49 |                   
+  capture-token.ts |       0 |      100 |       0 |       0 | 17                
+  ...-projector.ts |   95.65 |       50 |     100 |   95.65 | 82                
+  pdf-bundler.ts   |   93.81 |     62.5 |     100 |   94.44 | ...80,192,213,224 
+  pdf-bytes.ts     |   83.58 |    76.14 |     100 |   85.95 | ...62,285,305,309 
+  ...mage-facts.ts |   93.54 |    78.57 |     100 |   96.42 | 58                
+ src/infra/events  |    96.4 |    90.41 |     100 |   97.74 |                   
+  jsonl-streams.ts |   97.64 |    93.93 |     100 |   98.76 | 223               
+  ...onl-writer.ts |   88.46 |       75 |     100 |   91.66 | 61-62             
+ src/infra/ledger  |   87.55 |    69.64 |   96.55 |   89.94 |                   
+  ...-projector.ts |   84.27 |    62.16 |   95.23 |   86.89 | ...55,376,410,413 
+  ...ad-through.ts |   96.55 |    84.21 |     100 |   98.14 | 94                
+ ...nfra/providers |      60 |    43.03 |   58.53 |    62.8 |                   
+  ...c-provider.ts |   72.97 |     62.5 |   55.55 |   77.41 | 47,58,62,69-71,78 
+  ...i-advisory.ts |   84.37 |       75 |      75 |   87.09 | 73,81-82,142      
+  ...cr-extract.ts |   89.36 |    72.72 |     100 |   93.02 | 103,185,200       
+  ...-transport.ts |   82.35 |       50 |     100 |    87.5 | 75-76             
+  ...e-adapters.ts |   13.15 |     6.15 |   14.28 |   14.08 | ...59-197,216-257 
+  provider-pool.ts |   93.75 |     87.5 |     100 |     100 | 52                
+ src/infra/sqlite  |   85.84 |    73.77 |   95.94 |    88.6 |                   
+  ...ority-boot.ts |   80.35 |    69.69 |   88.88 |   86.36 | ...-71,99,115,126 
+  ...y-database.ts |    87.4 |    76.04 |   95.73 |   89.81 | ...5738,5741,5755 
+  ...lth-runner.ts |   84.61 |    72.72 |     100 |     100 | 20-22,30          
+  ...up-service.ts |   89.81 |     73.8 |     100 |   93.93 | ...10,172,246-247 
+  ...-contracts.ts |   85.71 |       50 |     100 |   85.71 | 30                
+  migrations.ts    |   86.48 |       50 |     100 |     100 | 1206-1215         
+  ...ne-restore.ts |   90.44 |    81.41 |     100 |   91.01 | ...10,438,468-473 
+  ...-contracts.ts |   95.83 |       50 |     100 |   95.83 | 78                
+  ...stop-proof.ts |   84.25 |    71.73 |    92.3 |    89.1 | ...05,212,219,224 
+  ...-contracts.ts |   96.29 |       50 |     100 |   96.29 | 183               
+  ...-contracts.ts |      75 |    82.35 |     100 |      75 | 20,34,47          
+  ...cess-locks.ts |   78.78 |    61.79 |   97.43 |    83.1 | ...33,760,772-781 
+  ...age-doctor.ts |   95.77 |    85.45 |   91.66 |   96.87 | 173,208           
+  ...ge-records.ts |   85.71 |       50 |     100 |   85.71 | 94,101,104        
+  ...-contracts.ts |   62.36 |    64.36 |     100 |   63.33 | ...93,302,306,309 
+ ...rver/dashboard |   83.93 |     77.8 |    70.9 |    84.7 |                   
+  compose.ts       |    69.2 |    64.76 |    43.2 |   69.51 | ...1216,1220,1225 
+  http-server.ts   |   89.78 |    76.62 |   95.12 |   91.76 | ...04,225,296,306 
+  support.ts       |   93.75 |    88.23 |     100 |     100 | 43-69             
+  ...supervisor.ts |   92.69 |    83.21 |     100 |   93.14 | ...9,955,969,1023 
+ ...board/commands |   88.85 |    77.02 |   97.36 |   88.85 |                   
+  ...re-service.ts |    94.2 |     86.9 |   97.67 |    94.4 | ...92-493,526,624 
+  ...nd-service.ts |      75 |    64.86 |   85.71 |   74.19 | ...72-313,417-418 
+  ...ke-service.ts |   94.56 |    78.26 |     100 |   96.29 | 141,221,273       
+  ...an-service.ts |   93.33 |       75 |     100 |   93.33 | 126               
+ ...ard/projectors |   96.87 |    90.63 |     100 |   98.58 |                   
+  ...ow-actions.ts |   86.48 |    87.17 |     100 |   88.23 | 148-151           
+  ...projection.ts |   97.49 |    90.28 |     100 |   99.19 | 918,953,995,1260  
+  ...ject-title.ts |      96 |    90.47 |     100 |     100 | 75,99             
+ ...hboard/queries |   89.65 |    80.29 |   94.69 |   91.39 |                   
+  ...ity-export.ts |     100 |    81.81 |     100 |     100 | 135-155           
+  advisory.ts      |       0 |        0 |       0 |       0 | 43-52             
+  archive.ts       |   82.38 |    65.97 |    87.8 |    85.4 | ...48,671-687,746 
+  ...fact-bytes.ts |   95.83 |    87.93 |     100 |   96.87 | 151,205           
+  ...tic-bundle.ts |   87.17 |       80 |     100 |   90.09 | ...20,254,287,305 
+  explorer.ts      |   85.78 |    72.41 |   89.09 |   88.02 | ...42-644,649-651 
+  run-detail.ts    |   93.48 |    85.74 |   98.87 |   94.54 | ...2078,2136,2142 
+  storage.ts       |     100 |       50 |     100 |     100 | 33                
+ ...shboard/routes |   90.49 |    85.41 |   83.33 |   92.78 |                   
+  api.ts           |   88.82 |    82.05 |   81.63 |   91.42 | ...85,404-416,583 
+ .../subscriptions |   96.87 |    89.33 |   94.11 |    98.8 |                   
+  ...ard-stream.ts |   96.87 |    89.33 |   94.11 |    98.8 | 272               
+ ...y-run-scenario |   80.11 |     69.1 |   72.09 |   83.13 |                   
+  compose.ts       |     100 |    63.63 |     100 |     100 | 76-79             
+  manifests.ts     |    62.5 |       50 |      50 |    62.5 | 22-25,46          
+  runtime.ts       |   78.14 |       70 |   69.69 |   81.61 | ...90,418,431,437 
+ ...server/explain |   64.35 |    48.67 |   76.92 |   64.21 |                   
+  compose.ts       |      50 |    47.72 |      80 |      50 | 38-75,97          
+  explain-run.ts   |   74.57 |    49.27 |   76.47 |   73.68 | ...27,330-337,344 
+ src/server/intake |   88.13 |       75 |     100 |   92.15 |                   
+  intake-parser.ts |   88.13 |       75 |     100 |   92.15 | 136-138,169       
+ src/server/ocr    |   89.47 |    72.58 |   77.77 |   94.28 |                   
+  compose.ts       |   89.47 |    72.58 |   77.77 |   94.28 | 100,107,128-129   
+ ...server/storage |   61.38 |    61.11 |   47.82 |   61.85 |                   
+  compose.ts       |   61.38 |    61.11 |   47.82 |   61.85 | ...31,241,341,354 
+ src/server/trust  |   84.21 |       50 |     100 |   91.17 |                   
+  ...pt-service.ts |   84.21 |       50 |     100 |   91.17 | 53,60,87          
+ src/server/worker |   82.17 |    64.23 |      70 |    84.5 |                   
+  compose.ts       |   82.17 |    64.23 |      70 |    84.5 | ...71-777,791-801 
+ ...rvices/archive |   71.79 |    49.01 |   71.42 |   71.62 |                   
+  ...ve-service.ts |   71.79 |    49.01 |   71.42 |   71.62 | ...62-377,399-422 
+ .../notifications |      99 |    93.75 |     100 |     100 |                   
+  inbox.ts         |   97.82 |     87.5 |     100 |     100 | 116,190           
+ src/services/runs |      75 |       50 |      50 |      75 |                   
+  enqueue.ts       |      75 |       50 |      50 |      75 | 96                
+ ...services/start |   95.38 |    88.46 |   77.77 |   96.77 |                   
+  plan.ts          |   95.38 |    88.46 |   77.77 |   96.77 | 118,245           
+ ...services/trust |   86.72 |     73.8 |     100 |   89.71 |                   
+  advisory.ts      |   94.44 |     87.5 |     100 |   94.44 | 93                
+  ...ic-capture.ts |   85.71 |    85.71 |     100 |   85.71 | 104,111,114,117   
+  ...-retention.ts |   77.27 |    33.33 |     100 |   77.27 | 62,67-68,72-73    
+  ...ge-service.ts |    90.9 |       70 |     100 |   96.55 | 95                
+  ...ic-capture.ts |   83.33 |    68.75 |     100 |     100 | 40-41,62-82       
+ src/stores/common |   85.91 |    63.82 |   93.75 |   89.28 |                   
+  ...sheet-grid.ts |   82.75 |    60.46 |   92.85 |   86.66 | ...09,111,122,135 
+ src/stores/crm    |   93.33 |    81.81 |     100 |   95.23 |                   
+  session.ts       |   92.85 |    81.81 |     100 |   94.87 | 184-185           
+ ...res/crm/driver |   83.89 |    68.81 |   97.05 |   91.85 |                   
+  fake.ts          |     100 |    91.66 |     100 |     100 | 52                
+  interpreter.ts   |   86.04 |    71.31 |     100 |   92.07 | ...40,447,469,501 
+  ui-registry.ts   |   79.33 |    60.29 |   91.66 |    90.9 | ...59,575-576,581 
+ ...ores/crm/tasks |    87.5 |    79.31 |   66.66 |    87.5 |                   
+  ...ding-dates.ts |   82.35 |    71.42 |      50 |   82.35 | 19,37-38          
+  ...ing-record.ts |   93.33 |    86.66 |     100 |   93.33 | 19                
+ ...traction/tasks |   94.87 |    81.57 |     100 |   96.96 |                   
+  ...-pdf-pages.ts |    92.3 |    77.27 |     100 |   97.14 | 114               
+  ...preadsheet.ts |   97.43 |     87.5 |     100 |   96.77 | 99                
+ src/stores/kuali  |   68.29 |    64.28 |   77.77 |      70 |                   
+  session.ts       |   56.66 |       50 |   66.66 |   58.62 | 135-165           
+ ...s/kuali/driver |   26.95 |    24.17 |   22.41 |   28.79 |                   
+  fake.ts          |    86.8 |    79.62 |     100 |    88.8 | ...79-680,683,686 
+  interpreter.ts   |    6.13 |        0 |       0 |    6.53 | ...8-698,729-1555 
+  ui-registry.ts   |   22.58 |     2.17 |   18.75 |   27.45 | 1001-1195         
+ ...es/kuali/tasks |   82.05 |    73.21 |     100 |   83.11 |                   
+  ...nalization.ts |   81.81 |       70 |     100 |   81.81 | 27,38             
+  ...n-document.ts |      75 |    64.28 |     100 |      75 | 52,60,85,94,101   
+  ...nalization.ts |      80 |       50 |     100 |   88.88 | 46                
+  ...ion-action.ts |    90.9 |    83.33 |     100 |    90.9 | 25                
+  ...nalization.ts |   86.66 |    83.33 |     100 |   86.66 | 52,64             
+  ...nalization.ts |   81.81 |       80 |     100 |   81.81 | 27,38             
+ ...res/new-kronos |    32.5 |        0 |       0 |   36.11 |                   
+  session.ts       |   27.02 |        0 |       0 |    30.3 | ...54-160,171-201 
+ ...-kronos/driver |   74.66 |    53.35 |   78.16 |   76.55 |                   
+  fake.ts          |    87.5 |       75 |     100 |    87.5 | 36                
+  grid-scroll.ts   |     100 |    91.66 |     100 |     100 | 136,174           
+  interpreter.ts   |   65.42 |    39.62 |    67.3 |   65.69 | ...70,882,909-934 
+  ui-registry.ts   |   81.29 |    62.85 |    92.3 |   89.23 | ...05,813,824,837 
+ ...w-kronos/tasks |   38.46 |    27.77 |   66.66 |      40 |                   
+  ...n-timecard.ts |   36.36 |       20 |     100 |   36.36 | 46-76             
+  ...h-employee.ts |      40 |     37.5 |      50 |   42.85 | 48-82             
+ ...lization/tasks |   90.99 |    82.07 |     100 |   92.07 |                   
+  ...act-advice.ts |   90.99 |    82.07 |     100 |   92.07 | ...33,244-245,255 
+ ...ores/ocr/tasks |     100 |     87.5 |     100 |     100 |                   
+  ...-form-page.ts |     100 |     87.5 |     100 |     100 | 67                
+ ...n-lookup/tasks |   93.75 |    81.25 |     100 |   93.75 |                   
+  ...ive-status.ts |   93.75 |    81.25 |     100 |   93.75 | 37                
+ ...s/roster/tasks |   82.85 |    46.87 |     100 |   84.74 |                   
+  ...preadsheet.ts |   82.85 |    46.87 |     100 |   84.74 | ...27,134,156,162 
+ ...arations/tasks |   97.22 |       70 |     100 |   97.18 |                   
+  ...h-identity.ts |     100 |    71.42 |     100 |     100 | 32,45-47          
+  ...ation-type.ts |   83.33 |    33.33 |     100 |   83.33 | 27,40             
+ src/stores/ucpath |   86.11 |    73.58 |     100 |   89.69 |                   
+  session.ts       |   80.26 |     64.1 |     100 |   85.07 | ...95-296,338-339 
+ .../ucpath/driver |   63.25 |    53.75 |   61.15 |   65.65 |                   
+  fake.ts          |   77.14 |       75 |    87.5 |   82.75 | 31,38,47,64,91    
+  interpreter.ts   |    46.8 |    41.93 |      25 |   52.38 | ...53,156-164,181 
+  ...-operation.ts |   63.44 |    60.45 |   57.53 |   67.31 | ...62-751,822-919 
+  ...y-locators.ts |   46.66 |       25 |   69.23 |   45.94 | 35-57,71-94       
+  smart-hr-fake.ts |   57.28 |    53.44 |   51.42 |   56.84 | ...80-391,404-408 
+  ...-operation.ts |   24.15 |     5.82 |   21.62 |   25.25 | ...14,756-799,817 
+  ui-registry.ts   |   88.79 |    75.78 |   91.17 |   95.76 | ...1635,1640,1647 
+ ...s/ucpath/tasks |   79.41 |    54.54 |    92.3 |   81.81 |                   
+  ...ermination.ts |      75 |       50 |     100 |      80 | 52,62,70          
+  ...rminations.ts |    62.5 |     37.5 |      50 |   66.66 | 34-35,43,53,61    
+  ...ermination.ts |    87.5 |       50 |     100 |    87.5 | 22                
+  ...rminations.ts |      90 |       75 |     100 |      90 | 28                
+  ...ob-summary.ts |   81.81 |    66.66 |     100 |   81.81 | 49,58             
+  ...tion-sweep.ts |   83.33 |       50 |     100 |   83.33 | 21                
+  ...ermination.ts |   73.33 |       60 |     100 |   78.57 | 37,44,63          
+  ...ns-cleared.ts |    87.5 |       50 |     100 |    87.5 | 22                
+  ...ermination.ts |    87.5 |       50 |     100 |    87.5 | 21                
+ src/validation    |   85.61 |    75.55 |     100 |   87.73 |                   
+  ...put-schema.ts |   77.27 |    70.83 |     100 |   76.74 | 70-71,74-76,79-85 
+  ...t-boundary.ts |   86.56 |    78.06 |     100 |   88.63 | ...34-335,345,348 
+  proof-shape.ts   |   81.65 |    71.87 |     100 |   84.84 | ...32,239,243,296 
+  schema-path.ts   |   95.16 |     77.5 |     100 |   98.21 | 124               
+ .../person-lookup |     100 |    93.75 |     100 |     100 |                   
+  descriptor.ts    |     100 |    93.75 |     100 |     100 | 126               
+ ...identity-check |   93.93 |       80 |     100 |   93.93 |                   
+  descriptor.ts    |   89.47 |       80 |     100 |   89.47 | 119,126           
+ ...i-finalization |     100 |       50 |     100 |     100 |                   
+  nodes.ts         |     100 |       50 |     100 |     100 | 23                
+-------------------|---------|----------|---------|---------|-------------------
+
+=============================== Coverage summary ===============================
+Statements   : 85.15% ( 24048/28240 )
+Branches     : 75.43% ( 12343/16363 )
+Functions    : 88.57% ( 4863/5490 )
+Lines        : 87.21% ( 22138/25382 )
+================================================================================
+Rebuild suite size (reviewed at phase exits; not a hard gate):
+  unit: 251 file(s), 85854 line(s) [active]
+  scenario: 18 file(s), 7124 line(s) [active]
+  architecture: 69 file(s), 22616 line(s) [active]

@@ -1,0 +1,99 @@
+[
+  {
+    "name": "red",
+    "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-captures-fixture.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-fixture-owner-red.log'",
+    "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+    "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-fixture-owner-red.log",
+    "started": "2026-08-31T01:18:19.454Z",
+    "sessions": [
+      99966
+    ],
+    "chunks": [
+      "232282",
+      "344eeb"
+    ],
+    "finished": "2026-08-31T01:18:22.030Z",
+    "exit": 1,
+    "rawSha256": "e47d6bb73c9c0410ceedc1aaa57ff3c8dd3ec6b1ca758b51774c66675c02d9e6",
+    "rawBytes": 1544
+  },
+  {
+    "name": "green",
+    "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-captures-fixture.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-fixture-owner-green.log'",
+    "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+    "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-fixture-owner-green.log",
+    "started": "2026-08-31T01:18:36.097Z",
+    "sessions": [
+      4400
+    ],
+    "chunks": [
+      "dd976c",
+      "19a80c"
+    ],
+    "finished": "2026-08-31T01:18:38.774Z",
+    "exit": 0,
+    "rawSha256": "858b45541f5f69b1eaf28e2300e032394e53feb424278d5a21b7ec1accb2ab74",
+    "rawBytes": 378
+  },
+  {
+    "name": "related",
+    "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-captures-fixture.test.ts tests/unit/dashboard/archive-evidence-fixture.test.ts tests/unit/dashboard/parity-fixtures.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-fixture-owner-related.log'",
+    "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+    "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-fixture-owner-related.log",
+    "started": "2026-08-31T01:18:43.109Z",
+    "sessions": [
+      7160
+    ],
+    "chunks": [
+      "aedda6",
+      "40aee8"
+    ],
+    "finished": "2026-08-31T01:18:47.359Z",
+    "exit": 0,
+    "rawSha256": "2203e01d175e1090b503061c693f1036f2a9a33b3283502ba8599c18d2c05f71",
+    "rawBytes": 514
+  },
+  {
+    "name": "typecheck",
+    "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-fixture-owner-typecheck.log'",
+    "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+    "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-fixture-owner-typecheck.log",
+    "started": "2026-08-31T01:18:52.006Z",
+    "sessions": [
+      92642
+    ],
+    "chunks": [
+      "b8e20d",
+      "36f4b3",
+      "e28141",
+      "168c4b"
+    ],
+    "finished": "2026-08-31T01:19:06.902Z",
+    "exit": 0,
+    "rawSha256": "ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036",
+    "rawBytes": 57
+  },
+  {
+    "name": "lint",
+    "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-fixture-owner-lint.log'",
+    "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+    "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-fixture-owner-lint.log",
+    "started": "2026-08-31T01:19:10.742Z",
+    "sessions": [
+      91301
+    ],
+    "chunks": [
+      "140901",
+      "da0b5f",
+      "ad8523",
+      "e7d588",
+      "9c6057",
+      "714e74",
+      "da942c"
+    ],
+    "finished": "2026-08-31T01:19:40.837Z",
+    "exit": 0,
+    "rawSha256": "cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385",
+    "rawBytes": 81
+  }
+]

@@ -1,0 +1,23 @@
+Parent serial light verification. Workdir /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+Session14239 exit0. Command:
+/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck && /usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint && npm run build:manifest && git diff --exit-code -- src/domain/workflow/generated-build-manifest.ts && npm run roadmap:check && git diff --check
+
+
+> hr-automation-rebuild@0.1.0 typecheck
+> tsc --noEmit
+
+
+> hr-automation-rebuild@0.1.0 lint
+> eslint src tests scripts --max-warnings 0
+
+
+> hr-automation-rebuild@0.1.0 build:manifest
+> tsx scripts/generate-build-manifest.ts
+
+Wrote src/domain/workflow/generated-build-manifest.ts.
+
+> hr-automation-rebuild@0.1.0 roadmap:check
+> tsx scripts/generate-roadmap.ts --check
+
+docs/roadmap/index.html is fresh.
+

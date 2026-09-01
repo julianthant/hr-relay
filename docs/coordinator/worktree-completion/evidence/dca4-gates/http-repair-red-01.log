@@ -1,0 +1,59 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/archive-evidence-fixture.test.ts -t serves the exact resource download over real HTTP
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+x-----
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/archive-evidence-fixture.test.ts > the archive-evidence fixture > serves the exact resource download over real HTTP from an ephemeral port
+AssertionError: HTTP download body prefix: "not found"
++ actual - expected
+
+  {
++   byteLength: 9,
++   digest: '907ba78b4545338d3539683e63ecb51cf51c10adc9dabd86e92bd52339f298b9',
++   mediaType: null,
++   status: 404
+-   byteLength: 3281,
+-   digest: 'f3ede4591dd6034661d8d63aef43ce4734610be67edbc7e30ce68834ebcd3847',
+-   mediaType: 'image/png',
+-   status: 200
+  }
+
+
+- Expected
++ Received
+
+  {
+-   "byteLength": 3281,
+-   "digest": "f3ede4591dd6034661d8d63aef43ce4734610be67edbc7e30ce68834ebcd3847",
+-   "mediaType": "image/png",
+-   "status": 200,
++   "byteLength": 9,
++   "digest": "907ba78b4545338d3539683e63ecb51cf51c10adc9dabd86e92bd52339f298b9",
++   "mediaType": null,
++   "status": 404,
+  }
+
+ ❯ tests/unit/dashboard/archive-evidence-fixture.test.ts:54:14
+     52|       const download = await fetch(`${server.baseUrl}${resource.resour…
+     53|       const bytes = new Uint8Array(await download.arrayBuffer());
+     54|       assert.deepEqual({
+       |              ^
+     55|         status: download.status,
+     56|         mediaType: download.headers.get("content-type"),
+ ❯ withArchiveHttp tests/unit/dashboard/archive-evidence-fixture.test.ts:30:7
+ ❯ tests/unit/dashboard/archive-evidence-fixture.test.ts:41:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 skipped (6)
+   Start at  08:12:25
+   Duration  1.99s (transform 1.17s, setup 0ms, import 1.88s, tests 24ms, environment 0ms)
+

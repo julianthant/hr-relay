@@ -1,0 +1,26 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+x---------------------------------
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > prepares an opaque single-use lease from the exact frozen tile
+TypeError: materializeVerifiedArtifactBytes is not a function
+ ❯ readArchivedCaptureBytes src/server/dashboard/queries/archive.ts:230:46
+    228|   const ref = frozenArchivedCaptureRef(deps, runIdInput, artifactIdInp…
+    229|   try {
+    230|     return Object.freeze({ ref, bytes: await materializeVerifiedArtifa…
+       |                                              ^
+    231|   } catch (error: unknown) {
+    232|     if (error instanceof IndexedArtifactBytesMissingError) {
+ ❯ tests/unit/server/archive-capture-resource.test.ts:108:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 33 skipped (34)
+   Start at  02:16:03
+   Duration  605ms (transform 351ms, setup 0ms, import 523ms, tests 6ms, environment 0ms)
+

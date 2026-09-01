@@ -1,0 +1,6 @@
+*** Begin Patch
+*** Update File: /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/unit/architecture/helpers/run-capture-browser-route-references.ts
+@@
+-  return references;
++  return [];
+*** End Patch

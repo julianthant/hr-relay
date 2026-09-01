@@ -1,0 +1,75 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/architecture/wire-connectivity.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+x·x······················
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/architecture/wire-connectivity.test.ts > wire connectivity — declared arms, served arms, and the manifest between them > has every run-detail section arm either reachable or declared
+AssertionError: wire connectivity — sections:
+  RunDetailSectionResponseSchema#captures is a declared wire arm that no lifecycle can reach: availableSections never returns it, so a client asking for it gets a refusal. Either serve it or add {"binding": "RunDetailSectionResponseSchema#captures", "direction": "declared-unserved", …} to config/pending-wire-bindings.json
++ actual - expected
+
++ [
++   'RunDetailSectionResponseSchema#captures is a declared wire arm that no lifecycle can reach: availableSections never returns it, so a client asking for it gets a refusal. Either serve it or add {"binding": "RunDetailSectionResponseSchema#captures", "direction": "declared-unserved", …} to config/pending-wire-bindings.json'
++ ]
+- []
+
+
+- Expected
++ Received
+
+- []
++ [
++   "RunDetailSectionResponseSchema#captures is a declared wire arm that no lifecycle can reach: availableSections never returns it, so a client asking for it gets a refusal. Either serve it or add {\"binding\": \"RunDetailSectionResponseSchema#captures\", \"direction\": \"declared-unserved\", …} to config/pending-wire-bindings.json",
++ ]
+
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:403:12
+    401|       }
+    402|     }
+    403|     assert.deepEqual(problems, [], `wire connectivity — sections:\n  $…
+       |            ^
+    404|   });
+    405|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |unit| tests/unit/architecture/wire-connectivity.test.ts > wire connectivity — declared arms, served arms, and the manifest between them > resolves every client-called path to a served route, and declares every uncalled route
+AssertionError: wire connectivity — routes:
+  src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will
++ actual - expected
+
++ [
++   'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will'
++ ]
+- []
+
+
+- Expected
++ Received
+
+- []
++ [
++   "src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {\"binding\": \"route:GET /artifacts/v1/:artifactId\", \"direction\": \"served-unconsumed\", …} to config/pending-wire-bindings.json naming the consumer that will",
++ ]
+
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:467:12
+    465|
+    466|     const { problems } = await auditArchiveBrowser(archiveProbe(), { r…
+    467|     assert.deepEqual(problems, [], `wire connectivity — routes:\n  ${p…
+       |            ^
+    468|   });
+    469|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 23 passed (25)
+   Start at  17:42:38
+   Duration  2.87s (transform 1.19s, setup 0ms, import 2.13s, tests 441ms, environment 229ms)
+

@@ -1,0 +1,208 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/server/run-detail-captures.test.ts tests/unit/dashboard/run-detail-captures-client.test.ts tests/unit/dashboard-wire.test.ts tests/unit/server/bff-flow.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts tests/unit/server/archive-capture-resource.test.ts tests/unit/server/archive-capture-routes.test.ts --reporter=verbose
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > states indexed absence without opening bytes or advertising a lazy list 26ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > names an uncomposed capture authority instead of claiming an empty index 16ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > states absence for a verified bundle with no attachments 18ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > excludes another run's real bundle even when it shares this artifact 20ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > serves one artifact with every verified mixed-origin membership from this run 24ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > preserves the literal failure origin without failure details or actor data 18ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > preserves the literal unexpected-state origin without failure details or actor data 17ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > preserves the literal subject-mismatch origin without failure details or actor data 17ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > preserves the literal recovery-park origin without failure details or actor data 18ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > preserves the literal operator-request origin without failure details or actor data 19ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > keeps capture refs lazy while serving verified availability 16ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > keeps missing bytes visibly corrupt on both public reads 16ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > keeps digest bytes visibly corrupt on both public reads 16ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > keeps size bytes visibly corrupt on both public reads 16ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses a foreign run index before any exact readback or byte open 16ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses a duplicate run index before any exact readback or byte open 14ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses a conflicting-origin run index before any exact readback or byte open 15ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses a malformed run index before any exact readback or byte open 16ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses a missing-origin run index before any exact readback or byte open 17ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses a valid re-digested exact readback whose origin differs from the run index 17ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses missing-bundle exact verification instead of serving a plausible capture 15ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses foreign-bundle exact verification instead of serving a plausible capture 16ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses changed-origin exact verification instead of serving a plausible capture 15ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses missing-index exact verification instead of serving a plausible capture 15ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses changed-index exact verification instead of serving a plausible capture 16ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses individually verified bundles that disagree on a shared artifact's dimensions 17ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses unavailable run not-an-id before capture authority 17ms
+· ✓ |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > refuses unavailable run 09990999-0999-4999-8999-099909990999 before capture authority 14ms
+· ✓ |unit| tests/unit/architecture/strict-boundary-schemas.test.ts > strict boundary schemas > keeps the explicit top-level boundary catalog unique, valid, and recursively strict 38ms
+· ✓ |unit| tests/unit/architecture/strict-boundary-schemas.test.ts > strict boundary schemas > rejects an unknown key at every exercised nested object boundary 1510ms
+· ✓ |unit| tests/unit/architecture/strict-boundary-schemas.test.ts > strict boundary schemas > walks every object arm nested under arrays, unions, lazies, and wrappers 1ms
+· ✓ |unit| tests/unit/architecture/strict-boundary-schemas.test.ts > strict boundary schemas > rejects unschematized interfaces, open schemas, any, assertions, and catch/default parsing 3ms
+· ✓ |unit| tests/unit/architecture/strict-boundary-schemas.test.ts > strict boundary schemas > keeps every current domain boundary source free of unsafe escape hatches 348ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > serves verified resource identity from the repository without current run or index lookups 29ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > serves exact image/png bytes as a safe download 19ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > serves exact image/jpeg bytes as a safe download 17ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > serves exact text/yaml bytes as a safe download 21ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > serves exact application/json bytes as a safe download 17ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > refuses an uncomposed artifact capability 16ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > does not open stored bytes for a foreign exact identity /api/v1/archive/99999999-0009-4000-8000-999900000009/captures/00000000-0000-4000-8000-000000000919/resource 17ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > does not open stored bytes for a foreign exact identity /api/v1/archive/00000000-0000-4000-8000-000000000919/captures/00000000-0000-4000-8000-000000000917/resource 16ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > refuses missing capability before parsing malformed input /api/v1/archive/99999999-0009-4000-8000-999900000009/captures/not-an-id/resource 17ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > rejects malformed exact input /api/v1/archive/99999999-0009-4000-8000-999900000009/captures/not-an-id/resource before authority 18ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > refuses missing capability before parsing malformed input /api/v1/archive/..%2Flatest/captures/00000000-0000-4000-8000-000000000917/resource 16ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > rejects malformed exact input /api/v1/archive/..%2Flatest/captures/00000000-0000-4000-8000-000000000917/resource before authority 18ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > refuses generation-one metadata absence 20ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > refuses a foreign record returned by the repository 16ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > verifies the archived content digest read through the real repository 18ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > does not expose storage paths from authority failures 15ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > classifies a malformed stored row as server corruption, not invalid caller input 19ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > rejects an active document media type from a malformed repository result before byte open 17ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > resource > denies the capture host before any resource authority is read 16ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > refuses an uncomposed artifact capability 16ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > does not open stored bytes for a foreign exact identity /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/00000000-0000-4000-8000-000000000919 17ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > does not open stored bytes for a foreign exact identity /artifacts/v1/archive/00000000-0000-4000-8000-000000000919/00000000-0000-4000-8000-000000000917 15ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > refuses missing capability before parsing malformed input /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/not-an-id 15ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > rejects malformed exact input /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/not-an-id before authority 18ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > refuses missing capability before parsing malformed input /artifacts/v1/archive/..%2Flatest/00000000-0000-4000-8000-000000000917 20ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > rejects malformed exact input /artifacts/v1/archive/..%2Flatest/00000000-0000-4000-8000-000000000917 before authority 20ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > refuses generation-one metadata absence 16ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > refuses a foreign record returned by the repository 18ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > verifies the archived content digest read through the real repository 73ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > does not expose storage paths from authority failures 21ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > classifies a malformed stored row as server corruption, not invalid caller input 21ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > rejects an active document media type from a malformed repository result before byte open 25ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > bytes > denies the capture host before any resource authority is read 23ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > reports physical absence without interpreting elapsed retention as a purge 28ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > never serves successful bytes for same-length digest corruption, even with unsupported Range 23ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > never serves successful bytes for short stream, even with unsupported Range 28ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > never serves successful bytes for oversized stream, even with unsupported Range 27ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > never serves successful bytes for non-byte chunk, even with unsupported Range 21ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > never serves successful bytes for read failure, even with unsupported Range 28ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > never serves successful bytes for open failure, even with unsupported Range 24ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > refuses unsupported Range only after draining and verifying the complete object 23ms
+· ✓ |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > re-verifies a download after the earlier availability check 19ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > serves an authorized diagnostic attachment as an exact no-store resource 58ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > treats a stored object without diagnostic attachment authority as foreign 27ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > reports diagnostic artifact readback unavailable when no authority is composed 16ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > rejects a non-UUID artifact id before authority lookup 16ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > rejects a traversal-shaped artifact id before authority lookup 17ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > refuses an indexed artifact whose materialized digest is corrupt across chunks 31ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > refuses an indexed artifact whose materialized size is corrupt across chunks 29ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > refuses indexed content whose stored media type disagrees with authority 26ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > normalizes diagnostic attachment authority failure without leaking its storage path 22ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > returns typed corruption when authority indexes an artifact whose physical object is missing 25ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > verifies a ranged artifact before refusing partial delivery 26ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > returns typed path-free corruption when a real diagnostic artifact is mutated 27ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > returns typed path-free corruption when a real diagnostic artifact is missing 25ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > returns typed corruption when the diagnostic repository returns a foreign bundle id 26ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > plans, starts, projects, and serves the run through the one payload 45ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > serves the timeline for a run whose spans a WORKER process appended to disk (D218) 24ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > refuses malformed and unavailable requests with typed wire errors 17ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > serves the read-only storage doctor on demand (2i-D) 20ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > refuses an unavailable run-detail section by name and serves failure only when real 21ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > serves the Activity report over a NAMED range and refuses one the caller never named (D180) 21ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > serves the Activity report as a CSV that carries its own caveats (D240) 16ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > executes a bulk cancel as N CAS-bound children and answers the per-run vector (D235) 32ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > the capture phone-host gate (D174, ref operator-trust §7) > blocks the SAME path byte-identically whether the gate refuses it or the path is genuinely unrouted 15ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > the capture phone-host gate (D174, ref operator-trust §7) > blocks a REAL operator route on the phone Host with the same ROUTE_NOT_FOUND shape 15ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > the capture phone-host gate (D174, ref operator-trust §7) > keeps diagnostic artifact bytes opaque on the phone Host 28ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > the capture phone-host gate (D174, ref operator-trust §7) > passes an operator route through when the request arrives on the operator Host 15ms
+· ✓ |unit| tests/unit/server/bff-flow.test.ts > the capture phone-host gate (D174, ref operator-trust §7) > passes every Host through when no capturePhoneHost is configured 15ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183) > dispositions every free-text and open-JSON leaf of every registered surface 25ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183) > audits a real surface rather than an empty set 15ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183) > registers the complete archived capture resource with exactly its three authored leaves 0ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183) > refuses the independently omitted archived capture origin resource.downloadUrl 14ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183) > refuses the independently omitted archived capture origin resource.message 14ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183) > refuses the independently omitted archived capture origin resource.reason 13ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183) > registers every surface-bearing module in both directions 1ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183) > covers every exported *WireSchema by a registered surface 46ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183) > refuses an undispositioned leaf, a refused origin, and a missing exception 0ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183) > holds a *Redacted field name to what its producer actually does 55ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183) > fires on a producer that fills a *Redacted field with a raw value 1ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183) > reads a redacted value as self-describing wherever it is embedded 1ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — archived capture resource canaries (D183/DCA4) > serves only the exact-id URL after verifying canary-bearing archived bytes 24ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — archived capture resource canaries (D183/DCA4) > keeps typed missing canaries out of the authored availability message 20ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — archived capture resource canaries (D183/DCA4) > keeps typed corruption canaries out of the authored availability message 17ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — archived capture resource canaries (D183/DCA4) > keeps raw ENOENT canaries out of the authored availability message 16ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — archived capture resource canaries (D183/DCA4) > keeps raw storage failure canaries out of the authored availability message 17ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — archived capture resource canaries (D183/DCA4) > rejects a foreign archive download URL 16ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — archived capture resource canaries (D183/DCA4) > rejects a canary archive download URL 18ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the canary sweep (ref clock-config-secrets §6) > plants a sentinel in every free-text leaf the failure record has 0ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the canary sweep (ref clock-config-secrets §6) > drops every planted sentinel from the advisory prompt that leaves the process 1ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the canary sweep (ref clock-config-secrets §6) > leaves no notification arm where a captured value could be written 2ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the canary sweep (ref clock-config-secrets §6) > keeps an undeclared value out of the durable ledger line 1ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the canary sweep (ref clock-config-secrets §6) > redacts the exit run's person identifiers out of its evidence receipt 28ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the canary sweep (ref clock-config-secrets §6) > drops an unclassified diagnostic field instead of passing it through 0ms
+· ✓ |unit| tests/unit/architecture/redaction-surface-scan.test.ts > redaction surface scan — the canary sweep (ref clock-config-secrets §6) > detects a planted sentinel when one really is present 0ms
+· ✓ |unit| tests/unit/dashboard-wire.test.ts > dashboard wire primitives > parses recursively strict bootstrap, day, and detail resources 10ms
+· ✓ |unit| tests/unit/dashboard-wire.test.ts > dashboard wire primitives > keeps version, fingerprint, generation, revision, cursor, and identities distinct 1ms
+· ✓ |unit| tests/unit/dashboard-wire.test.ts > dashboard wire primitives > binds every served action to the row's own revision, once per key 0ms
+· ✓ |unit| tests/unit/dashboard-wire.test.ts > dashboard wire primitives > refuses a served chunk harness whose composition is not in the same document 0ms
+· ✓ |unit| tests/unit/dashboard-wire.test.ts > dashboard wire primitives > keeps queue surfaces flat and operation-only membership coherent 1ms
+· ✓ |unit| tests/unit/dashboard-wire.test.ts > dashboard wire primitives > rejects incompatible panel sections, open terminal gates, and duplicate detail identities 0ms
+· ✓ |unit| tests/unit/dashboard-wire.test.ts > dashboard wire primitives > D259 — a replayed step names the checkpoint it replayed, and measures nothing 0ms
+· ✓ |unit| tests/unit/dashboard-wire.test.ts > lazy detail and artifact resources > correlates every lazy section with a closed payload 21ms
+· ✓ |unit| tests/unit/dashboard-wire.test.ts > lazy detail and artifact resources > requires opaque content-addressed artifact metadata and explicit missing states 1ms
+· ✓ |unit| tests/unit/dashboard-wire.test.ts > lazy detail and artifact resources > requires strict nonempty unique capture memberships and identical bundle kinds across tiles 0ms
+· ✓ |unit| tests/unit/dashboard-wire.test.ts > subscription snapshots, patches, and resets > parses every correlated snapshot and patch arm 4ms
+· ✓ |unit| tests/unit/dashboard-wire.test.ts > subscription snapshots, patches, and resets > rejects topic/payload mismatches, wrong arms, and identity/revision drift 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > verifies only the exact frozen tile before declaring retained bytes available 4ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > reports physical absence without inventing a policy-derived purge 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > keeps digest corruption distinct from physical absence 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > refuses a capture that is not named by this archived run's frozen tile 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > buildArchivedCaptureResource > refuses a foreign archive returned by the repository before opening bytes 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > buildArchivedCaptureResource > refuses changed frozen content under the original archive digest 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > buildArchivedCaptureResource > refuses duplicate artifact ids with conflicting digest 3ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > buildArchivedCaptureResource > refuses duplicate artifact ids with conflicting byteLength 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > buildArchivedCaptureResource > refuses duplicate artifact ids with conflicting mediaType 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > buildArchivedCaptureResource > admits repeated bundle tiles only when their complete byte reference agrees 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > buildArchivedCaptureResource > rejects malformed exact-id input ../../latest/00000000-0000-4000-8000-000000000917 before authority 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > buildArchivedCaptureResource > rejects malformed exact-id input 00000000-0000-4000-8000-000000000918/../../latest before authority 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > buildArchivedCaptureResource > rejects malformed exact-id input undefined/00000000-0000-4000-8000-000000000917 before authority 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > buildArchivedCaptureResource > rejects malformed exact-id input 00000000-0000-4000-8000-000000000918/null before authority 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > buildArchivedCaptureResource > names absent archives without opening arbitrary stored objects 0ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > buildArchivedCaptureResource > preserves a missing frozen-capture section as absence 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > readArchivedCaptureBytes > refuses a foreign archive returned by the repository before opening bytes 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > readArchivedCaptureBytes > refuses changed frozen content under the original archive digest 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > readArchivedCaptureBytes > refuses duplicate artifact ids with conflicting digest 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > readArchivedCaptureBytes > refuses duplicate artifact ids with conflicting byteLength 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > readArchivedCaptureBytes > refuses duplicate artifact ids with conflicting mediaType 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > readArchivedCaptureBytes > admits repeated bundle tiles only when their complete byte reference agrees 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > readArchivedCaptureBytes > rejects malformed exact-id input ../../latest/00000000-0000-4000-8000-000000000917 before authority 0ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > readArchivedCaptureBytes > rejects malformed exact-id input 00000000-0000-4000-8000-000000000918/../../latest before authority 0ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > readArchivedCaptureBytes > rejects malformed exact-id input undefined/00000000-0000-4000-8000-000000000917 before authority 0ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > readArchivedCaptureBytes > rejects malformed exact-id input 00000000-0000-4000-8000-000000000918/null before authority 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > readArchivedCaptureBytes > names absent archives without opening arbitrary stored objects 0ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > readArchivedCaptureBytes > preserves a missing frozen-capture section as absence 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > verifies availability without copying the stream into an assembled buffer 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > returns an exact standalone byte buffer 1ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > refuses a foreign available-resource URL https://foreign.example/capture 0ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > refuses a foreign available-resource URL /artifacts/v1/archive/00000000-0000-4000-8000-000000000918/00000000-0000-4000-8000-000000000917 0ms
+· ✓ |unit| tests/unit/server/archive-capture-resource.test.ts > DCA4 archived capture resource > refuses a foreign available-resource URL /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/00000000-0000-4000-8000-000000000918 0ms
+· ✓ |unit| tests/unit/dashboard/run-detail-captures-client.test.ts > DCA3/D292 capture client > rejects a foreign initial run's capture capability 10ms
+· ✓ |unit| tests/unit/dashboard/run-detail-captures-client.test.ts > DCA3/D292 capture client > rejects a foreign lazy capture list 1ms
+· ✓ |unit| tests/unit/dashboard/run-detail-captures-client.test.ts > DCA3/D292 capture client > rejects a different strict section returned for a captures request 0ms
+· ✓ |unit| tests/unit/dashboard/run-detail-captures-client.test.ts > DCA3/D292 capture client > preserves all served origins and byte facts 0ms
+· ✓ |unit| tests/unit/dashboard/run-detail-captures-client.test.ts > DCA3/D292 capture client > refuses missing provenance 0ms
+· ✓ |unit| tests/unit/dashboard/run-detail-captures-client.test.ts > DCA3/D292 capture client > refuses empty provenance 0ms
+· ✓ |unit| tests/unit/dashboard/run-detail-captures-client.test.ts > DCA3/D292 capture client > refuses unknown kind provenance 0ms
+· ✓ |unit| tests/unit/dashboard/run-detail-captures-client.test.ts > DCA3/D292 capture client > refuses actor leakage provenance 0ms
+· ✓ |unit| tests/unit/dashboard/run-detail-captures-client.test.ts > DCA3/D292 capture client > refuses failure leakage provenance 0ms
+· ✓ |unit| tests/unit/dashboard/run-detail-captures-client.test.ts > DCA3/D292 capture client > refuses duplicate provenance 0ms
+· ✓ |unit| tests/unit/dashboard/run-detail-captures-client.test.ts > DCA3/D292 capture client > forwards the optional fourth abort signal to the lazy request 0ms
+· ✓ |unit| tests/unit/dashboard/run-detail-captures-client.test.ts > DCA3/D292 capture client > builds only exact DCA1 artifact byte URLs 0ms
+
+
+ Test Files  8 passed (8)
+      Tests  185 passed (185)
+   Start at  17:09:57
+   Duration  8.83s (transform 1.35s, setup 0ms, import 3.94s, tests 4.35s, environment 0ms)
+
+
+ Test Files  8 passed (8)
+      Tests  185 passed (185)
+   Start at  17:09:57
+   Duration  8.83s (transform 1.35s, setup 0ms, import 3.94s, tests 4.35s, environment 0ms)
+

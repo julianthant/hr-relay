@@ -1,0 +1,14 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/archive-capture-resource-client.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+····
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  08:51:21
+   Duration  2.69s (transform 1.43s, setup 0ms, import 2.43s, tests 5ms, environment 0ms)
+

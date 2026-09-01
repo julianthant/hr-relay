@@ -1,0 +1,948 @@
+--- a/tests/unit/architecture/wire-connectivity.test.ts
++++ b/tests/unit/architecture/wire-connectivity.test.ts
+@@ -38,13 +38,17 @@
+  * half nobody wrote down.
+  */
+ import assert from "node:assert/strict";
++import { createHash } from "node:crypto";
+ import { readFileSync } from "node:fs";
+ import { join } from "node:path";
++import { Readable } from "node:stream";
+ import { afterEach, describe, it } from "vitest";
+ import { z } from "zod";
+ import { ArchivedRunDetailWireSchema } from "../../../src/domain/dashboard/archive.js";
+ import { FIXTURE_ARCHIVE_EVIDENCE_CAPTURE, FIXTURE_ARCHIVE_EVIDENCE_RUN } from "../../parity/helpers/fixture-archive-evidence.js";
+ import { archiveBrowserRouteReferences, type ArchiveBrowserProbe } from "./helpers/archive-browser-route-references.js";
++import { CAPTURE_RUN_A, CAPTURE_RUN_B, CAPTURE_ARTIFACT_A, CAPTURE_ARTIFACT_B, CAPTURE_BASE_URL, captureDetail, captureImage, captureButton, pressCaptureControl, mountCaptureApp } from "../dashboard/fixtures/run-captures-app-fixture.js";
++import { runCaptureBrowserRouteReferences, type RunCaptureBrowserProbe } from "./helpers/run-capture-browser-route-references.js";
+ import { ActionCommandKeySchema } from "../../../src/domain/dashboard/actions.js";
+ import {
+   ParkedWriteDetailWireSchema,
+@@ -58,7 +62,10 @@
+ import { RunPrioritySchema } from "../../../src/domain/run/envelope.js";
+ import { RunOutcomeSchema, RunRecordSchema, RunStateSchema, type RunRecord } from "../../../src/domain/run/record.js";
+ import { SubjectEvidenceSchema, WriteIntentRecordSchema } from "../../../src/domain/write-safety.js";
+-import { availableSections } from "../../../src/server/dashboard/queries/run-detail.js";
++import { availableSections, readRunDetail, readRunSection } from "../../../src/server/dashboard/queries/run-detail.js";
++import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
++import { DiagnosticBundleSchema } from "../../../src/domain/trust/diagnostic.js";
++import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
+ import {
+   makeWorld,
+   queuedEventOf,
+@@ -162,6 +169,39 @@
+   };
+ }
+ 
++function runCaptureProbe(runId: string = CAPTURE_RUN_A, artifactId: string = CAPTURE_ARTIFACT_A): RunCaptureBrowserProbe {
++  return { requestedRunId: runId, artifactId, detail: captureDetail(runId),
++    response: { section: "captures", payload: { runId, artifacts: [captureImage(artifactId)] } } };
++}
++
++async function auditRunCaptureBrowser(probe: RunCaptureBrowserProbe, accounting: {
++  readonly routes?: readonly ServedRoute[];
++  readonly references?: readonly ClientRouteReference[];
++  readonly pending?: readonly PendingWireBinding[];
++} = {}) {
++  const observation = await runCaptureBrowserRouteReferences(probe).then(
++    references => ({ state: "observed", references }) as const,
++    (error: unknown) => ({ state: "refused", error }) as const,
++  );
++  const references = [...(accounting.references ?? clientRouteReferences(CLIENT_ROOTS.map(root => join(REPO_ROOT, root)))),
++    ...(observation.state === "observed" ? observation.references : [])];
++  const problems = routeConnectivityProblems({
++    routes: accounting.routes ?? servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8")),
++    references, pending: accounting.pending ?? MANIFEST, apiRoutesFile: API_ROUTES_FILE, clientRoots: CLIENT_ROOTS,
++  });
++  return { observation, references, problems: [
++    ...(observation.state === "refused" ? [observation.error instanceof Error ? observation.error.message : "Run capture observation threw a non-Error value"] : []),
++    ...problems,
++  ] };
++}
++
++function assertRefusedRunCapture(result: Awaited<ReturnType<typeof auditRunCaptureBrowser>>, message: RegExp): void {
++  assert.equal(result.observation.state, "refused", "the invalid generic observation was credited");
++  assert.match(result.problems[0], message);
++  assert.deepEqual(result.problems.slice(1), [ARCHIVE_ORPHAN, GENERIC_ORPHAN]);
++  assert.equal(result.references.some(({ path }) => routeMatches(GENERIC_ROUTE, path)), false);
++}
++
+ function changedNativeAttribute(selector: string, attribute: string, value: string): NonNullable<ArchiveBrowserProbe["beforeObservation"]> {
+   return (dialog) => {
+     const node = dialog.querySelector(selector);
+@@ -247,7 +287,7 @@
+ }
+ 
+ /** Every section any lifecycle can advertise, with and without the trust seam. */
+-function reachableSections(): { readonly reachable: ReadonlySet<string>; readonly statesSwept: ReadonlySet<string> } {
++async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<string>; readonly statesSwept: ReadonlySet<string> }> {
+   const world = makeWorld();
+   worlds.push(world);
+   queuedEventOf(world, { seed: 1 });
+@@ -275,6 +315,45 @@
+     for (const section of availableSections(row, record)) reachable.add(section);
+     for (const section of availableSections(row, record, trust)) reachable.add(section);
+   }
++  // Captures are an async verified capability, not a lifecycle-derived constant.
++  // Keep the complete lifecycle sweep above; add what the public read actually
++  // advertises after canonical SQLite diagnostic authority verifies real bytes.
++  const database = AuthorityDatabase.open({ path: join(world.stateRoot, "wire-capture-authority.db"),
++    busyTimeoutMs: 1000, migrationOwner: "wire-capture-census" }, world.clock);
++  try {
++    const run = world.authority.getRun(uuidOf(1));
++    assert.ok(run);
++    database.authority.runs.enqueue(run);
++    const bytes = Buffer.from("[]");
++    const digest = createHash("sha256").update(bytes).digest("hex");
++    const deps = { stateRoot: world.stateRoot, projection: world.projection,
++      authority: { ...world.authority, getRun: (id: string) => database.authority.runs.get(id) },
++      descriptors: { resolve: () => undefined },
++      captures: { authority: database.authority.diagnosticBundles, artifacts: {
++        open: async (ref: { id: string; bytes: number; sha256: string; mediaType: string }) => {
++          assert.deepEqual(ref, { id: uuidOf(931), bytes: 2, sha256: digest, mediaType: "application/json" });
++          // The jsdom gate's Uint8Array realm differs from Node's Buffer realm.
++          return Readable.from([new Uint8Array(bytes)]);
++        },
++      } },
++    };
++    assert.equal((await readRunDetail(deps, uuidOf(1))).availableSections.includes("captures"), false);
++    const content = { runId: uuidOf(1), origin: { kind: "operator-request", requestedBy: "local-operator" },
++      capturedAt: PARK_INSTANT, configFingerprint: run.envelope.configFingerprint,
++      descriptorFingerprint: run.envelope.contractFingerprint, redaction: { fields: [], warnings: [] },
++      attachments: [{ kind: "console-summary", artifactId: uuidOf(931), mediaType: "application/json",
++        byteLength: bytes.length, digest, sensitivity: "redacted" }],
++    };
++    const { capturedAt, ...stored } = content;
++    database.authority.diagnosticBundles.insert(DiagnosticBundleSchema.parse({ ...stored,
++      bundleId: uuidOf(932), createdAt: capturedAt, contentDigest: deriveDiagnosticContentDigest(content),
++      retention: { kind: "ordinary", purgeAfter: "2026-09-02T17:00:00.000Z" },
++    }));
++    assert.equal((await readRunSection(deps, uuidOf(1), "captures")).section, "captures");
++    const detail = await readRunDetail(deps, uuidOf(1));
++    assert.deepEqual(detail.captures, { state: "available", artifactCount: 1 }, "the async census did not verify its canonical capture");
++    for (const section of detail.availableSections) reachable.add(section);
++  } finally { database.close(); }
+   return { reachable, statesSwept };
+ }
+ 
+@@ -357,11 +436,68 @@
+ /* ── the tests ───────────────────────────────────────────────────────────── */
+ 
+ describe("wire connectivity — declared arms, served arms, and the manifest between them", () => {
+-  it("has every run-detail section arm either reachable or declared", () => {
++  it("A10 cleanup preserves prior history, globals and foreign DOM after a native preview", async () => {
++    const originalUrl = window.location.href;
++    const originalState: unknown = window.history.state;
++    const foreign = document.createElement("aside");
++    foreign.textContent = "Unrelated test-owned DOM";
++    document.body.append(foreign);
++    const priorChildren = [...document.body.childNodes];
++    const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
++    const priorResize = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
++    window.history.replaceState({ checkpoint: "A10-prior" }, "", "/before-capture?keep=1#prior");
++    try {
++      const mounted = await mountCaptureApp({ runId: CAPTURE_RUN_A, runs: new Map([[CAPTURE_RUN_A, {
++        detail: () => captureDetail(), captures: () => Promise.resolve(Response.json({ section: "captures",
++          payload: { runId: CAPTURE_RUN_A, artifacts: [captureImage()] } })),
++      }]]) });
++      try {
++        await pressCaptureControl(captureButton("Receipt"));
++        await pressCaptureControl(captureButton(`Open capture ${CAPTURE_ARTIFACT_A}`));
++      } finally { await mounted.unmount(); }
++      assert.equal(window.location.pathname + window.location.search + window.location.hash, "/before-capture?keep=1#prior");
++      assert.deepEqual(window.history.state, { checkpoint: "A10-prior" });
++      assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), priorAct);
++      assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver"), priorResize);
++      assert.equal(document.body.childNodes.length, priorChildren.length);
++      assert.equal([...document.body.childNodes].every((node, i) => node === priorChildren[i]), true);
++    } finally {
++      foreign.remove();
++      window.history.replaceState(originalState, "", originalUrl);
++    }
++  });
++
++  it("A10 cleanup restores owned state even when a real root effect cleanup throws", async () => {
++    const priorUrl = window.location.href;
++    const priorState: unknown = window.history.state;
++    const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
++    const priorResize = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
++    const priorChildren = [...document.body.childNodes];
++    const mounted = await mountCaptureApp({ runId: CAPTURE_RUN_A, onUnmount: () => { throw new Error("A10 root cleanup sentinel"); },
++      runs: new Map([[CAPTURE_RUN_A, {
++        detail: () => captureDetail(), captures: () => Promise.resolve(Response.json({ section: "captures",
++          payload: { runId: CAPTURE_RUN_A, artifacts: [captureImage()] } })),
++      }]]),
++    });
++    try {
++      await pressCaptureControl(captureButton("Receipt"));
++      await pressCaptureControl(captureButton(`Open capture ${CAPTURE_ARTIFACT_A}`));
++    } finally {
++      await assert.rejects(() => mounted.unmount(), /Capture app cleanup failed: A10 root cleanup sentinel/u);
++    }
++    assert.equal(window.location.href, priorUrl);
++    assert.deepEqual(window.history.state, priorState);
++    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), priorAct);
++    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver"), priorResize);
++    assert.equal(document.body.childNodes.length, priorChildren.length);
++    assert.equal([...document.body.childNodes].every((node, i) => node === priorChildren[i]), true);
++  });
++
++  it("has every run-detail section arm either reachable or declared", async () => {
+     const arms = discriminantValues(RunDetailSectionResponseSchema, "section");
+     assert.ok(arms.length > 0, "the section union introspection found no arms at all");
+ 
+-    const { reachable, statesSwept } = reachableSections();
++    const { reachable, statesSwept } = await reachableSections();
+     // The sweep is only evidence if it covered every state the schema allows.
+     assert.deepEqual(
+       [...statesSwept].sort(),
+@@ -463,10 +599,128 @@
+     const references = clientRouteReferences(CLIENT_ROOTS.map((root) => join(REPO_ROOT, root)));
+     assert.ok(references.length > 10, "client path extraction found almost nothing; the scan is broken");
+ 
+-    const { problems } = await auditArchiveBrowser(archiveProbe(), { routes, references });
++    const archive = await auditArchiveBrowser(archiveProbe(), { routes, references });
++    assert.equal(archive.observation.state, "observed", archive.problems.join("\n"));
++    const { problems } = await auditRunCaptureBrowser(runCaptureProbe(), { routes, references: archive.references });
+     assert.deepEqual(problems, [], `wire connectivity — routes:\n  ${problems.join("\n  ")}`);
++  });
++
++  it.each([[CAPTURE_RUN_A, CAPTURE_ARTIFACT_A], [CAPTURE_RUN_B, CAPTURE_ARTIFACT_B]])(
++    "A10 credits only actual Receipt/Preview native sinks for run %s artifact %s", async (runId, artifactId) => {
++      const result = await auditRunCaptureBrowser(runCaptureProbe(runId, artifactId));
++      assert.equal(result.observation.state, "observed", result.problems.join("\n"));
++      if (result.observation.state !== "observed") throw new Error("Run capture observation refused");
++      assert.deepEqual(result.observation.references, [
++        { file: "src/dashboard/surfaces/run-captures.tsx", path: `/artifacts/v1/${artifactId}` },
++        { file: "src/dashboard/surfaces/run-captures.tsx", path: `/artifacts/v1/${artifactId}` },
++      ]);
++      assert.deepEqual(result.problems, [ARCHIVE_ORPHAN]);
++    },
++  );
++
++  for (const [name, selector, message] of [
++    ["download", "a[download]", /missing native download href sink/u],
++    ["image", "img[src]", /missing native image src sink/u],
++    ["both", "a[download], img[src]", /missing native download href sink/u],
++  ] as const) {
++    it(`A10 removing actual ${name} sinks retains observation failure and generic orphan`, async () => {
++      assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(), beforeObservation: withoutNativeSinks(selector) }), message);
++    });
++  }
++
++  it("A10 an unused builder supplies no generic consumption credit", async () => {
++    const unused = () => `/artifacts/v1/${CAPTURE_ARTIFACT_A}`;
++    assert.equal(typeof unused, "function");
++    assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(), beforeObservation: withoutNativeSinks("a[download], img[src]") }),
++      /missing native download href sink/u);
++  });
++
++  it("A10 refuses a foreign native image src even when its download href is correct", async () => {
++    assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(),
++      beforeObservation: changedNativeAttribute("img[src]", "src", `${CAPTURE_BASE_URL}/artifacts/v1/${CAPTURE_ARTIFACT_B}`),
++    }), /exact canonical generic artifact URL/u);
++  });
++
++  for (const [name, value] of [
++    ["foreign origin", `https://foreign.invalid/artifacts/v1/${CAPTURE_ARTIFACT_A}`],
++    ["foreign artifact", `${CAPTURE_BASE_URL}/artifacts/v1/${CAPTURE_ARTIFACT_B}`],
++    ["Archive arity", `${CAPTURE_BASE_URL}/artifacts/v1/archive/${CAPTURE_RUN_A}/${CAPTURE_ARTIFACT_A}`],
++    ["bundle arity", `${CAPTURE_BASE_URL}/artifacts/v1/diagnostic-bundles/${CAPTURE_RUN_A}/${CAPTURE_ARTIFACT_A}`],
++    ["extra segment", `${CAPTURE_BASE_URL}/artifacts/v1/${CAPTURE_ARTIFACT_A}/extra`],
++    ["query", `${CAPTURE_BASE_URL}/artifacts/v1/${CAPTURE_ARTIFACT_A}?extra=1`],
++  ]) {
++    it(`A10 refuses native ${name} instead of crediting another resource family`, async () => {
++      assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(),
++        beforeObservation: changedNativeAttribute("a[download]", "href", value),
++      }), /exact canonical generic artifact URL/u);
++    });
++  }
++
++  it.each(["foreign run", "foreign artifact", "wrong section", "extra key", "invalid origin"])(
++    "A10 refuses %s returned to the actual app", async fault => {
++      const capture = captureImage();
++      const response = fault === "wrong section" ? { section: "logs", payload: { runId: CAPTURE_RUN_A, rows: [], notes: [] } }
++        : { section: "captures", payload: { runId: fault === "foreign run" ? CAPTURE_RUN_B : CAPTURE_RUN_A,
++          artifacts: [fault === "foreign artifact" ? captureImage(CAPTURE_ARTIFACT_B)
++            : fault === "invalid origin" ? { ...capture, origins: [{ ...capture.origins[0], originKind: "invented" }] } : capture],
++          ...(fault === "extra key" ? { extra: true } : {}),
++        } };
++      assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(), response }),
++        fault === "foreign artifact" ? /foreign artifactId/u : /Run capture app read refused/u);
++    },
++  );
++
++  it("A10 preserves primary observation and real cleanup failures without granting credit", async () => {
++    const priorUrl = window.location.href;
++    const priorChildren = [...document.body.childNodes];
++    const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
++    const result = await auditRunCaptureBrowser({ ...runCaptureProbe(),
++      beforeObservation: () => { throw new Error("A10 primary observation sentinel"); },
++      onUnmount: () => { throw new Error("A10 secondary cleanup sentinel"); },
++    });
++    assertRefusedRunCapture(result, /primary observation sentinel.*secondary cleanup sentinel/u);
++    assert.equal(window.location.href, priorUrl);
++    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), priorAct);
++    assert.equal(document.body.childNodes.length, priorChildren.length);
++    assert.equal([...document.body.childNodes].every((node, i) => node === priorChildren[i]), true);
+   });
+ 
++  it("A10 a real root mount failure refuses credit and restores the pre-mount environment", async () => {
++    const priorUrl = window.location.href;
++    const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
++    const priorResize = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
++    const priorChildren = [...document.body.childNodes];
++    assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(),
++      onMount: () => { throw new Error("A10 mount sentinel"); },
++    }), /A10 mount sentinel/u);
++    assert.equal(window.location.href, priorUrl);
++    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), priorAct);
++    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver"), priorResize);
++    assert.equal(document.body.childNodes.length, priorChildren.length);
++    assert.equal([...document.body.childNodes].every((node, i) => node === priorChildren[i]), true);
++  });
++
++  it("A10 refuses foreign initial detail identity before claiming the lazy consumer", async () => {
++    assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(), detail: captureDetail(CAPTURE_RUN_B) }),
++      /initial detail returned a foreign runId/u);
++  });
++
++  it("A10 keeps native calls orphaned when the served generic route is removed", async () => {
++    const routes = servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8"));
++    const result = await auditRunCaptureBrowser(runCaptureProbe(), { routes: routes.filter(route => route.path !== GENERIC_ROUTE) });
++    assert.equal(result.observation.state, "observed");
++    const missing = `src/dashboard/surfaces/run-captures.tsx calls /artifacts/v1/${CAPTURE_ARTIFACT_A}, which ${API_ROUTES_FILE} does not register`;
++    assert.deepEqual(result.problems, [missing, missing, ARCHIVE_ORPHAN]);
++  });
++
++  it("A10 rejects a stale pending exception for the actually consumed generic route", async () => {
++    const pending = [...MANIFEST, PendingWireBindingSchema.parse({ binding: `route:GET ${GENERIC_ROUTE}`,
++      direction: "served-unconsumed", decision: "D292", note: "Test-only stale exception, never persisted." })];
++    const result = await auditRunCaptureBrowser(runCaptureProbe(), { pending });
++    assert.deepEqual(result.problems, [ARCHIVE_ORPHAN,
++      `config/pending-wire-bindings.json declares route:GET ${GENERIC_ROUTE} unconsumed, but a client now calls it`]);
++  });
++
+   it("A8 credits the actual mounted Archive parent native sinks and leaves the generic route open", async () => {
+     const beforeAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+     const result = await auditArchiveBrowser(archiveProbe());
+@@ -618,13 +872,13 @@
+    * fixtures exist: a check that has never been observed to fail is
+    * indistinguishable from a check that cannot.
+    */
+-  it("catches a synthesized orphan arm, a synthesized bad command key, and an unserved path", () => {
++  it("catches a synthesized orphan arm, a synthesized bad command key, and an unserved path", async () => {
+     const orphanUnion = RunDetailSectionResponseSchema.options[0]?.extend({});
+     assert.ok(orphanUnion !== undefined);
+ 
+     // (a) an arm the introspection sees but the reachable set does not.
+     const arms = [...discriminantValues(RunDetailSectionResponseSchema, "section"), "invented-section"];
+-    const { reachable } = reachableSections();
++    const { reachable } = await reachableSections();
+     assert.ok(!reachable.has("invented-section"));
+     assert.ok(arms.some((arm) => !reachable.has(arm) && arm === "invented-section"));
+ 
+--- a/tests/unit/architecture/helpers/run-capture-browser-route-references.ts
++++ b/tests/unit/architecture/helpers/run-capture-browser-route-references.ts
+@@ -0,0 +1,86 @@
++/** D292: actual DashboardApp → native Receipt/Preview → real query/parser → href/src.
++ * DOM connectivity only; this does not prove HTTP byte serving, decode or geometry. */
++import assert from "node:assert/strict";
++import { ArtifactIdSchema, RunIdSchema } from "../../../../src/domain/ids.js";
++import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../../src/domain/dashboard/run-detail.js";
++import {
++  CAPTURE_BASE_URL, captureButton, captureDialog, mountCaptureApp, pressCaptureControl,
++} from "../../dashboard/fixtures/run-captures-app-fixture.js";
++import type { ClientRouteReference } from "./wire-connectivity.js";
++
++export interface RunCaptureBrowserProbe {
++  readonly requestedRunId: string;
++  readonly artifactId: string;
++  readonly detail: unknown;
++  readonly response: unknown;
++  /** Restore exact native nodes/attributes before React cleanup. */
++  readonly beforeObservation?: (dialog: HTMLElement) => () => void;
++  /** A failure control in the mounted root's real effect cleanup. */
++  readonly onUnmount?: () => void;
++  readonly onMount?: () => void;
++}
++
++function message(error: unknown): string {
++  return error instanceof Error ? error.message : "non-Error failure";
++}
++
++export async function runCaptureBrowserRouteReferences(input: RunCaptureBrowserProbe): Promise<readonly ClientRouteReference[]> {
++  const runId = RunIdSchema.parse(input.requestedRunId);
++  const artifactId = ArtifactIdSchema.parse(input.artifactId);
++  let app: Awaited<ReturnType<typeof mountCaptureApp>> | undefined;
++  let restoreControl: (() => void) | undefined;
++  let references: readonly ClientRouteReference[] | undefined;
++  const failures: unknown[] = [];
++  try {
++    app = await mountCaptureApp({ runId, ...(input.onUnmount === undefined ? {} : { onUnmount: input.onUnmount }),
++      ...(input.onMount === undefined ? {} : { onMount: input.onMount }),
++      runs: new Map([[runId, { detail: () => input.detail, captures: () => Promise.resolve(Response.json(input.response)) }]]),
++    });
++    assert.deepEqual(app.requests.filter(request => request.url === `${CAPTURE_BASE_URL}/api/v1/runs/${runId}`).map(request => request.url),
++      [`${CAPTURE_BASE_URL}/api/v1/runs/${runId}`], "Run capture app did not request its exact initial detail");
++    assert.equal(RunDetailWireSchema.parse(input.detail).runId, runId, "Run capture initial detail returned a foreign runId");
++    assert.equal(app.requests.filter(request => request.url.endsWith("/captures")).length, 0,
++      "Run capture app fetched an inactive section");
++    await pressCaptureControl(captureButton("Receipt", app.host));
++    const region = app.host.querySelector('[aria-label="Run captures"]');
++    assert.ok(region instanceof HTMLElement, "Run capture app did not mount its Receipt capture section");
++    assert.deepEqual(app.requests.filter(request => request.url.endsWith("/captures")).map(request => request.url),
++      [`${CAPTURE_BASE_URL}/api/v1/runs/${runId}/captures`], "Run capture app requested a different run or section");
++    if (region.querySelector("a[download]") === null) {
++      throw new Error(`Run capture app read refused: ${region.textContent}`);
++    }
++    // The real client already parsed this external response on the observed
++    // request. Bind its served identities independently before crediting sinks.
++    const returned = RunDetailSectionResponseSchema.parse(input.response);
++    assert.equal(returned.section, "captures", "Run capture response named a different section");
++    if (returned.section !== "captures") throw new Error("Run capture section mismatch");
++    assert.equal(returned.payload.runId, runId, "Run capture response returned a foreign runId");
++    assert.equal(returned.payload.artifacts.length, 1, "Run capture probe requires one exact artifact");
++    assert.equal(returned.payload.artifacts[0]?.artifact.artifactId, artifactId, "Run capture response returned a foreign artifactId");
++    await pressCaptureControl(captureButton(`Open capture ${artifactId}`, region));
++    const dialog = captureDialog();
++    restoreControl = input.beforeObservation?.(dialog);
++    const links = dialog.querySelectorAll("a[download][href]");
++    const images = dialog.querySelectorAll("img[src]");
++    assert.equal(links.length, 1, "Run capture browser observation missing native download href sink");
++    assert.equal(images.length, 1, "Run capture browser observation missing native image src sink");
++    references = [links[0]?.getAttribute("href"), images[0]?.getAttribute("src")].map(raw => {
++      assert.equal(raw, `${CAPTURE_BASE_URL}/artifacts/v1/${artifactId}`,
++        "Run capture native sink must name its exact canonical generic artifact URL");
++      assert.ok(typeof raw === "string");
++      return { file: "src/dashboard/surfaces/run-captures.tsx", path: new URL(raw).pathname };
++    });
++  } catch (error) { failures.push(error); }
++  finally {
++    try { restoreControl?.(); } catch (error) { failures.push(error); }
++    try { await app?.unmount(); } catch (error) { failures.push(error); }
++    try {
++      for (const request of app?.requests.filter(request => request.url.endsWith("/captures")) ?? []) {
++        assert.equal(request.signal?.aborted, true, "Run capture app did not abort its owned read on unmount");
++      }
++    } catch (error) { failures.push(error); }
++  }
++  if (failures.length > 0) throw new AggregateError(failures, `Run capture browser observation failed: ${failures.map(message).join("; ")}`);
++  assert.ok(references !== undefined, "Run capture browser observation produced no result");
++  return references;
++}
+--- a/tests/unit/dashboard/fixtures/run-captures-app-fixture.ts
++++ b/tests/unit/dashboard/fixtures/run-captures-app-fixture.ts
+@@ -2,8 +2,8 @@
+  * No client method, parser, hook, or component is replaced. DOM declarations
+  * are observable here; this fixture provides no browser layout/decode proof. */
+ import assert from "node:assert/strict";
+-import { act, createElement } from "react";
+-import { createRoot } from "react-dom/client";
++import { act, createElement, Fragment, useEffect } from "react";
++import { createRoot, type Root } from "react-dom/client";
+ import type { z } from "zod";
+ import { DashboardApp } from "../../../../src/dashboard/app/dashboard-app.js";
+ import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
+@@ -118,15 +118,28 @@
+   disconnect(): void {}
+ }
+ 
++/** Test-only failure control in the real root's effect cleanup, not a fake root. */
++function CaptureFixtureLifetime({ onMount, onUnmount }: { onMount: (() => void) | undefined; onUnmount: (() => void) | undefined }) {
++  useEffect(() => { onMount?.(); return () => { onUnmount?.(); }; }, [onMount, onUnmount]);
++  return null;
++}
++
++function failureMessage(error: unknown): string {
++  return error instanceof Error ? error.message : "non-Error failure";
++}
++
+ export async function mountCaptureApp(input: {
+   readonly runId: string;
+   readonly runs: ReadonlyMap<string, CaptureAppRun>;
+   readonly section?: "logs" | "receipt";
++  readonly onUnmount?: () => void;
++  readonly onMount?: () => void;
+ }) {
+   const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+   const priorResize = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
+-  Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+-  Reflect.set(globalThis, "ResizeObserver", DeclarationOnlyResizeObserver);
++  const priorUrl = window.location.href;
++  const priorHistoryState: unknown = window.history.state;
++  const priorChildren = [...document.body.childNodes];
+   const requests: CaptureHttpRequest[] = [];
+   const unexpected: string[] = [];
+   let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
+@@ -156,25 +169,44 @@
+     throw new Error(`Closed capture-app fixture has no response for ${url}`);
+   } });
+   const host = document.createElement("div");
+-  document.body.append(host);
+-  window.history.replaceState(null, "", `/?run=${input.runId}&section=${input.section ?? "logs"}`);
+-  const root = createRoot(host);
++  let root: Root | undefined;
+   const unmount = async () => {
+-    await act(async () => { root.unmount(); });
+-    host.remove();
+-    window.history.replaceState(null, "", "/");
++    const failures: unknown[] = [];
++    try { await act(async () => { root?.unmount(); }); } catch (error) { failures.push(error); }
++    finally { root = undefined; }
++    try { host.remove(); } catch (error) { failures.push(error); }
++    try { window.history.replaceState(priorHistoryState, "", priorUrl); } catch (error) { failures.push(error); }
+     for (const [key, descriptor] of [["IS_REACT_ACT_ENVIRONMENT", priorAct], ["ResizeObserver", priorResize]] as const) {
+-      if (descriptor === undefined) Reflect.deleteProperty(globalThis, key);
+-      else Object.defineProperty(globalThis, key, descriptor);
++      try {
++        if (descriptor === undefined) Reflect.deleteProperty(globalThis, key);
++        else Object.defineProperty(globalThis, key, descriptor);
++      } catch (error) { failures.push(error); }
+     }
+-    assert.deepEqual(unexpected, [], "the app crossed an undeclared fixture boundary");
++    try {
++      const children = [...document.body.childNodes];
++      assert.equal(children.length === priorChildren.length && children.every((node, i) => node === priorChildren[i]), true,
++        "Capture app cleanup left a portal or changed foreign DOM; no foreign node was removed as cleanup");
++      assert.deepEqual(unexpected, [], "the app crossed an undeclared fixture boundary");
++    } catch (error) { failures.push(error); }
++    if (failures.length > 0) {
++      throw new AggregateError(failures, `Capture app cleanup failed: ${failures.map(failureMessage).join("; ")}`);
++    }
+   };
+   try {
+-    await act(async () => { root.render(createElement(DashboardClientProvider, {
+-      client, children: createElement(DashboardApp),
++    Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
++    Reflect.set(globalThis, "ResizeObserver", DeclarationOnlyResizeObserver);
++    document.body.append(host);
++    window.history.replaceState(null, "", `/?run=${input.runId}&section=${input.section ?? "logs"}`);
++    const mounted = createRoot(host);
++    root = mounted;
++    await act(async () => { mounted.render(createElement(DashboardClientProvider, {
++      client, children: createElement(Fragment, null, createElement(DashboardApp),
++        createElement(CaptureFixtureLifetime, { onMount: input.onMount, onUnmount: input.onUnmount })),
+     })); });
+   } catch (error) {
+-    await unmount();
++    try { await unmount(); } catch (cleanupError) {
++      throw new AggregateError([error, cleanupError], `Capture app mount and cleanup failed: ${failureMessage(error)}; ${failureMessage(cleanupError)}`, { cause: cleanupError });
++    }
+     throw error;
+   }
+   return { client, host, requests, unmount,
+--- a/tests/parity/helpers/fixture-bff.ts
++++ b/tests/parity/helpers/fixture-bff.ts
+@@ -51,6 +51,8 @@
+   FIXTURE_ARCHIVE_EVIDENCE_RUN,
+   FIXTURE_ARCHIVE_EVIDENCE_INDEX,
+ } from "./fixture-archive-evidence.js";
++import { FIXTURE_RUN_CAPTURE_DAY, FIXTURE_RUN_CAPTURE_DETAILS, FIXTURE_RUN_CAPTURE_SECTIONS,
++  FIXTURE_RUN_CAPTURE_REFS, runCaptureFixtureBytes } from "./fixture-run-captures.js";
+ import {
+   activityReportCsv,
+   activityReportCsvFileName,
+@@ -135,11 +137,12 @@
+ });
+ 
+ export function createFixtureBff(
+-  input: Readonly<{ profile?: FixtureDashboardProfile; dayWire?: DashboardDayWire; archiveScenario?: "evidence" }> = {},
++  input: Readonly<{ profile?: FixtureDashboardProfile; dayWire?: DashboardDayWire; archiveScenario?: "evidence"; runCaptureScenario?: "evidence" }> = {},
+ ): { app: Hono } {
+   const app = new Hono();
+   const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
+-  const dayWire = input.dayWire ?? profile.day;
++  const runCaptureEvidence = input.runCaptureScenario === "evidence";
++  const dayWire = input.dayWire ?? (runCaptureEvidence ? FIXTURE_RUN_CAPTURE_DAY : profile.day);
+   const archiveEvidence = input.archiveScenario === "evidence";
+   const archivedRun = archiveEvidence ? FIXTURE_ARCHIVE_EVIDENCE_RUN : FIXTURE_ARCHIVED_RUN;
+ 
+@@ -154,7 +157,9 @@
+   });
+ 
+   app.get("/api/v1/runs/:runId", (c) => {
+-    const detail = FIXTURE_RUN_DETAILS[c.req.param("runId")];
++    const runId = c.req.param("runId");
++    const detail = runCaptureEvidence && FIXTURE_RUN_CAPTURE_DETAILS[runId] !== undefined
++      ? FIXTURE_RUN_CAPTURE_DETAILS[runId] : FIXTURE_RUN_DETAILS[runId];
+     if (detail === undefined) {
+       return c.json(wireError("TARGET_NOT_FOUND", `no fixture run detail for ${c.req.param("runId")}`), 404);
+     }
+@@ -162,6 +167,10 @@
+   });
+ 
+   app.get("/api/v1/runs/:runId/:section", (c) => {
++    if (runCaptureEvidence && c.req.param("section") === "captures") {
++      const captures = FIXTURE_RUN_CAPTURE_SECTIONS[c.req.param("runId")];
++      if (captures !== undefined) return c.json(captures);
++    }
+     const sections = FIXTURE_SECTIONS[c.req.param("runId")];
+     const section = sections?.[c.req.param("section")];
+     if (section === undefined) {
+@@ -249,6 +258,19 @@
+         "x-content-type-options": "nosniff",
+       },
+     });
++  });
++  app.get("/artifacts/v1/:artifactId", (c) => {
++    const artifactId = c.req.param("artifactId");
++    const ref = FIXTURE_RUN_CAPTURE_REFS[artifactId];
++    const bytes = runCaptureEvidence ? runCaptureFixtureBytes(artifactId) : undefined;
++    if (ref === undefined || bytes === undefined) {
++      return c.json(wireError("TARGET_NOT_FOUND", `no generic fixture artifact ${artifactId}`), 404);
++    }
++    return new Response(bytes, { status: 200, headers: {
++      "content-type": ref.mediaType, "content-length": String(bytes.byteLength),
++      "content-disposition": `attachment; filename="capture-${artifactId}"`,
++      "cache-control": "no-store", "x-content-type-options": "nosniff",
++    } });
+   });
+   app.get("/api/v1/reports/activity", (c) => {
+     const from = c.req.query("from");
+@@ -478,6 +500,7 @@
+     profile?: FixtureDashboardProfile;
+     dayWire?: DashboardDayWire;
+     archiveScenario?: "evidence";
++    runCaptureScenario?: "evidence";
+   }>,
+ ): Promise<FixtureServer> {
+   // Ref frontend-backend-integration §7: a served bundle must provably be a build of the working tree.
+@@ -485,8 +508,11 @@
+   // reached over HTTP — and never leaks a listening socket on refusal.
+   assertServedBundle(input.distDir, input.bundle);
+   const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
+-  const dayWire = input.dayWire ?? profile.day;
+-  const { app } = createFixtureBff({ profile, dayWire, ...(input.archiveScenario === undefined ? {} : { archiveScenario: input.archiveScenario }) });
++  const dayWire = input.dayWire ?? (input.runCaptureScenario === "evidence" ? FIXTURE_RUN_CAPTURE_DAY : profile.day);
++  const { app } = createFixtureBff({ profile, dayWire,
++    ...(input.archiveScenario === undefined ? {} : { archiveScenario: input.archiveScenario }),
++    ...(input.runCaptureScenario === undefined ? {} : { runCaptureScenario: input.runCaptureScenario }),
++  });
+   const openStreams = new Set<ServerResponse>();
+ 
+   const server: Server = createServer((req, res) => {
+@@ -496,10 +522,14 @@
+         serveSse(res, openStreams, profile, dayWire);
+         return;
+       }
+-      // Artifact bytes share the API app, but not its /api/ namespace. Match
+-      // only the declared Archive route; neighboring static assets stay static.
++      // Byte lookups never fall back to static success. Keep Archive's exact
++      // route independent; generic UUID descendants and extensionless invalid
++      // lookups reach the app's 404. Named static files (archive-help.html,
++      // archive-notes/readme.json) remain outside this generic identity lane.
+       const archiveCapture = /^\/artifacts\/v1\/archive\/[^/]+\/[^/]+$/u.test(url.pathname);
+-      if (url.pathname.startsWith("/api/") || archiveCapture) {
++      const genericCapture = /^\/artifacts\/v1\/(?!archive(?:\/|$))[^/.]+(?:\/[^/.]+)*$/u.test(url.pathname)
++        || /^\/artifacts\/v1\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:[/.]|$)/iu.test(url.pathname);
++      if (url.pathname.startsWith("/api/") || archiveCapture || genericCapture) {
+         const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
+         const response = await app.fetch(new Request(`http://127.0.0.1${url.pathname}${url.search}`, {
+           method: req.method ?? "GET",
+--- a/tests/parity/helpers/fixture-run-captures.ts
++++ b/tests/parity/helpers/fixture-run-captures.ts
+@@ -0,0 +1,75 @@
++/** Opt-in D292 Receipt evidence. Existing corpus records and image files stay unchanged.
++ * Image bytes are the encoder-produced corpus in capture-image-fixtures.ts;
++ * dimensions come from its real format parser, never synthetic DOM metadata. */
++import { createHash } from "node:crypto";
++import { deepFreeze } from "../../../src/domain/immutability.js";
++import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
++import { RunCaptureArtifactWireSchema, RunDetailSectionResponseSchema, RunDetailWireSchema,
++  type RunCaptureArtifactWire, type RunDetailSectionResponse, type RunDetailWire } from "../../../src/domain/dashboard/run-detail.js";
++import { embedCaptureImage } from "../../../src/infra/capture/pdf-bytes.js";
++import { BASELINE_JPEG_BASE64, TRUECOLOUR_PNG_BASE64 } from "../../unit/fixtures/capture-image-fixtures.js";
++import { FIXTURE_DAY_WIRE, FIXTURE_IDS, FIXTURE_RUN_DETAILS } from "./fixture-day.js";
++
++export const RUN_CAPTURE_FIXTURE_IDS = deepFreeze({
++  png: "00000000-0000-4000-8000-00000000c101",
++  jpeg: "00000000-0000-4000-8000-00000000c102",
++  data: "00000000-0000-4000-8000-00000000c103",
++});
++const bytesById = new Map([
++  [RUN_CAPTURE_FIXTURE_IDS.png, Buffer.from(TRUECOLOUR_PNG_BASE64, "base64")],
++  [RUN_CAPTURE_FIXTURE_IDS.jpeg, Buffer.from(BASELINE_JPEG_BASE64, "base64")],
++  [RUN_CAPTURE_FIXTURE_IDS.data, Buffer.from('{"fixture":"run-capture"}\n')],
++]);
++
++/** An owned Response-compatible copy; callers cannot mutate the canonical fixture source. */
++export function runCaptureFixtureBytes(artifactId: string): Uint8Array<ArrayBuffer> | undefined {
++  const bytes = bytesById.get(artifactId);
++  return bytes === undefined ? undefined : new Uint8Array(bytes);
++}
++
++function captureOf(artifactId: string, mediaType: "image/png" | "image/jpeg" | "application/json",
++  origins: RunCaptureArtifactWire["origins"]): RunCaptureArtifactWire {
++  const bytes = bytesById.get(artifactId);
++  if (bytes === undefined) throw new Error(`The run-capture fixture lost bytes for ${artifactId}`);
++  const facts = { artifactId, mediaType, byteLength: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
++  if (mediaType === "application/json") return RunCaptureArtifactWireSchema.parse({ origins,
++    artifact: { ...facts, mediaKind: "data", sensitivity: "restricted", redaction: "restricted-access" } });
++  const image = embedCaptureImage(artifactId, mediaType, bytes);
++  return RunCaptureArtifactWireSchema.parse({ origins, artifact: { ...facts, mediaKind: "image",
++    width: image.width, height: image.height, sensitivity: "safe", redaction: "not-required" } });
++}
++
++const allOrigins = RunCaptureArtifactWireSchema.shape.origins.parse([
++  { bundleId: "00000000-0000-4000-8000-00000000b101", originKind: "operator-request" },
++  { bundleId: "00000000-0000-4000-8000-00000000b102", originKind: "failure" },
++  { bundleId: "00000000-0000-4000-8000-00000000b103", originKind: "unexpected-state" },
++  { bundleId: "00000000-0000-4000-8000-00000000b104", originKind: "subject-mismatch" },
++  { bundleId: "00000000-0000-4000-8000-00000000b105", originKind: "recovery-park" },
++]);
++const operator = allOrigins.filter(origin => origin.originKind === "operator-request");
++const artifactsByRun = new Map([
++  [FIXTURE_IDS.failedRun, [captureOf(RUN_CAPTURE_FIXTURE_IDS.png, "image/png", allOrigins)]],
++  [FIXTURE_IDS.doneRun, [captureOf(RUN_CAPTURE_FIXTURE_IDS.jpeg, "image/jpeg", operator),
++    captureOf(RUN_CAPTURE_FIXTURE_IDS.data, "application/json", operator)]],
++]);
++
++export const FIXTURE_RUN_CAPTURE_DETAILS: Readonly<Record<string, RunDetailWire>> = deepFreeze(Object.fromEntries(
++  [...artifactsByRun].map(([runId, artifacts]) => {
++    const base = FIXTURE_RUN_DETAILS[runId];
++    if (base === undefined) throw new Error(`The run-capture fixture has no original run ${runId}`);
++    return [runId, RunDetailWireSchema.parse({ ...base, captures: { state: "available", artifactCount: artifacts.length },
++      availableSections: [...base.availableSections, "captures"] })];
++  }),
++));
++export const FIXTURE_RUN_CAPTURE_SECTIONS: Readonly<Record<string, RunDetailSectionResponse>> = deepFreeze(Object.fromEntries(
++  [...artifactsByRun].map(([runId, artifacts]) => [runId, RunDetailSectionResponseSchema.parse({ section: "captures", payload: { runId, artifacts } })]),
++));
++export const FIXTURE_RUN_CAPTURE_REFS = deepFreeze(Object.fromEntries(
++  [...artifactsByRun.values()].flat().map(capture => [capture.artifact.artifactId, capture.artifact]),
++));
++export const FIXTURE_RUN_CAPTURE_DAY = deepFreeze(DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE,
++  queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row => {
++    const detail = FIXTURE_RUN_CAPTURE_DETAILS[row.runId];
++    return detail === undefined ? row : { ...row, availableSections: detail.availableSections };
++  }),
++}));
+--- a/tests/unit/dashboard/run-captures-fixture.test.ts
++++ b/tests/unit/dashboard/run-captures-fixture.test.ts
+@@ -0,0 +1,159 @@
++import assert from "node:assert/strict";
++import { createHash } from "node:crypto";
++import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { dirname, join } from "node:path";
++import { it } from "vitest";
++import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/domain/dashboard/run-detail.js";
++import { startFixtureServer, type FixtureServer } from "../../parity/helpers/fixture-bff.js";
++import { FIXTURE_BOOTSTRAP, FIXTURE_IDS, FIXTURE_RUN_DETAILS, FIXTURE_SECTIONS } from "../../parity/helpers/fixture-day.js";
++import { BASELINE_JPEG_BASE64, TRUECOLOUR_PNG_BASE64 } from "../fixtures/capture-image-fixtures.js";
++import { FIXTURE_ARCHIVE_INDEX } from "../../parity/helpers/fixture-archive.js";
++
++async function withRunCaptureHttp(scenario: "evidence" | undefined, check: (server: FixtureServer, distDir: string) => Promise<void>) {
++  const distDir = mkdtempSync(join(tmpdir(), "dca4-generic-http-"));
++  try {
++    const server = await startFixtureServer({ distDir, ...(scenario === undefined ? {} : { runCaptureScenario: scenario }),
++      bundle: { proof: "unverified", reason: "HTTP-only unit fixture; no rendered bundle" } });
++    try { await check(server, distDir); } finally { await server.close(); }
++  } finally { rmSync(distDir, { recursive: true, force: true }); }
++}
++
++function staticProbe(distDir: string, path: string, text: string): void {
++  const target = join(distDir, path);
++  mkdirSync(dirname(target), { recursive: true });
++  writeFileSync(target, text);
++}
++
++it("serves the advertised exact generic JPEG and data captures over owned ephemeral HTTP", async () => {
++  const distDir = mkdtempSync(join(tmpdir(), "dca4-generic-http-"));
++  try {
++    const server = await startFixtureServer({ distDir, runCaptureScenario: "evidence",
++      bundle: { proof: "unverified", reason: "HTTP-only unit fixture; no rendered bundle" } });
++    try {
++      const response = await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.doneRun}`);
++      assert.equal(response.status, 200);
++      const detail = RunDetailWireSchema.parse(await response.json());
++      assert.deepEqual(detail.captures, { state: "available", artifactCount: 2 });
++      assert.equal(detail.availableSections.includes("captures"), true);
++      const sectionResponse = await fetch(`${server.baseUrl}/api/v1/runs/${detail.runId}/captures`);
++      assert.equal(sectionResponse.status, 200);
++      const section = RunDetailSectionResponseSchema.parse(await sectionResponse.json());
++      assert.equal(section.section, "captures");
++      if (section.section !== "captures") throw new Error("Expected captures");
++      assert.equal(section.payload.runId, detail.runId);
++      assert.equal(section.payload.artifacts.length, 2);
++      const jpeg = section.payload.artifacts[0]?.artifact;
++      assert.ok(jpeg);
++      assert.equal(jpeg.artifactId, "00000000-0000-4000-8000-00000000c102");
++      const download = await fetch(`${server.baseUrl}/artifacts/v1/${jpeg.artifactId}`);
++      assert.equal(download.status, 200);
++      assert.equal(download.headers.get("content-type"), "image/jpeg");
++      const bytes = Buffer.from(await download.arrayBuffer());
++      assert.deepEqual(bytes, Buffer.from(BASELINE_JPEG_BASE64, "base64"));
++      assert.equal(jpeg.sha256, createHash("sha256").update(bytes).digest("hex"));
++      assert.equal(jpeg.byteLength, bytes.length);
++      assert.equal(jpeg.mediaKind, "image");
++      if (jpeg.mediaKind !== "image") throw new Error("Expected JPEG image");
++      assert.deepEqual([jpeg.width, jpeg.height], [16, 12]);
++      const data = section.payload.artifacts[1]?.artifact;
++      assert.ok(data);
++      assert.equal(data.artifactId, "00000000-0000-4000-8000-00000000c103");
++      assert.equal(data.mediaKind, "data");
++      assert.equal(data.sensitivity, "restricted");
++      const dataResponse = await fetch(`${server.baseUrl}/artifacts/v1/${data.artifactId}`);
++      assert.equal(dataResponse.status, 200);
++      assert.equal(dataResponse.headers.get("content-type"), "application/json");
++      const dataBytes = Buffer.from(await dataResponse.arrayBuffer());
++      assert.deepEqual(dataBytes, Buffer.from('{"fixture":"run-capture"}\n'));
++      assert.equal(data.byteLength, dataBytes.length);
++      assert.equal(data.sha256, createHash("sha256").update(dataBytes).digest("hex"));
++      for (const [resource, id, length] of [[download, jpeg.artifactId, bytes.length], [dataResponse, data.artifactId, dataBytes.length]] as const) {
++        assert.equal(resource.headers.get("cache-control"), "no-store");
++        assert.equal(resource.headers.get("x-content-type-options"), "nosniff");
++        assert.equal(resource.headers.get("content-length"), String(length));
++        assert.equal(resource.headers.get("content-disposition"), `attachment; filename="capture-${id}"`);
++      }
++    } finally { await server.close(); }
++  } finally { rmSync(distDir, { recursive: true, force: true }); }
++});
++
++it("serves the exact PNG with all five closed origins and dimensions from its real bytes", async () => {
++  await withRunCaptureHttp("evidence", async server => {
++    const response = await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.failedRun}/captures`);
++    assert.equal(response.status, 200);
++    const section = RunDetailSectionResponseSchema.parse(await response.json());
++    if (section.section !== "captures") throw new Error("Expected captures");
++    assert.equal(section.payload.runId, FIXTURE_IDS.failedRun);
++    assert.equal(section.payload.artifacts.length, 1);
++    const capture = section.payload.artifacts[0];
++    assert.ok(capture);
++    assert.deepEqual(capture.origins, [
++      { bundleId: "00000000-0000-4000-8000-00000000b101", originKind: "operator-request" },
++      { bundleId: "00000000-0000-4000-8000-00000000b102", originKind: "failure" },
++      { bundleId: "00000000-0000-4000-8000-00000000b103", originKind: "unexpected-state" },
++      { bundleId: "00000000-0000-4000-8000-00000000b104", originKind: "subject-mismatch" },
++      { bundleId: "00000000-0000-4000-8000-00000000b105", originKind: "recovery-park" },
++    ]);
++    const artifact = capture.artifact;
++    assert.equal(artifact.artifactId, "00000000-0000-4000-8000-00000000c101");
++    const download = await fetch(`${server.baseUrl}/artifacts/v1/${artifact.artifactId}`);
++    assert.equal(download.status, 200);
++    assert.equal(download.headers.get("content-type"), "image/png");
++    const bytes = Buffer.from(await download.arrayBuffer());
++    assert.deepEqual(bytes, Buffer.from(TRUECOLOUR_PNG_BASE64, "base64"));
++    assert.equal(artifact.sha256, createHash("sha256").update(bytes).digest("hex"));
++    assert.equal(artifact.byteLength, bytes.length);
++    if (artifact.mediaKind !== "image") throw new Error("Expected PNG image");
++    assert.deepEqual([artifact.width, artifact.height], [10, 14]);
++    assert.deepEqual([bytes.readUInt32BE(16), bytes.readUInt32BE(20)], [10, 14]);
++  });
++});
++
++it.each([
++  "/artifacts/v1/00000000-0000-4000-8000-00000000c999",
++  "/artifacts/v1/not-an-artifact-id",
++  "/artifacts/v1/00000000-0000-4000-8000-00000000c102/extra",
++  "/artifacts/v1/00000000-0000-4000-8000-00000000c102/extra.json",
++  "/artifacts/v1/not-an-artifact-id/extra",
++])("refuses generic artifact path %s without static-file substitution", async path => {
++  await withRunCaptureHttp("evidence", async (server, distDir) => {
++    staticProbe(distDir, path, "<html>not the requested artifact</html>");
++    const response = await fetch(`${server.baseUrl}${path}`);
++    assert.equal(response.status, 404, `invalid artifact path escaped to static: ${path}`);
++    assert.notEqual(await response.text(), "<html>not the requested artifact</html>");
++  });
++});
++
++it("keeps generic evidence opt-in and preserves original run, section and Archive facts", async () => {
++  await withRunCaptureHttp(undefined, async (server, distDir) => {
++    const path = "/artifacts/v1/00000000-0000-4000-8000-00000000c102";
++    staticProbe(distDir, path, "no scenario selected");
++    assert.equal((await fetch(`${server.baseUrl}${path}`)).status, 404);
++    assert.deepEqual(await (await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.doneRun}`)).json(), FIXTURE_RUN_DETAILS[FIXTURE_IDS.doneRun]);
++    assert.deepEqual(await (await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.doneRun}/receipt`)).json(), FIXTURE_SECTIONS[FIXTURE_IDS.doneRun]?.receipt);
++    assert.equal((await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.doneRun}/captures`)).status, 404);
++    assert.deepEqual(await (await fetch(`${server.baseUrl}/api/v1/archive`)).json(), FIXTURE_ARCHIVE_INDEX);
++  });
++});
++
++it("preserves ordinary API and named static assets beside the generic byte namespace", async () => {
++  await withRunCaptureHttp("evidence", async (server, distDir) => {
++    assert.deepEqual(await (await fetch(`${server.baseUrl}/api/v1/bootstrap`)).json(), FIXTURE_BOOTSTRAP);
++    assert.deepEqual(await (await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.queuedRun}`)).json(), FIXTURE_RUN_DETAILS[FIXTURE_IDS.queuedRun]);
++    assert.equal((await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.queuedRun}/captures`)).status, 404);
++    for (const [path, body, mime] of [
++      ["/index.html", "<html>HTTP fixture only</html>", "text/html; charset=utf-8"],
++      ["/assets/probe.css", "body{}", "text/css; charset=utf-8"],
++      ["/artifacts/logo.svg", "<svg></svg>", "image/svg+xml"],
++      ["/artifacts/v1/archive-help.html", "Archive help", "text/html; charset=utf-8"],
++      ["/artifacts/v1/archive-notes/readme.json", "{}", "application/json; charset=utf-8"],
++    ] as const) {
++      staticProbe(distDir, path, body);
++      const response = await fetch(`${server.baseUrl}${path === "/index.html" ? "/" : path}`);
++      assert.equal(response.status, 200, path);
++      assert.equal(response.headers.get("content-type"), mime, path);
++      assert.equal(await response.text(), body, path);
++    }
++  });
++});
+--- a/src/dashboard/AGENTS.md
++++ b/src/dashboard/AGENTS.md
+@@ -26,6 +26,17 @@
+ 
+ ### Dated lessons
+ 
++- **2026-08-30 — a URL builder is not mounted-consumer evidence.** The generic capture guard mounts
++  the actual DashboardApp, opens native Receipt/Preview controls through the real client/parser,
++  and validates observed href/src against exact run/artifact identity before shared two-direction
++  accounting. Keep generic one-ID and Archive two-ID observations independent; observation or
++  cleanup failure grants no credit. The async section census must verify canonical SQLite
++  diagnostic authority and bytes, not add an available constant. Fixture cleanup restores prior
++  history/globals even when root cleanup throws and never deletes foreign DOM. Generic fixture
++  bytes are opt-in (`runCaptureScenario: "evidence"`), copied unchanged from real encoder fixtures;
++  exact metadata comes from those bytes. Invalid UUID-rooted/extensionless artifact lookups must
++  refuse rather than fall through to static success, while named static assets remain static. (D292)
++
+ - **2026-08-30 — requested capture previews declare eager loading explicitly.** The native image's
+   implicit loading behavior did not satisfy the JSX loading ratchet. Keep `loading="eager"` on
+   Archive's requested preview, pin that declaration in rendered DOM, and retain decode-owned
+--- a/docs/rebuild/reference/dashboard-surfaces.md
++++ b/docs/rebuild/reference/dashboard-surfaces.md
+@@ -2977,8 +2977,11 @@
+ generation and selection; replacement invalidates before passive effects and rejects late success
+ or error. Native generic artifact downloads retain the complete byte metadata and all origins;
+ image previews wait for the mounted image's decode and exact declared dimensions. Whole-app DOM
+-tests exercise the real client/parser, native controls, literal framing and focus return. Browser
+-geometry/pixel acceptance, connectivity-guard recognition and integration gates remain pending.
++tests exercise the real client/parser, native controls, literal framing and focus return. The
++mounted generic and independent Archive collectors now satisfy shared two-direction route
++accounting; the async capture capability census uses verified SQLite diagnostic authority. An
++opt-in fixture profile proves exact generic image/data bytes over real ephemeral HTTP. Browser
++geometry/pixel acceptance and integration gates remain pending.
+ 
+ #### The timeline is CATEGORICAL (D225)
+ 
+--- a/docs/rebuild/reference/frontend-backend-integration.md
++++ b/docs/rebuild/reference/frontend-backend-integration.md
+@@ -777,7 +777,7 @@
+ 
+ | Capability | State | Owner / trigger |
+ |---|---|---|
+-| **Generic artifact resources** | DCA3 now serves verified `ArtifactRefWireSchema` metadata with D292 origins through the lazy run captures section. DCA1's `GET /artifacts/v1/:artifactId` serves exact diagnostic-index-authorized bytes; DCA4's separate archived-capture route serves only frozen archive references. The generic `ArtifactResourceWireSchema` status family and mounted run capture consumer remain unserved. No route admits arbitrary stored ids or completes the generic gallery. | `legacy-route-files`; the remaining generic resource/captures gallery work keeps its owner |
++| **Generic artifact resources** | DCA3 now serves verified `ArtifactRefWireSchema` metadata with D292 origins through the lazy run captures section. DCA1's `GET /artifacts/v1/:artifactId` serves exact diagnostic-index-authorized bytes; DCA4's separate archived-capture route serves only frozen archive references. D292's mounted Receipt capture consumer is built; the generic `ArtifactResourceWireSchema` status family remains unserved. No route admits arbitrary stored ids or completes the generic gallery. | `legacy-route-files`; the remaining generic resource/captures gallery work keeps its owner |
+ | **Cross-date run search** — `GET /api/v1/search?q=` | absent. The Top Bar's search filters **the day already served** (`day-search-model.ts`), and the surface says so in its own header rather than implying more. | `legacy-route-search`, D184 → `{#def-search-export}` |
+ | **The explorer's live-run overlay** — `?runId=` | absent. `GET /api/v1/explorer` serves the static descriptor graph; no overlay parameter exists. | `{#def-explorer-edit}`'s sibling work; recorded here rather than implied by §1.1's row |
+ | **Excel export** | absent. The one export served is the Activity report as **CSV** (D240). The xlsx sink exists as a retention sink and is uncomposed in production (D164). | `{#def-search-export}` |
+@@ -854,9 +854,15 @@
+ invalidates the read and selection synchronously; abort and generation checks reject late success
+ and error. The actual typed client supplies the generic one-artifact URL to native `img`/download
+ sinks, with all origin labels, byte metadata and sensitivity warnings retained. Whole-app DOM
+-tests pin these controls, strict parsing and image load/decode refusal. Connectivity-guard
+-recognition and browser rendered acceptance remain pending; DOM declarations do not prove HTTP
+-bytes, computed geometry, coarse-pointer hit regions or pixels.
++tests pin these controls, strict parsing and image load/decode refusal. The connectivity guard
++observes the actual app's native href/src and validates exact generic identity before joining the
++independent Archive collector through unchanged two-direction accounting. The section census adds
++the async capability only after real SQLite diagnostic authority and bytes pass public reads.
++An explicit `runCaptureScenario: "evidence"` fixture profile serves existing encoder PNG/JPEG and
++data bytes unchanged through exact generic routes; ephemeral HTTP tests pin status, MIME, body,
++metadata, scenario isolation and invalid-path refusal without a static success fallback. Browser
++rendered acceptance and integration gates remain pending; neither DOM nor HTTP proof establishes
++computed geometry, coarse-pointer hit regions or pixels.
+ 
+ <!-- roadmap-status: def-search-export -->
+ - [x] the within-day search the shell actually needs — `surfaces/day-search.tsx` + `day-search-model.ts`, over the served day

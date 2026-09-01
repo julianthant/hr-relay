@@ -1,0 +1,7 @@
+{
+  "chunk_id": "6cecdd",
+  "wall_time_seconds": 0.016472333,
+  "exit_code": 0,
+  "original_token_count": 78,
+  "output": "{\"scopeFilesMatched\":10,\"index\":\"\",\"protectedCount\":1857,\"protectedDigest\":\"843361eca38113e12ace58078f1b6ed93da65d1ddf7c67899cf25d094fac4579\",\"reportSha256\":\"4a009c7712f3fc0ea41d7779f2aab26d20bb755985c0e903d0dcade59983278f\",\"gateIndexSha256\":\"9450077e74429d18304142eff6aca15f2b4b8f22bdb7b69ca9e5dc07de8bf33c\"}\n"
+}

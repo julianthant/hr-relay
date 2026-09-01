@@ -1,0 +1,19 @@
+{
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "uiAggregate": "3c89958afe63d1b8c0b5b8e8d01fffff25e94d89a2cbbc517ec7b799cdb4d461",
+  "browserSpec": "e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0",
+  "scope": [
+    "AGENTS.md",
+    "tests/unit/architecture/helpers/wire-connectivity.ts",
+    "tests/unit/architecture/helpers/archive-browser-route-references.ts",
+    "tests/unit/architecture/wire-connectivity.test.ts"
+  ],
+  "protectedSha256": "db758be755d311d2ee062a4242c17686b5829364bce6a1dd8a66f8c6dc25d329",
+  "protectedCount": 1626,
+  "accountingBodyUnchanged": true,
+  "scannerAndMatcherUnchanged": true,
+  "clientRootsUnchanged": true,
+  "oldNegativeAndMirrorManifestCasesUnchanged": true,
+  "lostCreditNegativeRestoredExactly": true,
+  "acceptedBrowserProof": false
+}

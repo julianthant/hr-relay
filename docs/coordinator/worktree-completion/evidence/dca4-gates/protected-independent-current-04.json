@@ -1,0 +1,14 @@
+{
+  "currentMapProvenance": "Fresh current map captured after all executed gate04 commands; NOT the original before map.",
+  "currentCount": 1622,
+  "independentNulListedCount": 1622,
+  "currentMapRecomputedDigest": "68ea761f5fb644c0cbf83a42bc4edf005489f1d9a662daea650a6b60efd1b1f6",
+  "independentNulListIncrementalDigest": "68ea761f5fb644c0cbf83a42bc4edf005489f1d9a662daea650a6b60efd1b1f6",
+  "originalPreCommandDigestAsReceived": "68ea761f5fb644c0cbf83a42bc4edf005489f1d9a662daea650a6b60efd1b1f6",
+  "allThreeMatch": true,
+  "originalSerializedMapCount": 1426,
+  "originalSerializedMapDigest": "fab8379923af85b5eaf5acad4861df09c1388718db20c9f858246eb68280d6a3",
+  "originalImpossibleKey": "tests/parity/references/intake-upload--paper-ink--1…6853 tokens truncated…per-ink--narrow-1024x768.a11y.yml",
+  "specHash": "e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0",
+  "specMatchesSavedBaseline": true
+}

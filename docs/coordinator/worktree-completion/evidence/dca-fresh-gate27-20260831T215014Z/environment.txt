@@ -1,0 +1,6 @@
+HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation
+PARITY_UPDATE=unset
+repository=/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+branch=
+lock=/tmp/hr-dashboard-full-gate.lock
+started_utc=

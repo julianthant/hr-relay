@@ -1,0 +1,597 @@
+--- a/src/domain/dashboard/artifacts.ts
++++ b/src/domain/dashboard/artifacts.ts
+@@ -24,7 +24,7 @@
+   }),
+   ArtifactBaseSchema.extend({
+     mediaKind: z.literal("data"),
+-    mediaType: z.enum(["application/json", "text/plain", "text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]),
++    mediaType: z.enum(["application/json", "text/yaml", "text/plain", "text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]),
+   }),
+ ]);
+ 
+--- a/src/domain/dashboard/run-detail.ts
++++ b/src/domain/dashboard/run-detail.ts
+@@ -35,7 +35,7 @@
+   WriteStateSchema,
+ } from "../trust/failure.js";
+ import { ActionDescriptorWireSchema } from "./actions.js";
+-import { ArtifactResourceWireSchema } from "./artifacts.js";
++import { ArtifactRefWireSchema } from "./artifacts.js";
+ import {
+   PanelKindSchema,
+   RecordRevisionSchema,
+@@ -307,6 +307,19 @@
+   attempts: z.number().int().positive(),
+ });
+ 
++/** What the initial run read can truthfully say before the lazy capture list is requested. */
++export const RunCaptureAvailabilityWireSchema = z.discriminatedUnion("state", [
++  z.strictObject({ state: z.literal("available"), artifactCount: z.number().int().positive() }),
++  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
++  z.strictObject({
++    state: z.literal("error"),
++    code: ErrorCodeSchema,
++    message: z.string().min(1),
++    retryable: z.boolean(),
++  }),
++]);
++export type RunCaptureAvailabilityWire = z.infer<typeof RunCaptureAvailabilityWireSchema>;
++
+ function sectionsCompatible(panelKind: z.infer<typeof PanelKindSchema>, sections: readonly z.infer<typeof RunDetailSectionSchema>[]): boolean {
+   if (panelKind === "run" || panelKind === "member") return !sections.includes("review") && !sections.includes("people");
+   if (panelKind === "review") return !sections.includes("people");
+@@ -339,6 +352,8 @@
+   gate: GateDecisionWireSchema,
+   outcome: OutcomeWireSchema,
+   context: ContextSummaryWireSchema,
++  /** Optional only for archived records frozen before DCA3; every live read emits it. */
++  captures: RunCaptureAvailabilityWireSchema.optional(),
+   availableSections: z.array(RunDetailSectionSchema),
+ }).superRefine((detail, context) => {
+   if (detail.runId !== detail.header.runId) {
+@@ -743,7 +758,49 @@
+   }
+ });
+ 
+-const CaptureListSchema = z.strictObject({ runId: RunIdSchema, artifacts: z.array(ArtifactResourceWireSchema) });
++/** D292: provenance is a closed membership, not failure detail or actor data. */
++export const RunCaptureOriginWireSchema = z.strictObject({
++  bundleId: DiagnosticBundleIdSchema,
++  originKind: z.enum(["failure", "unexpected-state", "subject-mismatch", "recovery-park", "operator-request"]),
++});
++export const RunCaptureArtifactWireSchema = z.strictObject({
++  artifact: ArtifactRefWireSchema,
++  origins: z.array(RunCaptureOriginWireSchema).min(1),
++}).superRefine((capture, context) => {
++  const seen = new Set<string>();
++  for (const [index, origin] of capture.origins.entries()) {
++    if (seen.has(origin.bundleId)) {
++      context.addIssue({ code: "custom", path: ["origins", index, "bundleId"],
++        message: "a capture requires one membership per verified bundle" });
++    }
++    seen.add(origin.bundleId);
++  }
++});
++export type RunCaptureArtifactWire = z.infer<typeof RunCaptureArtifactWireSchema>;
++
++export const CaptureListSchema = z.strictObject({
++  runId: RunIdSchema,
++  /** Every ref was verified before this response; later byte loss fails at the byte route. */
++  artifacts: z.array(RunCaptureArtifactWireSchema).min(1),
++}).superRefine((captures, context) => {
++  const seen = new Set<string>();
++  const origins = new Map<string, string>();
++  for (const [index, capture] of captures.artifacts.entries()) {
++    if (seen.has(capture.artifact.artifactId)) {
++      context.addIssue({ code: "custom", path: ["artifacts", index, "artifact", "artifactId"],
++        message: "a capture list requires one entry per artifact" });
++    }
++    seen.add(capture.artifact.artifactId);
++    for (const origin of capture.origins) {
++      const existing = origins.get(origin.bundleId);
++      if (existing !== undefined && existing !== origin.originKind) {
++        context.addIssue({ code: "custom", path: ["artifacts", index, "origins"],
++          message: "a verified bundle cannot have conflicting origin kinds" });
++      }
++      origins.set(origin.bundleId, origin.originKind);
++    }
++  }
++});
+ 
+ /* ── the parked-write vocabulary, mirrored across the browser boundary ────── */
+ 
+--- a/src/server/dashboard/compose.ts
++++ b/src/server/dashboard/compose.ts
+@@ -870,6 +870,12 @@
+     // D140/D142: the receipt and failure sections serve CONTENT through the
+     // one authority-backed derivation, the same one `explain run` reads.
+     trust: createReceiptService({ database, descriptors: DESCRIPTORS }),
++    // DCA3: the initial capability and lazy section both verify this exact
++    // run-indexed diagnostic authority before advertising capture artifacts.
++    captures: {
++      authority: database.authority.diagnosticBundles,
++      artifacts,
++    },
+   };
+ 
+   const archiveDeps: ArchiveQueryDeps = {
+--- a/src/server/dashboard/queries/run-detail.ts
++++ b/src/server/dashboard/queries/run-detail.ts
+@@ -2,8 +2,10 @@
+  * `RunDetailWire` header + the lazy sections Person Lookup needs (ref frontend-backend-integration
+  * §3.3, §6.2): logs (from the notes stream) and the context data/attempts
+  * slices. Sections whose owning service lands later (receipt in 2g, review/
+- * people/captures in 2h) are typed-absent through the wire's absence unions
++ * people in 2h) are typed-absent through the wire's absence unions
+  * or refused by name — never fabricated.
++ * DCA3/D292 live captures use verified diagnostic authority and retain every
++ * same-run bundle origin beside each unique artifact ref.
+  *
+  * Closed mappings this query owns (stated, not silent):
+  * - terminal outcome → OutcomeWire result: `done→verified-done` (a done run's
+@@ -50,6 +52,7 @@
+  */
+ import { z } from "zod";
+ import type { JsonValue } from "../../../domain/canonical-json.js";
++import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+ import { localDatePart } from "../../../domain/clock.js";
+ import {
+   runNotePartitionScope as sharedNotePartitionScope,
+@@ -68,6 +71,8 @@
+   RunDetailWireSchema,
+   type RunDetailSectionResponse,
+   type RunDetailWire,
++  type RunCaptureAvailabilityWire,
++  type RunCaptureArtifactWire,
+   type TimelineDuration,
+   type TimelineStepWire,
+ } from "../../../domain/dashboard/run-detail.js";
+@@ -80,6 +85,9 @@
+ import type { FailureRecord } from "../../../domain/trust/failure.js";
+ import { runClaim, type RunRecord } from "../../../domain/run/record.js";
+ import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
++import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../domain/trust/diagnostic.js";
++import { ArtifactRefWireSchema, type ArtifactRefWire } from "../../../domain/dashboard/artifacts.js";
++import { ErrorCodeSchema, RunIdSchema } from "../../../domain/ids.js";
+ import {
+   readScopedEventStreamLines,
+   type EventStreamLine,
+@@ -94,7 +102,13 @@
+ import { deterministicUuid, nodeIdOfTaskSpanPath } from "../support.js";
+ import { sha256Hex } from "../../../domain/sha256.js";
+ import { deriveRunStatus, panelKindOf, taskStateOf } from "../run-status.js";
+-import { SectionUnavailableError, TargetNotFoundError } from "../../failures.js";
++import {
++  DiagnosticBundleCorruptError,
++  SectionUnavailableError,
++  TargetNotFoundError,
++} from "../../failures.js";
++import { readDiagnosticBundle, type DiagnosticBundleQueryDeps } from "./diagnostic-bundle.js";
++import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
+ 
+ /**
+  * The trust reads the receipt and failure sections need (D140/D142). They are
+@@ -275,6 +289,11 @@
+   };
+   /** Absent until a composition wires the 2g trust services. */
+   readonly trust?: RunDetailTrustDeps;
++  /** DCA3: exact diagnostic authority plus its content-addressed byte verifier. */
++  readonly captures?: DiagnosticBundleQueryDeps & Readonly<{
++    authority: DiagnosticBundleQueryDeps["authority"]
++      & Pick<AuthorityRepositories["diagnosticBundles"], "listByRun">;
++  }>;
+ }
+ 
+ const LOGS_PAGE_SIZE = 200;
+@@ -384,7 +403,8 @@
+   _row: RunFoldRecord,
+   authority: RunRecord,
+   trust?: RunDetailTrustDeps,
+-): readonly ("logs" | "receipt" | "context-data" | "context-attempts" | "failure" | "parked-write" | "identity-gate")[] {
++  captures?: RunCaptureAvailabilityWire,
++): readonly ("logs" | "receipt" | "context-data" | "context-attempts" | "failure" | "captures" | "parked-write" | "identity-gate")[] {
+   const { lifecycle } = authority;
+   const terminal = lifecycle.state === "terminal";
+   const settled = terminal && lifecycle.outcome !== "interrupted";
+@@ -396,6 +416,7 @@
+     ...(terminal && lifecycle.outcome === "failed" && trust !== undefined
+       ? (["failure"] as const)
+       : []),
++    ...(captures?.state === "available" ? (["captures"] as const) : []),
+     ...(lifecycle.state === "parked-write" ? (["parked-write"] as const) : []),
+     /*
+      * Every `parked-gate` run advertises the section, and the payload is a wire
+@@ -608,7 +629,14 @@
+   });
+ }
+ 
+-export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDetailWire {
++export function buildRunDetail(
++  deps: RunDetailQueryDeps,
++  runId: string,
++  captures: RunCaptureAvailabilityWire = {
++    state: "absent",
++    reason: "this synchronous projection read did not inspect diagnostic capture authority",
++  },
++): RunDetailWire {
+   const { row, authority } = requireRun(deps, runId);
+   const status = deriveRunStatus(row, authority);
+   const descriptorView = deps.descriptors.resolve(row.queued.workflow);
+@@ -794,7 +822,143 @@
+       evidenceFacts: 0,
+       attempts: row.attempt,
+     },
+-    availableSections: availableSections(row, authority, deps.trust),
++    captures,
++    availableSections: availableSections(row, authority, deps.trust, captures),
++  });
++}
++
++interface VerifiedRunCaptures {
++  readonly state: "available";
++  readonly artifacts: readonly RunCaptureArtifactWire[];
++}
++
++type RunCaptureInspection = VerifiedRunCaptures | Readonly<{
++  state: "absent";
++  reason: string;
++}>;
++
++function captureCorrupt(runId: string, message: string, cause?: unknown): never {
++  throw new DiagnosticBundleCorruptError(
++    `run ${runId} diagnostic captures are corrupt: ${message}`,
++    ...(cause === undefined ? [] : [{ cause }]),
++  );
++}
++
++function captureArtifactRef(runId: string, attachment: DiagnosticBundle["attachments"][number]): ArtifactRefWire {
++  try {
++    return ArtifactRefWireSchema.parse({
++      mediaKind: attachment.kind === "screenshot" ? "image" : "data",
++      artifactId: attachment.artifactId,
++      mediaType: attachment.mediaType,
++      byteLength: attachment.byteLength,
++      sha256: attachment.digest,
++      sensitivity: attachment.sensitivity,
++      redaction: attachment.sensitivity === "restricted" ? "restricted-access" : "applied",
++      ...(attachment.kind === "screenshot"
++        ? { width: attachment.width, height: attachment.height }
++        : {}),
++    });
++  } catch (error: unknown) {
++    captureCorrupt(runId, `verified attachment ${attachment.artifactId} cannot form an artifact resource`, error);
++  }
++}
++
++async function verifyRunCaptures(deps: RunDetailQueryDeps, runId: string): Promise<RunCaptureInspection> {
++  if (deps.captures === undefined) {
++    return { state: "absent", reason: "this composition wires no diagnostic capture authority" };
++  }
++  let listed: readonly DiagnosticBundle[];
++  try {
++    listed = deps.captures.authority.listByRun(runId).map((bundle) => DiagnosticBundleSchema.parse(bundle));
++  } catch (error: unknown) {
++    captureCorrupt(runId, "the run-indexed bundle set could not be read", error);
++  }
++  // Validate the entire run index before opening any artifact bytes.
++  const bundleIds = new Set<string>();
++  for (const bundle of listed) {
++    if (bundle.runId !== runId) {
++      captureCorrupt(runId, "the run index returned a foreign run identity");
++    }
++    if (bundleIds.has(bundle.bundleId)) {
++      captureCorrupt(runId, "the run index returned a duplicate bundle identity");
++    }
++    bundleIds.add(bundle.bundleId);
++  }
++  const artifacts = new Map<string, RunCaptureArtifactWire>();
++  for (const bundle of listed) {
++    let readback: Awaited<ReturnType<typeof readDiagnosticBundle>>;
++    try {
++      readback = await readDiagnosticBundle(deps.captures, bundle.bundleId);
++    } catch (error: unknown) {
++      captureCorrupt(runId, `bundle ${bundle.bundleId} failed exact verification`, error);
++    }
++    if (readback.wire.bundleId !== bundle.bundleId
++      || readback.manifest !== canonicalJsonStringify(bundle)) {
++      captureCorrupt(runId, `bundle ${bundle.bundleId} exact-id readback disagrees with the run index`);
++    }
++    for (const attachment of bundle.attachments) {
++      const candidate = captureArtifactRef(runId, attachment);
++      const existing = artifacts.get(candidate.artifactId);
++      if (existing !== undefined && canonicalJsonStringify(existing.artifact) !== canonicalJsonStringify(candidate)) {
++        captureCorrupt(runId, `artifact ${candidate.artifactId} has conflicting verified metadata`);
++      }
++      const origin = { bundleId: bundle.bundleId, originKind: bundle.origin.kind };
++      artifacts.set(candidate.artifactId, {
++        artifact: candidate,
++        origins: existing === undefined ? [origin] : [...existing.origins, origin],
++      });
++    }
++  }
++  if (artifacts.size === 0) {
++    return { state: "absent", reason: "this run has no indexed diagnostic capture artifacts" };
++  }
++  return { state: "available", artifacts: Object.freeze([...artifacts.values()]) };
++}
++
++/** The live route's async read; archive's synchronous projection freeze remains descriptor-free. */
++export async function readRunDetail(deps: RunDetailQueryDeps, runId: string): Promise<RunDetailWire> {
++  RunIdSchema.parse(runId);
++  requireRun(deps, runId);
++  let inspected: RunCaptureInspection;
++  try {
++    inspected = await verifyRunCaptures(deps, runId);
++  } catch (error: unknown) {
++    if (error instanceof DiagnosticBundleCorruptError) {
++      return buildRunDetail(deps, runId, {
++        state: "error",
++        code: ErrorCodeSchema.parse("DIAGNOSTIC_BUNDLE_CORRUPT"),
++        message: error.message,
++        retryable: false,
++      });
++    }
++    throw error;
++  }
++  const captures: RunCaptureAvailabilityWire = inspected.state === "available"
++    ? { state: "available", artifactCount: inspected.artifacts.length }
++    : inspected;
++  return buildRunDetail(deps, runId, captures);
++}
++
++/** The live route's lazy section read; capture metadata never rides the initial detail. */
++export async function readRunSection(
++  deps: RunDetailQueryDeps,
++  runId: string,
++  sectionInput: string,
++  cursorInput?: string,
++): Promise<RunDetailSectionResponse> {
++  RunIdSchema.parse(runId);
++  const section = SectionNameSchema.parse(sectionInput);
++  if (section !== "captures") {
++    return buildRunSection(deps, runId, section, cursorInput);
++  }
++  requireRun(deps, runId);
++  const inspected = await verifyRunCaptures(deps, runId);
++  if (inspected.state === "absent") {
++    throw new SectionUnavailableError(`section captures is not available for run ${runId}: ${inspected.reason}`);
++  }
++  return RunDetailSectionResponseSchema.parse({
++    section: "captures",
++    payload: { runId, artifacts: inspected.artifacts },
+   });
+ }
+ 
+--- a/src/server/dashboard/routes/api.ts
++++ b/src/server/dashboard/routes/api.ts
+@@ -26,7 +26,7 @@
+ import { buildSettingsFacts, type SettingsQueryDeps } from "../queries/settings.js";
+ import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explorer.js";
+ import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catalog.js";
+-import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
++import { readRunDetail, readRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
+ import { buildRunAdvisory, type AdvisoryQueryDeps } from "../queries/advisory.js";
+ import { readDiagnosticBundle, type DiagnosticBundleQueryDeps } from "../queries/diagnostic-bundle.js";
+ import {
+@@ -266,7 +266,7 @@
+     return c.json(deps.projection.buildDashboardDayWire(day));
+   });
+ 
+-  app.get("/api/v1/runs/:runId", (c) => c.json(buildRunDetail(deps.runDetail, c.req.param("runId"))));
++  app.get("/api/v1/runs/:runId", async (c) => c.json(await readRunDetail(deps.runDetail, c.req.param("runId"))));
+ 
+   app.get("/api/v1/diagnostic-bundles/:bundleId", async (c) => {
+     if (deps.diagnosticBundles === undefined) {
+@@ -331,9 +331,9 @@
+     });
+   });
+ 
+-  app.get("/api/v1/runs/:runId/:section", (c) => {
++  app.get("/api/v1/runs/:runId/:section", async (c) => {
+     const cursor = c.req.query("cursor");
+-    return c.json(buildRunSection(
++    return c.json(await readRunSection(
+       deps.runDetail,
+       c.req.param("runId"),
+       c.req.param("section"),
+--- a/src/dashboard/client/queries.ts
++++ b/src/dashboard/client/queries.ts
+@@ -18,7 +18,7 @@
+   DiagnosticBundleWireSchema,
+   type DiagnosticBundleWire,
+ } from "../../domain/dashboard/diagnostic-bundle.js";
+-import { DiagnosticBundleIdSchema } from "../../domain/ids.js";
++import { ArtifactIdSchema, DiagnosticBundleIdSchema } from "../../domain/ids.js";
+ import { RunAdvisoryWireSchema, type RunAdvisoryWire } from "../../domain/dashboard/advisory.js";
+ import {
+   ArchiveIndexWireSchema,
+@@ -44,6 +44,7 @@
+ } from "../../domain/capture-operator.js";
+ import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../domain/intake/wire.js";
+ import {
++  DashboardClientError,
+   WIRE_ERROR_BODY,
+   diagnosticBundleIdentityError,
+   httpError,
+@@ -59,6 +60,14 @@
+   }
+ }
+ 
++function runIdentityError(context: string, code: string, requestedRunId: string): DashboardClientError {
++  return new DashboardClientError({
++    kind: "schema",
++    code,
++    message: `${context}: ${code}: response does not belong to requested run ${requestedRunId}`,
++  });
++}
++
+ /**
+  * What an intake upload did — the one place the response STATUS is the answer.
+  *
+@@ -88,11 +97,13 @@
+   bootstrap(): Promise<FrontendBootstrapWire>;
+   dashboardDay(day: string): Promise<DashboardDayWire>;
+   runDetail(runId: string): Promise<RunDetailWire>;
+-  runSection(runId: string, section: string, cursor?: string): Promise<RunDetailSectionResponse>;
++  runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal): Promise<RunDetailSectionResponse>;
+   /** One D137 bundle, read by its exact durable id only after the operator asks. */
+   diagnosticBundle(bundleId: string): Promise<DiagnosticBundleWire>;
+   /** The browser downloads the server's canonical durable manifest; no UI reconstruction. */
+   diagnosticBundleManifestUrl(bundleId: string): string;
++  /** One verified capture ref's DCA1 byte resource. */
++  artifactUrl(artifactId: string): string;
+   /** Ref dashboard-surfaces §2.5's read-only doctor, run on demand from Settings (2i-D). */
+   storageDoctor(): Promise<StorageDoctorWire>;
+   /**
+@@ -213,19 +224,31 @@
+       );
+     },
+     async runDetail(runId: string): Promise<RunDetailWire> {
+-      return parseOrThrow(
++      const context = `GET /api/v1/runs/${runId}`;
++      const detail = parseOrThrow(
+         RunDetailWireSchema,
+-        `GET /api/v1/runs/${runId}`,
++        context,
+         await transport.requestJson(`/api/v1/runs/${encodeURIComponent(runId)}`),
+       );
++      if (detail.runId !== runId) {
++        throw runIdentityError(context, "RUN_DETAIL_IDENTITY_MISMATCH", runId);
++      }
++      return detail;
+     },
+-    async runSection(runId: string, section: string, cursor?: string): Promise<RunDetailSectionResponse> {
++    async runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal): Promise<RunDetailSectionResponse> {
+       const query = cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`;
+-      return parseOrThrow(
++      const context = `GET /api/v1/runs/${runId}/${section}`;
++      const response = parseOrThrow(
+         RunDetailSectionResponseSchema,
+-        `GET /api/v1/runs/${runId}/${section}`,
+-        await transport.requestJson(`/api/v1/runs/${encodeURIComponent(runId)}/${encodeURIComponent(section)}${query}`),
++        context,
++        await transport.requestJson(`/api/v1/runs/${encodeURIComponent(runId)}/${encodeURIComponent(section)}${query}`,
++          signal === undefined ? undefined : { signal }),
+       );
++      if ((section === "captures" && response.section !== "captures")
++        || (response.section === "captures" && response.payload.runId !== runId)) {
++        throw runIdentityError(context, "RUN_SECTION_IDENTITY_MISMATCH", runId);
++      }
++      return response;
+     },
+     async diagnosticBundle(bundleId: string): Promise<DiagnosticBundleWire> {
+       const parsedBundleId = DiagnosticBundleIdSchema.parse(bundleId);
+@@ -245,6 +268,10 @@
+       return transport.resolveUrl(
+         `/api/v1/diagnostic-bundles/${encodeURIComponent(parsedBundleId)}/manifest`,
+       );
++    },
++    artifactUrl(artifactId: string): string {
++      const parsedArtifactId = ArtifactIdSchema.parse(artifactId);
++      return transport.resolveUrl(`/artifacts/v1/${encodeURIComponent(parsedArtifactId)}`);
+     },
+     async storageDoctor(): Promise<StorageDoctorWire> {
+       return parseOrThrow(
+--- a/tests/unit/dashboard-wire.test.ts
++++ b/tests/unit/dashboard-wire.test.ts
+@@ -3,7 +3,7 @@
+ import { ArtifactRefWireSchema, ArtifactResourceWireSchema, CapturePointerWireSchema } from "../../src/domain/dashboard/artifacts.js";
+ import { FrontendBootstrapWireSchema } from "../../src/domain/dashboard/bootstrap.js";
+ import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../src/domain/dashboard/projection.js";
+-import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../src/domain/dashboard/run-detail.js";
++import { CaptureListSchema, RunCaptureArtifactWireSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../src/domain/dashboard/run-detail.js";
+ import {
+   DashboardStreamEnvelopeSchema,
+   DashboardTopicPatchSchema,
+@@ -469,7 +469,8 @@
+       { section: "failure", payload: { state: "available", value: failureDetailWireFixture({
+         runId: RUN_1, failureId: FAILURE_1, traceId: "on-120000-1111", workflowId: "onboarding",
+       }) } },
+-      { section: "captures", payload: { runId: RUN_1, artifacts: [ARTIFACT] } },
++      { section: "captures", payload: { runId: RUN_1, artifacts: [{ artifact: ARTIFACT.value,
++        origins: [{ bundleId: RECORD_1, originKind: "operator-request" }] }] } },
+     ];
+     for (const section of sections) assert.equal(RunDetailSectionResponseSchema.safeParse(section).success, true, section.section);
+     assert.equal(RunDetailSectionResponseSchema.safeParse({ section: "logs", payload: REVIEW_PAGE }).success, false);
+@@ -496,6 +497,19 @@
+     assert.equal(CapturePointerWireSchema.safeParse({ artifactId: ARTIFACT_1, dimensions: { state: "present", width: 100, height: 200 } }).success, true);
+     assert.equal(CapturePointerWireSchema.safeParse({ artifactId: ARTIFACT_1, dimensions: { state: "missing", reason: "legacy capture had no geometry" } }).success, true);
+     assert.equal(CapturePointerWireSchema.safeParse({ artifactId: ARTIFACT_1, dimensions: { state: "present" } }).success, false);
++  });
++
++  it("requires strict nonempty unique capture memberships and identical bundle kinds across tiles", () => {
++    const capture = { artifact: ARTIFACT.value, origins: [{ bundleId: RECORD_1, originKind: "failure" }] };
++    assertRecursivelyStrict(RunCaptureArtifactWireSchema, capture);
++    assert.equal(RunCaptureArtifactWireSchema.safeParse({ ...capture, origins: [] }).success, false);
++    assert.equal(RunCaptureArtifactWireSchema.safeParse({ artifact: ARTIFACT.value }).success, false);
++    assert.equal(RunCaptureArtifactWireSchema.safeParse({ ...capture, origins: [...capture.origins, ...capture.origins] }).success, false);
++    assert.equal(CaptureListSchema.safeParse({ runId: RUN_1, artifacts: [] }).success, false);
++    assert.equal(CaptureListSchema.safeParse({ runId: RUN_1, artifacts: [capture, capture] }).success, false);
++    const other = { artifact: { ...ARTIFACT.value, artifactId: RUN_2 }, origins: [{ bundleId: RECORD_1, originKind: "operator-request" }] };
++    assert.equal(CaptureListSchema.safeParse({ runId: RUN_1, artifacts: [capture, other] }).success, false);
++    assert.equal(CaptureListSchema.safeParse({ runId: RUN_1, artifacts: [capture, { ...other, origins: capture.origins }] }).success, true);
+   });
+ });
+ 
+--- a/tests/unit/server/bff-flow.test.ts
++++ b/tests/unit/server/bff-flow.test.ts
+@@ -21,6 +21,7 @@
+ import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
+ import { createCommandKernel } from "../../../src/core/command-kernel.js";
+ import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
++import { RunDetailSectionResponseSchema } from "../../../src/domain/dashboard/run-detail.js";
+ import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
+ import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
+ import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
+@@ -139,6 +140,7 @@
+       resolve: (workflowId: string) => (workflowId === fixtureDescriptor.id ? fixtureDescriptor : undefined),
+     },
+     trust: createReceiptService({ database, descriptors: [fixtureDescriptor] }),
++    captures: { authority: database.authority.diagnosticBundles, artifacts },
+   };
+ 
+   const kernel = createCommandKernel({
+@@ -257,8 +259,10 @@
+   return { app, database, stateRoot, clock, noteWriter, hub, projection, artifacts };
+ }
+ 
+-async function captureDiagnosticBundle(h: Harness) {
+-  h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
++async function captureDiagnosticBundle(h: Harness, runId = RUN_ID) {
++  if (h.database.authority.runs.get(runId) === undefined) {
++    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId }));
++  }
+   return createDiagnosticCaptureService({
+     authority: h.database.authority,
+     artifacts: h.artifacts,
+@@ -266,7 +270,7 @@
+     ids: sequentialIdFactory("d"),
+   }).capture({
+     trigger: "operator-request",
+-    runId: RUN_ID,
++    runId,
+     requestedBy: "local-operator",
+     configFingerprint: HASH_B,
+     descriptorFingerprint: fixtureDescriptor.contractFingerprint,
+@@ -625,6 +629,21 @@
+     const runId = planned[0].runId;
+     const detail = await json(await h.app.request(`/api/v1/runs/${runId}`));
+     assert.equal((detail.header as { title: string }).title, "Fixture 10873698");
++    // DCA3: a live read must state absence, not omit capture availability.
++    assert.deepEqual(detail.captures, {
++      state: "absent", reason: "this run has no indexed diagnostic capture artifacts",
++    });
++    const bundle = await captureDiagnosticBundle(h, runId);
++    const capturedDetail = await json(await h.app.request(`/api/v1/runs/${runId}`));
++    assert.deepEqual(capturedDetail.captures, { state: "available", artifactCount: 1 });
++    const capturesResponse = await h.app.request(`/api/v1/runs/${runId}/captures`);
++    assert.equal(capturesResponse.status, 200);
++    const captures = RunDetailSectionResponseSchema.parse(await capturesResponse.json());
++    assert.equal(captures.section, "captures");
++    if (captures.section !== "captures") throw new Error("expected captures");
++    assert.equal(captures.payload.runId, runId);
++    assert.deepEqual(captures.payload.artifacts.map(({ artifact, origins }) => ({ artifactId: artifact.artifactId, origins })),
++      bundle.attachments.map(({ artifactId }) => ({ artifactId, origins: [{ bundleId: bundle.bundleId, originKind: "operator-request" }] })));
+     h.noteWriter.emitNote({
+       workflow: "fixture-graph",
+       address: { runId, attempt: 1, traceId: planned[0].traceId, spanPath: planned[0].traceId },

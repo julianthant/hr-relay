@@ -1,0 +1,96 @@
+{
+  "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+  "candidateDigest": "259757261c5a288a5f5072c9294090907739caa4ffc9be1e9f3d74ab462a9ee9",
+  "commands": [
+    {
+      "name": "focused-01",
+      "session": 59954,
+      "exit": 0,
+      "chunks": [
+        "9fe962",
+        "99b6fa",
+        "8fd53e"
+      ],
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-parent-focused-01.log",
+      "tests": 302,
+      "files": 14,
+      "duration": "17.91s",
+      "startFromRaw": "18:08:57 PDT",
+      "command": "VITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/server/run-detail-captures.test.ts tests/unit/dashboard/run-detail-captures-client.test.ts tests/unit/dashboard-wire.test.ts tests/unit/server/bff-flow.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts tests/unit/server/archive-capture-resource.test.ts tests/unit/server/archive-capture-routes.test.ts tests/unit/architecture/wire-connectivity.test.ts tests/unit/dashboard/run-captures-app.test.ts tests/unit/dashboard/run-captures-lifecycle.test.ts tests/unit/dashboard/run-captures-fixture.test.ts tests/unit/dashboard/archive-evidence-fixture.test.ts tests/unit/dashboard/parity-fixtures.test.ts"
+    },
+    {
+      "name": "typecheck-01",
+      "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck 2>&1 | tee docs/coordinator/worktree-completion/evidence/dca4-a10-parent-typecheck-01.log",
+      "started": "2026-08-31T01:09:33.750Z",
+      "chunk_id": "3558fc",
+      "wall_time_seconds": 1.001061875,
+      "session_id": 59633,
+      "original_token_count": 15,
+      "output": "\n> hr-automation-rebuild@0.1.0 typecheck\n> tsc --noEmit\n\n",
+      "exit": 0,
+      "terminalChunk": "37c6fa",
+      "finished": "2026-08-31T01:09:59.169Z"
+    },
+    {
+      "name": "lint-01",
+      "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint 2>&1 | tee docs/coordinator/worktree-completion/evidence/dca4-a10-parent-lint-01.log",
+      "started": "2026-08-31T01:09:59.170Z",
+      "chunk_id": "0a7e12",
+      "wall_time_seconds": 1.001311958,
+      "session_id": 79893,
+      "original_token_count": 21,
+      "output": "\n> hr-automation-rebuild@0.1.0 lint\n> eslint src tests scripts --max-warnings 0\n\n",
+      "exit": 0,
+      "terminalChunk": "64ab63",
+      "finished": "2026-08-31T01:10:37.425Z"
+    },
+    {
+      "name": "manifest-01",
+      "command": "set -o pipefail\nnpm run build:manifest -- --check 2>&1 | tee docs/coordinator/worktree-completion/evidence/dca4-a10-parent-manifest-01.log",
+      "started": "2026-08-31T01:10:43.173Z",
+      "chunk_id": "8008c3",
+      "wall_time_seconds": 1.000721166,
+      "session_id": 95457,
+      "original_token_count": 24,
+      "output": "\n> hr-automation-rebuild@0.1.0 build:manifest\n> tsx scripts/generate-build-manifest.ts --check\n\n",
+      "exit": 0,
+      "terminalChunk": "4777e1",
+      "finished": "2026-08-31T01:11:14.282Z"
+    },
+    {
+      "name": "roadmap-01",
+      "command": "set -o pipefail\nnpm run roadmap:check 2>&1 | tee docs/coordinator/worktree-completion/evidence/dca4-a10-parent-roadmap-01.log",
+      "started": "2026-08-31T01:11:14.282Z",
+      "chunk_id": "537d9c",
+      "wall_time_seconds": 0.32410525,
+      "exit_code": 0,
+      "original_token_count": 31,
+      "output": "\n> hr-automation-rebuild@0.1.0 roadmap:check\n> tsx scripts/generate-roadmap.ts --check\n\ndocs/roadmap/index.html is fresh.\n",
+      "exit": 0,
+      "finished": "2026-08-31T01:11:26.476Z"
+    },
+    {
+      "name": "guards-01",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/guard-manifest.test.ts tests/unit/architecture/dashboard-refresh-boundary.test.ts tests/unit/architecture/descriptor-coverage.test.ts 2>&1 | tee docs/coordinator/worktree-completion/evidence/dca4-a10-parent-guards-01.log",
+      "started": "2026-08-31T01:11:41.185Z",
+      "chunk_id": "74c077",
+      "wall_time_seconds": 1.001067458,
+      "session_id": 16983,
+      "original_token_count": 74,
+      "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/guard-manifest.test.ts tests/unit/architecture/dashboard-refresh-boundary.test.ts tests/unit/architecture/descriptor-coverage.test.ts\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4\n\n",
+      "exit": 0,
+      "terminalChunk": "5bd945",
+      "tests": 25,
+      "files": 3,
+      "duration": "8.91s",
+      "finished": "2026-08-31T01:12:11.488Z"
+    }
+  ],
+  "active": null,
+  "notes": [
+    "All raw outputs captured directly with pipefail and tee; model-visible timestamps are not synthesized process times.",
+    "Focused302/14 plus guard25/3; full locked typecheck/lint0, manifest --check0 and roadmapcheck0.",
+    "No coverage/parity/browser/build command executed. Manifest --check is non-mutating; generated manifest unchanged.",
+    "Initial review source remains frozen while independent axes finish; fixture finding still open."
+  ]
+}

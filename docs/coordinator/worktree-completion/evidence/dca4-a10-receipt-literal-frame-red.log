@@ -1,0 +1,38 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/run-captures-app.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+(node:51581) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+x·······
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > frames tile and preview only for literal failure while preserving all mixed origins
+AssertionError: literal failure must frame the tile
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/dashboard/run-captures-app.test.ts:29:12
+     27|     const tile = document.querySelector('[aria-label="Run captures"] a…
+     28|     assert.ok(tile instanceof HTMLElement);
+     29|     assert.ok(tile.classList.contains("border-[color:var(--ds-danger-b…
+       |            ^
+     30|     await pressCaptureControl(captureButton(`Open capture ${CAPTURE_AR…
+     31|     const dialog = captureDialog();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 passed (8)
+   Start at  17:25:50
+   Duration  1.65s (transform 650ms, setup 0ms, import 940ms, tests 402ms, environment 231ms)
+

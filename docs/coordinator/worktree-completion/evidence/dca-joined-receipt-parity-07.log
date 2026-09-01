@@ -1,0 +1,103 @@
+
+> hr-automation-rebuild@0.1.0 test:parity
+> playwright test --config playwright.parity.config.ts tests/parity/run-captures.spec.ts
+
+
+Running 7 tests using 1 worker
+
+(node:22471) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/parity/run-captures.spec.ts:235:1 › full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus (2.0m)
+(node:23637) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  2 tests/parity/run-captures.spec.ts:281:1 › full Receipt renders in Paper Ink at the desktop viewport (610ms)
+  ✘  3 tests/parity/run-captures.spec.ts:293:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing (642ms)
+(node:23674) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  4 tests/parity/run-captures.spec.ts:338:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport (638ms)
+(node:23691) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  5 tests/parity/run-captures.spec.ts:354:1 › image refusal keeps the preview frame and metadata stationary (681ms)
+  ✓  6 tests/parity/run-captures.spec.ts:397:1 › closing during image load invalidates the dialog and restores its opener (644ms)
+  ✓  7 tests/parity/run-captures.spec.ts:418:1 › served absence makes no speculative capture request (533ms)
+
+
+  1) tests/parity/run-captures.spec.ts:235:1 › full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus 
+
+    Test timeout of 120000ms exceeded.
+
+    Error: page.waitForResponse: Test timeout of 120000ms exceeded.
+
+      59 |   await expect(link).toHaveAttribute("href", expectedUrl);
+      60 |   const [response, download] = await Promise.all([
+    > 61 |     page.waitForResponse(candidate => candidate.url() === expectedUrl && candidate.request().method() === "GET"),
+         |          ^
+      62 |     page.waitForEvent("download"),
+      63 |     link.click(),
+      64 |   ]);
+        at expectDownloadedBytes (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:61:10)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:251:3
+
+    attachment #1: run-captures-full-graphite-desktop.png (image/png) ──────────────────────────────
+    tests/parity/.output/run-captures-full-Receipt--dbf63-ve-bytes-and-keyboard-focus/attachments/run-captures-full-graphite-desktop-png-f3e8539dc12c9a5488a41bde73631ea6e113d01a.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: run-captures-full-graphite-desktop.a11y.yml (text/yaml) ─────────────────────────
+    tests/parity/.output/run-captures-full-Receipt--dbf63-ve-bytes-and-keyboard-focus/attachments/run-captures-full-graphite-desktop-a11y-yml-8ea998899c6cdb19e213a115e5ae1c00c8238504.yml
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: tests/parity/.output/run-captures-full-Receipt--dbf63-ve-bytes-and-keyboard-focus/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-full-Receipt--dbf63-ve-bytes-and-keyboard-focus/error-context.md
+
+  2) tests/parity/run-captures.spec.ts:293:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing 
+
+    Error: Open capture 00000000-0000-4000-8000-00000000c101
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      165 |   expect(proof.length).toBeGreaterThan(0);
+      166 |   for (const control of proof) {
+    > 167 |     expect(control.inside, control.name).toBe(true);
+          |                                          ^
+      168 |     expect(control.ownsEdges, control.name).toBe(true);
+      169 |     expect(control.overlaps, control.name).toBe(0);
+      170 |     expect(control.width, control.name).toBeGreaterThan(0);
+        at expectTargetGeometry (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:167:42)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:309:5
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/error-context.md
+
+  3) tests/parity/run-captures.spec.ts:338:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport 
+
+    Error: Open capture 00000000-0000-4000-8000-00000000c101
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      165 |   expect(proof.length).toBeGreaterThan(0);
+      166 |   for (const control of proof) {
+    > 167 |     expect(control.inside, control.name).toBe(true);
+          |                                          ^
+      168 |     expect(control.ownsEdges, control.name).toBe(true);
+      169 |     expect(control.overlaps, control.name).toBe(0);
+      170 |     expect(control.width, control.name).toBeGreaterThan(0);
+        at expectTargetGeometry (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:167:42)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:349:5
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/error-context.md
+
+  3 failed
+    tests/parity/run-captures.spec.ts:235:1 › full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus 
+    tests/parity/run-captures.spec.ts:293:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing 
+    tests/parity/run-captures.spec.ts:338:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport 
+  4 passed (2.2m)

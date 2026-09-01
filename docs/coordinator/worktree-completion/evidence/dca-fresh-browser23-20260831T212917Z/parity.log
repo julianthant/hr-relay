@@ -1,0 +1,48 @@
+
+> hr-automation-rebuild@0.1.0 test:parity
+> tsx scripts/verify-parity-json.ts assert tests/parity/diagnostic-bundle-dialog.spec.ts tests/parity/archive-evidence.spec.ts tests/parity/run-captures.spec.ts
+
+
+Running 37 tests using 1 worker
+
+(node:15907) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/parity/archive-evidence.spec.ts:253:5 › graphite-warm @ 1280x720 › verified archived capture evidence graphite-warm @ 1280x720 (1.2s)
+  ✓   2 tests/parity/archive-evidence.spec.ts:304:5 › graphite-warm @ 1280x720 › keeps frozen metadata stationary across resource, HTTP and decode readiness (882ms)
+  ✓   3 tests/parity/archive-evidence.spec.ts:253:5 › paper-ink @ phone-390x844 › verified archived capture evidence paper-ink @ phone-390x844 (936ms)
+  ✓   4 tests/parity/archive-evidence.spec.ts:304:5 › paper-ink @ phone-390x844 › keeps frozen metadata stationary across resource, HTTP and decode readiness (930ms)
+  ✓   5 tests/parity/archive-evidence.spec.ts:364:1 › desktop keyboard opens, closes with Escape, reopens and returns focus from footer Close (707ms)
+  ✓   6 tests/parity/archive-evidence.spec.ts:390:1 › narrow viewport keeps the footer and preview inside the dialog (833ms)
+  ✓   7 tests/parity/archive-evidence.spec.ts:398:3 › keeps frozen facts accessible for a visible missing refusal (686ms)
+  ✓   8 tests/parity/archive-evidence.spec.ts:398:3 › keeps frozen facts accessible for a visible corrupt refusal (649ms)
+  ✓   9 tests/parity/archive-evidence.spec.ts:398:3 › keeps frozen facts accessible for a visible request refusal (644ms)
+  ✓  10 tests/parity/archive-evidence.spec.ts:398:3 › keeps frozen facts accessible for a visible image-http refusal (745ms)
+  ✓  11 tests/parity/archive-evidence.spec.ts:398:3 › keeps frozen facts accessible for a visible decode refusal (709ms)
+  ✓  12 tests/parity/diagnostic-bundle-dialog.spec.ts:422:1 › opens the strict bundle dialog, opens its exact gallery resource, restores focus, and downloads served bytes (1.7s)
+  ✓  13 tests/parity/diagnostic-bundle-dialog.spec.ts:495:1 › captures the exact-identity screenshot gallery with attributable fixture metadata (1.0s)
+  ✓  14 tests/parity/diagnostic-bundle-dialog.spec.ts:521:1 › captures the exact-identity screenshot gallery in paper ink (995ms)
+  ✓  15 tests/parity/diagnostic-bundle-dialog.spec.ts:547:1 › re-reads the exact bundle after an image failure and names its typed authority outcome (742ms)
+  ✓  16 tests/parity/diagnostic-bundle-dialog.spec.ts:585:1 › does not reopen when a delayed bundle verification settles after Escape (785ms)
+  ✓  17 tests/parity/diagnostic-bundle-dialog.spec.ts:610:1 › isolates two failed screenshots and accepts their rechecks out of order (932ms)
+  ✓  18 tests/parity/diagnostic-bundle-dialog.spec.ts:662:1 › continues parent-owned verification after lightbox Escape without leaving a dead loading state (802ms)
+  ✓  19 tests/parity/diagnostic-bundle-dialog.spec.ts:697:1 › a parent footer close invalidates a delayed image reread before the same bundle reopens (877ms)
+  ✓  20 tests/parity/diagnostic-bundle-dialog.spec.ts:735:3 › refuses content-digest drift on image reread instead of granting a browser-only download (775ms)
+  ✓  21 tests/parity/diagnostic-bundle-dialog.spec.ts:735:3 › refuses screenshot-metadata drift on image reread instead of granting a browser-only download (758ms)
+  ✓  22 tests/parity/diagnostic-bundle-dialog.spec.ts:758:1 › does not fetch the offscreen gallery eagerly and admits only visible thumbnails (803ms)
+  ✓  23 tests/parity/diagnostic-bundle-dialog.spec.ts:786:1 › keeps a genuine loading state and no download until the selected image decodes (755ms)
+  ✓  24 tests/parity/diagnostic-bundle-dialog.spec.ts:806:1 › keeps restricted JPEG bytes, dimensions and warning honest on the lightbox download (919ms)
+  ✓  25 tests/parity/diagnostic-bundle-dialog.spec.ts:850:1 › keeps the requested dialog identity when a strict response carries a foreign bundle id (655ms)
+  ✓  26 tests/parity/diagnostic-bundle-dialog.spec.ts:868:1 › an unknown reread error never grants a screenshot download (738ms)
+  ✓  27 tests/parity/diagnostic-bundle-dialog.spec.ts:889:3 › portrait screenshot gallery and lightbox stay within 320px with touch-sized actions (953ms)
+  ✓  28 tests/parity/diagnostic-bundle-dialog.spec.ts:889:3 › portrait screenshot gallery and lightbox stay within 390px with touch-sized actions (945ms)
+  ✓  29 tests/parity/diagnostic-bundle-dialog.spec.ts:957:1 › keeps the absent diagnostic-bundle arm explanatory and does not expose a dead action (614ms)
+  ✓  30 tests/parity/diagnostic-bundle-dialog.spec.ts:979:1 › keeps the lg dialog inside the mobile viewport with touch-sized actions (664ms)
+  ✓  31 tests/parity/run-captures.spec.ts:252:1 › full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus (793ms)
+  ✓  32 tests/parity/run-captures.spec.ts:309:1 › full Receipt renders in Paper Ink at the desktop viewport (560ms)
+  ✓  33 tests/parity/run-captures.spec.ts:325:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing (799ms)
+  ✓  34 tests/parity/run-captures.spec.ts:378:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport (654ms)
+  ✓  35 tests/parity/run-captures.spec.ts:403:1 › image refusal keeps the preview frame and metadata stationary (706ms)
+  ✓  36 tests/parity/run-captures.spec.ts:446:1 › closing during image load invalidates the dialog and restores its opener (669ms)
+  ✓  37 tests/parity/run-captures.spec.ts:467:1 › served absence makes no speculative capture request (535ms)
+
+  37 passed (32.9s)

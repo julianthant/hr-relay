@@ -1,0 +1,751 @@
+{
+  "recordedAt": "2026-08-31T09:13:24.052Z",
+  "base": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "trees": {
+    "dca4": {
+      "root": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+      "branch": "feature/dca4-archive-evidence",
+      "index": "",
+      "status": [
+        {
+          "status": " M",
+          "path": "AGENTS.md",
+          "bytes": 44711,
+          "sha256": "3d2a69a55b0affca28102c3012c1c29169b12068be54830c26b4820e7772497a"
+        },
+        {
+          "status": " M",
+          "path": "config/pending-wire-bindings.json",
+          "bytes": 2400,
+          "sha256": "d15cbaae462919b73fc59969710396911c772ebe78f7e29883e748f86cac119a"
+        },
+        {
+          "status": " M",
+          "path": "docs/rebuild/reference/dashboard-surfaces.md",
+          "bytes": 410752,
+          "sha256": "49c2ee22d478782178876d9b75ab0c87680a340b9ace840ab36d41201135a8b7"
+        },
+        {
+          "status": " M",
+          "path": "docs/rebuild/reference/decisions.md",
+          "bytes": 395511,
+          "sha256": "1dc41560a30f14f5b3cdae2f59fd2d4a0ca615d163d2b22d75e77bec0b0db2a1"
+        },
+        {
+          "status": " M",
+          "path": "docs/rebuild/reference/frontend-backend-integration.md",
+          "bytes": 203154,
+          "sha256": "571c6adf61dad24ec34de5c73fbb3a4ffb1a710050056305429d0d22036156a7"
+        },
+        {
+          "status": " M",
+          "path": "docs/roadmap/index.html",
+          "bytes": 1266918,
+          "sha256": "b6e9b03839c6863be8e1b2dd144a2ef9b4b530219505c2634731ba7391f7beda"
+        },
+        {
+          "status": " M",
+          "path": "src/dashboard/AGENTS.md",
+          "bytes": 12989,
+          "sha256": "a2f6f1012e1b0df838f735fff20e64577092ad38fc1088b017b0ac68f81db676"
+        },
+        {
+          "status": " M",
+          "path": "src/dashboard/app/dashboard-app.tsx",
+          "bytes": 85302,
+          "sha256": "8bbb8db545bfba2cc84418a29c3905c84835542da59d1a9306994ea2ec4c1415"
+        },
+        {
+          "status": " M",
+          "path": "src/dashboard/client/queries.ts",
+          "bytes": 18320,
+          "sha256": "0fdcaeb5f555bf06b0b05ab35cde4c455ed6235fd1d40d72004932eb7ac7db61"
+        },
+        {
+          "status": " M",
+          "path": "src/dashboard/surfaces/archive-model.ts",
+          "bytes": 38455,
+          "sha256": "52af2d9261568bc6e8bbd2089b15afa0659bff518da130466ccba593b4bb3097"
+        },
+        {
+          "status": " M",
+          "path": "src/dashboard/surfaces/archive.tsx",
+          "bytes": 167412,
+          "sha256": "e464397d2800ec3601da9e2214ce1701979f6b8bbb6547487d5b95c5dbc5c3ca"
+        },
+        {
+          "status": " M",
+          "path": "src/dashboard/surfaces/log-panel.tsx",
+          "bytes": 111512,
+          "sha256": "4d8a0afd36edeb5a4f74576351c19d2d56457f3c40c2965a3899693fada05b16"
+        },
+        {
+          "status": " M",
+          "path": "src/domain/dashboard/archive.ts",
+          "bytes": 17199,
+          "sha256": "b17115ea5b2821471437df0773c84c47931167656002175d127c495707e5092c"
+        },
+        {
+          "status": " M",
+          "path": "src/domain/dashboard/artifacts.ts",
+          "bytes": 1949,
+          "sha256": "ed06b62f72cca9733084e18a7613ea47a475a81bdb5df2168cae984105c569e0"
+        },
+        {
+          "status": " M",
+          "path": "src/domain/dashboard/run-detail.ts",
+          "bytes": 54114,
+          "sha256": "6e988a9379b0446891c0b030dbe94aad4ec0e175653acb1c4fcd66e85c4a5777"
+        },
+        {
+          "status": " M",
+          "path": "src/server/dashboard/compose.ts",
+          "bytes": 53560,
+          "sha256": "80d74dc0e80adb6dc3daf50f882e3e8ea829e2e71f9753b9d1dbcf5fdc4ca916"
+        },
+        {
+          "status": " M",
+          "path": "src/server/dashboard/queries/archive.ts",
+          "bytes": 31898,
+          "sha256": "ed9d6ee05c23d210d10403d05493cee99e09112e9b9d9ce15ec6f18845d4f387"
+        },
+        {
+          "status": " M",
+          "path": "src/server/dashboard/queries/run-detail.ts",
+          "bytes": 93873,
+          "sha256": "d7573200b6e8251bf89f02bd6bf34cc044cf6a7621aa2bf600235b76434f2b95"
+        },
+        {
+          "status": " M",
+          "path": "src/server/dashboard/routes/api.ts",
+          "bytes": 25053,
+          "sha256": "3a02b25c62bd2742575f2fc9779f11f9f22c06645d2d79a074e19ac00caeb0e5"
+        },
+        {
+          "status": " M",
+          "path": "src/server/dry-run-scenario/runtime.ts",
+          "bytes": 20403,
+          "sha256": "d745bad8399767640b730a6787c9794ada474f9661afb1659f8aab6471fafcfa"
+        },
+        {
+          "status": " M",
+          "path": "tests/parity/helpers/fixture-bff.ts",
+          "bytes": 25096,
+          "sha256": "393944a843e4b89d27b856b20caf11dc207317d2c78f6cc874d38be6c9866f3e"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/architecture/helpers/redaction-surface-audit.ts",
+          "bytes": 104685,
+          "sha256": "26dd73e1bc53cbeed134643720546c1d6a4ac3b67fd399cb73c0975389d341eb"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/architecture/helpers/wire-connectivity.ts",
+          "bytes": 10699,
+          "sha256": "a44d56a9919991c3f2441bae0c84befd70cb72bd9e3d8240e73a42d26725fa82"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/architecture/redaction-surface-scan.test.ts",
+          "bytes": 36429,
+          "sha256": "7329ca05e57f726da6c617de2c3c30b9d72140d92cca1021ec08eaec9beb18a6"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/architecture/wire-connectivity.test.ts",
+          "bytes": 55135,
+          "sha256": "9eb5bce49b04aae9a71a253705eb058457a9ca599966f8604a7e3fc0cd456648"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/dashboard-wire.test.ts",
+          "bytes": 29641,
+          "sha256": "4dfa7e37b90c281e154e3a7590ad48798c6300c3ba09a2141267fdd6fccfa3ad"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/dashboard/archive-detail-render.test.ts",
+          "bytes": 6194,
+          "sha256": "b8162b72f14ab8bfcacbc5a32c787ead902808b4a113a8facc29797e0231a587"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/dashboard/archive-render.test.ts",
+          "bytes": 39535,
+          "sha256": "af83d4b84f2968d1a8779ce863ddffcc219368d90dcfe7df61f6bcfa48c8e1cf"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/dry-run-scenario-composition.test.ts",
+          "bytes": 27073,
+          "sha256": "f47721d4384a347bfbb345f602c98bb4ce1486d45a34213630a74fadb8ee18eb"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/server/bff-flow.test.ts",
+          "bytes": 55375,
+          "sha256": "a623aa99db0aace1fa66301dfb3cddb43f9daa4ad53fbe4aaa612db227961e4b"
+        },
+        {
+          "status": "??",
+          "path": "docs/coordinator/"
+        },
+        {
+          "status": "??",
+          "path": "src/dashboard/surfaces/run-captures-model.ts",
+          "bytes": 6732,
+          "sha256": "001c9058ff9b42a867bb83f5c1503b5f9c6797cb8c9c60624b172e88f532e391"
+        },
+        {
+          "status": "??",
+          "path": "src/dashboard/surfaces/run-captures.tsx",
+          "bytes": 6478,
+          "sha256": "2daa099d3ece6c6a8d812ecee002393d7144051bde8294a1f8826c7a9fb89187"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/archive-evidence.spec.ts",
+          "bytes": 23317,
+          "sha256": "e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/helpers/fixture-archive-evidence.ts",
+          "bytes": 8467,
+          "sha256": "3877360ad3540f5579a47c4f4e88be8c366b29332895f4772c53145474792757"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/helpers/fixture-run-captures.ts",
+          "bytes": 4892,
+          "sha256": "b300ee0493d93bde2fc1d07a7f1760ee22a858cf43ed4cc43dffc09630bed695"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/references/archive-evidence--graphite-warm--1280x720.a11y.yml",
+          "bytes": 1902,
+          "sha256": "be60674f973994ef46749b1c143c42f0b7798caef950bf1c8d8f4ce345155ee6"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/references/archive-evidence--graphite-warm--1280x720.meta.json",
+          "bytes": 325,
+          "sha256": "c9f7c4d5f4d00ac261fe8025369603f9c75dd6eaa5a9da0e81f3415a607c7e69"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/references/archive-evidence--graphite-warm--1280x720.png",
+          "bytes": 81256,
+          "sha256": "1515745bbc5ea128ff7d61a74234a3c0fd521f06082648d26a67e92b3fa5ad91"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/references/archive-evidence--paper-ink--phone-390x844.a11y.yml",
+          "bytes": 1904,
+          "sha256": "c455a509f8eef7b08a9e7d22ed4160d5871595c81f2c970db23aa7863d660223"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/references/archive-evidence--paper-ink--phone-390x844.meta.json",
+          "bytes": 326,
+          "sha256": "469e7558722db7ef27ddccc7773df09e08eec1e324940d3ade2f4507aeb51c7e"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/references/archive-evidence--paper-ink--phone-390x844.png",
+          "bytes": 70974,
+          "sha256": "275ac863a51674e5269c39aea3aea736f34377dbff674d0bf72607ed6a8049c3"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/architecture/helpers/archive-browser-route-references.ts",
+          "bytes": 8431,
+          "sha256": "dfc1d690788463fb31708f0254c167dd1e8781aa6944e777b14e73da95ddde28"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/architecture/helpers/run-capture-browser-route-references.ts",
+          "bytes": 5562,
+          "sha256": "4439d5a8f04cad5ec90f138b49c62aaf828d2da9fe1bdd35571833f4b5727c2b"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/archive-capture-resource-client.test.ts",
+          "bytes": 1516,
+          "sha256": "24d91d3aba1b7d22748ac61c6d7ed944fa0b7b8e7c81b9382be464f34e8aeb4f"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/archive-evidence-fixture.test.ts",
+          "bytes": 13159,
+          "sha256": "61aa88751464f01106ac34db39fa9792f37c32480170ec491cfe4abf2cdc1d1f"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/fixtures/"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/run-captures-app.test.ts",
+          "bytes": 30723,
+          "sha256": "68ca95defa1ee43c6ad1d759487c3b4ebe2e244cf4130cb9216e5d745428fc84"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/run-captures-fixture.test.ts",
+          "bytes": 12309,
+          "sha256": "1231018c86497e39ebce33d41e50d5175af319e854ee3dcd0b395b0be4750463"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/run-captures-lifecycle.test.ts",
+          "bytes": 3598,
+          "sha256": "a4261b95c82ddf6c7778f26e87848b5edc08ea0353696a921d4ee284e83498bf"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/run-detail-captures-client.test.ts",
+          "bytes": 4767,
+          "sha256": "2831c8d0c503960ff23be3f8ea8b5085765792621e9d7337477b516bc3f6cdc3"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/server/archive-capture-resource.test.ts",
+          "bytes": 10624,
+          "sha256": "6853648c074d7f97eae16d83a7f04dccfef4b838ed5879b62e3c4a6d801d1907"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/server/archive-capture-routes.test.ts",
+          "bytes": 16762,
+          "sha256": "e0d7d28094586d8adcebc5612820d5d3da8ccffb60badfca6b06a5eb55092a30"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/server/run-detail-captures.test.ts",
+          "bytes": 19529,
+          "sha256": "38d96fe5faae6c8f236d95fa44982ad4c0cf95598bb2245446054b52315a92cd"
+        }
+      ]
+    },
+    "dca2": {
+      "root": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca2",
+      "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+      "branch": "feature/dca2-screenshot-gallery",
+      "index": "",
+      "status": [
+        {
+          "status": " M",
+          "path": "AGENTS.md",
+          "bytes": 42377,
+          "sha256": "31b4e87f3788ff51e7bc59b6b66445bcb5f6cb9f0ea2b98e527c16c7df42cead"
+        },
+        {
+          "status": " M",
+          "path": "config/pending-wire-bindings.json",
+          "bytes": 2400,
+          "sha256": "d15cbaae462919b73fc59969710396911c772ebe78f7e29883e748f86cac119a"
+        },
+        {
+          "status": " M",
+          "path": "docs/rebuild/reference/frontend-backend-integration.md",
+          "bytes": 196157,
+          "sha256": "28e1d8f6adb01a38977edcb5dbb7a2da931806f8de306ec770bfbec409f745f0"
+        },
+        {
+          "status": " M",
+          "path": "docs/rebuild/reference/lessons.md",
+          "bytes": 99323,
+          "sha256": "3313893ca6237a7981d0550eb1e0a417f88d415b3723d2941d8b5f672aeb967c"
+        },
+        {
+          "status": " M",
+          "path": "docs/rebuild/reference/operator-trust.md",
+          "bytes": 181636,
+          "sha256": "3480b5f71da2247a38bb8a09d1d185a5214da57bedbec48149819b33e2c33ab2"
+        },
+        {
+          "status": " M",
+          "path": "docs/roadmap/index.html",
+          "bytes": 1267170,
+          "sha256": "1270dc52e1ddc0b36533e4c8a1f20d01758b2737faab02bb39ecac573d6825e9"
+        },
+        {
+          "status": " M",
+          "path": "src/dashboard/AGENTS.md",
+          "bytes": 12445,
+          "sha256": "c0e2a9747d8c7fc4bf9bf0af09ba34bb3a8c7300db044e21a974517b04b0fbd2"
+        },
+        {
+          "status": " M",
+          "path": "src/dashboard/app/dashboard-app.tsx",
+          "bytes": 85302,
+          "sha256": "8bbb8db545bfba2cc84418a29c3905c84835542da59d1a9306994ea2ec4c1415"
+        },
+        {
+          "status": " M",
+          "path": "src/dashboard/client/queries.ts",
+          "bytes": 18057,
+          "sha256": "2da48eca7a2803c517d251fe516a6127f970acdee633d5a3f461782833841713"
+        },
+        {
+          "status": " M",
+          "path": "src/dashboard/surfaces/log-panel.tsx",
+          "bytes": 111512,
+          "sha256": "4d8a0afd36edeb5a4f74576351c19d2d56457f3c40c2965a3899693fada05b16"
+        },
+        {
+          "status": " M",
+          "path": "src/dashboard/surfaces/trust-model.ts",
+          "bytes": 22319,
+          "sha256": "4f3f6098904118c53b0e80c48b5fe907283c5b644163e3face3a19e36d593a53"
+        },
+        {
+          "status": " M",
+          "path": "src/dashboard/surfaces/trust.tsx",
+          "bytes": 47096,
+          "sha256": "01ee8ff569365d592484a2fc8ed1582542e5120e76fee22a5f4213b61f75400b"
+        },
+        {
+          "status": " M",
+          "path": "src/domain/dashboard/artifacts.ts",
+          "bytes": 1949,
+          "sha256": "ed06b62f72cca9733084e18a7613ea47a475a81bdb5df2168cae984105c569e0"
+        },
+        {
+          "status": " M",
+          "path": "src/domain/dashboard/run-detail.ts",
+          "bytes": 54114,
+          "sha256": "6e988a9379b0446891c0b030dbe94aad4ec0e175653acb1c4fcd66e85c4a5777"
+        },
+        {
+          "status": " M",
+          "path": "src/server/dashboard/compose.ts",
+          "bytes": 55136,
+          "sha256": "165751b7493317f6d92e845a4a280ea3117dc5e72cd470cb7b0fe201aa1a82e9"
+        },
+        {
+          "status": " M",
+          "path": "src/server/dashboard/http-server.ts",
+          "bytes": 12203,
+          "sha256": "a30e46afbc617ba7273a9f1130d96212ea7fa5679c026d6c1b692ea79409751c"
+        },
+        {
+          "status": " M",
+          "path": "src/server/dashboard/queries/artifact-bytes.ts",
+          "bytes": 7723,
+          "sha256": "ba450c8c3254219a942d99eb58d9e1b707603c3280f0fff028c719d92a590d66"
+        },
+        {
+          "status": " M",
+          "path": "src/server/dashboard/queries/diagnostic-bundle.ts",
+          "bytes": 12871,
+          "sha256": "808cb077bd89ed131048e2b0ef4a501f304fa3aa658cda054ee2ea1278bc2ec1"
+        },
+        {
+          "status": " M",
+          "path": "src/server/dashboard/queries/run-detail.ts",
+          "bytes": 94629,
+          "sha256": "a801e7965aa9f23b713a910d6726b016641d648ec2d813305d63b144f97384f4"
+        },
+        {
+          "status": " M",
+          "path": "src/server/dashboard/routes/api.ts",
+          "bytes": 24280,
+          "sha256": "91346d4f6d496d89291fc4ce4b5d994c5d326a1e8afc7befff20067e46611eb0"
+        },
+        {
+          "status": " M",
+          "path": "src/server/dashboard/routes/failure-status.ts",
+          "bytes": 4095,
+          "sha256": "d8e474eca2955c8b371c06ed8ee152ee627cce19a36dd56c97919733421e43c3"
+        },
+        {
+          "status": " M",
+          "path": "src/server/dry-run-scenario/runtime.ts",
+          "bytes": 20403,
+          "sha256": "d745bad8399767640b730a6787c9794ada474f9661afb1659f8aab6471fafcfa"
+        },
+        {
+          "status": " M",
+          "path": "src/server/failures.ts",
+          "bytes": 3900,
+          "sha256": "294d24f04d20bb5d2ded31555b3e947b6202e05d4e308975a37677a1fbf7a99e"
+        },
+        {
+          "status": " M",
+          "path": "tests/parity/diagnostic-bundle-dialog.spec.ts",
+          "bytes": 54782,
+          "sha256": "e33543cc94f3e928d9d8b3aef2c625082dad0749e0676ecf43745a83d0b0864c"
+        },
+        {
+          "status": " M",
+          "path": "tests/parity/helpers/fixture-bff.ts",
+          "bytes": 23797,
+          "sha256": "7664b1cded3fcaa7d88b99c30952314d69047d5a245d815c38543b2f0567c9ef"
+        },
+        {
+          "status": " M",
+          "path": "tests/parity/helpers/fixture-day.ts",
+          "bytes": 73455,
+          "sha256": "851b3bad8284ea9e2da9ca2d150f884e4562e5056c45c2a5996fc9502a35a5d7"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/architecture/helpers/wire-connectivity.ts",
+          "bytes": 10409,
+          "sha256": "b7a72d076393ea3919d3e9772be8f25098aa34dd93d8f61027d6d16c493b2dd6"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/architecture/wire-connectivity.test.ts",
+          "bytes": 27156,
+          "sha256": "e55da29db721767bc4990b8263190c86963337996d833a7698ba93d59837db25"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/dashboard-wire.test.ts",
+          "bytes": 29559,
+          "sha256": "57251d9fd19cb06339547c98f1664db8703ea8d9ed9c6fb7f0b089b833ab719d"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/dashboard/diagnostic-bundle-client.test.ts",
+          "bytes": 7152,
+          "sha256": "eb90de91185479944208acff7b311248c9162e639b5d625500af4ebc6770c399"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/dashboard/diagnostic-bundle-trust-model.test.ts",
+          "bytes": 5323,
+          "sha256": "2f60dca42d9e2cd55dc716b176eb121f76d599a74f99ff35c1309f6e47e38bd3"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/dry-run-scenario-composition.test.ts",
+          "bytes": 27073,
+          "sha256": "f47721d4384a347bfbb345f602c98bb4ce1486d45a34213630a74fadb8ee18eb"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/server/bff-flow.test.ts",
+          "bytes": 97880,
+          "sha256": "792838c1272524fd28631b7f21a1e98251fab119af7966aba9201b212ba485a9"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/server/diagnostic-bundle-readback.test.ts",
+          "bytes": 30450,
+          "sha256": "b0d02fdbe0762d85917ef4ba1cbddc39882395d8e7151118b8140f0453252ef3"
+        },
+        {
+          "status": " M",
+          "path": "tests/unit/server/failure-status.test.ts",
+          "bytes": 6224,
+          "sha256": "52ea2abd08eab5401de68577cf5be79a8a062bff4ad48cf8a04ae3bb9f75142b"
+        },
+        {
+          "status": "??",
+          "path": "docs/coordinator/"
+        },
+        {
+          "status": "??",
+          "path": "src/dashboard/surfaces/diagnostic-screenshot-model.ts",
+          "bytes": 6325,
+          "sha256": "6453278ec655b5f538384d5821d307d691c306816c3fa1d0d3007c3a3360693a"
+        },
+        {
+          "status": "??",
+          "path": "src/dashboard/surfaces/diagnostic-screenshot.tsx",
+          "bytes": 7505,
+          "sha256": "86a6926515e270dfc401669d2675b31381d86f6eb13e02bae65d71dbc93ae5fc"
+        },
+        {
+          "status": "??",
+          "path": "src/dashboard/surfaces/run-captures-model.ts",
+          "bytes": 6544,
+          "sha256": "dfaa0c7bd529d15f128e87343f90b59d6d318db5a0aee6613c2e802cd30dfeb2"
+        },
+        {
+          "status": "??",
+          "path": "src/dashboard/surfaces/run-captures.tsx",
+          "bytes": 6371,
+          "sha256": "03134d26191d5a3ebce3fd44d77a474e765ec0690222babd1beeef20077ba42e"
+        },
+        {
+          "status": "??",
+          "path": "src/infra/artifacts/server-verified-artifact-reader.ts",
+          "bytes": 44617,
+          "sha256": "dc8c63bb5db03a7e86d7823a3158f140646665f3a46bca788f104da17d647d5d"
+        },
+        {
+          "status": "??",
+          "path": "src/server/dashboard/routes/verified-byte-response.ts",
+          "bytes": 1987,
+          "sha256": "6cd5604e407f320ad7ca6b50bc29217fe213917f10d39bf29d96ffa5a9cdd0ed"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/helpers/diagnostic-gallery-origin.ts",
+          "bytes": 1037,
+          "sha256": "1118d4c1b781eb52c830b9ffa10d287df2ea553ff54d3b2ea2c09588ee72778d"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/helpers/diagnostic-jpeg-fixture.ts",
+          "bytes": 2098,
+          "sha256": "d06d8ad53cb218533c5f00b0c0832756d2562f09320855a03954f7467990aa87"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/helpers/fixture-run-captures.ts",
+          "bytes": 4619,
+          "sha256": "69fd670b08888b28a0eb8d6f3a44edc1910e9f54a59ea7a8a82ea39c871a1ee3"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/references/diagnostic-bundle-gallery--graphite-warm--1280x720.a11y.yml",
+          "bytes": 1919,
+          "sha256": "616556cdf8fb902c55b3f0d32239cc53e7cd67cd79cbbcf6fa6513aa6ba575da"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/references/diagnostic-bundle-gallery--graphite-warm--1280x720.meta.json",
+          "bytes": 334,
+          "sha256": "10bc39c3ec9bb2cb3a680fe01b79f7bb530e1683f545c0ce54f70ec9b2d2a079"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/references/diagnostic-bundle-gallery--graphite-warm--1280x720.png",
+          "bytes": 154295,
+          "sha256": "d034a6f5a1beff86427e9cea0d0a71047b465a0c37775ef1bde3dcd0a18bcb4f"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/references/diagnostic-bundle-gallery--paper-ink--1280x720.a11y.yml",
+          "bytes": 1911,
+          "sha256": "4bad33ef5c397c78adb1170f08cfef9ff3d42ca503919c61dc35dd9e491b40ad"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/references/diagnostic-bundle-gallery--paper-ink--1280x720.meta.json",
+          "bytes": 330,
+          "sha256": "e9b5c21daefb06c0d4e65da416c69e63b9f9bd60f47a4b2fba4f6c13735f91c2"
+        },
+        {
+          "status": "??",
+          "path": "tests/parity/references/diagnostic-bundle-gallery--paper-ink--1280x720.png",
+          "bytes": 169680,
+          "sha256": "3a46a8b1fa1bac0024dc68eaddfd65ee85c89f0e4b07ee1523491addb3b61bad"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/architecture/helpers/run-capture-browser-route-references.ts",
+          "bytes": 1092,
+          "sha256": "647e098fac7ff071bd60e539916586c2b2cfa455d520037b90761e4e96a34057"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/diagnostic-fixture-http.test.ts",
+          "bytes": 6971,
+          "sha256": "c019512f43b01aa1e685330f1a86cb39bd71571cb92d3435c226da6190e862d0"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/diagnostic-gallery-origin.test.ts",
+          "bytes": 4391,
+          "sha256": "a3915b2530e0f42b38db5d4446ec083c95401fae2045ecfa14a1f9d5c8c11d38"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/diagnostic-screenshot-model.test.ts",
+          "bytes": 10988,
+          "sha256": "1bc180083fc710f3c1e5df9048b476e3348a8497a8b25da65c4490bc4aa047a9"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/diagnostic-screenshot-terminal.test.ts",
+          "bytes": 3827,
+          "sha256": "e4719661c2aed7dd20f48e90eb6e853a0e9ab42e8c9e6f4bd4bbf0f25a5f962a"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/fixtures/"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/run-captures-app.test.ts",
+          "bytes": 1221,
+          "sha256": "f24efe72f53153e93afc97bfbdc4df60416f00c95a33bff36119f606d64cb8c2"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/run-captures-fixture.test.ts",
+          "bytes": 959,
+          "sha256": "57111eef5c9bc291fd3724f729d2698ae3ed60b40e94e26570a98da004227e3e"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/run-captures-lifecycle.test.ts",
+          "bytes": 8256,
+          "sha256": "d6820c48dc268df7671ebc18417ad98a27cd82a832efedaef5b27b63e7b34d79"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/dashboard/run-detail-captures-client.test.ts",
+          "bytes": 2149,
+          "sha256": "c04bb5307c048dc145e0bbf6bc1b871c867e504a904d211424f4be149e9614b3"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/infra/"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/server/dashboard-http-server.test.ts",
+          "bytes": 22573,
+          "sha256": "489473b3384b50b05af25283a50be4a65a567df111fa77b6bc585f53490b2336"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/server/run-detail-captures.test.ts",
+          "bytes": 1631,
+          "sha256": "5789a394bcc0c6b281669b496f17230d8049476041c5b1f8d23671b32aa911e9"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/server/verified-byte-response.test.ts",
+          "bytes": 1881,
+          "sha256": "31c8fb9d1642182514f8e9954a107d6cc066f3073d78ae93c7be6b43972c9e2d"
+        }
+      ]
+    }
+  },
+  "/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/briefs/dca4-d291-archive-adaptation.md": {
+    "bytes": 3899,
+    "sha256": "d3c71526a1d456cfddaa15db7fef529e68fea2db875a80072a0d2009f0b8ee04"
+  },
+  "/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/reports/dca2-d291-receive.md": {
+    "bytes": 2034,
+    "sha256": "3d154d88320bff11335e40ba28d3cded0eb5e62cc29a181fc33cd9c785df4d5d"
+  },
+  "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca2/docs/coordinator/worktree-completion/reports/dca2-d291-shared-serving.md": {
+    "bytes": 10732,
+    "sha256": "4626209f1dd0ef5dffc0266164ea8f831ce15d5a6fc9e2745cd754ee8db10714"
+  },
+  "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca2/docs/coordinator/worktree-completion/handoffs/2026-08-31-dca2-d291-shared-serving.md": {
+    "bytes": 6733,
+    "sha256": "f3a87a62570ff41d8a2cfbb413b5d060d0122a8b298865dd49f99672909520c5"
+  },
+  "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/reports/dca4-a10-dca3-consumer.md": {
+    "bytes": 18233,
+    "sha256": "87908f53ad05811694a53c77980ca2f049b7c0d1203de10934712606eb7ff78f"
+  },
+  "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/handoffs/2026-08-30-dca4-central-route-dependency.md": {
+    "bytes": 9951,
+    "sha256": "133fb41406ced82d5c87a9efc17eb41e2c066767d9592c1b934690422ed84b70"
+  }
+}
+

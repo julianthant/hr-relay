@@ -1,0 +1,57 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/run-captures-app.test.ts -t only for literal failure
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+(node:52216) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+----------------------------xx-------
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > frames tile only for literal failure while preserving all mixed origins
+AssertionError: literal failure must frame the tile
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/dashboard/run-captures-app.test.ts:321:12
+    319|     const frame = dialog.querySelector("figure");
+    320|     assert.ok(frame instanceof HTMLElement);
+    321|     assert.ok((target === "tile" ? tile : frame).classList.contains("b…
+       |            ^
+    322|       `literal failure must frame the ${target}`);
+    323|     for (const origin of origins) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > frames preview only for literal failure while preserving all mixed origins
+AssertionError: literal failure must frame the preview
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/dashboard/run-captures-app.test.ts:321:12
+    319|     const frame = dialog.querySelector("figure");
+    320|     assert.ok(frame instanceof HTMLElement);
+    321|     assert.ok((target === "tile" ? tile : frame).classList.contains("b…
+       |            ^
+    322|       `literal failure must frame the ${target}`);
+    323|     for (const origin of origins) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 35 skipped (37)
+   Start at  17:34:18
+   Duration  1.53s (transform 689ms, setup 0ms, import 970ms, tests 257ms, environment 228ms)
+

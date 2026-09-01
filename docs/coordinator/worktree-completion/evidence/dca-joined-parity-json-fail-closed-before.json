@@ -1,0 +1,24 @@
+{
+  "observedAt": "2026-08-31T19:07:16.946Z",
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "index": "",
+  "candidateCount": 91,
+  "candidateAggregate": "54a68e6c15c4d4564dbfb843d0eb0ba6fce1acb66af8dbcf69b4b08ff6ed3c63",
+  "scope": {
+    "AGENTS.md": { "sha256": "6e7e2116483fd4b8cbb5788a581cc578c4f22344cc171a263291049241926de7", "bytes": 44633 },
+    "package.json": { "sha256": "925e28a274f321cdeda5bc7bd82db7537c6b3ebdfdcc457b806c300504b7ef18", "bytes": 2842 },
+    "playwright.parity.config.ts": { "sha256": "76b685be64e6eb5d274f66c3cf7ce80984db026a192d125df5dbdf7d8727433b", "bytes": 3312 },
+    "scripts/verify-parity-json.ts": null,
+    "tests/unit/architecture/parity-reference-authority.test.ts": { "sha256": "32605fa75178e57899365e8b15e3102a9fd1e08b36199fed75e40a6cfb4afc04", "bytes": 24365 },
+    "tests/unit/scripts/verify-parity-json.test.ts": null,
+    "tests/parity/diagnostic-bundle-dialog.spec.ts": { "sha256": "e7e8f710fceaf6cb6b20a9a7e7d1dc2f07e6a0e7074f8572eba08bcaf4b4b3a1", "bytes": 54909 },
+    "tests/parity/run-captures.spec.ts": { "sha256": "e2491b1809873b58aa7e41ec5c80d12e9587eb8ef23ed435e2b1e6974df2aaf2", "bytes": 25730 }
+  },
+  "protectedCount": 1884,
+  "protectedDigest": "f6d9a388a5bf539e97bbc51e8f49dd2ac19720d1b14b0a36bef973aa22b8fc23",
+  "repair14": {
+    "reportSha256": "5b49e4f122169bbcef7236152c179490cc721a16766f2418c62796a80a6146dc",
+    "patchSha256": "ed1f0892eec010140bec3d9b91296b1a8bceb32ec450cc21a5b967cd31ae15eb"
+  },
+  "diffCheck": ""
+}

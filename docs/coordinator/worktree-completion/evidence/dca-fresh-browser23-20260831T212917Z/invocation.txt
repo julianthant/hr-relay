@@ -1,0 +1,6 @@
+COMMAND: /usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock env -u PARITY_UPDATE npm run test:parity -- tests/parity/diagnostic-bundle-dialog.spec.ts tests/parity/archive-evidence.spec.ts tests/parity/run-captures.spec.ts
+STARTED_UTC: 2026-08-31T21:29:17Z
+EXIT: 0
+FINISHED_UTC: 2026-08-31T21:29:50Z
+UPDATE_MODE: unset (env -u PARITY_UPDATE)
+LOCK_RELEASED: yes (lockf process exited)

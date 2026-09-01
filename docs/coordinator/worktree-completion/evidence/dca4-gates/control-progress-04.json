@@ -1,0 +1,27 @@
+{
+  "scoped-reassertion": {
+    "command": "/usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock env -u PARITY_UPDATE npm run test:parity -- tests/parity/archive-evidence.spec.ts",
+    "started": "2026-08-30T16:16:54.871Z",
+    "finished": "2026-08-30T16:17:05.713Z",
+    "exitCode": 0
+  },
+  "decode-negative": {
+    "command": "/usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock env -u PARITY_UPDATE npm run test:parity -- tests/parity/archive-evidence.spec.ts --grep 'visible decode refusal'",
+    "started": "2026-08-30T16:17:30.027Z",
+    "finished": "2026-08-30T16:17:38.350Z",
+    "exitCode": 1
+  },
+  "decode-positive": {
+    "command": "/usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock env -u PARITY_UPDATE npm run test:parity -- tests/parity/archive-evidence.spec.ts --grep 'visible decode refusal'",
+    "started": "2026-08-30T16:17:46.548Z",
+    "finished": "2026-08-30T16:17:50.340Z",
+    "exitCode": 0
+  },
+  "restoration": {
+    "chunk_id": "d21df5",
+    "wall_time_seconds": 0.000002541,
+    "exit_code": 0,
+    "original_token_count": 24,
+    "output": "{\"hash\":\"e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0\",\"exactBytes\":true}\n"
+  }
+}

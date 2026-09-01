@@ -1,0 +1,5 @@
+
+> hr-automation-rebuild@0.1.0 typecheck
+> tsc --noEmit
+
+tests/unit/scripts/verify-parity-json.test.ts(212,18): error TS2339: Property 'path' does not exist on type '{ name: string; contentType: string; body: string; }'.

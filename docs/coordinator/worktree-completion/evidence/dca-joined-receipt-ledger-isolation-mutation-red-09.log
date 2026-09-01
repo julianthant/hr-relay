@@ -1,0 +1,41 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/run-captures-fixture.test.ts -t records exact immutable artifact exchanges without crediting API or static traffic
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+-x---------
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-fixture.test.ts > records exact immutable artifact exchanges without crediting API or static traffic
+AssertionError: Expected values to be strictly equal:
+
+false !== true
+
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/dashboard/run-captures-fixture.test.ts:96:12
+     94|       { method: "GET", pathname: "/artifacts/v1/00000000-0000-4000-800…
+     95|     ]);
+     96|     assert.equal(Object.isFrozen(first), true);
+       |            ^
+     97|     assert.equal(first.every(Object.isFrozen), true);
+     98|
+ ❯ withRunCaptureHttp tests/unit/dashboard/run-captures-fixture.test.ts:18:11
+ ❯ tests/unit/dashboard/run-captures-fixture.test.ts:82:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 skipped (11)
+   Start at  11:05:44
+   Duration  3.01s (transform 1.85s, setup 0ms, import 2.87s, tests 33ms, environment 0ms)
+

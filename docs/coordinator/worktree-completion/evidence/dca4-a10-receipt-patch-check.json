@@ -1,0 +1,8 @@
+{
+  "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+  "chunk_id": "6f6238",
+  "wall_time_seconds": 0.000005167,
+  "exit_code": 0,
+  "original_token_count": 225,
+  "output": "[{\"command\":[\"git\",\"apply\",\"--reverse\",\"--check\",\"docs/coordinator/worktree-completion/evidence/dca4-a10-receipt-delta.patch\"],\"exit\":0,\"stdout\":\"\",\"stderr\":\"\"},{\"command\":[\"git\",\"diff\",\"--check\"],\"exit\":0,\"stdout\":\"\",\"stderr\":\"\"},{\"command\":[\"git\",\"apply\",\"--numstat\",\"docs/coordinator/worktree-completion/evidence/dca4-a10-receipt-delta.patch\"],\"exit\":0,\"stdout\":\"131\\t0\\tsrc/dashboard/surfaces/run-captures-model.ts\\n89\\t0\\tsrc/dashboard/surfaces/run-captures.tsx\\n7\\t0\\tsrc/dashboard/app/dashboard-app.tsx\\n8\\t0\\tsrc/dashboard/surfaces/log-panel.tsx\\n441\\t0\\ttests/unit/dashboard/run-captures-app.test.ts\\n61\\t0\\ttests/unit/dashboard/run-captures-lifecycle.test.ts\\n212\\t0\\ttests/unit/dashboard/fixtures/run-captures-app-fixture.ts\\n12\\t0\\tsrc/dashboard/AGENTS.md\\n8\\t2\\tdocs/rebuild/reference/dashboard-surfaces.md\\n11\\t2\\tdocs/rebuild/reference/frontend-backend-integration.md\\n\",\"stderr\":\"\"}]\n"
+}

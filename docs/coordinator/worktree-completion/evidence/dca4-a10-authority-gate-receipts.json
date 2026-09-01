@@ -1,0 +1,202 @@
+{
+  "unit": "A10.1 sup_sol_dca4_a10_authority_origins",
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "serial": true,
+  "stdout": "Direct tee from each command before tool transport; no output reconstruction",
+  "gates": [
+    {
+      "name": "initial-red",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/server/bff-flow.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-initial-red.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-initial-red.log",
+      "sessionId": 54490,
+      "startChunk": "f41ecb",
+      "terminalChunk": "af06ba",
+      "exitCode": 1,
+      "result": "1 failed / 26 passed; missing live capture availability (semantic red)"
+    },
+    {
+      "name": "initial-green",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/server/bff-flow.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-initial-green.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-initial-green.log",
+      "sessionId": 2633,
+      "startChunk": "a0063a",
+      "terminalChunk": "1af3d8",
+      "exitCode": 0,
+      "result": "27 passed"
+    },
+    {
+      "name": "origins-red",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/server/run-detail-captures.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-origins-red.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-origins-red.log",
+      "sessionId": 24066,
+      "startChunk": "2206ac",
+      "terminalChunk": "95a2d0",
+      "exitCode": 1,
+      "result": "1 failed during fixture FK setup; NOT semantic proof"
+    },
+    {
+      "name": "origins-red-02",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/server/run-detail-captures.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-origins-red-02.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-origins-red-02.log",
+      "sessionId": 66283,
+      "startChunk": "0d1656",
+      "terminalChunk": "018893",
+      "exitCode": 1,
+      "result": "1 failed; flat ref loses origin projection (semantic red)"
+    },
+    {
+      "name": "origins-green",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/server/run-detail-captures.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-origins-green.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-origins-green.log",
+      "sessionId": 75980,
+      "startChunk": "565ada",
+      "terminalChunk": "ded417",
+      "exitCode": 0,
+      "result": "1 passed"
+    },
+    {
+      "name": "client-red",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-detail-captures-client.test.ts tests/unit/server/run-detail-captures.test.ts tests/unit/dashboard-wire.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-client-red.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-client-red.log",
+      "sessionId": 40621,
+      "startChunk": "c180a2",
+      "terminalChunk": "f438c5",
+      "exitCode": 1,
+      "result": "3 failed / 45 passed: 2 intended client reds (wrong section / absent AbortSignal); 1 fixture open-ref expectation error"
+    },
+    {
+      "name": "focused-green-01",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/server/run-detail-captures.test.ts tests/unit/dashboard/run-detail-captures-client.test.ts tests/unit/dashboard-wire.test.ts tests/unit/server/bff-flow.test.ts tests/unit/architecture/redaction-surface-scan.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-focused-green-01.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-focused-green-01.log",
+      "sessionId": 79328,
+      "startChunk": "0955ac",
+      "terminalChunk": "192f1c",
+      "exitCode": 0,
+      "result": "101 passed / 5 files"
+    },
+    {
+      "name": "typecheck-01",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-typecheck-01.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-typecheck-01.log",
+      "sessionId": 62035,
+      "startChunk": "5a2eb4",
+      "terminalChunk": "458f8c",
+      "exitCode": 2,
+      "result": "Only new test branded-ID typing errors; corrected"
+    },
+    {
+      "name": "lint-01",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-lint-01.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-lint-01.log",
+      "sessionId": 86526,
+      "startChunk": "abcd3f",
+      "terminalChunk": "c5d463",
+      "exitCode": 0,
+      "result": "zero warnings/errors"
+    },
+    {
+      "name": "focused-green-02",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/server/run-detail-captures.test.ts tests/unit/dashboard/run-detail-captures-client.test.ts tests/unit/dashboard-wire.test.ts tests/unit/server/bff-flow.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts tests/unit/server/archive-capture-resource.test.ts tests/unit/server/archive-capture-routes.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-focused-green-02.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-focused-green-02.log",
+      "sessionId": 57476,
+      "startChunk": "19b7e8",
+      "terminalChunk": "888235",
+      "exitCode": 0,
+      "result": "185 passed / 8 files"
+    },
+    {
+      "name": "control-origin-loss",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/server/run-detail-captures.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-control-origin-loss.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-control-origin-loss.log",
+      "sessionId": 31788,
+      "startChunk": "6f2bc9",
+      "terminalChunk": "80472d",
+      "exitCode": 1,
+      "result": "1 failed / 27 passed: mixed-origin assertion rejects last-wins membership loss"
+    },
+    {
+      "name": "control-origin-label",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/server/run-detail-captures.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-control-origin-label.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-control-origin-label.log",
+      "sessionId": 18427,
+      "startChunk": "55befa",
+      "terminalChunk": "c0839b",
+      "exitCode": 1,
+      "result": "3 failed / 25 passed: unexpected-state, subject-mismatch, recovery-park cannot become failure"
+    },
+    {
+      "name": "focused-final",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/server/run-detail-captures.test.ts tests/unit/dashboard/run-detail-captures-client.test.ts tests/unit/dashboard-wire.test.ts tests/unit/server/bff-flow.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts tests/unit/server/archive-capture-resource.test.ts tests/unit/server/archive-capture-routes.test.ts --reporter=verbose 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-focused-final.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-focused-final.log",
+      "sessionId": 22401,
+      "startChunk": "3c9339",
+      "terminalChunk": "b36ad7",
+      "exitCode": 0,
+      "result": "185 passed / 8 files; after exact control restoration"
+    },
+    {
+      "name": "wire-residue",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/wire-connectivity.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-wire-residue.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-wire-residue.log",
+      "sessionId": 97080,
+      "startChunk": "c7fca4",
+      "terminalChunk": "97bda9",
+      "exitCode": 1,
+      "result": "2 failed / 23 passed: async captures capability recognition; generic byte-route unconsumed"
+    },
+    {
+      "name": "typecheck-final",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-typecheck-final.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-typecheck-final.log",
+      "sessionId": 43201,
+      "startChunk": "7d0db7",
+      "terminalChunk": "d7f3db",
+      "exitCode": 0,
+      "result": "full typecheck passed"
+    },
+    {
+      "name": "lint-final",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-authority-lint-final.log",
+      "log": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-lint-final.log",
+      "sessionId": 10901,
+      "startChunk": "32e864",
+      "terminalChunk": "66deff",
+      "exitCode": 0,
+      "result": "full lint passed; after tests/controls"
+    }
+  ],
+  "restorationChecks": [
+    {
+      "control": "origin-loss",
+      "chunk": "868cd3",
+      "exitCode": 0
+    },
+    {
+      "control": "origin-label",
+      "chunk": "90a240",
+      "exitCode": 0
+    }
+  ],
+  "frozenDiffReverseCheck": {
+    "chunk": "a53e0c",
+    "exitCode": 0
+  },
+  "independentReview": "Not run in this seam; parent owns review after coherent A10 delta",
+  "heavyGates": "Not run; no allocation"
+}

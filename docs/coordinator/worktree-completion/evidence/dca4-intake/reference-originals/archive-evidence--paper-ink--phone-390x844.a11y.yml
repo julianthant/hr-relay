@@ -1,0 +1,48 @@
+# archive-evidence--paper-ink--phone-390x844
+# adapter: fixture
+# fixture: archive-evidence-verified
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# appVersion: 0.1.0
+# viewport: phone-390x844  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "screenshot at cross-verify":
+  - banner:
+    - heading "screenshot at cross-verify" [level=2]
+    - paragraph: Archived capture 1 of 1 on pl-090400-aa11.
+    - button "Close"
+  - paragraph: This viewer keeps the archive snapshot separate from the current byte check. What this capture was below is frozen; the availability state is verified only against that exact frozen id, digest, size and media type.
+  - figure "Verified retained bytes for this frozen archived capture.":
+    - img "Archived screenshot captured 2:11 AM"
+    - text: Verified retained bytes for this frozen archived capture.
+  - text: What this capture was
+  - term: Kind
+  - definition: screenshot
+  - term: Media type
+  - definition: image/png
+  - term: Size
+  - definition: 180 KB (184320 bytes)
+  - term: Pixel size
+  - definition: 1440 × 900
+  - term: Step
+  - definition: cross-verify
+  - term: System
+  - definition: crm
+  - term: Why it was captured
+  - definition: failure
+  - term: Sensitivity
+  - definition: redacted
+  - term: Digest
+  - definition: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+  - term: Artifact
+  - definition: aa11bb22-000a-4000-8000-aa11bb22000a
+  - term: Bundle
+  - definition: aa11bb22-000b-4000-8000-aa11bb22000b
+  - text: Declared retention Ordinary — declared for purge after Wed, Sep 2. Whether the bytes are still there is not something this record can see.
+  - contentinfo:
+    - text: Captured 2:11 AM · bundle aa11bb22
+    - button "Previous capture" [disabled]
+    - button "Next capture" [disabled]
+    - link "Download":
+      - /url: /artifacts/v1/archive/aa11bb22-0001-4000-8000-aa11bb220001/aa11bb22-000a-4000-8000-aa11bb22000a
+    - button "Close"

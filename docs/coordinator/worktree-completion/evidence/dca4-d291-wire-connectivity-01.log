@@ -1,0 +1,115 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+(node:97676) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+··x············································x··
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/architecture/wire-connectivity.test.ts > wire connectivity — declared arms, served arms, and the manifest between them > has every run-detail section arm either reachable or declared
+DiagnosticBundleCorruptError: run 00010001-0001-4001-8001-000100010001 diagnostic captures are corrupt: bundle 09320932-0932-4932-8932-093209320932 failed exact verification
+ ❯ captureCorrupt src/server/dashboard/queries/run-detail.ts:853:9
+    851|
+    852| function captureCorrupt(runId: string, message: string, cause?: unknow…
+    853|   throw new DiagnosticBundleCorruptError(
+       |         ^
+    854|     `run ${runId} diagnostic captures are corrupt: ${message}`,
+    855|     ...(cause === undefined ? [] : [{ cause }]),
+ ❯ verifyRunCaptures src/server/dashboard/queries/run-detail.ts:913:7
+ ❯ readRunSection src/server/dashboard/queries/run-detail.ts:986:21
+ ❯ reachableSections tests/unit/architecture/wire-connectivity.test.ts:352:19
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:500:40
+
+Caused by: DiagnosticBundleCorruptError: diagnostic bundle 09320932-0932-4932-8932-093209320932 is corrupt: attachment 09310931-0931-4931-8931-093109310931 (console-summary) could not be verified
+ ❯ corrupt src/server/dashboard/queries/diagnostic-bundle.ts:37:9
+ ❯ verifyArtifact src/server/dashboard/queries/diagnostic-bundle.ts:95:7
+ ❯ src/server/dashboard/queries/diagnostic-bundle.ts:190:7
+ ❯ readDiagnosticBundle src/server/dashboard/queries/diagnostic-bundle.ts:186:31
+ ❯ verifyRunCaptures src/server/dashboard/queries/run-detail.ts:908:18
+ ❯ readRunSection src/server/dashboard/queries/run-detail.ts:986:21
+ ❯ reachableSections tests/unit/architecture/wire-connectivity.test.ts:352:19
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:500:40
+
+Caused by: ArtifactBytesCorruptError: could not be verified
+ ❯ artifactBytesCorrupt src/server/dashboard/queries/artifact-bytes.ts:72:9
+ ❯ verifyArtifactBytes src/server/dashboard/queries/artifact-bytes.ts:119:5
+ ❯ verifyArtifact src/server/dashboard/queries/diagnostic-bundle.ts:85:5
+ ❯ src/server/dashboard/queries/diagnostic-bundle.ts:190:7
+ ❯ readDiagnosticBundle src/server/dashboard/queries/diagnostic-bundle.ts:186:31
+ ❯ verifyRunCaptures src/server/dashboard/queries/run-detail.ts:908:18
+ ❯ readRunSection src/server/dashboard/queries/run-detail.ts:986:21
+ ❯ reachableSections tests/unit/architecture/wire-connectivity.test.ts:352:19
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:500:40
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { detail: 'could not be verified' }
+Caused by: TypeError: Cannot read properties of undefined (reading 'verify')
+ ❯ Object.verify src/server/dashboard/queries/artifact-bytes.ts:94:28
+ ❯ verifyArtifactBytes src/server/dashboard/queries/artifact-bytes.ts:110:16
+ ❯ verifyArtifact src/server/dashboard/queries/diagnostic-bundle.ts:85:11
+ ❯ src/server/dashboard/queries/diagnostic-bundle.ts:190:13
+ ❯ readDiagnosticBundle src/server/dashboard/queries/diagnostic-bundle.ts:186:68
+ ❯ verifyRunCaptures src/server/dashboard/queries/run-detail.ts:908:24
+ ❯ readRunSection src/server/dashboard/queries/run-detail.ts:986:27
+ ❯ reachableSections tests/unit/architecture/wire-connectivity.test.ts:352:25
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:500:40
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |unit| tests/unit/architecture/wire-connectivity.test.ts > wire connectivity — declared arms, served arms, and the manifest between them > catches a synthesized orphan arm, a synthesized bad command key, and an unserved path
+DiagnosticBundleCorruptError: run 00010001-0001-4001-8001-000100010001 diagnostic captures are corrupt: bundle 09320932-0932-4932-8932-093209320932 failed exact verification
+ ❯ captureCorrupt src/server/dashboard/queries/run-detail.ts:853:9
+    851|
+    852| function captureCorrupt(runId: string, message: string, cause?: unknow…
+    853|   throw new DiagnosticBundleCorruptError(
+       |         ^
+    854|     `run ${runId} diagnostic captures are corrupt: ${message}`,
+    855|     ...(cause === undefined ? [] : [{ cause }]),
+ ❯ verifyRunCaptures src/server/dashboard/queries/run-detail.ts:913:7
+ ❯ readRunSection src/server/dashboard/queries/run-detail.ts:986:21
+ ❯ reachableSections tests/unit/architecture/wire-connectivity.test.ts:352:19
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:881:27
+
+Caused by: DiagnosticBundleCorruptError: diagnostic bundle 09320932-0932-4932-8932-093209320932 is corrupt: attachment 09310931-0931-4931-8931-093109310931 (console-summary) could not be verified
+ ❯ corrupt src/server/dashboard/queries/diagnostic-bundle.ts:37:9
+ ❯ verifyArtifact src/server/dashboard/queries/diagnostic-bundle.ts:95:7
+ ❯ src/server/dashboard/queries/diagnostic-bundle.ts:190:7
+ ❯ readDiagnosticBundle src/server/dashboard/queries/diagnostic-bundle.ts:186:31
+ ❯ verifyRunCaptures src/server/dashboard/queries/run-detail.ts:908:18
+ ❯ readRunSection src/server/dashboard/queries/run-detail.ts:986:21
+ ❯ reachableSections tests/unit/architecture/wire-connectivity.test.ts:352:19
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:881:27
+
+Caused by: ArtifactBytesCorruptError: could not be verified
+ ❯ artifactBytesCorrupt src/server/dashboard/queries/artifact-bytes.ts:72:9
+ ❯ verifyArtifactBytes src/server/dashboard/queries/artifact-bytes.ts:119:5
+ ❯ verifyArtifact src/server/dashboard/queries/diagnostic-bundle.ts:85:5
+ ❯ src/server/dashboard/queries/diagnostic-bundle.ts:190:7
+ ❯ readDiagnosticBundle src/server/dashboard/queries/diagnostic-bundle.ts:186:31
+ ❯ verifyRunCaptures src/server/dashboard/queries/run-detail.ts:908:18
+ ❯ readRunSection src/server/dashboard/queries/run-detail.ts:986:21
+ ❯ reachableSections tests/unit/architecture/wire-connectivity.test.ts:352:19
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:881:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { detail: 'could not be verified' }
+Caused by: TypeError: Cannot read properties of undefined (reading 'verify')
+ ❯ Object.verify src/server/dashboard/queries/artifact-bytes.ts:94:28
+ ❯ verifyArtifactBytes src/server/dashboard/queries/artifact-bytes.ts:110:16
+ ❯ verifyArtifact src/server/dashboard/queries/diagnostic-bundle.ts:85:11
+ ❯ src/server/dashboard/queries/diagnostic-bundle.ts:190:13
+ ❯ readDiagnosticBundle src/server/dashboard/queries/diagnostic-bundle.ts:186:68
+ ❯ verifyRunCaptures src/server/dashboard/queries/run-detail.ts:908:24
+ ❯ readRunSection src/server/dashboard/queries/run-detail.ts:986:27
+ ❯ reachableSections tests/unit/architecture/wire-connectivity.test.ts:352:25
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:881:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 48 passed (50)
+   Start at  02:25:41
+   Duration  5.02s (transform 1.76s, setup 0ms, import 2.60s, tests 1.84s, environment 503ms)
+

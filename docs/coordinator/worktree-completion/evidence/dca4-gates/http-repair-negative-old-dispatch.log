@@ -1,0 +1,109 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/archive-evidence-fixture.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+xxx······
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/archive-evidence-fixture.test.ts > the archive-evidence fixture > serves the exact resource download over real HTTP from an ephemeral port
+AssertionError: HTTP download body prefix: "not found"
++ actual - expected
+
+  {
++   byteLength: 9,
++   digest: '907ba78b4545338d3539683e63ecb51cf51c10adc9dabd86e92bd52339f298b9',
++   mediaType: null,
++   status: 404
+-   byteLength: 3281,
+-   digest: 'f3ede4591dd6034661d8d63aef43ce4734610be67edbc7e30ce68834ebcd3847',
+-   mediaType: 'image/png',
+-   status: 200
+  }
+
+
+- Expected
++ Received
+
+  {
+-   "byteLength": 3281,
+-   "digest": "f3ede4591dd6034661d8d63aef43ce4734610be67edbc7e30ce68834ebcd3847",
+-   "mediaType": "image/png",
+-   "status": 200,
++   "byteLength": 9,
++   "digest": "907ba78b4545338d3539683e63ecb51cf51c10adc9dabd86e92bd52339f298b9",
++   "mediaType": null,
++   "status": 404,
+  }
+
+ ❯ tests/unit/dashboard/archive-evidence-fixture.test.ts:72:14
+     70|       const download = await fetch(`${server.baseUrl}${resource.resour…
+     71|       const bytes = new Uint8Array(await download.arrayBuffer());
+     72|       assert.deepEqual({
+       |              ^
+     73|         status: download.status,
+     74|         mediaType: download.headers.get("content-type"),
+ ❯ withArchiveHttp tests/unit/dashboard/archive-evidence-fixture.test.ts:31:7
+ ❯ tests/unit/dashboard/archive-evidence-fixture.test.ts:59:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  |unit| tests/unit/dashboard/archive-evidence-fixture.test.ts > the archive-evidence fixture > refuses foreign capture ids over real HTTP without falling through to static bytes
+AssertionError: Expected values to be strictly equal:
+
+200 !== 404
+
+
+- Expected
++ Received
+
+- 404
++ 200
+
+ ❯ assertUnknownCapture tests/unit/dashboard/archive-evidence-fixture.test.ts:47:10
+     45|
+     46| async function assertUnknownCapture(response: Response, runId: string,…
+     47|   assert.equal(response.status, 404);
+       |          ^
+     48|   assert.equal(response.headers.get("content-type"), "application/json…
+     49|   assert.deepEqual(WireErrorSchema.parse(await response.json()), {
+ ❯ tests/unit/dashboard/archive-evidence-fixture.test.ts:99:15
+ ❯ withArchiveHttp tests/unit/dashboard/archive-evidence-fixture.test.ts:31:7
+ ❯ tests/unit/dashboard/archive-evidence-fixture.test.ts:92:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  |unit| tests/unit/dashboard/archive-evidence-fixture.test.ts > the archive-evidence fixture > keeps the default HTTP archive corpus isolated from evidence and static substitutes
+AssertionError: Expected values to be strictly equal:
+
+200 !== 404
+
+
+- Expected
++ Received
+
+- 404
++ 200
+
+ ❯ assertUnknownCapture tests/unit/dashboard/archive-evidence-fixture.test.ts:47:10
+     45|
+     46| async function assertUnknownCapture(response: Response, runId: string,…
+     47|   assert.equal(response.status, 404);
+       |          ^
+     48|   assert.equal(response.headers.get("content-type"), "application/json…
+     49|   assert.deepEqual(WireErrorSchema.parse(await response.json()), {
+ ❯ tests/unit/dashboard/archive-evidence-fixture.test.ts:119:13
+ ❯ withArchiveHttp tests/unit/dashboard/archive-evidence-fixture.test.ts:31:7
+ ❯ tests/unit/dashboard/archive-evidence-fixture.test.ts:108:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 6 passed (9)
+   Start at  08:13:36
+   Duration  2.31s (transform 1.42s, setup 0ms, import 2.17s, tests 66ms, environment 0ms)
+
