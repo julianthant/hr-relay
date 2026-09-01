@@ -3704,13 +3704,12 @@ parity references for all three.
 - [x] 2i-C the Context rail and its Edit Data half (§9.3.1; the field policy is `ref data-intake-and-edit-data` §6)
 - [x] 2i-D Settings over a live backup cadence, with DCC's resolver-owned atomic edit/preflight controls and the read-only storage doctor (§9.8; the contract is §2.5)
 - [x] 2i-E the intake workspace over schema v12 — all seven surface decisions (D173, §9.7.1)
-- [x] 2i-F the token-scoped capture phone surface (D175, §9.7.2)
+- [x] 2i-F was historically delivered; D294 retires mobile Capture Mode (§9.7.2), while diagnostic capture evidence remains
 - [x] 2i-G the archive model and the Activity report over schema v13, the Explorer's read-only graph plus DCC's strict label/icon/category edit subset, the UI catalog and the AI advisories (D176–D180, §9.5.1 · §9.5.2 · §9.5.3)
 - [!] the bell cannot measure ordinary `Ping`/`Inbox` routing because `delivery` stays off the wire; A46's closed pinned kind now makes `Pings` non-zero for a backfill gap, while `Inbox` remains structurally zero (§9.6)
 - [!] the intake Dropzone's accept list and size cap are client literals, not the server constants the doc claimed (§9.7.1)
-- [!] the capture token is TTL-bounded, not single-use, and `Start Capture` lives only inside the intake takeover's empty dropzone state (§9.7.2)
 - [~] D186 — D283/DCC close only the Explorer's strict existing-workflow label/icon/category subset; broader authoring/policy work remains deferred with its named trigger (`{#def-explorer-edit}`, §9.5.3)
-- [ ] D189 — the production BFF serves no frontend bytes, so 2i-F's surface has no delivery path (`{#def-byte-path}`, §9.7.2)
+- [ ] D189/D294 — the production BFF serves no frontend bytes, so `dashboard:prod` cannot serve the ordinary built local dashboard (`{#def-byte-path}`)
 - [ ] the per-archived-run storage delta is unmeasured: no production database has archived a run (§9.5.1)
 > 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/dashboard/surfaces/{archive,activity,explorer,ui-catalog,intake,settings,top-bar}*, src/dashboard/phone/**, src/dashboard/app/url-state.ts, src/server/dashboard/queries/{archive,explorer,storage}.ts, src/services/archive/archive-service.ts; left: the two deferrals and three named deviations above
 <!-- /roadmap-status -->
@@ -4380,19 +4379,18 @@ else believes.
 **Wire.** `ref frontend-backend-integration` §5.1.6 owns the bell's payload, the three commands and
 the parity references.
 
-### 9.7 Intake, mobile capture and Edit Data
+### 9.7 Intake and Edit Data (mobile Capture Mode retired by D294)
 
 <!-- roadmap: p2-2i -->
 <!-- roadmap: order-6-dash -->
 
-The `p2-2i` checklist lives at §9.5; this square's two deferral blocks are `{#def-byte-path}` and
-`{#def-capture-binding}`, both in §9.7.2.
+The `p2-2i` checklist lives at §9.5. The remaining byte-path deferral is `{#def-byte-path}`.
 
 **What they are.** The three ways data that did not come from a person typing into the run modal
-reaches a run: a spreadsheet (§9.7.1), a photograph (§9.7.2), and a correction to a run's own
-recorded facts (§9.7.3). `ref data-intake-and-edit-data` owns all three FLOWS — the upload → map →
+reaches a run: a spreadsheet (§9.7.1) and a correction to a run's own recorded facts (§9.7.3).
+`ref data-intake-and-edit-data` owns both FLOWS — the upload → map →
 validate → run sequence (§2.2), the invariant that makes it safe (§2.5), the manifest and readiness
-(§5.2), capture's durable record (§5.1) and Edit Data's field policy (§6). This doc owns what each
+(§5.2) and Edit Data's field policy (§6). This doc owns what each
 one LOOKS like and what it refuses to draw.
 
 **Wire.** `ref frontend-backend-integration` §5.1.7 owns the endpoints, the manifest handoff and the
@@ -4512,7 +4510,12 @@ true of them; it is a `{#track-d}` hygiene row, not a redesign.
 
 ---
 
-#### 9.7.2 The capture phone surface (2i-F, D175)
+#### 9.7.2 Retired — the capture phone surface (D294)
+
+**D294 supersedes this complete surface and its two former deferrals.** It is retained below solely
+as historical design provenance for D174/D175; it creates no UI, route, configuration, tunnel,
+binding, test, or parity obligation. Diagnostic screenshots, Receipt Capture tiles, and Archive
+evidence use distinct authority and remain supported.
 
 Ref data-intake-and-edit-data §5.1 owns what capture DURABLY records and which routes exist; this section owns what the
 person holding the phone sees. It is the only surface in this program rendered on a device the
@@ -4631,26 +4634,10 @@ implied away.
 
 ---
 
-##### The two deferrals this surface waits on
+##### Former deferrals — retired by D294
 
-<!-- roadmap: def-byte-path -->
-<!-- roadmap-status: def-byte-path -->
-- [x] the phone surface itself is built, parity-photographed and reachable in DEV through the vite entry — the deferral is the delivery path, not the page
-- [ ] BE the BFF static handler: every unrouted path 404s today, so `/capture.html` is not served by the production process at all (D189 — the production BFF serves no frontend bytes)
-- [ ] BE `--prod` parsed by the runtime: `package.json` passes the flag and `src/core/runtime-composition.ts` dispatches on `args[0]` alone, so `npm run dashboard:prod` is byte-identical to `npm run cli -- dashboard` — a name the runtime never parsed
-- [ ] BE the on-demand tunnel launcher (D175), unbuilt — which is why the deferral costs nothing today: there is no origin for a phone to reach
-- [ ] BE the guard arm: a phone-origin request may be served nothing outside the capture allow-list
-- [ ] BE wire or delete the INERT Host gate — `deps.capturePhoneHost` is declared and read (`src/server/dashboard/routes/api.ts:65, 142`) and supplied by nothing, so the middleware compiles and can never fire
-> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/server/dashboard/routes/api.ts, src/core/runtime-composition.ts, src/dashboard/capture.html, vite.dashboard.config.ts; left: every byte-serving half — this is a deferral with a named owner, not a waiver (D189)
-<!-- /roadmap-status -->
-
-<!-- roadmap: def-capture-binding -->
-<!-- roadmap-status: def-capture-binding -->
-- [x] the whole pipeline is composed in production: the session routes, the phone client, the finalize outbox, the restart drain and the intake handoff (D174's derived identities, so a replay returns the SAME manifest and run ids rather than a second run)
-- [ ] `CAPTURE_INTAKE_BINDINGS` is `{}` (`src/control/workflow-registry.ts:194`) — the registry is derived from the workflow modules and NEITHER registered workflow can honestly turn a photograph into an employee id, so the binding is the whole absence
-- [ ] the trigger is the first OCR-consuming workflow (`{#order-3}`); until then a capture that cannot bind refuses BY NAME into durable `failed` rather than inventing one (D174)
-> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/control/workflow-registry.ts, src/core/capture-intake-handoff.ts, src/server/dashboard/commands/capture-service.ts; left: the binding, which waits on a workflow that can consume a photograph
-<!-- /roadmap-status -->
+The phone-specific portions of D189/D174 are closed by retirement. D189's ordinary local static
+serving requirement remains in ref frontend-backend-integration §6.9.
 
 #### 9.7.3 Edit Data — the rail is the place, the policy is elsewhere
 

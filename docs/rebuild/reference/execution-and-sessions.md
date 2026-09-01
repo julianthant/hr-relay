@@ -698,7 +698,7 @@ risk register those guards answer.
 <!-- roadmap-status: p2-2j -->
 - [x] C1–C4, the dependency half, against real `runWorkerLoop` instances over one authority database (`tests/unit/architecture/multi-worker-overlap.test.ts`)
 - [x] C5–C8, the control half — teardown, `closeAll` re-entry, an unprovable poison-close, and the bounded fleet soak (`tests/unit/architecture/worker-teardown-soak.test.ts`)
-- [x] C9–C10, the capture/intake half (`tests/unit/concurrency-matrix.test.ts`)
+- [x] C9–C10, the intake half (`tests/unit/concurrency-matrix.test.ts`)
 - [x] every other test this table cites resolves at HEAD: `run-authority`, `claim-sweep-recovery`, `kuali-transaction-proof`, `architecture/ledger-projector`, `worker-sessions`, `worker-composition`, `worker-loop`, `capture-durability`, `intake-session`, `intake-command-arms`
 - [x] C11, the Duo ceremony lease — two real `runWorkerLoop`-equivalent `WorkerSessionManager`s over ONE authority database, the second's ceremony beginning after the first's verifier returned, plus the waiter refusal and the TTL takeover (`tests/unit/duo-ceremony-gate.test.ts`, `1c244a40`)
 - [x] the standing rule's §11 pool row: C12, the W5 two-child parallel proof over the composed kernel pool door, with REAL child processes (`tests/unit/server/worker-pool-parallel-proof.test.ts`)

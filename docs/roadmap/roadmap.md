@@ -292,7 +292,7 @@ builds:
 - [x] BOTH Edit Data rail (D168)
 - [x] BOTH Settings + storage doctor + live backup cadence (D169) — the phase delivered health/doctor; DCC1–DCC3 later added the bounded resolver-owned edit/readback/preflight path
 - [x] BOTH intake surface over schema v12 (D170–D173)
-- [x] BOTH token-scoped phone capture: QR start, PDF bundler, intake handoff (D174/D175) — no production delivery path (D189) and no workflow declares a capture binding
+- [x] DOCS Mobile/phone Capture Mode was built in this historical phase and is retired by D294; diagnostic screenshots, run Capture tiles, and Archive evidence remain
 - [x] BOTH read-only Workflow Explorer + UI catalog
 - [x] BOTH AI advisories (redaction / strict-output / exhaustion / zero-authority pinned)
 - [x] BOTH archive model (schema v13, UPDATE/DELETE aborted in SQL) + version bump + Activity report (D176–D180)
@@ -337,7 +337,7 @@ log:
 status: never
 doc: 02 §Left Phase 2 by explicit disposition · ref:operator-trust §5.3 · ref:frontend-backend-integration §6.9
 
-> Workflow Explorer broad authoring/edit half — D186, trigger: the *second* production workflow whose policy you want to change; D283/DCC4–DCC5 complete existing-workflow authority: label/icon/category hot apply, named unavailable timeline/grouping/notification, strict policy/Edit Data source briefs; new-workflow authoring remains absent · BFF serves no frontend bytes / no `dashboard:prod` — D189, builds at the first phone-consuming migration (orders 3–4), confirmed 2026-08-12.
+> Workflow Explorer broad authoring/edit half — D186, trigger: the *second* production workflow whose policy you want to change; D283/DCC4–DCC5 complete existing-workflow authority: label/icon/category hot apply, named unavailable timeline/grouping/notification, strict policy/Edit Data source briefs; new-workflow authoring remains absent · BFF serves no frontend bytes / no working `dashboard:prod` — D189, retained by D294 as an independent local operator-dashboard completion item.
 
 log:
 - 2026-08-21 | docs-cohesion 02 | both dispositions written out in doc 02 with their triggers and their shelf owners — D186 → `{#def-explorer-edit}` (04 §Edit a workflow's presentation / policy without a code change), D189 → `{#def-byte-path}` (04 §Run the dashboard without the dev server / use the phone page in production); D79a's trim kept as the standing constraint on whatever the editor becomes
@@ -533,7 +533,6 @@ builds:
 - [ ] BE the receipt's action evidence carries what proved the write (ledger 2 D16–D22)
 - [x] BOTH a diagnostic bundle is readable — exact-id D137 readback plus `BundleDialog` and server manifest download (ledger 2 E28/E29)
 - [x] BOTH the intake manifest + rerun-diff surface — terminal and preflight identities, manifest projection and rerun diff are fixture-rendered in exact local pages with full compact values keyboard/touch reachable; this does not claim D9, D274/D276's IN137/IN138/IN144 presentation ports remain open, and no parity reference was re-frozen (ledger 3 IN123–IN143)
-- [ ] BOTH the operator half of phone capture (ledger 3 CP3–CP5)
 - [ ] PROOF the parity corpus re-frozen once over every change, with the three missing scenes (Settings · the version-bump dialog · a DS specimen page)
 
 needs:
@@ -1252,8 +1251,7 @@ doc: 03c §Order 3 · the OCR pipeline workflow · ref:data-intake-and-edit-data
 
 builds:
 - [ ] BE the OCR pipeline workflow over the 2h extraction / normalization / ocr / roster stores
-- [ ] BE **D189's byte path**: BFF static handler + `capture.html` + ngrok launcher + the phone-origin guard arm; `--prod` starts meaning what it says
-- [ ] WIRE capture → workflow binding (`CAPTURE_INTAKE_BINDINGS` filled for the first honest consumer)
+- [ ] BE the ordinary local-dashboard byte path: BFF static handler plus parsed `--prod`, so `npm run dashboard:prod` serves the built dashboard (D189, amended D294)
 - [ ] PROOF T1 scenario tests for the OCR pipeline workflow (structural fixture + dry-run scenario) and its T3 pair (R10)
 - [ ] PROOF re-verify the roster SCORING against a real roster — the tiering ported verbatim, the scoring is new (ref data-intake-and-edit-data §7)
 
@@ -1591,22 +1589,15 @@ log:
 - 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
 - 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
 
-### Run the dashboard without the dev server / use the phone page in production {#def-byte-path}
+### Run the built dashboard without the dev server {#def-byte-path}
 status: planned
-doc: 04 §Run the dashboard without the dev server / use the phone page in production · ref:frontend-backend-integration §6.9 · ref:frontend-backend-integration §8 · ref:dashboard-surfaces §9.7.2
+doc: 04 §Run the built dashboard without the dev server · ref:frontend-backend-integration §6.9
 
-> BFF static bytes + `capture.html` + the ngrok launcher + a guard arm that the file handler serves nothing outside the capture allow-list to a phone origin. D189 / D175; "production" here means LOCAL (D193).
+> BFF static bytes for the ordinary local operator dashboard. D189, amended D294; "production" here means LOCAL (D193).
 
 builds:
 - [ ] BE the BFF static handler — port the parity fixture's traversal-checked, content-typed serveStatic; every unrouted path 404s today
 - [ ] BE `--prod` parsed by `startRebuildRuntime` — `package.json:12` passes the flag and `src/core/runtime-composition.ts:162` dispatches on `args[0]` alone, so `npm run dashboard:prod` is byte-identical to `npm run cli -- dashboard`
-- [ ] BE `/capture.html` delivered, so 2i-F's token-scoped phone surface is reachable from a phone
-- [ ] BE the on-demand ngrok tunnel launcher (D175)
-- [ ] BE the guard arm — a phone-origin request may be served nothing outside the capture allow-list
-- [ ] BE wire or delete the INERT capture-ingress host gate: `deps.capturePhoneHost` is declared and read (`src/server/dashboard/routes/api.ts:65,142`) and supplied by nothing, so the middleware compiles and can never fire (also Track D row D2)
-- [ ] WIRE an operator-scoped capture-session read (list + one) and a poll or SSE — `CAPTURE_PHONE_ROUTES` is a closed phone-scoped union and the only operator route mints a session (fidelity-3 CP2, CP6–CP8, CP11, CP12, CP16, CP21; the surface half is `{#track-f}`'s operator-capture line)
-- [ ] WIRE `unreadable` / `focusScore` on `CapturePhotoWireSchema`, plus a photo's filename, pixel dimensions and arrival instant, so the unreadable-page alert and the tile frame have something to read (fidelity-3 CP9, CP10, CP13–CP15)
-- [ ] FE the phone's RETAKE — `PUT /api/v1/capture/phone/photos/:photoId` is already in `CAPTURE_PHONE_ROUTES` and `CapturePhoneClient` implements no `replacePhoto`, while the demo's own copy tells the operator to "Retake it on the phone" (fidelity-3 CP45)
 
 needs:
 - order-3
@@ -1815,7 +1806,7 @@ chip: not started
 doc: 06 §Phase summary · ref:frontend-backend-integration §6.9 · ref:execution-and-sessions
 open: no
 
-> R14, the operator 2026-08-21. The rebuild is DELIVERED as a Mac and Windows desktop app: an Electron shell hosting the BFF and the dashboard bundle in one process tree, managing the worker processes, keeping the browser automation (Playwright's full Chromium + Duo Autopilot) as child processes under app data, storing credentials in the OS keychain behind the ONE secrets reader, and packaged and signed for both operating systems. What it INHERITS: D181's `server` role lock → single instance; `runtime-isolation.json`'s roots → app-data dirs (they are repo-relative off `process.cwd()` today); D189's byte path → the desktop loads the bundle from app RESOURCES, so `{#def-byte-path}`'s phone/tunnel half stays separate; `{#parallel-runs}`' worker pool → the app's worker lifecycle; `{#duo-lease}`, because the desktop is where several workers on one machine become the ordinary case. Nothing is built: there is no Electron dependency at HEAD.
+> R14, the operator 2026-08-21. The rebuild is DELIVERED as a Mac and Windows desktop app: an Electron shell hosting the BFF and the dashboard bundle in one process tree, managing the worker processes, keeping the browser automation (Playwright's full Chromium + Duo Autopilot) as child processes under app data, storing credentials in the OS keychain behind the ONE secrets reader, and packaged and signed for both operating systems. What it INHERITS: D181's `server` role lock → single instance; `runtime-isolation.json`'s roots → app-data dirs (they are repo-relative off `process.cwd()` today); D189's byte path → the desktop loads the bundle from app RESOURCES; `{#parallel-runs}`' worker pool → the app's worker lifecycle; `{#duo-lease}`, because the desktop is where several workers on one machine become the ordinary case. Nothing is built: there is no Electron dependency at HEAD.
 
 needs:
 - cutover
@@ -1995,7 +1986,7 @@ The rows below are the same map the master plan's §0.2 carried, re-pointed to t
 | Span/event wire schema (D10), notes stream, storage layout, SQLite projection role (D14), SSE wire shapes, completion (fan-out/approval) union (D11), cross-repo runtime boundary + one-time import rules (D88/D89/D93), the ONE run/queue projection every count reads (D81), run versioning + major-only archive-on-bump (D80/D274), run display names (D83) | **`reference/dashboard-surfaces`** (was doc 03) |
 | Binding cross-doc reconciliation (D1–D118, through 2026-08-02 Round 18) | **`reference/decisions`** (was doc 04) |
 | One-item workers, queue dispatch/backpressure, explicit browser-session boundaries + driver leases, speed/sleep-tax contract, page/subject-isolation invariant | **`reference/execution-and-sessions`** (was doc 05) |
-| Data-service systems: CSV/PDF extraction, typed contact/address normalization, roster matching, durable mobile capture, operator column mapping, immutable intake manifest/rerun, Edit Data checkpoint UI | **`reference/data-intake-and-edit-data`** (was doc 06) |
+| Data-service systems: CSV/PDF extraction, typed contact/address normalization, roster matching, operator column mapping, immutable intake manifest/rerun, Edit Data checkpoint UI | **`reference/data-intake-and-edit-data`** (was doc 06) |
 | Cross-cutting gap findings memo (owns nothing — a design input) | **`reference/foundation-gap-audit`** (was doc 08) |
 | Write-safety contract, permanent-key intents, typed proof, atomic outboxes/recovery, serialized anchored ledger | **`reference/write-safety`** (was doc 09) |
 | Guard/test architecture suite: ratchet port map, safety guards, descriptor-coverage crosswalk, guard-of-guards manifest, TDD tiers, stub + live lanes | **`reference/guards-and-tests`** (was doc 10) |

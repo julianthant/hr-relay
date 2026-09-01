@@ -199,7 +199,7 @@ field it banned does not exist here. Where each invariant is held today, verifie
 | `delegate-to-usage` / `delegate-to-all-impl-callers` | held by `delegation-manifest` — child runs exist only as typed descriptor nodes with declared cardinality/join/failure/cancel policies |
 | `workflow-boundaries` | held structurally by `descriptor-coverage`'s bundle-safety walk (a descriptor's value-import closure may leave `src/domain/`, `src/base/`, `src/validation/` only) plus the `control-layering` arm |
 | `deletion-tombstones` | held by `archive-invariants` and the v13 archive tables, which abort `UPDATE` and `DELETE` **in SQL** |
-| `dashboard-security-boundary` | split across `operational-isolation` (ports, roots, locks, profiles), `dashboard-wire-boundary` (no Node built-in reachable from the bundle) and `capture-durability-and-scope` (fail-closed phone route enumeration) |
+| `dashboard-security-boundary` | split across `operational-isolation` (ports, roots, locks, profiles) and `dashboard-wire-boundary` (no Node built-in reachable from the bundle); D294 retires the former phone-route arm |
 | `cancel-mechanism` | **NOT held by a named guard.** `control-command-single-path` proves authority is mutated only through the D67 command family, which makes a second cancel path unable to reach authority — but nothing asserts one-mechanism directly. Open; see §5.1's open list. |
 | `tracker-row-emission` | **NOT held by a named guard.** The typed span-emit path is the only writer in practice (D218 deleted the `onEvent` hook), and `code-conventions` bans `console.*`, but no arm bans an `appendFileSync` to the event JSONL outside the emitter. Open; see §5.1's open list. |
 
@@ -646,14 +646,14 @@ read while still permitting replay-safe browser downloads.
   The brief carries full impacts, requires the next descriptor version and a changed fingerprint,
   and leaves all five source checks required. No DSL/codegen artifact exists (ref operator-trust §5).
 
-### 3.11 Old-capability closure, mobile capture, and advisory AI
+### 3.11 Old-capability closure and advisory AI
 
 <!-- roadmap: p2-2i -->
 <!-- roadmap: cross-cutting -->
 <!-- roadmap: def-sanity-check -->
 
 <!-- roadmap-status: p2-2i -->
-- [x] `capture-durability-and-scope` and `ai-advisory-no-authority` are active; `redaction-surface-scan` (D183) is the one sweep over every egress class (§3.15)
+- [x] `ai-advisory-no-authority` is active; D294 retires `capture-durability-and-scope`; `redaction-surface-scan` (D183) is the one sweep over every egress class (§3.15)
 - [ ] `preflight-coverage` stays PLANNED: DCC2 now composes six dashboard-scoped runners, but the declared `preflight-scenarios.ts` fault corpus still has no executor; the declaration side remains held by `runtime-dependency-coverage`
 > 2026-08-28 | DCC6 closure | verified the six-runner dashboard composition and the still-unexecuted declared fault corpus
 <!-- /roadmap-status -->

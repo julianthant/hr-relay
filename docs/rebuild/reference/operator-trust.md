@@ -2365,7 +2365,6 @@ and let the other fall through to success.
 <!-- roadmap-status: later-unplanned -->
 - [x] the four seams are built and carry one constant local operator: actor attribution, one identity checkpoint, credential-set-keyed sessions, per-actor notification state
 - [x] D193 reaffirmed solo, local, never hosted — no slice designs for multi-user and none may claim scope in its name
-- [x] the one loopback exception is the operator-started, token-scoped mobile capture ingress
 > 2026-08-29 | D75 authority close | verified the first BFF middleware derives the strict configured solo actor for every request, command claims must match before effects, and new XLSX evidence is actor-attributed without rewriting old rows
 <!-- /roadmap-status -->
 
@@ -2379,7 +2378,7 @@ command, every run, and every stored record.
 | Seam | What it means today | Why it must exist now |
 |---|---|---|
 | **Actor attribution** | every new command, run, approval, gate resolution, ledger entry, fix record and operator XLSX evidence v2 carries `requestedBy`/`actor`, constant `"local-operator"`; pre-D75 XLSX evidence v1 remains explicitly unattributed | retrofitting an actor onto an existing immutable ledger and command history is impossible — the old rows have no honest answer |
-| **One identity checkpoint** | the first BFF middleware every request passes through returns only the strict configured local operator and exposes it to command routes; request JSON/query/headers and capture credentials are not identity inputs | one place to change later; without it, authorization logic scatters across routes |
+| **One identity checkpoint** | the first BFF middleware every request passes through returns only the strict configured local operator and exposes it to command routes; request JSON/query/headers are not identity inputs | one place to change later; without it, authorization logic scatters across routes |
 | **Credential-set-keyed sessions** | browser sessions/logins keyed by credential set, with exactly one set configured | a future user brings their own HR logins and their own Duo; pre-keying makes that config |
 | **Per-actor notification/read state** | the inbox is actor-keyed with one actor | read-state is per-person by nature; a global unread flag cannot be split later |
 
@@ -2417,10 +2416,8 @@ never a hosting platform.
 Still mandatory:
 
 - bind the operator dashboard/API to loopback only; native LAN/remote operator mode is rejected;
-- permit exactly one explicit exception: an operator-started, short-lived mobile-capture ingress
-  may expose only the token-scoped phone assets/status/upload/replace/reorder/delete/finalize routes
-  listed in ref data-intake-and-edit-data §5.1. The ingress starts with a capture session, expires/stops with it, and cannot
-  route to queue, commands, files, evidence, settings, health, or any catch-all route;
+- permit no remote ingress. D294 retires the former mobile-capture exception; any future remote
+  feature requires a new threat model and explicit decision;
 - never log/export secrets; restrict and redact SSN/I-9/HR data in notes/bundles/screenshots;
 - durable DB integrity/backups/restore because local single-operator state is irreplaceable;
 - fail-closed writes, subject binding, typed commands, and immutable write receipts;
@@ -2504,7 +2501,7 @@ can reach today.
 31. Operator-defined spreadsheet mappings keyed by stable target-field path (not just concept),
     with projection fingerprints, duplicate-safe source columns, per-cell schema errors, and saved
     layout maps.
-32. One command envelope with strict run, gate, notification, and capture arms; typed gate results
+32. One command envelope with strict run, gate, and notification arms; typed gate results
     live in authority while events carry only their immutable reference/hash.
 33. Raw ingress transformed exactly once into canonical input; every authority read revalidates a
     transform-free/default-free canonical schema and semantic changes require explicit migration.

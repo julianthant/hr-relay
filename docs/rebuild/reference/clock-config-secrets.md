@@ -100,7 +100,7 @@ means something beside the thing it replaced. Nothing here describes this reposi
 - [x] `clock-single-source` is an AST walk with an EMPTY allowlist, so new `src` code has zero tolerance and an alias, a destructure, a `globalThis.` hop or a `node:perf_hooks` import cannot slip past a grep (`tests/unit/architecture/clock-single-source.test.ts`)
 - [x] `manual-clock-test-only` bans the IDENTIFIER `manualClock` anywhere in `src/**` but `clock.ts` — import, call, re-export and dynamic property access all fail
 - [x] one resolver implements `env > settings.json > default` exactly once, with per-leaf provenance and a canonical fingerprint (§3; `src/domain/config/resolve.ts`)
-- [x] one secrets accessor covers environment secrets, registered key FAMILIES, the local ngrok source and the Duo credential file; `secrets-single-source` and `no-secret-values-in-logs` both carry EMPTY allowlists (§6)
+- [x] one secrets accessor covers environment secrets, registered key FAMILIES, and the Duo credential file; `secrets-single-source` and `no-secret-values-in-logs` both carry EMPTY allowlists (§6)
 - [x] closed per-system route schemas, explicit prod/test instance refusal, current-fiscal-year validation, the runtime environment/dependency registries and the strict preflight report schemas are all implemented and bidirectionally audited (§3 · §4 · §5 · §6.2)
 - [x] `config/settings.json` is one strict revisioned file authority; both composition roots read it before the one resolver runs, and `settings/apply-settings` is its sole producer (§3, D282)
 - [x] `mergeSettings` is compiler-exhaustive over all 16 `ConfigSchema` groups, including `browser`; the focused resolver test pins both browser leaves and their `settings` provenance (§3)
@@ -791,7 +791,6 @@ export const SECRET_FILE_SPECS = […];   // 1: the Duo WebAuthn credential
 | `ucpathPassword` | environment | `UCPATH_PASSWORD` | `secret` |
 | `timekeeperName` | environment | `TIMEKEEPER_NAME` | `direct-identifier` |
 | `sharepointOnboardingRosterUrl` | environment | `ONBOARDING_ROSTER_URL` | `secret` |
-| `ngrokCredential` | `local-ngrok-config` | `~/Library/Application Support/ngrok/ngrok.yml` | `secret` |
 | `duoWebauthnCredential` | file | `paths.duoCredential` (§4) | `credential-file` |
 
 **The classification is not decoration — it is the join to §6's redaction contract**, and the two
@@ -878,13 +877,6 @@ to mutate `process.env`.
   target execution is unrepresentable. Every refusal names only the public `.env` label and failure
   category, never an absolute path, binding or value. Tests may inject descriptor access into this
   same admission function; production callers receive no skip, alternate path or permissive mode.
-- **Local source failures stay distinguishable.** The ngrok resolver reads the one registered config
-  path under the same file checks, then requires **exactly one** `authtoken:` line — two is a
-  `SecretSourceError`, because choosing between them is how the wrong tunnel gets opened. A quoted
-  value must close its quote; a trailing `# comment` is stripped; an empty value resolves to
-  `missing`, not `unknown`. Neither state includes the credential value and neither passes as
-  healthy, so a missing or unreadable ngrok source blocks selected capture instead of passing because
-  it was not an environment secret.
 - **Never logged.** The accessor is the only function permitted to read a secret's raw value; every
   other module receives it as an opaque string to hand to a login or fill call. Note that the
   accessor's own refusals name the KEY and never the value — `${name} is missing from registered
@@ -1015,7 +1007,6 @@ migration safe (one owner, empty allowlist) is the one already green.
 <!-- roadmap-status: later-unplanned -->
 - [x] the BFF listener is loopback-only in code: it defaults to `127.0.0.1`, admits only `127.0.0.1` or `localhost`, and refuses anything else by name — `the dashboard BFF is loopback-only; refusing to bind <hostname>` (`src/server/dashboard/http-server.ts:45-50`)
 - [x] no accounts, roles, permissions, teams, remote synchronization, high availability, secret manager, certificate management or signed audit anchoring exists, and D193(a) reaffirms that as the standing scope — not a gap
-- [x] the ONE exception is ref data-intake-and-edit-data's phone capture, and it is a NAMED configuration result in all three modes rather than a fallback (D174, below)
 - [x] the hygiene that local-only does not waive is real: `0700` directories and `0600` files on artifacts, authority backups, restore staging and recovery proofs (`src/infra/artifacts/content-addressed-artifact-writer.ts:71-73,208`, `src/infra/sqlite/{recovery-stop-proof,backup-service,offline-restore}.ts`)
 - [?] D193(a)'s two LATER items — packaging the local app, and a cooperation/multi-user mode ON TOP of solo — carry no owner and no design. The PACKAGING half now has a named successor in the desktop work (`{#desk-secrets}` moves credential storage to the OS keychain behind §6's accessor); the multi-user half does not, and the refusal below stands unchanged
 > 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/server/dashboard/http-server.ts`, the four `0o700`/`0o600` writers and `src/domain/capture-surface.ts`; nothing left in this section — it describes a decided scope, and `{#later-unplanned}` is `status: never` by design
@@ -1031,33 +1022,9 @@ rebuild binds its **own** loopback port and never reuses the legacy dashboard's 
 bind is rejected by the server with a message naming the address it refused; adding remote access
 later requires a separate threat model and an explicit operator decision.
 
-Ref data-intake-and-edit-data's mobile capture is the sole explicit exception and does not turn the
-operator server into a remote app. `capture.ingress:"on-demand-ngrok"` starts a short-lived,
-separately scoped ingress only after the operator creates a capture session; `forwarded` requires an
-explicit HTTPS URL; `disabled` makes Start Capture fail with a named configuration result. The
-ingress exposes the closed token-gated phone-route union only and shuts down after the last live
-session expires or finishes. Its route allowlist is generated from the same capture-route schema and
-deny-tests every operator/API catch-all. `forwardedUrl` is routing config, never authority; each
-capture session stamps the resolved ingress mode and origin digest so troubleshooting can explain
-which path was used. `ConfigSchema.capture`'s `superRefine` requires `forwardedUrl` exactly for
-`ingress:"forwarded"` and rejects it for the other two modes, so a stale forwarded origin cannot be
-silently reused.
-
-**As-built (D174, 2026-08-09 — normative text in ref data-intake-and-edit-data §5.1).** All three
-modes resolve to an origin or to a NAMED configuration result, and none of them falls back.
-`disabled` refuses `ingress-disabled`; `forwarded` resolves to its explicit HTTPS URL;
-`on-demand-ngrok` refuses `ingress-credential-missing` without its credential and
-**`ingress-not-built` with one**, because the on-demand tunnel launcher does not exist in this
-repository yet and a QR pointing at `127.0.0.1` scans perfectly and then fails on the phone with a
-network error that explains nothing — the plausible-but-wrong outcome the charter forbids. The
-allowlist is generated from `CAPTURE_PHONE_ROUTES` as this section requires, and the deny test is
-stronger than "refuses": a request arriving on the ingress **Host** gets a status and body
-**byte-identical** to an unrouted path, so the ingress cannot be used to enumerate what the
-operator's dashboard serves. The session's `{mode, originDigest}` stamp is an OPTIONAL leaf (D133),
-so rows written before D174 still parse. The token that gates every one of those routes never
-appears in a URL the server sees: it rides the QR payload's URL FRAGMENT and the `X-Capture-Token`
-header, which is how "no secret-bearing URLs" stays true of a surface whose entire purpose is to be
-opened from a scanned link.
+D294 retires the former capture ingress configuration and the ngrok credential source. The dashboard
+is loopback-only; a future non-loopback feature requires a new threat model and decision rather than
+reactivating those settings.
 
 Local-only does **not** waive correctness or privacy hygiene. The tool still controls live HR
 systems and stores sensitive evidence, so strict schemas, output redaction, least-retained capture,
@@ -1073,7 +1040,7 @@ also make diagnostic bundles safer to share with an AI assistant.
 <!-- roadmap-status: cross-cutting -->
 - [x] the strict preflight REGISTRY is built and bidirectionally audited: `PreflightCheckSpec` (id, scope, severity, pure/IO runner, dependencies, capabilities, consumer, scenarios, timeout, redaction policy, remediation) and `PREFLIGHT_CHECKS` — twelve explicit checks plus generated per-feature, per-endpoint and per-provider ones (`src/domain/runtime-dependencies.ts:362-383`)
 - [x] `PreflightReportSchema` is closed and refines its own rules — a blocking check cannot be a warning, an optional check cannot fail, and the provider/feature verdicts must agree (`src/domain/preflight.ts:55-208`)
-- [x] fifteen scenario manifests cover missing browser, stale fiscal year, prod/test endpoints, low disk, corrupt DB, missing workflow secret, provider/OCR/AI exhaustion, unavailable capture ingress, busy port, runtime mismatch, invalid config and orphan processes (`src/domain/trust/preflight-scenarios.ts`)
+- [x] preflight scenarios cover missing browser, stale fiscal year, prod/test endpoints, low disk, corrupt DB, missing workflow secret, provider/OCR/AI exhaustion, busy port, runtime mismatch, invalid config and orphan processes (`src/domain/trust/preflight-scenarios.ts`)
 - [x] the dashboard's six selected runners are implemented once from `requiredPreflightChecks(["dashboard.serve"])`: runtime/package-lock, retained config, filesystem, authority/backup/span reconciliation, ports and orphaned worker leases (`src/server/preflight/dashboard-runners.ts`)
 - [x] `createPreflightAuthority` owns execution, report readback and exact command-id replay; dashboard composition runs it at startup, bootstrap serves that report, and `POST /api/v1/preflight/rerun` accepts/returns closed schemas with config + descriptor compare-and-set identity
 - [x] every selected runner's registered timeout is armed through the injected monotonic scheduler; expiry aborts the runner signal but awaits actual settlement, so non-cooperative I/O is never detached and a late healthy-looking return still fails by check id + timeout
@@ -1108,7 +1075,7 @@ none — a refusal that blocks nothing is a refusal nobody can act on.
 Base checks cover Node and package-lock compatibility, Playwright browser and extension assets,
 configured paths and permissions, disk space, port availability, SQLite/migration/backup health,
 required workflow secrets, production and test URL completeness, current fiscal dates, optional
-provider-key availability, capture-ingress dependencies, and stale orphan processes or leases.
+provider-key availability, and stale orphan processes or leases.
 Rules:
 
 - dashboard boot blocks only on checks required to read authority and serve safely; missing
@@ -1116,7 +1083,7 @@ Rules:
   open;
 - enqueue and daemon start run the descriptor-derived workflow/system/feature subset and reject
   before launch if any required capability fails — no Duo or browser work is spent on a doomed run;
-- optional AI and capture checks report the exact unavailable feature; they never masquerade as
+- optional AI checks report the exact unavailable feature; they never masquerade as
   healthy and never block unrelated workflows;
 - `cli doctor [--workflow <id>]`, Settings health, startup logs and `test-login` consume the SAME
   results. `test-login` adds bounded live authentication checks but cannot mutate HR data;
@@ -1127,8 +1094,8 @@ The registry has forward and reverse coverage: every blocking runtime prerequisi
 at least one check, and every check has a consumer and a scenario — audited by
 `runtime-dependency-coverage` and `runtime-environment-coverage` (ref guards-and-tests). Fifteen
 scenario manifests pin missing browser, stale fiscal year, bad prod/test URL, low disk, corrupt DB,
-missing workflow-specific secret, provider / OCR / AI exhaustion, unavailable capture ingress, busy
-port, runtime mismatch, invalid config, orphan processes and the healthy mode.
+missing workflow-specific secret, provider / OCR / AI exhaustion, busy port, runtime mismatch,
+invalid config, orphan processes and the healthy mode.
 
 **As-built: the dashboard slice is one composed authority.** `createPreflightAuthority` derives its
 ordered check membership from the registry, executes the six checks selected by `dashboard.serve`,
@@ -1181,7 +1148,7 @@ matters more than the table, because a design nobody executes is a promise.
 | ✅ | Resolver return type drifts | Consumers expect plain values and receive provenance wrappers | `ResolvedConfigSchema` is a strict object and the two exported signatures are separate: `resolveConfig(): Config`, `resolveConfigWithProvenance(): ResolvedConfig` |
 | ✅ | A route-name typo is accepted by an open endpoint map | A driver navigates to a missing or wrong route and a fallback hides it | Per-system `z.strictObject` route schemas — an unknown key fails config parse — and `CONFIG_ROUTE_KEYS` is audited against the endpoint specs in both directions (`src/domain/runtime-dependencies.ts:467-481`, `runtime-dependency-coverage`) |
 | ✅ | A diagnostic bundle copies sensitive state because a new field lacks a classifier | Credentials or HR data leak into debugging artifacts | Unclassified means DROP, never allow; the (classification, transform) pair is refused at declaration time and again at application time (§6); `redaction-surface-scan` plus canary tests scan every serializer and attachment |
-| ✅ | A "temporary" LAN bind turns the local tool into a multi-user surface | Unaudited remote control of live HR automation | The listener refuses any hostname but `127.0.0.1`/`localhost` by name (§6.1), and `capture-durability-and-scope` separately proves the temporary capture ingress exposes only its closed phone-route union, with an ingress-Host request answered byte-identically to an unrouted path |
+| ✅ | A "temporary" LAN bind turns the local tool into a multi-user surface | Unaudited remote control of live HR automation | The listener refuses any hostname but `127.0.0.1`/`localhost` by name (§6.1); D294 retires the former capture-ingress exception |
 | ✅ | A settings value is accepted and dropped | An operator applies a value, restarts, and gets the default | The editable command schema is closed, the fully merged candidate must pass the one resolver before replacement, `settingsOverrideByConfigGroup` is compiler-exhaustive, including `browser`, and restart tests assert exact persisted leaves plus `settings` provenance (§3) |
 
 ## 8. Worked example

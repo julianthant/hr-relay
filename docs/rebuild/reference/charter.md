@@ -313,25 +313,14 @@ from JSONL. Startup integrity/migration/disk/WAL checks, rotating online backups
 pre-migration backup, restore drills, and read-only rescue mode are part of the base. New writes
 stay disabled when authority health is unknown. Full storage owner: ref dashboard-surfaces.
 
-### 22. Mobile photo capture is reliable intake, not an in-memory sidecar
-<!-- roadmap: def-capture-binding -->
+### 22. Mobile/phone document Capture Mode is retired (D294)
 
-<!-- roadmap-status: def-capture-binding -->
-- [x] the capture half is BUILT (2i-F, **D174**/**D175**): durable capture sessions that survive a dashboard restart, token expiry, ordered photo digests, the QR start, the PDF bundler and one durable retryable finalization
-- [x] finalization DERIVES its identities (`deriveStableUuid` over the outbox's stable key), so a replay returns the same manifest and the same run rather than a second one — which is what makes "succeeds visibly or fails visibly" true rather than aspirational
-- [x] the loopback boundary this item names holds: the app binds loopback and the token-scoped capture ingress is the sole exception, with the credential in the URL **fragment** so no server, proxy or access log ever sees it (**D174**)
-- [ ] **no workflow can receive the handoff.** `CAPTURE_INTAKE_BINDINGS` is derived from `WORKFLOW_MODULES` and no module declares one, so the registry is empty (`src/control/workflow-registry.ts:194`) — neither current workflow can honestly derive an employee id from a photograph, and the binding comes due with the first OCR-consuming workflow (`{#order-3}`)
-- [ ] the phone page has **no production delivery path**: the BFF serves no frontend bytes and the tunnel launcher is unbuilt (**D189**, `{#def-byte-path}`)
-> 2026-08-21 | docs-cohesion charter | verified against `src/control/workflow-registry.ts:194`, `src/server/dashboard/compose.ts:752`, doc 04 §Photograph a paper form… and ref:data-intake-and-edit-data §5.1; left: the binding itself and the byte path, each owned by its own deferral node
-<!-- /roadmap-status -->
-
-
-Open sessions, token
-expiry, ordered photo digests, finalization, and OCR/intake handoff survive dashboard restarts.
-Finalization is one durable, retryable operation: bundle/register/enqueue succeeds visibly or
-fails visibly; it cannot return success and lose a background callback. The main app remains
-loopback-only; an operator-started short-lived phone tunnel exposes only token-scoped capture
-endpoints. Full intake design: ref data-intake-and-edit-data; network boundary: ref operator-trust.
+The rebuild no longer offers phone document capture, QR start, capture ingress/tunnel, durable
+capture sessions, bundle handoff, or a capture-to-workflow binding. Their D174/D175 history remains
+in Git and legacy records remain readable only through their historical schema. Diagnostic
+screenshots, Receipt Capture tiles, and Archive evidence are distinct diagnostic authority and stay.
+The remaining D189 gap is solely safe local serving of the ordinary built dashboard; it is not a
+public delivery path.
 
 ### 23. AI assistance is optional evidence, never authority
 
@@ -431,13 +420,13 @@ content) + ref operator-trust (receipt surface).
   brings their own HR logins and Duo; (4) **per-actor notification/read state**. Still explicitly
   out of scope for Phase 1: RBAC/permissions UI, user management, teams, network deployment/TLS,
   per-user dashboards, remote sync, HA, distributed consensus. The operator server binds loopback;
-  ref data-intake-and-edit-data's short-lived token-scoped mobile-capture ingress is the sole exception. Secret/SSN/
+  no mobile-capture ingress exists. Secret/SSN/
   HR-data redaction, reliable backups, strict validation, and fail-closed write/identity behavior
   remain mandatory because the tool handles real employee data and transactions.
 
   **As built 2026-08-29 (D75):** the first BFF middleware is the one checkpoint for every request.
   Solo mode derives only the strict configured `local-operator`; request JSON, query parameters,
-  headers, XLSX metadata and mobile-capture credentials cannot supply actor identity. Existing
+  headers and XLSX metadata cannot supply actor identity. Existing
   command-envelope claims must match before handler effects. New operator XLSX evidence is v2 with
   that derived actor id, while v1 stays explicitly unattributed and is never backfilled. Credential
   issuance and the second actor remain Phase 3d work.
@@ -587,7 +576,7 @@ The foundation's documentation is part of the foundation.
   durable dedupe, and ledger projection — a read-only slice cannot prove write safety. Only then
   are the tails built, now against a proven spine and a real consumer instead of synthetic
   fixtures: the rest of the event/trust layer (evidence receipts, notifications, knowledge), the
-  data-service/intake/capture foundation, and the read-only workflow explorer.
+  data-service and intake foundation, and the read-only workflow explorer.
 - **Phase 3+:** per-workflow migration, one at a time, slowly populating the task stores with what
   each workflow needs. Every workflow gets its own migration plan doc answering: which store tasks
   it reuses, which new tasks it needs, how each new task is designed as a reusable base + what the

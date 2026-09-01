@@ -238,7 +238,7 @@ Embed in **every** workflow's migration plan doc; answer with the operator BEFOR
    data into a live write). Identity, match/item, idempotency, and proof fields are never overridable;
    `Infinity` must be argued in a comment.
 6. **Workflow-specific gates/data** — identity-approval gate? OCR approval gate? EID re-match?
-   roster column mapping/intake manifest, mobile capture, or normalization approval (ref data-intake-and-edit-data)?
+   roster column mapping/intake manifest, or normalization approval (ref data-intake-and-edit-data)?
    per-run test/prod instance need (ref clock-config-secrets §4)?
 7. **Reuse map** — which store tasks reused (peer-to-peer), which new, and for each new task: its
    reusable-base design + the workflow-specific customization (charter §3/§8). Which canonical
@@ -598,8 +598,7 @@ document becomes something the operator can open.
 - [ ] the §b questionnaire for the OCR pipeline — unasked
 - [x] the four service stores it consumes are BUILT (2h) — `extraction` (`extract-pdf-pages`, `extract-spreadsheet`), `ocr` (`extract-form-page`), `normalization` (`read-contact-advice`), `roster` (`match-spreadsheet`)
 - [ ] the OCR pipeline WORKFLOW over them — no descriptor exists; this order migrates the pipeline on top of stores that already work
-- [ ] D189's byte path — the production BFF serves **no frontend bytes**: `src/server/dashboard/http-server.ts` has no static handler and `api.ts` 404s everything unrouted, while allow-listing `/capture.html` for the phone host gate. The ngrok launcher is unbuilt and `dashboard:prod` names a mode the runtime never parsed
-- [ ] the capture → workflow binding — `CAPTURE_INTAKE_BINDINGS` is derived from `WORKFLOW_MODULES` (`src/control/workflow-registry.ts:194`) and **no module declares one**, so the registry is empty
+- [ ] D189/D294's byte path — the production BFF serves **no frontend bytes**: `src/server/dashboard/http-server.ts` has no static handler and `dashboard:prod` names a mode the runtime never parsed
 - [ ] PROOF T1 + the T3 pair
 > 2026-08-20 | docs-cohesion 03c | verified against `src/stores/{extraction,ocr,normalization,roster}/tasks/`, `src/control/workflow-registry.ts:194` and `config/legacy-capabilities.json`'s `legacy-route-static` reason; the stores are real, the workflow is not
 <!-- /roadmap-status -->

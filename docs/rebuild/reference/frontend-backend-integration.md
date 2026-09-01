@@ -1852,11 +1852,10 @@ second gate packet shape) is a §5 matrix change with its own decision, not a wi
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against the §5.1 squares and the two completed wire sets; left: eleven wire tasks and the four missing squares above
 <!-- /roadmap-status -->
 
-### 6.9 NOT BUILT — the BFF serves no frontend bytes (2j, 2026-08-09, D189)
+### 6.9 NOT BUILT — the BFF does not yet serve the ordinary built dashboard (D189, amended D294)
 
 <!-- roadmap: phase2-dispositions -->
 <!-- roadmap: def-byte-path -->
-<!-- roadmap: order-3 -->
 
 **A named gap, recorded so it cannot read as met-by-silence.** The production BFF
 (`src/server/dashboard/http-server.ts` + `routes/api.ts`) has **no static handler**: every unrouted
@@ -1869,58 +1868,22 @@ test fixtures. Four consequences, all real:
    `npm run cli -- dashboard`. Today the operator's working path is the Vite dev server on 5174
    beside the BFF on 3938 (see CLAUDE.md §Operational isolation), which is why this went unnoticed —
    the frontend has always been served by something else.
-2. **The phone capture page has no delivery path.** `api.ts` allow-lists `/capture.html` for the
-   phone host gate and nothing in production serves that file, so 2i-F's token-scoped surface is
-   unreachable from a phone even though every route behind it works and is tested.
-3. **The host gate is WIRED (Track D row D2, 2026-08-21, `47eeb44e`).** It was composed with
-   `deps.capturePhoneHost` supplied nowhere, so it compiled and could never fire — exactly D181's
-   shape, a complete tested path with no producer for its one precondition. Row D2 wired it rather
-   than deleting it, because a producer exists TODAY: `capture.ingress: "forwarded"` is a shipped
-   mode naming a real HTTPS origin, so `capturePhoneHostOf` reads the host off the SAME config leaf
-   `createCaptureIngressResolver` reads, and the gate binds it. `disabled` and the unbuilt
-   `on-demand-ngrok` name no origin and supply nothing, which correctly leaves loopback unscoped; a
-   forwarded ingress whose URL yields no host THROWS rather than going unscoped. Deleting the gate
-   would have left a forwarded operator's phone origin able to reach the whole dashboard, and would
-   have moved the scope check into the very slice that opens the door. `capture-durability-and-scope`
-   §2b now pins the derivation, its two refusals, and the composition root that supplies it, so the
-   gate cannot lose its producer again in silence. The other three consequences below are unchanged
-   — this BFF still serves no bytes, so `capturePhoneAssetPaths` stays absent by design. **Caveat,
-   recorded rather than fixed here:** the gate identifies a phone request by the `Host` header
-   ALONE, so a reverse proxy that rewrites `Host` to the upstream (nginx's default
-   `proxy_set_header Host $host`) makes it inert — the byte-path slice (`{#def-byte-path}`) must
-   either preserve the phone's original Host end to end or read `X-Forwarded-Host` deliberately; see
-   the doc-comment on `capture.ingress` in `src/domain/config/schema.ts`.
-4. `config/legacy-capabilities.json`'s `legacy-route-static` is therefore genuinely **open**, and
+2. `config/legacy-capabilities.json`'s `legacy-route-static` is therefore genuinely **open**, and
    D184 moved it to the non-workflow capability closure milestone rather than closing it.
 
-**Why 2j did not build it, decided rather than skipped.** The static handler itself is small — the
-parity fixture's `serveStatic` (traversal-checked, content-typed) would port in an afternoon. What
-is NOT small is that the bytes would be served on the ONE surface deliberately exposed to the public
-internet through the capture ingress, behind the same Host gate whose whole contract is that the
-phone origin reaches capture routes and nothing else (`capture-durability-and-scope`, D174). Adding
-an internet-reachable file handler to that path is a security change and it deserves its own slice
-with its own review, not a tail-end addition to a documentation gate. The second half is missing
-anyway: the on-demand ngrok tunnel LAUNCHER is still unbuilt (D175), so static bytes alone would not
-make the phone surface reachable end to end.
+**D294 changes the scope, not the fact.** Mobile Capture Mode, its phone host gate, its asset,
+its ingress/tunnel, and its delivery obligation are retired. The remaining task is an ordinary local
+operator-dashboard static server: parse `--prod`, serve the built `dist/dashboard` bundle with
+traversal and content-type protections, and preserve API routing. It has no public/phone origin.
 
-**Owner and trigger.** The first migration that needs the phone surface in production. That slice
-builds both halves together — the static handler *and* the tunnel launcher — plus a guard arm that
-the file handler cannot serve anything outside the capture allow-list to a phone-origin request, and
-`--prod` starts meaning what its script name says. Until then the operator path is the dev server
-beside the BFF, which is what has always actually run.
-
-**Timing confirmed (operator, 2026-08-12).** The operator confirmed the byte path — static handler,
-`capture.html`, ngrok launcher, and the guard arm above — builds at the first phone-consuming
-migration (orders 3–4), not earlier and not held to cutover. No new decision number: this is D189's
-owner and trigger as already recorded, now explicitly confirmed rather than merely proposed.
+**Owner and trigger.** This is a standalone operator-dashboard completion item. Until it lands, the
+operator path is the Vite dev server beside the BFF, which is what has always actually run.
 
 **"Production" here means LOCAL, and nothing about this gap implies hosting (D193, 2026-08-12).**
 The byte path serves the **local app's own bundle** from the operator's own machine, replacing the
-Vite dev server that sits beside the BFF today — it is not, and never becomes, a deployment. The
-**ngrok tunnel stays the ONE internet-exposed path**, exists only for phone capture, is
-operator-started and session-scoped, and reaches the token-scoped capture allow-list and nothing
-else (§capture scope, D174). The trigger above is unchanged. Read `production` throughout this doc
-as the charter defines it: the day this repo becomes the operator's daily local tool.
+Vite dev server that sits beside the BFF today — it is not, and never becomes, a deployment. Read
+`production` throughout this doc as the charter defines it: the day this repo becomes the operator's
+daily local tool.
 
 <!-- roadmap-status: phase2-dispositions -->
 - [x] D189 — the BFF serves no frontend bytes: DECIDED, with an owner and a named trigger, not waived
@@ -1932,12 +1895,7 @@ as the charter defines it: the day this repo becomes the operator's daily local 
 <!-- roadmap-status: def-byte-path -->
 - [ ] the static handler on the BFF — port the parity fixture's traversal-checked `serveStatic`; every unrouted path 404s today
 - [ ] `--prod` parsed, so `npm run dashboard:prod` means what its name says
-- [ ] `/capture.html` delivered, so 2i-F's phone surface is reachable from a phone
-- [ ] the on-demand ngrok tunnel launcher (D175)
-- [ ] the guard arm: a phone-origin request may not be served any file outside the capture allow-list (§8)
-- [x] the phone-host gate — WIRED from `capture.ingress: "forwarded"` (Track D row D2, 2026-08-21, `47eeb44e`); the precondition has a producer and `capture-durability-and-scope` §2b refuses a composition root that stops supplying it
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/routes/api.ts:141-156 (the gate), compose.ts (no `capturePhoneHost` supplied), src/domain/capture-surface.ts (`/capture.html` is an allow-list constant only); left: all five halves — they build together at the first phone-consuming migration
-> 2026-08-21 | track-d D2 | the gate is no longer one of the halves: `capturePhoneHostOf` (src/domain/capture-surface.ts) supplies it from `capture.ingress`/`forwardedUrl` and src/server/dashboard/compose.ts passes it; left: the four byte-path halves, which still build together at the first phone-consuming migration
+> 2026-08-31 | D294 | Mobile Capture Mode and its public delivery scope are retired. The two ordinary local-dashboard items above remain open.
 <!-- /roadmap-status -->
 
 ---

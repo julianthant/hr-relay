@@ -304,7 +304,12 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   stays the truthful first Tab destination. Intake and catalog close across a route unmount: retain
   the stable toolbar-door id until the queue remounts, then focus that door or the persistent main
   region; missing both must throw rather than strand focus on `body`. This changes no intake-column
-  composition: D278 owns that separate layout. (D275.2 / UF-FU-1)
+  composition. D294 retires the former phone-capture layout obligation. (D275.2 / UF-FU-1)
+
+- **2026-08-31 — mobile Capture Mode and diagnostic capture are different products.** Do not
+  reintroduce phone capture pages, QR start, session panels, or capture routes. Keep diagnostic
+  screenshots, Receipt Capture tiles, and Archive evidence intact: they read durable diagnostic
+  authority and are not an intake feature. (D294)
 
 - **2026-08-26 — a rejection acknowledgement belongs to the exact served set, not a sticky boolean.** Intake may acknowledge only the current session version, validation instant and rejected-row identities; a later authority read invalidates that acknowledgement before the sticky outcome band can offer Run. Keep the courtesy blocker client-side and name it, but leave final enqueue eligibility to the kernel. The demo-shaped table may show a redacted cell representation, never promote it into an editor default or a fabricated original value. (IN95, IN99–IN122)
 - **2026-08-26 — queue triage is local context, while outcomes are authority.** “Checked by you” may help one operator work through members, but it is neither a member outcome nor durable evidence: keep it in browser state, reset it on reload, count only the loaded members of the current well, and never send it over the wire. A full roster/drill-in still requires its served People route; do not fabricate one from the day projection. Bulk results likewise keep every zero bucket and their named skipped set, because a clean count alone cannot say what a batch did not do. (ledger 1 B57/B80/B155/B164/B165/B172–B174/B195/B196)

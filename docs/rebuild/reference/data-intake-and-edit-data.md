@@ -16,7 +16,6 @@ completed work.
 | The **operator column-mapping design** — the mapping object, per-source persistence + header fingerprint, the upload→map→validate→run UI flow, per-cell coercion, the unmapped-required block, fuzzy-suggestion policy |
 | The **extraction** intake task designs (built as `extraction/extract-spreadsheet` and `extraction/extract-pdf-pages` — §3.1/§3.2 renamed the design's `parse-csv`/`parse-pdf-fields`), **roster** matching (`roster/match-spreadsheet`), OCR extraction (`ocr/extract-form-page`) and typed **normalization** service outcomes (`normalization/read-contact-advice`) — their contract shapes + intake semantics |
 | The **intake pipeline**: how a parsed+mapped dataset becomes N workflow inputs, and the pre-run per-row rejection review (nothing half-launches) |
-| Durable mobile-photo capture intake: session/photo/finalization state, bundle outbox, artifact handoff, expiry, restart recovery, and phone-scope lifecycle (network exposure policy remains ref operator-trust) |
 | The **Edit-Data surface** — its data source, editable/read-only rules, the edit-during-resume concurrency rule |
 | Roster/retention projection semantics: typed stable-key record, blocking outbox, idempotent xlsx upsert, and concurrent-edit conflict policy (storage/projector authority remains ref dashboard-surfaces) |
 
@@ -1542,20 +1541,17 @@ stays blocked and inspectable rather than reporting a no-op success.
 artifact, mapping snapshot, intake projection, workflow contract and canonical-input schema — and a
 "rerun with existing data" must show the diff before creating a run (§7 vector #11).
 
-### 5.1 Mobile photo capture is a recoverable artifact-intake source
+### 5.1 Retired — mobile/phone document Capture Mode (D294, 2026-08-31)
 
-<!-- roadmap: p2-2i -->
-<!-- roadmap: def-capture-binding -->
-<!-- roadmap: order-3 -->
+The operator has retired this product. No intake source, workflow binding, page, QR flow, tunnel,
+operator panel, route, or durable capture-mode authority remains a planned or supported part of the
+rebuild. Its historical migration rows remain readable only as migration history; do not revive their
+schemas, records, or route contracts for new work. Diagnostic screenshot bundles, Receipt Capture
+tiles, and frozen Archive evidence are distinct evidence authority and remain in scope.
 
-<!-- roadmap-status: def-capture-binding -->
-- [x] every part of the seam this deferral needs is built and guarded — the durable session, the token that lives only in a URL fragment, the uniform refusal, the deterministic PDF bundler, the derived handoff identities and the `IntakePlanManifest.capture` block (§5.1, D167/D174; `capture-durability-and-scope` active)
-- [x] `defineCaptureIntakeBinding` + `captureIntakeRegistry` exist and refuse a hand-built binding or one over a COPY of the descriptor's input schema (`src/control/workflow-registry.ts:182-194`)
-- [ ] `CAPTURE_INTAKE_BINDINGS` is EMPTY — no `module.ts` in `src/workflows/` declares `captureIntake`, so every finalize refuses by name. Not an oversight: neither registered workflow's identity is derivable from a photograph
-- [ ] what unblocks it is an OCR-BACKED workflow, i.e. order 3 — this node's whole content is "declare the binding once that workflow exists"
-- [ ] a handoff-enqueued run emits no `run.queued` span (the enqueue happens in the finalize projector, not the command service), so it would not appear on the queue — unreachable today, and the fixture asserting the registry is empty is deliberately what fails the day a binding lands
-> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/control/workflow-registry.ts:194`, `src/server/dashboard/compose.ts:752` and `grep -rn captureIntake src/workflows/*/module.ts` (no matches); left: the binding, which waits on order 3
-<!-- /roadmap-status -->
+The extensive D167/D174 design and as-built notes formerly below are superseded by this retirement;
+Git history retains their provenance. A future acquisition feature requires a new decision and a new
+design, rather than reactivating this retired implementation.
 
 > **Scope trim (D79d, operator 2026-07-24) — read before implementing.** Phone capture is
 > **rarely used**: most documents arrive as scanned PDFs. So this section's durability obligations

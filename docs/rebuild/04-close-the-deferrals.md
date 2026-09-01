@@ -13,12 +13,12 @@ names none of them. Contracts these deferrals belong to live in `reference/`.
 - [x] every deferral names its trigger, and none is a silent drop — eight nodes, eight triggers or decided stances
 - [x] two have a decided STANCE instead of a trigger (D193) — the retention sweep's schedule and the content-store refcount; they are `wont-build-unless-asked`
 - [-] the record-sanity-check advisory — **retired** by the operator 2026-08-18 (D192; `config/legacy-capabilities.json`), not deferred any more
-- [ ] the two deferrals whose workflow trigger has not fired: the capture→run binding and production byte path (both order 3). The cross-cutting trigger fired: DCR3–DCR5 close search, its Separations surface and evidenced XLSX; artifact bytes/screenshots and the D289 rerun comparison remain implementation gaps. Settings and Explorer retain explicitly named broader later scope after their DCC subsets close
+- [ ] the production byte path remains open: `dashboard:prod` still does not serve the built local dashboard. The cross-cutting trigger fired: DCR3–DCR5 close search, its Separations surface and evidenced XLSX; artifact bytes/screenshots and the D289 rerun comparison remain implementation gaps. Settings and Explorer retain explicitly named broader later scope after their DCC subsets close
 - [ ] the propagation windows — measured for Kuali only (D135/D207); UCPath and ServiceNow wait on their own live probes at order 7
-- [ ] the Phase 3a fidelity residue carried in by D279 (2026-08-27) — see §"Carried in from Phase 3a"; each line closes here or is explicitly parked
+- [ ] the non-phone Phase 3a fidelity residue carried in by D279 (2026-08-27) — see §"Carried in from Phase 3a"; each line closes here or is explicitly parked. D294 closes the retired Capture Mode subset.
 - [!] D282 ratifies scheduling, not completion — every dashboard-owned deferral is active now, and each row still closes only with its implementation, proof and owning-doc update
 > 2026-08-28 | dashboard completion | D282 fires the scheduling trigger for every dashboard-owned deferral and D279 carry-in; no row is marked built by that direction, and Review/People producer facts remain dependencies on their Phase 3c migrations rather than fabricated generic data
-> 2026-08-28 | current-workflow scope | D283 runs separations-provable and cross-cutting dashboard work now; OCR Review, Group People and capture-to-workflow binding remain with their named Phase 3c migrations
+> 2026-08-28 | current-workflow scope | D283 runs separations-provable and cross-cutting dashboard work now; OCR Review and Group People remain with their named Phase 3c migrations. D294 later retires mobile Capture Mode rather than creating a capture-to-workflow migration.
 > 2026-08-28 | DCR receive | verified DCC1–DCC3's Settings/preflight controls, DCC4–DCC5's complete existing-workflow Explorer boundary and DCR3–DCR5 reporting; left: two trigger-gated absences, artifact bytes/screenshots, the D289 rerun comparison, the stance rows, and UCPath/ServiceNow propagation measurements
 <!-- /roadmap-status -->
 
@@ -43,8 +43,7 @@ carried past it deliberately, with its trigger still standing.
 
 | Deferral | Node | Created by | Trigger — the event that ends it |
 |---|---|---|---|
-| Photograph a paper form → an OCR-backed run | `{#def-capture-binding}` | D174 | the first OCR-consuming workflow (**order 3**) declares a `CaptureIntakeBinding` |
-| Run the dashboard without the dev server / the phone page in production | `{#def-byte-path}` | D189 (with D174/D175) | **order 3** — the byte path is what makes the phone surface reachable at all |
+| Run the built dashboard without the dev server | `{#def-byte-path}` | D189, amended D294 | standalone local operator-dashboard completion: parse `--prod` and safely serve `dist/dashboard` |
 | Edit a workflow's presentation / policy without a code change | `{#def-explorer-edit}` | D79a, reassigned by **D186** | D283 closes the complete existing-workflow boundary: label/icon/category hot apply; timeline/grouping and notification unavailable without owners; policy/Edit Data strict source briefs. A **SECOND** production workflow still triggers new-workflow authoring and broader design work. |
 | A record-sanity-check advisory panel | `{#def-sanity-check}` | D192 | **none — RETIRED 2026-08-18.** The §14.2 gate packet's deterministic comparison IS the sanity check |
 | Broader legacy Settings capabilities | `{#def-settings}` | D169/D184, stance D193(b); bounded backend/editor/preflight closed by DCC1–DCC3 | the Phase-3 **cross-cutting** closure; only the explicitly named broader capability entries remain deferred |
@@ -54,9 +53,8 @@ carried past it deliberately, with its trigger still standing.
 
 ### The honest state
 
-**Three remain untriggered, and each is a named absence on a surface that ships.** The phone capture
-page is built, bundled and has no delivery path; capture has no first OCR-consuming workflow; the
-screenshot gallery has durable evidence but no artifact-bytes route. DCC1–DCC3 close the
+**One remains untriggered as an operator-dashboard delivery gap.** `dashboard:prod` does not serve
+the built dashboard. The screenshot gallery has durable evidence but no artifact-bytes route. DCC1–DCC3 close the
 resolver-owned Settings edits and preflight/doctor controls. DCC4–DCC5 complete the existing-workflow
 Explorer boundary: label/icon/category hot apply; timeline/grouping and notification unavailable
 without owners; policy/Edit Data strict source briefs. DCR3–DCR5 close cross-date search, its
@@ -80,7 +78,7 @@ contracts carry `recoveryAbsence: stabilized` with real numbers, and the two UCP
 `operator-only` with an explicit refusal to guess. The deferral is per system, not global.
 
 _The Phase-2h/2i scheduling narrative that used to sit here — where the service stores, the intake
-manifest, the Edit-Data UI and mobile capture slot, and the Phase-0 deferred-decision log — is
+manifest, the Edit-Data UI, and the Phase-0 deferred-decision log — is
 `history/superseded/2026-08-20-master-plan-dissolved.md` §3.5 and §3. Every milestone it named has
 landed (2h closed 2026-08-08, 2i 2026-08-09), so repeating it here would be a schedule for work that
 is done. What survived it is the eight rows above._
@@ -95,24 +93,13 @@ Phase 3a closed its exit table 10/10 with row 10 — demo fidelity — met **by 
 | C2 | ledger 1's layout/control groups + C69's re-plan path | `docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` | closed — DCF2/DCF3 (`f7c5ca65`, `a36f1510`) |
 | C3 | ledger 3's AR39/AR59 and remaining non-copy marks | `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` | closed — DCF4 (`d474f526`) and named D275/D179/D223 dispositions |
 | C4 | the `PanelHeader`-span heading finding (P1) | `docs/plans/2026-08-26-p1-refreeze-attribution.md` | closed — 13 production `PanelHeader` headings at `h2` (`029eaba1`); kit specimens excluded |
-| C5 | the intake column ruling (D278): the live capture panel takes the column, the dropzone yields to a strip | `docs/findings/capture.md` §"The intake column…" | ruled, unbuilt |
-| C6 | the capture absences — `focusScore`, filename, arrival instant, `replacePhoto` | `docs/findings/capture.md` | open |
+| C5 | former Capture Mode findings (D278 and photo metadata/retake gaps) | `docs/findings/capture.md` | **retired by D294**; no active implementation obligation |
 
-## Photograph a paper form on your phone → it becomes an OCR-backed run
-<!-- roadmap: def-capture-binding -->
+## Retired — phone photograph → OCR-run Capture Mode (D294)
 
-<!-- roadmap-status: def-capture-binding -->
-- [x] the whole capture pipeline is built and composed — token-scoped phone page, durable session, ordered photos, bundle finalization, restart drain (2i-F, D174)
-- [x] the handoff seam exists and refuses BY NAME rather than inventing an input — `captureIntakeRegistry` (`src/control/workflow-registry.ts:167-193`)
-- [ ] a workflow that can honestly derive its input from a photograph — `CAPTURE_INTAKE_BINDINGS` is `{}` because none exists (`src/control/workflow-registry.ts:194`)
-- [ ] the phone page has no delivery path either, which is `{#def-byte-path}` — both close at order 3
-> 2026-08-20 | docs-cohesion 04 | verified against src/control/workflow-registry.ts:150-194 and src/server/dashboard/compose.ts:747-760; left: the binding itself, which order 3 declares
-<!-- /roadmap-status -->
-
-**What the deferral is.** You can photograph a paper form with your phone today and the system will
-keep the photographs — a token-scoped capture session, an ordered set of digests, a finalized
-bundle. What it will not do is turn that bundle into a queued run, because **no workflow has
-declared how a bundle becomes its input.**
+This former deferral is closed by retirement. No OCR workflow must declare a Capture Mode binding,
+and no new phone session, bundle, handoff, ingress, or QR authority may be reintroduced. The
+historical detail below records D174 provenance only; it is not an implementation plan.
 
 **The decision that deferred it: D174** (round 41, 2026-08-09). The handoff seam was built with an
 explicitly EMPTY registry rather than a plausible first binding, and the registry's own comment says
@@ -143,57 +130,29 @@ outbox.stableKey)`, never minted.
 **Not built.** One thing: a workflow whose input a photograph can produce. Nothing else about this
 deferral is code that is missing.
 
-## Run the dashboard without the dev server / use the phone page in production
+## Run the built dashboard without the dev server
 <!-- roadmap: def-byte-path -->
 
 <!-- roadmap-status: def-byte-path -->
-- [x] the phone surface itself is built and bundled — its own entry, its own closure, `CAPTURE_PHONE_ASSET_ENTRY = "/capture.html"` (`src/domain/capture-surface.ts:83`)
-- [x] the ingress refuses BY NAME when it cannot be built — `on-demand-ngrok` with no credential answers a named remediation, never a loopback QR (`src/server/dashboard/commands/capture-service.ts:531-546`)
 - [ ] BE the BFF static handler — port the parity fixture's traversal-checked, content-typed `serveStatic` (`tests/parity/helpers/fixture-bff.ts:298`); every unrouted path 404s today
 - [ ] BE `--prod` parsed by `startRebuildRuntime` — the flag `package.json:12` passes is read by nothing (`src/core/runtime-composition.ts:162-200`), so `npm run dashboard:prod` is byte-identical to `npm run cli -- dashboard`
-- [ ] BE `/capture.html` delivered, so 2i-F's token-scoped phone surface is reachable from a phone
-- [ ] BE the on-demand ngrok tunnel launcher (D175) — the shipped default names a launcher that does not exist
-- [ ] BE the guard arm — a phone-origin request may be served nothing outside the capture allow-list
-- [x] BE the capture-ingress host gate is WIRED (Track D row D2, 2026-08-21, `47eeb44e`) — `capturePhoneHostOf` derives it from `capture.ingress: "forwarded"`, the same leaf the ingress resolver reads, and `capture-durability-and-scope` §2b refuses a composition root that stops supplying it; it was declared, read, and supplied by nothing since D174
-> 2026-08-20 | docs-cohesion 04 | verified against src/core/runtime-composition.ts:162-200, src/server/dashboard/routes/api.ts:141-403 (no static or asset route), src/domain/capture-surface.ts:83, src/server/dashboard/commands/capture-service.ts:495-546; left: all six build items
-> 2026-08-21 | track-d D2 | the host gate is off this list — wired, not deleted, because `forwarded` is a producer an operator can set today and the alternative was landing the scope check in the same slice that opens the door; left: the five BE build items above, unchanged
+> 2026-08-31 | D294 | Capture Mode's page, ingress, tunnel, and host gate are retired. Only ordinary local static serving remains.
 <!-- /roadmap-status -->
 
 **What the deferral is.** The production BFF **serves no frontend bytes.** Every dashboard byte you
-have ever seen came from the vite dev server on 5174; the BFF on 3938 answers `/api/v1/**` and
-`/events/v1` and 404s everything else. Two consequences, and the second is the one that matters: the
-dashboard has no way to run without the dev server, and 2i-F's token-scoped phone capture page —
-built, bundled, entry-pointed at `/capture.html` — **has no delivery path to a phone at all.**
+have ever seen came from the Vite dev server on 5174; the BFF on 3938 answers `/api/v1/**` and
+`/events/v1` and 404s everything else. The dashboard therefore has no way to run without the dev server.
 
-**The decision that deferred it: D189** (round 45, 2026-08-09), a named gap with an owner rather
-than a waiver, taken at the Phase-2 exit. Its reasoning has two halves. Those bytes would ride the
-one internet-exposed path in this system — the capture ingress behind the Host gate — which is a
-security surface, not a build task. And the tunnel launcher D175 specified is unbuilt anyway, so
-serving the page would produce a QR that scans perfectly and fails on the phone with a network
-error explaining nothing. D193(a) fixes what "production" means here: **LOCAL** — the day this repo
+**The decision that deferred it: D189** (round 45, 2026-08-09), amended by D294, is a named local
+operator-dashboard gap with an owner rather than a waiver. D193(a) fixes what "production" means
+here: **LOCAL** — the day this repo
 becomes the operator's daily tool on their own machine, never a hosting platform.
 
-**Its trigger: order 3**, alongside `{#def-capture-binding}`. The two close together on purpose —
-a delivered phone page with no workflow that can consume a photograph is a page with nothing to do,
-and a capture binding with no delivery path is a binding no phone can reach.
+**Its trigger is standalone dashboard completion.** It no longer depends on a workflow migration.
 
-**Built today.** The phone surface, completely: its own bundle entry, its own module closure that
-may not reach `surfaces/`/`client/`/`app/`, D174's fragment-borne token (`#t=<token>`, never
-transmitted to a server), the closed phone route union, and the uniform refusal that makes an
-unknown / malformed / expired / discarded token indistinguishable. The ingress preflight is honest
-in the other direction too: `capture.ingress` is `on-demand-ngrok` by default and refuses by name
-when its credential is absent or its launcher is missing.
-
-**Not built.** Six things, listed above. The two worth calling out because they read as done and are
-not: **`npm run dashboard:prod` names a mode the runtime never parsed** — `package.json:12` passes
+**Not built.** Two things remain: **`npm run dashboard:prod` names a mode the runtime never parsed** — `package.json:12` passes
 `--prod` and `startRebuildRuntime` dispatches on `args[0]` alone, so the flag reaches nothing — and
-**the Host gate WAS inert** until Track D row D2 (2026-08-21, `47eeb44e`). `deps.capturePhoneHost`
-is optional and the middleware's first line is `if (phoneHost === undefined) return next();`, and
-nothing supplied it in any composition, so the allow-list that exists to keep a phone origin off the
-operator's dashboard had never evaluated a single request. D2 WIRED it rather than deleting it:
-`capture.ingress: "forwarded"` names a real HTTPS origin an operator can configure today, so the
-scope check has a producer now instead of arriving in the same slice that opens the door. The gate
-is therefore no longer part of closing this deferral; the five build items above are.
+the BFF has no static handler for the built dashboard.
 
 ## Edit a workflow's presentation / policy without a code change
 <!-- roadmap: def-explorer-edit -->
@@ -523,12 +482,12 @@ waiver. What is forbidden is a third state — a deferral nobody can find the tr
 | 3 | **The record-sanity-check advisory is dispositioned** | **MET** | RETIRED by the operator 2026-08-18 (D192); `config/legacy-capabilities.json` carries `kind: "retired"` and `AdvisorySurfaceIdSchema` stays closed at two values |
 | 4 | **The storage remainders are dispositioned** | **MET** | D193(b): scheduling the sweep and the content-store refcount are `wont-build-unless-asked`, off every milestone |
 | 5 | **The capture → run binding** | **open** | trigger unfired — order 3 declares the first `CaptureIntakeBinding`; `CAPTURE_INTAKE_BINDINGS` is `{}` at HEAD |
-| 6 | **The production byte path + the phone page delivered** | **open** | trigger unfired — order 3; six build items, including `--prod` reaching the runtime and the INERT Host gate being wired or deleted |
+| 6 | **The production byte path serves the built local dashboard** | **open** | standalone D189/D294 task: parse `--prod` and safely serve `dist/dashboard` |
 | 7 | **The explorer's EDIT half + the authoring path** | **partly MET** | D283/DCC4–DCC5 complete the existing-workflow boundary: label/icon/category hot apply; timeline/grouping and notification unavailable without owners; policy/Edit Data strict source briefs. New-workflow authoring and broader design remain under D186's later-workflow boundary. |
 | 8 | **Editable settings** | **partly MET** | DCC1–DCC3 close the resolver-owned atomic edit, readback, preflight rerun and doctor controls; credentials, AI assist, delete/recover and resolver-unowned legacy settings remain open |
 | 9 | **Cross-date search · screenshots · Excel export** | **partly MET** | DCR3–DCR5 deliver current-corpus search, its Separations Top Bar surface and evidenced XLSX; artifact bytes/screenshots and the D289 rerun comparison remain open |
 | 10 | **Propagation windows, per system** | **partly MET** | Kuali measured and closed (D135), transferred provisionally to the separations finalization (D207); **UCPath open** (order 7, both contracts `operator-only`), **ServiceNow open** (no commit contract yet) |
-| 11 | **The Phase 3a carry-in (D279) is closed or parked, line by line** | **open** | C1–C4 closed by DCF6; C5 is ruled (D278) and unbuilt, and C6 remains open. Neither is a cutover blocker. |
+| 11 | **The Phase 3a carry-in (D279) is closed or parked, line by line** | **open** | C1–C4 closed by DCF6; the former Capture Mode C5 is retired by D294. Neither is a cutover blocker. |
 
 **Nothing here blocks the cutover.** `05-cut-over.md` §Exit criteria names none of these eight, and
 that is a deliberate reading rather than an accident of drafting: the cutover switches which

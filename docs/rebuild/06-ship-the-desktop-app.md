@@ -46,7 +46,7 @@ discovered, and `{#desk-secrets}` and `{#desk-worker}` each carry a Windows item
 LOCAL tool: one machine, one operator, no server, no tenancy, no remote access. Packaging changes how
 the software is delivered and where its files live; it changes nothing about who can reach it. The
 one deny-by-default exception to loopback stays what it already is — the operator-started,
-token-scoped mobile capture ingress, which belongs to `{#def-byte-path}` and not here.
+D294 retires the former mobile-capture ingress exception.
 
 ### What it inherits — five things Phases 1–5 already decided
 
@@ -54,7 +54,7 @@ token-scoped mobile capture ingress, which belongs to `{#def-byte-path}` and not
 |---|---|---|
 | 1 | **D181's runtime role lock** (`src/server/dashboard/compose.ts:346-356`) | The dashboard takes a `server` role lock, one holder, before it opens the authority database. The app's own single-instance lock (`app.requestSingleInstanceLock()`) is the second, coarser half — and the two must not fight: a second app launch focuses the open window, and a BFF that finds the role lock held refuses BY NAME rather than starting a second one. The lock files are also what `cli storage restore` composes its stopped-system proof from, so the app may not route around them |
 | 2 | **`config/runtime-isolation.json`'s roots** | `stateRoot` `.tracker-rebuild`, `artifactRoot` `.tracker-rebuild/artifacts`, `processLockRoot` `.tracker-rebuild/locks`, `browserProfileRoot` `.auth` — all resolved **repo-relative** today (`repoRoot = process.cwd()`, `compose.ts:336-337`). A packaged app has no repo and no meaningful cwd, so every one of them resolves under `app.getPath("userData")`. The NAMES stay: `operational-isolation.test.ts` pins them, and what changes is how a root is resolved, not what it is called |
-| 3 | **D189's byte path** (`ref frontend-backend-integration` §6.9) | The BFF serves **no** frontend bytes and the desktop does not need it to — the renderer loads `dist/dashboard` from app resources. That is why `{#def-byte-path}` stays a separate node: its content is the INTERNET-exposed half (the phone page behind the Host gate, plus D175's tunnel launcher), and putting a static handler on that path is a security change with its own review. The desktop closes the *operator's* byte path and leaves the *phone's* exactly where D189 left it |
+| 3 | **D189's byte path** (`ref frontend-backend-integration` §6.9) | The BFF serves **no** frontend bytes and the desktop does not need it to — the renderer loads `dist/dashboard` from app resources. The remaining `{#def-byte-path}` task is ordinary local static serving for non-desktop operation; D294 retires its former phone/tunnel scope. |
 | 4 | **`{#parallel-runs}`' worker pool** | `createDashboardWorkerSupervisor` refuses to spawn a worker today and its refusal literally says *"start worker `<id>` with: npm run cli worker `<workflowId>`"* (`compose.ts:322-331`). In a packaged app there is no npm and no terminal, so that refusal is not survivable — the app MUST supply a real `WorkerProcessSupervisor`, which is the same build `{#parallel-runs}` already owns. Phase 6 consumes it; it does not fork it |
 | 5 | **`{#duo-lease}`** | The desktop is where several workers finally run on one machine as the ordinary case, so D243's shared per-credential Duo counter stops being a hazard two cold-starting workflows can hit and becomes one the product's default shape hits. The lease is a prerequisite, not an optimization |
 
@@ -321,7 +321,7 @@ that sentence; all five are open, because nothing is built.
 | 2 | **A real workflow dry run from the app** | **open** | R10's T1 tier run from the INSTALLED app on both OSes, with its checkpoints asserted over authority and the result recorded durably |
 | 3 | **Credentials never in a file the app ships** | **open** | the keychain is the source; `src/domain/secrets.ts` is still the only reader; the Duo credential is not a plaintext file inside the bundle; a missing credential refuses BY NAME at first run |
 | 4 | **The worker survives sleep, or refuses loud** | **open** | a power save blocker held while any run is in flight, and — when one cannot be held — a refusal the operator can read, rather than a run swept and requeued by a heartbeat nobody watched |
-| 5 | **The byte path closed for the desktop** | **open** | the renderer loads the bundle from app resources with an explicit API base; `{#def-byte-path}`'s phone/tunnel half is deliberately NOT closed by this and stays where D189 left it |
+| 5 | **The byte path closed for the desktop** | **open** | the renderer loads the bundle from app resources with an explicit API base; ordinary local static serving remains a separate D189/D294 dashboard task |
 
 **What is NOT on this list, deliberately.** Auto-update (this phase defers it with a stated reason);
 any form of hosting, remote access or multi-user (D193(a), unchanged by R14); and a Linux build, which

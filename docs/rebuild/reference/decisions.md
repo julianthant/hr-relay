@@ -1688,3 +1688,13 @@ superseded and does not enter this integration history._
 | # | Decision | Owning doc |
 |---|---|---|
 | **D293** | **PRESERVE D285'S OPTIONS AND CONDITIONAL STEPS SCREENS; REMOVE ONLY PER-START DESTINATION.** Preserve D284's later sole-4537-canary meaning and D285's `Input -> Options -> Confirm` path, with `Customize steps` inserting the separate Steps screen. Remove the Destination group, per-system UCPath/CRM controls, dashboard `requestedInstance`, and test-target badge. Keep the optional lower-level ingress for other authorized producers/tools. The older DCF graph-timeline replacement is superseded; reconstruct only its compatible destination-removal intent on the later integration authority. | ref dashboard-surfaces §9.1 D293 |
+
+## Reconciliation round 106 (2026-08-31) — mobile Capture Mode retirement
+
+_D294 records the operator's direction to remove the mobile/phone document-capture product. Its
+normative text lands in ref data-intake-and-edit-data §5.1 and ref frontend-backend-integration §6.9
+in this same commit._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D294** | **RETIRE MOBILE/PHONE DOCUMENT CAPTURE MODE IN FULL.** Remove its page, QR start, phone/desktop session UI, routes, ingress/tunnel/configuration, binding and durable authority from the rebuild. Retain diagnostic screenshots, run Capture tiles, receipts, and Archive evidence: they are unrelated diagnostic authority. Historical records remain readable under their historical schema; no new capture-mode session, bundle, handoff, or workflow obligation remains. `dashboard:prod` static serving stays an independent local operator-dashboard gap: it must eventually serve the ordinary built dashboard safely, but no phone-origin allow-list, tunnel, or Capture Mode delivery requirement survives. | ref data-intake-and-edit-data §5.1; ref frontend-backend-integration §6.9 |

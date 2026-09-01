@@ -262,6 +262,11 @@ references read only by `src/domain/secrets.ts`.
 
 ## Conventions
 
+- **2026-08-31 — D294 retires mobile/phone document Capture Mode.** Do not reintroduce its QR start,
+  page, ingress/tunnel, session/bundle/handoff authority, routes, configuration, or tests. Diagnostic
+  screenshots, run Capture tiles, receipts, and Archive evidence are separate diagnostic authority
+  and remain supported. `dashboard:prod` static serving is still an independent local-dashboard gap.
+
 - **2026-08-29 — BFF request identity is one admission checkpoint.** Every request crosses the
   first middleware exactly once. Solo composition accepts only the strict configured
   `local-operator`; body, query, headers, XLSX metadata and mobile-capture credentials are not actor

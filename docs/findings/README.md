@@ -40,16 +40,14 @@ established; none were fixed in this docs pass, per the standing rule above.
 | [explorer.md](explorer.md) | Workflow-Explorer wire gaps: demo explorer elements the `/api/v1/explorer` projection cannot yet power | **3 open, reopened 2026-08-21** — the 2026-08-19 "0 open" state was real for the five records swept then (D227/D228/D229 and ref operator-trust §5.7's exclusions), but ledger 3's live re-audit found three the sweep never saw: no per-node `skippedInDryRun`, no per-field `when`, and no minor/presentation version anywhere in the tree |
 | [activity.md](activity.md) | Activity-report wire gaps: demo report elements the `/api/v1/reports/activity` aggregate cannot yet power (distinct people) plus the settled ones kept for their arguments | 5 records, **1 open against an exact trigger, 1 won't-fix, 3 closed** — verified 2026-08-20, no tightening owed. Distinct people is blocked on the commit that puts subject identity on queue rows AND on members; the span chips are won't-fix on D180's own argument. Closed 2026-08-19 by operator ruling: the write ledger under D236's carve-out, the hours-saved tile dropped by D239, the CSV export built by D240 |
 | [intake.md](intake.md) | Intake-surface wire/UI gaps: demo intake elements (`DemoIntake.tsx`) with no rebuild counterpart | 3 records, **1 open** — the Manifest/Rerun-diff STAGES (10 ledger rows) and the terminal wire fields they need (11 ledger rows) were both RESOLVED 2026-08-25 and carry their resolutions in the file; the Run-verb wording (1 row, presentation only) stays open — D274/D276 ratified the verb and its implementation has not landed |
-| [capture.md](capture.md) | Phone-capture wire/UI gaps: the demo's OPERATOR-side desktop view (`DemoCapture.tsx`) | 6 records, **4 open** — verified at HEAD 2026-08-26 against the D274 item 7 units (F12 the producer, F13 the desktop surface). CLOSED: the session LIST (`GET /api/v1/capture/sessions` + the picker that consumes it) and the single-session READ (the operator projection plus `useCaptureSession` → `surfaces/capture-session.tsx`). Half-closed with their open halves NAMED: the unreadable signal is served per page and `focusScore` has no producer; pixel dimensions are served and filename + arrival instant are deliberately absent, not optional (D276). Still open: `replacePhoto` has a server route and no client method; and NEW 2026-08-26 (unit F13) the intake column gives its whole height to the `Dropzone`, so a live capture panel opens roughly half below the fold — a ruling on the column, not a missing fact |
+| [capture.md](capture.md) | Historical phone-capture wire/UI record | **0 open — retired by D294 (2026-08-31).** The record is retained for D174/D278/D279 provenance only; diagnostic and Archive evidence are unrelated and remain active. |
 
 **The ledger's standing shape after Track F: thirteen open records across five files, zero
 undecided ones** (re-counted 2026-08-26 against the phase-3a final integration line `8b7ec21e`;
 it was sixteen at the 2026-08-21 reopening). Four queue-row producer gaps, one activity producer
-gap, three explorer gaps, one intake gap and four capture gaps, plus one deferred HALF of a closed
+gap, three explorer gaps, and one intake gap, plus one deferred HALF of a closed
 record (D255's beat-span identity) — each blocked on a commit somebody will write, none on a
 question somebody must answer. Three records left the open count and each says so in its own file:
-two intake records resolved 2026-08-25, and two capture records closed 2026-08-26 by D274 item 7 —
-against which one NEW capture record was booked by the unit that closed them (the intake column's
-dropzone height), which is the shape this ledger is for.
+two intake records resolved 2026-08-25. D294 subsequently retired the separate Capture Mode record.
 
 This folder is NOT plan SSOT. Nothing here is a ratified decision (ref decisions rules apply).

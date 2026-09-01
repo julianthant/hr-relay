@@ -1,4 +1,9 @@
-# Phone-capture findings — the OPERATOR half
+# Retired phone-capture findings
+
+**Status: CLOSED BY RETIREMENT 2026-08-31 (D294).** The mobile/phone document Capture Mode and its
+desktop operator panel are removed. Every record below is historical provenance only; none remains
+an active UI, wire, route, test, or planning obligation. Diagnostic screenshots, run Capture tiles,
+Receipt evidence, and Archive evidence are separate authority and are unaffected.
 
 Records where the demo's DESKTOP view of a phone-capture session
 (`hr-automation@1bffbd658db34ce84a08e69484db3a40b3658d6e`,
