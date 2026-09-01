@@ -50,16 +50,16 @@
     - heading "Person Lookup v1" [level=2]
     - text: 4 nodes · 30 reads
     - button "What is this graph? — Person Lookup"
-    - group "Person Lookup identity": code pl category search version 1 shape single enqueue reject-active subject derived from input system crm system ucpath
+    - group "Person Lookup identity": code pl version 1 shape single enqueue reject-active subject derived from input systems crm · ucpath
     - region "Editable workflow presentation":
       - text: Presentation
-      - term: Workflow label
+      - term: Label
       - definition: Person Lookup
       - button "Edit workflow label"
-      - term: Workflow icon
+      - term: Icon
       - definition: Search
       - button "Edit workflow icon"
-      - term: Workflow category
+      - term: Category
       - definition: search
       - button "Edit workflow category"
     - text: changes no system of record dry run nothing to stop short of
@@ -75,7 +75,35 @@
         - text: no edge between them
       - listitem:
         - button "crm-dates Task system crm runs when the run's input field includeCrmDates is true 1 contract 3 correctable fields"
-    - region "Scenarios": Scenarios person-lookup/ambiguous-name walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-failure-retry walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts person-lookup/happy-by-eid walks tests/scenario/person-lookup.scenario.test.ts person-lookup/happy-by-eid-with-dates walks tests/scenario/person-lookup.scenario.test.ts person-lookup/not-found walks tests/scenario/person-lookup.scenario.test.ts person-lookup/ucpath-drill-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts
+    - region "Scenarios":
+      - text: Scenarios 7 registered
+      - table "Person Lookup scenarios":
+        - rowgroup:
+          - row "Scenario Walked by":
+            - columnheader "Scenario"
+            - columnheader "Walked by"
+        - rowgroup:
+          - row "person-lookup/ambiguous-name person-lookup.scenario.test.ts":
+            - cell "person-lookup/ambiguous-name"
+            - cell "person-lookup.scenario.test.ts"
+          - row "person-lookup/crm-failure-retry person-lookup.scenario.test.ts":
+            - cell "person-lookup/crm-failure-retry"
+            - cell "person-lookup.scenario.test.ts"
+          - row "person-lookup/crm-subject-mismatch person-lookup-runtime.scenario.test.ts":
+            - cell "person-lookup/crm-subject-mismatch"
+            - cell "person-lookup-runtime.scenario.test.ts"
+          - row "person-lookup/happy-by-eid person-lookup.scenario.test.ts":
+            - cell "person-lookup/happy-by-eid"
+            - cell "person-lookup.scenario.test.ts"
+          - row "person-lookup/happy-by-eid-with-dates person-lookup.scenario.test.ts":
+            - cell "person-lookup/happy-by-eid-with-dates"
+            - cell "person-lookup.scenario.test.ts"
+          - row "person-lookup/not-found person-lookup.scenario.test.ts":
+            - cell "person-lookup/not-found"
+            - cell "person-lookup.scenario.test.ts"
+          - row "person-lookup/ucpath-drill-subject-mismatch person-lookup-runtime.scenario.test.ts":
+            - cell "person-lookup/ucpath-drill-subject-mismatch"
+            - cell "person-lookup-runtime.scenario.test.ts"
     - heading "searching" [level=2]
     - button "What is this node? — searching"
     - text: Task system ucpath
