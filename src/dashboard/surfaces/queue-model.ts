@@ -23,21 +23,38 @@ import { elapsedSecondsBetween, fmtElapsed } from "./format.js";
 /**
  * ONE ROW'S ⓘ CONTENT, as a fold rather than as JSX.
  *
- * Two kinds of entry and they must stay distinguishable, which is why `state`
- * rides along instead of both arms being flattened into a sentence:
+ * WHAT THE ⓘ IS FOR, in the operator's own words: *"the subtitle and other
+ * important stuff related to the run that doesnt fit into the queue row —
+ * something i dont need normally when i glance at the queue row but i could
+ * maybe use sometimes to find out more info."* Two exclusions follow from that
+ * sentence and both were applied:
  *
- *   ABSENT — the server said it has no such fact, and said WHY. Four distinct
- *     reasons hide behind an empty fact band and all four are counted; letting
- *     them collapse into a silent gap is the absence-versus-failure conflation
- *     this program bans (D230 / §9 D7).
- *   PRESENT — the fact's own value, WHOLE. On the row it is a `Chip`, and a
- *     chip is a single-line token that clips its paint; before this the only
- *     route to the uncut value was the element's `title`, which a touch user
- *     cannot summon and a keyboard user is never shown. DESIGN.md's rule is
- *     explicit — load-bearing detail "goes in the UI or in a Popover
- *     (click-to-open, keyboard- and touch-reachable), never in a hover-only
- *     surface" — and every queue row already has that Popover, so the value
- *     costs no new chrome. The `title` stays as the mouse's shortcut.
+ *   NOT PRODUCT EXPLANATION. What a panel of this kind shows, and what this
+ *     row's containment means, are facts about the PRODUCT — identical on
+ *     every row sharing a `panelKind`, worth one read ever, and printed above
+ *     the thing the ⓘ was opened for. They left `surfaces/queue.tsx`.
+ *   NOT THE RUN'S EXTRACTED VALUES. `facts[]` — the evidence receipt's own
+ *     output — is what the run PRODUCED, and it is already drawn on the row as
+ *     chips. Repeating it here made the ⓘ a second copy of the row instead of
+ *     the place you go for what the row could not hold.
+ *
+ * Two kinds of entry remain and they must stay distinguishable, which is why
+ * `state` rides along instead of both arms being flattened into a sentence:
+ *
+ *   ABSENT — the server said it has no such fact, and said WHY. Letting those
+ *     reasons collapse into a silent gap is the absence-versus-failure
+ *     conflation this program bans (D230 / §9 D7).
+ *   PRESENT — the fact's own value, WHOLE, on a click a touch user and a
+ *     keyboard user can both make. DESIGN.md is explicit that load-bearing
+ *     detail "goes in the UI or in a Popover (click-to-open, keyboard- and
+ *     touch-reachable), never in a hover-only surface".
+ *
+ * KNOWN CONSEQUENCE, recorded rather than hidden: dropping the present
+ * `facts[]` entries takes the row's fact CHIPS back to `title` as their only
+ * route to an uncut value, which is the hover-only surface that rule names. The
+ * chips are the row's own output and belong to it; if that clip starts costing
+ * an operator a value, the answer is an affordance on the chips, not putting
+ * the run's output back inside the ⓘ.
  */
 export interface RowInfoFact {
   readonly label: string;
@@ -52,29 +69,34 @@ export function rowInfoFacts(surface: QueueSurfaceWire): readonly RowInfoFact[] 
     facts.push({ label, state: "absent", text });
   };
   if (surface.subtitle.state === "absent") absent("Subtitle", surface.subtitle.reason);
-  // PRESENT, and it is the one present field that needs this. Every other
-  // footer segment is a short token that draws whole; the subtitle is the
-  // segment whose length the SERVER chooses, and since the footer truncates it
-  // (`surfaces/queue.tsx`) the popover is its only hover-free route to the
-  // uncut value — the same argument the `facts` loop below is written for, and
-  // DESIGN.md's own rule that load-bearing detail never lives in a hover-only
-  // surface. It leads the list because it is the row's second IDENTIFIER: the
-  // popover then reads top-down as the row does.
-  if (surface.subtitle.state === "present") {
+  /*
+    PRESENT — and the ⓘ is now its ONLY home.
+
+    The subtitle left the row's footer entirely (`surfaces/queue.tsx`). That
+    line is provenance — when, which run, which trace, how long — and a
+    subtitle is not: across the product it is the workflow's own name, a start
+    option, the filer, or a re-read ordinal with the operator's free-text
+    reason. It is context about how the run came to BE, not something the run
+    produced, so it belongs where explanation lives rather than on a surface
+    read at a glance. Being here also means the value is never clipped: the
+    popover prints it whole, on a click that a touch and a keyboard can both
+    make.
+
+    THE DEMO'S `showId` GUARD COMES WITH IT (`DemoQueue.tsx:674`, R3 finding
+    18): a subtitle equal to the row's title printed the same string twice on
+    one card, and it would print it twice in one popover for the same reason.
+    The guard moved here because the footer that used to hold it no longer
+    reads the field at all.
+
+    It leads the list — the popover then reads top-down the way the row does.
+  */
+  if (surface.subtitle.state === "present" && surface.subtitle.value !== queueRowTitle(surface)) {
     facts.push({ label: "Subtitle", state: "present", text: surface.subtitle.value });
   }
   if (surface.liveMessage.state === "absent") absent("Live message", surface.liveMessage.reason);
   if (surface.runNumber.state === "absent") absent("Run number", surface.runNumber.reason);
-  if (surface.facts.state === "absent") absent("Outcome", surface.facts.reason);
   if (surface.surfaceKind === "operation" && surface.memberPreview.state === "absent") {
     absent("Members", surface.memberPreview.reason);
-  }
-  if (surface.facts.state === "present") {
-    // In the order the server sent them — the same order the chips draw, so the
-    // popover reads as the row it was opened from rather than as a second list.
-    for (const fact of surface.facts.value) {
-      facts.push({ label: fact.label, state: "present", text: fact.value });
-    }
   }
   return facts;
 }

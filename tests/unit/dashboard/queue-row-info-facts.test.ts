@@ -1,21 +1,25 @@
 /**
- * A row's outcome facts are drawn as CHIPS, and a chip is a single-line token
- * that clips its paint (`ds/primitives-core.tsx`). The full value used to be
- * reachable one way only — the element's `title` — which is a hover surface: a
- * touch user has no hover, and a keyboard user is never shown one. DESIGN.md
- * bans exactly that ("Put load-bearing information in a tooltip only … it goes
- * in the UI or in a Popover"), and the row already HAS the sanctioned Popover.
+ * WHAT THE ⓘ HOLDS, and — as of 2026-09-01 — what it deliberately does not.
  *
- * So the ⓘ now carries both halves of the fact story: why a fact is missing,
- * and — the half it was silently short of — what a present fact says IN FULL.
- * The decision is a pure fold so it is pinned here rather than by a screenshot.
+ * The operator's rule: *"the subtitle and other important stuff related to the
+ * run that doesnt fit into the queue row — something i dont need normally when
+ * i glance at the queue row but i could maybe use sometimes to find out more
+ * info."* Two exclusions fall out of that sentence, and each is pinned below
+ * because each was previously rendered and could be re-added by a one-line
+ * edit that no other test would notice:
  *
- * The SUBTITLE is in that second half for the same reason and by the same
- * rule. It is the one footer segment whose length the server chooses, and the
- * footer truncates it (`surfaces/queue.tsx`) so the demo's one-line provenance
- * line survives an operator's prose note; the popover is then its only
- * hover-free route to the uncut value. Every other footer segment is a short
- * token that draws whole and needs no entry.
+ *   NOT PRODUCT EXPLANATION — the panel-kind and containment paragraphs are
+ *     facts about the product, identical on every row sharing a `panelKind`.
+ *     They live in `surfaces/queue.tsx`, so this fold never held them; the
+ *     popover's own composition is what dropped them.
+ *   NOT THE RUN'S EXTRACTED VALUES — `facts[]` is the evidence receipt's
+ *     output, already drawn on the row as chips. Both its present values AND
+ *     its absence reason are gone from here.
+ *
+ * What remains is the SUBTITLE, which left the row's footer entirely
+ * (`surfaces/queue.tsx`) because a provenance line holds when · which run ·
+ * which trace · how long and a subtitle is none of those — plus the absence
+ * reasons D230 / §9 D7 require, so a served gap can never read as a silent one.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
@@ -30,7 +34,7 @@ import {
 const [base] = FIXTURE_DAY_WIRE.queueSurfaces;
 if (base === undefined) throw new Error("the parity day fixture must serve at least one queue surface");
 
-const LONG_VALUE = "PPSMTCH-2026-08-26-oath-batch-7-amendment-third-pass-final-corrected";
+const LONG_VALUE = "re-read 1 — operator requested fresh 4568 rehearsal after resume freshness refusal";
 
 /*
   Every variant goes through the WIRE SCHEMA rather than being cast into shape.
@@ -40,85 +44,6 @@ const LONG_VALUE = "PPSMTCH-2026-08-26-oath-batch-7-amendment-third-pass-final-c
 */
 const surfaceOf = (raw: unknown): QueueSurfaceWire => QueueSurfaceWireSchema.parse(raw);
 
-function withFacts(facts: QueueSurfaceWire["facts"]): QueueSurfaceWire {
-  return { ...base, facts };
-}
-
-describe("the ⓘ's fact list (the chip's clipped value, reachable without a mouse)", () => {
-  it("carries a present fact's FULL value, not the label alone", () => {
-    const entries = rowInfoFacts(withFacts({
-      state: "present",
-      value: [{ label: "Match", value: LONG_VALUE }],
-    }));
-    const match = entries.find((entry) => entry.label === "Match");
-    assert.equal(match?.state, "present");
-    assert.equal(
-      match?.text,
-      LONG_VALUE,
-      "the popover exists to un-clip the chip, so it must hold the whole value verbatim",
-    );
-  });
-
-  it("carries a present SUBTITLE's full value — the segment the footer truncates", () => {
-    const entries = rowInfoFacts(surfaceOf({
-      ...base,
-      subtitle: { state: "present", value: LONG_VALUE },
-      facts: { state: "present", value: [{ label: "Match", value: "EID 10873698" }] },
-    }));
-    const subtitle = entries.find((entry) => entry.label === "Subtitle");
-    assert.equal(subtitle?.state, "present");
-    assert.equal(
-      subtitle?.text,
-      LONG_VALUE,
-      "the footer ellipsizes a long subtitle, so the popover must hold the whole value verbatim",
-    );
-    assert.equal(
-      entries[0]?.label,
-      "Subtitle",
-      "it leads the list: the popover reads top-down as the row does",
-    );
-  });
-
-  it("still reports an absent fact by the SERVER's reason, never as a blank", () => {
-    const entries = rowInfoFacts(withFacts({ state: "absent", reason: "the run produced no outcome yet" }));
-    const outcome = entries.find((entry) => entry.label === "Outcome");
-    assert.equal(outcome?.state, "absent");
-    assert.equal(outcome?.text, "the run produced no outcome yet");
-    assert.equal(
-      entries.some((entry) => entry.state === "present" && entry.label === "Match"),
-      false,
-      "an absent fact set has no values to un-clip",
-    );
-  });
-
-  it("keeps absence and value distinguishable rather than folding both into one string", () => {
-    const entries = rowInfoFacts(withFacts({
-      state: "present",
-      value: [{ label: "Match", value: "one" }, { label: "Filed", value: "two" }],
-    }));
-    assert.deepEqual(
-      entries.filter((entry) => entry.state === "present").map((entry) => [entry.label, entry.text]),
-      [["Subtitle", "person lookup"], ["Match", "one"], ["Filed", "two"]],
-      "every served fact is listed, in the order the server sent them, behind the row's own subtitle",
-    );
-  });
-});
-
-/**
- * THE FIVE ABSENCE ARMS, each pinned so that deleting it or inverting its test
- * goes red.
- *
- * Four distinct reasons can hide behind an empty fact band and the fold counts
- * all four, plus a fifth that only a group has (D230 / §9 D7). The tests above
- * exercise `facts` alone, so four of the five survived deletion: an arm that
- * quietly stops reporting an absence is indistinguishable from a server that
- * had nothing to report, which is the exact conflation this program bans.
- *
- * The assertions are `deepEqual` over the WHOLE entry list rather than a
- * `find`, because the list's ORDER is part of the contract — the ⓘ reads as the
- * row it was opened from — and a `find` cannot see an arm that fired twice, in
- * the wrong place, or with a neighbour's reason.
- */
 const REASONS = {
   subtitle: "the run resolved no subject",
   liveMessage: "run has not started",
@@ -127,23 +52,12 @@ const REASONS = {
   memberPreview: "this group has fanned out to no members yet",
 } as const;
 
-const ONE_FACT = { label: "Match", value: "EID 10873698" } as const;
-const ONE_FACT_ENTRY = { label: "Match", state: "present", text: "EID 10873698" } as const;
-
-/**
- * The present subtitle's own entry. It LEADS every list below, because it is
- * the row's second identifier and the popover reads top-down as the row does —
- * so a fold that appended it, or dropped it once the outcome facts arrived, is
- * red here rather than merely differently ordered.
- */
-const SUBTITLE_ENTRY = { label: "Subtitle", state: "present", text: "person lookup" } as const;
-
 /** Every field the fold reads, PRESENT — so a single absent arm is the only thing that can fire. */
 const PRESENT_FIELDS = {
   subtitle: { state: "present", value: "person lookup" },
   liveMessage: { state: "present", value: "Cross-verifying against CRM" },
   runNumber: { state: "present", value: 7 },
-  facts: { state: "present", value: [ONE_FACT] },
+  facts: { state: "present", value: [{ label: "Match", value: "EID 10873698" }] },
 } as const;
 
 const ABSENT_FIELDS = {
@@ -167,16 +81,101 @@ const OPERATION_PRESENT = {
 const singleSurface = surfaceOf(SINGLE_PRESENT);
 const operationSurface = surfaceOf(OPERATION_PRESENT);
 
+/** The present subtitle's entry, which LEADS every list the fold returns. */
+const SUBTITLE_ENTRY = { label: "Subtitle", state: "present", text: "person lookup" } as const;
+
+describe("the ⓘ carries the subtitle, and carries it whole", () => {
+  it("carries a present subtitle's FULL value — the row shows it nowhere else", () => {
+    const entries = rowInfoFacts(surfaceOf({
+      ...SINGLE_PRESENT,
+      subtitle: { state: "present", value: LONG_VALUE },
+    }));
+    const subtitle = entries.find((entry) => entry.label === "Subtitle");
+    assert.equal(subtitle?.state, "present");
+    assert.equal(
+      subtitle?.text,
+      LONG_VALUE,
+      "the footer no longer draws the subtitle at all, so a clipped copy here would be the only copy",
+    );
+    assert.equal(entries[0]?.label, "Subtitle", "it leads: the popover reads top-down the way the row does");
+  });
+
+  it("drops a subtitle that only repeats the row's title", () => {
+    // The demo's `showId` guard (`DemoQueue.tsx:674`), which used to live in
+    // the footer that no longer reads this field. Without it the popover
+    // prints the row's own name back at it as a second fact.
+    const entries = rowInfoFacts(surfaceOf({
+      ...SINGLE_PRESENT,
+      title: "EID 10873698",
+      displayName: { state: "absent", reason: "the operator has not renamed this run" },
+      subtitle: { state: "present", value: "EID 10873698" },
+    }));
+    assert.equal(
+      entries.some((entry) => entry.label === "Subtitle"),
+      false,
+      "a subtitle equal to the title is the same string twice, not a second fact",
+    );
+  });
+});
+
+/**
+ * THE EXCLUSION, pinned in both directions.
+ *
+ * `facts[]` is the run's own output and is already drawn on the row as chips.
+ * It was rendered here until 2026-09-01 — both its values and its absence
+ * reason — so re-adding either is a two-line edit. These are the tests that
+ * make that edit go red instead of quietly turning the ⓘ back into a second
+ * copy of the row.
+ */
+describe("the ⓘ excludes the run's extracted values", () => {
+  it("lists no outcome fact, however many the receipt produced", () => {
+    const entries = rowInfoFacts(surfaceOf({
+      ...SINGLE_PRESENT,
+      facts: { state: "present", value: [{ label: "Match", value: "one" }, { label: "Filed", value: "two" }] },
+    }));
+    assert.deepEqual(
+      entries,
+      [SUBTITLE_ENTRY],
+      "the receipt's output belongs to the row's chips; repeating it here made the ⓘ a second row",
+    );
+  });
+
+  it("does not explain an outcome's ABSENCE either", () => {
+    // The absence arm is about the same field, and its served reason is
+    // composition prose ("immutable receipt composition 2 predates
+    // diagnostic-safe composition 3…") — the explanation the operator ruled out.
+    const entries = rowInfoFacts(surfaceOf({ ...SINGLE_PRESENT, facts: ABSENT_FIELDS.facts }));
+    assert.deepEqual(
+      entries,
+      [SUBTITLE_ENTRY],
+      "no `Outcome` entry in either state",
+    );
+  });
+});
+
+/**
+ * THE ABSENCE ARMS, each pinned so that deleting it or inverting its test goes
+ * red.
+ *
+ * Distinct reasons can hide behind a served gap and the fold counts them all
+ * (D230 / §9 D7): an arm that quietly stops reporting an absence is
+ * indistinguishable from a server that had nothing to report, which is the
+ * exact conflation this program bans.
+ *
+ * The assertions are `deepEqual` over the WHOLE entry list rather than a
+ * `find`, because the list's ORDER is part of the contract — the ⓘ reads as the
+ * row it was opened from — and a `find` cannot see an arm that fired twice, in
+ * the wrong place, or with a neighbour's reason.
+ */
 describe("the ⓘ's absence arms", () => {
   it("reports NOTHING absent when the server served every field", () => {
-    assert.deepEqual(rowInfoFacts(singleSurface), [SUBTITLE_ENTRY, ONE_FACT_ENTRY]);
-    assert.deepEqual(rowInfoFacts(operationSurface), [SUBTITLE_ENTRY, ONE_FACT_ENTRY]);
+    assert.deepEqual(rowInfoFacts(singleSurface), [SUBTITLE_ENTRY]);
+    assert.deepEqual(rowInfoFacts(operationSurface), [SUBTITLE_ENTRY]);
   });
 
   it("reports the subtitle's own absence, and only it", () => {
     assert.deepEqual(rowInfoFacts(surfaceOf({ ...SINGLE_PRESENT, subtitle: ABSENT_FIELDS.subtitle })), [
       { label: "Subtitle", state: "absent", text: REASONS.subtitle },
-      ONE_FACT_ENTRY,
     ]);
   });
 
@@ -184,7 +183,6 @@ describe("the ⓘ's absence arms", () => {
     assert.deepEqual(rowInfoFacts(surfaceOf({ ...SINGLE_PRESENT, liveMessage: ABSENT_FIELDS.liveMessage })), [
       SUBTITLE_ENTRY,
       { label: "Live message", state: "absent", text: REASONS.liveMessage },
-      ONE_FACT_ENTRY,
     ]);
   });
 
@@ -192,25 +190,17 @@ describe("the ⓘ's absence arms", () => {
     assert.deepEqual(rowInfoFacts(surfaceOf({ ...SINGLE_PRESENT, runNumber: ABSENT_FIELDS.runNumber })), [
       SUBTITLE_ENTRY,
       { label: "Run number", state: "absent", text: REASONS.runNumber },
-      ONE_FACT_ENTRY,
-    ]);
-  });
-
-  it("reports the outcome's own absence, which leaves no present value to list", () => {
-    assert.deepEqual(rowInfoFacts(surfaceOf({ ...SINGLE_PRESENT, facts: ABSENT_FIELDS.facts })), [
-      SUBTITLE_ENTRY,
-      { label: "Outcome", state: "absent", text: REASONS.facts },
     ]);
   });
 
   it("reports a GROUP's missing member preview, and only for a group", () => {
     assert.deepEqual(
       rowInfoFacts(surfaceOf({ ...OPERATION_PRESENT, memberPreview: { state: "absent", reason: REASONS.memberPreview } })),
-      [SUBTITLE_ENTRY, { label: "Members", state: "absent", text: REASONS.memberPreview }, ONE_FACT_ENTRY],
+      [SUBTITLE_ENTRY, { label: "Members", state: "absent", text: REASONS.memberPreview }],
     );
     assert.deepEqual(
       rowInfoFacts(operationSurface),
-      [SUBTITLE_ENTRY, ONE_FACT_ENTRY],
+      [SUBTITLE_ENTRY],
       "a group that HAS a preview has no absence to report",
     );
   });
@@ -223,11 +213,10 @@ describe("the ⓘ's absence arms", () => {
       { label: "Subtitle", state: "absent", text: REASONS.subtitle },
       { label: "Live message", state: "absent", text: REASONS.liveMessage },
       { label: "Run number", state: "absent", text: REASONS.runNumber },
-      { label: "Outcome", state: "absent", text: REASONS.facts },
     ]);
   });
 
-  it("lists all five absences in the order the popover draws them", () => {
+  it("lists every absence in the order the popover draws them", () => {
     assert.deepEqual(
       rowInfoFacts(surfaceOf({
         ...OPERATION_PRESENT,
@@ -238,7 +227,6 @@ describe("the ⓘ's absence arms", () => {
         { label: "Subtitle", state: "absent", text: REASONS.subtitle },
         { label: "Live message", state: "absent", text: REASONS.liveMessage },
         { label: "Run number", state: "absent", text: REASONS.runNumber },
-        { label: "Outcome", state: "absent", text: REASONS.facts },
         { label: "Members", state: "absent", text: REASONS.memberPreview },
       ],
       "one deepEqual over the whole list: deleting any arm, or moving one, is red here",

@@ -422,21 +422,6 @@ const PANEL_EXPLANATION: Record<QueueSurfaceWire["panelKind"], string> = {
  * unclipped, in the place DESIGN.md sanctions for detail.
  */
 
-/**
- * How this row is CONTAINED, in the product's own words (D231).
- *
- * FRONTEND COPY, the same move `PANEL_EXPLANATION` makes one map up: the
- * containment vocabulary is a served closed enum and what a rebuild PANEL does
- * with each arm is a fact about this product, not about the run. `root` gets no
- * sentence — it is the ordinary row, and a line on every card explaining that
- * nothing delegated it is the noise D24 refuses.
- */
-const CONTAINMENT_EXPLANATION: Record<QueueSurfaceWire["containment"], string | undefined> = {
-  root: undefined,
-  member: "It was created by a run that fanned out, so it is counted inside that group's own tally rather than in the day's totals, and it is drawn nested under it.",
-  linked: "A run delegated to this one and is waiting on it. It keeps this row, in this panel, because it is worth reading on its own — the run that delegated it shows a chip pointing here.",
-};
-
 function RowInfo({
   surface,
   workflowLabel,
@@ -446,7 +431,6 @@ function RowInfo({
 }) {
   const facts = rowInfoFacts(surface);
   const panelName = PANEL_KIND_NAME[surface.panelKind];
-  const containment = CONTAINMENT_EXPLANATION[surface.containment];
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -474,12 +458,24 @@ function RowInfo({
           scales out of. */}
       <PopoverContent title={panelName} side="bottom" align="start" width="md">
         <div className="flex flex-col gap-[var(--ds-space-base)]">
-          <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
-            {PANEL_EXPLANATION[surface.panelKind]}
-          </p>
-          {containment !== undefined && (
-            <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>{containment}</p>
-          )}
+          {/*
+            NO PRODUCT EXPLANATION HERE, and that is the operator's own ruling:
+            *"dont put unnecessary explanations in there. just put the subtitle
+            and other important stuff related to the run."*
+
+            Two paragraphs used to lead this surface — what opening a panel of
+            this KIND shows, and what this row's containment means. Both are
+            frontend copy about the PRODUCT: identical on every row that shares
+            a `panelKind`, and therefore worth exactly one read ever. Printed
+            above the one thing an operator opened the ⓘ to see, they are what
+            it costs to reach that thing. `PANEL_EXPLANATION` survives one map
+            up because `LinkedRunChip` still titles itself with it — a chip
+            pointing at a panel you have NOT opened is the one place the
+            sentence is news.
+
+            What is left is this run's own facts, and nothing that is on the
+            row already.
+          */}
           {facts.map((fact) => (
             <p
               key={`${fact.state}:${fact.label}`}
@@ -553,11 +549,6 @@ function RowFooterLine({
   // execution (D124). A terminal row with no served end instant says the
   // duration is unknown and names why; it never falls back to `now`.
   const timing = runTiming(surface, nowIso, isTerminalQueueStatus);
-  // The demo's `showId` guard (`DemoQueue.tsx:674`), restored: a subtitle that
-  // repeats the title prints the same string twice on one card, once large and
-  // once small (R3 finding 18). A subtitle is a SECOND identifier, and when it
-  // is not second there is nothing to show.
-  const showSubtitle = surface.subtitle.state === "present" && surface.subtitle.value !== queueRowTitle(surface);
   return (
     <div
       className={cn(
@@ -628,58 +619,40 @@ function RowFooterLine({
           </span>
         )}
         {/*
-          The subtitle is the one footer segment whose length the SERVER
-          chooses, and it is the reason this line stopped looking like the
-          demo's.
+          THE SUBTITLE IS NOT HERE, and its absence is the rule.
 
-          DESIGN.md's rule is *"A row footer's facts WRAP; they never truncate
-          … so a run with a queue note takes a second line instead of cutting
-          its trace id to `1…`"*, and it is stated over the demo's own fact set:
-          `time · #run · trace · timing`, four SHORT tokens. The demo has no
-          fifth segment — its `subtitle` IS the trace (`se-140211-9f3a`), which
-          is why its span gets away with a bare `whitespace-nowrap`
-          (`DemoQueue.tsx:715`).
+          This line is PROVENANCE — when the run started, which run it is,
+          which trace names it, how long it took. The demo's own fact set is
+          those four and nothing else (`DemoQueue.tsx:698-717`; its `subtitle`
+          IS the trace, `se-140211-9f3a`, which is why it has no fifth
+          segment). `subtitle` is a different KIND of fact: across the whole
+          product it is the workflow's own name, a start option, the filer, or
+          a re-read ordinal with the operator's free-text reason
+          (each `descriptor.ts`'s `presentation.subtitle`). None of those
+          is provenance, and one of them is unbounded prose — a 200-character
+          ceiling on `reRead.reason` alone.
 
-          This projection serves the trace as its own chip and the run's NOTE
-          here, so the footer carries a segment the demo's rule was never
-          written over. A real note measured **1096 px inside a 375 px card**.
-          Two treatments were tried and both are wrong:
+          Two treatments were tried here and both were wrong the same way:
+          `nowrap` let the card's `overflow-hidden` clip it silently, and
+          `break-words` obeyed DESIGN.md's *"A row footer's facts WRAP; they
+          never truncate"* literally and turned a one-line footer into a
+          FOUR-line one, with `took 24m 48s` stranded under two lines of prose.
+          That rule is stated over four short tokens; applying it to a sentence
+          applies it to something it never covered. Truncating instead only
+          moved the damage somewhere quieter.
 
-           - `nowrap` alone neither wraps nor ellipsizes, so the card's own
-             `overflow-hidden` cut it mid-word with nothing on screen saying
-             anything was cut — the silent clip `rowChip` refuses one element
-             up.
-           - `break-words` obeys the rule's LETTER and turned a one-line footer
-             into a FOUR-line one, with `took 24m 48s` stranded on its own row
-             under two lines of prose and the controls floating beside the
-             first. That is the shape the operator read as *"the queue row does
-             not look like the one from the demo"*.
+          So the segment is GONE, on the operator's rule: the row surface
+          carries what the run PRODUCED — status, outcome facts, warnings,
+          timing, trace — and context about how the run came to BE lives in the
+          ⓘ. That is this file's own charter for the ⓘ read from the other
+          side: nothing load-bearing moves INTO it, and a fact that is not
+          load-bearing need not be on the row at all. `rowInfoFacts` carries
+          the present subtitle there, unclipped.
 
-          So this segment goes LAST and takes `min-w-0 truncate`. Going last
-          is not a reorder of the demo: its four facts keep the demo's exact
-          order, and the one it never had is appended behind them, so the
-          segments that must stay whole claim the line first. `min-w-0
-          truncate` — not `flex-1` — is the other half: `flex-1` sets the base
-          size to zero and hands this segment only the LEFTOVER width, which at
-          the 370 px the queue actually renders at cut `with CRM dates` to
-          `wi…` — a short subtitle the demo draws whole. At its natural base it
-          draws whole whenever it fits, and only a note too long for the line
-          wraps to a second one and ellipsizes there. That IS the demo's rule
-          in its own words: *"a run with a queue note takes a second line"* —
-          ONE second line, not the four `break-words` produced.
-
-          The ellipsis is the visible "something was cut" marker the bare
-          `nowrap` lacked, and the WHOLE value is reachable without a hover —
-          `rowInfoFacts` now carries a present subtitle into the row's ⓘ
-          popover, which is DESIGN.md's own click-to-open, keyboard- and
-          touch-reachable route for load-bearing detail. `title` stays as the
-          mouse's shortcut.
+          What it buys, and why it beats every truncation: the footer can no
+          longer GROW. Its four segments are bounded by construction, so no
+          descriptor can author a row that reflows by writing a longer string.
         */}
-        {showSubtitle && surface.subtitle.state === "present" && (
-          <span className="min-w-0 truncate text-[color:var(--ds-fg-secondary)]" title={surface.subtitle.value}>
-            {surface.subtitle.value}
-          </span>
-        )}
       </div>
       {/* The frequent commands, inline. The full set is one right-click away —
           there is no `⋯`, because a button whose only job is to admit there are

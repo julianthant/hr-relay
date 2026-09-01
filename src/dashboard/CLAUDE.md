@@ -1367,3 +1367,25 @@ binding would contradict them.
   (`run-queue-projection.ts:1398`) derives that array from the run's evidence receipt output, only
   once the run is terminal and only after redaction, while a subtitle is known at enqueue and shows
   on a queued row. `Subtitle` remains a developer word in operator copy; renaming it is open.
+
+  **The ⓘ then lost two more things on the operator's second ruling** — *"dont put unnecessary
+  explanations in there … dont put the extracted values from run in there"*: the panel-kind and
+  containment paragraphs (product copy, identical on every row of a kind) and the run's `facts[]`
+  (its receipt output, already on the row as chips — so the ⓘ had been a second copy of the row).
+  What is left is the subtitle and D230's absence reasons. Known cost, recorded in the fold's doc:
+  the fact chips are back to `title` as their only un-clipped route; if that ever costs a value,
+  the fix is an affordance on the chips, not run output back inside the ⓘ.
+
+  **And a one-line change to row height tripped a touch guard on a control nobody could touch.**
+  `run-captures.spec.ts`'s `foreignOverlaps` counted a queue row's ⓘ against the receipt's
+  `Download` at 390px — a row scrolled OUT of the queue list's `overflow-hidden` box, with a
+  non-zero rect and `visibility: visible` and no paint. `ownsTarget` had already proved every
+  point of the box resolved to `Download`. The guard's candidate filter now requires a control to
+  WIN the hit-test at its centre or an edge midpoint (a half-clipped control stays; a clipped or
+  covered one goes); the rectangle test itself is unchanged, because a painted neighbour inside the
+  box is still a fault even when this control owns every point — the neighbour's own finger-box
+  overlaps it. Both arms were proved by mutation: a clipped ghost no longer counts, and a painted
+  neighbour placed under `Download` still fails on `foreignOverlaps`, not `ownsTarget`. The
+  temptation was to hit-test the intersection instead, which reads as stricter and is not: a
+  control that wins a point inside the box has already failed `ownsTarget`, so that version could
+  never fire on its own.
