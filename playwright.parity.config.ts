@@ -11,11 +11,21 @@
  * `npm run test:parity:update`.
  *
  * The lane rebuilds `dist/dashboard` (or proves the existing build matches the
- * working tree) before any server serves it; see `helpers/bundle.ts`.
+ * working tree) before any server serves it; see `helpers/bundle.ts`. The
+ * build happens ONCE, in `globalSetup`, before any worker exists — every spec's
+ * own `ensureParityBundle()` then only proves the stamp.
  *
- * The lane builds its own servers per worker (ephemeral ports) — it never
- * touches the real 3938/5174 isolation ports, so it can run beside a live
- * rebuild runtime.
+ * The lane builds its own servers per worker (ephemeral ports, a `mkdtemp`
+ * state root for the seeded adapter) — it never touches the real 3938/5174
+ * isolation ports, so it can run beside a live rebuild runtime, and it is why
+ * the files can run in parallel.
+ *
+ * Parallelism, measured 2026-09-01: serial, the lane was 4.2 min (289 tests,
+ * ~0.8s each, 198 of them in one file). Five workers, fully parallel: 57–60s
+ * across two independent runs, 289/289, zero counted pixel diffs under the
+ * `maxDiffPixels: 0` allowance below. `fullyParallel` matters more than the
+ * worker count — without it one file stays on one worker and the big file
+ * alone is 158s.
  */
 import { defineConfig } from "@playwright/test";
 import { parityUpdateRequested } from "./tests/parity/helpers/reference-store.js";
@@ -23,8 +33,9 @@ import { parityUpdateRequested } from "./tests/parity/helpers/reference-store.js
 export default defineConfig({
   testDir: "tests/parity",
   outputDir: "tests/parity/.output",
-  fullyParallel: false,
-  workers: 1,
+  globalSetup: "./tests/parity/helpers/global-setup.ts",
+  fullyParallel: true,
+  workers: 5,
   retries: 0,
   timeout: 120_000,
   // "none": a missing baseline is a failure, never a silently minted one.
