@@ -1,5 +1,7 @@
 # HR Automation — rebuild
 
+Paired instruction files (`AGENTS.md` and `CLAUDE.md`) are byte-identical; whenever one changes, update its counterpart in the same commit.
+
 The ground-up rebuild of UCSD's UCPath HR automation. This repository is **not** production. The
 legacy repository at `/Users/julianhein/Projects/hr-automation` runs every real HR transaction and
 stays the sole production authority until a single all-at-once cutover (D89/D93).
