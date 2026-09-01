@@ -4,8 +4,12 @@
 **Integration target:** master (via feature/03b-live-close, --no-ff)
 **Board owner:** coordinator
 **Write rule:** one writer; R1 supervisor authorized at run close only, this exact path
-**Last verified:** 2026-09-01 at master b67084fe — NOT clean, NOT ours: a concurrent Codex session
-holds this checkout mid phone-capture retirement. R1 closed BLOCKED at admission (reports/r1.md).
+**Last verified:** 2026-09-01 (later pass) at master f18b1fa6 — still NOT clean: the concurrent
+Codex session moved on to D295 catalog work (2 modified files). R1 closed BLOCKED at admission
+(reports/r1.md); brief reworked to rev 2. Precondition status: P1 quiescence OPEN · P2 backups
+CLEARED (doctor exit 0, backup current g1291, gap 0) · P3 secrets OPEN (0 canary keys in .env) ·
+P4 pin mechanical (feature/03b-live-close deleted; recreate at dispatch). A git remote `origin`
+now exists — never-push unchanged.
 
 ## Facts every run needs
 - Separations stands 8/9 (doc 03b §Exit criteria); only criterion 5 is open — A2–A5 + A8.
@@ -36,9 +40,9 @@ holds this checkout mid phone-capture retirement. R1 closed BLOCKED at admission
 - **Carried forward from R1's block, all four preconditions must hold before R1 re-dispatches:**
   1. the checkout is quiescent and exclusively R1's (the live sequence cannot share a source tree or
      the `.auth` profile — §9.21's wedge is unsynchronised concurrent writers);
-  2. `npm run cli -- storage doctor` exits 0 with a VALID current backup — today the authority is
-     healthy at schema v28 but every one of 99 restore candidates is `backup-invalid` against the
-     v28 expectation, so a write sitting would have no verified rollback asset;
+  2. ~~storage doctor exits 0 with a valid current backup~~ — **CLEARED 2026-09-01**: doctor
+     exit 0, `backup: current` g1291 (age 21m, generation gap 0); the 99 invalid manifests are
+     historical, superseded by the fresh valid backup. Re-verify at dispatch;
   3. the three `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_*` secrets are restored to
      `.env` (gates ③ and the smoke; does NOT gate u2's rehearsal — `timekeeperName` resolves as a
      literal in the chain's canonical input);
@@ -52,5 +56,9 @@ holds this checkout mid phone-capture retirement. R1 closed BLOCKED at admission
 ## Questions for the operator
 - ~~Confirm a gate window~~ — ANSWERED 2026-08-31: available now. The blocker was the checkout, not
   the operator; the window went unused and must be re-confirmed for the next attempt.
-- Who serializes this checkout, and who owns re-cutting the v28 backups and restoring the three
-  `.env` person secrets? R1 cannot self-clear any of the three.
+- Backups question is RESOLVED (P2 cleared). Two remain, both operator-owned, R1 cannot self-clear:
+  1. Serialize the checkout — when is the Codex session done, and will you hold it quiescent for
+     R1's window? (P1)
+  2. Restore the three `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_*` values to
+     `.env` — they are not recoverable from the repo. (P3)
+  Plus: re-confirm your ALWAYS-GATE window; the 08-31 one went unused.

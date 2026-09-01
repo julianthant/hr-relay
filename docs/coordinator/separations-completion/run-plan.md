@@ -2,7 +2,10 @@
 
 | Run | Theme | Units | Roles | Base | Integration target | Needs first | Exit evidence |
 |---|---|---|---|---|---|---|---|
-| R1 | live controlled completion of separations (03b criterion 5) | u1–u5 | sup-fable supervisor; sup-scout for read-only mapping | master 50adf8a9 | feature/03b-live-close → master --no-ff | operator available for three ALWAYS-GATE approvals | 9/9 exit criteria, integrated gate table green, board updated |
+| R1 | live controlled completion of separations (03b criterion 5) | u1–u5 | sup-fable supervisor; sup-scout for read-only mapping | fresh master pin at dispatch (clean, quiescent) | feature/03b-live-close (recreate) → master --no-ff | P1 quiescent checkout · P3 secrets in .env · re-confirmed gate window (P2 backups CLEARED 2026-09-01; P4 pin mechanical) | 9/9 exit criteria, integrated gate table green, board updated |
+
+R1 attempt 1 (2026-08-31→09-01) closed BLOCKED at admission — reports/r1.md. Brief reworked to
+rev 2 with a four-precondition dispatch gate; sequence unchanged, nothing consumed.
 
 ## Units
 
