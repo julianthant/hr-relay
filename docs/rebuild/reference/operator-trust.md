@@ -2271,6 +2271,22 @@ keeps a slot. The pin is `explorer-contract-groups.test.ts` (the fold, and a ren
 the bound is drawn fewer times than there are output rows) and the EX114 pencil test re-homed on
 `</li>`.
 
+**The arm's record is in the same card (2026-09-01, D303).** What §5.2 asks of each task beyond its
+fields — implementation, subject binding, write safety, errors, requires, UI vocabulary, scenarios,
+source, hashes — used to be a `TaskRecord` section at the foot of the panel, re-headed with the arm's
+verb, id and title, with every value a `Chip`. Two of its rows said the Outputs head's fact again
+(`Freshness`, `Provenance`), and its ids clipped: `observes kuali.action-list.match…`, reachable by
+pointer only. The record now sits inside the arm's card under its two groups, so the arm is headed
+once, and `Freshness`/`Provenance` are gone — the group head carries the default and the rows carry
+every `byField` departure. Values are `FactLine`s: `label value` pairs on a wrapping line, mono
+values, middle-dot separators, `break-words`; UI ids group by kind in `ExplorerUiLinkWireSchema`'s
+own order with the kind named once per line; the driver is named only when it is not the store's
+own name. `Write safety` keeps its chips (its warning tones are the fact) and an unresolved source
+keeps its warning chip (the miss is the exception). `FactRow` labels are caps in a 7rem column, and
+the node-level rows sit above the arm cards. The pin is `explorer-arm-record.test.ts`: one text node
+per arm id, no `Freshness`/`Provenance`, and every error code and catalog id printed whole outside any
+`whitespace-nowrap` or `truncate` span.
+
 **A node's `when`, in words.** §5.7 recorded the conditional line as "runs when the descriptor's own
 when() predicate holds" and named an authored `whenLabel` as the fix. The fix taken instead is
 **D228** (ref workflow-model §3.3): the condition is DECLARED data, the executor evaluates it and the surface

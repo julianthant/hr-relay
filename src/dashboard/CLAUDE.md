@@ -106,6 +106,22 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-01 — a record that re-heads the thing it is about, and a chip on a value that cannot
+  survive a cut, are the same two defects the table above had, one screen lower (D303, the
+  Explorer's arm record).** The `TaskRecord` under the contract re-printed the arm's verb, id and
+  title that the card head had just printed, restated the Outputs head's policy in two rows
+  (`Freshness`, `Provenance`), and drew every catalog id, error code and source path as a `Chip` —
+  whose own docstring says a fact that cannot survive truncation is not a chip. Six ids ended in
+  `…` and lived on `title`. Three things travel. **Fixing a surface's shape once is not fixing the
+  surface**: after D302 the same repetition and the same clipping were still on screen, below the
+  fold, and the operator found them by scrolling. Sweep the whole panel for the defect class before
+  closing the ruling. **A toned chip is a chip that earned it**: `Write safety`'s warning tones and
+  the unresolved-source warning carry the fact, so they stay chips, while `store kuali · kind
+  browser` carries nothing a wrapping line does not. And **a `>value<` text-node search is the pin
+  for "printed whole"**: the render test finds each id as its own text node and reads back to its
+  opening tag to prove the span is neither `whitespace-nowrap` nor `truncate` — presence alone would
+  pass a clipped chip, since clipping is paint, not DOM.
+
 - **2026-09-01 — a reference surface that prints every fact on every row prints nothing anyone
   can follow, and the honest fix is the shape the spec already had one door over (D303, the UI
   catalog as rail + record).** The Selectors view drew each of 118 entries as a seven-line block of
