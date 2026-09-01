@@ -58,6 +58,8 @@ const BOOTSTRAP = FrontendBootstrapWireSchema.parse({
     start: {
       enqueue: "reject-active",
       version: 1,
+      // D296 — the captures fixture is about the run detail, not the launcher.
+      spreadsheetIntake: false,
       steps: [{
         key: "fixture-step",
         label: "Fixture step",

@@ -294,6 +294,72 @@ test.describe("start-run picker hierarchy", () => {
   }
 });
 
+/** D296 — the handoff is one dialog region; the desktop pair is the whole of it. */
+const SPREADSHEET_HANDOFF_VIEWPORTS = PARITY_VIEWPORTS.filter(
+  (viewport) => viewport.name === "1440x900",
+);
+
+/**
+ * D296: the Run Modal's SECOND door, photographed.
+ *
+ * `Import spreadsheet` left the queue toolbar in the same commit, so the intake
+ * workspace's only entry is this tab and this primary — a surface with no
+ * reference is a surface nobody can tell has broken. Person Lookup is the one
+ * registered module declaring an intake projection, which is exactly why the
+ * base fixture serves the tabs and the separations picker above does not: that
+ * pair, not a fixture flag, is the negative control.
+ */
+test.describe("start-run spreadsheet handoff", () => {
+  for (const viewport of SPREADSHEET_HANDOFF_VIEWPORTS) {
+    for (const theme of PARITY_THEMES) {
+      test(`${theme.name} @ ${viewport.name}`, async ({ page }) => {
+        const errors = failOnPageErrors(page);
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await installTheme(page, theme satisfies ParityTheme);
+        await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, start: true });
+        await assertThemeApplied(page, theme satisfies ParityTheme);
+
+        const tabs = page.getByRole("tablist", { name: "How to start this run" });
+        await expect(tabs.getByRole("tab", { name: "Type values" })).toHaveAttribute("aria-selected", "true");
+        await tabs.getByRole("tab", { name: "Import a spreadsheet" }).click();
+        await expect(tabs.getByRole("tab", { name: "Import a spreadsheet" }))
+          .toHaveAttribute("aria-selected", "true");
+
+        // The rail collapses to the one stage this arm reaches, and the
+        // primary becomes the handoff. Both are asserted before the pixels:
+        // a `Next` under a one-stage rail is the defect this arm exists to
+        // avoid, and it photographs indistinguishably from a correct frame.
+        await expect(page.getByRole("list", { name: "Run configuration path" })
+          .getByRole("listitem")).toHaveCount(1);
+        await expect(page.getByRole("button", { name: "Next" })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Open the intake…" })).toBeEnabled();
+        await expect(page.getByRole("textbox", { name: /employee IDs/u })).toHaveCount(0);
+
+        await assertShellGeometry(page, `start-run-spreadsheet @ ${viewport.name} ${theme.name}`);
+        expect(errors, "page errors while rendering the spreadsheet handoff").toEqual([]);
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "start-run-spreadsheet",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "start-run-spreadsheet",
+          descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+
+        // The press is the whole point of the door: it closes the dialog on
+        // the intake workspace, for the workflow the picker had selected.
+        await page.getByRole("button", { name: "Open the intake…" }).click();
+        await expect(page.getByRole("region", { name: "Spreadsheet intake" })).toBeVisible();
+        expect(errors, "page errors while opening the intake workspace").toEqual([]);
+      });
+    }
+  }
+});
+
 /**
  * DCF6: Start Run is a three-stage interaction, not only the initial picker.
  * These references deliberately use the real Separations typed-input surface
@@ -306,6 +372,7 @@ test.describe("start-run picker hierarchy", () => {
 const SEPARATIONS_START_VIEWPORTS = PARITY_VIEWPORTS.filter(
   (viewport) => viewport.name === "1440x900" || viewport.name === "narrow-1024x768",
 );
+
 
 test.describe("separations start-run continuity", () => {
   for (const viewport of SEPARATIONS_START_VIEWPORTS) {
@@ -320,6 +387,14 @@ test.describe("separations start-run continuity", () => {
         await page.getByRole("navigation", { name: "Workflow" })
           .getByRole("button", { name: "Separations sp" })
           .click();
+        // D296's negative control, and it belongs HERE because the picker
+        // opens on Person Lookup, which DOES declare an intake projection.
+        // Separations declares none, so its method set is a set of one and the
+        // strip is not drawn at all — the demo's own condition. A strip on this
+        // workflow would mean the door came from somewhere other than the
+        // served `spreadsheetIntake`, and it would offer an intake the kernel
+        // refuses by name.
+        await expect(page.getByRole("tablist", { name: "How to start this run" })).toHaveCount(0);
         const typedDocument = page.getByPlaceholder(
           "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
         );

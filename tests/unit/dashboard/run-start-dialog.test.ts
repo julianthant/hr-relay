@@ -114,6 +114,7 @@ const WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(FIXTURE_BOOTSTRAP.
         start.inputRun === undefined
           ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
           : { state: "present", surface: start.inputRun },
+      spreadsheetIntake: start.spreadsheetIntake,
     };
   },
 );
@@ -277,7 +278,11 @@ function typeInto(node: HTMLTextAreaElement | HTMLSelectElement, next: string): 
   node.dispatchEvent(new Event(node instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
 }
 
+/** every `Open the intake…` press this mount saw, in order (D296) */
+const intakeHandoffs: string[] = [];
+
 async function openDialog(client: DashboardClient): Promise<OpenDialog> {
+  intakeHandoffs.length = 0;
   await render(createElement(DashboardClientProvider, {
     client,
     children: createElement(RunStartDialog, {
@@ -286,6 +291,7 @@ async function openDialog(client: DashboardClient): Promise<OpenDialog> {
       workflows: WORKFLOWS,
       panelWorkflowId: WORKFLOW_ID,
       actorId: ACTOR_ID,
+      onOpenIntake: (workflowId: string) => { intakeHandoffs.push(workflowId); },
     }),
   }));
 
@@ -595,5 +601,76 @@ describe("every exit from a settled banner returns the form to Input", () => {
     assert.ok(!planIsDrawn(), "the spent plan token survived the reload");
     assert.equal(dialog.typedInput().value, TYPED, "the operator's own text was thrown away");
     assert.ok(document.activeElement === dialog.typedInput(), "focus was left on the control that just unmounted");
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("D296 — the spreadsheet method is the intake workspace's one door", () => {
+  it("offers both methods for a spreadsheet-capable workflow, and typed is the default", async () => {
+    // The mutation: derive the method set from anything but the served
+    // `spreadsheetIntake` — a workflow-id check, or a constant pair. Person
+    // Lookup is the only registered module with an intake projection, so a
+    // hardcoded pair passes here and offers a dead door on every other
+    // workflow the picker serves.
+    const dialog = await openDialog(stubClient({}));
+
+    const tabs = [...document.body.querySelectorAll('[role="tab"]')];
+    assert.deepEqual(
+      tabs.map((tab) => (tab.textContent ?? "").trim()),
+      ["Type values", "Import a spreadsheet"],
+    );
+    assert.deepEqual(tabs.map((tab) => tab.getAttribute("aria-selected")), ["true", "false"]);
+    // Typed is the default arm, so the box the operator types into is drawn
+    // and the stage rail is the full three-stage path.
+    assert.equal(dialog.stage(), "Input");
+    assert.ok(dialog.text().includes("Next"));
+  });
+
+  it("the spreadsheet arm collapses the rail to Input and ends at Open the intake…", async () => {
+    // The mutation: leave `runStartStages` keyed on `customizeSteps` alone.
+    // The rail then numbers Options and Confirm for an arm that reaches
+    // neither, and `Next` sits under a stage that has no next.
+    const dialog = await openDialog(stubClient({}));
+    await dialog.press("Import a spreadsheet");
+
+    assert.equal(dialog.stage(), "Input");
+    assert.equal(
+      document.body.querySelectorAll('[aria-label="Run configuration path"] li').length,
+      1,
+      "the handoff arm numbered stages it cannot reach",
+    );
+    assert.ok(
+      dialog.text().includes("The intake workspace takes the file"),
+      "the spreadsheet arm drew no handoff explanation",
+    );
+    assert.ok(!dialog.text().includes("Next"), "the handoff arm still offers a stage to advance to");
+  });
+
+  it("Open the intake… closes the dialog and hands over the workflow the picker selected", async () => {
+    // The mutation: call `onOpenIntake` with the panel's workflow, or with no
+    // argument at all. Either maps the operator's file onto a workflow they
+    // did not choose — the mapping is what turns a column into an EID.
+    const dialog = await openDialog(stubClient({}));
+    await dialog.press("Import a spreadsheet");
+    await dialog.press("Open the intake…");
+
+    assert.deepEqual(intakeHandoffs, [WORKFLOW_ID]);
+  });
+
+  it("the typed arm comes back with its box and its full path", async () => {
+    // The mutation: derive the rail from `method` state rather than from the
+    // arm actually rendered. A tab press that does not restore the path leaves
+    // the operator on a one-stage rail with a box they cannot advance from.
+    const dialog = await openDialog(stubClient({}));
+    await dialog.press("Import a spreadsheet");
+    await dialog.press("Type values");
+
+    assert.equal(
+      document.body.querySelectorAll('[aria-label="Run configuration path"] li').length,
+      3,
+    );
+    assert.equal(dialog.typedInput().value, "");
+    assert.ok(dialog.text().includes("Next"));
   });
 });

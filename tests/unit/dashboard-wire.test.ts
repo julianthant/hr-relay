@@ -163,6 +163,10 @@ const WORKFLOW_PRIMITIVE = {
     // C96: keep this non-1 so the wire fixture never makes a guessed default
     // appear equivalent to a producer-supplied descriptor version.
     version: 7,
+    // D296 — `true` on purpose, for the same reason `inputRun` is present: the
+    // strict-boundary arm walks what this literal reaches, and a start block
+    // that never carries the spreadsheet door leaves its arm unwalked.
+    spreadsheetIntake: true,
     inputRun: {
       placeholder: "Enter EIDs or names, semicolon-separated",
       parser: {

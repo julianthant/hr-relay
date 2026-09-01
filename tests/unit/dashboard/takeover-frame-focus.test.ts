@@ -59,7 +59,7 @@ import { UiCatalogWireSchema } from "../../../src/domain/dashboard/explorer.js";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import {
-  IMPORT_SPREADSHEET_DOOR_ID,
+  RUN_START_DOOR_ID,
   restoreDashboardTakeoverFocus,
 } from "../../../src/dashboard/app/dashboard-app-model.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
@@ -97,6 +97,9 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema.parse({
     start: {
       enqueue: "reject-active",
       version: 1,
+      // D296 — this shell fixture's workflow declares no intake projection, so
+      // its Run Modal draws no method tabs and no spreadsheet door.
+      spreadsheetIntake: false,
       steps: [{
         key: "fixture-step",
         label: "Fixture step",
@@ -412,13 +415,24 @@ describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", 
 });
 
 describe("closing a route-backed takeover restores its toolbar door", () => {
-  it("returns intake focus to Import spreadsheet after the route unmounts", async () => {
+  // D296 — the intake door is the Run Modal's spreadsheet method now, and
+  // `Start a run` is the toolbar control that opens it. The old
+  // `Import spreadsheet` button is deleted, so this asserts BOTH halves: the
+  // door that is restored, and the absence of the one that used to be.
+  it("returns intake focus to Start a run after the route unmounts", async () => {
     await mountDashboard("?intake=new");
     await press(buttonNamed("Close"));
 
-    const door = buttonNamed("Import spreadsheet");
-    assert.equal(door.id, IMPORT_SPREADSHEET_DOOR_ID);
+    const door = buttonNamed("Start a run");
+    assert.equal(door.id, RUN_START_DOOR_ID);
     assert.equal(document.activeElement, door);
+    assert.equal(
+      [...document.querySelectorAll("button")].find(
+        (button) => button.textContent?.trim() === "Import spreadsheet",
+      ),
+      undefined,
+      "the toolbar's Import spreadsheet door is retired — the Run Modal carries the handoff",
+    );
   });
 
   it("uses the persistent main region when a deep link has no matching door", () => {
@@ -427,7 +441,7 @@ describe("closing a route-backed takeover restores its toolbar door", () => {
     main.tabIndex = -1;
     document.body.append(main);
 
-    restoreDashboardTakeoverFocus(document, IMPORT_SPREADSHEET_DOOR_ID, main.id);
+    restoreDashboardTakeoverFocus(document, RUN_START_DOOR_ID, main.id);
     assert.equal(document.activeElement, main);
   });
 
@@ -435,10 +449,10 @@ describe("closing a route-backed takeover restores its toolbar door", () => {
     assert.throws(
       () => restoreDashboardTakeoverFocus(
         document,
-        IMPORT_SPREADSHEET_DOOR_ID,
+        RUN_START_DOOR_ID,
         "missing-main-region",
       ),
-      /neither dashboard-import-spreadsheet-door nor missing-main-region is mounted/u,
+      /neither dashboard-run-start-door nor missing-main-region is mounted/u,
     );
   });
 });

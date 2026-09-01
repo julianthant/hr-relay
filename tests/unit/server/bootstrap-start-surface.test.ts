@@ -32,6 +32,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presenta
 import { buildBootstrap, type BootstrapQueryDeps } from "../../../src/server/dashboard/queries/bootstrap.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { projectStartSteps } from "../../../src/services/start/step-selection.js";
+import { INTAKE_PROJECTIONS } from "../../../src/control/workflow-registry.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { FixtureReadReceipt } from "../architecture/helpers/descriptor-fixtures.js";
 import { AT, makeWorld, type DashboardWorld } from "./helpers/dashboard-harness.js";
@@ -87,6 +88,14 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
     modules: WORKFLOW_DESCRIPTORS.map((descriptor) => ({
       descriptor,
       role: defineWorkflowRole({ kind: "standalone" }),
+      // D296 — the intake declaration this flattened view still has to carry.
+      // The role above is flattened deliberately (see the note); `intake` is
+      // NOT, because it is the fact the start block serves: substituting
+      // "declares none" for every workflow would make the assertion below pass
+      // against a wire that never draws the modal's second start method.
+      ...(INTAKE_PROJECTIONS[String(descriptor.id)] === undefined
+        ? {}
+        : { intake: INTAKE_PROJECTIONS[String(descriptor.id)] }),
     })),
     descriptorSetHash: descriptorSetHash(WORKFLOW_DESCRIPTORS.map((d) => d.contractFingerprint)),
     settingsSchemaHash: descriptorSetHash(["settings-schema"]),
@@ -120,6 +129,11 @@ describe("bootstrap start-surface block", () => {
           ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
           enqueue: descriptor.enqueue,
           version: descriptor.version,
+          // D296 — served from the MODULE's intake declaration, which is the
+          // same registry the kernel refuses an intake commit against. Reading
+          // it here from `INTAKE_PROJECTIONS` rather than restating which
+          // workflow is capable keeps this a statement about the WIRE.
+          spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined,
           steps: projectStartSteps(descriptor).map((step) => ({
             key: step.key,
             label: step.label,

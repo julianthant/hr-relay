@@ -1530,6 +1530,10 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
       ...(personLookupDescriptor.surfaces.inputRun === undefined
         ? {}
         : { inputRun: personLookupDescriptor.surfaces.inputRun }),
+      // D296 — projected from the MODULE, exactly as `buildBootstrap` projects
+      // it. Person Lookup declares the tree's one intake projection, so the
+      // corpus photographs the modal WITH its second start method.
+      spreadsheetIntake: personLookupModule.intake !== undefined,
     },
   }],
   systemInstances: [
@@ -1707,19 +1711,19 @@ export const FIXTURE_START_PICKER_DESCRIPTOR_HASH = descriptorSetHash(
 export const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSchema.parse({
   ...FIXTURE_BOOTSTRAP,
   descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
-  workflows: START_PICKER_MODULES.map(({ descriptor, role }) => ({
-    id: descriptor.id,
-    code: descriptor.code,
-    label: descriptor.label,
-    categoryId: descriptor.category,
-    descriptorFingerprint: descriptor.contractFingerprint,
+  workflows: START_PICKER_MODULES.map((module) => ({
+    id: module.descriptor.id,
+    code: module.descriptor.code,
+    label: module.descriptor.label,
+    categoryId: module.descriptor.category,
+    descriptorFingerprint: module.descriptor.contractFingerprint,
     availability: { state: "available" },
-    role,
+    role: module.role,
     start: {
-      ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
-      enqueue: descriptor.enqueue,
-      version: descriptor.version,
-      steps: projectStartSteps(descriptor).map((step) => ({
+      ...(module.descriptor.summary === undefined ? {} : { summary: module.descriptor.summary }),
+      enqueue: module.descriptor.enqueue,
+      version: module.descriptor.version,
+      steps: projectStartSteps(module.descriptor).map((step) => ({
         key: step.key,
         label: step.label,
         includedByDefault: step.includedByDefault,
@@ -1727,9 +1731,15 @@ export const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBoo
           ? { state: "selectable", inputField: step.control.inputField }
           : { state: "required", reason: step.control.reason },
       })),
-      ...(descriptor.surfaces.inputRun === undefined
+      ...(module.descriptor.surfaces.inputRun === undefined
         ? {}
-        : { inputRun: descriptor.surfaces.inputRun }),
+        : { inputRun: module.descriptor.surfaces.inputRun }),
+      // D296, read off each MODULE's own declaration exactly as `buildBootstrap`
+      // reads it. `intake` is an optional property a module may not declare at
+      // all, so the `in` test is what distinguishes "declares none" from
+      // "declares one" without an invented default — this profile carries one
+      // spreadsheet-capable workflow and five that are not.
+      spreadsheetIntake: "intake" in module && module.intake !== undefined,
     },
   })),
 });
