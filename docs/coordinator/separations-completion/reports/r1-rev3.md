@@ -1,12 +1,11 @@
-# R1 report (rev 3) — u0 one-value canary admission BUILT; u1 stopped at the dispatch gate
+# R1 report (rev 3 + Codex closeout) — u0 built; u1 stopped safely on a gone canary
 
 **Date:** 2026-09-01 · **Supervisor:** Claude (this session) · **Mode:** coordinated-read-only board
 (`board.md` written only at close, per the brief) · **Source handoff:**
 `handoffs/2026-09-01-finish-separations-r1-rev3.md`
 
-**Outcome:** u0 is implemented, tested, documented and integrated (D300). The live units u1–u5 did
-NOT start: the dispatch gate is red on two conditions only the operator can clear (below). No
-branch was left dangling, no browser opened, no run started, no gate requested, no write attempted.
+**Outcome note:** §§1–5 preserve Claude's original rev-3 state. Codex resumed from the rev-4
+handoff; the verified closeout and superseding disposition are in §6.
 
 ## 1 · Intake verification (handoff §Verification before resuming)
 
@@ -79,3 +78,63 @@ separations.md` §9.19 — a dated historical record, left as history.
 
 u1–u5 not started: no browser, run, gate, write, retry or UNKNOWN. Board write-back: unit ledger
 updated for u0 only (this report is the evidence). Handoff rev 3 replaced by rev 4.
+
+## 6 · Codex closeout after rev-4 — u1 executed and hit the required safety stop
+
+Codex resumed on `feature/03b-live-close`, mirrored every existing instruction pair, repaired the
+u0 review findings, made the parity fixture deterministic, and completed the branch gates. The
+operator supplied the ignored D300 key locally; its smoke returned `state=present` /
+`resolution=ready` without printing the value. The first storage reading had a healthy authority
+but stale backup, so the normal dashboard lifecycle created a verified current backup before the
+live attempt.
+
+### Live u1 evidence
+
+| Evidence | Result |
+|---|---|
+| command | `npm run cli -- dry-run-scenario separations --subject finalization-canary` |
+| scenario result | `62ea22fd-798c-4982-b4d7-8a211c6ec954` · `failed` / `started` |
+| run / trace / attempt | `325cd998-bd05-4ffd-a863-99e0cc5c0ebe` / `sp-142939-325c` / 2 |
+| failure | `b5f34a55-75c5-423e-a7c2-d7fa8548b392` · `DOCUMENT_NOT_IN_ACTION_LIST` · `writeState: not-attempted` |
+| exact-run write authority | `write_intents=0` · `write_attempts=0` · `durable_outbox=0` |
+| gate/write effects | no gate requested; 0 approvals; no write prepared or submitted; no UNKNOWN |
+
+The fresh Kuali Action List search found the sole D284 canary absent before current `plan`/S7
+evidence. The run plan requires an immediate stop when the document is absent or materially changed,
+so u2–u5 did not execute and none of the three D287 approvals was consumed. The registry now retains
+`finalization-canary` as `gone`, last observed 2026-09-01; no replacement was inferred.
+
+### Source, tests and documentation reconciled
+
+| Area | Closeout |
+|---|---|
+| instruction authority | all eight repository `AGENTS.md` / `CLAUDE.md` pairs are byte-identical; the root pair records the operator's mirror rule and the D300/gone-subject lessons |
+| u0 review repairs | unexpected smoke failures propagate; retired smoke guards and standalone env-access traps added; D300 phase/migration wording aligned |
+| parity | the five-worker gallery race now reads a deterministic synthetic fixture; two references deliberately re-frozen with 0 visual design changes |
+| live disposition | `config/test-subjects.json` marks the canary `gone`; both resolvers and the smoke block before environment access; synthetic available registries retain ready/unset/malformed D300 coverage |
+| dry-run projection | the live attempt exposed that the direct scenario start omitted `run.queued`; dashboard, intake, retry and scenario starts now share one queue-root event builder and scenario start emits after authority commit, before drain |
+| preserved state | the malformed historical span stream is unchanged. Authority generation 1334 is healthy with a verified current generation-1334 backup; storage doctor remains exit 1 because span reconciliation correctly reports `span-stream-invalid` |
+
+### Review and final gates
+
+Standards, Spec, Correctness, Silent-failure, Tests, Docs and Security axes were completed. The
+actionable findings were repaired; the final Docs/Correctness returns had no findings. Performance
+was not a D300 hot-path claim. The queue-root repair was additionally proved through the composed
+dry-run and BFF command suites.
+
+| Gate | Final result on branch |
+|---|---|
+| `npm run typecheck` | exit 0 |
+| `npm run lint` | exit 0 |
+| `npm run test:coverage` | 368/368 files · 4583/4583 tests · exit 0 |
+| `npm run build:manifest:check` | current · exit 0 |
+| `npm run roadmap:check` | fresh · exit 0 |
+| `npm run test:parity` | 289/289 · exit 0 |
+| instruction pair check | 8/8 byte-identical |
+| `git diff --check` | clean |
+
+The source branch is safe to merge locally with `--no-ff`; nothing is pushed. Phase 3b is not
+falsely closed: the three controlled commits remain blocked until the operator names a new canary,
+that canary passes fresh S7/read evidence and a green 0/0/0 rehearsal, and the three approvals are
+then taken separately in the fixed ② → immediate ① → ③ order. The coordinator board remains for
+the coordinator to reconcile; this supervised run does not rewrite it.
