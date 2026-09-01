@@ -38,7 +38,11 @@ import {
 import { buildRunResult } from "../../../src/core/run-result.js";
 import type { ReceiptWriteEvidence } from "../../../src/core/evidence-receipt.js";
 import type { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
-import type { RunRecord } from "../../../src/domain/run/record.js";
+import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
+import {
+  RunResultRecordSchema,
+  deriveTerminalDependencyDigest,
+} from "../../../src/domain/run/result.js";
 import {
   PersonLookupCanonicalInput,
   personLookupDescriptor,
@@ -377,8 +381,9 @@ export interface KualiReceiptEvidence {
  * terminal rows the run WOULD carry once a transaction node can be a terminal
  * dependency. See this module's header for what is real and what stands in.
  */
-export function kualiReceiptEvidence(): KualiReceiptEvidence {
+export function kualiReceiptEvidence(input?: Readonly<{ readonly contractFingerprint?: string }>): KualiReceiptEvidence {
   const descriptor = separationsKualiFinalizationDescriptor;
+  const storedContractFingerprint = input?.contractFingerprint ?? descriptor.contractFingerprint;
   const proofSchemaHash = deriveSchemaHash(
     KualiSaveSeparationFinalization.writeSafety.completion.proofSchema,
     "output",
@@ -560,10 +565,31 @@ export function kualiReceiptEvidence(): KualiReceiptEvidence {
     recordedAt: KUALI_CONFIRMED_AT,
   });
 
+  const checkpoints = [approvalCheckpoint, departmentCheckpoint, transactionCheckpoint];
+  if (storedContractFingerprint === descriptor.contractFingerprint) {
+    return { run, result, checkpoints, writes: [{ intent, attempts: [attempt] }] };
+  }
+  const storedRun = RunRecordSchema.parse({
+    ...run,
+    envelope: { ...run.envelope, contractFingerprint: storedContractFingerprint },
+  });
+  const storedCheckpoints = checkpoints.map((record) => RunCheckpointRecordSchema.parse({
+    ...record,
+    contractFingerprint: storedContractFingerprint,
+  }));
+  const storedDependencies = result.dependencies.map((dependency) => dependency.state === "resolved"
+    ? { ...dependency, contractFingerprint: storedContractFingerprint }
+    : dependency);
+  const storedResult = RunResultRecordSchema.parse({
+    ...result,
+    contractFingerprint: storedContractFingerprint,
+    dependencies: storedDependencies,
+    dependencyDigest: deriveTerminalDependencyDigest(storedDependencies),
+  });
   return {
-    run,
-    result,
-    checkpoints: [approvalCheckpoint, departmentCheckpoint, transactionCheckpoint],
+    run: storedRun,
+    result: storedResult,
+    checkpoints: storedCheckpoints,
     writes: [{ intent, attempts: [attempt] }],
   };
 }

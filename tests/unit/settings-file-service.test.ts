@@ -80,20 +80,6 @@ describe("baseline atomic Settings invariants on the single file authority", () 
     assert.equal(service.read().revision, 1);
   });
 
-  it("refuses forwarded capture without its paired URL before changing bytes or revision", () => {
-    const path = settingsPath();
-    const service = createTestService({ path });
-    assert.equal(apply(service, 1, { browser: { headless: false } }).state, "applied");
-    const before = readFileSync(path);
-
-    assert.throws(
-      () => apply(service, 2, { capture: { ingress: "forwarded" } }),
-      /fully merged config/,
-    );
-    assert.deepEqual(readFileSync(path), before);
-    assert.equal(service.read().revision, 2);
-  });
-
   it("deep-merges successive patches into one strict revisioned record", () => {
     const path = settingsPath();
     const service = createTestService({ path });

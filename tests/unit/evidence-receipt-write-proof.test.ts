@@ -45,9 +45,14 @@ const FROZEN_PRE_RANGE_RECEIPT_DIGESTS = {
   1: "95f32251bcb278355be043972ecbd48508c5b66a988c4b80aab70766c8ccc6ca",
   2: "5be0737d8a28ef4669f5f5a057d5c7f09905bc475789102353a5917747943347",
 } as const;
+const FROZEN_PRE_RANGE_DESCRIPTOR_FINGERPRINT = "a457b06d8e0b0b953954e094730405360465b46870336f4cfd8aca7ade8d778b";
+
+function frozenPreRangeReceiptEvidence() {
+  return kualiReceiptEvidence({ contractFingerprint: FROZEN_PRE_RANGE_DESCRIPTOR_FINGERPRINT });
+}
 
 function parkedReceiptEvidence() {
-  const evidence = kualiReceiptEvidence();
+  const evidence = frozenPreRangeReceiptEvidence();
   const committed = evidence.writes[0]?.intent;
   assert.ok(committed?.status === "committed");
   const { completionProof, confirmedAt, status, ...carried } = committed;
@@ -348,7 +353,7 @@ describe("composition 1 — the stored shape, unchanged", () => {
 });
 
 describe("ensureRunEvidenceReceipt — a stored composition-1 receipt is never stranded", () => {
-  const evidence = kualiReceiptEvidence();
+  const evidence = frozenPreRangeReceiptEvidence();
 
   function storeWith(
     stored: RunEvidenceReceipt | undefined,

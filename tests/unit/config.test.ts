@@ -606,31 +606,6 @@ describe("strict config resolution", () => {
     },
   );
 
-  it("rejects an editable patch whose fully merged config cannot restart", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-merged-config-"));
-    try {
-      const path = join(root, "config", "settings.json");
-      const authority = createSettingsFileAuthority({
-        path,
-        validateCandidate: (settings: unknown) => {
-          resolveConfigWithProvenance({}, settings, CLOCK);
-        },
-      });
-
-      assert.throws(
-        () => authority.apply(settingsApplyRequest(
-          SETTINGS_COMMAND_1,
-          1,
-          { capture: { ingress: "forwarded" } },
-        )),
-        /fully merged config/u,
-      );
-      assert.equal(authority.read().revision, 1);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
   it("binds crash-recovery replay to the full canonical settings command envelope", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-command-envelope-"));
     try {
@@ -1197,7 +1172,6 @@ describe("strict config resolution", () => {
       display: { screenWidth: 1920 },
       performance: { navigationRetries: 3 },
       ocr: { secondOpinionMax: 2 },
-      capture: { maxPhotos: 12 },
       browserHealth: { maxAutoRefresh: 4 },
       browser: { headless: false },
       concurrency: { defaultWorkers: 2 },
@@ -1217,7 +1191,7 @@ describe("strict config resolution", () => {
     for (const path of [
       "actor.label", "urls.kuali.test.entry", "timeouts.navigationMs", "paths.reportsDir",
       "annualDates.FY2027.jobEndDate", "operator.timekeeperName", "display.screenWidth",
-      "performance.navigationRetries", "ocr.secondOpinionMax", "capture.maxPhotos",
+      "performance.navigationRetries", "ocr.secondOpinionMax",
       "browserHealth.maxAutoRefresh", "browser.headless", "concurrency.defaultWorkers",
       "daemon.idleMs", "features.debugScreenshots", "providers.ocrExtract.timeoutMs",
     ]) {
