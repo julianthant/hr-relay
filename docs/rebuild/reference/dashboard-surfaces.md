@@ -4439,8 +4439,12 @@ workflow in ONE document, and refusing the surface over missing prose would take
 index of the system down — and `explorer-prose-declared` makes that arm unreachable for a REGISTERED
 workflow by failing the build. Nothing composes prose from a label.
 
-**The UI catalog is the same contract at system scope.** `ui-catalog.tsx` renders the semantic UI
-registry with the same chip-first, one-tinted-mark discipline. Its entry no longer sits beside the
+**The UI catalog is the same contract at system scope — and since D303 (2026-09-01) the same
+SHAPE.** `ui-catalog.tsx` draws a structure rail beside a record column: a `listbox` of every
+semantic id, nested under the screen its `screen` field names and grouped by system, with
+`verifiedAt` on every row; and one record printing the selected entry whole with the same
+chip-first, one-tinted-mark discipline (`observation` is the tinted kind). `ref operator-trust` §5.8
+owns what the rail and the record each must carry. Its entry no longer sits beside the
 explorer's in the panel's action bar (D295): it is `Settings -> Help -> UI catalog`. The explorer's
 own entry stays a `ghost` button because it is not a command.
 

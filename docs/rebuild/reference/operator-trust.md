@@ -2174,9 +2174,20 @@ artifact **throws with the generator's own remediation** rather than being serve
 disagrees with the drivers describes selectors the system does not use, and an operator or an AI
 acting on it would be acting on fiction.
 
-**Provenance sits beside the id, not behind it.** §10 says plainly that the registry cannot make a
-stale live verification current, so every row carries its `verifiedAt` and both evidence refs at the
-same weight as its id — never folded into a disclosure a hurried reader skips.
+**Provenance sits beside the id, not behind it — and since D303 (2026-09-01) the id is a rail row
+and its provenance is split across the row and the record.** §10 says plainly that the registry
+cannot make a stale live verification current, so the rule stands that no provenance may sit behind
+a disclosure a hurried reader skips. The surface is the Explorer's shape at system scope (ref
+dashboard-surfaces §9.5.3): a `listbox` rail of every id, nested under the screen each entry's
+`screen` field names and grouped by system, beside one record that prints the selected entry whole.
+The RAIL keeps `verifiedAt` on every row at the id's own weight; the RECORD prints both evidence
+refs, the owner, every scenario by name and every task by name, one click away and never collapsed.
+That is the one deliberate bend of the 2026-08-09 wording ("both evidence refs on the same line as
+the id"), ratified by the operator over a two-line ledger that kept them on the row, because the
+seven-line chip block it replaced put five of 118 entries on a screen and repeated one system's
+owner and refs on every row. A nested row prints its id without its screen's prefix when it has one
+— display only; the row's title and the record carry the whole id — and an entry whose screen the
+catalog does not serve throws by id rather than being filed under a made-up heading.
 
 ### 5.9 The node panel is a FIELD table, and its census is derived (2026-08-19, D227)
 

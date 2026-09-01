@@ -106,6 +106,54 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-01 — a reference surface that prints every fact on every row prints nothing anyone
+  can follow, and the honest fix is the shape the spec already had one door over (D303, the UI
+  catalog as rail + record).** The Selectors view drew each of 118 entries as a seven-line block of
+  identical grey chips: five entries per screen, `system` / `owner` / both evidence refs repeated on
+  every row of a system, `used by` repeated five times on one row, and screens flattened beside the
+  elements that live on them. Every chip was true and `ref operator-trust` §5.8's rule — provenance
+  beside the id, never behind a disclosure — was honoured to the letter, which is exactly why nobody
+  could read it. The operator's verdict was *"too messy, I don't know how to follow through in it."*
+  Three directions were drafted on a design canvas over the real kuali rows before any code moved:
+  a two-line ledger that kept both refs beside every id, the Explorer's rail + record, and one sheet
+  per screen. The operator chose the rail. **The bend is stated, not smuggled**: the rail keeps
+  `verifiedAt` on every row at the id's weight, the record prints both refs whole and never
+  collapsed, and §5.8 now says so — a redesign that quietly weakens a ratified rule is drift wearing
+  a new coat.
+
+  Four things travel. **A nested id may drop its parent's prefix only as DISPLAY**: `railDisplayId`
+  strips `${screen}.` when the id carries it, and the catalog has page states that do not
+  (`ucpath.person-org.search-ready` under `ucpath.person-org.search`), so the test finds one of each
+  and the row's `title` plus the record always carry the whole id. **A heading is not a hit**: a
+  search draws a screen whenever one of its entries matches, so the record must open on the term's
+  first MATCH, and the first build opened on the heading — found by the surface test, not the fold
+  test, because the fold returned the right rows and the surface picked `rows[0]`. **A request made
+  under one search term is retired by the next**: the record's "on the same screen" chips select
+  entries the current term does not draw, so a request is honoured while the rail draws it OR while
+  its term stands, and `resolveCatalogSelection` takes the term as an argument rather than trusting
+  a stale id. **And the fold's provenance stays a throw**: an entry whose `screen` the catalog does
+  not serve is a generator defect, and the rail names it by id rather than inventing a heading.
+
+- **2026-09-01 — a column whose fact varies per row in the demo and per ARM here is the demo's
+  shape holding a fact it was not made for (D302, the Explorer's contract table).** The node
+  panel's `Recorded` column printed `from live · fresh unbounded · override audited` on every output
+  row — 21 chips for one arm policy — and `System` printed the node's own chip nine times, with rows
+  swinging between one and three lines as the chips wrapped. Every row was true. The demo's third
+  column carries what ONE RUN recorded, which genuinely differs row to row; this tree lays no run
+  over the graph, so the same slot held a per-arm policy and the table repeated it. **Before porting
+  a column, ask whether its fact VARIES per row on this wire; if it does not, it is a head, not a
+  cell.** The fix is structural rather than a narrower chip: one `Card` per arm, the side's fact once
+  on an `Inputs`/`Outputs` group head, and a row draws only its DEPARTURE from that head. Three things
+  travel. **The head's default is derived from the arm's declared policies and the server's per-field
+  derivation stays the row's authority** — `contractFieldGroups` compares them facet by facet, so a
+  `byField` rule is one chip on the one row it names, and a row whose state contradicts the head (the
+  wire does not forbid it) is a warning chip by name, never folded in. **A boundary assertion is only
+  as good as the element it names**: the EX114 pencil pin asserted no `</td>` between mark and path,
+  and a list row has no `</td>` anywhere, so the old pin would have passed vacuously — it names
+  `</li>` now, and any change to the row element has to move it again. And **the proof is a count**:
+  no fold can see that a policy is printed once per side rather than once per row, so the render
+  test counts the bound's occurrences against the number of output rows.
+
 - **2026-09-01: a deviation that names its own expiry is a promise, and discharging it is a
   different act from reversing it (D296, the Run Modal's spreadsheet method).** `Import spreadsheet`
   had sat in the queue toolbar as a RULED deviation since D272 item 3, with a comment at the site
