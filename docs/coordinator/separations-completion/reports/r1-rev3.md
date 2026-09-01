@@ -138,3 +138,24 @@ falsely closed: the three controlled commits remain blocked until the operator n
 that canary passes fresh S7/read evidence and a green 0/0/0 rehearsal, and the three approvals are
 then taken separately in the fixed ② → immediate ① → ③ order. The coordinator board remains for
 the coordinator to reconcile; this supervised run does not rewrite it.
+
+## 7 · Operator-named replacement candidates — current live batch
+
+The operator subsequently named seven document numbers. The dashboard admitted each as a
+`dryRun=true` Separations run. One worker proved 4589 first; three explicit pool members then drained
+the remaining six. The sanitized durable table and UI recipe are in
+`evidence/ui/2026-09-01-candidate-dry-runs.md`; restricted screenshots remain local and untracked.
+
+Three documents stopped with `SEPARATION_DATE_IN_FUTURE` and were skipped without retry. Two stopped
+on current subject facts (`CONCURRENT_ACTIVE_EMPLOYMENTS`, `EMPLOYEE_NOT_FOUND`). Runs for 4589 and
+4502 reached the human `identity-approval` gate. Every exact-run query returned 0 write intents,
+0 write attempts and 0 durable-outbox rows. No gate was resolved and none of D287's three write
+approvals was consumed.
+
+The run for 4589 is the clean attempt-1 continuation candidate: current Kuali, UCPath and New Kronos
+facts reached comparison, and the Logs panel rendered those recorded observations. The adjacent Run
+data rail remained empty and used copy claiming no fields had been extracted; that rail is backed by
+the checkpoint/edit ledger rather than the observed-log projection, so the sentence is misleading
+for this run. u2 remains open until the operator resolves 4589's identity gate and its resumed dry
+run reaches the preview terminal. Source/canonical input are not frozen yet, and u3–u5 have not
+started.

@@ -7072,3 +7072,27 @@ An exact second command returned `already-repaired` with identical 3,480-byte fi
 `abe99e012c8c1074fdd8b67cc47f2218a8a77de4d0e148d6dd9daa917db9dce8`; BFF startup then served
 healthy/current storage. This repaired companion evidence only: it did not rerun the failed subject,
 open or resolve a gate, approve anything, or change the exact-run 0/0/0 write proof.
+
+### 9.34 Operator-named candidate batch and safe stops — 2026-09-01
+
+The operator supplied seven replacement candidates after 4537 was observed gone. The dashboard
+started all seven with `dryRun=true`; 4589 ran first to prove the composed live read path, then three
+explicit pool members drained the other six. No identity or write gate was resolved in this pass.
+
+| Document | Run / trace / attempt | Fresh durable result |
+|---|---|---|---|
+| 4589 | `ca6a5462-4e52-43b7-ac85-f9bdb7fd30cf` / `sp-155454-ca6a` / 1 | parked at `identity-approval` after current document, plan, employment, timecard, dates and comparison observations |
+| 4588 | `cb6aa949-a387-4d1a-9b90-29ba3e14121d` / `sp-155717-cb6a` / 1 | terminal `CONCURRENT_ACTIVE_EMPLOYMENTS`, write state not-attempted |
+| 4579 | `ed18da2f-7025-4e99-a803-43c81e5b0a02` / `sp-155717-ed18` / 1 | terminal `EMPLOYEE_NOT_FOUND`, write state not-attempted |
+| 4564 | `a071bce2-704f-4724-aae6-310bdd98ba02` / `sp-155717-a071` / 1 | terminal `SEPARATION_DATE_IN_FUTURE`, write state not-attempted |
+| 4544 | `d78ca17d-55d6-42cc-8e2b-fcb69b7dd89c` / `sp-155717-d78c` / 1 | terminal `SEPARATION_DATE_IN_FUTURE`, write state not-attempted |
+| 4502 | `1e513fbd-9249-421e-841a-d88c7edfbef8` / `sp-155717-1e51` / 2 | parked at `identity-approval`; the current read/comparison is fresh, while an older run's approval checkpoint remains historical only |
+| 4495 | `178b9f34-647f-420f-a072-aafcfda4b4eb` / `sp-155717-178b` / 1 | terminal `SEPARATION_DATE_IN_FUTURE`, write state not-attempted |
+
+Exact-run SQLite queries returned `write_intents=0`, `write_attempts=0`, and `durable_outbox=0` for
+every row. The three future-dated documents were therefore skipped at their own date admission and
+were not retried. The other two terminal failures are subject-specific current facts, not runtime
+failures, and were not retried. Of the two viable candidates, 4589 provides the clean attempt-1
+lineage for the next operator identity decision; it is not yet a green u2 rehearsal because the
+gate remains open and no preview terminal exists. The sanitized UI manifest is
+`docs/coordinator/separations-completion/evidence/ui/2026-09-01-candidate-dry-runs.md`.
