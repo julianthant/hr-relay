@@ -187,6 +187,51 @@ export function routeMatches(pattern: string, clientPath: string): boolean {
   ));
 }
 
+/* ── 4. complete two-direction route accounting ──────────────────────────── */
+
+/** The complete two-way route accounting, shared by the real audit and its controls. */
+export function routeConnectivityProblems(input: {
+  readonly routes: readonly ServedRoute[];
+  readonly references: readonly ClientRouteReference[];
+  readonly pending: readonly PendingWireBinding[];
+  readonly apiRoutesFile: string;
+  readonly clientRoots: readonly string[];
+}): readonly string[] {
+  const { routes, references, pending, apiRoutesFile, clientRoots } = input;
+  const declared = new Map(
+    pending.filter(({ binding }) => binding.startsWith("route:")).map((entry) => [entry.binding.slice("route:".length), entry]),
+  );
+  const problems: string[] = [];
+  for (const reference of references) {
+    if (routes.some(({ path }) => routeMatches(path, reference.path))) continue;
+    problems.push(
+      `${reference.file} calls ${reference.path}, which ${apiRoutesFile} does not register`,
+    );
+  }
+  for (const route of routes) {
+    const key = `${route.method} ${route.path}`;
+    const called = references.some(({ path }) => routeMatches(route.path, path));
+    if (called && declared.has(key)) {
+      problems.push(
+        `${PENDING_WIRE_BINDINGS_PATH} declares route:${key} unconsumed, but a client now calls it`,
+      );
+    }
+    if (!called && !declared.has(key)) {
+      problems.push(
+        `${apiRoutesFile} serves ${key} and no client under ${clientRoots.join(", ")} calls it. `
+        + `Either wire a caller or add {"binding": "route:${key}", "direction": "served-unconsumed", …} `
+        + `to ${PENDING_WIRE_BINDINGS_PATH} naming the consumer that will`,
+      );
+    }
+  }
+  for (const key of declared.keys()) {
+    if (!routes.some((route) => `${route.method} ${route.path}` === key)) {
+      problems.push(`${PENDING_WIRE_BINDINGS_PATH} declares route:${key}, which ${apiRoutesFile} does not serve`);
+    }
+  }
+  return problems;
+}
+
 /* ── 5. served-descriptor producers ───────────────────────────────────────── */
 
 /** Block and line comments, removed before a producer scan. */

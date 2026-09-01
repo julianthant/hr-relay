@@ -25,6 +25,11 @@ import { ArchivedRunDetail, FrozenLogLine } from "../../../src/dashboard/surface
 import { FIXTURE_ARCHIVED_RUN, FIXTURE_ARCHIVE_INDEX } from "../../parity/helpers/fixture-archive.js";
 
 const noop = (): void => undefined;
+const unreadCapture = async () => ({
+  runId: FIXTURE_ARCHIVED_RUN.runId,
+  artifactId: FIXTURE_ARCHIVED_RUN.evidence.artifactIds[0],
+  resource: { state: "missing" as const, reason: "test fixture has no bytes" },
+});
 
 function markup(): string {
   return renderToStaticMarkup(createElement(ToastProvider, {
@@ -36,6 +41,7 @@ function markup(): string {
       relaunched: false,
       onRelaunch: noop,
       onDismiss: noop,
+      onReadCapture: unreadCapture,
     }),
   }));
 }

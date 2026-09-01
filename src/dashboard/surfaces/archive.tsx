@@ -107,6 +107,7 @@ import { cn } from "../lib/utils.js";
 import {
   Badge,
   Banner,
+  ButtonLink,
   BulletList,
   Button,
   Card,
@@ -169,6 +170,7 @@ import type {
   ArchiveEntryWire,
   ArchiveIndexWire,
   ArchiveSweepWire,
+  ArchivedCaptureResourceWire,
   ArchivedRunDetailWire,
   VersionBumpPlanWire,
   WorkflowVersionStateWire,
@@ -202,6 +204,9 @@ import {
   type BumpRecordComposition,
   archiveBumpKind,
   archivedCaptureFacts,
+  useArchivedCaptureResource,
+  useArchivedCaptureImage,
+  type ArchivedCaptureResourceLoad,
   blockerResolution,
   bumpResolutionColumnHead,
   bumpScopeLabel,
@@ -1300,6 +1305,7 @@ export function ArchivedRunDetail({
   relaunched,
   onRelaunch,
   onDismiss,
+  onReadCapture,
 }: {
   detail: ArchivedRunDetailWire;
   sweep: ArchiveSweepWire | undefined;
@@ -1309,6 +1315,7 @@ export function ArchivedRunDetail({
   relaunched: boolean;
   onRelaunch: () => void;
   onDismiss: () => void;
+  onReadCapture: (runId: string, artifactId: string, signal?: AbortSignal) => Promise<ArchivedCaptureResourceWire>;
 }) {
   const [tab, setTab] = useState<ArchiveTab>("summary");
   /*
@@ -1317,10 +1324,21 @@ export function ArchivedRunDetail({
     describing evidence that belongs to somebody else's record.
   */
   const [openCapture, setOpenCapture] = useState<number | undefined>(undefined);
+  const captureOpener = useRef<HTMLButtonElement | null>(null);
+  const captureFocusGeneration = useRef(0);
   useEffect(() => {
+    captureFocusGeneration.current += 1;
     setTab("summary");
     setOpenCapture(undefined);
   }, [detail.runId]);
+  const closeCapture = () => {
+    const generation = ++captureFocusGeneration.current;
+    const opener = captureOpener.current;
+    setOpenCapture(undefined);
+    requestAnimationFrame(() => {
+      if (generation === captureFocusGeneration.current && opener?.isConnected) opener.focus();
+    });
+  };
   const { toast } = useToasts();
 
   /**
@@ -1872,7 +1890,11 @@ export function ArchivedRunDetail({
                         <CaptureTileRow
                           key={tile.artifactId}
                           tile={tile}
-                          onOpen={() => { setOpenCapture(index); }}
+                          onOpen={(opener) => {
+                            captureFocusGeneration.current += 1;
+                            captureOpener.current = opener;
+                            setOpenCapture(index);
+                          }}
                         />
                       ))}
                     </div>
@@ -1899,9 +1921,11 @@ export function ArchivedRunDetail({
         <CaptureViewerDialog
           tiles={sections.captures.value}
           index={openCapture}
+          runId={detail.runId}
           subject={detail.detail.header.traceId}
+          onReadCapture={onReadCapture}
           onIndex={setOpenCapture}
-          onClose={() => { setOpenCapture(undefined); }}
+          onClose={closeCapture}
         />
       )}
 
@@ -2108,20 +2132,15 @@ function AttemptRow({ attempt }: { attempt: ArchivedRunAttempt }) {
 
 /**
  * ONE described capture. The thumbnail is a LABELLED placeholder holding the
- * capture's real aspect ratio — never a drawn approximation of the page, which
- * is the one thing an evidence surface may not produce. The archived record
- * carries no bytes and this surface reads none.
+ * capture's real aspect ratio — never a drawn approximation of the page. The
+ * archived record carries no bytes; the viewer separately verifies exact
+ * retained bytes only after an operator opens this frozen capture.
  */
 /**
- * WHAT IT WAS — the archived capture, opened without a byte (D274 item 10).
- *
- * The demo's control reads `Open` for a live capture and `What it was` for a
- * purged one. Only the second arm is true here and it is true of every tile:
- * the archived read path resolves nothing and reaches no content store (D179),
- * so this viewer never has an image to show and never will. Saying `Open`
- * would promise one. It is not a degraded image viewer either — the frozen
- * record's description IS the product, and `archivedCaptureFacts` prints all
- * of it, absences included.
+ * The frozen description always renders. An explicit resource read then
+ * verifies whether the same capture's physical bytes remain. No retention
+ * deadline can call that state purged: without a durable tombstone the states
+ * are only available, missing, or verification error.
  *
  * Prev/next walk the run's own captures, because an operator comparing two
  * failures should not have to close and re-aim at a tile between them.
@@ -2129,29 +2148,51 @@ function AttemptRow({ attempt }: { attempt: ArchivedRunAttempt }) {
 export function CaptureViewerDialog({
   tiles,
   index,
+  runId,
   subject,
+  onReadCapture,
   onIndex,
   onClose,
 }: {
   tiles: readonly ArchivedCaptureTile[];
   index: number | undefined;
+  runId: string;
   subject: string;
+  onReadCapture: (runId: string, artifactId: string, signal?: AbortSignal) => Promise<ArchivedCaptureResourceWire>;
   onIndex: (next: number) => void;
   onClose: () => void;
 }) {
   const tile = index === undefined ? undefined : tiles[index];
+  const [viewerEpoch, setViewerEpoch] = useState(0);
+  const closingViewer = useRef(false);
+  const resource = useArchivedCaptureResource(runId, tile, onReadCapture, viewerEpoch);
+  const imageUrl = resource.state === "loaded"
+    && resource.value.resource.state === "available"
+    && (tile?.mediaType === "image/png" || tile?.mediaType === "image/jpeg")
+    ? resource.value.resource.downloadUrl
+    : undefined;
+  useEffect(() => {
+    if (tile !== undefined) closingViewer.current = false;
+  }, [tile]);
+  const closeViewer = () => {
+    if (closingViewer.current) return;
+    closingViewer.current = true;
+    setViewerEpoch((current) => current + 1);
+    onClose();
+  };
   if (index !== undefined && tile === undefined) {
     throw new Error(
       `the capture viewer was opened at index ${String(index)} of ${String(tiles.length)} archived captures`,
     );
   }
   return (
-    <Dialog open={tile !== undefined} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog open={tile !== undefined} onOpenChange={(open) => { if (!open) closeViewer(); }}>
       {tile !== undefined && index !== undefined && (
         <DialogContent
           size="lg"
           title={tile.step.state === "present" ? `${tile.kind} at ${tile.step.nodeId}` : `${tile.kind} — step unrecorded`}
           description={`Archived capture ${String(index + 1)} of ${String(tiles.length)} on ${subject}.`}
+          className="pointer-coarse:[&>header>button]:min-h-11 pointer-coarse:[&>header>button]:min-w-11"
         >
           <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
             <Well>
@@ -2159,6 +2200,14 @@ export function CaptureViewerDialog({
                 {ARCHIVED_CAPTURE_VIEWER_NOTE}
               </p>
             </Well>
+
+            {imageUrl !== undefined ? (
+              <ArchivedCaptureImagePreview
+                key={`${runId}:${tile.artifactId}:${String(viewerEpoch)}`}
+                tile={tile}
+                imageUrl={imageUrl}
+              />
+            ) : <ArchivedCaptureResourceNotice tile={tile} resource={resource} />}
 
             <Field label="What this capture was">
               <dl className="flex flex-col gap-[var(--ds-space-hair)]">
@@ -2200,7 +2249,10 @@ export function CaptureViewerDialog({
               </span>
             </Field>
           </DialogBody>
-          <DialogFooter meta={`Captured ${fmtClock(tile.capturedAt)} · bundle ${shortHash(tile.bundleId)}`}>
+          <DialogFooter
+            meta={`Captured ${fmtClock(tile.capturedAt)} · bundle ${shortHash(tile.bundleId)}`}
+            className="max-sm:flex-col max-sm:items-stretch max-sm:[&>span:last-child]:w-full max-sm:[&>span:last-child]:flex-wrap max-sm:[&>span:last-child]:justify-end"
+          >
             {/*
               `aria-disabled`, never `disabled`, at either end of the walk
               (ui-review finding F10b/1). A genuinely `disabled` button is
@@ -2239,7 +2291,19 @@ export function CaptureViewerDialog({
             >
               Next capture
             </Button>
-            <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
+            {resource.state === "loaded" && resource.value.resource.state === "available" && (
+              <ButtonLink
+                size="sm"
+                variant="primary"
+                className={ARCHIVED_CAPTURE_NAV_TOUCH_TARGET}
+                icon={<Download aria-hidden className={dsIcon.md} />}
+                href={resource.value.resource.downloadUrl}
+                download={`archive-${tile.artifactId}`}
+              >
+                Download
+              </ButtonLink>
+            )}
+            <Button size="sm" variant="ghost" className={ARCHIVED_CAPTURE_NAV_TOUCH_TARGET} onClick={closeViewer}>Close</Button>
           </DialogFooter>
         </DialogContent>
       )}
@@ -2247,7 +2311,90 @@ export function CaptureViewerDialog({
   );
 }
 
-function CaptureTileRow({ tile, onOpen }: { tile: ArchivedCaptureTile; onOpen: () => void }) {
+/** The fixed slot includes captions/refusals, so neither can displace the frozen metadata. */
+function ArchivedCapturePreviewFrame({ tile, busy, children }: {
+  tile: ArchivedCaptureTile;
+  busy: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <figure
+      aria-label="Archived capture preview"
+      aria-busy={busy}
+      className={cn("relative flex max-h-[56dvh] w-full shrink-0 flex-col overflow-hidden border border-[color:var(--ds-border)] bg-[color:var(--ds-surface-2)]", dsRadius.md)}
+      style={tile.dimensions === undefined
+        ? { height: "min(20rem, 56dvh)" }
+        : { aspectRatio: `${String(tile.dimensions.width)} / ${String(tile.dimensions.height)}` }}
+    >
+      {children}
+    </figure>
+  );
+}
+
+function ArchivedCaptureResourceNotice({ tile, resource }: { tile: ArchivedCaptureTile; resource: ArchivedCaptureResourceLoad }) {
+  const notice = (
+    <>
+      {resource.state === "loading" && <Skeleton className="h-full min-h-32 w-full" />}
+      {resource.state === "failed" && (
+        <Banner tone="danger" title="Capture resource could not be read">{resource.message}</Banner>
+      )}
+      {resource.state === "loaded" && resource.value.resource.state === "missing" && (
+        <Banner tone="warning" title="Capture bytes are missing">{resource.value.resource.reason}</Banner>
+      )}
+      {resource.state === "loaded" && resource.value.resource.state === "error" && (
+        <Banner tone="danger" title="Capture bytes could not be verified">{resource.value.resource.message}</Banner>
+      )}
+      {resource.state === "loaded" && resource.value.resource.state === "available" && (
+        <Well>
+          <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+            Verified retained bytes are ready to download. This media type has no inline preview.
+          </p>
+        </Well>
+      )}
+    </>
+  );
+  return tile.mediaType === "image/png" || tile.mediaType === "image/jpeg" ? (
+    <ArchivedCapturePreviewFrame tile={tile} busy={resource.state === "loading"}>
+      <div className="absolute inset-0 overflow-auto">{notice}</div>
+    </ArchivedCapturePreviewFrame>
+  ) : notice;
+}
+
+/** Unmounting this preview ends its readiness, including a later return to the same URL. */
+function ArchivedCaptureImagePreview({ tile, imageUrl }: { tile: ArchivedCaptureTile; imageUrl: string }) {
+  const image = useArchivedCaptureImage();
+  return (
+    <ArchivedCapturePreviewFrame tile={tile} busy={image.state === "loading"}>
+      <div className="relative min-h-0 flex-1">
+        {image.state === "loading" && <Skeleton className="absolute inset-0 h-full w-full" />}
+        <img
+          ref={image.bindImage}
+          src={imageUrl}
+          loading="eager"
+          width={tile.dimensions?.width}
+          height={tile.dimensions?.height}
+          alt={image.state === "ready" ? `Archived ${tile.kind} captured ${fmtClock(tile.capturedAt)}` : ""}
+          aria-hidden={image.state === "ready" ? undefined : true}
+          className={cn("absolute inset-0 h-full w-full object-contain", image.state !== "ready" && "opacity-0")}
+          onError={(event) => { image.failImage(event.currentTarget); }}
+          onLoad={(event) => { image.decodeImage(event.currentTarget); }}
+        />
+        {image.state === "failed" && (
+          <div className="absolute inset-0 overflow-auto">
+            <Banner tone="danger" title="Capture image could not be displayed">
+              The retained image bytes were verified, but the browser could not load or decode this image.
+            </Banner>
+          </div>
+        )}
+      </div>
+      <figcaption className={cn(dsText.meta, "min-h-[calc(1lh+var(--ds-space-tight)*2)] shrink-0 whitespace-normal break-words bg-[color:var(--ds-surface-2)] px-[var(--ds-space-snug)] py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
+        {image.state === "ready" && "Verified retained bytes for this frozen archived capture."}
+      </figcaption>
+    </ArchivedCapturePreviewFrame>
+  );
+}
+
+function CaptureTileRow({ tile, onOpen }: { tile: ArchivedCaptureTile; onOpen: (opener: HTMLButtonElement) => void }) {
   return (
     <div className="flex min-w-0 items-start gap-[var(--ds-space-snug)]">
       <span
@@ -2312,15 +2459,15 @@ function CaptureTileRow({ tile, onOpen }: { tile: ArchivedCaptureTile; onOpen: (
       </span>
       {/*
         The tile stops being inert (D274 item 10). The label is `What it was`
-        on every capture — never `Open` — because the archive holds a pointer
-        and this viewer will never have bytes to show.
+        on every capture because the archive holds frozen pointer facts. The
+        viewer can separately verify and display this exact capture's retained bytes.
       */}
       <Button
         size="sm"
         variant="outline"
-        className="shrink-0"
+        className={cn(ARCHIVED_CAPTURE_NAV_TOUCH_TARGET, "shrink-0")}
         icon={<Camera aria-hidden className={dsIcon.md} />}
-        onClick={onOpen}
+        onClick={(event) => { onOpen(event.currentTarget); }}
       >
         What it was
       </Button>
@@ -3436,6 +3583,11 @@ export function ArchiveWorkspace({
    */
   const [relaunched, setRelaunched] = useState<string | undefined>(undefined);
   const [nonce, setNonce] = useState(0);
+  const readArchiveCapture = useCallback(
+    (runId: string, artifactId: string, signal?: AbortSignal) =>
+      client.archivedCaptureResource(runId, artifactId, signal),
+    [client],
+  );
 
   useEffect(() => {
     let live = true;
@@ -3586,6 +3738,7 @@ export function ArchiveWorkspace({
         }
         onRelaunch={() => setConfirming(true)}
         onDismiss={() => setRelaunched(undefined)}
+        onReadCapture={readArchiveCapture}
       />
     );
   };

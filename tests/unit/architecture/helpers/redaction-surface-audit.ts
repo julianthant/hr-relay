@@ -68,6 +68,7 @@ import {
 import { ActivityReportWireSchema } from "../../../../src/domain/dashboard/activity.js";
 import { RunAdvisoryWireSchema } from "../../../../src/domain/dashboard/advisory.js";
 import {
+  ArchivedCaptureResourceWireSchema,
   ArchivedRunDetailWireSchema,
   ArchiveIndexWireSchema,
   VersionBumpPlanWireSchema,
@@ -592,6 +593,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/ui-catalog", egress: "operator-loopback", module: "src/domain/dashboard/explorer.ts", schema: UiCatalogWireSchema },
   { id: "wire/archive-index", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: ArchiveIndexWireSchema },
   { id: "wire/archived-run-detail", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: ArchivedRunDetailWireSchema },
+  { id: "wire/archived-capture-resource", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: ArchivedCaptureResourceWireSchema },
   { id: "wire/version-bump-plan", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: VersionBumpPlanWireSchema },
   { id: "wire/intake-session", egress: "operator-loopback", module: "src/domain/intake/wire.ts", schema: IntakeSessionWireSchema },
   { id: "wire/capture-session", egress: "phone-scoped", module: "src/domain/capture-surface.ts", schema: CaptureSessionWireSchema },
@@ -622,9 +624,12 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail", path: "timeline.steps[].label", origin: "repository-authored" },
   { surface: "wire/run-detail", path: "timeline.steps[].members[].label", origin: "repository-authored" },
   { surface: "wire/run-detail", path: "timeline.events[].notRun.reason", origin: "repository-authored" },
+  { surface: "wire/run-detail", path: "captures.message", origin: "repository-authored" },
+  { surface: "wire/run-detail", path: "captures.reason", origin: "repository-authored" },
+  // D292 payload.artifacts[].origins[] carries only format-constrained bundleId
+  // and closed originKind leaves. The scanner classifies these mechanically;
+  // no actor/failure detail or new free-text origin exception is introduced.
 
-  { surface: "wire/run-detail-section", path: "payload.artifacts[].message", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.artifacts[].reason", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.editing.reason", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.entries[].edit.pendingCorrection.value", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.entries[].edit.reason", origin: "repository-authored" },
@@ -1011,6 +1016,12 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/artifact-resource", path: "message", origin: "repository-authored" },
   { surface: "wire/artifact-resource", path: "reason", origin: "repository-authored" },
 
+  // D183: queries/archive.ts composes the exact-id URL and fixed availability
+  // copy; no stored capture value, filesystem path, or caught error is copied.
+  { surface: "wire/archived-capture-resource", path: "resource.downloadUrl", origin: "repository-authored" },
+  { surface: "wire/archived-capture-resource", path: "resource.message", origin: "repository-authored" },
+  { surface: "wire/archived-capture-resource", path: "resource.reason", origin: "repository-authored" },
+
   { surface: "wire/capture-pointer", path: "dimensions.reason", origin: "repository-authored" },
 
   { surface: "wire/storage-doctor", path: "authority.cause.code", origin: "repository-authored" },
@@ -1140,6 +1151,12 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/archived-run-detail", path: "sections.value.captures.value[].step.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.captures.value[].system.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.captures.value[].system.value", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "detail.captures.message", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "detail.captures.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.captures.message", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.captures.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.replacement.captures.message", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.replacement.captures.reason", origin: "repository-authored" },
   /*
    * Charter §25's change record. `what`, `why` and `commit.value` are typed by
    * the OPERATOR, so they are `external-text` on the same terms as an
@@ -1324,7 +1341,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/actions.ts", state: "audited", reason: "the action descriptor and its confirmation copy ride the queue row" },
     { module: "src/domain/dashboard/activity.ts", state: "audited", reason: "the activity report aggregates runs into counts and durations" },
     { module: "src/domain/dashboard/advisory.ts", state: "audited", reason: "the run advisory renders a third-party model's answer back to the operator" },
-    { module: "src/domain/dashboard/archive.ts", state: "audited", reason: "the archive index and archived run detail re-serve retired runs" },
+    { module: "src/domain/dashboard/archive.ts", state: "audited", reason: "the archive index and detail re-serve retired runs; capture resources report exact-byte availability" },
     { module: "src/domain/dashboard/artifacts.ts", state: "audited", reason: "artifact resources point at downloadable run output" },
     { module: "src/domain/dashboard/bootstrap.ts", state: "audited", reason: "bootstrap carries the actor, the workflow registry and feature availability" },
     { module: "src/domain/dashboard/diagnostic-bundle.ts", state: "audited", reason: "D137 readback carries only verified attachment metadata and capture-time redaction facts" },

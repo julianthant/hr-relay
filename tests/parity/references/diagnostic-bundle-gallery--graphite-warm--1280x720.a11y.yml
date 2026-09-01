@@ -1,0 +1,32 @@
+# diagnostic-bundle-gallery--graphite-warm--1280x720
+# adapter: fixture
+# fixture: diagnostic-bundle-gallery
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- main:
+  - complementary "Run data":
+    - region "Extracted fields":
+      - text: The run is now failed — it moved while this data was open, so these values may be stale. Reopen the run to edit.
+      - paragraph: No unsaved changes.
+- dialog "Diagnostic bundle 00000000-0904-4000-8000-000000000904":
+  - banner:
+    - heading "Diagnostic bundle 00000000-0904-4000-8000-000000000904" [level=2]
+    - paragraph: Captured 9:35 AM · 139.5 KB · content-addressed, capture-time redaction recorded
+  - paragraph:
+    - text: One bounded package, taken automatically the moment this failed. It is what
+    - code: explain run --bundle
+    - text: writes, and it is what a bug report should carry instead of a pasted screenshot.
+  - text: Screenshot image/png · 142676 bytes · 1280 × 720 px · redacted · 811bdbf892569d267fc71d882346f9fc7c706f7abac8ceb8b8f9ee1240b41d1d Accessibility excerpt text/yaml · 128 bytes · redacted · 2222222222222222222222222222222222222222222222222222222222222222
+  - region "Diagnostic screenshots":
+    - text: Screenshots
+    - button "Open Diagnostic screenshot 1 of 1":
+      - img "Diagnostic screenshot 1 of 1"
+      - text: Diagnostic screenshot 1 of 1
+  - status: "Capture-time redaction record employeeName · sensitive-hr · digest · ucpathPassword · secret · drop · warning: unclassified diagnostic field at index 3 dropped. The dashboard never rewrites stored attachment bytes."
+  - contentinfo:
+    - button "Close"
+    - link "Download the manifest":
+      - /url: http://dca2-gallery.localhost/api/v1/diagnostic-bundles/00000000-0904-4000-8000-000000000904/manifest

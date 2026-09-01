@@ -10,6 +10,9 @@
  * running / terminal / empty detail states, start-plan planned+refused, and
  * command applied/conflict/rejected results.
  */
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
@@ -93,13 +96,25 @@ const FIXTURE_DIAGNOSTIC_REDACTION = {
   warnings: ["unclassified diagnostic field at index 3 dropped"],
 } as const;
 
+/**
+ * A reviewed, synthetic fixture dashboard image makes the gallery's thumbnail
+ * and lightbox visual states observable without importing a production capture.
+ */
+export const FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES = new Uint8Array(readFileSync(join(
+  import.meta.dirname,
+  "../references/run-failed--graphite-warm--1280x720.png",
+)));
+const FIXTURE_DIAGNOSTIC_SCREENSHOT_DIGEST = createHash("sha256")
+  .update(FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES)
+  .digest("hex");
+
 const FIXTURE_DIAGNOSTIC_ATTACHMENTS = [
   {
     kind: "screenshot",
     artifactId: uuidOf(905),
     mediaType: "image/png",
-    byteLength: 200,
-    digest: "1".repeat(64),
+    byteLength: FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES.byteLength,
+    digest: FIXTURE_DIAGNOSTIC_SCREENSHOT_DIGEST,
     sensitivity: "redacted",
     width: 1280,
     height: 720,
@@ -149,7 +164,7 @@ export const FIXTURE_DIAGNOSTIC_BUNDLE: DiagnosticBundleWire = DiagnosticBundleW
     {
       ...FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.attachments[0],
       key: "Screenshot",
-      detail: "image/png · 200 bytes · 1280 × 720 px · redacted",
+      detail: `image/png · ${String(FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES.byteLength)} bytes · 1280 × 720 px · redacted`,
     },
     {
       ...FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.attachments[1],

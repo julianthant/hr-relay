@@ -37,6 +37,7 @@ import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { UiCatalogWorkspace } from "../surfaces/ui-catalog.js";
 import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";
 import { LogPanel } from "../surfaces/log-panel.js";
+import { useRunCaptures } from "../surfaces/run-captures-model.js";
 import { defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel-model.js";
 import { QueuePanel, type QueueFilterScope, type QueueHandlers, type QueueViewState } from "../surfaces/queue.js";
 import {
@@ -421,6 +422,11 @@ function LoadedApp({
         ? "logs"
         : defaultTabFor(detailValue));
   const { sections } = usePanelSections(detailValue, effectiveTab);
+  const captureTab = detailValue !== undefined && !offered.includes(effectiveTab)
+    ? defaultTabFor(detailValue) : effectiveTab;
+  const captures = useRunCaptures(
+    route.run, detailValue, activeTakeover(route) === "none" && captureTab === "receipt",
+  );
 
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
   const [activeWorkflowId, setActiveWorkflowId] = useState<string>(() => workflows[0]?.id ?? "");
@@ -1730,6 +1736,7 @@ function LoadedApp({
                 <LogPanel
                   detail={detailValue}
                   sections={sections}
+                  captures={captures}
                   surface={openPanelSurface}
                   /*
                     The WHOLE served list, not a placement slice: the prop's

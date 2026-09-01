@@ -8,6 +8,7 @@
  * `input hash {…}` MetaLine under `The input this run was given`).
  */
 import type { z } from "zod";
+import { DashboardClientError } from "../client/index.js";
 import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bundle.js";
 import type { FailureDetailWireSchema } from "../../domain/dashboard/run-detail.js";
 import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
@@ -31,6 +32,72 @@ export function acceptDiagnosticBundleReadback(
     state: "identity-mismatch",
     bundleId: requestedBundleId,
     message: `DIAGNOSTIC_BUNDLE_IDENTITY_MISMATCH: requested diagnostic bundle ${requestedBundleId} returned a different bundle identity`,
+  });
+}
+
+/** Accessible ordinal wording for the bundle-local screenshot gallery. */
+export function diagnosticScreenshotLabel(index: number, total: number): string {
+  return `Diagnostic screenshot ${String(index + 1)} of ${String(total)}`;
+}
+
+/**
+ * An image event cannot say whether the exact authority attachment was missing,
+ * corrupt, or merely undecodable by this browser. Re-read the bundle first and
+ * classify only the server's typed code; error prose never chooses this arm.
+ */
+export type DiagnosticScreenshotLoadFailure =
+  | Readonly<{ kind: "identity-mismatch"; title: string; message: string }>
+  | Readonly<{ kind: "authority"; title: string; message: string }>
+  | Readonly<{ kind: "unverified"; title: string; message: string }>
+  | Readonly<{ kind: "browser"; title: string; message: string }>;
+
+/** The exact readback failed, so the browser must not claim that its bytes verified. */
+export function diagnosticScreenshotLoadFailure(error: unknown): DiagnosticScreenshotLoadFailure {
+  if (error instanceof DashboardClientError) {
+    switch (error.code) {
+      case "TARGET_NOT_FOUND":
+        return Object.freeze({ kind: "authority", title: "Screenshot attachment is unavailable", message: error.message });
+      case "DIAGNOSTIC_BUNDLE_BYTES_MISSING":
+        return Object.freeze({ kind: "authority", title: "Screenshot bytes are missing", message: error.message });
+      case "DIAGNOSTIC_BUNDLE_CORRUPT":
+        return Object.freeze({ kind: "authority", title: "Screenshot attachment is corrupt", message: error.message });
+      case "SECTION_UNAVAILABLE":
+        return Object.freeze({ kind: "authority", title: "Diagnostic attachment authority is unavailable", message: error.message });
+    }
+  }
+  return Object.freeze({
+    kind: "unverified",
+    title: "Screenshot availability could not be verified",
+    message: "The browser could not load this image, and the exact diagnostic bundle could not be re-read.",
+  });
+}
+
+/** A successful transport is not proof that the bundle the operator opened stayed identical. */
+export function diagnosticScreenshotBrowserLoadFailure(
+  original: DiagnosticBundleWire,
+  screenshot: DiagnosticBundleWire["contents"][number],
+  reread: DiagnosticBundleWire,
+): DiagnosticScreenshotLoadFailure {
+  const candidates = reread.contents.filter((content) => content.artifactId === screenshot.artifactId);
+  const selected = candidates.length === 1 ? candidates[0] : undefined;
+  const mismatch = original.bundleId !== reread.bundleId ? "bundle identity"
+    : original.contentDigest !== reread.contentDigest ? "content digest"
+      : selected === undefined || selected.kind !== "screenshot"
+        || selected.digest !== screenshot.digest || selected.mediaType !== screenshot.mediaType
+        || selected.byteLength !== screenshot.byteLength || selected.width !== screenshot.width
+        || selected.height !== screenshot.height || selected.sensitivity !== screenshot.sensitivity
+        ? `screenshot identity (${screenshot.artifactId})` : undefined;
+  if (mismatch !== undefined) {
+    return Object.freeze({
+      kind: "identity-mismatch",
+      title: "Screenshot identity could not be verified",
+      message: `Diagnostic bundle ${original.bundleId} changed its ${mismatch}; close and reopen the bundle to read current authority.`,
+    });
+  }
+  return Object.freeze({
+    kind: "browser",
+    title: "Screenshot preview could not be loaded",
+    message: "The stored attachment verified, but this browser could not load or decode the image.",
   });
 }
 
