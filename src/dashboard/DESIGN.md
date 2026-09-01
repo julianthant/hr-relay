@@ -241,9 +241,11 @@ family as `warning`, so filling every primary button with it would make the
 primary action shout at exactly the volume reserved for `Waiting on you` — a
 rule-1 violation. There, the primary action is the highest-contrast neutral fill
 and the amber survives on marks. The **queue toolbar's `Start a run` is the one
-exception**: it uses the **`brand` button variant** (`--ds-info-solid-*`) so the
-product launch CTA reads as info blue on Graphite Warm rather than the same
-near-white chip as every dialog primary.
+exception**: it uses the **`brand` button variant** (`--ds-brand-solid-*`), a
+NEUTRAL solid fill, so the product launch CTA still ends the eye's travel
+without reading as the same near-white chip as every dialog primary. It was
+info blue until 2026-09-01, when the operator called the blue obnoxious next to
+the outlined toolbar peers — the loudness belongs to the fill, not to a hue.
 
 ### Themes — a togglable pair
 

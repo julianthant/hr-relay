@@ -29,9 +29,9 @@ import { dsClip, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js
 /**
  * Seven variants, and the choice is semantic, not decorative:
  *   primary   — the ONE affirmative action on a surface (Approve, Run, Save)
- *   brand     — the product-level launch CTA (`Start a run`). Info solid on
- *               Graphite Warm so the queue toolbar CTA is not the same near-
- *               white fill as every dialog primary; Paper Ink uses the swatch.
+ *   brand     — the product-level launch CTA (`Start a run`). A NEUTRAL solid
+ *               (`--ds-brand-solid-*`), so the queue toolbar CTA is neither the
+ *               near-white fill of every dialog primary nor a status hue.
  *   secondary — a real alternative to primary (Cancel, Back, Skip)
  *   outline   — a peer action in a group of equals (toolbar, filters)
  *   ghost     — a tertiary action that must not compete (Details, Copy)
@@ -61,9 +61,9 @@ const buttonVariants = cva(
           // Same edge weight as the Workflow Panel toggle beside it
           // (`--ds-border-strong`). Transparent / 8% borders disappeared on
           // Graphite Warm next to outlined toolbar peers.
-          "bg-[var(--ds-info-solid-bg)] text-[color:var(--ds-info-solid-fg)] font-semibold",
+          "bg-[var(--ds-brand-solid-bg)] text-[color:var(--ds-brand-solid-fg)] font-semibold",
           "border-[color:var(--ds-border-strong)]",
-          "hover:bg-[var(--ds-info-solid-hover)]",
+          "hover:bg-[var(--ds-brand-solid-hover)]",
         ),
         secondary: cn(
           "bg-[var(--ds-control-bg)] text-[color:var(--ds-control-fg)]",

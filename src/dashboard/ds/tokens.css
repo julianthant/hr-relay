@@ -197,6 +197,15 @@
   --ds-accent-hover: color-mix(in srgb, var(--primary) 88%, hsl(0 0% 100%));
   --ds-accent-quiet: color-mix(in srgb, var(--primary) 12%, transparent);
 
+  /* BRAND — the product-level launch CTA (`Start a run`). Deliberately a
+     NEUTRAL solid, not a hue: operator 2026-09-01 read the info-blue fill as
+     obnoxious next to the outlined toolbar peers. It stays a filled control so
+     it still ends the eye's travel; the loudness comes from the fill, not the
+     colour. */
+  --ds-brand-solid-bg: var(--ds-surface-3);
+  --ds-brand-solid-fg: var(--ds-fg);
+  --ds-brand-solid-hover: color-mix(in srgb, var(--ds-fg) 12%, var(--ds-surface-3));
+
   --ds-danger: var(--destructive); /* danger as TEXT */
   --ds-danger-solid: var(--destructive); /* danger as a solid FILL */
   --ds-danger-fg: hsl(0 65% 8%); /* dark ink on the dark theme's bright red */
@@ -461,6 +470,11 @@
      at the narrow rung it still needs enough paper to inspect rather than a
      thumbnail stretched across a decision surface. */
   --ds-h-review-page-min: 420px;
+
+  /* the Run Modal's spreadsheet arm: tall enough to read as the stage's one
+     act, short enough that the dialog does not outgrow a 1024x768 viewport */
+  --ds-h-dialog-dropzone: 208px;
+
   /* ONE MEMBER LINE, and the two wells built out of it.
      ------------------------------------------------------------------
      The well used to be a hand-picked 136px on 24px lines, and the half-cut
@@ -827,6 +841,12 @@ body[data-demo-theme="dark"] {
   --ds-accent-hover: #ffffff;
   --ds-accent-quiet: color-mix(in srgb, #fafafa 12%, transparent);
 
+  /* Neutral launch CTA — see :root. Zinc 700, a full step above the toolbar's
+     transparent outline peers without borrowing a status hue. */
+  --ds-brand-solid-bg: #3f3f46;
+  --ds-brand-solid-fg: #fafafa;
+  --ds-brand-solid-hover: #52525b;
+
   --ds-danger: #f97066;
   --ds-danger-solid: #f04438;
   --ds-danger-fg: #2a0806;
@@ -1024,6 +1044,12 @@ body[data-demo-theme="light"] {
   --ds-accent-fg: #ffffff;
   --ds-accent-hover: #3730a3; /* light hovers DARKEN; dark hovers lighten */
   --ds-accent-quiet: color-mix(in srgb, #4f46e5 12%, transparent);
+
+  /* Neutral launch CTA — see :root. Zinc 600 on paper: dark ink-grey fill,
+     white type, no hue competing with the indigo primary. */
+  --ds-brand-solid-bg: #52525b;
+  --ds-brand-solid-fg: #ffffff;
+  --ds-brand-solid-hover: #3f3f46; /* light hovers DARKEN */
 
   --ds-danger: #b42318;
   --ds-danger-solid: #b42318;
