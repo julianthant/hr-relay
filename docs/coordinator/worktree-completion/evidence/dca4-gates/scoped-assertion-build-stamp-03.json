@@ -1,0 +1,7 @@
+{
+  "stampVersion": 1,
+  "inputDigest": "206cc47904dbd47e03e807703ad56d90653d812e1ae9263836a842c3636d1914",
+  "outputDigest": "1df11de50a7b86b4023c74470ff06400fdea1a483490fb718239fb720c6bb302",
+  "buildScript": "web:build",
+  "builtAt": "2026-08-30T15:54:25.425Z"
+}

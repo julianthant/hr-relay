@@ -1,0 +1,119 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/server/run-detail-captures.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+······xxx···················
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > preserves the literal unexpected-state origin without failure details or actor data
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    {
+      bundleId: '00320032-0032-4032-8032-003200320032',
++     originKind: 'failure'
+-     originKind: 'unexpected-state'
+    }
+  ]
+
+
+- Expected
++ Received
+
+  [
+    {
+      "bundleId": "00320032-0032-4032-8032-003200320032",
+-     "originKind": "unexpected-state",
++     "originKind": "failure",
+    },
+  ]
+
+ ❯ tests/unit/server/run-detail-captures.test.ts:176:14
+    174|       assert.equal(section.section, "captures");
+    175|       if (section.section !== "captures") throw new Error("wrong secti…
+    176|       assert.deepEqual(section.payload.artifacts[0]?.origins, [{ bundl…
+       |              ^
+    177|       assert.doesNotMatch(canonicalJsonStringify(section), /failureId|…
+    178|     },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > preserves the literal subject-mismatch origin without failure details or actor data
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    {
+      bundleId: '00320032-0032-4032-8032-003200320032',
++     originKind: 'failure'
+-     originKind: 'subject-mismatch'
+    }
+  ]
+
+
+- Expected
++ Received
+
+  [
+    {
+      "bundleId": "00320032-0032-4032-8032-003200320032",
+-     "originKind": "subject-mismatch",
++     "originKind": "failure",
+    },
+  ]
+
+ ❯ tests/unit/server/run-detail-captures.test.ts:176:14
+    174|       assert.equal(section.section, "captures");
+    175|       if (section.section !== "captures") throw new Error("wrong secti…
+    176|       assert.deepEqual(section.payload.artifacts[0]?.origins, [{ bundl…
+       |              ^
+    177|       assert.doesNotMatch(canonicalJsonStringify(section), /failureId|…
+    178|     },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  |unit| tests/unit/server/run-detail-captures.test.ts > DCA3/D292 run capture authority > preserves the literal recovery-park origin without failure details or actor data
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    {
+      bundleId: '00320032-0032-4032-8032-003200320032',
++     originKind: 'failure'
+-     originKind: 'recovery-park'
+    }
+  ]
+
+
+- Expected
++ Received
+
+  [
+    {
+      "bundleId": "00320032-0032-4032-8032-003200320032",
+-     "originKind": "recovery-park",
++     "originKind": "failure",
+    },
+  ]
+
+ ❯ tests/unit/server/run-detail-captures.test.ts:176:14
+    174|       assert.equal(section.section, "captures");
+    175|       if (section.section !== "captures") throw new Error("wrong secti…
+    176|       assert.deepEqual(section.payload.artifacts[0]?.origins, [{ bundl…
+       |              ^
+    177|       assert.doesNotMatch(canonicalJsonStringify(section), /failureId|…
+    178|     },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 25 passed (28)
+   Start at  17:09:45
+   Duration  1.36s (transform 587ms, setup 0ms, import 811ms, tests 483ms, environment 0ms)
+

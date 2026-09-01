@@ -1,0 +1,14 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/archive-render.test.ts tests/unit/architecture/guard-manifest.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+···············································
+
+ Test Files  2 passed (2)
+      Tests  47 passed (47)
+   Start at  09:36:25
+   Duration  6.53s (transform 1.42s, setup 0ms, import 2.47s, tests 2.86s, environment 480ms)
+

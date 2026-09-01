@@ -24,6 +24,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import ts from "typescript";
 import { REPO_ROOT, gitVisibleFiles } from "./helpers/guard-files.js";
 import { unclaimedSpans } from "../../parity/helpers/geometry.js";
 import {
@@ -46,6 +47,7 @@ import {
 import { startFixtureServer } from "../../parity/helpers/fixture-bff.js";
 
 const PARITY_REFERENCES = join(REPO_ROOT, "tests/parity/references");
+const PARITY_JSON_REPORT = "tests/parity/.output/results.json";
 
 const METADATA: CaptureMetadata = {
   stateId: "queue-day",
@@ -73,6 +75,55 @@ function storedTree(name: string): string {
 
 function temporaryRoot(label: string): string {
   return mkdtempSync(join(tmpdir(), `hrauto-parity-${label}-`));
+}
+
+function assertExactA11yAttachmentDigest(source: string, path: string): void {
+  assert.equal(
+    source.match(/contentType:\s*"text\/yaml"/gu)?.length,
+    1,
+    `${path} must carry exactly one body-backed a11y attachment`,
+  );
+  assert.match(
+    source,
+    /const a11yName = `\$\{name\}\.a11y\.yml`;\s*const a11yDigest = createHash\("sha256"\)\.update\(snapshot\)\.digest\("hex"\);\s*test\.info\(\)\.annotations\.push\(\{\s*type: `a11y-attachment-sha256:\$\{a11yName\}`,\s*description: a11yDigest,\s*\}\);\s*await test\.info\(\)\.attach\(a11yName, \{ body: snapshot, contentType: "text\/yaml" \}\);/u,
+    `${path} must bind the uniquely named annotation digest to the exact body passed to attach`,
+  );
+}
+
+function assertStaticRequiredA11yEvidence(source: string, path: string, names: readonly string[]): void {
+  assert.match(
+    source,
+    /type:\s*"required-a11y-evidence",\s*description,/u,
+    `${path} must write static required-name declarations into Playwright test metadata`,
+  );
+  const sourceFile = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const declaredNames: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)
+        && node.expression.text === "requiredA11yEvidence") {
+      for (const argument of node.arguments) {
+        if (!ts.isStringLiteral(argument)) {
+          assert.fail(`${path} required a11y evidence declarations must use only static literal names`);
+        }
+        assert.match(argument.text, /^.+\.a11y\.yml$/u, `${path} carries an invalid required a11y evidence name`);
+        declaredNames.push(argument.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  for (const name of names) {
+    assert.equal(
+      declaredNames.filter((declared) => declared === name).length,
+      1,
+      `${path} must statically declare ${name} exactly once at its selected test`,
+    );
+  }
+  assert.deepEqual(
+    declaredNames.toSorted(),
+    [...names].toSorted(),
+    `${path} must carry the exact required a11y evidence inventory`,
+  );
 }
 
 /** A minimal but complete synthetic repo the bundle digest can be computed over. */
@@ -198,18 +249,124 @@ describe("parity lane reference authority (D132)", () => {
     const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
       scripts: Record<string, string>;
     };
-    assert.match(pkg.scripts["test:parity"] ?? "", /playwright test --config playwright\.parity\.config\.ts/);
+    assert.equal(pkg.scripts["test:parity"], "tsx scripts/verify-parity-json.ts assert");
     assert.doesNotMatch(
       pkg.scripts["test:parity"] ?? "",
       /update/,
       "the default parity lane must never refresh a reference",
     );
-    assert.match(pkg.scripts["test:parity:update"] ?? "", /^PARITY_UPDATE=1 playwright test/);
+    assert.equal(pkg.scripts["test:parity:update"], "tsx scripts/verify-parity-json.ts update");
 
     // The pixel half must take its update mode from the SAME switch, so the
     // two halves of a pair can never be refreshed independently.
     const config = readFileSync(join(REPO_ROOT, "playwright.parity.config.ts"), "utf8");
     assert.match(config, /updateSnapshots:\s*parityUpdateRequested\(\) \? "changed" : "none"/);
+  });
+
+  it("persists exact body-backed a11y attachments through the configured reporter", async () => {
+    const parityConfig = await import("../../../playwright.parity.config.js");
+    assert.deepEqual(parityConfig.default.reporter, [
+      ["list"],
+      ["json", { outputFile: PARITY_JSON_REPORT }],
+    ]);
+    const outputRoot = join(REPO_ROOT, "tests/parity/.output");
+    const reportPath = join(REPO_ROOT, PARITY_JSON_REPORT);
+    assert.equal(reportPath.startsWith(`${outputRoot}/`), true, "the reporter must persist only inside parity output");
+    assert.doesNotMatch(reportPath, /tests\/parity\/references/u, "reporter evidence may never target references");
+
+    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    assert.equal(pkg.scripts["test:parity"], "tsx scripts/verify-parity-json.ts assert");
+    assert.equal(pkg.scripts["test:parity:update"], "tsx scripts/verify-parity-json.ts update");
+    const verifier = readFileSync(join(REPO_ROOT, "scripts/verify-parity-json.ts"), "utf8");
+    for (const override of [
+      "PLAYWRIGHT_JSON_OUTPUT_FILE",
+      "PLAYWRIGHT_JSON_OUTPUT_DIR",
+      "PLAYWRIGHT_JSON_OUTPUT_NAME",
+    ]) {
+      assert.match(verifier, new RegExp(override), `the parity entry point must refuse ${override}`);
+    }
+    assert.match(verifier, /process\.argv\.slice\(2\)/u, "the parity entry point must forward npm arguments");
+
+    const specs = [
+      "tests/parity/diagnostic-bundle-dialog.spec.ts",
+      "tests/parity/run-captures.spec.ts",
+    ];
+    const diagnosticRequired = [
+      "diagnostic-lightbox-keyboard-focus.a11y.yml",
+      "diagnostic-lightbox--graphite-warm--1280x720.a11y.yml",
+      "diagnostic-lightbox--paper-ink--1280x720.a11y.yml",
+      "diagnostic-lightbox--portrait--320x844.a11y.yml",
+      "diagnostic-lightbox--portrait--390x844.a11y.yml",
+    ];
+    const receiptRequired = [
+      "run-captures-full-graphite-desktop.a11y.yml",
+      "run-capture-jpeg-graphite-desktop.a11y.yml",
+      "run-captures-full-paper-desktop.a11y.yml",
+      "run-capture-png-paper-phone.a11y.yml",
+      "run-captures-short-graphite-phone.a11y.yml",
+    ];
+    for (const path of specs) {
+      assertExactA11yAttachmentDigest(readFileSync(join(REPO_ROOT, path), "utf8"), path);
+    }
+    assertStaticRequiredA11yEvidence(
+      readFileSync(join(REPO_ROOT, specs[0] ?? ""), "utf8"),
+      specs[0] ?? "",
+      diagnosticRequired,
+    );
+    assertStaticRequiredA11yEvidence(
+      readFileSync(join(REPO_ROOT, specs[1] ?? ""), "utf8"),
+      specs[1] ?? "",
+      receiptRequired,
+    );
+    assert.match(verifier, /z\.lazy/u, "the persisted report schema must follow nested Playwright suites");
+    assert.match(verifier, /constants\.O_NOFOLLOW/u, "the verifier must open the report without following links");
+    assert.match(verifier, /readFileSync\(descriptor\)/u, "the verifier must parse the one descriptor read");
+    assert.match(verifier, /\/usr\/bin\/lockf/u, "the deep wrapper must hold an OS command lock");
+    assert.equal(parityConfig.default.retries, 0, "required evidence has exactly one retry-0 attempt");
+
+    const source = readFileSync(join(REPO_ROOT, specs[0] ?? ""), "utf8");
+    const mutated = source.replace(
+      '.update(snapshot).digest("hex")',
+      '.update(`${snapshot}mutated`).digest("hex")',
+    );
+    assert.notEqual(mutated, source, "the digest mutation control must change the real spec");
+    assert.throws(
+      () => assertExactA11yAttachmentDigest(mutated, "mutated diagnostic spec"),
+      /exact body passed to attach/u,
+    );
+    for (const name of [
+      "diagnostic-lightbox-keyboard-focus.a11y.yml",
+      "diagnostic-lightbox--portrait--320x844.a11y.yml",
+      "diagnostic-lightbox--portrait--390x844.a11y.yml",
+    ]) {
+      const withoutDeclaration = source.replace(name, "removed-required-evidence.a11y.yml");
+      assert.notEqual(withoutDeclaration, source, `the ${name} inventory control must mutate the real spec`);
+      assert.throws(
+        () => assertStaticRequiredA11yEvidence(withoutDeclaration, "mutated diagnostic spec", [name]),
+        new RegExp(`statically declare ${name.replaceAll(".", "\\.")}`),
+      );
+    }
+    const withUnexpectedDeclaration = source.replace(
+      'requiredA11yEvidence("diagnostic-lightbox-keyboard-focus.a11y.yml")',
+      'requiredA11yEvidence("diagnostic-lightbox-keyboard-focus.a11y.yml", "unexpected.a11y.yml")',
+    );
+    assert.notEqual(withUnexpectedDeclaration, source, "the extra-declaration control must mutate the real spec");
+    assert.throws(
+      () => assertStaticRequiredA11yEvidence(withUnexpectedDeclaration, "mutated diagnostic spec", diagnosticRequired),
+      /exact required a11y evidence inventory/u,
+    );
+    const withCommentedUnexpectedDeclaration = `${source}\n`
+      + 'test("unexpected declaration control", requiredA11yEvidence /* rationale */ ("unexpected.a11y.yml"), async () => {});\n';
+    assert.throws(
+      () => assertStaticRequiredA11yEvidence(
+        withCommentedUnexpectedDeclaration,
+        "comment-separated diagnostic spec",
+        diagnosticRequired,
+      ),
+      /exact required a11y evidence inventory/u,
+    );
   });
 
   it("allows ZERO moved pixels, and lets no caller widen that (D145)", async () => {

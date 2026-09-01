@@ -1,0 +1,15 @@
+{
+  "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 npm run test -- tests/unit/dry-run-scenario-composition.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-red.log'",
+  "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+  "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-red.log",
+  "started": "2026-08-30T16:52:05.971Z",
+  "sessions": [
+    53904
+  ],
+  "chunks": [
+    "f8e60f",
+    "6a806b"
+  ],
+  "finished": "2026-08-30T16:52:08.905Z",
+  "exitCode": 1
+}

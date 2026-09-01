@@ -1,0 +1,40 @@
+{
+  "provenance": "Fresh bounded A7 before-port identity; originals copied before any test or source edit",
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "ui": "3c89958afe63d1b8c0b5b8e8d01fffff25e94d89a2cbbc517ec7b799cdb4d461",
+  "scope": {
+    "src/server/dry-run-scenario/runtime.ts": {
+      "sha256": "d4b168c62bc0081c3930cfc3ee5ed1cd24148cd471e6dbc9a254f8283b2fcb63",
+      "bytes": 20100,
+      "saved": "duo-port-before-runtime.ts.txt"
+    },
+    "tests/unit/dry-run-scenario-composition.test.ts": {
+      "sha256": "c3d188b28fafd8370618d78d1e48772a55423cd3fbd5e2ded932b20e455c8965",
+      "bytes": 26892,
+      "saved": "duo-port-before-composition.test.ts.txt"
+    },
+    "AGENTS.md": {
+      "sha256": "a7acd7d280dc1a0bcf84b9447f10ea21687f5596f8ded2f198cc4171087b5588",
+      "bytes": 42700,
+      "saved": "duo-port-before-AGENTS.md.txt"
+    }
+  },
+  "protectedCount": 1626,
+  "protectedDigest": "95ad1eb76c8802d3c2588dc41d92f3a362cb7419b1cb7772dde9bb14cc6f35c9",
+  "protectedExclusion": [
+    "src/server/dry-run-scenario/runtime.ts",
+    "tests/unit/dry-run-scenario-composition.test.ts",
+    "AGENTS.md"
+  ],
+  "frozen": {
+    "src/cli.ts": "15827fad4ab985ffe09a5c170dfa101779592ecc9ffb6b91fed88b6ac25ef52b",
+    "src/server/dry-run-scenario/compose.ts": "f797f4fc70e74db9b54d378cc58d455204c9f861c917e095f6f340ad8d324bcb",
+    "src/server/worker/compose.ts": "cfcd689db67380ad7d8c8312a6da15c3dd6bfe5a87dfb97df5b320d971edd1af",
+    "src/core/duo-ceremony-gate.ts": "2929df2a161f74eb97ca1371b3c7f3d6febd3bdc37dda5123dbd86e75543eced",
+    "tests/unit/fixtures/duo-ceremony-fixtures.ts": "103dbdb0c65e4a80ae95ddff9db3bbc7a439212aaca2b0ce97cbc20038eafd03",
+    "src/domain/workflow/generated-build-manifest.ts": "66d399b7cc1370018778a9101dd9fedd6dcc478b02bd35b214aabe60288a5a49",
+    "tests/parity/archive-evidence.spec.ts": "e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0"
+  },
+  "specBytes": 23317,
+  "sourceCommit": "845ca5a115ee6eef3e10598e88ea0a7fdf361888"
+}

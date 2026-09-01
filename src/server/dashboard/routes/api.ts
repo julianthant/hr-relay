@@ -33,24 +33,39 @@ import { buildSettingsFacts, type SettingsQueryDeps } from "../queries/settings.
 import { buildSettingsEditor, type SettingsEditorQueryDeps } from "../queries/settings-editor.js";
 import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explorer.js";
 import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catalog.js";
-import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
 import {
   buildRunReceiptComparison,
   type RunReceiptComparisonQueryDeps,
 } from "../queries/run-comparison.js";
+import { readRunDetail, readRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
 import { buildRunAdvisory, type AdvisoryQueryDeps } from "../queries/advisory.js";
-import { readDiagnosticBundle, type DiagnosticBundleQueryDeps } from "../queries/diagnostic-bundle.js";
-import { buildArchiveIndex, buildArchivedRunDetail, type ArchiveQueryDeps } from "../queries/archive.js";
+import {
+  readDiagnosticBundle,
+  readDiagnosticBundleAttachment,
+  type DiagnosticBundleQueryDeps,
+} from "../queries/diagnostic-bundle.js";
+import {
+  IndexedArtifactBytesMissingError,
+  prepareDiagnosticArtifactLease,
+  type ArtifactBytesQueryDeps,
+} from "../queries/artifact-bytes.js";
+import {
+  ArchivedCaptureReadError,
+  buildArchiveIndex,
+  buildArchivedCaptureResource,
+  buildArchivedRunDetail,
+  prepareArchivedCaptureLease,
+  type ArchiveQueryDeps,
+} from "../queries/archive.js";
 import { activityReportCsv, activityReportCsvFileName } from "../queries/activity-export.js";
 import type { CrossDateSearchQueryService } from "../queries/search.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { OperatorXlsxExportService } from "../exports/operator-xlsx-export-service.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
-import { SectionUnavailableError } from "../../failures.js";
+import { DiagnosticBundleBytesMissingError, SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
 import { BulkRunCommandRequestSchema, CommandRequestSchema } from "../../../domain/commands.js";
 import { PreflightRerunCommandRequestSchema } from "../../../domain/preflight-contract.js";
-import { failureStatus, wireError } from "./failure-status.js";
 import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
 import type { createPreflightAuthority } from "../../../domain/preflight.js";
 import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
@@ -58,6 +73,8 @@ import {
   assertRequestActor,
   type RequestIdentityCheckpoint,
 } from "../request-identity.js";
+import { failureStatus, wireError, type WireError } from "./failure-status.js";
+import { verifiedByteResponse } from "./verified-byte-response.js";
 
 export interface DashboardAppDeps {
   /** D75: the one server-owned actor derivation every BFF request crosses. */
@@ -74,7 +91,7 @@ export interface DashboardAppDeps {
   /** D289's exact retry receipt-comparison authority; production always composes it. */
   readonly receiptComparison?: RunReceiptComparisonQueryDeps;
   /** D137 bundle readback; exact-id routes verify durable row and bytes before serving. */
-  readonly diagnosticBundles?: DiagnosticBundleQueryDeps;
+  readonly diagnosticBundles?: DiagnosticBundleQueryDeps & ArtifactBytesQueryDeps;
   /** Ref dashboard-surfaces §10.2's read-only Archive + the live version-bump state (2i-G, D179). */
   readonly archive: ArchiveQueryDeps;
   readonly commands: DashboardCommandService;
@@ -146,7 +163,7 @@ function sseSerialize(envelope: DashboardStreamEnvelope): string {
  */
 function captureRefusalResponse(refusal: CaptureRefusal): {
   status: 404 | 422;
-  body: Record<string, unknown>;
+  body: WireError;
 } {
   const code = `CAPTURE_${refusal.code.toUpperCase().replaceAll("-", "_")}`;
   return refusal.code === "unknown-session"
@@ -260,6 +277,9 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   });
 
   app.onError((error, c) => {
+    if (error instanceof ArchivedCaptureReadError) {
+      return c.json(wireError(error.code, error.message, false), 500);
+    }
     if (error instanceof CaptureRefusal) {
       const { status, body } = captureRefusalResponse(error);
       return c.json(body, status);
@@ -425,8 +445,39 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   });
   /* ── archive + activity (D179/D180, ref frontend-backend-integration §3.6) ───────────────────────── */
   app.get("/api/v1/archive", (c) => c.json(buildArchiveIndex(deps.archive)));
+  app.get("/api/v1/archive/:runId/captures/:artifactId/resource", async (c) => {
+    c.header("cache-control", "no-store");
+    if (deps.diagnosticBundles === undefined) {
+      throw new SectionUnavailableError("archived capture bytes are not available: no artifact store is composed");
+    }
+    return c.json(await buildArchivedCaptureResource(
+      { authority: deps.archive.authority, artifactReader: deps.diagnosticBundles.artifactReader },
+      c.req.param("runId"),
+      c.req.param("artifactId"),
+      c.req.raw.signal,
+    ));
+  });
   app.get("/api/v1/archive/:runId", (c) =>
     c.json(buildArchivedRunDetail(deps.archive, c.req.param("runId"))));
+
+  app.get("/artifacts/v1/archive/:runId/:artifactId", async (c) => {
+    c.header("cache-control", "no-store");
+    if (deps.diagnosticBundles === undefined) {
+      throw new SectionUnavailableError("archived capture bytes are not available: no artifact store is composed");
+    }
+    const artifact = await prepareArchivedCaptureLease(
+      { authority: deps.archive.authority, artifactReader: deps.diagnosticBundles.artifactReader },
+      c.req.param("runId"),
+      c.req.param("artifactId"),
+      c.req.raw.signal,
+    );
+    return verifiedByteResponse({
+      lease: artifact.lease,
+      method: c.req.method,
+      range: c.req.header("range"),
+      profile: "archive",
+    });
+  });
   app.get("/api/v1/reports/activity", (c) => {
     const from = c.req.query("from");
     const to = c.req.query("to");
@@ -467,7 +518,16 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     return c.json(deps.projection.buildDashboardDayWire(day));
   });
 
-  app.get("/api/v1/runs/:runId", (c) => c.json(buildRunDetail(deps.runDetail, c.req.param("runId"))));
+  app.get("/api/v1/runs/:runId", async (c) =>
+    c.json(await readRunDetail(deps.runDetail, c.req.param("runId"), c.req.raw.signal)));
+
+  // Failure responses are private evidence too. Install after the capture Host
+  // gate so a phone request still receives the byte-identical unrouted refusal.
+  app.use("/api/v1/diagnostic-bundles/*", async (c, next) => {
+    await next();
+    c.header("cache-control", "no-store");
+    c.header("x-content-type-options", "nosniff");
+  });
 
   app.get("/api/v1/runs/:runId/comparison", (c) => {
     if (deps.receiptComparison === undefined) {
@@ -482,7 +542,12 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     if (deps.diagnosticBundles === undefined) {
       throw new SectionUnavailableError("diagnostic bundle readback is not available: no diagnostic bundle authority is composed");
     }
-    const bundle = await readDiagnosticBundle(deps.diagnosticBundles, c.req.param("bundleId"));
+    const bundle = await readDiagnosticBundle(
+      deps.diagnosticBundles,
+      c.req.param("bundleId"),
+      undefined,
+      c.req.raw.signal,
+    );
     return c.json(bundle.wire);
   });
 
@@ -490,7 +555,12 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     if (deps.diagnosticBundles === undefined) {
       throw new SectionUnavailableError("diagnostic bundle readback is not available: no diagnostic bundle authority is composed");
     }
-    const bundle = await readDiagnosticBundle(deps.diagnosticBundles, c.req.param("bundleId"));
+    const bundle = await readDiagnosticBundle(
+      deps.diagnosticBundles,
+      c.req.param("bundleId"),
+      undefined,
+      c.req.raw.signal,
+    );
     return new Response(bundle.manifest, {
       status: 200,
       headers: {
@@ -501,13 +571,65 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     });
   });
 
-  app.get("/api/v1/runs/:runId/:section", (c) => {
+  /** A screenshot resource stays bound to the exact inspected bundle, not only its global artifact id. */
+  app.get("/api/v1/diagnostic-bundles/:bundleId/attachments/:artifactId", async (c) => {
+    if (deps.diagnosticBundles === undefined) {
+      throw new SectionUnavailableError(
+        "diagnostic attachment readback is not available: no diagnostic attachment authority is composed",
+      );
+    }
+    const attachment = await readDiagnosticBundleAttachment(
+      deps.diagnosticBundles,
+      c.req.param("bundleId"),
+      c.req.param("artifactId"),
+      c.req.raw.signal,
+    );
+    return verifiedByteResponse({
+      lease: attachment.lease,
+      method: c.req.method,
+      range: c.req.header("range"),
+      profile: "bundle",
+    });
+  });
+
+  app.get("/artifacts/v1/:artifactId", async (c) => {
+    if (deps.diagnosticBundles === undefined) {
+      throw new SectionUnavailableError(
+        "diagnostic artifact readback is not available: no diagnostic attachment authority is composed",
+      );
+    }
+    let artifact: Awaited<ReturnType<typeof prepareDiagnosticArtifactLease>>;
+    try {
+      artifact = await prepareDiagnosticArtifactLease(
+        {
+          authority: deps.diagnosticBundles.authority,
+          artifactReader: deps.diagnosticBundles.artifactReader,
+        },
+        c.req.param("artifactId"),
+        c.req.raw.signal,
+      );
+    } catch (error: unknown) {
+      if (error instanceof IndexedArtifactBytesMissingError) {
+        throw new DiagnosticBundleBytesMissingError(error.message, { cause: error });
+      }
+      throw error;
+    }
+    return verifiedByteResponse({
+      lease: artifact.lease,
+      method: c.req.method,
+      range: c.req.header("range"),
+      profile: "generic",
+    });
+  });
+
+  app.get("/api/v1/runs/:runId/:section", async (c) => {
     const cursor = c.req.query("cursor");
-    return c.json(buildRunSection(
+    return c.json(await readRunSection(
       deps.runDetail,
       c.req.param("runId"),
       c.req.param("section"),
-      ...(cursor === undefined ? [] : [cursor]),
+      cursor,
+      c.req.raw.signal,
     ));
   });
 

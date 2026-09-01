@@ -258,6 +258,9 @@
       - heading "Earlier run comparison" [level=3]
       - paragraph: Reviewed details from this run and its earlier attempt. Protected details remain withheld.
       - alert: Earlier run comparison was refused Authority could not establish a valid comparison for these two runs. The receipt above remains unchanged.
+    - region "Run captures":
+      - text: Captures
+      - alert: Captures could not be read Live capture availability is missing for run 00000000-0091-4000-8000-000000000091.
   - complementary "Run data":
     - text: Run data
     - button "Hide run data"

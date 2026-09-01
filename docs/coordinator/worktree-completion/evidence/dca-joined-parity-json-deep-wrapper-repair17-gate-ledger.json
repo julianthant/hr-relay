@@ -1,0 +1,119 @@
+{
+  "commands": {
+    "focused": "env VITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/scripts/verify-parity-json.test.ts tests/unit/architecture/parity-reference-authority.test.ts",
+    "typecheck": "/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run typecheck",
+    "lint": "/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run lint"
+  },
+  "runs": [
+    {
+      "name": "producer-output-inventory-red",
+      "chunk": "1ef711",
+      "exit": 1,
+      "result": "8 failed / 34 passed: six producer-success states, forwarded --output, and missing selected-producer declaration remained accepted",
+      "log": "dca-joined-parity-json-deep-wrapper-repair17-red-01.log",
+      "logSha256": "af9f3f3cb28037008f7e5efaa008e658787cf3a440494d8fcdf52844c785476b",
+      "logBytes": 3500
+    },
+    {
+      "name": "inventory-control-test-correction",
+      "chunk": "bb915d",
+      "exit": 1,
+      "result": "1 failed / 41 passed: the new mutation retained the target as a prefix and was corrected without changing the authority assertion",
+      "log": "dca-joined-parity-json-deep-wrapper-repair17-green-01.log",
+      "logSha256": "04444317bcb09d3e10a0f5dc06b526ee79726080c66676c013b1b7c0b9b544a7",
+      "logBytes": 1365
+    },
+    {
+      "name": "producer-output-inventory-green",
+      "chunk": "82bfe7",
+      "exit": 0,
+      "result": "2 files / 42 tests passed",
+      "log": "dca-joined-parity-json-deep-wrapper-repair17-green-02.log",
+      "logSha256": "372535e7d84862efbc870be43f5325a3fceebdff51f6be12c62dcb85ce625e4c",
+      "logBytes": 498
+    },
+    {
+      "name": "canonical-lock-and-verification-phase-red",
+      "chunk": "f235bb",
+      "exit": 1,
+      "result": "3 failed / 27 passed: TMPDIR lock parent, alias identity, and verification-phase callback were absent",
+      "log": "dca-joined-parity-json-deep-wrapper-repair17-red-lock-02.log",
+      "logSha256": "200d08e9ba2b1f81d26df350c6c5b9ffcf2ce4d40f004c35e1018491964784bf",
+      "logBytes": 3483
+    },
+    {
+      "name": "canonical-lock-and-verification-phase-green",
+      "chunk": "7cedc3",
+      "exit": 0,
+      "result": "1 file / 30 tests passed",
+      "log": "dca-joined-parity-json-deep-wrapper-repair17-green-lock-03.log",
+      "logSha256": "9f1738988b356f3a0233972c08302990a16b8fff1c707da0c97998215994313f",
+      "logBytes": 413
+    },
+    {
+      "name": "default-launch-runner-red",
+      "chunk": "04bd80",
+      "exit": 1,
+      "result": "1 failed / 30 passed: the injected runner seam was absent, so Playwright CLI resolved the intended default tuple and refused the temporary repo's missing config before starting a browser",
+      "log": "dca-joined-parity-json-deep-wrapper-repair17-red-launch-03.log",
+      "logSha256": "8c53f4d50ffee6cc1d39413c677f020eeb06e42de298b22d3bfc524bacc2d700",
+      "logBytes": 1925
+    },
+    {
+      "name": "default-launch-runner-green",
+      "chunk": "5fe090",
+      "exit": 0,
+      "result": "1 file / 31 tests passed",
+      "log": "dca-joined-parity-json-deep-wrapper-repair17-green-launch-04.log",
+      "logSha256": "2b838876481c98bfa4c343408d95f7c6dd38f052361305fca34d8f367a35bfcc",
+      "logBytes": 415
+    },
+    {
+      "name": "focused-pre-typecheck",
+      "chunk": "bfb204",
+      "exit": 0,
+      "result": "2 files / 45 tests passed",
+      "log": "dca-joined-parity-json-deep-wrapper-repair17-focused-green-05.log",
+      "logSha256": "85f8236d07d03a441927265dc578051bc940b213555a1293a967c2e2cb214bcb",
+      "logBytes": 504
+    },
+    {
+      "name": "typecheck-red",
+      "chunk": "93bcbd",
+      "exit": 2,
+      "result": "three synthetic aggregate-fixture type constructions required explicit optional fields; production wrapper types were clear",
+      "log": "dca-joined-parity-json-deep-wrapper-repair17-typecheck-01.log",
+      "logSha256": "c37a10e37efc2dee34f6f9861859a04d3cb20d167d5e6c23fc348c263fa0f23e",
+      "logBytes": 5787
+    },
+    {
+      "name": "focused-final",
+      "chunk": "69812c",
+      "exit": 0,
+      "result": "2 files / 45 tests passed",
+      "log": "dca-joined-parity-json-deep-wrapper-repair17-focused-green-06.log",
+      "logSha256": "c7137547a7ffbc7243d450a14e5d8148cbf8df0678a2bbc0e0b21b63647fbdca",
+      "logBytes": 504
+    },
+    {
+      "name": "typecheck-final",
+      "chunk": "2410ac",
+      "exit": 0,
+      "result": "tsc --noEmit passed",
+      "log": "dca-joined-parity-json-deep-wrapper-repair17-typecheck-02.log",
+      "logSha256": "ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036",
+      "logBytes": 57
+    },
+    {
+      "name": "lint-final",
+      "session": 37239,
+      "chunks": ["2d436b", "9eb2aa"],
+      "exit": 0,
+      "result": "ESLint passed with zero warnings",
+      "log": "dca-joined-parity-json-deep-wrapper-repair17-lint-01.log",
+      "logSha256": "cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385",
+      "logBytes": 81
+    }
+  ],
+  "browserBuildCoverageParityReferenceUpdate": "not run; the one red launch test reached Playwright config resolution only and started no browser"
+}

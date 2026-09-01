@@ -1,0 +1,11 @@
+{
+  "stateId": "diagnostic-bundle-gallery",
+  "viewport": "1280x720",
+  "theme": "graphite-warm",
+  "adapter": "fixture",
+  "fixtureId": "diagnostic-bundle-gallery",
+  "descriptorHash": "4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-08-03",
+  "variant": "default"
+}

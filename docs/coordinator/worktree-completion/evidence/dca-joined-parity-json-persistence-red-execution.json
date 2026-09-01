@@ -1,0 +1,15 @@
+{
+  "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/parity-reference-authority.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca-joined-parity-json-persistence-red.log'",
+  "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+  "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca-joined-parity-json-persistence-red.log",
+  "started": "2026-08-31T18:49:08.531Z",
+  "sessions": [
+    99143
+  ],
+  "chunks": [
+    "7b97a4",
+    "abbdd8"
+  ],
+  "finished": "2026-08-31T18:49:11.731Z",
+  "exit": 1
+}

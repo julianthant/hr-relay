@@ -1,0 +1,12 @@
+# A10.4D — owning as-built summaries after D292
+Sequential existing sup_luna/high240k220k, ONLY after supervisor says priorwriterstopped. Every command/edit explicitly in /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4. Read current root/nearestAGENTS, original A10brief/profile and reports/dca4-a10-review-docs.md. Use review/docs route; /tdd notapplicable to docs/comment-only diff.
+Scope: docs/rebuild/reference/frontend-backend-integration.md, docs/rebuild/reference/dashboard-surfaces.md, ONE comment above readRunDetail in src/server/dashboard/queries/run-detail.ts. No executable change, otherowner/policy updates, board/foreignwrites, gatesbrowser/build/coverage/parity/commits.
+Parentverified:
+- frontend-backend-integration §section inventory lines511–517 captures declaredpending/nothingservesbytes stale; §5.1.3 lines1302–1313 servedlist/left captures stale. Reconcile exactcaptures fact with existing D292block, leave3otherunservedarms and separategenericresource-status/gallery/browser/fullgate limits intact.
+- new query comment descriptor-free false: buildRunDetail resolvesdescriptor642; archiveSnapshotSource queries/archive.ts535 uses it. Say synchronous freeze independentofasync captureverification; descriptor-free applies laterfrozenrecordread onlyifowner evidence supports.
+- parent additional same-source summary dashboard-surfaces §9.3 lines2937–2942 lists captures neveravailable nexttoD292complete. Correct asyncverified live capturecapability while tabs stillLogs/Receipt and unservedReview/People retained.
+- inspect directlyaffected nearby captures/byteavailability summaries (e.g.dashboard-surfaces artifactblock3980) only, correct precise implementedmetadata/consumer vsremainingstatus/gallery ifcontradicted. Preserve historicaldatedobservations and do notmarkbroaderroadmaptaskscomplete or waiveacceptance.
+No new claims; cite real sourceasbuilt and retain actualbrowser/D291/fullgatelimits. Do NOT copy rootdocs wholesale/D290/D291newpolicy.
+Read frozenbeforepins; save exactbefore/after/isolatedpatch, prove sourcecomment-only delta and otherpathsunchanged. Run nonmutating roadmap:check and diffcheck only; if derivedroadmapis genuinelystale, report before generating (parentowns finalfreshness). Parent handles finalcodegatesafter combinedrepairs; no unneededunitfulllint/testsfor proseonly.
+Unique report reports/dca4-a10-docs-repair.md; evidence/dca4-a10-docs-* in owncoordinationroot. No report write outsideit. Return <=300words changedfacts/exacthashes/proof/limits, releasewriter.
+

@@ -273,6 +273,9 @@
           - term: This run
           - definition: "\"2026-08-02\""
         - listitem: Protected reference Withheld to protect this detail.
+    - region "Run captures":
+      - text: Captures
+      - alert: Captures could not be read Live capture availability is missing for run 00000000-0090-4000-8000-000000000090.
   - complementary "Run data":
     - text: Run data
     - button "Hide run data"

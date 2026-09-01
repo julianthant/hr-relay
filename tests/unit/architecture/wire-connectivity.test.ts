@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Wire connectivity — ref frontend-backend-integration §8.8, both directions (D107's pattern one layer up).
  *
@@ -37,10 +38,16 @@
  * half nobody wrote down.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
+import { ArchivedRunDetailWireSchema } from "../../../src/domain/dashboard/archive.js";
+import { FIXTURE_ARCHIVE_EVIDENCE_CAPTURE, FIXTURE_ARCHIVE_EVIDENCE_RUN } from "../../parity/helpers/fixture-archive-evidence.js";
+import { archiveBrowserRouteReferences, type ArchiveBrowserProbe } from "./helpers/archive-browser-route-references.js";
+import { CAPTURE_RUN_A, CAPTURE_RUN_B, CAPTURE_ARTIFACT_A, CAPTURE_ARTIFACT_B, CAPTURE_BASE_URL, captureDetail, captureImage, captureButton, pressCaptureControl, mountCaptureApp } from "../dashboard/fixtures/run-captures-app-fixture.js";
+import { runCaptureBrowserRouteReferences, type RunCaptureBrowserProbe } from "./helpers/run-capture-browser-route-references.js";
 import { ActionCommandKeySchema } from "../../../src/domain/dashboard/actions.js";
 import {
   ParkedWriteDetailWireSchema,
@@ -54,7 +61,10 @@ import { CommandRequestSchema } from "../../../src/domain/commands.js";
 import { RunPrioritySchema } from "../../../src/domain/run/envelope.js";
 import { RunOutcomeSchema, RunRecordSchema, RunStateSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { SubjectEvidenceSchema, WriteIntentRecordSchema } from "../../../src/domain/write-safety.js";
-import { availableSections } from "../../../src/server/dashboard/queries/run-detail.js";
+import { availableSections, readRunDetail, readRunSection } from "../../../src/server/dashboard/queries/run-detail.js";
+import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { DiagnosticBundleSchema } from "../../../src/domain/trust/diagnostic.js";
+import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
 import {
   makeWorld,
   queuedEventOf,
@@ -70,10 +80,14 @@ import {
   projectedCommandKeys,
   normalizeClientPath,
   readPendingWireBindings,
+  routeConnectivityProblems,
   routeMatches,
   servedRoutes,
   PENDING_WIRE_BINDINGS_PATH,
+  PendingWireBindingSchema,
   type PendingWireBinding,
+  type ClientRouteReference,
+  type ServedRoute,
 } from "./helpers/wire-connectivity.js";
 
 const worlds: DashboardWorld[] = [];
@@ -96,6 +110,115 @@ const API_ROUTES_FILE = "src/server/dashboard/routes/api.ts";
 const CLIENT_ROOTS = ["src/dashboard/client", "src/dashboard/phone/capture-client.ts"];
 
 const MANIFEST = readPendingWireBindings();
+
+const ARCHIVE_ROUTE = "/artifacts/v1/archive/:runId/:artifactId";
+const GENERIC_ROUTE = "/artifacts/v1/:artifactId";
+const ARCHIVE_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/archive/:runId/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/archive/:runId/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
+const GENERIC_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
+
+function archiveProbe(runId: string = FIXTURE_ARCHIVE_EVIDENCE_RUN.runId, artifactId: string = FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId): ArchiveBrowserProbe {
+  const seed = FIXTURE_ARCHIVE_EVIDENCE_RUN;
+  if (seed.sections.state !== "present") throw new Error("the Archive guard fixture requires frozen sections");
+  const detail = ArchivedRunDetailWireSchema.parse({
+    ...seed, runId, row: { ...seed.row, runId },
+    detail: { ...seed.detail, runId, header: { ...seed.detail.header, runId } },
+    evidence: { ...seed.evidence, artifactIds: [artifactId] },
+    sections: { state: "present", value: { ...seed.sections.value,
+      captures: { state: "present", value: [{ ...FIXTURE_ARCHIVE_EVIDENCE_CAPTURE, artifactId }] },
+    } },
+  });
+  return { detail, response: { runId, artifactId,
+    resource: { state: "available", downloadUrl: `/artifacts/v1/archive/${runId}/${artifactId}` },
+  } };
+}
+
+/** Observation failures remain fatal AND the same accounting still reports orphan routes. */
+async function auditArchiveBrowser(probe: ArchiveBrowserProbe, accounting: {
+  readonly routes?: readonly ServedRoute[];
+  readonly references?: readonly ClientRouteReference[];
+  readonly pending?: readonly PendingWireBinding[];
+} = {}) {
+  const routes = accounting.routes ?? servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8"));
+  const scanned = accounting.references ?? clientRouteReferences(CLIENT_ROOTS.map((root) => join(REPO_ROOT, root)));
+  const observation = await archiveBrowserRouteReferences(probe).then(
+    (references) => ({ state: "observed", references }) as const,
+    (error: unknown) => ({ state: "refused", error }) as const,
+  );
+  const references = [...scanned, ...(observation.state === "observed" ? observation.references : [])];
+  const problems = routeConnectivityProblems({
+    routes, references, pending: accounting.pending ?? MANIFEST, apiRoutesFile: API_ROUTES_FILE, clientRoots: CLIENT_ROOTS,
+  });
+  return { observation, references, problems: [
+    ...(observation.state === "refused"
+      ? [observation.error instanceof Error ? observation.error.message : "Archive browser observation threw a non-Error value"] : []),
+    ...problems,
+  ] };
+}
+
+function withoutNativeSinks(selector: string): NonNullable<ArchiveBrowserProbe["beforeObservation"]> {
+  return (dialog) => {
+    const nodes = [...dialog.querySelectorAll(selector)];
+    assert.ok(nodes.length > 0, "the native-sink negative control found no real sink to remove");
+    const replacements = nodes.map((node) => {
+      const placeholder = document.createComment("A8 temporarily removed native sink");
+      node.replaceWith(placeholder);
+      return { node, placeholder };
+    });
+    return () => { for (const { node, placeholder } of replacements) placeholder.replaceWith(node); };
+  };
+}
+
+function runCaptureProbe(runId: string = CAPTURE_RUN_A, artifactId: string = CAPTURE_ARTIFACT_A): RunCaptureBrowserProbe {
+  return { requestedRunId: runId, artifactId, detail: captureDetail(runId),
+    response: { section: "captures", payload: { runId, artifacts: [captureImage(artifactId)] } } };
+}
+
+async function auditRunCaptureBrowser(probe: RunCaptureBrowserProbe, accounting: {
+  readonly routes?: readonly ServedRoute[];
+  readonly references?: readonly ClientRouteReference[];
+  readonly pending?: readonly PendingWireBinding[];
+} = {}) {
+  const observation = await runCaptureBrowserRouteReferences(probe).then(
+    references => ({ state: "observed", references }) as const,
+    (error: unknown) => ({ state: "refused", error }) as const,
+  );
+  const references = [...(accounting.references ?? clientRouteReferences(CLIENT_ROOTS.map(root => join(REPO_ROOT, root)))),
+    ...(observation.state === "observed" ? observation.references : [])];
+  const problems = routeConnectivityProblems({
+    routes: accounting.routes ?? servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8")),
+    references, pending: accounting.pending ?? MANIFEST, apiRoutesFile: API_ROUTES_FILE, clientRoots: CLIENT_ROOTS,
+  });
+  return { observation, references, problems: [
+    ...(observation.state === "refused" ? [observation.error instanceof Error ? observation.error.message : "Run capture observation threw a non-Error value"] : []),
+    ...problems,
+  ] };
+}
+
+function assertRefusedRunCapture(result: Awaited<ReturnType<typeof auditRunCaptureBrowser>>, message: RegExp): void {
+  assert.equal(result.observation.state, "refused", "the invalid generic observation was credited");
+  assert.match(result.problems[0], message);
+  assert.deepEqual(result.problems.slice(1), [ARCHIVE_ORPHAN, GENERIC_ORPHAN]);
+  assert.equal(result.references.some(({ path }) => routeMatches(GENERIC_ROUTE, path)), false);
+}
+
+function changedNativeAttribute(selector: string, attribute: string, value: string): NonNullable<ArchiveBrowserProbe["beforeObservation"]> {
+  return (dialog) => {
+    const node = dialog.querySelector(selector);
+    assert.ok(node instanceof HTMLElement, "the attribute negative control found no native sink");
+    const before = node.getAttribute(attribute);
+    assert.ok(before !== null, "the native attribute was already missing before the negative control");
+    node.setAttribute(attribute, value);
+    return () => { node.setAttribute(attribute, before); };
+  };
+}
+
+function assertRefusedArchive(result: Awaited<ReturnType<typeof auditArchiveBrowser>>, message: RegExp): void {
+  assert.equal(result.observation.state, "refused", "the invalid browser observation was credited");
+  assert.match(result.problems[0], message);
+  assert.deepEqual(result.problems.slice(1), [ARCHIVE_ORPHAN, GENERIC_ORPHAN]);
+  assert.equal(result.references.some(({ path }) => routeMatches(ARCHIVE_ROUTE, path)), false,
+    "a refused observation still supplied an Archive reference");
+}
 
 function bindingsFor(prefix: string): readonly PendingWireBinding[] {
   return MANIFEST.filter(({ binding }) => binding.startsWith(prefix));
@@ -163,7 +286,7 @@ function lifecycleCases(): readonly LifecycleCase[] {
 }
 
 /** Every section any lifecycle can advertise, with and without the trust seam. */
-function reachableSections(): { readonly reachable: ReadonlySet<string>; readonly statesSwept: ReadonlySet<string> } {
+async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<string>; readonly statesSwept: ReadonlySet<string> }> {
   const world = makeWorld();
   worlds.push(world);
   queuedEventOf(world, { seed: 1 });
@@ -191,6 +314,44 @@ function reachableSections(): { readonly reachable: ReadonlySet<string>; readonl
     for (const section of availableSections(row, record)) reachable.add(section);
     for (const section of availableSections(row, record, trust)) reachable.add(section);
   }
+  // Captures are an async verified capability, not a lifecycle-derived constant.
+  // Keep the complete lifecycle sweep above; add what the public read actually
+  // advertises after canonical SQLite diagnostic authority verifies real bytes.
+  const database = AuthorityDatabase.open({ path: join(world.stateRoot, "wire-capture-authority.db"),
+    busyTimeoutMs: 1000, migrationOwner: "wire-capture-census" }, world.clock);
+  try {
+    const run = world.authority.getRun(uuidOf(1));
+    assert.ok(run);
+    database.authority.runs.enqueue(run);
+    const bytes = Buffer.from("[]");
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const deps = { stateRoot: world.stateRoot, projection: world.projection,
+      authority: { ...world.authority, getRun: (id: string) => database.authority.runs.get(id) },
+      descriptors: { resolve: () => undefined },
+      captures: { authority: database.authority.diagnosticBundles, artifactReader: {
+        verify: async (ref: { id: string; bytes: number; sha256: string; mediaType: string }) => {
+          assert.deepEqual(ref, { id: uuidOf(931), bytes: 2, sha256: digest, mediaType: "application/json" });
+        },
+        prepare: async () => { throw new Error("census must not prepare response bytes"); },
+      } },
+    };
+    assert.equal((await readRunDetail(deps, uuidOf(1))).availableSections.includes("captures"), false);
+    const content = { runId: uuidOf(1), origin: { kind: "operator-request", requestedBy: "local-operator" },
+      capturedAt: PARK_INSTANT, configFingerprint: run.envelope.configFingerprint,
+      descriptorFingerprint: run.envelope.contractFingerprint, redaction: { fields: [], warnings: [] },
+      attachments: [{ kind: "console-summary", artifactId: uuidOf(931), mediaType: "application/json",
+        byteLength: bytes.length, digest, sensitivity: "redacted" }],
+    };
+    const { capturedAt, ...stored } = content;
+    database.authority.diagnosticBundles.insert(DiagnosticBundleSchema.parse({ ...stored,
+      bundleId: uuidOf(932), createdAt: capturedAt, contentDigest: deriveDiagnosticContentDigest(content),
+      retention: { kind: "ordinary", purgeAfter: "2026-09-02T17:00:00.000Z" },
+    }));
+    assert.equal((await readRunSection(deps, uuidOf(1), "captures")).section, "captures");
+    const detail = await readRunDetail(deps, uuidOf(1));
+    assert.deepEqual(detail.captures, { state: "available", artifactCount: 1 }, "the async census did not verify its canonical capture");
+    for (const section of detail.availableSections) reachable.add(section);
+  } finally { database.close(); }
   return { reachable, statesSwept };
 }
 
@@ -285,11 +446,68 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
       "the dedicated comparison authority must be registered before the generic run-section route",
     );
   });
-  it("has every run-detail section arm either reachable or declared", () => {
+  it("A10 cleanup preserves prior history, globals and foreign DOM after a native preview", async () => {
+    const originalUrl = window.location.href;
+    const originalState: unknown = window.history.state;
+    const foreign = document.createElement("aside");
+    foreign.textContent = "Unrelated test-owned DOM";
+    document.body.append(foreign);
+    const priorChildren = [...document.body.childNodes];
+    const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    const priorResize = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
+    window.history.replaceState({ checkpoint: "A10-prior" }, "", "/before-capture?keep=1#prior");
+    try {
+      const mounted = await mountCaptureApp({ runId: CAPTURE_RUN_A, runs: new Map([[CAPTURE_RUN_A, {
+        detail: () => captureDetail(), captures: () => Promise.resolve(Response.json({ section: "captures",
+          payload: { runId: CAPTURE_RUN_A, artifacts: [captureImage()] } })),
+      }]]) });
+      try {
+        await pressCaptureControl(captureButton("Receipt"));
+        await pressCaptureControl(captureButton(`Open capture ${CAPTURE_ARTIFACT_A}`));
+      } finally { await mounted.unmount(); }
+      assert.equal(window.location.pathname + window.location.search + window.location.hash, "/before-capture?keep=1#prior");
+      assert.deepEqual(window.history.state, { checkpoint: "A10-prior" });
+      assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), priorAct);
+      assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver"), priorResize);
+      assert.equal(document.body.childNodes.length, priorChildren.length);
+      assert.equal([...document.body.childNodes].every((node, i) => node === priorChildren[i]), true);
+    } finally {
+      foreign.remove();
+      window.history.replaceState(originalState, "", originalUrl);
+    }
+  });
+
+  it("A10 cleanup restores owned state even when a real root effect cleanup throws", async () => {
+    const priorUrl = window.location.href;
+    const priorState: unknown = window.history.state;
+    const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    const priorResize = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
+    const priorChildren = [...document.body.childNodes];
+    const mounted = await mountCaptureApp({ runId: CAPTURE_RUN_A, onUnmount: () => { throw new Error("A10 root cleanup sentinel"); },
+      runs: new Map([[CAPTURE_RUN_A, {
+        detail: () => captureDetail(), captures: () => Promise.resolve(Response.json({ section: "captures",
+          payload: { runId: CAPTURE_RUN_A, artifacts: [captureImage()] } })),
+      }]]),
+    });
+    try {
+      await pressCaptureControl(captureButton("Receipt"));
+      await pressCaptureControl(captureButton(`Open capture ${CAPTURE_ARTIFACT_A}`));
+    } finally {
+      await assert.rejects(() => mounted.unmount(), /Capture app cleanup failed: A10 root cleanup sentinel/u);
+    }
+    assert.equal(window.location.href, priorUrl);
+    assert.deepEqual(window.history.state, priorState);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), priorAct);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver"), priorResize);
+    assert.equal(document.body.childNodes.length, priorChildren.length);
+    assert.equal([...document.body.childNodes].every((node, i) => node === priorChildren[i]), true);
+  });
+
+  it("has every run-detail section arm either reachable or declared", async () => {
     const arms = discriminantValues(RunDetailSectionResponseSchema, "section");
     assert.ok(arms.length > 0, "the section union introspection found no arms at all");
 
-    const { reachable, statesSwept } = reachableSections();
+    const { reachable, statesSwept } = await reachableSections();
     // The sweep is only evidence if it covered every state the schema allows.
     assert.deepEqual(
       [...statesSwept].sort(),
@@ -385,44 +603,279 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     assert.deepEqual(problems, [], `wire connectivity — commands:\n  ${problems.join("\n  ")}`);
   });
 
-  it("resolves every client-called path to a served route, and declares every uncalled route", () => {
+  it("resolves every client-called path to a served route, and declares every uncalled route", async () => {
     const routes = servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8"));
     assert.ok(routes.length > 10, `route extraction from ${API_ROUTES_FILE} found only ${String(routes.length)}`);
     const references = clientRouteReferences(CLIENT_ROOTS.map((root) => join(REPO_ROOT, root)));
     assert.ok(references.length > 10, "client path extraction found almost nothing; the scan is broken");
 
-    const declared = new Map(
-      bindingsFor("route:").map((entry) => [entry.binding.slice("route:".length), entry]),
-    );
-    const problems: string[] = [];
-    for (const reference of references) {
-      if (routes.some(({ path }) => routeMatches(path, reference.path))) continue;
-      problems.push(
-        `${reference.file} calls ${reference.path}, which ${API_ROUTES_FILE} does not register`,
-      );
-    }
-    for (const route of routes) {
-      const key = `${route.method} ${route.path}`;
-      const called = references.some(({ path }) => routeMatches(route.path, path));
-      if (called && declared.has(key)) {
-        problems.push(
-          `${PENDING_WIRE_BINDINGS_PATH} declares route:${key} unconsumed, but a client now calls it`,
-        );
-      }
-      if (!called && !declared.has(key)) {
-        problems.push(
-          `${API_ROUTES_FILE} serves ${key} and no client under ${CLIENT_ROOTS.join(", ")} calls it. `
-          + `Either wire a caller or add {"binding": "route:${key}", "direction": "served-unconsumed", …} `
-          + `to ${PENDING_WIRE_BINDINGS_PATH} naming the consumer that will`,
-        );
-      }
-    }
-    for (const key of declared.keys()) {
-      if (!routes.some((route) => `${route.method} ${route.path}` === key)) {
-        problems.push(`${PENDING_WIRE_BINDINGS_PATH} declares route:${key}, which ${API_ROUTES_FILE} does not serve`);
-      }
-    }
+    const archive = await auditArchiveBrowser(archiveProbe(), { routes, references });
+    assert.equal(archive.observation.state, "observed", archive.problems.join("\n"));
+    const { problems } = await auditRunCaptureBrowser(runCaptureProbe(), { routes, references: archive.references });
     assert.deepEqual(problems, [], `wire connectivity — routes:\n  ${problems.join("\n  ")}`);
+  });
+
+  it.each([[CAPTURE_RUN_A, CAPTURE_ARTIFACT_A], [CAPTURE_RUN_B, CAPTURE_ARTIFACT_B]])(
+    "A10 credits only actual Receipt/Preview native sinks for run %s artifact %s", async (runId, artifactId) => {
+      const result = await auditRunCaptureBrowser(runCaptureProbe(runId, artifactId));
+      assert.equal(result.observation.state, "observed", result.problems.join("\n"));
+      if (result.observation.state !== "observed") throw new Error("Run capture observation refused");
+      assert.deepEqual(result.observation.references, [
+        { file: "src/dashboard/surfaces/run-captures.tsx", path: `/artifacts/v1/${artifactId}` },
+        { file: "src/dashboard/surfaces/run-captures.tsx", path: `/artifacts/v1/${artifactId}` },
+      ]);
+      assert.deepEqual(result.problems, [ARCHIVE_ORPHAN]);
+    },
+  );
+
+  for (const [name, selector, message] of [
+    ["download", "a[download]", /missing native download href sink/u],
+    ["image", "img[src]", /missing native image src sink/u],
+    ["both", "a[download], img[src]", /missing native download href sink/u],
+  ] as const) {
+    it(`A10 removing actual ${name} sinks retains observation failure and generic orphan`, async () => {
+      assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(), beforeObservation: withoutNativeSinks(selector) }), message);
+    });
+  }
+
+  it("A10 an unused builder supplies no generic consumption credit", async () => {
+    const unused = () => `/artifacts/v1/${CAPTURE_ARTIFACT_A}`;
+    assert.equal(typeof unused, "function");
+    assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(), beforeObservation: withoutNativeSinks("a[download], img[src]") }),
+      /missing native download href sink/u);
+  });
+
+  it("A10 refuses a foreign native image src even when its download href is correct", async () => {
+    assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(),
+      beforeObservation: changedNativeAttribute("img[src]", "src", `${CAPTURE_BASE_URL}/artifacts/v1/${CAPTURE_ARTIFACT_B}`),
+    }), /exact canonical generic artifact URL/u);
+  });
+
+  for (const [name, value] of [
+    ["foreign origin", `https://foreign.invalid/artifacts/v1/${CAPTURE_ARTIFACT_A}`],
+    ["foreign artifact", `${CAPTURE_BASE_URL}/artifacts/v1/${CAPTURE_ARTIFACT_B}`],
+    ["Archive arity", `${CAPTURE_BASE_URL}/artifacts/v1/archive/${CAPTURE_RUN_A}/${CAPTURE_ARTIFACT_A}`],
+    ["bundle arity", `${CAPTURE_BASE_URL}/artifacts/v1/diagnostic-bundles/${CAPTURE_RUN_A}/${CAPTURE_ARTIFACT_A}`],
+    ["extra segment", `${CAPTURE_BASE_URL}/artifacts/v1/${CAPTURE_ARTIFACT_A}/extra`],
+    ["query", `${CAPTURE_BASE_URL}/artifacts/v1/${CAPTURE_ARTIFACT_A}?extra=1`],
+  ]) {
+    it(`A10 refuses native ${name} instead of crediting another resource family`, async () => {
+      assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(),
+        beforeObservation: changedNativeAttribute("a[download]", "href", value),
+      }), /exact canonical generic artifact URL/u);
+    });
+  }
+
+  it.each(["foreign run", "foreign artifact", "wrong section", "extra key", "invalid origin"])(
+    "A10 refuses %s returned to the actual app", async fault => {
+      const capture = captureImage();
+      const response = fault === "wrong section" ? { section: "logs", payload: { runId: CAPTURE_RUN_A, rows: [], notes: [] } }
+        : { section: "captures", payload: { runId: fault === "foreign run" ? CAPTURE_RUN_B : CAPTURE_RUN_A,
+          artifacts: [fault === "foreign artifact" ? captureImage(CAPTURE_ARTIFACT_B)
+            : fault === "invalid origin" ? { ...capture, origins: [{ ...capture.origins[0], originKind: "invented" }] } : capture],
+          ...(fault === "extra key" ? { extra: true } : {}),
+        } };
+      assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(), response }),
+        fault === "foreign artifact" ? /foreign artifactId/u : /Run capture app read refused/u);
+    },
+  );
+
+  it("A10 preserves primary observation and real cleanup failures without granting credit", async () => {
+    const priorUrl = window.location.href;
+    const priorChildren = [...document.body.childNodes];
+    const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    const result = await auditRunCaptureBrowser({ ...runCaptureProbe(),
+      beforeObservation: () => { throw new Error("A10 primary observation sentinel"); },
+      onUnmount: () => { throw new Error("A10 secondary cleanup sentinel"); },
+    });
+    assertRefusedRunCapture(result, /primary observation sentinel.*secondary cleanup sentinel/u);
+    assert.equal(window.location.href, priorUrl);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), priorAct);
+    assert.equal(document.body.childNodes.length, priorChildren.length);
+    assert.equal([...document.body.childNodes].every((node, i) => node === priorChildren[i]), true);
+  });
+
+  it("A10 a real root mount failure refuses credit and restores the pre-mount environment", async () => {
+    const priorUrl = window.location.href;
+    const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    const priorResize = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
+    const priorChildren = [...document.body.childNodes];
+    assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(),
+      onMount: () => { throw new Error("A10 mount sentinel"); },
+    }), /A10 mount sentinel/u);
+    assert.equal(window.location.href, priorUrl);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), priorAct);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver"), priorResize);
+    assert.equal(document.body.childNodes.length, priorChildren.length);
+    assert.equal([...document.body.childNodes].every((node, i) => node === priorChildren[i]), true);
+  });
+
+  it("A10 refuses foreign initial detail identity before claiming the lazy consumer", async () => {
+    assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(), detail: captureDetail(CAPTURE_RUN_B) }),
+      /initial detail returned a foreign runId/u);
+  });
+
+  it("A10 keeps native calls orphaned when the served generic route is removed", async () => {
+    const routes = servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8"));
+    const result = await auditRunCaptureBrowser(runCaptureProbe(), { routes: routes.filter(route => route.path !== GENERIC_ROUTE) });
+    assert.equal(result.observation.state, "observed");
+    const missing = `src/dashboard/surfaces/run-captures.tsx calls /artifacts/v1/${CAPTURE_ARTIFACT_A}, which ${API_ROUTES_FILE} does not register`;
+    assert.deepEqual(result.problems, [missing, missing, ARCHIVE_ORPHAN]);
+  });
+
+  it("A10 rejects a stale pending exception for the actually consumed generic route", async () => {
+    const pending = [...MANIFEST, PendingWireBindingSchema.parse({ binding: `route:GET ${GENERIC_ROUTE}`,
+      direction: "served-unconsumed", decision: "D292", note: "Test-only stale exception, never persisted." })];
+    const result = await auditRunCaptureBrowser(runCaptureProbe(), { pending });
+    assert.deepEqual(result.problems, [ARCHIVE_ORPHAN,
+      `config/pending-wire-bindings.json declares route:GET ${GENERIC_ROUTE} unconsumed, but a client now calls it`]);
+  });
+
+  it("A8 credits the actual mounted Archive parent native sinks and leaves the generic route open", async () => {
+    const beforeAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    const result = await auditArchiveBrowser(archiveProbe());
+    assert.equal(result.observation.state, "observed", result.problems.join("\n"));
+    if (result.observation.state !== "observed") throw new Error("the Archive observation was refused");
+    assert.deepEqual(result.observation.references.map(({ path }) => path), [
+      "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a",
+      "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a",
+    ]);
+    assert.deepEqual(result.problems, [GENERIC_ORPHAN]);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), beforeAct);
+  });
+
+  it("A8 follows a second distinct run/capture pair instead of a fixture URL constant", async () => {
+    const result = await auditArchiveBrowser(archiveProbe(
+      "00000000-0000-4000-8000-00000000a001", "00000000-0000-4000-8000-00000000a002",
+    ));
+    assert.equal(result.observation.state, "observed", result.problems.join("\n"));
+    if (result.observation.state !== "observed") throw new Error("the second Archive pair was refused");
+    assert.deepEqual(result.observation.references, [
+      { file: "src/dashboard/surfaces/archive.tsx", path: "/artifacts/v1/archive/00000000-0000-4000-8000-00000000a001/00000000-0000-4000-8000-00000000a002" },
+      { file: "src/dashboard/surfaces/archive.tsx", path: "/artifacts/v1/archive/00000000-0000-4000-8000-00000000a001/00000000-0000-4000-8000-00000000a002" },
+    ]);
+    assert.deepEqual(result.problems, [GENERIC_ORPHAN]);
+  });
+
+  for (const [name, selector, message] of [
+    ["download", "a[download]", /missing native download href sink/u],
+    ["image", "img[src]", /missing native image src sink/u],
+    ["both", "a[download], img[src]", /missing native download href sink/u],
+  ] as const) {
+    it(`A8 removing the actual ${name} sinks retains the named observation failure and orphan route`, async () => {
+      const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: withoutNativeSinks(selector) });
+      assertRefusedArchive(result, message);
+    });
+  }
+
+  it("A8 an unused URL builder cannot substitute for removed native consumers", async () => {
+    const unusedBuilder = () => "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a";
+    assert.equal(typeof unusedBuilder, "function"); // Deliberately never called or passed to the collector.
+    const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: withoutNativeSinks("a[download], img[src]") });
+    assertRefusedArchive(result, /missing native download href sink/u);
+  });
+
+  for (const [name, selector, attribute, value] of [
+    ["foreign href", "a[download]", "href", "https://foreign.invalid/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a"],
+    ["mismatched src", "img[src]", "src", "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/00000000-0000-4000-8000-00000000a002"],
+    ["generic href", "a[download]", "href", "/artifacts/v1/aa11bb22-000a-4000-8000-aa11bb22000a"],
+  ] as const) {
+    it(`A8 rejects an observed ${name} through the strict same-pair schema`, async () => {
+      const result = await auditArchiveBrowser({ ...archiveProbe(),
+        beforeObservation: changedNativeAttribute(selector, attribute, value),
+      });
+      assertRefusedArchive(result, /an archived capture download must name its exact runId and artifactId/u);
+    });
+  }
+
+  it("A8 rejects a foreign URL through the real resource response parser", async () => {
+    const probe = archiveProbe();
+    const result = await auditArchiveBrowser({ ...probe, response: {
+      runId: probe.detail.runId, artifactId: FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId,
+      resource: { state: "available", downloadUrl: "https://foreign.invalid/artifact" },
+    } });
+    assertRefusedArchive(result, /Archive browser resource parse failed/u);
+  });
+
+  for (const foreign of ["runId", "artifactId"] as const) {
+    it(`A8 rejects a schema-valid foreign ${foreign} returned to the mounted parent`, async () => {
+      const probe = archiveProbe();
+      const runId = foreign === "runId" ? "00000000-0000-4000-8000-00000000a001" : probe.detail.runId;
+      const artifactId = foreign === "artifactId" ? "00000000-0000-4000-8000-00000000a002" : FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId;
+      const result = await auditArchiveBrowser({ ...probe, response: {
+        runId, artifactId, resource: { state: "available", downloadUrl: `/artifacts/v1/archive/${runId}/${artifactId}` },
+      } });
+      assertRefusedArchive(result, /ARCHIVE_CAPTURE_RESOURCE_IDENTITY_MISMATCH/u);
+      assert.match(result.problems[0], new RegExp(`${probe.detail.runId}/${FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId}`, "u"));
+      assert.doesNotMatch(result.problems[0], new RegExp(foreign === "runId" ? runId : artifactId, "u"));
+    });
+  }
+
+  for (const location of ["root", "resource"] as const) {
+    it(`A8 the real parser refuses extra ${location} wire keys`, async () => {
+      const probe = archiveProbe();
+      const result = await auditArchiveBrowser({ ...probe, response: {
+        runId: probe.detail.runId, artifactId: FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId,
+        ...(location === "root" ? { unexpected: "A8" } : {}),
+        resource: { state: "available",
+          downloadUrl: "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a",
+          ...(location === "resource" ? { unexpected: "A8" } : {}),
+        },
+      } });
+      assertRefusedArchive(result, /Archive browser resource parse failed/u);
+    });
+  }
+
+  it("A8 a generic one-ID reference cannot satisfy the two-ID Archive route", async () => {
+    const references = clientRouteReferences(CLIENT_ROOTS.map((root) => join(REPO_ROOT, root)));
+    const generic = { file: "A8 synthetic generic-only control", path: "/artifacts/v1/aa11bb22-000a-4000-8000-aa11bb22000a" };
+    assert.equal(routeMatches(GENERIC_ROUTE, generic.path), true);
+    assert.equal(routeMatches(ARCHIVE_ROUTE, generic.path), false);
+    const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: withoutNativeSinks("a[download], img[src]") },
+      { references: [...references, generic] });
+    assert.equal(result.observation.state, "refused");
+    assert.match(result.problems[0], /missing native download href sink/u);
+    assert.deepEqual(result.problems.slice(1), [ARCHIVE_ORPHAN]);
+  });
+
+  it("A8 observed consumers still fail accounting when their server route is missing", async () => {
+    const routes = servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8"));
+    const result = await auditArchiveBrowser(archiveProbe(), { routes: routes.filter(({ path }) => path !== ARCHIVE_ROUTE) });
+    assert.equal(result.observation.state, "observed");
+    const missing = "src/dashboard/surfaces/archive.tsx calls /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a, which src/server/dashboard/routes/api.ts does not register";
+    assert.deepEqual(result.problems, [missing, missing, GENERIC_ORPHAN]);
+  });
+
+  it("A8 a pending entry for a now-consumed Archive route is stale", async () => {
+    const pending = [...MANIFEST, PendingWireBindingSchema.parse({ binding: "route:GET /artifacts/v1/archive/:runId/:artifactId",
+      direction: "served-unconsumed", decision: "D223", note: "A8 negative control, not a persisted exception or consumer waiver.",
+    })];
+    const result = await auditArchiveBrowser(archiveProbe(), { pending });
+    assert.equal(result.observation.state, "observed");
+    assert.deepEqual(result.problems, [
+      "config/pending-wire-bindings.json declares route:GET /artifacts/v1/archive/:runId/:artifactId unconsumed, but a client now calls it",
+      GENERIC_ORPHAN,
+    ]);
+  });
+
+  it("A8 a pending entry for a deleted server route still fails", async () => {
+    const pending = [...MANIFEST, PendingWireBindingSchema.parse({ binding: "route:GET /api/v1/a8-deleted",
+      direction: "served-unconsumed", decision: "D223", note: "A8 negative control, never written to the real pending manifest.",
+    })];
+    const result = await auditArchiveBrowser(archiveProbe(), { pending });
+    assert.equal(result.observation.state, "observed");
+    assert.deepEqual(result.problems, [GENERIC_ORPHAN,
+      "config/pending-wire-bindings.json declares route:GET /api/v1/a8-deleted, which src/server/dashboard/routes/api.ts does not serve",
+    ]);
+  });
+
+  it("A8 observation exceptions remain fatal and cleanup restores the mounted environment", async () => {
+    const beforeAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    const beforeChildren = [...document.body.childNodes];
+    const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: () => { throw new Error("A8 observation sentinel"); } });
+    assertRefusedArchive(result, /A8 observation sentinel/u);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), beforeAct);
+    assert.deepEqual([...document.body.childNodes], beforeChildren);
   });
 
   /*
@@ -431,13 +884,13 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
    * fixtures exist: a check that has never been observed to fail is
    * indistinguishable from a check that cannot.
    */
-  it("catches a synthesized orphan arm, a synthesized bad command key, and an unserved path", () => {
+  it("catches a synthesized orphan arm, a synthesized bad command key, and an unserved path", async () => {
     const orphanUnion = RunDetailSectionResponseSchema.options[0]?.extend({});
     assert.ok(orphanUnion !== undefined);
 
     // (a) an arm the introspection sees but the reachable set does not.
     const arms = [...discriminantValues(RunDetailSectionResponseSchema, "section"), "invented-section"];
-    const { reachable } = reachableSections();
+    const { reachable } = await reachableSections();
     assert.ok(!reachable.has("invented-section"));
     assert.ok(arms.some((arm) => !reachable.has(arm) && arm === "invented-section"));
 

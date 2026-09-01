@@ -1,0 +1,12 @@
+COMMAND: npm run build:manifest:check
+STARTED_UTC: 2026-08-31T21:54:18Z
+
+
+> hr-automation-rebuild@0.1.0 build:manifest:check
+> tsx scripts/generate-build-manifest.ts --check
+
+src/domain/workflow/generated-build-manifest.ts is current.
+
+EXIT: 0
+FINISHED_UTC: 2026-08-31T21:54:20Z
+DURATION_SECONDS: 2

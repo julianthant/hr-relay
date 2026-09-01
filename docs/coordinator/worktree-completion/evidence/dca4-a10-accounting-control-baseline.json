@@ -1,0 +1,17 @@
+{
+  "tests/unit/architecture/helpers/run-capture-browser-route-references.ts": {
+    "bytes": 5562,
+    "sha256": "4439d5a8f04cad5ec90f138b49c62aaf828d2da9fe1bdd35571833f4b5727c2b",
+    "saved": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-baseline-0.txt"
+  },
+  "tests/parity/helpers/fixture-bff.ts": {
+    "bytes": 25096,
+    "sha256": "393944a843e4b89d27b856b20caf11dc207317d2c78f6cc874d38be6c9866f3e",
+    "saved": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-baseline-1.txt"
+  },
+  "tests/parity/helpers/fixture-run-captures.ts": {
+    "bytes": 4820,
+    "sha256": "c66c67d0bd1221782bdaf09a2ecfc404f374983307b3f731e3c0baa3ddfa275f",
+    "saved": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-baseline-2.txt"
+  }
+}

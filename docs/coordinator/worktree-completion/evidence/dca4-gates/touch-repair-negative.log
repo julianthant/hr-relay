@@ -1,0 +1,36 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/archive-render.test.ts -t declares both dimensions of the coarse-pointer touch floor
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+-------------x-------------------------
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/archive-render.test.ts > the archived capture viewer's read-time resource state > declares both dimensions of the coarse-pointer touch floor on every capture footer action and its header close
+AssertionError: footer Close has no 44px minimum width
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/dashboard/archive-render.test.ts:468:14
+    466|     for (const action of actions.toReversed()) {
+    467|       assert.ok(action.classList.contains("pointer-coarse:min-h-11"), …
+    468|       assert.ok(action.classList.contains("pointer-coarse:min-w-11"), …
+       |              ^
+    469|     }
+    470|     assert.ok(dialog.classList.contains("pointer-coarse:[&>header>butt…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 38 skipped (39)
+   Start at  08:44:24
+   Duration  2.67s (transform 1.32s, setup 0ms, import 2.09s, tests 83ms, environment 418ms)
+

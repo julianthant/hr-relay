@@ -1,0 +1,159 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { it } from "vitest";
+import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/domain/dashboard/run-detail.js";
+import { startFixtureServer, type FixtureServer } from "../../parity/helpers/fixture-bff.js";
+import { FIXTURE_BOOTSTRAP, FIXTURE_IDS, FIXTURE_RUN_DETAILS, FIXTURE_SECTIONS } from "../../parity/helpers/fixture-day.js";
+import { BASELINE_JPEG_BASE64, TRUECOLOUR_PNG_BASE64 } from "../fixtures/capture-image-fixtures.js";
+import { FIXTURE_ARCHIVE_INDEX } from "../../parity/helpers/fixture-archive.js";
+
+async function withRunCaptureHttp(scenario: "evidence" | undefined, check: (server: FixtureServer, distDir: string) => Promise<void>) {
+  const distDir = mkdtempSync(join(tmpdir(), "dca4-generic-http-"));
+  try {
+    const server = await startFixtureServer({ distDir, ...(scenario === undefined ? {} : { runCaptureScenario: scenario }),
+      bundle: { proof: "unverified", reason: "HTTP-only unit fixture; no rendered bundle" } });
+    try { await check(server, distDir); } finally { await server.close(); }
+  } finally { rmSync(distDir, { recursive: true, force: true }); }
+}
+
+function staticProbe(distDir: string, path: string, text: string): void {
+  const target = join(distDir, path);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, text);
+}
+
+it("serves the advertised exact generic JPEG and data captures over owned ephemeral HTTP", async () => {
+  const distDir = mkdtempSync(join(tmpdir(), "dca4-generic-http-"));
+  try {
+    const server = await startFixtureServer({ distDir, runCaptureScenario: "evidence",
+      bundle: { proof: "unverified", reason: "HTTP-only unit fixture; no rendered bundle" } });
+    try {
+      const response = await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.doneRun}`);
+      assert.equal(response.status, 200);
+      const detail = RunDetailWireSchema.parse(await response.json());
+      assert.deepEqual(detail.captures, { state: "available", artifactCount: 2 });
+      assert.equal(detail.availableSections.includes("captures"), true);
+      const sectionResponse = await fetch(`${server.baseUrl}/api/v1/runs/${detail.runId}/captures`);
+      assert.equal(sectionResponse.status, 200);
+      const section = RunDetailSectionResponseSchema.parse(await sectionResponse.json());
+      assert.equal(section.section, "captures");
+      if (section.section !== "captures") throw new Error("Expected captures");
+      assert.equal(section.payload.runId, detail.runId);
+      assert.equal(section.payload.artifacts.length, 2);
+      const jpeg = section.payload.artifacts[0]?.artifact;
+      assert.ok(jpeg);
+      assert.equal(jpeg.artifactId, "00000000-0000-4000-8000-00000000c102");
+      const download = await fetch(`${server.baseUrl}/artifacts/v1/${jpeg.artifactId}`);
+      assert.equal(download.status, 200);
+      assert.equal(download.headers.get("content-type"), "image/jpeg");
+      const bytes = Buffer.from(await download.arrayBuffer());
+      assert.deepEqual(bytes, Buffer.from(BASELINE_JPEG_BASE64, "base64"));
+      assert.equal(jpeg.sha256, createHash("sha256").update(bytes).digest("hex"));
+      assert.equal(jpeg.byteLength, bytes.length);
+      assert.equal(jpeg.mediaKind, "image");
+      if (jpeg.mediaKind !== "image") throw new Error("Expected JPEG image");
+      assert.deepEqual([jpeg.width, jpeg.height], [16, 12]);
+      const data = section.payload.artifacts[1]?.artifact;
+      assert.ok(data);
+      assert.equal(data.artifactId, "00000000-0000-4000-8000-00000000c103");
+      assert.equal(data.mediaKind, "data");
+      assert.equal(data.sensitivity, "restricted");
+      const dataResponse = await fetch(`${server.baseUrl}/artifacts/v1/${data.artifactId}`);
+      assert.equal(dataResponse.status, 200);
+      assert.equal(dataResponse.headers.get("content-type"), "application/json");
+      const dataBytes = Buffer.from(await dataResponse.arrayBuffer());
+      assert.deepEqual(dataBytes, Buffer.from('{"fixture":"run-capture"}\n'));
+      assert.equal(data.byteLength, dataBytes.length);
+      assert.equal(data.sha256, createHash("sha256").update(dataBytes).digest("hex"));
+      for (const [resource, id, length] of [[download, jpeg.artifactId, bytes.length], [dataResponse, data.artifactId, dataBytes.length]] as const) {
+        assert.equal(resource.headers.get("cache-control"), "no-store");
+        assert.equal(resource.headers.get("x-content-type-options"), "nosniff");
+        assert.equal(resource.headers.get("content-length"), String(length));
+        assert.equal(resource.headers.get("content-disposition"), `attachment; filename="capture-${id}"`);
+      }
+    } finally { await server.close(); }
+  } finally { rmSync(distDir, { recursive: true, force: true }); }
+});
+
+it("serves the exact PNG with all five closed origins and dimensions from its real bytes", async () => {
+  await withRunCaptureHttp("evidence", async server => {
+    const response = await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.failedRun}/captures`);
+    assert.equal(response.status, 200);
+    const section = RunDetailSectionResponseSchema.parse(await response.json());
+    if (section.section !== "captures") throw new Error("Expected captures");
+    assert.equal(section.payload.runId, FIXTURE_IDS.failedRun);
+    assert.equal(section.payload.artifacts.length, 1);
+    const capture = section.payload.artifacts[0];
+    assert.ok(capture);
+    assert.deepEqual(capture.origins, [
+      { bundleId: "00000000-0000-4000-8000-00000000b101", originKind: "operator-request" },
+      { bundleId: "00000000-0000-4000-8000-00000000b102", originKind: "failure" },
+      { bundleId: "00000000-0000-4000-8000-00000000b103", originKind: "unexpected-state" },
+      { bundleId: "00000000-0000-4000-8000-00000000b104", originKind: "subject-mismatch" },
+      { bundleId: "00000000-0000-4000-8000-00000000b105", originKind: "recovery-park" },
+    ]);
+    const artifact = capture.artifact;
+    assert.equal(artifact.artifactId, "00000000-0000-4000-8000-00000000c101");
+    const download = await fetch(`${server.baseUrl}/artifacts/v1/${artifact.artifactId}`);
+    assert.equal(download.status, 200);
+    assert.equal(download.headers.get("content-type"), "image/png");
+    const bytes = Buffer.from(await download.arrayBuffer());
+    assert.deepEqual(bytes, Buffer.from(TRUECOLOUR_PNG_BASE64, "base64"));
+    assert.equal(artifact.sha256, createHash("sha256").update(bytes).digest("hex"));
+    assert.equal(artifact.byteLength, bytes.length);
+    if (artifact.mediaKind !== "image") throw new Error("Expected PNG image");
+    assert.deepEqual([artifact.width, artifact.height], [10, 14]);
+    assert.deepEqual([bytes.readUInt32BE(16), bytes.readUInt32BE(20)], [10, 14]);
+  });
+});
+
+it.each([
+  "/artifacts/v1/00000000-0000-4000-8000-00000000c999",
+  "/artifacts/v1/not-an-artifact-id",
+  "/artifacts/v1/00000000-0000-4000-8000-00000000c102/extra",
+  "/artifacts/v1/00000000-0000-4000-8000-00000000c102/extra.json",
+  "/artifacts/v1/not-an-artifact-id/extra",
+])("refuses generic artifact path %s without static-file substitution", async path => {
+  await withRunCaptureHttp("evidence", async (server, distDir) => {
+    staticProbe(distDir, path, "<html>not the requested artifact</html>");
+    const response = await fetch(`${server.baseUrl}${path}`);
+    assert.equal(response.status, 404, `invalid artifact path escaped to static: ${path}`);
+    assert.notEqual(await response.text(), "<html>not the requested artifact</html>");
+  });
+});
+
+it("keeps generic evidence opt-in and preserves original run, section and Archive facts", async () => {
+  await withRunCaptureHttp(undefined, async (server, distDir) => {
+    const path = "/artifacts/v1/00000000-0000-4000-8000-00000000c102";
+    staticProbe(distDir, path, "no scenario selected");
+    assert.equal((await fetch(`${server.baseUrl}${path}`)).status, 404);
+    assert.deepEqual(await (await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.doneRun}`)).json(), FIXTURE_RUN_DETAILS[FIXTURE_IDS.doneRun]);
+    assert.deepEqual(await (await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.doneRun}/receipt`)).json(), FIXTURE_SECTIONS[FIXTURE_IDS.doneRun]?.receipt);
+    assert.equal((await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.doneRun}/captures`)).status, 404);
+    assert.deepEqual(await (await fetch(`${server.baseUrl}/api/v1/archive`)).json(), FIXTURE_ARCHIVE_INDEX);
+  });
+});
+
+it("preserves ordinary API and named static assets beside the generic byte namespace", async () => {
+  await withRunCaptureHttp("evidence", async (server, distDir) => {
+    assert.deepEqual(await (await fetch(`${server.baseUrl}/api/v1/bootstrap`)).json(), FIXTURE_BOOTSTRAP);
+    assert.deepEqual(await (await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.queuedRun}`)).json(), FIXTURE_RUN_DETAILS[FIXTURE_IDS.queuedRun]);
+    assert.equal((await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.queuedRun}/captures`)).status, 404);
+    for (const [path, body, mime] of [
+      ["/index.html", "<html>HTTP fixture only</html>", "text/html; charset=utf-8"],
+      ["/assets/probe.css", "body{}", "text/css; charset=utf-8"],
+      ["/artifacts/logo.svg", "<svg></svg>", "image/svg+xml"],
+      ["/artifacts/v1/archive-help.html", "Archive help", "text/html; charset=utf-8"],
+      ["/artifacts/v1/archive-notes/readme.json", "{}", "application/json; charset=utf-8"],
+    ] as const) {
+      staticProbe(distDir, path, body);
+      const response = await fetch(`${server.baseUrl}${path === "/index.html" ? "/" : path}`);
+      assert.equal(response.status, 200, path);
+      assert.equal(response.headers.get("content-type"), mime, path);
+      assert.equal(await response.text(), body, path);
+    }
+  });
+});

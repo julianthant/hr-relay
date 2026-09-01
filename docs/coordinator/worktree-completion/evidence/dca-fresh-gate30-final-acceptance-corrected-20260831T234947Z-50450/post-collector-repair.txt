@@ -1,0 +1,2 @@
+collector_repair_utc=2026-08-31T23:58:00Z
+The original outer collector used zsh variable path, which aliases PATH; no gates were rerun. Missing post evidence was collected with file_path and absolute tools. Baseline reference/output inventories are copied from the immediately preceding frozen refresh evidence; manifest baseline is copied from the prior accepted gate baseline.

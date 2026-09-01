@@ -1,0 +1,14 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/server/archive-capture-resource.test.ts tests/unit/server/archive-capture-routes.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+·····································································································
+
+ Test Files  3 passed (3)
+      Tests  101 passed (101)
+   Start at  09:46:53
+   Duration  4.14s (transform 1.05s, setup 0ms, import 2.20s, tests 1.10s, environment 0ms)
+

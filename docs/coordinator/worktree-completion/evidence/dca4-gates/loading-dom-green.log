@@ -1,0 +1,14 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/archive-render.test.ts -t explicitly loads the requested archived image eagerly
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+----------·------------------------------
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 40 skipped (41)
+   Start at  09:32:00
+   Duration  2.11s (transform 1.13s, setup 0ms, import 1.75s, tests 74ms, environment 220ms)
+

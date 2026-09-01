@@ -1,0 +1,16 @@
+Command:
+HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npx vitest run tests/unit/dashboard/run-captures-app.test.ts --reporter=dot
+
+Exit: 1
+
+Test Files  1 failed (1)
+Tests  2 failed | 36 passed (38)
+
+Failure:
+actual DashboardApp Receipt captures > frames tile with the exact solid danger token only for literal failure while preserving all mixed origins
+AssertionError: literal failure must frame the tile with the exact solid danger token
+Expected: true
+Received: false
+
+The matching preview-frame parameter also failed at the same public DOM assertion. The production
+frame still used border-[color:var(--ds-danger-border)] at this point.

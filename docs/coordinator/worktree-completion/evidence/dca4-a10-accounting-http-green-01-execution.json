@@ -1,0 +1,15 @@
+{
+  "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-captures-fixture.test.ts tests/unit/dashboard/archive-evidence-fixture.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-http-green-01.log'",
+  "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+  "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-http-green-01.log",
+  "started": "2026-08-31T00:50:36.407Z",
+  "sessions": [
+    37799
+  ],
+  "chunks": [
+    "c76135",
+    "9dc1c5"
+  ],
+  "finished": "2026-08-31T00:50:39.322Z",
+  "exit": 0
+}

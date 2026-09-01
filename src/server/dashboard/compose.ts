@@ -105,6 +105,7 @@ import { createLedgerReadThrough } from "../../infra/ledger/ledger-read-through.
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
+import { createServerVerifiedArtifactReader } from "../../infra/artifacts/server-verified-artifact-reader.js";
 import { createNotificationInbox } from "../../services/notifications/inbox.js";
 import { createBackfillGapNotifier } from "../../services/notifications/backfill-gap.js";
 import { createBackupHealthNotifier } from "../../services/notifications/storage-health.js";
@@ -950,6 +951,14 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       message: error.message,
     }));
   };
+  const reportDashboardTransferFault = (error: Error): void => {
+    supervisorFaultSink(JSON.stringify({
+      ts: clock.now().toISOString(),
+      level: "error",
+      source: "dashboard-http",
+      message: error.message,
+    }));
+  };
   const workerControl = composeWorkerProcessControl({
     database,
     clock,
@@ -976,6 +985,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   // one content-addressed writer, and the parser re-derives rows and columns
   // from those immutable bytes for every intake read.
   const artifacts = createContentAddressedArtifactWriter({
+    workspaceRoot: repoRoot,
+    artifactRoot: input.isolation.artifactRoot,
+  });
+  const artifactReader = createServerVerifiedArtifactReader({
     workspaceRoot: repoRoot,
     artifactRoot: input.isolation.artifactRoot,
   });
@@ -1030,6 +1043,12 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     // D140/D142: the receipt and failure sections serve CONTENT through the
     // one authority-backed derivation, the same one `explain run` reads.
     trust: createReceiptService({ database, descriptors: DESCRIPTORS }),
+    // DCA3: the initial capability and lazy section both verify this exact
+    // run-indexed diagnostic authority before advertising capture artifacts.
+    captures: {
+      authority: database.authority.diagnosticBundles,
+      artifactReader,
+    },
   };
 
   const archiveDeps: ArchiveQueryDeps = {
@@ -1296,7 +1315,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     receiptComparison,
     diagnosticBundles: {
       authority: database.authority.diagnosticBundles,
-      artifacts,
+      artifactReader,
     },
     archive: archiveDeps,
     commands,
@@ -1382,6 +1401,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const server = await startDashboardHttpServer({
     app,
     port: input.backendPortOverride ?? input.isolation.backendPort,
+    onTransferError: reportDashboardTransferFault,
   });
   dashboardPreflightRunners.markBackendOwned(server.port);
 
@@ -1389,8 +1409,17 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     port: server.port,
     noteWriter,
     stop: async (): Promise<void> => {
-      await server.close();
-      hub.close();
+      const failures: unknown[] = [];
+      try {
+        await server.close();
+      } catch (error: unknown) {
+        failures.push(error);
+      }
+      try {
+        hub.close();
+      } catch (error: unknown) {
+        failures.push(error);
+      }
       clearInterval(spanTailTimer);
       clearInterval(backupTimer);
       clearInterval(gateParkTimer);
@@ -1404,22 +1433,51 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
        * running (its lease, not this process, owns its lifecycle), and the
        * operator can read exactly what was left running.
        */
-      for (const evidence of workerControl.supervisor.close()) {
-        reportSupervisorFault(new Error(
-          `dashboard shutdown leaves a worker child ${evidence.state}: ${JSON.stringify(evidence)}`,
-        ));
+      try {
+        for (const evidence of workerControl.supervisor.close()) {
+          try {
+            reportSupervisorFault(new Error(
+              `dashboard shutdown leaves a worker child ${evidence.state}: ${JSON.stringify(evidence)}`,
+            ));
+          } catch (error: unknown) {
+            failures.push(error);
+          }
+        }
+      } catch (error: unknown) {
+        failures.push(error);
       }
       // Ref dashboard-surfaces §2.5's graceful-drain trigger: one final verified backup while
       // the database is still open. A failure surfaces AFTER cleanup — loud
       // to the stopper, never a half-closed process.
-      await requestBackup("graceful-drain");
-      database.close();
+      try {
+        await requestBackup("graceful-drain");
+      } catch (error: unknown) {
+        failures.push(error);
+      }
+      let databaseClosed = false;
+      try {
+        database.close();
+        databaseClosed = true;
+      } catch (error: unknown) {
+        failures.push(error);
+      }
       // Released only after the handle is closed: the lock's whole meaning is
       // "nothing holds this database open", so releasing it first would let a
       // restore start against a still-open file.
-      processLock.release();
+      if (databaseClosed) {
+        try {
+          processLock.release();
+        } catch (error: unknown) {
+          failures.push(error);
+        }
+      }
       if (backupServiceState.state === "failed") {
-        throw new Error(`graceful-drain authority backup failed: ${backupServiceState.message}`);
+        failures.push(new Error(`graceful-drain authority backup failed: ${backupServiceState.message}`));
+      }
+      const primary = failures[0];
+      if (failures.length === 1) throw primary;
+      if (failures.length > 1) {
+        throw new AggregateError(failures, "dashboard shutdown observed multiple failures", { cause: primary });
       }
     },
   });

@@ -1,0 +1,16 @@
+{
+  "artifactId": "00000000-0000-4000-8000-00000000c103",
+  "byteCount": 26,
+  "downloadUrl": "http://127.0.0.1:63353/artifacts/v1/00000000-0000-4000-8000-00000000c103",
+  "expectedUrl": "http://127.0.0.1:63353/artifacts/v1/00000000-0000-4000-8000-00000000c103",
+  "exchangesAfter": [
+    {
+      "method": "GET",
+      "pathname": "/artifacts/v1/00000000-0000-4000-8000-00000000c103",
+      "status": 200
+    }
+  ],
+  "exchangesBefore": [],
+  "pageEvents": [],
+  "sha256": "87a6188a29cd2cb3d26251f1bc25846114d0ca3b454b25605540dfc9334cf28b"
+}

@@ -36,7 +36,7 @@ import {
   WriteStateSchema,
 } from "../trust/failure.js";
 import { ActionDescriptorWireSchema } from "./actions.js";
-import { ArtifactResourceWireSchema } from "./artifacts.js";
+import { ArtifactRefWireSchema } from "./artifacts.js";
 import {
   PanelKindSchema,
   RecordRevisionSchema,
@@ -308,6 +308,19 @@ export const ContextSummaryWireSchema = z.strictObject({
   attempts: z.number().int().positive(),
 });
 
+/** What the initial run read can truthfully say before the lazy capture list is requested. */
+export const RunCaptureAvailabilityWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("available"), artifactCount: z.number().int().positive() }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  z.strictObject({
+    state: z.literal("error"),
+    code: ErrorCodeSchema,
+    message: z.string().min(1),
+    retryable: z.boolean(),
+  }),
+]);
+export type RunCaptureAvailabilityWire = z.infer<typeof RunCaptureAvailabilityWireSchema>;
+
 function sectionsCompatible(panelKind: z.infer<typeof PanelKindSchema>, sections: readonly z.infer<typeof RunDetailSectionSchema>[]): boolean {
   if (panelKind === "run" || panelKind === "member") return !sections.includes("review") && !sections.includes("people");
   if (panelKind === "review") return !sections.includes("people");
@@ -340,6 +353,8 @@ export const RunDetailWireSchema = z.strictObject({
   gate: GateDecisionWireSchema,
   outcome: OutcomeWireSchema,
   context: ContextSummaryWireSchema,
+  /** Optional only for archived records frozen before DCA3; every live read emits it. */
+  captures: RunCaptureAvailabilityWireSchema.optional(),
   availableSections: z.array(RunDetailSectionSchema),
 }).superRefine((detail, context) => {
   if (detail.runId !== detail.header.runId) {
@@ -744,7 +759,49 @@ export const FailureDetailWireSchema = z.strictObject({
   }
 });
 
-const CaptureListSchema = z.strictObject({ runId: RunIdSchema, artifacts: z.array(ArtifactResourceWireSchema) });
+/** D292: provenance is a closed membership, not failure detail or actor data. */
+export const RunCaptureOriginWireSchema = z.strictObject({
+  bundleId: DiagnosticBundleIdSchema,
+  originKind: z.enum(["failure", "unexpected-state", "subject-mismatch", "recovery-park", "operator-request"]),
+});
+export const RunCaptureArtifactWireSchema = z.strictObject({
+  artifact: ArtifactRefWireSchema,
+  origins: z.array(RunCaptureOriginWireSchema).min(1),
+}).superRefine((capture, context) => {
+  const seen = new Set<string>();
+  for (const [index, origin] of capture.origins.entries()) {
+    if (seen.has(origin.bundleId)) {
+      context.addIssue({ code: "custom", path: ["origins", index, "bundleId"],
+        message: "a capture requires one membership per verified bundle" });
+    }
+    seen.add(origin.bundleId);
+  }
+});
+export type RunCaptureArtifactWire = z.infer<typeof RunCaptureArtifactWireSchema>;
+
+export const CaptureListSchema = z.strictObject({
+  runId: RunIdSchema,
+  /** Every ref was verified before this response; later byte loss fails at the byte route. */
+  artifacts: z.array(RunCaptureArtifactWireSchema).min(1),
+}).superRefine((captures, context) => {
+  const seen = new Set<string>();
+  const origins = new Map<string, string>();
+  for (const [index, capture] of captures.artifacts.entries()) {
+    if (seen.has(capture.artifact.artifactId)) {
+      context.addIssue({ code: "custom", path: ["artifacts", index, "artifact", "artifactId"],
+        message: "a capture list requires one entry per artifact" });
+    }
+    seen.add(capture.artifact.artifactId);
+    for (const origin of capture.origins) {
+      const existing = origins.get(origin.bundleId);
+      if (existing !== undefined && existing !== origin.originKind) {
+        context.addIssue({ code: "custom", path: ["artifacts", index, "origins"],
+          message: "a verified bundle cannot have conflicting origin kinds" });
+      }
+      origins.set(origin.bundleId, origin.originKind);
+    }
+  }
+});
 
 /* ── the parked-write vocabulary, mirrored across the browser boundary ────── */
 

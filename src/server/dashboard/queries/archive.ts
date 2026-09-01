@@ -26,14 +26,21 @@
 import { z } from "zod";
 import {
   ArchiveIndexWireSchema,
+  ArchivedCaptureResourceWireSchema,
   ArchivedRunDetailWireSchema,
   type ArchiveIndexWire,
+  type ArchivedCaptureResourceWire,
   type ArchivedRunDetailWire,
 } from "../../../domain/dashboard/archive.js";
 import type { Clock } from "../../../domain/clock.js";
 import { VersionScopeSchema } from "../../../domain/commands.js";
 import type { WorkflowVersionIdentity } from "../../../domain/archive/model.js";
-import { CURRENT_ARCHIVE_SCHEMA_GENERATION, versionBumpPlanFingerprint } from "../../../domain/archive/model.js";
+import {
+  ArchivedRunRecordSchema,
+  archivedRunContentDigest,
+  CURRENT_ARCHIVE_SCHEMA_GENERATION,
+  versionBumpPlanFingerprint,
+} from "../../../domain/archive/model.js";
 import { archiveRetention } from "../../../domain/archive/retention.js";
 import type { LedgerReadThrough } from "../../../infra/ledger/ledger-read-through.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
@@ -58,6 +65,20 @@ import {
 } from "../../../domain/dashboard/run-detail.js";
 import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../domain/dashboard/projection.js";
 import { projectReceiptForOperator, type RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
+import { ArtifactRefSchema, type ArtifactRef } from "../../../domain/artifacts.js";
+import { ArtifactIdSchema, RunIdSchema } from "../../../domain/ids.js";
+import type {
+  ServerVerifiedArtifactReader,
+  VerifiedByteLease,
+} from "../../../infra/artifacts/server-verified-artifact-reader.js";
+import { VerifiedArtifactOperationalError } from "../../../infra/artifacts/server-verified-artifact-reader.js";
+import {
+  ArtifactBytesCorruptError,
+  createArtifactVerificationPass,
+  IndexedArtifactBytesMissingError,
+  prepareVerifiedArtifactLease,
+  verifyArtifactBytes,
+} from "./artifact-bytes.js";
 
 /** The frozen log page's own shape — one place, so the loop and the parse agree. */
 type FrozenNotePage = z.infer<typeof NotePageSchema>;
@@ -215,6 +236,159 @@ export interface ArchiveQueryDeps {
    * surface has.
    */
   readonly ledger: LedgerReadThrough;
+}
+
+/** The immutable archived capture reference, resolved without attachment or run lookups. */
+export interface ArchivedCaptureLease {
+  readonly ref: ArtifactRef;
+  readonly lease: VerifiedByteLease;
+}
+
+/** Archive failures carry safe identity labels; never expose storage paths or raw schema values. */
+export class ArchivedCaptureReadError extends Error {
+  constructor(
+    readonly code: "ARCHIVED_CAPTURE_CORRUPT" | "ARCHIVED_CAPTURE_BYTES_MISSING",
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "ArchivedCaptureReadError";
+  }
+}
+
+function frozenArchivedCaptureRef(
+  deps: Pick<ArchiveQueryDeps, "authority">,
+  runIdInput: unknown,
+  artifactIdInput: unknown,
+): ArtifactRef {
+  const runId = RunIdSchema.parse(runIdInput);
+  const artifactId = ArtifactIdSchema.parse(artifactIdInput);
+  const corrupt = (detail: string, cause?: unknown): never => {
+    throw new ArchivedCaptureReadError("ARCHIVED_CAPTURE_CORRUPT",
+      `archived run ${runId} capture ${artifactId}: ${detail}`, { cause });
+  };
+  try {
+    return deps.authority.withAuthorityTransaction((repositories) => {
+      const input = repositories.archivedRuns.get(runId);
+      if (input === undefined) throw new TargetNotFoundError(`archived run ${runId} does not exist`);
+      const record = ArchivedRunRecordSchema.parse(input);
+      if (record.runId !== runId) corrupt("foreign archived run identity");
+      const { contentDigest, ...content } = record;
+      if (archivedRunContentDigest(content) !== contentDigest) corrupt("content digest mismatch");
+      const captures = record.sections?.captures;
+      if (captures?.state !== "present") {
+        throw new TargetNotFoundError(`archived run ${runId} has no frozen capture metadata`);
+      }
+      const matches = captures.value.filter((candidate) => candidate.artifactId === artifactId);
+      const tile = matches[0];
+      if (tile === undefined) {
+        throw new TargetNotFoundError(`archived run ${runId} has no frozen capture ${artifactId}`);
+      }
+      // A shared artifact may appear in several bundles, but its bytes cannot disagree.
+      if (matches.some((candidate) => candidate.digest !== tile.digest
+        || candidate.byteLength !== tile.byteLength || candidate.mediaType !== tile.mediaType)) {
+        corrupt("conflicting frozen capture metadata");
+      }
+      /*
+       * This is intentionally constructed only from the archived tile. Reading
+       * the diagnostic attachment index (or a current run) could make an old
+       * capture appear to be a newer object with the same id.
+       */
+      return Object.freeze(ArtifactRefSchema.parse({
+        id: tile.artifactId,
+        sha256: tile.digest,
+        bytes: tile.byteLength,
+        mediaType: tile.mediaType,
+      }));
+    });
+  } catch (error: unknown) {
+    if (error instanceof TargetNotFoundError || error instanceof ArchivedCaptureReadError) throw error;
+    return corrupt("archived capture authority could not be verified", error);
+  }
+}
+
+/**
+ * Prepares one single-use verified-byte lease only after binding its ref to the
+ * exact archived tile. The HTTP response owns disposal after this function returns.
+ */
+export async function prepareArchivedCaptureLease(
+  deps: Pick<ArchiveQueryDeps, "authority"> & {
+    readonly artifactReader: ServerVerifiedArtifactReader;
+  },
+  runIdInput: unknown,
+  artifactIdInput: unknown,
+  signal?: AbortSignal,
+): Promise<ArchivedCaptureLease> {
+  const ref = frozenArchivedCaptureRef(deps, runIdInput, artifactIdInput);
+  try {
+    return Object.freeze({
+      ref,
+      lease: await prepareVerifiedArtifactLease(deps.artifactReader, ref, signal),
+    });
+  } catch (error: unknown) {
+    if (signal?.aborted === true && error === signal.reason) throw error;
+    if (error instanceof VerifiedArtifactOperationalError) throw error;
+    if (error instanceof IndexedArtifactBytesMissingError) {
+      throw new ArchivedCaptureReadError("ARCHIVED_CAPTURE_BYTES_MISSING",
+        `archived run ${String(runIdInput)} capture ${ref.id}: stored bytes are missing`, { cause: error });
+    }
+    if (error instanceof ArtifactBytesCorruptError) {
+      throw new ArchivedCaptureReadError("ARCHIVED_CAPTURE_CORRUPT",
+        `archived run ${String(runIdInput)} capture ${ref.id}: stored bytes could not be verified`, { cause: error });
+    }
+    throw error;
+  }
+}
+
+/**
+ * The metadata is already frozen in the archive detail. This is a separate
+ * read-time resource state so neither a deadline nor a policy can overwrite
+ * what the archived capture was.
+ */
+export async function buildArchivedCaptureResource(
+  deps: Pick<ArchiveQueryDeps, "authority"> & {
+    readonly artifactReader: ServerVerifiedArtifactReader;
+  },
+  runIdInput: unknown,
+  artifactIdInput: unknown,
+  signal?: AbortSignal,
+): Promise<ArchivedCaptureResourceWire> {
+  const runId = RunIdSchema.parse(runIdInput);
+  const artifactId = ArtifactIdSchema.parse(artifactIdInput);
+  const ref = frozenArchivedCaptureRef(deps, runId, artifactId);
+  try {
+    await verifyArtifactBytes(
+      deps.artifactReader,
+      ref,
+      createArtifactVerificationPass(deps.artifactReader, signal),
+    );
+    return ArchivedCaptureResourceWireSchema.parse({
+      runId,
+      artifactId,
+      resource: {
+        state: "available",
+        downloadUrl: `/artifacts/v1/archive/${encodeURIComponent(runId)}/${encodeURIComponent(artifactId)}`,
+      },
+    });
+  } catch (error: unknown) {
+    if (signal?.aborted === true && error === signal.reason) throw error;
+    if (error instanceof VerifiedArtifactOperationalError) throw error;
+    if (error instanceof IndexedArtifactBytesMissingError) {
+      return ArchivedCaptureResourceWireSchema.parse({
+        runId,
+        artifactId,
+        resource: { state: "missing", reason: "The archived capture's stored bytes are no longer present." },
+      });
+    }
+    if (error instanceof ArtifactBytesCorruptError) {
+      return ArchivedCaptureResourceWireSchema.parse({
+        runId,
+        artifactId,
+        resource: { state: "error", message: "The archived capture bytes could not be verified." },
+      });
+    }
+    throw error;
+  }
 }
 
 export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {

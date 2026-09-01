@@ -120,6 +120,8 @@ import { useContextRail, type ContextSections } from "./context-rail-model.js";
 import { elapsedSecondsBetween, fmtClock, fmtElapsed, plural } from "./format.js";
 import { ReceiptView, type ReceiptSectionPayload } from "./receipt.js";
 import { useReceiptComparison } from "./receipt-model.js";
+import { RunCaptures } from "./run-captures.js";
+import type { RunCapturesState } from "./run-captures-model.js";
 import { RunProvenanceBar, type QueueSurfaceWire } from "./run-identity.js";
 import { FailureDetailBody, FailureRecordHead } from "./trust.js";
 import { FailureAdvisoryPanel } from "./advisory.js";
@@ -1680,6 +1682,8 @@ function UnservedTab({ tab }: { tab: PanelTab }) {
 export interface LogPanelProps {
   detail: RunDetailWire;
   sections: PanelSections;
+  /** App-owned lazy read; never part of the shared aggregate section request. */
+  captures?: RunCapturesState;
   /** the run's queue surface, when the panel was opened from a row — the provenance bar's source */
   surface?: QueueSurfaceWire;
   /** every action the server served for this run; the panel filters by placement */
@@ -1878,6 +1882,7 @@ function PanelKindInfo({
 export const LogPanel = memo(function LogPanel({
   detail,
   sections,
+  captures,
   surface,
   actions = NO_ACTIONS,
   tab,
@@ -2444,6 +2449,7 @@ export const LogPanel = memo(function LogPanel({
             />
           )}
           {effectiveTab === "receipt" && (
+            <>
             <ReceiptView
               outcome={detail.outcome}
               receipt={receipt}
@@ -2461,6 +2467,8 @@ export const LogPanel = memo(function LogPanel({
               */
               dryRun={surface?.dryRun}
             />
+            {captures !== undefined && <RunCaptures captures={captures} />}
+            </>
           )}
           {(effectiveTab === "review" || effectiveTab === "people") && <UnservedTab tab={effectiveTab} />}
         </div>

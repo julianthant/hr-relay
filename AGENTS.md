@@ -276,6 +276,13 @@ references read only by `src/domain/secrets.ts`.
   bulk-replay support. Any existing post-v18 pre-integration suffix refuses before connection
   configuration, migration, replay, or effects; source SQL/digests remain evidence, never a silent
   conversion recipe. DCC4's Explorer schema suffix is superseded, not erased.
+- **Archived capture resources (DCA4):** `queries/archive.ts` binds resource status and downloads
+  to the exact archived run, verifies its immutable content digest, and resolves byte metadata only
+  from its frozen capture tiles. Repeated tile ids must agree on the complete byte reference.
+  Status uses the shared verify-only stream; downloads independently materialize verified bytes.
+  Never consult current runs/indexes/descriptors or infer a purge from a retention deadline. The
+  two archive resource routes in `routes/api.ts` report named, path-free archive failures and keep
+  downloads no-store, nosniff and attachment-only; resource URLs bind both ids in the strict wire.
 - **2026-08-28 — operator skills and internal playbooks are separate surfaces.** The repository's
   operator commands are `hr-manage`, `hr-scan`, `hr-workflow`, and `hr-lesson`. Codex stores
   repo-specific helper guidance under `.agents/skill-library/<name>/REFERENCE.md`; Claude may keep a
@@ -815,6 +822,19 @@ references read only by `src/domain/secrets.ts`.
   because refinement messages can repeat sensitive durable values verbatim. A corpus-dimension
   mismatch follows the same boundary: its outer message names only the run key and fixed dimension,
   while the observed value stays on the internal `cause`. (D283 / DCR3)
+- **2026-08-30 — a returned artifact URL is consumed only when a mounted browser sink receives it.**
+  The Archive route guard drives `ArchivedRunDetail` through Evidence and capture, uses the real
+  query/parser, and credits only strict same-pair native `href`/`src` observations. An unused URL
+  builder earns nothing. Keep scanner roots, patterns and both-direction pending accounting intact;
+  observation failures remain fatal beside orphan-route diagnostics. File-local jsdom proves this
+  parent-to-DOM connection, not shell reachability, downloaded bytes, decode or browser geometry.
+
+- **2026-08-30 — an exact resource URL still needs its D183 origin declaration.** Register the
+  complete archived-capture wire, not just its unfamiliar paths: UUIDs and state literals are
+  closed, while the exact-id URL and fixed availability copy are repository-authored free text.
+  Prove that origin through the real archive query and verifier with planted canaries, including
+  typed missing/corrupt errors; raw errors alone are normalized before the query and can hide an
+  accidental `error.message` substitution. No origin exception or scanner waiver is needed.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
@@ -857,6 +877,28 @@ references read only by `src/domain/secrets.ts`.
   re-derives the bundle digest, compares the exact indexed attachments, and drains each content-addressed
   artifact before it serves facts or a manifest. A client-side reconstruction would have made a damaged
   record look download-ready.
+
+- **2026-08-28 — a content-addressed object is not permission to serve it.** The loopback artifact
+  route resolves a complete ref only through the diagnostic attachment index, then prepares a single-use
+  verified-byte lease after re-verifying its digest, size and media type. It and exact-bundle readback share
+  one verifier engine while selecting explicit modes: readback drains and hashes without retaining chunks,
+  while a selected response snapshots, decodes and verifies into private unlinked scratch before streaming
+  through a response-owned lease. HEAD and refused Range responses dispose before returning; GET transfers
+  ownership to the HTTP adapter, whose cancellation and shutdown paths await disposal. Each caller retains
+  its own identity/error labels. An uncomposed
+  attachment authority is an unavailable capability, not corrupt evidence. A valid id that exists only in
+  storage, capture, archive or phone authority is foreign and answers 404; an indexed id whose physical
+  object disappeared stays a distinct typed verifier failure and answers a non-retryable 500 here.
+  Even an unsupported Range is refused only after verification, and the capture Host keeps the
+  byte route behind the same byte-identical 404 gate as every other operator surface.
+
+- **2026-08-31 — a disconnect test must wait for the owned cleanup, not one race-specific error arm.**
+  After response handoff, a client close can be observed before a body write, while waiting for drain,
+  or before finish. Every arm must cancel and dispose the response-owned verified-byte lease, but only
+  the rejected transfer arm reaches the local transfer-error observer. A real-socket lease test destroys
+  the response synchronously in its callback and awaits the lease-close authority; separate adapter tests
+  own the exact error-reporting branch. Never make correct cleanup depend on an observer promise that a
+  valid normal-cancellation arm does not resolve.
 
 - **2026-08-25 — reconnect is not recovery from an unknown event-stream interval.** Bind resume
   evidence to both cursor and projection generation: a cursor from an earlier generation proves
@@ -959,6 +1001,15 @@ references read only by `src/domain/secrets.ts`.
   counts from the named run's intent set, before and after, and assert the exact zero tuple.
 
 ## After changes
+
+- **2026-08-30 — deduplicating capture bytes must not deduplicate provenance (D292).** Live run
+  captures serve one verified artifact ref with every same-run diagnostic-bundle membership.
+  Compare complete ref metadata before joining origins; never let last-write-wins choose an
+  origin or infer `failure` from a run's status or another origin's failure id. Accumulate origins
+  in one request-local mutable list, then strictly parse and recursively freeze each complete wire
+  artifact once; copying the whole prior list per membership makes a shared artifact quadratic.
+  Keep the initial availability distinct from the lazy strict list, and retain old archived-detail
+  compatibility without enriching it from current authority.
 
 Run `npm run typecheck && npm run lint && npm run test:coverage` before committing (D191 —
 `test:coverage` REPLACES the earlier `test` + `test:architecture` pair as the per-commit gate; both

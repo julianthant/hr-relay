@@ -1,0 +1,24 @@
+{
+  "referenceFilesBefore": 591,
+  "referenceFilesAfter": 591,
+  "changedPaths": 81,
+  "state": {
+    "modified": 81
+  },
+  "extension": {
+    "a11y": 50,
+    "meta": 18,
+    "png": 13
+  },
+  "family": {
+    "D292 populated Receipt": 2,
+    "D292 standard Receipt: run-done": 10,
+    "D292 standard Receipt: run-member": 10,
+    "D292 standard Receipt: run-receipt": 11,
+    "descriptor-set metadata hash drift": 20,
+    "Explorer implementation-fingerprint text drift": 12,
+    "outside known affected families": 16
+  },
+  "changedWithinPriorA11ySet": 65,
+  "changedOutsideAffectedFamilies": 16
+}

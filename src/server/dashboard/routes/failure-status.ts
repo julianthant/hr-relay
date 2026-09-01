@@ -12,6 +12,7 @@ import { z } from "zod";
 import { WireErrorSchema } from "../../../domain/dashboard/primitives.js";
 import {
   ComparisonIdentityRefusedError,
+  DiagnosticBundleBytesMissingError,
   DiagnosticBundleCorruptError,
   ProjectionDegradedError,
   RequestIdentityRefusedError,
@@ -20,7 +21,9 @@ import {
 } from "../../failures.js";
 import { errorText } from "../support.js";
 
-export function wireError(code: string, message: string, retryable: boolean): Record<string, unknown> {
+export type WireError = z.infer<typeof WireErrorSchema>;
+
+export function wireError(code: string, message: string, retryable: boolean): WireError {
   return WireErrorSchema.parse({ state: "error", code, message, retryable });
 }
 
@@ -78,6 +81,9 @@ export function failureStatus(
   }
   if (error instanceof ProjectionDegradedError) {
     return { status: 500, body: wireError("PROJECTION_DEGRADED", message, true) };
+  }
+  if (error instanceof DiagnosticBundleBytesMissingError) {
+    return { status: 500, body: wireError("DIAGNOSTIC_BUNDLE_BYTES_MISSING", message, false) };
   }
   if (error instanceof DiagnosticBundleCorruptError) {
     return { status: 500, body: wireError("DIAGNOSTIC_BUNDLE_CORRUPT", message, false) };

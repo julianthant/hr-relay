@@ -1,0 +1,531 @@
+{
+  "summary": {
+    "testCount": 37,
+    "resultCount": 37,
+    "expected": 37,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0,
+    "requiredA11yAttachmentCount": 10,
+    "bodyDigestMatches": 10,
+    "utf8Attachments": 10
+  },
+  "tests": [
+    {
+      "file": "archive-evidence.spec.ts",
+      "title": "desktop keyboard opens, closes with Escape, reopens and returns focus from footer Close",
+      "id": "06ec39b772a7fcf74ad5-f7505a3de4e921aa5110",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "archive-evidence.spec.ts",
+      "title": "narrow viewport keeps the footer and preview inside the dialog",
+      "id": "06ec39b772a7fcf74ad5-26abb3d3aa735ec86459",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "archive-evidence.spec.ts",
+      "title": "keeps frozen facts accessible for a visible missing refusal",
+      "id": "06ec39b772a7fcf74ad5-955aba08af937ef6b9b6",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "archive-evidence.spec.ts",
+      "title": "keeps frozen facts accessible for a visible corrupt refusal",
+      "id": "06ec39b772a7fcf74ad5-0b6255fabe8f11d9718a",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "archive-evidence.spec.ts",
+      "title": "keeps frozen facts accessible for a visible request refusal",
+      "id": "06ec39b772a7fcf74ad5-cc5c115afb75eb9d9551",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "archive-evidence.spec.ts",
+      "title": "keeps frozen facts accessible for a visible image-http refusal",
+      "id": "06ec39b772a7fcf74ad5-342fa976ed3de57076ff",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "archive-evidence.spec.ts",
+      "title": "keeps frozen facts accessible for a visible decode refusal",
+      "id": "06ec39b772a7fcf74ad5-9fc6d2d61b564859d005",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "archive-evidence.spec.ts",
+      "title": "verified archived capture evidence graphite-warm @ 1280x720",
+      "id": "06ec39b772a7fcf74ad5-de9d80210681d3b4e543",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "archive-evidence.spec.ts",
+      "title": "keeps frozen metadata stationary across resource, HTTP and decode readiness",
+      "id": "06ec39b772a7fcf74ad5-b6e5cd92abcc96f9819c",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "archive-evidence.spec.ts",
+      "title": "verified archived capture evidence paper-ink @ phone-390x844",
+      "id": "06ec39b772a7fcf74ad5-ac9fd7ebc70eb4c30b7b",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "archive-evidence.spec.ts",
+      "title": "keeps frozen metadata stationary across resource, HTTP and decode readiness",
+      "id": "06ec39b772a7fcf74ad5-9ae0d24b55fdc0bafac2",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "opens the strict bundle dialog, opens its exact gallery resource, restores focus, and downloads served bytes",
+      "id": "d9268c3331e2af7591ea-baa16617aa55ca79581d",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": [
+        {
+          "name": "diagnostic-lightbox-keyboard-focus.a11y.yml",
+          "contentType": "text/yaml",
+          "annotationDigest": "d8ac64585ae9307f85ba1629ee776ed534fbf3b9598f742b0a7654fb0837bdda",
+          "bodyDigest": "d8ac64585ae9307f85ba1629ee776ed534fbf3b9598f742b0a7654fb0837bdda",
+          "digestEqual": true,
+          "bytes": 675,
+          "utf8": true,
+          "decodedPath": "a11y-attachments/diagnostic-bundle-dialog-spec-ts-d9268c3331e2af7591ea-baa16617aa55ca79581d-01-diagnostic-lightbox-keyboard-focus.a11y.yml"
+        }
+      ]
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "captures the exact-identity screenshot gallery with attributable fixture metadata",
+      "id": "d9268c3331e2af7591ea-80e46af00e37603ff8f1",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": [
+        {
+          "name": "diagnostic-lightbox--graphite-warm--1280x720.a11y.yml",
+          "contentType": "text/yaml",
+          "annotationDigest": "84126fddae629341f545259a748a9ab4ccdace8f385d5bee366dcf4e86fa6fe0",
+          "bodyDigest": "84126fddae629341f545259a748a9ab4ccdace8f385d5bee366dcf4e86fa6fe0",
+          "digestEqual": true,
+          "bytes": 682,
+          "utf8": true,
+          "decodedPath": "a11y-attachments/diagnostic-bundle-dialog-spec-ts-d9268c3331e2af7591ea-80e46af00e37603ff8f1-01-diagnostic-lightbox--graphite-warm--1280x720.a11y.yml"
+        }
+      ]
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "captures the exact-identity screenshot gallery in paper ink",
+      "id": "d9268c3331e2af7591ea-b0aa0b166037830b129f",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": [
+        {
+          "name": "diagnostic-lightbox--paper-ink--1280x720.a11y.yml",
+          "contentType": "text/yaml",
+          "annotationDigest": "84126fddae629341f545259a748a9ab4ccdace8f385d5bee366dcf4e86fa6fe0",
+          "bodyDigest": "84126fddae629341f545259a748a9ab4ccdace8f385d5bee366dcf4e86fa6fe0",
+          "digestEqual": true,
+          "bytes": 682,
+          "utf8": true,
+          "decodedPath": "a11y-attachments/diagnostic-bundle-dialog-spec-ts-d9268c3331e2af7591ea-b0aa0b166037830b129f-01-diagnostic-lightbox--paper-ink--1280x720.a11y.yml"
+        }
+      ]
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "re-reads the exact bundle after an image failure and names its typed authority outcome",
+      "id": "d9268c3331e2af7591ea-d2422ab734be81fab3bc",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "does not reopen when a delayed bundle verification settles after Escape",
+      "id": "d9268c3331e2af7591ea-7634b369971b74489b74",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "isolates two failed screenshots and accepts their rechecks out of order",
+      "id": "d9268c3331e2af7591ea-8bf603cf7b0ac0b2bfab",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "continues parent-owned verification after lightbox Escape without leaving a dead loading state",
+      "id": "d9268c3331e2af7591ea-05907226cb822602a08c",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "a parent footer close invalidates a delayed image reread before the same bundle reopens",
+      "id": "d9268c3331e2af7591ea-8839680f499d3c6ed54e",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "refuses content-digest drift on image reread instead of granting a browser-only download",
+      "id": "d9268c3331e2af7591ea-117383fdb5c1679e8792",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "refuses screenshot-metadata drift on image reread instead of granting a browser-only download",
+      "id": "d9268c3331e2af7591ea-13f94d61045d53d1c7d4",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "does not fetch the offscreen gallery eagerly and admits only visible thumbnails",
+      "id": "d9268c3331e2af7591ea-edc46874af78ac629a3b",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "keeps a genuine loading state and no download until the selected image decodes",
+      "id": "d9268c3331e2af7591ea-03f90b11618006d8144e",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "keeps restricted JPEG bytes, dimensions and warning honest on the lightbox download",
+      "id": "d9268c3331e2af7591ea-b6fb9672e77cdcce4563",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "keeps the requested dialog identity when a strict response carries a foreign bundle id",
+      "id": "d9268c3331e2af7591ea-9756946f24f0efefeee6",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "an unknown reread error never grants a screenshot download",
+      "id": "d9268c3331e2af7591ea-d2d5a0e9a9dd94db9df9",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "portrait screenshot gallery and lightbox stay within 320px with touch-sized actions",
+      "id": "d9268c3331e2af7591ea-82e47e402178dc33baa6",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": [
+        {
+          "name": "diagnostic-lightbox--portrait--320x844.a11y.yml",
+          "contentType": "text/yaml",
+          "annotationDigest": "2755917f413bf3ea49cb0c6cfc711c6acf7526a3359796d1ce4fb41f6f2dcbfa",
+          "bodyDigest": "2755917f413bf3ea49cb0c6cfc711c6acf7526a3359796d1ce4fb41f6f2dcbfa",
+          "digestEqual": true,
+          "bytes": 672,
+          "utf8": true,
+          "decodedPath": "a11y-attachments/diagnostic-bundle-dialog-spec-ts-d9268c3331e2af7591ea-82e47e402178dc33baa6-01-diagnostic-lightbox--portrait--320x844.a11y.yml"
+        }
+      ]
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "portrait screenshot gallery and lightbox stay within 390px with touch-sized actions",
+      "id": "d9268c3331e2af7591ea-5d0ff146d7c92aa9aaf4",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": [
+        {
+          "name": "diagnostic-lightbox--portrait--390x844.a11y.yml",
+          "contentType": "text/yaml",
+          "annotationDigest": "2755917f413bf3ea49cb0c6cfc711c6acf7526a3359796d1ce4fb41f6f2dcbfa",
+          "bodyDigest": "2755917f413bf3ea49cb0c6cfc711c6acf7526a3359796d1ce4fb41f6f2dcbfa",
+          "digestEqual": true,
+          "bytes": 672,
+          "utf8": true,
+          "decodedPath": "a11y-attachments/diagnostic-bundle-dialog-spec-ts-d9268c3331e2af7591ea-5d0ff146d7c92aa9aaf4-01-diagnostic-lightbox--portrait--390x844.a11y.yml"
+        }
+      ]
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "keeps the absent diagnostic-bundle arm explanatory and does not expose a dead action",
+      "id": "d9268c3331e2af7591ea-01a4bcf2d9e8f4207e3d",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "title": "keeps the lg dialog inside the mobile viewport with touch-sized actions",
+      "id": "d9268c3331e2af7591ea-a40920055584930569f9",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "run-captures.spec.ts",
+      "title": "full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus",
+      "id": "80dad1281f043ed69083-16f15a8955718934fca1",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": [
+        {
+          "name": "run-captures-full-graphite-desktop.a11y.yml",
+          "contentType": "text/yaml",
+          "annotationDigest": "59285298960000dd6258341771cdd6b095bc7c11c8d2f9bd5b04d75e204bc699",
+          "bodyDigest": "59285298960000dd6258341771cdd6b095bc7c11c8d2f9bd5b04d75e204bc699",
+          "digestEqual": true,
+          "bytes": 14269,
+          "utf8": true,
+          "decodedPath": "a11y-attachments/run-captures-spec-ts-80dad1281f043ed69083-16f15a8955718934fca1-01-run-captures-full-graphite-desktop.a11y.yml"
+        },
+        {
+          "name": "run-capture-jpeg-graphite-desktop.a11y.yml",
+          "contentType": "text/yaml",
+          "annotationDigest": "64ab1693e36c8a0704ba9bb2673e2f157863104051cf13c6a62bd940d979049c",
+          "bodyDigest": "64ab1693e36c8a0704ba9bb2673e2f157863104051cf13c6a62bd940d979049c",
+          "digestEqual": true,
+          "bytes": 1141,
+          "utf8": true,
+          "decodedPath": "a11y-attachments/run-captures-spec-ts-80dad1281f043ed69083-16f15a8955718934fca1-02-run-capture-jpeg-graphite-desktop.a11y.yml"
+        }
+      ]
+    },
+    {
+      "file": "run-captures.spec.ts",
+      "title": "full Receipt renders in Paper Ink at the desktop viewport",
+      "id": "80dad1281f043ed69083-e090b29f1edd31eddca3",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": [
+        {
+          "name": "run-captures-full-paper-desktop.a11y.yml",
+          "contentType": "text/yaml",
+          "annotationDigest": "0473cd69dab0f86279b327a423878a0bd93b5854a48d1bdad2a010b6e7f9c028",
+          "bodyDigest": "0473cd69dab0f86279b327a423878a0bd93b5854a48d1bdad2a010b6e7f9c028",
+          "digestEqual": true,
+          "bytes": 14273,
+          "utf8": true,
+          "decodedPath": "a11y-attachments/run-captures-spec-ts-80dad1281f043ed69083-e090b29f1edd31eddca3-01-run-captures-full-paper-desktop.a11y.yml"
+        }
+      ]
+    },
+    {
+      "file": "run-captures.spec.ts",
+      "title": "image refusal keeps the preview frame and metadata stationary",
+      "id": "80dad1281f043ed69083-12d63b51c402e46f3fc0",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "run-captures.spec.ts",
+      "title": "closing during image load invalidates the dialog and restores its opener",
+      "id": "80dad1281f043ed69083-bbfcb60acdacf52c99ca",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "run-captures.spec.ts",
+      "title": "served absence makes no speculative capture request",
+      "id": "80dad1281f043ed69083-8e242774e8f389f445e5",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": []
+    },
+    {
+      "file": "run-captures.spec.ts",
+      "title": "short Receipt preserves all origins and literal failure framing",
+      "id": "80dad1281f043ed69083-9a065c3569cac63ec074",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": [
+        {
+          "name": "run-capture-png-paper-phone.a11y.yml",
+          "contentType": "text/yaml",
+          "annotationDigest": "02e2a3663a351becfe9c6d059eddc39fd63d3480b695caf37c0f3140eb2bc854",
+          "bodyDigest": "02e2a3663a351becfe9c6d059eddc39fd63d3480b695caf37c0f3140eb2bc854",
+          "digestEqual": true,
+          "bytes": 1422,
+          "utf8": true,
+          "decodedPath": "a11y-attachments/run-captures-spec-ts-80dad1281f043ed69083-9a065c3569cac63ec074-01-run-capture-png-paper-phone.a11y.yml"
+        }
+      ]
+    },
+    {
+      "file": "run-captures.spec.ts",
+      "title": "short Receipt renders in Graphite Warm at the phone viewport",
+      "id": "80dad1281f043ed69083-103d533c7c178714d11b",
+      "expectedStatus": "passed",
+      "resultStatuses": [
+        "passed"
+      ],
+      "status": "expected",
+      "requiredEvidence": [
+        {
+          "name": "run-captures-short-graphite-phone.a11y.yml",
+          "contentType": "text/yaml",
+          "annotationDigest": "90ad31767e736ba06717bb056308c2bc3d2bf2eac85713b4a1f3f3c224ee6e1a",
+          "bodyDigest": "90ad31767e736ba06717bb056308c2bc3d2bf2eac85713b4a1f3f3c224ee6e1a",
+          "digestEqual": true,
+          "bytes": 13211,
+          "utf8": true,
+          "decodedPath": "a11y-attachments/run-captures-spec-ts-80dad1281f043ed69083-103d533c7c178714d11b-01-run-captures-short-graphite-phone.a11y.yml"
+        }
+      ]
+    }
+  ]
+}

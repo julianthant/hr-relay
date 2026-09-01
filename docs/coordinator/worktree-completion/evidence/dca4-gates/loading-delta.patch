@@ -1,0 +1,39 @@
+--- before/src/dashboard/surfaces/archive.tsx
++++ after/src/dashboard/surfaces/archive.tsx
+@@ -2370,6 +2370,7 @@
+         <img
+           ref={image.bindImage}
+           src={imageUrl}
++          loading="eager"
+           width={tile.dimensions?.width}
+           height={tile.dimensions?.height}
+           alt={image.state === "ready" ? `Archived ${tile.kind} captured ${fmtClock(tile.capturedAt)}` : ""}
+--- before/tests/unit/dashboard/archive-render.test.ts
++++ after/tests/unit/dashboard/archive-render.test.ts
+@@ -412,6 +412,12 @@
+     assert.match(document.body.textContent ?? "", /Verified retained bytes for this frozen archived capture\./u);
+     assert.doesNotMatch(document.body.textContent ?? "", /Capture image could not be displayed/u);
+   }
++
++  it("explicitly loads the requested archived image eagerly", async () => {
++    await mountHarness(0, async (runId, artifactId) => available(runId, artifactId));
++
++    assert.equal(image().getAttribute("loading"), "eager", "the requested capture preview must declare eager loading");
++  });
+ 
+   for (const dimensions of [undefined, { width: 1440, height: 900 }]) {
+     it(`reserves the same preview shell through resource loading, decode and failure with ${dimensions === undefined ? "unrecorded" : "frozen"} dimensions`, async () => {
+--- before/src/dashboard/AGENTS.md
++++ after/src/dashboard/AGENTS.md
+@@ -26,6 +26,11 @@
+ 
+ ### Dated lessons
+ 
++- **2026-08-30 — requested capture previews declare eager loading explicitly.** The native image's
++  implicit loading behavior did not satisfy the JSX loading ratchet. Keep `loading="eager"` on
++  Archive's requested preview, pin that declaration in rendered DOM, and retain decode-owned
++  readiness; do not switch to lazy loading or exempt the image from the guard. (DCA4)
++
+ - **2026-08-30 — a stable preview frame does not reserve space for an overlaid caption.** Archive's
+   full-frame image and absolute-bottom caption overlapped in both themes; the caption also named
+   undeclared `--ds-bg-inset`. Partition the unchanged outer frame into a contained-image viewport

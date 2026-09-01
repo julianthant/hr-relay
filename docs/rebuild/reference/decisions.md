@@ -1671,11 +1671,13 @@ in `docs/decisions/2026-08-28-dashboard-reporting-authority-answers.md`._
 ## 2026-08-30 — reporting/Settings migration-history integration
 
 The operator answered `all recommended` to the remaining-worktree integration decision sheet.
-Only item 1 belongs to this DCR/DCC history-integration run; D291/D292 remain outside this branch.
+D290 belongs to the DCR/DCC history-integration run. D291/D292 are now joined through the reviewed DCA capture integration.
 
 | # | Decision | Owning doc |
 |---|---|---|
 | **D290** | **One bounded integration-only normalization after common v18; preserve original lineage and refuse divergent existing suffixes.** | ref dashboard-surfaces §2.4 D290; ref guards-and-tests §3.10 migration-history-immutability |
+| **D291** | **Server-only compatible incremental reading and private request-lifetime verified-byte leases, with explicit operational and transfer cleanup.** | ref task-contract §2.3 D291; ref frontend-backend-integration §3.6 D291/D292 |
+| **D292** | **One generic capture tile per artifact retains every verified bundle origin; a literal failure origin supplies the failure frame.** | ref dashboard-surfaces D19/D292; ref frontend-backend-integration §3.6 D291/D292 |
 
 ## Reconciliation round 105 (2026-08-31) — destination-free Run Modal with D285 intact
 

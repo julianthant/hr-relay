@@ -1,0 +1,32 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/scripts/verify-parity-json.test.ts tests/unit/architecture/parity-reference-authority.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+·······························x··········
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/architecture/parity-reference-authority.test.ts > parity lane reference authority (D132) > persists exact body-backed a11y attachments through the configured reporter
+AssertionError: Missing expected exception.
+
+simple
+
+ ❯ tests/unit/architecture/parity-reference-authority.test.ts:322:14
+    320|       const withoutDeclaration = source.replace(name, `${name}.removed…
+    321|       assert.notEqual(withoutDeclaration, source, `the ${name} invento…
+    322|       assert.throws(
+       |              ^
+    323|         () => assertStaticRequiredA11yEvidence(withoutDeclaration, "mu…
+    324|         new RegExp(`statically declare ${name.replaceAll(".", "\\.")}`…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 41 passed (42)
+   Start at  13:43:25
+   Duration  2.81s (transform 1.03s, setup 0ms, import 1.74s, tests 941ms, environment 0ms)
+

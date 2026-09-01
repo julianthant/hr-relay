@@ -1,0 +1,37 @@
+{
+  "provenance": "Current after remaining05 control and restored positive",
+  "protectedCount": 1622,
+  "protectedDigest": "68ea761f5fb644c0cbf83a42bc4edf005489f1d9a662daea650a6b60efd1b1f6",
+  "protectedMatchesBefore": true,
+  "changed": [],
+  "spec": {
+    "sha256": "e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0",
+    "bytes": 23317
+  },
+  "logs": {
+    "frozen-current-05.json": {
+      "sha256": "c542b98dc12487a83acdd5c4cea57badd31f9f0bf3ef8a8d95a5927d9516fd01",
+      "bytes": 3056
+    },
+    "abort-control-05.patch": {
+      "sha256": "be7a5f36e90a2d831b8f5dd98e90d8483addf2bd0e24c067db2017b1292c9f26",
+      "bytes": 245
+    },
+    "abort-negative-05.log": {
+      "sha256": "c3f065985c81b5e3d198a5752ce09c2b831588171a3df9561916d6daf7d49b1d",
+      "bytes": 2044
+    },
+    "abort-negative-execution-05.json": {
+      "sha256": "70172a285d8555c4b2527af4c06f5851a44f081ab475df40c1e6a447ade38222",
+      "bytes": 1139
+    },
+    "abort-positive-05.log": {
+      "sha256": "af6e14f9f928000cf51cb2d2cc1d30320505cf6ebc72c56e79744babe875c371",
+      "bytes": 513
+    },
+    "abort-positive-execution-05.json": {
+      "sha256": "8be5f36a007272121760b3536a85510b9cac7466c21f939bbb9bfd07ded398fe",
+      "bytes": 756
+    }
+  }
+}

@@ -143,6 +143,7 @@
       - heading "Earlier run comparison" [level=3]
       - paragraph: Reviewed details from this run and its earlier attempt. Protected details remain withheld.
       - text: No earlier run to compare This run does not name an earlier attempt, so no comparison is available.
+    - region "Run captures": Captures No captures this composition wires no diagnostic capture authority
   - complementary "Run data":
     - text: Run data
     - button "Hide run data"

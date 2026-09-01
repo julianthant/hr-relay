@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import {
   appendFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -24,6 +25,8 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import readXlsxFile from "read-excel-file/node";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { request } from "node:http";
+import type { ArtifactRef } from "../../../src/domain/artifacts.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
   SETTINGS_SCHEMA_HASH,
@@ -49,6 +52,8 @@ import { DiagnosticBundleIdSchema, RunIdSchema } from "../../../src/domain/ids.j
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../src/domain/trust/evidence.js";
 import { defineReceiptComparisonRegistry } from "../../../src/domain/trust/receipt-comparison.js";
+import { RunDetailSectionResponseSchema } from "../../../src/domain/dashboard/run-detail.js";
+import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { createActivityPersonPseudonymDomain } from "../../../src/domain/trust/activity-person-pseudonym.js";
@@ -57,8 +62,13 @@ import { PreflightRerunCommandResultSchema } from "../../../src/domain/preflight
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase, type AuthorityRepositories } from "../../../src/infra/sqlite/index.js";
+import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import {
+  createServerVerifiedArtifactReader,
+  type ServerVerifiedArtifactReader,
+} from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
@@ -70,6 +80,10 @@ import type { IntakeService } from "../../../src/server/dashboard/commands/intak
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import {
+  startDashboardHttpServer,
+  type DashboardHttpServer,
+} from "../../../src/server/dashboard/http-server.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
@@ -79,6 +93,7 @@ import { createOperatorXlsxExportService } from "../../../src/server/dashboard/e
 import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
 import type { RequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
 import { RequestIdentityRefusedError } from "../../../src/server/failures.js";
+import type { ArtifactBytesQueryDeps } from "../../../src/server/dashboard/queries/artifact-bytes.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
 import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
@@ -123,6 +138,68 @@ interface Harness {
   readonly projection: ReturnType<typeof createRunQueueProjection>;
   readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
   readonly preflight: ReturnType<typeof createPreflightHarness>;
+  readonly artifactSourceReads: number[];
+}
+
+type DiagnosticBundleHarnessDeps = DiagnosticBundleQueryDeps
+  & ArtifactBytesQueryDeps
+  & Readonly<{ artifacts: ReturnType<typeof createContentAddressedArtifactWriter> }>;
+
+function beforeArtifactReaderOperation(
+  reader: ServerVerifiedArtifactReader,
+  before: (operation: "verify" | "prepare", ref: ArtifactRef) => void | Promise<void>,
+): ServerVerifiedArtifactReader {
+  return Object.freeze({
+    async verify(ref: ArtifactRef, signal?: AbortSignal) {
+      await before("verify", ref);
+      await reader.verify(ref, signal);
+    },
+    async prepare(ref: ArtifactRef, signal?: AbortSignal) {
+      await before("prepare", ref);
+      return reader.prepare(ref, signal);
+    },
+  });
+}
+
+function observeArtifactLeaseDisposal(
+  reader: ServerVerifiedArtifactReader,
+  onDispose: () => void,
+): ServerVerifiedArtifactReader {
+  return Object.freeze({
+    verify: (ref: ArtifactRef, signal?: AbortSignal) => reader.verify(ref, signal),
+    async prepare(ref: ArtifactRef, signal?: AbortSignal) {
+      const lease = await reader.prepare(ref, signal);
+      return Object.freeze({
+        ref: lease.ref,
+        takeBody: () => lease.takeBody(),
+        async dispose() {
+          onDispose();
+          await lease.dispose();
+        },
+      });
+    },
+  });
+}
+
+function writeStoredArtifactEnvelope(
+  h: Harness,
+  ref: ArtifactRef,
+  mutation: "digest" | "oversized" | "truncated" | "identity" | "metadata digest" | "size" | "media type",
+): void {
+  const payloadBase64 = mutation === "digest" ? "WF0="
+    : mutation === "oversized" ? "W10A"
+      : mutation === "truncated" ? "Ww=="
+        : "W10=";
+  writeFileSync(join(h.stateRoot, "artifacts", `${ref.sha256}.artifact`), JSON.stringify({
+    ref: {
+      ...ref,
+      ...(mutation === "identity" ? { id: "00000000-0000-4000-8000-000000000099" } : {}),
+      ...(mutation === "metadata digest" ? { sha256: "0".repeat(64) } : {}),
+      ...(mutation === "size" ? { bytes: 3 } : {}),
+      ...(mutation === "media type" ? { mediaType: "text/plain" } : {}),
+    },
+    payloadBase64,
+  }));
 }
 
 const cleanups: (() => void)[] = [];
@@ -155,12 +232,19 @@ afterEach(() => {
 function harness(options: {
   readonly capturePhoneHost?: string;
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
-  readonly diagnosticBundles?: (real: DiagnosticBundleQueryDeps) => DiagnosticBundleQueryDeps;
   readonly receiptComparison?: RunReceiptComparisonQueryDeps;
   readonly requestIdentity?: RequestIdentityCheckpoint;
   readonly intake?: IntakeService;
   readonly preflightBeforeRun?: () => Promise<void>;
   readonly preflightScheduler?: PreflightDeadlineScheduler;
+  readonly omitDiagnosticBundles?: boolean;
+  readonly diagnosticBundles?: (
+    real: DiagnosticBundleHarnessDeps,
+  ) => DiagnosticBundleHarnessDeps;
+  readonly observeArtifactLeaseClosed?: () => void;
+  readonly runCaptureAuthority?: (
+    real: AuthorityRepositories["diagnosticBundles"],
+  ) => AuthorityRepositories["diagnosticBundles"];
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
@@ -174,6 +258,17 @@ function harness(options: {
   const artifacts = createContentAddressedArtifactWriter({
     workspaceRoot: root,
     artifactRoot: ".tracker-rebuild/artifacts",
+  });
+  const artifactSourceReads: number[] = [];
+  const artifactReader = createServerVerifiedArtifactReader({
+    workspaceRoot: root,
+    artifactRoot: ".tracker-rebuild/artifacts",
+    observeIo: (kind, bytes) => {
+      if (kind === "source-read") artifactSourceReads.push(bytes);
+    },
+    ...(options.observeArtifactLeaseClosed === undefined
+      ? {}
+      : { observeLeaseClosed: options.observeArtifactLeaseClosed }),
   });
   cleanups.push(() => {
     database.close();
@@ -232,6 +327,11 @@ function harness(options: {
       resolve: (workflowId: string) => (workflowId === fixtureDescriptor.id ? fixtureDescriptor : undefined),
     },
     trust: createReceiptService({ database, descriptors: [fixtureDescriptor] }),
+    captures: {
+      authority: options.runCaptureAuthority?.(database.authority.diagnosticBundles)
+        ?? database.authority.diagnosticBundles,
+      artifactReader,
+    },
   };
 
   const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), HASH_B);
@@ -367,13 +467,18 @@ function harness(options: {
       withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
         work(repositories.bulkCommandAcceptances)),
     },
-    diagnosticBundles: options.diagnosticBundles?.({
-      authority: database.authority.diagnosticBundles,
-      artifacts,
-    }) ?? {
-      authority: database.authority.diagnosticBundles,
-      artifacts,
-    },
+    ...(options.omitDiagnosticBundles
+      ? {}
+      : {
+          diagnosticBundles: options.diagnosticBundles?.({
+            authority: database.authority.diagnosticBundles,
+            artifactReader,
+            artifacts,
+          }) ?? {
+            authority: database.authority.diagnosticBundles,
+            artifactReader,
+          },
+        }),
     runDetail: runDetailDeps,
     receiptComparison: options.receiptComparison,
     archive: archiveQueryDeps({ database, clock, appVersion: "0.1.0", descriptors: [fixtureDescriptor] }),
@@ -415,6 +520,7 @@ function harness(options: {
     projection,
     artifacts,
     preflight,
+    artifactSourceReads,
   };
 }
 
@@ -480,8 +586,10 @@ function comparisonReceipt(run: RunRecord, value: string): RunEvidenceReceipt {
   });
 }
 
-async function captureDiagnosticBundle(h: Harness) {
-  h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
+async function captureDiagnosticBundle(h: Harness, runId = RUN_ID) {
+  if (h.database.authority.runs.get(runId) === undefined) {
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId }));
+  }
   return createDiagnosticCaptureService({
     authority: h.database.authority,
     artifacts: h.artifacts,
@@ -489,7 +597,7 @@ async function captureDiagnosticBundle(h: Harness) {
     ids: sequentialIdFactory("d"),
   }).capture({
     trigger: "operator-request",
-    runId: RUN_ID,
+    runId,
     requestedBy: "local-operator",
     configFingerprint: HASH_B,
     descriptorFingerprint: fixtureDescriptor.contractFingerprint,
@@ -669,6 +777,33 @@ async function activityPeople(h: Harness): Promise<unknown> {
   const response = await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`);
   assert.equal(response.status, 200);
   return ActivityReportWireSchema.parse(await response.json()).people;
+}
+
+async function loopbackResponse(
+  server: DashboardHttpServer,
+  path: string,
+  init: Readonly<{ method: "GET" | "HEAD"; headers?: Readonly<Record<string, string>> }>,
+): Promise<Readonly<{ status: number; headers: Readonly<Record<string, string | string[] | undefined>>; body: Buffer }>> {
+  return new Promise((resolve, reject) => {
+    const client = request({
+      hostname: "127.0.0.1",
+      port: server.port,
+      path,
+      method: init.method,
+      headers: init.headers,
+    }, (response) => {
+      const chunks: Uint8Array[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(Uint8Array.from(chunk)));
+      response.once("end", () => resolve(Object.freeze({
+        status: response.statusCode ?? 0,
+        headers: Object.freeze({ ...response.headers }),
+        body: Buffer.concat(chunks),
+      })));
+      response.once("error", reject);
+    });
+    client.once("error", reject);
+    client.end();
+  });
 }
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
@@ -1147,9 +1282,833 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it.each([
+    { profile: "generic", method: "HEAD", range: undefined, status: 200 },
+    { profile: "bundle", method: "HEAD", range: undefined, status: 200 },
+    { profile: "generic", method: "GET", range: "bytes=0-0", status: 416 },
+    { profile: "bundle", method: "GET", range: "bytes=0-0", status: 416 },
+  ] as const)(
+    "serves the real $profile $method/$status verified-byte profile over node:http",
+    async ({ profile, method, range, status }) => {
+      let disposals = 0;
+      const transferErrors: Error[] = [];
+      const h = harness({
+        observeArtifactLeaseClosed: () => {
+          disposals += 1;
+        },
+      });
+      const bundle = await captureDiagnosticBundle(h);
+      const attachment = bundle.attachments[0];
+      if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+      const path = profile === "generic"
+        ? `/artifacts/v1/${attachment.artifactId}`
+        : `/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`;
+      const server = await startDashboardHttpServer({
+        app: h.app,
+        port: 0,
+        onTransferError: (error) => transferErrors.push(error),
+      });
+      try {
+        const response = await loopbackResponse(server, path, {
+          method,
+          ...(range === undefined ? {} : { headers: { range } }),
+        });
+
+        assert.equal(response.status, status);
+        assert.equal(response.body.byteLength, 0);
+        assert.equal(response.headers["cache-control"], "no-store");
+        assert.equal(
+          response.headers["content-disposition"],
+          undefined,
+          `${profile} must not inherit Archive's attachment-only disposition`,
+        );
+        if (status === 200) {
+          assert.equal(response.headers["content-type"], attachment.mediaType);
+          assert.equal(response.headers["content-length"], String(attachment.byteLength));
+          assert.equal(response.headers["content-range"], undefined);
+        } else {
+          assert.equal(response.headers["content-range"], `bytes */${String(attachment.byteLength)}`);
+          assert.equal(response.headers["content-type"], undefined);
+          assert.equal(response.headers["content-length"], undefined);
+        }
+        assert.equal(disposals, 1);
+        assert.equal(h.artifactSourceReads.length, profile === "generic" ? 1 : 2);
+        assert.deepEqual(transferErrors, []);
+      } finally {
+        await server.close();
+      }
+    },
+  );
+
+  it("cancels the actual generic verified-byte route lease when its socket disconnects", async () => {
+    const leaseClosed = Promise.withResolvers<void>();
+    const transferErrors: Error[] = [];
+    const h = harness({ observeArtifactLeaseClosed: leaseClosed.resolve });
+    const bytes = Buffer.alloc(2 * 1024 * 1024, 0x5a);
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
+    const bundle = await createDiagnosticCaptureService({
+      authority: h.database.authority,
+      artifacts: h.artifacts,
+      clock: h.clock,
+      ids: sequentialIdFactory("f"),
+    }).capture({
+      trigger: "operator-request",
+      runId: RUN_ID,
+      requestedBy: "local-operator",
+      configFingerprint: HASH_B,
+      descriptorFingerprint: fixtureDescriptor.contractFingerprint,
+      fields: [],
+      attachments: [{
+        kind: "console-summary",
+        mediaType: "application/json",
+        bytes,
+        sensitivity: "redacted",
+      }],
+    });
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const server = await startDashboardHttpServer({
+      app: h.app,
+      port: 0,
+      onTransferError: (error) => transferErrors.push(error),
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const client = request({
+          hostname: "127.0.0.1",
+          port: server.port,
+          method: "GET",
+          path: `/artifacts/v1/${attachment.artifactId}`,
+        }, (response) => {
+          response.once("error", () => undefined);
+          response.pause();
+          response.destroy();
+          resolve();
+        });
+        client.once("error", reject);
+        client.end();
+      });
+
+      await leaseClosed.promise;
+      assert.ok(h.artifactSourceReads.length > 1);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.ok(transferErrors.length <= 1, "one disconnected transfer may report at most one local error");
+      for (const error of transferErrors) assert.match(error.message, /closed|disconnected/u);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("aborts the actual generic route's preparation before headers when its socket disconnects", async () => {
+    const routedSignal = Promise.withResolvers<AbortSignal>();
+    const signalAborted = Promise.withResolvers<AbortSignal>();
+    const transferErrors: Error[] = [];
+    const h = harness({
+      diagnosticBundles: (real) => ({
+        ...real,
+        artifactReader: Object.freeze({
+          verify: (ref: ArtifactRef, signal?: AbortSignal) => real.artifactReader.verify(ref, signal),
+          async prepare(ref: ArtifactRef, signal?: AbortSignal) {
+            if (signal === undefined) {
+              const error = new Error("the real generic route omitted its request signal");
+              routedSignal.reject(error);
+              throw error;
+            }
+            routedSignal.resolve(signal);
+            await new Promise<void>((resolve) => signal.addEventListener("abort", () => {
+              signalAborted.resolve(signal);
+              resolve();
+            }, { once: true }));
+            signal.throwIfAborted();
+            return real.artifactReader.prepare(ref, signal);
+          },
+        }),
+      }),
+    });
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const server = await startDashboardHttpServer({
+      app: h.app,
+      port: 0,
+      onTransferError: (error) => transferErrors.push(error),
+    });
+    let serverClosed = false;
+    try {
+      const clientClosed = Promise.withResolvers<void>();
+      const client = request({
+        hostname: "127.0.0.1",
+        port: server.port,
+        method: "GET",
+        path: `/artifacts/v1/${attachment.artifactId}`,
+      });
+      client.once("error", () => undefined);
+      client.once("close", clientClosed.resolve);
+      client.end();
+      const signal = await routedSignal.promise;
+      assert.equal(signal.aborted, false);
+      client.destroy();
+
+      const observedSignal = await signalAborted.promise;
+      await clientClosed.promise;
+      assert.equal(observedSignal, signal);
+      assert.equal(signal.aborted, true);
+      assert.match(String(signal.reason), /disconnected before response handoff/u);
+      await server.close();
+      serverClosed = true;
+      assert.deepEqual(
+        transferErrors,
+        [],
+        "an expected pre-handoff client abort must not be mislabeled as a response-transfer failure",
+      );
+    } finally {
+      if (!serverClosed) await server.close();
+    }
+  });
+
+  it("serves an authorized diagnostic attachment as an exact no-store resource", async () => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+    const response = await h.app.request(`/artifacts/v1/${attachment.artifactId}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), attachment.mediaType);
+    assert.equal(response.headers.get("content-length"), String(attachment.byteLength));
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.deepEqual(new Uint8Array(await response.arrayBuffer()), new TextEncoder().encode("[]"));
+  });
+
+  it.each(["generic", "bundle"] as const)(
+    "verifies and disposes the selected %s lease before returning an exact HEAD response",
+    async (profile) => {
+      let disposals = 0;
+      const h = harness({ diagnosticBundles: (real) => ({
+        ...real,
+        artifactReader: observeArtifactLeaseDisposal(real.artifactReader, () => {
+          disposals += 1;
+        }),
+      }) });
+      const bundle = await captureDiagnosticBundle(h);
+      const attachment = bundle.attachments[0];
+      if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+      const path = profile === "generic"
+        ? `/artifacts/v1/${attachment.artifactId}`
+        : `/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`;
+
+      const response = await h.app.request(path, { method: "HEAD" });
+
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("content-type"), attachment.mediaType);
+      assert.equal(response.headers.get("content-length"), String(attachment.byteLength));
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      assert.equal(await response.text(), "");
+      assert.equal(disposals, 1);
+      assert.equal(h.artifactSourceReads.length, profile === "generic" ? 1 : 2);
+    },
+  );
+
+  it.each(["generic", "bundle"] as const)(
+    "verifies and disposes the selected %s lease before refusing Range",
+    async (profile) => {
+      let disposals = 0;
+      const h = harness({ diagnosticBundles: (real) => ({
+        ...real,
+        artifactReader: observeArtifactLeaseDisposal(real.artifactReader, () => {
+          disposals += 1;
+        }),
+      }) });
+      const bundle = await captureDiagnosticBundle(h);
+      const attachment = bundle.attachments[0];
+      if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+      const path = profile === "generic"
+        ? `/artifacts/v1/${attachment.artifactId}`
+        : `/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`;
+
+      const response = await h.app.request(path, { headers: { range: "bytes=0-0" } });
+
+      assert.equal(response.status, 416);
+      assert.equal(response.headers.get("content-range"), `bytes */${String(attachment.byteLength)}`);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      assert.equal(await response.text(), "");
+      assert.equal(disposals, 1);
+      assert.equal(h.artifactSourceReads.length, profile === "generic" ? 1 : 2);
+    },
+  );
+
+  it("serves an attachment only through the exact verified bundle that indexes it", async () => {
+    const readerOperations: { operation: "verify" | "prepare"; ref: ArtifactRef }[] = [];
+    const h = harness({ diagnosticBundles: (real) => ({
+      ...real,
+      artifactReader: beforeArtifactReaderOperation(real.artifactReader, (operation, ref) => {
+        readerOperations.push({ operation, ref });
+      }),
+    }) });
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const envelopeByteLength = readFileSync(
+      join(h.stateRoot, "artifacts", `${attachment.digest}.artifact`),
+    ).byteLength;
+
+    const response = await h.app.request(
+      `/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`,
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), attachment.mediaType);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.deepEqual(new Uint8Array(await response.arrayBuffer()), new TextEncoder().encode("[]"));
+    assert.deepEqual(readerOperations, [
+      {
+        operation: "verify",
+        ref: {
+          id: attachment.artifactId,
+          sha256: attachment.digest,
+          bytes: attachment.byteLength,
+          mediaType: attachment.mediaType,
+        },
+      },
+      {
+        operation: "prepare",
+        ref: {
+          id: attachment.artifactId,
+          sha256: attachment.digest,
+          bytes: attachment.byteLength,
+          mediaType: attachment.mediaType,
+        },
+      },
+    ], "selected success performs one E29 verification and one fresh exact-ref preparation");
+    assert.deepEqual(
+      h.artifactSourceReads,
+      [envelopeByteLength, envelopeByteLength],
+      "selected preparation performs a fresh source read after E29",
+    );
+
+    const foreign = await h.app.request(
+      `/api/v1/diagnostic-bundles/00000000-0000-4000-8000-000000000099/attachments/${attachment.artifactId}`,
+    );
+    assert.equal(foreign.status, 404, "an indexed artifact must not detach from its requested bundle identity");
+  });
+
+  it("serves the stored screenshot bytes and its captured dimensions through one exact bundle", async () => {
+    const h = harness();
+    await captureDiagnosticBundle(h);
+    const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jG9sAAAAASUVORK5CYII=";
+    const bundle = await createDiagnosticCaptureService({
+      authority: h.database.authority, artifacts: h.artifacts, clock: h.clock, ids: sequentialIdFactory("e"),
+    }).capture({
+      trigger: "operator-request", runId: RUN_ID, requestedBy: "local-operator",
+      configFingerprint: HASH_B, descriptorFingerprint: fixtureDescriptor.contractFingerprint,
+      fields: [], attachments: [{
+        kind: "screenshot", mediaType: "image/png", bytes: Buffer.from(pngBase64, "base64"),
+        width: 1, height: 1, sensitivity: "restricted",
+      }],
+    });
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its screenshot");
+    const path = `/api/v1/diagnostic-bundles/${bundle.bundleId}`;
+    const metadata = await h.app.request(path);
+    const wire = await json(metadata);
+    assert.deepEqual(wire.contents, [{
+      kind: "screenshot", key: "Screenshot", detail: "image/png · 68 bytes · 1 × 1 px · restricted",
+      artifactId: attachment.artifactId, mediaType: "image/png", byteLength: 68,
+      digest: attachment.digest, width: 1, height: 1, sensitivity: "restricted",
+    }]);
+    const response = await h.app.request(`${path}/attachments/${attachment.artifactId}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "image/png");
+    assert.equal(response.headers.get("content-length"), "68");
+    assert.equal(Buffer.from(await response.arrayBuffer()).toString("base64"), pngBase64);
+  });
+
+  it("marks diagnostic metadata and refused resource responses no-store and nosniff", async () => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const base = `/api/v1/diagnostic-bundles/${bundle.bundleId}`;
+
+    for (const [path, status] of [
+      [base, 200],
+      [`${base}/manifest`, 200],
+      [`${base}/attachments/${attachment.artifactId}`, 200],
+      [`${base}/attachments/00000000-0000-4000-8000-000000000099`, 404],
+    ] as const) {
+      const response = await h.app.request(path);
+      assert.equal(response.status, status);
+      assert.equal(response.headers.get("cache-control"), "no-store", path);
+      assert.equal(response.headers.get("x-content-type-options"), "nosniff", path);
+      await response.body?.cancel();
+    }
+  });
+
+  it("refuses an existing attachment owned only by another existing bundle", async () => {
+    const h = harness();
+    const first = await captureDiagnosticBundle(h);
+    const second = await createDiagnosticCaptureService({
+      authority: h.database.authority,
+      artifacts: h.artifacts,
+      clock: h.clock,
+      ids: sequentialIdFactory("e"),
+    }).capture({
+      trigger: "operator-request", runId: RUN_ID, requestedBy: "local-operator",
+      configFingerprint: HASH_B, descriptorFingerprint: fixtureDescriptor.contractFingerprint,
+      fields: [], attachments: [{
+        kind: "console-summary", mediaType: "application/json",
+        bytes: new TextEncoder().encode('["other bundle"]'), sensitivity: "redacted",
+      }],
+    });
+    const attachment = first.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const secondBundleResponse = await h.app.request(`/api/v1/diagnostic-bundles/${second.bundleId}`);
+    assert.equal(secondBundleResponse.status, 200);
+    await secondBundleResponse.body?.cancel();
+    const genericResponse = await h.app.request(`/artifacts/v1/${attachment.artifactId}`);
+    assert.equal(genericResponse.status, 200);
+    await genericResponse.body?.cancel();
+
+    const response = await h.app.request(
+      `/api/v1/diagnostic-bundles/${second.bundleId}/attachments/${attachment.artifactId}`,
+      { headers: { range: "bytes=0-0" } },
+    );
+    assert.equal(response.status, 404);
+    assert.equal((await json(response)).code, "TARGET_NOT_FOUND");
+    assert.equal(response.headers.get("content-range"), null);
+  });
+
+  it("does not infer purge history from absent diagnostic authority", async () => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    h.database.authority.diagnosticBundles.purge(bundle.bundleId, "2027-01-01T00:00:00.000Z");
+
+    for (const bundleId of [bundle.bundleId, "00000000-0000-4000-8000-000000000099"]) {
+      for (const suffix of ["", "/manifest", `/attachments/${attachment.artifactId}`]) {
+        const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundleId}${suffix}`);
+        assert.equal(response.status, 404);
+        const body = await json(response);
+        assert.equal(body.code, "TARGET_NOT_FOUND");
+        assert.equal(body.retryable, false);
+        assert.equal(response.headers.get("cache-control"), "no-store");
+        assert.equal(response.headers.get("content-disposition"), null);
+      }
+    }
+    assert.equal(readFileSync(join(h.stateRoot, "artifacts", `${attachment.digest}.artifact`), "utf8").length > 0, true,
+      "physical bytes remain, but no longer authorize an attachment response");
+  });
+
+  it.each(["bundle identity", "bundle digest", "index identity", "index digest", "index size", "index media type", "missing index", "duplicate index"] as const)(
+    "refuses exact attachment readback for corrupt %s before opening bytes", async (mutation) => {
+      let opened = false;
+      const h = harness({ diagnosticBundles: (real) => ({
+        ...real,
+        authority: {
+          ...real.authority,
+          get: (id) => {
+            const stored = real.authority.get(id);
+            if (stored === undefined) return undefined;
+            return DiagnosticBundleSchema.parse({ ...stored,
+              ...(mutation === "bundle identity" ? { bundleId: "00000000-0000-4000-8000-000000000099" } : {}),
+              ...(mutation === "bundle digest" ? { contentDigest: "0".repeat(64) } : {}),
+            });
+          },
+          listAttachments: (id) => {
+            const rows = real.authority.listAttachments(id);
+            if (mutation === "missing index") return [];
+            if (mutation === "duplicate index") return [...rows, ...rows];
+            return rows.map((row) => DiagnosticAttachmentStorageRecordSchema.parse({
+              ...row,
+              ...(mutation === "index identity" ? { bundleId: "00000000-0000-4000-8000-000000000099" } : {}),
+              attachment: { ...row.attachment,
+                ...(mutation === "index digest" ? { digest: "0".repeat(64) } : {}),
+                ...(mutation === "index size" ? { byteLength: 3 } : {}),
+                ...(mutation === "index media type" ? { kind: "accessibility-excerpt", mediaType: "text/yaml" } : {}),
+              },
+            }));
+          },
+        },
+        artifactReader: beforeArtifactReaderOperation(real.artifactReader, () => {
+          opened = true;
+        }),
+      }) });
+      const bundle = await captureDiagnosticBundle(h);
+      const attachment = bundle.attachments[0];
+      if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+      const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`);
+      assert.equal(response.status, 500);
+      assert.equal((await json(response)).code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+      assert.equal(response.headers.get("content-length"), null);
+      assert.equal(opened, false, "authority must bind before storage is opened");
+    },
+  );
+
+  for (const [failOnRead, phase] of [[1, "E29"], [2, "fresh selected prepare"]] as const) {
+    it.each(["digest", "oversized", "truncated", "read failure"] as const)(
+      `refuses %s during ${phase} without a partial byte response`, async (mutation) => {
+        let reads = 0;
+        const operations: ("verify" | "prepare")[] = [];
+        const h: Harness = harness({ diagnosticBundles: (real) => ({
+          ...real,
+          artifactReader: beforeArtifactReaderOperation(real.artifactReader, async (operation, ref) => {
+            operations.push(operation);
+            reads += 1;
+            if (reads !== failOnRead) return;
+            if (mutation === "read failure") throw new Error("PRIVATE_STORAGE_PATH");
+            writeStoredArtifactEnvelope(h, ref, mutation);
+          }),
+        }) });
+        const bundle = await captureDiagnosticBundle(h);
+        const attachment = bundle.attachments[0];
+        if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+        const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`,
+          { headers: { range: "bytes=0-0" } });
+        assert.equal(response.status, 500);
+        const body = await json(response);
+        assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+        assert.equal(body.retryable, false);
+        assert.equal(reads, failOnRead);
+        assert.deepEqual(operations, failOnRead === 1 ? ["verify"] : ["verify", "prepare"]);
+        assert.doesNotMatch(JSON.stringify(body), /PRIVATE_STORAGE_PATH/u);
+        assert.equal(response.headers.get("content-range"), null);
+        assert.equal(response.headers.get("content-length"), null);
+        assert.equal(response.headers.get("cache-control"), "no-store");
+      },
+    );
+  }
+
+  it("refuses a verified attachment Range without returning partial bytes", async () => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`,
+      { headers: { range: "bytes=0-0" } });
+    assert.equal(response.status, 416);
+    assert.equal(response.headers.get("content-range"), "bytes */2");
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal((await response.arrayBuffer()).byteLength, 0);
+  });
+
+  for (const [failOnRead, phase] of [[1, "E29"], [2, "fresh selected prepare"]] as const) {
+    it.each(["identity", "digest", "size", "media type"] as const)(
+      `refuses a stored attachment whose physical %s changes during ${phase}`, async (mutation) => {
+        let reads = 0;
+        const operations: ("verify" | "prepare")[] = [];
+        const h: Harness = harness({ diagnosticBundles: (real) => ({
+          ...real,
+          artifactReader: beforeArtifactReaderOperation(real.artifactReader, async (operation, ref) => {
+            operations.push(operation);
+            reads += 1;
+            if (reads === failOnRead) {
+              writeStoredArtifactEnvelope(h, ref, mutation === "digest" ? "metadata digest" : mutation);
+            }
+          }),
+        }) });
+        const bundle = await captureDiagnosticBundle(h);
+        const attachment = bundle.attachments[0];
+        if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+        const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`);
+        assert.equal(response.status, 500);
+        const body = await json(response);
+        assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+        assert.equal(body.retryable, false);
+        assert.equal(reads, failOnRead);
+        assert.deepEqual(operations, failOnRead === 1 ? ["verify"] : ["verify", "prepare"]);
+        assert.doesNotMatch(JSON.stringify(body), new RegExp(h.stateRoot, "u"));
+        assert.equal(response.headers.get("content-length"), null);
+      },
+    );
+  }
+
+  it.each([
+    ["bad bundle", "..%2F..%2Flatest", "00000000-0000-4000-8000-000000000001"],
+    ["bad attachment", "00000000-0000-4000-8000-000000000001", "..%2F..%2Flatest"],
+  ])("rejects %s before diagnostic authority lookup", async (_case, bundleId, artifactId) => {
+    let authorityRead = false;
+    const h = harness({ diagnosticBundles: (real) => ({ ...real, authority: { ...real.authority,
+      get: (id) => { authorityRead = true; return real.authority.get(id); },
+    } }) });
+    const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundleId}/attachments/${artifactId}`);
+    assert.equal(response.status, 400);
+    assert.equal((await json(response)).code, "SCHEMA_INVALID");
+    assert.equal(authorityRead, false);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+  });
+
+  it("refuses an uncomposed bundle attachment capability by kind", async () => {
+    const h = harness({ omitDiagnosticBundles: true });
+    const response = await h.app.request("/api/v1/diagnostic-bundles/00000000-0000-4000-8000-000000000001/attachments/00000000-0000-4000-8000-000000000002");
+    assert.equal(response.status, 409);
+    assert.equal((await json(response)).code, "SECTION_UNAVAILABLE");
+    assert.equal(response.headers.get("cache-control"), "no-store");
+  });
+
+  it("distinguishes physical missing bytes during E29 and fresh selected preparation", async () => {
+    for (const [failOnRead, phase] of [[1, "E29"], [2, "fresh selected prepare"]] as const) {
+      let reads = 0;
+      const operations: ("verify" | "prepare")[] = [];
+      const h: Harness = harness({ diagnosticBundles: (real) => ({
+        ...real,
+        artifactReader: beforeArtifactReaderOperation(real.artifactReader, async (operation, ref) => {
+          operations.push(operation);
+          reads += 1;
+          if (reads === failOnRead) {
+            rmSync(join(h.stateRoot, "artifacts", `${ref.sha256}.artifact`));
+          }
+        }),
+      }) });
+      const bundle = await captureDiagnosticBundle(h);
+      const attachment = bundle.attachments[0];
+      if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+      const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`,
+        { headers: { range: "bytes=0-0" } });
+      assert.equal(response.status, 500);
+      const body = await json(response);
+      assert.equal(body.code, "DIAGNOSTIC_BUNDLE_BYTES_MISSING");
+      assert.equal(body.retryable, false);
+      assert.equal(reads, failOnRead);
+      assert.deepEqual(operations, failOnRead === 1 ? ["verify"] : ["verify", "prepare"], phase);
+      assert.doesNotMatch(JSON.stringify(body), new RegExp(h.stateRoot, "u"));
+      assert.match(String(body.message), new RegExp(bundle.bundleId, "u"));
+      assert.match(String(body.message), new RegExp(attachment.artifactId, "u"));
+      assert.equal(response.headers.get("content-length"), null);
+      assert.equal(response.headers.get("content-range"), null);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+    }
+  });
+
+  it("treats a stored object without diagnostic attachment authority as foreign", async () => {
+    const h = harness();
+    const storedOnly = await h.artifacts.put(
+      new TextEncoder().encode("storage is not authorization"),
+      { mediaType: "text/plain" },
+    );
+
+    const response = await h.app.request(`/artifacts/v1/${storedOnly.id}`, {
+      headers: { range: "bytes=0-0" },
+    });
+    const body = await json(response);
+
+    assert.equal(response.status, 404);
+    assert.equal(body.code, "TARGET_NOT_FOUND");
+    assert.equal(body.retryable, false);
+    assert.doesNotMatch(JSON.stringify(body), /storage is not authorization/u);
+  });
+
+  it("reports diagnostic artifact readback unavailable when no authority is composed", async () => {
+    const h = harness({ omitDiagnosticBundles: true });
+
+    const response = await h.app.request("/artifacts/v1/00000000-0000-4000-8000-000000000099");
+    const body = await json(response);
+
+    assert.equal(response.status, 409);
+    assert.equal(body.code, "SECTION_UNAVAILABLE");
+    assert.equal(body.retryable, false);
+    assert.equal(response.headers.get("content-length"), null);
+  });
+
+  it.each([
+    ["non-UUID", "not-an-artifact-id"],
+    ["traversal-shaped", "..%2F..%2Flatest"],
+  ] as const)("rejects a %s artifact id before authority lookup", async (_case, artifactId) => {
+    const h = harness({
+      diagnosticBundles: (real) => ({
+        ...real,
+        authority: {
+          ...real.authority,
+          findByArtifact: () => {
+            throw new Error("artifact authority must not see an invalid id");
+          },
+        },
+      }),
+    });
+
+    const response = await h.app.request(`/artifacts/v1/${artifactId}`);
+    const body = await json(response);
+
+    assert.equal(response.status, 400);
+    assert.equal(body.code, "SCHEMA_INVALID");
+    assert.doesNotMatch(String(body.message), /artifact authority must not see/u);
+  });
+
+  it.each([
+    ["digest", "digest", "X"],
+    ["size", "oversized", "PRIVATE_DIAGNOSTIC_BYTES"],
+  ] as const)("refuses an indexed artifact whose stored %s is corrupt before Range handling", async (
+    _case,
+    mutation,
+    leakedBytes,
+  ) => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const ref = {
+      id: attachment.artifactId,
+      sha256: attachment.digest,
+      bytes: attachment.byteLength,
+      mediaType: attachment.mediaType,
+    };
+    const storedBytes = mutation === "digest" ? "X]" : `[]${leakedBytes}`;
+    writeFileSync(join(h.stateRoot, "artifacts", `${ref.sha256}.artifact`), JSON.stringify({
+      ref,
+      payloadBase64: Buffer.from(storedBytes).toString("base64"),
+    }));
+
+    const response = await h.app.request(`/artifacts/v1/${attachment.artifactId}`, {
+      headers: { range: "bytes=0-0" },
+    });
+    const bodyText = await response.text();
+    const body = JSON.parse(bodyText) as Record<string, unknown>;
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+    assert.equal(body.retryable, false);
+    assert.doesNotMatch(bodyText, new RegExp(leakedBytes, "u"));
+    assert.equal(response.headers.get("content-range"), null);
+    assert.equal(response.headers.get("content-length"), null);
+  });
+
+  it("refuses indexed content whose stored media type disagrees with authority", async () => {
+    const h = harness({
+      diagnosticBundles: (real) => ({
+        ...real,
+        authority: {
+          ...real.authority,
+          findByArtifact: (artifactId) => real.authority.findByArtifact(artifactId).map((row) =>
+            DiagnosticAttachmentStorageRecordSchema.parse({
+              ...row,
+              attachment: {
+                kind: "accessibility-excerpt",
+                artifactId: row.attachment.artifactId,
+                mediaType: "text/yaml",
+                byteLength: row.attachment.byteLength,
+                digest: row.attachment.digest,
+                sensitivity: "redacted",
+              },
+            })),
+        },
+      }),
+    });
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+    const response = await h.app.request(`/artifacts/v1/${attachment.artifactId}`);
+    const body = await json(response);
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+    assert.equal(body.retryable, false);
+    assert.equal(response.headers.get("content-length"), null);
+  });
+
+  it("normalizes diagnostic attachment authority failure without leaking its storage path", async () => {
+    const localPath = "/private/operator/.tracker-rebuild/state.sqlite";
+    const h = harness({
+      diagnosticBundles: (real) => ({
+        ...real,
+        authority: {
+          ...real.authority,
+          findByArtifact: () => {
+            throw new Error(`authority unavailable at ${localPath}`);
+          },
+        },
+      }),
+    });
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+    const response = await h.app.request(`/artifacts/v1/${attachment.artifactId}`);
+    const bodyText = await response.text();
+    const body = JSON.parse(bodyText) as Record<string, unknown>;
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+    assert.equal(body.retryable, false);
+    assert.doesNotMatch(bodyText, new RegExp(localPath, "u"));
+  });
+
+  it("returns typed missing bytes when authority indexes an artifact whose physical object is missing", async () => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    rmSync(join(h.stateRoot, "artifacts", `${attachment.digest}.artifact`));
+
+    const response = await h.app.request(`/artifacts/v1/${attachment.artifactId}`);
+    const bodyText = await response.text();
+    const body = JSON.parse(bodyText) as Record<string, unknown>;
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "DIAGNOSTIC_BUNDLE_BYTES_MISSING");
+    assert.equal(body.retryable, false);
+    assert.match(String(body.message), /has no stored bytes/u);
+    assert.doesNotMatch(bodyText, new RegExp(h.stateRoot, "u"));
+  });
+
+  it.each(["generic", "bundle"] as const)(
+    "reports a local reader filesystem failure on the %s route as path-free internal failure",
+    async (profile) => {
+      let sabotaged = false;
+      const h = harness({ diagnosticBundles: (real) => ({
+        ...real,
+        artifactReader: beforeArtifactReaderOperation(real.artifactReader, (_operation, ref) => {
+          if (sabotaged) return;
+          sabotaged = true;
+          const storedPath = join(h.stateRoot, "artifacts", `${ref.sha256}.artifact`);
+          rmSync(storedPath);
+          mkdirSync(storedPath);
+        }),
+      }) });
+      const bundle = await captureDiagnosticBundle(h);
+      const attachment = bundle.attachments[0];
+      if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+      const path = profile === "generic"
+        ? `/artifacts/v1/${attachment.artifactId}`
+        : `/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`;
+
+      const response = await h.app.request(path);
+      const bodyText = await response.text();
+      const body = JSON.parse(bodyText) as Record<string, unknown>;
+
+      assert.equal(response.status, 500);
+      assert.equal(body.code, "INTERNAL_FAILURE");
+      assert.equal(body.retryable, false);
+      assert.match(String(body.message), /verified artifact storage operation failed/u);
+      assert.doesNotMatch(bodyText, new RegExp(h.stateRoot, "u"));
+      assert.doesNotMatch(bodyText, /DIAGNOSTIC_BUNDLE_(?:CORRUPT|BYTES_MISSING)/u);
+      assert.equal(response.headers.get("content-length"), null);
+    },
+  );
+
+  it("verifies a ranged artifact before refusing partial delivery", async () => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+    const response = await h.app.request(`/artifacts/v1/${attachment.artifactId}`, {
+      headers: { range: "bytes=0-0" },
+    });
+
+    assert.equal(response.status, 416);
+    assert.equal(response.headers.get("content-range"), `bytes */${String(attachment.byteLength)}`);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal((await response.arrayBuffer()).byteLength, 0);
+  });
+
+  it.each([
     ["mutated", false],
     ["missing", true],
-  ] as const)("returns typed path-free corruption when a real diagnostic artifact is %s", async (_case, removeArtifact) => {
+  ] as const)("returns a typed path-free failure when a real diagnostic artifact is %s", async (_case, removeArtifact) => {
     const h = harness();
     const bundle = await captureDiagnosticBundle(h);
     const attachment = bundle.attachments[0];
@@ -1162,7 +2121,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}${suffix}`);
     const body = await json(response);
     assert.equal(response.status, 500);
-    assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+    assert.equal(body.code, removeArtifact ? "DIAGNOSTIC_BUNDLE_BYTES_MISSING" : "DIAGNOSTIC_BUNDLE_CORRUPT");
     assert.equal(body.retryable, false);
     assert.match(String(body.message), new RegExp(bundle.bundleId, "u"));
     assert.match(String(body.message), new RegExp(attachment.artifactId, "u"));
@@ -1184,6 +2143,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
               : { ...stored, bundleId: foreignBundleId };
           },
           listAttachments: real.authority.listAttachments,
+          findByArtifact: real.authority.findByArtifact,
         },
       }),
     });
@@ -1197,6 +2157,174 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.match(String(body.message), /durable authority identity mismatch/u);
     assert.match(String(body.message), new RegExp(bundle.bundleId, "u"));
     assert.doesNotMatch(String(body.message), new RegExp(foreignBundleId, "u"));
+  });
+
+  it("reuses exact-ref verification within one captures request and re-verifies on the next request", async () => {
+    const syntheticBundles: DiagnosticBundle[] = [];
+    const h = harness({
+      runCaptureAuthority: (real) => Object.freeze({
+        ...real,
+        get(bundleId: string) {
+          return syntheticBundles.find((bundle) => bundle.bundleId === bundleId) ?? real.get(bundleId);
+        },
+        listByRun(runId: string) {
+          return [...real.listByRun(runId), ...syntheticBundles.filter((bundle) => bundle.runId === runId)];
+        },
+        listAttachments(bundleId: string) {
+          const synthetic = syntheticBundles.find((bundle) => bundle.bundleId === bundleId);
+          if (synthetic === undefined) return real.listAttachments(bundleId);
+          return synthetic.attachments.map((attachment) => DiagnosticAttachmentStorageRecordSchema.parse({
+            bundleId: synthetic.bundleId,
+            attachment,
+            createdAt: synthetic.createdAt,
+          }));
+        },
+      }),
+    });
+    const planResponse = await h.app.request("/api/v1/start-plans", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        workflowId: "fixture-graph",
+        submissions: [{ eid: "10873698", mode: "read-only" }],
+        dryRun: false,
+      }),
+    });
+    assert.equal(planResponse.status, 200);
+    const plan = await json(planResponse);
+    const plannedRun = (plan.planned as { runId: string }[])[0];
+    if (plannedRun === undefined) throw new Error("the fixture start plan did not produce its run");
+    const fingerprints = plan.fingerprints as Record<string, string>;
+    const commandResponse = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7d",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "start-run",
+        family: "start",
+        type: "start-run",
+        target: {
+          workflowId: "fixture-graph",
+          startPlanId: plan.startPlanId,
+          expectedVersion: plan.expectedVersion,
+        },
+        payload: {
+          descriptorFingerprint: fingerprints.descriptorFingerprint,
+          configFingerprint: fingerprints.configFingerprint,
+          ingressSchemaHash: fingerprints.ingressSchemaHash,
+          canonicalInputSchemaHash: fingerprints.canonicalInputSchemaHash,
+          inputFingerprint: fingerprints.inputFingerprint,
+        },
+      }),
+    });
+    assert.equal(commandResponse.status, 200);
+    assert.equal((await json(commandResponse)).state, "applied");
+
+    const capture = createDiagnosticCaptureService({
+      authority: h.database.authority,
+      artifacts: h.artifacts,
+      clock: h.clock,
+      ids: sequentialIdFactory("d"),
+    });
+    const sharedAttachment = {
+      kind: "accessibility-excerpt" as const,
+      mediaType: "text/yaml",
+      bytes: new TextEncoder().encode("- button: Retry"),
+      sensitivity: "redacted" as const,
+    };
+    const first = await capture.capture({
+      trigger: "operator-request",
+      runId: plannedRun.runId,
+      requestedBy: "local-operator",
+      configFingerprint: HASH_B,
+      descriptorFingerprint: fixtureDescriptor.contractFingerprint,
+      fields: [],
+      attachments: [sharedAttachment],
+    });
+    const automaticCapture = createDiagnosticCaptureService({
+      authority: h.database.authority,
+      artifacts: h.artifacts,
+      clock: h.clock,
+      ids: sequentialIdFactory("e"),
+    });
+    const automaticCases = [
+      { trigger: "task-failure", originKind: "failure" },
+      { trigger: "unexpected-state", originKind: "unexpected-state" },
+      { trigger: "subject-mismatch", originKind: "subject-mismatch" },
+      { trigger: "recovery-park", originKind: "recovery-park" },
+    ] as const;
+    const automaticBundles: DiagnosticBundle[] = [];
+    for (const automaticCase of automaticCases) {
+      automaticBundles.push(await automaticCapture.prepare({
+        trigger: automaticCase.trigger,
+        runId: plannedRun.runId,
+        failureId: "00000000-0000-4000-8000-0000000000f1",
+        configFingerprint: HASH_B,
+        descriptorFingerprint: fixtureDescriptor.contractFingerprint,
+        fields: [],
+        attachments: [sharedAttachment],
+      }));
+    }
+    syntheticBundles.push(...automaticBundles);
+    const firstAttachment = first.attachments[0];
+    if (firstAttachment === undefined || automaticBundles.some((bundle) => bundle.attachments[0] === undefined)) {
+      throw new Error("the diagnostic fixtures did not write their shared attachment");
+    }
+    for (const automatic of automaticBundles) {
+      assert.notEqual(first.bundleId, automatic.bundleId);
+      assert.notDeepEqual(first.origin, automatic.origin);
+      assert.notEqual(first.contentDigest, automatic.contentDigest);
+      assert.deepEqual(automatic.attachments[0], firstAttachment);
+    }
+    const envelopeByteLength = readFileSync(
+      join(h.stateRoot, "artifacts", `${firstAttachment.digest}.artifact`),
+    ).byteLength;
+
+    const readCaptures = async () => {
+      const response = await h.app.request(`/api/v1/runs/${plannedRun.runId}/captures`);
+      assert.equal(response.status, 200);
+      const captures = RunDetailSectionResponseSchema.parse(await response.json());
+      assert.equal(captures.section, "captures");
+      if (captures.section !== "captures") throw new Error("expected captures");
+      return captures;
+    };
+    const firstResponse = await readCaptures();
+    const firstRequestSourceReads = [...h.artifactSourceReads];
+    const secondResponse = await readCaptures();
+    const secondRequestSourceReads = [...h.artifactSourceReads];
+    const expectedArtifacts = [{
+      artifact: {
+        mediaKind: "data",
+        artifactId: firstAttachment.artifactId,
+        mediaType: firstAttachment.mediaType,
+        byteLength: firstAttachment.byteLength,
+        sha256: firstAttachment.digest,
+        sensitivity: firstAttachment.sensitivity,
+        redaction: "applied",
+      },
+      origins: [
+        { bundleId: first.bundleId, originKind: "operator-request" },
+        ...automaticBundles.map((bundle, index) => ({
+          bundleId: bundle.bundleId,
+          originKind: automaticCases[index]?.originKind,
+        })),
+      ],
+    }];
+    for (const captures of [firstResponse, secondResponse]) {
+      assert.deepEqual(captures.payload.artifacts, expectedArtifacts);
+    }
+    assert.deepEqual(
+      firstRequestSourceReads,
+      [envelopeByteLength],
+      "one request must completely verify one shared exact artifact ref only once",
+    );
+    assert.deepEqual(
+      secondRequestSourceReads,
+      [envelopeByteLength, envelopeByteLength],
+      "a second request must perform one additional complete source verification",
+    );
   });
 
   it("plans, starts, projects, and serves the run through the one payload", async () => {
@@ -1283,6 +2411,35 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const runId = planned[0].runId;
     const detail = await json(await h.app.request(`/api/v1/runs/${runId}`));
     assert.equal((detail.header as { title: string }).title, "Fixture 10873698");
+    // DCA3: a live read must state absence, not omit capture availability.
+    assert.deepEqual(detail.captures, {
+      state: "absent", reason: "this run has no indexed diagnostic capture artifacts",
+    });
+    const bundle = await captureDiagnosticBundle(h, runId);
+    const capturedDetail = await json(await h.app.request(`/api/v1/runs/${runId}`));
+    assert.deepEqual(capturedDetail.captures, { state: "available", artifactCount: 1 });
+    const capturesResponse = await h.app.request(`/api/v1/runs/${runId}/captures`);
+    assert.equal(capturesResponse.status, 200);
+    const captures = RunDetailSectionResponseSchema.parse(await capturesResponse.json());
+    assert.equal(captures.section, "captures");
+    if (captures.section !== "captures") throw new Error("expected captures");
+    assert.equal(captures.payload.runId, runId);
+    assert.deepEqual(captures.payload.artifacts.map(({ artifact, origins }) => ({ artifactId: artifact.artifactId, origins })),
+      bundle.attachments.map(({ artifactId }) => ({ artifactId, origins: [{ bundleId: bundle.bundleId, originKind: "operator-request" }] })));
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    rmSync(join(h.stateRoot, "artifacts", `${attachment.digest}.artifact`));
+    const missingDetailResponse = await h.app.request(`/api/v1/runs/${runId}`);
+    assert.equal(missingDetailResponse.status, 200);
+    assert.deepEqual((await json(missingDetailResponse)).captures, {
+      state: "error",
+      code: "DIAGNOSTIC_BUNDLE_BYTES_MISSING",
+      message: `diagnostic bundle ${bundle.bundleId}: attachment ${attachment.artifactId} (${attachment.kind}) has no stored bytes`,
+      retryable: false,
+    });
+    const missingCapturesResponse = await h.app.request(`/api/v1/runs/${runId}/captures`);
+    assert.equal(missingCapturesResponse.status, 500);
+    assert.equal((await json(missingCapturesResponse)).code, "DIAGNOSTIC_BUNDLE_BYTES_MISSING");
     h.noteWriter.emitNote({
       workflow: "fixture-graph",
       address: { runId, attempt: 1, traceId: planned[0].traceId, spanPath: planned[0].traceId },
@@ -2625,6 +3782,50 @@ describe("the capture phone-host gate (D174, ref operator-trust §7)", () => {
     assert.equal(response.status, 404);
     const body = await json(response);
     assert.equal(body.code, "ROUTE_NOT_FOUND");
+  });
+
+  it("keeps diagnostic artifact bytes opaque on the phone Host", async () => {
+    const h = harness({ capturePhoneHost: PHONE_HOST });
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const path = `/artifacts/v1/${attachment.artifactId}`;
+
+    const gated = await h.app.request(path, { headers: { host: PHONE_HOST } });
+    const gatedBytes = await gated.text();
+    const operator = await h.app.request(path, { headers: { host: OPERATOR_HOST } });
+
+    assert.equal(gated.status, 404);
+    assert.equal(gatedBytes, JSON.stringify({
+      state: "error",
+      code: "ROUTE_NOT_FOUND",
+      message: `no route serves GET ${path}`,
+      retryable: false,
+    }));
+    assert.equal(operator.status, 200);
+    await operator.body?.cancel();
+  });
+
+  it("keeps exact bundle metadata, manifests and attachment bytes opaque on the capture Host", async () => {
+    let authorityReads = 0;
+    const h = harness({ capturePhoneHost: PHONE_HOST, diagnosticBundles: (real) => ({
+      ...real, authority: { ...real.authority,
+        get: (id) => { authorityReads += 1; return real.authority.get(id); },
+      },
+    }) });
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    for (const suffix of ["", "/manifest", `/attachments/${attachment.artifactId}`]) {
+      const path = `/api/v1/diagnostic-bundles/${bundle.bundleId}${suffix}`;
+      const gated = await h.app.request(path, { headers: { host: PHONE_HOST.toUpperCase(), range: "bytes=0-0" } });
+      assert.equal(gated.status, 404);
+      assert.equal(await gated.text(), JSON.stringify({ state: "error", code: "ROUTE_NOT_FOUND",
+        message: `no route serves GET ${path}`, retryable: false }));
+      assert.equal(gated.headers.get("content-range"), null);
+      assert.equal(gated.headers.get("cache-control"), null, "private route middleware must not disclose a route on the capture Host");
+    }
+    assert.equal(authorityReads, 0);
   });
 
   it("passes an operator route through when the request arrives on the operator Host", async () => {

@@ -1,0 +1,31 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+····················································································································································································································································································································
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/architecture/redaction-surface-scan.test.ts [ tests/unit/architecture/redaction-surface-scan.test.ts ]
+Error: Legacy repository not found at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/hr-automation (default sibling checkout ../hr-automation). The rebuild's D90 change accounting, D58 capability disposition, and environment/runtime-dependency inventories all audit the legacy repo; set HRAUTO_LEGACY_REPO to its checkout.
+ ❯ resolveLegacyRepoRoot tests/unit/architecture/helpers/guard-files.ts:35:11
+
+ ❯ tests/unit/architecture/helpers/guard-files.ts:45:33
+ ❯ tests/unit/architecture/redaction-surface-scan.test.ts:87:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |unit| tests/unit/architecture/wire-connectivity.test.ts [ tests/unit/architecture/wire-connectivity.test.ts ]
+Error: Legacy repository not found at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/hr-automation (default sibling checkout ../hr-automation). The rebuild's D90 change accounting, D58 capability disposition, and environment/runtime-dependency inventories all audit the legacy repo; set HRAUTO_LEGACY_REPO to its checkout.
+ ❯ resolveLegacyRepoRoot tests/unit/architecture/helpers/guard-files.ts:35:11
+
+ ❯ tests/unit/architecture/helpers/guard-files.ts:45:33
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:75:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 14 passed (16)
+      Tests  308 passed (308)
+   Start at  02:57:16
+   Duration  17.35s (transform 3.08s, setup 0ms, import 6.02s, tests 6.73s, environment 538ms)
+

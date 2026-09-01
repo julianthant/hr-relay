@@ -1,0 +1,64 @@
+
+> hr-automation-rebuild@0.1.0 test:parity
+> playwright test --config playwright.parity.config.ts tests/parity/run-captures.spec.ts --grep coarse phone Receipt
+
+
+Running 2 tests using 1 worker
+
+(node:746) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/parity/run-captures.spec.ts:448:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing (986ms)
+(node:751) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 tests/parity/run-captures.spec.ts:492:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport (616ms)
+
+
+  1) tests/parity/run-captures.spec.ts:448:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing 
+
+    Error: Open capture 00000000-0000-4000-8000-00000000c101
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      320 |   expect(proof.length).toBeGreaterThan(0);
+      321 |   for (const control of proof) {
+    > 322 |     expect(control.inside, control.name).toBe(true);
+          |                                          ^
+      323 |     expect(control.ownsEdges, control.name).toBe(true);
+      324 |     expect(control.overlaps, control.name).toBe(0);
+      325 |     expect(control.width, control.name).toBeGreaterThan(0);
+        at expectTargetGeometry (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:322:42)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:460:5
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/error-context.md
+
+  2) tests/parity/run-captures.spec.ts:492:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport 
+
+    Error: Open capture 00000000-0000-4000-8000-00000000c101
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      320 |   expect(proof.length).toBeGreaterThan(0);
+      321 |   for (const control of proof) {
+    > 322 |     expect(control.inside, control.name).toBe(true);
+          |                                          ^
+      323 |     expect(control.ownsEdges, control.name).toBe(true);
+      324 |     expect(control.overlaps, control.name).toBe(0);
+      325 |     expect(control.width, control.name).toBeGreaterThan(0);
+        at expectTargetGeometry (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:322:42)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:499:5
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/error-context.md
+
+  2 failed
+    tests/parity/run-captures.spec.ts:448:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing 
+    tests/parity/run-captures.spec.ts:492:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport 

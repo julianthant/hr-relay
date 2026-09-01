@@ -1,0 +1,15 @@
+{
+  "observer": "dca-joined-receipt-phone-population-v2",
+  "diagnosticTag": "graphite-tile",
+  "expected": [
+    "Open capture 00000000-0000-4000-8000-00000000c101",
+    "Download"
+  ],
+  "actualVisibleNames": [
+    "Open capture 00000000-0000-4000-8000-00000000c101",
+    "Download"
+  ],
+  "namedMissingIdentities": [],
+  "namedUnexpectedIdentities": [],
+  "namedDuplicateIdentities": []
+}

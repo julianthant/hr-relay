@@ -17,12 +17,13 @@ export const ARCHIVE_INDEX = "";
  */
 export type ArchiveView = "runs" | "versions";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 
 import type {
   ArchiveEntryWire,
   ArchiveSweepWire,
+  ArchivedCaptureResourceWire,
   ArchivedRunDetailWire,
   WorkflowVersionStateWire,
 } from "../../domain/dashboard/archive.js";
@@ -690,12 +691,11 @@ export type ArchivedCaptureFact =
 /**
  * WHAT IT WAS — every fact the archived tile holds, in reading order.
  *
- * The archived read path resolves nothing and reaches no content store (D179:
- * evidence is POINTERS, and the bytes stay where they are), so this viewer is
- * never an image. That is not a degraded arm of an image viewer: a description
- * assembled from the frozen record is the whole product here, and it is
- * complete — kind, media type, size, digest, sensitivity, when, why, pixel
- * size, step, system and the DECLARED retention.
+ * This byte-independent formatter reads only the frozen record (D179: evidence
+ * is POINTERS). It describes kind, media type, size, digest, sensitivity, when,
+ * why, pixel size, step, system and DECLARED retention. The viewer's separate
+ * exact-resource read may display retained image bytes; it never replaces
+ * these frozen facts.
  *
  * Retention is a declaration, never an observation. The record cannot say
  * whether the bytes are still on disk, so this never prints "purged"; it
@@ -711,7 +711,9 @@ export function archivedCaptureFacts(tile: ArchivedCaptureTile): readonly Archiv
       ? {
         state: "absent",
         label: "Pixel size",
-        reason: "this capture is not an image, so it has no pixel size",
+        reason: tile.mediaType === "image/png" || tile.mediaType === "image/jpeg"
+          ? "this image's pixel dimensions were not recorded"
+          : "this capture is not an image, so it has no pixel size",
       }
       : {
         state: "present",
@@ -756,26 +758,146 @@ export const ARCHIVED_CAPTURE_ORIGIN_TONE = {
   "operator-request": "neutral",
 } as const satisfies Record<ArchivedCaptureTile["origin"], "danger" | "warning" | "neutral">;
 
-/**
- * The one sentence the viewer owes the operator: why there is no image here.
- * It is stated as a property of the archive rather than as a failure, because
- * it IS one — nothing broke, and nothing is going to load.
- */
+/** The snapshot and byte-check authorities the viewer must keep distinct. */
 export const ARCHIVED_CAPTURE_VIEWER_NOTE =
-  "The archive keeps the POINTER, never a copy of the bytes, so this record can be read with no old code and no "
-  + "content store. What the capture was is here in full; the image itself is wherever it was filed.";
+  "This archive keeps the capture's POINTER facts frozen. The separate byte check is only for this exact archived id, "
+  + "digest, size and media type.";
 
 /**
- * THE 44px TOUCH FLOOR for the capture viewer's Previous/Next controls
- * (ui-review finding F10b/2), the same coarse-gated pattern the queue's and
- * the Session Panel's own touch constants use: a mouse gets the demo's 24px
- * `size="sm"` button, a finger gets 44. It is safe to grow the LINE here
- * (rather than hang an overlay on it, the member-line lesson) because these
- * two buttons sit in a `DialogFooter` row with `gap-[var(--ds-space-base)]`
- * between horizontal siblings, not stacked at a tight vertical pitch — there
- * is nothing above or below either button for a taller box to overlap.
+ * The capture viewer's footer actions need a 44px floor in BOTH dimensions:
+ * short labels such as Close can be narrower even when the height is 44px.
+ * Keep the floor coarse-pointer-only so fine pointers retain the demo's
+ * `size="sm"` visuals. The local footer wraps its gap-separated controls;
+ * browser parity proves the resulting hit rectangles and nonoverlap.
  */
-export const ARCHIVED_CAPTURE_NAV_TOUCH_TARGET = "pointer-coarse:min-h-11";
+export const ARCHIVED_CAPTURE_NAV_TOUCH_TARGET = "pointer-coarse:min-h-11 pointer-coarse:min-w-11";
+
+/** Read-time byte status, deliberately separate from the frozen capture tile. */
+export type ArchivedCaptureResourceLoad =
+  | { readonly state: "idle" }
+  | { readonly state: "loading"; readonly request: ArchivedCaptureResourceRequest }
+  | { readonly state: "loaded"; readonly request: ArchivedCaptureResourceRequest; readonly value: ArchivedCaptureResourceWire }
+  | { readonly state: "failed"; readonly request: ArchivedCaptureResourceRequest; readonly message: string };
+
+export interface ArchivedCaptureResourceRequest {
+  readonly runId: string;
+  readonly artifactId: string;
+  /** A close/reopen must not reuse a prior response for the same exact tile. */
+  readonly viewerEpoch: number;
+}
+
+function sameArchivedCaptureRequest(
+  left: ArchivedCaptureResourceRequest,
+  right: ArchivedCaptureResourceRequest,
+): boolean {
+  return left.runId === right.runId
+    && left.artifactId === right.artifactId
+    && left.viewerEpoch === right.viewerEpoch;
+}
+
+function archivedCaptureDownloadPath(request: ArchivedCaptureResourceRequest): string {
+  return `/artifacts/v1/archive/${encodeURIComponent(request.runId)}/${encodeURIComponent(request.artifactId)}`;
+}
+
+/**
+ * Owns a dialog's exact `(archived run, frozen artifact)` resource request.
+ * Closing or walking to another capture invalidates the old result, so a
+ * previous successful read cannot make a different tile look available.
+ */
+export function useArchivedCaptureResource(
+  runId: string,
+  tile: ArchivedCaptureTile | undefined,
+  read: (runId: string, artifactId: string, signal?: AbortSignal) => Promise<ArchivedCaptureResourceWire>,
+  viewerEpoch: number,
+): ArchivedCaptureResourceLoad {
+  const [resource, setResource] = useState<ArchivedCaptureResourceLoad>({ state: "idle" });
+  const artifactId = tile?.artifactId;
+  const request = useMemo(
+    () => artifactId === undefined ? undefined : { runId, artifactId, viewerEpoch },
+    [runId, artifactId, viewerEpoch],
+  );
+  useEffect(() => {
+    if (request === undefined) {
+      setResource({ state: "idle" });
+      return undefined;
+    }
+    const controller = new AbortController();
+    let active = true;
+    setResource({ state: "loading", request });
+    read(request.runId, request.artifactId, controller.signal).then(
+      (value) => {
+        if (!active) return;
+        if (value.runId !== request.runId || value.artifactId !== request.artifactId) {
+          setResource({
+            state: "failed",
+            request,
+            message: "The archive resource response did not match the capture that was requested.",
+          });
+          return;
+        }
+        if (value.resource.state === "available" && value.resource.downloadUrl !== archivedCaptureDownloadPath(request)) {
+          setResource({
+            state: "failed",
+            request,
+            message: "The archive resource response named a different download than the capture that was requested.",
+          });
+          return;
+        }
+        setResource({ state: "loaded", request, value });
+      },
+      (error: unknown) => {
+        if (!active) return;
+        setResource({
+          state: "failed",
+          request,
+          message: error instanceof Error ? error.message : "The archived capture resource could not be read.",
+        });
+      },
+    );
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [read, request]);
+  if (request === undefined) return { state: "idle" };
+  if (resource.state === "idle" || !sameArchivedCaptureRequest(resource.request, request)) {
+    return { state: "loading", request };
+  }
+  return resource;
+}
+
+/** Each mounted preview owns its DOM image and only its latest decode attempt. */
+export function useArchivedCaptureImage() {
+  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
+  const mountedImage = useRef<HTMLImageElement | null>(null);
+  const attempt = useRef<{ readonly image: HTMLImageElement } | undefined>(undefined);
+  const bindImage = useCallback((image: HTMLImageElement | null) => {
+    mountedImage.current = image;
+    attempt.current = undefined;
+  }, []);
+  const failImage = useCallback((image: HTMLImageElement) => {
+    if (mountedImage.current !== image) return;
+    attempt.current = undefined;
+    setState("failed");
+  }, []);
+  const decodeImage = useCallback((image: HTMLImageElement) => {
+    if (mountedImage.current !== image) return;
+    const owner = { image };
+    attempt.current = owner;
+    setState("loading");
+    void image.decode().then(
+      () => {
+        if (attempt.current !== owner) return;
+        setState(image.naturalWidth > 0 && image.naturalHeight > 0 ? "ready" : "failed");
+      },
+      () => {
+        if (attempt.current !== owner) return;
+        setState("failed");
+      },
+    );
+  }, []);
+  return { state, bindImage, failImage, decodeImage };
+}
 
 /**
  * The archived facts that change a relaunch's risk. The command always creates

@@ -191,6 +191,111 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   must never look like zero. Keep `Unread` as the workflow completion-evidence column rather than
   merging it with warnings or read-back. The surface renders these facts and never reconstructs a
   person from queue titles, ids or suffixes.
+- **2026-08-31 — failure framing needs an opaque danger signal at the captured boundary.** A
+  translucent `--ds-danger-border` looked like a semantic failure frame but painted below 3:1 on
+  both Paper Ink and Graphite Warm backdrops. `runCaptureFrame` alone selects the existing solid
+  `--ds-danger` token for literal failure origins; its mounted tile/preview and parity proof pin
+  that exact token, ordinary-frame inequality, and both themes' painted contrast. Do not change
+  shared design tokens or thresholds to repair this local capture frame. (D292)
+
+- **2026-08-31 — strict archive parsing does not bind a response to the requested run.** The
+  archived-detail client must compare the parsed detail's `runId` with the exact requested id before
+  the surface can render it. A schema-valid foreign frozen record is an identity mismatch, never a
+  usable response; name only the requested id in the refusal. Capture-resource reads keep their
+  separate `(runId, artifactId)` identity check. (D179 / exact-id readback)
+
+- **2026-08-31 — a requested capture's opener is part of its touch contract.** The 44px coarse-
+  pointer floor applies before the viewer opens as well as inside its header/footer. Keep the local
+  archived-capture touch class on `What it was`; unit proof pins both declarations and browser proof
+  owns the actual rectangle, edge hits and overlap at the phone viewport. Do not enlarge shared
+  `Button sm` to repair this one Archive action. (DCA4)
+
+- **2026-08-30 — fixture provenance must preserve bundle ownership across runs.** A diagnostic
+  bundle belongs to exactly one run, even when each separately served capture list passes its
+  schema. Give different runs distinct bundle IDs; multiple artifacts within one run may share
+  its bundle. Traverse all scenario run sections over real HTTP to pin exact memberships and
+  global bundle-to-run uniqueness, without changing canonical artifact bytes. (D292)
+
+- **2026-08-30 — a URL builder is not mounted-consumer evidence.** The generic capture guard mounts
+  the actual DashboardApp, opens native Receipt/Preview controls through the real client/parser,
+  and validates observed href/src against exact run/artifact identity before shared two-direction
+  accounting. Keep generic one-ID and Archive two-ID observations independent; observation or
+  cleanup failure grants no credit. The async section census must verify canonical SQLite
+  diagnostic authority and bytes, not add an available constant. Fixture cleanup restores prior
+  history/globals even when root cleanup throws and never deletes foreign DOM. Generic fixture
+  bytes are opt-in (`runCaptureScenario: "evidence"`), copied unchanged from real encoder fixtures;
+  exact metadata comes from those bytes. Invalid UUID-rooted/extensionless artifact lookups must
+  refuse rather than fall through to static success, while named static assets remain static. (D292)
+
+- **2026-08-30 — requested capture previews declare eager loading explicitly.** The native image's
+  implicit loading behavior did not satisfy the JSX loading ratchet. Keep `loading="eager"` on
+  Archive's requested preview, pin that declaration in rendered DOM, and retain decode-owned
+  readiness; do not switch to lazy loading or exempt the image from the guard. (DCA4)
+
+- **2026-08-30 — a stable preview frame does not reserve space for an overlaid caption.** Archive's
+  full-frame image and absolute-bottom caption overlapped in both themes; the caption also named
+  undeclared `--ds-bg-inset`. Partition the unchanged outer frame into a contained-image viewport
+  and a persistent wrapping caption lane using declared `--ds-surface-2`. The lane is empty until
+  decode succeeds, never hidden success text. DOM tests pin the structure; browser proof must cover
+  image/caption separation, full-image containment, resolved contrast and stable metadata. (DCA4)
+
+- **2026-08-30 — a touch floor must cover short labels in both dimensions.** Archive footer Close
+  measured 41.84375×44px with min-width auto, shrink0 and no ancestor scaling; header Close was 44×44.
+  Keep both 44px minimums local and coarse-pointer-only, preserving fine-pointer visuals. A rendered
+  DOM regression pins every footer action's declarations; actual coarse-phone rectangles, edge hits
+  and nonoverlap still require browser proof. Do not compensate by changing shared Button/Dialog. (DCA4)
+
+- **2026-08-30 — an in-process fixture route is not proof its HTTP adapter serves it.** Archive
+  metadata succeeded through `/api/` while the exact `/artifacts/v1/archive/:runId/:artifactId`
+  download fell through to static-file 404. Keep that declared route in the fixture HTTP dispatcher
+  and prove status, MIME, exact bytes and refusal over its real ephemeral port, not only `app.request`.
+  A foreign id or unselected evidence scenario must never pick up a coincident static file; ordinary
+  assets outside that exact route remain static. Do not substitute PNG bytes to repair routing. (DCA4)
+
+- **2026-08-30 — Receipt captures belong to the requested run and the current read generation.**
+  `LoadedApp` owns `useRunCaptures` separately from shared panel sections and passes its state through
+  `LogPanel` into both full and short Receipts. Key reads and selection by requested route run,
+  loaded detail run/revision and active Receipt tab; invalidate before passive effects, abort on
+  replacement/unmount, and reject late success and failure even if transport ignores abort. A new
+  detail object with the same identity is not a new read. Preserve every verified origin and full
+  byte fact; only literal `failure` membership supplies tile AND preview failure framing. Native
+  image/download sinks use the generic one-artifact URL. Each mounted image owns its decode; error,
+  detach or metadata-dimension disagreement cannot become readiness. Close/Escape return focus to
+  the exact opener. The local coarse-pointer floor and separate caption lane require browser
+  geometry proof; jsdom pins ownership, native attributes, decoder transitions and focus only. (D292)
+
+- **2026-08-31 — Receipt download and visibility proof belongs to each observable boundary.** Chromium
+  can complete a native download without publishing that transfer through the Page response lifecycle;
+  prove its exact GET/status at the owned HTTP adapter and its URL/bytes/digest through the native
+  Download object, without a second fetch. On a phone, scrolling a card taller than its nested scroller
+  plus a ratio-zero viewport check proves only partial intersection; scroll the exact action row and
+  prove every control fully visible before evaluating touch-target ownership. After a pointer-activated
+  download, a claimed keyboard-order transition must pin the active element and use real key traversal;
+  programmatic focus after an already keyboard-driven state is a direct focus-ring assertion, not proof
+  of traversal. (D292)
+
+- **2026-08-30 — retained-byte verification is not browser image readiness.** An archive resource may
+  truthfully report verified bytes while the browser later fails its HTTP load or decode. Bind every
+  result to the exact `(archived runId, artifactId)` request, abort it on navigation or close, refuse
+  a foreign injected download path, and reserve the success caption for a decoded positive-dimension
+  image. The frozen metadata remains readable through every resource and image failure. (DCA4)
+
+- **2026-08-30 — archive preview readiness belongs to a mounted image attempt, not its URL.** Walking
+  A→B→A must decode the new A; callbacks from a removed image cannot overwrite a ready replacement.
+  The stable request object binds run/artifact/close generation, and the image ref invalidates each
+  decode on detach or error. Loading, decoded captions and refusal notices share one reserved preview
+  slot: use frozen dimensions when present, otherwise an explicit bounded shell with no invented
+  image ratio. Capture opener focus is retained separately and restored after close/Escape; another
+  open or run change invalidates the scheduled return. Touch floors stay local to this viewer's
+  header/footer controls. Fixture evidence is opt-in (`archiveScenario: "evidence"`), with a canonical
+  durable record sealed before its detail/index projections; the default Archive corpus is unchanged.
+
+- **2026-08-28 — archive capture metadata and retained-byte state have different authorities.** A
+  capture tile remains the archived record's frozen fact even while an operator rechecks physical
+  bytes. Bind that request to `(archived runId, artifactId)`, build the read ref only from the tile's
+  frozen id/digest/length/media type, and show `available` only after full verification. Missing
+  bytes are `missing`, corrupt bytes are `error`; a retention deadline or an absent current index is
+  not a purge tombstone and must not overwrite the snapshot. (DCA4)
 
 - **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
   Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in

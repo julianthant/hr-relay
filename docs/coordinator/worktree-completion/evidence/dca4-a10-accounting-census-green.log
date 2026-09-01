@@ -1,0 +1,91 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/architecture/wire-connectivity.test.ts -t section arm|synthesized orphan
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+--x---------------------x--
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/architecture/wire-connectivity.test.ts > wire connectivity — declared arms, served arms, and the manifest between them > has every run-detail section arm either reachable or declared
+AssertionError: the async census did not verify its canonical capture
++ actual - expected
+
+  {
++   code: 'DIAGNOSTIC_BUNDLE_CORRUPT',
++   message: 'run 00010001-0001-4001-8001-000100010001 diagnostic captures are corrupt: bundle 09320932-0932-4932-8932-093209320932 failed exact verification',
++   retryable: false,
++   state: 'error'
+-   artifactCount: 1,
+-   state: 'available'
+  }
+
+
+- Expected
++ Received
+
+  {
+-   "artifactCount": 1,
+-   "state": "available",
++   "code": "DIAGNOSTIC_BUNDLE_CORRUPT",
++   "message": "run 00010001-0001-4001-8001-000100010001 diagnostic captures are corrupt: bundle 09320932-0932-4932-8932-093209320932 failed exact verification",
++   "retryable": false,
++   "state": "error",
+  }
+
+ ❯ reachableSections tests/unit/architecture/wire-connectivity.test.ts:318:12
+    316|     }));
+    317|     const detail = await readRunDetail(deps, uuidOf(1));
+    318|     assert.deepEqual(detail.captures, { state: "available", artifactCo…
+       |            ^
+    319|     for (const section of detail.availableSections) reachable.add(sect…
+    320|   } finally { database.close(); }
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:464:40
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |unit| tests/unit/architecture/wire-connectivity.test.ts > wire connectivity — declared arms, served arms, and the manifest between them > catches a synthesized orphan arm, a synthesized bad command key, and an unserved path
+AssertionError: the async census did not verify its canonical capture
++ actual - expected
+
+  {
++   code: 'DIAGNOSTIC_BUNDLE_CORRUPT',
++   message: 'run 00010001-0001-4001-8001-000100010001 diagnostic captures are corrupt: bundle 09320932-0932-4932-8932-093209320932 failed exact verification',
++   retryable: false,
++   state: 'error'
+-   artifactCount: 1,
+-   state: 'available'
+  }
+
+
+- Expected
++ Received
+
+  {
+-   "artifactCount": 1,
+-   "state": "available",
++   "code": "DIAGNOSTIC_BUNDLE_CORRUPT",
++   "message": "run 00010001-0001-4001-8001-000100010001 diagnostic captures are corrupt: bundle 09320932-0932-4932-8932-093209320932 failed exact verification",
++   "retryable": false,
++   "state": "error",
+  }
+
+ ❯ reachableSections tests/unit/architecture/wire-connectivity.test.ts:318:12
+    316|     }));
+    317|     const detail = await readRunDetail(deps, uuidOf(1));
+    318|     assert.deepEqual(detail.captures, { state: "available", artifactCo…
+       |            ^
+    319|     for (const section of detail.availableSections) reachable.add(sect…
+    320|   } finally { database.close(); }
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:727:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 25 skipped (27)
+   Start at  17:45:35
+   Duration  2.54s (transform 1.50s, setup 0ms, import 2.18s, tests 51ms, environment 229ms)
+

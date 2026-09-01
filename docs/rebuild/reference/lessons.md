@@ -42,6 +42,26 @@ write-safety work.
   no visible claim for a cold process to retry; even no-claim admission must fsync and then prove
   absence. Refuse a newly observed claim without deleting it. These are existing-format consistency
   and durability checks, not local-file authentication or a second recovery protocol.
+- **2026-08-31: verified artifact delivery owns bytes, not a promise that an earlier read succeeded
+  (D291; ref task-contract §2.3 and ref frontend-backend-integration §3.6).** Diagnostic serving
+  incrementally snapshots and validates the existing JSON/base64 envelope through the private
+  server reader, then prepares selected bytes in an opaque request-lifetime lease before success.
+  A run-capture read may reuse one completed proof only for the same exact artifact ref in that
+  request/pass; every durable bundle, digest, manifest and attachment index is still checked, and a
+  selected download always performs a fresh prepare pass so changed or missing bytes cannot ride an
+  earlier E29 result. HEAD and verified Range 416 dispose the lease without a body; GET owns it
+  through EOF, cancel, transfer error and shutdown. Never fall back to public eager `open`, add a
+  cross-request cache, reopen the source for delivery, or turn scratch/transport failure into source
+  absence or corruption. Local open/read/write/sync/close failures stay path-safe internal failures.
+- **2026-08-31: deduplicating capture bytes must not deduplicate provenance (D292; ref
+  dashboard-surfaces D19 and ref frontend-backend-integration §3.6).** Live run captures serve one
+  verified artifact ref with every same-run diagnostic-bundle membership. Compare complete ref
+  metadata before joining origins; never let last-write-wins choose an origin or infer `failure`
+  from a run's status or another origin's failure id. Accumulate origins in one request-local mutable
+  list, then strictly parse and recursively freeze each complete wire artifact once; copying the
+  whole prior list per membership makes a shared artifact quadratic. Keep the initial availability
+  distinct from the lazy strict list, and retain old archived-detail compatibility without enriching
+  it from current authority.
 
 - **2026-08-27: a client-rendered row exists before it says anything — poll for the CONTENT you
   will read, at its LAST render stage, and let the parse keep the veto (§9.20 item 7 → separations
@@ -779,8 +799,19 @@ write-safety work.
   plus the emitted output digest; every parity server asserts that stamp before binding a port and
   must declare `proof: "working-tree"` or an explicitly reasoned `proof: "unverified"`. Both arms
   carry negative controls executed through the lane's own entry points — the same reason the ratchet
-  arms run against violating fixtures. Generalize the shape, not the file: any "write the
-  expectation, then pass" tool is a check that cannot fail.
+  arms run against violating fixtures. D132's owning evidence contract also includes the persisted
+  Playwright JSON report: one explicit assert/update wrapper holds a checkout-scoped OS lock, owns
+  only its private report lifecycle, and then verifies one no-follow descriptor read against a
+  recursive bounded schema. Each selected evidence-producing test statically declares its exact
+  required a11y names, and the architecture inventory parses each producer's TypeScript calls and
+  compares those literal declarations in both directions, so an omitted, unexpected or
+  comment-separated name cannot hide behind an allowlist or lexical scanner. A missing capture
+  helper, retry, duplicate, orphan, redirected reporter or stale report cannot borrow another result's
+  body/digest pair or leave a green command. The wrapper's
+  executable-entry check canonicalizes both the loaded module and `process.argv[1]`; otherwise a
+  symlinked checkout path can skip `main()` and return green without acquiring the lock, running
+  Playwright or verifying evidence. Generalize the shape, not the file: any "write the expectation,
+  then pass" tool is a check that cannot fail.
 - **2026-08-04: the controlled commit proved the kernel and disqualified the target (D128/D129).**
   Phase 2's ONE authorized real write fenced, clicked `Save`, got HTTP `200` and a rendered
   `Form saved`, and still persisted nothing — Kuali serializes only the CURRENT workflow step's

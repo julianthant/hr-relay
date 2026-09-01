@@ -1,0 +1,41 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/run-captures-app.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+(node:51312) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+x····
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > refuses a list whose count differs from the requested detail availability
+AssertionError: The input did not match the regular expression /Capture count does not match/u. Input:
+
+'CapturesRestricted capturerestricted-accessArtifact00000000-0000-4000-8000-000000000711Mediadata · application/jsonSize2 bytesSHA-256bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbSensitivityrestrictedRedactionrestricted-accessunexpected-state · 00000000-0000-4000-8000-000000000721operator-request · 00000000-0000-4000-8000-000000000722Download'
+
+
+- Expected:
+/Capture count does not match/u
+
++ Received:
+"CapturesRestricted capturerestricted-accessArtifact00000000-0000-4000-8000-000000000711Mediadata · application/jsonSize2 bytesSHA-256bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbSensitivityrestrictedRedactionrestricted-accessunexpected-state · 00000000-0000-4000-8000-000000000721operator-request · 00000000-0000-4000-8000-000000000722Download"
+
+ ❯ tests/unit/dashboard/run-captures-app.test.ts:22:12
+     20|     const region = document.querySelector('[aria-label="Run captures"]…
+     21|     assert.ok(region);
+     22|     assert.match(region.textContent ?? "", /Capture count does not mat…
+       |            ^
+     23|     assert.equal(region.querySelector("a[download]"), null);
+     24|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  17:22:33
+   Duration  1.54s (transform 650ms, setup 0ms, import 930ms, tests 307ms, environment 233ms)
+

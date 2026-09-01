@@ -1,0 +1,57 @@
+{
+  "unit": "A10.4D sup_luna_dca4_a10_docs_drift_repair",
+  "capturedAt": "2026-08-30",
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "branch": "feature/dca4-archive-evidence",
+  "indexEmpty": true,
+  "statusPorcelainSha256Before": "a2599ccfdbae64f33b3597ca0bd02f2b3a5b5c9af07a6a52195e7395d7113734",
+  "statusPorcelainSha256After": "a2599ccfdbae64f33b3597ca0bd02f2b3a5b5c9af07a6a52195e7395d7113734",
+  "beforeEvidenceSha256": "e06654aeb00a30ce4ae94bfdac5d923e37419035e35b211d6c518b3fdc623769",
+  "files": {
+    "docs/rebuild/reference/frontend-backend-integration.md": {
+      "beforeSha256": "c8b78782a27ecdbf213b9b9185a05457707a94f7eb661181bed9cd8378cf25aa",
+      "beforeBytes": 202130,
+      "afterSha256": "e82e8a43f6c96e3e7cb01f60f355291b15f80ee02892d29c0fc7098080223ccf",
+      "afterBytes": 202752
+    },
+    "docs/rebuild/reference/dashboard-surfaces.md": {
+      "beforeSha256": "aece0a0788d047af26ab46d08eaa2ced10544c61d89627b835aa53a31a9d5fe6",
+      "beforeBytes": 410490,
+      "afterSha256": "49c2ee22d478782178876d9b75ab0c87680a340b9ace840ab36d41201135a8b7",
+      "afterBytes": 410752
+    },
+    "src/server/dashboard/queries/run-detail.ts": {
+      "beforeSha256": "d6c1022f605dfb4a0f4c89879bb6c36bf18531e17bc8232bcc0978d64130323d",
+      "beforeBytes": 93840,
+      "afterSha256": "d7573200b6e8251bf89f02bd6bf34cc044cf6a7621aa2bf600235b76434f2b95",
+      "afterBytes": 93873,
+      "commentStrippedBeforeAfterSha256": "c39224422ef86235bf579025caf4417de81c88733b1aa85eac79c8676f975446",
+      "commentStrippedDiffExit": 0
+    }
+  },
+  "isolatedPatch": {
+    "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-docs-isolated.patch",
+    "sha256": "da4547cace5a07bbdf827152b52314aadf75dd7514bca9fad73b1868acc56a01",
+    "reverseCheckExit": 0
+  },
+  "implementationVerification": {
+    "syncProjectionDefault": "src/server/dashboard/queries/run-detail.ts:634-644",
+    "asyncCaptureVerification": "src/server/dashboard/queries/run-detail.ts:875-974",
+    "archiveSyncCaller": "src/server/dashboard/queries/archive.ts:518-535",
+    "composedDiagnosticAuthority": "src/server/dashboard/compose.ts:873-878",
+    "exactArtifactUrl": "src/dashboard/client/queries.ts:238-275",
+    "mountedLazyHook": "src/dashboard/app/dashboard-app.tsx:424-429",
+    "mountedReceiptConsumer": "src/dashboard/surfaces/log-panel.tsx:2456-2458",
+    "remainingPendingSectionBindings": "config/pending-wire-bindings.json:6-23"
+  },
+  "checks": {
+    "npm run roadmap:check": {
+      "exit": 1,
+      "result": "docs/roadmap/index.html is stale; generation intentionally not run because the parent owns final freshness"
+    },
+    "git diff --check -- docs/rebuild/reference/frontend-backend-integration.md docs/rebuild/reference/dashboard-surfaces.md src/server/dashboard/queries/run-detail.ts": {
+      "exit": 0
+    }
+  },
+  "limits": "No tests, lint, typecheck, build, browser, coverage, parity, stage, commit, merge, dispatch, or roadmap generation ran. Browser acceptance, full integration gates, D291 shared-byte verification cost, and the generic ArtifactResourceWireSchema status/gallery remain open."
+}

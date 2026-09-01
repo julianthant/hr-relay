@@ -1,0 +1,38 @@
+{
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "protectedHash": "a456997fd76e7853baa20eb472615cd551271ee5d5eccc05b4b4153d62f0ccf7",
+  "references": {
+    "tests/parity/references/archive-evidence--graphite-warm--1280x720.a11y.yml": "be60674f973994ef46749b1c143c42f0b7798caef950bf1c8d8f4ce345155ee6",
+    "tests/parity/references/archive-evidence--graphite-warm--1280x720.meta.json": "c9f7c4d5f4d00ac261fe8025369603f9c75dd6eaa5a9da0e81f3415a607c7e69",
+    "tests/parity/references/archive-evidence--graphite-warm--1280x720.png": "826127529d8ec9e3724c51b16e8a0f3241c09ec7f1b5e6c190e8357d80d99992",
+    "tests/parity/references/archive-evidence--paper-ink--phone-390x844.a11y.yml": "c455a509f8eef7b08a9e7d22ed4160d5871595c81f2c970db23aa7863d660223",
+    "tests/parity/references/archive-evidence--paper-ink--phone-390x844.meta.json": "469e7558722db7ef27ddccc7773df09e08eec1e324940d3ade2f4507aeb51c7e",
+    "tests/parity/references/archive-evidence--paper-ink--phone-390x844.png": "0b6626ded1f052a0e2d10511cd87f50a175193e1a7b06fe6b0536d2b96005fc4"
+  },
+  "diffHash": "77fdef4837bffe84770dde126e129b8ab05113f73a8c27bfa5ec8a0e351e2807",
+  "evidence": {
+    "archive-evidence--graphite-warm--1280x720-03.png": "826127529d8ec9e3724c51b16e8a0f3241c09ec7f1b5e6c190e8357d80d99992",
+    "archive-evidence--paper-ink--phone-390x844-03.png": "0b6626ded1f052a0e2d10511cd87f50a175193e1a7b06fe6b0536d2b96005fc4",
+    "desktop-error-context-03.md": "4614d78eee3db6753333f3cc216d49b51088cdb229a337702dcf6a79e8dc1216",
+    "frozen-before-03.json": "d8a549b0462a890fde028d12b092bc6f6749f479de050213832d0874523163a3",
+    "phone-error-context-03.md": "dbcc91d0466bbb78174bc31029699606a855e514fee904cf3d5c3d1c0e16a8fe",
+    "scoped-assertion-03.log": "590a978d75f0b922dc60cad92d05db59ea96a8852eac2f8dfff496912b6572c3",
+    "scoped-assertion-build-stamp-03.json": "028c7415692eb067d537b5f2bf7985dde30616b7f8889a40c455d764857d5333",
+    "scoped-update-03.log": "3f0ac6b0bc278306850869b0247b08af61b77b8d1b4375db9a36f767811f5aaf"
+  },
+  "stamp": "{\n  \"stampVersion\": 1,\n  \"inputDigest\": \"206cc47904dbd47e03e807703ad56d90653d812e1ae9263836a842c3636d1914\",\n  \"outputDigest\": \"1df11de50a7b86b4023c74470ff06400fdea1a483490fb718239fb720c6bb302\",\n  \"buildScript\": \"web:build\",\n  \"builtAt\": \"2026-08-30T15:54:25.425Z\"\n}\n",
+  "intakeHashes": {
+    "docs/coordinator/worktree-completion/evidence/dca4-intake/archive-evidence--graphite-warm--1280x720-darwin.png": "b02cb4260ce632be81ea0c2c81f6ffb8ad38f0eca07a7539204aaf617599dc33",
+    "docs/coordinator/worktree-completion/evidence/dca4-intake/archive-evidence--paper-ink--phone-390x844-darwin.png": "9f4283369844d0af97cff87519ceda0c6edc0def9bdae6ac491f83ee92b452a8",
+    "docs/coordinator/worktree-completion/evidence/dca4-intake/reference-originals/archive-evidence--graphite-warm--1280x720.a11y.yml": "a68e7077c64edf8642af6bebaf38da8485854a01bebe6ce001468c41eaf8c5c7",
+    "docs/coordinator/worktree-completion/evidence/dca4-intake/reference-originals/archive-evidence--graphite-warm--1280x720.meta.json": "c9f7c4d5f4d00ac261fe8025369603f9c75dd6eaa5a9da0e81f3415a607c7e69",
+    "docs/coordinator/worktree-completion/evidence/dca4-intake/reference-originals/archive-evidence--paper-ink--phone-390x844.a11y.yml": "13ead454b4e80db587015ed444164b5a2a197d22e7abc750b40bd31e9e13f6a5",
+    "docs/coordinator/worktree-completion/evidence/dca4-intake/reference-originals/archive-evidence--paper-ink--phone-390x844.meta.json": "469e7558722db7ef27ddccc7773df09e08eec1e324940d3ade2f4507aeb51c7e"
+  },
+  "specHash": "d158e014dd85b42ae6f42fb5d02aaf2a54408f348e4ab008627eb25ce8db6de1",
+  "parityUpdateUnset": true,
+  "whitespace": {
+    "exitCode": 0,
+    "output": ""
+  }
+}

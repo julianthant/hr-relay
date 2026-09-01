@@ -25,7 +25,7 @@
  *   itself, and "no warnings" is best said by no warnings section.
  */
 import { Check, ChevronDown, CircleAlert, Download, Fingerprint, Package, TriangleAlert, X } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import {
@@ -69,6 +69,7 @@ import {
   type FailureWriteStateTone,
 } from "./trust-model.js";
 import { SystemTag } from "./system-chip.js";
+import { DiagnosticScreenshotGallery, RestrictedScreenshotWarning } from "./diagnostic-screenshot.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DashboardClientError } from "../client/index.js";
 import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bundle.js";
@@ -337,6 +338,7 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
   const [bundleDialog, setBundleDialog] = useState<BundleDialogState>({ state: "closed" });
   const bundleTriggerRef = useRef<HTMLButtonElement>(null);
   const bundleRequestRevision = useRef(0);
+  const readScreenshotBundle = useCallback((bundleId: string, signal?: AbortSignal) => client.diagnosticBundle(bundleId, signal), [client]);
   const openBundle = (): void => {
     if (detail.diagnosticBundle.state !== "present") return;
     const bundleId = detail.diagnosticBundle.bundleId;
@@ -577,10 +579,12 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
             ref={bundleTriggerRef}
             variant="secondary"
             icon={<Package aria-hidden className={dsIcon.md} />}
-            className="min-h-11 self-start"
+            className="h-auto min-h-11 min-w-0 max-w-full self-start py-[var(--ds-space-tight)]"
             onClick={openBundle}
           >
-            Diagnostic bundle {detail.diagnosticBundle.bundleId}
+            <span className="min-w-0 whitespace-normal [overflow-wrap:anywhere]">
+              Diagnostic bundle {detail.diagnosticBundle.bundleId}
+            </span>
           </Button>
         ) : (
           <MetaLine items={[`no diagnostic bundle — ${detail.diagnosticBundle.reason}`]} />
@@ -605,6 +609,10 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
           manifestUrl={bundleDialog.state === "ready"
             ? client.diagnosticBundleManifestUrl(bundleDialog.bundle.bundleId)
             : undefined}
+          attachmentUrl={bundleDialog.state === "ready"
+            ? (artifactId) => client.diagnosticBundleAttachmentUrl(bundleDialog.bundle.bundleId, artifactId)
+            : undefined}
+          readBundle={bundleDialog.state === "ready" ? readScreenshotBundle : undefined}
           onClose={closeBundle}
         />
       )}
@@ -628,19 +636,26 @@ function redactionList(bundle: DiagnosticBundleWire): string {
 function DiagnosticBundleDialog({
   state,
   manifestUrl,
+  attachmentUrl,
+  readBundle,
   onClose,
 }: {
   state: Exclude<BundleDialogState, { state: "closed" }>;
   manifestUrl?: string;
+  attachmentUrl?: (artifactId: string) => string;
+  readBundle?: (bundleId: string, signal?: AbortSignal) => Promise<DiagnosticBundleWire>;
   onClose: () => void;
 }) {
   const bundleId = state.state === "ready" ? state.bundle.bundleId : state.bundleId;
+  if (state.state === "ready" && (attachmentUrl === undefined || readBundle === undefined)) {
+    throw new Error(`Diagnostic bundle ${bundleId} requires exact attachmentUrl and readBundle capabilities`);
+  }
   const description = state.state === "ready"
-    ? `Captured ${fmtClock(state.bundle.capturedAt)} · ${byteSizeLabel(state.bundle.byteSize)} · content-addressed, redacted at capture time`
+    ? `Captured ${fmtClock(state.bundle.capturedAt)} · ${byteSizeLabel(state.bundle.byteSize)} · content-addressed, capture-time redaction recorded`
     : "Reading the durable diagnostic bundle before it is shown.";
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent size="lg" hideClose title={`Diagnostic bundle ${bundleId}`} description={description}>
+      <DialogContent size="lg" hideClose className="[&_h2]:break-words" title={`Diagnostic bundle ${bundleId}`} description={description}>
         <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
           {state.state === "loading" && (
             <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
@@ -677,13 +692,19 @@ function DiagnosticBundleDialog({
                   </div>
                 ))}
               </div>
-              <Banner tone="info" title="Redacted at capture, never at render">
-                {redactionList(state.bundle)} — removed when the bundle was written, so there is no copy to leak later.
+              {attachmentUrl !== undefined && readBundle !== undefined && (
+                <DiagnosticScreenshotGallery bundle={state.bundle} attachmentUrl={attachmentUrl} readBundle={readBundle} />
+              )}
+              <Banner tone="info" title="Capture-time redaction record">
+                {redactionList(state.bundle)}. The dashboard never rewrites stored attachment bytes.
               </Banner>
+              {state.bundle.contents.some((content) => content.kind === "screenshot" && content.sensitivity === "restricted") && (
+                <RestrictedScreenshotWarning />
+              )}
             </>
           )}
         </DialogBody>
-        <DialogFooter>
+        <DialogFooter className="[&>span]:min-w-0 [&>span]:shrink [&>span]:flex-wrap [&>span]:justify-end">
           <Button variant="secondary" className="min-h-11" onClick={onClose}>Close</Button>
           {state.state === "ready" && manifestUrl !== undefined && (
             <ButtonLink

@@ -29,12 +29,14 @@ import {
   DiagnosticBundleWireSchema,
   type DiagnosticBundleWire,
 } from "../../domain/dashboard/diagnostic-bundle.js";
-import { DiagnosticBundleIdSchema } from "../../domain/ids.js";
+import { ArtifactIdSchema, DiagnosticBundleIdSchema, RunIdSchema } from "../../domain/ids.js";
 import { RunAdvisoryWireSchema, type RunAdvisoryWire } from "../../domain/dashboard/advisory.js";
 import {
   ArchiveIndexWireSchema,
+  ArchivedCaptureResourceWireSchema,
   ArchivedRunDetailWireSchema,
   type ArchiveIndexWire,
+  type ArchivedCaptureResourceWire,
   type ArchivedRunDetailWire,
 } from "../../domain/dashboard/archive.js";
 import { ActivityReportWireSchema, type ActivityReportWire } from "../../domain/dashboard/activity.js";
@@ -62,6 +64,7 @@ import {
 } from "../../domain/capture-operator.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../domain/intake/wire.js";
 import {
+  DashboardClientError,
   WIRE_ERROR_BODY,
   diagnosticBundleIdentityError,
   httpError,
@@ -78,6 +81,34 @@ function parseOrThrow<Schema extends z.ZodType>(schema: Schema, context: string,
   } catch (error) {
     throw schemaError(context, error);
   }
+}
+
+function runIdentityError(context: string, code: string, requestedRunId: string): DashboardClientError {
+  return new DashboardClientError({
+    kind: "schema",
+    code,
+    message: `${context}: ${code}: response does not belong to requested run ${requestedRunId}`,
+  });
+}
+
+function archivedCaptureIdentityError(
+  context: string,
+  requestedRunId: string,
+  requestedArtifactId: string,
+): DashboardClientError {
+  return new DashboardClientError({
+    kind: "schema",
+    code: "ARCHIVE_CAPTURE_RESOURCE_IDENTITY_MISMATCH",
+    message: `${context}: ARCHIVE_CAPTURE_RESOURCE_IDENTITY_MISMATCH: response does not belong to requested archived capture ${requestedRunId}/${requestedArtifactId}`,
+  });
+}
+
+function archivedRunIdentityError(context: string, requestedRunId: string): DashboardClientError {
+  return new DashboardClientError({
+    kind: "schema",
+    code: "ARCHIVED_RUN_IDENTITY_MISMATCH",
+    message: `${context}: ARCHIVED_RUN_IDENTITY_MISMATCH: response does not belong to requested archived run ${requestedRunId}`,
+  });
 }
 
 /**
@@ -113,11 +144,15 @@ export interface DashboardQueries {
   runDetail(runId: string): Promise<RunDetailWire>;
   /** D289: compare this exact retry run with the exact receipt named by `retryOf`. */
   runReceiptComparison(target: RunReceiptComparisonTarget): Promise<RunReceiptComparisonWire>;
-  runSection(runId: string, section: string, cursor?: string): Promise<RunDetailSectionResponse>;
+  runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal): Promise<RunDetailSectionResponse>;
   /** One D137 bundle, read by its exact durable id only after the operator asks. */
-  diagnosticBundle(bundleId: string): Promise<DiagnosticBundleWire>;
+  diagnosticBundle(bundleId: string, signal?: AbortSignal): Promise<DiagnosticBundleWire>;
   /** The browser downloads the server's canonical durable manifest; no UI reconstruction. */
   diagnosticBundleManifestUrl(bundleId: string): string;
+  /** One exact indexed attachment, scoped to the bundle the operator inspected. */
+  diagnosticBundleAttachmentUrl(bundleId: string, artifactId: string): string;
+  /** One verified capture ref's DCA1 byte resource. */
+  artifactUrl(artifactId: string): string;
   /** Ref dashboard-surfaces §2.5's read-only doctor, run on demand from Settings (2i-D). */
   storageDoctor(): Promise<StorageDoctorWire>;
   /**
@@ -198,6 +233,12 @@ export interface DashboardQueries {
   archiveIndex(): Promise<ArchiveIndexWire>;
   /** ONE archived run, whole. Nothing on this path resolves a descriptor. */
   archivedRun(runId: string): Promise<ArchivedRunDetailWire>;
+  /** Re-verifies one exact frozen archived capture before serving resource state. */
+  archivedCaptureResource(
+    runId: string,
+    artifactId: string,
+    signal?: AbortSignal,
+  ): Promise<ArchivedCaptureResourceWire>;
   /**
    * The Activity report over an explicit range (2i-G, D180). Both bounds are
    * required — an aggregate over a window the caller never named is a number
@@ -253,11 +294,16 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
       );
     },
     async runDetail(runId: string): Promise<RunDetailWire> {
-      return parseOrThrow(
+      const context = `GET /api/v1/runs/${runId}`;
+      const detail = parseOrThrow(
         RunDetailWireSchema,
-        `GET /api/v1/runs/${runId}`,
+        context,
         await transport.requestJson(`/api/v1/runs/${encodeURIComponent(runId)}`),
       );
+      if (detail.runId !== runId) {
+        throw runIdentityError(context, "RUN_DETAIL_IDENTITY_MISMATCH", runId);
+      }
+      return detail;
     },
     async runReceiptComparison(target: RunReceiptComparisonTarget): Promise<RunReceiptComparisonWire> {
       const parsedTarget = RunReceiptComparisonTargetSchema.parse(target);
@@ -281,21 +327,30 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
       }
       return comparison;
     },
-    async runSection(runId: string, section: string, cursor?: string): Promise<RunDetailSectionResponse> {
+    async runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal): Promise<RunDetailSectionResponse> {
       const query = cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`;
-      return parseOrThrow(
+      const context = `GET /api/v1/runs/${runId}/${section}`;
+      const response = parseOrThrow(
         RunDetailSectionResponseSchema,
-        `GET /api/v1/runs/${runId}/${section}`,
-        await transport.requestJson(`/api/v1/runs/${encodeURIComponent(runId)}/${encodeURIComponent(section)}${query}`),
+        context,
+        await transport.requestJson(
+          `/api/v1/runs/${encodeURIComponent(runId)}/${encodeURIComponent(section)}${query}`,
+          signal === undefined ? undefined : { signal },
+        ),
       );
+      if ((section === "captures" && response.section !== "captures")
+        || (response.section === "captures" && response.payload.runId !== runId)) {
+        throw runIdentityError(context, "RUN_SECTION_IDENTITY_MISMATCH", runId);
+      }
+      return response;
     },
-    async diagnosticBundle(bundleId: string): Promise<DiagnosticBundleWire> {
+    async diagnosticBundle(bundleId: string, signal?: AbortSignal): Promise<DiagnosticBundleWire> {
       const parsedBundleId = DiagnosticBundleIdSchema.parse(bundleId);
       const path = `/api/v1/diagnostic-bundles/${encodeURIComponent(parsedBundleId)}`;
       const bundle = parseOrThrow(
         DiagnosticBundleWireSchema,
         `GET ${path}`,
-        await transport.requestJson(path),
+        await transport.requestJson(path, signal === undefined ? undefined : { signal }),
       );
       if (bundle.bundleId !== parsedBundleId) {
         throw diagnosticBundleIdentityError(`GET ${path}`, parsedBundleId);
@@ -307,6 +362,17 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
       return transport.resolveUrl(
         `/api/v1/diagnostic-bundles/${encodeURIComponent(parsedBundleId)}/manifest`,
       );
+    },
+    diagnosticBundleAttachmentUrl(bundleId: string, artifactId: string): string {
+      const parsedBundleId = DiagnosticBundleIdSchema.parse(bundleId);
+      const parsedArtifactId = ArtifactIdSchema.parse(artifactId);
+      return transport.resolveUrl(
+        `/api/v1/diagnostic-bundles/${encodeURIComponent(parsedBundleId)}/attachments/${encodeURIComponent(parsedArtifactId)}`,
+      );
+    },
+    artifactUrl(artifactId: string): string {
+      const parsedArtifactId = ArtifactIdSchema.parse(artifactId);
+      return transport.resolveUrl(`/artifacts/v1/${encodeURIComponent(parsedArtifactId)}`);
     },
     async storageDoctor(): Promise<StorageDoctorWire> {
       return parseOrThrow(
@@ -405,8 +471,29 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
       );
     },
     async archivedRun(runId: string): Promise<ArchivedRunDetailWire> {
-      const path = `/api/v1/archive/${encodeURIComponent(runId)}`;
-      return parseOrThrow(ArchivedRunDetailWireSchema, `GET ${path}`, await transport.requestJson(path));
+      const parsedRunId = RunIdSchema.parse(runId);
+      const path = `/api/v1/archive/${encodeURIComponent(parsedRunId)}`;
+      const detail = parseOrThrow(ArchivedRunDetailWireSchema, `GET ${path}`, await transport.requestJson(path));
+      if (detail.runId !== parsedRunId) throw archivedRunIdentityError(`GET ${path}`, parsedRunId);
+      return detail;
+    },
+    async archivedCaptureResource(
+      runId: string,
+      artifactId: string,
+      signal?: AbortSignal,
+    ): Promise<ArchivedCaptureResourceWire> {
+      const parsedRunId = RunIdSchema.parse(runId);
+      const parsedArtifactId = ArtifactIdSchema.parse(artifactId);
+      const path = `/api/v1/archive/${encodeURIComponent(parsedRunId)}/captures/${encodeURIComponent(parsedArtifactId)}/resource`;
+      const resource = parseOrThrow(
+        ArchivedCaptureResourceWireSchema,
+        `GET ${path}`,
+        await transport.requestJson(path, signal === undefined ? undefined : { signal }),
+      );
+      if (resource.runId !== parsedRunId || resource.artifactId !== parsedArtifactId) {
+        throw archivedCaptureIdentityError(`GET ${path}`, parsedRunId, parsedArtifactId);
+      }
+      return resource;
     },
     async activityReport(from: string, to: string): Promise<ActivityReportWire> {
       const path = `/api/v1/reports/activity?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;

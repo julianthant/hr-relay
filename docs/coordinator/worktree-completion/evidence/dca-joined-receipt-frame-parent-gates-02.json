@@ -1,0 +1,36 @@
+{
+  "baseHead": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "index": "empty",
+  "candidate": {
+    "changedNonCoordinatorPathCount": 89,
+    "aggregateRecipe": "locale-sort changed tracked/untracked non-coordination paths; row=path+NUL+SHA256(file); join rows with LF; SHA256(joined bytes)",
+    "aggregateSha256": "29fb7bff021957c7b86fba9cb75ef4928b3a7e18423a57d3946ab10a87010144",
+    "paths": {
+      "src/dashboard/surfaces/run-captures-model.ts": "8215e2c26419590875eeeb8223721f61bfa36bce2ac3590240ef38288f8e98e1",
+      "tests/unit/dashboard/run-captures-app.test.ts": "7933b52b6061f5b47204561fbe82a498244d2881db7b0a3a4fe6a0a2ea8311bf",
+      "tests/parity/run-captures.spec.ts": "2fd584f314ddd8f73e612b6ba003fba967349bb665da8ae8aabc0f5ccbfd97a2",
+      "src/dashboard/AGENTS.md": "575dac82257071e2cb01b94f3965ae37c7bb548c1e53826892b768d03705b2b0"
+    }
+  },
+  "gates": [
+    {
+      "command": "VITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-captures-app.test.ts tests/unit/dashboard/run-captures-lifecycle.test.ts",
+      "exit": 0,
+      "result": "2 files, 42 tests passed",
+      "log": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-frame-parent-focused-02.log",
+      "logSha256": "561bb70baadc15adda367faae1da49b96f6ba4685e54c683782fdd6fccd80555"
+    },
+    {
+      "command": "/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck",
+      "exit": 0,
+      "log": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-frame-parent-typecheck-02.log",
+      "logSha256": "ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036"
+    },
+    {
+      "command": "/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint",
+      "exit": 0,
+      "log": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-frame-parent-lint-02.log",
+      "logSha256": "cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385"
+    }
+  ]
+}

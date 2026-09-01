@@ -260,6 +260,9 @@
       - tab "Logs"
       - tab "Receipt" [selected]
     - text: Done completed 9:39 AM No receipt this fixture adapter holds no authority rows to derive a receipt from
+    - region "Run captures":
+      - text: Captures
+      - alert: Captures could not be read Live capture availability is missing for run 00000000-0003-4000-8000-000000000003.
   - complementary "Run data":
     - text: Run data
     - button "Hide run data"

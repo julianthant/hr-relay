@@ -1,0 +1,60 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t persists exact body-backed a11y attachments
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+---x----------
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/architecture/parity-reference-authority.test.ts > parity lane reference authority (D132) > persists exact body-backed a11y attachments through the configured reporter
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    [
+      'list'
+    ],
+    [
+      'json',
+      {
++       outputFile: 'tests/parity/references/results.json'
+-       outputFile: 'tests/parity/.output/results.json'
+      }
+    ]
+  ]
+
+
+- Expected
++ Received
+
+@@ -3,9 +3,9 @@
+      "list",
+    ],
+    [
+      "json",
+      {
+-       "outputFile": "tests/parity/.output/results.json",
++       "outputFile": "tests/parity/references/results.json",
+      },
+    ],
+  ]
+
+ ❯ tests/unit/architecture/parity-reference-authority.test.ts:231:12
+    229|   it("persists exact body-backed a11y attachments through the configur…
+    230|     const parityConfig = await import("../../../playwright.parity.conf…
+    231|     assert.deepEqual(parityConfig.default.reporter, [
+       |            ^
+    232|       ["list"],
+    233|       ["json", { outputFile: PARITY_JSON_REPORT }],
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 skipped (14)
+   Start at  11:50:29
+   Duration  2.06s (transform 1.14s, setup 0ms, import 1.98s, tests 7ms, environment 0ms)
+

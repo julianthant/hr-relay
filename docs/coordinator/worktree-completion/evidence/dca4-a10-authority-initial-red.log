@@ -1,0 +1,40 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/server/bff-flow.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+··············x············
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > plans, starts, projects, and serves the run through the one payload
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
++ undefined
+- {
+-   reason: 'this run has no indexed diagnostic capture artifacts',
+-   state: 'absent'
+- }
+
+
+simple
+
+ ❯ tests/unit/server/bff-flow.test.ts:629:12
+    627|     assert.equal((detail.header as { title: string }).title, "Fixture …
+    628|     // DCA3: a live read must state absence, not omit capture availabi…
+    629|     assert.deepEqual(detail.captures, {
+       |            ^
+    630|       state: "absent", reason: "this run has no indexed diagnostic cap…
+    631|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 26 passed (27)
+   Start at  16:59:08
+   Duration  2.53s (transform 1.09s, setup 0ms, import 1.81s, tests 651ms, environment 0ms)
+

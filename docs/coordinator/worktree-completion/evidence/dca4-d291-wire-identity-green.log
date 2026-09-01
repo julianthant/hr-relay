@@ -1,0 +1,12 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+(node:5567) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+··················································
+
+ Test Files  1 passed (1)
+      Tests  50 passed (50)
+   Start at  02:47:22
+   Duration  4.69s (transform 1.75s, setup 0ms, import 2.55s, tests 1.82s, environment 246ms)
+

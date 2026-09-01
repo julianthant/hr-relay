@@ -1,0 +1,186 @@
+{
+  "observer": "dca-joined-receipt-phone-geometry-v1",
+  "diagnosticTag": "paper-tile",
+  "before": {
+    "index": 0,
+    "identity": {
+      "tagName": "button",
+      "name": "Open capture 00000000-0000-4000-8000-00000000c101",
+      "href": null
+    },
+    "viewport": {
+      "width": 390,
+      "height": 844,
+      "scrollX": 0,
+      "scrollY": 0
+    },
+    "actualRect": {
+      "left": 35,
+      "top": 1344.5,
+      "right": 108.671875,
+      "bottom": 1388.5,
+      "width": 73.671875,
+      "height": 44,
+      "x": 35,
+      "y": 1344.5
+    },
+    "effective44Rect": {
+      "left": 49.8359375,
+      "right": 93.8359375,
+      "top": 1344.5,
+      "bottom": 1388.5,
+      "width": 44,
+      "height": 44
+    },
+    "failedViewportEdges": [
+      "bottom"
+    ],
+    "nearestRelevantAncestors": [
+      {
+        "depth": 2,
+        "tagName": "article",
+        "role": null,
+        "ariaLabel": null,
+        "rect": {
+          "left": 25,
+          "top": 912.5,
+          "right": 365,
+          "bottom": 1398.5,
+          "width": 340,
+          "height": 486,
+          "x": 25,
+          "y": 912.5
+        },
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "transform": "none"
+      },
+      {
+        "depth": 3,
+        "tagName": "section",
+        "role": null,
+        "ariaLabel": "Run captures",
+        "rect": {
+          "left": 13,
+          "top": 879.5,
+          "right": 377,
+          "bottom": 1410.5,
+          "width": 364,
+          "height": 531,
+          "x": 13,
+          "y": 879.5
+        },
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "transform": "none"
+      },
+      {
+        "depth": 4,
+        "tagName": "div",
+        "role": null,
+        "ariaLabel": null,
+        "rect": {
+          "left": 13,
+          "top": 554.5,
+          "right": 377,
+          "bottom": 936.5,
+          "width": 364,
+          "height": 382,
+          "x": 13,
+          "y": 554.5
+        },
+        "overflow": "hidden auto",
+        "overflowX": "hidden",
+        "overflowY": "auto",
+        "transform": "none"
+      },
+      {
+        "depth": 5,
+        "tagName": "section",
+        "role": null,
+        "ariaLabel": "Run detail",
+        "rect": {
+          "left": 12,
+          "top": 553.5,
+          "right": 378,
+          "bottom": 937.5,
+          "width": 366,
+          "height": 384,
+          "x": 12,
+          "y": 553.5
+        },
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "transform": "none"
+      },
+      {
+        "depth": 6,
+        "tagName": "div",
+        "role": null,
+        "ariaLabel": null,
+        "rect": {
+          "left": 12,
+          "top": 457.5,
+          "right": 378,
+          "bottom": 779,
+          "width": 366,
+          "height": 321.5,
+          "x": 12,
+          "y": 457.5
+        },
+        "overflow": "auto",
+        "overflowX": "auto",
+        "overflowY": "auto",
+        "transform": "none"
+      },
+      {
+        "depth": 14,
+        "tagName": "div",
+        "role": null,
+        "ariaLabel": null,
+        "rect": {
+          "left": 0,
+          "top": 0,
+          "right": 390,
+          "bottom": 844,
+          "width": 390,
+          "height": 844,
+          "x": 0,
+          "y": 0
+        },
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "transform": "none"
+      }
+    ]
+  },
+  "afterTwoAnimationFrames": {
+    "index": 0,
+    "identity": {
+      "tagName": "button",
+      "name": "Open capture 00000000-0000-4000-8000-00000000c101",
+      "href": null
+    },
+    "viewport": {
+      "width": 390,
+      "height": 844,
+      "scrollX": 0,
+      "scrollY": 0
+    },
+    "actualRect": {
+      "left": 35,
+      "top": 1344.5,
+      "right": 108.671875,
+      "bottom": 1388.5,
+      "width": 73.671875,
+      "height": 44,
+      "x": 35,
+      "y": 1344.5
+    }
+  },
+  "settledRectEqual": true
+}

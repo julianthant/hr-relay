@@ -1,0 +1,14 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/architecture/redaction-surface-scan.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+··························
+
+ Test Files  1 passed (1)
+      Tests  26 passed (26)
+   Start at  09:41:50
+   Duration  1.59s (transform 792ms, setup 0ms, import 1.21s, tests 319ms, environment 0ms)
+

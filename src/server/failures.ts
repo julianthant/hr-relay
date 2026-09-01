@@ -97,3 +97,17 @@ export class DiagnosticBundleCorruptError extends Error {
     this.name = "DiagnosticBundleCorruptError";
   }
 }
+
+/**
+ * Exact diagnostic authority names an attachment whose physical bytes are
+ * missing. This does not attest a purge: the authority record still exists.
+ * Kept distinct from malformed bytes without inspecting free-text causes.
+ * Existing corruption catchers still refuse it; the wire mapper checks this
+ * narrower kind first so viewers can tell physical absence from bad bytes.
+ */
+export class DiagnosticBundleBytesMissingError extends DiagnosticBundleCorruptError {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "DiagnosticBundleBytesMissingError";
+  }
+}

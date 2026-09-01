@@ -1,0 +1,16 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/architecture/wire-connectivity.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+(node:54003) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+·················································
+
+ Test Files  1 passed (1)
+      Tests  49 passed (49)
+   Start at  17:53:21
+   Duration  4.48s (transform 1.57s, setup 0ms, import 2.37s, tests 1.53s, environment 503ms)
+

@@ -1,0 +1,7 @@
+gate	command	start_utc	end_utc	duration_seconds	exit
+1	npm run test:coverage	2026-08-31T23:49:48Z	2026-08-31T23:50:56Z	68	0
+2	npm run typecheck	2026-08-31T23:50:56Z	2026-08-31T23:51:10Z	14	0
+3	npm run lint	2026-08-31T23:51:10Z	2026-08-31T23:51:39Z	29	0
+4	npm run roadmap:check	2026-08-31T23:51:39Z	2026-08-31T23:51:40Z	1	0
+5	npm run build:manifest:check	2026-08-31T23:51:40Z	2026-08-31T23:51:41Z	1	0
+6	npm run test:parity	2026-08-31T23:51:41Z	2026-08-31T23:55:25Z	224	0

@@ -1,0 +1,11 @@
+COMMAND: npm run lint
+STARTED_UTC: 2026-08-31T21:53:50Z
+
+
+> hr-automation-rebuild@0.1.0 lint
+> eslint src tests scripts --max-warnings 0
+
+
+EXIT: 0
+FINISHED_UTC: 2026-08-31T21:54:18Z
+DURATION_SECONDS: 28

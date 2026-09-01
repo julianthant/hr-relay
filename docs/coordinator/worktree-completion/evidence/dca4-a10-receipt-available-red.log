@@ -1,0 +1,38 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/run-captures-app.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+(node:51094) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+x·
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > downloads the exact non-image capture and retains every origin and byte fact under a short receipt
+AssertionError: Receipt must consume the native artifact URL
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/dashboard/run-captures-app.test.ts:25:12
+     23|     assert.ok(region);
+     24|     const link = region.querySelector("a[download]");
+     25|     assert.ok(link instanceof HTMLAnchorElement, "Receipt must consume…
+       |            ^
+     26|     assert.equal(link.href, `http://capture-app.test/artifacts/v1/${CA…
+     27|     assert.equal(link.download, `capture-${CAPTURE_ARTIFACT_A}`);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  17:20:19
+   Duration  1.51s (transform 682ms, setup 0ms, import 967ms, tests 238ms, environment 234ms)
+

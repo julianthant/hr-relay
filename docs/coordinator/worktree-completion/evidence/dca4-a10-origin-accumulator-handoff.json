@@ -1,0 +1,31 @@
+{
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "index": "",
+  "ownFrozen": true,
+  "outsideCount": 1867,
+  "outsideDigest": "96c9b21734c487b9927f2fe2616f789c2ddb069324a0dfc55f46d1cc68b4f7ce",
+  "diffCheck": 0,
+  "reversePatchCheck": 0,
+  "files": [
+    {
+      "path": "docs/coordinator/worktree-completion/reports/dca4-a10-origin-accumulator.md",
+      "bytes": 2469,
+      "sha256": "5add57aa4f767f57dd8c389a332cc9b637add544cc9e0cdaea9f6c88aedfcfa3"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-origin-accumulator-delta.patch",
+      "bytes": 7203,
+      "sha256": "24a006e50075a29ee7622c95a870f973006dc546b5480275e50ec54ef4839838"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-origin-accumulator-gate-receipts.json",
+      "bytes": 3735,
+      "sha256": "612a2e8b7af39bd58c8bb2a3ede3246aa299d165f548ac63d0a4ce7197351658"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-origin-accumulator-after.json",
+      "bytes": 1266,
+      "sha256": "5a1e96c189d7a6d0e60ea912cbc568271ef14171ee1c5782ddde15f6d27c059a"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+--- docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/reference-inventory-before.tsv	2026-08-31 16:58:51
++++ docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/reference-inventory-after.tsv	2026-08-31 16:58:00
+@@ -421,9 +421,9 @@
+ ecf97ad531474cc517d6cc7214ca7e2bcdaab8ca76b5741457f56f2a556c5e37  tests/parity/references/run-receipt--paper-ink--1440x900.a11y.yml
+ f3074f45b427b1cd7c3e7018940026b2a0cedc06301b2c58e7b40805ada892a1  tests/parity/references/run-receipt--paper-ink--1440x900.meta.json
+ 4e2647a4c54c9d7aa54551dd1307a0d025d24502f17bc0fbc603f58e39f517e9  tests/parity/references/run-receipt--paper-ink--1440x900.png
+-d9bfdd11e15f73e2445c4658a781dab7757534f586dfdff7448c08f87aaa4e8c  tests/parity/references/run-receipt--paper-ink--narrow-1024x768.a11y.yml
++da1a953fa356f44ef61fb2437b57711804b160ccee482c60f5ca3d529d8e0dd4  tests/parity/references/run-receipt--paper-ink--narrow-1024x768.a11y.yml
+ 8189cff8a695764c01efd58308976a6f63b7767d185c7a23bff7a0e800a63824  tests/parity/references/run-receipt--paper-ink--narrow-1024x768.meta.json
+-3e3f8c70ac43700af3752e792eba86f539f94866c9a3b4935da813e29a37973c  tests/parity/references/run-receipt--paper-ink--narrow-1024x768.png
++2d8cf4f5b1558b5cd1b19f05796218a1972b44c7fae760731cac6484841d5f89  tests/parity/references/run-receipt--paper-ink--narrow-1024x768.png
+ f02f66f11c7ca66647f63d5a71a086fa46efcd0cc4051edd246e41118ae4e362  tests/parity/references/run-receipt-populated--graphite-warm--1440x900.a11y.yml
+ ec5872d5e1adf1d62920a87fccd9d5936cd7c0bed75d54aa8cbe517b419dabec  tests/parity/references/run-receipt-populated--graphite-warm--1440x900.meta.json
+ 3a79946b1f6496d0cbc1a84f01addadee502391e463b15547c40381dd342541e  tests/parity/references/run-receipt-populated--graphite-warm--1440x900.png

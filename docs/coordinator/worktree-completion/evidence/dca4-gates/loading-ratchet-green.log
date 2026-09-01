@@ -1,0 +1,14 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/architecture/guard-manifest.test.ts -t executes every required rebuild ratchet arm
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+----·-
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 5 skipped (6)
+   Start at  09:32:02
+   Duration  2.59s (transform 70ms, setup 0ms, import 243ms, tests 2.26s, environment 0ms)
+

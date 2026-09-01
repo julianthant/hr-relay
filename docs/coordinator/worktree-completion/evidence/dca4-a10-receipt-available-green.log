@@ -1,0 +1,16 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/run-captures-app.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+(node:51137) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+··
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  17:21:09
+   Duration  1.49s (transform 660ms, setup 0ms, import 944ms, tests 241ms, environment 231ms)
+

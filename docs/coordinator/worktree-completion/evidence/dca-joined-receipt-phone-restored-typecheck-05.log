@@ -1,0 +1,4 @@
+
+> hr-automation-rebuild@0.1.0 typecheck
+> tsc --noEmit
+

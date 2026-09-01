@@ -2439,8 +2439,8 @@ These are correctness and recoverability requirements, not production-scale cere
 - [x] eleven of the 49 inventory rows now name their own gap in brackets rather than reading as shipped
 - [x] DCC1–DCC3 close the resolver-owned `apply-settings` arm plus Settings readback, preflight rerun and doctor controls; credentials, AI assist, delete/recover and resolver-unowned settings remain open
 - [ ] `test-login` and the workflow-preflight RUNNER are unbuilt; the storage/authority half of the doctor is real and was drilled at 2j (D181)
-- [x] DCR3–DCR6 deliver strict current-corpus search authority/transport, the Separations Top Bar surface, actor-attributed evidenced operator XLSX and D289's exact immutable-receipt rerun comparison (rows 24, 42); artifact bytes remain open
-> 2026-08-29 | R-DCR close | D289's closed registry, exact retry/receipt identity, reviewed-value disclosure and relation-free withholding are built; D75's solo checkpoint attributes new XLSX v2 evidence; artifact bytes remain open
+- [x] DCR3–DCR6 deliver strict current-corpus search authority/transport, the Separations Top Bar surface, actor-attributed evidenced operator XLSX and D289's exact immutable-receipt rerun comparison (rows 24, 42); DCA serves diagnostic-index and frozen Archive bytes while broader generic artifact-resource coverage remains open
+> 2026-08-31 | DCA integration | D289 search/comparison and XLSX remain delivered; D291/D292 add verified diagnostic and Archive byte serving plus mounted Receipt captures; the broader generic artifact-resource family remains open
 <!-- /roadmap-status -->
 
 The following is the canonical list Claude may use to build an explanatory webpage. It describes

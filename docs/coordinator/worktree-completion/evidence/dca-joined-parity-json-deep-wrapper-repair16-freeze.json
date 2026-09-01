@@ -1,0 +1,89 @@
+{
+  "observedAt": "2026-08-31T13:25:00-07:00",
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "index": "",
+  "repair15Candidate": {
+    "count": 94,
+    "aggregate": "37ef9504b56e6549c113dff38abc396baad01466391ca9c707629cc016bae875"
+  },
+  "repair16Candidate": {
+    "count": 94,
+    "aggregate": "195b7beb501588e7510d668278587e5b1ca13ea4bafa66b2bd5b53d28fb694e2"
+  },
+  "scope": {
+    "AGENTS.md": {
+      "beforeSha256": "ec5517a433aed5721a84364f2e596bff2c48821564c0c2a5d3bcac39b28f4d34",
+      "beforeBytes": 45364,
+      "afterSha256": "6e7e2116483fd4b8cbb5788a581cc578c4f22344cc171a263291049241926de7",
+      "afterBytes": 44633
+    },
+    "docs/rebuild/reference/lessons.md": {
+      "beforeSha256": "3313893ca6237a7981d0550eb1e0a417f88d415b3723d2941d8b5f672aeb967c",
+      "beforeBytes": 99323,
+      "afterSha256": "328bc7601a3de363cd727782d423898df04e1ea3efa3060f49d3bf653de5c0e8",
+      "afterBytes": 99863
+    },
+    "package.json": {
+      "beforeSha256": "04e51a8942e16f6d3f423eaf826aac825649a96231ccc4ea4fbec46f71d38856",
+      "beforeBytes": 2804,
+      "afterSha256": "f28ee7cf8738dcf8e4644ce7dc9e49d66c4cf388b245d5c72cab16008b6b20f1",
+      "afterBytes": 2802
+    },
+    "playwright.parity.config.ts": {
+      "beforeSha256": "76b685be64e6eb5d274f66c3cf7ce80984db026a192d125df5dbdf7d8727433b",
+      "beforeBytes": 3312,
+      "afterSha256": "22b58e01c7f356df780e548586d2be60dbeff47ee67c00ffa6040ab26bf8d082",
+      "afterBytes": 3326
+    },
+    "scripts/verify-parity-json.ts": {
+      "beforeSha256": "eeb80a3e80e4357b9122a3601d78591627c565c95773c87c64429e6871a58941",
+      "beforeBytes": 12854,
+      "afterSha256": "cb87ec922ea1b0624fbfd5ce7b19a21f5e845ce35d2ec3c1e167dd8e1fa27d57",
+      "afterBytes": 32488
+    },
+    "tests/parity/diagnostic-bundle-dialog.spec.ts": {
+      "beforeSha256": "e7e8f710fceaf6cb6b20a9a7e7d1dc2f07e6a0e7074f8572eba08bcaf4b4b3a1",
+      "beforeBytes": 54909,
+      "afterSha256": "c0d0ec130c2f8c31f958cfd46ef3f3f8513c628fd6e31957476596a014d5408a",
+      "afterBytes": 55374
+    },
+    "tests/parity/run-captures.spec.ts": {
+      "beforeSha256": "e2491b1809873b58aa7e41ec5c80d12e9587eb8ef23ed435e2b1e6974df2aaf2",
+      "beforeBytes": 25730,
+      "afterSha256": "54e76cce2937c2c8ef4aa6ff7f58e970b25079c1d7c46d410545da4bcb10973c",
+      "afterBytes": 26403
+    },
+    "tests/unit/architecture/parity-reference-authority.test.ts": {
+      "beforeSha256": "c922321216bb2bb8af14979478b22b7db81de39f713d4588142fd728de849e46",
+      "beforeBytes": 25131,
+      "afterSha256": "72a209c6092e4a23eb4fa3e44b24bc6d15d6f725e0933720c84ef3d24ea5d7b1",
+      "afterBytes": 26890
+    },
+    "tests/unit/scripts/verify-parity-json.test.ts": {
+      "beforeSha256": "fc2750375ca1ede0dc866faea0a2d7d6a6713d176b34ac04264adb58881f1c11",
+      "beforeBytes": 15053,
+      "afterSha256": "e7d86e592029717c96be4f3a630dd12947e85f70deb1c47864d11aa53118fa1e",
+      "afterBytes": 31789
+    }
+  },
+  "protected": {
+    "scope": "all git-visible non-coordination files excluding the nine repair16 paths",
+    "count": 1883,
+    "digestRecipe": "sha256(JSON.stringify(Object.fromEntries(sorted [path, sha256(fileBytes)] rows)))",
+    "beforeAndAfterDigest": "42a299f4574f3930a3b2bd86480498b8fef09da1753e96b8b820f55165487a64"
+  },
+  "repair15Artifacts": {
+    "reportSha256": "05e5709471f36a2e550802481698522f3a122c9240b97a31e1eb65418f7acec9",
+    "patchSha256": "a32d408927abd4d2a1e8664d866a294e1724a100f50f35fb5c74ec7b0269992a",
+    "ledgerSha256": "af714e1588d6efee2e518e096b3e84609bafc5928660073f36ffed8817e10a85"
+  },
+  "completeCandidatePatch": {
+    "path": "docs/coordinator/worktree-completion/evidence/dca-joined-parity-json-deep-wrapper-repair16.patch",
+    "basis": "complete nine-path candidate patch against HEAD; repair15-to-repair16 boundaries are the scope hashes above",
+    "sha256": "6dd7f95f536214e14dda2f689de68e99bc8f6f4aea4ead5a68df7342b039c64d",
+    "bytes": 165052,
+    "lines": 3398,
+    "reverseCheck": "passed"
+  },
+  "diffCheck": "passed"
+}

@@ -1,0 +1,11 @@
+{
+  "exactCandidateRestored": true,
+  "hashes": {
+    "AGENTS.md": "a7acd7d280dc1a0bcf84b9447f10ea21687f5596f8ded2f198cc4171087b5588",
+    "tests/unit/architecture/helpers/redaction-surface-audit.ts": "8b5f7eb7b00b5d8749698b319b5851e9a5f08b24e03305e3f97f33cd88aa4b39",
+    "tests/unit/architecture/redaction-surface-scan.test.ts": "7329ca05e57f726da6c617de2c3c30b9d72140d92cca1021ec08eaec9beb18a6",
+    "src/domain/dashboard/archive.ts": "b17115ea5b2821471437df0773c84c47931167656002175d127c495707e5092c",
+    "src/server/dashboard/queries/archive.ts": "ed9d6ee05c23d210d10403d05493cee99e09112e9b9d9ce15ec6f18845d4f387",
+    "src/server/dashboard/queries/artifact-bytes.ts": "0d7ffd313015837b8323d55ab98eb29cb0ae07cb72bc8057f8365eb94d12f76c"
+  }
+}

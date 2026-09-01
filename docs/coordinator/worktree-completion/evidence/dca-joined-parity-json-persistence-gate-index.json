@@ -1,0 +1,82 @@
+{
+  "red": {
+    "session": 99143,
+    "chunks": ["7b97a4", "abbdd8"],
+    "exit": 1,
+    "started": "2026-08-31T18:49:08.531Z",
+    "finished": "2026-08-31T18:49:11.731Z",
+    "rawLog": "dca-joined-parity-json-persistence-red.log",
+    "rawSha256": "ee29a1c7b84236ddc38a0da941b2c0a7d3022781cb51e8e70aca23c82eca3f3e",
+    "rawBytes": 1526
+  },
+  "redBody": {
+    "session": 73434,
+    "chunks": ["a12074", "e20456"],
+    "exit": 1,
+    "started": "2026-08-31T18:49:20.019Z",
+    "finished": "2026-08-31T18:49:22.690Z",
+    "rawLog": "dca-joined-parity-json-persistence-red-body.log",
+    "rawSha256": "498c10b2347cce268247065384310292454d2b3470cff8321974a2eac9e344f6",
+    "rawBytes": 57016
+  },
+  "green": {
+    "session": 8349,
+    "chunks": ["3c4e30", "745bb6"],
+    "exit": 0,
+    "started": "2026-08-31T18:49:39.431Z",
+    "finished": "2026-08-31T18:49:42.115Z",
+    "rawLog": "dca-joined-parity-json-persistence-green.log",
+    "rawSha256": "20445c33704430616b9d1753dc239554c55a6db1855504c778c228b051e0fb19",
+    "rawBytes": 396
+  },
+  "controlReferencePathRed": {
+    "session": 86406,
+    "chunks": ["d9c37e", "7c3aa7"],
+    "exit": 1,
+    "started": "2026-08-31T18:50:29.268Z",
+    "finished": "2026-08-31T18:50:31.824Z",
+    "rawLog": "dca-joined-parity-json-persistence-control-reference-path-red.log",
+    "rawSha256": "d08f3d8ab2c75fea6f908564f3e0093c6513bb7c4dadecfdb972570b20b28ed2",
+    "rawBytes": 1686
+  },
+  "controlBodyDigestRed": {
+    "session": 68913,
+    "chunks": ["d46358", "7f7814"],
+    "exit": 1,
+    "started": "2026-08-31T18:50:48.379Z",
+    "finished": "2026-08-31T18:50:50.704Z",
+    "rawLog": "dca-joined-parity-json-persistence-control-body-digest-red.log",
+    "rawSha256": "3634fa0a6070e0c738f46f466a1aa1ef5659aa7cf3a70dedf14a7656e95ad422",
+    "rawBytes": 27580
+  },
+  "focusedFinal": {
+    "session": 17055,
+    "chunks": ["f48a62", "24b12a"],
+    "exit": 0,
+    "started": "2026-08-31T18:51:04.093Z",
+    "finished": "2026-08-31T18:51:06.774Z",
+    "rawLog": "dca-joined-parity-json-persistence-focused-final.log",
+    "rawSha256": "a3a03cf7cec230c2ad91e7a54bf9c86a42c077eb934e816e0b749237e235032e",
+    "rawBytes": 396
+  },
+  "typecheck": {
+    "session": 96060,
+    "chunks": ["53afce", "7bcafd", "b8dabd", "651c5b"],
+    "exit": 0,
+    "started": "2026-08-31T18:51:11.419Z",
+    "finished": "2026-08-31T18:51:25.163Z",
+    "rawLog": "dca-joined-parity-json-persistence-typecheck.log",
+    "rawSha256": "ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036",
+    "rawBytes": 57
+  },
+  "lint": {
+    "session": 83842,
+    "chunks": ["1c27f9", "1645a0", "874897", "fd5d98", "49ad46", "fec31b", "debe6f"],
+    "exit": 0,
+    "started": "2026-08-31T18:51:27.901Z",
+    "finished": "2026-08-31T18:52:49.754Z",
+    "rawLog": "dca-joined-parity-json-persistence-lint.log",
+    "rawSha256": "cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385",
+    "rawBytes": 81
+  }
+}

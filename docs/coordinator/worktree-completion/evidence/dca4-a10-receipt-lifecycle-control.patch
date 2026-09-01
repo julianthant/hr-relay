@@ -1,0 +1,7 @@
+*** Begin Patch
+*** Update File: /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/src/dashboard/surfaces/run-captures-model.ts
+@@
+-      if (!live) return;
+-      setRead(current => current.owner === owner ? { ...current, value } : current);
++      setRead(current => ({ ...current, value }));
+*** End Patch

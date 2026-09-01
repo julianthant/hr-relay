@@ -1,0 +1,7 @@
+command: /usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck
+working-directory: /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+prepared-spec-sha256: f5903fa0c1846199bfbecba565547225c11a771038c9682bab5ae89f5ebd25dc
+exit-code: 0
+
+> hr-automation-rebuild@0.1.0 typecheck
+> tsc --noEmit

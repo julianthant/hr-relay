@@ -25,6 +25,7 @@ export default defineConfig({
   outputDir: "tests/parity/.output",
   fullyParallel: false,
   workers: 1,
+  retries: 0,
   timeout: 120_000,
   // "none": a missing baseline is a failure, never a silently minted one.
   // "changed" (under PARITY_UPDATE=1): refresh only what actually differs, so
@@ -61,5 +62,8 @@ export default defineConfig({
     headless: true,
     deviceScaleFactor: 1,
   },
-  reporter: [["list"]],
+  reporter: [
+    ["list"],
+    ["json", { outputFile: "tests/parity/.output/results.json" }],
+  ],
 });
