@@ -424,7 +424,7 @@ async function repairSpanRootCommand(
       output: [
         `span root repair REFUSED — ${messageChain(error)}`,
         `process locks: ${describeLocksForRefusal(processLockRoot, sourceDatabaseIdentity, clock)}`,
-        "existing span bytes and authority were not intentionally modified; rerun doctor before deciding the next action",
+        "rerun doctor before deciding the next action; a failure after append may have left the exact marked reconstruction present, and an exact repeat is byte-idempotent",
       ].join("\n"),
       exitCode: 1,
     };
