@@ -2651,6 +2651,45 @@ deviation is DISCHARGED rather than overruled, and its rejected arm C (*build th
 first*) is what landed. The intake takeover's focus-return target moves with the door, from
 `IMPORT_SPREADSHEET_DOOR_ID` to `RUN_START_DOOR_ID` on `Start a run`.
 
+**D298 — the spreadsheet arm IS the dropzone, and the intake's own upload page is deleted
+(2026-09-01).** D296's items 2 and 3 are AMENDED, on the ground that item 3 was wrong about the
+workspace it was protecting. It refused a picker here because one would "drop the operator into the
+middle of the workspace past the mapping step" — but the workspace's FIRST screen is that same
+dropzone, and a file dropped on it skips nothing: the upload opens a session and the mapping grid is
+what comes up. What D296 actually shipped was a paragraph describing a zone, above a primary whose
+only job was to reach that zone one screen later. Two screens for one act.
+
+1. **The panel is the zone.** The Input stage draws the intake's own `Dropzone`, from the
+   workspace's own `INTAKE_ACCEPT` / `INTAKE_DROPZONE_HINT` / `intakeDropzoneLabel`
+   (`surfaces/intake-model.ts`), so the two doors cannot disagree about what is accepted or how
+   large it may be. The zone's hint — *"Nothing runs until you map its columns and review what it
+   rejects"* — says what the deleted paragraph said, on the control it is about.
+2. **The drop IS the press, and the arm has NO primary.** `POST /intake/files` runs on drop; the
+   dialog closes on `?intake=<sessionId>` for THE WORKFLOW THE PICKER SELECTED, with the file
+   already read. `Open the intake…` is deleted: a primary beside a dropzone is either a second way
+   to do the same thing or a dead control. The footer carries `Cancel` alone.
+3. **Neither failure arm is swallowed.** A REFUSAL renders the server's own code and sentence with
+   *"no session was opened"*, and a transport failure says the file never landed. Both leave the
+   zone live so the same file can be dropped again, and neither hands the operator over — routing
+   to a workspace for a file the server rejected is exactly the "the check failed reads as the check
+   passed" substitution this program bans.
+4. **The workspace's upload page is DELETED, and `?intake=new` with it.** `IntakeWorkspace` takes a
+   required `sessionId`; its `empty` and `refused` states, its `Dropzone`, its `upload` callback and
+   its `Another file` reset are gone, because every one of them existed only to serve a workspace
+   opened with nothing in it. `?intake=` is now always a session id — a stale `?intake=new` link is
+   a session the server does not have, and the workspace says so in the server's own words instead
+   of silently landing on an empty screen. `INTAKE_NEW` retires from `url-state.ts`.
+5. **What did NOT move.** Mapping, per-row review, the manifest, the rerun diff and the enqueue all
+   stay in the workspace. D170/D173 stand unamended: the session is durable, the work takes minutes,
+   and a modal would trap a task whose whole state is already safe on the server.
+6. **The workflow label moves to the header.** The dropzone used to carry it (*"…of people for
+   {label}"*); the workspace's `PanelHeader` now carries `mapping onto {label}` in its `meta` slot,
+   because a mapping grid that does not name its target is a grid of guesses.
+
+**Corpus.** `intake-upload` is retired from the reference set — the zone it photographed is now in
+`start-run-spreadsheet`, which asserts the file input, the zone's label, the absence of the deleted
+primary, and that a `setInputFiles` lands on the workspace's `Source file` band.
+
 **One contradiction this section states rather than resolves.** `supersede-active` means two
 different things in two files. The kernel implements it — `run-fan-out.ts` terminalizes the exact
 active generation and creates the new run atomically — and the planner does not: `services/start/plan.ts`
@@ -2670,6 +2709,7 @@ That changes where the declaration is READ, not what it says.
 - [x] D250 — the typed box describes itself: value-noun, separator phrase and parser sentence derived from the closed spec; `examples[]` proved typeable at `build()` (`src/domain/workflow/ingress.ts`, `defineWorkflowDescriptor`)
 - [x] D251 — the four modal rows, three already in the client bundle; the policy drawn read-only with its reason; the unstartable reason composed and now drawn
 - [x] D296 — the peer-method tablist over the served `start.spreadsheetIntake`; the spreadsheet arm is a one-stage handoff ending at `Open the intake…`; the toolbar's `Import spreadsheet` and `Workflow explorer` doors are deleted (§9.5.3)
+- [x] D298 — the spreadsheet arm IS the intake's dropzone: the drop uploads and closes the dialog on `?intake=<sessionId>`, `Open the intake…` is deleted, and the workspace's own upload page retires with the `?intake=new` sentinel
 - [x] D261 — the typed start surface takes ONE box; `separations` derives the Kuali action id as a graph output rather than asking for a second value
 - [x] D226 — the three identity-approval ceremonies and rejection, shape decided server-side (§9.4 carries the text)
 - [x] D237 — a settled gate's decision record renders inline at `resolvedAt`, read from the durable `gate_results` row (§9.4)

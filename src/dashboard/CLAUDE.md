@@ -62,7 +62,7 @@ decision rather than as drift, and the site carries the same citation in code.
 | Deviation | Where | Why it stays | Rejected |
 |---|---|---|---|
 | **Escape-clear in day search** — a first `Escape` clears a non-empty query; a second closes the dialog (ledger 1 A16) | `surfaces/day-search.tsx` | Clearing is the cheaper correction and the second press still reaches the dialog, so nothing the demo's Escape does is unavailable here | B — remove both for exactness |
-| ~~**`Import spreadsheet` in the toolbar's left group** (ledger 1 A174 / B141)~~ | ~~`app/dashboard-app.tsx`~~ | **DISCHARGED by D296 (2026-09-01), not overruled.** It stayed because "the demo reaches intake from inside the Run Modal and `RunStartSurfaces` serves no such handoff" — and the row named its own expiry. The modal grew the handoff, so the button is deleted and the Input stage's `Import a spreadsheet` method is the intake's one door | B — remove both for exactness · **C — build the Run-Modal handoff first (LANDED)** |
+| ~~**`Import spreadsheet` in the toolbar's left group** (ledger 1 A174 / B141)~~ | ~~`app/dashboard-app.tsx`~~ | **DISCHARGED by D296 (2026-09-01), not overruled.** It stayed because "the demo reaches intake from inside the Run Modal and `RunStartSurfaces` serves no such handoff" — and the row named its own expiry. The modal grew the handoff, so the button is deleted and the Input stage's `Import a spreadsheet` method is the intake's one door — and since D298 that method IS the intake's dropzone, so the one door opens on the zone itself | B — remove both for exactness · **C — build the Run-Modal handoff first (LANDED)** |
 
 Three more are ruled by **D273 items 5–6** (`ref dashboard-surfaces` §"D273 — run detail"; the
 sheet is ledger 2, `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` §R-C). Same rule: each site
@@ -80,7 +80,7 @@ carries the citation in code.
 
 | Deviation | Where | Why it stays | Rejected |
 |---|---|---|---|
-| **The intake workspace dismisses from its HEADER, and the word is `Close`** (ledger 3 IN7) | `surfaces/intake.tsx` | The demo's `Cancel` is a DIALOG footer button and D173 reshaped this surface into a workspace, which has no dialog footer. `Cancel` would also misname it: by the time the header is on screen the upload has created a durable session with an artifact behind it, so the control closes the workspace and cancels nothing | A — port `Cancel` into a footer this surface does not have |
+| **The intake workspace dismisses from its HEADER, and the word is `Close`** (ledger 3 IN7) | `surfaces/intake.tsx` | The demo's `Cancel` is a DIALOG footer button and D173 reshaped this surface into a workspace, which has no dialog footer. `Cancel` would also misname it: by the time the header is on screen the upload has created a durable session with an artifact behind it, so the control closes the workspace and cancels nothing. D298 removed the `Another file` reset beside it: it reset to the upload page, and there is no upload page | A — port `Cancel` into a footer this surface does not have |
 | **The workflow list `Panel` takes an `aria-label`** (ledger 3 EX26) | `surfaces/explorer.tsx` | Two `Panel` landmarks sit side by side here, and a landmark with no name is one an assistive reader cannot tell from the other. The demo's list is a bare `div`, so it never had two landmarks to distinguish | B — drop the name for exactness |
 | **The connector prints `no edge between them`** (ledger 3 EX55) | `surfaces/explorer.tsx` | `dependsOn` is a real declaration a descriptor may omit, so the demo's unconditional `always` would tell the operator that the next node WAITS for this one when nothing says it does — on the surface whose whole subject is what waits for what | B — print `always` on both arms |
 | **The unknown-workflow empty state offers a door** (ledger 3 EX172) | `surfaces/explorer.tsx` | The arm is reached by a deep link naming a workflow the registry no longer serves; without it the operator's only exit from a stale bookmark is the URL bar. It names the workflow it opens, and is suppressed when the registry is empty | B — remove it; C — offer a generic "open a workflow" |
@@ -117,9 +117,36 @@ binding would contradict them.
   And **a stage rail is a claim about what is reachable.** The demo walks its spreadsheet method
   through `Input → Options → Confirm` with each stage's controls suppressed, which it can afford
   because it serves a sheet list and a `Confirm` that names the chosen sheet. This tree serves
-  neither — the intake workspace owns the file, the mapping, the review and the enqueue — so
-  `runStartStages` returns `["Input"]` for that arm. Numbering two stages an operator walks through
+  neither — the arm's whole act is the drop, and the mapping, the review and the enqueue belong to
+  the workspace (D298 moved only the FILE) — so `runStartStages` returns `["Input"]` for that arm. Numbering two stages an operator walks through
   empty is `DESIGN.md`'s own empty scaffolding wearing a progress indicator.
+
+- **2026-09-01 (D298): a panel that DESCRIBES a control, above a button whose only job is to reach
+  that control, is one screen too many — and the second screen is where the sentinel lived.**
+
+  D296 shipped `Import a spreadsheet` as an `EmptyState` reading *"The intake workspace takes the
+  file, maps its columns…"* over an `Open the intake…` primary, defended on the ground that a file
+  picker in the dialog would land the operator "past the mapping step". That defence was wrong about
+  the surface it protected: `intake.tsx`'s `resource.state === "empty"` arm IS a dropzone, and a
+  drop there skips no mapping — it opens the session and the mapping grid comes up. So the paragraph
+  described a zone one click away, and the primary existed to travel that click. **Check what the
+  destination's first screen actually is before writing a panel about it.**
+
+  Two things travel from the fix. **Deleting the second screen deletes its address.** The workspace
+  could open with nothing in it, so `?intake=` needed a sentinel (`INTAKE_NEW = "new"`) to say
+  "opened, no session yet" — and that sentinel then had to be special-cased in `dashboard-app.tsx`,
+  in the parity corpus (`intake-upload`), and in four unit tests. Moving the upload into the dialog
+  made `sessionId` REQUIRED, and the whole sentinel went with it: `?intake=` is now always a session
+  id. A route key with one magic value is usually a second screen wearing a URL.
+
+  And **when a control moves, its labels are the thing that quietly goes stale.** The dropzone
+  carried the workflow name (*"Drop a spreadsheet of people for {label}"*) and the workspace's
+  header comment said so in as many words — *"`workflowLabel` is not lost with it, it stays on the
+  upload label below"*. Moving the zone would have left the mapping grid naming no target at all, so
+  the label moved to the header's `meta` slot in the same commit. `INTAKE_ACCEPT`,
+  `INTAKE_DROPZONE_HINT` and `intakeDropzoneLabel` now live in `intake-model.ts` because two
+  surfaces draw the zone: two copies of "up to 25 MB" is how one of them ends up lying about a cap
+  the other already raised.
 
 - **2026-09-01: two `ml-auto` do not stack, they SPLIT — and a segmented composite that
   lets its segments carry the height grows by its own padding (the Top Bar centre cluster).**
@@ -1298,7 +1325,7 @@ binding would contradict them.
   parity fixture and reading `getComputedStyle(...).backgroundColor` in both themes.
 
 - **2026-09-01 — a rule ported without its FACT SET is a rule applied to something it never
-  covered, and the segment the demo never had is the one that must give.** The operator's report
+  covered, and the fix was not a better truncation but the right SURFACE.** The operator's report
   was *"the queue row does not look like the one from the demo"*: a FINISHED row whose footer had
   grown to FOUR lines, `took 24m 48s` stranded on its own under two lines of prose while the retry
   control floated beside the first. The footer had been written to `DESIGN.md`'s rule verbatim — *"A
@@ -1308,21 +1335,35 @@ binding would contradict them.
   demo's `subtitle` IS the trace (`DemoQueue.tsx:715` prints `row.subtitle`, and the fixture value
   is `se-140211-9f3a`). This projection serves the trace as its own chip AND the start plan's
   `subtitle` beside it, and a real one was an operator's sentence — `re-read 1 — operator requested
-  fresh 4568 rehearsal after resume freshness refusal`. A fifth segment, of a different kind, under
-  a rule written for four.
+  fresh 4568 rehearsal after resume freshness refusal`, from
+  `separations/descriptor.ts`'s re-read arm, whose `reason` is `z.string().max(200)`.
 
-  What travels: **when a port adds a segment the source never had, put it LAST and let it be the
-  one that gives.** The demo's four keep the demo's order and claim the line first, so the trace id
-  — the string the rule exists to protect — still cannot be cut; the prose segment takes
-  `min-w-0 truncate` behind them. Not `flex-1 truncate`: `flex-1` sets the base size to zero and
-  hands the segment only the LEFTOVER, which at the ~370px the queue actually renders at cut `with
-  CRM dates` to `wi…` — a short subtitle the demo draws whole. At its natural base it draws whole
-  when it fits and takes ONE second line when it does not, which is the rule's own sentence.
-  **And truncation is only honest with a hover-free route to the whole value**: `rowInfoFacts` now
-  carries a PRESENT subtitle into the row's ⓘ, where it previously carried only the absent arm's
-  reason — the same DESIGN.md rule (load-bearing detail "goes in the UI or in a Popover … never in
-  a hover-only surface") the fold's outcome-fact half was already written for. **Reproduce a row
-  report before diagnosing it**: the four-line footer was photographed by patching the parity day
-  fixture's failed row with the operator's own subtitle and screenshotting it, which is also what
-  ruled OUT the two things the screenshot appeared to show — the title is `--ds-fg` (`#fafafa`
-  sampled), not red, and the solid `Failed` chip is the demo's own `tier: "solid"`.
+  **Two treatments were tried in the footer and BOTH were wrong**, which is the tell that the slot
+  was wrong rather than its CSS. `nowrap` alone let the card's `overflow-hidden` cut the value
+  mid-word with nothing on screen saying anything was cut. `break-words` gave the four-line footer.
+  Truncating (`min-w-0 truncate`, the third try) only moved the damage: it kept the trace whole and
+  bounded the row at two lines, but it still spent a provenance segment on prose and still cut the
+  operator's sentence.
+
+  What travels: **ask what KIND of fact a slot holds before styling it.** Across the whole product
+  `subtitle` is the workflow's own name (already drawn as the workflow chip — printed twice on one
+  card), a start option (`with CRM dates`), an attribution (`Filed by …`), or an ordinal plus free
+  text. Not one of the four is provenance. The operator's own rule settled it: **the row surface
+  carries what the run PRODUCED — status, outcome facts, warnings, timing, trace — and context about
+  how the run came to BE lives in the ⓘ.** That is this file's charter for the ⓘ (*"It EXPLAINS; it
+  never HIDES"*) read from the other side: nothing load-bearing moves INTO it, and a fact that is
+  not load-bearing need not be on the row at all. The segment is gone; `rowInfoFacts` carries the
+  present subtitle into the popover unclipped, and the demo's `showId` guard moved there with it
+  because the footer that held it no longer reads the field. **The footer can no longer GROW** —
+  four bounded segments, so no descriptor can reflow a row by writing a longer string, which no
+  truncation could have promised.
+
+  **Reproduce a row report before diagnosing it**: the four-line footer was photographed by patching
+  the parity day fixture's failed row with the operator's own subtitle and screenshotting it, which
+  is also what ruled OUT the two things the screenshot appeared to show — the title is `--ds-fg`
+  (`#fafafa` sampled), not red, and the solid `Failed` chip is the demo's own `tier: "solid"`.
+  **And check where a field can actually go before proposing it**: the first proposal was to promote
+  these into `facts[]`, which cannot hold them — `#facts()`
+  (`run-queue-projection.ts:1398`) derives that array from the run's evidence receipt output, only
+  once the run is terminal and only after redaction, while a subtitle is known at enqueue and shows
+  on a queued row. `Subtitle` remains a developer word in operator copy; renaming it is open.
