@@ -1569,25 +1569,7 @@ open: no
 log:
 - 2026-08-20 | docs-cohesion 04 | doc 04 rewritten as-built — eight deferrals, each with its trigger; the sanity check is RETIRED, not deferred, and `def-retention`'s title corrected (no 14/8/5 constant exists)
 
-note: **Never, by design:** unverified silent fallbacks · selector `.or()` chains · per-daemon logs / bespoke polling hooks / secondary count caches · per-action mutation routes · generic retry on a parked write · DSL/codegen workflow authoring (D79a) · LAN/remote operator mode · hosting (D193) · legacy change accounting (D150).
-
-### Photograph a paper form on your phone → it becomes an OCR-backed run {#def-capture-binding}
-status: planned
-doc: 04 §Photograph a paper form on your phone → it becomes an OCR-backed run · ref:data-intake-and-edit-data §5.1 · ref:dashboard-surfaces §9.7.2 · ref:charter §22
-
-> `CAPTURE_INTAKE_BINDINGS` is deliberately empty — neither current workflow can honestly derive an employee id from a photograph. Comes due with the first OCR-consuming workflow; "close this first": the `run.queued` span from projector-enqueued runs.
-
-builds:
-- [ ] BE emit `run.queued` for a handoff-enqueued run — the finalize projector enqueues outside the command service (ref data-intake-and-edit-data §5.1)
-
-needs:
-- order-3
-
-log:
-- 2026-08-20 | docs-cohesion 04 | the seam, the phone pipeline and the restart drain are all composed in production; the binding is the whole absence (`CAPTURE_INTAKE_BINDINGS` is `{}`, `src/control/workflow-registry.ts:194`)
-- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
-- 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
-- 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
+note: **Never, by design:** unverified silent fallbacks · selector `.or()` chains · per-daemon logs / bespoke polling hooks / secondary count caches · per-action mutation routes · generic retry on a parked write · DSL/codegen workflow authoring (D79a) · LAN/remote operator mode · hosting (D193) · mobile/phone document Capture Mode (D294) · legacy change accounting (D150).
 
 ### Run the built dashboard without the dev server {#def-byte-path}
 status: planned

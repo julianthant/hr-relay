@@ -56,8 +56,6 @@ complete" is not surprised by them later, and each names the node that owns the 
 | **five of seven notification trigger arms** have no publisher | `run-failed`, `subject-mismatch`, `write-parked`, `repeating-failure`, `verified-done`. The other two shipped as production publishers (D222 backup health, D262 the open operator gate) | each belongs to the surface or slice that owns the state it announces — `{#dash-defaults}` (03a) and the per-workflow `*-dash` nodes; `ref dashboard-surfaces` §2.6 |
 | the **knowledge projection** is unwired | knowledge/fix admission is durable and audited inside its insert transaction (D139); the projection has no caller, so no `KNOWLEDGE.md` exists, and `explain failure <fingerprint>` is not built | `ref operator-trust` §4.1/§4.2 name it in place; no node owns it — **reported** |
 | the **retention sweep** is uncalled | the retention-projection model is complete end to end and deliberately unwired (D164); the diagnostics/artifact sweep has no caller | `{#def-retention}` (04) — `never` by D193 |
-| the **phone capture surface** has no delivery path | the BFF serves no frontend bytes, so `/capture.html` 404s outside the dev server; the tunnel launcher (D175) is unbuilt | `{#def-byte-path}` (04) — D189, builds at the first phone-consuming migration |
-| **no workflow can receive a capture handoff** | `CAPTURE_INTAKE_BINDINGS` is empty, and saved-mapping reuse has no store, so every intake upload re-maps | `{#def-capture-binding}` (04) · `ref data-intake-and-edit-data` §2.3/§5.1 |
 
 **What Phase 2 deliberately does not prove.** Workflow-specific gates and each production system's
 receipt/verify quality stay migration-specific — the foundation write sequence is proven, each
@@ -249,13 +247,11 @@ both are reported.
 - [x] **2i-C, the Edit Data rail** — the `context-data` wire carries the policy, `authority.version` is the generation token, drafts re-parse into the recorded scalar's type, and all five save arms plus the three consume arms are pinned (D168; `edit-data-field-policy` active)
 - [x] **2i-D, Settings + the storage doctor + the live backup cadence** (D169) — one backup at process start, a coalesced verified backup on each 15-minute tick only when the store is dirty, and a graceful-drain backup inside `stop()` (`ref dashboard-surfaces` §2.5)
 - [x] **2i-E, the intake surface over schema v12** — the durable session, the upload route, all six command arms and the first real projection (D170–D173; `ref data-intake-and-edit-data` §2.7/§2.8/§5.2)
-- [x] **2i-F, the token-scoped phone capture surface** — the fragment token, the uniform refusal, the bundler and the derived handoff ids (D174/D175; `ref data-intake-and-edit-data` §5.1, `capture-durability-and-scope` active)
+- [x] **2i-F historical Capture Mode** — retired by D294; diagnostic screenshots, Receipt Capture tiles, and Archive evidence remain supported
 - [x] **2i-G, the read-only Workflow Explorer + the UI catalog** — the explorer is a projection of the ONE composition root, guarded in both directions over the REAL registry; source links RESOLVE against a real listing and a miss is `unresolved` carrying the path it tried; the catalog surface serves the COMMITTED artifact and refuses a stale one (D176/D177)
 - [x] **AI advisories** — redaction, strict output, explicit provider exhaustion and zero authority edge, one fixture per arm plus `ai-advisory-no-authority` active (D178)
 - [x] **the archive model + Activity report over schema v13** — UPDATE and DELETE aborted in SQL, the version bump, the ledger read-through, the CSV export (D179/D180/D223/D236/D240)
 - [x] the rail's CAS-conflict arm — silently reported *saved* until D253 fixed it — is now exhaustive at the discriminant and guarded (`ref data-intake-and-edit-data` §6.4.1)
-- [ ] the phone surface has **no production delivery path**: the BFF serves no frontend bytes, so `/capture.html` 404s outside the dev server (D189) → `{#def-byte-path}`
-- [ ] **no workflow can receive a capture handoff** — `CAPTURE_INTAKE_BINDINGS` is empty → `{#def-capture-binding}`
 - [x] The bounded Settings editor, atomic `apply-settings`, persisted readback and preflight/rerun controls are active (DCC1–DCC3; `ref frontend-backend-integration` §3.4); broader legacy Settings capabilities remain explicitly deferred → `{#def-settings}`
 - [ ] six of seven **worker / session controls** have kernel arms and no control (`ref frontend-backend-integration` §5); **unowned, reported**
 - [ ] the Explorer's **live-run overlay** and **scenario-coverage claims** stay excluded BY DECISION, not for want of a wire — run facts belong to the run-detail timeline, claims belong to the executable corpus (`ref operator-trust` §5.7)
@@ -516,8 +512,6 @@ blocks the exit — each is listed so a later reader is not surprised, and each 
 | five of seven notification trigger arms have no publisher | `{#dash-defaults}` — 03a, and the per-workflow `*-dash` nodes |
 | the knowledge projection has no caller; `explain failure <fingerprint>` unbuilt | **unowned — reported** |
 | the retention sweep has no caller; the 14/8/5 policy and a configurable backup path | `{#def-retention}` — 04, `never` by D193 |
-| the phone capture surface has no production delivery path | `{#def-byte-path}` — 04 |
-| no workflow can receive a capture handoff (`CAPTURE_INTAKE_BINDINGS` empty); saved-mapping reuse has no store | `{#def-capture-binding}` — 04 |
 | Broader legacy Settings capabilities remain deferred; the bounded editor, backend `apply-settings`, persisted readback and preflight controls are active under DCC1–DCC3 | `{#def-settings}` — 04 |
 | six of seven worker / session controls have kernel arms and no control | **unowned — reported** |
 

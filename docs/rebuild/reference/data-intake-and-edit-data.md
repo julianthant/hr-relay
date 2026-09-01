@@ -546,7 +546,7 @@ satisfy the very schema the workflow validates with. The descriptor's source clo
 - [x] the durability floor is in SQL, not convention — `ocr_extractions` is UNIQUE on `(source_sha256, source_page, form_type)` and ABORTs on update (schema v11, §4.9)
 - [ ] there is no OCR workflow: `src/workflows/` holds no descriptor that composes these tasks, so the graph, its review gate and its fan-out are exactly what this node builds
 - [ ] the roster SCORING has never met a real roster — the tiering ported verbatim, the scoring is new code, and this migration's live-verify is where §7's honest residual is discharged
-- [ ] `def-capture-binding` waits on this node: a photograph becomes a run only once an OCR-backed workflow exists to bind (§5.1)
+- [x] D294 retires the former Capture Mode binding; this OCR workflow has no photograph-to-run obligation (§5.1)
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/stores/{extraction,ocr,roster}/tasks/`, `src/domain/ocr/stack.ts`, `src/server/ocr/compose.ts:91` and `ls src/workflows/`; left: the workflow
 <!-- /roadmap-status -->
 
@@ -1798,7 +1798,7 @@ it). Nothing about this section's model is wrong and nothing here needs rebuildi
 routes, the refusals and the outbox are all correct and tested, and a phone still cannot load the
 page in production. Deferred on D189's own argument — those bytes would ride the one
 internet-exposed path behind the Host gate, and the tunnel launcher is unbuilt anyway. Owner:
-`def-capture-binding`'s sibling deferral in doc 04, not this doc.
+D294's retired Capture Mode record in doc 04, not this doc.
 
 **`capture-durability-and-scope` is ACTIVE.** It enforces the closed union in both directions, the
 `:param` segment bound, the byte-identical ingress refusal (driven through a real Hono app with a
