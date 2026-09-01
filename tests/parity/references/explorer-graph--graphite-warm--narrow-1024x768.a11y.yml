@@ -76,33 +76,33 @@
       - listitem:
         - button "crm-dates Task system crm runs when the run's input field includeCrmDates is true 1 contract 3 correctable fields"
     - region "Scenarios":
-      - text: Scenarios 7 registered
-      - table "Person Lookup scenarios":
+      - text: Scenarios 7 registered person-lookup
+      - table "person-lookup scenarios":
         - rowgroup:
           - row "Scenario Walked by":
             - columnheader "Scenario"
             - columnheader "Walked by"
         - rowgroup:
-          - row "person-lookup/ambiguous-name person-lookup.scenario.test.ts":
-            - cell "person-lookup/ambiguous-name"
+          - row "ambiguous-name person-lookup.scenario.test.ts":
+            - cell "ambiguous-name"
             - cell "person-lookup.scenario.test.ts"
-          - row "person-lookup/crm-failure-retry person-lookup.scenario.test.ts":
-            - cell "person-lookup/crm-failure-retry"
+          - row "crm-failure-retry person-lookup.scenario.test.ts":
+            - cell "crm-failure-retry"
             - cell "person-lookup.scenario.test.ts"
-          - row "person-lookup/crm-subject-mismatch person-lookup-runtime.scenario.test.ts":
-            - cell "person-lookup/crm-subject-mismatch"
+          - row "crm-subject-mismatch person-lookup-runtime.scenario.test.ts":
+            - cell "crm-subject-mismatch"
             - cell "person-lookup-runtime.scenario.test.ts"
-          - row "person-lookup/happy-by-eid person-lookup.scenario.test.ts":
-            - cell "person-lookup/happy-by-eid"
+          - row "happy-by-eid person-lookup.scenario.test.ts":
+            - cell "happy-by-eid"
             - cell "person-lookup.scenario.test.ts"
-          - row "person-lookup/happy-by-eid-with-dates person-lookup.scenario.test.ts":
-            - cell "person-lookup/happy-by-eid-with-dates"
+          - row "happy-by-eid-with-dates person-lookup.scenario.test.ts":
+            - cell "happy-by-eid-with-dates"
             - cell "person-lookup.scenario.test.ts"
-          - row "person-lookup/not-found person-lookup.scenario.test.ts":
-            - cell "person-lookup/not-found"
+          - row "not-found person-lookup.scenario.test.ts":
+            - cell "not-found"
             - cell "person-lookup.scenario.test.ts"
-          - row "person-lookup/ucpath-drill-subject-mismatch person-lookup-runtime.scenario.test.ts":
-            - cell "person-lookup/ucpath-drill-subject-mismatch"
+          - row "ucpath-drill-subject-mismatch person-lookup-runtime.scenario.test.ts":
+            - cell "ucpath-drill-subject-mismatch"
             - cell "person-lookup-runtime.scenario.test.ts"
     - heading "searching" [level=2]
     - button "What is this node? — searching"

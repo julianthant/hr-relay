@@ -85,84 +85,98 @@
         - text: a dry run stops here
         - button "finalize-kuali Finalize Kuali Document Transaction system kuali 2 contracts"
     - region "Scenarios":
-      - text: Scenarios 24 registered
-      - table "Kuali Finalization scenarios":
+      - text: Scenarios 24 registered person-lookup
+      - table "person-lookup scenarios":
         - rowgroup:
           - row "Scenario Walked by":
             - columnheader "Scenario"
             - columnheader "Walked by"
         - rowgroup:
-          - row "person-lookup/ambiguous-name person-lookup.scenario.test.ts":
-            - cell "person-lookup/ambiguous-name"
+          - row "ambiguous-name person-lookup.scenario.test.ts":
+            - cell "ambiguous-name"
             - cell "person-lookup.scenario.test.ts"
-          - row "person-lookup/happy-by-eid person-lookup.scenario.test.ts":
-            - cell "person-lookup/happy-by-eid"
+          - row "happy-by-eid person-lookup.scenario.test.ts":
+            - cell "happy-by-eid"
             - cell "person-lookup.scenario.test.ts"
-          - row "person-lookup/not-found person-lookup.scenario.test.ts":
-            - cell "person-lookup/not-found"
+          - row "not-found person-lookup.scenario.test.ts":
+            - cell "not-found"
             - cell "person-lookup.scenario.test.ts"
-          - row "person-lookup/ucpath-drill-subject-mismatch person-lookup-runtime.scenario.test.ts":
-            - cell "person-lookup/ucpath-drill-subject-mismatch"
+          - row "ucpath-drill-subject-mismatch person-lookup-runtime.scenario.test.ts":
+            - cell "ucpath-drill-subject-mismatch"
             - cell "person-lookup-runtime.scenario.test.ts"
-          - row "separations-identity-check/already-terminated-multi-row separations-identity-check.scenario.test.ts":
-            - cell "separations-identity-check/already-terminated-multi-row"
+      - text: separations-identity-check
+      - table "separations-identity-check scenarios":
+        - rowgroup:
+          - row "Scenario Walked by":
+            - columnheader "Scenario"
+            - columnheader "Walked by"
+        - rowgroup:
+          - row "already-terminated-multi-row separations-identity-check.scenario.test.ts":
+            - cell "already-terminated-multi-row"
             - cell "separations-identity-check.scenario.test.ts"
-          - row "separations-identity-check/already-terminated-single-row separations-identity-check.scenario.test.ts":
-            - cell "separations-identity-check/already-terminated-single-row"
+          - row "already-terminated-single-row separations-identity-check.scenario.test.ts":
+            - cell "already-terminated-single-row"
             - cell "separations-identity-check.scenario.test.ts"
-          - row "separations-identity-check/concurrent-active-jobs separations-identity-check.scenario.test.ts":
-            - cell "separations-identity-check/concurrent-active-jobs"
+          - row "concurrent-active-jobs separations-identity-check.scenario.test.ts":
+            - cell "concurrent-active-jobs"
             - cell "separations-identity-check.scenario.test.ts"
-          - row "separations-identity-check/different-name-two-candidates separations-identity-check.scenario.test.ts":
-            - cell "separations-identity-check/different-name-two-candidates"
+          - row "different-name-two-candidates separations-identity-check.scenario.test.ts":
+            - cell "different-name-two-candidates"
             - cell "separations-identity-check.scenario.test.ts"
-          - row "separations-identity-check/gate-approved separations-identity-check.scenario.test.ts":
-            - cell "separations-identity-check/gate-approved"
+          - row "gate-approved separations-identity-check.scenario.test.ts":
+            - cell "gate-approved"
             - cell "separations-identity-check.scenario.test.ts"
-          - row "separations-identity-check/gate-evidence-moved separations-identity-check.scenario.test.ts":
-            - cell "separations-identity-check/gate-evidence-moved"
+          - row "gate-evidence-moved separations-identity-check.scenario.test.ts":
+            - cell "gate-evidence-moved"
             - cell "separations-identity-check.scenario.test.ts"
-          - row "separations-identity-check/gate-rejected separations-identity-check.scenario.test.ts":
-            - cell "separations-identity-check/gate-rejected"
+          - row "gate-rejected separations-identity-check.scenario.test.ts":
+            - cell "gate-rejected"
             - cell "separations-identity-check.scenario.test.ts"
-          - row "separations-identity-check/job-summary-not-found separations-identity-check.scenario.test.ts":
-            - cell "separations-identity-check/job-summary-not-found"
+          - row "job-summary-not-found separations-identity-check.scenario.test.ts":
+            - cell "job-summary-not-found"
             - cell "separations-identity-check.scenario.test.ts"
-          - row "separations-identity-check/similar-name-never-auto-proceeds separations-identity-check.scenario.test.ts":
-            - cell "separations-identity-check/similar-name-never-auto-proceeds"
+          - row "similar-name-never-auto-proceeds separations-identity-check.scenario.test.ts":
+            - cell "similar-name-never-auto-proceeds"
             - cell "separations-identity-check.scenario.test.ts"
-          - row "separations-identity-check/single-active-job separations-identity-check.scenario.test.ts":
-            - cell "separations-identity-check/single-active-job"
+          - row "single-active-job separations-identity-check.scenario.test.ts":
+            - cell "single-active-job"
             - cell "separations-identity-check.scenario.test.ts"
-          - row "separations-identity-check/unreadable-department separations-identity-check.scenario.test.ts":
-            - cell "separations-identity-check/unreadable-department"
+          - row "unreadable-department separations-identity-check.scenario.test.ts":
+            - cell "unreadable-department"
             - cell "separations-identity-check.scenario.test.ts"
-          - row "separations-kuali-finalization/already-present structural.scenario.test.ts":
-            - cell "separations-kuali-finalization/already-present"
+      - text: separations-kuali-finalization
+      - table "separations-kuali-finalization scenarios":
+        - rowgroup:
+          - row "Scenario Walked by":
+            - columnheader "Scenario"
+            - columnheader "Walked by"
+        - rowgroup:
+          - row "already-present structural.scenario.test.ts":
+            - cell "already-present"
             - cell "structural.scenario.test.ts"
-          - row "separations-kuali-finalization/committed structural.scenario.test.ts":
-            - cell "separations-kuali-finalization/committed"
+          - row "committed structural.scenario.test.ts":
+            - cell "committed"
             - cell "structural.scenario.test.ts"
-          - row "separations-kuali-finalization/department-option-refusals structural.scenario.test.ts":
-            - cell "separations-kuali-finalization/department-option-refusals"
+          - row "department-option-refusals structural.scenario.test.ts":
+            - cell "department-option-refusals"
             - cell "structural.scenario.test.ts"
-          - row "separations-kuali-finalization/dry-run-preview structural.scenario.test.ts":
-            - cell "separations-kuali-finalization/dry-run-preview"
+          - row "dry-run-preview structural.scenario.test.ts":
+            - cell "dry-run-preview"
             - cell "structural.scenario.test.ts"
-          - row "separations-kuali-finalization/gate-approved structural.scenario.test.ts":
-            - cell "separations-kuali-finalization/gate-approved"
+          - row "gate-approved structural.scenario.test.ts":
+            - cell "gate-approved"
             - cell "structural.scenario.test.ts"
-          - row "separations-kuali-finalization/save-not-landed-parks structural.scenario.test.ts":
-            - cell "separations-kuali-finalization/save-not-landed-parks"
+          - row "save-not-landed-parks structural.scenario.test.ts":
+            - cell "save-not-landed-parks"
             - cell "structural.scenario.test.ts"
-          - row "separations-kuali-finalization/save-verify-read-back structural.scenario.test.ts":
-            - cell "separations-kuali-finalization/save-verify-read-back"
+          - row "save-verify-read-back structural.scenario.test.ts":
+            - cell "save-verify-read-back"
             - cell "structural.scenario.test.ts"
-          - row "separations-kuali-finalization/stage-refusals structural.scenario.test.ts":
-            - cell "separations-kuali-finalization/stage-refusals"
+          - row "stage-refusals structural.scenario.test.ts":
+            - cell "stage-refusals"
             - cell "structural.scenario.test.ts"
-          - row "separations-kuali-finalization/subject-mismatch structural.scenario.test.ts":
-            - cell "separations-kuali-finalization/subject-mismatch"
+          - row "subject-mismatch structural.scenario.test.ts":
+            - cell "subject-mismatch"
             - cell "structural.scenario.test.ts"
     - heading "job-summary" [level=2]
     - button "What is this node? — job-summary"
