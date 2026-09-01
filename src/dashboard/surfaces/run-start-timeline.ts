@@ -3,7 +3,21 @@
  *
  * Options is always visible. Step customization is chosen there, and only
  * then does the Steps stage appear.
+ *
+ * THE SPREADSHEET METHOD HAS ONE STAGE, AND THAT IS THE HONEST COUNT (D296).
+ * Its whole contribution to the dialog is the choice of method: the file, the
+ * column mapping, the per-row review, the queue policy and the enqueue all
+ * belong to the intake workspace this arm hands off to. The demo walks its
+ * spreadsheet method through every stage and suppresses each stage's controls
+ * (`DemoRunStart.tsx:973,1001` — `!isHandoff`), which it can afford because it
+ * serves a sheet list to pick from and a `Confirm` that names the chosen sheet;
+ * nothing here serves either. Numbering two more stages an operator would walk
+ * through empty is `DESIGN.md`'s own empty scaffolding, and a rail that says
+ * `1 → 2 → 3` over one reachable stage is a claim about this dialog that is
+ * false.
  */
+
+import type { StartMethod } from "./run-start-model.js";
 
 export type RunStartStage = "Input" | "Options" | "Steps" | "Confirm";
 
@@ -12,10 +26,15 @@ export interface RunStartStageSpec {
   readonly number: number;
 }
 
-export function runStartStages(customizeSteps: boolean): readonly RunStartStageSpec[] {
-  const labels: RunStartStage[] = customizeSteps
-    ? ["Input", "Options", "Steps", "Confirm"]
-    : ["Input", "Options", "Confirm"];
+export function runStartStages(
+  customizeSteps: boolean,
+  method: StartMethod = "typed",
+): readonly RunStartStageSpec[] {
+  const labels: RunStartStage[] = method === "spreadsheet"
+    ? ["Input"]
+    : customizeSteps
+      ? ["Input", "Options", "Steps", "Confirm"]
+      : ["Input", "Options", "Confirm"];
   return Object.freeze(labels.map((label, index) => Object.freeze({ label, number: index + 1 })));
 }
 

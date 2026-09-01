@@ -58,6 +58,55 @@ export const ENQUEUE_POLICY_REASON = "declared by this workflow — the planner 
 export type StartPriority = "interactive" | "bulk";
 
 // ---------------------------------------------------------------------------
+// D296 — the two ways work enters this queue, inside the dialog that starts it
+// ---------------------------------------------------------------------------
+
+/**
+ * HOW the operator is starting this run.
+ *
+ * The demo's `LauncherStartMethodKind` has four arms (`typed`, `upload`,
+ * `spreadsheet`, `bare`); this tree serves two, and serves them from
+ * DECLARATIONS rather than from a fixture: `typed` exists when the descriptor
+ * declares `surfaces.inputRun`, and `spreadsheet` exists when the module
+ * declares an intake projection. `upload` and `bare` are deliberately absent
+ * for the reason `WorkflowStartWireSchema` gives about `uploadRun` — no
+ * registered workflow produces one, and an arm nothing can produce is the
+ * D181/`degraded` shape.
+ */
+export type StartMethod = "typed" | "spreadsheet";
+
+export const START_METHOD_LABEL: Readonly<Record<StartMethod, string>> = Object.freeze({
+  typed: "Type values",
+  spreadsheet: "Import a spreadsheet",
+});
+
+/**
+ * What the spreadsheet arm tells the operator, and why it is a HANDOFF rather
+ * than a second form.
+ *
+ * The demo's spreadsheet method picks from a served list of sheets and confirms
+ * in the dialog; nothing here serves a sheet list, and the intake workspace
+ * (2i-E3) already owns the upload, the column mapping, the per-row review and
+ * the enqueue. A second file picker in this dialog would be a door into the
+ * middle of that workspace, and the mapping it skipped is what turns a column
+ * into an EID.
+ */
+export const SPREADSHEET_HANDOFF_TITLE = "One run per row, from a spreadsheet";
+export const SPREADSHEET_HANDOFF_BODY =
+  "The intake workspace takes the file, maps its columns onto this workflow's fields and shows you "
+  + "every row before anything is queued. Nothing starts until you enqueue it there.";
+
+/**
+ * Why a workflow shows no spreadsheet method.
+ *
+ * Stated as the MODULE's own missing declaration, in the same words
+ * `command-kernel.ts` refuses an intake commit with, so the dialog never spells
+ * a refusal the server would not make.
+ */
+export const SPREADSHEET_METHOD_ABSENCE =
+  "This workflow declares no intake projection, so it is not spreadsheet-capable.";
+
+// ---------------------------------------------------------------------------
 // C109 — a plan, and the result behind it, outlive nothing that shaped them
 // ---------------------------------------------------------------------------
 

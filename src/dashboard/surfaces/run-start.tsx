@@ -29,20 +29,30 @@
  * "{n} not startable" count need. (An earlier header claimed the picker waited
  * on a bootstrap start-capability projection. That was wrong — R8 finding 12.)
  *
- * Deferred with their owning slices, and omitted rather than faked: the upload,
- * capture, spreadsheet and bare start methods (2h), presets, preflight/doctor
- * results, and per-system host lines.
+ * Deferred with their owning slices, and omitted rather than faked: the upload
+ * and bare start methods (2h), presets, preflight/doctor results, and
+ * per-system host lines.
  *
- * **The peer-method TABS are not deferred, they are not applicable** (D251).
- * The demo renders them only at `methods.length > 1`, and this tree has one
- * method kind — `WorkflowSurfaces.uploadRun` is declared by no registered
- * workflow — so no tabs IS the demo-faithful rendering of one method, and a tab
- * strip over a set of one would be D186's sample-of-one. The demo's per-method
- * `note` goes with them: with one method it would be a second sentence about
- * the same thing `summary` already says.
+ * **The peer-method TABS are back, because there are now two methods** (D296).
+ * D251 recorded them as "not applicable, not deferred" — the demo draws them
+ * only at `methods.length > 1` and this tree had one method kind, so no tabs
+ * WAS the demo-faithful rendering of one method and a strip over a set of one
+ * would have been D186's sample-of-one. That reading has not changed; the SET
+ * has. A module that declares an intake projection is spreadsheet-capable
+ * (`command-kernel.ts`'s own words), the boot document now serves that fact as
+ * `start.spreadsheetIntake`, and a workflow carrying it has two ways in. The
+ * strip still draws only when the set is larger than one, from the same
+ * condition, so a workflow with no projection renders exactly what it does
+ * today. `uploadRun` is still declared by nothing and still absent.
+ *
+ * The spreadsheet method is a HANDOFF, not a second form: it ends at
+ * `Open the intake…`, which closes this dialog on the intake workspace for the
+ * selected workflow. That is what the queue toolbar's `Import spreadsheet`
+ * button stood in for until this existed, and D296 deletes it — a takeover with
+ * two doors was the duplicate-door problem D295 ruled on for the catalog.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import { ArrowRight, Keyboard, Play, Search } from "lucide-react";
+import { ArrowRight, FileSpreadsheet, Keyboard, Play, Search } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
   Banner,
@@ -60,6 +70,7 @@ import {
   Select,
   Textarea,
   Well,
+  dsElev,
   dsFg,
   dsFocus,
   dsIcon,
@@ -103,7 +114,11 @@ import { surfaceValueLabel } from "./run-start-kit-model.js";
 import {
   ENQUEUE_POLICY_MEANING,
   ENQUEUE_POLICY_REASON,
+  SPREADSHEET_HANDOFF_BODY,
+  SPREADSHEET_HANDOFF_TITLE,
+  START_METHOD_LABEL,
   startRequestFingerprint,
+  type StartMethod,
   type StartPriority,
 } from "./run-start-model.js";
 import {
@@ -173,6 +188,30 @@ export interface RunStartWorkflow {
   readonly inputRun:
     | { readonly state: "present"; readonly surface: InputRunSurface }
     | { readonly state: "absent"; readonly reason: string };
+  /**
+   * Whether the MODULE declares an intake projection (D296) — served on the
+   * boot document's start block, never inferred from a workflow id. It is the
+   * same fact the kernel refuses an intake commit by, so the dialog cannot
+   * offer a door the server would close.
+   */
+  readonly spreadsheetIntake: boolean;
+}
+
+/**
+ * The methods this workflow actually offers, in the demo's own order (typed
+ * first) — derived from declarations, never a fixed pair.
+ *
+ * A workflow with no typed-input surface still has a spreadsheet door if its
+ * module declares a projection, and the dialog's absent state belongs to the
+ * TYPED method rather than to the dialog: the intake workspace parses rows
+ * through the descriptor's own input schema, so it needs no typed surface.
+ */
+function startMethodsOf(workflow: RunStartWorkflow | undefined): readonly StartMethod[] {
+  if (workflow === undefined) return ["typed"];
+  return [
+    ...(workflow.inputRun.state === "present" ? (["typed"] as const) : []),
+    ...(workflow.spreadsheetIntake ? (["spreadsheet"] as const) : []),
+  ];
 }
 
 /** startable IS "declares a typed-input surface" — there is no second gate */
@@ -195,10 +234,17 @@ const NO_WORKFLOW_SELECTED = Object.freeze({
 // The launcher
 // ---------------------------------------------------------------------------
 
-/** the queue toolbar's one primary control — the dialog itself lives at the root */
-export function RunStartButton({ onOpen }: { onOpen: () => void }) {
+/**
+ * The queue toolbar's one primary control — the dialog itself lives at the root.
+ *
+ * `id` is the intake takeover's focus-return target since D296: the modal this
+ * opens is the only door into the intake workspace, so this is the control the
+ * operator left when that takeover took the screen.
+ */
+export function RunStartButton({ id, onOpen }: { id: string; onOpen: () => void }) {
   return (
     <Button
+      id={id}
       size="toolbar"
       variant="brand"
       onClick={onOpen}
@@ -572,6 +618,97 @@ function TypedInput({
 }
 
 // ---------------------------------------------------------------------------
+// The peer methods — how you are starting it (D296)
+// ---------------------------------------------------------------------------
+
+const METHOD_ICON: Readonly<Record<StartMethod, ReactNode>> = Object.freeze({
+  typed: <Keyboard aria-hidden className={dsIcon.sm} />,
+  spreadsheet: <FileSpreadsheet aria-hidden className={dsIcon.sm} />,
+});
+
+/**
+ * Ported from the demo's `MethodTabs` (`DemoRunStart.tsx:277-324`) — markup,
+ * roles, label and treatment verbatim, over this tree's two-arm method set.
+ *
+ * It is a `tablist` and not a segmented radio group because that is what the
+ * demo chose and the choice is already made; what the two arms select is which
+ * of the two INPUT surfaces below it renders, which is a tab panel's own job.
+ */
+function MethodTabs({
+  methods,
+  value,
+  onChange,
+}: {
+  methods: readonly StartMethod[];
+  value: StartMethod;
+  onChange: (next: StartMethod) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="How to start this run"
+      className={cn(
+        "inline-flex items-center gap-[var(--ds-space-hair)] p-[var(--ds-space-hair)]",
+        dsRadius.md,
+        "bg-[var(--ds-surface-2)]",
+      )}
+    >
+      {methods.map((method) => {
+        const selected = method === value;
+        return (
+          <button
+            key={method}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            onClick={() => onChange(method)}
+            className={cn(
+              "inline-flex cursor-pointer items-center gap-[var(--ds-space-snug)]",
+              "h-[var(--ds-h-md)] px-[var(--ds-space-cozy)]",
+              dsRadius.sm,
+              dsText.ui,
+              dsFocus,
+              dsMotion.fast,
+              "active:translate-y-px",
+              selected
+                ? cn("bg-[var(--ds-surface-overlay)] font-semibold", dsFg.base, dsElev.low)
+                : cn(dsFg.muted, "hover:text-[color:var(--ds-fg)]"),
+            )}
+          >
+            {METHOD_ICON[method]}
+            {START_METHOD_LABEL[method]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * The spreadsheet method's whole Input stage: what the handoff is, and nothing
+ * that pretends to be the file picker.
+ *
+ * The demo picks a sheet from a served fixture list here; this tree serves no
+ * sheet list, and the intake workspace owns the upload, the mapping, the row
+ * review and the enqueue. A second picker in this dialog would drop the
+ * operator into the middle of that workspace past the mapping step — and the
+ * mapping is what turns a column called `ID` into an EID this system will
+ * search on.
+ */
+function SpreadsheetHandoff() {
+  return (
+    <Well>
+      <EmptyState
+        className="p-[var(--ds-space-base)]"
+        icon={<FileSpreadsheet aria-hidden className={dsIcon.lg} />}
+        title={SPREADSHEET_HANDOFF_TITLE}
+        description={SPREADSHEET_HANDOFF_BODY}
+      />
+    </Well>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // The dialog
 // ---------------------------------------------------------------------------
 
@@ -616,6 +753,7 @@ export function RunStartDialog({
   workflows,
   panelWorkflowId,
   actorId,
+  onOpenIntake,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -625,11 +763,20 @@ export function RunStartDialog({
   panelWorkflowId: string;
   /** echoed from bootstrap; the server matches it against the request identity */
   actorId: string;
+  /**
+   * D296's handoff: close this dialog and open the intake workspace ON THIS
+   * WORKFLOW. The dialog names the workflow rather than assuming the panel's,
+   * because the picker beside it is the whole point of "any workflow, from
+   * anywhere" and an intake seeded from the panel would map the file's columns
+   * onto a workflow the operator did not choose.
+   */
+  onOpenIntake: (workflowId: string) => void;
 }) {
   const client = useDashboardClient();
 
   const [workflowId, setWorkflowId] = useState<string>(() => defaultWorkflowId(workflows, panelWorkflowId));
   const [currentStage, setCurrentStage] = useState<RunStartStage>("Input");
+  const [method, setMethod] = useState<StartMethod>("typed");
   const initialWorkflow = workflows.find((entry) => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId));
   const [customizeSteps, setCustomizeSteps] = useState(false);
   const [selectedStepKeys, setSelectedStepKeys] = useState<string[]>(() =>
@@ -656,6 +803,10 @@ export function RunStartDialog({
     setError(null);
     setCurrentStage("Input");
     setCustomizeSteps(false);
+    // The method is a property of the workflow's own declarations, so it resets
+    // with everything else: carrying `spreadsheet` onto a workflow whose module
+    // declares no projection would select a tab that is not drawn.
+    setMethod("typed");
     const nextWorkflow = workflows.find((entry) => entry.workflowId === next);
     setSelectedStepKeys(nextWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
     setPriority("interactive");
@@ -673,7 +824,21 @@ export function RunStartDialog({
   const inputRun = workflow?.inputRun ?? NO_WORKFLOW_SELECTED;
   const supportsDryRun = inputRun.state === "present" && inputRun.surface.supportsDryRun === true;
   const dryRun = supportsDryRun && dryRunRequested;
-  const launchStages = useMemo(() => runStartStages(customizeSteps), [customizeSteps]);
+  /**
+   * D296 — the served method set, and the arm the dialog is on.
+   *
+   * `method` is state so the tabs can move it, but `activeMethod` is what
+   * everything below reads: a selected arm this workflow does not offer is
+   * unrepresentable rather than merely unlikely, which is the same rule
+   * `reconcileRunStartStage` applies to a stage that stopped existing.
+   */
+  const methods = useMemo(() => startMethodsOf(workflow), [workflow]);
+  const activeMethod: StartMethod = methods.includes(method) ? method : (methods[0] ?? "typed");
+  const isHandoff = activeMethod === "spreadsheet";
+  const launchStages = useMemo(
+    () => runStartStages(customizeSteps, activeMethod),
+    [customizeSteps, activeMethod],
+  );
 
   useEffect(() => {
     setCurrentStage((current) => reconcileRunStartStage(launchStages, current));
@@ -977,7 +1142,16 @@ export function RunStartDialog({
             <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
               {currentStage === "Input" && (
                 <section aria-label="Input" className="flex flex-col gap-[var(--ds-space-loose)]">
-                  {inputRun.state === "present" ? (
+                  {/* The demo's own condition, verbatim: a strip over a set of
+                      one is D186's sample-of-one, so a workflow whose module
+                      declares no intake projection draws no tabs at all and
+                      renders exactly what it rendered before D296. */}
+                  {methods.length > 1 && (
+                    <MethodTabs methods={methods} value={activeMethod} onChange={setMethod} />
+                  )}
+                  {isHandoff ? (
+                    <SpreadsheetHandoff />
+                  ) : inputRun.state === "present" ? (
                     <TypedInput
                       surface={inputRun.surface}
                       workflowId={workflowId}
@@ -1105,7 +1279,9 @@ export function RunStartDialog({
                 // runs of one workflow started a descriptor bump apart, and
                 // this dialog is the last screen before one is enqueued.
                 workflow === undefined ? undefined : `${workflow.label} ${versionTag(workflow.version)}`,
-                currentStage === "Input"
+                isHandoff
+                  ? undefined
+                  : currentStage === "Input"
                   ? blockedReason ?? undefined
                   : currentStage === "Confirm" && plan !== null
                     ? `${String(plan.planned.length)} to create`
@@ -1120,7 +1296,23 @@ export function RunStartDialog({
           <Button variant="secondary" onClick={() => closeAndReset(false)}>
             Cancel
           </Button>
-          {currentStage === "Confirm" && plan !== null ? (
+          {isHandoff ? (
+            /* D296 — the demo's own handoff primary (`DemoRunStart.tsx:1079-1087`),
+               ellipsis and all: the press does not start anything, it opens the
+               workspace where the file is mapped and the rows are reviewed. It
+               is never `loading` and never `disabled`, because there is nothing
+               to fill in first — the method IS the whole of this stage. */
+            <Button
+              variant="primary"
+              icon={<FileSpreadsheet aria-hidden className={dsIcon.md} />}
+              onClick={() => {
+                closeAndReset(false);
+                onOpenIntake(workflowId);
+              }}
+            >
+              Open the intake…
+            </Button>
+          ) : currentStage === "Confirm" && plan !== null ? (
             <Button
               variant="primary"
               icon={<Play aria-hidden className={dsIcon.md} />}
@@ -1157,12 +1349,14 @@ export function RunStartSurfaces({
   workflows,
   panelWorkflowId,
   actorId,
+  onOpenIntake,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workflows: readonly RunStartWorkflow[];
   panelWorkflowId: string;
   actorId: string;
+  onOpenIntake: (workflowId: string) => void;
 }) {
   return (
     <RunStartDialog
@@ -1171,6 +1365,7 @@ export function RunStartSurfaces({
       workflows={workflows}
       panelWorkflowId={panelWorkflowId}
       actorId={actorId}
+      onOpenIntake={onOpenIntake}
     />
   );
 }

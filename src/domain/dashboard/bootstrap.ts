@@ -128,6 +128,17 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
  * - `steps` — D285's descriptor timeline and closed `required | selectable`
  *   control state. The server, not the browser, decides which declared graph
  *   conditions can be mapped back through typed start input.
+ * - `spreadsheetIntake` — D296's second door. It is `true` exactly when the
+ *   MODULE declares an intake projection, which is the same fact
+ *   `command-kernel.ts` refuses an intake commit by ("declares no intake
+ *   projection; it is not spreadsheet-capable"). Required rather than optional:
+ *   every registered module has a definite answer, and the Run Modal draws a
+ *   second start method from it — an absent field would leave the browser
+ *   guessing `false` and hiding a door the server would have served.
+ *
+ *   It is a BOOLEAN, not the projection: the projection's target fields are the
+ *   intake workspace's own subject and belong to its wire, and the modal's
+ *   question is only whether the door exists.
  *
  * `uploadRun` is deliberately NOT here. No registered workflow declares one and
  * no surface reads one (ref frontend-backend-integration, run-start's header) — serving an arm
@@ -139,6 +150,7 @@ export const WorkflowStartWireSchema = z.strictObject({
   enqueue: EnqueuePolicySchema,
   version: PositiveIntSchema,
   inputRun: InputRunSurfaceSchema.optional(),
+  spreadsheetIntake: z.boolean(),
   steps: z.array(z.strictObject({
     key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
     label: z.string().min(1),

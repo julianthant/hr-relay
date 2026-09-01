@@ -36,6 +36,18 @@ import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 export interface BootstrapModuleView {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly role: WorkflowModuleRole;
+  /**
+   * The module's intake projection, when it declares one (D296). It is read
+   * for its PRESENCE only — the served `spreadsheetIntake` boolean — because
+   * the Run Modal's question is whether the second start method exists, and
+   * the projection's target fields belong to the intake workspace's own wire.
+   *
+   * Optional here because it is optional on the module: `intakeProjectionRegistry`
+   * skips a module that declares none, and the same tuple feeds both. Reading
+   * it from the module rather than re-deriving it from `INTAKE_PROJECTIONS`
+   * keeps one source, exactly as `role` does.
+   */
+  readonly intake?: unknown;
 }
 
 export interface BootstrapQueryDeps {
@@ -116,7 +128,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     // frontend's, so nothing here invents a label from an id. `role` is served
     // RAW for the same reason (D219) — it is the MODULE's declaration, and how
     // a harness nests under its composition is the frontend's ONE rule.
-    workflows: deps.modules.map(({ descriptor, role }) => ({
+    workflows: deps.modules.map(({ descriptor, role, intake }) => ({
       id: descriptor.id,
       code: descriptor.code,
       label: descriptor.label,
@@ -152,6 +164,11 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         ...(descriptor.surfaces.inputRun === undefined
           ? {}
           : { inputRun: descriptor.surfaces.inputRun }),
+        // D296 — the second start door, served as the fact it is. `undefined`
+        // is the module declaring no projection, which `intakeProjectionRegistry`
+        // reads the same way and `command-kernel` refuses a commit by; the
+        // modal draws no spreadsheet method for it.
+        spreadsheetIntake: intake !== undefined,
       },
     })),
     systemInstances: [...systems.values()].sort().map((system) => ({

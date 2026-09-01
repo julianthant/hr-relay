@@ -21,8 +21,8 @@ import {
   type FrontendBootstrapWire,
 } from "../../domain/dashboard/bootstrap.js";
 import { CapabilityAvailabilitySchema, type CapabilityAvailability } from "../../domain/absence.js";
-import { FileSpreadsheet, PanelRight, Workflow } from "lucide-react";
-import { Button, EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, dsIcon, useDemoTheme, useToasts } from "../ds/ui.js";
+import { PanelRight } from "lucide-react";
+import { EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, dsIcon, useDemoTheme, useToasts } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
@@ -136,7 +136,7 @@ import {
   type AppRouteState,
 } from "./url-state.js";
 import {
-  IMPORT_SPREADSHEET_DOOR_ID,
+  RUN_START_DOOR_ID,
   restoreDashboardTakeoverFocus,
   type DashboardTakeoverCloseFocusTargetId,
 } from "./dashboard-app-model.js";
@@ -695,6 +695,10 @@ function LoadedApp({
         // it off a descriptor is what used to put the registry in this bundle.
         version: start.version,
         steps: start.steps,
+        // D296 — the served spreadsheet-capability fact, carried through
+        // verbatim like `role`: the modal draws its second start method from
+        // the module's own intake declaration, never from a workflow id.
+        spreadsheetIntake: start.spreadsheetIntake,
         inputRun:
           start.inputRun === undefined
             ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
@@ -1588,7 +1592,7 @@ function LoadedApp({
               sessionId={route.intake === INTAKE_NEW ? undefined : route.intake}
               onSession={(next) => setRoute({ ...route, intake: next ?? INTAKE_NEW })}
               onClose={() => closeTakeoverTo(
-                IMPORT_SPREADSHEET_DOOR_ID,
+                RUN_START_DOOR_ID,
                 { ...route, intake: undefined },
               )}
               onEnqueued={() => setRoute({ ...route, intake: undefined })}
@@ -1706,62 +1710,31 @@ function LoadedApp({
               />
             }
             runStart={
-              <>
-                {/*
-                  THE INTAKE ROUTE LIVES IN THE TOOLBAR HERE, and that is a
-                  RULED deviation from the demo (D272 item 3, ledger rows
-                  A174/B141): keep it, recorded as an intentional route
-                  deviation, because removing it strands the only served door
-                  into intake. The rejected alternatives were removing it for
-                  exactness (B — intake loses its reachable entry point) and
-                  building the Run-Modal handoff first (C — additional
-                  navigation work for the same end state). The
-                  reason it stands is unchanged and is the reason it goes: the
-                  demo reaches its intake from INSIDE the Run Modal — a
-                  spreadsheet source turns the dialog's primary into "Open the
-                  intake…" — and this repository's `RunStartSurfaces` serves no
-                  such handoff. Deleting the button to match the demo's toolbar
-                  would make the whole intake workspace unreachable. It sits in
-                  the left group because it is one of the two ways work ENTERS
-                  this queue, which is what that group is; it goes when the run
-                  modal grows the handoff.
-                */}
-                <Button
-                  id={IMPORT_SPREADSHEET_DOOR_ID}
-                  size="toolbar"
-                  variant="outline"
-                  icon={<FileSpreadsheet aria-hidden className={dsIcon.sm} />}
-                  onClick={() => setRoute({ ...route, intake: INTAKE_NEW })}
-                >
-                  Import spreadsheet
-                </Button>
-                {/*
-                  THE TWO REFERENCE DOORS (D275 item 1, ledger 3 CA41).
-                  `ref dashboard-surfaces` §9.5.3 documented "two `ghost`
-                  buttons in the panel's action bar beside `Import spreadsheet`"
-                  and the tree had neither: both takeovers were reachable only
-                  by typing their query param. D275 item 1 restores them and
-                  supersedes the section's own 2026-08-21 correction, which
-                  recorded the as-built state rather than the contract. The
-                  rejected arms were hiding the navigation (B) and deleting it
-                  outright (C).
+              /*
+                ONE TOOLBAR DOOR, AND IT IS THE MODAL (D296).
 
-                  They are `ghost` because a reference view is something the
-                  operator looks UP: the two ways work ENTERS this queue —
-                  `Import spreadsheet` and the run modal — keep the weight.
-                  The deep links are untouched; these press the same route keys
-                  a pasted link carries.
-                */}
-                <Button
-                  size="toolbar"
-                  variant="ghost"
-                  icon={<Workflow aria-hidden className={dsIcon.sm} />}
-                  onClick={() => setRoute({ ...route, explore: activeWorkflowId })}
-                >
-                  Workflow explorer
-                </Button>
-                <RunStartButton onOpen={() => setStartOpen(true)} />
-              </>
+                This group used to carry three controls. `Import spreadsheet`
+                was a RULED deviation from the demo (D272 item 3, ledger rows
+                A174/B141) kept for one stated reason — "the demo reaches its
+                intake from INSIDE the Run Modal and this repository's
+                `RunStartSurfaces` serves no such handoff, so deleting the
+                button would make the whole intake workspace unreachable" — and
+                the same note named its own expiry: *it goes when the run modal
+                grows the handoff*. The modal has grown it. The spreadsheet
+                method's `Open the intake…` is the demo's own door, so the
+                deviation is not overruled, it is DISCHARGED, and rejected arm C
+                ("build the Run-Modal handoff first") is what landed.
+
+                `Workflow explorer` (D275 item 1, ledger 3 CA41) goes for D295's
+                reason rather than for its own: the explorer is a segment of the
+                top bar's product-view switcher, so the toolbar button was a
+                second door onto a takeover that already has one, and D275 item
+                1's actual objection was navigation that leads NOWHERE. It still
+                leads somewhere — from `Explorer`, where "where you are" is
+                answered. The `explore` route key, the deep links and the
+                surface are untouched.
+              */
+              <RunStartButton id={RUN_START_DOOR_ID} onOpen={() => setStartOpen(true)} />
             }
             filters={
               <StatusFilters statusCounts={scopedStatusCounts} active={filter} onSelect={onFilter} />
@@ -1917,6 +1890,16 @@ function LoadedApp({
         workflows={startWorkflows}
         panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
+        /* D296 — the modal's spreadsheet method hands off to the intake
+           workspace. It carries the workflow the PICKER selected, and the
+           panel follows it: `IntakeWorkspace` reads `activeWorkflowId` for the
+           projection it maps against, so opening the takeover without moving
+           the panel would map the file onto whatever workflow the operator
+           happened to be standing in. */
+        onOpenIntake={(intakeWorkflowId) => {
+          setActiveWorkflowId(intakeWorkflowId);
+          setRoute({ ...route, intake: INTAKE_NEW });
+        }}
       />
 
       {/* Destructive commands ask first — with the SERVER's own description of
