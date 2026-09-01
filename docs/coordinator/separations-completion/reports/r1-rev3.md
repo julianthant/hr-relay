@@ -113,7 +113,7 @@ so u2–u5 did not execute and none of the three D287 approvals was consumed. Th
 | parity | the five-worker gallery race now reads a deterministic synthetic fixture; two references deliberately re-frozen with 0 visual design changes |
 | live disposition | `config/test-subjects.json` marks the canary `gone`; both resolvers and the smoke block before environment access; synthetic available registries retain ready/unset/malformed D300 coverage |
 | dry-run projection | the live attempt exposed that the direct scenario start omitted `run.queued`; dashboard, intake, retry and scenario starts now share one queue-root event builder and scenario start emits after authority commit, before drain |
-| preserved state | the malformed historical span stream is unchanged. Authority generation 1334 is healthy with a verified current generation-1334 backup; storage doctor remains exit 1 because span reconciliation correctly reports `span-stream-invalid` |
+| recovered companion state | D301 preserved the historical 2,422-byte stream prefix by digest and appended one exact authority-derived queue root under stopped-runtime admission. Doctor is exit 0 with 8/8 stream/live runs reconciled and current generation-1335 authority/backup; an exact repeat was byte-idempotent, and the BFF served healthy/current storage |
 
 ### Review and final gates
 

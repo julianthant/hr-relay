@@ -1758,3 +1758,13 @@ in this same commit; D286 is superseded._
 | # | Decision | Owning doc |
 |---|---|---|
 | **D300** | **THE CANARY IS ONE KUALI DOCUMENT NUMBER IN `.env`; NO PERSON VALUE IS A CANARY SECRET.** D286 is SUPERSEDED. The single closed reference `separationsKualiFinalizationCanaryDocumentNumber` / `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER`, judged by `KualiDocumentNumberSchema`, is the only test-target secret; the `separations` arm commits the reference (`document: { state: "configured", reference }`) and never a number that resolves (the finalization arm's observation record keeps the number it observed; nothing resolves from it), so only the operator's `.env` chooses the live subject. Unset is `blocked` by key, malformed is a defect by key, never by value. The composed `separations` chain derives employee name and document EID from Kuali, the UCPath subject through the identity gate, and its timekeeper from the declared constant; the three retired person keys are never re-pointed and the number is never copied into a name or EID field. The standalone `separations-kuali-finalization` arm keeps its observations and `pending` block but has no person references and no `ready` path — its resolver blocks by name. Admission is `npm run smoke:test-target-document-number` (exit 0 only for `present` + `ready`, value never printed); `smoke:test-target-person-secrets` is deleted. | doc 03b §The canary registry (normative); `ref clock-config-secrets`, `ref guards-and-tests` §10.5, `src/control/CLAUDE.md` (pointers) |
+
+## Reconciliation round 113 (2026-09-01) — append-only recovery of a missing queue root
+
+_phase: platform_
+_D301 closes the companion-state recovery gap the R1 separations run exposed. Its normative text
+lands in `ref dashboard-surfaces` §2.5 in this same commit._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D301** | **A COMMITTED RUN WHOSE `run.queued` APPEND NEVER LANDED HAS ONE OFFLINE, AUTHORITY-DERIVED, APPEND-ONLY REPAIR.** `cli storage repair-span-root --run <exact-run-id>` requires D181 stopped-system proof/admission and one exact current run → durable session → consumed start-plan chain. It appends a strict marked root carrying the source authority identity and preserved-prefix size/digest; it never inserts, truncates or replaces prior span bytes. Only a complete `authority-reconstruction` marker admits physical pre-root lines, and the doctor replays all of them through the ordinary validators. Unmarked late roots and every ambiguous/mismatched authority chain remain refusals. An exact repeat is byte-idempotent. | `ref dashboard-surfaces` §2.5 (primary) |

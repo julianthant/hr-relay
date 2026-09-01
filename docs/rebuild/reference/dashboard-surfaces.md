@@ -1493,6 +1493,44 @@ workflow or span-path values; existing authority identity-mismatch diagnostics r
 Unrecognized filesystem/parser errors become closed safe causes on both browser and CLI JSON.
 A missing corpus is acceptable only for the exact never-produced zero-run baseline.
 
+#### D301 — one offline repair for a committed run whose queue root never landed (2026-09-01)
+
+The authority-first enqueue order has one recoverable companion-state gap: a run/session/start-plan
+transaction can commit and the process can fail before its required `run.queued` JSONL append. The
+supported recovery is `cli storage repair-span-root --run <exact-run-id> [--json]`. It is deliberately
+not a general stream editor. The command accepts only a current run with one durable run session,
+one consumed start-plan origin and exactly one matching planned entry; workflow, enqueue instant,
+item, trace, descriptor, config, instance, shape, priority, dry-run flag, actor and canonical input
+must agree across those records. Missing or ambiguous authority refuses. An existing ordinary root,
+no run events, malformed stream bytes, or any other target also refuses.
+
+The command uses D181's exact stopped-system proof and atomic restore admission, then rechecks the
+authority fingerprint around its read. It appends — never inserts, truncates or replaces — one strict
+`run.queued` line to the enqueue-day partition. The root's identity and operator-facing title come
+only from the exact authority chain; its `pid` belongs to the repair process. Its closed `repair`
+record carries `kind: authority-reconstruction`, repair time, source authority generation and
+fingerprint, and the byte count plus SHA-256 of the complete stream prefix it preserved. The append
+and directory are fsynced. Repeating the command against that exact reconstructed root reports
+`already-repaired` and writes no second byte; a different or duplicate root refuses.
+
+Physical order remains append-only, so the doctor grants the one ordering exception only to a root
+with that complete marker. It replays every preceding event for the run through the ordinary
+workflow/trace/attempt/timestamp/task-span validators; the marker does not excuse another defect.
+An unmarked late root remains malformed. A full projection rebuild already sorts by event timestamp,
+so the next stopped-runtime dashboard/BFF start folds the recovered root before its claim and task
+events without changing historical line order.
+
+**First in-place recovery proof.** Run `325cd998-bd05-4ffd-a863-99e0cc5c0ebe` exposed this exact
+gap during the 2026-09-01 separations rehearsal. The command preserved the original 2,422-byte
+stream prefix (`sha256:8eef5a21bd94096a69ccace6e7b013e0bd3483c16c5aa23fcc68aeef832fb2f9`),
+appended one generation-1335 reconstruction at 2026-09-01T22:09:45.175Z, and changed the doctor
+from `span-stream-invalid` / exit 1 to authority healthy + spans reconciled (8 stream runs / 8 live)
++ current verified generation-1335 backup / exit 0. A second identical command returned
+`already-repaired`; file size stayed 3,480 bytes and its SHA-256 stayed
+`abe99e012c8c1074fdd8b67cc47f2218a8a77de4d0e148d6dd9daa917db9dce8`. The BFF then started and
+served bootstrap storage `authority=healthy`, `backup=current`; no workflow retry, gate or write was
+part of the recovery.
+
 An automated restore drill copies a real-shaped DB, corrupts the copy, detects it, restores the
 named verified backup, rebuilds projections, and proves pending commands/delegations/write intents
 and capture handoffs remain consistent. (This sentence read "Phase 1 cannot exit until…" until

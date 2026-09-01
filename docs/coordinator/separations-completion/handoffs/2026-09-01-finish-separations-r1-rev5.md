@@ -18,10 +18,10 @@ canary completes u1–u5, the coordinator reconciles the board, and deletion is 
 - `finalization-canary` is retained as `gone`, last observed 2026-09-01. D284 forbids an inferred
   substitute. The operator must name the next controlled-commit canary.
 - The direct scenario-start queue-root bug exposed by the live run is fixed and regression-pinned.
-  The historical span stream remains deliberately unchanged, so storage doctor reports
-  `span-stream-invalid`. Authority generation 1334 is healthy and has a verified current
-  generation-1334 backup. Do not edit/truncate the stream or restore authority without an explicit,
-  reviewed recovery disposition.
+  D301's reviewed offline recovery preserved the historical 2,422-byte prefix by digest and
+  appended one exact authority reconstruction. Storage doctor is now exit 0 with 8/8 stream/live
+  runs reconciled and current generation-1335 authority/backup; an exact repeat changed no byte,
+  and BFF bootstrap served healthy/current storage.
 - Final branch gates: typecheck 0; lint 0; coverage 368/368 and 4583/4583; manifest current; roadmap
   fresh; parity 289/289; instruction pairs 8/8 identical; diff check clean.
 - Full evidence is `docs/coordinator/separations-completion/reports/r1-rev3.md` §6 and
@@ -31,9 +31,8 @@ canary completes u1–u5, the coordinator reconciles the board, and deletion is 
 
 1. Verify local `master`, clean git state, no listeners on 3938/5174, the current report, and this
    handoff. Never push.
-2. Treat storage-doctor's current `span-stream-invalid` as a separate recovery blocker. Use only a
-   reviewed recovery disposition; never rewrite diagnostic history ad hoc and never restore a backup
-   that would discard the failed-run authority.
+2. Re-verify storage doctor remains exit 0. D301 closed the prior `span-stream-invalid` by an
+   append-only authority reconstruction; never insert, truncate or hand-edit diagnostic history.
 3. Register the operator-named canary with a dated observation and its one closed D300 document-number
    reference. Preserve the gone 4537 row.
 4. Run the strict smoke, fresh read/S7 observation, and one composed dry-run. Require exact-run
@@ -44,7 +43,5 @@ canary completes u1–u5, the coordinator reconciles the board, and deletion is 
 6. Preserve receipts, reconcile only the owning phase/migration/decision documents, ask the
    coordinator to update the board, then remove this handoff in the same verified closeout.
 
-At this file's creation the verified work is on `feature/03b-live-close`; the closing supervisor is
-required to merge it locally into `master` with `--no-ff` and delete the feature branch. Verify the
-actual first-parent history rather than assuming that integration happened. No remote push is
-authorized.
+The verified R1 work was merged locally into `master` at `0e0d2c55` with `--no-ff`, and its feature
+branch was deleted. D301 storage recovery followed on local master. No remote push is authorized.

@@ -7052,14 +7052,23 @@ one label with honest `gone` availability and choose no substitute. A future ope
 name a new controlled-commit canary; that subject must pass a fresh read/S7 observation and a green
 0/0/0 rehearsal before the still-ordered ② → immediate ① → ③ sequence may begin.
 
-**Post-run projection finding.** The scenario start had called the command kernel below the
+**Post-run projection finding and D301 recovery.** The scenario start had called the command kernel below the
 dashboard command service and therefore committed the run without emitting its write-once
 `run.queued` root. The worker then truthfully appended `run.claimed`, task/browser spans and the
 failed terminal, leaving storage doctor at `span-stream-invalid` and the dashboard correctly
 refusing a degraded projection. Source now builds every queue-root event through one shared
 projection and the composed dry-run start emits that event after its authority transaction closes,
 before any worker drain; the production composition regression proves the root is the first and
-only run event. The existing 2026-09-01 span stream is preserved byte-for-byte as failure evidence:
-no unsupported insertion, truncation, restore or retry was performed. Authority generation 1334 is
-healthy and has a verified current generation-1334 backup, but span reconciliation remains
-unavailable until an explicitly reviewed recovery disposition exists.
+only run event.
+
+D301 then supplied the explicitly reviewed recovery disposition. With runtime roles observed
+stopped, `storage repair-span-root --run 325cd998-bd05-4ffd-a863-99e0cc5c0ebe` derived the missing
+root only from the exact run/session/consumed-start-plan chain and **appended** its strict
+`authority-reconstruction` record. No existing line was inserted, replaced or truncated: the
+original 2,422-byte prefix remains bound by SHA-256
+`8eef5a21bd94096a69ccace6e7b013e0bd3483c16c5aa23fcc68aeef832fb2f9`. Storage doctor moved from
+exit 1 to exit 0 with 8/8 stream/live runs reconciled and current generation-1335 authority/backup.
+An exact second command returned `already-repaired` with identical 3,480-byte file size and SHA-256
+`abe99e012c8c1074fdd8b67cc47f2218a8a77de4d0e148d6dd9daa917db9dce8`; BFF startup then served
+healthy/current storage. This repaired companion evidence only: it did not rerun the failed subject,
+open or resolve a gate, approve anything, or change the exact-run 0/0/0 write proof.

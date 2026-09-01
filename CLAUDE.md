@@ -281,6 +281,13 @@ environment-supplied.
 > unavailable. Every start surface now projects the committed run through one shared queue-root
 > builder before a worker may drain; never treat a durable run row as proof its span root exists.
 
+> 2026-09-01 — Rewriting a rootless span file would make a projection green by changing durable
+> history, while merely appending an ordinary root would hide that it arrived out of physical order.
+> D301 permits one offline repair: under the stopped-system admission, derive the root from the exact
+> run/session/consumed-start-plan chain and append a closed `authority-reconstruction` marker bound
+> to the preserved prefix's byte count and SHA-256. The doctor replays the preceding events through
+> every ordinary validator; unmarked late roots remain malformed and an exact repeat writes nothing.
+
 ## Conventions
 
 - **2026-08-31 — D294 retires mobile/phone document Capture Mode.** Do not reintroduce its QR start,
