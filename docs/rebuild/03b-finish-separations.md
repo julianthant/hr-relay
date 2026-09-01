@@ -327,8 +327,10 @@ The canary identity is exactly one value in ignored local configuration, under t
 reference `separationsKualiFinalizationCanaryDocumentNumber` /
 `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER`, judged by the same
 `KualiDocumentNumberSchema` the `separations` start box applies to a typed entry. The registry
-commits that reference and never a number — `config/test-subjects.json`'s `separations` arm carries
-`document: { state: "configured", reference }` — so a commit can no longer choose the live subject;
+commits that reference and never a number that RESOLVES — `config/test-subjects.json`'s
+`separations` arm carries `document: { state: "configured", reference }` (the finalization arm's
+observation record still names the document number and action id it observed on 2026-08-28, but
+nothing resolves from that arm any more) — so a commit can no longer choose the live subject;
 the operator's `.env` is the only chooser, and a number appearing in prose or a screenshot selects
 nothing (4570/4567/4566 in R1's rev-2 evidence remain context only). `resolveSeparationsTestTarget`
 reads the value through `src/domain/secrets.ts`: unset is `blocked` BY KEY (a truthful "not
