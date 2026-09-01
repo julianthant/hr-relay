@@ -181,57 +181,23 @@
     - heading "job-summary" [level=2]
     - button "What is this node? — job-summary"
     - text: Task system ucpath
-    - table "job-summary contract":
-      - rowgroup:
-        - row "Field System Recorded":
-          - columnheader "Field"
-          - columnheader "System"
-          - columnheader "Recorded"
-      - rowgroup:
-        - row "Reads":
-          - cell "Reads"
-        - row "ucpath/read-job-summary runs · Job Summary fresh 4h from live":
-          - cell "ucpath/read-job-summary runs · Job Summary fresh 4h from live"
-        - row "emplId in · string ucpath bound by the graph":
-          - cell "emplId in · string"
-          - cell "ucpath"
-          - cell "bound by the graph"
-        - row "displayedName out · string ucpath from live fresh 4h override forbidden":
-          - cell "displayedName out · string"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "emplId out · string ucpath from live fresh 4h override forbidden":
-          - cell "emplId out · string"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "jobRows out · list ucpath from live fresh 4h override forbidden":
-          - cell "jobRows out · list"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "observedAt out · string ucpath from live fresh 4h override forbidden":
-          - cell "observedAt out · string"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "pageStateId out · literal ucpath from live fresh 4h override forbidden":
-          - cell "pageStateId out · literal"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "renderContext.employmentInstances out · enum ucpath from live fresh 4h override forbidden":
-          - cell "renderContext.employmentInstances out · enum"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "renderContext.entry out · enum ucpath from live fresh 4h override forbidden":
-          - cell "renderContext.entry out · enum"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "renderContext.searchResultRows out · number ucpath from live fresh 4h override forbidden":
-          - cell "renderContext.searchResultRows out · number"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "rowCount out · number ucpath from live fresh 4h override forbidden":
-          - cell "rowCount out · number"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
+    - region "job-summary contract":
+      - text: Reads
+      - group "ucpath/read-job-summary contract":
+        - text: ucpath/read-job-summary runs · Job Summary Inputs · 1 bound by the graph
+        - list "ucpath/read-job-summary inputs":
+          - listitem: emplId string
+        - text: Outputs · 9 from live fresh 4h override forbidden
+        - list "ucpath/read-job-summary outputs":
+          - listitem: displayedName string
+          - listitem: emplId string
+          - listitem: jobRows list
+          - listitem: observedAt string
+          - listitem: pageStateId literal
+          - listitem: renderContext.employmentInstances enum
+          - listitem: renderContext.entry enum
+          - listitem: renderContext.searchResultRows number
+          - listitem: rowCount number
     - text: Depends on Nothing — this node may start immediately. Replay checkpoint checkpoint condition always runs Detail projections UCPath shows displayedName
     - region "ucpath/read-job-summary": runs ucpath/read-job-summary Job Summary Implemented by store ucpath kind browser driver ucpath Subject binding kind person from input emplId identity eid observes ucpath.person-org.displayed-eid match normalized-exact-eid required at before-subject-read Errors employee-not-found subject-mismatch unexpected-page-state Freshness default 4h override forbidden Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios separations-identity-check/single-active-job separations-identity-check/already-terminated-single-row separations-identity-check/already-terminated-multi-row separations-identity-check/concurrent-active-jobs separations-identity-check/unreadable-department separations-identity-check/job-summary-not-found Source contract src/domain/contracts/ucpath/read-job-summary.ts impl src/stores/ucpath/tasks/read-job-summary.ts input 5578ac7d2220output 52e6b39a1c20impl 9230210ea312
 - region "Session Panel":

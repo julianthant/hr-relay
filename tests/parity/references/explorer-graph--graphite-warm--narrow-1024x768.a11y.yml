@@ -107,73 +107,27 @@
     - heading "searching" [level=2]
     - button "What is this node? — searching"
     - text: Task system ucpath
-    - table "searching contract":
-      - rowgroup:
-        - row "Field System Recorded":
-          - columnheader "Field"
-          - columnheader "System"
-          - columnheader "Recorded"
-      - rowgroup:
-        - row "Reads":
-          - cell "Reads"
-        - row "ucpath/search-person-org runs · Searching fresh 4h from live":
-          - cell "ucpath/search-person-org runs · Searching fresh 4h from live"
-        - row "emplId in · string · sometimes ucpath bound by the graph":
-          - cell "emplId in · string · sometimes"
-          - cell "ucpath"
-          - cell "bound by the graph"
-        - row "keepNonHdh in · boolean · sometimes ucpath bound by the graph":
-          - cell "keepNonHdh in · boolean · sometimes"
-          - cell "ucpath"
-          - cell "bound by the graph"
-        - row "kind in · literal ucpath bound by the graph":
-          - cell "kind in · literal"
-          - cell "ucpath"
-          - cell "bound by the graph"
-        - row "name in · string · sometimes ucpath bound by the graph":
-          - cell "name in · string · sometimes"
-          - cell "ucpath"
-          - cell "bound by the graph"
-        - row "results out · list ucpath from live fresh 4h override forbidden":
-          - cell "results out · list"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "selection.candidateEids out · list ucpath from live fresh 4h override forbidden":
-          - cell "selection.candidateEids out · list"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "selection.searchName out · string · sometimes ucpath from live fresh 4h override forbidden":
-          - cell "selection.searchName out · string · sometimes"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "selection.selected.department out · string · sometimes ucpath from live fresh 4h override forbidden":
-          - cell "selection.selected.department out · string · sometimes"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "selection.selected.emplId out · string · sometimes ucpath from live fresh 4h override forbidden":
-          - cell "selection.selected.emplId out · string · sometimes"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "selection.selected.employeeStatus out · enum · sometimes ucpath from live fresh 4h override forbidden":
-          - cell "selection.selected.employeeStatus out · enum · sometimes"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "selection.selected.hdh out · boolean · sometimes ucpath from live fresh 4h override forbidden":
-          - cell "selection.selected.hdh out · boolean · sometimes"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "selection.selected.jobTitle out · string · sometimes ucpath from live fresh 4h override forbidden":
-          - cell "selection.selected.jobTitle out · string · sometimes"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "selection.selected.name out · string · sometimes ucpath from live fresh 4h override forbidden":
-          - cell "selection.selected.name out · string · sometimes"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
-        - row "selection.status out · literal ucpath from live fresh 4h override forbidden":
-          - cell "selection.status out · literal"
-          - cell "ucpath"
-          - cell "from live fresh 4h override forbidden"
+    - region "searching contract":
+      - text: Reads
+      - group "ucpath/search-person-org contract":
+        - text: ucpath/search-person-org runs · Searching Inputs · 4 bound by the graph
+        - list "ucpath/search-person-org inputs":
+          - listitem: emplId string · sometimes
+          - listitem: keepNonHdh boolean · sometimes
+          - listitem: kind literal
+          - listitem: name string · sometimes
+        - text: Outputs · 10 from live fresh 4h override forbidden
+        - list "ucpath/search-person-org outputs":
+          - listitem: results list
+          - listitem: selection.candidateEids list
+          - listitem: selection.searchName string · sometimes
+          - listitem: selection.selected.department string · sometimes
+          - listitem: selection.selected.emplId string · sometimes
+          - listitem: selection.selected.employeeStatus enum · sometimes
+          - listitem: selection.selected.hdh boolean · sometimes
+          - listitem: selection.selected.jobTitle string · sometimes
+          - listitem: selection.selected.name string · sometimes
+          - listitem: selection.status literal
     - text: Depends on Nothing — this node may start immediately. Replay checkpoint checkpoint condition always runs Detail projections Selection selection.status
     - region "ucpath/search-person-org": runs ucpath/search-person-org Searching Implemented by store ucpath kind browser driver ucpath Subject binding the person search resolves identity rather than confirming it Errors search-unavailable unexpected-page-state Freshness default 4h override forbidden Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios person-lookup/happy-by-eid person-lookup/ambiguous-name person-lookup/not-found person-lookup/ucpath-drill-subject-mismatch Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts input ee4776e0a94eoutput 6b08cc3af988impl 9caf0090f519
 - region "Session Panel":
