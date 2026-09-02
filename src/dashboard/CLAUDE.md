@@ -1548,6 +1548,7 @@ binding would contradict them.
   id sideways between neighbours), the trace id is plain `fg-secondary` text, and the present
   workflow ordinal moved into the ⓘ (`rowInfoFacts`, "Run number") beside its already-recorded
   absence arm. Re-freezing this touched 216 references because every start modal and takeover
-  captures the queue behind it. `runTiming`'s `took` prefix on settled rows was left as-is (D124:
-  a settled and a live duration must not render as the same number); the demo prints the bare
-  duration.
+  captures the queue behind it. The `took` prefix on a settled row went the same way: the operator
+  ruled the duration stands bare, as the demo's `row.duration` does; D124's arithmetic
+  (`endedAt − startedAt`, never `now`) is unchanged and the terminal status beside the number is
+  what tells a settled duration from a live one.
