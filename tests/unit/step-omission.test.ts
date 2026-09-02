@@ -158,6 +158,8 @@ describe("stepOmissionCascade", () => {
         WRITING,
       ],
     }));
-    assert.deepEqual(chained.get("reading"), { state: "omittable", forces: ["deciding"] });
+    // Omitting `reading` forces `deciding` out, but `deciding`'s GATE still reads `fold`,
+    // which nothing rebuilds — so the choice is blocked by the very step it forced.
+    assert.deepEqual(chained.get("reading"), { state: "blocked", by: "deciding", forces: ["deciding"] });
   });
 });

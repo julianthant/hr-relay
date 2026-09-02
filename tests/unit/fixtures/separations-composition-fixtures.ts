@@ -247,6 +247,7 @@ export const COMPOSITION_SCOPE_OUTPUTS = Object.freeze({
     unclassifiedPayCodes: ["Independence Day Observed", "Juneteenth Observed"],
     terminationComments: COMPOSITION_TERMINATION_COMMENTS,
     dateChangeComments: COMPOSITION_DATE_CHANGE_COMMENTS,
+    source: "kronos-timesheet" as const,
   },
   receipt: {
     transactionNumber: COMPOSITION_RECEIPT,

@@ -89,6 +89,7 @@
  * re-read can never file a second termination.
  */
 import { z } from "zod";
+import { OmittedStepResultArmSchema } from "../../domain/workflow/step-omission.js";
 import { KUALI_FINALIZATION_STEP } from "./kuali-finalization/step.js";
 import { UCPATH_TRANSACTION_STEP } from "./ucpath-transaction/step.js";
 import { flow } from "../../base/flow.js";
@@ -252,16 +253,8 @@ export const SeparationsCanonicalInput = defineCanonicalInput(
   ],
 );
 
-/**
- * D307 — the arm a result carries for a write step the operator omitted: no
- * disposition is invented, the step is named. The performed arm keeps its
- * pre-D307 shape byte for byte, so every earlier result still parses.
- */
-const OmittedStepResultArmSchema = z.strictObject({
-  state: z.literal("omitted"),
-  step: z.string().min(1),
-});
-
+// D307 — the performed arms below keep their pre-D307 shape byte for byte, so
+// every earlier result still parses; the omitted arm is the domain's.
 export const SeparationsResultSchema = z.strictObject({
   documentNumber: z.string().min(1),
   /** The subject a human approved, and the evidence they approved it on. */
@@ -498,6 +491,7 @@ const separationsFlow = flow(SeparationsInput)
           separationDateChanged: outputs[DATES_NODE].separationDateChanged,
           separationDeterminingLeave: outputs[DATES_NODE].separationDeterminingLeave,
           unclassifiedPayCodes: outputs[DATES_NODE].unclassifiedPayCodes,
+          source: outputs[DATES_NODE].source,
         },
       },
     }),

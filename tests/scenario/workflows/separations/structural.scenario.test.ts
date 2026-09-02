@@ -1154,6 +1154,7 @@ describe("separations scenarios — the composition", () => {
             separationDateChanged: dates.separationDateChanged,
             separationDeterminingLeave: dates.separationDeterminingLeave,
             unclassifiedPayCodes: dates.unclassifiedPayCodes,
+            source: dates.source,
           },
         },
       },

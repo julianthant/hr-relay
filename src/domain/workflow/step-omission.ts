@@ -135,6 +135,17 @@ export type StepOmissions = z.infer<typeof StepOmissionsSchema>;
 
 export const StepOmissionNotRunReasonSchema = z.enum(["operator-asserted", "step-omitted"]);
 
+/**
+ * The arm a workflow RESULT carries where an omitted write step's proof would
+ * be: no disposition is invented, the step is named. Owned here so a descriptor
+ * and any authority that mirrors its result schema parse the same bytes.
+ */
+export const OmittedStepResultArmSchema = z.strictObject({
+  state: z.literal("omitted"),
+  step: TimelineCategoryKeySchema,
+});
+export type OmittedStepResultArm = z.infer<typeof OmittedStepResultArmSchema>;
+
 /** The graph facts the planner needs — a projection any descriptor can supply without importing the base layer. */
 export interface StepOmissionGraphView {
   readonly nodes: readonly Readonly<{ id: string; kind: string; dependsOn: readonly string[] }>[];
@@ -213,7 +224,8 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
     for (const dependency of node.dependsOn) {
       const blockedBy = omitted.get(dependency);
       if (blockedBy === undefined) continue;
-      const ownStep = stepByNode.get(node.id) ?? "(untimelined)";
+      const ownStep = stepByNode.get(node.id);
+      if (ownStep === undefined) throw new Error(`node "${node.id}" is on no timeline step; a declared timeline is exhaustive (D225)`);
       refusals.push({
         code: "dependency-omitted", step: ownStep,
         message: `node "${node.id}" (step "${ownStep}") reads "${dependency}", which omitting step "${blockedBy}" leaves unread; `
@@ -262,7 +274,12 @@ export function stepOmissionCascade(graph: StepOmissionGraphView): ReadonlyMap<s
       }));
       const other = plan.refusals.find((refusal) => refusal.code !== "dependency-omitted");
       if (other !== undefined) throw new Error(`cascade for step "${spec.step}" hit ${other.code}: ${other.message}`);
-      const forced = plan.refusals.map((refusal) => refusal.step).filter((step) => !omittedSteps.has(step));
+      // A refusal inside a step already in the omitted set cannot be cured by
+      // omitting more: a gate of that step reads a node the omission leaves
+      // unread. The choice is blocked by that very step.
+      const selfBlocked = plan.refusals.find((refusal) => omittedSteps.has(refusal.step));
+      if (selfBlocked !== undefined) { blockedBy = selfBlocked.step; break; }
+      const forced = plan.refusals.map((refusal) => refusal.step);
       const unomittable = forced.find((step) => !specByStep.has(step));
       if (unomittable !== undefined) { blockedBy = unomittable; break; }
       if (forced.length === 0) break;

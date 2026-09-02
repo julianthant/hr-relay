@@ -2,6 +2,7 @@ import { z } from "zod";
 import { NonNegativeIntSchema, RunIdSchema } from "../ids.js";
 import { ApprovedIdentitySubjectSchema } from "../separations/identity-approval.js";
 import { TerminationReceiptSchema } from "../separations/termination-receipt.js";
+import { OmittedStepResultArmSchema } from "../workflow/step-omission.js";
 import { KualiSavedFinalizationProofSchema } from "../ui/kuali-separation-finalization.js";
 import { UcpathPendingSweepProofSchema } from "../ui/ucpath-smart-hr-termination.js";
 import {
@@ -69,7 +70,7 @@ export const CurrentSeparationsPseudonymSourceResultSchema = z.strictObject({
       disposition: z.enum(["committed", "already-present"]),
       proof: UcpathPendingSweepProofSchema,
     }),
-    z.strictObject({ state: z.literal("omitted"), step: z.string().min(1) }),
+    OmittedStepResultArmSchema,
   ]),
   termination: TerminationReceiptSchema,
   finalization: z.union([
@@ -77,7 +78,7 @@ export const CurrentSeparationsPseudonymSourceResultSchema = z.strictObject({
       disposition: z.enum(["committed", "already-present"]),
       proof: KualiSavedFinalizationProofSchema,
     }),
-    z.strictObject({ state: z.literal("omitted"), step: z.string().min(1) }),
+    OmittedStepResultArmSchema,
   ]),
 });
 

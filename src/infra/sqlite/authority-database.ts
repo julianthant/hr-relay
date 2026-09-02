@@ -3087,7 +3087,7 @@ export class AuthorityDatabase implements Disposable {
           SELECT record_json FROM run_checkpoints
           WHERE workflow = ? AND item_id = ? AND node_id = ? AND attempt = ? AND run_id = ?
         `).all(result.workflowId, current.envelope.itemId, dependency.nodeId, result.attempt, result.runId);
-        const matching = rows.map((row) => RunCheckpointRecordSchema.parse(JSON.parse(z.object({ record_json: z.string() }).parse(row).record_json)))
+        const matching = rows.map((row) => RunCheckpointRecordSchema.parse(JSON.parse(z.strictObject({ record_json: z.string() }).parse(row).record_json)))
           .filter((row) => row.assertion?.step === dependency.step
             && row.output.schemaHash === dependency.outputSchemaHash
             && deriveCheckpointOutputDigest(row.output) === dependency.outputDigest);

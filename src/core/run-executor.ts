@@ -414,8 +414,13 @@ type PlanEntry =
   | Readonly<{ mode: "execute" }>
   | Readonly<{ mode: "replay"; record: RunCheckpointRecord }>
   | Readonly<{ mode: "skipped-condition" }>
-  /** D307 — a task an omitted step's producer rebuilds from typed facts at node time. */
-  | Readonly<{ mode: "asserted" }>
+  /**
+   * D307 — a task an omitted step's producer rebuilds from typed facts at
+   * node time; `replay` carries THIS run's own marked row when a resume (a new
+   * claim of the same attempt) reaches the node again, so the assertion is
+   * republished rather than re-produced and the attempt holds ONE row.
+   */
+  | Readonly<{ mode: "asserted"; replay?: RunCheckpointRecord }>
   /** D307 — a node of an omitted step nothing rebuilds: never runs, produces nothing. */
   | Readonly<{ mode: "omitted" }>
   | Readonly<{ mode: "replay-gate" }>;
@@ -458,12 +463,6 @@ export async function executeClaimedRun(
     },
     envelope.stepOmissions ?? [],
   );
-  if (omissionPlan.refusals.length > 0) {
-    throw new Error(
-      `run ${runId} carries step omissions its descriptor refuses: `
-      + omissionPlan.refusals.map((refusal) => `[${refusal.code}] ${refusal.message}`).join("; "),
-    );
-  }
   const runs = deps.authority.authority.runs;
   const instant = () => IsoInstantSchema.parse(clock.now().toISOString());
 
@@ -725,7 +724,15 @@ export async function executeClaimedRun(
         continue;
       }
       if (omissionPlan.asserted.has(String(node.id))) {
-        plan.set(String(node.id), { mode: "asserted" });
+        const own = deps.authority.authority.runCheckpoints.latest(descriptor.id, envelope.itemId, String(node.id));
+        const ownRecord = own === undefined ? undefined : RunCheckpointRecordSchema.parse(own);
+        const replay = ownRecord !== undefined
+          && ownRecord.assertion !== undefined
+          && ownRecord.runId === runId
+          && ownRecord.attempt === envelope.attempt
+          ? ownRecord
+          : undefined;
+        plan.set(String(node.id), replay === undefined ? { mode: "asserted" } : { mode: "asserted", replay });
         continue;
       }
       const explicit = startIndex !== undefined;
@@ -769,16 +776,16 @@ export async function executeClaimedRun(
           node.uses.output,
           deps.checkpointMigrations ?? [],
         );
-        if (load.found && RunCheckpointRecordSchema.parse(stored).assertion !== undefined) {
+        const storedAssertion = load.found ? RunCheckpointRecordSchema.parse(stored).assertion : undefined;
+        if (storedAssertion !== undefined) {
           // D307 — the latest row is an operator ASSERTION from a run that
           // omitted this node's step; this run executes the node, so that row
           // is not an observation it may replay. An explicit resume cannot
           // cross it; an ordinary start simply executes.
-          const assertion = RunCheckpointRecordSchema.parse(stored).assertion;
           if (explicit) {
             problems.push(
               `node "${node.id}" (${labelOf(node)}) latest checkpoint is an operator assertion for omitted step `
-              + `"${assertion?.step ?? "?"}", and this run does not omit that step; an assertion never replays as an observation`,
+              + `"${storedAssertion.step}", and this run does not omit that step; an assertion never replays as an observation`,
             );
             continue;
           }
@@ -891,6 +898,12 @@ export async function executeClaimedRun(
       }));
     }
 
+    // D307 — a refused omission is an entry-validation failure of THIS run:
+    // it terminalizes with a FailureRecord like a bad canonical input, so the
+    // worker drains and the operator sees the refusal by step name.
+    for (const refusal of omissionPlan.refusals) {
+      problems.push(`step omission refused [${refusal.code}]: ${refusal.message}`);
+    }
     if (problems.length > 0) {
       const failure = buildEntryValidationFailureRecord({
         run: getRun(),
@@ -1369,6 +1382,25 @@ export async function executeClaimedRun(
         skippedReasons.set(String(node.id), "condition-false");
         continue;
       }
+      if (entry.mode === "replay-gate") {
+        if (node.kind !== "gate") throw new Error(`node "${node.id}" is not a gate but planned a gate replay`);
+        const stored = deps.authority.authority.gateResults.get(`${runId}:${node.id}`);
+        if (stored === undefined) throw new Error(`gate "${node.id}" stored result disappeared mid-execution`);
+        const expectedHash = deriveSchemaHash(node.result, "output");
+        if (stored.result.schemaHash !== expectedHash) {
+          throw new Error(
+            `gate "${node.id}" stored result is bound to schema ${stored.result.schemaHash}, `
+            + `and this descriptor's gate schema is ${expectedHash}`,
+          );
+        }
+        outputs[String(node.id)] = JsonValueSchema.parse(node.result.parse(stored.result.value));
+        continue;
+      }
+
+      if (excludedByBranch(node)) {
+        skippedReasons.set(String(node.id), "branch-not-selected");
+        continue;
+      }
       if (entry.mode === "omitted") {
         // D307 — the operator omitted this node's step and no producer
         // rebuilds it. Its span says so with the closed reason the terminal
@@ -1399,6 +1431,33 @@ export async function executeClaimedRun(
           throw new Error(`node "${node.id}" was planned as asserted but the omission plan does not assert a task there`);
         }
         transitionTo(runningLifecycle(node.id));
+        if (entry.replay !== undefined) {
+          // A resume of this attempt: republish the row this run already
+          // asserted. Re-producing would mint a second marked row for one
+          // attempt, which the terminal mirror rightly refuses.
+          const replayed = entry.replay;
+          if (replayed.assertion === undefined) throw new Error(`node "${node.id}" planned an assertion replay over an unmarked row`);
+          outputs[String(node.id)] = replayed.output.value;
+          checkpointRecords.set(String(node.id), replayed);
+          assertedRecords.set(String(node.id), Object.freeze({
+            step: replayed.assertion.step,
+            assertedAt: replayed.assertion.assertedAt,
+            output: Object.freeze({ schemaHash: replayed.output.schemaHash, value: replayed.output.value }),
+          }));
+          const replaySpanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
+          emit({
+            t: "span.started", kind: "task",
+            ...runSpanIdentity, spanPath: replaySpanPath, parentSpanPath: runSpanIdentity.spanPath,
+            name: labelOf(node),
+          });
+          emit({
+            t: "span.ended", kind: "task",
+            ...runSpanIdentity, spanPath: replaySpanPath, parentSpanPath: runSpanIdentity.spanPath,
+            outcome: "skipped",
+            notRunReason: "operator-asserted",
+          });
+          continue;
+        }
         const scope = scopeFor(node.dependsOn);
         const assertedAt = instant();
         let produced: unknown;
@@ -1463,25 +1522,6 @@ export async function executeClaimedRun(
           outcome: "skipped",
           notRunReason: "operator-asserted",
         });
-        continue;
-      }
-      if (entry.mode === "replay-gate") {
-        if (node.kind !== "gate") throw new Error(`node "${node.id}" is not a gate but planned a gate replay`);
-        const stored = deps.authority.authority.gateResults.get(`${runId}:${node.id}`);
-        if (stored === undefined) throw new Error(`gate "${node.id}" stored result disappeared mid-execution`);
-        const expectedHash = deriveSchemaHash(node.result, "output");
-        if (stored.result.schemaHash !== expectedHash) {
-          throw new Error(
-            `gate "${node.id}" stored result is bound to schema ${stored.result.schemaHash}, `
-            + `and this descriptor's gate schema is ${expectedHash}`,
-          );
-        }
-        outputs[String(node.id)] = JsonValueSchema.parse(node.result.parse(stored.result.value));
-        continue;
-      }
-
-      if (excludedByBranch(node)) {
-        skippedReasons.set(String(node.id), "branch-not-selected");
         continue;
       }
 

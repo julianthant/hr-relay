@@ -76,5 +76,6 @@ export const SeparationsReadSeparationDates = defineTaskContract({
       + "Holiday Pay on 06/19/2026. Kuali form #4510.",
     dateChangeComments: "Updated Separation Date from 06/12/2026 to 06/19/2026 "
       + "per Kronos timesheet. -JZ",
+    source: "kronos-timesheet",
   },
 });

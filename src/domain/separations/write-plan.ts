@@ -101,6 +101,8 @@ export const SeparationWritePlanSchema = z.discriminatedUnion("state", [
        * moment they are looking.
        */
       unclassifiedPayCodes: z.array(z.string().min(1)),
+      /** D307 — `operator` when the Kronos step was omitted and these dates were typed; the digest binds it. */
+      source: z.enum(["kronos-timesheet", "operator"]),
     }),
   }),
 ]);

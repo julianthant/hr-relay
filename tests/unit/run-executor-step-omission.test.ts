@@ -281,14 +281,20 @@ describe("executor step omission (D307)", () => {
     assert.match(failure?.summary ?? "", /producer for node "read" returned a value the node's output schema refuses at: disposition, providerState/u);
   });
 
-  it("refuses at entry when an executing node would read a node the omission leaves unread", async () => {
+  it("terminalizes as an entry-validation failure when an executing node would read a node the omission leaves unread", async () => {
     const harness = harnessFor(bareDescriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(bareDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
     const claimed = claim(database, bareDescriptor);
-    await assert.rejects(
-      executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL }),
-      /\[dependency-omitted\] node "fold" \(step "folding"\) reads "read"/u,
-    );
+    const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
+    // A refused omission is THIS run's failure, with a durable record the
+    // operator can read — never a thrown error that leaves the run claimed.
+    assert.equal(outcome.state, "failed");
+    const run = database.authority.runs.get(RUN_ID);
+    assert.ok(run !== undefined && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed");
+    const failureId = run.lifecycle.state === "terminal" ? run.lifecycle.failureId : undefined;
+    assert.ok(failureId !== undefined);
+    const failure = database.authority.failures.get(failureId);
+    assert.match(failure?.summary ?? "", /step omission refused \[dependency-omitted\]: node "fold" \(step "folding"\) reads "read"/u);
   });
 });

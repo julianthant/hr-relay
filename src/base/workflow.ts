@@ -569,6 +569,8 @@ interface WorkflowTerminalRun {
     configSnapshotId: string;
     /** D210 — the one durable record of what the operator asked for (D6). */
     dryRun: boolean;
+    /** D307 — the steps this run omitted; an asserted dependency must name one of them. */
+    stepOmissions?: readonly Readonly<{ step: string }>[];
   }>;
   readonly input: Readonly<{
     parsed: Readonly<{ schemaHash: string; value: unknown }>;
@@ -1442,6 +1444,16 @@ export function defineWorkflowDescriptor<
         if (entry.state === "asserted") {
           if (expected.assertable !== true) {
             throw new Error(`${purpose} dependency ${entry.nodeId} is not producible by any step omission and cannot be asserted`);
+          }
+          const declaredStep = omissionOfNode.get(String(entry.nodeId))?.step;
+          if (declaredStep !== entry.step) {
+            throw new Error(
+              `${purpose} dependency ${entry.nodeId} is asserted for step "${entry.step}", `
+              + `but its declared omittable step is "${declaredStep ?? "(none)"}"`,
+            );
+          }
+          if (!(currentRun.envelope.stepOmissions ?? []).some((omission) => omission.step === entry.step)) {
+            throw new Error(`${purpose} dependency ${entry.nodeId} is asserted for step "${entry.step}", which this run did not omit`);
           }
           const assertedNode = nodeByIdOrThrow(id, nodes, entry.nodeId, purpose);
           const assertedBinding = terminalEvidenceOf(assertedNode);

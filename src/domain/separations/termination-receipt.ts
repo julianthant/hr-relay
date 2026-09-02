@@ -93,6 +93,42 @@ export const TerminationReceiptVerificationSchema = z.discriminatedUnion("state"
 ]);
 export type TerminationReceiptVerification = z.infer<typeof TerminationReceiptVerificationSchema>;
 
+/**
+ * The two field checks a receipt's number and status must pass whether they
+ * were READ from a UCPath transaction page or TYPED by the operator (D307):
+ * one implementation, two callers, so the accepted-status list and the Kuali
+ * number format cannot drift between them.
+ */
+function receiptFields(transactionId: string, approvalStatus: string):
+  | Readonly<{ state: "accepted"; transactionNumber: z.infer<typeof KualiTransactionNumberSchema>; approvalStatus: z.infer<typeof UcpathApprovalStatusSchema> }>
+  | Readonly<{ state: "refused"; code: TerminationReceiptRefusalCode; reason: string }> {
+  const status = UcpathApprovalStatusSchema.safeParse(approvalStatus);
+  if (!status.success || !TERMINATION_RECEIPT_ACCEPTED_STATUSES.some((accepted) => accepted === status.data)) {
+    return {
+      state: "refused",
+      code: "termination-not-in-effect",
+      reason: `UCPath transaction ${transactionId} carries approval status `
+        + `${JSON.stringify(approvalStatus)}, so the termination did not take effect — and it `
+        + "still carries a perfectly well-formed T-number, which is the whole of D130's finding (live "
+        + "Denied receipt T002204014, 2026-08-04). Writing it into the Kuali document's Transaction "
+        + "Number field would record a termination UCPath refused.",
+    };
+  }
+  const transactionNumber = KualiTransactionNumberSchema.safeParse(transactionId);
+  if (!transactionNumber.success) {
+    return {
+      state: "refused",
+      code: "termination-receipt-unusable",
+      reason: `UCPath issued transaction ${JSON.stringify(transactionId)}, which the Kuali `
+        + "Transaction Number control cannot hold (T followed by 6–12 digits): "
+        + `${transactionNumber.error.issues.map((issue) => issue.message).join("; ")}. The two systems `
+        + "genuinely disagree about the format, and inventing a truncation would file a number that "
+        + "names no transaction.",
+    };
+  }
+  return { state: "accepted", transactionNumber: transactionNumber.data, approvalStatus: status.data };
+}
+
 export function verifyTerminationReceipt(input: Readonly<{
   proof: UcpathTerminationProof;
   disposition: "committed" | "already-present";
@@ -121,34 +157,15 @@ export function verifyTerminationReceipt(input: Readonly<{
         + "external transaction.",
     });
   }
-  if (!TERMINATION_RECEIPT_ACCEPTED_STATUSES.some((status) => status === input.proof.approvalStatus)) {
-    return TerminationReceiptVerificationSchema.parse({
-      state: "refused",
-      code: "termination-not-in-effect",
-      reason: `UCPath transaction ${input.proof.transactionId} carries approval status `
-        + `${JSON.stringify(input.proof.approvalStatus)}, so the termination did not take effect — and it `
-        + "still carries a perfectly well-formed T-number, which is the whole of D130's finding (live "
-        + "Denied receipt T002204014, 2026-08-04). Writing it into the Kuali document's Transaction "
-        + "Number field would record a termination UCPath refused.",
-    });
-  }
-  const transactionNumber = KualiTransactionNumberSchema.safeParse(input.proof.transactionId);
-  if (!transactionNumber.success) {
-    return TerminationReceiptVerificationSchema.parse({
-      state: "refused",
-      code: "termination-receipt-unusable",
-      reason: `UCPath issued transaction ${JSON.stringify(input.proof.transactionId)}, which the Kuali `
-        + "Transaction Number control cannot hold (T followed by 6–12 digits): "
-        + `${transactionNumber.error.issues.map((issue) => issue.message).join("; ")}. The two systems `
-        + "genuinely disagree about the format, and inventing a truncation would file a number that "
-        + "names no transaction.",
-    });
+  const fields = receiptFields(input.proof.transactionId, input.proof.approvalStatus);
+  if (fields.state === "refused") {
+    return TerminationReceiptVerificationSchema.parse({ state: "refused", code: fields.code, reason: fields.reason });
   }
   return TerminationReceiptVerificationSchema.parse({
     state: "accepted",
     receipt: {
-      transactionNumber: transactionNumber.data,
-      approvalStatus: input.proof.approvalStatus,
+      transactionNumber: fields.transactionNumber,
+      approvalStatus: fields.approvalStatus,
       effectiveDate: input.proof.effectiveDate,
       emplId: input.proof.emplId,
       displayedName: input.proof.displayedName,
@@ -172,22 +189,13 @@ export function assertTerminationReceipt(input: Readonly<{
   approvedName: string;
   expectedEffectiveDate: string;
 }>): TerminationReceipt {
-  const transactionNumber = KualiTransactionNumberSchema.safeParse(input.transactionNumber);
-  if (!transactionNumber.success) {
-    throw new Error(
-      "asserted UCPath transaction number is not a form the Kuali Transaction Number control can hold "
-      + `(T followed by 6–12 digits): ${transactionNumber.error.issues.map((issue) => issue.message).join("; ")}`,
-    );
-  }
-  if (!TERMINATION_RECEIPT_ACCEPTED_STATUSES.some((status) => status === input.approvalStatus)) {
-    throw new Error(
-      `asserted approval status ${JSON.stringify(input.approvalStatus)} is not one a termination receipt may carry `
-      + `(${TERMINATION_RECEIPT_ACCEPTED_STATUSES.join(", ")}); a filing UCPath refused is not a filed termination`,
-    );
+  const fields = receiptFields(input.transactionNumber, input.approvalStatus);
+  if (fields.state === "refused") {
+    throw new Error(`asserted UCPath receipt refused (${fields.code}): ${fields.reason}`);
   }
   return TerminationReceiptSchema.parse({
-    transactionNumber: transactionNumber.data,
-    approvalStatus: input.approvalStatus,
+    transactionNumber: fields.transactionNumber,
+    approvalStatus: fields.approvalStatus,
     effectiveDate: input.expectedEffectiveDate,
     emplId: input.approvedEmplId,
     displayedName: input.approvedName,

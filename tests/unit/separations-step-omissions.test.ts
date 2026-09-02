@@ -128,7 +128,7 @@ describe("separations omittable steps (D307, slice one)", () => {
     );
     assert.throws(
       () => assertTerminationReceipt({ transactionNumber: "T002204014", approvalStatus: "Denied", approvedEmplId: "10800000", approvedName: "x", expectedEffectiveDate: "06/20/2026" }),
-      /not a filed termination/u,
+      /termination-not-in-effect/u,
     );
   });
 

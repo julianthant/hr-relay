@@ -380,7 +380,7 @@ function writePlanLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
       at("dates.kualiLastDayWorked"), at("dates.lastDayWorked"),
       at("dates.lastDayWorkedChanged"), at("dates.kualiSeparationDate"),
       at("dates.separationDate"), at("dates.separationDateChanged"),
-      at("dates.separationDeterminingLeave"), at("dates.unclassifiedPayCodes")),
+      at("dates.separationDeterminingLeave"), at("dates.unclassifiedPayCodes"), at("dates.source")),
   ];
 }
 
@@ -397,7 +397,7 @@ function reconciledDateLeaves(scope: EvidenceValueScope, prefix: string): unknow
     at("kualiLastDayWorked"), at("kualiSeparationDate"), at("lastDayWorkedChanged"),
     at("separationDateChanged"), at("latestSickDate"), at("firstHolidayDate"),
     at("latestHolidayDate"), at("separationDeterminingLeave"), at("unclassifiedPayCodes"),
-    at("terminationComments"), at("dateChangeComments"));
+    at("terminationComments"), at("dateChangeComments"), at("source"));
 }
 
 /** §4c's receipt PAIR — the transaction it names, and the person it is about. */

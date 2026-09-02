@@ -116,16 +116,20 @@ export const SeparationPlanResolutionSchema = z.discriminatedUnion("state", [
 ]);
 export type SeparationPlanResolution = z.infer<typeof SeparationPlanResolutionSchema>;
 
+/** Where a reconciled date came from — the wording a Kuali comment names as its authority. */
+export const SeparationDateSourceSchema = z.enum(["kronos-timesheet", "operator"]);
+export type SeparationDateSource = z.infer<typeof SeparationDateSourceSchema>;
+
 export const ReconciledSeparationDatesSchema = z.strictObject({
   /**
    * The physical last day worked — what the UCPath override field is filed
-   * with. It is ALWAYS the New Kronos last punch here, which is why there is no
-   * `source` field beside it: legacy carries one because it has a
-   * proceed-without-a-card path and this graph has none (§4b), so a field whose
-   * only reachable value is `kronos-last-punch` would be a closed enum with one
-   * arm pretending to be a choice. What the form said travels as
-   * `kualiLastDayWorked`, so the operator compares the two rather than reading a
-   * label about them.
+   * with. Before D307 it was ALWAYS the New Kronos last punch and this schema
+   * deliberately carried no `source` beside it (a closed enum with one arm
+   * pretending to be a choice). D307 adds the one other reachable authority —
+   * the operator who omitted the Kronos step and typed the pair — and `source`
+   * below names which one, so the identity packet and its digest bind it.
+   * What the form said still travels as `kualiLastDayWorked`, so the operator
+   * compares the two rather than reading a label about them.
    */
   lastDayWorked: SeparationDateSchema,
   /** `max(lastDayWorked, last sick, last holiday)`. */
@@ -162,6 +166,8 @@ export const ReconciledSeparationDatesSchema = z.strictObject({
    * later, because it also carries the transaction number.
    */
   dateChangeComments: z.string(),
+  /** D307 — which authority established these dates (see `lastDayWorked`). */
+  source: SeparationDateSourceSchema,
 });
 export type ReconciledSeparationDates = z.infer<typeof ReconciledSeparationDatesSchema>;
 
@@ -462,9 +468,6 @@ export function joinSeparationComments(...parts: readonly string[]): string {
  * emitted only for a date that actually moved; the empty string is the ordinary
  * case.
  */
-/** Where a reconciled date came from — the wording a Kuali comment names as its authority. */
-export const SeparationDateSourceSchema = z.enum(["kronos-timesheet", "operator"]);
-export type SeparationDateSource = z.infer<typeof SeparationDateSourceSchema>;
 
 const DATE_SOURCE_WORDING: Readonly<Record<SeparationDateSource, string>> = {
   "kronos-timesheet": "per Kronos timesheet",
@@ -518,6 +521,15 @@ export function assertSeparationDates(input: Readonly<{
       + "a separation cannot take effect before the last day worked",
     );
   }
+  // The same bound the Kuali read applies (`separation-date-in-future`): a
+  // typed date after the plan's as-of day would file a termination for someone
+  // still on pay status.
+  if (isLaterSeparationDate(separationDate, input.plan.asOfDate)) {
+    throw new Error(
+      `asserted separation date ${separationDate} is after ${input.plan.asOfDate}, the day this run planned the separation; `
+      + "the employee is not yet separated, so there is no termination to file",
+    );
+  }
   const terminationEffectiveDate = addSeparationDays(separationDate, 1);
   const initials = separationInitials(input.timekeeperName);
   return ReconciledSeparationDatesSchema.parse({
@@ -549,6 +561,7 @@ export function assertSeparationDates(input: Readonly<{
       initials,
       source: "operator",
     }),
+    source: "operator",
   });
 }
 
@@ -696,6 +709,7 @@ export function reconcileSeparationDates(input: Readonly<{
         latestHolidayDate,
       }),
       dateChangeComments,
+      source: "kronos-timesheet",
     },
   });
 }
