@@ -73,7 +73,8 @@ this family is `page` and legacy's `getContentFrame` funnel does not apply.
 ## Lessons learned
 
 - **2026-09-02: one exact SS Smart HR search result auto-drills to the transaction detail, so a
-  results-row-or-empty settlement wait cannot observe the valid answer.** The R4c read-only search
+  results-row-or-empty settlement wait cannot observe the valid answer.** The R4d read-only search
+  recorded in `docs/coordinator/separations-completion/evidence/r4d/live-smart-hr-settlement.md`
   settled on the ordinary component route with zero iframes, no result-grid row, no no-results
   marker, no nonempty error region, and exactly one complete transaction-detail fact set. The scan
   now admits the already-proven receipt display as a third settlement signal, requires exactly one

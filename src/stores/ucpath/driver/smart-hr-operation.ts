@@ -22,9 +22,11 @@
  *
  * ## The one deliberate asymmetry: the grid is read for IDS ONLY
  *
- * `scanTerminationTransactions` takes the SS Smart HR results grid for exactly
- * one thing — the set of `T…` transaction ids — and then reads every other fact
- * off each transaction's DETAIL page, which carries a stable id per field.
+ * When SS Smart HR renders a results grid, `scanTerminationTransactions` takes
+ * it for exactly one thing — one `T…` transaction id from each row — and then
+ * reads every other fact off each transaction's DETAIL page, which carries a
+ * stable id per field. When one result auto-drills instead, the receipt control
+ * supplies that one id before the same keyed detail reread.
  *
  * That is D205's lesson applied before it could bite. The results grid renders
  * seven unlabelled columns whose header row this repository could not read
@@ -531,11 +533,11 @@ export async function scanTerminationTransactionsOnPage(
       if (!(error instanceof Error && error.name === "TimeoutError")) {
         throw error;
       }
-      // Only the settlement race rejecting with its actual Playwright timeout
+      // Only the visible-signal wait reaching its actual Playwright timeout
       // authorizes this diagnostic. A page/context failure re-throws above so
       // the outer boundary preserves that failure as unreadable/not-attempted.
-      // Returning "no rows" here is D5 exactly — a search that did not answer
-      // reported as a factual negative.
+      // The timeout becomes `unreadable`; returning an empty read here would be
+      // D5 exactly — a search that did not answer reported as a factual negative.
       const settlementError = new Error(
         "the SS Smart HR search rendered neither a result row, an auto-drilled transaction detail, "
         + `nor PeopleSoft's no-results marker within ${String(SCAN_BOUND_MS)}ms`,
