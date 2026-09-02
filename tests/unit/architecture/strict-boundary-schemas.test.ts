@@ -828,7 +828,7 @@ const STORAGE_DOCTOR_REPORT = {
   sourceDatabaseIdentity: HASH_B,
   authority: { state: "healthy", inspection: AUTHORITY_COPY_INSPECTION },
   counts: { state: "available", values: AUTHORITY_PENDING_COUNTS },
-  spanAuthority: { state: "reconciled", streamRunCount: 0, liveRunCount: 0, archived: [] },
+  spanAuthority: { state: "reconciled", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [] },
   backup: { state: "current", latest: RESTORE_CANDIDATE },
   restoreCandidates: [RESTORE_CANDIDATE],
 };

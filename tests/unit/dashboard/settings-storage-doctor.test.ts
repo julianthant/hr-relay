@@ -120,6 +120,7 @@ describe("loaded Settings storage doctor", () => {
           runId: "00000000-0000-4000-8000-000000000101",
           archivedAt: "2026-08-31T15:00:00.000Z",
         }],
+        deleted: [],
         problems: [
           { state: "missing", runId: "00000000-0000-4000-8000-000000000102" },
           { state: "missing-span", runId: "00000000-0000-4000-8000-000000000103" },
@@ -180,6 +181,7 @@ describe("loaded Settings storage doctor", () => {
             archivedAt: "2026-08-30T14:00:00.000Z",
           },
         ],
+        deleted: [],
       },
     });
 

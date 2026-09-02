@@ -1607,6 +1607,7 @@ export const FIXTURE_STORAGE_DOCTOR = StorageDoctorWireSchema.parse({
     streamRunCount: 11,
     liveRunCount: 7,
     archived: [{ runId: uuidOf(401), archivedAt: "2026-08-03T08:00:00.000-07:00" }],
+    deleted: [],
     problems: [
       { state: "missing", runId: uuidOf(402) },
       { state: "missing-span", runId: uuidOf(403) },

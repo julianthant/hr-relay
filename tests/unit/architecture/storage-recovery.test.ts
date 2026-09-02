@@ -815,7 +815,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     });
   });
 
-  it("prepares the two span authority lookup statements once for the whole root batch", () => {
+  it("prepares the three span authority lookup statements once for the whole root batch", () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
     const database = openDatabase(authorityPath);
@@ -839,7 +839,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       sql: string,
     ) {
       if (sql.includes("SELECT record_json FROM archived_runs WHERE record_key = ?")
-        || sql.includes("SELECT record_json FROM tasks WHERE record_key = ?")) {
+        || sql.includes("SELECT record_json FROM tasks WHERE record_key = ?")
+        || sql.includes("SELECT record_json FROM deleted_runs WHERE record_key = ?")) {
         rootLookupPrepares += 1;
       }
       return nativePrepare.call(this, sql);
@@ -854,8 +855,74 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       probe.mockRestore();
     }
 
-    assert.equal(rootLookupPrepares, 2);
+    assert.equal(rootLookupPrepares, 3);
     assert.deepEqual(snapshot.resolutions.map(({ state }) => state), ["live", "live"]);
+  });
+
+  it("resolves a span root whose run carries a D308 tombstone as deleted", () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+    const terminal = database.authority.runs.transition({
+      runId: QUEUED_RUN.envelope.runId,
+      expectedVersion: QUEUED_RUN.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+      now: NOW,
+    });
+    if (terminal.state !== "applied") throw new Error("delete fixture could not terminalize its run");
+    database.authority.runs.delete({
+      runId: QUEUED_RUN.envelope.runId, origin: "queue", commandId: UUID_7, now: NOW,
+    });
+
+    const snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(authorityPath, [spanAuthorityRoot()]);
+
+    assert.equal(snapshot.liveRunCount, 0);
+    assert.equal(snapshot.archivedRunCount, 0);
+    assert.deepEqual(snapshot.missingSpanRunIds, []);
+    assert.deepEqual(snapshot.malformedRecords, []);
+    assert.deepEqual(snapshot.resolutions, [{
+      state: "deleted",
+      runId: QUEUED_RUN.envelope.runId,
+      workflow: QUEUED_RUN.envelope.workflow,
+      traceId: QUEUED_RUN.envelope.traceId,
+      origin: "queue",
+      commandId: UUID_7,
+      deletedAt: NOW,
+    }]);
+  });
+
+  it("refuses a tombstone whose stored record fails its strict schema", () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+    const terminal = database.authority.runs.transition({
+      runId: QUEUED_RUN.envelope.runId,
+      expectedVersion: QUEUED_RUN.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+      now: NOW,
+    });
+    if (terminal.state !== "applied") throw new Error("delete fixture could not terminalize its run");
+    database.authority.runs.delete({
+      runId: QUEUED_RUN.envelope.runId, origin: "queue", commandId: UUID_7, now: NOW,
+    });
+    const raw = new DatabaseSync(authorityPath);
+    // The tombstone is immutable in authority; only corruption below it can
+    // produce this row, so the trigger is dropped to simulate exactly that.
+    raw.exec("DROP TRIGGER deleted_runs_immutable_update");
+    raw.prepare("UPDATE deleted_runs SET record_json = ? WHERE record_key = ?")
+      .run(JSON.stringify({ family: "deleted" }), QUEUED_RUN.envelope.runId);
+    raw.close();
+
+    const snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(authorityPath, [spanAuthorityRoot()]);
+
+    assert.deepEqual(snapshot.resolutions, [{
+      state: "malformed",
+      runId: QUEUED_RUN.envelope.runId,
+      table: "deleted_runs",
+      summary: "deleted_runs tombstone failed its strict record or identity validation",
+    }]);
   });
 
   it("refuses archived authority whose required retained task is missing", () => {
@@ -1003,6 +1070,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       streamRunCount: 0,
       liveRunCount: 0,
       archived: [],
+      deleted: [],
     });
   });
 
@@ -1239,6 +1307,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       streamRunCount: 1,
       liveRunCount: 1,
       archived: [],
+      deleted: [],
     });
   });
 
@@ -1657,6 +1726,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       streamRunCount: 1,
       liveRunCount: 0,
       archived: [],
+      deleted: [],
       problems: [{ state: "missing", runId: QUEUED_RUN.envelope.runId }],
     });
   });
@@ -1731,6 +1801,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       streamRunCount: 1,
       liveRunCount: 0,
       archived: [{ runId: ARCHIVED_RUN.runId, archivedAt: ARCHIVED_RUN.archivedAt }],
+      deleted: [],
     });
   });
 
@@ -1753,6 +1824,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       streamRunCount: 1,
       liveRunCount: 0,
       archived: [{ runId: ARCHIVED_RUN.runId, archivedAt: ARCHIVED_RUN.archivedAt }],
+      deleted: [],
     });
   });
 
@@ -2430,6 +2502,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       streamRunCount: 2,
       liveRunCount: 2,
       archived: [],
+      deleted: [],
     });
   });
 
