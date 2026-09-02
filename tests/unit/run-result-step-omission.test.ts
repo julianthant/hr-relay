@@ -51,7 +51,7 @@ function runningRun(stepOmissions?: readonly { step: string; facts: Record<strin
   });
 }
 
-function checkpoint(nodeId: "read" | "fold", value: unknown) {
+function checkpoint(nodeId: "read" | "fold" | "skip", value: unknown) {
   return RunCheckpointRecordSchema.parse({
     workflowId: stepOmissionTerminalDescriptor.id,
     itemId: QUEUED_RUN.envelope.itemId,
@@ -69,6 +69,8 @@ function checkpoint(nodeId: "read" | "fold", value: unknown) {
 
 const RESOLVED_FOLD = { state: "resolved" as const, nodeId: "fold", checkpoint: checkpoint("fold", { eid: "10873698", present: true }) };
 const RESOLVED_READ = { state: "resolved" as const, nodeId: "read", checkpoint: checkpoint("read", { eid: "10873698", present: true }) };
+/** `skip` belongs to the "skipping" omittable step, which produces nothing for it — always legally step-omitted here. */
+const NOT_RUN_SKIP = { state: "not-run" as const, nodeId: "skip", reason: "step-omitted" as const };
 
 describe("resolveTerminalDependencies under step omission (D307)", () => {
   it("resolves a well-formed asserted dependency for an omitted, produced step", () => {
@@ -81,12 +83,14 @@ describe("resolveTerminalDependencies under step omission (D307)", () => {
           output: { schemaHash: OUTPUT_HASH, value: { eid: "10873698", present: true } },
         },
         RESOLVED_FOLD,
+        NOT_RUN_SKIP,
       ],
       CLOCK,
     );
     assert.deepEqual(record.dependencies.map((dependency) => [dependency.nodeId, dependency.state]), [
       ["read", "asserted"],
       ["fold", "resolved"],
+      ["skip", "not-run"],
     ]);
   });
 
@@ -101,6 +105,7 @@ describe("resolveTerminalDependencies under step omission (D307)", () => {
             state: "asserted", nodeId: "fold", step: "folding", assertedAt: ASSERTED_AT,
             output: { schemaHash: OUTPUT_HASH, value: { eid: "10873698", present: true } },
           },
+          NOT_RUN_SKIP,
         ],
         CLOCK,
       ),
@@ -119,6 +124,7 @@ describe("resolveTerminalDependencies under step omission (D307)", () => {
             output: { schemaHash: HASH_A, value: { eid: "10873698", present: true } },
           },
           RESOLVED_FOLD,
+          NOT_RUN_SKIP,
         ],
         CLOCK,
       ),
@@ -137,6 +143,7 @@ describe("resolveTerminalDependencies under step omission (D307)", () => {
             output: { schemaHash: OUTPUT_HASH, value: { eid: "10873698", present: true } },
           },
           RESOLVED_FOLD,
+          NOT_RUN_SKIP,
         ],
         CLOCK,
       ),
@@ -155,6 +162,7 @@ describe("resolveTerminalDependencies under step omission (D307)", () => {
             output: { schemaHash: OUTPUT_HASH, value: { eid: "10873698", present: true } },
           },
           RESOLVED_FOLD,
+          NOT_RUN_SKIP,
         ],
         CLOCK,
       ),
@@ -170,6 +178,7 @@ describe("resolveTerminalDependencies under step omission (D307)", () => {
         [
           RESOLVED_READ,
           { state: "not-run", nodeId: "fold", reason: "step-omitted" },
+          NOT_RUN_SKIP,
         ],
         CLOCK,
       ),
@@ -185,6 +194,7 @@ describe("resolveTerminalDependencies under step omission (D307)", () => {
         [
           { state: "not-run", nodeId: "read", reason: "operator-asserted" },
           RESOLVED_FOLD,
+          NOT_RUN_SKIP,
         ],
         CLOCK,
       ),

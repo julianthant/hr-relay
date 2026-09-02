@@ -1,12 +1,15 @@
 /**
- * D307 — a minimal two-node descriptor for testing `resolveTerminalDependencies`
+ * D307 — a minimal three-node descriptor for testing `resolveTerminalDependencies`
  * and the evidence receipt's not-run/step-omitted arm WITHOUT driving the
  * executor: `buildRunResult` and `buildRunEvidenceReceipt` only need the
  * descriptor's factory-authenticated shape, never a running task.
  *
  * `read` belongs to the omittable "reading" step (an honest producer
  * rebuilds it from one typed fact); `fold` belongs to the plain "folding"
- * step and is never producible by any omission.
+ * step and is never producible by any omission; `skip` belongs to the
+ * omittable "skipping" step, which declares NO producer for it — a
+ * genuinely `omittable` (never `assertable`) terminal dependency, so its
+ * only legal not-run arm is `step-omitted`.
  */
 import { z } from "zod";
 import { flow } from "../../../src/base/flow.js";
@@ -54,6 +57,7 @@ export const stepOmissionTerminalDescriptor = defineWorkflowDescriptor({
       },
     },
     { key: "folding", label: "Folding", nodes: ["fold"] },
+    { key: "skipping", label: "Skipping", nodes: ["skip"], omission: { form: FORM, produces: {} } },
   ],
   flow: flow(FixtureInput)
     .step("read", FixtureReadReceipt, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid }) })
@@ -62,9 +66,10 @@ export const stepOmissionTerminalDescriptor = defineWorkflowDescriptor({
       replay: "checkpoint",
       bind: ({ input }) => ({ eid: input.eid }),
     })
+    .step("skip", FixtureReadReceipt, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid }) })
     .build({
       schema: z.strictObject({ folded: z.boolean() }),
-      dependsOn: ["read", "fold"],
+      dependsOn: ["read", "fold", "skip"],
       derive: ({ outputs }) => ({ folded: outputs.fold.present }),
     }),
 });
