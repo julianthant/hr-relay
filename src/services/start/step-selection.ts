@@ -78,7 +78,11 @@ export class StartStepOmissionRefusedError extends Error {
     | "duplicate-step"
     | "facts-missing"
     | "facts-invalid"
-    | "cascade-refused";
+    | "cascade-refused"
+    /** D307 — typed facts describe ONE subject; a multi-subject plan cannot carry them. */
+    | "single-subject-only"
+    /** The D285 selection itself is malformed caller input (unknown/repeated key, required step deselected). */
+    | "selection-invalid";
 
   constructor(code: StartStepOmissionRefusedError["code"], message: string, options?: ErrorOptions) {
     super(message, options);
@@ -142,7 +146,9 @@ export function projectStartSteps(descriptor: AnyWorkflowDescriptor): readonly S
           key, label: step.label, includedByDefault: true,
           control: Object.freeze({
             state: "required" as const,
-            reason: `Omitting this step would also require omitting "${labelOf(row.by)}", which must run.`,
+            reason: row.by === key
+              ? "A gate in this step reads what omitting it would leave unread, so this step must run."
+              : `Omitting this step would also require omitting "${labelOf(row.by)}", which must run.`,
           }),
         });
     }
@@ -248,11 +254,11 @@ export function resolveStartStepOmissions(
   if (resolved.length === 0) return undefined;
   const canonical = StepOmissionsSchema.parse(resolved);
   const plan = planStepOmissions(stepOmissionGraphView(descriptor), canonical);
-  const refusal = plan.refusals[0];
-  if (refusal !== undefined) {
+  if (plan.refusals.length > 0) {
     throw new StartStepOmissionRefusedError(
       "cascade-refused",
-      `${descriptor.id} refuses this omission [${refusal.code}]: ${refusal.message}`,
+      `${descriptor.id} refuses this omission: `
+      + plan.refusals.map((refusal) => `[${refusal.code}]: ${refusal.message}`).join("; "),
     );
   }
   return canonical;
@@ -268,15 +274,19 @@ export function applyStartStepSelection(
   const steps = projectStartSteps(descriptor);
   const known = new Set(steps.map(({ key }) => key));
   const selected = new Set(selectedStepKeys);
-  if (selected.size !== selectedStepKeys.length) throw new Error(`${descriptor.id} start step selection repeats a step key`);
-  for (const key of selected) if (!known.has(key)) throw new Error(`${descriptor.id} has no start step ${key}`);
+  if (selected.size !== selectedStepKeys.length) {
+    throw new StartStepOmissionRefusedError("selection-invalid", `${descriptor.id} start step selection repeats a step key`);
+  }
+  for (const key of selected) {
+    if (!known.has(key)) throw new StartStepOmissionRefusedError("selection-invalid", `${descriptor.id} has no start step ${key}`);
+  }
   for (const step of steps) {
     if (step.control.state === "required" && !selected.has(step.key)) {
-      throw new Error(`${descriptor.id} start step ${step.key} is required and cannot be omitted`);
+      throw new StartStepOmissionRefusedError("selection-invalid", `${descriptor.id} start step ${step.key} is required and cannot be omitted`);
     }
   }
   if (rawInput === null || Array.isArray(rawInput) || typeof rawInput !== "object") {
-    throw new Error(`${descriptor.id} step customization requires an object submission`);
+    throw new StartStepOmissionRefusedError("selection-invalid", `${descriptor.id} step customization requires an object submission`);
   }
   const customized: Record<string, JsonValue> = {};
   for (const [key, value] of Object.entries(rawInput)) customized[key] = value;

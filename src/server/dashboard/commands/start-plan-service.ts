@@ -30,7 +30,7 @@ import { StartRefusalCodeSchema } from "../../../domain/run/start-plan.js";
 import { TimelineCategoryKeySchema } from "../../../domain/workflow/presentation.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { planStart } from "../../../services/start/plan.js";
-import { applyStartStepSelection, resolveStartStepOmissions } from "../../../services/start/step-selection.js";
+import { StartStepOmissionRefusedError, applyStartStepSelection, resolveStartStepOmissions } from "../../../services/start/step-selection.js";
 import { StepOmissionsSchema } from "../../../domain/workflow/step-omission.js";
 import type { StartPlannerDeps } from "../../../services/start/plan.js";
 import { TargetNotFoundError } from "../../failures.js";
@@ -137,6 +137,14 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
       // descriptor is what proves the step is omittable, that every omitted
       // step carries the facts its own form requires, and that nothing still
       // running would read what the omission leaves unread.
+      if (ingress.stepOmissions !== undefined && ingress.submissions.length !== 1) {
+        // Typed facts (a last day worked, a transaction number) describe ONE
+        // subject; a plan that fans out to several would assert them for all.
+        throw new StartStepOmissionRefusedError(
+          "single-subject-only",
+          `${descriptor.id} step omissions require exactly one submission; this plan carries ${String(ingress.submissions.length)}`,
+        );
+      }
       const stepOmissions = resolveStartStepOmissions(descriptor, ingress.selectedStepKeys, ingress.stepOmissions);
       const record = planStart(
         {
