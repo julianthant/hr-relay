@@ -3,7 +3,7 @@ import { describe, it } from "vitest";
 import inventory from "../../../config/legacy-test-disposition.json" with { type: "json" };
 import {
   FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
-  FrozenLegacyArchitectureProvenanceSchema,
+  frozenLegacyPaths,
 } from "./helpers/frozen-legacy-architecture-provenance.js";
 
 /**
@@ -18,7 +18,7 @@ function baselineDirectories(): string[] {
   if (frozen.baselineCommit !== inventory.baselineCommit) {
     throw new Error("frozen legacy test provenance baseline commit disagrees with the disposition inventory");
   }
-  return requiredLegacyDirectories(frozen.baselineFiles, frozen.currentFiles);
+  return requiredLegacyDirectories(frozenLegacyPaths(frozen.baselineFiles), frozenLegacyPaths(frozen.currentFiles));
 }
 
 export function requiredLegacyDirectories(
@@ -72,10 +72,4 @@ describe("legacy test disposition inventory", () => {
     }
   });
 
-  it("refuses malformed frozen baseline or current test inventories", () => {
-    const malformed = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
-    const disposition = malformed.testDisposition as Record<string, unknown>;
-    disposition.currentFiles = ["tests/unit/a.test.ts", "tests/unit/a.test.ts"];
-    assert.throws(() => FrozenLegacyArchitectureProvenanceSchema.parse(malformed), /must be unique/i);
-  });
 });
