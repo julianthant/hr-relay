@@ -29,6 +29,7 @@ import {
   WorkflowIdSchema,
 } from "../ids.js";
 import { SchemaBoundCanonicalValueSchema } from "../schema-bound-value.js";
+import { StepOmissionsSchema } from "../workflow/step-omission.js";
 import {
   BrowserPresentationModeSchema,
   InstanceSelectionSchema,
@@ -98,6 +99,8 @@ export const StartPlanRecordSchema = z.strictObject({
   browserMode: BrowserPresentationModeSchema.optional(),
   /** Optional only so plans written before browser screenshots remain readable. */
   captureBrowserScreenshots: z.boolean().optional(),
+  /** D307 — omitted steps with their typed facts; copied unchanged onto every run this plan starts. */
+  stepOmissions: StepOmissionsSchema.optional(),
   planned: z.array(PlannedRunSchema),
   refused: z.array(StartRefusalSchema),
   plannedBy: ActorIdSchema,

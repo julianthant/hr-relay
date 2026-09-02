@@ -702,6 +702,7 @@ function executeStartRun(
       ...(plan.captureBrowserScreenshots === undefined
         ? {}
         : { captureBrowserScreenshots: plan.captureBrowserScreenshots }),
+      ...(plan.stepOmissions === undefined ? {} : { stepOmissions: plan.stepOmissions }),
       ingressSchemaHash: plan.ingressSchemaHash,
       appVersion: dependencies.appVersion,
       // D269: the start is the session; the plan and the operator are its origin.
@@ -795,6 +796,8 @@ function executeRetry(
       ...(current.envelope.captureBrowserScreenshots === undefined
         ? {}
         : { captureBrowserScreenshots: current.envelope.captureBrowserScreenshots }),
+      // D307 — a retry omits exactly what the operator omitted; a different choice is a new start.
+      ...(current.envelope.stepOmissions === undefined ? {} : { stepOmissions: current.envelope.stepOmissions }),
       retryOf: current.envelope.runId,
       /*
        * D221 — a retry is the item's NEXT attempt, which is what ref workflow-model §5.6 #1
@@ -2903,6 +2906,7 @@ function executeArchivedRunRelaunch(
       ...(record.captureBrowserScreenshots === undefined
         ? {}
         : { captureBrowserScreenshots: record.captureBrowserScreenshots }),
+      ...(record.stepOmissions === undefined ? {} : { stepOmissions: record.stepOmissions }),
       ingressSchemaHash: record.ingressSchemaHash,
       appVersion: dependencies.appVersion,
       // D269: a relaunch is a dashboard-started group of one, and the archived

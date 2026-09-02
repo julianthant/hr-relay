@@ -157,6 +157,16 @@ describe("start planning", () => {
     assert.equal(Object.hasOwn(historical, "captureBrowserScreenshots"), false);
   });
 
+  it("retains the operator's step omissions on the plan record, byte for byte (D307)", () => {
+    const database = openDatabase();
+    const stepOmissions = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/19/2026" } }];
+    const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }], { stepOmissions }));
+    assert.deepEqual(plan.stepOmissions, stepOmissions);
+    assert.deepEqual(StartPlanRecordSchema.parse(plan).stepOmissions, stepOmissions);
+    const plain = planStart(plannerDeps(database), baseRequest([{ emplId: "10001573" }]));
+    assert.equal(Object.hasOwn(plain, "stepOmissions"), false);
+  });
+
   it("refuses an unparseable submission by name instead of dropping it", () => {
     const database = openDatabase();
     const plan = planStart(plannerDeps(database), baseRequest([

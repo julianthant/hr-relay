@@ -1657,6 +1657,17 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // exposes one derivation FUNCTION. Its only crossing values are described by
   // ActivityPersonPseudonymEvidenceSchema and the strict backfill schemas.
   "src/domain/trust/activity-person-pseudonym.ts:ActivityPersonPseudonymDomain",
+  // D307 — a step omission's declaration carries per-node PRODUCER functions
+  // and the plan/cascade are in-process values over Maps; their crossing halves
+  // ARE schema-described: StepOmissionFormSchema (the form a step declares),
+  // StepOmissionsSchema (the envelope entries), and the not-run reason enums.
+  "src/domain/workflow/step-omission.ts:StepOmissionProduceContext",
+  "src/domain/workflow/step-omission.ts:StepOmissionDeclaration",
+  "src/domain/workflow/step-omission.ts:StepOmissionSpec",
+  "src/domain/workflow/step-omission.ts:StepOmissionGraphView",
+  "src/domain/workflow/step-omission.ts:StepOmissionRefusal",
+  "src/domain/workflow/step-omission.ts:StepOmissionPlan",
+  "src/domain/workflow/step-omission.ts:StepOmissionCascadeRow",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {

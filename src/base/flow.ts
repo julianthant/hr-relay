@@ -28,6 +28,7 @@ import { parseNodeCondition } from "../domain/workflow/node-condition.js";
 import type { NodeConditionSpec } from "../domain/workflow/node-condition.js";
 import { TimelineCategorySpecSchema } from "../domain/workflow/presentation.js";
 import type { TimelineCategorySpec, WorkflowStepOf } from "../domain/workflow/presentation.js";
+import type { StepOmissionDeclaration } from "../domain/workflow/step-omission.js";
 import type {
   AnyWorkflowRef,
   BranchNode,
@@ -1061,7 +1062,10 @@ function defineOperatorGateNode<
  * runtime. Equal keys from separately declared step objects are not ownership.
  */
 export function defineWorkflowStepNodeFactory<const Key extends string>(step: WorkflowStepOf<Key>) {
-  const category = (fragments: readonly NodeFragmentOf<NoInfer<Key>>[]): TimelineCategorySpec => {
+  const category = (
+    fragments: readonly NodeFragmentOf<NoInfer<Key>>[],
+    options?: Readonly<{ omission: StepOmissionDeclaration }>,
+  ): TimelineCategorySpec & Readonly<{ omission?: StepOmissionDeclaration }> => {
     for (const fragment of fragments) {
       if (fragment.step !== step) {
         const sameKeyDifferentObject = fragment.step.key === step.key
@@ -1077,11 +1081,20 @@ export function defineWorkflowStepNodeFactory<const Key extends string>(step: Wo
     if (repeated !== undefined) {
       throw new Error(`step "${step.key}" lists node fragment ${repeated} twice`);
     }
-    return Object.freeze(TimelineCategorySpecSchema.parse({
+    const parsed = TimelineCategorySpecSchema.parse({
       key: step.key,
       label: step.label,
       nodes: nodeIds,
-    }));
+    });
+    if (options === undefined) return Object.freeze(parsed);
+    // D307 — a producer may only rebuild a node this very step owns; the
+    // descriptor factory re-checks kind (task only) once it can see the graph.
+    for (const produced of Object.keys(options.omission.produces)) {
+      if (!nodeIds.includes(produced)) {
+        throw new Error(`step "${step.key}" omission produces node "${produced}", which this step does not own`);
+      }
+    }
+    return Object.freeze({ ...parsed, omission: options.omission });
   };
 
   return Object.freeze({

@@ -25,6 +25,7 @@ import {
   PositiveIntSchema,
 } from "../../domain/ids.js";
 import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape } from "../../domain/run/envelope.js";
+import type { StepOmissions } from "../../domain/workflow/step-omission.js";
 import { InstanceSelectionSchema } from "../../domain/run/envelope.js";
 import { isTerminalRunState, type RunRecord } from "../../domain/run/record.js";
 import {
@@ -64,6 +65,8 @@ export interface StartPlanRequest {
   readonly browserMode?: BrowserPresentationMode;
   /** Omission retains the pre-capture behavior (no browser screenshot). */
   readonly captureBrowserScreenshots?: boolean;
+  /** D307 — already validated against the descriptor's omission forms and cascade by the caller. */
+  readonly stepOmissions?: StepOmissions;
   readonly priority: RunPriority;
   readonly shape: RunShape;
   readonly configFingerprint: string;
@@ -235,6 +238,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     dryRun: request.dryRun,
     ...(request.browserMode === undefined ? {} : { browserMode: request.browserMode }),
     captureBrowserScreenshots: request.captureBrowserScreenshots ?? false,
+    ...(request.stepOmissions === undefined ? {} : { stepOmissions: request.stepOmissions }),
     planned,
     refused,
     plannedBy: request.plannedBy,

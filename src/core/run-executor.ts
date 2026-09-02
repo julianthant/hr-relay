@@ -61,7 +61,7 @@ import {
   ProviderCapabilityIdSchema,
   TaskIdSchema,
 } from "../domain/ids.js";
-import type { NodeId, ProviderCapabilityId } from "../domain/ids.js";
+import type { Fingerprint, IsoInstant, NodeId, ProviderCapabilityId } from "../domain/ids.js";
 import {
   RunLifecycleSchema,
   RunRecordSchema,
@@ -100,6 +100,8 @@ import {
 import type { RuntimeFlowNode, RuntimeScope } from "../domain/workflow/graph.js";
 import { evaluateNodeCondition } from "../domain/workflow/node-condition.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
+import { planStepOmissions } from "../domain/workflow/step-omission.js";
+import { jsonLeafPaths } from "./task-provenance.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { RunClaimTokenSchema, type RunClaimToken } from "../infra/sqlite/run-store-contracts.js";
 import type {
@@ -412,6 +414,10 @@ type PlanEntry =
   | Readonly<{ mode: "execute" }>
   | Readonly<{ mode: "replay"; record: RunCheckpointRecord }>
   | Readonly<{ mode: "skipped-condition" }>
+  /** D307 — a task an omitted step's producer rebuilds from typed facts at node time. */
+  | Readonly<{ mode: "asserted" }>
+  /** D307 — a node of an omitted step nothing rebuilds: never runs, produces nothing. */
+  | Readonly<{ mode: "omitted" }>
   | Readonly<{ mode: "replay-gate" }>;
 
 /* ── the interpreter ─────────────────────────────────────────────────────── */
@@ -441,6 +447,23 @@ export async function executeClaimedRun(
   z.number().int().positive().parse(deps.taskDeadlineMs);
 
   const nodes = descriptorRuntimeNodes(descriptor);
+  // D307 — classify every node for this run's omitted steps BEFORE anything
+  // executes. The start planner refused the same refusals before a run
+  // existed; a run that reaches here with one is miswired and fails loud.
+  const omissionPlan = planStepOmissions(
+    {
+      nodes: nodes.map((node) => ({ id: String(node.id), kind: node.kind, dependsOn: node.dependsOn.map(String) })),
+      timeline: descriptor.timeline,
+      stepOmissions: descriptor.stepOmissions,
+    },
+    envelope.stepOmissions ?? [],
+  );
+  if (omissionPlan.refusals.length > 0) {
+    throw new Error(
+      `run ${runId} carries step omissions its descriptor refuses: `
+      + omissionPlan.refusals.map((refusal) => `[${refusal.code}] ${refusal.message}`).join("; "),
+    );
+  }
   const runs = deps.authority.authority.runs;
   const instant = () => IsoInstantSchema.parse(clock.now().toISOString());
 
@@ -569,7 +592,9 @@ export async function executeClaimedRun(
     const outputs: Record<string, JsonValue> = {};
     const checkpointRecords = new Map<string, RunCheckpointRecord>();
     const replayedForFreshness: ReplayedCheckpoint[] = [];
-    const skippedReasons = new Map<string, "condition-false" | "branch-not-selected">();
+    const skippedReasons = new Map<string, "condition-false" | "branch-not-selected" | "step-omitted">();
+    /** D307 — asserted outputs, keyed by node, as the terminal evidence will cite them. */
+    const assertedRecords = new Map<string, Readonly<{ step: string; assertedAt: IsoInstant; output: Readonly<{ schemaHash: Fingerprint; value: JsonValue }> }>>();
 
     /**
      * Turn a node-id list into the exact terminal-dependency evidence the sealed
@@ -582,6 +607,10 @@ export async function executeClaimedRun(
       nodeIds: readonly NodeId[],
       purpose: string,
     ): readonly TerminalDependencyEvidence[] => nodeIds.map((dependency) => {
+      const asserted = assertedRecords.get(String(dependency));
+      if (asserted !== undefined) {
+        return { state: "asserted" as const, nodeId: dependency, step: asserted.step, assertedAt: asserted.assertedAt, output: asserted.output };
+      }
       const record = checkpointRecords.get(String(dependency));
       if (record !== undefined) return { state: "resolved" as const, nodeId: dependency, checkpoint: record };
       const reason = skippedReasons.get(String(dependency));
@@ -688,6 +717,17 @@ export async function executeClaimedRun(
     // derived and the first non-replayable node begins execution (§5.6 #1/#2).
     let ancestorRegionOpen = canonicalInput !== undefined;
     for (const [index, node] of nodes.entries()) {
+      // D307 — an omitted step's nodes are classified before any replay or
+      // execute reasoning: they own no checkpoint on any resume and never
+      // open or close the ancestor region.
+      if (omissionPlan.omitted.has(String(node.id))) {
+        plan.set(String(node.id), { mode: "omitted" });
+        continue;
+      }
+      if (omissionPlan.asserted.has(String(node.id))) {
+        plan.set(String(node.id), { mode: "asserted" });
+        continue;
+      }
       const explicit = startIndex !== undefined;
       const inAncestorRegion = explicit ? index < (startIndex ?? 0) : ancestorRegionOpen;
       if (!inAncestorRegion) {
@@ -703,7 +743,9 @@ export async function executeClaimedRun(
         let conditionKnown = true;
         for (const dependency of node.dependsOn) {
           const dependencyEntry = plan.get(String(dependency));
-          if (dependencyEntry === undefined || dependencyEntry.mode === "execute") conditionKnown = false;
+          if (dependencyEntry === undefined || dependencyEntry.mode === "execute" || dependencyEntry.mode === "asserted") {
+            conditionKnown = false;
+          }
         }
         if (node.when !== undefined && conditionKnown) {
           // D228 — ONE evaluator for the declared condition. The old closure
@@ -727,6 +769,23 @@ export async function executeClaimedRun(
           node.uses.output,
           deps.checkpointMigrations ?? [],
         );
+        if (load.found && RunCheckpointRecordSchema.parse(stored).assertion !== undefined) {
+          // D307 — the latest row is an operator ASSERTION from a run that
+          // omitted this node's step; this run executes the node, so that row
+          // is not an observation it may replay. An explicit resume cannot
+          // cross it; an ordinary start simply executes.
+          const assertion = RunCheckpointRecordSchema.parse(stored).assertion;
+          if (explicit) {
+            problems.push(
+              `node "${node.id}" (${labelOf(node)}) latest checkpoint is an operator assertion for omitted step `
+              + `"${assertion?.step ?? "?"}", and this run does not omit that step; an assertion never replays as an observation`,
+            );
+            continue;
+          }
+          ancestorRegionOpen = false;
+          plan.set(String(node.id), { mode: "execute" });
+          continue;
+        }
         if (load.found) {
           const record = RunCheckpointRecordSchema.parse(stored);
           const nodePatches = injectedByNode.get(String(node.id));
@@ -1308,6 +1367,102 @@ export async function executeClaimedRun(
       }
       if (entry.mode === "skipped-condition") {
         skippedReasons.set(String(node.id), "condition-false");
+        continue;
+      }
+      if (entry.mode === "omitted") {
+        // D307 — the operator omitted this node's step and no producer
+        // rebuilds it. Its span says so with the closed reason the terminal
+        // record will repeat; nothing is fenced, published or checkpointed.
+        skippedReasons.set(String(node.id), "step-omitted");
+        const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
+        emit({
+          t: "span.started", kind: "task",
+          ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,
+          name: node.kind === "task" ? labelOf(node) : node.kind === "transaction" ? (node.label ?? node.commit.uses.title) : String(node.id),
+        });
+        emit({
+          t: "span.ended", kind: "task",
+          ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,
+          outcome: "skipped",
+          notRunReason: "step-omitted",
+        });
+        continue;
+      }
+      if (entry.mode === "asserted") {
+        // D307 — rebuild this task's output from the operator's typed facts
+        // and the node's own dependency scope, parse it with the node's OWN
+        // output schema, and publish it exactly as a checkpoint replay would —
+        // minus the checkpoint. A later retry of the same item must never
+        // replay an assertion as an observation.
+        const assertion = omissionPlan.asserted.get(String(node.id));
+        if (assertion === undefined || node.kind !== "task") {
+          throw new Error(`node "${node.id}" was planned as asserted but the omission plan does not assert a task there`);
+        }
+        transitionTo(runningLifecycle(node.id));
+        const scope = scopeFor(node.dependsOn);
+        const assertedAt = instant();
+        let produced: unknown;
+        try {
+          produced = assertion.produce({ facts: assertion.facts, scope, assertedAt });
+        } catch (error) {
+          return await failNode(node, node.uses.id, error);
+        }
+        const parsed = node.uses.output.safeParse(produced);
+        if (!parsed.success) {
+          return await failNode(node, node.uses.id, new Error(
+            `step "${assertion.step}" producer for node "${node.id}" returned a value the node's output schema refuses at: `
+            + [...new Set(parsed.error.issues.map((issue) => issue.path.map(String).join(".") || "(root)"))].join(", "),
+          ));
+        }
+        const value = JsonValueSchema.parse(parsed.data);
+        if (projectionsFor(String(node.id)).length > 0) {
+          return await failNode(node, node.uses.id, new Error(
+            `node "${node.id}" declares artifact projections and cannot be asserted; an assertion projects nothing`,
+          ));
+        }
+        // The assertion becomes DURABLE the way an observation would — a
+        // `run_checkpoints` row every later reader (the write sequencer's
+        // commit-input rebuild, the provenance collector, the receipt) can
+        // resolve — but marked, so it is never mistaken for one: every leaf is
+        // `operator`-sourced at `assertedAt`, and the row names its omitted step.
+        const outputSchemaHash = deriveSchemaHash(node.uses.output, "output");
+        const assertedRecord = RunCheckpointRecordSchema.parse({
+          workflowId: descriptor.id,
+          itemId: envelope.itemId,
+          nodeId: String(node.id),
+          attempt: envelope.attempt,
+          claimGeneration: claim.claimGeneration,
+          runId,
+          output: { schemaHash: outputSchemaHash, value },
+          descriptorVersion: descriptor.version,
+          contractFingerprint: descriptor.contractFingerprint,
+          implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, node.uses.id),
+          provenance: jsonLeafPaths(value).map((path) => ({
+            path, source: "operator", observedAt: assertedAt, originalObservedAt: assertedAt,
+          })),
+          writtenAt: instant(),
+          assertion: { step: assertion.step, assertedAt },
+        });
+        deps.authority.authority.runCheckpoints.insert(assertedRecord);
+        checkpointRecords.set(String(node.id), assertedRecord);
+        outputs[String(node.id)] = value;
+        assertedRecords.set(String(node.id), Object.freeze({
+          step: assertion.step,
+          assertedAt,
+          output: Object.freeze({ schemaHash: outputSchemaHash, value }),
+        }));
+        const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
+        emit({
+          t: "span.started", kind: "task",
+          ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,
+          name: labelOf(node),
+        });
+        emit({
+          t: "span.ended", kind: "task",
+          ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,
+          outcome: "skipped",
+          notRunReason: "operator-asserted",
+        });
         continue;
       }
       if (entry.mode === "replay-gate") {

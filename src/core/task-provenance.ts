@@ -63,7 +63,7 @@ export type TaskProvenanceCollectorInput = Readonly<{
   readonly onRecord: (batch: RecordedDataBatch) => void;
 }>;
 
-function jsonLeafPaths(value: JsonValue, prefix = ""): readonly string[] {
+export function jsonLeafPaths(value: JsonValue, prefix = ""): readonly string[] {
   if (Array.isArray(value) || value === null || typeof value !== "object") {
     if (prefix.length === 0) throw new Error("task read output must be an object with named provenance fields");
     return [prefix];

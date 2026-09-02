@@ -3079,6 +3079,26 @@ export class AuthorityDatabase implements Disposable {
 
   #assertStoredTerminalDependencies(result: RunResultRecord, current: RunRecord): void {
     for (const dependency of result.dependencies) {
+      if (dependency.state === "asserted") {
+        // D307 — an assertion is durable as a MARKED checkpoint row: the exact
+        // row must exist at the terminal attempt, carry the assertion marker
+        // for the same step, and bind the same output schema and digest.
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM run_checkpoints
+          WHERE workflow = ? AND item_id = ? AND node_id = ? AND attempt = ? AND run_id = ?
+        `).all(result.workflowId, current.envelope.itemId, dependency.nodeId, result.attempt, result.runId);
+        const matching = rows.map((row) => RunCheckpointRecordSchema.parse(JSON.parse(z.object({ record_json: z.string() }).parse(row).record_json)))
+          .filter((row) => row.assertion?.step === dependency.step
+            && row.output.schemaHash === dependency.outputSchemaHash
+            && deriveCheckpointOutputDigest(row.output) === dependency.outputDigest);
+        if (matching.length !== 1) {
+          throw new Error(
+            `terminal dependency ${dependency.nodeId} is marked asserted for step ${dependency.step} `
+            + `but ${String(matching.length)} marked checkpoint row(s) bind that assertion at the terminal attempt`,
+          );
+        }
+        continue;
+      }
       if (dependency.state === "not-run") {
         /*
          * D214: an attempt can hold SEVERAL executions of one node, so "did this

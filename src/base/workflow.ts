@@ -44,6 +44,8 @@ import {
   type RunResultRecord,
   type TerminalDependencyRecord,
 } from "../domain/run/result.js";
+import { StepOmissionFormSchema } from "../domain/workflow/step-omission.js";
+import type { StepOmissionDeclaration, StepOmissionSpec } from "../domain/workflow/step-omission.js";
 import { SecretNameSchema } from "../domain/secret-names.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
 import { assertAuditedCanonicalInput, canonicalInputSamples } from "../domain/workflow/canonical-input.js";
@@ -287,6 +289,12 @@ export interface WorkflowDescriptor<
    */
   readonly timelineDeclared: boolean;
   /**
+   * D307 — the steps an operator may omit at start, each with its typed form
+   * and the task nodes its producers rebuild. Derived from the timeline
+   * declarations a step folder authored; empty when no step is omittable.
+   */
+  readonly stepOmissions: readonly StepOmissionSpec[];
+  /**
    * D229 — the descriptor's own sentence about what this workflow does, and one
    * about each node. Plain data, DERIVED by the factory into an exhaustive,
    * frozen list: a partial declaration would leave some nodes silently
@@ -356,6 +364,8 @@ export interface AnyWorkflowDescriptor {
   }>[];
   /** D265 — DECLARED or DERIVED; the composition root's role audit is the reader. */
   readonly timelineDeclared: boolean;
+  /** D307 — omittable steps with their forms and producers; empty when none. */
+  readonly stepOmissions: readonly StepOmissionSpec[];
   /** D229 — the descriptor's own prose; plain data, so it rides the broad view. */
   readonly summary?: string;
   readonly nodePurposes: readonly Readonly<{ nodeId: string; purpose: string }>[];
@@ -383,7 +393,7 @@ export interface WorkflowDescriptorSpec<
 > extends Omit<
   WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D>,
   "id" | "contractFingerprint" | "input" | "result" | "nodes" | "scenarios" | "timeline"
-  | "timelineDeclared" | "nodePurposes"
+  | "timelineDeclared" | "nodePurposes" | "stepOmissions"
 > {
   readonly id: string;
   readonly contractFingerprint: string;
@@ -398,7 +408,13 @@ export interface WorkflowDescriptorSpec<
    * strings here — the factory parses them into branded node ids the same way
    * it parses scenario ids.
    */
-  readonly timeline?: readonly Readonly<{ key: string; label: string; nodes: readonly string[] }>[];
+  readonly timeline?: readonly Readonly<{
+    key: string;
+    label: string;
+    nodes: readonly string[];
+    /** D307 — present iff the step folder declared the step omittable. */
+    omission?: StepOmissionDeclaration;
+  }>[];
   /**
    * D229 — the authored form: one sentence per node, keyed by node id. Plain
    * strings, parsed by the factory into branded ids exactly as `timeline` is.
@@ -514,6 +530,10 @@ export interface WorkflowTerminalResultExecution<Input = never, Outputs = never,
   readonly dependencies: readonly Readonly<{
     nodeId: NodeId;
     notRunReason?: "condition-false" | "branch-not-selected";
+    /** D307 — the node may be absent as `step-omitted` (its step is omittable and no producer rebuilds it). */
+    omittable?: true;
+    /** D307 — the node may arrive `asserted` (its step is omittable and a producer rebuilds it). */
+    assertable?: true;
   }>[];
   readonly parseResult: (candidate: unknown) => unknown;
   readonly derive: (scope: Readonly<{ input: Input; outputs: Outputs }>) => Result;
@@ -774,6 +794,38 @@ function deriveSteps(nodes: readonly RuntimeFlowNode[]): readonly StepProjection
     }));
   }
   return Object.freeze(steps);
+}
+
+/**
+ * D307 — validate and retain each omittable step's declaration. Producers may
+ * name only TASK nodes of their own step: a gate is never substituted (D77)
+ * and a transaction's outcome is the write sequencer's to mint (D144).
+ */
+function deriveStepOmissions(
+  id: string,
+  nodes: readonly RuntimeFlowNode[],
+  declared: readonly Readonly<{ key: string; nodes: readonly string[]; omission?: StepOmissionDeclaration }>[] | undefined,
+): readonly StepOmissionSpec[] {
+  const specs: StepOmissionSpec[] = [];
+  for (const category of declared ?? []) {
+    if (category.omission === undefined) continue;
+    const form = StepOmissionFormSchema.parse(category.omission.form);
+    const members = new Set(category.nodes);
+    for (const produced of Object.keys(category.omission.produces)) {
+      if (!members.has(produced)) {
+        throw new Error(`${id}: step "${category.key}" omission produces node "${produced}", which is not a member of that step`);
+      }
+      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(produced), `step "${category.key}" omission`);
+      if (node.kind !== "task") {
+        throw new Error(`${id}: step "${category.key}" omission produces ${node.kind} node "${produced}"; only task nodes are ever asserted (D307)`);
+      }
+      if (typeof category.omission.produces[produced] !== "function") {
+        throw new Error(`${id}: step "${category.key}" omission producer for "${produced}" is not a function`);
+      }
+    }
+    specs.push(Object.freeze({ step: category.key, form, produces: Object.freeze({ ...category.omission.produces }) }));
+  }
+  return Object.freeze(specs);
 }
 
 /**
@@ -1233,6 +1285,19 @@ export function defineWorkflowDescriptor<
       + "delete it — whether this workflow can be previewed is decided by its transaction nodes",
     );
   }
+  // D307 — which nodes an omitted step rebuilds (asserted) and which it simply
+  // leaves unread (omitted). Derived once here so the terminal-dependency
+  // authentication and the descriptor's retained declaration agree by construction.
+  const stepOmissions = deriveStepOmissions(id, nodes, spec.timeline);
+  const omissionOfNode = new Map<string, Readonly<{ step: string; produced: boolean }>>();
+  for (const declared of spec.timeline ?? []) {
+    if (declared.omission === undefined) continue;
+    for (const member of declared.nodes) {
+      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), `step "${declared.key}" omission`);
+      if (node.kind === "gate") continue;
+      omissionOfNode.set(member, Object.freeze({ step: declared.key, produced: Object.hasOwn(declared.omission.produces, member) }));
+    }
+  }
   const surfaces = Object.freeze({
     ...spec.surfaces,
     ...(spec.surfaces.inputRun === undefined
@@ -1248,8 +1313,9 @@ export function defineWorkflowDescriptor<
     result: spec.flow.result,
     nodes: spec.flow.nodes,
     scenarios: declaredScenarios,
-    timeline: deriveTimeline(id, nodes, spec.timeline),
+    timeline: deriveTimeline(id, nodes, spec.timeline?.map(({ key, label, nodes: members }) => ({ key, label, nodes: members }))),
     timelineDeclared: spec.timeline !== undefined,
+    stepOmissions,
     nodePurposes: deriveNodePurposes(id, nodes, spec.nodePurposes),
   });
   PROJECTIONS.set(descriptor, Object.freeze({
@@ -1303,11 +1369,13 @@ export function defineWorkflowDescriptor<
           + "its durable not-run reason would be ambiguous",
         );
       }
+      const omission = omissionOfNode.get(String(nodeId));
       return Object.freeze({
         nodeId,
         ...(isBranchTarget
           ? { notRunReason: "branch-not-selected" as const }
           : hasWhen ? { notRunReason: "condition-false" as const } : {}),
+        ...(omission === undefined ? {} : omission.produced ? { assertable: true as const } : { omittable: true as const }),
       });
     }),
   );
@@ -1371,7 +1439,46 @@ export function defineWorkflowDescriptor<
     const dependencies: TerminalDependencyRecord[] = expectedDependencies.map((expected) => {
       const entry = byNode.get(expected.nodeId);
       if (entry === undefined) throw new Error(`${purpose} dependency ${expected.nodeId} is missing`);
+        if (entry.state === "asserted") {
+          if (expected.assertable !== true) {
+            throw new Error(`${purpose} dependency ${entry.nodeId} is not producible by any step omission and cannot be asserted`);
+          }
+          const assertedNode = nodeByIdOrThrow(id, nodes, entry.nodeId, purpose);
+          const assertedBinding = terminalEvidenceOf(assertedNode);
+          if (assertedBinding === undefined) {
+            throw new Error(`${id}: ${purpose} dependency ${entry.nodeId} owns no output schema`);
+          }
+          const assertedSchemaHash = deriveSchemaHash(assertedBinding.checkpointSchema, "output");
+          if (entry.output.schemaHash !== assertedSchemaHash) {
+            throw new Error(
+              `${purpose} dependency ${entry.nodeId} asserted output schema `
+              + `${entry.output.schemaHash} does not match ${assertedSchemaHash}`,
+            );
+          }
+          outputs[entry.nodeId] = assertedBinding.project(entry.output.value, `${purpose} dependency ${entry.nodeId}`);
+          return {
+            state: "asserted",
+            nodeId: entry.nodeId,
+            step: entry.step,
+            assertedAt: entry.assertedAt,
+            outputSchemaHash: assertedSchemaHash,
+            outputDigest: deriveCheckpointOutputDigest(entry.output),
+          };
+        }
         if (entry.state === "not-run") {
+          if (entry.reason === "operator-asserted") {
+            throw new Error(
+              `${purpose} dependency ${entry.nodeId} cannot be marked not-run as operator-asserted; `
+              + "an asserted node carries its output in the asserted evidence arm",
+            );
+          }
+          if (entry.reason === "step-omitted") {
+            if (expected.omittable !== true) {
+              throw new Error(`${purpose} dependency ${entry.nodeId} belongs to no omittable step and cannot be marked step-omitted`);
+            }
+            outputs[entry.nodeId] = undefined;
+            return { state: "not-run", nodeId: entry.nodeId, reason: entry.reason };
+          }
           if (expected.notRunReason === undefined) {
             throw new Error(`${purpose} dependency ${entry.nodeId} is unconditional and cannot be marked not-run`);
           }

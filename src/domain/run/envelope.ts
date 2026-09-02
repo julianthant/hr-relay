@@ -32,6 +32,7 @@ import {
   WorkflowIdSchema,
 } from "../ids.js";
 import { CheckpointPatchSchema, FreshnessOverrideSchema } from "../workflow/checkpoint.js";
+import { StepOmissionsSchema } from "../workflow/step-omission.js";
 
 export const SystemInstanceSchema = z.enum(["prod", "test"]);
 export type SystemInstance = z.infer<typeof SystemInstanceSchema>;
@@ -85,6 +86,8 @@ export const RunEnvelopeSchema = z.strictObject({
   browserMode: BrowserPresentationModeSchema.optional(),
   /** Optional only so historical authority rows remain readable. */
   captureBrowserScreenshots: z.boolean().optional(),
+  /** D307 — the steps this run omits, with the operator's typed facts; absent means every step runs. */
+  stepOmissions: StepOmissionsSchema.optional(),
   /** A resumable graph-node id, never an internal transaction arm (ref workflow-model §5.7). */
   startAt: NodeIdSchema.optional(),
   injected: z.array(CheckpointPatchSchema).min(1).optional(),

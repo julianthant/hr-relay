@@ -92,6 +92,17 @@ export const RunCheckpointRecordSchema = z.strictObject({
   implFingerprint: FingerprintSchema,
   provenance: z.array(FactProvenanceSchema),
   writtenAt: IsoInstantSchema,
+  /**
+   * D307 — present iff this row is an OPERATOR ASSERTION, not an observation:
+   * the node never ran; its step was omitted at start and the step's producer
+   * rebuilt the output from typed facts. Every provenance entry is
+   * `operator`-sourced at `assertedAt`. Replay admits such a row only under
+   * the same assertion; a run that executes the node ignores it.
+   */
+  assertion: z.strictObject({
+    step: z.string().min(1),
+    assertedAt: IsoInstantSchema,
+  }).optional(),
 });
 export type RunCheckpointRecord = z.infer<typeof RunCheckpointRecordSchema>;
 

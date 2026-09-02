@@ -23,6 +23,15 @@ import { TransactionDryRunPreviewSchema } from "../write-safety-primitives.js";
 export const TerminalNotRunReasonSchema = z.enum([
   "condition-false",
   "branch-not-selected",
+  /**
+   * D307 — ONE vocabulary across result, span and timeline (D123). A task an
+   * omitted step's producer rebuilt is `operator-asserted` on its span; in the
+   * terminal record that node arrives as the `asserted` arm, never as not-run,
+   * so the sealed factory refuses this reason there by name.
+   */
+  "operator-asserted",
+  /** D307 — a transaction, or a task no producer rebuilds, in a step the operator omitted. */
+  "step-omitted",
 ]);
 
 export const ResolvedTerminalDependencySchema = z.strictObject({
@@ -55,9 +64,25 @@ export const NotRunTerminalDependencySchema = z.strictObject({
   reason: TerminalNotRunReasonSchema,
 });
 
+/**
+ * D307 — a node the operator asserted at start instead of running. The record
+ * binds the schema the producer's output was parsed with and the digest of
+ * that output, so a later reader can prove the terminal derive consumed
+ * exactly the asserted value — and never mistakes it for an observed one.
+ */
+export const AssertedTerminalDependencySchema = z.strictObject({
+  state: z.literal("asserted"),
+  nodeId: NodeIdSchema,
+  step: z.string().min(1),
+  assertedAt: IsoInstantSchema,
+  outputSchemaHash: FingerprintSchema,
+  outputDigest: FingerprintSchema,
+});
+
 export const TerminalDependencyRecordSchema = z.discriminatedUnion("state", [
   ResolvedTerminalDependencySchema,
   NotRunTerminalDependencySchema,
+  AssertedTerminalDependencySchema,
 ]);
 
 /** Exact executor evidence consumed by the factory-owned terminal derive. */
@@ -71,6 +96,13 @@ export const TerminalDependencyEvidenceSchema = z.discriminatedUnion("state", [
     state: z.literal("not-run"),
     nodeId: NodeIdSchema,
     reason: TerminalNotRunReasonSchema,
+  }),
+  z.strictObject({
+    state: z.literal("asserted"),
+    nodeId: NodeIdSchema,
+    step: z.string().min(1),
+    assertedAt: IsoInstantSchema,
+    output: SchemaBoundCanonicalValueSchema,
   }),
 ]);
 
