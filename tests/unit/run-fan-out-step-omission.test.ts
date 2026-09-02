@@ -13,7 +13,9 @@ import { afterEach, describe, it } from "vitest";
 import { fanOutQueuedRuns } from "../../src/core/run-fan-out.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { deriveItemId } from "../../src/domain/identifiers.js";
+import { ActorIdSchema, StartPlanIdSchema } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import type { StepOmissions } from "../../src/domain/workflow/step-omission.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   PersonLookupCanonicalInput,
@@ -54,12 +56,12 @@ function plannedEntry(runId: string, eid: string) {
   };
 }
 
-function baseEnvelope(sessionId: string, stepOmissions?: readonly Readonly<{ step: string; facts: Record<string, unknown> }>[]) {
+function baseEnvelope(sessionId: string, stepOmissions?: StepOmissions) {
   return {
     workflow: personLookupDescriptor.id,
     descriptorVersion: personLookupDescriptor.version,
     contractFingerprint: personLookupDescriptor.contractFingerprint,
-    resolvedInstance: { ucpath: "prod", crm: "prod" },
+    resolvedInstance: { ucpath: "prod" as const, crm: "prod" as const },
     configFingerprint: HASH_A,
     configSnapshotId: UUID_4,
     shape: "single" as const,
@@ -70,7 +72,7 @@ function baseEnvelope(sessionId: string, stepOmissions?: readonly Readonly<{ ste
     appVersion: "0.1.0",
     session: {
       sessionId,
-      origin: { kind: "start-plan" as const, startPlanId: UUID_4, actorId: "local-operator" as const },
+      origin: { kind: "start-plan" as const, startPlanId: StartPlanIdSchema.parse(UUID_4), actorId: ActorIdSchema.parse("local-operator") },
     },
   };
 }
