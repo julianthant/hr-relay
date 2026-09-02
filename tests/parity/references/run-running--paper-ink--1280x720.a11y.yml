@@ -1,7 +1,7 @@
 # run-running--paper-ink--1280x720
 # adapter: fixture
 # fixture: run-running
-# descriptorHash: db99e40dd0b36187a5db8d9672008028f90f8608aba122e345881a27b100fba1
+# descriptorHash: 5692b33370ef298e28627663fcc299af90e169ecebd6c26a02f1742b4ea54372
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -127,12 +127,14 @@
       - button "What is this row? — Run Panel"
       - text: "Failed 9:33 AM #1 pl-090404-0004 6m 0s"
       - button "Run again"
+      - button "Delete run"
       - text: Right-click or press m for every command on EID 10555001
     - button "EID 10333015 — done with warnings":
       - text: EID 10333015
       - button "What is this row? — Run Panel"
       - text: "3 Done 9:24 AM #1 pl-090808-0008 5m 0s"
       - button "Run again"
+      - button "Delete run"
       - text: Right-click or press m for every command on EID 10333015
     - button "Separation audit — August — done with warnings":
       - text: Separation audit — August
@@ -180,12 +182,14 @@
       - button "Expand"
       - text: "9:10 AM #1 pl-091010-0070 2m 0s"
       - button "Run again"
+      - button "Delete group"
       - text: Right-click or press m for every command on Separation audit — August
     - button "EID 10001573 — done":
       - text: EID 10001573
       - button "What is this row? — Run Panel"
       - text: "Done 9:35 AM #1 pl-090303-0003 5m 0s"
       - button "Run again"
+      - button "Delete run"
       - text: Right-click or press m for every command on EID 10001573
     - button "Onboarding cohort — July stragglers — done":
       - text: Onboarding cohort — July stragglers
@@ -230,12 +234,14 @@
       - button "Expand"
       - text: "9:05 AM #1 pl-095050-0050 2m 0s"
       - button "Run again"
+      - button "Delete group"
       - text: Right-click or press m for every command on Onboarding cohort — July stragglers
     - button "EID 10222009 — cancelled":
       - text: EID 10222009
       - button "What is this row? — Run Panel"
       - text: "Cancelled 9:26 AM #1 pl-090707-0007 4m 0s"
       - button "Run again"
+      - button "Delete run"
       - text: Right-click or press m for every command on EID 10222009
   - region "Run shape":
     - text: searching
@@ -255,7 +261,7 @@
       - 'listitem "9:53 AM: info note: 2 candidates returned from person search"': 9:53 AM 2 candidates returned from person search
       - 'listitem "9:54 AM: info note: Selecting the exact name match"': 9:54 AM Selecting the exact name match
     - searchbox "Search logs"
-    - text: db99e40d
+    - text: 5692b333
     - button "Run provenance"
     - text: live
   - complementary "Run data":
