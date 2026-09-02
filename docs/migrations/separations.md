@@ -7197,3 +7197,76 @@ global unchanged-write counts, **not** a new run's rehearsal evidence. All three
 their measurements and final close-out remain open. Resume boundary and exact git/runtime checks:
 `docs/handoffs/2026-09-02-separations-controlled-sequence-preflight.md`. The coordinator-owned board
 was not rewritten by this operational preflight.
+
+### 9.36 Isolated sequence check finds an invalidated filing receipt — 2026-09-02
+
+After §9.35 the operator authorized implementation and confirmed the recommended TDD boundaries:
+the real write sequencer, and real run/gate/receipt composition with fake external systems. During
+design, a further conflict appeared between D287's proposed order and the receipt's meaning. No
+execution code or tests were changed, and no live workflow or gate was started.
+
+At clean source `1008aebd`, the existing `compositionHarness` was used with its real sequencer,
+real temporary SQLite authority and deterministic UCPath/Kuali drivers. The following diagnostic
+invoked the three existing transaction nodes in D287's order. It did **not** execute the graph,
+admission, identity gate, run terminal or receipt service and earns no such proof. Its fixture
+scope contains the existing synthetic filing receipt; it demonstrates that these three write
+operations can all settle while the referenced filing no longer exists.
+
+```bash
+npx tsx -e 'import { compositionHarness, compositionClaimRunning, compositionQueuedRun, compositionContext, TERMINATION_NODE, SWEEP_NODE, FINALIZE_NODE, COMPOSITION_RECEIPT } from "./tests/unit/fixtures/separations-composition-fixtures.ts"; void (async () => { const h = compositionHarness(); try { const { run, claim } = compositionClaimRunning(h.database, h.clock, compositionQueuedRun(), TERMINATION_NODE); for (const node of [TERMINATION_NODE, SWEEP_NODE, FINALIZE_NODE]) { const outcome = await h.bound(() => h.sequencer.executeTransaction(compositionContext(run, claim, node))); process.stdout.write(JSON.stringify({ node, disposition: Reflect.get(outcome as object, "disposition"), filingStillPresent: h.ucpath.rows.some(row => row.transactionId === COMPOSITION_RECEIPT), kualiCitesFiling: h.kuali.persistedFinalization?.transactionNumber === COMPOSITION_RECEIPT }) + "\n"); } } finally { h.dispose(); } })();'
+```
+
+Exit 0, exact diagnostic output:
+
+```json
+{"node":"file-termination","disposition":"committed","filingStillPresent":true,"kualiCitesFiling":false}
+{"node":"clear-pending","disposition":"committed","filingStillPresent":false,"kualiCitesFiling":false}
+{"node":"finalize-kuali","disposition":"committed","filingStillPresent":false,"kualiCitesFiling":true}
+```
+
+A second invocation made the safety invariant a red-capable assertion:
+
+```bash
+npx tsx -e 'import assert from "node:assert/strict"; import { compositionHarness, compositionClaimRunning, compositionQueuedRun, compositionContext, TERMINATION_NODE, SWEEP_NODE, FINALIZE_NODE, COMPOSITION_RECEIPT } from "./tests/unit/fixtures/separations-composition-fixtures.ts"; void (async () => { const h = compositionHarness(); try { const { run, claim } = compositionClaimRunning(h.database, h.clock, compositionQueuedRun(), TERMINATION_NODE); for (const node of [TERMINATION_NODE, SWEEP_NODE, FINALIZE_NODE]) await h.bound(() => h.sequencer.executeTransaction(compositionContext(run, claim, node))); assert.ok(h.kuali.persistedFinalization?.transactionNumber !== COMPOSITION_RECEIPT || h.ucpath.rows.some(row => row.transactionId === COMPOSITION_RECEIPT), "Kuali must not cite a filing that the controlled sequence deleted"); } finally { h.dispose(); } })();'
+```
+
+It exited **1** with `AssertionError [ERR_ASSERTION]: Kuali must not cite a filing that the
+controlled sequence deleted` (`actual: false`, `expected: true`). This diagnostic remains red;
+neither a green existing suite nor a gate ceremony can waive the unresolved protocol issue.
+
+This is source-consistent, not live-system verification: the UCPath fake submits a `Pending` row
+and deletes rows matching `isUcpathTerminationInProgress`; that production predicate admits
+`Pending` and `Pushed Back`. `src/domain/separations/termination-receipt.ts` accepts a captured
+`Pending` receipt, and Kuali finalization consumes the captured variables without observing whether
+a later operation deleted that filing. Historical §9.16 independently records an operator deletion
+removing the mapped Pending transaction from SS Smart HR. A new live delete was neither necessary
+nor authorized to demonstrate this logical conflict.
+
+**Implementation pause:** adding separate approvals and correcting sweep identity alone would
+make D287's requested order executable but would not keep its final Kuali reference truthful. The
+recommended protocol amendment is to prove the sweep on a separately approved disposable
+transaction, while the real separation's filing survives its Kuali finalization. This is a proposal,
+not a ratified replacement for D287; the operator must decide, and any disposable live target must
+be named and approved separately. No target is inferred from 4589 or the gone registry canary.
+
+**Design clarification:** the descriptor's introductory “no run mode changes the graph” comment is
+older than D307. The owning §4d now forbids changes **mid-run**, while permitting declared start-time
+step omissions. D307 is not blanket permission for a new reorder mode, but the older absolute
+wording is not a current independent blocker either. The invalidated receipt above is the present
+decision boundary.
+
+The primary live authority remained at global `write_intents=0`, `write_attempts=0`,
+`durable_outbox=0`; the diagnostic disposed its separate temporary database. The dashboard remained
+running on 3938/5174. Existing handoff updated with the implementation authorization, agreed test
+boundaries and this new protocol decision; the coordinator board remains untouched.
+
+**Verification of this documentation-only pass.** With the dashboard temporarily stopped,
+`npm run typecheck` and `npm run lint` exited 0. `npm run test:coverage` exited 1: 387/388 files
+and 4,794/4,795 tests passed. The existing `storage-restore-drill.test.ts` case “admits exactly one
+singleton under 16-process contention and never observes it stopped” failed at line 676 because
+its subprocess output lacked `SNAPSHOT active`; it did contain one `ADMITTED` and fifteen
+`REFUSED` lines. The exact focused rerun
+`npx vitest run tests/unit/storage-restore-drill.test.ts -t 'admits exactly one singleton' --reporter=dot`
+exited 0 (1 passed, 19 skipped). No cause is asserted and no test was weakened; the focused green
+does not turn the full-run result green. `git diff --check` passed. The previously identified
+roadmap freshness failure remains open; no parity or new live rehearsal was run.

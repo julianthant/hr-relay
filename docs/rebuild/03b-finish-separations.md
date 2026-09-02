@@ -24,6 +24,12 @@ saw. The decisions live in `reference/decisions.md`.
 > matches current source. Reconcile the execution contract under explicit authorization, then
 > repeat fresh admission/rehearsal before any controlled write. No write occurred in this preflight.
 
+> **Further safety finding (§9.36):** an isolated real-sequencer check of filing → sweep →
+> finalization deleted the synthetic Pending filing and then let Kuali cite its captured receipt.
+> Separate gates and scoped sweep keys alone cannot make that sequence truthful. Implementation
+> pauses for the proposed protocol amendment: prove deletion on a separately approved disposable
+> transaction and preserve the real separation's filing through finalization. No live write ran.
+
 <!-- roadmap: phase-3 -->
 
 <!-- roadmap-status: phase-3 -->
