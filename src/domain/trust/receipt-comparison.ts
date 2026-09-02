@@ -232,18 +232,66 @@ function compareWithheldInternally(
     : "changed";
 }
 
+/** True when a fact's source names the TASK a declaration's coordinate binds. */
+function bindsCoordinate(
+  fact: RunEvidenceReceipt["observations"][number],
+  declaration: ReceiptComparisonFactDeclaration,
+): boolean {
+  const { binding } = declaration;
+  if (fact.field !== String(binding.fieldPath).split(".").at(-1)) return false;
+  return "taskId" in fact.source && fact.source.taskId === binding.taskId;
+}
+
 function exactFacts(
   receipt: RunEvidenceReceipt,
   declaration: ReceiptComparisonFactDeclaration,
 ): readonly RunEvidenceReceipt["observations"][number][] {
   const { binding } = declaration;
   return receipt.observations.filter((fact) => (
-    fact.field === String(binding.fieldPath).split(".").at(-1)
+    bindsCoordinate(fact, declaration)
     && (fact.source.kind === "system" || fact.source.kind === "checkpoint")
     && binding.sourceKinds.includes(fact.source.kind)
-    && fact.source.taskId === binding.taskId
     && (fact.state === "unresolved" || fact.value.key === binding.fieldPath)
   ));
+}
+
+/**
+ * D289/D307 — a fact SITTING on a reviewed coordinate whose source kind the
+ * registry never reviewed.
+ *
+ * `exactFacts` selects on the source kind, so such a fact simply does not
+ * match — and a coordinate that matched in the prior receipt and not in the
+ * current one comes out of the cardinality arms below as `removed`, which
+ * tells the operator "this value disappeared" about a value that is right
+ * there under a different kind of authority. D307's `operator-assertion` is
+ * exactly that case: the operator omitted the step, the producer rebuilt the
+ * value, and the retry comparison would have reported it gone.
+ *
+ * The answer is NOT to widen the comparison — an asserted value and an
+ * observed one are different facts and D289's registry reviews each coordinate
+ * for the kinds it is willing to compare. It is to REFUSE by name. The refusal
+ * names the source kind and the coordinate (collection, node, task, field) and
+ * never a value: the whole point of the closed registry is that nothing
+ * unreviewed crosses this boundary, including in a diagnostic.
+ */
+function refuseUnreviewedSourceKinds(
+  receipt: RunEvidenceReceipt,
+  receiptId: string,
+  declaration: ReceiptComparisonFactDeclaration,
+): void {
+  const { binding } = declaration;
+  for (const fact of receipt.observations) {
+    if (!bindsCoordinate(fact, declaration)) continue;
+    const kind = fact.source.kind;
+    const reviewed = (kind === "system" || kind === "checkpoint") && binding.sourceKinds.includes(kind);
+    if (reviewed) continue;
+    throw new ReceiptComparisonAuthorityRefusalError(
+      `comparison fact ${declaration.id} matched a "${kind}" fact in receipt ${receiptId} at canonical `
+      + `coordinate (collection=${binding.collection}, node=${binding.nodeId}, task=${binding.taskId}, `
+      + `field=${binding.fieldPath}); the sealed registry reviewed only `
+      + `${binding.sourceKinds.join("+")} for that coordinate`,
+    );
+  }
 }
 
 /** Compare only coordinates the sealed registry explicitly reviewed. */
@@ -260,6 +308,12 @@ export function compareReceiptFacts(
   }
   const changes: ReceiptComparisonFact[] = [];
   for (const declaration of registry.facts) {
+    /*
+     * BEFORE any cardinality arm reads a length: an unreviewed source kind at
+     * this coordinate must refuse, not fall through to `added`/`removed`.
+     */
+    refuseUnreviewedSourceKinds(prior, prior.receiptId, declaration);
+    refuseUnreviewedSourceKinds(current, current.receiptId, declaration);
     const beforeFacts = exactFacts(prior, declaration);
     const afterFacts = exactFacts(current, declaration);
     if (beforeFacts.some(({ state }) => state === "unresolved")) {
