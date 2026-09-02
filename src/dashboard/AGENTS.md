@@ -108,11 +108,13 @@ binding would contradict them.
 
 - **2026-09-02 — an empty open-session list is not an empty browser requirement set.** The Session
   Panel used `WorkerCard.browsers[]` for both facts, so a starting worker showed no browser systems
-  until each child span opened. `browserRequirements` now carries the workflow descriptor's ordered
-  systems separately; `workerBrowserView` overlays exact observed sessions onto those stable slots,
-  keeps unexpected observed sessions visible, and suppresses all slots on terminal cards. An
-  unopened requirement says `Opens when needed` and never carries a session id, age or health word;
-  only an observed open span may say `Not checked` and expose its exact session identity.
+  until each child span opened. The worker now persists its loaded descriptor's ordered systems on
+  the lease at launch—never re-derived from a potentially newer dashboard process—and
+  `browserRequirements` carries that fact separately. `workerBrowserView` overlays exact observed
+  sessions onto those stable slots, keeps unexpected observed sessions visible, and suppresses all
+  slots on terminal cards. An unopened requirement says `Opens when needed` and never carries a
+  session id, age or health word; only an observed open span may say `Not checked` and expose its
+  exact session identity. Historical leases without the field say authority is unavailable.
 
 - **2026-09-02 — machine identity is not an approval card (D309).** The Separations identity-gate
   section is reachable only for a `name-resolved` packet, and its current ceremony requires the

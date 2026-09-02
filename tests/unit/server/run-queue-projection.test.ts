@@ -244,6 +244,10 @@ describe("THE run/queue projection (D81)", () => {
     // it to a queue row.
     const w = world();
     w.authority.putWorkerLease(workerLeaseOf({
+      // The dashboard's current person-lookup descriptor declares CRM +
+      // UCPath. This launch-time lease deliberately differs so a BFF restart
+      // cannot silently rewrite what the already-running worker loaded.
+      browserSystems: ["kuali"],
       lifecycle: {
         state: "busy",
         startedAt: instantOffsetOf(0),
@@ -280,6 +284,7 @@ describe("THE run/queue projection (D81)", () => {
     assert.deepEqual(card.browsers, [
       { sessionId: uuidOf(50), system: "ucpath", openedAt: instantOffsetOf(0) },
     ]);
+    assert.deepEqual(card.browserRequirements, { state: "present", systems: ["kuali"] });
     assert.deepEqual(card.currentRun, { state: "present", runId: uuidOf(1), traceId: traceOf(1) });
   });
 

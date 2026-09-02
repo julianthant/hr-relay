@@ -354,6 +354,7 @@ export interface SeedRunInput {
 export function workerLeaseOf(input: Readonly<{
   workerId?: string;
   workflow?: string;
+  browserSystems?: unknown;
   lifecycle?: unknown;
   directive?: "run" | "pause" | "stop";
   version?: number;
@@ -362,6 +363,7 @@ export function workerLeaseOf(input: Readonly<{
   return WorkerLeaseRecordSchema.parse({
     workerId: input.workerId ?? "person-lookup-worker-1",
     workflow: input.workflow ?? "person-lookup",
+    browserSystems: input.browserSystems ?? ["crm", "ucpath"],
     processId: 4242,
     leaseGeneration: 1,
     lifecycle: input.lifecycle ?? { state: "idle", startedAt, heartbeatAt: instantOffsetOf(0, 1_000) },

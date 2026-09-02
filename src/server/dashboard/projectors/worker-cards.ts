@@ -13,9 +13,9 @@
  *
  * So the card is composed here, from two sources with one direction each:
  *
- * - **the lease is authority** for identity (`workflow`), phase, the operator's
- *   standing directive, the started/stopped instants, the stop reason, and the
- *   version a `stop-worker` command cites;
+ * - **the lease is authority** for identity (`workflow`), launch-time browser
+ *   requirements, phase, the operator's standing directive, the started/stopped
+ *   instants, the stop reason, and the version a `stop-worker` command cites;
  * - **the span fold is the observation** of what the worker is holding — the
  *   browser sessions it opened and has not closed — and of the run it claimed,
  *   which is where the queue row's trace id comes from.
@@ -26,7 +26,6 @@
  */
 import { z } from "zod";
 import {
-  WorkerBrowserRequirementsWireSchema,
   WorkerBrowserWireSchema,
   WorkerCardWireSchema,
 } from "../../../domain/dashboard/projection.js";
@@ -122,7 +121,6 @@ function currentRunOf(
 export function workerCardOf(input: Readonly<{
   lease: WorkerLeaseRecord;
   fold: WorkerSpanFold | undefined;
-  browserRequirements: unknown;
   resolveTrace: (runId: string) => string | undefined;
 }>): WorkerCardWire {
   const { lease, fold } = input;
@@ -138,7 +136,12 @@ export function workerCardOf(input: Readonly<{
       ? { endedAt: lease.lifecycle.stoppedAt, stopReason: lease.lifecycle.reason }
       : {}),
     currentRun: currentRunOf(lease, fold, input.resolveTrace),
-    browserRequirements: WorkerBrowserRequirementsWireSchema.parse(input.browserRequirements),
+    browserRequirements: lease.browserSystems === undefined
+      ? {
+        state: "unavailable",
+        reason: `worker ${lease.workerId} lease predates launch-time browser requirements`,
+      }
+      : { state: "present", systems: lease.browserSystems },
     /*
      * A settled lease holds nothing. Its process is gone and its Chromium
      * children went with it, so the sessions the fold still shows open are the

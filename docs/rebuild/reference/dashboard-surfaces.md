@@ -5210,13 +5210,14 @@ the run's session membership are the card's identity-popover facts, on the subli
 route — never a `title` alone.
 
 The two-column browser area overlays two authorities instead of treating either as the other.
-`browserRequirements` is the exact workflow descriptor's ordered system set, projected for every
-served worker card from its first snapshot; `browsers[]` is only the worker's currently open child
-spans. A required system with no open span is a dashed `Opens when needed` slot and carries no
-session id, age or health. Its matching observed span upgrades that same slot to the ordinary open
-tile with exact identity; observed sessions outside the requirement set remain appended and visible.
-A missing or unregistered descriptor is an explicit unavailable reason, never an empty set. A
-terminal worker draws neither kind because its process owns no browser resources.
+`browserRequirements` is the exact workflow descriptor's ordered system set persisted on the worker
+lease when that process starts; the dashboard never substitutes its own potentially newer descriptor.
+`browsers[]` is only the worker's currently open child spans. A required system with no open span is
+a dashed `Opens when needed` slot and carries no session id, age or health. Its matching observed
+span upgrades that same slot to the ordinary open tile with exact identity; observed sessions outside
+the requirement set remain appended and visible. A historical lease without the launch-time field is
+an explicit unavailable reason, never an empty set. A terminal worker draws neither kind because its
+process owns no browser resources.
 
 **The pool controls are the demo's `+ Add workers` dialog**, which is the shape ref
 execution-and-sessions names (*"`+ Add workers` chooses a workflow and a count"*): a workflow

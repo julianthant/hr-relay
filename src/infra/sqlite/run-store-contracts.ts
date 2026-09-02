@@ -25,6 +25,7 @@ import {
 import { StartPlanRecordSchema } from "../../domain/run/start-plan.js";
 import {
   WorkerControlSchema,
+  WorkerBrowserSystemsSchema,
   WorkerLeaseRecordSchema,
   WorkerLifecycleSchema,
 } from "../../domain/run/worker.js";
@@ -278,6 +279,7 @@ export type StartPlanConsumeOutcome = z.infer<typeof StartPlanConsumeOutcomeSche
 export const WorkerStartRequestSchema = z.strictObject({
   workerId: WorkerIdSchema,
   workflow: WorkflowIdSchema,
+  browserSystems: WorkerBrowserSystemsSchema,
   processId: PositiveIntSchema,
   requestedBy: ActorIdSchema,
   now: IsoInstantSchema,

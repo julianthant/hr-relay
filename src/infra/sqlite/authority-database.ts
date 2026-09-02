@@ -7248,6 +7248,7 @@ export class AuthorityDatabase implements Disposable {
           const lease = WorkerLeaseRecordSchema.parse({
             workerId: request.workerId,
             workflow: request.workflow,
+            browserSystems: request.browserSystems,
             processId: request.processId,
             leaseGeneration: (existing?.leaseGeneration ?? 0) + 1,
             lifecycle: { state: "starting", startedAt: request.now },

@@ -44,6 +44,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { TaskLogger } from "../../base/task.js";
+import { workflowProjections } from "../../base/workflow.js";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import { DESCRIPTORS, SERVER_REGISTRY } from "../../control/workflow-registry.js";
 import type {
@@ -614,6 +615,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     const started = database.authority.workerLeases.start({
       workerId,
       workflow: workflowId,
+      browserSystems: workflowProjections(descriptor).systems,
       processId: input.processId ?? process.pid,
       requestedBy: LOCAL_OPERATOR_ACTOR_ID,
       now,
