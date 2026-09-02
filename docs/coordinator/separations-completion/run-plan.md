@@ -6,8 +6,9 @@
 | R2 | make readiness concrete and inspectable | u6–u9 | received; u7/u8/u9 proved, u6 closed through R2a | current gate table, existing preview visible, exact implementation proposal, reconciled status |
 | R2a | restore a reliable unchanged full-suite gate | u16 | complete, code `5853ef80`, report verified | default full coverage green with assertions/floors/timeouts preserved; lint and current runtime restored |
 | R3a | implement corrected identity approval policy | u10–u12 | complete at `36f0562f`; received | D309, machine verification/name-only gate, 4,809 coverage + 287 parity |
-| R3b | sweep scope and surviving filing proof | u17–u18 | ready after R3a; target selection deferred to R4 | exact-set dedupe/fencing, typed fresh filing-presence read, real composition refusal/success; no real HR writes |
-| R4 | fresh rehearsal and controlled proof | u13–u15 | R3a/R3b + exact targets/dispositions; corrected EID approval rule | fresh rehearsal, controlled-write receipts/measurements, criterion 5 and close-out |
+| R3b | sweep scope and surviving filing proof | u17–u18 | complete at `4d4804ec`; received | D310 exact-set/fresh-filing mechanics, 4,818 coverage + 287 parity |
+| R4a | fresh rehearsal and target packet | u13–u14 | ready after R3b; dry-run/read-only authorized | one current dashboard dry run, exact-run 0/0/0, D309 visible authority, exact live candidate/disposition packet |
+| R4b | controlled proof and close | u15 | R4a + explicit operational authorization for exact live target/disposition | controlled receipts/read-backs/measurements, criterion 5 and close-out |
 
 ## Dispatch ledger
 R2 uses one compact nested `sup_supervisor` because serial runtime access and two worker slots suffice; no new user-owned task is requested. Primary checkout exception is in profile. R2 reported without source commits. Agent id `/root/sup_supervisor_separations_readiness` (native `sup_supervisor`, clean-context launch, 2026-09-02). Report `reports/r2-readiness.md`; evidence `evidence/r2/`; read-only review findings `research/r2-protocol.md`. Coordinator owns board, plan, decisions and canonical status docs; supervisor owns report/evidence/research only.
@@ -36,3 +37,6 @@ R2 report verified against raw serial log, source config and rendered screenshot
 
 ## R3a received / R3b dispatch admission
 R3a integrated u10–u12 in commits `47c47666`, `f785a029`, `233cde61`, `8063fb5f`, `5931a695`; proof `36f0562f`. Report and receive record prove gates/review/runtime. R3b exact brief `briefs/r3b-sweep-and-filing-survival.md`, units u17/u18, same nested native supervisor and established primary checkout exception. Exact live target/disposition is deliberately deferred to R4 and does not block safe implementation/tests.
+
+## R3b received / R4a dispatch admission
+R3b integrated u17/u18 in `1bda8afb`, `730a5030`, `4e00d145`, `f2eee0ae`; proof `4d4804ec`. R4a brief `briefs/r4a-fresh-rehearsal-and-target-packet.md`, units u13/u14, same nested native supervisor, serial live-runtime exception. It may start exactly one dashboard `dryRun=true` run and perform live reads; no gate approval or HR write. u15 remains dependent on the exact operator-facing packet and explicit operational authorization.
