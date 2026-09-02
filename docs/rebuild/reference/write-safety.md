@@ -311,10 +311,11 @@ literal, so the read-back is bound to the person it is about.
 
 **Its subject binds on NAME, and that is the weakest binding in the tree.** `create-termination`
 declares `subject.match: "normalized-exact-name"` against UCPath's displayed person name, because
-the Smart HR wizard page the write is staged on displays no EID. §14's ALWAYS-GATE is what carries
-the wrong-person control for that write; the binding proof carries only "the page still shows the
-person the gate approved." Neither substitutes for the other (§14.1), and this row is the clearest
-case of why.
+the Smart HR wizard page the write is staged on displays no EID. §14's identity-authority task is
+what carries the wrong-person control for that write: independently supplied identity is proved
+against the earlier UCPath EID read-back, while name-resolved identity carries a real operator
+result. The binding proof independently carries "the page shows the expected person's name."
+Neither substitutes for the other (§14.1), and this row is the clearest case of why.
 
 **Kuali and OnBase are where the contract FORCES proof to exist.** Kuali's legacy save is a click
 plus a sleep with its error detection deliberately removed as false-positive-prone (§0), so a
@@ -574,15 +575,17 @@ transaction number (separations §4c's UCPath-transaction omission) reaches Kual
 typed FACT, consumed by the finalization receipt fold with `disposition: "operator-asserted"`; the
 result's `pendingSweep` carries the named `{ state: "omitted", step }` arm
 (`OmittedStepResultArmSchema`, `src/domain/workflow/step-omission.ts`) rather than a fabricated
-`TransactionOutcome`. Gate nodes in an omitted step still run — ALWAYS-GATE is not a step choice —
-so an asserted receipt is approved as typed, never auto-approved.
+`TransactionOutcome`. Gate nodes in an omitted step still evaluate their own declared condition — a
+step choice cannot suppress a required gate. Under D309, an asserted receipt cannot qualify as
+supplied-EID machine verification without the exact origin and UCPath read-back proof that arm
+requires; a name-resolved packet still opens the operator gate.
 
 ### 3.2 The controlled-commit criterion — every write workflow owes its own
 <!-- roadmap: track-a -->
 
 <!-- roadmap-status: track-a -->
 - [x] the criterion is MET once, on the kernel, by `kuali-timekeeper-annotation` (§3.4, D135) — that is what unblocked write-heavy migration
-- [ ] separations owes **three** controlled commits — `ucpath/create-termination`, `ucpath/delete-pending-terminations`, `kuali/save-separation-finalization` — each on an operator-approved canary. As of 2026-09-02, migration §§9.35–9.36 block the proposed protocol: separate approval sequencing, sweep-key reuse, and finalization citing a deleted filing. The target-restoration requirement below remains binding; any narrowly scoped retention exception is an operator decision in this owner
+- [ ] separations owes **three** controlled commits — `ucpath/create-termination`, `ucpath/delete-pending-terminations`, `kuali/save-separation-finalization` — each on an operator-approved canary. As of 2026-09-02, D309 removes separate in-workflow approval sequencing from the blocker set; migration §§9.35–9.36 still block the protocol on sweep-key reuse and finalization citing a deleted filing. The target-restoration requirement below remains binding; any narrowly scoped retention exception is an operator decision in this owner
 - [ ] chunk 5c's Kuali commit additionally carries D207's named obligation: confirm the transferred 30 s window or move it (§4.2)
 - [ ] `probeToFenceMaxMs` per workflow is still unmeasured, and a settled preview cannot measure it (§5)
 - [ ] every later migration order owes the same five-part shape at its own migration — orders 4, 6, 7 and 9 name it explicitly (doc 03c)
@@ -1502,7 +1505,7 @@ indistinguishable from an accident.
 | **`atomic-write-outbox`** | beat ⑦'s intent + attempt + ledger outbox + terminal-span outbox commit in ONE outer authority transaction; injected failure after every storage step rolls back every change and leaves the authority generation unchanged |
 | **`transaction-pairing`** | a transaction pairs prepare and commit arms from one system under one lease, binds the commit key from workflow input and declared upstream outputs only, declares a positive probe-to-fence budget and a dry-run policy, carries a same-system read probe, and no commit contract is reachable as a standalone step anywhere in `src/` |
 | **`ledger-projector`** | ONE serialized actor-attributed writer, never pruned: no module outside `src/infra/ledger/` may append the ledger, and no module that can name `ledger/` may call a deletion primitive — both arms against violating fixtures, with `pruneEventStreams` structurally blind to it |
-| **`identity-gate-before-commit`** | §14.6 #2 — in a separation-class descriptor BOTH sinks (every transaction node AND the terminal result) are graph-reachable only through the operator gate's own ancestry |
+| **`identity-gate-before-commit`** | §14.6 #2, amended by D309 — in a separation-class descriptor BOTH sinks (every transaction node AND the terminal result) cross the shared identity-authority task; the operator gate remains exact and mandatory on the `name-resolved` arm, while independently supplied EIDs require machine proof against UCPath's actual read-back |
 
 Two more guards carry write-lane invariants under other owners: **`task-driver-boundary`** (ref
 operator-trust) refuses a `commit` implementation outside a store driver owner that validates its
@@ -1660,9 +1663,9 @@ only. A fifth contract is where that stops being enough.
 <!-- roadmap: sep-6a -->
 
 <!-- roadmap-status: sep-6a -->
-- [x] the composition is BUILT — `src/workflows/separations/descriptor.ts` composes twenty nodes ending in three transactions: `clear-pending` → `file-termination` → `finalize-kuali`, all downstream of the `identity-approval` gate
-- [x] the gate's packet carries the WRITE PLAN, so the digest an approval binds to covers the dates, the template, the reason code and the department — not only the person (D211; §14.10)
-- [x] `identity-gate-before-commit` audits BOTH sinks (every transaction node AND the terminal result) and caught the descriptor's first draft reading the run's product off the pre-gate node (D202)
+- [x] the composition is BUILT — `src/workflows/separations/descriptor.ts` composes twenty nodes ending in three transactions: `clear-pending` → `file-termination` → `finalize-kuali`, all downstream of the shared identity-authority task
+- [x] the identity packet carries the WRITE PLAN, so the digest machine verification or an approval binds to covers the dates, the template, the reason code and the department — not only the person (D211/D309; §14.10/§14.12)
+- [x] `identity-gate-before-commit` audits BOTH sinks (every transaction node AND the terminal result), pins the exact name-resolved gate condition, and caught the descriptor's first draft reading the run's product off the pre-authority node (D202/D309)
 - [ ] none of the three transactions has run its §3.2 controlled commit — the worked example below is the DESIGN walked against the real node names, not a record of a run
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/workflows/separations/descriptor.ts:262-280,528-660` and the four contract files; left: the three controlled commits (doc 03b)
 <!-- /roadmap-status -->
@@ -1678,9 +1681,10 @@ contract names the descriptor actually uses. It is the design demonstrated, not 
 controlled commit is still owed (§3.2).
 
 Input `{ emplId:"10001573", action:"termination", effectiveDate:"08/01/2026" }`, dry run **off**,
-`instance:"prod"`. The graph reaches this node only through the `identity-approval` gate (§14.3),
-and the sweep transaction `clear-pending` runs BEFORE it — its own permanent key, its own fence,
-its own proof (§5).
+`instance:"prod"`. The graph reaches this node only through the shared identity-authority task
+(§14.12); its supplied-EID arm requires exact UCPath read-back, while its name-resolved arm requires
+the `identity-approval` gate. The sweep transaction `clear-pending` runs BEFORE it — its own
+permanent key, its own fence, its own proof (§5).
 
 **Happy path (seven beats):**
 ```
@@ -1877,27 +1881,28 @@ built arm. Three are live operator or orchestrator calls, each with the migratio
 
 ---
 
-## 14. The identity-approval gate — the wrong-PERSON control
+## 14. Separation identity authority — the wrong-PERSON control
 <!-- roadmap: phase0-always-gate -->
 
 <!-- roadmap-status: phase0-always-gate -->
-- [x] designed in Phase 0 on the operator's ALWAYS-GATE ratification (D77, 2026-07-26) — no auto-approve-on-match mode, both separation types
+- [x] designed in Phase 0 as ALWAYS-GATE (D77, 2026-07-26), then corrected by the operator to source-conditioned identity authority (D309, 2026-09-02)
 - [x] BUILT, live-proved and terminal `done` over a real person through the real command endpoint (D202, §14.9)
 - [x] the packet carries §14.10's write plan, so the digest an approval binds to covers the values the writes will consume, not only the person (D211)
 - [x] all three ceremonies exist and an unrecognised `approvalShape` refuses BY NAME (D226, §14.11)
 - [x] the ONE ratified exemption is scoped and its expiry named (D127, §14.8)
-- [x] the argument in one line, live: the `T002173685` incident's own name pair classifies as `same`, so a tier-TRIGGERED gate would not have fired on the case it exists for (§14.10)
+- [x] D309 gates every name-resolved identity regardless of similarity; an independently supplied EID proceeds only after exact UCPath read-back, with explicit machine-verification provenance (§14.12)
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/separations/identity-evidence.ts` (`deriveApprovalShape`), `src/domain/separations/identity-approval.ts` (the three durable codes), `src/domain/trust/gate-decisions.ts`, `src/dashboard/app/identity-ceremony.ts`, `src/dashboard/surfaces/identity-approve.tsx`, `tests/unit/architecture/identity-gate-before-commit.test.ts`; left: nothing in the design — §14.7's two migration values are still unasked
 <!-- /roadmap-status -->
 
-Status: **designed 2026-07-26 (D77); BUILT and live-proved 2026-08-12 (D202), packet widened
-2026-08-14 (D211), all three ceremonies shipped 2026-08-19 (D226).** Policy ratified by the operator 2026-07-24: **ALWAYS-GATE**
-— manual approval on every separation, for both separation types the operator distinguishes
-(**Kuali separations** and **I-9 separations**), with **no auto-approve-on-match mode**. **Scope
-(D127, 2026-08-04): §14.8** records the one ratified exemption — `kuali-timekeeper-annotation`,
-which resolves no person and files nothing — and the two checkable facts any future exemption must
-show. D77 is otherwise unchanged and still binds every commit that consumes an operator-approved
-subject.
+Status: **source-conditioned identity authority ratified and built 2026-09-02 (D309).** D77's
+2026-07-24 ALWAYS-GATE trigger is superseded for Separations. A Kuali document EID, or an explicit
+canonical harness EID with declared source, proceeds without a human decision only when UCPath's
+actual detail read-back is the exact same EID. A name-resolved EID always opens the existing typed
+operator gate, even when one candidate and every name token agree. Missing, malformed, ambiguous,
+mismatched or unproved identity fails loud. Both arms still require fresh subject binding at the
+transaction fence; neither changes business/employment validation. D127's retired annotation
+exemption remains historical. §§14.1–14.11 preserve the design/build history and are amended by the
+current contract in §14.12 wherever they say every separation opens a gate.
 
 ### 14.1 Why this section exists at all
 <!-- roadmap: phase0-always-gate -->
@@ -1918,12 +1923,12 @@ ratification made the policy cheap to design, so it is designed here, in Phase 0
 
 | Layer | Question it answers | Failure it catches | Owner |
 |---|---|---|---|
-| **Identity-approval gate** (this section) | *Is this the right person to act on?* | wrong business selection — a name match that resolved a different real employee | operator decision |
+| **Identity authority** (this section) | *Which person is this separation about, and what proves it?* | wrong business selection or an unproved supplied EID | exact UCPath read-back for a supplied EID; operator decision for a name-resolved EID |
 | **Fresh subject binding** (§ binding proof) | *Is the page I am about to click on showing that person?* | correct selection, stale/switched page state | machine observation |
 
-A run must pass both. The gate produces an **approved subject**; the binding proof asserts the
-staged page equals that approved subject at the instant of the fence. Neither is inferable from the
-other, and the gate's answer is what the binding proof's `expected` side is bound to.
+A run must pass both. Identity authority produces a discriminated **resolved subject** carrying
+`machine-verification` or `operator-approval`; the binding proof asserts the staged page equals that
+subject at the instant of the fence. Neither is inferable from the other.
 
 ### 14.2 What ports, and what deliberately changes
 
@@ -1932,11 +1937,11 @@ The legacy implementation is live-verified and ports nearly whole (`src/domain/i
 side-by-side presentation, the per-candidate "Use this EID", the manual 8-digit entry, dismiss, and
 the re-queue-with-approved-EID resume are all proven operator UX and stay.
 
-**One thing changes, deliberately: the trigger.** The legacy gate is **mismatch-only** — it fires
-only when `classifyNameSimilarity` returns the `different` tier, and `same`/`similar` proceed
-silently. ALWAYS-GATE fires on **every** separation regardless of match quality. That is a policy
-widening, not a port, and it must be recorded as such because it changes the operator's daily load
-and introduces a new failure mode (§14.6).
+**The trigger changed twice.** The legacy gate was mismatch-only. D77 widened it to every
+separation. D309 now keys the decision to identity origin: every `name-resolved` EID requires the
+operator regardless of similarity, while an independently supplied EID uses exact UCPath read-back
+as machine authority and creates no human decision. A caller, run mode, UI flag or successful search
+cannot suppress the name-only gate or promote a name-search result into supplied authority.
 
 Three legacy mechanics do **not** port, because the rebuild has real gate nodes:
 
@@ -2014,7 +2019,7 @@ provenance, not a special case). On resume the kernel re-reads the candidate and
 | # | How it fails | Guard |
 |---|---|---|
 | 1 | **Rubber-stamping — the dominant risk of ALWAYS-GATE.** A gate that fires on every run, and is almost always obviously correct, trains the operator to click approve without reading. The legacy mismatch-only gate was *rare*, so it carried signal; an always-gate carries none by default and could end up strictly worse than the old behaviour | The packet leads with **disconfirming evidence** (differing fields first), and the approve control is **not uniform**: a single unambiguous high-similarity candidate is a one-click approve, while **any** ambiguity — 2+ candidates, a `different` similarity tier, an EID conflict, a manual EID — requires an explicit distinct action (choose-a-candidate, or type the EID). The shape of the decision changes with its risk, so a risky one cannot be dispatched by muscle memory |
-| 2 | **The gate is bypassed by a resume/retry path** | Gate resolution is a typed run-state transition owned by ref workflow-model, not a `data` flag. A resumed run whose gate result is missing/expired/digest-mismatched re-opens the gate; a commit whose `expected` subject has no backing approved gate result **cannot fence** — the binding proof has nothing to bind to. Guard: `identity-gate-before-separation-commit` asserts every separation descriptor's commit is graph-reachable only through the gate node |
+| 2 | **Identity authority is bypassed by a resume/retry path** | Gate resolution is a typed run-state transition owned by ref workflow-model, not a `data` flag. A resumed name-resolved run whose gate result is missing or digest-mismatched re-opens the gate. A supplied-EID run re-evaluates the false gate condition, rejects any stale gate result/checkpoint collision and reruns exact machine verification. The shared authority task dominates every commit and identity-bearing terminal result. Guard: `identity-gate-before-commit` pins both sinks and the exact name-only condition |
 | 3 | **Approval drifts from the thing approved** | `evidenceDigest` + `approvedAt` + the re-read on resume (§14.5) |
 | 4 | **The approved person and the staged page diverge** | not this gate's job — §binding proof re-observes at the fence. The two-layer split is the guard |
 | 5 | **Gate result becomes free-form control state** | D67: the span event carries a validated resolution key + payload hash; the payload itself lives in SQLite/checkpoint under this schema |
@@ -2124,8 +2129,8 @@ states something false about the human decision it records — D197's defect, on
 
 | §14 requirement | How it is true |
 |---|---|
-| ALWAYS-GATE, no mode disables it (§4d/D7) | the graph has NO branch and NO `when`; `dryRun` reaches only the write sequencer, proved by an executable arm that parks a dry run at the gate; a resume past an unresolved gate fails by name |
-| the commit/product is reachable only through the gate (§14.6 #2) | `identity-gate-before-commit` now audits BOTH sinks — every transaction node AND the terminal result. A path is gated when it reaches the gate's own ancestry; a node outside that ancestry is data the operator never saw, and a side read feeding the sink is the violation. It caught the descriptor's first draft, which derived the run's product off the pre-gate node |
+| source-conditioned identity authority, no mode or caller disables a required gate (§4d/D7/D309) | the graph's only `when` reads the validated packet origin; `dryRun`, run mode, body and dashboard state cannot change it. A name-resolved run parks until a real result exists; a supplied-EID run accepts no gate result and must pass machine verification |
+| the commit/product is reachable only through identity authority (§14.6 #2, D309) | `identity-gate-before-commit` audits BOTH sinks — every transaction node AND the terminal result — through the shared authority task, and separately pins the exact name-resolved gate condition. A side read feeding a sink after authority is the violation. It caught the descriptor's first draft, which derived the run's product off the pre-authority node |
 | only an `IdentityApprovalResult` resolves it (§14.6 #5) | the same guard pins the registered gate's schema hash to `IdentityApprovalResultSchema`; the kernel compares an incoming payload against exactly that value |
 | the approval binds to the evidence (§14.5) | the comparison node stores `evidenceDigest` beside the packet; the post-gate node refuses a divergent digest with `identity-approval-evidence-moved` |
 | disconfirming evidence first (§14.6 #1) | `comparisons` is sorted disagreements-first by construction |
@@ -2187,7 +2192,7 @@ not have fired on the very case it exists for.
 
 <!-- roadmap-status: track-b -->
 - [x] B1 — all three gate ceremonies are built and the surface renders exactly the one control the server asked for (`src/dashboard/app/identity-ceremony.ts`, `src/dashboard/surfaces/identity-approve.tsx`); the `choose` ceremony selects no default, and an unrecognised `approvalShape` refuses by name in both the type system and at runtime (D226)
-- [x] the parity corpus photographs a gated run for each shape, with the shapes DERIVED by `deriveApprovalShape` from real inputs rather than authored
+- [x] the parity corpus photographs the name-resolved typed-EID ceremony that remains reachable under D309; pure client tests retain strict coverage for every supported historical ceremony shape, including fail-loud refusal of an unknown shape
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/separations/identity-evidence.ts:208` and the two dashboard modules; left: nothing in B1 — the rest of Track B is ref dashboard-surfaces's and ref frontend-backend-integration's
 <!-- /roadmap-status -->
 
@@ -2251,8 +2256,61 @@ plan — because the approval binds to the digest of the exact packet shown, and
 person is not an approval of a date.* Rendering the plan is what makes that binding something the
 operator actually saw rather than a property of a hash.
 
-**The reference corpus now photographs a gated run.** The parity corpus had served no `identity-gate`
-section since it existed, so every `run-open-gate` reference showed a decision card with no way to
-answer it and all three ceremonies were unphotographed. Two gated fixtures now serve one each, with
-their shapes DERIVED by `deriveApprovalShape` from real inputs rather than authored — a fixture that
-asserted the shape would photograph its own opinion of a policy this section makes the server's.
+**The reference corpus now photographs the reachable name-resolved gate.** The parity corpus had
+served no `identity-gate` section since it existed, so every `run-open-gate` reference showed a
+decision card with no way to answer it. Under D309, current name-resolved fixture packets derive the
+`type-the-eid` shape from real inputs rather than authoring it, while pure client tests retain the
+historical ceremony compatibility and unknown-shape refusal. A fixture that asserted the shape
+would photograph its own opinion of a policy this section makes the server's.
+
+### 14.12 Supplied EID = machine verification; name-only = operator gate (D309, 2026-09-02)
+
+**Ratified by the operator 2026-09-02.** This section supersedes D77's unconditional trigger and
+amends D202/D211/D226 only where they say every Separations run opens the identity gate. Their
+historical live evidence, command authority, digest binding and ceremony behavior remain evidence of
+the name-resolved arm.
+
+The authority fork is the validated origin of the EID:
+
+| Origin | Required proof | Outcome |
+|---|---|---|
+| Kuali document EID (`document-eid`) | the document field is the declared source and UCPath's actual Person/Org detail read-back is the exact same EID | `machine-verification`; continue without a gate result |
+| explicit step-harness EID (`canonical-eid`) | the canonical input declares that source, carries no contradictory document EID, and UCPath's actual detail read-back is exact | `machine-verification`; continue without a gate result |
+| name search (`name-resolved`) | the search resolves exactly one person, the packet records that origin, and the existing typed `resolve-gate` command records the operator's decision | `operator-approval`; park until a real decision exists |
+
+A successful search by a requested EID is not the proof. The load-bearing observation is the EID on
+UCPath's actual detail page, captured by `ucpath/read-job-summary` and checked by
+`workflow:separations/match-identity`. A supplied EID that is absent, malformed, inconsistent with
+its declared source, different from the read-back, or bound to a moved packet fails loud. The run
+never broadens to a name candidate. A name disagreement remains first-class packet evidence but does
+not overrule an exact independently supplied/read-back EID. Employment classification, department,
+dates and every business refusal remain independent.
+
+The graph carries one declarative condition on the existing `identity-approval` operator gate:
+`comparison.packet.emplIdSource == "name-resolved"`. The executor evaluates that condition from
+validated node output. False means **no operator decision was required**: it opens no gate, accepts
+no gate result, and records only the exact `condition-false` control outcome. A task depending on the
+skipped gate receives a `skippedGates` provenance fact only after the collector re-evaluates the same
+descriptor condition from canonical input and authenticated checkpoints. The receipt re-evaluates it
+again and emits `node.identity-approval = absent`, `mandatory: false`, plus a branch/not-taken
+explanation; it emits no `kind: gate` decision and no operator source. A false condition alongside a
+stored result or checkpoint is contradictory authority and refuses. A true condition with no real
+gate result parks. Retry/resume cannot turn an older result into current machine verification because
+`approval` remains `always-rerun` and the executor rejects a result after the condition changes.
+
+`workflow:separations/verify-identity-approval` now produces a discriminated resolved subject:
+`{ authority: "machine-verification", source, emplId, evidenceDigest, ucpathName, nameTier }` for the
+supplied arm, or the existing `{ authority: "operator-approval", ... }` for the name-only arm. The
+write sequencer consumes that subject as the expected side of its fresh page binding in either case.
+Machine verification never forges `resolvedBy`, `resolvedAt`, a `resolve-gate` command, a gate result,
+`chosenFrom` or an approval ceremony. The dashboard serves the identity-gate section only for a
+name-resolved packet; a historical/impossible parked supplied-EID packet is refused by name rather
+than presented as current approval work.
+
+This changes no ordinary write ceremony. The normal composition still has one identity-authority
+seam before the write half and no repeated per-write approval. D309 also supersedes D287's extra
+in-workflow per-write approval requirement for a supplied-EID verified path. A future `dryRun=false`
+operation still requires explicit operator authorization and the ordinary runtime admission owned by
+`hr-manage`/this spec; that authorization is not a second workflow gate. The disposable deletion
+target, sweep identity, filing-survival design and target restoration/retention choice remain the
+pending protocol. D309 neither supplies that protocol nor authorizes a real HR write.

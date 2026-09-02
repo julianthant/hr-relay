@@ -931,14 +931,15 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   Workflow Panel total == Status Bar sum == rendered Queue Row count **by construction**. Failure
   mode it prevents: a future surface quietly re-deriving a number and re-opening a 4-fix bug class.
 
-- **`identity-gate-before-commit.test.ts` (D77 — ref write-safety §14).** For every descriptor whose commit
-  contract consumes an operator-approved subject, walk the graph and assert the commit node is
-  reachable **only** through the identity-approval gate node — no branch bypasses it, no `startAt`
-  entry point lands past it, and no gate node sits *inside* a transaction node (D26 forbids a park
-  between prepare and commit). Also asserts the gate's result schema is the typed
-  `IdentityApprovalResult`, never a free-form `data` flag — the legacy shape that made a paused run
-  render as `done`. This is the static half of the wrong-person control; the runtime half is that a
-  commit whose `expected` subject has no backing approved gate result cannot fence.
+- **`identity-gate-before-commit.test.ts` (D77, amended by D309 — ref write-safety §14).** For every
+  separation-class descriptor, walk the graph and assert every commit and identity-bearing terminal
+  result crosses the shared `verify-identity-approval` authority task. The task emits either exact
+  supplied-EID machine verification or operator approval; a side read added after it cannot feed a
+  sink. The guard separately pins the gate's exact condition to
+  `comparison.packet.emplIdSource == name-resolved`, its `resolvedBy: operator`, typed
+  `IdentityApprovalResult`, and the authority task's dependency on it. This is the static half of
+  the wrong-person control; the runtime half refuses an unproved supplied EID, a name-resolved EID
+  with no gate result, and stale or contradictory evidence before a fence can be minted.
 
 - **`archive-invariants.test.ts` (D80 — ref dashboard-surfaces §10.2).** Three assertions: (1) rendering an
   archived run touches **zero** version-conditional code paths — the archived payload is

@@ -374,8 +374,8 @@ the composed `separations` graph makes between its reads and its writes lives he
 | Item | Kind | Contract id | What it does | Reuse notes |
 |---|---|---|---|---|
 | `matchTerminationTypeTask` | task | `workflow:separations/match-termination-type` (read) | §4a's refusal, executed: exact-match the Kuali termination type against the live-captured map, returning `{classification, template, reasonCode}` or failing with one of four distinct codes. | `replay:"checkpoint"`. It checks the OPTION LIST first — a republished control makes every answer suspect, including the ones that still match. There is no substring tier and no default arm; the map lives in `src/domain/separations/termination-type.ts`. |
-| `matchIdentityTask` | task | `workflow:separations/match-identity` (read) | Chunk 3's pure comparison: folds the Kuali document, the Job Summary grid and the name search into ref write-safety §14.2's decision packet plus its evidence digest, and computes the `approvalShape` SERVER-side. | `replay:"checkpoint"`. It classifies the name tier but decides nothing — the gate does. Used by every separation-class write chunk rather than reimplemented. |
-| `verifyIdentityApprovalTask` | task | `workflow:separations/verify-identity-approval` (read) | The post-gate check: re-derives the packet, proves the digest the operator approved is still the digest this run holds, and returns the approved subject. | `replay:"always-rerun"` — an approval is checked against THIS run's evidence, never replayed from a checkpoint. Four distinct refusal codes, including `identity-approval-eid-not-shown`. |
+| `matchIdentityTask` | task | `workflow:separations/match-identity` (read) | Chunk 3's pure comparison: folds the Kuali document, the Job Summary grid and the name search into ref write-safety §14.2's identity packet plus its evidence digest, validated EID origin and server-computed `approvalShape`. | `replay:"checkpoint"`. It classifies the name tier but grants no authority. The conditional gate handles name-resolved identity; the shared authority task below handles both origins. Used by every separation-class write chunk rather than reimplemented. |
+| `verifyIdentityApprovalTask` | task | `workflow:separations/verify-identity-approval` (read) | The identity-authority check: re-derives the packet and digest, then returns either exact supplied-EID machine verification against UCPath's actual read-back or a subject backed by the real operator result for a name-resolved EID. | `replay:"always-rerun"` — neither current machine proof nor an operator result is replayed from this task's old checkpoint. Six distinct refusal codes include required/unproved supplied identity, moved evidence and an EID the packet never showed. |
 | `matchDepartmentOptionTask` | task | `workflow:separations/match-department-option` (read) | **S55's upstream half** (chunk 5): resolves a UCPath dept id to the EXACT visible text of the Kuali `Department*` option that carries it, verbatim from the observed list. | `replay:"checkpoint"`. Code match ONLY — legacy's two substring tiers do not port, and neither does a normalized-exact description tier, which would be a quieter fuzzy match. Four distinct refusal codes; the fold lives in `src/domain/separations/department-option.ts`. |
 | `readSeparationPlanTask` | task | `workflow:separations/read-separation-plan` (read) | Chunk 6: everything the composed graph needs from the separation document ALONE — the employee name the UCPath search runs on, the two Kuali dates, and the ±1-month New Kronos window they imply. | `replay:"checkpoint"`. It runs before every other read because its four refusals (blank name, blank LDW, blank separation date, and **S7**'s future date) cost nothing there and cost two browser sessions one node later. S7's reference is the DOCUMENT READ's own instant in `America/Los_Angeles`, never a clock read. |
 | `matchSeparationSubjectTask` | task | `workflow:separations/match-separation-subject` (read) | **S18/S19's fork** (chunk 6): which EID this separation is about, and whether the document named it or a name search resolved it. | `replay:"checkpoint"`. §5 item 10's answer is NO delegation — legacy's conditional person-lookup child run does not port. A blank EID whose name resolves nobody, or several people, REFUSES; and `name-resolved` makes `deriveApprovalShape` demand a typed EID, which is the whole safety property. |
@@ -439,8 +439,8 @@ Module binds **four** stores: `[kualiStore, ucpathStore, newKronosStore, separat
 five harness descriptors made provable, and those harnesses live inside the timeline-step folders
 they prove.
 
-Nineteen nodes: reads and folds, one ALWAYS-GATE, and three transaction nodes in doc
-09's order.
+Nineteen nodes: reads and folds, one name-resolved conditional operator gate, and three transaction
+nodes in doc 09's order.
 
 | Node | Contract | Store task | System |
 |---|---|---|---|
@@ -456,8 +456,8 @@ Nineteen nodes: reads and folds, one ALWAYS-GATE, and three transaction nodes in
 | `timecard` | `new-kronos/read-separation-timecard` (read) | `newKronosStore.readSeparationTimecard` | new-kronos |
 | `dates` | `workflow:separations/read-separation-dates` (read) | `separationsStore.readSeparationDates` | none |
 | `comparison` | `workflow:separations/match-identity` (read) | `separationsStore.matchIdentity` | none |
-| `identity-approval` | **gate**, `resolvedBy: operator` | — | none |
-| `approval` (`always-rerun`) | `workflow:separations/verify-identity-approval` (read) | `separationsStore.verifyIdentityApproval` | none |
+| `identity-approval` | **conditional gate**, `resolvedBy: operator`, when `comparison.packet.emplIdSource == name-resolved` | — | none |
+| `approval` (`always-rerun`) | `workflow:separations/verify-identity-approval` (read) | `separationsStore.verifyIdentityApproval`; emits machine-verification or operator-approval authority | none |
 | `clear-pending` | **transaction** — `ucpath/stage-pending-termination-sweep` → `ucpath/delete-pending-terminations` | `ucpathStore` | ucpath |
 | `file-termination` | **transaction** — `ucpath/stage-termination` → `ucpath/create-termination` | `ucpathStore` | ucpath |
 | `receipt` (`always-rerun`) | `workflow:separations/verify-termination-receipt` (read) | `separationsStore.verifyTerminationReceipt` | none |
@@ -498,8 +498,9 @@ easy to miss:
   still missing is the **finalization WRITE family** (`Send Back`, `Mark Complete` — the controls that
   actually advance or finalize a real separation), which stays explicitly **not addressable** through
   `kualiStore`; only the benign `Timekeeper Name` annotation can be written today. Minted at
-  **order 8** (separations), under ref write-safety §14's ALWAYS-GATE identity-approval — the operator ratified manual
-  approval on every separation with no auto-approve-on-match.
+  **order 8** (separations), under ref write-safety §14's identity-authority seam — D309 requires
+  manual approval for name-resolved identity and exact UCPath read-back proof for an independently
+  supplied EID.
 
 Not a gap, for the record: `ai.advisory` (`createGeminiAdvisoryAdapter`) is wired in the DASHBOARD
 composition root (D178's operator-facing POST route) and deliberately absent from the worker's

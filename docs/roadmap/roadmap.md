@@ -13,9 +13,9 @@ tiles:
 - Phases complete | 0 · 1 · 2 | runtime marker `completedThrough: 2j`
 - Active | Phase 3 | per-workflow migration · entered at separations
 - Workflows migrated | 2 of 15 | + separations at 8 of 9 exit criteria
-- Decisions | D1–D276 | D271–D276 ratified 49 Phase 3a fidelity decisions; resulting ports/proofs remain open · D131 retired, never reused
+- Decisions | D1–D309 | D309 makes Separations identity authority source-conditioned: supplied/read-back EID is machine-verified; name-only requires the real gate · D131 retired, never reused
 - Gates | 69 active guards | integrated D191 2,729/2,729 · parity last frozen 157/157 on 08-25 · schema v18
-- !Critical-path blocker | Separations controlled-test protocol | 2026-09-02: historical 4589 preview is inspectable; §§9.35–9.36 block D287 because its sweep deletes the filing Kuali cites. Resolve protocol/approval/sweep-identity seams, then rehearse and individually approve real writes
+- !Critical-path blocker | Separations controlled-test protocol | 2026-09-02: historical 4589 preview is inspectable; §§9.35–9.36 block D287 because its sweep deletes the filing Kuali cites. Resolve the deletion/finalization and sweep-identity protocol, then rehearse and obtain explicit live-run authorization
 
 <!-- roadmap:start -->
 
@@ -33,7 +33,7 @@ open: no
 builds:
 - [x] DOCS the plan SSOT — fourteen reconciled design docs, each owning its contracts (the shelf is now `00`–`05` + `reference/`, D263)
 - [x] DOCS the decision changelog `reference/decisions` as a pointer index
-- [x] DOCS ALWAYS-GATE identity approval designed (ref write-safety §14)
+- [x] DOCS separation identity authority designed (historical D77 ALWAYS-GATE; current D309 source condition; ref write-safety §14)
 - [x] DOCS size model + MUST / SHOULD / LATER delivery tiers (D76)
 - [x] DOCS two-repo coexistence + one cutover (D88–D94)
 
@@ -41,14 +41,15 @@ log:
 - 2026-08-25 | test-tiers | Phase 0 remains DONE; of its two later-unbuilt promises, D85 is now built under R10's `cli dry-run-scenario` + `config/test-subjects.json` + durable-result names. D79's scaffold generators are the one remaining promise (new-workflow owned by `def-explorer-edit`, new-task unowned and reported)
 - 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
 
-### ALWAYS-GATE identity approval {#phase0-always-gate}
+### Separation identity authority {#phase0-always-gate}
 status: done
-date: D77 · ref write-safety §14
+date: D77 → D309 · ref write-safety §14
 doc: 00 §ALWAYS-GATE identity approval · ref:write-safety §14 · ref:write-safety §14.1 · ref:write-safety §14.3 · ref:write-safety §14.9 · ref:workflow-model §4
 
-> Manual approval on every separation, both types, no auto-approve-on-match — the control that defends against the `T002173685` wrong-person incident, pulled forward from order 8.
+> Current D309: an independently supplied EID proceeds only after exact UCPath read-back; any name-resolved EID requires the real operator gate regardless of similarity. Historical D77 designed the unconditional predecessor.
 
 log:
+- 2026-09-02 | D309 | operator correction ratified in ref write-safety §14.12: source-conditioned authority supersedes D77's trigger; machine verification creates no human result, while every name-resolved identity uses the existing typed gate
 - 2026-08-21 | docs-cohesion 00 | the design D77 wrote here is BUILT and live-proved (D202, separations chunk 3, first live gated run 2026-08-12) and four decisions have moved it since — D203 a gate row IS a dependency's evidence, D204 the receipt derives from it, D211 the packet carries the write plan so a date that moves re-opens the gate, D226 all three ceremonies exist. §14.7's two deferred values were ANSWERED at the separations questionnaire on 2026-08-12 (freshness 4 hours; the I-9 packet question out of scope) while `ref write-safety` §14.7 still reads as open — a finding for that doc's unit, not fixed here. Left: §14.4's manual-EID arm is built narrower than designed (no second live read in that chunk)
 
 ### Size model + delivery tiers {#phase0-size-model}
@@ -770,7 +771,7 @@ date: R15 · 2026-08-21
 size: M
 doc: 03d §Proof — a Claude-driven dry run, attributed end to end · ref:guards-and-tests §10
 
-> R10's T1 shape driven from a different client. Separations is the subject because it carries the ALWAYS-GATE and a transaction node, so the two-actor rule is exercised on the arm it was written for. One agent, one scenario — the parallel T4 tier comes later, after `{#parallel-runs}` and `{#duo-lease}`.
+> R10's T1 shape driven from a different client. Separations is the subject because its name-resolved arm carries the identity gate and a transaction node, so the two-actor rule is exercised on the arm it was written for. One agent, one scenario — the parallel T4 tier comes later, after `{#parallel-runs}` and `{#duo-lease}`.
 
 builds:
 - [ ] PROOF a Claude Code session drives a separations dry run end to end through the MCP tools — start, watch, gate, settle — with no dashboard click
@@ -793,13 +794,14 @@ size: XL
 chip: historical preview available — controlled protocol blocked
 doc: 03b §Separations — order 8, the first migration · 03b §Exit criteria · 03c §Phase summary · 03c §Exit criteria · 03c §Recommended migration order (by risk / complexity / reuse) · ref:write-safety §12 · ref:write-safety §14.7
 
-> Write-heavy — UCPath termination + Kuali finalization, entered first by operator choice (D193). The workflow is built and 4589’s historical green preview is available for inspection (§9.34). The sole registered canary 4537 is gone (§9.33). Current controlled execution is blocked: the graph lacks individual write approvals, its person-level sweep key reuses a prior no-op, and D287’s post-filing sweep deletes the transaction Kuali would cite (§§9.35–9.36). Resolve the protocol decision and implementation, then obtain current-source rehearsal and individual write approvals; criterion 5 remains open.
+> Write-heavy — UCPath termination + Kuali finalization, entered first by operator choice (D193). The workflow is built and 4589’s historical green preview is available for inspection (§9.34). The sole registered canary 4537 is gone (§9.33). D309 supersedes D287’s extra in-workflow approvals. Current controlled execution remains blocked: its person-level sweep key reuses a prior no-op, and D287’s post-filing sweep deletes the transaction Kuali would cite (§§9.35–9.36). Resolve the protocol decision and implementation, then obtain current-source rehearsal and explicit live-run authorization; criterion 5 remains open.
 
 needs:
 - dash-defaults
 - track-a
 
 log:
+- 2026-09-02 | D309 identity authority | supplied/read-back EID now proceeds with explicit machine provenance and no gate row; name-only still parks for the actual operator command; D287 extra workflow approvals are superseded; deletion/finalization protocol remains pending (§9.38)
 - 2026-09-02 | coordinator readiness correction | §§9.33–9.36 supersede the old runtime-only blocker: gone 4537, historical green 4589 preview, then unsupported approval sequencing/sweep identity and a deleted-receipt protocol conflict. All controlled writes remain open; no protocol amendment or write approval inferred
 - 2026-08-20 | docs-cohesion 03b | the migration's own section rewritten as-built — the nineteen-node graph over four stores, the D260 → D261 start door, the ALWAYS-GATE, and the program's first canary registry (4537 the canary · 4502 the dry-run subject · 4495 future-dated; 4510 and 4524 both evaporated between passes) · left: the three commits, and the registry moving into `config/test-subjects.json` under cohesion 5.2c (`test-tiers` owns it)
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
@@ -842,16 +844,16 @@ log:
 - 2026-08-20 | docs-cohesion 03b | verified against `src/stores/kuali/tasks/read-separation-document.ts`, `src/stores/separations/tasks/` and `src/domain/separations/termination-type.ts`; the two platform items this chunk surfaced (D199, D200) both landed · left: S2's refusal arm against a real non-separation document
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 
-#### 3 · UCPath employment grid + the ALWAYS-GATE {#sep-3}
+#### 3 · UCPath employment grid + identity authority {#sep-3}
 status: done
 date: D201–D203 · live 08-12
-doc: 03b §3 · UCPath employment grid + the ALWAYS-GATE · ref:task-contract §2.11 · ref:write-safety §14.3 · ref:write-safety §14.9 · ref:workflow-model §5.5 · ref:operator-trust §2.3.4
+doc: 03b §3 · UCPath employment grid + identity authority · ref:task-contract §2.11 · ref:write-safety §14.3 · ref:write-safety §14.9 · ref:workflow-model §5.5 · ref:operator-trust §2.3.4
 
 > The first live gated run: parked, a real approval through the real command endpoint, resumed — and it found that a gate's durable record is not a checkpoint (D203).
 
 builds:
 - [x] BE rich whole-grid UCPath read, classified by a pure fold (D201)
-- [x] BE the identity-approval gate node, server-computed approval shape
+- [x] BE supplied-EID/read-back machine authority plus the name-only identity-approval gate, server-computed approval shape (D309)
 - [x] BE gate results as dependency evidence (D203) and in the receipt (D204)
 - [x] PROOF first live gated run — parked, real approval through the real command endpoint, resumed
 
@@ -901,10 +903,10 @@ status: done
 date: D211
 doc: 03b §6a · THE COMPOSITION · ref:workflow-model §3 · ref:write-safety §14.10 · ref:write-safety §12
 
-> An approval of a person is not an approval of a date — the packet's digest covers what the approval authorises.
+> Identity authority covers the whole packet: machine verification or operator approval binds the exact write-plan digest.
 
 builds:
-- [x] BE nineteen nodes, one ALWAYS-GATE, three fenced transactions — eighteen composed at 6a, `resolve-action` added by D261 with no other edge, gate, key or `when` moved
+- [x] BE nineteen nodes, one identity-authority task and its conditional name-only gate, three fenced transactions — D309 adds the sole current `when`
 - [x] BE the gate packet carries the dates, template and department the approval binds
 
 needs:
@@ -959,7 +961,7 @@ status: planned
 chip: protocol decision + implementation — A2–A5/A8 open
 doc: 03b §Track A · separations backend completion · 03b §Exit criteria · ref:write-safety §3 · ref:write-safety §4.2 · ref:write-safety §5 · 03c §Exit criteria · 03c §Non-workflow capability closure inventory (D58) · ref:operator-trust §3.2 · ref:operator-trust §4 · ref:operator-trust §4.1 · ref:operator-trust §4.3 · ref:write-safety §3.2
 
-> Separations has historical proof for 8 of 9 exit criteria; criterion 5 remains open. §9.34’s 4589 preview and exact-run 0/0/0 are inspectable history, not fresh admission. §§9.35–9.36 block D287’s ceremony on approval sequencing, sweep identity and the deleted-filing reference. A proposed independent disposable-target deletion proof is pending operator judgment; implementation/test seams are already authorized. After that decision: implement and prove, freeze current source/input after a fresh rehearsal, approve every real write separately, measure A5 and close A8. Gone registry canary 4537 is not silently replaced; UNKNOWN stops without retry.
+> Separations has historical proof for 8 of 9 exit criteria; criterion 5 remains open. §9.34’s 4589 preview and exact-run 0/0/0 are inspectable history, not fresh admission. D309 removes approval sequencing from the blocker set; §§9.35–9.36 still block D287 on sweep identity and the deleted-filing reference. A proposed independent disposable-target deletion proof is pending operator judgment; implementation/test seams are already authorized. After that decision: implement and prove, freeze current source/input after a fresh rehearsal, obtain explicit live-run authorization, measure A5 and close A8. Gone registry canary 4537 is not silently replaced; UNKNOWN stops without retry.
 
 builds:
 - [ ] PROOF every controlled write with its own approval, fence, read-back and receipt; blocked until §§9.35–9.36’s protocol and implementation conflicts are resolved — no controlled write has run
@@ -973,12 +975,12 @@ builds:
 needs:
 - sep-6c
 - you(met): name the §4f2 canary target(s) — doc 4537, 2026-08-19
-- fact: §§9.35–9.36 protocol decision and implementation first, then fresh target observation/rehearsal and individual real-write approvals; 4537 is gone and 4589’s prior preview is historical
+- fact: §§9.35–9.36 protocol decision and implementation first, then fresh target observation/rehearsal and explicit live-run authorization; 4537 is gone and 4589’s prior preview is historical
 
 | # | Step | Status |
 |---|---|---|
 | ✓A1 | **Canary named: doc 4537** (08-19) — §9.19 mapped it live: one Active terminable employment, every finalization control resolving; 4524 and 4510 both gone. A subject is named by document number ONLY — a document number is not a person, and EIDs stay out of the repository (03b §The canary registry — every subject this migration has mapped) | done |
-| A2–A4 | Controlled filing, pending-sweep and finalization proof; individual operator approvals | **open** — §§9.35–9.36 protocol/implementation conflict; no controlled write |
+| A2–A4 | Controlled filing, pending-sweep and finalization proof; explicit live-run authorization | **open** — §§9.35–9.36 protocol/implementation conflict; no controlled write |
 | A5 | Obligations only the commits discharge (timings, propagation window, seven payload shapes, the preview arm live) | **open** — no fresh evidence; after A2–A4 |
 | ✓A6 | Live RETRY on the composed graph — six retries, no collision, one reached `done` (§9.20) | done |
 | ✓A7 | Root-cause the browser-profile wedge — **closed by D243/D244** | done |
@@ -996,17 +998,17 @@ status: active
 chip: 9 of 9 wired — every square filled (D262 closed the last)
 doc: 03b §Dashboard · wire separations · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.4 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §9.5.2 · ref:dashboard-surfaces §9.5.1 · ref:operator-trust §5.9 · ref:write-safety §14.11 · ref:operator-trust §6.3
 
-> What the generic surfaces learned about separations, and the two separations-specific things no default covers (the ALWAYS-GATE's ceremonies, the three commit contracts' ledger lines). Built with Track B as the forcing function, so most squares are already filled; the empty ones are wires not yet run — not sloppy surfaces.
+> What the generic surfaces learned about separations, and the two separations-specific things no default covers (the name-only gate ceremonies, the three commit contracts' ledger lines). Built with Track B as the forcing function, so most squares are already filled; the empty ones are wires not yet run — not sloppy surfaces.
 
 builds:
 - [x] WIRE run modal — ONE typed box, the Kuali document number, from the descriptor's `surfaces.inputRun`; no `otherwise` arm, `timekeeperName` a declared constant, the action id resolved by the graph (D250/D251, D261)
 - [x] WIRE queue row — subject title, class, rehearsal hue, linked-run chips, per-row actions, the bulk strip (D230–D235)
 - [x] WIRE run detail — the descriptor's declared timeline CATEGORIES (D225), per-step durations, the data rail naming step · direction · bound (D252)
-- [x] BOTH gate ceremony — the ALWAYS-GATE's three ceremonies + rejection, server-shaped (D226); the settled decision on the panel (D237)
+- [x] BOTH gate ceremony — the current name-only typed-EID ceremony + rejection, with strict compatibility renderers for the other server shapes (D226/D309); the settled decision on the panel (D237)
 - [x] WIRE archive — separations' three commit contracts are the first `LEDGER_PRESENTATION_DECLARATIONS` entries (D223)
 - [x] WIRE explorer — field census, the declared `when` in words, the descriptor's prose (D227–D229)
 - [x] WIRE activity — separations in the per-workflow cross-tab + the write-ledger block (D236)
-- [x] WIRE notifications — a park at the ALWAYS-GATE publishes a needs-you row to the durable inbox, by re-derivation over authority; the bell links to the run (D262)
+- [x] WIRE notifications — a name-only park at the identity gate publishes a needs-you row to the durable inbox, by re-derivation over authority; the bell links to the run (D262/D309)
 - [x] PROOF connection proof — every surface read against the real composed run, each UI assertion paired with authority (Track C, separations §9.22; five defects found and fixed same-day)
 - [ ] PROOF T1 scenario tests for separations (structural fixture + dry-run scenario) and its T3 pair (R10)
 - [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
@@ -1073,7 +1075,7 @@ status: you
 chip: needs you
 doc: 03b §Smaller operator calls open · ref:dashboard-surfaces §9.10 · 03c §Non-workflow capability closure inventory (D58) · ref:guards-and-tests §3.11 · ref:operator-trust §10 · ref:write-safety §13
 
-> The pending-sweep witness remains open. §9.36 proves D287’s post-filing sweep can delete the filing that Kuali then cites. The proposed replacement is an independent disposable-target deletion proof while preserving the real filing; it awaits operator decision and an explicitly named/approved target. Individual real-write approvals remain mandatory. The gate-age pill, D192, A6, D239, D223/D240 and D254 remain settled; no earlier decision is reopened by this status correction.
+> The pending-sweep witness remains open. §9.36 proves D287’s post-filing sweep can delete the filing that Kuali then cites. The proposed replacement is an independent disposable-target deletion proof while preserving the real filing; it awaits operator decision and an explicitly named/approved target. D309 supersedes extra per-write workflow gates; explicit operational authorization remains mandatory before a real run. The gate-age pill, D192, A6, D239, D223/D240 and D254 remain settled; no earlier decision is reopened by this status correction.
 
 builds:
 - [!] PROOF ① UCPath pending sweep’s COMMITTED arm needs a valid live witness; the proposed immediate post-filing witness is blocked by §9.36’s deleted-receipt contradiction. Resolve protocol and exact target before any deletion

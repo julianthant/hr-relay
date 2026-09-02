@@ -1020,6 +1020,13 @@ will — fabricating one would make a durable record claim a shape it does not h
 - **a `verified` obligation** for the node, replacing the `unknown` that used to stand for
   "authority holds nothing", which was false.
 
+**Amended by D309 (2026-09-02):** this remains the receipt shape for the name-resolved branch. When
+the identity gate's declarative condition is false, the executor opens no gate and creates no human
+decision. Provenance and receipt composition independently re-evaluate the condition from canonical
+input and authenticated checkpoints, reject any gate-result/checkpoint collision, and record the
+gate obligation absent/non-mandatory with a branch `not-taken` decision. The downstream identity
+subject then names `machine-verification`, never an approver.
+
 **Why the decision arm is declared and not sniffed.** `DecisionEvidence.outcome` is a closed
 five-value enum and a gate's result payload is authored per gate, so mapping one to the other by
 looking for a field called `decision` would put a plausible-but-wrong word on a record of a human
