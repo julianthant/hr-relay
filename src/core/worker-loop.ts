@@ -45,6 +45,7 @@ import type {
 } from "./command-kernel.js";
 import type { ContentAddressedArtifactWriter } from "../base/artifacts.js";
 import type { RunDiagnosticCapture } from "../base/diagnostics.js";
+import type { RunBrowserScreenshotCapture } from "../base/diagnostics.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import {
   executeClaimedRun,
@@ -125,6 +126,8 @@ export interface WorkerLoopDependencies {
   readonly childRuns?: ChildRunExecutor;
   /** Ref operator-trust §2.2's automatic bundle capture; absent means no bundle is minted. */
   readonly diagnostics?: RunDiagnosticCapture;
+  /** Explicit per-run screenshot persistence, executed while a lease owns its page. */
+  readonly browserScreenshotCapture?: RunBrowserScreenshotCapture;
   /**
    * Ref data-intake-and-edit-data §4.11: the admitted-provider wiring and the kernel artifact writer,
    * forwarded verbatim to the executor. Absent, a contract declaring either
@@ -241,6 +244,9 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     acquireDeadlineMs: deps.sessionAcquireMs,
     duoCeremony: deps.duoCeremony,
     ...(deps.defaultBrowserMode === undefined ? {} : { defaultBrowserMode: deps.defaultBrowserMode }),
+    ...(deps.browserScreenshotCapture === undefined
+      ? {}
+      : { browserScreenshotCapture: deps.browserScreenshotCapture }),
     onEvent: (event: WorkerSessionEvent): void => {
       const spanPath = browserSessionSpanPath(workflowId, workerId, event.system, event.sessionId);
       if (event.type === "browser-session:start") {
@@ -383,6 +389,13 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             ...(deps.artifactProjector === undefined ? {} : { artifactProjector: deps.artifactProjector }),
           }, { run, claim, signal: runController.signal }),
           run.envelope.browserMode,
+          {
+            runId: run.envelope.runId,
+            descriptorFingerprint: run.envelope.contractFingerprint,
+            ...(run.envelope.captureBrowserScreenshots === undefined
+              ? {}
+              : { captureBrowserScreenshots: run.envelope.captureBrowserScreenshots }),
+          },
         );
         outcomes.push(outcome);
       } finally {

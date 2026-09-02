@@ -18,6 +18,7 @@ import type {
   WorkerBrowserSessionFactory,
   WorkerSessionEvent,
 } from "../../src/core/worker-sessions.js";
+import type { RunBrowserScreenshotCapture } from "../../src/base/diagnostics.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "./fixtures/phase1f-executor-harness.js";
 
@@ -32,6 +33,7 @@ function sessionFactory(options: Readonly<{
   loginFailure?: boolean;
   closeFailureAt?: number;
   omitExclusiveRelease?: boolean;
+  screenshotFailure?: boolean;
   /**
    * A driver that stops responding: `authenticate` never settles until the
    * caller's signal aborts. This is the live exit run's CRM failure — every
@@ -45,11 +47,13 @@ function sessionFactory(options: Readonly<{
   logins: () => number;
   resets: () => number;
   closes: () => number;
+  screenshots: () => number;
 }> {
   let opens = 0;
   let logins = 0;
   let resets = 0;
   let closes = 0;
+  let screenshots = 0;
   return {
     factory: {
       async open(input) {
@@ -66,6 +70,11 @@ function sessionFactory(options: Readonly<{
           acceptDownloads: input.acceptDownloads,
           exclusive: input.exclusive,
           driver: { system: input.system },
+          async screenshot() {
+            screenshots += 1;
+            if (options.screenshotFailure === true) throw new Error("injected screenshot persistence failure");
+            return { bytes: new Uint8Array([137, 80, 78, 71]), width: 1280, height: 720 };
+          },
           authentication: {
             authenticate(system, authOptions) {
               if (system !== input.system) {
@@ -114,13 +123,19 @@ function sessionFactory(options: Readonly<{
     logins: () => logins,
     resets: () => resets,
     closes: () => closes,
+    screenshots: () => screenshots,
   };
 }
 
 function manager(
   harness: ReturnType<typeof sessionFactory>,
   events: WorkerSessionEvent[] = [],
-  options: { clock?: TestClock; scheduler?: MonotonicDeadlineScheduler } = {},
+  options: {
+    clock?: TestClock;
+    scheduler?: MonotonicDeadlineScheduler;
+    browserScreenshotCapture?: RunBrowserScreenshotCapture;
+    captureBrowserScreenshots?: boolean;
+  } = {},
 ): WorkerSessionManager {
   const clock = options.clock ?? manualClock(new Date("2026-08-02T18:00:00.000Z"));
   const sessions = new WorkerSessionManager({
@@ -133,9 +148,18 @@ function manager(
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
     duoCeremony: fixtureDuoCeremonyGates(clock),
     onEvent: (event) => events.push(event),
+    ...(options.browserScreenshotCapture === undefined
+      ? {}
+      : { browserScreenshotCapture: options.browserScreenshotCapture }),
   });
   // Stand-in for the worker loop's per-run D116 bind.
-  sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+  sessions.bindRunConfigFingerprint(RUN_FINGERPRINT, undefined, {
+    runId: "00000000-0000-4000-8000-000000000099",
+    descriptorFingerprint: RUN_FINGERPRINT,
+    ...(options.captureBrowserScreenshots === undefined
+      ? {}
+      : { captureBrowserScreenshots: options.captureBrowserScreenshots }),
+  });
   return sessions;
 }
 
@@ -146,6 +170,56 @@ const UCPATH_REUSE = {
 };
 
 describe("worker browser sessions", () => {
+  it("captures once before reset for successful and failed selected browser leases", async () => {
+    const harness = sessionFactory();
+    const captured: Parameters<RunBrowserScreenshotCapture["capture"]>[0][] = [];
+    const sessions = manager(harness, [], {
+      captureBrowserScreenshots: true,
+      browserScreenshotCapture: { async capture(context) { captured.push(context); } },
+    });
+
+    await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "ok");
+    await assert.rejects(
+      sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => {
+        throw new Error("task failure after page use");
+      }),
+      /task failure after page use/,
+    );
+
+    assert.equal(harness.screenshots(), 2);
+    assert.deepEqual(captured.map(({ leaseOutcome }) => leaseOutcome), ["succeeded", "failed"]);
+    assert.deepEqual(captured.map(({ system }) => system), ["ucpath", "ucpath"]);
+  });
+
+  it("does not capture a historical or explicitly disabled browser lease", async () => {
+    const harness = sessionFactory();
+    const captured: unknown[] = [];
+    const sessions = manager(harness, [], {
+      captureBrowserScreenshots: false,
+      browserScreenshotCapture: { async capture(context) { captured.push(context); } },
+    });
+    await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "ok");
+    assert.equal(harness.screenshots(), 0);
+    assert.deepEqual(captured, []);
+  });
+
+  it("preserves a task failure with its selected screenshot failure and still poison-closes", async () => {
+    const harness = sessionFactory({ screenshotFailure: true });
+    const sessions = manager(harness, [], {
+      captureBrowserScreenshots: true,
+      browserScreenshotCapture: { async capture() {} },
+    });
+    await assert.rejects(
+      sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => {
+        throw new Error("injected task failure");
+      }),
+      (error: unknown) => error instanceof AggregateError
+        && error.errors.some((failure: unknown) => failure instanceof Error && /injected task failure/.test(failure.message))
+        && error.errors.some((failure: unknown) => failure instanceof Error && /injected screenshot persistence failure/.test(failure.message)),
+    );
+    assert.equal(harness.closes(), 1);
+  });
+
   it("keeps driver use exclusive and login single-flight per worker/system", async () => {
     const harness = sessionFactory();
     const sessions = manager(harness);

@@ -13,6 +13,7 @@ import type {
   WorkerBrowserSessionFactory,
 } from "../base/session.js";
 import type { BrowserDriver } from "../base/task.js";
+import type { RunBrowserScreenshotCapture } from "../base/diagnostics.js";
 import type { Clock } from "../domain/clock.js";
 import { DuoTerminalRefusalError } from "../infra/browser/login-contract.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
@@ -128,6 +129,8 @@ export interface WorkerSessionManagerOptions {
    */
   readonly duoCeremony: DuoCeremonyGateFactory;
   readonly onEvent?: (event: WorkerSessionEvent) => void;
+  /** Production persistence seam for explicit per-run browser screenshots. */
+  readonly browserScreenshotCapture?: RunBrowserScreenshotCapture;
 }
 
 /** What `#acquireBounded` knows about its own envelope, handed down to the lease gate. */
@@ -251,7 +254,15 @@ async function waitForOperation<Result>(
  * operation and releases it afterwards, success or failure.
  */
 export interface RunConfigFingerprintBinding {
-  bindRunConfigFingerprint(fingerprint: Fingerprint, browserMode?: BrowserPresentationMode): void;
+  bindRunConfigFingerprint(
+    fingerprint: Fingerprint,
+    browserMode?: BrowserPresentationMode,
+    screenshotContext?: Readonly<{
+      runId: string;
+      descriptorFingerprint: string;
+      captureBrowserScreenshots?: boolean;
+    }>,
+  ): void;
   releaseRunConfigFingerprint(): void;
 }
 
@@ -350,8 +361,13 @@ export async function withBoundRunConfigFingerprint<Result>(
   fingerprint: Fingerprint,
   operation: () => Promise<Result>,
   browserMode?: BrowserPresentationMode,
+  screenshotContext?: Readonly<{
+    runId: string;
+    descriptorFingerprint: string;
+    captureBrowserScreenshots?: boolean;
+  }>,
 ): Promise<Result> {
-  sessions.bindRunConfigFingerprint(fingerprint, browserMode);
+  sessions.bindRunConfigFingerprint(fingerprint, browserMode, screenshotContext);
   try {
     return await operation();
   } finally {
@@ -370,6 +386,7 @@ export class WorkerSessionManager {
   readonly #duoCeremony: DuoCeremonyGateFactory;
   readonly #onEvent: (event: WorkerSessionEvent) => void;
   readonly #defaultBrowserMode: BrowserPresentationMode;
+  readonly #browserScreenshotCapture: RunBrowserScreenshotCapture | undefined;
   readonly #resources = new Map<BrowserSystemId, WorkerBrowserResource>();
   readonly #poisoned = new Set<BrowserSystemId>();
   readonly #starting = new Map<BrowserSystemId, Promise<WorkerBrowserResource>>();
@@ -377,6 +394,11 @@ export class WorkerSessionManager {
   #closingReason: "parked" | "worker-stop" | undefined;
   #runConfigFingerprint: Fingerprint | undefined;
   #runBrowserMode: BrowserPresentationMode | undefined;
+  #runScreenshotContext: Readonly<{
+    runId: string;
+    descriptorFingerprint: string;
+    captureBrowserScreenshots: boolean;
+  }> | undefined;
 
   constructor(options: WorkerSessionManagerOptions) {
     this.#workerId = WorkerIdSchema.parse(options.workerId);
@@ -384,6 +406,7 @@ export class WorkerSessionManager {
     this.#stores = options.stores;
     this.#factory = options.factory;
     this.#defaultBrowserMode = BrowserPresentationModeSchema.parse(options.defaultBrowserMode ?? "headless");
+    this.#browserScreenshotCapture = options.browserScreenshotCapture;
     this.#clock = options.clock;
     this.#scheduler = options.scheduler;
     this.#acquireDeadlineMs = z.number().int().positive().parse(options.acquireDeadlineMs);
@@ -402,7 +425,15 @@ export class WorkerSessionManager {
    * run is bound at a time — a second bind without a release is a programming
    * error and fails loud.
    */
-  bindRunConfigFingerprint(fingerprint: Fingerprint, browserMode?: BrowserPresentationMode): void {
+  bindRunConfigFingerprint(
+    fingerprint: Fingerprint,
+    browserMode?: BrowserPresentationMode,
+    screenshotContext?: Readonly<{
+      runId: string;
+      descriptorFingerprint: string;
+      captureBrowserScreenshots?: boolean;
+    }>,
+  ): void {
     const parsed = FingerprintSchema.parse(fingerprint);
     if (this.#runConfigFingerprint !== undefined) {
       throw new Error(
@@ -411,6 +442,13 @@ export class WorkerSessionManager {
     }
     this.#runConfigFingerprint = parsed;
     this.#runBrowserMode = BrowserPresentationModeSchema.parse(browserMode ?? this.#defaultBrowserMode);
+    this.#runScreenshotContext = screenshotContext === undefined
+      ? undefined
+      : Object.freeze({
+        runId: screenshotContext.runId,
+        descriptorFingerprint: screenshotContext.descriptorFingerprint,
+        captureBrowserScreenshots: screenshotContext.captureBrowserScreenshots === true,
+      });
   }
 
   releaseRunConfigFingerprint(): void {
@@ -419,6 +457,7 @@ export class WorkerSessionManager {
     }
     this.#runConfigFingerprint = undefined;
     this.#runBrowserMode = undefined;
+    this.#runScreenshotContext = undefined;
   }
 
   async withDriver<Result>(
@@ -479,42 +518,67 @@ export class WorkerSessionManager {
         await this.#closeSystem(need.system, "fresh-boundary");
       }
       const resource = await this.#acquireBounded(need, instance, configFingerprint, browserMode, signal);
+      let operationCompleted = false;
       try {
         const result = await use(resource.driver);
-        try {
-          await resource.reset({ signal });
-          this.#emit({
-            type: "browser-session:reset",
-            system: resource.system,
-            sessionId: resource.sessionId,
-          });
-        } catch (resetError) {
-          try {
-            await this.#closeSystem(need.system, "poisoned");
-          } catch (closeError) {
-            throw new AggregateError(
-              [resetError, closeError],
-              `${need.system} reset and poison-close both failed`,
-              { cause: closeError },
-            );
-          }
-          throw resetError;
-        }
+        operationCompleted = true;
+        await this.#captureLeaseScreenshot(resource, "succeeded", configFingerprint);
+        await resource.reset({ signal });
+        this.#emit({
+          type: "browser-session:reset",
+          system: resource.system,
+          sessionId: resource.sessionId,
+        });
         return result;
-      } catch (operationError) {
+      } catch (leaseError) {
+        const failures: unknown[] = [leaseError];
+        if (!operationCompleted) {
+          try {
+            await this.#captureLeaseScreenshot(resource, "failed", configFingerprint);
+          } catch (captureError) {
+            failures.push(captureError);
+          }
+        }
         if (this.#resources.get(need.system) === resource) {
           try {
             await this.#closeSystem(need.system, "poisoned");
           } catch (closeError) {
-            throw new AggregateError(
-              [operationError, closeError],
-              `${need.system} operation and poison-close both failed`,
-              { cause: closeError },
-            );
+            failures.push(closeError);
           }
         }
-        throw operationError;
+        if (failures.length > 1) {
+          throw new AggregateError(
+            failures,
+            `${need.system} driver lease failed and its selected browser screenshot or poison-close also failed`,
+            { cause: leaseError },
+          );
+        }
+        throw leaseError;
       }
+    });
+  }
+
+  async #captureLeaseScreenshot(
+    resource: WorkerBrowserResource,
+    leaseOutcome: "succeeded" | "failed",
+    configFingerprint: Fingerprint,
+  ): Promise<void> {
+    const context = this.#runScreenshotContext;
+    if (context?.captureBrowserScreenshots !== true) return;
+    if (this.#browserScreenshotCapture === undefined) {
+      throw new Error(`run ${context.runId} selected browser screenshots but this worker has no screenshot persistence capability`);
+    }
+    if (resource.screenshot === undefined) {
+      throw new Error(`run ${context.runId} selected browser screenshots but ${resource.system} has no screenshot capability`);
+    }
+    const screenshot = await resource.screenshot();
+    await this.#browserScreenshotCapture.capture({
+      runId: context.runId,
+      descriptorFingerprint: context.descriptorFingerprint,
+      configFingerprint,
+      system: resource.system,
+      leaseOutcome,
+      screenshot,
     });
   }
 

@@ -699,6 +699,9 @@ function executeStartRun(
       priority: plan.priority,
       dryRun: plan.dryRun,
       ...(plan.browserMode === undefined ? {} : { browserMode: plan.browserMode }),
+      ...(plan.captureBrowserScreenshots === undefined
+        ? {}
+        : { captureBrowserScreenshots: plan.captureBrowserScreenshots }),
       ingressSchemaHash: plan.ingressSchemaHash,
       appVersion: dependencies.appVersion,
       // D269: the start is the session; the plan and the operator are its origin.
@@ -789,6 +792,9 @@ function executeRetry(
       priority: current.envelope.priority,
       dryRun: current.envelope.dryRun,
       ...(current.envelope.browserMode === undefined ? {} : { browserMode: current.envelope.browserMode }),
+      ...(current.envelope.captureBrowserScreenshots === undefined
+        ? {}
+        : { captureBrowserScreenshots: current.envelope.captureBrowserScreenshots }),
       retryOf: current.envelope.runId,
       /*
        * D221 — a retry is the item's NEXT attempt, which is what ref workflow-model §5.6 #1
@@ -2894,6 +2900,9 @@ function executeArchivedRunRelaunch(
       priority: record.priority,
       dryRun: record.dryRun,
       ...(record.browserMode === undefined ? {} : { browserMode: record.browserMode }),
+      ...(record.captureBrowserScreenshots === undefined
+        ? {}
+        : { captureBrowserScreenshots: record.captureBrowserScreenshots }),
       ingressSchemaHash: record.ingressSchemaHash,
       appVersion: dependencies.appVersion,
       // D269: a relaunch is a dashboard-started group of one, and the archived

@@ -40,6 +40,7 @@ const StartPlanIngressSchema = z.strictObject({
   // Historical/programmatic request callers retain the established headless
   // default; every dashboard submission sends an explicit value.
   browserMode: BrowserPresentationModeSchema.default("headless"),
+  captureBrowserScreenshots: z.boolean().default(false),
   /** Trusted server stamp; the surface may request `bulk` explicitly. */
   priority: RunPrioritySchema.default("interactive"),
   requestedInstance: InstanceSelectionSchema.optional(),
@@ -55,6 +56,7 @@ const StartPlanWireSchema = z.strictObject({
   expiresAt: IsoInstantSchema,
   dryRun: z.boolean(),
   browserMode: BrowserPresentationModeSchema.optional(),
+  captureBrowserScreenshots: z.boolean().optional(),
   priority: RunPrioritySchema,
   plannedBy: ActorIdSchema,
   configSnapshotId: ConfigSnapshotIdSchema,
@@ -121,6 +123,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           ...(ingress.requestedInstance === undefined ? {} : { requestedInstance: ingress.requestedInstance }),
           dryRun: ingress.dryRun,
           browserMode: ingress.browserMode,
+          captureBrowserScreenshots: ingress.captureBrowserScreenshots,
           priority: ingress.priority,
           shape: "single",
           configFingerprint: deps.configFingerprint,
@@ -143,6 +146,9 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         expiresAt: record.expiresAt,
         dryRun: record.dryRun,
         ...(record.browserMode === undefined ? {} : { browserMode: record.browserMode }),
+        ...(record.captureBrowserScreenshots === undefined
+          ? {}
+          : { captureBrowserScreenshots: record.captureBrowserScreenshots }),
         priority: record.priority,
         plannedBy: record.plannedBy,
         configSnapshotId: record.configSnapshotId,

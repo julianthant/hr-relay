@@ -96,6 +96,8 @@ export const StartPlanRecordSchema = z.strictObject({
   dryRun: z.boolean(),
   /** Optional only so plans written before browser presentation was introduced remain readable. */
   browserMode: BrowserPresentationModeSchema.optional(),
+  /** Optional only so plans written before browser screenshots remain readable. */
+  captureBrowserScreenshots: z.boolean().optional(),
   planned: z.array(PlannedRunSchema),
   refused: z.array(StartRefusalSchema),
   plannedBy: ActorIdSchema,

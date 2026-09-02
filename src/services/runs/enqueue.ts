@@ -32,6 +32,7 @@ export interface QueuedRunSpec {
   readonly priority: RunPriority;
   readonly dryRun: boolean;
   readonly browserMode?: BrowserPresentationMode;
+  readonly captureBrowserScreenshots?: boolean;
   readonly parent?: RunParent;
   readonly retryOf?: string;
   /**
@@ -72,6 +73,7 @@ export function buildQueuedRun(spec: QueuedRunSpec): RunRecord {
     priority: spec.priority,
     dryRun: spec.dryRun,
     ...(spec.browserMode === undefined ? {} : { browserMode: spec.browserMode }),
+    ...(spec.captureBrowserScreenshots === undefined ? {} : { captureBrowserScreenshots: spec.captureBrowserScreenshots }),
     ...(spec.retryOf === undefined ? {} : { retryOf: spec.retryOf }),
     attempt: spec.attempt,
     enqueuedAt,

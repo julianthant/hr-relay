@@ -138,6 +138,7 @@ export interface StartRequestShape {
   text: string;
   dryRun: boolean;
   browserMode: BrowserMode;
+  captureBrowserScreenshots: boolean;
   priority: StartPriority;
   selectedStepKeys: readonly string[];
 }
@@ -152,6 +153,7 @@ export function startRequestFingerprint(request: StartRequestShape): string {
     request.text,
     request.dryRun,
     request.browserMode,
+    request.captureBrowserScreenshots,
     request.priority,
     [...request.selectedStepKeys].sort(),
   ]);

@@ -141,6 +141,22 @@ describe("start planning", () => {
     assert.equal(plan.planned[0].canonicalInputDigest, deriveCanonicalInputDigest(plan.planned[0].input.value));
   });
 
+  it("retains the effective browser screenshot choice without backfilling historical plans", () => {
+    const database = openDatabase();
+    const captured = planStart(
+      plannerDeps(database),
+      baseRequest([{ emplId: "10873698" }], { captureBrowserScreenshots: true }),
+    );
+    const defaulted = planStart(plannerDeps(database), baseRequest([{ emplId: "10001573" }]));
+    const { captureBrowserScreenshots: _captureBrowserScreenshots, ...historicalBytes } = captured;
+    void _captureBrowserScreenshots;
+    const historical = StartPlanRecordSchema.parse(historicalBytes);
+
+    assert.equal(captured.captureBrowserScreenshots, true);
+    assert.equal(defaulted.captureBrowserScreenshots, false);
+    assert.equal(Object.hasOwn(historical, "captureBrowserScreenshots"), false);
+  });
+
   it("refuses an unparseable submission by name instead of dropping it", () => {
     const database = openDatabase();
     const plan = planStart(plannerDeps(database), baseRequest([

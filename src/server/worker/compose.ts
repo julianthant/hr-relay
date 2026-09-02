@@ -79,6 +79,11 @@ import {
   providerModelChain,
 } from "../../domain/secrets.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
+import { createDiagnosticCaptureService } from "../../services/trust/diagnostic-capture.js";
+import {
+  createRunBrowserScreenshotCapture,
+  createRunDiagnosticCapture,
+} from "../../services/trust/run-diagnostic-capture.js";
 import { PlaywrightWorkerSessionFactory } from "../../infra/browser/browser-session-factory.js";
 import {
   createSettingsFileAuthority,
@@ -520,6 +525,14 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     workspaceRoot: repoRoot,
     artifactRoot: input.isolation.artifactRoot,
   });
+  const diagnosticService = createDiagnosticCaptureService({
+    artifacts,
+    authority: database.authority,
+    clock,
+    ids,
+  });
+  const diagnostics = createRunDiagnosticCapture({ service: diagnosticService });
+  const browserScreenshotCapture = createRunBrowserScreenshotCapture({ service: diagnosticService });
 
   // D165: the production pool. Model tiers are the OUTER order (legacy
   // provider-limits' priority tiers) and keys rotate WITHIN a tier, so an
@@ -755,6 +768,8 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
           operator: LOCAL_OPERATOR_ACTOR_ID,
           log,
         }),
+        diagnostics,
+        browserScreenshotCapture,
       });
     } catch (loopError) {
       maintenance.stop();
