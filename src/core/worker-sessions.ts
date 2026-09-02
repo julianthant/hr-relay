@@ -32,6 +32,8 @@ import type {
   WorkerId,
   WorkflowId,
 } from "../domain/ids.js";
+import { BrowserPresentationModeSchema } from "../domain/run/envelope.js";
+import type { BrowserPresentationMode } from "../domain/run/envelope.js";
 import { LoginResultSchema, SessionNeedSchema } from "../domain/session.js";
 import type { LoginResult, SessionNeed } from "../domain/session.js";
 import type { RegisteredTaskStore, TaskStoreRegistry } from "../base/store.js";
@@ -102,6 +104,8 @@ export interface WorkerSessionManagerOptions {
   readonly workflowId: WorkflowId;
   readonly stores: TaskStoreRegistry;
   readonly factory: WorkerBrowserSessionFactory;
+  /** Compatibility mode for historical envelopes that predate browserMode. */
+  readonly defaultBrowserMode?: BrowserPresentationMode;
   readonly clock: Clock;
   /**
    * The kernel-owned monotonic deadline port — the SAME one the interpreter
@@ -247,7 +251,7 @@ async function waitForOperation<Result>(
  * operation and releases it afterwards, success or failure.
  */
 export interface RunConfigFingerprintBinding {
-  bindRunConfigFingerprint(fingerprint: Fingerprint): void;
+  bindRunConfigFingerprint(fingerprint: Fingerprint, browserMode?: BrowserPresentationMode): void;
   releaseRunConfigFingerprint(): void;
 }
 
@@ -345,8 +349,9 @@ export async function withBoundRunConfigFingerprint<Result>(
   sessions: RunConfigFingerprintBinding,
   fingerprint: Fingerprint,
   operation: () => Promise<Result>,
+  browserMode?: BrowserPresentationMode,
 ): Promise<Result> {
-  sessions.bindRunConfigFingerprint(fingerprint);
+  sessions.bindRunConfigFingerprint(fingerprint, browserMode);
   try {
     return await operation();
   } finally {
@@ -364,18 +369,21 @@ export class WorkerSessionManager {
   readonly #acquireDeadlineMs: number;
   readonly #duoCeremony: DuoCeremonyGateFactory;
   readonly #onEvent: (event: WorkerSessionEvent) => void;
+  readonly #defaultBrowserMode: BrowserPresentationMode;
   readonly #resources = new Map<BrowserSystemId, WorkerBrowserResource>();
   readonly #poisoned = new Set<BrowserSystemId>();
   readonly #starting = new Map<BrowserSystemId, Promise<WorkerBrowserResource>>();
   readonly #tails = new Map<BrowserSystemId, Promise<void>>();
   #closingReason: "parked" | "worker-stop" | undefined;
   #runConfigFingerprint: Fingerprint | undefined;
+  #runBrowserMode: BrowserPresentationMode | undefined;
 
   constructor(options: WorkerSessionManagerOptions) {
     this.#workerId = WorkerIdSchema.parse(options.workerId);
     this.#workflowId = WorkflowIdSchema.parse(options.workflowId);
     this.#stores = options.stores;
     this.#factory = options.factory;
+    this.#defaultBrowserMode = BrowserPresentationModeSchema.parse(options.defaultBrowserMode ?? "headless");
     this.#clock = options.clock;
     this.#scheduler = options.scheduler;
     this.#acquireDeadlineMs = z.number().int().positive().parse(options.acquireDeadlineMs);
@@ -394,7 +402,7 @@ export class WorkerSessionManager {
    * run is bound at a time — a second bind without a release is a programming
    * error and fails loud.
    */
-  bindRunConfigFingerprint(fingerprint: Fingerprint): void {
+  bindRunConfigFingerprint(fingerprint: Fingerprint, browserMode?: BrowserPresentationMode): void {
     const parsed = FingerprintSchema.parse(fingerprint);
     if (this.#runConfigFingerprint !== undefined) {
       throw new Error(
@@ -402,6 +410,7 @@ export class WorkerSessionManager {
       );
     }
     this.#runConfigFingerprint = parsed;
+    this.#runBrowserMode = BrowserPresentationModeSchema.parse(browserMode ?? this.#defaultBrowserMode);
   }
 
   releaseRunConfigFingerprint(): void {
@@ -409,6 +418,7 @@ export class WorkerSessionManager {
       throw new Error(`worker ${this.#workerId} has no bound run config fingerprint to release`);
     }
     this.#runConfigFingerprint = undefined;
+    this.#runBrowserMode = undefined;
   }
 
   async withDriver<Result>(
@@ -455,16 +465,20 @@ export class WorkerSessionManager {
       );
     }
     const configFingerprint = this.#runConfigFingerprint;
+    const browserMode = this.#runBrowserMode;
     if (configFingerprint === undefined) {
       throw new Error(
         `${need.system} driver lease requires the claimed run's bound config fingerprint (D116); none is bound`,
       );
     }
+    if (browserMode === undefined) {
+      throw new Error(`${need.system} driver lease requires the claimed run's bound browser presentation; none is bound`);
+    }
     return this.#withSystemTurn(need.system, signal, async () => {
       if (need.session === "fresh") {
         await this.#closeSystem(need.system, "fresh-boundary");
       }
-      const resource = await this.#acquireBounded(need, instance, configFingerprint, signal);
+      const resource = await this.#acquireBounded(need, instance, configFingerprint, browserMode, signal);
       try {
         const result = await use(resource.driver);
         try {
@@ -575,6 +589,7 @@ export class WorkerSessionManager {
     need: SessionNeed,
     instance: string | undefined,
     configFingerprint: Fingerprint,
+    browserMode: BrowserPresentationMode,
     signal: AbortSignal,
   ): Promise<WorkerBrowserResource> {
     const acquisition = new AbortController();
@@ -594,7 +609,7 @@ export class WorkerSessionManager {
     );
     // The acquisition runs under the ACQUISITION signal, so a cooperative
     // login recipe aborts itself at the bound instead of only being raced.
-    const started = this.#getOrStart(need, instance, configFingerprint, acquisition.signal, {
+    const started = this.#getOrStart(need, instance, configFingerprint, browserMode, acquisition.signal, {
       deadlineMonotonicMs,
       cancel: (reason) => acquisition.abort(reason),
     });
@@ -659,6 +674,7 @@ export class WorkerSessionManager {
     need: SessionNeed,
     instance: string | undefined,
     configFingerprint: Fingerprint,
+    browserMode: BrowserPresentationMode,
     signal: AbortSignal,
     envelope: AcquisitionEnvelope,
   ): Promise<WorkerBrowserResource> {
@@ -672,7 +688,9 @@ export class WorkerSessionManager {
       // config fingerprint. Any drift proves the old context closed (a forced
       // fresh boundary) before a replacement is authenticated; a context
       // configured under another run snapshot is never reused.
-      if (existing.instance !== instance || existing.configFingerprint !== configFingerprint) {
+      if (existing.instance !== instance
+        || existing.configFingerprint !== configFingerprint
+        || (existing.browserMode !== undefined && existing.browserMode !== browserMode)) {
         await this.#closeSystem(need.system, "fresh-boundary");
       } else {
         if (need.acceptDownloads === true && !existing.acceptDownloads) {
@@ -686,7 +704,7 @@ export class WorkerSessionManager {
     }
     const pending = this.#starting.get(need.system);
     if (pending !== undefined) return pending;
-    const started = this.#openAndLogin(need, instance, configFingerprint, signal, envelope);
+    const started = this.#openAndLogin(need, instance, configFingerprint, browserMode, signal, envelope);
     this.#starting.set(need.system, started);
     try {
       return await started;
@@ -711,6 +729,7 @@ export class WorkerSessionManager {
     need: SessionNeed,
     instance: string | undefined,
     configFingerprint: Fingerprint,
+    browserMode: BrowserPresentationMode,
     signal: AbortSignal,
     envelope: AcquisitionEnvelope,
   ): Promise<WorkerBrowserResource> {
@@ -729,7 +748,7 @@ export class WorkerSessionManager {
     try {
       let value: WorkerBrowserResource;
       try {
-        value = await this.#openAndLoginOnce(need, instance, configFingerprint, signal, gate);
+        value = await this.#openAndLoginOnce(need, instance, configFingerprint, browserMode, signal, gate);
       } catch (error) {
         if (!(error instanceof DuoTerminalRefusalError) || !gate.retainedForRecovery()) throw error;
         const discardProfile = this.#factory.discardProfile;
@@ -746,9 +765,10 @@ export class WorkerSessionManager {
           system: need.system,
           ...(instance === undefined ? {} : { instance }),
           configFingerprint,
+          browserMode,
         });
         try {
-          value = await this.#openAndLoginOnce(need, instance, configFingerprint, signal, gate);
+          value = await this.#openAndLoginOnce(need, instance, configFingerprint, browserMode, signal, gate);
         } catch (retryError) {
           if (retryError instanceof DuoTerminalRefusalError) {
             throw new Error(
@@ -777,6 +797,7 @@ export class WorkerSessionManager {
     need: SessionNeed,
     instance: string | undefined,
     configFingerprint: Fingerprint,
+    browserMode: BrowserPresentationMode,
     signal: AbortSignal,
     gate: DuoCeremonyGateHandle,
   ): Promise<WorkerBrowserResource> {
@@ -791,6 +812,7 @@ export class WorkerSessionManager {
       system: need.system,
       ...(instance === undefined ? {} : { instance }),
       configFingerprint,
+      browserMode,
       acceptDownloads: need.acceptDownloads === true,
       exclusive,
       signal,
@@ -807,6 +829,7 @@ export class WorkerSessionManager {
       }
       if (resource.instance !== instance
         || resource.configFingerprint !== configFingerprint
+        || resource.browserMode !== browserMode
         || resource.acceptDownloads !== (need.acceptDownloads === true)
         || resource.exclusive !== exclusive) {
         throw new Error(`${need.system} session factory returned a resource with mismatched launch options`);

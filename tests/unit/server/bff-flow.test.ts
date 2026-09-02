@@ -801,6 +801,51 @@ async function loopbackResponse(
 }
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
+  it("round-trips an explicit headed browser presentation from the request through the queued run", async () => {
+    const h = harness();
+    const planResponse = await h.app.request("/api/v1/start-plans", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        workflowId: "fixture-graph",
+        submissions: [{ eid: "10873698", mode: "read-only" }],
+        dryRun: false,
+        browserMode: "headed",
+      }),
+    });
+    assert.equal(planResponse.status, 200);
+    const plan = await json(planResponse) as Record<string, unknown>;
+    assert.equal(plan.browserMode, "headed");
+
+    const stored = h.database.authority.startPlans.get(String(plan.startPlanId));
+    assert.equal((stored as { browserMode?: unknown } | undefined)?.browserMode, "headed");
+
+    const fingerprints = plan.fingerprints as Record<string, string>;
+    const command = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7d",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "start-run",
+        family: "start",
+        type: "start-run",
+        target: {
+          workflowId: "fixture-graph",
+          startPlanId: plan.startPlanId,
+          expectedVersion: plan.expectedVersion,
+        },
+        payload: fingerprints,
+      }),
+    });
+    assert.equal(command.status, 200);
+    const runId = (plan.planned as { runId: string }[])[0]?.runId;
+    assert.ok(runId, "the browser-mode plan must propose a run");
+    const run = h.database.authority.runs.get(runId);
+    assert.equal((run?.envelope as { browserMode?: unknown } | undefined)?.browserMode, "headed");
+  });
+
   it("serves strict cross-date search from durable run authority", async () => {
     const h = harness();
     insertMeasuredSearchRun(h.database, { seed: 77, enqueuedAt: "2026-08-28T15:00:00.000Z" });

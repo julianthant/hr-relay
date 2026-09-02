@@ -24,7 +24,7 @@ import {
   IsoInstantSchema,
   PositiveIntSchema,
 } from "../../domain/ids.js";
-import type { InstanceSelection, RunPriority, RunShape } from "../../domain/run/envelope.js";
+import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape } from "../../domain/run/envelope.js";
 import { InstanceSelectionSchema } from "../../domain/run/envelope.js";
 import { isTerminalRunState, type RunRecord } from "../../domain/run/record.js";
 import {
@@ -60,6 +60,8 @@ export interface StartPlanRequest {
   readonly submissions: readonly unknown[];
   readonly requestedInstance?: InstanceSelection;
   readonly dryRun: boolean;
+  /** Dashboard starts are explicit; other historical/non-dashboard callers may omit it. */
+  readonly browserMode?: BrowserPresentationMode;
   readonly priority: RunPriority;
   readonly shape: RunShape;
   readonly configFingerprint: string;
@@ -229,6 +231,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     shape: request.shape,
     priority: request.priority,
     dryRun: request.dryRun,
+    ...(request.browserMode === undefined ? {} : { browserMode: request.browserMode }),
     planned,
     refused,
     plannedBy: request.plannedBy,

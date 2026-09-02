@@ -8,7 +8,7 @@
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { JsonValue } from "../../domain/canonical-json.js";
 import { IsoInstantSchema } from "../../domain/ids.js";
-import type { InstanceSelection, RunParent, RunPriority, RunShape } from "../../domain/run/envelope.js";
+import type { BrowserPresentationMode, InstanceSelection, RunParent, RunPriority, RunShape } from "../../domain/run/envelope.js";
 import { RunEnvelopeSchema } from "../../domain/run/envelope.js";
 import { RunRecordSchema } from "../../domain/run/record.js";
 import type { RunRecord } from "../../domain/run/record.js";
@@ -31,6 +31,7 @@ export interface QueuedRunSpec {
   readonly shape: RunShape;
   readonly priority: RunPriority;
   readonly dryRun: boolean;
+  readonly browserMode?: BrowserPresentationMode;
   readonly parent?: RunParent;
   readonly retryOf?: string;
   /**
@@ -70,6 +71,7 @@ export function buildQueuedRun(spec: QueuedRunSpec): RunRecord {
     shape: spec.shape,
     priority: spec.priority,
     dryRun: spec.dryRun,
+    ...(spec.browserMode === undefined ? {} : { browserMode: spec.browserMode }),
     ...(spec.retryOf === undefined ? {} : { retryOf: spec.retryOf }),
     attempt: spec.attempt,
     enqueuedAt,

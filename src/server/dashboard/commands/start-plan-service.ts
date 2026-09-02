@@ -25,7 +25,7 @@ import {
   TraceIdSchema,
   WorkflowIdSchema,
 } from "../../../domain/ids.js";
-import { InstanceSelectionSchema, RunPrioritySchema } from "../../../domain/run/envelope.js";
+import { BrowserPresentationModeSchema, InstanceSelectionSchema, RunPrioritySchema } from "../../../domain/run/envelope.js";
 import { StartRefusalCodeSchema } from "../../../domain/run/start-plan.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { planStart } from "../../../services/start/plan.js";
@@ -37,6 +37,9 @@ const StartPlanIngressSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   submissions: z.array(JsonValueSchema).min(1),
   dryRun: z.boolean(),
+  // Historical/programmatic request callers retain the established headless
+  // default; every dashboard submission sends an explicit value.
+  browserMode: BrowserPresentationModeSchema.default("headless"),
   /** Trusted server stamp; the surface may request `bulk` explicitly. */
   priority: RunPrioritySchema.default("interactive"),
   requestedInstance: InstanceSelectionSchema.optional(),
@@ -51,6 +54,7 @@ const StartPlanWireSchema = z.strictObject({
   expectedVersion: z.number().int().positive(),
   expiresAt: IsoInstantSchema,
   dryRun: z.boolean(),
+  browserMode: BrowserPresentationModeSchema.optional(),
   priority: RunPrioritySchema,
   plannedBy: ActorIdSchema,
   configSnapshotId: ConfigSnapshotIdSchema,
@@ -116,6 +120,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
             applyStartStepSelection(descriptor, submission, ingress.selectedStepKeys)),
           ...(ingress.requestedInstance === undefined ? {} : { requestedInstance: ingress.requestedInstance }),
           dryRun: ingress.dryRun,
+          browserMode: ingress.browserMode,
           priority: ingress.priority,
           shape: "single",
           configFingerprint: deps.configFingerprint,
@@ -137,6 +142,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         expectedVersion: record.version,
         expiresAt: record.expiresAt,
         dryRun: record.dryRun,
+        ...(record.browserMode === undefined ? {} : { browserMode: record.browserMode }),
         priority: record.priority,
         plannedBy: record.plannedBy,
         configSnapshotId: record.configSnapshotId,

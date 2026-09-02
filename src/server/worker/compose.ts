@@ -721,6 +721,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         scheduler,
         taskDeadlineMs: resolved.config.timeouts.taskMs,
         sessionAcquireMs: resolved.config.timeouts.sessionAcquireMs,
+        defaultBrowserMode: resolved.config.browser.headless ? "headless" : "headed",
         duoCeremony,
         heartbeatIntervalMs,
         idleRepollMs: resolved.config.daemon.idleRepollMs,
