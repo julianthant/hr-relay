@@ -33,7 +33,9 @@
     - checkbox "Customize steps"
     - text: Customize steps Review the workflow and change any optional steps. Required steps stay locked.
     - checkbox "Dry run"
-    - text: Dry run timekeeperName Julian Zaw
+    - text: Dry run
+    - checkbox "Capture browser screenshots" [checked]
+    - text: Capture browser screenshots timekeeperName Julian Zaw
     - paragraph: fixed by this workflow's input surface
     - text: Active-run policy Refuses the start while a run for the same subject is unfinished
     - paragraph: declared by this workflow — the planner reads it, not the form
@@ -42,6 +44,10 @@
       - option "Interactive" [selected]
       - option "Bulk"
     - paragraph: Bulk work yields whenever interactive work needs the browser.
+    - text: Browser mode
+    - combobox "Browser mode":
+      - option "Headless" [selected]
+      - option "Headed"
   - contentinfo:
     - text: Separations v1
     - button "Back"

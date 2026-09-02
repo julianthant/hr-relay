@@ -49,7 +49,7 @@
     - term: Values
     - definition: "timekeeperName: Julian Zaw"
     - term: Options
-    - definition: Defaults retained
+    - definition: "Browser: Headless · Browser screenshots: On"
     - term: Safety
     - definition: Refuses the start while a run for the same subject is unfinished
     - text: 1 run
