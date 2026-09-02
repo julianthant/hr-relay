@@ -2155,7 +2155,15 @@ describe("D308 delete — a terminal run leaves authority behind one tombstone",
     assert.ok(harness.database.authority.runs.get(parentId) !== undefined, "nothing was deleted");
     assert.ok(harness.database.authority.runs.get(childId) !== undefined);
 
-    settle(harness, childId);
+    const childVersion = settle(harness, childId);
+    const memberDoor = harness.kernel.execute(runCommand("delete", childId, childVersion));
+    assert.equal(memberDoor.state, "rejected");
+    if (memberDoor.state === "rejected") {
+      assert.equal(memberDoor.code, "invalid-state");
+      assert.match(memberDoor.message, /delegated member of run .*; delete the group/u);
+    }
+    assert.ok(harness.database.authority.runs.get(childId) !== undefined, "a member is not deleted alone");
+
     const deleted = harness.kernel.execute(runCommand("delete", parentId, parentVersion));
     assert.equal(deleted.state, "applied");
     if (deleted.state === "applied") {

@@ -1028,6 +1028,16 @@ function executeDelete(
       `run ${request.target.runId} is archived; delete it from the Archive, which cites the record it removes`,
     );
   }
+  // A delegated member is one leaf of its group's manifest. Deleting it alone
+  // would leave that manifest naming a run nobody holds; the group anchor is
+  // the door, and it takes the whole tree leaves-first.
+  if (current.envelope.parent !== undefined) {
+    reject(
+      request,
+      "invalid-state",
+      `run ${request.target.runId} is a delegated member of run ${current.envelope.parent.runId}; delete the group`,
+    );
+  }
   const order = deleteTreeOrder(repositories, request, current);
   const affectedTargets: TargetReference[] = [];
   for (const run of order) {
