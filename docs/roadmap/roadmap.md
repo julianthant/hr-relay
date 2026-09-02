@@ -15,7 +15,7 @@ tiles:
 - Workflows migrated | 2 of 15 | + separations at 8 of 9 exit criteria
 - Decisions | D1–D276 | D271–D276 ratified 49 Phase 3a fidelity decisions; resulting ports/proofs remain open · D131 retired, never reused
 - Gates | 69 active guards | integrated D191 2,729/2,729 · parity last frozen 157/157 on 08-25 · schema v18
-- !Critical-path blocker | R2 runtime admission refused | 2026-08-30: assigned `.env`/state absent; sole canary **4537**, current S7/rehearsal unobserved; establish runtime, rehearse, then separately approve ② → immediate ① UCPath pending sweep → ③
+- !Critical-path blocker | Separations controlled-test protocol | 2026-09-02: historical 4589 preview is inspectable; §§9.35–9.36 block D287 because its sweep deletes the filing Kuali cites. Resolve protocol/approval/sweep-identity seams, then rehearse and individually approve real writes
 
 <!-- roadmap:start -->
 
@@ -790,16 +790,17 @@ log:
 ### Separations — order 8, the first migration {#order-8}
 status: planned
 size: XL
-chip: 8 of 9 — runtime admission refused; three commits open
+chip: historical preview available — controlled protocol blocked
 doc: 03b §Separations — order 8, the first migration · 03b §Exit criteria · 03c §Phase summary · 03c §Exit criteria · 03c §Recommended migration order (by risk / complexity / reuse) · ref:write-safety §12 · ref:write-safety §14.7
 
-> write-heavy — UCPath termination + Kuali finalization. The wrong-person incident (`T002173685`); the deepest write-safety proof, entered first by your choice (D193). Built bottom-up: store tasks first, one small provable sub-workflow per system interaction, then composed — lego recomposition, never conditional branches inside one monolith (§3.1/§3.2 directives). As of 2026-08-30 the software/parity closure is green, but assigned-runtime admission refused before runner import (§9.32). Sole subject `finalization-canary` / 4537 still requires fresh S7/subject observation and a successful composed rehearsal before separate operator approvals for ② → immediate ① UCPath pending sweep → ③. The 2026-08-28 calendar threshold remains historical evidence.
+> Write-heavy — UCPath termination + Kuali finalization, entered first by operator choice (D193). The workflow is built and 4589’s historical green preview is available for inspection (§9.34). The sole registered canary 4537 is gone (§9.33). Current controlled execution is blocked: the graph lacks individual write approvals, its person-level sweep key reuses a prior no-op, and D287’s post-filing sweep deletes the transaction Kuali would cite (§§9.35–9.36). Resolve the protocol decision and implementation, then obtain current-source rehearsal and individual write approvals; criterion 5 remains open.
 
 needs:
 - dash-defaults
 - track-a
 
 log:
+- 2026-09-02 | coordinator readiness correction | §§9.33–9.36 supersede the old runtime-only blocker: gone 4537, historical green 4589 preview, then unsupported approval sequencing/sweep identity and a deleted-receipt protocol conflict. All controlled writes remain open; no protocol amendment or write approval inferred
 - 2026-08-20 | docs-cohesion 03b | the migration's own section rewritten as-built — the nineteen-node graph over four stores, the D260 → D261 start door, the ALWAYS-GATE, and the program's first canary registry (4537 the canary · 4502 the dry-run subject · 4495 future-dated; 4510 and 4524 both evaporated between passes) · left: the three commits, and the registry moving into `config/test-subjects.json` under cohesion 5.2c (`test-tiers` owns it)
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 - 2026-08-30 | R2 observed status | D284's sole identity remains `finalization-canary` / 4537. Parent software gates passed at `54060ded`; assigned admission refused with `.env` unavailable, so no new live observation or write proof exists (§9.32; `r2-p3.md` / `r2-p4.md`). Step 5 and A2–A5/A8 remain open; R3 residue stays separately owned
@@ -955,13 +956,13 @@ log:
 
 #### Track A · separations backend completion {#track-a}
 status: planned
-chip: 4537 only — runtime admission refused; A2–A5/A8 open
+chip: protocol decision + implementation — A2–A5/A8 open
 doc: 03b §Track A · separations backend completion · 03b §Exit criteria · ref:write-safety §3 · ref:write-safety §4.2 · ref:write-safety §5 · 03c §Exit criteria · 03c §Non-workflow capability closure inventory (D58) · ref:operator-trust §3.2 · ref:operator-trust §4 · ref:operator-trust §4.1 · ref:operator-trust §4.3 · ref:write-safety §3.2
 
-> Separations remains at **8 of 9 exit criteria**. The sole registered subject is `finalization-canary` / **doc 4537** (D284; historical mapping §9.19/§9.31). The 2026-08-28 calendar threshold does not establish current S7 or live availability. On 2026-08-30 assigned-runtime admission refused because its `.env` was unavailable; no fresh rehearsal or controlled ceremony ran (§9.32). Establish the intended runtime, pass admission and a fresh composed rehearsal with node/receipt coverage and exact-run 0/0/0 evidence, then take separate operator ALWAYS-GATE approvals for ② UCPath filing → immediate ① UCPath pending sweep on its new row → ③ Kuali finalization. Freeze source and canonical input from the successful rehearsal through ③; no `reRead` after ②; stop without retry on UNKNOWN. R3 obligations remain separately owned.
+> Separations has historical proof for 8 of 9 exit criteria; criterion 5 remains open. §9.34’s 4589 preview and exact-run 0/0/0 are inspectable history, not fresh admission. §§9.35–9.36 block D287’s ceremony on approval sequencing, sweep identity and the deleted-filing reference. A proposed independent disposable-target deletion proof is pending operator judgment; implementation/test seams are already authorized. After that decision: implement and prove, freeze current source/input after a fresh rehearsal, approve every real write separately, measure A5 and close A8. Gone registry canary 4537 is not silently replaced; UNKNOWN stops without retry.
 
 builds:
-- [ ] PROOF controlled sequence ② UCPath filing → immediate ① UCPath pending sweep → ③ Kuali finalization — each with separate operator approval, fence, read-back and receipt evidence; all remain unobserved after the 2026-08-30 admission refusal
+- [ ] PROOF every controlled write with its own approval, fence, read-back and receipt; blocked until §§9.35–9.36’s protocol and implementation conflicts are resolved — no controlled write has run
 - [ ] PROOF `probeToFenceMaxMs` per beat; D207's 30 s Kuali window on this write's own evidence; seven Kuali payload shapes observed live; the `would-prepare` preview arm live
 - [x] PROOF the first live RETRY on the composed graph — six retries, two lineages, one `done` (§9.20)
 - [x] BE browser-profile wedge root-caused (A7)
@@ -972,18 +973,20 @@ builds:
 needs:
 - sep-6c
 - you(met): name the §4f2 canary target(s) — doc 4537, 2026-08-19
-- fact: assigned-runtime admission, current doc 4537/S7 observation and green composed rehearsal with exact-run evidence remain owed (2026-08-30, §9.32); 2026-08-28 was the historical calendar threshold
+- fact: §§9.35–9.36 protocol decision and implementation first, then fresh target observation/rehearsal and individual real-write approvals; 4537 is gone and 4589’s prior preview is historical
 
 | # | Step | Status |
 |---|---|---|
 | ✓A1 | **Canary named: doc 4537** (08-19) — §9.19 mapped it live: one Active terminable employment, every finalization control resolving; 4524 and 4510 both gone. A subject is named by document number ONLY — a document number is not a person, and EIDs stay out of the repository (03b §The canary registry — every subject this migration has mapped) | done |
-| A2–A4 | Controlled commits: ② UCPath filing → immediate ① UCPath pending sweep on its new row → ③ Kuali finalization; separate operator ALWAYS-GATEs | **open** — assigned-runtime admission refused 2026-08-30; current S7/subject, rehearsal and write evidence unobserved |
+| A2–A4 | Controlled filing, pending-sweep and finalization proof; individual operator approvals | **open** — §§9.35–9.36 protocol/implementation conflict; no controlled write |
 | A5 | Obligations only the commits discharge (timings, propagation window, seven payload shapes, the preview arm live) | **open** — no fresh evidence; after A2–A4 |
 | ✓A6 | Live RETRY on the composed graph — six retries, no collision, one reached `done` (§9.20) | done |
 | ✓A7 | Root-cause the browser-profile wedge — **closed by D243/D244** | done |
 | A8 | Close-out (doc 03c's loop, step 7) → separations **rebuild-ready** | **open** — after A2–A7; software/parity closure alone does not discharge it |
 
 log:
+- 2026-09-02 | coordinator readiness proof | §9.37: historical 4589 preview/receipt inspected; 5853ef80 restores the default 388-file/4,795-test coverage gate with unchanged safety assertions; parity 287/287. Controlled protocol/target disposition remains operator-owned, no new live run or write
+- 2026-09-02 | coordinator readiness correction | §§9.33–9.36 supersede the old runtime-only blocker: gone 4537, historical green 4589 preview, then unsupported approval sequencing/sweep identity and a deleted-receipt protocol conflict. All controlled writes remain open; no protocol amendment or write approval inferred
 - 2026-08-20 | docs-cohesion 03b | A6 verified against separations §9.20's seven-run lineage table and A7 against `duo-autopilot/src/sign-count.js` + `tests/unit/duo-sign-count.test.ts`; A1's row no longer carries an EID — 03b's canary registry names subjects by document number only · left: A2–A5 and A8, every one of them downstream of 08-28
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
@@ -1039,7 +1042,7 @@ log:
 status: active
 date: D265 · ruled 2026-08-21
 size: M
-chip: live finalization proof open — runtime admission refused
+chip: live finalization proof open — protocol blocked
 doc: 03b §The workflow tree — folders are the rail and the timeline · ref:workflow-model §1.2.2 · ref:dashboard-surfaces §9.3 · ref:dashboard-surfaces §9.9 · 03c §The seven-step migration playbook
 
 > Your ruling: `src/workflows/` is organized down to the folder level — one top-level folder per workflow the RAIL lists and one sub-folder per TIMELINE step. Separations becomes `separations/` with `kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction` · `kuali-finalization` inside (D225's six categories, as folders); the five harnesses move INTO the step they prove; `kuali-timekeeper-annotation` is DISMANTLED into the testing framework as the Kuali finalization step's first T1 pair (D266) — there is no `proving/`. IDs and run identity are unchanged. Visible deltas: the obsolete `Test equipment` group disappears, and picker/Explorer place all five harnesses under Separations (including the timekeeping-category Kronos harness). The `workflow-layout` guard pins role ↔ path so the folder view and the dashboard view cannot disagree.
@@ -1070,15 +1073,16 @@ status: you
 chip: needs you
 doc: 03b §Smaller operator calls open · ref:dashboard-surfaces §9.10 · 03c §Non-workflow capability closure inventory (D58) · ref:guards-and-tests §3.11 · ref:operator-trust §10 · ref:write-safety §13
 
-> The pending-sweep witness remains open. D287 owns the order after a successful composed rehearsal: ② UCPath filing → immediate ① UCPath pending sweep → ③ Kuali finalization, each with separate real operator ALWAYS-GATE approval. The narrow window is the new pending row before an approver clears it, not a calendar appointment. On 2026-08-30 assigned-runtime admission refused, so no gate was requested or approved and no live witness exists (§9.32). (Settled, recorded so nobody re-opens them: the gate-age pill and D192's re-disposition, both answered 2026-08-18; A6's first live retry delivered 2026-08-19; the Activity hours-saved tile DROPPED by D239; archive tabs and export closed by D223/D240; `span.patched` retired by D254.)
+> The pending-sweep witness remains open. §9.36 proves D287’s post-filing sweep can delete the filing that Kuali then cites. The proposed replacement is an independent disposable-target deletion proof while preserving the real filing; it awaits operator decision and an explicitly named/approved target. Individual real-write approvals remain mandatory. The gate-age pill, D192, A6, D239, D223/D240 and D254 remain settled; no earlier decision is reopened by this status correction.
 
 builds:
-- [!] PROOF ① UCPath pending sweep's COMMITTED arm still needs a live witness on the row ② creates, immediately after filing and before an approver clears it. Intended-runtime admission and a successful composed rehearsal must precede the sequence; each write needs separate operator ALWAYS-GATE approval. No approval or witness was obtained on 2026-08-30 (§9.32); A2–A5/A8 remain open
+- [!] PROOF ① UCPath pending sweep’s COMMITTED arm needs a valid live witness; the proposed immediate post-filing witness is blocked by §9.36’s deleted-receipt contradiction. Resolve protocol and exact target before any deletion
 - [x] DOCS keep or retire `kuali-timekeeper-annotation` — ANSWERED 2026-08-21: RETIRE (D266), dismantled into the testing framework as the Kuali finalization step's T1 pair (`workflow-tree`)
 - [x] FE the gate-age pill — ANSWERED 2026-08-18: the status pill carries NO age (*the word names the work, not the wait*); the age renders in the row's footer meta and in the log panel (`ref dashboard-surfaces` amended; `src/dashboard/surfaces/queue.tsx:281`)
 - [x] DOCS D192's re-disposition of `legacy-tool-ops-sanity-check-record` — ANSWERED 2026-08-18: no AI feature; §14.2's server-computed `comparisons` array IS the sanity check, deterministically. The register entry is `retired` with the ruling's own words (`config/legacy-capabilities.json`)
 
 log:
+- 2026-09-02 | coordinator readiness correction | §§9.33–9.36 supersede the old runtime-only blocker: gone 4537, historical green 4589 preview, then unsupported approval sequencing/sweep identity and a deleted-receipt protocol conflict. All controlled writes remain open; no protocol amendment or write approval inferred
 - 2026-08-20 | docs-cohesion 03b | three of the four calls this node was drawn for were already settled and the tree still listed them open — corrected against `ref dashboard-surfaces`, `src/dashboard/surfaces/queue.tsx:281` and `config/legacy-capabilities.json` (disposition `retired`, operator ruling 2026-08-18) · left: the ① witness call, which has a deadline it cannot be made before
 - 2026-08-30 | R2 observed status | D287 sets the immediate ① UCPath pending sweep after ②, retaining each separate operator approval. Assigned admission refused before any ceremony; no fresh live proof or approval exists (§9.32; `r2-p3.md` / `r2-p4.md`). The dated calendar-only entry above remains history
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code

@@ -582,7 +582,7 @@ so an asserted receipt is approved as typed, never auto-approved.
 
 <!-- roadmap-status: track-a -->
 - [x] the criterion is MET once, on the kernel, by `kuali-timekeeper-annotation` (§3.4, D135) — that is what unblocked write-heavy migration
-- [ ] separations owes **three** controlled commits — `ucpath/create-termination`, `ucpath/delete-pending-terminations`, `kuali/save-separation-finalization` — each on an operator-approved canary, and they wait for the 08-28 window (doc 03b)
+- [ ] separations owes **three** controlled commits — `ucpath/create-termination`, `ucpath/delete-pending-terminations`, `kuali/save-separation-finalization` — each on an operator-approved canary. As of 2026-09-02, migration §§9.35–9.36 block the proposed protocol: separate approval sequencing, sweep-key reuse, and finalization citing a deleted filing. The target-restoration requirement below remains binding; any narrowly scoped retention exception is an operator decision in this owner
 - [ ] chunk 5c's Kuali commit additionally carries D207's named obligation: confirm the transferred 30 s window or move it (§4.2)
 - [ ] `probeToFenceMaxMs` per workflow is still unmeasured, and a settled preview cannot measure it (§5)
 - [ ] every later migration order owes the same five-part shape at its own migration — orders 4, 6, 7 and 9 name it explicitly (doc 03c)
@@ -615,7 +615,7 @@ its controlled commit must confirm or move it.
 
 **Where each proof lives.** The Phase-2 kernel proof is §3.4 below, with doc 02 carrying the phase
 record. Separations' three are doc 03b's, with `docs/migrations/separations.md` §6 as the checklist
-and its §9.x as the live log; they wait for the operator's 08-28 window. Every later order names its
+and its §9.x as the live log; current protocol blockers are §§9.35–9.36, not the old 08-28 window. Every later order names its
 own in doc 03c. A proof is RECORDED, never re-run: re-running one would be a second real HR write
 (ref guards-and-tests §10.1).
 

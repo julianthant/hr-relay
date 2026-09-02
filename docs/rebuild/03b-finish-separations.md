@@ -17,6 +17,13 @@ saw. The decisions live in `reference/decisions.md`.
 
 ## Phase summary
 
+> **2026-09-02 readiness verification (§9.37):** the historical 4589 preview is available through
+> its direct dashboard link and was inspected with Logs/Receipt. R2a commit `5853ef80` restores
+> the default full gate: 388 files / 4,795 tests passed with unchanged assertions, coverage policy
+> and 30-second limits; typecheck/lint/manifest/roadmap pass, parity 287/287 assert-green on unchanged
+> UI. This is inspectable readiness, not controlled-write completion. The protocol/target-disposition
+> decision below remains open; no new live run or write was performed.
+
 > **2026-09-02 preflight correction (§9.35):** controlled execution is blocked by a newly verified
 > plan/implementation mismatch, not only missing approvals. D287's separately gated filing →
 > sweep → finalization sequence has no supported path in the current graph; its person-level
@@ -37,7 +44,7 @@ saw. The decisions live in `reference/decisions.md`.
 - [x] step 2 author — nineteen nodes, one ALWAYS-GATE, three fenced transactions, four stores (`src/workflows/separations/descriptor.ts`, `module.ts`; D211, D261)
 - [x] step 3 guards — `descriptor-coverage`, `write-safety-contract`, `identity-gate-before-commit`, `scenario-coverage`, `gate-coverage` all green over this descriptor; `config/pending-impl-bindings.json` is the empty set, so every contract it names is implemented
 - [x] step 4 live dry run — MET 2026-08-14 at the preview terminal (run `7565a88d` / `sp-105939-7565`, doc 4502, §9.17) and re-proved through the dashboard 2026-08-20 (run `e1b8ae3e` / `sp-081217-e1b8`, §9.22) and off one typed document number (run `1e0b7cc2` / `sp-105225-1e0b`, §9.24)
-- [ ] step 5 controlled commits — all three OPEN. R1/u1 passed D300 admission on 2026-09-01, then the fresh composed dry-run failed `DOCUMENT_NOT_IN_ACTION_LIST` for the sole canary before `plan`, S7, any gate, or any write (§9.33). Exact-run authority is 0/0/0 and `writeState: not-attempted`; D284 therefore retains `finalization-canary` / doc 4537 as `gone` and permits no substitute. A new operator-named canary and a green rehearsal are required before ② → immediate ① → ③. Doc 4568 remains dated R3 residue (§9.29)
+- [ ] step 5 controlled commits — all three OPEN. 4537 is gone (§9.33); operator-named 4589 reached a historical green preview with exact-run 0/0/0 (§9.34). Current execution is blocked by D287’s unsupported separate approvals, permanent sweep-key reuse, and the deleted-receipt contradiction (§§9.35–9.36). Resolve the protocol decision, implement at the approved test seams, then obtain fresh admission/rehearsal and individual real-write approvals. No controlled write has run
 - [ ] step 6 rebuild-ready — blocked by step 5; the open exit criterion is the only one of nine
 - [ ] step 7 close-out — regression scenarios, knowledge records, capability dispositions, docs to as-built (Track A row A8)
 > 2026-08-20 | docs-cohesion 03b | verified against src/workflows/separations/**, src/stores/{kuali,ucpath,new-kronos,separations}/**, config/pending-impl-bindings.json and the §9.x record; left: the three commits and everything only they discharge
@@ -84,36 +91,34 @@ proof; 5 awaits current runtime admission, rehearsal and controlled-write eviden
 | 2 · **author the workflow** | **MET** | `src/workflows/separations/descriptor.ts` (1,098 lines), `module.ts` — four stores, nineteen nodes, three transaction nodes, one ALWAYS-GATE |
 | 3 · **guards green** | **MET** | the full gate is green at HEAD; `descriptor-coverage` regenerates the build manifest, `write-safety-contract` pairs every commit, `identity-gate-before-commit` walks both sinks, `scenario-coverage` audits the 21 declared scenario ids |
 | 4 · **live dry run** | **MET**, three times over | §9.17 (the preview terminal), §9.22 (driven from the real dashboard), §9.24 (from one typed document number) — zero durable write rows proved from authority on every one |
-| 5 · **controlled commit** | **BLOCKED — all three remain open** | R1/u1 passed admission, but the 2026-09-01 live Action List search found sole canary 4537 gone before S7 or the gate (§9.33). Exact-run authority is 0/0/0 and no approval/write occurred. D284 forbids substitution; a new operator-named canary and green rehearsal must precede ② → immediate ① → ③ |
+| 5 · **controlled commit** | **BLOCKED — all three remain open** | §§9.35–9.36: unsupported separate approvals, sweep-key reuse, and a post-filing sweep deleting Kuali’s referenced filing. Protocol decision and implementation precede fresh rehearsal and individual approvals; 4589’s §9.34 preview is historical |
 | 6 · **rebuild-ready** | blocked by 5 | doc 03c's rule: an open criterion blocks rebuild-ready status; a dry-run success is never converted into a write-safety claim |
 | 7 · **close-out** | blocked by 5–6 | Track A row A8 |
 
 ### The honest state at HEAD
 
-Verified 2026-08-30 against the code, the migration record, and the bounded R2 software/admission
-evidence, not against earlier prose (D252's rule). Where they disagreed, current observed evidence
-wins; historical live evidence remains cited as history.
+Current readiness was reconciled on 2026-09-02 from the code and §§9.33–9.36. The current
+coordinator evidence is `docs/coordinator/separations-completion/reports/r2-readiness.md` and
+`reports/r2a-gate-reliability.md` in that workspace;
+historical proofs retain their dates rather than becoming current-source admission.
 
-- **The workflow is BUILT and HAS RUN LIVE.** Every chunk landed; the composed graph has reached a real
-  preview terminal three separate ways, and since D261 it starts from one typed Kuali document
-  number in the run modal.
-- **No R2 live action is claimed.** The 2026-08-30 assigned-worktree smoke refused before runner
-  import; this unit did not access authority, so it establishes neither current write-table counts
-  nor a new zero-write result (§9.32). Historical authority observations remain only at their cited
-  passes.
-- **The exit checklist remains 8 of 9.** Its open controlled-commit criterion is no longer a date
-  wait: it needs assigned-runtime admission, fresh current S7/subject observation, one successful
-  composed rehearsal with exact-run authority evidence, and the separately approved ② → ① → ③
-  ceremony.
-- **Two things the tree said that the code does not support**, both corrected here and in the tree:
-  the `{#operator-calls}` node still listed the gate-age pill and D192's re-disposition as open, and
-  both were settled by the operator on 2026-08-18 — the pill half of D12 is amended in
-  `reference/dashboard-surfaces.md` and rendered (`src/dashboard/surfaces/queue.tsx:281`), and
-  `legacy-tool-ops-sanity-check-record` is `retired` in `config/legacy-capabilities.json` with the
-  ruling's own words. What IS still open there is a different call, named below.
-- **One name in the migration record is stale**: §6 calls the gate guard
-  `identity-gate-before-separation-commit`; the guard is `identity-gate-before-commit`
-  (`tests/unit/architecture/identity-gate-before-commit.test.ts`, `guard-inventory.json:315`).
+- **The workflow is built and has run live.** The operator can inspect 4589's historical preview
+  run `ca6a5462-4e52-43b7-ac85-f9bdb7fd30cf` and its receipt (§9.34). It stopped at the first
+  transaction's dry-run preview; it does not prove downstream filing or finalization.
+- **Runtime admission is no longer the sole blocker.** D300 admission passed before 4537's
+  live absence was observed (§9.33). The gone registry entry stays gone. No person-value secret
+  restoration or retry of that decayed canary is required.
+- **Controlled-write evidence remains open.** §§9.35–9.36 found no supported separately approved
+  D287 execution path, permanent sweep-key reuse, and a sweep that can delete the filing Kuali
+  would cite. The isolated red assertion must remain a safety expectation, not be waived by a
+  green general suite. The protocol decision precedes implementation and fresh rehearsal.
+- **Implementation and test seams already have authorization.** The real sequencer and real
+  run/gate/receipt composition with fake external systems were approved before §9.36. The
+  independent disposable-target protocol is still a proposal, and each real write still needs
+  its own operator approval.
+- **Earlier UI and capability decisions stay settled.** The gate-age pill and D192 re-disposition
+  remain closed. Existing dashboard surfaces are available for inspection without claiming that
+  criterion 5 or the migration's final close-out is complete.
 
 ## Separations — order 8, the first migration
 <!-- roadmap: order-8 -->
@@ -124,7 +129,7 @@ wins; historical live evidence remains cited as history.
 - [x] the start door — ONE typed document number, the action id resolved by the graph (D260 refused it, D261 built it; live §9.24)
 - [x] the ALWAYS-GATE — server-computed ceremony, the packet binding every value the approval authorizes (D77, D202, D204, D211, D226)
 - [x] the subject/canary inventory mapped live and dated — sole label `finalization-canary` / doc 4537 (D284): mapped 2026-08-19 (§9.19), re-read 2026-08-28 (§9.31), then found absent from the live Action List 2026-09-01 and retained as `gone` (§9.33); no substitute chosen
-- [ ] the three controlled commits — the last substantive item; historical 2026-08-28 calendar admission is not current proof, and assigned-runtime admission refused 2026-08-30 before runner import (§9.32). After a fresh rehearsal, order remains ② → immediate ① → ③
+- [ ] the three controlled commits — blocked by the protocol/implementation findings in §§9.35–9.36. The historical 4589 preview is available for UI inspection; it is not current-source admission or write proof
 - [x] `config/test-subjects.json` — the registry moved into config under cohesion step 5.2c (2026-08-27); the table below became a pointer, every subject is a label, and since D300 the canary carries only one closed document-number reference while the composed workflow derives every person fact live
 > 2026-08-20 | docs-cohesion 03b | node list and start door verified against src/workflows/separations/descriptor.ts; registry recomposed from §9.12/§9.16/§9.19/§9.24; left: the commits and the config registry
 > 2026-08-27 | order-8 registry | the canary registry is now config/test-subjects.json (8 entries, 4 of them this chain's subjects); tests/unit/architecture/test-target-registry.test.ts pins the inventory line above to the config in BOTH directions; left: the three controlled commits
@@ -540,8 +545,8 @@ filing is the real HR write. Each carries its own permanent key, its own probe a
 proof. The first live read found a closed vocabulary the code could not match — a real defect that a
 fixture built from the same code could never have found.
 
-**What is genuinely blocked, and what is merely unmeasured.** The commit arm is blocked on the
-canary's date. `probeToFenceMaxMs`'s per-beat decomposition is *unmeasured*, and the reason it stays
+**What is blocked and what is unmeasured.** The commit arm is blocked on the protocol and
+implementation findings in §§9.35–9.36, then fresh target admission and individual write approvals. `probeToFenceMaxMs`'s per-beat decomposition is *unmeasured*, and the reason it stays
 unmeasured is worth reading once: it was recorded twice as riding on the preview terminal, and a
 settled preview emits ONE event with no beat decomposition and **has no fence at all**, so reaching
 it could never have produced the number. It rides with the controlled commits (§9.17 item 4).
@@ -686,15 +691,21 @@ with the controlled commits.
 
 <!-- roadmap-status: track-a -->
 - [x] A1 the §4f2 canary is NAMED — Kuali doc 4537 (operator, 2026-08-19) — and mapped live the same day: one Active terminable employment, a resolvable termination type, all four owning sections `edit`, all twelve staged controls exactly one editable node (§9.19)
-- [ ] A2–A4 the three controlled commits, in the order the facts force: ② UCPath filing → immediate ① pending sweep on the row ② creates → ③ Kuali finalization. **Blocked, not met.** R1/u1 found sole canary 4537 gone from the Action List before S7/gate/write (§9.33); D284 permits no substitute
+- [ ] A2–A4 the three controlled commits — blocked by §§9.35–9.36: separate approval sequencing, sweep identity, and the deleted-receipt protocol contradiction. A safe protocol decision and implementation precede current-source rehearsal and each real-write approval
 - [ ] A5 the obligations only the commits discharge — `probeToFenceMaxMs` per beat, D207's 30 s window on this write's own evidence, the seven Kuali payload shapes, the `would-prepare` preview arm live. **Unobserved:** u1 stopped before any write; its exact-run 0/0/0 proves safety, not these obligations
 - [x] A6 the first live RETRY on the composed graph — six retries through the real command endpoint across two logical items, every one minting the item's next unspent attempt, no collision, one reaching terminal `done` (§9.20)
 - [x] A7 the browser-profile wedge ROOT-CAUSED and fixed — Duo's WebAuthn counter is per CREDENTIAL and Duo Autopilot's copy is per BROWSER PROFILE (D243/D244)
-- [!] ①'s COMMITTED arm has no witness and no mapped subject can give it one; the only honest window is running ① immediately after ② files, before an approver clears the row. It remains a future operator-gated action, not a calendar appointment
+- [!] ①’s COMMITTED arm has no live witness. The proposed post-filing witness deletes the filing Kuali would cite (§9.36), so D287’s ceremony is blocked. A separately approved disposable target is proposed, not ratified or selected
 - [ ] A8 close-out → separations **rebuild-ready**: regression scenarios, knowledge records, capability dispositions, owning docs to as-built
 > 2026-08-20 | docs-cohesion 03b | A6 verified against §9.20's seven-run lineage table, A7 against duo-autopilot/src/{background,sign-count}.js and tests/unit/duo-sign-count.test.ts; left: A2–A5 and A8, all downstream of 08-28
 > 2026-08-30 | R2 observed close | `54060ded` software gates are green, but assigned-runtime admission refused before runner import (§9.32). No fresh S7, rehearsal, authority evidence, approval, or write exists; A2–A5/A8 remain open and R3 obligations were not absorbed
 <!-- /roadmap-status -->
+
+**2026-09-02 execution hold:** the following ratified D287 text is retained as the contract
+awaiting amendment, not as runnable instructions. §9.36's red fixture assertion proves that its
+post-filing sweep can remove the transaction finalization would cite. The proposed independent
+disposable-target proof is pending an operator decision. Implementation/test-seam authorization
+already exists; it does not authorize a protocol substitution or any real write.
 
 **D287 — run the controlled sequence after one green 4537 rehearsal (ratified 2026-08-28;
 execution pending).** Once the composed `dryRun=true` rehearsal reaches its declared preview terminal
@@ -705,21 +716,21 @@ ALWAYS-GATE; no gate is pre-approved by this decision. Run ① immediately after
 the existing R2 conditions: no `reRead` after ②, freeze the tree until ③ settles, use the declared
 standalone finalization fallback only as specified, and stop without retry on any UNKNOWN submit.
 
-**Track A is the last substantive work separations owes**, and it is one operator sitting plus its
-close-out. The plan that named it is
+**Track A is the last substantive work separations owes.** It now requires a protocol decision,
+implementation and regression proof before its operator-gated live sitting and close-out. The plan that named it is
 `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` §6; its ordering was
 ratified by the operator the same day (Decision 5: Track B now, Track A on the canary).
 
 | # | Step | State at HEAD |
 |---|---|---|
 | A1 | Name the §4f2 canary | **done** — doc 4537, 2026-08-19, mapped live (§9.19) |
-| A2–A4 | The three controlled commits, ② → immediate ① → ③ | **blocked/open** — live u1 found sole canary 4537 gone on 2026-09-01; D284 permits no substitute (§9.33) |
+| A2–A4 | The three controlled commits | **blocked/open** — §§9.35–9.36 protocol/implementation conflict; no individual live-write approval consumed |
 | A5 | The obligations only the commits discharge | **open** — u1 exact-run 0/0/0 proves no write occurred; no controlled-write measurement exists |
 | A6 | One live retry on the composed graph | **done** 2026-08-19 (§9.20) |
 | A7 | Root-cause the browser-profile wedge | **done** — D243/D244, live-proved |
 | A8 | Close-out → rebuild-ready | after A2–A7 |
 
-**Why the order is ② → ① → ③, and not the numeric one.** ③ takes `transactionNumber` as INGRESS and
+**Historical rationale for ② → ① → ③ — invalidated by §9.36.** ③ takes `transactionNumber` as INGRESS and
 has no `match-active-employment` and no S7 check, so the standalone finalization graph is runnable on
 4537 *today* — and running it now would either write a fabricated transaction number onto a real HR
 document or leave the field naming nothing. The write would land and the record would be false.
@@ -890,7 +901,7 @@ required `build:manifest` regeneration.
 <!-- roadmap: operator-calls -->
 
 <!-- roadmap-status: operator-calls -->
-- [!] `clear-pending`'s COMMITTED arm has no live witness, and none of the mapped subjects can give it one. The only honest window is running ① immediately after ② files, before an approver clears the row — otherwise the arm ships proved by fixture and by the sequencer, never by a real deletion. **Future separate operator approval required**
+- [!] `clear-pending`’s COMMITTED arm has no live witness. §9.36 proves the proposed post-filing sweep invalidates Kuali’s filing reference. Resolve the protocol and separately name/approve a disposable deletion target before any such write
 - [x] keep or retire `kuali-timekeeper-annotation` — **ANSWERED 2026-08-21: RETIRE (D266)**, dismantled into the testing framework as the Kuali finalization step's T1 pair (§The workflow tree)
 - [x] the gate-age pill (D12 vs the later direction) — **ANSWERED 2026-08-18**: the status pill carries NO age (*"the word names the work, not the wait"*); the age renders in the row's footer meta and in the log panel. `reference/dashboard-surfaces.md` carries the amendment; `src/dashboard/surfaces/queue.tsx:281` renders it
 - [x] D192's re-disposition of `legacy-tool-ops-sanity-check-record` — **ANSWERED 2026-08-18**: no AI feature; the §14.2 packet's server-computed `comparisons` array is the sanity check, deterministically. The register entry is `retired` with the ruling's own words (`config/legacy-capabilities.json:1266`)
@@ -899,12 +910,12 @@ required `build:manifest` regeneration.
 - [x] whether any step should be pickable, with typed facts standing in for its browser reads — **ANSWERED 2026-09-01 (D307)**: yes, slice one. Kronos timecard, UCPath transaction and Kuali finalization each declare an omission (`docs/migrations/separations.md` §4b/§4c amendments); gates and transactions are never substituted. **Open:** *identity check*, *Kuali extraction* and *Job summary* stay required — their omission waits on the identity packet carrying per-row origin marks for asserted evidence (§4d's amendment)
 <!-- /roadmap-status -->
 
-**Three of the four calls this node was drawn for are settled**, and they were settled before this
-doc was written — which is exactly the drift a two-way binding exists to catch. The one that remains
-is a real decision with a real deadline, and it cannot be made earlier than the day the canary
-unblocks: whether to spend the narrow window after ② files to give ①'s committed arm its only
-possible live witness, or to accept that arm as proved by the sequencer and its fixtures and say so
-in the close-out. Both are defensible; neither is a default.
+**The earlier presentation decisions remain settled.** The remaining call is now the safe
+controlled-proof protocol, not a calendar window. §9.36 invalidates the planned post-filing sweep
+because finalization can cite its deleted filing. The operator must decide the independent deletion
+proof and each target's restoration/retention disposition under `ref write-safety` §3.2. Fixture
+proof alone does not close criterion 5. The concrete decision sheet is
+`docs/coordinator/separations-completion/decisions/2026-09-02-controlled-proof-protocol.md`.
 
 **A second call opened and closed 2026-08-21.** Keep or retire `kuali-timekeeper-annotation`: the
 recommendation was keep; the ruling is RETIRE (D266) — it is part of the testing framework, and its
@@ -962,7 +973,7 @@ at **8 of 9**, and the ninth is open on controlled-write evidence, not on the ca
 | 2 | **`typecheck` + `lint` + `test:coverage` green (D191); `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing** | **MET** | green at HEAD; the build manifest regenerates clean |
 | 3 | **Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id and subject observation resolves; no raw `Page`/`Locator`/selector outside the system driver** | **MET** | `strict-boundary-schemas`, `semantic-ui-registry`, `scenario-coverage`, `task-driver-boundary` |
 | 4 | **Live dry-run green against Kuali, UCPath and New Kronos — submit-free, zero durable write rows ASSERTED** | **MET** 2026-08-14, re-proved twice since | run `7565a88d` / `sp-105939-7565` to the preview terminal (§9.17); run `e1b8ae3e` / `sp-081217-e1b8` driven from the real dashboard (§9.22); run `1e0b7cc2` / `sp-105225-1e0b` from one typed number (§9.24). Zero write rows proved from authority every time |
-| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **BLOCKED — all three open** | 4537 was gone (§9.33); operator-named 4589 rehearsed green with receipt `0fa49971…` and exact-run 0/0/0 (§9.34). Preflight on 2026-09-02 found that rehearsal's fingerprint no longer matches source, and the existing graphs cannot execute D287's separately gated ② → immediate ① → ③ sequence; the person-level permanent sweep key also reuses a prior no-op (§9.35). Resolve the implementation/contract gap under explicit authorization, then obtain fresh admission/rehearsal and freeze source/input through the controlled sequence. No real-write gate approval has been consumed |
+| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **BLOCKED — all three open** | 4537 is gone (§9.33); 4589’s green preview is historical (§9.34). §§9.35–9.36 identify unsupported individual approval sequencing, permanent sweep-key reuse, and finalization citing a deleted filing. Implementation/test seams are authorized; replacement protocol and targets remain operator-owned. Then fresh admission/rehearsal and each real-write approval; no write approval consumed |
 | 6 | **`identity-gate-before-commit` green — every commit and the terminal result graph-reachable only through the gate** | **MET** | the guard walks both sinks (`tests/unit/architecture/identity-gate-before-commit.test.ts`), and §14.5's digest binding is proved LIVE: the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's (§9.14) |
 | 7 | **D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved** | **MET** 2026-08-14, and its one finding since CLOSED | three entries touched, none stale under D188's arm, no legacy path deleted (§9.17 item 6). The flagged item — D192's condition on `legacy-tool-ops-sanity-check-record` — was closed by the operator on 2026-08-18 and the entry is `retired` |
 | 8 | **Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated** | **MET** | D212/D213 (`d00b66c`, `1d019ee`), D214/D215, the `already-present` receipt arm (`b73b546`), the span-wire fork (`e1ba81b`), D221 (`tests/unit/retry-item-attempt.test.ts`, live-proved §9.20) and the browser-profile wedge (D243/D244, `tests/unit/duo-sign-count.test.ts`, both arms verified RED pre-fix) |
