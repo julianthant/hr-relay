@@ -88,6 +88,13 @@ after ANY edit under a descriptor's import closure (which includes `src/base/**`
 `src/domain/**`) — `descriptor-coverage` regenerates and fails on a diff, so a stale manifest is a
 red gate, not a silent drift.
 
+Vitest schedules at most four isolated file forks (or the available CPU count when lower).
+The 2026-09-02 full coverage gate repeatedly timed out its 30-second fixture/guard checks at the
+CPU-derived ten-fork default on an 18 GiB host; the same 388 files / 4,795 tests passed with four.
+Keep per-file isolation, in-test concurrency, test membership, coverage floors and the 30-second
+limits intact. Run full coverage without a concurrent compiler/linter gate; reduce contention
+before treating a full-suite timeout as permission to weaken a check.
+
 The gate family is deliberately plain (`typecheck`/`lint`/`test:coverage`, D191 — `test:coverage` is
 a strict superset of the earlier `test`+`test:architecture` pair and measured faster); the old
 `*:rebuild` names retired with D93 and the `rebuild:` runtime prefix with D247 (2026-08-20) — this is

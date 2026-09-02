@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
+import { availableParallelism } from "node:os";
 
 export const REBUILD_COVERAGE_INCLUDE = ["src/**/*.ts", "src/**/*.tsx"] as const;
 export const REBUILD_COVERAGE_EXCLUSIONS = [
@@ -45,6 +46,9 @@ export default defineConfig({
     // and module-level caches are per-file no matter the scheduling.
     pool: "forks",
     isolate: true,
+    // Full coverage at the CPU-derived default starves the fixture/guard
+    // checks on shared machines. Bound file concurrency, not their deadlines.
+    maxWorkers: Math.min(4, availableParallelism()),
     projects: [
       {
         extends: true,
