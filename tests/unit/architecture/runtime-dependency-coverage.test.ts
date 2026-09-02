@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
 import { BrowserSystemIdSchema } from "../../../src/domain/ids.js";
@@ -19,7 +17,10 @@ import {
   RUNTIME_ENVIRONMENT_FAMILIES,
 } from "../../../src/domain/runtime-environment.js";
 import { SECRET_FAMILY_SPECS } from "../../../src/domain/secrets.js";
-import { LEGACY_REPO_ROOT, gitVisibleFilesIn } from "./helpers/guard-files.js";
+import {
+  FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
+  FrozenLegacyArchitectureProvenanceSchema,
+} from "./helpers/frozen-legacy-architecture-provenance.js";
 
 /**
  * Guard (ref guards-and-tests §3.12 — D68): the rebuild's closed runtime-dependency sets
@@ -44,11 +45,11 @@ import { LEGACY_REPO_ROOT, gitVisibleFilesIn } from "./helpers/guard-files.js";
  * only the unit lane, which a legacy-only maintenance pass would not run.
  */
 
-/** Legacy browser systems = the driver directories under the LEGACY `src/systems/`. */
+/** Legacy browser systems = frozen driver directories at the recorded legacy commit. */
 function legacySystemIds(): readonly string[] {
   const shared = new Set(["common"]);
   const ids = new Set<string>();
-  for (const path of gitVisibleFilesIn(LEGACY_REPO_ROOT, ["src/systems"])) {
+  for (const path of FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.runtime.browserSystemFiles) {
     const rest = path.slice("src/systems/".length);
     const [directory] = rest.split("/");
     if (directory !== undefined && rest.includes("/") && !shared.has(directory)) ids.add(directory);
@@ -56,9 +57,8 @@ function legacySystemIds(): readonly string[] {
   return [...ids].sort();
 }
 
-/** Members of a legacy string-literal union type, read from the LEGACY repo's source. */
-export function unionMembers(path: string, typeName: string): readonly string[] {
-  const content = readFileSync(join(LEGACY_REPO_ROOT, path), "utf8");
+/** Members of a string-literal union type in the checked-in frozen source. */
+export function unionMembers(content: string, path: string, typeName: string): readonly string[] {
   const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const members: string[] = [];
   let found = false;
@@ -123,7 +123,8 @@ describe("runtime dependency coverage", () => {
   });
 
   it("matches the legacy vision-provider inventory and closes each provider over its environment", () => {
-    const legacy = unionMembers("src/services/ocr/provider-limits.ts", "VisionProviderId");
+    const provider = FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.runtime.visionProvider;
+    const legacy = unionMembers(provider.text, provider.path, "VisionProviderId");
     const visionProviders = PROVIDER_ADAPTER_SPECS
       .filter(({ capabilities }) => capabilities.includes("ocr.extract"))
       .map(({ provider }) => provider)
@@ -179,13 +180,21 @@ describe("runtime dependency coverage", () => {
   });
 
   it("reads legacy unions from source and fails loudly when one is renamed away", () => {
+    const provider = FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.runtime.visionProvider;
     assert.deepEqual(
-      unionMembers("src/services/ocr/provider-limits.ts", "VisionProviderId"),
+      unionMembers(provider.text, provider.path, "VisionProviderId"),
       ["gemini", "groq", "mistral", "openrouter", "sambanova"],
     );
     assert.throws(
-      () => unionMembers("src/services/ocr/provider-limits.ts", "NoSuchTypeAlias"),
+      () => unionMembers(provider.text, provider.path, "NoSuchTypeAlias"),
       /no longer declares the type NoSuchTypeAlias/,
     );
+  });
+
+  it("refuses malformed frozen runtime provenance", () => {
+    const malformed = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
+    const runtime = malformed.runtime as Record<string, unknown>;
+    runtime.browserSystemFiles = ["src/systems/crm/selectors.ts", "src/systems/crm/selectors.ts"];
+    assert.throws(() => FrozenLegacyArchitectureProvenanceSchema.parse(malformed), /must be unique/i);
   });
 });

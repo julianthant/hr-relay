@@ -53,7 +53,7 @@
       "file": "tests/unit/architecture/legacy-capability-disposition.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Every D58 legacy capability surface is classified exactly once by a recursively strict disposition union that has no proxy arm; status is the disposition's projection in both directions; every native/replaced target and every evidence token resolves to a real repo path, a real package.json script, or a real legacy path, and a decided entry must cite rebuild proof rather than only that legacy still exists; and no entry stays open on a milestone at or before the completedThrough the runtime itself reports (D184).",
+      "invariant": "Every D58 legacy capability surface in exact in-repo frozen provenance is classified exactly once by a recursively strict disposition union that has no proxy arm; status is the disposition's projection in both directions; every native/replaced target and every evidence token resolves to a real repo path, a real package.json script, or a frozen legacy path, and a decided entry must cite rebuild proof rather than only that legacy still exists; and no entry stays open on a milestone at or before the completedThrough the runtime itself reports (D184). Finished gates never require an external checkout.",
       "replacementRequired": true
     },
     {
@@ -70,7 +70,7 @@
       "file": "tests/unit/architecture/legacy-selector-port-provenance.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "All 406 legacy selector keys are represented exactly once with recipe-free search intent, exact clean-commit source/catalog Git provenance, and a selector definition at the pinned source line; disjoint candidate:<system>/<proposal> ids remain unclassified and cannot collide with any catalog kind, while ported semantic ids require exact fixture/live evidence bindings.",
+      "invariant": "All 406 legacy selector keys are represented exactly once with recipe-free search intent, exact clean-commit source/catalog Git provenance frozen in config/ports/legacy-architecture-provenance.json, and a selector definition at the pinned source line; disjoint candidate:<system>/<proposal> ids remain unclassified and cannot collide with any catalog kind, while ported semantic ids require exact fixture/live evidence bindings. Finished gates never require an external checkout.",
       "replacementRequired": true
     },
     {
@@ -78,7 +78,7 @@
       "file": "tests/unit/architecture/legacy-test-disposition.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Every legacy test directory is classified exactly once and later-retirement candidates carry rebuild evidence. Owner re-pointed 2026-08-20: the design input this named (history/design-inputs/2026-07-27-testing-system-plan.md) is a historical memo, and D91 folded its coverage/sizing/preservation policy into ref guards-and-tests §3.14, which is where the rule now lives.",
+      "invariant": "Every legacy test directory in the exact baseline/current frozen provenance is classified exactly once and later-retirement candidates carry rebuild evidence; malformed or duplicate frozen facts fail loud. Finished gates never require an external checkout. Owner re-pointed 2026-08-20: the design input this named (history/design-inputs/2026-07-27-testing-system-plan.md) is a historical memo, and D91 folded its coverage/sizing/preservation policy into ref guards-and-tests §3.14, which is where the rule now lives.",
       "replacementRequired": true
     },
     {
@@ -118,7 +118,7 @@
       "file": "tests/unit/architecture/operational-isolation.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Both runtimes on this machine bind distinct commands, state/artifact roots, ports, process locks, and browser profiles/sessions; the rebuild's isolation values come from one exported direct-const defineRuntimeIsolation call that a composition root invokes at top level through unshadowed named imports.",
+      "invariant": "Both runtimes on this machine bind distinct commands, state/artifact roots, ports, process locks, and browser profiles/sessions; exact legacy launch scripts are frozen with commit/blob provenance rather than read from an external checkout, and the rebuild's isolation values come from one exported direct-const defineRuntimeIsolation call that a composition root invokes at top level through unshadowed named imports.",
       "replacementRequired": true
     },
     {
@@ -134,7 +134,7 @@
       "file": "tests/unit/architecture/runtime-dependency-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "The closed browser-system and vision-provider sets, their capabilities, endpoint preflight checks, secret families, and provider-model environment keys agree with the legacy inventory and with each other in both directions; the registry self-audit runs in the architecture lane.",
+      "invariant": "The closed browser-system and vision-provider sets, their capabilities, endpoint preflight checks, secret families, and provider-model environment keys agree with the exact frozen legacy inventory and with each other in both directions; the registry self-audit runs in the architecture lane and finished gates never require an external checkout.",
       "replacementRequired": true
     },
     {
@@ -601,7 +601,7 @@
       "file": "tests/unit/architecture/intake-canonical-field-registry.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/data-intake-and-edit-data.md",
-      "invariant": "Ref data-intake-and-edit-data §1's canonical field vocabulary is frozen against the recorded D58/D68 scan in config/canonical-field-inventory.json, and the coverage is checked in BOTH directions: a canonical field no scanned source evidences is unevidenced vocabulary, and a scanned legacy field with no disposition is the silent omission ref data-intake-and-edit-data §1 forbids. Every scanned field must still appear in the legacy file the scan names, so the frozen legacy tree doubles as a drift detector. Each registry entry must hold together: its declared (classification, redactTransform) pair is one ref clock-config-secrets permits, a deferred shape carries an auditNote and a resolved one does not, and no normalized header alias claims two fields — an ambiguous alias would make the §2.5 scorer's top hit arbitrary. The definition factory additionally refuses any example its own coerce+parse rejects. Every arm runs against a violating fixture.",
+      "invariant": "Ref data-intake-and-edit-data §1's canonical field vocabulary is frozen against the recorded D58/D68 scan in config/canonical-field-inventory.json, and the coverage is checked in BOTH directions: a canonical field no scanned source evidences is unevidenced vocabulary, and a scanned legacy field with no disposition is the silent omission ref data-intake-and-edit-data §1 forbids. Every scanned field must still appear in its exact in-repo frozen legacy source with commit/blob provenance, so a corrupt fact fails loud without making an external checkout a gate dependency. Each registry entry must hold together: its declared (classification, redactTransform) pair is one ref clock-config-secrets permits, a deferred shape carries an auditNote and a resolved one does not, and no normalized header alias claims two fields — an ambiguous alias would make the §2.5 scorer's top hit arbitrary. The definition factory additionally refuses any example its own coerce+parse rejects. Every arm runs against a violating fixture.",
       "replacementRequired": true
     },
     {

@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import {
   BrowserSystemIdSchema,
@@ -8,6 +7,10 @@ import {
   PageStateIdSchema,
   ScreenIdSchema,
 } from "../../../../src/domain/ids.js";
+import {
+  FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
+  frozenLegacyFile,
+} from "./frozen-legacy-architecture-provenance.js";
 
 export const PINNED_LEGACY_SELECTOR_COMMIT = "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc";
 
@@ -141,10 +144,6 @@ export const LegacySelectorPortMapSchema = z.strictObject({
 export type LegacySelectorPortMap = z.infer<typeof LegacySelectorPortMapSchema>;
 type LegacySelectorPortEntry = LegacySelectorPortMap["entries"][number];
 
-function git(legacyRoot: string, args: readonly string[]): string {
-  return execFileSync("git", ["-C", legacyRoot, ...args], { encoding: "utf8" }).trimEnd();
-}
-
 function camelToKebab(value: string): string {
   return value
     .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
@@ -203,11 +202,13 @@ function parseCatalog(system: keyof typeof EXPECTED_COUNTS, catalog: string): re
   return entries;
 }
 
-function blobAt(legacyRoot: string, path: string): string {
-  return GitBlobSchema.parse(git(legacyRoot, ["rev-parse", `${PINNED_LEGACY_SELECTOR_COMMIT}:${path}`]));
-}
-
-export function buildLegacySelectorPortMap(legacyRoot: string): LegacySelectorPortMap {
+/** Rebuild the safe candidate inventory from its checked-in exact legacy blobs. */
+export function buildLegacySelectorPortMap(
+  frozen = FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.selector,
+): LegacySelectorPortMap {
+  if (frozen.commit !== PINNED_LEGACY_SELECTOR_COMMIT || frozen.objectFormat !== "sha1") {
+    throw new Error("frozen selector provenance does not name the pinned SHA-1 legacy commit");
+  }
   const systems = Object.entries(EXPECTED_COUNTS).map(([systemValue, expectedKeyCount]) => {
     const system = systemValue as keyof typeof EXPECTED_COUNTS;
     const sourcePath = `src/systems/${system}/selectors.ts`;
@@ -216,14 +217,14 @@ export function buildLegacySelectorPortMap(legacyRoot: string): LegacySelectorPo
       system,
       expectedKeyCount,
       sourcePath,
-      sourceBlob: blobAt(legacyRoot, sourcePath),
+      sourceBlob: GitBlobSchema.parse(frozenLegacyFile(frozen.files, sourcePath).blob),
       catalogPath,
-      catalogBlob: blobAt(legacyRoot, catalogPath),
+      catalogBlob: GitBlobSchema.parse(frozenLegacyFile(frozen.files, catalogPath).blob),
     };
   });
   const entries = systems.flatMap((snapshot) => {
-    const catalog = git(legacyRoot, ["show", `${PINNED_LEGACY_SELECTOR_COMMIT}:${snapshot.catalogPath}`]);
-    const source = git(legacyRoot, ["show", `${PINNED_LEGACY_SELECTOR_COMMIT}:${snapshot.sourcePath}`]);
+    const catalog = frozenLegacyFile(frozen.files, snapshot.catalogPath).text;
+    const source = frozenLegacyFile(frozen.files, snapshot.sourcePath).text;
     return parseCatalog(snapshot.system, catalog).map((entry) => {
       assertLegacySelectorDefinitionAtLine(source, entry.legacyKey, entry.sourceLine);
       return {
@@ -261,13 +262,13 @@ const PROHIBITED_PORT_MAP_TEXT = [
   "fallbackrecipe",
 ];
 
-export function auditLegacySelectorPortMap(input: unknown, legacyRoot: string): readonly string[] {
+export function auditLegacySelectorPortMap(input: unknown): readonly string[] {
   const issues: string[] = [];
   const parsed = LegacySelectorPortMapSchema.safeParse(input);
   if (!parsed.success) return parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`);
 
   const actual = parsed.data;
-  const expected = buildLegacySelectorPortMap(legacyRoot);
+  const expected = buildLegacySelectorPortMap();
   const identity = (entry: LegacySelectorPortEntry): string => `${entry.system}:${entry.legacyKey}`;
   const identities = actual.entries.map(identity);
   if (new Set(identities).size !== identities.length) issues.push("every legacy selector key must appear exactly once");

@@ -4,7 +4,8 @@ import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import isolationJson from "../../../config/runtime-isolation.json" with { type: "json" };
-import { LEGACY_REPO_ROOT, REPO_ROOT } from "./helpers/guard-files.js";
+import { REPO_ROOT } from "./helpers/guard-files.js";
+import { FROZEN_LEGACY_ARCHITECTURE_PROVENANCE } from "./helpers/frozen-legacy-architecture-provenance.js";
 import {
   auditOperationalIsolation,
   DISTINCT_RESOURCE_KEYS,
@@ -104,9 +105,14 @@ describe("operational isolation", () => {
     assert.deepEqual(Object.keys(isolation.rebuild.commands), ["dashboard", "dashboard:prod", "cli"]);
   });
 
-  it("audits the real checkouts on both sides", () => {
+  it("audits the rebuild checkout against the frozen legacy launch scripts", () => {
     assert.deepEqual(
-      auditOperationalIsolation(REPO_ROOT, isolation, scriptsOf(REPO_ROOT), scriptsOf(LEGACY_REPO_ROOT)),
+      auditOperationalIsolation(
+        REPO_ROOT,
+        isolation,
+        scriptsOf(REPO_ROOT),
+        FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.operationalIsolation.package.scripts,
+      ),
       [],
     );
   });

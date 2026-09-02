@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, it } from "vitest";
 import {
   CandidateProposalIdSchema,
@@ -10,17 +9,17 @@ import {
   auditLegacySelectorPortMap,
   buildLegacySelectorPortMap,
 } from "./helpers/legacy-selector-port-map-audit.js";
+import {
+  FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
+  FrozenLegacyArchitectureProvenanceSchema,
+} from "./helpers/frozen-legacy-architecture-provenance.js";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../..");
-const LEGACY_ROOT = process.env.HRAUTO_LEGACY_REPO ?? resolve(REPO_ROOT, "../hr-automation");
-const PORT_MAP_PATH = resolve(REPO_ROOT, "config/ports/legacy-selector-port-map.json");
+const PORT_MAP_PATH = new URL("../../../config/ports/legacy-selector-port-map.json", import.meta.url);
 
 function readPortMap(): unknown {
   return JSON.parse(readFileSync(PORT_MAP_PATH, "utf8"));
 }
 
-// Same reason as legacy-change-accounting: this audit reads every pinned
-// legacy blob through git, which is slow under full-suite parallelism.
 describe("legacy selector port provenance", { timeout: 180_000 }, () => {
   it("pins all 406 keys exactly once to the clean legacy snapshot", () => {
     const portMap = LegacySelectorPortMapSchema.parse(readPortMap());
@@ -30,7 +29,7 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
       ["onbase", 28], ["servicenow", 11], ["sharepoint", 10], ["ucpath", 205],
     ]);
     assert.equal(portMap.entries.length, 406);
-    assert.deepEqual(auditLegacySelectorPortMap(portMap, LEGACY_ROOT), []);
+    assert.deepEqual(auditLegacySelectorPortMap(portMap), []);
     // Separations chunk 4 moved THIRTEEN ucpath keys candidate→ported (D206):
     // the Smart HR wizard's three pages, the pending-sweep delete, and the SS
     // Smart HR search filter — one of which (`ssSmartHRTransactions.emplIdInput()`)
@@ -50,7 +49,7 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
   });
 
   it("rebuilds exact provenance while keeping path-derived proposals non-authoritative", () => {
-    const generated = buildLegacySelectorPortMap(LEGACY_ROOT);
+    const generated = buildLegacySelectorPortMap();
     const checkedIn = LegacySelectorPortMapSchema.parse(readPortMap());
     const generatedProposals = generated.entries.map((entry) => {
       if (entry.disposition !== "candidate") throw new Error("generated port-map entry was classified unexpectedly");
@@ -81,22 +80,22 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     const valid = LegacySelectorPortMapSchema.parse(readPortMap());
     const missing = structuredClone(valid);
     missing.entries.pop();
-    assert.notEqual(auditLegacySelectorPortMap(missing, LEGACY_ROOT).length, 0);
+    assert.notEqual(auditLegacySelectorPortMap(missing).length, 0);
 
     const duplicate = structuredClone(valid) as Record<string, unknown>;
     const duplicateEntries = duplicate.entries as unknown[];
     duplicateEntries[1] = duplicateEntries[0];
-    assert.match(auditLegacySelectorPortMap(duplicate, LEGACY_ROOT).join("\n"), /exactly once|unique/);
+    assert.match(auditLegacySelectorPortMap(duplicate).join("\n"), /exactly once|unique/);
 
     const staleBlob = structuredClone(valid) as Record<string, unknown>;
     const staleSystems = staleBlob.systems as Record<string, unknown>[];
     staleSystems[0] = { ...staleSystems[0], sourceBlob: "0".repeat(40) };
-    assert.match(auditLegacySelectorPortMap(staleBlob, LEGACY_ROOT).join("\n"), /git blobs/);
+    assert.match(auditLegacySelectorPortMap(staleBlob).join("\n"), /git blobs/);
 
     const leakedRecipe = structuredClone(valid) as Record<string, unknown>;
     const leakedEntries = leakedRecipe.entries as Record<string, unknown>[];
     leakedEntries[0] = { ...leakedEntries[0], locator: "#secret" };
-    assert.notEqual(auditLegacySelectorPortMap(leakedRecipe, LEGACY_ROOT).length, 0);
+    assert.notEqual(auditLegacySelectorPortMap(leakedRecipe).length, 0);
   });
 
   it("requires dual evidence only when a candidate becomes ported", () => {
@@ -114,7 +113,7 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
       canonicalId: "crm.search.result-rows",
     };
     delete entries[candidateIndex]?.candidateId;
-    assert.notEqual(auditLegacySelectorPortMap(malformedPorted, LEGACY_ROOT).length, 0);
+    assert.notEqual(auditLegacySelectorPortMap(malformedPorted).length, 0);
   });
 
   it("keeps one-to-many legacy recipes closed by unique context and canonical id", () => {
@@ -146,9 +145,24 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
       canonicalId: canonicalBindings[0]?.canonicalId,
     };
     assert.match(
-      auditLegacySelectorPortMap(duplicateCanonical, LEGACY_ROOT).join("\n"),
+      auditLegacySelectorPortMap(duplicateCanonical).join("\n"),
       /ported semantic ids must be globally unique/,
     );
+  });
+
+  it("refuses missing or malformed checked-in source provenance", () => {
+    const missing = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
+    const selector = missing.selector as Record<string, unknown>;
+    selector.files = (selector.files as unknown[]).slice(1);
+    assert.throws(
+      () => buildLegacySelectorPortMap(FrozenLegacyArchitectureProvenanceSchema.parse(missing).selector),
+      /frozen legacy provenance requires exactly one/i,
+    );
+
+    const malformed = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
+    const malformedSelector = malformed.selector as Record<string, unknown>;
+    malformedSelector.commit = "not-a-commit";
+    assert.throws(() => FrozenLegacyArchitectureProvenanceSchema.parse(malformed), /commit/i);
   });
 
   it("does not treat candidate proposals as classified semantic ids", () => {
