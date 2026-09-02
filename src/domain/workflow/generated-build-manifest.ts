@@ -165,7 +165,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "531507da9cb934bbc203e2ad466579afe40a470081b91700d0fe3de993848a2f",
+      "fingerprint": "a6a1600a4398f7caa9d14f14821a9abc606de603ed2a3e83af58d99c72e1d81a",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -257,7 +257,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/read-job-summary.ts",
@@ -413,7 +413,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -481,7 +481,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/descriptor.ts",
-          "sha256": "5497497e76c1c8e066a671e3137440a5fbfcd29c9730620d07962c52ba51bf96"
+          "sha256": "89a1875a0132bf524ad24ca890a81e26ff29e0eb1f72cade51fa833c18f360d7"
         },
         {
           "path": "src/workflows/separations/identity-check/node-ids.ts",
@@ -1007,7 +1007,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "d21b260201c5171f4fc17d051044bb059a9bce20a83473318a38c347f507d103",
+      "fingerprint": "cc4fbbd259dd3c15d5e5812ebf3c85d7f919ed28c1aab5caecc85b79cfc1631c",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -1183,7 +1183,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -1463,7 +1463,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-read"
     },
     {
-      "fingerprint": "54f080192f5d0c2a82e30e6c3cbe82473361336cf99b95f69a0d4fa0593c4737",
+      "fingerprint": "83327954337338abfad0cf65f8ecbadd0e4c6d10e76369829b1bee1d49424b5c",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -1535,7 +1535,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/read-job-summary.ts",
@@ -1679,7 +1679,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -1787,7 +1787,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/descriptor.ts",
-          "sha256": "ec71d7eaf0967933a96504bb72aa1a3b191dfd2cde6da9af1c673b362844b50a"
+          "sha256": "6db5bb1f7f2bc7d83dd75f6b625d3d40aeb96d5eb6e06cd1ca177ece7090347c"
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/node-ids.ts",
@@ -4621,7 +4621,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "9525b5ff2aacd2def16be624c20888f0fe192cee0bc1258ab6054744f0bb522d",
+      "fingerprint": "a5c1d6d0db9c43f0eab984f0612501587fbd91e6e98c731037d43117a6bd7ee5",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4681,7 +4681,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -4689,7 +4689,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+          "sha256": "4bda5e3de3449735d325c76a52e4e9ad2ed4d4783d7ce7b274426377b4ea9f4d"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -4801,7 +4801,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -4877,7 +4877,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+          "sha256": "5fab1c75cd46bacdd76b1cb862a4ae558f05b6575425076dc36cab15cf24f5c5"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -4887,7 +4887,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/create-termination"
     },
     {
-      "fingerprint": "088b52242af3801901abc40ab9d868e5b6c09f8988d9f8403145460659027707",
+      "fingerprint": "e04074585bb6e2ad36820e3313a6bf8b88cf2de827858c7c342a75ed8407295f",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4947,7 +4947,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -4955,7 +4955,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+          "sha256": "4bda5e3de3449735d325c76a52e4e9ad2ed4d4783d7ce7b274426377b4ea9f4d"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -5067,7 +5067,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -5143,7 +5143,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+          "sha256": "5fab1c75cd46bacdd76b1cb862a4ae558f05b6575425076dc36cab15cf24f5c5"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -5153,7 +5153,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/delete-pending-terminations"
     },
     {
-      "fingerprint": "0093b0ad332f648c0f5c66ab810d770aff8caf96b175534dda93e63795cc73e0",
+      "fingerprint": "9a4ec6355caca143c59097285c96e2787a7907a6d13813e47c88b59868540f41",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5213,7 +5213,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -5221,7 +5221,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+          "sha256": "4bda5e3de3449735d325c76a52e4e9ad2ed4d4783d7ce7b274426377b4ea9f4d"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -5333,7 +5333,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -5409,7 +5409,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+          "sha256": "5fab1c75cd46bacdd76b1cb862a4ae558f05b6575425076dc36cab15cf24f5c5"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -5419,7 +5419,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-existing-termination"
     },
     {
-      "fingerprint": "776500b55484b7320ad204e3589bdcdbb05982c5ca8c1a87de0a314e374b5b65",
+      "fingerprint": "cf7c01de1009d0438ced595991873d00d9cf84bc4964cba4b588dc5a9ffaa14f",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5479,7 +5479,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -5487,7 +5487,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+          "sha256": "4bda5e3de3449735d325c76a52e4e9ad2ed4d4783d7ce7b274426377b4ea9f4d"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -5599,7 +5599,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -5675,7 +5675,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+          "sha256": "5fab1c75cd46bacdd76b1cb862a4ae558f05b6575425076dc36cab15cf24f5c5"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -5685,7 +5685,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-pending-terminations"
     },
     {
-      "fingerprint": "b205f3d724aacbc2c279b1ec8516a7c5156c2a92c83d7ccca42fe6048a4becf3",
+      "fingerprint": "0a450d07940a4b6d1c2c4facb0825ae430bc20de2a0dc4b7391fbd46f676b06a",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5745,7 +5745,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -5753,7 +5753,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+          "sha256": "4bda5e3de3449735d325c76a52e4e9ad2ed4d4783d7ce7b274426377b4ea9f4d"
         },
         {
           "path": "src/domain/contracts/ucpath/read-job-summary.ts",
@@ -5869,7 +5869,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -5945,7 +5945,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+          "sha256": "5fab1c75cd46bacdd76b1cb862a4ae558f05b6575425076dc36cab15cf24f5c5"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -5955,7 +5955,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "29731a155084aa984957217544ba378f115f569b6607e74ad0acf1d7000ad604",
+      "fingerprint": "66fdee78cf34f1522a7faef126425523b6ae0c04a1465fe4de9519a0c699c398",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6015,7 +6015,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -6023,7 +6023,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+          "sha256": "4bda5e3de3449735d325c76a52e4e9ad2ed4d4783d7ce7b274426377b4ea9f4d"
         },
         {
           "path": "src/domain/contracts/ucpath/read-pending-termination-set.ts",
@@ -6139,7 +6139,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -6215,7 +6215,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+          "sha256": "5fab1c75cd46bacdd76b1cb862a4ae558f05b6575425076dc36cab15cf24f5c5"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -6225,7 +6225,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-pending-termination-set"
     },
     {
-      "fingerprint": "e99cf2a97d11a6200b78fda4146505b4ae289d9c34e6ab33f47cb2d410d0ad8d",
+      "fingerprint": "539e6bd027cf104ad4b5fbb42069b1af5a7383d6e85b042c10521d4ae8622191",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6285,7 +6285,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -6293,7 +6293,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+          "sha256": "4bda5e3de3449735d325c76a52e4e9ad2ed4d4783d7ce7b274426377b4ea9f4d"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -6405,7 +6405,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -6481,7 +6481,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+          "sha256": "5fab1c75cd46bacdd76b1cb862a4ae558f05b6575425076dc36cab15cf24f5c5"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -6491,7 +6491,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "08735ed7e3af86b6df01192f55914a864495eaa6d38e955cce71dbeef1d5d446",
+      "fingerprint": "4d84f2b2b8936f99aff5a567f0b92ee6e0935219439a68e99fa81929f1e2d456",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6551,7 +6551,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -6559,7 +6559,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+          "sha256": "4bda5e3de3449735d325c76a52e4e9ad2ed4d4783d7ce7b274426377b4ea9f4d"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -6675,7 +6675,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -6751,7 +6751,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+          "sha256": "5fab1c75cd46bacdd76b1cb862a4ae558f05b6575425076dc36cab15cf24f5c5"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -6761,7 +6761,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-pending-termination-sweep"
     },
     {
-      "fingerprint": "0aca962719e832042eb79fe2ca8b547e7614fa47da1bde597c57391ed817db67",
+      "fingerprint": "c780869df6ea6993a3b6da0f6635976d0c99a09e27c10a40580caee7eb547505",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6821,7 +6821,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -6829,7 +6829,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+          "sha256": "4bda5e3de3449735d325c76a52e4e9ad2ed4d4783d7ce7b274426377b4ea9f4d"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -6945,7 +6945,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -7021,7 +7021,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+          "sha256": "5fab1c75cd46bacdd76b1cb862a4ae558f05b6575425076dc36cab15cf24f5c5"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -7031,7 +7031,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-termination"
     },
     {
-      "fingerprint": "8d49efc831c838199acf8c3c05aca65f79e4ea5c8817d63e141461268afab6d3",
+      "fingerprint": "6d6ce7cff77c7f8c84e68f909134cd8b3e23b726a53daf1291940e136871e589",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7091,7 +7091,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -7099,7 +7099,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+          "sha256": "4bda5e3de3449735d325c76a52e4e9ad2ed4d4783d7ce7b274426377b4ea9f4d"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -7107,7 +7107,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/verify-pending-terminations-cleared.ts",
-          "sha256": "a7f249dae72e394cd099f9321b826f66fbbdb133554c923a0c62f5a5a37d0bfc"
+          "sha256": "644ac660bfde464d950b7fe955878bfce22a43ea077c0007308460b39f411c36"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
@@ -7215,7 +7215,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -7291,7 +7291,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+          "sha256": "5fab1c75cd46bacdd76b1cb862a4ae558f05b6575425076dc36cab15cf24f5c5"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -7301,7 +7301,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-pending-terminations-cleared"
     },
     {
-      "fingerprint": "6e92df072704872e1d18b670ba37fc72ed742a7c55e395dc02f602f6341c9412",
+      "fingerprint": "7e698808cf20ce86a691029226b69f1743525284f4fca7e6befe38bcded1a26e",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7361,7 +7361,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -7369,7 +7369,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+          "sha256": "4bda5e3de3449735d325c76a52e4e9ad2ed4d4783d7ce7b274426377b4ea9f4d"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -7485,7 +7485,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -7561,7 +7561,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+          "sha256": "5fab1c75cd46bacdd76b1cb862a4ae558f05b6575425076dc36cab15cf24f5c5"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -7571,7 +7571,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination"
     },
     {
-      "fingerprint": "717ed5c68113578e950ca3beb261d9ab62e2c83536dd1fd84c8e321dc86c52ce",
+      "fingerprint": "1e5e43c7f8e4388dca16d4e43f600d5710911ad229b6204e4bf10a3094f04eef",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7631,7 +7631,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+          "sha256": "a30a0f1a67ef471537879856e289085f929a9ffdb5774c4f6b7b7ff20378ec26"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -7639,7 +7639,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+          "sha256": "4bda5e3de3449735d325c76a52e4e9ad2ed4d4783d7ce7b274426377b4ea9f4d"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -7755,7 +7755,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -7831,7 +7831,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+          "sha256": "5fab1c75cd46bacdd76b1cb862a4ae558f05b6575425076dc36cab15cf24f5c5"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -9179,7 +9179,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/verify-identity-approval"
     },
     {
-      "fingerprint": "876654f8113fba1462017391b1bf6225fa436df44a822c2f95c470fafbe2d708",
+      "fingerprint": "bfcfde0a18fa4d4953c7aec3a64e91cb99eb34ae82438c88fc77bdcc4f1faaf3",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -9291,7 +9291,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+          "sha256": "7ce97ee36963927cf7bb045cd1775b15d544ac557d26d78ad2fa3eb7fb020f47"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",

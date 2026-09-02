@@ -261,15 +261,26 @@ const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> 
  */
 const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[] }>>> = {
   "separations::kronos-timecard": { asserted: ["dates"], omitted: ["timecard", "timecard-search"] },
-  "separations::ucpath-transaction": { asserted: ["receipt"], omitted: ["clear-pending", "file-termination"] },
-  "separations::kuali-finalization": { asserted: [], omitted: ["finalize-kuali"] },
+  "separations::ucpath-transaction": {
+    asserted: ["receipt"],
+    omitted: ["clear-pending", "file-termination", "pending-set"],
+  },
+  "separations::kuali-finalization": { asserted: [], omitted: ["filing-presence", "finalize-kuali"] },
 };
 
 /** The same pinning for the whole-descriptor plan: every omittable step of a descriptor omitted at once. */
 const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[] }>>> = {
   [SEPARATIONS_ID]: {
     asserted: ["dates", "receipt"],
-    omitted: ["clear-pending", "file-termination", "finalize-kuali", "timecard", "timecard-search"],
+    omitted: [
+      "clear-pending",
+      "file-termination",
+      "filing-presence",
+      "finalize-kuali",
+      "pending-set",
+      "timecard",
+      "timecard-search",
+    ],
   },
 };
 

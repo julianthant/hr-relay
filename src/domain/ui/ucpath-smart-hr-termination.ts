@@ -403,33 +403,77 @@ export type UcpathTerminationFilingPresenceProof = z.infer<
 >;
 
 /**
- * The sweep's proof, stated as what a scan can actually establish: **at
+ * The sweep's historical observation proof, stated as what a scan can actually establish: **at
  * `observedAt`, this person's transaction grid carried no in-progress
  * termination rows.**
  *
  * It deliberately does NOT list what was deleted. After the Delete click those
  * rows are gone, so a post-click read cannot name them, and a proof that quoted
  * the pre-click selection back would be reporting an intention as an
- * observation. What the run selected is recorded by `prepare` and lives in the
- * node's provenance; what the PROOF says is only what was seen.
+ * observation. D310 keeps this exact schema for frozen history and wraps these
+ * observation leaves in the separate v2 settlement proof below, where the
+ * authorized selected/protected set is named explicitly.
  *
  * `scannedRowCount` is why this is evidence rather than an assertion: a grid
  * that rendered nothing at all and a grid with rows none of which are in
  * progress are different observations, and only the second one settles.
  */
-export const UcpathPendingSweepProofSchema = z.strictObject({
+const UcpathPendingSweepProofFields = {
   kind: z.literal("ucpath-pending-terminations-clear"),
   emplId: EidSchema,
-  /** Stable ids this fresh post-read proved absent. */
-  clearedTransactionIds: z.array(UcpathTransactionReceiptSchema),
-  /** Stable ids this fresh post-read proved still present and unchanged. */
-  protectedTransactionIds: z.array(UcpathTransactionReceiptSchema),
-  setDigest: FingerprintSchema,
   scannedRowCount: z.number().int().min(0),
   observedAt: IsoInstantSchema,
   source: z.literal("ss-smart-hr-detail-read"),
-});
+} as const;
+
+export const UcpathPendingSweepProofSchema = z.strictObject(
+  UcpathPendingSweepProofFields,
+);
 export type UcpathPendingSweepProof = z.infer<typeof UcpathPendingSweepProofSchema>;
+
+/**
+ * A canonical, recoverable list of stable Smart HR transaction ids. The proof
+ * form surface does not model arrays, so the current settlement carries one
+ * comma-separated scalar; `none` is the exact empty-list spelling. Transaction
+ * ids cannot contain commas, and the producer preserves the canonical ordering
+ * already enforced by `UcpathPendingTransactionSetSchema`.
+ */
+export const UcpathPendingTransactionIdListSchema = z.string().regex(
+  /^(?:none|T\d{6,}(?:,T\d{6,})*)$/u,
+  "a pending transaction id list is `none` or canonical comma-separated T ids",
+);
+
+export function ucpathPendingTransactionIdList(
+  rows: readonly UcpathTransactionRow[],
+): string {
+  return UcpathPendingTransactionIdListSchema.parse(
+    rows.length === 0 ? "none" : rows.map((row) => row.transactionId).join(","),
+  );
+}
+
+/**
+ * D310's current settlement proof. The historical proof above remains exact
+ * and readable; new settlements additionally retain the selected/protected
+ * stable ids and the full row-fact digest that keyed the write intent. This
+ * makes the deleted set recoverable from durable proof without claiming those
+ * ids came from the post-delete observation itself.
+ */
+export const UcpathPendingSweepSettlementProofSchema = z.strictObject({
+  ...UcpathPendingSweepProofFields,
+  version: z.literal(2),
+  selectedTransactionIds: UcpathPendingTransactionIdListSchema,
+  protectedTransactionIds: UcpathPendingTransactionIdListSchema,
+  setDigest: FingerprintSchema,
+});
+export type UcpathPendingSweepSettlementProof = z.infer<
+  typeof UcpathPendingSweepSettlementProofSchema
+>;
+
+/** Frozen result/archive readers accept both eras; current writes require v2. */
+export const UcpathPendingSweepHistoricalOrCurrentProofSchema = z.union([
+  UcpathPendingSweepSettlementProofSchema,
+  UcpathPendingSweepProofSchema,
+]);
 
 /** What `prepare` proved it staged, page by page. */
 export const UcpathTerminationStagingSchema = z.strictObject({

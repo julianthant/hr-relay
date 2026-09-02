@@ -252,8 +252,17 @@ function sweepProofLeaves(scope: EvidenceValueScope, prefix: string): unknown[] 
   const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
   return [
     ...person(scope, at("emplId")),
-    ...open(scope, at("kind"), at("clearedTransactionIds"), at("protectedTransactionIds"),
-      at("setDigest"), at("scannedRowCount"), at("observedAt"), at("source")),
+    ...open(
+      scope,
+      at("kind"),
+      at("version"),
+      at("selectedTransactionIds"),
+      at("protectedTransactionIds"),
+      at("setDigest"),
+      at("scannedRowCount"),
+      at("observedAt"),
+      at("source"),
+    ),
   ];
 }
 

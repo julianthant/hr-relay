@@ -37,22 +37,23 @@ import { EidSchema, FingerprintSchema, TaskIdSchema, ObservationIdSchema, taskId
 import { sha256Hex } from "../../sha256.js";
 import {
   UCPATH_SMART_HR_IN_PROGRESS_NAME,
-  UcpathPendingSweepProofSchema,
+  UcpathPendingSweepSettlementProofSchema,
   UcpathPendingSweepTargetSchema,
 } from "../../ui/ucpath-smart-hr-termination.js";
-import type { UcpathPendingSweepProof } from "../../ui/ucpath-smart-hr-termination.js";
+import type { UcpathPendingSweepSettlementProof } from "../../ui/ucpath-smart-hr-termination.js";
 import type { UcpathPendingTransactionSet } from "../../ui/ucpath-smart-hr-termination.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../base.js";
 
 /**
  * The commit's own output: the post-click scan the commit ran for ITSELF. A
  * claim, like every commit output here; beat ⑥'s independent re-read is what
- * settles it. It says what was SEEN and never what was intended — see
- * `UcpathPendingSweepProofSchema` for why the deleted ids are deliberately not
- * in it.
+ * settles it. Its observation leaves say only what was SEEN. D310's v2 proof
+ * also retains the independently authorized exact selected/protected T-ID set
+ * and its digest; those fields identify the settlement authority and are never
+ * presented as values emitted by the post-delete page.
  */
 export const UcpathDeletePendingTerminationsOutputSchema = z.strictObject({
-  cleared: UcpathPendingSweepProofSchema,
+  cleared: UcpathPendingSweepSettlementProofSchema,
 });
 export type UcpathDeletePendingTerminationsOutput =
   z.infer<typeof UcpathDeletePendingTerminationsOutputSchema>;
@@ -119,12 +120,12 @@ export const UcpathDeletePendingTerminations = defineTaskContract({
         taskId: TaskIdSchema.parse("ucpath/verify-pending-terminations-cleared"),
         effect: "read",
       },
-      proofSchema: UcpathPendingSweepProofSchema,
+      proofSchema: UcpathPendingSweepSettlementProofSchema,
       proofFromOutput: (
         output: z.output<typeof UcpathDeletePendingTerminationsOutputSchema>,
       ) => output.cleared,
-      proofFromPresentProbe: ({ proof }: { proof: UcpathPendingSweepProof }) => proof,
-      outputFromProof: (proof: UcpathPendingSweepProof) => ({ cleared: proof }),
+      proofFromPresentProbe: ({ proof }: { proof: UcpathPendingSweepSettlementProof }) => proof,
+      outputFromProof: (proof: UcpathPendingSweepSettlementProof) => ({ cleared: proof }),
     },
     idempotency: {
       probe: { taskId: TaskIdSchema.parse("ucpath/match-pending-terminations"), effect: "read" },
@@ -148,12 +149,13 @@ export const UcpathDeletePendingTerminations = defineTaskContract({
     cleared: {
       kind: "ucpath-pending-terminations-clear",
       emplId: EidSchema.parse("10800000"),
-      clearedTransactionIds: [],
-      protectedTransactionIds: [],
-      setDigest: "d".repeat(64),
       scannedRowCount: 3,
       observedAt: "2026-08-13T10:18:00.000Z",
       source: "ss-smart-hr-detail-read",
+      version: 2,
+      selectedTransactionIds: "none",
+      protectedTransactionIds: "T002204014",
+      setDigest: "0".repeat(64),
     },
   },
 });

@@ -23,9 +23,9 @@ import {
 } from "../../src/domain/archive/ledger-resolution.js";
 import { KualiSaveSeparationFinalization } from "../../src/domain/contracts/kuali/save-separation-finalization.js";
 import { UcpathCreateTermination } from "../../src/domain/contracts/ucpath/create-termination.js";
-import { UcpathDeletePendingTerminations } from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
+import { UcpathPendingSweepProofSchema } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { HASH_A, HASH_B, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
 
@@ -203,7 +203,7 @@ describe("resolving an archived run's ledger pointers", () => {
       idempotencyKey: SWEEP_KEY,
       idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", SWEEP_KEY),
       proof: {
-        schemaHash: deriveSchemaHash(UcpathDeletePendingTerminations.writeSafety.completion.proofSchema, "output"),
+        schemaHash: deriveSchemaHash(UcpathPendingSweepProofSchema, "output"),
         value: {
           kind: "ucpath-pending-terminations-clear",
           emplId: "10800000",

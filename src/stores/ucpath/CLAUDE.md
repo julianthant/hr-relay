@@ -56,6 +56,9 @@ this family is `page` and legacy's `getContentFrame` funnel does not apply.
   is retained in staging evidence, but neither is invented as cross-surface identity. The positional
   DOM suffix is never identity. A changed, missing, extra or ambiguous row refuses
   before fence/click, and the verifier requires the selected set absent while protected rows survive.
+  New settlements retain a v2 proof with canonical selected/protected T-ID lists and the full set
+  digest; the pre-D310 observation-only proof schema remains frozen and explicitly readable in
+  historical results and ledger lines.
 - **Kuali may cite only a currently surviving filing (D310).** The finalization graph always re-runs
   `verify-termination-filing-present` after the durable filing receipt and before Kuali staging. The
   read must find exactly that T ID with the same EID, effective date, normalized name, termination

@@ -43,12 +43,13 @@ export const UcpathVerifyPendingTerminationsCleared = defineTaskContract({
     proof: {
       kind: "ucpath-pending-terminations-clear",
       emplId: EidSchema.parse("10800000"),
-      clearedTransactionIds: [],
-      protectedTransactionIds: [],
-      setDigest: "d".repeat(64),
       scannedRowCount: 3,
       observedAt: "2026-08-13T10:18:00.000Z",
       source: "ss-smart-hr-detail-read",
+      version: 2,
+      selectedTransactionIds: "none",
+      protectedTransactionIds: "T002204014",
+      setDigest: "0".repeat(64),
     },
   },
 });

@@ -34,13 +34,15 @@ import { z } from "zod";
 import { EidSchema, ObservationIdSchema, taskId } from "../../ids.js";
 import {
   UCPATH_SS_SMART_HR_DISPLAYED_NAME,
-  UcpathPendingSweepProofSchema,
+  UcpathPendingSweepSettlementProofSchema,
   UcpathPendingSweepTargetSchema,
 } from "../../ui/ucpath-smart-hr-termination.js";
 import { probeVerdictSchema } from "../../write-safety-primitives.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../base.js";
 
-export const UcpathPendingSweepVerdictSchema = probeVerdictSchema(UcpathPendingSweepProofSchema);
+export const UcpathPendingSweepVerdictSchema = probeVerdictSchema(
+  UcpathPendingSweepSettlementProofSchema,
+);
 export type UcpathPendingSweepVerdict = z.infer<typeof UcpathPendingSweepVerdictSchema>;
 
 export const UcpathMatchPendingTerminations = defineTaskContract({
@@ -68,12 +70,13 @@ export const UcpathMatchPendingTerminations = defineTaskContract({
     proof: {
       kind: "ucpath-pending-terminations-clear",
       emplId: EidSchema.parse("10800000"),
-      clearedTransactionIds: [],
-      protectedTransactionIds: [],
-      setDigest: "d".repeat(64),
       scannedRowCount: 3,
       observedAt: "2026-08-13T10:18:00.000Z",
       source: "ss-smart-hr-detail-read",
+      version: 2,
+      selectedTransactionIds: "none",
+      protectedTransactionIds: "T002204014",
+      setDigest: "0".repeat(64),
     },
   },
 });

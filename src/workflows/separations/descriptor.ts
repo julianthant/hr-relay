@@ -108,7 +108,7 @@ import {
   KualiTimekeeperNameSchema,
 } from "../../domain/ui/kuali-document-identity.js";
 import { KualiSavedFinalizationProofSchema } from "../../domain/ui/kuali-separation-finalization.js";
-import { UcpathPendingSweepProofSchema } from "../../domain/ui/ucpath-smart-hr-termination.js";
+import { UcpathPendingSweepHistoricalOrCurrentProofSchema } from "../../domain/ui/ucpath-smart-hr-termination.js";
 import {
   BUILD_MANIFEST,
   resolveWorkflowFingerprint,
@@ -290,7 +290,7 @@ export const SeparationsResultSchema = z.strictObject({
   pendingSweep: z.union([
     z.strictObject({
       disposition: z.enum(["committed", "already-present"]),
-      proof: UcpathPendingSweepProofSchema,
+      proof: UcpathPendingSweepHistoricalOrCurrentProofSchema,
     }),
     OmittedStepResultArmSchema,
   ]),

@@ -74,12 +74,12 @@ describe("separations omittable steps (D307, slice one)", () => {
 
     const ucpath = planStepOmissions(view, [{ step: "ucpath-transaction", facts: { transactionNumber: "T002204014", approvalStatus: "Approved" } }]);
     assert.deepEqual(ucpath.refusals, []);
-    assert.deepEqual([...ucpath.omitted.keys()], ["clear-pending", "file-termination"]);
+    assert.deepEqual([...ucpath.omitted.keys()], ["pending-set", "clear-pending", "file-termination"]);
     assert.deepEqual([...ucpath.asserted.keys()], ["receipt"]);
 
     const finalization = planStepOmissions(view, [{ step: "kuali-finalization", facts: {} }]);
     assert.deepEqual(finalization.refusals, []);
-    assert.deepEqual([...finalization.omitted.keys()], ["finalize-kuali"]);
+    assert.deepEqual([...finalization.omitted.keys()], ["filing-presence", "finalize-kuali"]);
     assert.equal(finalization.asserted.size, 0);
 
     const all = planStepOmissions(view, [

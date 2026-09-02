@@ -53,6 +53,7 @@ import { DateOnlySchema, EidSchema, IsoInstantSchema } from "../../../../src/dom
 import { MatchIdentityOutputSchema } from "../../../../src/domain/contracts/separations/match-identity.js";
 import { deriveIdentityEvidenceDigest } from "../../../../src/domain/separations/identity-evidence.js";
 import { deriveIdempotencyKeyDigest } from "../../../../src/domain/write-safety.js";
+import { WriteIntentRecordSchema } from "../../../../src/domain/write-safety.js";
 import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../../src/domain/separations/termination-type.js";
 import type { KualiDateField } from "../../../../src/domain/ui/kuali-separation-document.js";
 import type { UcpathPersonSelection } from "../../../../src/domain/contracts/ucpath/search-person-org.js";
@@ -845,6 +846,21 @@ describe("separations scenarios — the composition", () => {
       h, "ucpath", SWEEP_NODE, compositionSweepIdempotencyKey(pendingRows),
     );
     assert.notEqual(footprint.intent, undefined, "a delete gets a fence like every other write");
+    const intent = WriteIntentRecordSchema.parse(footprint.intent);
+    assert.equal(intent.status, "committed");
+    if (intent.status === "committed") {
+      assert.deepEqual(intent.completionProof.value, {
+        kind: "ucpath-pending-terminations-clear",
+        emplId: COMPOSITION_EID,
+        scannedRowCount: 0,
+        observedAt: COMPOSITION_NOW,
+        source: "ss-smart-hr-detail-read",
+        version: 2,
+        selectedTransactionIds: "T009000000,T009000002",
+        protectedTransactionIds: "none",
+        setDigest: ucpathPendingTransactionSetDigest(compositionPendingSet(pendingRows)),
+      });
+    }
 
     assert.deepEqual(claimFor("separations/pending-sweep-committed"), [
       `transaction:${SWEEP_NODE}/committed`,
@@ -1335,12 +1351,13 @@ describe("separations scenarios — the composition", () => {
             cleared: {
               kind: "ucpath-pending-terminations-clear",
               emplId: COMPOSITION_EID,
-              clearedTransactionIds: [],
-              protectedTransactionIds: [],
-              setDigest: ucpathPendingTransactionSetDigest(compositionPendingSet([])),
               scannedRowCount: 0,
               observedAt: OBSERVED_AT,
               source: "ss-smart-hr-detail-read",
+              version: 2,
+              selectedTransactionIds: "none",
+              protectedTransactionIds: "none",
+              setDigest: ucpathPendingTransactionSetDigest(compositionPendingSet([])),
             },
           },
         },

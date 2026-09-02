@@ -30,6 +30,7 @@ import {
   isUcpathTerminationInProgress,
 } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
 import { WriteParkedError } from "../../src/core/write-sequencer.js";
+import { ucpathPendingTransactionSetDigest } from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 import type {
   UcpathTerminationStaging,
   UcpathTransactionRow,
@@ -532,12 +533,13 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
             cleared: {
               kind: "ucpath-pending-terminations-clear",
               emplId: EID,
-              clearedTransactionIds: [],
-              protectedTransactionIds: [],
-              setDigest: "d".repeat(64),
               scannedRowCount: 1,
               observedAt: OBSERVED_AT,
               source: "ss-smart-hr-detail-read",
+              version: 2,
+              selectedTransactionIds: "none",
+              protectedTransactionIds: "none",
+              setDigest: ucpathPendingTransactionSetDigest(terminationPendingSet([], EID)),
             },
           },
         },

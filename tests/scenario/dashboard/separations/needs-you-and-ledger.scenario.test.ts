@@ -31,6 +31,7 @@ import { UcpathDeletePendingTerminations } from "../../../../src/domain/contract
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/domain/ids.js";
 import { directIdentifierDigestReference } from "../../../../src/domain/redaction.js";
 import { deriveSchemaHash } from "../../../../src/domain/schema-bound-value.js";
+import { UcpathPendingSweepProofSchema } from "../../../../src/domain/ui/ucpath-smart-hr-termination.js";
 import { deriveIdempotencyKeyDigest } from "../../../../src/domain/write-safety.js";
 import { ledgerFilePath } from "../../../../src/infra/ledger/ledger-projector.js";
 import { createGateParkNotifier } from "../../../../src/services/notifications/gate-park.js";
@@ -231,7 +232,7 @@ function writeUcpathPartition(world: SeparationsDashboardWorld): void {
         seq: 0,
         system: "ucpath",
         idempotencyKey: SWEEP_KEY,
-        proofSchema: UcpathDeletePendingTerminations.writeSafety.completion.proofSchema,
+        proofSchema: UcpathPendingSweepProofSchema,
         completionKind: UcpathDeletePendingTerminations.writeSafety.completion.kind,
         proofValue: {
           kind: "ucpath-pending-terminations-clear",

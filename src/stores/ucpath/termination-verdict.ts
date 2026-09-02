@@ -35,6 +35,7 @@ import {
   UcpathPendingTransactionSetSchema,
   isUcpathTerminationAction,
   isUcpathTerminationInProgress,
+  ucpathPendingTransactionIdList,
 } from "../../domain/ui/ucpath-smart-hr-termination.js";
 import type {
   UcpathPendingTransactionSet,
@@ -227,12 +228,17 @@ export function ucpathPendingSweepVerdict(
       proof: {
         kind: "ucpath-pending-terminations-clear",
         emplId: scan.emplId,
-        clearedTransactionIds: target.observedSet.eligible.map((row) => row.transactionId),
-        protectedTransactionIds: current.protected.map((row) => row.transactionId),
-        setDigest: ucpathPendingTransactionSetDigest(target.observedSet),
         scannedRowCount: scan.scannedRowCount,
         observedAt: scan.observedAt,
         source: "ss-smart-hr-detail-read",
+        version: 2,
+        selectedTransactionIds: ucpathPendingTransactionIdList(
+          target.observedSet.eligible,
+        ),
+        protectedTransactionIds: ucpathPendingTransactionIdList(
+          target.observedSet.protected,
+        ),
+        setDigest: ucpathPendingTransactionSetDigest(target.observedSet),
       },
     });
   }

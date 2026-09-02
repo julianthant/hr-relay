@@ -25,7 +25,10 @@ import {
   ucpathTerminationVerdict,
 } from "../../src/stores/ucpath/termination-verdict.js";
 import { TerminationReceiptSchema } from "../../src/domain/separations/termination-receipt.js";
-import { ucpathPendingSweepIdempotencyKey } from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
+import {
+  ucpathPendingSweepIdempotencyKey,
+  ucpathPendingTransactionSetDigest,
+} from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 
 const EID = EidSchema.parse("10001799");
 const NAME = "Drose Clauckia";
@@ -186,6 +189,23 @@ describe("ucpath termination verdicts", () => {
     assert.equal(clear.state, "present");
     if (clear.state !== "present") return;
     assert.equal(clear.proof.scannedRowCount, 2);
+    assert.equal(clear.proof.version, 2);
+    assert.equal(clear.proof.selectedTransactionIds, "none");
+    assert.equal(
+      clear.proof.protectedTransactionIds,
+      "T002209631,T002209999",
+    );
+    assert.equal(
+      clear.proof.setDigest,
+      ucpathPendingTransactionSetDigest({
+        ...EMPTY_SET,
+        protected: [protectedRow, row({
+          transactionId: "T002209999",
+          action: "HIR",
+          approvalStatus: "Approved",
+        })],
+      }),
+    );
 
     const pending = row();
     const dirty = ucpathPendingSweepVerdict(
@@ -204,9 +224,14 @@ describe("ucpath termination verdicts", () => {
     };
     const settled = ucpathPendingSweepVerdict(target, scan([protectedRow]));
     assert.equal(settled.state, "present");
-    if (settled.state !== "present") return;
-    assert.deepEqual(settled.proof.clearedTransactionIds, [pending.transactionId]);
-    assert.deepEqual(settled.proof.protectedTransactionIds, [protectedRow.transactionId]);
+    if (settled.state === "present") {
+      assert.equal(settled.proof.selectedTransactionIds, pending.transactionId);
+      assert.equal(settled.proof.protectedTransactionIds, protectedRow.transactionId);
+      assert.equal(
+        settled.proof.setDigest,
+        ucpathPendingTransactionSetDigest(target.observedSet),
+      );
+    }
 
     for (const changed of [
       scan([pending, protectedRow]),

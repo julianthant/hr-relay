@@ -53,6 +53,10 @@ import {
   type KualiFakeWorld,
 } from "../../../src/stores/kuali/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/stores/ucpath/driver/fake.js";
+import {
+  createDeterministicUcpathSmartHrWorldDriver,
+  createUcpathSmartHrFakeWorld,
+} from "../../../src/stores/ucpath/driver/smart-hr-fake.js";
 import type { KualiFinalizationFieldName } from "../../../src/domain/ui/kuali-separation-finalization.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
 import {
@@ -350,12 +354,38 @@ export function finalizationHarness(options: Readonly<{
   if (options.departmentOptions !== undefined) {
     world.finalizationDepartmentOptions = options.departmentOptions;
   }
+  const filingWorld = createUcpathSmartHrFakeWorld({
+    emplId: FINALIZATION_EID,
+    displayedName: FINALIZATION_NAME,
+    nextTransactionId: FINALIZATION_TRANSACTION_NUMBER,
+    rows: [{
+      transactionId: FINALIZATION_TRANSACTION_NUMBER,
+      emplId: FINALIZATION_EID,
+      action: "TER",
+      approvalStatus: "Pending",
+      startDate: FINALIZATION_VARIABLES.terminationEffectiveDate,
+      displayedName: FINALIZATION_NAME,
+    }],
+  });
   const sessions = sessionFactoryHarness({
     kuali: () => createDeterministicKualiDriver(world, clock),
-    ucpath: () => createDeterministicUcpathPersonOrgDriver(
-      FINALIZATION_NAME_SEARCH_OUTPUT,
-      FINALIZATION_JOB_SUMMARY_READ,
-    ),
+    ucpath: () => {
+      const person = createDeterministicUcpathPersonOrgDriver(
+        FINALIZATION_NAME_SEARCH_OUTPUT,
+        FINALIZATION_JOB_SUMMARY_READ,
+      );
+      const filing = createDeterministicUcpathSmartHrWorldDriver(
+        filingWorld,
+        () => clock.now(),
+      );
+      return {
+        ...person,
+        scanTerminationTransactions: filing.scanTerminationTransactions,
+        stageTermination: filing.stageTermination,
+        stagePendingTerminationSweep: filing.stagePendingTerminationSweep,
+        commit: filing.commit,
+      };
+    },
   });
   const manager = new WorkerSessionManager({
     workerId: WorkerIdSchema.parse(FINALIZATION_WORKER_ID),
