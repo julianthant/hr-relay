@@ -2123,6 +2123,26 @@ to introduce a new interaction or wire arm; reusing an already-proved generic su
 the registry-wide compiler conformance test. Coverage floors, architecture guards, live selector
 verification and controlled-write evidence are unchanged.
 
+**D312/D315/D316 acceptance additions.** The architecture lane enforces the exact four authored
+artifacts for a recipe classified as reusing existing tasks/surfaces and refuses a hand-authored
+descriptor, module/node assembly, registry wire or workflow-specific generic-dashboard adapter. The
+compiler conformance matrix covers the closed `task | parallel | delegate | gate | transaction`
+algebra, stable entry/leaf ids, explicit parallel join/failure policy, independent failed-leaf retry
+and typed child-run delegation. Person Lookup must prove the minimum form and Separations the
+complete form with public descriptor/module/wire equivalence; a deletion guard then refuses their
+superseded declarations. A fixture changing only grouping, labels, run options or omission forms
+must have exactly one authored workflow file changed: `recipe.ts`. There is no legacy-authoring
+escape hatch.
+
+**D313/D314 omission and recovery matrix.** Tests prove a complete schema-valid omission bundle is
+admitted before start, while missing/invalid values refuse and no worker can request replacement
+values mid-run; a separately declared verifier still executes. Recovery tests distinguish
+checkpoint resume from restart-from-start: the former retries the failed node/parallel leaf, while
+the latter reruns all reads/computations, reuses completed transaction proof without another
+prepare/commit, probes unfinished intents first and refuses fresh-fact/write-proof mismatch.
+Mutation tests must demonstrate that either recovery path goes red if a completed external write
+can execute a second time.
+
 1. **Create `tests/scenario/workflows/<workflow-id>/`.** Two files, no more.
 2. **`structural.scenario.test.ts`** — walk every declared path through `walkDescriptor` and claim
    every coverage point `deriveGraphCoveragePoints` derives from the descriptor. `scenario-coverage`

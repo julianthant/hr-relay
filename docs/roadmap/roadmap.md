@@ -1115,17 +1115,21 @@ log:
 phase: Phase 3 bridge
 status: planned
 when: before orders 1–7 and 9
-chip: D311 ratified · compiler open
+chip: D311–D316 ratified · compiler open
 doc: 03c §Workflow authoring model — prerequisite to orders 1–7 and 9 · ref:workflow-model §1.6 · ref:operator-trust §5.2.3 · ref:frontend-backend-integration §6.8 · ref:guards-and-tests §10.11
 open: yes
 
-> One ordered recipe array — `[timeline group, tasks[]]` — becomes the workflow-authoring seam. A compiler derives the existing descriptor, module requirements, run-modal/timeline/detail projections and Explorer view; the current executor, gates, receipts, write safety and durable bytes remain. Person lookup proves the smallest shape, separations proves the complete one, and then the redundant manual declarations are deleted before another workflow migrates.
+> One ordered recipe array — `[timeline group, tasks[]]` — becomes the workflow-authoring seam, with explicit task/parallel/delegate/gate/transaction entries in that task array. A compiler derives the existing descriptor, module requirements, run-modal/timeline/detail projections and Explorer view; the current executor, gates, receipts, write safety and durable bytes remain. A reuse-only workflow has exactly four authored artifacts. Person lookup proves the smallest shape, separations proves the complete one, and then the redundant manual declarations are deleted before another workflow migrates.
 
 builds:
 - [x] DOCS D311 ratified in every owning reference and doc 03c
+- [x] DOCS D312–D316 ratified: simplicity budget, complete pre-start omissions, two recovery choices, explicit entry algebra and deletion acceptance
 - [ ] BE `defineWorkflowRecipe` + compiler to the existing descriptor/module contracts
+- [ ] PROOF exact four-artifact budget for reuse-only workflows
+- [ ] BE explicit `task | parallel | delegate | gate | transaction` entries with stable leaf ids and independent retry
 - [ ] BE person-lookup equivalence conversion
 - [ ] BOTH separations equivalence conversion, including D307 omissions and current generic surfaces
+- [ ] BOTH complete run-modal omission admission and the checkpoint-resume/root-restart command pair
 - [ ] BOTH Explorer renders the same compiled timeline tuples
 - [ ] PROOF one registry-wide compiler/dashboard conformance suite; superseded declarations and duplicate generic-surface tests removed
 
@@ -1134,6 +1138,7 @@ needs:
 
 log:
 - 2026-09-02 | D311 | owner-first architecture recorded; documentation only, no compiler or conversion claimed
+- 2026-09-02 | D312–D316 | measurable simplicity and recovery boundaries recorded; documentation only, no implementation claimed
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued

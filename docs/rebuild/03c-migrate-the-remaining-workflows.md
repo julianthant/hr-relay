@@ -67,13 +67,18 @@ feature task and T2/T3 proof only when it introduces a genuinely new interaction
 
 <!-- roadmap-status: workflow-authoring-model -->
 - [x] DOCS D311 ratified in `ref workflow-model` §1.6, with the dashboard, Explorer and test consequences in their owning references
+- [x] DOCS D312–D316 ratify the four-artifact budget, complete pre-start omissions, two recovery choices, explicit recipe-entry algebra and deletion acceptance
 - [ ] BE add `defineWorkflowRecipe` and a compiler to the current descriptor/module contracts; do not add a second runtime or durable format
+- [ ] PROOF enforce the exact four authored artifacts for a reuse-only workflow; reject descriptor/module/registry/dashboard glue outside the recipe
+- [ ] BE compile the closed `task | parallel | delegate | gate | transaction` entry algebra, including stable leaf ids and independent parallel retry
 - [ ] BE convert person lookup as the smallest equivalence proof
 - [ ] BOTH convert separations as the completeness proof while preserving its run modal, graph, D307 omissions, gates, screenshots, logs, write safety and public wire
+- [ ] BOTH make the run modal the complete omission authority: whole-step skip, all custom values schema-valid before start, no mid-run value request, separate mandatory verifiers remain selected
+- [ ] BOTH expose Resume from checkpoints and Restart from start; fresh restart reruns reads/computes but never re-executes a completed write
 - [ ] BOTH project the tuple groups to Explorer and the current descriptor fields to the existing run modal/timeline/detail surfaces
 - [ ] PROOF add one registry-wide recipe/compiler conformance suite, then remove superseded manual declarations and duplicate generic-dashboard tests
 - [x] DOCS re-scope each remaining `Dashboard · wire` row to the capability delta that order actually introduces; generic rows inherit compiler conformance
-> 2026-09-02 | D311 | owner-first design ratified; no compiler or conversion is claimed by this documentation change
+> 2026-09-02 | D311–D316 | owner-first design and its simplicity/recovery acceptance rules ratified; no compiler, conversion or recovery UI is claimed by this documentation change
 <!-- /roadmap-status -->
 
 The implementation order is deliberate: pin the current public descriptor/module/wire behavior;
@@ -87,6 +92,15 @@ which does not remove duplicate declarations, and (B) replace the executor with 
 engine, which discards proven gates, receipts, replay and write safety to solve an authoring problem.
 The selected path keeps the current dashboard and worker behavior and changes where workflow authors
 express it.
+
+D312–D316 make “simpler” measurable. A reuse-only workflow authors exactly its recipe, structural
+scenario, dry-run declaration and migration record. Recipe entries explicitly say task, parallel,
+delegate, gate or transaction; the compiler may infer data dependencies but not those control
+semantics. Every omission and all replacement values are settled in the run modal before start.
+After failure, the operator may resume from checkpoints or restart reads/computations from the root;
+neither path may execute a completed external write again. The design is accepted only when Person
+Lookup and Separations preserve their current public behavior and the superseded authoring path is
+deleted.
 
 ## The seven-step migration playbook
 
@@ -109,10 +123,11 @@ driver operations FIRST, then write strict contracts → scenarios → impls →
 (`fakeCtx`) → descriptor/result/delegation policies, in `ref guards-and-tests` §6's red→green order.
 Classify every task REUSE / CUSTOMIZE / BUILD against ref stores before writing one — the store
 catalog is the reuse ledger, and a task that already exists under another name is the single
-cheapest thing to get wrong. **Layout (D265, `ref workflow-model` §1.2.2):** a rail workflow is a top-level folder
-`src/workflows/<id>/`; each declared timeline category is a sub-folder `<id>/<step>/` holding that
-step's node fragments and, when chunk-proved, its harness; there is no `src/workflows/proving/`.
-The `workflow-layout` guard pins role ↔ path. Under D311, author one ordered array of
+cheapest thing to get wrong. **Layout (D265, `ref workflow-model` §1.2.2):** a rail workflow is a
+top-level folder `src/workflows/<id>/`; child step folders remain organization/audit homes for any
+genuinely step-specific implementation or chunk harness, but D311/D312 make them neither timeline
+order nor mandatory node-fragment glue. There is no `src/workflows/proving/`. The `workflow-layout`
+guard pins any files that do exist to their declared roles. Author one ordered array of
 `[timeline group, tasks[]]` tuples; typed task input references derive execution dependencies, and
 the compiler derives the descriptor, module requirements, registry value and generic dashboard
 projections. **Artefacts:** `src/workflows/<id>/recipe.ts` plus any genuinely new
@@ -977,8 +992,9 @@ traceback that names each one's trigger.
 
 ## Decisions this phase ratified
 
-**D311 is this phase's first decision.** It ratifies the workflow recipe/compiler before another
-migration starts; the implementation remains open at `{#workflow-authoring-model}`. The rest of the
+**D311–D316 are this phase's workflow-authoring decisions.** They ratify the recipe/compiler and its
+measurable simplicity, omission, recovery, entry-algebra and deletion boundaries before another
+migration starts; implementation remains open at `{#workflow-authoring-model}`. The rest of the
 table is the standing set ratified elsewhere that still binds every order row.
 
 | D | Where it binds in this doc |
@@ -992,6 +1008,7 @@ table is the standing set ratified elsewhere that still binds every order row.
 | D191 (round 46, 2026-08-12) | the per-commit gate every step-3 run uses (`test:coverage`) |
 | D193 (round 47, 2026-08-12) | the entry point — separations first, the table deliberately NOT re-sequenced |
 | D311 (round 121, 2026-09-02) | one tuple recipe/compiler authoring seam; generic dashboard conformance once; T2/T3 only for new capability deltas |
+| D312–D316 (round 122, 2026-09-02) | exactly four reuse-only artifacts; complete run-modal omissions; checkpoint resume or root restart; explicit entry algebra; Person Lookup/Separations equivalence followed by deletion |
 | R10 (operator, 2026-08-20; amended D311) | T1 behavior per workflow, T2/T3 per new dashboard capability, the 80 % floor |
 
 A round ratified by a future migration is added here in the same commit that records it, with its

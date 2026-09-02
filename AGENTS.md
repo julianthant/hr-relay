@@ -392,14 +392,20 @@ environment-supplied.
   folder with role `{ kind: "chunk-harness", of, step }`; it remains independently startable,
   nests under its composition in the picker/Explorer, and never appears in the rail. There is no
   `src/workflows/proving/` and no registered workflow whose purpose is test equipment.
-- **2026-09-02 — D311 makes the workflow recipe the authoring authority.** Its `steps` field is an
-  ordered array of `[timeline group, tasks[]]` tuples; group keys/labels own timeline grouping while
-  typed task input references own execution dependencies. One compiler derives the existing
-  descriptor, module requirements and generic dashboard/Explorer projections. D265 folders remain
-  organization/audit structure, not semantic timeline order. Convert person lookup, then
-  separations, prove public equivalence, and delete redundant manual declarations before migrating
-  another workflow. T1 remains per workflow; T2/T3 is added only for a genuinely new dashboard
-  capability. See ref workflow-model §1.6 and doc 03c `{#workflow-authoring-model}`.
+- **2026-09-02 — D311–D316 make the workflow recipe the authoring authority and simplicity
+  measurable.** Its `steps` field is an ordered array of `[timeline group, tasks[]]` tuples;
+  group keys/labels own timeline grouping while typed inputs own dependencies, and entries
+  explicitly declare `task | parallel | delegate | gate | transaction`. One compiler derives the
+  existing descriptor, module requirements and generic dashboard/Explorer projections. A workflow
+  reusing existing tasks/surfaces authors exactly recipe + structural scenario + dry-run declaration
+  + migration doc. Whole-step omissions and every replacement value are complete/schema-valid in
+  the run modal before start; a separate mandatory verifier may still run. Recovery exposes
+  checkpoint resume or root restart; root restart reruns reads/computes but never re-executes a
+  completed transaction. D265 folders remain organization/audit structure, not semantic timeline
+  order. Convert person lookup, then separations, prove public equivalence, and delete redundant
+  declarations before migrating another workflow; there is no advanced escape hatch. T1 remains per
+  workflow; T2/T3 is added only for a genuinely new dashboard capability. See ref workflow-model
+  §§1.6, 5.6 and 5.8 and doc 03c `{#workflow-authoring-model}`.
 - A workflow's T1 proof lives at
   `tests/scenario/workflows/<workflow-id>/{structural.scenario.test.ts,dry-run.scenario.ts}`: exactly
   one collected structural scenario and one sibling live dry-run manifest. The live half may write

@@ -1195,6 +1195,22 @@ The refusal message names step keys and field keys only — never a typed value,
 operator input about a real person (a date, an EID, a transaction number) and echoing it would put it
 in a wire body, a log line and a browser console at once.
 
+**D313 amendment — one complete pre-start omission submission (2026-09-02; declared, unbuilt).** The
+recipe compiler supplies each step's complete value schema and omission form to the start
+projection. The modal submits one complete `stepOmissions` bundle before planning; the server cannot
+produce a start plan until every omitted step's required value is present and schema-valid. There
+is no running-worker request/response command for omitted values. The response continues to expose
+only step/field keys and assertion provenance, never values. A mandatory verifier is an ordinary
+selected recipe entry outside the omitted step, not a hidden continuation of that step.
+
+**D314 amendment — two recovery commands, one immutable admission (2026-09-02; declared, unbuilt).**
+The run command family gains `resume-from-checkpoints` and `restart-from-start`, each naming the
+exact terminal run and observed version and each minting the logical item's next attempt. The first
+serves a failed-node replay plan. The second serves a root fresh-read plan plus stable transaction
+ids whose completed proofs will be validated and reused without prepare/commit. Neither accepts an
+input, omission or checkpoint patch. A parked unknown write exposes neither command. Until this
+amendment is implemented, the existing `retry` command remains the only built recovery verb.
+
 ##### D250 — the typed box DESCRIBES itself, and its examples are proved typeable (2026-08-20)
 
 The demo's typed-input block carries three things this tree served none of (R8 finding 17): an
