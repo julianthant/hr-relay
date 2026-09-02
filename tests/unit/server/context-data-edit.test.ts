@@ -129,6 +129,39 @@ describe("context-data edit projection (2i-C)", () => {
   });
 
   /**
+   * D307 — an ASSERTED row on the Data rail.
+   *
+   * Before D307 an `operator` source meant one thing, a correction, and the
+   * rail drew nothing extra for it because the `corrected` badge already said
+   * so. An asserted value is operator-sourced with NO correction, so without
+   * its own leaf it would draw exactly like a value a task read from a live
+   * system — an instant beside it and nothing saying nobody looked.
+   */
+  it("names the omitted step behind an asserted value, and never calls it a correction", () => {
+    const w = world();
+    queuedEventOf(w, { seed: 1 });
+    w.authority.put(runRecordOf({ seed: 1, version: 4 }));
+    w.authority.putCheckpoint(RunCheckpointRecordSchema.parse({
+      ...crmDatesCheckpoint(1, [
+        { path: "invitedOn.value", source: "operator", observedAt: OBSERVED_AT, originalObservedAt: OBSERVED_AT },
+      ]),
+      assertion: { step: "crm-read", assertedAt: OBSERVED_AT },
+    }));
+
+    const invited = contextData(w).entries.find((entry) => entry.label === "Invited on");
+    assert.ok(invited);
+    assert.equal(invited.assertedStep, "crm-read");
+    assert.equal(invited.source, "operator");
+    assert.equal(invited.correctedAt, undefined, "an assertion is not a correction");
+
+    // A leaf the asserted row recorded no covering point for is still asserted:
+    // the marker is a property of the ROW, not of one provenance line.
+    const starts = contextData(w).entries.find((entry) => entry.label === "Starts on");
+    assert.equal(starts?.assertedStep, "crm-read");
+    assert.equal(starts?.observedAt, undefined);
+  });
+
+  /**
    * D254 — this case used to fold a `span.patched` detail and join it to the
    * editData declaration. The channel is retired (zero production emitters),
    * so what it pins now is the rail's WHOLE membership rule: a row exists iff
