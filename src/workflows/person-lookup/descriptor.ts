@@ -12,8 +12,8 @@
  * `ucpath/search-person-org` fails `tsc` here rather than at the first run.
  */
 import { z } from "zod";
-import { flow } from "../../base/flow.js";
-import { defineWorkflowDescriptor, requireFact } from "../../base/workflow.js";
+import { compileWorkflowRecipe, defineWorkflowRecipe } from "../../base/workflow-recipe.js";
+import { requireFact } from "../../base/workflow.js";
 import {
   CrmReadOnboardingDates,
   ReadOnboardingDatesOutputSchema,
@@ -107,51 +107,58 @@ export const PersonLookupResultSchema = z.strictObject({
 
 /* ── the graph ───────────────────────────────────────────────────────────── */
 
-const personLookupFlow = flow(PersonLookupInput)
-  .step("searching", SearchPersonOrg, {
-    dependsOn: [],
+export const personLookupRecipe = defineWorkflowRecipe(PersonLookupInput, ({ task, result }) => {
+  const searching = task({
+    id: "searching",
+    contract: SearchPersonOrg,
+    label: "Searching",
     replay: "checkpoint",
-    bind: ({ input }) => ("emplId" in input
-      ? { kind: "by-eid", emplId: input.emplId }
-      : { kind: "by-name", name: input.name, keepNonHdh: input.keepNonHdh }),
-  })
-  .step("cross-verify", CrmReadOnboardingRecord, {
+  }, [], ({ input }) => ("emplId" in input
+      ? { kind: "by-eid" as const, emplId: input.emplId }
+      : { kind: "by-name" as const, name: input.name, keepNonHdh: input.keepNonHdh }),
+  );
+  const crossVerify = task({
+    id: "cross-verify",
+    contract: CrmReadOnboardingRecord,
     label: "Cross Verification",
-    dependsOn: ["searching"],
     replay: "checkpoint",
-    bind: ({ input, outputs }) => {
-      const selected = requireFact(outputs.searching.selection.selected, "searching", "selection.selected");
-      return {
-        eid: selected.emplId,
-        name: "emplId" in input ? input.name ?? selected.name : input.name,
-      };
-    },
-  })
-  .step("active-status", ReadActiveStatus, {
+  }, [searching], ({ input, outputs }) => {
+    const selected = requireFact(outputs.searching.selection.selected, "searching", "selection.selected");
+    return {
+      eid: selected.emplId,
+      name: "emplId" in input ? input.name ?? selected.name : input.name,
+    };
+  });
+  const activeStatus = task({
+    id: "active-status",
+    contract: ReadActiveStatus,
     label: "Active Status",
-    dependsOn: ["searching", "cross-verify"],
     // Pure, and cheap: re-running it on resume is strictly safer than replaying
     // a fold whose meaning may have changed with the code that computes it.
     replay: "always-rerun",
-    bind: ({ input, outputs }) => ({
-      person: outputs.searching,
-      crm: outputs["cross-verify"],
-      keepNonHdh: input.keepNonHdh,
-    }),
-  })
-  .step("crm-dates", CrmReadOnboardingDates, {
+  }, [searching, crossVerify], ({ input, outputs }) => ({
+    person: outputs.searching,
+    crm: outputs["cross-verify"],
+    keepNonHdh: input.keepNonHdh,
+  }));
+  const crmDates = task({
+    id: "crm-dates",
+    contract: CrmReadOnboardingDates,
     label: "CRM Dates",
-    dependsOn: ["searching"],
     when: { kind: "is-true", of: { from: "input", path: "includeCrmDates" } },
+    conditional: true,
     replay: "checkpoint",
-    bind: ({ outputs }) => ({
-      eid: requireFact(outputs.searching.selection.selected, "searching", "selection.selected").emplId,
-    }),
-  })
-  .build({
-    schema: PersonLookupResultSchema,
-    dependsOn: ["active-status", "crm-dates"],
-    derive: ({ input, outputs }) => ({
+  }, [searching], ({ outputs }) => ({
+    eid: requireFact(outputs.searching.selection.selected, "searching", "selection.selected").emplId,
+  }));
+  return {
+    steps: [
+      [{ key: "searching", label: "Searching" }, [searching]],
+      [{ key: "cross-verify", label: "Cross Verification" }, [crossVerify]],
+      [{ key: "active-status", label: "Active Status" }, [activeStatus]],
+      [{ key: "crm-dates", label: "CRM Dates" }, [crmDates]],
+    ],
+    result: result(PersonLookupResultSchema, [activeStatus, crmDates], ({ input, outputs }) => ({
       activeStatus: outputs["active-status"],
       crmDates: input.includeCrmDates
         ? {
@@ -159,12 +166,13 @@ const personLookupFlow = flow(PersonLookupInput)
           dates: requireFact(outputs["crm-dates"], "crm-dates", "conditional output"),
         }
         : { state: "not-requested" as const },
-    }),
-  });
+    })),
+  };
+});
 
 /* ── the descriptor ──────────────────────────────────────────────────────── */
 
-export const personLookupDescriptor = defineWorkflowDescriptor({
+export const personLookupDescriptor = compileWorkflowRecipe(personLookupRecipe, {
   id: "person-lookup",
   version: 1,
   contractFingerprint: resolveWorkflowFingerprint(
@@ -300,5 +308,4 @@ export const personLookupDescriptor = defineWorkflowDescriptor({
     "person-lookup/crm-subject-mismatch",
     "person-lookup/ucpath-drill-subject-mismatch",
   ],
-  flow: personLookupFlow,
 });

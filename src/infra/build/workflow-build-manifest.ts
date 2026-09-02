@@ -142,9 +142,11 @@ export function fingerprintSourceSet(
  * descriptor actually declares rather than infer one from where it sits.
  *
  * Fail loud on anything but exactly one string-literal `id` in exactly one
- * `defineWorkflowDescriptor` call: a guessed id would key a fingerprint to a
- * workflow that does not exist, and `resolveWorkflowFingerprint`'s throw would
- * then fire at load time for the descriptor that does.
+ * descriptor-authoring call: the legacy/harness form passes the spec first to
+ * `defineWorkflowDescriptor`, while D311's recipe form passes it second to
+ * `compileWorkflowRecipe`. A guessed id would key a fingerprint to a workflow
+ * that does not exist, and `resolveWorkflowFingerprint`'s throw would then fire
+ * at load time for the descriptor that does.
  *
  * Exported because `workflow-layout` (D265 arm (a)) asks the same question of
  * the same files — "which workflow does the descriptor at this path declare?" —
@@ -156,10 +158,13 @@ export function declaredWorkflowId(entry: string): string {
     entry, readFileSync(entry, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const ids: string[] = [];
   function visit(node: ts.Node): void {
-    if (ts.isCallExpression(node)
-      && ts.isIdentifier(node.expression)
-      && node.expression.text === "defineWorkflowDescriptor") {
-      const spec = node.arguments[0];
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const specIndex = node.expression.text === "defineWorkflowDescriptor"
+        ? 0
+        : node.expression.text === "compileWorkflowRecipe"
+          ? 1
+          : undefined;
+      const spec = specIndex === undefined ? undefined : node.arguments[specIndex];
       if (spec !== undefined && ts.isObjectLiteralExpression(spec)) {
         for (const property of spec.properties) {
           if (ts.isPropertyAssignment(property)
