@@ -397,12 +397,13 @@ export async function scanTerminationTransactionsOnPage(
       page,
       UCPATH_SS_SMART_HR_RECEIPT_DISPLAY,
     );
-    let settled: "rows" | "empty" | "single-detail";
+    const resultRows = page.locator(DRIVER_ANCHOR.searchResultRow);
+    const noResults = page.getByText(NO_RESULTS_MARKER);
     try {
-      settled = await Promise.race([
-        page.locator(DRIVER_ANCHOR.searchResultRow).first()
+      await Promise.race([
+        resultRows.first()
           .waitFor({ state: "attached", timeout: SCAN_BOUND_MS }).then(() => "rows" as const),
-        page.getByText(NO_RESULTS_MARKER).first()
+        noResults.first()
           .waitFor({ state: "attached", timeout: SCAN_BOUND_MS }).then(() => "empty" as const),
         autoDrilledReceipt
           .waitFor({ state: "visible", timeout: SCAN_BOUND_MS })
@@ -444,6 +445,25 @@ export async function scanTerminationTransactionsOnPage(
       }
       return unreadable(failureReason(settlementError), diagnostic);
     }
+    const [resultRowCount, noResultsCount, receiptCount] = await Promise.all([
+      resultRows.count(),
+      noResults.count(),
+      autoDrilledReceipt.count(),
+    ]);
+    const settledStates = [
+      ...(resultRowCount > 0 ? ["rows" as const] : []),
+      ...(noResultsCount > 0 ? ["empty" as const] : []),
+      ...(receiptCount > 0 ? ["single-detail" as const] : []),
+    ];
+    if (settledStates.length !== 1) {
+      throw new Error(
+        `the SS Smart HR search settled in ${String(settledStates.length)} states `
+        + `(result rows: ${String(resultRowCount)}, no-results markers: `
+        + `${String(noResultsCount)}, transaction-id controls: ${String(receiptCount)}); `
+        + "exactly one is required",
+      );
+    }
+    const [settled] = settledStates;
     if (settled === "empty") {
       return UcpathTransactionScanSchema.parse({
         state: "read",
@@ -455,7 +475,6 @@ export async function scanTerminationTransactionsOnPage(
     }
     let ids: readonly string[];
     if (settled === "single-detail") {
-      const receiptCount = await autoDrilledReceipt.count();
       if (receiptCount !== 1) {
         throw new Error(
           `the SS Smart HR auto-drilled detail exposed ${String(receiptCount)} transaction-id controls; exactly one is required`,

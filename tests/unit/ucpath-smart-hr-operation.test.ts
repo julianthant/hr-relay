@@ -60,6 +60,7 @@ function singleResultAutoDrillPage(
   transactionId = "T009000001",
   receiptCount = 1,
   rereadTransactionId = transactionId,
+  coPresent: "none" | "row" | "empty" = "none",
 ): Page {
   const textBySelector = new Map<string, string>([
     ["#UC_SS_TRANSACT_UC_TRANSACT_ID", transactionId],
@@ -75,14 +76,22 @@ function singleResultAutoDrillPage(
       fill: async () => undefined,
       selectOption: async () => [],
       click: async () => undefined,
-      count: async () => selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID" ? receiptCount : 1,
+      count: async () => {
+        if (selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID") return receiptCount;
+        if (selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')) {
+          return coPresent === "row" ? 1 : 0;
+        }
+        return 1;
+      },
       waitFor: async () => {
         if (selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')) {
+          if (coPresent === "row") return;
           await new Promise<never>(() => undefined);
         }
       },
       evaluate: async () => false,
       innerText: async () => {
+        if (selector === "body") return coPresent === "row" ? transactionId : "";
         if (selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID") {
           receiptReadCount += 1;
           return receiptReadCount === 1 ? transactionId : rereadTransactionId;
@@ -98,7 +107,11 @@ function singleResultAutoDrillPage(
     getByText: () => {
       const value = {
         first: () => value,
-        waitFor: async () => await new Promise<never>(() => undefined),
+        count: async () => coPresent === "empty" ? 1 : 0,
+        waitFor: async () => {
+          if (coPresent === "empty") return;
+          await new Promise<never>(() => undefined);
+        },
       };
       return value;
     },
@@ -162,6 +175,30 @@ describe("SS Smart HR transaction scan", () => {
     assert.match(scan.reason, /\[transaction identifier removed\]/u);
     assert.doesNotMatch(scan.reason, new RegExp(requestedId, "u"));
     assert.doesNotMatch(scan.reason, new RegExp(renderedId, "u"));
+  });
+
+  it("refuses a co-present result row and auto-drilled detail as an ambiguous settlement", async () => {
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage("T009000001", 1, "T009000001", "row"),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /settled in 2 states/u);
+  });
+
+  it("refuses a co-present no-results marker and detail rather than manufacturing absence", async () => {
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage("T009000001", 1, "T009000001", "empty"),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /settled in 2 states/u);
   });
 
   it("preserves an early settlement failure without attempting diagnostic capture", async () => {

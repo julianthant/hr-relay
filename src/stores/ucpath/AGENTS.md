@@ -79,8 +79,10 @@ this family is `page` and legacy's `getContentFrame` funnel does not apply.
   now admits the already-proven receipt display as a third settlement signal, requires exactly one
   receipt control and a stable `T…` value, then uses the existing keyed detail reread. Missing,
   malformed, or ambiguous detail identity remains `unreadable`, and scan failures redact both person
-  and transaction identifiers before the reason becomes durable; never lengthen the wait or turn
-  the auto-drill into an empty set.
+  and transaction identifiers before the reason becomes durable. The first marker only wakes the
+  scan: a post-wake count must prove exactly one of result rows, no-results marker, or detail receipt,
+  so stale co-present states refuse instead of winning a race. Never lengthen the wait or turn the
+  auto-drill into an empty set.
 
 - **2026-08-14: `.or()` is a UNION under strict mode, so waiting on one is a claim
   that its arms are mutually exclusive — and this one's arms were not (D213).**
