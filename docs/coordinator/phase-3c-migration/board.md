@@ -4,13 +4,14 @@
 **Integration target:** `feature/03c-workflow-migration` at base `414d77b810f713d5813c79035fd38064ba04e73c`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-02 16:02 PDT at `f35beb03`
+**Last verified:** 2026-09-02 16:27 PDT at `7b3325d6`
 
 ## Facts every run needs
 
 - Local `master` merged `feature/03b-live-close` with `--no-ff` at `414d77b8`; no remote push occurred.
 - Phase 3b's R4e/R4f controlled-live proof remains open and is not a Phase 3c completion claim.
 - D311's recipe/compiler seam is the plan-owned prerequisite to orders 1–7 and 9. Person lookup and separations are its exact equivalence fixtures.
+- The operator ratified the D311 follow-on choices in task `01a06423-1d4f-7701-af63-224313139956`: a strict four-artifact authoring budget; whole-step skip with pre-start validated supplied outputs and separate visible safety verification; checkpoint resume plus restart-from-start as a new attempt of the same logical run without repeat writes; explicit typed task/parallel/delegate/gate/transaction entries; and hard Person Lookup + Separations equivalence/deletion acceptance. That task is recording them as D312–D316; R1 and R2 were amended directly at 16:27 PDT and may not close against the earlier D311-only contract.
 - Orders retain the risk/reuse sequence 1, 2, 3, 4, 5, 6, 7, 9. No later order begins implementation before its declared predecessor is integrated unless the plan marks the work cross-cutting and the paths/authority are disjoint.
 - The phase owns thirteen remaining workflow migrations, 47 open legacy capabilities at the recorded baseline, generic recipe/dashboard conformance, per-workflow T1, and T2/T3 only for genuinely new UI behavior.
 - Live reads and dry runs are pre-authorized. Every actual external write still needs an exact operator-approved target/disposition.
@@ -20,8 +21,8 @@
 
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
-| u01–u06 | R1 | running | — | — | required | D311 compiler, two conversions, projections, conformance/deletion, order-0 T1 |
-| u10–u12 | R2 | running; decision residue isolated | — | — | required | Order 1 migration intake and live/provenance discovery only |
+| u01–u06 | R1 | running; D312–D316 amendment delivered | — | — | required | D311 compiler plus follow-on authoring/skip/recovery/combinator acceptance, two conversions, projections, conformance/deletion, order-0 T1 |
+| u10–u12 | R2 | running; D312–D316 amendment delivered; T1 decision residue isolated | — | — | required | Order 1 migration intake and live/provenance discovery only |
 | u20–u24 | R3 | blocked on R1+R2 + decision 1 | — | — | required | Order 1 implementation and proof |
 | u30–u35 | R4 | planned | — | — | required | Order 2 downloads + viewer |
 | u40–u44 | R5 | planned | — | — | required | Order 3 OCR pipeline + Review capability |
