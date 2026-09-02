@@ -1,16 +1,24 @@
 # R2 research — Order 1 reuse, provenance, and live map
 
-**Date:** 2026-09-02  
-**Run branch/base:** `feature/03c-r2-order1-intake` / `81c74fb0e4114891ee3d1261ff27268833a7536d`  
-**Legacy evidence HEAD:** `9d19e4141d57617e2bf895e21e34a5bd8f15047c`  
+**Date:** 2026-09-02
+
+**Run branch:** `feature/03c-r2-order1-intake`
+
+**Profile/brief base:** `414d77b810f713d5813c79035fd38064ba04e73c`
+
+**Isolated launch parent:** `81c74fb0e4114891ee3d1261ff27268833a7536d` (the profile/brief commit's
+descendant adding only the Phase 3c coordination plan)
+
+**Legacy evidence HEAD:** `9d19e4141d57617e2bf895e21e34a5bd8f15047c`
+
 **Mode:** read-only intake; no compiler-dependent implementation and no external write
 
 ## Authority result
 
 Doc 03c §Order 1/§b and refs task-contract, stores, dashboard-surfaces, guards-and-tests and
-operator-trust settle every product/policy answer. There are no `you:` lines. The remaining gaps are
-implementation and dated-live evidence, so R3 must fail/block on them rather than ask the operator to
-choose a fallback.
+operator-trust settle the workflow-specific product answers. There are no workflow `you:` lines.
+One cross-authority testing decision remains: the mandatory T1b live dry-run and D209's refusal of a
+transaction-free dry run cannot both hold without an owning-contract resolution (§T1b conflict).
 
 ## Reuse classification
 
@@ -18,18 +26,19 @@ choose a fallback.
 |---|---|---|---|
 | Person Search | REUSE | `src/stores/ucpath/tasks/search-person-org.ts`; current `src/workflows/person-lookup/descriptor.ts` Order 0 graph | Preserve current public behavior as the `search` mode. |
 | UCPath Job Summary | REUSE | `src/stores/ucpath/tasks/read-job-summary.ts`; `src/stores/ucpath/index.ts` | Bind the existing rich read wherever Order 1 needs that page; do not rescrape it. |
-| Person Match | CUSTOMIZE | Semantic-ready `src/stores/ucpath/driver/`; no Match operation or descriptor mode exists | Add one typed HR Tasks Search/Match driver operation, strict task contract and pure result fold without minting a workflow id. |
+| Person Match driver | CUSTOMIZE | Semantic-ready `src/stores/ucpath/driver/`; no Match operation or descriptor mode exists | Add one typed HR Tasks Search/Match driver operation. |
+| Person Match read | BUILD | No rebuild task contract/implementation exists | Build `ucpath/search-hr-tasks-person` plus pure `workflow:person-lookup/derive-match-result`; do not mint a workflow id. |
 | Existing person result fold | REUSE/CUSTOMIZE | `workflow:person-lookup/read-active-status` proves the sessionless mini-store pattern | Keep Search behavior; add a distinct pure Match result contract rather than overloading active status. |
 | I-9 common auth/session | REUSE | common SSO/Duo and browser store contracts; `src/stores/i9/session.ts` exists | Compose an I-9-specific verified login recipe with two current content facts. |
-| I-9 search page | BUILD | `src/stores/i9/index.ts` is unwired and has zero tasks | Rich fixed `search-employees` page-visit task; strict grid parsing and typed no-result/access-unknown arms. |
-| I-9 summary page | BUILD | no rebuild contract/driver/task | Rich fixed `read-form-summary` page-visit task; historical/modern route plus populated audit evidence. |
-| I-9 terminal result | BUILD | no rebuild workflow | Pure mini-store fold to signed/unsigned/historical/not-found/unable-to-access/error without blank/default substitution. |
+| I-9 search page | BUILD | `src/stores/i9/index.ts` is unwired and has zero tasks | Rich fixed `i9/search-employees` page-visit task; strict grid parsing and typed no-result/access-unknown arms. |
+| I-9 summary page | BUILD | no rebuild contract/driver/task | Rich fixed `i9/read-form-summary` page-visit task; historical/modern route plus populated audit evidence. |
+| I-9 terminal result | BUILD | no rebuild workflow | Pure `workflow:i9-lookup/derive-signer-result` fold to signed/unsigned/historical/not-found/unable-to-access/error without blank/default substitution. |
 
 ## Frozen-source provenance
 
 | Evidence | Source blob/commit | Facts eligible to port only after live verification |
 |---|---|---|
-| Person Match orchestration | legacy `src/workflows/person-lookup/match.ts` @ `a1191411148add3ea4b5c0e2fc970ae74d1f99b6` | Name/DOB/SSN parsing, unavailable-identifier marker, typed Match question. |
+| Person Match input/orchestration | legacy `src/workflows/person-lookup/schema.ts` + `match.ts`; `match.ts` @ `a1191411148add3ea4b5c0e2fc970ae74d1f99b6` | `schema.ts` owns name/DOB/SSN parsing and the unavailable-identifier marker; `match.ts` owns the typed Match call/evidence projection. |
 | Person outcome folds | legacy `src/workflows/person-lookup/outcome.ts` @ `ced00079295d61f36c621701114eba51e9964aab` | Found/no-match/ambiguous/unknown distinctions and pure interpretation candidates. |
 | UCPath HR Tasks navigation | legacy `src/systems/ucpath/navigate.ts` @ `773b52873f3c59ccc2498a51d60ac5834b2608e1` | HR Tasks surface, main iframe, search fields, trigger and result-grid facts; selectors still require D150 live re-verification. |
 | I-9 workflow/input | legacy `src/workflows/i9-lookup/{workflow,schema}.ts`; workflow @ `a6625306aa8ae8c59f1cf7db0dda8c7447eec8e2` | First/last name search, optional SSN, signer status vocabulary; delegated-only legacy policy is not automatically the rebuild policy. |
@@ -67,9 +76,9 @@ Session `r2i9` was launched headless with the repository's Duo Autopilot through
 
 | Need | Exact requirement |
 |---|---|
-| Person Search T1b | Current label(s) covering the truthful name/EID input arms the manifest claims; values resolved through ignored secrets; same-day availability. |
-| Person Match T1b/T3 | Current HR Tasks record with name and DOB plus at least one usable disambiguator; mode-specific ceremony and subject title; no committed person values. |
-| I-9 T1b | New current access-visible record with an eligible completed action, modern summary, rendered audit header and non-empty Signed Section 2 Created By; the old source-pinned candidate is ineligible. |
+| Person Search T1b | Blocked on the T1b contract decision below; afterward, current label(s) covering only truthful name/EID input arms, with same-day availability and secret-resolved values. |
+| Person Match T1b/T3 | Both are blocked on the contract decision because T3 attaches to a dry-run scenario. After resolution, use a current HR Tasks record with name and DOB plus one usable disambiguator, mode-specific ceremony and subject title, and no committed person values. |
+| I-9 T1b | Blocked on the contract decision and a new current access-visible record with an eligible completed action, modern summary, rendered audit header and non-empty Signed Section 2 Created By. |
 | Negative branches | Synthetic structural scenarios for no-match, ambiguity, malformed schema, transient/permanent failure, subject mismatch and unknown. Never search for a real person merely to manufacture a negative arm. |
 | Capability close | `legacy-workflow-person-lookup` and `legacy-workflow-i9-lookup` stay open until native workflows, proofs and live records land. Correct the I-9 entry's derived “pure UCPath read” wording to I-9 system read at that boundary. |
 
@@ -79,6 +88,27 @@ Session `r2i9` was launched headless with the repository's Duo Autopilot through
 - I-9 is its own new browser store and workflow; it does not reuse a UCPath page even though it
   reuses UCSD SSO credentials/ceremony.
 - Both workflows owe T1. Only the new person mode interaction owes T2/T3; I-9 ordinary projections
-  ride registry-wide recipe conformance.
+  ride registry-wide recipe conformance. The structural T1 halves are unblocked; the live halves
+  wait on the contract decision below.
 - No Order 1 workflow writes. Any transaction, controlled-commit target, probe policy, write
   freshness budget or mutation capability would be scope drift.
+
+## NEEDS COORDINATOR — T1b contract conflict
+
+The conflict is exact: doc 03c §4 and ref guards-and-tests §10.11 require every workflow's live T1b
+manifest to run through `cli dry-run-scenario`, while ref workflow-model §2/D209 makes `dryRun`
+unsupported for a graph with no transaction node. Both Order 1 workflows are intentionally pure
+reads. R2 does not choose or ratify an exception and does not change either authority.
+
+Options for the coordinator's operator decision sheet:
+
+| Option | Consequence |
+|---|---|
+| **A — explicit `live-read` T1b arm (recommended)** | Add a distinct admission/result mode for transaction-free graphs in the T1b declaration/runner and owning test contract. Preserve D209's definition of `dryRun`; prove graph-level absence of transactions and zero write-authority deltas. One evidence framework remains. |
+| **B — ordinary live-run evidence path** | Run/record read-only workflows through the ordinary start/worker path outside `dry-run-scenario`. D209 stays untouched, but guards, results and close rules must accept a second live-proof authority. |
+| **C — no live half for read-only T1** | Amend doc 03c/ref guards-and-tests so pure reads receive structural T1 plus selector evidence only. Lowest implementation cost, but weakens the stated every-workflow live proof. |
+
+A no-op transaction/preview node is rejected, not offered: it would falsify the workflow's effect
+and graph only to satisfy a runner. Option A best preserves both safety intents—D209 keeps preview
+semantics honest, while every workflow retains one durable live proof lane—but requires an explicit
+operator/owner decision before R3 implements it.
