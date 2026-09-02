@@ -40,9 +40,23 @@ describe("start step selection", () => {
     );
   });
 
-  it("refuses an omitted required separations step", () => {
+  it("projects Separations' three omittable write-side steps and keeps its read steps required (D307)", () => {
     const steps = projectStartSteps(separationsDescriptor);
-    assert.ok(steps.every(({ control }) => control.state === "required"));
+    assert.deepEqual(
+      steps.map(({ key, control }) => [key, control.state]),
+      [
+        ["kuali-extraction", "required"],
+        ["identity-check", "required"],
+        ["job-summary", "required"],
+        ["kronos-timecard", "omittable"],
+        ["ucpath-transaction", "omittable"],
+        ["kuali-finalization", "omittable"],
+      ],
+    );
+    for (const step of steps) {
+      if (step.control.state === "omittable") assert.deepEqual(step.control.forces, []);
+    }
+    // Omitting a REQUIRED read step still refuses by name.
     assert.throws(
       () => applyStartStepSelection(
         separationsDescriptor,
@@ -101,13 +115,11 @@ describe("start step omission projection (D307)", () => {
     );
   });
 
-  it("leaves the registered workflows' arms exactly where D285 put them", () => {
-    for (const descriptor of [personLookupDescriptor, separationsDescriptor]) {
-      assert.ok(
-        projectStartSteps(descriptor).every(({ control }) => control.state !== "omittable"),
-        String(descriptor.id),
-      );
-    }
+  it("leaves Person Lookup's arms exactly where D285 put them", () => {
+    assert.ok(
+      projectStartSteps(personLookupDescriptor).every(({ control }) => control.state !== "omittable"),
+      String(personLookupDescriptor.id),
+    );
   });
 });
 
