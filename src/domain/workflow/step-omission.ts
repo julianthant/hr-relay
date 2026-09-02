@@ -242,14 +242,19 @@ export type StepOmissionCascadeRow =
   | Readonly<{ state: "blocked"; by: string; forces: readonly string[] }>;
 
 /**
- * The Steps screen's cascade: for each omittable step, the OTHER steps that
- * would have to be omitted with it — computed to a fixpoint over the same rule
- * the planner enforces, so the screen locks exactly what the plan would refuse.
- * A forced step that declares no omission blocks the whole choice.
+ * One schema-valid value per field kind — the SHAPE of a step's facts without
+ * claiming anything about a real run. `stepOmissionCascade` plans with these to
+ * answer "could this step be omitted at all", and the D307 architecture guard
+ * imports the same function so its sweep drives `planStepOmissions` with
+ * EXACTLY the cascade's own values rather than a hand-copied second generator
+ * that could drift out of agreement with this one.
+ *
+ * These values are never an operator's facts and never reach a run: the planner
+ * re-parses whatever the envelope actually carries through
+ * `stepOmissionFactsSchema`, so a placeholder can only ever answer a
+ * hypothetical question this module asks itself.
  */
-export function stepOmissionCascade(graph: StepOmissionGraphView): ReadonlyMap<string, StepOmissionCascadeRow> {
-  const result = new Map<string, StepOmissionCascadeRow>();
-  const specByStep = new Map(graph.stepOmissions.map((spec) => [spec.step, spec]));
+export function stepOmissionPlaceholderFacts(form: StepOmissionForm): JsonObject {
   const placeholder = (field: StepOmissionField): JsonValue => {
     switch (field.kind) {
       case "boolean": return false;
@@ -261,8 +266,20 @@ export function stepOmissionCascade(graph: StepOmissionGraphView): ReadonlyMap<s
       case "text": return "cascade";
     }
   };
-  const placeholderFacts = (spec: StepOmissionSpec): JsonObject =>
-    JsonFactsSchema.parse(Object.fromEntries(spec.form.fields.map((field) => [field.key, placeholder(field)])));
+  return JsonFactsSchema.parse(Object.fromEntries(
+    StepOmissionFormSchema.parse(form).fields.map((field) => [field.key, placeholder(field)]),
+  ));
+}
+
+/**
+ * The Steps screen's cascade: for each omittable step, the OTHER steps that
+ * would have to be omitted with it — computed to a fixpoint over the same rule
+ * the planner enforces, so the screen locks exactly what the plan would refuse.
+ * A forced step that declares no omission blocks the whole choice.
+ */
+export function stepOmissionCascade(graph: StepOmissionGraphView): ReadonlyMap<string, StepOmissionCascadeRow> {
+  const result = new Map<string, StepOmissionCascadeRow>();
+  const specByStep = new Map(graph.stepOmissions.map((spec) => [spec.step, spec]));
   for (const spec of graph.stepOmissions) {
     const omittedSteps = new Set<string>([spec.step]);
     let blockedBy: string | undefined;
@@ -270,7 +287,7 @@ export function stepOmissionCascade(graph: StepOmissionGraphView): ReadonlyMap<s
       const plan = planStepOmissions(graph, [...omittedSteps].map((step) => {
         const own = specByStep.get(step);
         if (own === undefined) throw new Error(`cascade reached step "${step}", which declares no omission`);
-        return { step, facts: placeholderFacts(own) };
+        return { step, facts: stepOmissionPlaceholderFacts(own.form) };
       }));
       const other = plan.refusals.find((refusal) => refusal.code !== "dependency-omitted");
       if (other !== undefined) throw new Error(`cascade for step "${spec.step}" hit ${other.code}: ${other.message}`);
