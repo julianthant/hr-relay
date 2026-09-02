@@ -1621,7 +1621,7 @@ placement and the Context data ledger are part of this slice, not optional polis
 - [x] the receipt and the failure record render from authority — `trust.tsx` over `queries/run-detail.ts`'s receipt and failure sections (D140/D142)
 - [x] the durable notification inbox has a bell and a real publisher (D138/D222, §5.1.6)
 - [x] the Context data ledger names its step, direction and bound (D252, §5.1.3)
-- [x] verified run capture bytes in Logs and Receipt — D291/D292 serve the exact diagnostic-index artifact route; D306 shares that read across both placements
+- [x] verified run capture bytes in Logs and Receipt — D291/D292 serve the exact diagnostic-index artifact route; D306 shares that read across both placements, and the dashboard development origin proxies `/artifacts` beside `/api` and `/events` so Preview and Download receive the BFF's verified bytes rather than the SPA shell
 - [ ] the `context-evidence` rail section — declared-unserved; the receipt carries the trust content that exists (D184)
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/{trust,receipt,context-rail,top-bar}.tsx and config/pending-wire-bindings.json; left: the two unserved sections, both blocked on the byte route
 <!-- /roadmap-status -->

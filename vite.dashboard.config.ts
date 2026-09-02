@@ -5,9 +5,9 @@
  * 793abe1f8265f3213ffe8a80d6cfd9860a32a1dc) with the rebuild's own isolation
  * values from `config/runtime-isolation.json`: frontend port 5174, backend
  * 3938. `vite-plugin-singlefile` is deliberately not mirrored — the rebuild
- * serves a normal multi-asset build. The dev server and `vite preview` proxy
- * `/api` and `/events` to the rebuild BFF so the ONE typed client can stay on
- * a same-origin base URL.
+ * serves a normal multi-asset build. The dev server proxies `/api`, `/events`
+ * and `/artifacts` to the rebuild BFF so the ONE typed client and its verified
+ * byte routes can stay on a same-origin base URL.
  */
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
@@ -80,6 +80,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/api": { target: BACKEND, changeOrigin: false },
+      "/artifacts": { target: BACKEND, changeOrigin: false },
       "/events": { target: BACKEND, changeOrigin: false },
     },
   },
