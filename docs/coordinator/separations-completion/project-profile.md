@@ -1,51 +1,32 @@
-# Project profile — separations completion (03b criterion 5 close)
+# Project profile — separations completion
 
-**Repository:** /Users/julianhein/Projects/hr-automation-rebuild
-**Coordination workspace:** /Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/separations-completion
-**Verified:** 2026-08-31 at master `50adf8a9`, clean, sole worktree, `.env` present in this checkout.
+Repository: `/Users/julianhein/Projects/hr-automation-rebuild`.
+Workspace: `/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/separations-completion`.
+Verified 2026-09-02 at status commit `9321fe2f`, runtime/test configuration `5853ef80`; sole worktree on `feature/03b-live-close`, master `769e23c9`. Reports/evidence are committed with this refreshed profile.
 
-Bounded scope: discharge doc 03b exit criterion 5 (Track A items A2–A5 and A8) so separations is
-9/9 and **rebuild-ready**. Nothing else. Predecessor workspace
-`docs/coordinator/worktree-completion/` is CLOSED (Phase 3b integrated to master `367483a6`);
-its live-admission residue is exactly this scope.
+R2a default full gate: 388 files / 4,795 tests pass, no skips; typecheck/lint/manifest/roadmap green. R2 parity 287/287 covers unchanged UI. Dashboard restored on 3938/5174; storage healthy/current, 19 runs, zero writes. Exact evidence lives in R2/R2a reports. The original 85d3b082 intake and its red gates remain historical evidence.
 
-## Applicable instructions
-- /Users/julianhein/.claude/CLAUDE.md and the repo root CLAUDE.md (fail-loud, live pre-authorization,
-  gates, conventions). Supervisor invokes `/supervise`; hr-manage / hr-debug skills as needed.
-
-## Canonical authorities
-- Plan/status: docs/rebuild/03b-finish-separations.md (Track A, §Exit criteria);
-  docs/migrations/separations.md (STATUS header, §6 checklist, §9.x record — new observations land
-  as §9.33+).
-- Specs/contracts: ref write-safety (ALWAYS-GATE, intents), ref workflow-model, ref
-  clock-config-secrets, ref operator-trust; decisions.md is a pointer index only.
-- Governing decisions: D284 (4537 sole subject), D287 (rehearsal-then-controlled-sequence),
-  D207/D215/D217 (obligations only the commits discharge), D293 (Run modal as-built).
-- Rules/lessons: docs/rebuild/reference/lessons.md; §9.32 (assigned-runtime admission refusal).
+## Scope and authorities
+The operator requested coordinator-led completion so the workflow can be inspected and UI work can begin. Complete available preparation now; final rebuild-ready status still requires criterion 5.
+- Instructions: repository `AGENTS.md` / `CLAUDE.md`, applicable descendant twins, global coordinator and supervise skills.
+- Plan/status: `docs/roadmap/roadmap.md`, `docs/rebuild/03b-finish-separations.md`.
+- Live/as-built authority: `docs/migrations/separations.md`, especially §§9.33–9.36 and §6.
+- Contracts: `docs/rebuild/reference/{write-safety,workflow-model,operator-trust,clock-config-secrets,guards-and-tests,dashboard-surfaces,frontend-backend-integration}.md`; decisions is a pointer index, never a substitute for its owner.
+- D284/D300 retain gone canary 4537 and one document-number environment reference. Operator-named batch evidence in §9.34 permits historical inspection; it does not register 4589 as the replacement controlled target.
+- D287's filing → deletion → finalization sequence is blocked by §9.36's deleted-receipt contradiction. The protocol amendment is not ratified.
+- Prior implementation and real sequencer plus run/gate/receipt test seams are authorized in `docs/handoffs/2026-09-02-separations-controlled-sequence-preflight.md`. Protocol choice and each actual live write remain operator-owned.
 
 ## Gates
-- Unit/integrated: `npm run typecheck && npm run lint && npm run test:coverage` (D191),
-  `npm run build:manifest` clean, `npm run test:parity`, `npm run roadmap:check`, `git diff --check`.
-- Single checkout: no cross-supervisor gate locks needed this run.
+`npm run typecheck`, `npm run lint`, `npm run test:coverage`; `npm run build:manifest:check`; `npm run test:parity`; `npm run roadmap:check`; `git diff --check`. Stop the owned dashboard launcher for the full suite because tests use its ports, then restore it. No baseline regeneration to conceal a defect. Any tests require lint.
 
-## Git and integration policy
-- Work IN the primary checkout (it alone owns `.env`, `.tracker-rebuild`, `.auth`, Duo Autopilot).
-- Commit on branch `feature/03b-live-close` by logical category; merge `--no-ff` into `master`
-  after the integrated gate table is green. Local commits only. **Never push.**
-- Never `git add -A`; stage explicit paths. Other sessions share this tree.
+## Git and operations
+Local commits only, explicitly staged paths, no push. Integration remains `feature/03b-live-close` then eventual `master --no-ff` only after verified closure. Preserve other sessions' changes.
+The established primary-checkout exception remains for this small serial runtime/readiness run because it owns `.env`, `.auth`, and `.tracker-rebuild`. Coordinator writes only coordination/canonical docs; supervisor owns its exact report/evidence and runtime operations. No overlapping writers. Any implementation workers require isolated `feature/<unit>` worktrees and `--no-ff` integration followed by worktree-sweep.
+Live reads and dryRun=true are pre-authorized; actual writes require individual approval. No inferred live deletion target, no altered ledger/key to bypass reuse, no UNKNOWN retry, no fabricated transaction number. Browser work uses playwright-cli through `/ui` and the browser reference; close owned browser sessions after proof.
 
-## Operations and constraints
-- Pre-authorized (root CLAUDE.md): live access, Duo Autopilot, selector snapshots, login smoke,
-  composed `dryRun=true` rehearsal. Never ask whether live is up.
-- Requires operator authority, per write: each of ②/①/③ has its own ALWAYS-GATE approval taken by
-  the operator (dashboard gate). The supervisor requests, waits, never self-approves.
-- Hard prohibitions: no write without its gate; no `reRead` after ②; UNKNOWN stops WITHOUT retry
-  and an UNKNOWN submit is never re-run; 4537 is the only subject; never fake the date — S7 and
-  subject facts come from the real clock and a fresh live read; no reference-corpus regeneration to
-  hide drift; close/sweep all browsers at stop.
-- If the fresh read finds 4537 absent or materially changed: STOP, report — operator decision.
+## Coordination and close
+One compact nested native `sup_supervisor` run at a time, at most two subordinate worker slots. Only this coordinator may edit/stage/commit the exact board. Run size 3–5 seams; main judgment remains supervisor-owned. Unique writer artifacts named in brief.
+Close targets: phase 03b, migration record, roadmap and generated index, applicable instruction twins only if behavior changes; decision pointer only on actual ratification. Keep workspace. Retain unresolved handoffs; remove only after recovery state is verified and fully represented.
 
-## Coordinator defaults
-- Run sizing: one run, 5 units (live-proof-heavy → small run).
-- Final close: update only 03b, migrations/separations.md, roadmap (regenerate), decisions pointer
-  if a decision is minted, nearest CLAUDE.md if a lesson lands.
+## R2a authorized reliability scope
+The coordinator received two red full suites and assigned one focused gate-reliability run under the user's completion request. The supervisor may diagnose and fix the runner configuration or the two named expensive test fixture/scanner seams only with evidence. Tests/coverage membership, assertions, floors and 30s limits stay unchanged. Root instruction twins may document a proven runner scheduling rule. No separations protocol or UI implementation is in R2a. Exact scope and evidence are in its brief.

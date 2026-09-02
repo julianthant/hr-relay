@@ -1,0 +1,61 @@
+{
+  "checkedAt": "2026-09-02T15:44:21.392Z",
+  "authority": {
+    "state": "healthy",
+    "generation": 2021,
+    "schemaVersion": 29,
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "invariants": {
+      "state": "valid",
+      "violations": []
+    }
+  },
+  "spanAuthority": {
+    "state": "reconciled",
+    "streamRunCount": 19,
+    "liveRunCount": 19,
+    "archived": [],
+    "deleted": []
+  },
+  "backup": {
+    "state": "current",
+    "latest": {
+      "state": "verified-compatible",
+      "manifestFileName": "authority-g2021-20260902154407137-1970799c-54cf-439e-8034-f8a5a53b220b.sqlite.manifest.json",
+      "backupFileName": "authority-g2021-20260902154407137-1970799c-54cf-439e-8034-f8a5a53b220b.sqlite",
+      "createdAt": "2026-09-02T15:44:07.137Z",
+      "authorityGeneration": 2021,
+      "ageMs": 14191,
+      "generationGap": {
+        "state": "known",
+        "value": 0
+      }
+    }
+  },
+  "runCount": 19,
+  "globalWrites": {
+    "write_intents": 0,
+    "write_attempts": 0,
+    "durable_outbox": 0
+  },
+  "historicalRun": {
+    "runId": "ca6a5462-4e52-43b7-ac85-f9bdb7fd30cf",
+    "dryRun": true,
+    "attempt": 1,
+    "lifecycle": {
+      "endedAt": "2026-09-02T00:08:15.409Z",
+      "outcome": "done",
+      "state": "terminal"
+    }
+  },
+  "servedFingerprint": "955991960b7b388ac4f44e64badd0ce895288797e5eb327bc9d6c5f0ccb7c6f1",
+  "runtime": {
+    "launcherPid": 50392,
+    "bffPid": 50469,
+    "vitePid": 50467,
+    "execSession": 46903,
+    "bootstrapHttp": 200,
+    "frontendDeepLinkHttp": 200
+  }
+}

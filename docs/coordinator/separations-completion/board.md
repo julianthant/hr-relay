@@ -1,79 +1,35 @@
 # Board — separations completion
 
-**Project profile:** docs/coordinator/separations-completion/project-profile.md
-**Integration target:** master (via feature/03b-live-close, --no-ff)
-**Board owner:** coordinator
-**Write rule:** one writer; R1 supervisor authorized at run close only, this exact path
-**Last verified:** 2026-09-01 15:00 PDT at master `374e60d9` / branch `6a521779` (rev 3 — see unit ledger u0; earlier text below is the 08:55 state) — **still NOT clean and actively
-written**: the concurrent Codex session is mid-D295 (5 modified + 3 untracked; `top-bar.tsx` touched
-42 s before the check). R1 rev 2 closed **BLOCKED at the dispatch gate**, before u1
-(reports/r1-rev2.md); nothing of D287 consumed. Precondition status: P1 quiescence **OPEN (worse —
-live writer)** · P2 backups **GREEN, re-verified** (doctor exit 0, backup current g1291, age 30m,
-gap 0) · P3 secrets **OPEN** (smoke exit 1, all three `state=refused`; 0 canary keys in `.env`) ·
-P4 pin NOT taken — `feature/03b-live-close` still absent, deliberately not created under a foreign
-live tree. A git remote `origin` exists — never-push unchanged and respected.
+Profile: `project-profile.md`. Board owner: this coordinator only. Integration line: `feature/03b-live-close`, eventual `master --no-ff` after completion.
+Verified 2026-09-02 at `9321fe2f` (code repair `5853ef80`), sole checkout. R2/R2a received; overall completion remains open on the protocol decision. Coordination artifacts are committed with this board. This replaces stale board facts from `1bbd1005`; historical reports remain evidence, not current admission.
 
-## Facts every run needs
-- Separations stands 8/9 (doc 03b §Exit criteria); only criterion 5 is open — A2–A5 + A8.
-- 4537 / `finalization-canary` is the SOLE registered subject (D284). 2026-08-28 S7 equality is
-  historical; current S7/subject facts are unobserved.
-- §9.32: the 2026-08-30 refusal was the assigned WORKTREE lacking `.env`. The primary checkout has
-  `.env`; run there. Not a code defect.
-- Order: ② UCPath filing → immediate ① pending sweep on ②'s new row → ③ Kuali finalization.
-  One ALWAYS-GATE per write. No reRead after ②. UNKNOWN stops, never re-run.
-- Gates: typecheck · lint · test:coverage · build:manifest clean · test:parity · roadmap:check ·
-  git diff --check.
-
-## Decisions ratified
-- (none this workspace; D284/D287/D290–D293 pre-exist in their owners)
+## Current facts
+- Built workflow and historical live preview are proved, including 4589 run `ca6a5462-4e52-43b7-ac85-f9bdb7fd30cf`, receipt `0fa49971-bd6a-5a80-8c23-6392614d46c7`, exact-run 0/0/0 (§9.34).
+- D300 ingress is implemented; old three-person-secret and active-D295-writer blockers are obsolete. Gone 4537 stays gone.
+- All three controlled writes remain open. §§9.35–9.36 prove unsupported individual approval sequencing, permanently reused sweep identity, and a deleted filing still cited by finalization. None is waived by green tests.
+- R2 full coverage was red twice; R2a repaired file-worker scheduling in `5853ef80`. Default full gate now passes 388/388 files, 4,795/4,795 tests, zero skips; typecheck/lint/manifest/roadmap pass. R2 parity 287/287 applies to unchanged UI. Earlier red evidence is retained in evidence/r2/; default green and unchanged checks are in evidence/r2a/.
+- Dashboard restored and exact historical run link verified; healthy/current storage generation 2021, 19/19 span streams, 19 total runs, global writes 0/0/0. No new workflow or actual HR write occurred.
+- User authorization: finish separations and prepare it for UI inspection. Prior implementation/test-seam authorization persists. No per-write approval or protocol answer inferred.
 
 ## Unit ledger
-| Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
-|---|---|---|---|---|---|---|
-| u0 | R1 rev3 | **built, unmerged** | `feature/03b-live-close` @ `6a521779` (14 commits, base `374e60d9`); reports/r1-rev3.md | typecheck 0 · lint 0 · coverage 4561/4578 (16 port-held by the concurrent dashboard, 1 contention timeout green standalone) · manifest current · roadmap 0 · parity 287/289 (gallery byte-size flake, foreign seam) | 6 reviewers rate-limited → BLOCKED; security axis by supervisor | D300 ratified (03b, ledger r112, migration doc); smoke replaced; `.env` key still unset (0) |
-| u1 | R1 rev3 | **blocked (gate)** | none — no code commit; report + this board only | dispatch gate: quiescence RED · backups GREEN (doctor 0, g1291 gap 0) · secrets RED (smoke 1) · pin not taken | n/a — no code changed | intake stopped BEFORE u1; no live read, S7 NOT established, no branch created |
-| u2 | R1 rev2 | not started | — | — | — | gated on u1 |
-| u3 | R1 rev2 | not started | — | — | — | gated on u2 + 3 operator gates; no gate window opened this dispatch |
-| u4 | R1 rev2 | not started | — | — | — | rides inside u3 |
-| u5 | R1 rev2 | not started | — | — | — | gated on u3/u4 |
+| Unit | Run | Status | Evidence | Disposition |
+|---|---|---|---|---|
+| u0 | R1 | integrated historically | D300; reports/r1-rev3.md; migration §9.33 | closed |
+| u1 | R1 | stopped safely | gone 4537; run 325cd998…; 0/0/0 | preserve |
+| u2 | R1 | historical green | §9.34; 4589 preview, older fingerprint | fresh proof required after implementation |
+| u3/u4/u5 | R1 | blocked | §§9.35–9.36 | R3/R4 after decision |
+| u6 | R2 + R2a | proved | reports/r2a-gate-reliability.md closes the full-gate failures; runtime healthy/current, 0/0/0 | complete |
+| u7 | R2 | proved | evidence/r2/ui-inspection.md + screenshots.json; exact run link rendered | complete |
+| u8 | R2 | proved proposal | research/r2-protocol.md; native analyst + supervisor source review | operator protocol decision |
+| u9 | R2 | proved | canonical readiness reconciliation `9321fe2f`; decision sheet and receive report in this commit | complete preparation |
+| u16 | R2a | proved | `5853ef80`; 4,795/4,795 default coverage; exact config diff reviewed | complete |
 
-## Residue
-- Out of scope, already owned elsewhere: 4568/R3 (§9.29), storage-span visibility (Phase 4,
-  dashboard-surfaces §9.8), Run-modal touch targets (Phase 4).
-- **Carried forward from R1's block, all four preconditions must hold before R1 re-dispatches:**
-  1. the checkout is quiescent and exclusively R1's (the live sequence cannot share a source tree or
-     the `.auth` profile — §9.21's wedge is unsynchronised concurrent writers). **Re-checked
-     2026-09-01 08:55 PDT: still OPEN, and now a demonstrably ACTIVE writer, not just a dirty tree;**
-  2. ~~storage doctor exits 0 with a valid current backup~~ — **CLEARED 2026-09-01**: doctor
-     exit 0, `backup: current` g1291 (age 21m, generation gap 0); the 99 invalid manifests are
-     historical, superseded by the fresh valid backup. Re-verify at dispatch;
-  3. the three `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_*` secrets are restored to
-     `.env` (gates ③ and the smoke; does NOT gate u2's rehearsal — `timekeeperName` resolves as a
-     literal in the chain's canonical input);
-  4. a fresh base pin on a branch nothing else writes — `feature/03b-live-close` remains absent and
-     was deliberately NOT created on 2026-09-01: creating it would move this checkout's HEAD off
-     `master` underneath the live concurrent session. Ten-second step once (1) holds.
-  5. **NEW — 4570 / 4567 / 4566.** The rev-2 dispatch carried an operator image of these three Kuali
-     document numbers ("and the 3 are"). They appear nowhere in the repo's markdown. R1 did not act
-     on them: D284 registers 4537 as the SOLE subject and the brief scopes out any other, so adding
-     or substituting a subject is a coordinator/operator ruling, and would need D284 amended in its
-     owner before a run consumes it.
-- **New, owned outside this workspace:** the v28 backup-manifest invalidation; the three absent
-  `.env` person secrets.
-- No step of the D287 sequence was consumed — nothing needs re-authorizing, and R1 re-runs unchanged
-  from u1.
+## Residue and decisions
+- Protocol amendment preserving the real filing, exact real/disposable targets, and explicit restoration/retention disposition: operator decision in `decisions/2026-09-02-controlled-proof-protocol.md` item 1. Implementation seams already authorized; individual live approvals remain required.
+- Fresh rehearsal on final implementation, controlled writes, measurements and rebuild-ready close: R3/R4, not dispatched before dependencies clear.
+- Run-data rail misleading empty-state confirmed in R2 screenshot at context-rail.tsx:872; owned future UI correction. Fresh Start Run modal currently has Dry run unchecked: inspection is not authorization to start; hr-manage operations explicitly choose dryRun=true.
+- Historical 4568/R3, omitted identity/Kuali/job-summary steps, and unrelated dashboard redesign remain in their canonical owners.
+- Exact unresolved handoffs: `docs/handoffs/2026-09-02-separations-controlled-sequence-preflight.md`, workspace handoffs `2026-09-01-finish-separations-r1-rev4.md` and `rev5.md`. Retain pending verified recovery/disposition.
 
-## Questions for the operator
-
-Backups (P2) are RESOLVED and re-verified. Three remain; R1 can self-clear none of them.
-
-1. **Serialize the checkout (P1).** When is the Codex D295 session done, and will you hold the tree
-   quiescent for R1's window? This is the blocker that stops the entire run — two consecutive
-   dispatches have died on it.
-2. **Restore the three `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_*` values to
-   `.env` (P3).** Not recoverable from the repo; they gate ③, the last of the three writes.
-3. **What are 4570 / 4567 / 4566?** Context only (subject stays 4537), or a subject change? The
-   latter is a D284 amendment, not a supervisor call.
-
-Plus: re-confirm your ALWAYS-GATE window — the 08-31 one went unused and no window was opened on
-09-01.
+## Current recovery boundary
+R2/R2a are verified; this is not a closed separations board. Next: operator protocol answer, then detail/brief R3 at the already-authorized implementation/test seams. R4 follows fixed-source rehearsal plus exact targets and each separate actual-write approval. Current handoff: `handoffs/2026-09-02-separations-ready-for-protocol-decision.md`. Earlier exact handoffs listed above remain active/historical recovery evidence because their controlled-proof close conditions have not been met; no file was deleted. Receive proof: `reports/2026-09-02-coordinator-receive.md`. Workspace retained.

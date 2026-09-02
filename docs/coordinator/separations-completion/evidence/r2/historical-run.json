@@ -1,0 +1,137 @@
+{
+  "runId": "ca6a5462-4e52-43b7-ac85-f9bdb7fd30cf",
+  "traceId": "sp-155454-ca6a",
+  "workflowId": "separations",
+  "attempt": 1,
+  "state": "terminal",
+  "outcome": {
+    "state": "present",
+    "value": "done"
+  },
+  "dryRun": true,
+  "omittedSteps": [],
+  "failure": {
+    "state": "absent",
+    "reason": "this run holds no structured failure record"
+  },
+  "openGate": {
+    "state": "absent",
+    "reason": "this run is not parked on a gate"
+  },
+  "writes": [],
+  "receipt": {
+    "state": "present",
+    "value": {
+      "receiptId": "0fa49971-bd6a-5a80-8c23-6392614d46c7",
+      "result": "partial",
+      "confidence": "unknown",
+      "verification": [
+        {
+          "obligation": "node.resolve-action",
+          "mandatory": false,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.document",
+          "mandatory": false,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.plan",
+          "mandatory": false,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.termination-type",
+          "mandatory": false,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.name-search",
+          "mandatory": false,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.subject",
+          "mandatory": false,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.job-summary",
+          "mandatory": false,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.employment",
+          "mandatory": true,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.department-option",
+          "mandatory": true,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.timecard-search",
+          "mandatory": false,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.timecard",
+          "mandatory": false,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.dates",
+          "mandatory": true,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.comparison",
+          "mandatory": false,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.identity-approval",
+          "mandatory": false,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.approval",
+          "mandatory": true,
+          "verdict": "verified"
+        },
+        {
+          "obligation": "node.clear-pending",
+          "mandatory": true,
+          "verdict": "unknown"
+        },
+        {
+          "obligation": "node.file-termination",
+          "mandatory": true,
+          "verdict": "unknown"
+        },
+        {
+          "obligation": "node.receipt",
+          "mandatory": true,
+          "verdict": "unknown"
+        },
+        {
+          "obligation": "node.finalize-kuali",
+          "mandatory": true,
+          "verdict": "unknown"
+        },
+        {
+          "obligation": "completion.terminal-result",
+          "mandatory": true,
+          "verdict": "unknown"
+        }
+      ],
+      "warnings": [
+        "DRY_RUN_PREVIEW: this run was a DRY RUN: transaction node \"clear-pending\" was previewed (settled already-present at its present probe, before anything was staged, observed 2026-09-02T00:08:15.397Z) and the run ended there. No external write was attempted \u2014 no write intent, no fence, no commit \u2014 so this receipt states what WOULD have been written, never what was"
+      ]
+    }
+  },
+  "nextSafeAction": "Nothing. This run is settled; its receipt is the record.",
+  "evidenceLimit": "Historical 2026-09-01 run. Current authority inspection, not a fresh workflow rehearsal. First-transaction preview; downstream writes unverified."
+}
