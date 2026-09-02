@@ -13,6 +13,7 @@ import { flow } from "../../src/base/flow.js";
 import { defineServiceStore, defineTaskStoreRegistry } from "../../src/base/store.js";
 import { defineTask } from "../../src/base/task.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
+import { deriveGateResultCheckpointFingerprint } from "../../src/core/command-kernel.js";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../src/core/run-executor.js";
 import { taskSpanPath } from "../../src/core/span-emitter.js";
 import { defineTaskContract } from "../../src/domain/contracts/base.js";
@@ -158,6 +159,58 @@ const projectingDescriptor = fixtureDescriptor(
     blocking: true,
   }],
 );
+
+/**
+ * Bullet 7 — `read → gate → fold`, where `reading` (the ONLY node before the
+ * gate) is omittable. This is the D307 × D214 crossing: the run parks at the
+ * gate with the assertion already durable, and the resume's fresh claim must
+ * republish that SAME marked row rather than reprocessing the omission.
+ */
+const ApprovalSchema = z.strictObject({ approved: z.boolean() });
+const gateOmissionFlow = flow(FixtureInput)
+  .step("read", fixtureContract, { dependsOn: [], replay: "checkpoint", bind: () => ({ disposition: "observed" }) })
+  .gate("approval", { dependsOn: ["read"], label: "Approval", resolvedBy: "operator", result: ApprovalSchema })
+  .step("fold", fixtureContract, {
+    dependsOn: ["read", "approval"],
+    replay: "checkpoint",
+    bind: ({ outputs }) => ({ disposition: outputs.read.providerState }),
+  })
+  .build({
+    schema: z.strictObject({ folded: z.string().min(1) }),
+    dependsOn: ["read", "fold"],
+    derive: ({ outputs }) => ({ folded: outputs.fold.providerState }),
+  });
+
+const gateOmissionDescriptor = defineWorkflowDescriptor({
+  id: "omission-gate-fixture",
+  version: 1,
+  contractFingerprint: HASH_A,
+  code: "og",
+  label: "Step omission gate fixture",
+  icon: "Search",
+  category: "operations",
+  canonicalInput: FixtureCanonicalInput,
+  inputSubject: "name",
+  surface: { shape: "single" },
+  enqueue: "reject-active",
+  actions: STANDARD_WORKFLOW_ACTIONS,
+  surfaces: {},
+  details: [],
+  identity: { matchKey: (input: z.output<typeof FixtureInput>) => `name:${input.name}` },
+  presentation: { title: (input: z.output<typeof FixtureInput>) => input.name },
+  scenarios: ["omission-gate-fixture/happy"],
+  timeline: [
+    {
+      key: "reading",
+      label: "Reading",
+      nodes: ["read"],
+      omission: { form: FORM, produces: { read: ({ facts }) => ({ disposition: facts.value, providerState: facts.value }) } },
+    },
+    { key: "approving", label: "Approving", nodes: ["approval"] },
+    { key: "folding", label: "Folding", nodes: ["fold"] },
+  ],
+  flow: gateOmissionFlow,
+});
 
 const registry = defineTaskStoreRegistry([defineServiceStore("ocr", { fixture: fixtureTask })], {
   scenarioIds: [SCENARIO],
@@ -412,5 +465,83 @@ describe("executor step omission (D307)", () => {
     assert.equal(rows.length, 1, "the second attempt wrote exactly one row for \"read\"");
     assert.equal(rows[0]?.assertion, undefined, "the fresh observation carries no assertion marker");
     assert.equal(rows[0]?.runId, UUID_4);
+  });
+
+  it("D307 × D214 — an asserted node upstream of a gate republishes its ONE marked row across the resume", async () => {
+    invocations.length = 0;
+    const harness = harnessFor(gateOmissionDescriptor);
+    const { database } = harness.authority;
+    database.authority.runs.enqueue(queuedRunFor(gateOmissionDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
+
+    /* ── first claim: the assertion publishes, then the run parks at the gate ── */
+    const first = claim(database, gateOmissionDescriptor);
+    const parked = await executeClaimedRun(harness.deps, { ...first, signal: SIGNAL });
+    assert.deepEqual(parked, { state: "parked-gate", runId: RUN_ID, gateId: "approval" });
+    // "read" never actually ran — its output is the operator's typed fact, never the task.
+    assert.deepEqual(invocations, []);
+
+    const parkedRun = database.authority.runs.get(RUN_ID);
+    assert.ok(parkedRun !== undefined && parkedRun.lifecycle.state === "parked-gate");
+    const resumeAt = parkedRun.lifecycle.state === "parked-gate" ? parkedRun.lifecycle.resumeAt : undefined;
+    assert.equal(resumeAt, "fold");
+
+    const beforeResume = database.authority.runCheckpoints.listByAttempt(
+      gateOmissionDescriptor.id, parkedRun.envelope.itemId, "read", parkedRun.envelope.attempt,
+    );
+    assert.equal(beforeResume.length, 1, "the parked attempt holds exactly ONE marked row for \"read\"");
+    assert.deepEqual(beforeResume[0]?.assertion, { step: "reading", assertedAt: beforeResume[0]?.assertion?.assertedAt });
+    const firstAssertedAt = beforeResume[0]?.assertion?.assertedAt;
+    assert.ok(firstAssertedAt !== undefined);
+
+    /* ── resolve the gate, then resume with a NEW claim ──────────────────────── */
+    const gateResult = { schemaHash: deriveSchemaHash(ApprovalSchema, "output"), value: { approved: true } };
+    database.authority.gateResults.insert({
+      runId: RUN_ID,
+      gateId: "approval",
+      commandId: "cccccccc-0000-4000-8000-000000000000",
+      expectedVersion: parkedRun.version,
+      resolvedBy: "local-operator",
+      resolvedAt: harness.authority.clock.now().toISOString(),
+      checkpointFingerprint: deriveGateResultCheckpointFingerprint(gateResult),
+      result: gateResult,
+    });
+    const resumed = database.authority.runs.resume({
+      runId: RUN_ID,
+      expectedVersion: parkedRun.version,
+      startAt: resumeAt,
+      now: harness.authority.clock.now().toISOString(),
+    });
+    assert.equal(resumed.state, "applied");
+
+    const second = claim(database, gateOmissionDescriptor);
+    assert.equal(second.claim.claimGeneration, first.claim.claimGeneration + 1, "the resume is a NEW claim");
+    const outcome = await executeClaimedRun(harness.deps, { ...second, signal: SIGNAL });
+    if (outcome.state === "failed") {
+      const failure = database.authority.failures.get(outcome.failureId);
+      assert.fail(`resumed run failed at ${failure?.nodeId ?? "?"}: ${failure?.summary ?? "?"}`);
+    }
+    assert.deepEqual(outcome, { state: "done", runId: RUN_ID });
+    // "fold" genuinely ran once on the resume (consuming the asserted "typed" value);
+    // "read" itself was never invoked — republishing an assertion never re-invokes its task.
+    assert.deepEqual(invocations, ["typed"]);
+
+    /* ── exactly ONE row for "read", its assertion intact, unchanged by the resume ── */
+    const afterResume = database.authority.runCheckpoints.listByAttempt(
+      gateOmissionDescriptor.id, parkedRun.envelope.itemId, "read", parkedRun.envelope.attempt,
+    );
+    assert.equal(afterResume.length, 1, "the resume did not mint a second row for the asserted node");
+    assert.deepEqual(afterResume[0]?.assertion, { step: "reading", assertedAt: firstAssertedAt });
+
+    /* ── the terminal dependency for "read" is asserted, and the run reached terminal done ── */
+    const result = database.authority.runResults.get(RUN_ID);
+    assert.ok(result !== undefined);
+    const readDependency = result.dependencies.find((dependency) => dependency.nodeId === "read");
+    assert.ok(readDependency?.state === "asserted");
+    assert.equal(readDependency.step, "reading");
+    // The run only reaches "done" if `#assertStoredTerminalDependencies` accepted this
+    // asserted dependency against the marked row above — a mismatch throws inside the
+    // settling transaction, which would have surfaced as a thrown error, not `done`.
+    const run = database.authority.runs.get(RUN_ID);
+    assert.ok(run !== undefined && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
   });
 });
