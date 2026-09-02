@@ -25,7 +25,7 @@ The established primary-checkout exception remains for this small serial runtime
 Live reads and dryRun=true are pre-authorized. Operator correction 2026-09-02: supplied EID verified by exact read-back proceeds without approval; name-only selection requires approval. R3a ratifies this rule; prior individual-write-approval requirements are superseded for the EID-verified path. R3a itself performs no real HR writes. No inferred live deletion target, no altered ledger/key to bypass reuse, no UNKNOWN retry, no fabricated transaction number. Browser work uses playwright-cli through `/ui` and the browser reference; close owned browser sessions after proof.
 
 ## Coordination and close
-Every newly briefed run receives a fresh standalone `gpt-5.6-sol` high-reasoning supervisor task in its own worktree; supervisors are never reused across runs. R4a and R4b remain serial because R4b consumes R4a's exact target packet. Only this coordinator may edit/stage/commit the exact board. Run size 3–5 seams; main judgment remains supervisor-owned. Unique writer artifacts are named in each brief.
+Every newly briefed run receives a fresh standalone `gpt-5.6-sol` high-reasoning supervisor task in its own worktree; supervisors are never reused across runs. R4b repairs R4a's dates-provenance defect, R4c repeats the live rehearsal/target packet on the integrated repair, and R4d performs the separately authorized controlled proof. These runs remain serial because each consumes the preceding run's evidence. Only this coordinator may edit/stage/commit the exact board. Run size 3–5 seams; main judgment remains supervisor-owned. Unique writer artifacts are named in each brief.
 Close targets: phase 03b, migration record, roadmap and generated index, applicable instruction twins only if behavior changes; decision pointer only on actual ratification. Keep workspace. Retain unresolved handoffs; remove only after recovery state is verified and fully represented.
 
 ## R2a authorized reliability scope
@@ -33,3 +33,6 @@ The coordinator received two red full suites and assigned one focused gate-relia
 
 ## R3a authority correction
 The user explicitly superseded unconditional identity approval and the proposed repeated per-write approvals. Exact supplied-EID verification must not be inferred from a candidate selected by name. R3a owns canonical ratification and implementation; the old proof protocol/target disposition remains separate residue, not an implementation dependency. See briefs/r3a-eid-approval-policy.md.
+
+## R4a failure boundary
+The 2026-09-02 live dry run for document `4502` passed authenticated Kuali, UCPath and New Kronos reads, then failed before D309/D310 with failure fingerprint `d0e11f1e85783ee4067addac7c971b8963a145dbffaac248b535bcccf0591644`: `workflow:separations/read-separation-dates` produced `source` without recording its required provenance. The immutable failed run stays evidence. R4b must reproduce the defect at a deterministic executor/task seam, apply the smallest fail-loud repair, and pin regression coverage; it may not edit runtime rows or retry the live run. R4c owns the post-integration live retry under a fresh supervisor.

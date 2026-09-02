@@ -7,18 +7,22 @@
 | R2a | restore a reliable unchanged full-suite gate | u16 | complete, code `5853ef80`, report verified | default full coverage green with assertions/floors/timeouts preserved; lint and current runtime restored |
 | R3a | implement corrected identity approval policy | u10–u12 | complete at `36f0562f`; received | D309, machine verification/name-only gate, 4,809 coverage + 287 parity |
 | R3b | sweep scope and surviving filing proof | u17–u18 | complete at `4d4804ec`; received | D310 exact-set/fresh-filing mechanics, 4,818 coverage + 287 parity |
-| R4a | fresh rehearsal and target packet | u13–u14 | ready after R3b; dry-run/read-only authorized | one current dashboard dry run, exact-run 0/0/0, D309 visible authority, exact live candidate/disposition packet |
-| R4b | controlled proof and close | u15 | R4a + explicit operational authorization for exact live target/disposition | controlled receipts/read-backs/measurements, criterion 5 and close-out |
+| R4a | fresh rehearsal and target packet | u13–u14 | received partial at `fcfd1e5f`; submit-free 4502 run failed missing `source` provenance before D309/D310 | immutable failure evidence, exact-run 0/0/0 |
+| R4b | dates checkpoint provenance repair | u19 | ready; operator requested fix | deterministic red/green regression, smallest repair, full gates and review |
+| R4c | post-repair rehearsal and target packet | u14 | R4b integrated first; dry-run/read-only authorized | one current dashboard dry run, exact-run 0/0/0, D309 visible authority, exact live candidate/disposition packet |
+| R4d | controlled proof and close | u15 | R4c + explicit operational authorization for exact live target/disposition | controlled receipts/read-backs/measurements, criterion 5 and close-out |
 
 ## Supervisor wave ledger
 
 | Run | Task id / corrections | Host id | Project id | Launch title/time | Worktree/branch | Report | Status | Last cursor |
 |---|---|---|---|---|---|---|---|---|
-| R4a | `client-new-thread:97be6d8a-f75f-4200-92c3-709a0d9e1b4f` (setup-pending client id; replace only with the tool-returned canonical task id) | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Separations R4a — Fresh Rehearsal and Target Packet` / 2026-09-02 12:02 PDT | `/Users/julianhein/.codex/worktrees/8164/hr-automation-rebuild`, detached from `e8cd9dc5` while setup resolves | `reports/r4a-fresh-rehearsal-and-target-packet.md` | setup-pending | none |
-| R4b | not briefed; fresh supervisor required | — | — | — | fresh worktree after R4a integration | `reports/r4b-controlled-proof-and-close.md` | blocked on R4a packet + exact operational authorization | none |
+| R4a | setup client `client-new-thread:97be6d8a-f75f-4200-92c3-709a0d9e1b4f` → canonical `01a0637f-5933-7db2-abf9-2a98a802040e` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Separations R4a — Fresh Rehearsal and…` / 2026-09-02 12:02 PDT | `/Users/julianhein/.codex/worktrees/8164/hr-automation-rebuild`, `feature/r4a-fresh-rehearsal-and-target-packet` | `reports/r4a-fresh-rehearsal-and-target-packet.md` | received/merged `fcfd1e5f` | none |
+| R4b | pending fresh launch | pending | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Separations R4b — Dates Provenance Repair` / pending | fresh worktree from current `feature/03b-live-close` | `reports/r4b-dates-provenance-repair.md` | briefed | none |
+| R4c | not briefed; fresh supervisor required | — | — | — | fresh worktree after R4b integration | `reports/r4c-post-repair-rehearsal.md` | blocked on R4b | none |
+| R4d | not briefed; fresh supervisor required | — | — | — | fresh worktree after R4c integration | `reports/r4d-controlled-proof-and-close.md` | blocked on R4c packet + exact operational authorization | none |
 
 ## Dispatch ledger
-R2 used one compact nested `sup_supervisor` because serial runtime access and two worker slots sufficed. That historical supervisor was reused through R3b, but the operator superseded that launch policy on 2026-09-02: every new run now gets a newly created standalone supervisor task. R4a and R4b are serial and each gets its own fresh task/worktree. R2 reported without source commits. Historical agent id `/root/sup_supervisor_separations_readiness` (native `sup_supervisor`, clean-context launch, 2026-09-02). Report `reports/r2-readiness.md`; evidence `evidence/r2/`; read-only review findings `research/r2-protocol.md`. Coordinator owns board, plan, decisions and canonical status docs; each supervisor owns only its exact report/evidence/research paths.
+R2 used one compact nested `sup_supervisor` because serial runtime access and two worker slots sufficed. That historical supervisor was reused through R3b, but the operator superseded that launch policy on 2026-09-02: every new run now gets a newly created standalone supervisor task. R4a used its own task; R4b, R4c, and R4d are serial and each gets another fresh task/worktree. R2 reported without source commits. Historical agent id `/root/sup_supervisor_separations_readiness` (native `sup_supervisor`, clean-context launch, 2026-09-02). Report `reports/r2-readiness.md`; evidence `evidence/r2/`; read-only review findings `research/r2-protocol.md`. Coordinator owns board, plan, decisions and canonical status docs; each supervisor owns only its exact report/evidence/research paths.
 
 ## Units
 - u6 (supervisor): verify storage/authority and full gates; quiesce/restore own dashboard, preserve exact failures and lint results. No source changes without a bounded defect report and coordinator clarification.
@@ -26,7 +30,10 @@ R2 used one compact nested `sup_supervisor` because serial runtime access and tw
 - u8 (supervisor with optional native sup_analyst): read-only verification of protocol options and smallest code seams. A concrete proposal must preserve a live filing through Kuali finalization, support separate approvals and scope sweep identity without weakening existing permanent filing keys. Cite source and agreed regression gates. Do not implement or ratify the pending protocol.
 - u9 (coordinator): correct stale status from verified records, regenerate roadmap, commit logical doc categories after gates, prepare one concise decision sheet. Historical facts remain historically labeled.
 - u10–u12: reserve stable ids for protocol contract/identity, execution approval path, regression proof; detail and brief only after operator decision.
-- u13–u15: reserve fresh runtime/rehearsal, individual controlled writes plus measurements, canonical closure; not dispatched.
+- u13 — R4a live rehearsal attempt, now immutable submit-free failure evidence.
+- u14 — exact target packet, carried from incomplete R4a into post-repair R4c.
+- u15 — controlled writes, measurements, and canonical closure in R4d after exact authorization.
+- u19 — R4b dates-provenance repair: build a deterministic red replay/test for missing `source` provenance, apply the smallest root fix, prove red/green, run complete gates and correctness/silent-failure review. No runtime-row edits or live retry.
 
 ## Stop and resume
 R2 may finish its bounded preparation while overall completion remains blocked on the operator-owned protocol and targets. It must not relabel preparation as rebuild-ready. Nested supervisor returns coherent evidence directly; coordinator owns any necessary final handoff. No inferred real-write approval.
@@ -46,4 +53,7 @@ R2 report verified against raw serial log, source config and rendered screenshot
 R3a integrated u10–u12 in commits `47c47666`, `f785a029`, `233cde61`, `8063fb5f`, `5931a695`; proof `36f0562f`. Report and receive record prove gates/review/runtime. R3b exact brief `briefs/r3b-sweep-and-filing-survival.md`, units u17/u18, same nested native supervisor and established primary checkout exception. Exact live target/disposition is deliberately deferred to R4 and does not block safe implementation/tests.
 
 ## R3b received / R4a dispatch admission
-R3b integrated u17/u18 in `1bda8afb`, `730a5030`, `4e00d145`, `f2eee0ae`; proof `4d4804ec`. R4a brief `briefs/r4a-fresh-rehearsal-and-target-packet.md`, units u13/u14, uses a fresh standalone supervisor worktree. It may start exactly one dashboard `dryRun=true` run and perform read-only inspection of the exact current candidate set `4593, 4579, 4564, 4544, 4502, 4495`; no gate approval or HR write. u15 remains dependent on the exact operator-facing packet and explicit operational authorization, and R4b must launch under another fresh supervisor.
+R3b integrated u17/u18 in `1bda8afb`, `730a5030`, `4e00d145`, `f2eee0ae`; proof `4d4804ec`. R4a brief `briefs/r4a-fresh-rehearsal-and-target-packet.md`, units u13/u14, uses a fresh standalone supervisor worktree. It may start exactly one dashboard `dryRun=true` run and perform read-only inspection of the exact current candidate set `4593, 4579, 4564, 4544, 4502, 4495`; no gate approval or HR write. u15 remains dependent on the exact operator-facing packet and explicit operational authorization. Any successor run must launch under another fresh supervisor.
+
+## R4a received / R4b repair admission
+R4a canonical task `01a0637f-5933-7db2-abf9-2a98a802040e` committed sanitized report/evidence at `3c3c7152`; the coordinator verified a clean branch, no browsers, healthy/current generation 2280 storage, 24/24 reconciled streams, and zero pending commands/write intents/outbox, then merged it at `fcfd1e5f`. The run-data authority proves 4502 reached authenticated New Kronos timecard read and then failed because `workflow:separations/read-separation-dates` recorded no provenance for output field `source`. Fresh R4b owns u19 under `briefs/r4b-dates-provenance-repair.md`; R4c owns the live retry/target packet after integration. R4d replaces the earlier unbriefed controlled-proof R4b label.
