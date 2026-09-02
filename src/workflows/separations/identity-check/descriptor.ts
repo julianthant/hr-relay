@@ -1,22 +1,23 @@
 /**
  * `separations-identity-check` — chunk 3 of the separations migration
  * (`docs/migrations/separations.md` §3): the UCPath identity passage, provable
- * ALONE, strictly read-only, and carrying ref write-safety §14's **ALWAYS-GATE**.
+ * ALONE, strictly read-only, and carrying ref write-safety §14's identity
+ * authority policy.
  *
- * ## The graph, and why every node is unconditional
+ * ## The graph, with one authority condition
  *
  * ```
  *   job-summary ─┐
  *                ├─► comparison ─► GATE identity-approval ─► approval ─► result
- *   name-search ─┘        (packet + digest)     (operator)      (checks)
+ *   name-search ─┘        (packet + digest)   (name-only)    (machine or human)
  * ```
  *
- * There is **no branch and no `when`** in this graph, and that is the design.
- * §3.1 says scenario variability is served by recomposition rather than by
- * conditionals; §4d says NO run mode, preset, prefill or resume may change the
- * identity path. A graph with no conditional edge cannot have one: every run
- * reads the job summary, every run searches the document's name, every run
- * builds the packet, and every run parks at the gate.
+ * There is no branch and exactly one declared `when`: the operator gate runs
+ * when `comparison.packet.emplIdSource === "name-resolved"`. No run mode,
+ * preset, caller or frontend controls that condition. Every run still reads the
+ * job summary, searches the document's name and builds the same packet. An
+ * independently supplied EID continues only when UCPath's actual read-back
+ * matches; a name-derived EID parks for the real operator command.
  *
  * `name-search` running unconditionally is the sharpest instance. Legacy
  * performs it only when its name tier came back `different`
@@ -27,16 +28,16 @@
  * time costs one UCPath search and makes ref write-safety §14.2's two-candidate
  * side-by-side presentation a property of the graph.
  *
- * ## Why the gate is the LAST thing before the result, in a read-only workflow
+ * ## Why identity authority is the last thing before the result
  *
  * This chunk files nothing, so §14.3's "before the transaction node, never
  * inside it" has no transaction to sit before. What it has instead is the
- * obligation that makes the composition safe: this workflow's **terminal
- * result** is an *approved subject*, and it is graph-reachable only through the
- * gate. The composed `separations` descriptor will consume that subject as the
- * `expected` side of the write's binding proof — so a commit with no backing
- * approval has nothing to bind to, exactly as §14.6 risk 2 requires.
- * `identity-gate-before-commit` asserts both halves statically.
+ * obligation that makes the composition safe: this workflow's terminal result
+ * is a resolved identity with an explicit `machine-verification` or
+ * `operator-approval` discriminator. It is graph-reachable only through the
+ * authority task. The composed descriptor consumes that subject as the
+ * `expected` side of the write's binding proof. `identity-gate-before-commit`
+ * asserts the authority dominance and the exact name-only gate condition.
  *
  * ## What this chunk deliberately does NOT do
  *
@@ -44,15 +45,14 @@
  *   AND where that EID came from (`emplIdSource`). Legacy's fallback — a blank
  *   or short Kuali EID delegating to person-lookup — is a *resolution* step over
  *   the Kuali document read, which is chunk 2's output and the composition's
- *   job; expressing it as a branch here would be the conditional identity path
- *   §4d forbids. What this chunk owes is that the fork is VISIBLE: an EID the
- *   document did not supply is a `type-the-eid` gate, never a one-click one.
+ *   job. What this chunk owes is that the origin remains typed: an EID the
+ *   document did not supply requires the name-only operator gate.
  * - **It never writes a name (S15).** Legacy rewrites the UCPath spelling into
  *   the live Kuali document on the `similar` tier, with no review, in dry-run
  *   too. There is no `prepare` node and no `commit` node in this graph.
  * - **It does not decide "already terminated" (S21/S22).** It reports the whole
- *   employment grid and its classification; whether a person with no active job
- *   should be separated anyway is a question for the human at the gate.
+ *   employment grid and its classification. Business-rule refusal remains
+ *   independent from identity authority.
  *
  * This module is bundle-safe: it value-imports only zod, `src/domain/**`, and
  * the audited `src/base` builders.
@@ -61,7 +61,7 @@ import { z } from "zod";
 import { flow } from "../../../base/flow.js";
 import { defineWorkflowDescriptor } from "../../../base/workflow.js";
 import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
-import { ApprovedIdentitySubjectSchema } from "../../../domain/separations/identity-approval.js";
+import { ResolvedIdentitySubjectSchema } from "../../../domain/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../domain/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../domain/separations/write-plan.js";
 import { JobSummaryClassificationSchema } from "../../../domain/separations/job-summary-classification.js";
@@ -122,11 +122,11 @@ function refineIdentityInput(
       message: "a document-eid source requires the document's own EID field to hold exactly this EID",
     });
   }
-  if (input.emplIdSource === "name-resolved" && documentValue === input.emplId) {
+  if (input.emplIdSource !== "document-eid" && documentValue !== undefined) {
     context.addIssue({
       code: "custom",
       path: ["emplIdSource"],
-      message: "a name-resolved source may not name the EID the document already supplied",
+      message: `${input.emplIdSource} requires the document to supply no EID`,
     });
   }
 }
@@ -146,6 +146,13 @@ export const SeparationsIdentityCheckCanonicalInput = defineCanonicalInput(
       documentEid: { state: "present", value: "10873698" },
     },
     {
+      documentNumber: "4511",
+      employeeName: "Canonical Harness Person",
+      emplId: "10873698",
+      emplIdSource: "canonical-eid",
+      documentEid: { state: "absent", reason: "the harness supplies the EID directly" },
+    },
+    {
       documentNumber: "4502",
       employeeName: "Hernandez, Jose Santos",
       emplId: "10401814",
@@ -157,8 +164,8 @@ export const SeparationsIdentityCheckCanonicalInput = defineCanonicalInput(
 
 export const SeparationsIdentityCheckResultSchema = z.strictObject({
   documentNumber: z.string().min(1),
-  /** The subject a human approved, and the evidence they approved it on. */
-  approved: ApprovedIdentitySubjectSchema,
+  /** The subject established by machine verification or operator approval. */
+  approved: ResolvedIdentitySubjectSchema,
   /** The employment picture that approval was granted over (S21–S24). */
   jobs: JobSummaryClassificationSchema,
 });
@@ -205,10 +212,9 @@ const separationsIdentityCheckFlow = flow(SeparationsIdentityCheckInput)
   }))
   /**
    * `dependsOn: ["approval"]` and NOTHING else — the guard caught the first
-   * draft, which read the document number and the employment picture straight
-   * off the PRE-gate comparison node and therefore had two ancestry paths to a
-   * root that never crossed the gate. The post-gate node carries those facts
-   * forward instead, so the run's whole product is a post-approval fact.
+   * draft, which read the document number and employment picture straight off
+   * the comparison node. The authority node carries those facts forward, so
+   * both the machine and human arms dominate the run's whole product.
    */
   .build({
     schema: SeparationsIdentityCheckResultSchema,
@@ -227,8 +233,8 @@ export const separationsIdentityCheckDescriptor = defineWorkflowDescriptor({
   label: "Identity Check",
   summary:
     "Chunk 3 of the separations migration: the UCPath identity passage, read-only, carrying ref write-safety "
-    + "§14's ALWAYS-GATE. Every run reads the job summary, searches the document's name, builds the "
-    + "evidence packet, and parks for a human — no run mode changes that.",
+    + "§14's typed authority. A supplied EID verified by UCPath read-back proceeds with machine authority; "
+    + "a name-resolved EID parks for the operator gate.",
   icon: "ShieldCheck",
   category: "separation",
   canonicalInput: SeparationsIdentityCheckCanonicalInput,
@@ -313,19 +319,18 @@ export const separationsIdentityCheckDescriptor = defineWorkflowDescriptor({
     },
     {
       nodeId: "comparison",
-      purpose: "Builds the identity evidence packet the gate shows — DISCONFIRMING evidence first — and the "
-        + "digest an approval binds to. Pure: it reaches no browser.",
+      purpose: "Builds the identity evidence packet — DISCONFIRMING evidence first — and the digest that "
+        + "machine verification or an operator decision binds to. Pure: it reaches no browser.",
     },
     {
       nodeId: "identity-approval",
-      purpose: "The ALWAYS-GATE. A human confirms this is the right person before anything downstream may "
-        + "consume the identity, and only the typed resolve-gate command can settle it.",
+      purpose: "Requires the typed operator resolve-gate command when the packet's EID came from a name search; "
+        + "a supplied-EID packet makes this declared condition false and records no human decision.",
     },
     {
       nodeId: "approval",
-      purpose: "Re-derives the evidence and checks the stored approval against it, so an approval of a packet "
-        + "that has since moved cannot stand. It re-runs on every attempt rather than replaying its own "
-        + "previous answer.",
+      purpose: "Re-derives the evidence and produces explicit machine-verification or operator-approval "
+        + "authority. It re-runs on every attempt, so moved evidence or identity origin cannot reuse an old answer.",
     },
   ],
   scenarios: [

@@ -14,11 +14,11 @@
  *
  * ## Disconfirming evidence FIRST (ref write-safety §14.6 risk 1)
  *
- * `comparisons` is ordered disagreements-first, always. ALWAYS-GATE's dominant
- * failure mode is rubber-stamping: a control that fires on every run and is
- * almost always obviously right trains the operator to approve without reading.
- * Putting the fields that DISAGREE at the top of the packet is the cheap half of
- * the answer; `approvalShape` is the expensive half.
+ * `comparisons` is ordered disagreements-first, always. On the name-only arm,
+ * putting fields that DISAGREE at the top counters rubber-stamping; on the
+ * supplied-EID arm it keeps a name discrepancy visible without turning it into
+ * a substitute identity decision. `approvalShape` governs only a gate that is
+ * actually required.
  *
  * ## `approvalShape` is a policy, and it is computed here on purpose
  *
@@ -38,8 +38,10 @@
  * `Chan`/`Chen`, `Marc`/`Mark` and `Nguyen`/`Nguyan` are all inside its 2-edit
  * threshold, so the arm that is supposed to fix a typo also SUPPRESSES the
  * wrong-person control on exactly the near-miss cases it should raise it for.
- * Here `similar` is never silent — it is a `choose-a-candidate` gate with both
- * spellings shown — and no name is ever written anywhere by this workflow.
+ * Here `similar` is always visible. A name-only identity opens the gate with
+ * both spellings shown; an exact supplied/read-back EID records the discrepancy
+ * as evidence and continues with machine authority. No name is ever written by
+ * this workflow.
  */
 import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
@@ -62,7 +64,7 @@ import { SeparationWritePlanSchema } from "./write-plan.js";
 import type { SeparationWritePlan } from "./write-plan.js";
 
 /** Where the EID this run is checking came from — S18/S19's fork, stated. */
-export const IdentityEidSourceSchema = z.enum(["document-eid", "name-resolved"]);
+export const IdentityEidSourceSchema = z.enum(["document-eid", "canonical-eid", "name-resolved"]);
 export type IdentityEidSource = z.infer<typeof IdentityEidSourceSchema>;
 
 export const IdentityCandidateSchema = z.strictObject({
@@ -94,7 +96,7 @@ export const IdentityFieldComparisonSchema = z.strictObject({
 export type IdentityFieldComparison = z.infer<typeof IdentityFieldComparisonSchema>;
 
 /**
- * What a search on the DOCUMENT'S NAME resolves, run on every gate.
+ * What a search on the DOCUMENT'S NAME resolves, run on every identity check.
  *
  * Legacy only ever performs this search when the name tier came back
  * `different` — which is why the `T002173685` incident's alternative candidate
@@ -278,7 +280,7 @@ export function buildIdentityEvidencePacket(
         ? "the two spellings agree token for token"
         : nameTier === "similar"
           ? "the spellings differ within two edits per token — close enough to be a typo AND close "
-            + "enough to be two different people (S15); this never proceeds without a human"
+            + "enough to be two different people (S15); supplied EID read-back decides whether approval is required"
           : "the names do not match; a common-name re-search resolving a different career employee is "
             + "exactly how T002173685 terminated the wrong person (S17)",
     },
@@ -289,8 +291,10 @@ export function buildIdentityEvidencePacket(
       agrees: !input.documentEidConflicts && input.emplIdSource === "document-eid",
       note: input.emplIdSource === "document-eid"
         ? "the checked EID is the one the separation document carries"
-        : "the separation document did not supply this EID; it was resolved by name (S18), so the "
-          + "document itself confirms nothing about who this is",
+        : input.emplIdSource === "canonical-eid"
+          ? "the harness supplied the checked EID independently; UCPath's actual detail read-back must match it"
+          : "the separation document did not supply this EID; it was resolved by name (S18), so the "
+            + "document itself confirms nothing about who this is",
     },
     {
       field: "employment",
@@ -314,7 +318,7 @@ export function buildIdentityEvidencePacket(
       note: nameSearchAgrees
         ? "searching the document's name resolves the same person the document's EID does"
         : "searching the document's name does NOT resolve the person being checked; both candidates "
-          + "are shown because only a human can say which one the document means",
+          + "remain visible; an exact supplied EID read-back takes precedence, while name-only identity requires approval",
     },
   ];
   comparisons.sort((left, right) => Number(left.agrees) - Number(right.agrees));

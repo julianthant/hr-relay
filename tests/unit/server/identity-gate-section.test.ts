@@ -60,7 +60,6 @@ afterEach(() => {
 const RUN_ID = uuidOf(1);
 const NOW = "2026-08-12T18:00:00.000Z";
 const EID = "10833507";
-const OTHER_EID = "10401814";
 const HASH = "a".repeat(64);
 const RESULT_SCHEMA_HASH = deriveSchemaHash(IdentityApprovalResultSchema, "output");
 
@@ -78,7 +77,11 @@ const GATE_NODES = [{
   resultSchemaHash: RESULT_SCHEMA_HASH,
 }];
 
-function packetOf(overrides: Readonly<{ differentName?: boolean }> = {}): IdentityEvidencePacket {
+function packetOf(overrides: Readonly<{
+  differentName?: boolean;
+  source?: "name-resolved" | "document-eid";
+}> = {}): IdentityEvidencePacket {
+  const source = overrides.source ?? "name-resolved";
   const rows = [deriveJobRowFromCells([
     "0", "07/01/2025", "Active", "SDCMP", "40012345", "000414",
     "Housing Dining Hospitality", "004920", "STDT 3", "", "0.500000", "Student",
@@ -86,8 +89,8 @@ function packetOf(overrides: Readonly<{ differentName?: boolean }> = {}): Identi
   return buildIdentityEvidencePacket({
     documentNumber: "4510",
     documentName: overrides.differentName === true ? "Hernandez, Maria" : "Hernandez, Jose Santos",
-    documentEidText: EID,
-    emplIdSource: "document-eid",
+    documentEidText: source === "document-eid" ? EID : "the separation document carried no EID",
+    emplIdSource: source,
     documentEidConflicts: false,
     jobSummary: {
       pageStateId: "ucpath.person-org.detail-ready",
@@ -98,20 +101,18 @@ function packetOf(overrides: Readonly<{ differentName?: boolean }> = {}): Identi
       renderContext: { entry: "auto-detail", searchResultRows: 0, employmentInstances: "already-complete" },
       observedAt: NOW as never,
     },
-    nameSelection: overrides.differentName === true
-      ? {
-        status: "resolved",
-        selected: {
-          emplId: OTHER_EID as never,
-          name: "Hernandez, Maria",
-          department: "Facilities Management",
-          jobTitle: "BLDG MAINT WORKER SR",
-          employeeStatus: "active",
-          hdh: false,
-        },
-        candidateEids: [OTHER_EID as never],
-      }
-      : { status: "not-found", selected: null, candidateEids: [], searchName: "Hernandez, Jose Santos" },
+    nameSelection: {
+      status: "resolved",
+      selected: {
+        emplId: EID as never,
+        name: overrides.differentName === true ? "Hernandez, Maria" : "Hernandez, Jose Santos",
+        department: "Housing Dining Hospitality",
+        jobTitle: "STDT 3",
+        employeeStatus: "active",
+        hdh: true,
+      },
+      candidateEids: [EID as never],
+    },
     plan: noSeparationWritePlan("this fixture composes no separation write plan"),
   });
 }
@@ -258,9 +259,10 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     if (payload.state !== "available") throw new Error("unreachable");
     assert.deepEqual(
       payload.value.options.map(({ eid, chosenFrom }) => ({ eid, chosenFrom })),
-      [{ eid: EID, chosenFrom: "checked" }, { eid: OTHER_EID, chosenFrom: "name-search" }],
+      [{ eid: EID, chosenFrom: "checked" }],
     );
-    // §14.6 risk 1: an ambiguous decision is never a one-click approve.
+    // A name-resolved EID requires the explicit typed-EID ceremony even when
+    // the search returned exactly one candidate.
     assert.equal(payload.value.approvalShape, "type-the-eid");
     assert.equal(payload.value.actions.length, 2);
     assert.deepEqual(
@@ -338,6 +340,18 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     }]));
     assert.equal(d.state, "missing");
     assert.match(d.state === "missing" ? d.reason : "", /2 of them hold an identity decision packet/);
+  });
+
+  it("refuses to serve a historical supplied-EID park as a current operator decision", () => {
+    const w = world();
+    seed(w);
+    w.authority.putCheckpoint(checkpointOf(packetOf({ source: "document-eid" })) as never);
+    const payload = gateSection(w);
+    assert.equal(payload.state, "missing");
+    assert.match(
+      payload.state === "missing" ? payload.reason : "",
+      /requires an operator decision only for a name-resolved EID/u,
+    );
   });
 
   it("refuses to serve the section for a run that is not parked on a gate", () => {

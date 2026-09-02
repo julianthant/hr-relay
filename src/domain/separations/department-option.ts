@@ -71,7 +71,7 @@ export const DepartmentOptionResolutionSchema = z.discriminatedUnion("state", [
     departmentCode: z.string().regex(/^\d+$/u),
     /** The option's text after `<code> - `, so the two names can be compared by a human. */
     optionDescription: z.string().min(1),
-    /** What UCPath called this department, rendered exactly as the gate shows it. */
+    /** What UCPath called this department, retained exactly in the identity packet. */
     ucpathDepartment: z.string().min(1),
     /** How many options the control carried — §3.2's evidence, and the drift signal. */
     observedOptionCount: z.number().int().positive(),

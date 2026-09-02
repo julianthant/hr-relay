@@ -53,6 +53,7 @@
 import { z } from "zod";
 import { ArchivedEvidencePointersSchema } from "./model.js";
 import { KualiSaveSeparationFinalization } from "../contracts/kuali/save-separation-finalization.js";
+import { UcpathPendingSweepProofSchema } from "../ui/ucpath-smart-hr-termination.js";
 import { UcpathCreateTermination } from "../contracts/ucpath/create-termination.js";
 import { UcpathDeletePendingTerminations } from "../contracts/ucpath/delete-pending-terminations.js";
 import { FingerprintSchema } from "../ids.js";
@@ -148,10 +149,27 @@ interface LedgerPresentationDeclaration {
   readonly taskId: string;
   /** The contract's own proof schema — the value's shape AND its identity. */
   readonly proofSchema: z.ZodTypeAny;
+  /** Frozen schemas this same task used before a contract evolution. */
+  readonly historicalProofSchemas?: readonly z.ZodTypeAny[];
   /** Reads the HR action out of this contract's own parsed proof. */
   action(proof: unknown): LedgerColumn;
   /** Reads the confirmation the external system returned, on the same terms. */
   confirmation(proof: unknown): LedgerColumn;
+}
+
+function pendingSweepAction(proof: unknown): LedgerColumn {
+  const value = UcpathPendingSweepProofView.parse(proof);
+  return {
+    state: "present",
+    value: `Cleared pending terminations for ${directIdentifierDigestReference(value.emplId)} (grid scanned ${String(value.scannedRowCount)} rows)`,
+  };
+}
+
+function pendingSweepConfirmation(): LedgerColumn {
+  return noSuchColumn(
+    "UCPath issues no confirmation number for an in-progress-grid delete; the current proof's selected "
+    + "transaction ids identify the authorized set and are not a confirmation emitted by UCPath",
+  );
 }
 
 /**
@@ -176,25 +194,16 @@ export const LEDGER_PRESENTATION_DECLARATIONS: readonly LedgerPresentationDeclar
   {
     taskId: UcpathDeletePendingTerminations.id,
     proofSchema: UcpathDeletePendingTerminations.writeSafety.completion.proofSchema,
-    action: (proof) => {
-      const value = UcpathPendingSweepProofView.parse(proof);
-      return {
-        state: "present",
-        value: `Cleared pending terminations for ${directIdentifierDigestReference(value.emplId)} (grid scanned ${String(value.scannedRowCount)} rows)`,
-      };
-    },
+    historicalProofSchemas: [UcpathPendingSweepProofSchema],
+    action: pendingSweepAction,
     /*
      * There is no confirmation and that is a property of the write, not a gap
-     * in this table. The proof deliberately does NOT list what was deleted —
-     * after the Delete click those rows are gone, so a post-click read cannot
-     * name them — and UCPath issues no receipt for a grid delete. Reporting the
-     * transaction id the sweep removed would be quoting an intention back as a
-     * confirmation.
+     * in this table. The v2 proof retains the exact selected IDs as settlement
+     * authority, but after Delete those rows are gone and UCPath issues no
+     * receipt for a grid delete. Reporting an authorized selected ID as the
+     * confirmation would turn the pre-click set into a claim from UCPath.
      */
-    confirmation: () => noSuchColumn(
-      "UCPath issues no confirmation number for an in-progress-grid delete, and this contract's proof "
-      + "deliberately records only what a post-delete scan could see",
-    ),
+    confirmation: pendingSweepConfirmation,
   },
   {
     taskId: UcpathCreateTermination.id,
@@ -265,18 +274,28 @@ const KualiSavedFinalizationProofView = z.looseObject({
  * contracts with byte-identical proofs, which is a real ambiguity and is
  * refused here rather than resolved by list order.
  */
-const DECLARATIONS_BY_PROOF_HASH: ReadonlyMap<string, LedgerPresentationDeclaration> = (() => {
-  const byHash = new Map<string, LedgerPresentationDeclaration>();
+interface BoundLedgerPresentationDeclaration {
+  readonly declaration: LedgerPresentationDeclaration;
+  readonly proofSchema: z.ZodTypeAny;
+}
+
+const DECLARATIONS_BY_PROOF_HASH: ReadonlyMap<string, BoundLedgerPresentationDeclaration> = (() => {
+  const byHash = new Map<string, BoundLedgerPresentationDeclaration>();
   for (const declaration of LEDGER_PRESENTATION_DECLARATIONS) {
-    const hash = FingerprintSchema.parse(deriveSchemaHash(declaration.proofSchema, "output"));
-    const existing = byHash.get(hash);
-    if (existing !== undefined) {
-      throw new Error(
-        `${declaration.taskId} and ${existing.taskId} declare proof schemas with the same hash ${hash}; a `
-        + "ledger line could not say which contract wrote it",
-      );
+    for (const proofSchema of [
+      declaration.proofSchema,
+      ...(declaration.historicalProofSchemas ?? []),
+    ]) {
+      const hash = FingerprintSchema.parse(deriveSchemaHash(proofSchema, "output"));
+      const existing = byHash.get(hash);
+      if (existing !== undefined) {
+        throw new Error(
+          `${declaration.taskId} and ${existing.declaration.taskId} declare proof schemas with the same hash ${hash}; a `
+          + "ledger line could not say which contract wrote it",
+        );
+      }
+      byHash.set(hash, { declaration, proofSchema });
     }
-    byHash.set(hash, declaration);
   }
   return byHash;
 })();
@@ -286,8 +305,8 @@ function readDeclaredColumn(
   entry: LedgerEntryFacts,
   column: "action" | "confirmation",
 ): LedgerColumn {
-  const declaration = DECLARATIONS_BY_PROOF_HASH.get(entry.proof.schemaHash);
-  if (declaration === undefined) {
+  const bound = DECLARATIONS_BY_PROOF_HASH.get(entry.proof.schemaHash);
+  if (bound === undefined) {
     return {
       state: "absent",
       reason: `no commit contract declares how to read a ${column} out of a proof bound to schema `
@@ -295,7 +314,7 @@ function readDeclaredColumn(
         + "sniffing a field name out of it would be a guess on an HR record",
     };
   }
-  const parsed = declaration.proofSchema.safeParse(entry.proof.value);
+  const parsed = bound.proofSchema.safeParse(entry.proof.value);
   if (!parsed.success) {
     /*
      * The hash said this contract wrote the line and the contract's own schema
@@ -305,11 +324,13 @@ function readDeclaredColumn(
      */
     return {
       state: "absent",
-      reason: `this line's proof names ${declaration.taskId}'s schema and does not satisfy it, so its `
+      reason: `this line's proof names ${bound.declaration.taskId}'s schema and does not satisfy it, so its `
         + `${column} cannot be read: ${parsed.error.message}`,
     };
   }
-  return column === "action" ? declaration.action(parsed.data) : declaration.confirmation(parsed.data);
+  return column === "action"
+    ? bound.declaration.action(parsed.data)
+    : bound.declaration.confirmation(parsed.data);
 }
 
 /**

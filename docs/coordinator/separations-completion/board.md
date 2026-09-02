@@ -1,79 +1,69 @@
 # Board — separations completion
 
-**Project profile:** docs/coordinator/separations-completion/project-profile.md
-**Integration target:** master (via feature/03b-live-close, --no-ff)
-**Board owner:** coordinator
-**Write rule:** one writer; R1 supervisor authorized at run close only, this exact path
-**Last verified:** 2026-09-01 15:00 PDT at master `374e60d9` / branch `6a521779` (rev 3 — see unit ledger u0; earlier text below is the 08:55 state) — **still NOT clean and actively
-written**: the concurrent Codex session is mid-D295 (5 modified + 3 untracked; `top-bar.tsx` touched
-42 s before the check). R1 rev 2 closed **BLOCKED at the dispatch gate**, before u1
-(reports/r1-rev2.md); nothing of D287 consumed. Precondition status: P1 quiescence **OPEN (worse —
-live writer)** · P2 backups **GREEN, re-verified** (doctor exit 0, backup current g1291, age 30m,
-gap 0) · P3 secrets **OPEN** (smoke exit 1, all three `state=refused`; 0 canary keys in `.env`) ·
-P4 pin NOT taken — `feature/03b-live-close` still absent, deliberately not created under a foreign
-live tree. A git remote `origin` exists — never-push unchanged and respected.
+Profile: `project-profile.md`. Board owner: this coordinator only. Integration line: `feature/03b-live-close`, eventual `master --no-ff` after completion.
+Verified 2026-09-02 after R4d integration at `79f732e2`, primary checkout. R2/R2a/R3a/R3b/R4a/R4b/R4c/R4d received; overall completion remains open. Coordination artifacts are committed with this board. Historical reports remain evidence, not current admission.
 
-## Facts every run needs
-- Separations stands 8/9 (doc 03b §Exit criteria); only criterion 5 is open — A2–A5 + A8.
-- 4537 / `finalization-canary` is the SOLE registered subject (D284). 2026-08-28 S7 equality is
-  historical; current S7/subject facts are unobserved.
-- §9.32: the 2026-08-30 refusal was the assigned WORKTREE lacking `.env`. The primary checkout has
-  `.env`; run there. Not a code defect.
-- Order: ② UCPath filing → immediate ① pending sweep on ②'s new row → ③ Kuali finalization.
-  One ALWAYS-GATE per write. No reRead after ②. UNKNOWN stops, never re-run.
-- Gates: typecheck · lint · test:coverage · build:manifest clean · test:parity · roadmap:check ·
-  git diff --check.
-
-## Decisions ratified
-- (none this workspace; D284/D287/D290–D293 pre-exist in their owners)
+## Current facts
+- Built workflow and historical live preview are proved, including 4589 run `ca6a5462-4e52-43b7-ac85-f9bdb7fd30cf`, receipt `0fa49971-bd6a-5a80-8c23-6392614d46c7`, exact-run 0/0/0 (§9.34).
+- D300 ingress is implemented; old three-person-secret and active-D295-writer blockers are obsolete. Gone 4537 stays gone.
+- All three controlled writes remain open. §§9.35–9.36 prove unsupported individual approval sequencing, permanently reused sweep identity, and a deleted filing still cited by finalization. None is waived by green tests.
+- R2 full coverage was red twice; R2a repaired file-worker scheduling in `5853ef80`. After R4d integration, the full gate passes 390/390 files, 4,838/4,838 tests, zero skips; typecheck/lint/manifest/roadmap/exact-merge diff pass and parity remains 287/287. Earlier red evidence is retained in evidence/r2/; repair and receive evidence are in the R4 reports/evidence.
+- Dashboard is healthy on repaired separations fingerprint `a6a1600a4398f7caa9d14f14821a9abc606de603ed2a3e83af58d99c72e1d81a`. After R4d integration, storage is healthy/current at schema 29 / backup generation 2407 with 25/25 reconciled run streams and no blocking preflight failure. No actual HR write occurred.
+- User authorization: finish separations and prepare it for UI inspection. On 2026-09-02 the operator rejected repeated approvals: a provided EID that matches requires no approval; name-only selection requires approval. R3a ratifies and implements this correction. The operator supplied the possible document set `4593, 4579, 4564, 4544, 4502, 4495`, then explicitly selected document `4495` for the post-repair test. R4c used exactly 4495; any post-R4d rehearsal in R4e must use the same document and may not substitute another. This choice authorizes only dry runs/read-only inspection and does not select or authorize a real deletion target or retention disposition.
+- Supervisor policy: every new run uses a newly created standalone supervisor task; do not reuse any earlier supervisor. R4d repairs the new Smart HR settlement defect; R4e repeats the 4495 rehearsal; R4f owns controlled proof. Each requires its own fresh supervisor.
+- Integration authorization: after R4f, close reconciliation, and the full declared gates are verified, the coordinator is authorized to merge `feature/03b-live-close` into local `master` with `--no-ff`. No remote push is authorized.
 
 ## Unit ledger
-| Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
-|---|---|---|---|---|---|---|
-| u0 | R1 rev3 | **built, unmerged** | `feature/03b-live-close` @ `6a521779` (14 commits, base `374e60d9`); reports/r1-rev3.md | typecheck 0 · lint 0 · coverage 4561/4578 (16 port-held by the concurrent dashboard, 1 contention timeout green standalone) · manifest current · roadmap 0 · parity 287/289 (gallery byte-size flake, foreign seam) | 6 reviewers rate-limited → BLOCKED; security axis by supervisor | D300 ratified (03b, ledger r112, migration doc); smoke replaced; `.env` key still unset (0) |
-| u1 | R1 rev3 | **blocked (gate)** | none — no code commit; report + this board only | dispatch gate: quiescence RED · backups GREEN (doctor 0, g1291 gap 0) · secrets RED (smoke 1) · pin not taken | n/a — no code changed | intake stopped BEFORE u1; no live read, S7 NOT established, no branch created |
-| u2 | R1 rev2 | not started | — | — | — | gated on u1 |
-| u3 | R1 rev2 | not started | — | — | — | gated on u2 + 3 operator gates; no gate window opened this dispatch |
-| u4 | R1 rev2 | not started | — | — | — | rides inside u3 |
-| u5 | R1 rev2 | not started | — | — | — | gated on u3/u4 |
+| Unit | Run | Status | Evidence | Disposition |
+|---|---|---|---|---|
+| u0 | R1 | integrated historically | D300; reports/r1-rev3.md; migration §9.33 | closed |
+| u1 | R1 | stopped safely | gone 4537; run 325cd998…; 0/0/0 | preserve |
+| u2 | R1 | historical green | §9.34; 4589 preview, older fingerprint | fresh proof required after implementation |
+| u3/u4/u5 | R1 | blocked | §§9.35–9.36 | R3/R4 after decision |
+| u6 | R2 + R2a | proved | reports/r2a-gate-reliability.md closes the full-gate failures; runtime healthy/current, 0/0/0 | complete |
+| u7 | R2 | proved | evidence/r2/ui-inspection.md + screenshots.json; exact run link rendered | complete |
+| u8 | R2 | proved proposal | research/r2-protocol.md; native analyst + supervisor source review | operator protocol decision |
+| u9 | R2 | proved | canonical readiness reconciliation `9321fe2f`; decision sheet and receive report in this commit | complete preparation |
+| u16 | R2a | proved | `5853ef80`; 4,795/4,795 default coverage; exact config diff reviewed | complete |
+| u10/u11/u12 | R3a | proved | D309; `47c47666`..`36f0562f`; 4,809/4,809 coverage; parity 287/287; review PASS | complete |
+| u17/u18 | R3b | proved | D310; `1bda8afb`..`4d4804ec`; 4,818/4,818 coverage; parity 287/287; review PASS | complete |
+| u13 | R4a | partial, safely failed | `3c3c7152`; 4579 failed New Kronos lookup; 4502 passed authenticated reads then hit missing `source` provenance; every run 0/0/0 writes | receive failure evidence; repair in u19 |
+| u14 | R4a → R4c → R4e | partial, safely failed | 4495 live run proved dates provenance + D309 machine verification, then D310 scan was unreadable; exact run 0/0/0 | repair u20, then repeat 4495 under fresh R4e |
+| u19 | R4b | proved | `3d59c1a4` + `647ed013`; exact red/green regression; 4,819/4,819 coverage; parity 287/287 | complete, merged `31da1fe8` |
+| u20 | R4d | proved | live auto-drill evidence, fail-loud exact settlement classifier; `9e08afb4`, merged `79f732e2`; 4,838 coverage + 287 parity | complete; immutable R4c failure retained |
 
-## Residue
-- Out of scope, already owned elsewhere: 4568/R3 (§9.29), storage-span visibility (Phase 4,
-  dashboard-surfaces §9.8), Run-modal touch targets (Phase 4).
-- **Carried forward from R1's block, all four preconditions must hold before R1 re-dispatches:**
-  1. the checkout is quiescent and exclusively R1's (the live sequence cannot share a source tree or
-     the `.auth` profile — §9.21's wedge is unsynchronised concurrent writers). **Re-checked
-     2026-09-01 08:55 PDT: still OPEN, and now a demonstrably ACTIVE writer, not just a dirty tree;**
-  2. ~~storage doctor exits 0 with a valid current backup~~ — **CLEARED 2026-09-01**: doctor
-     exit 0, `backup: current` g1291 (age 21m, generation gap 0); the 99 invalid manifests are
-     historical, superseded by the fresh valid backup. Re-verify at dispatch;
-  3. the three `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_*` secrets are restored to
-     `.env` (gates ③ and the smoke; does NOT gate u2's rehearsal — `timekeeperName` resolves as a
-     literal in the chain's canonical input);
-  4. a fresh base pin on a branch nothing else writes — `feature/03b-live-close` remains absent and
-     was deliberately NOT created on 2026-09-01: creating it would move this checkout's HEAD off
-     `master` underneath the live concurrent session. Ten-second step once (1) holds.
-  5. **NEW — 4570 / 4567 / 4566.** The rev-2 dispatch carried an operator image of these three Kuali
-     document numbers ("and the 3 are"). They appear nowhere in the repo's markdown. R1 did not act
-     on them: D284 registers 4537 as the SOLE subject and the brief scopes out any other, so adding
-     or substituting a subject is a coordinator/operator ruling, and would need D284 amended in its
-     owner before a run consumes it.
-- **New, owned outside this workspace:** the v28 backup-manifest invalidation; the three absent
-  `.env` person secrets.
-- No step of the D287 sequence was consumed — nothing needs re-authorizing, and R1 re-runs unchanged
-  from u1.
+## Residue and decisions
+- Exact real/disposable targets and restoration/retention disposition remain unresolved in the decision sheet. Its proposed individual write approvals are superseded by the operator's EID rule; do not re-request them for an EID-verified separation. This separate residue does not block R3a.
+- u17/u18 exact-set deletion and filing-survival mechanics: R3b complete and received.
+- R4a is received at merge `fcfd1e5f`: it proved submit-free failure evidence but did not reach the target packet.
+- u19 dates-provenance repair: R4b received and merged at `31da1fe8`; immutable failed run preserved, no live retry or runtime-row mutation.
+- u14 post-repair submit-free rehearsal plus read-only exact target packet: R4c proved the first repair/D309 but failed at D310; carry into fresh-supervisor R4e after u20. R4e must still use exactly document 4495.
+- u20 Smart HR settlement diagnosis/repair: R4d received and merged at `79f732e2`; live one-result auto-drill and exact fail-loud settlement are proved.
+- u15 controlled writes, measurements and rebuild-ready close: R4f after R4e and explicit operational authorization for the exact target/disposition.
+- Run-data rail misleading empty-state confirmed in R2 screenshot at context-rail.tsx:872; owned future UI correction. Fresh Start Run modal currently has Dry run unchecked: inspection is not authorization to start; hr-manage operations explicitly choose dryRun=true.
+- Historical 4568/R3, omitted identity/Kuali/job-summary steps, and unrelated dashboard redesign remain in their canonical owners.
+- Exact unresolved handoffs: `docs/handoffs/2026-09-02-separations-controlled-sequence-preflight.md`, workspace handoffs `2026-09-01-finish-separations-r1-rev4.md` and `rev5.md`. Retain pending verified recovery/disposition.
 
-## Questions for the operator
+## Current recovery boundary
+R2/R2a/R3a/R3b/R4a/R4b/R4c/R4d are verified. R4a's immutable 4502 provenance failure remains exact zero-write evidence and R4b repaired it. R4c's immutable 4495 failure proved the dates repair and D309 before the D310 Smart HR timeout; R4d live-proved the one-result auto-drill and repaired that settlement boundary at merge `79f732e2`. Its integrated gates are 67/67 focused, 390 files/4,838 tests coverage, 287/287 parity, and green typecheck/lint/manifest/roadmap/exact-merge diff. The R4d worktree/branch are removed and the dashboard is restored healthy/current. R4e now owns exactly one 4495 dry-run rehearsal and target packet; R4f owns controlled proof after an exact packet plus authorization. Each uses a new supervisor. Current handoff: `handoffs/2026-09-02-separations-ready-for-protocol-decision.md`. Earlier exact handoffs remain active/historical recovery evidence because their controlled-proof close conditions have not been met. Workspace retained.
 
-Backups (P2) are RESOLVED and re-verified. Three remain; R1 can self-clear none of them.
+## R4e admission — 2026-09-02
+R4d is accepted and integrated at `79f732e2`. Fresh R4e may inspect exactly document `4495`, start exactly one separations run through the dashboard with `dryRun=true`, drain exactly one supported worker, and collect D309/D310 plus the exact target/disposition packet. It may not substitute another document, retry, resolve a workflow gate, edit source, mutate/repair runtime rows, perform any actual UCPath deletion/filing or Kuali finalization, edit this board, merge to master, or push. If 4495 is unavailable or another code defect appears, preserve exact immutable evidence and return it for a new fresh repair supervisor. Brief: `briefs/r4e-post-r4d-4495-rehearsal.md`; report: `reports/r4e-post-repair-rehearsal.md`; evidence: `evidence/r4e/`.
 
-1. **Serialize the checkout (P1).** When is the Codex D295 session done, and will you hold the tree
-   quiescent for R1's window? This is the blocker that stops the entire run — two consecutive
-   dispatches have died on it.
-2. **Restore the three `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_*` values to
-   `.env` (P3).** Not recoverable from the repo; they gate ③, the last of the three writes.
-3. **What are 4570 / 4567 / 4566?** Context only (subject stays 4537), or a subject change? The
-   latter is a D284 amendment, not a supervisor call.
+## R4d admission — 2026-09-02
+R4c exact authority: run `26e7eaa2-1111-4a88-be5e-b71e4432b4f7`, trace `sp-132417-26e7`, failure `85895513-780e-445f-87c3-6a5a42f69eb5`, fingerprint `d811fe253c4fa59c5eea9dc13b310c8599a9430d85d3e0b60e4f4c1ae1a4f7ab`, `UNEXPECTED_PAGE_STATE`, write state `not-attempted`. The Smart HR scan rendered neither a result row nor the explicit no-results marker within 45 seconds. R4d may diagnose this exact failure, perform read-only live selector/page-state verification, build a deterministic red regression, implement the smallest proven repair, update required manifest/instruction artifacts, and run full gates/review. It may not retry the 4495 workflow run, resolve a gate, perform an HR write, mutate runtime rows, edit the board, merge to master, or push. Brief: `briefs/r4d-smart-hr-settlement-repair.md`; report: `reports/r4d-smart-hr-settlement-repair.md`; evidence: `evidence/r4d/`.
 
-Plus: re-confirm your ALWAYS-GATE window — the 08-31 one went unused and no window was opened on
-09-01.
+## R4c admission — 2026-09-02
+R4b repair and integrated gates are accepted: focused 26/26, full coverage 390/390 files and 4,819/4,819 tests, parity 287/287, typecheck/lint/manifest/roadmap/diff green; storage healthy/current generation 2282, 24/24 streams reconciled, and zero pending commands/write intents/outbox. The operator explicitly chose document `4495` for this test. R4c may perform read-only inspection and start exactly one dashboard `dryRun=true` separations run for 4495, then drain exactly one worker and collect the exact-run authority/target packet. No substitution, retry, gate resolution, actual HR write, runtime-row repair, registry/environment change, master merge, or push is authorized. Brief: `briefs/r4c-post-repair-rehearsal.md`; report: `reports/r4c-post-repair-rehearsal.md`; evidence: `evidence/r4c/`.
+
+## R4b admission — 2026-09-02
+The operator requested the failed dry run be fixed. Exact authority gate: run `05d9d8fa-22e0-4b5c-9e38-2df095162284`, trace `sp-122836-05d9`, attempt 3, failure `3a7959e9-c230-44ae-8c8c-0cd3e5d32278`, fingerprint `d0e11f1e85783ee4067addac7c971b8963a145dbffaac248b535bcccf0591644`, summary `task workflow:separations/read-separation-dates has no recorded provenance for output field source`, write state `not-attempted`. R4b may implement and test only the smallest proven repair, update generated/nearest instruction artifacts required by the repository, and run full gates/review. It may not alter the immutable run/checkpoint rows or perform a live retry; R4c owns that fresh proof.
+
+## R3a admission — 2026-09-02
+Verified clean cde45a5b, sole primary worktree, current roadmap/manifest; storage healthy schema29 generation2021, 19/19 reconciled streams. Units u10/u11/u12 now mean policy ratification, conditional identity execution, and real composition proof. Reuse exact native supervisor `/root/sup_supervisor_separations_readiness`; report `reports/r3a-eid-approval-policy.md`. Canonical ratification is assigned to that run, not claimed complete here.
+
+## R3b admission — 2026-09-02
+R3a proof accepted: clean sole worktree, full coverage 389 files/4,809 tests, parity 287/287, typecheck/lint/manifest/roadmap green, review PASS, runtime restored and no writes. u17/u18 are ready for code-only protocol mechanics. This admission does not select or authorize a real UCPath deletion target. Reuse `/root/sup_supervisor_separations_readiness`; report `reports/r3b-sweep-and-filing-survival.md`; evidence `evidence/r3b/`.
+
+## R4a admission — 2026-09-02
+R3b proof accepted: D310 mechanics, live read-only identity mapping, full coverage 4,818/4,818, parity 287/287, review PASS, runtime healthy and unchanged at 19/0/0/0. u13/u14 are authorized for one dashboard-started `dryRun=true` run and read-only inspection of exactly `4593, 4579, 4564, 4544, 4502, 4495`. No workflow gate resolution or actual HR write/delete/finalization is authorized. Launch a fresh standalone supervisor; report `reports/r4a-fresh-rehearsal-and-target-packet.md`; evidence `evidence/r4a/`.

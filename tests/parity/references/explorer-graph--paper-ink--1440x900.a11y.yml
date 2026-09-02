@@ -1,7 +1,7 @@
 # explorer-graph--paper-ink--1440x900
 # adapter: fixture
 # fixture: explorer-graph
-# descriptorHash: 5692b33370ef298e28627663fcc299af90e169ecebd6c26a02f1742b4ea54372
+# descriptorHash: ec683d932e1b6b4794e2c3de2382aa0cb6b1bfd4e2acf067178bd9bda218accb
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -31,7 +31,7 @@
       - text: 7 Separations
       - list:
         - listitem:
-          - button "Separations 19"
+          - button "Separations 21"
           - list "Proving harnesses of Separations":
             - listitem:
               - button "Separation Timecard a proving harness of Separations 2"
@@ -40,9 +40,9 @@
             - listitem:
               - button "Identity Check a proving harness of Separations 5"
             - listitem:
-              - button "UCPath Termination a proving harness of Separations 8"
+              - button "UCPath Termination a proving harness of Separations 9"
             - listitem:
-              - button "Kuali Finalization a proving harness of Separations 7"
+              - button "Kuali Finalization a proving harness of Separations 8"
       - text: Search
       - list:
         - listitem:
@@ -148,7 +148,7 @@
             - row "Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts":
               - rowheader "Source"
               - cell "contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts"
-        - text: input ee4776e0a94eoutput 6b08cc3af988impl a87cf29cadd1
+        - text: input ee4776e0a94eoutput 6b08cc3af988impl 522dc702e5c1
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

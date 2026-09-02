@@ -1,0 +1,53 @@
+{
+  "checkedAt": "2026-09-02T15:26:05.770Z",
+  "authority": {
+    "state": "healthy",
+    "generation": 2019,
+    "schemaVersion": 29,
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "invariants": {
+      "state": "valid",
+      "violations": []
+    }
+  },
+  "spanAuthority": {
+    "state": "reconciled",
+    "streamRunCount": 19,
+    "liveRunCount": 19,
+    "archived": [],
+    "deleted": []
+  },
+  "backup": {
+    "state": "current",
+    "latest": {
+      "state": "verified-compatible",
+      "manifestFileName": "authority-g2019-20260902151913712-925b81af-b140-4bb4-8085-74e5c2c55592.sqlite.manifest.json",
+      "backupFileName": "authority-g2019-20260902151913712-925b81af-b140-4bb4-8085-74e5c2c55592.sqlite",
+      "createdAt": "2026-09-02T15:19:13.712Z",
+      "authorityGeneration": 2019,
+      "ageMs": 411986,
+      "generationGap": {
+        "state": "known",
+        "value": 0
+      }
+    }
+  },
+  "counts": {
+    "state": "available",
+    "values": {
+      "pendingCommands": 0,
+      "unresolvedWriteIntents": 0,
+      "leases": 4,
+      "durableOutbox": 0,
+      "runTerminalOutbox": 3,
+      "providerReservations": 0,
+      "artifactOutbox": 0
+    }
+  },
+  "globalWrites": {
+    "write_intents": 0,
+    "write_attempts": 0,
+    "durable_outbox": 0
+  }
+}

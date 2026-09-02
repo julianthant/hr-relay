@@ -85,6 +85,7 @@
  * about the human decision is sniffed out of the payload's field names.
  */
 import { z } from "zod";
+import { evaluateNodeCondition } from "../domain/workflow/node-condition.js";
 import {
   directIdentifierDigestReference,
   idempotencyKeyDigestReference,
@@ -648,6 +649,29 @@ export function deriveRunEvidenceReceipt(
      * run never resolved it, and `unknown` is then the honest verdict.
      */
     if (node.kind === "gate") {
+      // A descriptor condition can make an operator decision inapplicable.
+      // Re-derive that fact from this run's authenticated checkpoint evidence;
+      // never emit an operator decision or manufacture a gate-result row.
+      if (node.resolvedBy === "operator" && node.when !== undefined
+        && node.dependsOn.every((dependency) => byNode.get(String(dependency))?.record !== undefined)) {
+        const outputs = Object.fromEntries(node.dependsOn.map((dependency) => {
+          const upstream = byNode.get(String(dependency))?.record;
+          if (upstream === undefined) throw new Error(`conditional gate ${id} lost dependency ${dependency}`);
+          return [String(dependency), upstream.output.value];
+        }));
+        if (!evaluateNodeCondition(node.when, { input: run.input.parsed.value, outputs })) {
+          if (gateResultsByNode.has(id)) throw new Error(`inapplicable gate ${id} carries an operator result`);
+          const decisionId = entryId("decision", `not-run.${id}`);
+          decisions.push({
+            id: decisionId, kind: "branch", outcome: "not-taken",
+            reason: `gate "${id}" was not required by its declared evidence condition; no operator decision was made`,
+            evidence: node.dependsOn.map((dependency) => evidenceEntryRef(entryId("verification", `node.${dependency}`))),
+          });
+          verification.push({ id: evidence.verificationId, obligation: `node.${id}`, mandatory: false,
+            verdict: "absent", evidence: [evidenceEntryRef(decisionId)] });
+          continue;
+        }
+      }
       const stored = gateResultsByNode.get(id);
       if (stored !== undefined) {
         emitGateEvidence({

@@ -179,7 +179,7 @@ provenance are read-only. There is no separate Data/Edit Data tab or dialog.
 <!-- roadmap-status: p2-proof -->
 - [x] the fenced, fail-closed kernel is BUILT and MET LIVE (**D135**, 2026-08-04): a dry run with zero durable rows, a forced subject mismatch refused at beat ② with zero fence and zero click, ONE controlled commit on real Kuali doc **4489**, and an idempotent re-run answering `already-present` in 2 ms with no browser — evidence of record in ref write-safety §3.4
 - [x] the `resolve/probe → prepare → binding proof → fence → external-commit → proof → durable-commit` sequence this item describes is `src/core/write-sequencer.ts`, the ONLY module permitted to mint a mutation capability
-- [x] the ALWAYS-GATE this item names is built and live-proved (**D202**, separations chunk 3, first live gated run 2026-08-12); **D211** put the write plan INSIDE the approved packet, so a separation date that moves after approval re-opens the gate
+- [x] separations identity authority is built: the name-only gate is live-proved (**D202**), **D211** put the write plan inside its packet, and D309 adds exact supplied-EID/UCPath read-back machine verification without a human result
 - [x] three `effect: "commit"` contracts exist — `kuali/save-separation-finalization`, `ucpath/create-termination`, `ucpath/delete-pending-terminations`; D266 retired the annotation-only fourth contract with its test workflow
 - [ ] the per-system list is only part built: **CRM, ServiceNow, OnBase and I-9 have no commit contract at all**, and onbase/servicenow/i9 are three-line session declarations with zero tasks — each lands at its own migration (`{#migrations}`)
 - [ ] `recoveryAbsence: stabilized` is inherited by `kuali/save-separation-finalization` from the annotation proof's measured mechanism window (D207); confirming or moving that inheritance is chunk 5c's obligation. Both UCPath contracts stay `operator-only` because no UCPath propagation window has ever been measured
@@ -204,12 +204,11 @@ completed"*). Per system:
   after the contract's typed, system-specific propagation/negative-proof policy succeeds; a
   single early miss parks as unknown.
   UCPath is where the real incidents happened (a duplicate person; a wrong-person termination,
-  `T002173685`). Permanent-key fencing closes double filing; the wrong-person class additionally
-  requires the identity-approval gate, **ratified 2026-07-24 as ALWAYS-GATE** — manual operator
-  approval on every separation, for both separation types (Kuali separations and I-9
-  separations), with no auto-approve-on-match mode. Its design is owned by ref write-safety §14 and its
-  gate-node mechanism by ref workflow-model. The plan never claims a probe that can read the wrong person
-  makes that class structurally impossible; the gate is what closes it.
+  `T002173685`). Permanent-key fencing closes double filing. Separations identity authority follows
+  EID origin (D309, superseding D77's unconditional trigger): an independently supplied EID must
+  exactly match UCPath's actual detail read-back; a name-resolved EID always requires the real
+  operator gate regardless of similarity. Its design is owned by ref write-safety §14 and its
+  gate-node mechanism by ref workflow-model. Neither authority arm replaces the fresh page binding.
 - **Kuali** — **SAVE-only, not a submit** (operator 2026-07-18): a write, but not an irreversible
   filing. No confirmation-number receipt needed; the automation must still verify the save
   completed, fail-closed.
@@ -260,7 +259,7 @@ UI observation and matching policy for high-risk reads; every prepare/commit pai
 after prepare, immediately before the fence/click, and records expected+observed proof in the
 transaction evidence. Missing/mismatched identity fails or parks before mutation. This closes
 the stale-page class seen in New Kronos and complements—does not replace—the separations
-identity-approval gate. Full enforcement: refs task-contract/write-safety/operator-trust.
+identity-authority decision. Full enforcement: refs task-contract/write-safety/operator-trust.
 
 ### 17. Queue/control/delegation are kernel protocols, not workflow features
 

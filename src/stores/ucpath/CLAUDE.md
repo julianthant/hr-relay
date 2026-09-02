@@ -14,6 +14,7 @@ means "Person Org" must say so rather than quantifying over the whole registry.
 | Task | Effect | What it visits |
 |---|---|---|
 | `ucpath/match-existing-termination` | read | SS Smart HR — is there a `TER` on THIS effective date? (S44) |
+| `ucpath/read-pending-termination-set` | read | captures the complete eligible/protected stable-T-ID set for the sweep |
 | `ucpath/match-pending-terminations` | read | the same read, folded date-agnostically for the sweep |
 | `ucpath/stage-pending-termination-sweep` | prepare | ticks every in-progress row |
 | `ucpath/delete-pending-terminations` | **commit** | clicks `Delete Selected Transactions` |
@@ -21,6 +22,7 @@ means "Person Org" must say so rather than quantifying over the whole registry.
 | `ucpath/stage-termination` | prepare | the whole three-page Smart HR wizard |
 | `ucpath/create-termination` | **commit** | clicks `Save and Submit` |
 | `ucpath/verify-termination` | read | the post-submit re-read — the ONLY landing proof |
+| `ucpath/verify-termination-filing-present` | read | a fresh exact-T-ID read that must pass before Kuali finalization |
 
 Naming follows `EFFECT_VERBS`, which is why the probes are `match-*` and the prepares are `stage-*`.
 The whole family is a SIBLING on the store's ONE `DriverDeclaration`
@@ -46,6 +48,22 @@ this family is `page` and legacy's `getContentFrame` funnel does not apply.
 - **A settled row is never swept.** Only `Pending` and `Pushed Back` are in progress; deleting an
   `Approved`/`Denied`/`Error`/`Manually Processed` row would destroy a record of something that
   already happened.
+- **A sweep is one exact stable transaction set (D310).** The EID-filtered SS Smart HR detail read
+  supplies stable T IDs and every eligible/protected row fact. The separate Transactions in Progress
+  grid has no T-ID column, so prepare re-reads the set, then uniquely joins each authorized eligible
+  row by EID, normalized name, effective date and termination-action class before checking any box.
+  Transaction type and country exist only on that grid: each must be one nonempty named control and
+  is retained in staging evidence, but neither is invented as cross-surface identity. The positional
+  DOM suffix is never identity. A changed, missing, extra or ambiguous row refuses
+  before fence/click, and the verifier requires the selected set absent while protected rows survive.
+  New settlements retain a v2 proof with canonical selected/protected T-ID lists and the full set
+  digest; the pre-D310 observation-only proof schema remains frozen and explicitly readable in
+  historical results and ledger lines.
+- **Kuali may cite only a currently surviving filing (D310).** The finalization graph always re-runs
+  `verify-termination-filing-present` after the durable filing receipt and before Kuali staging. The
+  read must find exactly that T ID with the same EID, effective date, normalized name, termination
+  action and an accepted current status. It grants current-presence authority only: a D307 asserted
+  receipt remains asserted and never becomes controlled-filing evidence.
 - **A number alone is never a receipt.** `present` requires the `T…` AND its approval status,
   because a Denied transaction carries a perfectly well-formed number.
 - **Post-fence absence is `operator-only`** on both commits: no propagation window has been measured
@@ -53,6 +71,22 @@ this family is `page` and legacy's `getContentFrame` funnel does not apply.
   `minSinceFenceMs` on a real termination is what D128 forbids.
 
 ## Lessons learned
+
+- **2026-09-02: one exact SS Smart HR search result auto-drills to the transaction detail, so a
+  results-row-or-empty settlement wait cannot observe the valid answer.** The R4d read-only search
+  recorded in `docs/coordinator/separations-completion/evidence/r4d/live-smart-hr-settlement.md`
+  settled on the ordinary component route with zero iframes, no result-grid row, no no-results
+  marker, no nonempty error region, and exactly one complete transaction-detail fact set. The scan
+  now admits the already-proven receipt display as a third settlement signal, requires exactly one
+  receipt control and a stable `T…` value, then uses the existing keyed detail reread. Missing,
+  malformed, or ambiguous detail identity remains `unreadable`, and scan failures redact both person
+  and transaction identifiers before the reason becomes durable. The first marker only wakes the
+  scan through one cancellable visible-signal wait: a fresh search page must expose zero settlement
+  markers, then a post-wake count must prove exactly one of result rows, one visible no-results marker,
+  or one visible detail receipt. Each result row must itself expose exactly one stable T ID and the
+  row IDs must be globally unique; whole-page T-ID text never participates because an unrelated
+  shell value could mask a missing row identity. Stale, hidden, co-present, duplicate, or incomplete
+  states refuse. Never lengthen the wait or turn the auto-drill into an empty set.
 
 - **2026-08-14: `.or()` is a UNION under strict mode, so waiting on one is a claim
   that its arms are mutually exclusive — and this one's arms were not (D213).**

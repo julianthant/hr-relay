@@ -88,6 +88,13 @@ after ANY edit under a descriptor's import closure (which includes `src/base/**`
 `src/domain/**`) — `descriptor-coverage` regenerates and fails on a diff, so a stale manifest is a
 red gate, not a silent drift.
 
+Vitest schedules at most four isolated file forks (or the available CPU count when lower).
+The 2026-09-02 full coverage gate repeatedly timed out its 30-second fixture/guard checks at the
+CPU-derived ten-fork default on an 18 GiB host; the same 388 files / 4,795 tests passed with four.
+Keep per-file isolation, in-test concurrency, test membership, coverage floors and the 30-second
+limits intact. Run full coverage without a concurrent compiler/linter gate; reduce contention
+before treating a full-suite timeout as permission to weaken a check.
+
 The gate family is deliberately plain (`typecheck`/`lint`/`test:coverage`, D191 — `test:coverage` is
 a strict superset of the earlier `test`+`test:architecture` pair and measured faster); the old
 `*:rebuild` names retired with D93 and the `rebuild:` runtime prefix with D247 (2026-08-20) — this is
@@ -290,6 +297,22 @@ environment-supplied.
 
 ## Conventions
 
+- **2026-09-02 — a workflow mini-store output is not complete until its implementation records every leaf.**
+  Adding a schema leaf without the matching `ctx.recordData` point leaves the task valid in direct
+  implementation tests but makes the real executor refuse before checkpointing. R4a exposed this
+  when D307 added reconciled-dates `source` without adding its provenance point. Pin these changes
+  with the real task plus `createTaskProvenanceCollector`; a no-op recording fake cannot prove the
+  executor seam.
+
+- **2026-09-02 — a conditional operator gate is descriptor evidence, never caller permission (D309).**
+  A false `when` opens no gate and creates no operator decision or `gate_results` row. Downstream
+  provenance and receipts re-evaluate the same condition from canonical input and authenticated
+  checkpoints; a skipped gate cannot coexist with a checkpoint/result, and a stale result after the
+  condition changes fails loud. Separations conditions only `identity-approval` on a validated
+  `name-resolved` packet: exact independently supplied/UCPath-read-back EID is explicit
+  `machine-verification`, while name-only always requires the real command-resolved gate. Step
+  omission never suppresses or manufactures either arm.
+
 - **2026-09-01 — D307 step omission.** Declare an omission BESIDE the step's own nodes
   (`nodes.category(fragments, { omission })`), never as a separate mechanism. Its `produces` map
   rebuilds TASK node outputs only — a gate always runs (ALWAYS-GATE) and a transaction never runs and
@@ -359,6 +382,14 @@ environment-supplied.
   folder with role `{ kind: "chunk-harness", of, step }`; it remains independently startable,
   nests under its composition in the picker/Explorer, and never appears in the rail. There is no
   `src/workflows/proving/` and no registered workflow whose purpose is test equipment.
+- **2026-09-02 — D311 makes the workflow recipe the authoring authority.** Its `steps` field is an
+  ordered array of `[timeline group, tasks[]]` tuples; group keys/labels own timeline grouping while
+  typed task input references own execution dependencies. One compiler derives the existing
+  descriptor, module requirements and generic dashboard/Explorer projections. D265 folders remain
+  organization/audit structure, not semantic timeline order. Convert person lookup, then
+  separations, prove public equivalence, and delete redundant manual declarations before migrating
+  another workflow. T1 remains per workflow; T2/T3 is added only for a genuinely new dashboard
+  capability. See ref workflow-model §1.6 and doc 03c `{#workflow-authoring-model}`.
 - A workflow's T1 proof lives at
   `tests/scenario/workflows/<workflow-id>/{structural.scenario.test.ts,dry-run.scenario.ts}`: exactly
   one collected structural scenario and one sibling live dry-run manifest. The live half may write
@@ -1053,6 +1084,18 @@ environment-supplied.
   while `write_attempts` and `durable_outbox` carry only `write_intent_id`. A global before/after
   count looked like a delta but could blame concurrent work on the rehearsal; derive all three
   counts from the named run's intent set, before and after, and assert the exact zero tuple.
+
+- **2026-09-02 — D310 pending deletion authority is an exact stable transaction set, and the real
+  filing must survive through Kuali finalization.** A person-only sweep key lets an earlier empty
+  no-op suppress a later nonempty set. Bind the v2 key to the canonical eligible/protected SS Smart
+  HR row set; refuse any immutable v1 intent rather than reinterpreting it. Immediately before
+  selection, re-read the stable T-ID source and uniquely join every eligible row to the separate
+  Transactions in Progress grid by its shared facts; a positional checkbox suffix is not identity.
+  Verify the selected set absent and every protected row unchanged. After the ordinary sweep and
+  filing, always re-read the exact filed T ID immediately before Kuali staging and require matching
+  EID, date, name, termination action and accepted current status. That read proves current presence
+  only: it never upgrades a D307 asserted receipt into controlled-write evidence and never authorizes
+  re-filing as downstream repair.
 
 ## After changes
 

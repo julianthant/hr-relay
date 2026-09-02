@@ -8,6 +8,7 @@
  * collector is not representable in `TaskCtxCommon`.
  */
 import { z } from "zod";
+import { GateIdSchema } from "./ids.js";
 import { JsonValueSchema } from "./canonical-json.js";
 import { ContractFieldPathSchema } from "./contracts/base.js";
 import {
@@ -63,6 +64,8 @@ export type TaskProvenanceResult = z.infer<typeof TaskProvenanceResultSchema>;
  */
 export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
   checkpoints: z.array(RunCheckpointRecordSchema),
+  /** A false descriptor condition, re-evaluated by the collector; no operator fact. */
+  skippedGates: z.array(GateIdSchema).default([]),
   /**
    * A GATE dependency's durable evidence, which is not a checkpoint and never
    * will be.
@@ -93,6 +96,12 @@ export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
       });
     }
     checkpointNodes.add(checkpoint.nodeId);
+  }
+  for (const [index, gateId] of evidence.skippedGates.entries()) {
+    if (checkpointNodes.has(gateId) || evidence.skippedGates.indexOf(gateId) !== index
+      || evidence.gateResults.some((gate) => gate.gateId === gateId)) {
+      context.addIssue({ code: "custom", path: ["skippedGates", index], message: `duplicate upstream evidence for node ${gateId}` });
+    }
   }
   const gateNodes = new Set<string>();
   for (const [index, gate] of evidence.gateResults.entries()) {

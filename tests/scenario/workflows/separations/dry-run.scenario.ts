@@ -18,7 +18,8 @@
  * outside git entirely. `config/test-subjects.json` commits only the closed
  * reference, and the number itself is read from `.env` through
  * `src/domain/secrets.ts` (§10.5), judged by the same 3-8 digit schema the
- * start box applies. No EID crosses this workflow's arm at all. Since D284
+ * start box applies. The EID is derived live from that document; none is
+ * committed here. Since D284
  * (2026-08-28) the registry holds ONE subject,
  * `finalization-canary` / Kuali doc 4537, with one arm per workflow; this
  * manifest's one case addresses that subject's `separations` arm, whose kind is
@@ -31,36 +32,39 @@
  * `clear-pending`, `file-termination`, `finalize-kuali` — and
  * `workflowDryRunSupport(separationsDescriptor)` therefore reports
  * `{ state: "supported", stopsAt: "clear-pending" }`: a rehearsal runs the
- * thirteen read/fold nodes, parks at the ALWAYS-GATE and takes a REAL operator
- * approval through the real command kernel, then reaches the FIRST transaction
- * node, reports the settlement the real path would reach, and ends the run
- * there (D215). So the run DOES write spans, checkpoints, a gate row and a real
- * terminal settlement; what it never writes is the write-safety family, which
- * is what the three zero deltas assert. `file-termination`, `receipt` and
+ * thirteen read/fold nodes, verifies the document-supplied EID against UCPath's
+ * actual read-back, skips the inapplicable name-only operator gate without
+ * recording a human decision, and reaches the FIRST transaction node. It then
+ * reports the settlement the real path would reach and ends the run there
+ * (D215). So the run DOES write spans, checkpoints and a real terminal
+ * settlement; it writes neither a gate result nor the write-safety family. The
+ * three zero deltas assert the latter. `file-termination`, `receipt` and
  * `finalize-kuali` are never entered at all, which `nodesExcluded` asserts from
  * the other side.
  *
  * **Every expectation below was READ FROM AUTHORITY, not composed**, and each
  * has a named source:
  *
- * - **The node path, the checkpoint rows, the gate row and the receipt
- *   vocabulary come from the GRAPH** (`src/workflows/separations/descriptor.ts`,
- *   nineteen runtime nodes per `descriptorRuntimeNodes`, re-checked
- *   2026-08-28 — unchanged) and were TRANSCRIBED from the 2026-08-27
+ * - **The current node path, checkpoint rows and receipt vocabulary come from
+ *   the GRAPH** (`src/workflows/separations/descriptor.ts`, nineteen runtime
+ *   nodes per `descriptorRuntimeNodes`, re-checked 2026-09-02). The earlier
+ *   ALWAYS-GATE path was TRANSCRIBED from the 2026-08-27
  *   `dryRun=true` full-chain proof on document 4502 recorded at
  *   `docs/migrations/separations.md` §9.27 addendum 7 — run
  *   `fd415e49-54bb-4ccd-bec4-ad1cba94a4f6`, trace `sp-053429-fd41`, terminal
  *   `done` at the D215 preview terminal stopped at `clear-pending`, and
  *   `write_intents` 0 / `write_attempts` 0 / `durable_outbox` 0 read over the
- *   whole database. The fifteen checkpoint rows below are transcribed from
- *   that run's own `run_checkpoints` rows in addendum 7, which records only
+ *   whole database. Its fifteen checkpoint rows remain historical evidence of
+ *   the superseded gate/resume path; the current fourteen-row declaration
+ *   removes the gate-induced second `timecard-search`. Addendum 7 records only
  *   ONE receipt (`b7e7b603-6099-52d5-a065-27112c289a07`, `partial`, one
  *   warning) with no verification rows of its own; the twenty-row
  *   `PREVIEW_RECEIPT_VERIFICATION` vocabulary below is instead derived from
  *   the graph's nineteen runtime nodes plus the terminal obligation, as its
- *   own comment states, and was carried over unchanged from the 2026-08-27
- *   manifest commit (`0f397095`). They are facts about the graph, not about a
- *   subject, which is why a run on 4502 can stand as the source for 4537.
+ *   own comment states. The current vocabulary marks the condition-false gate
+ *   absent and non-mandatory; no operator decision is invented. The older run
+ *   remains evidence about the graph before the 2026-09-02 supplied-EID policy
+ *   correction, not proof of the corrected path.
  * - **The `preview` arm is a fact about the SUBJECT**, and it comes from
  *   §9.19's row-① finding on 4537 (2026-08-19): "UCPath holds five
  *   transactions for this EID, every one `Approved`, zero `Pending`; the probe
@@ -84,8 +88,8 @@ import {
 
 /**
  * The graph, in the order a run REACHES it. Thirteen read/fold nodes, the
- * unconditional identity gate, the post-gate approval verification, and the
- * first of three transaction nodes — where D215 stops a rehearsal.
+ * conditional name-only identity gate, the identity authority verification,
+ * and the first of three transaction nodes — where D215 stops a rehearsal.
  */
 const READ_NODES = [
   "resolve-action",
@@ -106,7 +110,7 @@ const GATE_NODE = "identity-approval";
 const APPROVAL_NODE = "approval";
 const TRANSACTION_NODE = "clear-pending";
 
-const FULL_PATH = [...READ_NODES, GATE_NODE, APPROVAL_NODE, TRANSACTION_NODE] as const;
+const FULL_PATH = [...READ_NODES, APPROVAL_NODE, TRANSACTION_NODE] as const;
 
 /**
  * The two transaction nodes downstream of the preview terminal, plus the
@@ -114,7 +118,7 @@ const FULL_PATH = [...READ_NODES, GATE_NODE, APPROVAL_NODE, TRANSACTION_NODE] as
  * would have gone past the stop, so naming them is the "it did more than
  * expected" half the zero deltas cannot express on their own.
  */
-const DOWNSTREAM_NODES = ["file-termination", "receipt", "finalize-kuali"] as const;
+const EXCLUDED_NODES = [GATE_NODE, "file-termination", "receipt", "finalize-kuali"] as const;
 
 const CHECKPOINT_KEY = [
   "workflow",
@@ -125,16 +129,11 @@ const CHECKPOINT_KEY = [
 ] as const;
 
 /**
- * The fifteen rows, in the order the evidence collector emits them (sorted by
- * position in `nodesReached`, stably, so the two `timecard-search` rows stay
- * adjacent in write order).
- *
- * `timecard-search` appears TWICE at attempt 1 and that is the point: it is the
- * graph's `always-rerun` node, so the gate park and the resume are two claim
- * GENERATIONS of one attempt (D214) and the live Kronos read is taken again
- * after the operator decides rather than replayed from before. `approval` is
- * the other `always-rerun` node and records only the resume generation, because
- * it does not exist until the gate is resolved.
+ * The fourteen rows, in the order the evidence collector emits them. The
+ * document-supplied path never parks, so `timecard-search` runs once. The
+ * `approval` node still uses `always-rerun`: it must re-derive machine authority
+ * from current evidence rather than replay a checkpoint across an input/source
+ * change.
  */
 const EXPECTED_CHECKPOINTS = [
   { node: "resolve-action", attempt: 1, keyedBy: CHECKPOINT_KEY },
@@ -147,7 +146,6 @@ const EXPECTED_CHECKPOINTS = [
   { node: "employment", attempt: 1, keyedBy: CHECKPOINT_KEY },
   { node: "department-option", attempt: 1, keyedBy: CHECKPOINT_KEY },
   { node: "timecard-search", attempt: 1, keyedBy: CHECKPOINT_KEY },
-  { node: "timecard-search", attempt: 1, keyedBy: CHECKPOINT_KEY },
   { node: "timecard", attempt: 1, keyedBy: CHECKPOINT_KEY },
   { node: "dates", attempt: 1, keyedBy: CHECKPOINT_KEY },
   { node: "comparison", attempt: 1, keyedBy: CHECKPOINT_KEY },
@@ -158,21 +156,13 @@ const EXPECTED_CHECKPOINTS = [
  * rows from earlier real proofs, so an absolute count would be false. */
 const NO_WRITES = { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 } as const;
 
-/** The gate is unconditional (§4d): no preset, prefill, resume path or run mode
- * disables it, and `envelope.dryRun` is not an exception. */
-const IDENTITY_GATE = {
-  gate: GATE_NODE,
-  decision: "approved",
-  resolvedBy: "local-operator",
-} as const;
-
 /**
- * The receipt service's complete ordered authority vocabulary for a preview of
- * this graph, transcribed from receipt `b7e7b603-6099-52d5-a065-27112c289a07`.
+ * The receipt service's complete ordered authority vocabulary for a current
+ * supplied-EID preview of this graph.
  *
- * Every graph node is present. The fifteen nodes the rehearsal reached are
- * `verified`; the four it did not settle — the stopped-at transaction and the
- * three nodes downstream of it — are `unknown`, as is the terminal result.
+ * Every graph node is present. The conditional gate is `absent` and
+ * non-mandatory; the stopped-at transaction and the three nodes downstream of
+ * it are `unknown`, as is the terminal result.
  * `unknown` is the load-bearing word: a dry run may never report a write-side
  * obligation as `verified`, because nothing was written to verify. This
  * composition declares no cross-source `write.*`/`identity.*` obligations of
@@ -193,7 +183,7 @@ const PREVIEW_RECEIPT_VERIFICATION = [
   { obligation: "node.timecard", verdict: "verified", mandatory: false },
   { obligation: "node.dates", verdict: "verified", mandatory: true },
   { obligation: "node.comparison", verdict: "verified", mandatory: false },
-  { obligation: "node.identity-approval", verdict: "verified", mandatory: false },
+  { obligation: "node.identity-approval", verdict: "absent", mandatory: false },
   { obligation: "node.approval", verdict: "verified", mandatory: true },
   { obligation: "node.clear-pending", verdict: "unknown", mandatory: true },
   { obligation: "node.file-termination", verdict: "unknown", mandatory: true },
@@ -206,17 +196,16 @@ const MANIFEST = {
   scenarioId: "separations/dry-run",
   workflow: "separations",
   transactionNode: TRANSACTION_NODE,
-  recordedBy: "docs/migrations/separations.md §9.27 addendum 7 "
-    + "(the 2026-08-27 dryRun=true full-chain proof on doc 4502 — the TRANSCRIPTION source of every "
-    + "graph expectation); the SUBJECT is doc 4537 (§9.19 mapped 2026-08-19, re-read read-only "
-    + "2026-08-28 in §9.31; D284)",
+  recordedBy: "the 2026-09-02 supplied-EID policy correction and current separations graph; "
+    + "docs/migrations/separations.md §9.27 addendum 7 remains the historical dryRun=true subject "
+    + "evidence from doc 4502, while D284's closed doc 4537 reference remains the registered subject",
   cases: [
     {
       caseId: "nothing-to-sweep",
       // The value lives outside git: config/test-subjects.json names the
-      // closed reference and `.env` carries the number (D300); no EID crosses
-      // this workflow's arm at all (D261 — the ingress is ONE typed document
-      // number, and every person fact is derived live from it).
+      // closed reference and `.env` carries the number (D300); the ingress is
+      // ONE typed document number and every person fact is derived live from
+      // it (D261).
       subjectLabel: "finalization-canary",
       subjectKind: "full-chain-dry-run",
       why: "The one active test subject (D284): the open, editable RRSS document the composed chain "
@@ -228,9 +217,9 @@ const MANIFEST = {
         + "is written: the rehearsal stops at `clear-pending`, so the filing ② the subject still "
         + "owes and the finalization ③ are never entered.",
       nodesReached: [...FULL_PATH],
-      nodesExcluded: [...DOWNSTREAM_NODES],
+      nodesExcluded: [...EXCLUDED_NODES],
       checkpoints: [...EXPECTED_CHECKPOINTS],
-      gateResults: [IDENTITY_GATE],
+      gateResults: [],
       durableDeltas: NO_WRITES,
       receipt: {
         result: "partial",

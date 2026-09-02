@@ -27,6 +27,7 @@ import {
 import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../src/core/worker-sessions.js";
 import { kualiFinalizationIdempotencyKey } from "../../../src/domain/contracts/kuali/save-separation-finalization.js";
 import { SearchPersonOrgOutputSchema } from "../../../src/domain/contracts/ucpath/search-person-org.js";
+import { UcpathVerifyTerminationFilingPresent } from "../../../src/domain/contracts/ucpath/verify-termination-filing-present.js";
 import { SeparationsMatchDepartmentOption } from "../../../src/domain/contracts/separations/match-department-option.js";
 import { SeparationsVerifyIdentityApproval } from "../../../src/domain/contracts/separations/verify-identity-approval.js";
 import {
@@ -52,6 +53,10 @@ import {
   type KualiFakeWorld,
 } from "../../../src/stores/kuali/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/stores/ucpath/driver/fake.js";
+import {
+  createDeterministicUcpathSmartHrWorldDriver,
+  createUcpathSmartHrFakeWorld,
+} from "../../../src/stores/ucpath/driver/smart-hr-fake.js";
 import type { KualiFinalizationFieldName } from "../../../src/domain/ui/kuali-separation-finalization.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
 import {
@@ -134,6 +139,7 @@ export const FINALIZATION_RUN_INPUT = Object.freeze({
   separationDate: FINALIZATION_VARIABLES.separationDate,
   terminationEffectiveDate: FINALIZATION_VARIABLES.terminationEffectiveDate,
   transactionNumber: FINALIZATION_VARIABLES.transactionNumber,
+  transactionApprovalStatus: "Pending" as const,
   timekeeperComments: FINALIZATION_VARIABLES.timekeeperComments,
   observedExistingComments: FINALIZATION_VARIABLES.observedExistingComments,
 });
@@ -206,6 +212,7 @@ export const FINALIZATION_SCOPE_OUTPUTS = Object.freeze({
   approval: {
     documentNumber: FINALIZATION_DOCUMENT,
     approved: {
+      authority: "operator-approval",
       emplId: FINALIZATION_EID,
       chosenFrom: "checked" as const,
       evidenceDigest: "a".repeat(64),
@@ -237,6 +244,18 @@ export const FINALIZATION_SCOPE_OUTPUTS = Object.freeze({
     optionDescription: "Housing/Dining/Hospitality",
     ucpathDepartment: "HOUSING/DINING/HOSPITALITY",
     observedOptionCount: 6,
+  },
+  "filing-presence": {
+    kind: "ucpath-termination-filing-presence" as const,
+    transactionId: FINALIZATION_TRANSACTION_NUMBER,
+    emplId: FINALIZATION_EID,
+    effectiveDate: FINALIZATION_VARIABLES.terminationEffectiveDate,
+    approvalStatus: "Pending" as const,
+    displayedName: FINALIZATION_NAME,
+    observedAt: FINALIZATION_NOW,
+    source: "ss-smart-hr-detail-read" as const,
+    receiptDisposition: "operator-asserted" as const,
+    authority: "kuali-finalization-precondition" as const,
   },
 });
 
@@ -335,12 +354,38 @@ export function finalizationHarness(options: Readonly<{
   if (options.departmentOptions !== undefined) {
     world.finalizationDepartmentOptions = options.departmentOptions;
   }
+  const filingWorld = createUcpathSmartHrFakeWorld({
+    emplId: FINALIZATION_EID,
+    displayedName: FINALIZATION_NAME,
+    nextTransactionId: FINALIZATION_TRANSACTION_NUMBER,
+    rows: [{
+      transactionId: FINALIZATION_TRANSACTION_NUMBER,
+      emplId: FINALIZATION_EID,
+      action: "TER",
+      approvalStatus: "Pending",
+      startDate: FINALIZATION_VARIABLES.terminationEffectiveDate,
+      displayedName: FINALIZATION_NAME,
+    }],
+  });
   const sessions = sessionFactoryHarness({
     kuali: () => createDeterministicKualiDriver(world, clock),
-    ucpath: () => createDeterministicUcpathPersonOrgDriver(
-      FINALIZATION_NAME_SEARCH_OUTPUT,
-      FINALIZATION_JOB_SUMMARY_READ,
-    ),
+    ucpath: () => {
+      const person = createDeterministicUcpathPersonOrgDriver(
+        FINALIZATION_NAME_SEARCH_OUTPUT,
+        FINALIZATION_JOB_SUMMARY_READ,
+      );
+      const filing = createDeterministicUcpathSmartHrWorldDriver(
+        filingWorld,
+        () => clock.now(),
+      );
+      return {
+        ...person,
+        scanTerminationTransactions: filing.scanTerminationTransactions,
+        stageTermination: filing.stageTermination,
+        stagePendingTerminationSweep: filing.stagePendingTerminationSweep,
+        commit: filing.commit,
+      };
+    },
   });
   const manager = new WorkerSessionManager({
     workerId: WorkerIdSchema.parse(FINALIZATION_WORKER_ID),
@@ -470,6 +515,15 @@ export function finalizationPreviewDependencies(run: RunRecord): readonly unknow
         FINALIZATION_DEPARTMENT_NODE,
         SeparationsMatchDepartmentOption.output,
         FINALIZATION_SCOPE_OUTPUTS[FINALIZATION_DEPARTMENT_NODE],
+      ),
+    },
+    {
+      state: "resolved",
+      nodeId: "filing-presence",
+      checkpoint: rowFor(
+        "filing-presence",
+        UcpathVerifyTerminationFilingPresent.output,
+        FINALIZATION_SCOPE_OUTPUTS["filing-presence"],
       ),
     },
   ];

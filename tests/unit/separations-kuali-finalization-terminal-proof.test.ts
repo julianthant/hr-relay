@@ -165,8 +165,15 @@ function insertReplayCheckpoint(
  * real executor still executes comparison, parks and re-checks the approval,
  * dispatches the real transaction, reads beat ⑦'s row, and terminalizes.
  */
-function enqueueFromComparison(value: FinalizationHarness) {
-  const run = RunRecordSchema.parse(finalizationQueuedRun({ startAt: COMPARISON_NODE }));
+function enqueueFromComparison(value: FinalizationHarness, suppliedEid = false, dryRun = false) {
+  const raw = RunRecordSchema.parse(finalizationQueuedRun({ startAt: COMPARISON_NODE, dryRun }));
+  const canonical = suppliedEid ? FINALIZATION_RUN_INPUT : {
+    ...FINALIZATION_RUN_INPUT, emplIdSource: "name-resolved",
+    documentEid: { state: "absent", reason: "name-only fixture" },
+  };
+  const run = RunRecordSchema.parse({ ...raw, input: {
+    ...raw.input, raw: canonical, parsed: { ...raw.input.parsed, value: canonical },
+  } });
   const inserted = value.database.authority.runs.enqueue(run);
   if (inserted.state !== "inserted") throw new Error(`enqueue outcome was ${inserted.state}`);
   const claimed = claimQueued(value);
@@ -315,6 +322,34 @@ function deriveReceipts(value: FinalizationHarness) {
   }).ensureReceipt(FINALIZATION_RUN_ID);
   return { run, result, direct, service };
 }
+
+describe("supplied-EID executor authority", () => {
+  it("writes through the real sequencer with machine provenance and no operator gate", async () => {
+    const value = harness();
+    const claimed = enqueueFromComparison(value, true);
+    const outcome = await value.bound(() => executeClaimedRun(executorDependencies(value), { ...claimed, signal }));
+    assert.deepEqual(outcome, { state: "done", runId: FINALIZATION_RUN_ID });
+    assert.deepEqual(value.database.authority.gateResults.listByRun(FINALIZATION_RUN_ID), []);
+    assert.equal(value.emitter.events().some((event) => event.t === "gate.opened"), false);
+    const proof = deriveReceipts(value);
+    const result = SeparationsKualiFinalizationResultSchema.parse(proof.result.result.value);
+    assert.equal(result.approved.authority, "machine-verification");
+    assert.equal(proof.service.decisions.some((decision) => decision.kind === "gate"), false);
+    const gate = proof.service.verification.find((row) => row.obligation === "node.identity-approval");
+    assert.deepEqual(gate && { verdict: gate.verdict, mandatory: gate.mandatory }, { verdict: "absent", mandatory: false });
+    assert.equal(proof.service.result, "verified-done");
+  });
+
+  it("previews without a gate or any intent, attempt, or outbox write", async () => {
+    const value = harness();
+    const claimed = enqueueFromComparison(value, true, true);
+    const outcome = await value.bound(() => executeClaimedRun(executorDependencies(value), { ...claimed, signal }));
+    assert.deepEqual(outcome, { state: "done", runId: FINALIZATION_RUN_ID });
+    assert.deepEqual(value.database.authority.gateResults.listByRun(FINALIZATION_RUN_ID), []);
+    assert.deepEqual(value.database.authority.writeIntents.listByRun(FINALIZATION_RUN_ID), []);
+    assert.equal(value.emitter.events().some((event) => event.t === "gate.opened"), false);
+  });
+});
 
 describe("D144 — current Kuali finalization transaction is terminal evidence", () => {
   it("settles through the real executor and derives a verified receipt from the stored read-back", async () => {

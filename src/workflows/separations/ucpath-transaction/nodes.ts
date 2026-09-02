@@ -13,17 +13,23 @@
  * folder binds it from its own ingress (rule 3).
  */
 import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
-import { SWEEP_NODE, TERMINATION_NODE, RECEIPT_NODE } from "./node-ids.js";
+import { PENDING_SET_NODE, SWEEP_NODE, TERMINATION_NODE, RECEIPT_NODE } from "./node-ids.js";
 import { SeparationsVerifyTerminationReceipt } from "../../../domain/contracts/separations/verify-termination-receipt.js";
 import { UcpathCreateTermination } from "../../../domain/contracts/ucpath/create-termination.js";
 import { UcpathDeletePendingTerminations } from "../../../domain/contracts/ucpath/delete-pending-terminations.js";
 import { UcpathStagePendingTerminationSweep } from "../../../domain/contracts/ucpath/stage-pending-termination-sweep.js";
 import { UcpathStageTermination } from "../../../domain/contracts/ucpath/stage-termination.js";
+import { UcpathReadPendingTerminationSet } from "../../../domain/contracts/ucpath/read-pending-termination-set.js";
 import { UCPATH_TRANSACTION_STEP } from "./step.js";
 import { UCPATH_TRANSACTION_OMISSION } from "./omission.js";
 
 
 const nodes = defineWorkflowStepNodeFactory(UCPATH_TRANSACTION_STEP);
+
+export const pendingSetNode = nodes.task(PENDING_SET_NODE, UcpathReadPendingTerminationSet, {
+  label: "Read Exact Pending Set",
+  replay: "checkpoint",
+});
 
 /**
  * `probePolicy: "always"`: the sweep's probe is one page read that the
@@ -70,8 +76,9 @@ export const receiptNode = nodes.task(RECEIPT_NODE, SeparationsVerifyTermination
 
 /** The step's timeline category — key and label from `step.ts`, nodes from the fragments above. */
 export const UCPATH_TRANSACTION_STEP_NODES = nodes.category([
+  pendingSetNode,
   clearPendingNode,
   fileTerminationNode,
   receiptNode,
 ], { omission: UCPATH_TRANSACTION_OMISSION });
-export { SWEEP_NODE, TERMINATION_NODE, RECEIPT_NODE } from "./node-ids.js";
+export { PENDING_SET_NODE, SWEEP_NODE, TERMINATION_NODE, RECEIPT_NODE } from "./node-ids.js";

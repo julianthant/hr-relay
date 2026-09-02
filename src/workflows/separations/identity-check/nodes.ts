@@ -1,7 +1,8 @@
 /**
  * D265 §1.2.2 rule 2 — the *Identity check* step's node fragments: UCPath's
  * own search for the name the Kuali form claims, the reduction to ONE subject,
- * the evidence packet, the ALWAYS-GATE and the post-gate check.
+ * the evidence packet, the conditional name-only gate and the shared identity
+ * authority check.
  *
  * A fragment owns a node's IDENTITY — id, contract, label, replay, or the
  * gate's status key and result schema — and takes its WIRING (`dependsOn` +
@@ -51,16 +52,19 @@ export const comparisonNode = nodes.task(COMPARISON_NODE, SeparationsMatchIdenti
 });
 
 /**
- * `resolvedBy: "operator"` and nothing else can resolve it (ref write-safety
- * §14.4). Not a retry, not a bump, not a cascade from a parent, not AI (charter
+ * When the declared source is `name-resolved`, `resolvedBy: "operator"` and
+ * nothing else can resolve it (ref write-safety §14.4). Not a retry, not a bump,
+ * not a cascade from a parent, not AI (charter
  * §23 / D60), and not a generic "Done" — the kernel's ONLY path into
  * `gate_results` is the typed `resolve-gate` command, which parses this exact
- * schema and CASes the run version.
+ * schema and CASes the run version. A supplied-EID packet makes the condition
+ * false; the executor records no gate result or operator decision.
  */
 export const identityApprovalGate = nodes.operatorGate(GATE_NODE, {
   label: "Identity Approval",
   statusKey: "awaitingIdentityApproval",
   result: IdentityApprovalResultSchema,
+  when: { kind: "equals", of: { from: "node", nodeId: COMPARISON_NODE, path: "packet.emplIdSource" }, value: "name-resolved" },
 });
 
 /**

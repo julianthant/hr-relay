@@ -842,6 +842,16 @@ export async function executeClaimedRun(
         continue;
       }
       if (node.kind === "gate") {
+        if (node.resolvedBy === "operator" && node.when !== undefined
+          && node.dependsOn.every((dependency) => outputs[String(dependency)] !== undefined)
+          && !evaluateNodeCondition(node.when, scopeFor(node.dependsOn))) {
+          if (deps.authority.authority.gateResults.get(`${runId}:${node.id}`) !== undefined) {
+            problems.push(`inapplicable gate "${node.id}" carries a stored operator result; evidence changed`);
+            continue;
+          }
+          plan.set(String(node.id), { mode: "skipped-condition" });
+          continue;
+        }
         const stored = deps.authority.authority.gateResults.get(`${runId}:${node.id}`);
         if (stored !== undefined) {
           plan.set(String(node.id), { mode: "replay-gate" });
@@ -991,6 +1001,7 @@ export async function executeClaimedRun(
       const parsedInput: unknown = contract.input.parse(bound);
       const collector = createTaskProvenanceCollector({
         descriptor,
+        canonicalInput,
         execution: {
           runId,
           traceId: envelope.traceId,
@@ -1012,13 +1023,19 @@ export async function executeClaimedRun(
           checkpoints: node.dependsOn.flatMap((dependency) => {
             const record = checkpointRecords.get(String(dependency));
             if (record !== undefined) return [record];
+            if (skippedReasons.get(String(dependency)) === "condition-false"
+              && nodes.some((candidate) => candidate.id === dependency && candidate.kind === "gate")) return [];
             if (gateResultFor(String(dependency)) !== undefined) return [];
             throw new Error(
               `task ${contract.id} declared dependency "${dependency}" has no checkpoint record to hand `
               + "to the provenance collector",
             );
           }),
+          skippedGates: node.dependsOn.filter((dependency) =>
+            skippedReasons.get(String(dependency)) === "condition-false"
+            && nodes.some((candidate) => candidate.id === dependency && candidate.kind === "gate")),
           gateResults: node.dependsOn.flatMap((dependency) => {
+            if (skippedReasons.get(String(dependency)) === "condition-false") return [];
             const stored = gateResultFor(String(dependency));
             return stored === undefined ? [] : [stored];
           }),
@@ -1587,6 +1604,14 @@ export async function executeClaimedRun(
           continue;
         }
         case "gate": {
+          if (node.resolvedBy === "operator" && node.when !== undefined
+            && !evaluateNodeCondition(node.when, scopeFor(node.dependsOn))) {
+            if (deps.authority.authority.gateResults.get(`${runId}:${node.id}`) !== undefined) {
+              return await failNode(node, undefined, new Error(`inapplicable gate "${node.id}" carries a stored operator result; evidence changed`));
+            }
+            skippedReasons.set(String(node.id), "condition-false");
+            continue;
+          }
           transitionTo(runningLifecycle(node.id));
           // §4 park: the checkpoint barrier is already durable (each output
           // was checkpointed at production), then gate.opened, then session

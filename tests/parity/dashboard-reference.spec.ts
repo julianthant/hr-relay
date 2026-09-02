@@ -22,6 +22,7 @@ import {
   FIXTURE_DAY_WIRE,
   FIXTURE_DESCRIPTOR_HASH,
   FIXTURE_IDS,
+  FIXTURE_IDENTITY_GATE,
   FIXTURE_STORAGE_DEGRADED_BOOTSTRAP,
   FIXTURE_START_PICKER_BOOTSTRAP,
   FIXTURE_START_PICKER_DAY_WIRE,
@@ -1002,22 +1003,18 @@ test.describe("park resolutions", () => {
  * further in, and until D226 it did not exist: the corpus served no
  * `identity-gate` section at all, so the card drew no way to answer it.
  *
- * All three ceremonies are photographed, because they are NOT three skins of
- * one screen — that is the whole content of §14.6 risk 1. ALWAYS-GATE fires on
- * every separation, so a gate that is one click every time trains the operator
- * to approve without reading; the server changes the shape of the control with
- * the risk, and these references are what makes that visible to a reviewer:
+ * The current name-only path uses the typed-EID ceremony. These references
+ * show it with agreeing and disconfirming names, plus the rejection/refusal:
  *
- *  - **choose** — two candidates, no default selected. A pre-selected radio
- *    would be a one-click approve wearing a radio's clothes.
- *  - **type-the-eid** — the riskiest packet the gate can serve, on a run whose
- *    names do not match at all. An empty field, because the operator STATES the
- *    answer rather than recognising it.
+ *  - **typed EID, names agree** — one exact-looking candidate still requires
+ *    the EID to be stated because it came from a name search.
+ *  - **typed EID, names differ** — the disagreement remains above the same
+ *    empty field rather than changing the source-based trigger.
  *  - **reject** — the arm that ends the run, with the operator's own reason.
  *
  * And one refusal, because a surface photographed only in its happy state
  * proves nothing: the gated run is also the fixture BFF's conflict run, so
- * pressing the verb after picking a candidate answers `409` and photographs the
+ * pressing the verb after typing the EID answers `409` and photographs the
  * "nothing was recorded" copy with the operator's answer still in the dialog.
  *
  * One viewport and one theme apiece: these are about the copy, the ceremony and
@@ -1099,8 +1096,13 @@ test.describe("identity gate ceremonies", () => {
 
     await page.getByRole("button", { name: /^Approve the chosen EID/u }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    // The choice is the operator's, so the reference makes it the way they do.
-    await page.getByRole("radio").first().check();
+    // The EID came from a name search, so D309 requires the operator to type
+    // one of the candidates the packet actually showed.
+    const candidate = FIXTURE_IDENTITY_GATE.options[0];
+    if (candidate === undefined) throw new Error("the refusal fixture served no identity candidate");
+    await page.getByRole("textbox", {
+      name: "Type the employee ID this separation is about (required)",
+    }).fill(candidate.eid);
     await page.getByRole("button", { name: "Approve" }).click();
     // The refusal lands in TWO places on purpose (a dialog can be scrolled), so
     // this waits on the one INSIDE the dialog — the record beside the answer it

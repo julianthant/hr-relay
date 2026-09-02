@@ -46,6 +46,7 @@ import { z } from "zod";
 import {
   EidSchema,
   ElementIdSchema,
+  FingerprintSchema,
   IsoInstantSchema,
   ObservationIdSchema,
 } from "../ids.js";
@@ -206,8 +207,8 @@ export const UcpathUsDateSchema = z.string().regex(
 export const UcpathTerminationTargetSchema = z.strictObject({
   emplId: EidSchema,
   /**
-   * The name the operator approved at the ALWAYS-GATE, compared against Page
-   * B's own rendering before anything is fenced. It is REQUIRED: a termination
+   * The name established by machine verification or operator approval, compared
+   * against Page B's own rendering before anything is fenced. It is REQUIRED: a termination
    * whose subject binding is optional is a termination with no wrong-person
    * control, which is `T002173685`.
    */
@@ -220,13 +221,6 @@ export const UcpathTerminationTargetSchema = z.strictObject({
   initiatorComments: z.string().min(1),
 });
 export type UcpathTerminationTarget = z.infer<typeof UcpathTerminationTargetSchema>;
-
-/** The date-agnostic sweep's target: a person, and nothing else (ref write-safety §5). */
-export const UcpathPendingSweepTargetSchema = z.strictObject({
-  emplId: EidSchema,
-  expectedName: z.string().min(1),
-});
-export type UcpathPendingSweepTarget = z.infer<typeof UcpathPendingSweepTargetSchema>;
 
 /**
  * ONE transaction row as the SS Smart HR search surface renders it — the rich
@@ -245,6 +239,64 @@ export const UcpathTransactionRowSchema = z.strictObject({
   displayedName: z.string().min(1),
 });
 export type UcpathTransactionRow = z.infer<typeof UcpathTransactionRowSchema>;
+
+/**
+ * The exact transaction set the SS Smart HR search/detail surface observed
+ * before a pending sweep was admitted. `eligible` contains every in-progress
+ * termination; `protected` contains every other transaction the same EID
+ * search returned. Both lists are ordered by the stable `T…` transaction id,
+ * so their digest and replay identity are canonical rather than page ordered.
+ */
+export const UcpathPendingTransactionSetSchema = z.strictObject({
+  kind: z.literal("ucpath-pending-termination-set"),
+  emplId: EidSchema,
+  eligible: z.array(UcpathTransactionRowSchema),
+  protected: z.array(UcpathTransactionRowSchema),
+  observedAt: IsoInstantSchema,
+  source: z.literal("ss-smart-hr-detail-read"),
+}).superRefine((set, ctx) => {
+  const rows = [...set.eligible, ...set.protected];
+  const ids = rows.map((row) => row.transactionId);
+  if (new Set(ids).size !== ids.length) {
+    ctx.addIssue({ code: "custom", message: "a pending transaction set requires unique transaction ids" });
+  }
+  for (const [partition, partitionRows] of [
+    ["eligible", set.eligible],
+    ["protected", set.protected],
+  ] as const) {
+    const sorted = [...partitionRows].sort((left, right) =>
+      left.transactionId.localeCompare(right.transactionId));
+    if (partitionRows.some((row, index) => row.transactionId !== sorted[index]?.transactionId)) {
+      ctx.addIssue({ code: "custom", message: `${partition} transaction rows must be ordered by transaction id` });
+    }
+    for (const row of partitionRows) {
+      if (row.emplId !== set.emplId) {
+        ctx.addIssue({ code: "custom", message: `${partition} transaction ${row.transactionId} belongs to another EID` });
+      }
+      const inProgress = isUcpathTerminationInProgress(row);
+      if ((partition === "eligible") !== inProgress) {
+        ctx.addIssue({ code: "custom", message: `${partition} transaction ${row.transactionId} is in the wrong partition` });
+      }
+    }
+  }
+});
+export type UcpathPendingTransactionSet = z.infer<typeof UcpathPendingTransactionSetSchema>;
+
+/**
+ * A pending sweep is authorized for one machine-observed exact transaction
+ * set. The set comes from the workflow's authenticated identity path and run
+ * admission; it is not a caller switch or an additional human approval gate.
+ */
+export const UcpathPendingSweepTargetSchema = z.strictObject({
+  emplId: EidSchema,
+  expectedName: z.string().min(1),
+  observedSet: UcpathPendingTransactionSetSchema,
+}).superRefine((target, ctx) => {
+  if (target.observedSet.emplId !== target.emplId) {
+    ctx.addIssue({ code: "custom", message: "the pending transaction set belongs to another EID" });
+  }
+});
+export type UcpathPendingSweepTarget = z.infer<typeof UcpathPendingSweepTargetSchema>;
 
 /**
  * Redacted facts captured only when the SS Smart HR settlement race cannot
@@ -328,28 +380,100 @@ export const UcpathTerminationProofSchema = z.strictObject({
 export type UcpathTerminationProof = z.infer<typeof UcpathTerminationProofSchema>;
 
 /**
- * The sweep's proof, stated as what a scan can actually establish: **at
+ * A fresh SS Smart HR detail read proving that the exact filing named by the
+ * durable receipt still exists before Kuali is allowed to record it. This is
+ * deliberately limited authority: it is a finalization precondition, not a
+ * new filing receipt and not controlled-write evidence for an asserted D307
+ * transaction number.
+ */
+export const UcpathTerminationFilingPresenceProofSchema = z.strictObject({
+  kind: z.literal("ucpath-termination-filing-presence"),
+  transactionId: UcpathTransactionReceiptSchema,
+  emplId: EidSchema,
+  effectiveDate: UcpathUsDateSchema,
+  approvalStatus: UcpathApprovalStatusSchema,
+  displayedName: z.string().min(1),
+  observedAt: IsoInstantSchema,
+  source: z.literal("ss-smart-hr-detail-read"),
+  receiptDisposition: z.enum(["committed", "already-present", "operator-asserted"]),
+  authority: z.literal("kuali-finalization-precondition"),
+});
+export type UcpathTerminationFilingPresenceProof = z.infer<
+  typeof UcpathTerminationFilingPresenceProofSchema
+>;
+
+/**
+ * The sweep's historical observation proof, stated as what a scan can actually establish: **at
  * `observedAt`, this person's transaction grid carried no in-progress
  * termination rows.**
  *
  * It deliberately does NOT list what was deleted. After the Delete click those
  * rows are gone, so a post-click read cannot name them, and a proof that quoted
  * the pre-click selection back would be reporting an intention as an
- * observation. What the run selected is recorded by `prepare` and lives in the
- * node's provenance; what the PROOF says is only what was seen.
+ * observation. D310 keeps this exact schema for frozen history and wraps these
+ * observation leaves in the separate v2 settlement proof below, where the
+ * authorized selected/protected set is named explicitly.
  *
  * `scannedRowCount` is why this is evidence rather than an assertion: a grid
  * that rendered nothing at all and a grid with rows none of which are in
  * progress are different observations, and only the second one settles.
  */
-export const UcpathPendingSweepProofSchema = z.strictObject({
+const UcpathPendingSweepProofFields = {
   kind: z.literal("ucpath-pending-terminations-clear"),
   emplId: EidSchema,
   scannedRowCount: z.number().int().min(0),
   observedAt: IsoInstantSchema,
   source: z.literal("ss-smart-hr-detail-read"),
-});
+} as const;
+
+export const UcpathPendingSweepProofSchema = z.strictObject(
+  UcpathPendingSweepProofFields,
+);
 export type UcpathPendingSweepProof = z.infer<typeof UcpathPendingSweepProofSchema>;
+
+/**
+ * A canonical, recoverable list of stable Smart HR transaction ids. The proof
+ * form surface does not model arrays, so the current settlement carries one
+ * comma-separated scalar; `none` is the exact empty-list spelling. Transaction
+ * ids cannot contain commas, and the producer preserves the canonical ordering
+ * already enforced by `UcpathPendingTransactionSetSchema`.
+ */
+export const UcpathPendingTransactionIdListSchema = z.string().regex(
+  /^(?:none|T\d{6,}(?:,T\d{6,})*)$/u,
+  "a pending transaction id list is `none` or canonical comma-separated T ids",
+);
+
+export function ucpathPendingTransactionIdList(
+  rows: readonly UcpathTransactionRow[],
+): string {
+  return UcpathPendingTransactionIdListSchema.parse(
+    rows.length === 0 ? "none" : rows.map((row) => row.transactionId).join(","),
+  );
+}
+
+/**
+ * D310's current settlement proof. The historical proof above remains exact
+ * and readable; new settlements additionally retain the selected/protected
+ * stable ids and the full row-fact digest that keyed the write intent. This
+ * makes the deleted set recoverable from durable proof without claiming those
+ * ids came from the post-delete observation itself.
+ */
+export const UcpathPendingSweepSettlementProofSchema = z.strictObject({
+  ...UcpathPendingSweepProofFields,
+  version: z.literal(2),
+  selectedTransactionIds: UcpathPendingTransactionIdListSchema,
+  protectedTransactionIds: UcpathPendingTransactionIdListSchema,
+  setDigest: FingerprintSchema,
+});
+export type UcpathPendingSweepSettlementProof = z.infer<
+  typeof UcpathPendingSweepSettlementProofSchema
+>;
+
+/** Frozen result/archive readers accept both eras; current writes require v2. */
+export const UcpathPendingSweepHistoricalOrCurrentProofSchema = z.union([
+  UcpathPendingSweepSettlementProofSchema,
+  UcpathPendingSweepProofSchema,
+]);
 
 /** What `prepare` proved it staged, page by page. */
 export const UcpathTerminationStagingSchema = z.strictObject({
@@ -375,21 +499,24 @@ export const UcpathTerminationStagingSchema = z.strictObject({
 export type UcpathTerminationStaging = z.infer<typeof UcpathTerminationStagingSchema>;
 
 /**
- * One row of the *Transactions in Progress* grid, as that grid can actually
- * name it.
- *
- * It is NOT a transaction id, and that is a live finding rather than a
- * simplification: the in-progress grid's columns are
+ * One row of the *Transactions in Progress* grid joined to its stable SS Smart
+ * HR transaction identity. The grid itself has no transaction-id column; its
+ * columns are
  * `Select · Transaction Type · Effective Date · Name · Person ID · Action ·
- * Country` (observed 2026-08-14) — there is no Transaction ID column at all,
- * because an in-progress transaction has not been assigned one yet. A
- * `selected` list of `T…` ids would therefore be a list this page cannot
- * produce, which is a schema describing something that does not exist.
+ * Country` (re-verified 2026-09-02). The driver therefore obtains the stable
+ * T id from the EID-filtered SS Smart HR detail read, then requires a complete
+ * unique EID/name/effective-date/termination-action join before associating it
+ * with this six-field grid row. DOM position is never row identity.
  */
 export const UcpathInProgressRowSchema = z.strictObject({
   transactionType: z.string().min(1),
   effectiveDate: UcpathUsDateSchema,
+  displayedName: z.string().min(1),
+  emplId: EidSchema,
   action: z.string().min(1),
+  country: z.string().min(1),
+  /** The stable SS Smart HR transaction id joined by exact row facts. */
+  transactionId: UcpathTransactionReceiptSchema,
 });
 export type UcpathInProgressRow = z.infer<typeof UcpathInProgressRowSchema>;
 
@@ -398,7 +525,7 @@ export const UcpathPendingSweepStagingSchema = z.strictObject({
   stagedPageState: z.literal(UCPATH_SMART_HR_TERMINATION_STAGED),
   emplId: EidSchema,
   observedName: z.string().min(1),
-  /** The in-progress rows this sweep ticked, by what the grid renders. */
+  /** The in-progress rows this sweep ticked, each joined to its stable T id. */
   selected: z.array(UcpathInProgressRowSchema),
   observedAt: IsoInstantSchema,
 });

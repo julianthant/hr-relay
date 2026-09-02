@@ -958,10 +958,12 @@ Track D's checklist for every row that lands on this section — D1, D4, D6, D7,
 <!-- roadmap: order-7-dash -->
 <!-- roadmap: order-9-dash -->
 
-This matrix is the completeness checklist, and it is what a workflow's own `Dashboard · wire` task
-fills in. A production surface is not ready until every cell in its row has an implementation and a
-test. The **Built** column is the 2026-08-20 as-built; a cell that says `—` is not a defect in the
-surface, it is a wire nobody has run yet.
+This matrix is the generic surface completeness checklist. Under D311 the recipe compiler fills its
+workflow-varying declarations and one registry-wide conformance suite checks every recipe. A
+separate `Dashboard · wire` task is retained only as historical evidence or as a capability-delta
+task when a workflow introduces a new interaction or wire arm. A production surface is not ready
+until every cell in its row has an implementation and a test. The **Built** column is the
+2026-08-20 as-built; a cell that says `—` names a capability the generic surface still lacks.
 
 | Surface | Initial query/read model | Live patch/invalidation | Commands | Backend authority/owner | Built |
 |---|---|---|---|---|---|
@@ -1017,10 +1019,11 @@ surface, it is a wire nobody has run yet.
 <!-- roadmap: order-7-dash -->
 <!-- roadmap: order-9-dash -->
 
-**A flow is a WIRE SQUARE.** Each subsection below is one square: the thing built ONCE in
-`{#dash-defaults}` and then WIRED per workflow, which is why every workflow's `Dashboard · wire`
-task has the same shape and why each square is separately citable. Per square: the flow as
-contracted, the files that implement it, what is generic versus per-workflow, and what is left.
+**A flow is a WIRE SQUARE.** Each subsection below is one square built once in `{#dash-defaults}`.
+D311 makes the recipe compiler its per-workflow declaration path and the registry-wide conformance
+suite its repeated proof. A workflow-specific dashboard task exists only for a new capability;
+each square remains separately citable so that delta has one owner. Per square: the flow as
+contracted, the files that implement it, what is generic versus recipe-derived, and what is left.
 
 Three rules hold across every square and are stated once here.
 
@@ -1867,28 +1870,31 @@ and DELETE remain refused.
 <!-- roadmap: dash-defaults -->
 <!-- roadmap: migrations -->
 
-Each workflow migration uses the same integration checklist — the WIRE half of the seven-step loop,
-one `Dashboard · wire <workflow>` task filling §5's matrix row by row through §5.1's squares:
+**D311 replaces the repeated per-workflow wire project with one compiler contract.** A workflow
+recipe compiles to the existing start/run-modal, queue, timeline/detail, gate, archive/activity,
+notification and Explorer projections. A workflow using an already-built generic surface adds no
+surface adapter, no workflow-id branch and no duplicate dashboard scenario merely to prove that the
+same projection works again. One registry-wide recipe-to-wire conformance suite proves the common
+mapping for every recipe.
 
-1. descriptor projection has complete start/panel/action/capability absence data;
-2. every run shape/status/gate/outcome used by the workflow has a schema-valid scenario fixture;
-3. every system read/write appears in Context and Receipt with provenance;
-4. every operator decision has one strict command and conflict state;
-5. group/member/rejected/linked containment is projected, never inferred from workflow id;
-6. live dry-run and controlled-write evidence satisfy the owning migration gate;
-7. screenshots at the reference viewports match the target composition.
+The migration still owns its business evidence: schema-valid run states, provenance for every
+system read/write, strict commands for its actual operator decisions, live dry-run evidence and the
+controlled-write proof where it commits. A workflow gets feature-specific dashboard work only when
+it is the first to introduce a genuinely new interaction or wire arm (for example a Review panel,
+Group People, or a new gate packet shape). That change extends §5 once, adds the T2/T3 proof for the
+new capability once, and every later recipe reuses it.
 
-**Nothing on this list is a new surface.** The squares exist; a migration RUNS the wire. That is why
-an unfilled square on a `Dashboard · wire` node means a wire nobody has run, not a surface nobody
-built — and why a workflow that needs a genuinely new square (a Review panel, a People page, a
-second gate packet shape) is a §5 matrix change with its own decision, not a wiring task.
+This is an authoring change, not a redesign of the current run modal or worker. The compiler supplies
+the same `WorkflowStartWireSchema` fields and descriptor-derived surfaces the dashboard consumes
+today; existing generic behavior stays byte- and interaction-compatible through conversion.
 
 <!-- roadmap-status: migrations -->
-- [x] the WIRE checklist is the same for every workflow and the squares behind it are built once (§5.1)
-- [x] two workflows have run it — person-lookup (`{#order-0-dash}`) and separations (`{#sep-dash}`, all nine squares)
-- [ ] the eleven remaining `Dashboard · wire` tasks (`{#order-1-dash}` … `{#order-9-dash}`)
+- [x] D311 ratifies the recipe-to-wire compiler as the one generic integration contract
+- [x] person-lookup (`{#order-0-dash}`) and separations (`{#sep-dash}`) supply the existing behavior the compiler must preserve
+- [ ] the recipe compiler, registry-wide conformance suite and two acceptance conversions
+- [ ] retire the repeated `Dashboard · wire` tasks for workflows that introduce no new capability
 - [ ] the squares a later migration needs and this build has not got: the Review panel kind, Group People, a generalised gate packet, the artifact byte route (§5)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against the §5.1 squares and the two completed wire sets; left: eleven wire tasks and the four missing squares above
+> 2026-09-02 | D311 | owner-first design ratified; implementation remains open in doc 03c §Workflow authoring model
 <!-- /roadmap-status -->
 
 ### 6.9 NOT BUILT — the BFF does not yet serve the ordinary built dashboard (D189, amended D294)

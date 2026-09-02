@@ -69,13 +69,11 @@ export const SEPARATIONS_KUALI_READ_CLAIMS: readonly ScenarioCoverageClaim[] =
 /**
  * separations-identity-check is the FIRST production descriptor in this tree
  * with a gate node, so it is the first whose graph derives gate coverage points
- * at all. Both are claimed by the single-active-job walk, and the scenario file
- * asserts the claim against what the walk observed — the gate's `opened` and
- * `resolved` points are properties of reaching and resolving the gate, so any
- * path through this graph produces exactly them.
+ * at all. Both are claimed by the name-only gate-approved walk. A supplied-EID
+ * walk derives no gate points because its declared condition is false.
  */
 export const SEPARATIONS_IDENTITY_CHECK_CLAIMS: readonly ScenarioCoverageClaim[] = Object.freeze([
-  claim("separations-identity-check/single-active-job", [
+  claim("separations-identity-check/gate-approved", [
     "gate:identity-approval/opened",
     "gate:identity-approval/resolved",
   ]),
@@ -119,7 +117,7 @@ export const SEPARATIONS_UCPATH_TERMINATION_CLAIMS: readonly ScenarioCoverageCla
 ]);
 
 /**
- * separations-kuali-finalization is ONE transaction node behind the ALWAYS-GATE
+ * separations-kuali-finalization is ONE transaction node behind identity authority
  * (§4e collapses mutations C and D into a single Kuali save), so it derives the
  * four transaction paths plus the gate's two. Its other four scenarios —
  * S55-S59's contract halves and S60's park — walk no graph path and correctly

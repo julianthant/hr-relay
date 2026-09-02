@@ -1,0 +1,30 @@
+{
+  "probe": "[DEBUG-r2a] bounded pool resource snapshot",
+  "observedForkCount": 4,
+  "forks": [
+    {
+      "pid": 35699,
+      "ppid": 35650,
+      "cpuPercent": 56.2,
+      "rssKiB": 161776
+    },
+    {
+      "pid": 35700,
+      "ppid": 35650,
+      "cpuPercent": 63.9,
+      "rssKiB": 162832
+    },
+    {
+      "pid": 35701,
+      "ppid": 35650,
+      "cpuPercent": 48.3,
+      "rssKiB": 152688
+    },
+    {
+      "pid": 35705,
+      "ppid": 35650,
+      "cpuPercent": 48.9,
+      "rssKiB": 90976
+    }
+  ]
+}

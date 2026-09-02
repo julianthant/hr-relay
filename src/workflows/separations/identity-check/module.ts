@@ -7,8 +7,8 @@ import { IDENTITY_CHECK_STEP } from "./step.js";
 /**
  * The server composition value. Two stores: the UCPath browser store for both
  * page visits, and the `separations` pure mini-store for the comparison fold and
- * the post-gate check — the second contributes no browser session by
- * construction, which is what lets the run park at the gate owning nothing.
+ * the identity authority check — the second contributes no browser session by
+ * construction, which lets a name-only run park at the gate owning nothing.
  */
 export const separationsIdentityCheckModule = Object.freeze({
   descriptor: separationsIdentityCheckDescriptor,

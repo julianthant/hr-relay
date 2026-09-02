@@ -20,9 +20,15 @@ import type {
 } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
 import {
   firstDisagreeingName,
+  ucpathTerminationFilingPresence,
   ucpathPendingSweepVerdict,
   ucpathTerminationVerdict,
 } from "../../src/stores/ucpath/termination-verdict.js";
+import { TerminationReceiptSchema } from "../../src/domain/separations/termination-receipt.js";
+import {
+  ucpathPendingSweepIdempotencyKey,
+  ucpathPendingTransactionSetDigest,
+} from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 
 const EID = EidSchema.parse("10001799");
 const NAME = "Drose Clauckia";
@@ -39,7 +45,6 @@ const TARGET = {
   lastDateWorked: "06/10/2026",
   initiatorComments: "x",
 };
-const SWEEP_TARGET = { emplId: EID, expectedName: NAME };
 
 function row(overrides: Partial<UcpathTransactionRow> = {}): UcpathTransactionRow {
   return {
@@ -57,7 +62,58 @@ function scan(rows: readonly UcpathTransactionRow[]): UcpathTransactionScan {
   return { state: "read", emplId: EID, rows: [...rows], scannedRowCount: rows.length, observedAt: OBSERVED_AT };
 }
 
+const EMPTY_SET = {
+  kind: "ucpath-pending-termination-set" as const,
+  emplId: EID,
+  eligible: [],
+  protected: [],
+  observedAt: OBSERVED_AT,
+  source: "ss-smart-hr-detail-read" as const,
+};
+const SWEEP_TARGET = { emplId: EID, expectedName: NAME, observedSet: EMPTY_SET };
+
 describe("ucpath termination verdicts", () => {
+  it("keys a pending sweep by its exact machine-observed transaction set", () => {
+    const first = {
+      ...SWEEP_TARGET,
+      observedSet: {
+        kind: "ucpath-pending-termination-set" as const,
+        emplId: EID,
+        eligible: [row({ transactionId: "T002209631" })],
+        protected: [row({ transactionId: "T002197996", approvalStatus: "Approved" })],
+        observedAt: OBSERVED_AT,
+        source: "ss-smart-hr-detail-read" as const,
+      },
+    };
+    const second = {
+      ...first,
+      observedSet: {
+        ...first.observedSet,
+        eligible: [row({ transactionId: "T002209999" })],
+      },
+    };
+
+    assert.notEqual(
+      ucpathPendingSweepIdempotencyKey(first),
+      ucpathPendingSweepIdempotencyKey(second),
+      "two pending transaction sets for one EID must never share one permanent write key",
+    );
+  });
+
+  it("uses the same key for the same canonical set observed at another time", () => {
+    const observedSet = {
+      ...EMPTY_SET,
+      eligible: [row()],
+      protected: [row({ transactionId: "T002197996", approvalStatus: "Approved" })],
+    };
+    const first = { ...SWEEP_TARGET, observedSet };
+    const second = {
+      ...SWEEP_TARGET,
+      observedSet: { ...observedSet, observedAt: IsoInstantSchema.parse("2026-08-14T03:00:00.000Z") },
+    };
+    assert.equal(ucpathPendingSweepIdempotencyKey(first), ucpathPendingSweepIdempotencyKey(second));
+  });
+
   it("matches BOTH live action vocabularies, and nothing else", () => {
     // The defect the live read found: the SS Smart HR grid and detail page
     // render the PeopleSoft CODE, while the Transactions in Progress grid
@@ -120,16 +176,70 @@ describe("ucpath termination verdicts", () => {
   });
 
   it("the sweep's polarity: `present` means there is nothing to delete", () => {
+    const protectedRow = row({ approvalStatus: "Approved" });
     const clear = ucpathPendingSweepVerdict(
-      SWEEP_TARGET,
-      scan([row({ approvalStatus: "Approved" }), row({ action: "HIR", approvalStatus: "Approved" })]),
+      {
+        ...SWEEP_TARGET,
+        observedSet: { ...EMPTY_SET, protected: [protectedRow, row({
+          transactionId: "T002209999", action: "HIR", approvalStatus: "Approved",
+        })] },
+      },
+      scan([protectedRow, row({ transactionId: "T002209999", action: "HIR", approvalStatus: "Approved" })]),
     );
     assert.equal(clear.state, "present");
     if (clear.state !== "present") return;
     assert.equal(clear.proof.scannedRowCount, 2);
+    assert.equal(clear.proof.version, 2);
+    assert.equal(clear.proof.selectedTransactionIds, "none");
+    assert.equal(
+      clear.proof.protectedTransactionIds,
+      "T002209631,T002209999",
+    );
+    assert.equal(
+      clear.proof.setDigest,
+      ucpathPendingTransactionSetDigest({
+        ...EMPTY_SET,
+        protected: [protectedRow, row({
+          transactionId: "T002209999",
+          action: "HIR",
+          approvalStatus: "Approved",
+        })],
+      }),
+    );
 
-    const dirty = ucpathPendingSweepVerdict(SWEEP_TARGET, scan([row()]));
+    const pending = row();
+    const dirty = ucpathPendingSweepVerdict(
+      { ...SWEEP_TARGET, observedSet: { ...EMPTY_SET, eligible: [pending] } },
+      scan([pending]),
+    );
     assert.equal(dirty.state, "absent");
+  });
+
+  it("settles only when the exact selected IDs are absent and protected rows survive", () => {
+    const pending = row();
+    const protectedRow = row({ transactionId: "T002197996", approvalStatus: "Approved" });
+    const target = {
+      ...SWEEP_TARGET,
+      observedSet: { ...EMPTY_SET, eligible: [pending], protected: [protectedRow] },
+    };
+    const settled = ucpathPendingSweepVerdict(target, scan([protectedRow]));
+    assert.equal(settled.state, "present");
+    if (settled.state === "present") {
+      assert.equal(settled.proof.selectedTransactionIds, pending.transactionId);
+      assert.equal(settled.proof.protectedTransactionIds, protectedRow.transactionId);
+      assert.equal(
+        settled.proof.setDigest,
+        ucpathPendingTransactionSetDigest(target.observedSet),
+      );
+    }
+
+    for (const changed of [
+      scan([pending, protectedRow]),
+      scan([row({ transactionId: "T002209999" }), protectedRow]),
+      scan([]),
+    ]) {
+      assert.notEqual(ucpathPendingSweepVerdict(target, changed).state, "present");
+    }
   });
 
   it("an absence is bound to the person AND the date it was gathered for", () => {
@@ -164,6 +274,51 @@ describe("ucpath termination verdicts", () => {
         "anybody",
       ),
       undefined,
+    );
+  });
+
+  it("requires the exact successful filing to survive before Kuali finalization", () => {
+    const receipt = TerminationReceiptSchema.parse({
+      transactionNumber: "T002209631",
+      approvalStatus: "Pending",
+      effectiveDate: EFFDT,
+      emplId: EID,
+      displayedName: NAME,
+      disposition: "committed",
+    });
+    const present = ucpathTerminationFilingPresence(receipt, scan([row()]));
+    assert.equal(present.state, "present");
+    if (present.state === "present") {
+      assert.equal(present.proof.transactionId, receipt.transactionNumber);
+      assert.equal(present.proof.authority, "kuali-finalization-precondition");
+    }
+
+    for (const invalid of [
+      scan([]),
+      scan([row({ emplId: EidSchema.parse("10779300") })]),
+      scan([row({ startDate: "06/12/2026" })]),
+      scan([row({ approvalStatus: "Denied" })]),
+      scan([row({ action: "HIR" })]),
+      scan([row({ displayedName: "Somebody Else" })]),
+      scan([row(), row()]),
+    ]) {
+      assert.notEqual(ucpathTerminationFilingPresence(receipt, invalid).state, "present");
+    }
+
+    const advanced = ucpathTerminationFilingPresence(
+      receipt,
+      scan([row({ approvalStatus: "Approved" })]),
+    );
+    assert.equal(advanced.state, "present", "a still-acceptable status may advance after filing");
+
+    const asserted = ucpathTerminationFilingPresence(
+      TerminationReceiptSchema.parse({ ...receipt, disposition: "operator-asserted" }),
+      scan([row()]),
+    );
+    assert.equal(
+      asserted.state === "present" ? asserted.proof.receiptDisposition : undefined,
+      "operator-asserted",
+      "fresh presence does not promote D307 asserted ingress into controlled-filing evidence",
     );
   });
 });

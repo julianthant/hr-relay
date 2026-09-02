@@ -16,16 +16,38 @@ cited below as **§N**; it is the child plan and it wins on any question of what
 saw. The decisions live in `reference/decisions.md`.
 
 ## Phase summary
+
+> **2026-09-02 readiness verification (§9.37):** the historical 4589 preview is available through
+> its direct dashboard link and was inspected with Logs/Receipt. R2a commit `5853ef80` restores
+> the default full gate: 388 files / 4,795 tests passed with unchanged assertions, coverage policy
+> and 30-second limits; typecheck/lint/manifest/roadmap pass, parity 287/287 assert-green on unchanged
+> UI. This is inspectable readiness, not controlled-write completion. The protocol/target-disposition
+> decision below remains open; no new live run or write was performed.
+
+> **2026-09-02 preflight correction (§9.35):** controlled execution is blocked by a newly verified
+> plan/implementation mismatch. D309 supersedes D287's extra in-workflow per-write approvals for
+> supplied-EID verification; its person-level sweep key still permanently reuses an earlier no-op. The 4589 rehearsal fingerprint no longer
+> matches current source. Reconcile the execution contract under explicit authorization, then
+> repeat fresh admission/rehearsal before any controlled write. No write occurred in this preflight.
+
+> **Further safety finding (§9.36):** an isolated real-sequencer check of filing → sweep →
+> finalization deleted the synthetic Pending filing and then let Kuali cite its captured receipt.
+> Separate gates are no longer part of the required workflow; a scoped sweep key alone still cannot make that sequence truthful. Implementation
+> pauses for the proposed protocol amendment: prove deletion on a separately approved disposable
+> transaction and preserve the real separation's filing through finalization. No live write ran.
+
 <!-- roadmap: phase-3 -->
 
 <!-- roadmap-status: phase-3 -->
 - [x] step 1 questionnaire — all twelve §5 items and every §4a–§4g decision answered 2026-08-12, including 5A/5B's freshness values (D193, `docs/migrations/separations.md` §5)
-- [x] step 2 author — nineteen nodes, one ALWAYS-GATE, three fenced transactions, four stores (`src/workflows/separations/descriptor.ts`, `module.ts`; D211, D261)
+- [x] step 2 author — nineteen nodes, one source-conditioned identity gate, three fenced transactions, four stores (`src/workflows/separations/descriptor.ts`, `module.ts`; D211, D261)
 - [x] step 3 guards — `descriptor-coverage`, `write-safety-contract`, `identity-gate-before-commit`, `scenario-coverage`, `gate-coverage` all green over this descriptor; `config/pending-impl-bindings.json` is the empty set, so every contract it names is implemented
 - [x] step 4 live dry run — MET 2026-08-14 at the preview terminal (run `7565a88d` / `sp-105939-7565`, doc 4502, §9.17) and re-proved through the dashboard 2026-08-20 (run `e1b8ae3e` / `sp-081217-e1b8`, §9.22) and off one typed document number (run `1e0b7cc2` / `sp-105225-1e0b`, §9.24)
-- [ ] step 5 controlled commits — all three OPEN. R1/u1 passed D300 admission on 2026-09-01, then the fresh composed dry-run failed `DOCUMENT_NOT_IN_ACTION_LIST` for the sole canary before `plan`, S7, any gate, or any write (§9.33). Exact-run authority is 0/0/0 and `writeState: not-attempted`; D284 therefore retains `finalization-canary` / doc 4537 as `gone` and permits no substitute. A new operator-named canary and a green rehearsal are required before ② → immediate ① → ③. Doc 4568 remains dated R3 residue (§9.29)
+- [ ] step 5 controlled commits — all three OPEN. 4537 is gone (§9.33); operator-named 4589 reached a historical green preview with exact-run 0/0/0 (§9.34). D309 removes unsupported separate approvals from the blocker set; current execution remains blocked by permanent sweep-key reuse and the deleted-receipt contradiction (§§9.35–9.36). Resolve the protocol decision, implement at the approved test seams, then obtain fresh admission/rehearsal and explicit operational authorization for the eventual live run. No controlled write has run
 - [ ] step 6 rebuild-ready — blocked by step 5; the open exit criterion is the only one of nine
 - [ ] step 7 close-out — regression scenarios, knowledge records, capability dispositions, docs to as-built (Track A row A8)
+- [x] D311 plan reconciliation — the authoring problem, tuple recipe, compiler boundary, Explorer projection, generic-dashboard rule and test reduction are recorded in their owning docs and roadmap
+- [ ] D311 acceptance conversion — separations proves the recipe/compiler's complete shape without changing any step-5 write obligation; owned by doc 03c `{#workflow-authoring-model}` and not a claim that controlled writes are complete
 > 2026-08-20 | docs-cohesion 03b | verified against src/workflows/separations/**, src/stores/{kuali,ucpath,new-kronos,separations}/**, config/pending-impl-bindings.json and the §9.x record; left: the three commits and everything only they discharge
 > 2026-08-27 | R2a u28 close | doc 4568 registered `819ff38f`, doc 03b row `6a876627`, composed dry run refused at `timecard` `1622afcf`, this close `26ee2e1a` + this commit; no controlled commit ran; step 5 stays OPEN — all three; R3 carries the WFD range-field clear fix (§9.29 item 11)
 > 2026-08-28 | R2 u1r D284 built | registry `936fabc0` (ONE subject `finalization-canary` / doc 4537, an arm per workflow, the finalization arm `pending` until ②), both T1b manifests, the both-directions guard and doc 03b `b511bdfc`, `ref guards-and-tests` §10.4/§10.5 `b0cb2593`, `docs/migrations/separations.md` §9.31 `0dd3d260`, review fixes `b1acd712`/`58665183`; 4537 re-read read-only 2026-08-28 (§9.31); no rehearsal, gate, worker or write ran; left: the three controlled commits
@@ -67,50 +89,46 @@ proof; 5 awaits current runtime admission, rehearsal and controlled-write eviden
 | Step | State | Evidence |
 |---|---|---|
 | 1 · **§b questionnaire** | **MET** 2026-08-12 | §5's twelve items and §4a–§4g, all answered in one operator sitting; nothing was built before it |
-| 2 · **author the workflow** | **MET** | `src/workflows/separations/descriptor.ts` (1,098 lines), `module.ts` — four stores, nineteen nodes, three transaction nodes, one ALWAYS-GATE |
+| 2 · **author the workflow** | **MET** | `src/workflows/separations/descriptor.ts`, `module.ts` — four stores, nineteen nodes, three transaction nodes, one source-conditioned identity gate |
 | 3 · **guards green** | **MET** | the full gate is green at HEAD; `descriptor-coverage` regenerates the build manifest, `write-safety-contract` pairs every commit, `identity-gate-before-commit` walks both sinks, `scenario-coverage` audits the 21 declared scenario ids |
 | 4 · **live dry run** | **MET**, three times over | §9.17 (the preview terminal), §9.22 (driven from the real dashboard), §9.24 (from one typed document number) — zero durable write rows proved from authority on every one |
-| 5 · **controlled commit** | **BLOCKED — all three remain open** | R1/u1 passed admission, but the 2026-09-01 live Action List search found sole canary 4537 gone before S7 or the gate (§9.33). Exact-run authority is 0/0/0 and no approval/write occurred. D284 forbids substitution; a new operator-named canary and green rehearsal must precede ② → immediate ① → ③ |
+| 5 · **controlled commit** | **BLOCKED — all three remain open** | D309 supersedes the extra approval requirement; §§9.35–9.36 still expose sweep-key reuse and a post-filing sweep deleting Kuali’s referenced filing. Protocol decision and implementation precede fresh rehearsal and explicit live-run authorization; 4589’s §9.34 preview is historical |
 | 6 · **rebuild-ready** | blocked by 5 | doc 03c's rule: an open criterion blocks rebuild-ready status; a dry-run success is never converted into a write-safety claim |
 | 7 · **close-out** | blocked by 5–6 | Track A row A8 |
 
 ### The honest state at HEAD
 
-Verified 2026-08-30 against the code, the migration record, and the bounded R2 software/admission
-evidence, not against earlier prose (D252's rule). Where they disagreed, current observed evidence
-wins; historical live evidence remains cited as history.
+Current readiness was reconciled on 2026-09-02 from the code and §§9.33–9.36. The current
+coordinator evidence is `docs/coordinator/separations-completion/reports/r2-readiness.md` and
+`reports/r2a-gate-reliability.md` in that workspace;
+historical proofs retain their dates rather than becoming current-source admission.
 
-- **The workflow is BUILT and HAS RUN LIVE.** Every chunk landed; the composed graph has reached a real
-  preview terminal three separate ways, and since D261 it starts from one typed Kuali document
-  number in the run modal.
-- **No R2 live action is claimed.** The 2026-08-30 assigned-worktree smoke refused before runner
-  import; this unit did not access authority, so it establishes neither current write-table counts
-  nor a new zero-write result (§9.32). Historical authority observations remain only at their cited
-  passes.
-- **The exit checklist remains 8 of 9.** Its open controlled-commit criterion is no longer a date
-  wait: it needs assigned-runtime admission, fresh current S7/subject observation, one successful
-  composed rehearsal with exact-run authority evidence, and the separately approved ② → ① → ③
-  ceremony.
-- **Two things the tree said that the code does not support**, both corrected here and in the tree:
-  the `{#operator-calls}` node still listed the gate-age pill and D192's re-disposition as open, and
-  both were settled by the operator on 2026-08-18 — the pill half of D12 is amended in
-  `reference/dashboard-surfaces.md` and rendered (`src/dashboard/surfaces/queue.tsx:281`), and
-  `legacy-tool-ops-sanity-check-record` is `retired` in `config/legacy-capabilities.json` with the
-  ruling's own words. What IS still open there is a different call, named below.
-- **One name in the migration record is stale**: §6 calls the gate guard
-  `identity-gate-before-separation-commit`; the guard is `identity-gate-before-commit`
-  (`tests/unit/architecture/identity-gate-before-commit.test.ts`, `guard-inventory.json:315`).
+- **The workflow is built and has run live.** The operator can inspect 4589's historical preview
+  run `ca6a5462-4e52-43b7-ac85-f9bdb7fd30cf` and its receipt (§9.34). It stopped at the first
+  transaction's dry-run preview; it does not prove downstream filing or finalization.
+- **Runtime admission is no longer the sole blocker.** D300 admission passed before 4537's
+  live absence was observed (§9.33). The gone registry entry stays gone. No person-value secret
+  restoration or retry of that decayed canary is required.
+- **Controlled-write evidence remains open.** D309 supersedes the separately approved D287
+  workflow path. §§9.35–9.36 still show permanent sweep-key reuse and a sweep that can delete the
+  filing Kuali would cite. The isolated red assertion must remain a safety expectation, not be waived by a
+  green general suite. The protocol decision precedes implementation and fresh rehearsal.
+- **Implementation and test seams already have authorization.** The real sequencer and real
+  run/gate/receipt composition with fake external systems were approved before §9.36. The independent disposable-target protocol is still a proposal. Any eventual `dryRun=false` operation still needs explicit operator authorization/admission, not another in-workflow gate.
+- **Earlier UI and capability decisions stay settled.** The gate-age pill and D192 re-disposition
+  remain closed. Existing dashboard surfaces are available for inspection without claiming that
+  criterion 5 or the migration's final close-out is complete.
 
 ## Separations — order 8, the first migration
 <!-- roadmap: order-8 -->
 
 <!-- roadmap-status: order-8 -->
 - [x] the §b questionnaire, all twelve items plus §4a–§4g (2026-08-12, §5)
-- [x] the graph as built — nineteen nodes over four stores, no branch and no `when` anywhere (`descriptor.ts`; D211, D261)
+- [x] the graph as built — nineteen nodes over four stores, no branch and one declared `when` on the identity gate (`descriptor.ts`; D211, D261, D309)
 - [x] the start door — ONE typed document number, the action id resolved by the graph (D260 refused it, D261 built it; live §9.24)
-- [x] the ALWAYS-GATE — server-computed ceremony, the packet binding every value the approval authorizes (D77, D202, D204, D211, D226)
+- [x] source-conditioned identity authority — supplied/read-back EID proceeds as machine verification; a name-resolved EID opens the existing server-computed ceremony (D309, superseding D77's trigger; D202/D204/D211/D226 remain the gate arm)
 - [x] the subject/canary inventory mapped live and dated — sole label `finalization-canary` / doc 4537 (D284): mapped 2026-08-19 (§9.19), re-read 2026-08-28 (§9.31), then found absent from the live Action List 2026-09-01 and retained as `gone` (§9.33); no substitute chosen
-- [ ] the three controlled commits — the last substantive item; historical 2026-08-28 calendar admission is not current proof, and assigned-runtime admission refused 2026-08-30 before runner import (§9.32). After a fresh rehearsal, order remains ② → immediate ① → ③
+- [ ] the three controlled commits — D310 implements the exact-set deletion and surviving-filing mechanics that resolve §§9.35–9.36; the disposable target, restoration/retention disposition, current rehearsal, explicit live-run authorization and controlled evidence remain open. The historical 4589 preview is inspectable but is not current-source admission or write proof
 - [x] `config/test-subjects.json` — the registry moved into config under cohesion step 5.2c (2026-08-27); the table below became a pointer, every subject is a label, and since D300 the canary carries only one closed document-number reference while the composed workflow derives every person fact live
 > 2026-08-20 | docs-cohesion 03b | node list and start door verified against src/workflows/separations/descriptor.ts; registry recomposed from §9.12/§9.16/§9.19/§9.24; left: the commits and the config registry
 > 2026-08-27 | order-8 registry | the canary registry is now config/test-subjects.json (8 entries, 4 of them this chain's subjects); tests/unit/architecture/test-target-registry.test.ts pins the inventory line above to the config in BOTH directions; left: the three controlled commits
@@ -126,10 +144,10 @@ migration should read first because each one is a rule rather than a value.
    unwired. "Recomposition" means assembling a DESCRIPTOR from proven chunks, not spawning child
    runs — so the five sub-workflow descriptors stay exactly what §3 said they were: the scaffolding
    that made each piece provable (`module.ts`, `role: composition`; D219/D220).
-2. **No branch and no `when`, anywhere (§3.1).** Scenario variability is served by recomposition,
-   never by conditionals; §4b's hard-fail removed the one arm legacy had (skip Kronos for a non-HDH
-   department), and §4d says no run mode changes the graph at all. A graph with no conditional edge
-   cannot grow one by accident.
+2. **No branch; one evidence-origin `when` (§3.1, D309).** Scenario variability remains served
+   by recomposition; §4b's hard-fail removed the legacy arm that skipped Kronos for a non-HDH
+   department. The only condition is the existing identity gate: it opens for `name-resolved` and is
+   inapplicable for independently supplied/read-back EID authority. No run mode or caller controls it.
 3. **Every read lands before anything is written (§4e).** The whole write half consumes typed
    variables rather than re-deriving at fill time, which is what puts the gate in the gap between
    the two halves — and what makes the packet's write-plan block load-bearing.
@@ -174,8 +192,8 @@ resolve-action ─► document ─┬─► plan ─┬─► name-search ─┐
 Six of the nineteen carry the operator-approved **categorical timeline** (D225, ruled 2026-08-18):
 *Kuali extraction · Identity check · Job summary · Kronos timecard · UCPath transaction · Kuali
 finalization*. The gate is a MEMBER of *Identity check* — a wait is a state of a step, not a step of
-its own — and the always-rerun re-executions around a gate resume fold into their category's `×N`
-marker instead of drawing duplicate segments.
+its own — and the always-rerun re-executions around a name-only gate resume fold into their
+category's `×N` marker instead of drawing duplicate segments.
 
 ### The start door (D260 → D261)
 
@@ -213,34 +231,34 @@ run re-reads live.
 
 ### The identity gate
 
-The ALWAYS-GATE is why this migration exists in the shape it does, and it is the one surface a real
-separations run needs a human on.
+D309 makes identity origin the authority fork. A Kuali-supplied EID continues without a human only
+after UCPath's actual detail read-back is exact; a name-resolved EID always opens the existing typed
+operator gate, even for one exact-looking candidate. Missing, ambiguous, mismatched or moved identity
+fails loud. The packet keeps name discrepancies visible on the machine arm without treating them as
+a substitute identity decision.
 
-**Why ALWAYS, and not on a similarity tier (D77).** The motivating incident is the wrong-person
-filing `T002173685`. `classifyNameSimilarity("Hernandez, Jose Santos", "Santos Hernandez")` returns
-**`same`**, because the token alignment tolerates extra tokens on the longer side — and legacy fires
-its wrong-person control only on `different`. So the incident that motivated the gate would not have
-tripped a tier-triggered gate. That single fact is the argument for ALWAYS-GATE in one line.
+**Why every name resolution gates (D77 retained on that arm).** The motivating wrong-person filing
+`T002173685` has a name pair that classifies `same`; a similarity-triggered gate would still miss it.
+D309 therefore conditions on `emplIdSource`, never the similarity tier, run mode or caller.
 
-**What it dominates (D202).** The guard audits BOTH sinks — every transaction node AND the terminal
-result — because a read-only chunk whose product is an *approved subject* is bound by a later
-composition as a write's `expected` side. A path is gated when it reaches the gate's own ANCESTRY;
-the violation the guard caught on this descriptor's first draft was a side read the gate never
-depended on, which is data the operator never saw.
+**What identity authority dominates (D202 amended).** The guard audits every transaction node and
+every identity-bearing terminal result for the shared `approval` authority task. That task emits a
+discriminated machine-verification or operator-approval subject, and both bind a later write's
+`expected` side. The guard separately pins the gate's exact name-only condition.
 
-**What it binds (D211).** The packet carries the WRITE PLAN — the template and reason code, the
-reconciled dates, the department option, the empl record — not just the person, and §14.5's digest
-binds the approval to exactly those bytes. Before that, the operator approved a person while the
-dates and the template their approval was about to authorize sat only in the graph: *an approval of
-a person is not an approval of a date, and the two were the same click.*
+**What it binds (D211 amended).** The packet carries the WRITE PLAN — the template and reason code,
+the reconciled dates, the department option, the empl record — not just the person, and §14.5's
+digest binds either authority arm to exactly those bytes. On the name-only arm the operator sees
+them before deciding; on the supplied-EID arm the always-rerun authority task rejects moved evidence.
 
 **What the durable record is (D203/D204).** A gate produces a `gate_results` row, not a
 `run_checkpoints` row. The kernel's provenance collector reads that row as a dependency's evidence
 and the evidence RECEIPT does too — one `operator`-sourced fact dated at `resolvedAt`, with no
 output leaves. Nothing fabricates a checkpoint for it.
 
-**How it is asked (D226).** Three ceremonies — `one-click`, `choose-a-candidate`, `type-the-eid` —
-plus a rejection arm, and the shape is computed SERVER-side
+**How it is asked (D226 amended).** The current name-only arm uses the `type-the-eid` ceremony plus
+rejection. The strict `one-click` and `choose-a-candidate` renderers remain compatibility arms, and
+the shape is computed SERVER-side
 (`src/domain/separations/identity-evidence.ts:339`). A frontend free to choose the control could
 quietly turn every gate into one click, which is `ref write-safety` §14.6's rubber-stamping risk
 manufactured by accident; a shape this build has no ceremony for refuses by name rather than
@@ -468,7 +486,7 @@ name. The two runs that FOUND the defect are permanently frozen at their pre-fix
 are left as they are, and the fix was re-proved on three fresh runs rather than by rewriting
 authority. That trade is what D199 later generalized.
 
-### 3 · UCPath employment grid + the ALWAYS-GATE
+### 3 · UCPath employment grid + identity authority
 <!-- roadmap: sep-3 -->
 
 <!-- roadmap-status: sep-3 -->
@@ -526,8 +544,8 @@ filing is the real HR write. Each carries its own permanent key, its own probe a
 proof. The first live read found a closed vocabulary the code could not match — a real defect that a
 fixture built from the same code could never have found.
 
-**What is genuinely blocked, and what is merely unmeasured.** The commit arm is blocked on the
-canary's date. `probeToFenceMaxMs`'s per-beat decomposition is *unmeasured*, and the reason it stays
+**What is blocked and what is unmeasured.** The commit arm is blocked on the protocol and
+implementation findings in §§9.35–9.36, then fresh target admission and explicit live-run authorization. `probeToFenceMaxMs`'s per-beat decomposition is *unmeasured*, and the reason it stays
 unmeasured is worth reading once: it was recorded twice as riding on the preview terminal, and a
 settled preview emits ONE event with no beat decomposition and **has no fence at all**, so reaching
 it could never have produced the number. It rides with the controlled commits (§9.17 item 4).
@@ -580,7 +598,7 @@ more honest form.
 
 <!-- roadmap-status: sep-6a -->
 - [x] eighteen nodes composed from tasks five chunk harnesses had already proved — zero new browser tasks minted, five new pure folds (2026-08-14, §9.13). Nineteen since D261
-- [x] one ALWAYS-GATE dominating both sinks; three fenced transactions in write-safety's order — sweep, filing, finalization
+- [x] one identity-authority task dominating both sinks, with its name-only operator gate; three fenced transactions in write-safety's order — sweep, filing, finalization
 - [x] the gate PACKET carries the write plan the approval authorizes: dates, template, reason code, department option, empl record (D211)
 - [x] the "this graph composes no plan" arm is REQUIRED with a stated reason, not optional — an optional block is one a composition can forget to fill while every gate still renders
 - [x] `receipt` sits between the filing and the finalization on purpose: §5 item 2's answer is that the UCPath receipt is the PAIR `(transactionNumber, approvalStatus)`, because D130 proved a **Denied** transaction carries a well-formed `T…`
@@ -672,40 +690,60 @@ with the controlled commits.
 
 <!-- roadmap-status: track-a -->
 - [x] A1 the §4f2 canary is NAMED — Kuali doc 4537 (operator, 2026-08-19) — and mapped live the same day: one Active terminable employment, a resolvable termination type, all four owning sections `edit`, all twelve staged controls exactly one editable node (§9.19)
-- [ ] A2–A4 the three controlled commits, in the order the facts force: ② UCPath filing → immediate ① pending sweep on the row ② creates → ③ Kuali finalization. **Blocked, not met.** R1/u1 found sole canary 4537 gone from the Action List before S7/gate/write (§9.33); D284 permits no substitute
+- [ ] A2–A4 the three controlled commits — D310 resolves §§9.35–9.36 in code with exact-set deletion authority and a fresh surviving-filing precondition. D309 supersedes extra per-write workflow approval. Target selection/disposition, current-source rehearsal and explicit live-run authorization remain before any controlled proof
 - [ ] A5 the obligations only the commits discharge — `probeToFenceMaxMs` per beat, D207's 30 s window on this write's own evidence, the seven Kuali payload shapes, the `would-prepare` preview arm live. **Unobserved:** u1 stopped before any write; its exact-run 0/0/0 proves safety, not these obligations
 - [x] A6 the first live RETRY on the composed graph — six retries through the real command endpoint across two logical items, every one minting the item's next unspent attempt, no collision, one reaching terminal `done` (§9.20)
 - [x] A7 the browser-profile wedge ROOT-CAUSED and fixed — Duo's WebAuthn counter is per CREDENTIAL and Duo Autopilot's copy is per BROWSER PROFILE (D243/D244)
-- [!] ①'s COMMITTED arm has no witness and no mapped subject can give it one; the only honest window is running ① immediately after ② files, before an approver clears the row. It remains a future operator-gated action, not a calendar appointment
+- [!] ①’s COMMITTED arm has no live witness. D310 forbids the invalid post-filing deletion and supports an independent exact disposable set, but no target or restoration/retention disposition is selected and no controlled write has run
 - [ ] A8 close-out → separations **rebuild-ready**: regression scenarios, knowledge records, capability dispositions, owning docs to as-built
 > 2026-08-20 | docs-cohesion 03b | A6 verified against §9.20's seven-run lineage table, A7 against duo-autopilot/src/{background,sign-count}.js and tests/unit/duo-sign-count.test.ts; left: A2–A5 and A8, all downstream of 08-28
 > 2026-08-30 | R2 observed close | `54060ded` software gates are green, but assigned-runtime admission refused before runner import (§9.32). No fresh S7, rehearsal, authority evidence, approval, or write exists; A2–A5/A8 remain open and R3 obligations were not absorbed
 <!-- /roadmap-status -->
 
+**2026-09-02 D310 amendment:** the D287 sequence below is retained as historical ratification and is
+not runnable. §9.36 proved its post-filing sweep can remove the transaction finalization cites.
+D310 replaces that unsafe proof shape with an independent exact-set deletion target while the real
+filing survives through finalization, and implements both enforcement seams. D309 supersedes
+D287's extra in-workflow per-write approvals for a supplied-EID verified path. The implementation
+authorizes no live write: target selection, restoration/retention disposition, fresh rehearsal,
+explicit `dryRun=false` operational authorization and ordinary runtime admission remain open.
+
 **D287 — run the controlled sequence after one green 4537 rehearsal (ratified 2026-08-28;
-execution pending).** Once the composed `dryRun=true` rehearsal reaches its declared preview terminal
+superseded by D310 before execution).** Once the composed `dryRun=true` rehearsal reaches its declared preview terminal
 and exact-run authority proves zero `write_intents`, zero `write_attempts` and zero `durable_outbox`
-rows, proceed ② → ① → ③ in one controlled sitting. Each write retains its own operator-visible
-ALWAYS-GATE; no gate is pre-approved by this decision. Run ① immediately after ② so the pending row
+rows, proceed ② → ① → ③ in one controlled sitting. ~~Each write retains its own operator-visible ALWAYS-GATE.~~ **Superseded by D309 for the
+supplied-EID verified path: the ordinary identity-authority seam is the only workflow gate.** Run ① immediately after ② so the pending row
 ② creates can supply the only practical live witness for `clear-pending`'s committed arm. Preserve
 the existing R2 conditions: no `reRead` after ②, freeze the tree until ③ settles, use the declared
 standalone finalization fallback only as specified, and stop without retry on any UNKNOWN submit.
 
-**Track A is the last substantive work separations owes**, and it is one operator sitting plus its
-close-out. The plan that named it is
+**D310 — exact independent deletion authority and a surviving real filing (ratified 2026-09-02).**
+The ordinary workflow keeps sweep → filing → finalization. A sweep is authorized by the canonical
+machine-observed eligible/protected stable-transaction set under explicit operational run admission,
+never by an extra workflow approval. Its v2 key binds that exact set; immutable person-only keys
+refuse, a fresh pre-selection read must match, and post-read proof requires only the selected IDs
+gone while protected rows survive. The controlled deletion witness is a separate disposable target,
+not the real filing. The real filing's durable receipt must pass an always-rerun exact-T-ID UCPath
+presence read immediately before Kuali staging; missing, denied, changed or ambiguous authority
+stops with no Kuali click and no re-file repair. D307 asserted ingress remains asserted. This section
+ratifies the built mechanics only. The disposable target and restoration/retention disposition,
+current rehearsal, explicit live-run authorization and §3.2 controlled proof remain open.
+
+**Track A is the last substantive work separations owes.** It now requires a protocol decision,
+implementation and regression proof before its explicitly authorized live sitting and close-out. The plan that named it is
 `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` §6; its ordering was
 ratified by the operator the same day (Decision 5: Track B now, Track A on the canary).
 
 | # | Step | State at HEAD |
 |---|---|---|
 | A1 | Name the §4f2 canary | **done** — doc 4537, 2026-08-19, mapped live (§9.19) |
-| A2–A4 | The three controlled commits, ② → immediate ① → ③ | **blocked/open** — live u1 found sole canary 4537 gone on 2026-09-01; D284 permits no substitute (§9.33) |
+| A2–A4 | The three controlled commits | **open** — D310 mechanics are built; exact disposable target/disposition, current rehearsal, explicit live-run authorization and all controlled evidence remain; no live operational authorization consumed and no controlled write occurred |
 | A5 | The obligations only the commits discharge | **open** — u1 exact-run 0/0/0 proves no write occurred; no controlled-write measurement exists |
 | A6 | One live retry on the composed graph | **done** 2026-08-19 (§9.20) |
 | A7 | Root-cause the browser-profile wedge | **done** — D243/D244, live-proved |
 | A8 | Close-out → rebuild-ready | after A2–A7 |
 
-**Why the order is ② → ① → ③, and not the numeric one.** ③ takes `transactionNumber` as INGRESS and
+**Historical rationale for ② → ① → ③ — invalidated by §9.36.** ③ takes `transactionNumber` as INGRESS and
 has no `match-active-employment` and no S7 check, so the standalone finalization graph is runnable on
 4537 *today* — and running it now would either write a fabricated transaction number onto a real HR
 document or leave the field naming nothing. The write would land and the record would be false.
@@ -736,10 +774,10 @@ naming the real cause instead of burning the bound and blaming Duo hand-approval
 > 2026-08-20 | docs-cohesion 03b | nine squares verified against src/workflows/separations/descriptor.ts (inputRun · timeline · nodePurposes · subjectProjection · presentation · verdicts), src/domain/archive/ledger-resolution.ts:167, src/services/notifications/gate-park.ts wired at src/server/dashboard/compose.ts:497, src/dashboard/app/identity-ceremony.ts; left: the two PROOF lines
 <!-- /roadmap-status -->
 
-A migration's `Dashboard · wire` task supplies DECLARATIONS and a proof, never a new surface — the
-surfaces are doc 03a's `{#dash-defaults}`. Separations was the forcing function for most of them, so
-the squares filled as Track B built them; the table below is the separations half, verified in the
-code at HEAD.
+This `Dashboard · wire` record is retained as historical acceptance evidence. Under D311 its
+declarations become compiler output and its generic proof becomes the completeness fixture rather
+than a task copied by each later workflow. Separations was the forcing function for most surfaces,
+so the squares filled as Track B built them; the table below is verified in the code at HEAD.
 
 | # | Square | What separations declares | Verified at |
 |---|---|---|---|
@@ -876,21 +914,21 @@ required `build:manifest` regeneration.
 <!-- roadmap: operator-calls -->
 
 <!-- roadmap-status: operator-calls -->
-- [!] `clear-pending`'s COMMITTED arm has no live witness, and none of the mapped subjects can give it one. The only honest window is running ① immediately after ② files, before an approver clears the row — otherwise the arm ships proved by fixture and by the sequencer, never by a real deletion. **Future separate operator approval required**
+- [!] `clear-pending`’s COMMITTED arm has no live witness. D310 resolves §9.36's implementation conflict and requires an independent disposable exact set; select that target and its restoration/retention disposition before any such write
 - [x] keep or retire `kuali-timekeeper-annotation` — **ANSWERED 2026-08-21: RETIRE (D266)**, dismantled into the testing framework as the Kuali finalization step's T1 pair (§The workflow tree)
 - [x] the gate-age pill (D12 vs the later direction) — **ANSWERED 2026-08-18**: the status pill carries NO age (*"the word names the work, not the wait"*); the age renders in the row's footer meta and in the log panel. `reference/dashboard-surfaces.md` carries the amendment; `src/dashboard/surfaces/queue.tsx:281` renders it
 - [x] D192's re-disposition of `legacy-tool-ops-sanity-check-record` — **ANSWERED 2026-08-18**: no AI feature; the §14.2 packet's server-computed `comparisons` array is the sanity check, deterministically. The register entry is `retired` with the ruling's own words (`config/legacy-capabilities.json:1266`)
 - [x] A6's first live retry as evidence — delivered 2026-08-19 (§9.20)
 > 2026-08-20 | docs-cohesion 03b | the two doc-side items were verified CLOSED against reference/dashboard-surfaces.md, src/dashboard/surfaces/queue.tsx and config/legacy-capabilities.json — the tree still listed both as open and is corrected; left: the ① witness call
-- [x] whether any step should be pickable, with typed facts standing in for its browser reads — **ANSWERED 2026-09-01 (D307)**: yes, slice one. Kronos timecard, UCPath transaction and Kuali finalization each declare an omission (`docs/migrations/separations.md` §4b/§4c amendments); gates and transactions are never substituted. **Open:** *identity check*, *Kuali extraction* and *Job summary* stay required — their omission waits on the identity packet carrying per-row origin marks for asserted evidence (§4d's amendment)
+- [x] whether any step should be pickable, with typed facts standing in for its browser reads — **ANSWERED 2026-09-01 (D307), amended by D309**: yes, slice one. Kronos timecard, UCPath transaction and Kuali finalization each declare an omission (`docs/migrations/separations.md` §4b/§4c amendments); gates and transactions are never substituted. **Open:** *identity check*, *Kuali extraction* and *Job summary* stay required — their omission waits on an authority design that preserves source and read-back proof; asserted evidence cannot silently qualify for supplied-EID machine verification (§4d's amendment)
 <!-- /roadmap-status -->
 
-**Three of the four calls this node was drawn for are settled**, and they were settled before this
-doc was written — which is exactly the drift a two-way binding exists to catch. The one that remains
-is a real decision with a real deadline, and it cannot be made earlier than the day the canary
-unblocks: whether to spend the narrow window after ② files to give ①'s committed arm its only
-possible live witness, or to accept that arm as proved by the sequencer and its fixtures and say so
-in the close-out. Both are defensible; neither is a default.
+**The earlier presentation decisions remain settled.** The remaining call is now the safe
+controlled-proof protocol, not a calendar window. §9.36 invalidates the planned post-filing sweep
+because finalization can cite its deleted filing. The operator must decide the independent deletion
+proof and each target's restoration/retention disposition under `ref write-safety` §3.2. Fixture
+proof alone does not close criterion 5. The concrete decision sheet is
+`docs/coordinator/separations-completion/decisions/2026-09-02-controlled-proof-protocol.md`.
 
 **A second call opened and closed 2026-08-21.** Keep or retire `kuali-timekeeper-annotation`: the
 recommendation was keep; the ruling is RETIRE (D266) — it is part of the testing framework, and its
@@ -898,6 +936,42 @@ harness seeds the Kuali finalization step's T1 pair (§The workflow tree, above)
 
 **Also settled, recorded so nobody re-opens them:** the Activity hours-saved tile is DROPPED (D239),
 archive tabs and export are closed by D223/D240, and `span.patched` is RETIRED (D254).
+
+**D311 does not reopen the workflow.** Separations is the completeness acceptance case for the new
+recipe/compiler seam because it already exercises grouped timeline steps, rich reads, computed
+facts, a conditional identity gate, D307 omissions and three transactions. Its conversion must
+preserve the existing run modal, graph, screenshots, semantic logs, gates, receipts, write safety
+and durable bytes. The conversion belongs to doc 03c's workflow-authoring-model node and neither
+discharges nor adds a controlled-write requirement to criterion 5 below.
+
+### D311 workflow-authoring reconciliation — COMPLETE 2026-09-02
+
+What happened is now explicit. The Separations runtime and dashboard behavior were not the source of
+the setup difficulty; the authoring path was. `src/workflows/separations/` currently contains 33
+TypeScript files and about 3,682 lines, spread across step fragments, descriptor declarations and
+module composition before its reusable store drivers/tasks are counted. The same workflow facts
+then had to be represented again for the run modal, timeline, Explorer and per-workflow dashboard
+proof rows.
+
+D311 closes the design/plan part of that problem:
+
+- one ordered `steps` array of `[timeline group, tasks[]]` tuples becomes the workflow source form;
+- typed task input references derive execution dependencies, so grouping does not become hidden
+  execution order;
+- one compiler derives the existing descriptor, module requirements, run-modal/timeline/detail and
+  Explorer projections;
+- generic archive, activity, notifications and other existing surfaces require no per-workflow
+  wiring or duplicate T2/T3 proof;
+- a new workflow authors selectors/driver operations only for genuinely new browser behavior,
+  authors or reuses typed tasks, supplies the recipe, and proves its own T1/live behavior;
+- a fix to workflow grouping or run options changes the recipe once; a selector fix changes the
+  system driver once; a generic dashboard fix changes the shared surface once.
+
+This documentation reconciliation is complete and is recorded as D311 in the owner docs and
+roadmap. The implementation is intentionally not marked complete: doc 03c
+`{#workflow-authoring-model}` owns the compiler plus person-lookup/separations equivalence
+conversions. Likewise Phase 3b remains **8 of 9** until criterion 5's controlled-write evidence is
+either produced or explicitly superseded by a separate operator decision; D311 does neither.
 
 ## Decisions this phase ratified
 
@@ -929,12 +1003,14 @@ and the normative pointer stay in the ledger; this is the phase index.
 | 90 | 2026-08-21 | D266 | **the crash-test dummy is dismantled** — `kuali-timekeeper-annotation` goes; its harness becomes the first T1 pair (Kuali finalization); `proving` / `Test equipment` / `proving/` / D127's exemption retire with it |
 | 101 | 2026-08-28 | D284 | **4537 is the one active test subject** — one exact label serves both separations workflow resolvers; every other active label retires to dated migration history |
 | 112 | 2026-09-01 | D300 | **the canary is ONE document number in `.env`** — a single closed reference replaces D286's three person-value secrets; the composed chain derives every person fact live; the standalone finalization harness blocks by name |
-| 113 | 2026-09-01 | D307 | **any timeline step is pickable; an omitted step's browser reads are replaced by operator-typed facts** — slice one declares omissions for Kronos timecard, UCPath transaction and Kuali finalization; gates and transactions are never substituted; identity check/Kuali extraction/Job summary stay required pending the identity packet's per-row origin marks |
+| 113 | 2026-09-01 | D307 | **any timeline step is pickable; an omitted step's browser reads are replaced by operator-typed facts** — slice one declares omissions for Kronos timecard, UCPath transaction and Kuali finalization; gates and transactions are never substituted; identity check/Kuali extraction/Job summary stay required pending an authority design that preserves source and read-back proof |
+| 119 | 2026-09-02 | D309 | **an independently supplied EID proceeds only after exact UCPath read-back machine verification; a name-resolved EID always uses the real operator gate** — the shared authority task dominates both sinks, and the supplied arm creates no human decision |
+| 121 | 2026-09-02 | D311 | **separations is the completeness acceptance workflow for the tuple recipe/compiler** — behavior-preserving conversion only; its open controlled-write proof remains exactly where it was |
 
-**Ratified elsewhere, load-bearing here.** D77 (the ALWAYS-GATE itself, Phase 0) is what this
-migration implements; D222, D223, D225 and D230–D242 (phase 3a) are the dashboard defaults the wire
-squares fill; D243/D244 and D247 carry `_phase: platform_` in the ledger and are listed under
-§Platform fixes because a separations live run is what forced them.
+**Ratified elsewhere, load-bearing here.** D77's human gate remains the name-resolved arm under
+D309–D310; D222, D223, D225 and D230–D242 (phase 3a) are the dashboard defaults the wire squares fill;
+D243/D244 and D247 carry `_phase: platform_` in the ledger and are listed under §Platform fixes
+because a separations live run is what forced them.
 
 ## Exit criteria
 
@@ -948,8 +1024,8 @@ at **8 of 9**, and the ninth is open on controlled-write evidence, not on the ca
 | 2 | **`typecheck` + `lint` + `test:coverage` green (D191); `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing** | **MET** | green at HEAD; the build manifest regenerates clean |
 | 3 | **Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id and subject observation resolves; no raw `Page`/`Locator`/selector outside the system driver** | **MET** | `strict-boundary-schemas`, `semantic-ui-registry`, `scenario-coverage`, `task-driver-boundary` |
 | 4 | **Live dry-run green against Kuali, UCPath and New Kronos — submit-free, zero durable write rows ASSERTED** | **MET** 2026-08-14, re-proved twice since | run `7565a88d` / `sp-105939-7565` to the preview terminal (§9.17); run `e1b8ae3e` / `sp-081217-e1b8` driven from the real dashboard (§9.22); run `1e0b7cc2` / `sp-105225-1e0b` from one typed number (§9.24). Zero write rows proved from authority every time |
-| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **BLOCKED — all three open** | D300 admission passed on 2026-09-01, but live u1 found sole registry canary 4537 absent before S7/gate/write (§9.33). The operator then named seven candidates (§9.34): three stopped as future-dated, two on current person/employment facts, and 4589 plus 4502 reached `identity-approval`, with exact-run 0/0/0 for all seven. The operator approved 4589's fresh attempt-1 packet; its resumed run reached terminal `done` at the `clear-pending` preview with receipt `0fa49971…` and remained 0/0/0. Source and canonical input are frozen from that green rehearsal through ② → immediate ① → ③, each with its separate approval. No write approval has been consumed |
-| 6 | **`identity-gate-before-commit` green — every commit and the terminal result graph-reachable only through the gate** | **MET** | the guard walks both sinks (`tests/unit/architecture/identity-gate-before-commit.test.ts`), and §14.5's digest binding is proved LIVE: the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's (§9.14) |
+| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **BLOCKED — all three open** | D310 implements exact-set sweep authority and fresh filing-survival proof, resolving §§9.35–9.36 in code. The disposable deletion target and restoration/retention disposition remain operator-owned; then fresh admission/rehearsal and explicit live-run authorization. 4537 is gone, 4589 is historical, no authorization consumed |
+| 6 | **`identity-gate-before-commit` green — every commit and identity-bearing terminal crosses the shared identity-authority task; the name-resolved arm uses the exact operator gate** | **MET** | the guard walks both sinks and pins the declarative source condition (`tests/unit/architecture/identity-gate-before-commit.test.ts`); §14.5's historical live digest binding remains proof for the gated arm (§9.14), while D309's supplied arm is regression-proved with actual UCPath read-back and no human result |
 | 7 | **D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved** | **MET** 2026-08-14, and its one finding since CLOSED | three entries touched, none stale under D188's arm, no legacy path deleted (§9.17 item 6). The flagged item — D192's condition on `legacy-tool-ops-sanity-check-record` — was closed by the operator on 2026-08-18 and the entry is `retired` |
 | 8 | **Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated** | **MET** | D212/D213 (`d00b66c`, `1d019ee`), D214/D215, the `already-present` receipt arm (`b73b546`), the span-wire fork (`e1ba81b`), D221 (`tests/unit/retry-item-attempt.test.ts`, live-proved §9.20) and the browser-profile wedge (D243/D244, `tests/unit/duo-sign-count.test.ts`, both arms verified RED pre-fix) |
 | 9 | **§2.6 confirmed and ratified — D194 in `ref task-contract` §2.8, pointer in the ledger round 48, ref stores §1 updated** | **MET** 2026-08-12 | every read task this migration authored is authored under it |
@@ -966,27 +1042,28 @@ rides with them for the reason §9.17 item 4 established: a preview has no fence
 The second migration is entitled to assume all of the following, none of which depends on criterion
 5. This is the reuse D193 bought.
 
-1. **The store task libraries exist.** `kuali` (10 tasks), `ucpath` (10), `new-kronos` (2, built
+1. **The store task libraries exist.** `kuali` (10 tasks), `ucpath` (12), `new-kronos` (2, built
    whole), and the pure `separations` mini-store (9 folds) — with D194/D196/D197's conventions
    settled and ref stores regenerated. A later migration adds tasks to a store that already has a
    driver, a login recipe, a published UI registry and live-verified selectors.
-2. **The ALWAYS-GATE is built and proved live**, with its server-computed ceremonies (D226), its
+2. **The identity-authority seam is built and proved live**: D309 adds supplied-EID machine verification; the name-only gate retains its server-computed ceremonies (D226), its
    packet binding every value the approval authorizes (D211), its durable record readable as
    dependency evidence by both the kernel and the receipt (D203/D204), and its guard auditing both
    sinks (D202). A gated workflow inherits all of it.
 3. **A typed start door is a solved problem, including when the ingress needs a value nobody types.**
    D260 states the rule; D261 shows the escape hatch — derive the value as a graph OUTPUT — and what
    it costs (a moved fingerprint, and a refusal arm per way the derivation can fail).
-4. **The `Dashboard · wire` pattern is proved end to end.** Nine squares, filled by DECLARATIONS on
+4. **The generic dashboard behavior is proved end to end.** Nine squares, filled by declarations on
    the descriptor plus one entry table for the ledger, with the connection proved against a real run
-   and each UI claim paired to authority. Doc 03c's `Dashboard · wire <workflow>` template is this
-   table with the workflow's name substituted.
+   and each UI claim paired to authority. Under D311 this becomes the completeness fixture for the
+   recipe compiler and generic projection, not a table every later workflow copies.
 5. **The platform corrections a composed, gated, multi-process workflow forces have all landed** —
    the cross-process projector, the item-scoped retry attempt, the claim generation in the checkpoint
    key, the probing dry run, the module roles, and the Duo counter. A second migration should not
    re-discover any of them.
 
-**What Phase 3c must NOT assume.** No controlled-commit evidence exists for any separations write, so
-nothing about the UCPath termination or Kuali finalization write paths is proved beyond `prepare`;
+**What Phase 3c must NOT assume.** No controlled-commit evidence exists for any separations write.
+D310 proves the exact-set and filing-survival mechanics against fake external systems, but no real
+UCPath termination or Kuali finalization write is proved beyond `prepare`;
 `recoveryAbsence` for the UCPath termination stays `operator-only` until a propagation window is
 measured; and `clear-pending`'s COMMITTED arm has never run against a real pending row.

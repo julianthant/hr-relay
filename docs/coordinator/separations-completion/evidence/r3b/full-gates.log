@@ -1,0 +1,972 @@
+
+> hr-automation-rebuild@0.1.0 typecheck
+> tsc --noEmit
+
+
+> hr-automation-rebuild@0.1.0 lint
+> eslint src tests scripts --max-warnings 0
+
+
+> hr-automation-rebuild@0.1.0 test:coverage
+> vitest run --coverage --reporter=dot && tsx scripts/suite-size.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/Projects/hr-automation-rebuild
+      Coverage enabled with v8
+
+·····························································stderr | tests/scenario/intake-pdf-pages.scenario.test.ts > extraction/extract-pdf-pages scenarios > intake/pdf/unreadable — bytes that are not a PDF fail loud
+Warning: Indexing all PDF objects
+
+···························x·····················································································································································································································································································································································································(node:18821) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+·········································································(node:18871) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+····································································································································································································································································································································································W5-MEASURED two-child kernel door: {"spawn1AckMs":404,"spawn2AckMs":708,"birth1EffectMs":403,"birth2EffectMs":303,"sameWorkflowHandoffGapMs":0.89,"concurrentStopsAckMs":2,"stopToObservedExitMs":54}
+··············flow type budget: check 0.74s, total 1.13s, memory 279MiB
+·················································································································································································································································································································································································································································(node:19334) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+····························································································································································································································································x······xxx·································································································································································································································································································································································································································································································································································································································································································stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > draws every match in the rail and opens the record on the first one
+The current testing environment is not configured to support act(...)
+
+···stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > draws every match in the rail and opens the record on the first one
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > draws every match in the rail and opens the record on the first one
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > moves the record on click and on arrow keys, and keeps focus on the row it moved to
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > moves the record on click and on arrow keys, and keeps focus on the row it moved to
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > moves the record on click and on arrow keys, and keeps focus on the row it moved to
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > moves the record on click and on arrow keys, and keeps focus on the row it moved to
+The current testing environment is not configured to support act(...)
+
+·stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > moves the record on click and on arrow keys, and keeps focus on the row it moved to
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > moves the record on click and on arrow keys, and keeps focus on the row it moved to
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > prints the selected entry's provenance whole: both evidence refs, every scenario, every task
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > prints the selected entry's provenance whole: both evidence refs, every scenario, every task
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > prints the selected entry's provenance whole: both evidence refs, every scenario, every task
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > offers the other entries on the same screen, and selecting one moves the record
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > offers the other entries on the same screen, and selecting one moves the record
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > offers the other entries on the same screen, and selecting one moves the record
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > offers the other entries on the same screen, and selecting one moves the record
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > shows the empty state, and no rail, when nothing matches
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > shows the empty state, and no rail, when nothing matches
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/ui-catalog-surface.test.ts > the UI catalog rail and record > shows the empty state, and no rail, when nothing matches
+The current testing environment is not configured to support act(...)
+
+······················································································································································stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > names the OPPOSITE act once it is open, and reveals the diagnosis
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > names the OPPOSITE act once it is open, and reveals the diagnosis
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > names the OPPOSITE act once it is open, and reveals the diagnosis
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > re-hides the diagnosis on a second press
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > re-hides the diagnosis on a second press
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > re-hides the diagnosis on a second press
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the diagnostic disclosure (E15) > re-hides the diagnosis on a second press
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the classification, once disclosed (E5/E6) > draws `code` ONCE and permanence nowhere — both are head facts now
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the classification, once disclosed (E5/E6) > draws `code` ONCE and permanence nowhere — both are head facts now
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the classification, once disclosed (E5/E6) > draws `code` ONCE and permanence nowhere — both are head facts now
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the observed subject reads as the thing that is wrong (E22) > tones the OBSERVED half in danger and leaves the expected half alone
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the observed subject reads as the thing that is wrong (E22) > tones the OBSERVED half in danger and leaves the expected half alone
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/failure-record-render.test.ts > the observed subject reads as the thing that is wrong (E22) > tones the OBSERVED half in danger and leaves the expected half alone
+The current testing environment is not configured to support act(...)
+
+······························································································································································································································································································································································································································································stderr | tests/unit/dashboard/run-detail-timeline-render.test.ts > F6b item 3 — the disclosure trigger names what it controls > flips aria-expanded to true on focus and back to false on blur
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/run-detail-timeline-render.test.ts > F6b item 3 — the disclosure trigger names what it controls > flips aria-expanded to true on focus and back to false on blur
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/run-detail-timeline-render.test.ts > F6b item 3 — the disclosure trigger names what it controls > flips aria-expanded to true on focus and back to false on blur
+The current testing environment is not configured to support act(...)
+
+stderr | tests/unit/dashboard/run-detail-timeline-render.test.ts > F6b item 3 — the disclosure trigger names what it controls > flips aria-expanded to true on focus and back to false on blur
+The current testing environment is not configured to support act(...)
+
+········································································································································································································································································x·············································································································································································································································································································································································································································································································································································································································································································································································································································xxxx········································································································x·························································································································································································································································································································································································································································································································································································
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/activity-person-pseudonym-backfill.test.ts [ tests/unit/activity-person-pseudonym-backfill.test.ts ]
+ZodError: [
+  {
+    "code": "invalid_union",
+    "errors": [
+      [
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "clearedTransactionIds"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        },
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "protectedTransactionIds"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "setDigest"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        }
+      ],
+      [
+        {
+          "code": "invalid_value",
+          "values": [
+            "omitted"
+          ],
+          "path": [
+            "state"
+          ],
+          "message": "Invalid input: expected \"omitted\""
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "step"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        },
+        {
+          "code": "unrecognized_keys",
+          "keys": [
+            "disposition",
+            "proof"
+          ],
+          "path": [],
+          "message": "Unrecognized keys: \"disposition\", \"proof\""
+        }
+      ]
+    ],
+    "path": [
+      "pendingSweep"
+    ],
+    "message": "Invalid input"
+  }
+]
+ ❯ tests/unit/fixtures/activity-person-pseudonym-fixtures.ts:43:67
+     41| });
+     42|
+     43| export const CURRENT_SEPARATIONS_RESULT = SeparationsResultSchema.pars…
+       |                                                                   ^
+     44|   documentNumber: COMPOSITION_DOCUMENT,
+     45|   approved: COMPOSITION_SCOPE_OUTPUTS.approval.approved,
+ ❯ tests/unit/activity-person-pseudonym-backfill.test.ts:34:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/17]⎯
+
+ FAIL  |unit| tests/unit/activity-person-pseudonym.test.ts [ tests/unit/activity-person-pseudonym.test.ts ]
+ZodError: [
+  {
+    "code": "invalid_union",
+    "errors": [
+      [
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "clearedTransactionIds"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        },
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "protectedTransactionIds"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "setDigest"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        }
+      ],
+      [
+        {
+          "code": "invalid_value",
+          "values": [
+            "omitted"
+          ],
+          "path": [
+            "state"
+          ],
+          "message": "Invalid input: expected \"omitted\""
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "step"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        },
+        {
+          "code": "unrecognized_keys",
+          "keys": [
+            "disposition",
+            "proof"
+          ],
+          "path": [],
+          "message": "Unrecognized keys: \"disposition\", \"proof\""
+        }
+      ]
+    ],
+    "path": [
+      "pendingSweep"
+    ],
+    "message": "Invalid input"
+  }
+]
+ ❯ tests/unit/fixtures/activity-person-pseudonym-fixtures.ts:43:67
+     41| });
+     42|
+     43| export const CURRENT_SEPARATIONS_RESULT = SeparationsResultSchema.pars…
+       |                                                                   ^
+     44|   documentNumber: COMPOSITION_DOCUMENT,
+     45|   approved: COMPOSITION_SCOPE_OUTPUTS.approval.approved,
+ ❯ tests/unit/activity-person-pseudonym.test.ts:18:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/17]⎯
+
+ FAIL  |unit| tests/unit/separations-step-omissions.test.ts [ tests/unit/separations-step-omissions.test.ts ]
+ZodError: [
+  {
+    "code": "invalid_union",
+    "errors": [
+      [
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "clearedTransactionIds"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        },
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "protectedTransactionIds"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "setDigest"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        }
+      ],
+      [
+        {
+          "code": "invalid_value",
+          "values": [
+            "omitted"
+          ],
+          "path": [
+            "state"
+          ],
+          "message": "Invalid input: expected \"omitted\""
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "step"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        },
+        {
+          "code": "unrecognized_keys",
+          "keys": [
+            "disposition",
+            "proof"
+          ],
+          "path": [],
+          "message": "Unrecognized keys: \"disposition\", \"proof\""
+        }
+      ]
+    ],
+    "path": [
+      "pendingSweep"
+    ],
+    "message": "Invalid input"
+  }
+]
+ ❯ tests/unit/fixtures/activity-person-pseudonym-fixtures.ts:43:67
+     41| });
+     42|
+     43| export const CURRENT_SEPARATIONS_RESULT = SeparationsResultSchema.pars…
+       |                                                                   ^
+     44|   documentNumber: COMPOSITION_DOCUMENT,
+     45|   approved: COMPOSITION_SCOPE_OUTPUTS.approval.approved,
+ ❯ tests/unit/separations-step-omissions.test.ts:25:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/17]⎯
+
+ FAIL  |unit| tests/unit/sqlite-authority-database.test.ts [ tests/unit/sqlite-authority-database.test.ts ]
+ZodError: [
+  {
+    "code": "invalid_union",
+    "errors": [
+      [
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "clearedTransactionIds"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        },
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "protectedTransactionIds"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "setDigest"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        }
+      ],
+      [
+        {
+          "code": "invalid_value",
+          "values": [
+            "omitted"
+          ],
+          "path": [
+            "state"
+          ],
+          "message": "Invalid input: expected \"omitted\""
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "step"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        },
+        {
+          "code": "unrecognized_keys",
+          "keys": [
+            "disposition",
+            "proof"
+          ],
+          "path": [],
+          "message": "Unrecognized keys: \"disposition\", \"proof\""
+        }
+      ]
+    ],
+    "path": [
+      "pendingSweep"
+    ],
+    "message": "Invalid input"
+  }
+]
+ ❯ tests/unit/fixtures/activity-person-pseudonym-fixtures.ts:43:67
+     41| });
+     42|
+     43| export const CURRENT_SEPARATIONS_RESULT = SeparationsResultSchema.pars…
+       |                                                                   ^
+     44|   documentNumber: COMPOSITION_DOCUMENT,
+     45|   approved: COMPOSITION_SCOPE_OUTPUTS.approval.approved,
+ ❯ tests/unit/sqlite-authority-database.test.ts:65:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/17]⎯
+
+ FAIL  |unit| tests/unit/architecture/strict-boundary-schemas.test.ts [ tests/unit/architecture/strict-boundary-schemas.test.ts ]
+ZodError: [
+  {
+    "code": "invalid_union",
+    "errors": [
+      [
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "clearedTransactionIds"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        },
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "protectedTransactionIds"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "setDigest"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        }
+      ],
+      [
+        {
+          "code": "invalid_value",
+          "values": [
+            "omitted"
+          ],
+          "path": [
+            "state"
+          ],
+          "message": "Invalid input: expected \"omitted\""
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "step"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        },
+        {
+          "code": "unrecognized_keys",
+          "keys": [
+            "disposition",
+            "proof"
+          ],
+          "path": [],
+          "message": "Unrecognized keys: \"disposition\", \"proof\""
+        }
+      ]
+    ],
+    "path": [
+      "pendingSweep"
+    ],
+    "message": "Invalid input"
+  }
+]
+ ❯ tests/unit/fixtures/activity-person-pseudonym-fixtures.ts:43:67
+     41| });
+     42|
+     43| export const CURRENT_SEPARATIONS_RESULT = SeparationsResultSchema.pars…
+       |                                                                   ^
+     44|   documentNumber: COMPOSITION_DOCUMENT,
+     45|   approved: COMPOSITION_SCOPE_OUTPUTS.approval.approved,
+ ❯ tests/unit/architecture/strict-boundary-schemas.test.ts:351:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/17]⎯
+
+ FAIL  |unit| tests/unit/server/bff-flow.test.ts [ tests/unit/server/bff-flow.test.ts ]
+ZodError: [
+  {
+    "code": "invalid_union",
+    "errors": [
+      [
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "clearedTransactionIds"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        },
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "protectedTransactionIds"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "proof",
+            "setDigest"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        }
+      ],
+      [
+        {
+          "code": "invalid_value",
+          "values": [
+            "omitted"
+          ],
+          "path": [
+            "state"
+          ],
+          "message": "Invalid input: expected \"omitted\""
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "step"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        },
+        {
+          "code": "unrecognized_keys",
+          "keys": [
+            "disposition",
+            "proof"
+          ],
+          "path": [],
+          "message": "Unrecognized keys: \"disposition\", \"proof\""
+        }
+      ]
+    ],
+    "path": [
+      "pendingSweep"
+    ],
+    "message": "Invalid input"
+  }
+]
+ ❯ tests/unit/fixtures/activity-person-pseudonym-fixtures.ts:43:67
+     41| });
+     42|
+     43| export const CURRENT_SEPARATIONS_RESULT = SeparationsResultSchema.pars…
+       |                                                                   ^
+     44|   documentNumber: COMPOSITION_DOCUMENT,
+     45|   approved: COMPOSITION_SCOPE_OUTPUTS.approval.approved,
+ ❯ tests/unit/server/bff-flow.test.ts:104:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/17]⎯
+
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 11 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |scenario| tests/scenario/dashboard/separations/needs-you-and-ledger.scenario.test.ts > separations dashboard — the write ledger the archive resolves > resolves a run's UCPath lines in file order, with the sweep's absence between them
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
++   reason: "this line's proof names ucpath/delete-pending-terminations's schema and does not satisfy it, so its action cannot be read: [\n" +
++     '  {\n' +
++     '    "expected": "array",\n' +
++     '    "code": "invalid_type",\n' +
++     '    "path": [\n' +
++     '      "clearedTransactionIds"\n' +
++     '    ],\n' +
++     '    "message": "Invalid input: expected array, received undefined"\n' +
++     '  },\n' +
++     '  {\n' +
++     '    "expected": "array",\n' +
++     '    "code": "invalid_type",\n' +
++     '    "path": [\n' +
++     '      "protectedTransactionIds"\n' +
++     '    ],\n' +
++     '    "message": "Invalid input: expected array, received undefined"\n' +
++     '  },\n' +
++     '  {\n' +
++     '    "expected": "string",\n' +
++     '    "code": "invalid_type",\n' +
++     '    "path": [\n' +
++     '      "setDigest"\n' +
++     '    ],\n' +
++     '    "message": "Invalid input: expected string, received undefined"\n' +
++     '  }\n' +
++     ']',
++   state: 'absent'
+-   state: 'present',
+-   value: 'Cleared pending terminations for identifier#41d1848fa5fc (grid scanned 2 rows)'
+  }
+
+
+- Expected
++ Received
+
+  {
+-   "state": "present",
+-   "value": "Cleared pending terminations for identifier#41d1848fa5fc (grid scanned 2 rows)",
++   "reason": "this line's proof names ucpath/delete-pending-terminations's schema and does not satisfy it, so its action cannot be read: [
++   {
++     \"expected\": \"array\",
++     \"code\": \"invalid_type\",
++     \"path\": [
++       \"clearedTransactionIds\"
++     ],
++     \"message\": \"Invalid input: expected array, received undefined\"
++   },
++   {
++     \"expected\": \"array\",
++     \"code\": \"invalid_type\",
++     \"path\": [
++       \"protectedTransactionIds\"
++     ],
++     \"message\": \"Invalid input: expected array, received undefined\"
++   },
++   {
++     \"expected\": \"string\",
++     \"code\": \"invalid_type\",
++     \"path\": [
++       \"setDigest\"
++     ],
++     \"message\": \"Invalid input: expected string, received undefined\"
++   }
++ ]",
++   "state": "absent",
+  }
+
+ ❯ tests/scenario/dashboard/separations/needs-you-and-ledger.scenario.test.ts:291:12
+    289|     if (sweep.state !== "resolved" || termination.state !== "resolved"…
+    290|
+    291|     assert.deepEqual({ ...sweep.action }, {
+       |            ^
+    292|       state: "present",
+    293|       value: `Cleared pending terminations for ${directIdentifierDiges…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/17]⎯
+
+ FAIL  |unit| tests/unit/archive-ledger-read-through.test.ts > resolving an archived run's ledger pointers > says a UCPath grid delete HAS no confirmation, which is not the same as undeclared
+AssertionError: Expected values to be strictly equal:
++ actual - expected
+
++ ''
+- 'Cleared pending terminations for identifier#b24a7c564df0 (grid scanned 3 rows)'
+
+
+- Expected
++ Received
+
+- Cleared pending terminations for identifier#b24a7c564df0 (grid scanned 3 rows)
+
+ ❯ tests/unit/archive-ledger-read-through.test.ts:218:12
+    216|     assert.equal(resolved.state, "resolved");
+    217|     if (resolved.state !== "resolved") return;
+    218|     assert.equal(
+       |            ^
+    219|       resolved.action.state === "present" ? resolved.action.value : "",
+    220|       `Cleared pending terminations for ${directIdentifierDigestRefere…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/17]⎯
+
+ FAIL  |unit| tests/unit/separations-kuali-finalization-terminal-proof.test.ts > supplied-EID executor authority > writes through the real sequencer with machine provenance and no operator gate
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
++   failureId: 'bbbbbbbb-0001-4000-8000-000100000000',
+    runId: '22222222-2222-4222-8222-222222222222',
++   state: 'failed'
+-   state: 'done'
+  }
+
+
+- Expected
++ Received
+
+  {
++   "failureId": "bbbbbbbb-0001-4000-8000-000100000000",
+    "runId": "22222222-2222-4222-8222-222222222222",
+-   "state": "done",
++   "state": "failed",
+  }
+
+ ❯ tests/unit/separations-kuali-finalization-terminal-proof.test.ts:331:12
+    329|     const claimed = enqueueFromComparison(value, true);
+    330|     const outcome = await value.bound(() => executeClaimedRun(executor…
+    331|     assert.deepEqual(outcome, { state: "done", runId: FINALIZATION_RUN…
+       |            ^
+    332|     assert.deepEqual(value.database.authority.gateResults.listByRun(FI…
+    333|     assert.equal(value.emitter.events().some((event) => event.t === "g…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/17]⎯
+
+ FAIL  |unit| tests/unit/separations-kuali-finalization-terminal-proof.test.ts > supplied-EID executor authority > previews without a gate or any intent, attempt, or outbox write
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
++   failureId: 'bbbbbbbb-0001-4000-8000-000100000000',
+    runId: '22222222-2222-4222-8222-222222222222',
++   state: 'failed'
+-   state: 'done'
+  }
+
+
+- Expected
++ Received
+
+  {
++   "failureId": "bbbbbbbb-0001-4000-8000-000100000000",
+    "runId": "22222222-2222-4222-8222-222222222222",
+-   "state": "done",
++   "state": "failed",
+  }
+
+ ❯ tests/unit/separations-kuali-finalization-terminal-proof.test.ts:347:12
+    345|     const claimed = enqueueFromComparison(value, true, true);
+    346|     const outcome = await value.bound(() => executeClaimedRun(executor…
+    347|     assert.deepEqual(outcome, { state: "done", runId: FINALIZATION_RUN…
+       |            ^
+    348|     assert.deepEqual(value.database.authority.gateResults.listByRun(FI…
+    349|     assert.deepEqual(value.database.authority.writeIntents.listByRun(F…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/17]⎯
+
+ FAIL  |unit| tests/unit/separations-kuali-finalization-terminal-proof.test.ts > D144 — current Kuali finalization transaction is terminal evidence > settles through the real executor and derives a verified receipt from the stored read-back
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
++   failureId: 'bbbbbbbb-0001-4000-8000-000100000000',
+    runId: '22222222-2222-4222-8222-222222222222',
++   state: 'failed'
+-   state: 'done'
+  }
+
+
+- Expected
++ Received
+
+  {
++   "failureId": "bbbbbbbb-0001-4000-8000-000100000000",
+    "runId": "22222222-2222-4222-8222-222222222222",
+-   "state": "done",
++   "state": "failed",
+  }
+
+ ❯ tests/unit/separations-kuali-finalization-terminal-proof.test.ts:364:12
+    362|     }));
+    363|
+    364|     assert.deepEqual(outcome, { state: "done", runId: FINALIZATION_RUN…
+       |            ^
+    365|     const proof = deriveReceipts(value);
+    366|     assert.equal(proof.run.lifecycle.state, "terminal");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/17]⎯
+
+ FAIL  |unit| tests/unit/separations-kuali-finalization-terminal-proof.test.ts > D144 — current Kuali finalization transaction is terminal evidence > refuses terminal success when the sequencer's checkpoint is hidden from the executor
+AssertionError: The input did not match the regular expression /settled but run .* has no durable checkpoint/u. Input:
+
+'[ucpath/verify-termination-filing-present] unhandled: the Person Org fixture does not implement `scanTerminationTransactions`. The `ucpath` store has ONE driver declaration covering two unrelated screen families; a fixture answers only the half it was built for, because a fabricated answer from the other half would be invented HR data.'
+
+
+- Expected:
+/settled but run .* has no durable checkpoint/u
+
++ Received:
+"[ucpath/verify-termination-filing-present] unhandled: the Person Org fixture does not implement `scanTerminationTransactions`. The `ucpath` store has ONE driver declaration covering two unrelated screen families; a fixture answers only the half it was built for, because a fabricated answer from the other half would be invented HR data."
+
+ ❯ tests/unit/separations-kuali-finalization-terminal-proof.test.ts:455:12
+    453|     assert.equal(run.lifecycle.failureId, outcome.failureId);
+    454|     const failure = value.database.authority.failures.get(outcome.fail…
+    455|     assert.match(failure?.summary ?? "", /settled but run .* has no du…
+       |            ^
+    456|     assert.notEqual(
+    457|       value.database.authority.runCheckpoints.latest(
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/17]⎯
+
+ FAIL  |unit| tests/unit/architecture/step-omission-invariants.test.ts > step-omission invariants (D307) > never classifies a gate node as asserted or omitted — alone, with its cascade forces, or with every omittable step of its descriptor
+AssertionError: separations::ucpath-transaction: omitted nodes changed
++ actual - expected
+
+  [
+    'clear-pending',
+    'file-termination',
++   'pending-set'
+  ]
+
+
+- Expected
++ Received
+
+  [
+    "clear-pending",
+    "file-termination",
++   "pending-set",
+  ]
+
+ ❯ tests/unit/architecture/step-omission-invariants.test.ts:459:16
+    457|         assert.ok(expected !== undefined, `${key}: a production step d…
+    458|         assert.deepEqual(sorted(alone.asserted.keys()), expected?.asse…
+    459|         assert.deepEqual(sorted(alone.omitted.keys()), expected?.omitt…
+       |                ^
+    460|       }
+    461|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/17]⎯
+
+ FAIL  |unit| tests/unit/dashboard/proof-contract.test.ts > the served proof contract (ref write-safety §4.1, D245) > describes every registered commit contract's completion proof
+AssertionError: ucpath/delete-pending-terminations (separations-ucpath-termination) has an undescribable proof, so its present arm cannot be composed: proof field "clearedTransactionIds" is a zod "array", which this describer does not model
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/dashboard/proof-contract.test.ts:93:14
+     91|     for (const commit of registeredCommits()) {
+     92|       const shape = describeProofShape(commit.proofSchema);
+     93|       assert.ok(
+       |              ^
+     94|         shape.state === "described",
+     95|         `${commit.taskId} (${commit.workflowId}) has an undescribable …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/17]⎯
+
+ FAIL  |unit| tests/unit/dashboard/proof-contract.test.ts > the served proof contract (ref write-safety §4.1, D245) > round-trips a real proof through the form and back into the contract's own schema
+AssertionError: The expression evaluated to a falsy value:
+
+  ok(shape.state === "described")
+
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/dashboard/proof-contract.test.ts:109:14
+    107|     for (const commit of registeredCommits()) {
+    108|       const shape = describeProofShape(commit.proofSchema);
+    109|       assert.ok(shape.state === "described");
+       |              ^
+    110|       const drafts = draftsFor(shape.fields, commit.proof);
+    111|       const composed = composeProofValue(shape.fields as readonly Proo…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/17]⎯
+
+ FAIL  |unit| tests/unit/dashboard/proof-contract.test.ts > the served proof contract (ref write-safety §4.1, D245) > parses every described field list through the served wire schema
+AssertionError: The expression evaluated to a falsy value:
+
+  ok(shape.state === "described")
+
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/dashboard/proof-contract.test.ts:126:14
+    124|     for (const commit of registeredCommits()) {
+    125|       const shape = describeProofShape(commit.proofSchema);
+    126|       assert.ok(shape.state === "described");
+       |              ^
+    127|       const parsed = ProofContractWireSchema.parse({
+    128|         state: "served",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/17]⎯
+
+ FAIL  |unit| tests/unit/dashboard/proof-contract.test.ts > the served proof contract (ref write-safety §4.1, D245) > pins literals as fixed and never as an operator input
+AssertionError: The expression evaluated to a falsy value:
+
+  ok(shape.state === "described")
+
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/dashboard/proof-contract.test.ts:149:14
+    147|     for (const commit of registeredCommits()) {
+    148|       const shape = describeProofShape(commit.proofSchema);
+    149|       assert.ok(shape.state === "described");
+       |              ^
+    150|       const fixed = shape.fields.filter((field) => field.kind === "fix…
+    151|       assert.ok(fixed.length > 0, `${commit.taskId} pins no literal at…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/17]⎯
+
+
+ Test Files  11 failed | 378 passed (389)
+      Tests  11 failed | 4618 passed (4629)
+   Start at  11:12:59
+   Duration  114.34s (transform 11.16s, setup 0ms, import 129.67s, tests 252.33s, environment 5.98s)
+

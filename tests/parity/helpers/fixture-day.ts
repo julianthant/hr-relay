@@ -792,8 +792,8 @@ export const FIXTURE_RUN_DETAILS: Readonly<Record<string, RunDetailWire>> = Obje
   /*
     THE GATED RUN (ref write-safety §14.4, D226). The corpus has photographed this run's
     open-gate CARD since it was written and never served the section behind it,
-    so the decision card drew no way to answer it and the three ceremonies
-    §14.6 risk 1 exists to enforce were unphotographed. It advertises
+    so the decision card drew no way to answer it and the ceremony was
+    unphotographed. It advertises
     `identity-gate` now, and the section carries a packet built by the
     production fold — see `fixture-gate.ts` for why the shape is derived rather
     than authored.
@@ -1308,14 +1308,13 @@ function sectionsOf(
 }
 
 /**
- * THE TWO GATED PACKETS (ref write-safety §14.4/§14.6, D226).
+ * THE TWO NAME-ONLY GATED PACKETS (ref write-safety §14.4/§14.6, D226).
  *
  * Their ceremonies are DERIVED — `buildFixtureIdentityGate` feeds real inputs
  * to the production fold and `deriveApprovalShape` decides. The only thing that
- * differs between them is the document's own spelling of the name, which is the
- * honest lever: §14.6 makes the shape a server decision precisely so nobody
- * downstream may choose a cheaper control, and a fixture that asserted the
- * shape would photograph its own opinion of that policy.
+ * differs between them is the document's own spelling of the name. Both derive
+ * the strict `type-the-eid` shape because the EID came from a name search; the
+ * second also carries a name disagreement.
  */
 export const FIXTURE_IDENTITY_GATE = buildFixtureIdentityGate({
   runId: FIXTURE_IDS.openGateRun,
@@ -1325,8 +1324,8 @@ export const FIXTURE_IDENTITY_GATE = buildFixtureIdentityGate({
   resumeAt: "approval",
   expectedVersion: 5,
   observedAt: at(48),
-  // The names agree; a search on the document's name resolves a DIFFERENT
-  // person, so the gate asks WHICH — `choose-a-candidate`.
+  // The names agree, but the EID came from the name search, so approval still
+  // requires the typed-EID ceremony.
   documentName: "Blirea, Glaundi",
 });
 

@@ -2,12 +2,10 @@
  * THE THREE IDENTITY-APPROVAL CEREMONIES (ref write-safety §14.4/§14.6, D226).
  *
  * The identity gate asks one question — *is this the right person* — and ref write-safety
- * §14.6 risk 1 says the CONTROL that answers it may not be the same control
- * every time. ALWAYS-GATE fires on every separation, so a gate that is one
- * click on every run carries no signal at all and trains the operator to
- * approve without reading: rubber-stamping, manufactured by accident. The
- * answer §14.6 ratified is that the shape of the decision changes with its
- * risk, and that the SERVER decides which shape — `approvalShape` is computed
+ * §14.6 risk 1 says the CONTROL that answers it must reflect the evidence. This
+ * gate is now present only for a name-resolved EID; supplied-EID read-back uses
+ * machine authority and never reaches this module. When the gate is present,
+ * the SERVER decides its shape — `approvalShape` is computed
  * in `src/domain/separations/identity-evidence.ts` and served on the wire
  * precisely so a frontend cannot quietly downgrade every gate to one click.
  *
@@ -37,7 +35,7 @@ export type IdentityGateAvailable = Extract<IdentityGatePayload, { state: "avail
 export type IdentityGateDetail = IdentityGateAvailable["value"];
 
 /**
- * One approvable EID, paired with the `chosenFrom` label the POST-GATE node
+ * One approvable EID, paired with the `chosenFrom` label the authority node
  * will verify. The label is served, never inferred: `verify-identity-approval`
  * re-derives where an approved EID actually came from and refuses a label the
  * packet contradicts (`identity-approval-choice-mismatch`), so a surface that
@@ -189,7 +187,7 @@ export function identityDraftProblem(
       return optionFor(ceremony.options, draft.eid) === undefined
         ? `The packet never showed EID ${directIdentifierDigestReference(draft.eid)}. This run performed no live read of it, so `
           + "approving it would file against a person nothing here looked at — which is what the "
-          + "post-gate check refuses as `identity-approval-eid-not-shown`."
+          + "identity authority check refuses as `identity-approval-eid-not-shown`."
         : undefined;
   }
 }

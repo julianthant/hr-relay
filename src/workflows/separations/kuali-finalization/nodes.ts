@@ -10,14 +10,26 @@
  * one pure fold only this step's binds consume, so it lives here.
  */
 import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
-import { FINALIZE_NODE } from "./node-ids.js";
+import { FILING_PRESENCE_NODE, FINALIZE_NODE } from "./node-ids.js";
 import { KualiSaveSeparationFinalization } from "../../../domain/contracts/kuali/save-separation-finalization.js";
 import { KualiStageSeparationFinalization } from "../../../domain/contracts/kuali/stage-separation-finalization.js";
+import { UcpathVerifyTerminationFilingPresent } from "../../../domain/contracts/ucpath/verify-termination-filing-present.js";
 import { KUALI_FINALIZATION_STEP } from "./step.js";
 import { KUALI_FINALIZATION_OMISSION } from "./omission.js";
 
 
 const nodes = defineWorkflowStepNodeFactory(KUALI_FINALIZATION_STEP);
+
+/**
+ * Always re-read the durable UCPath filing immediately before finalization.
+ * Replaying a checkpoint would make an old observation authorize a new Kuali
+ * write after the filing had moved, disappeared, or become denied.
+ */
+export const filingPresenceNode = nodes.task(
+  FILING_PRESENCE_NODE,
+  UcpathVerifyTerminationFilingPresent,
+  { label: "Verify Current UCPath Filing", replay: "always-rerun" },
+);
 
 /** `""` when the control was empty — S56's baseline, which is a real value. */
 export function existingComments(comments: { state: "present"; value: string } | { state: "absent" }): string {
@@ -43,5 +55,8 @@ export const finalizeKualiNode = nodes.transaction(FINALIZE_NODE, {
 });
 
 /** The step's timeline category — key and label from `step.ts`, nodes from the fragment above. */
-export const KUALI_FINALIZATION_STEP_NODES = nodes.category([finalizeKualiNode], { omission: KUALI_FINALIZATION_OMISSION });
-export { FINALIZE_NODE } from "./node-ids.js";
+export const KUALI_FINALIZATION_STEP_NODES = nodes.category(
+  [filingPresenceNode, finalizeKualiNode],
+  { omission: KUALI_FINALIZATION_OMISSION },
+);
+export { FILING_PRESENCE_NODE, FINALIZE_NODE } from "./node-ids.js";

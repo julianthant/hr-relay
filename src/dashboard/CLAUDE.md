@@ -106,6 +106,13 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-02 — machine identity is not an approval card (D309).** The Separations identity-gate
+  section is reachable only for a `name-resolved` packet, and its current ceremony requires the
+  operator to type the EID. A supplied/read-back EID proceeds with machine-verification authority and
+  no gate result, so the BFF refuses an impossible historical supplied-EID park by name instead of
+  drawing it as approval work. The client never suppresses a gate from caller state and never labels
+  a skipped gate as an operator decision.
+
 - **2026-09-01 — a chip per fact is a table wearing borders, and the facts a row REPEATS belong
   one level up (the run Logs observed ledger).** An observed log row drew one bordered `Chip` per
   redacted value — twelve for a Kuali document read — each carrying its own direction icon, the
@@ -1539,6 +1546,15 @@ binding would contradict them.
   file, leaving the a11y and PNG corpus describing different byte lengths and digests. Gallery
   evidence now comes from a deterministic synthetic PNG in `tests/fixtures/`, and an architecture
   test prevents `fixture-day.ts` from reading the reference corpus again.
+- **2026-09-01 — D306's dashboard defaults are Headed with browser screenshot capture on.** A new or
+  reset Start Run modal presents those values before planning; selecting Headless or disabling capture
+  remains an explicit per-run choice that is persisted unchanged. Historical and programmatic omissions
+  keep the compatibility behavior owned by `ref clock-config-secrets`; the dashboard never omits either
+  field.
+- **2026-09-01 — fixed and editable Run Options share one field shell and grid by operator ruling.**
+  Fixed workflow values use a disabled native select with their reason visible below it; Priority and
+  Browser mode remain enabled selects. The disabled state carries the lock semantics while one
+  two-column grid keeps every value control aligned.
 - **2026-09-01 — the queue footer's `#N` is the ATTEMPT, and the trace id is text, not a chip.** The
   rebuild had read the demo's `#{row.run}` as the run's ordinal within its workflow and drawn it
   beside a second, outlined chip for the trace id plus a fourth `attempt N` segment — three

@@ -224,8 +224,8 @@ function packetWithPlan(): IdentityEvidencePacket {
   return buildIdentityEvidencePacket({
     documentNumber: "4510",
     documentName: "Battistessa, Johnnie",
-    documentEidText: EID,
-    emplIdSource: "document-eid",
+    documentEidText: "blank (the document supplied no EID)",
+    emplIdSource: "name-resolved",
     documentEidConflicts: false,
     jobSummary: {
       pageStateId: "ucpath.person-org.detail-ready",
@@ -367,9 +367,9 @@ describe("separations — the identity-gate wire", () => {
       deriveSchemaHash(IdentityApprovalResultSchema, "output"),
     );
     assert.equal(payload.value.evidenceDigest, deriveIdentityEvidenceDigest(packet));
-    // A single unambiguous, same-named, single-active-job candidate off the
-    // document's own EID is the one shape that is a one-click approve.
-    assert.equal(payload.value.approvalShape, "one-click");
+    // Even a single exact name candidate remains an operator decision: the
+    // packet carries no independently supplied EID, so D309 requires typing it.
+    assert.equal(payload.value.approvalShape, "type-the-eid");
     // And a command built straight off this payload parses through the kernel's
     // own request schema unchanged, which is what "approvable through the
     // existing machinery" means for a workflow whose gate dominates three real

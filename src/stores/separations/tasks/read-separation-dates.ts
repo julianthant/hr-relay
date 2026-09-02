@@ -42,6 +42,7 @@ export const readSeparationDatesTask = defineTask(SeparationsReadSeparationDates
       { direction: "read", field: "unclassifiedPayCodes", value: output.unclassifiedPayCodes },
       { direction: "read", field: "terminationComments", value: output.terminationComments },
       { direction: "read", field: "dateChangeComments", value: output.dateChangeComments },
+      { direction: "read", field: "source", value: output.source },
     ]);
     return output;
   },

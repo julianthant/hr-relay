@@ -833,7 +833,7 @@ on every surface instead. **The layout now says it, and the role and the layout 
    an `of` that is not a registered composition. A harness that needs other steps' nodes IMPORTS
    their fragments rather than restating them — today the three write harnesses each carry a second
    copy of `job-summary` / `name-search` / `comparison` / the gate / `approval` so that each can
-   re-cross the ALWAYS-GATE before its write; after the move they import `identity-check/`'s, and
+   re-establish identity authority before its write; after the move they import `identity-check/`'s, and
    the four copies become one.
 4. **There is no `proving/` (D266, same day).** The first draft of this rule reserved a third arm for
    `kuali-timekeeper-annotation`; the operator's ruling dismantled it — *"this is just a part of the
@@ -1000,6 +1000,59 @@ reads one, so every label an operator sees today comes from layer 2 alone. The o
 Settings' work (ref operator-trust §5.2) and it is named here because a reader looking for "where do
 I rename a step" needs the answer to be "you edit the descriptor, for now" rather than a path that
 resolves to nothing.
+
+### 1.6 Workflow recipe — the one authoring seam (D311, 2026-09-02)
+
+<!-- roadmap: workflow-authoring-model -->
+
+The runtime model above remains authoritative, but workflow authors no longer hand-maintain each of
+its projections independently. A **workflow recipe** is the reviewed source form for every new or
+converted workflow. Its central field is one ordered array of **timeline tuples**:
+
+```ts
+steps: [
+  [
+    { key: "kuali-extraction", label: "Kuali extraction" },
+    [findKualiAction, readKualiDocument, buildSeparationPlan],
+  ],
+  [
+    { key: "ucpath-identity", label: "UCPath identity" },
+    [findEmployee, readEmployeeDetails, verifyIdentity],
+  ],
+]
+```
+
+The tuple contract is exact:
+
+1. `steps` is a readonly ordered array of two-tuples
+   `[WorkflowTimelineGroup, readonly WorkflowRecipeTask[]]`. The group has a stable `key` and an
+   operator-facing `label`; the outer array is the timeline's order and grouping authority.
+2. Each task is a typed reusable value over an existing task contract and appears in exactly one
+   tuple. Tuple order is presentation order, **not** hidden execution authority. Input references
+   derive the execution edges; an unresolved reference, duplicate task, cycle, or cross-group
+   dependency the compiler cannot represent refuses the build by name.
+3. Read, compute, gate and transaction tasks retain the existing task, checkpoint, provenance,
+   replay, write-safety and receipt contracts. A recipe does not turn selectors into workflow code:
+   selectors and page-state interpretation remain in the system driver, while a browser task names
+   the typed operation it needs.
+4. One recipe compiler derives the existing `WorkflowDescriptor`, workflow module requirements,
+   start/run-modal projection, timeline/detail projection, Explorer projection and registry-facing
+   value. The compiled products must be equivalent to the hand-authored forms they replace; D311
+   changes authoring, not run execution or durable bytes.
+5. D265's folder rule becomes an organization and audit rule, not the semantic source of the rail.
+   A top-level workflow folder and step sub-folders remain, and a guard may require them to agree
+   with recipe keys, but the recipe tuples are what define timeline membership and order.
+6. Conversion is additive only until equivalence is proved. Person lookup is the smallest compiler
+   proof; separations is the completeness proof. After both match their existing public descriptor,
+   module and dashboard behavior, the redundant hand-authored declarations and tests are deleted.
+   Permanent dual authoring is refused.
+
+The first implementation deliberately preserves the current run modal, D307 step-omission
+semantics, diagnostic screenshot policy, `data.observed` logging, gates and transaction sequencer.
+Changing those behaviors requires their own decision; they are not smuggled into an authoring
+refactor. The rejected alternatives are keeping the current multi-file assembly as the migration
+API, or replacing the proven runtime with a second workflow engine. The first preserves the cost;
+the second spends write-safety evidence to solve an authoring problem.
 
 ---
 
@@ -1271,9 +1324,9 @@ export const PersonLookupInput = z.union([
 
 <!-- roadmap-status: sep-6a -->
 - [x] the composed `separations` descriptor is the builder's real-scale proof in production shape: **19 nodes** — 15 `.step`, 1 `.gate`, 3 `.transaction` — assembled from the five chunk harnesses' proven tasks (`src/workflows/separations/descriptor.ts:288-700`)
-- [x] the ALWAYS-GATE dominates both sinks, decision and output: `identity-gate-before-commit` audits a terminal result as well as a transaction node, and caught the descriptor's first draft reading the document number straight off a PRE-gate node (D202)
-- [x] the gate's packet carries the WRITE PLAN — dates, template, department — so a value that moves after approval re-derives a different digest and re-opens the gate (D211, ref write-safety §14.10)
-- [x] every refusal the composition can compute lands BEFORE the gate opens, because the graph's product is a filed termination rather than an approved subject
+- [x] the identity-authority task dominates both sinks, decision and output: `identity-gate-before-commit` audits terminal results and transactions, and pins the gate's exact name-only condition (D202/D309)
+- [x] the packet carries the WRITE PLAN — dates, template, department — so moved evidence refuses either supplied-EID machine verification or name-only approval (D211/D309, ref write-safety §14.10/§14.12)
+- [x] every refusal needed to decide identity authority lands before the conditional gate is evaluated; supplied-EID machine verification and name-only approval then converge on one authority task before any write or terminal product
 - [x] `resolve-action` is the head node D261 added, so the composition starts from one typed document number (§1.1's D261)
 - [x] the composition declares `role: composition` and the five chunks became `chunk-harness of separations` on the day it registered; nothing about their run identity moved (§1.2.1, D219)
 - [ ] `branch`, `parallel` and `child-run` remain unexercised by this composition and by every other registered workflow; the builder's proof for those three kinds is `tests/types/flow-graph.typecheck.ts` and `fixtureDescriptor`
@@ -1722,19 +1775,16 @@ OCR approval, oath-upload's child-signature watching, external signals — are *
 descriptor sequence, owned by this state machine. Ref dashboard-surfaces's `gate.opened`/`gate.resolved` events
 are their wire form; this doc defines the semantics, ref dashboard-surfaces the encoding.
 
-**The identity-approval gate is designed in ref write-safety §14 (D77, 2026-07-26).** It is a gate node in
-every respect this section defines — park, session release, typed result, resume — so nothing
-here is special-cased for it. What ref write-safety owns is *what that particular gate asks and what its
-answer authorizes*: the decision packet, the ALWAYS-GATE policy, the staleness rule that re-opens
-a gate when the approved candidate has changed, and the binding of its result to the commit's
-expected subject. Two placement rules from that design constrain this graph and are restated
+**The Separations identity-approval gate is source-conditioned by D309 (ref write-safety §14.12).**
+It is an ordinary gate node in every respect this section defines — declared condition, park,
+session release, typed result, resume — so nothing here is special-cased for it. Ref write-safety
+owns the trigger and authority: exact supplied-EID/read-back evidence yields machine verification;
+name-resolved identity requires the operator result. Two placement rules constrain this graph and are restated
 here because this doc owns graph legality: **(1)** a gate node may never sit *inside* a
 `transaction` node — D26 forbids any park between `prepare` and `commit`, and a staged wizard
-page cannot survive an operator wait; **(2)** for a descriptor whose commit consumes an
-operator-approved subject, the commit must be graph-reachable **only** through that gate, which
-ref guards-and-tests' `identity-gate-before-commit` guard asserts statically — widened by
-D202 to audit the terminal RESULT as well as the transaction node, because a gate that dominates
-the decision must also dominate the output.
+page cannot survive an operator wait; **(2)** every Separations commit and identity-bearing terminal
+result must be graph-reachable only through the shared identity-authority task. Ref guards-and-tests'
+`identity-gate-before-commit` guard asserts both and separately pins the exact gate condition.
 
 **The states are a durable enum, and so are the outcomes.** `RunStateSchema`
 (`src/domain/run/record.ts:63-72`) is the `tasks.state` column's domain — `queued`, `claimed`,
@@ -1898,11 +1948,11 @@ problems (no fix-one-refresh-repeat loops).
 
 <!-- roadmap-status: sep-3 -->
 - [x] `ucpath/read-job-summary` returns the whole grid with statuses VERBATIM and classifies nothing; the disposition is a pure unconditional fold, and the absent arms split by what a blank MEANS — empl record, HR status and business unit refuse it, the nine descriptive cells carry `{state:"absent", reason}` (D201)
-- [x] the ALWAYS-GATE dominates both sinks; `identity-gate-before-commit` audits the terminal result as well as the transaction node, and a path is gated when it reaches the gate's own ANCESTRY (D202)
+- [x] the shared identity-authority task dominates both sinks; the guard also pins `identity-approval` to `packet.emplIdSource == name-resolved` (D202/D309)
 - [x] a gate's durable record is a `gate_results` row and the freshness walk reads it as evidence — `upstreamEvidence.gateResults` beside `checkpoints` (D203; `src/domain/task-provenance.ts:84-102`)
 - [x] the evidence RECEIPT reads the same row through a declared per-`(workflow, gate)` mapping rather than a field-name sniff, with its own `gate-result` redaction scope (D204, ref operator-trust §2.3)
 - [x] the freshness walk itself is conservative forward reachability over the static graph, refusing a replayed fact that can reach a commit scheduled in THIS run and naming the checkpoint, its age, its limit, the consuming commit node and the path between them (`src/domain/workflow/checkpoint.ts`)
-- [!] the incident that motivated the gate would not have tripped a tier-triggered one: `classifyNameSimilarity("Hernandez, Jose Santos", "Santos Hernandez")` returns `same`. That single fact is why the gate is ALWAYS, and why its packet leads with DISCONFIRMING evidence and computes `approvalShape` server-side
+- [!] the incident that motivated the gate would not have tripped a tier-triggered one: `classifyNameSimilarity("Hernandez, Jose Santos", "Santos Hernandez")` returns `same`. D309 therefore gates every `name-resolved` identity regardless of tier, while exact independently supplied/read-back EID uses machine authority
 > 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/task-provenance.ts`, `src/domain/workflow/checkpoint.ts` and `src/core/evidence-receipt.ts`; left: nothing — chunk 3 is closed
 
 <!-- /roadmap-status -->
@@ -2232,8 +2282,8 @@ A step folder may declare an `omission` beside its nodes, passed to `nodes.categ
 omission })` (`src/domain/workflow/step-omission.ts`): a closed `form` (field kinds `text`,
 `us-date`, `eid`, `integer`, `boolean`, `enum`, `text-list`) the Steps screen draws, and a `produces`
 map keyed by the step's TASK node ids — each a pure function that rebuilds one complete, schema-valid
-node output from the typed facts and the run's scope. Producers rebuild TASK nodes only: gate nodes
-in an omitted step always run (ALWAYS-GATE, D77/§4d, stands under every omission) and transaction
+node output from the typed facts and the run's scope. Producers rebuild TASK nodes only: an omission
+never removes a gate node, whose own descriptor condition still evaluates, and transaction
 nodes in an omitted step never run and mint no envelope (D144 — the write sequencer's row is the only
 thing that may say a write happened). A node the step cannot honestly rebuild is `omitted`; a running
 node elsewhere in the graph that depends on an omitted node refuses at plan time, by node and step

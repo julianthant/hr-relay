@@ -15,12 +15,9 @@
  * is exactly what the reference exists to catch. So the two gated runs differ
  * in their INPUTS and the shape falls out:
  *
- *  - **`choose-a-candidate`** — the names agree, and a UCPath search on the
- *    document's name resolves a DIFFERENT person. Two candidates, and only a
- *    human can say which the document means.
- *  - **`type-the-eid`** — the names do not match at all. That is `T002173685`'s
- *    own shape, and the riskiest packet the gate can serve, so the EID must be
- *    stated rather than recognised.
+ * Both fixtures are the real name-only path, so both use `type-the-eid`. One
+ * shows matching names and one shows disconfirming name evidence. A document-
+ * supplied EID never creates this section under the current contract.
  *
  * The two `resolve-gate` descriptors are the SERVER's, word for word
  * (`identityGateActions` in `src/server/dashboard/queries/run-detail.ts`), for
@@ -44,11 +41,8 @@ import type { IdentityEvidencePacket } from "../../../src/domain/separations/ide
 import { noSeparationWritePlan } from "../../../src/domain/separations/write-plan.js";
 import { deriveJobRowFromCells } from "../../../src/stores/ucpath/driver/person-org-operation.js";
 
-/** The EID the separation document carries, and the person UCPath showed for it. */
+/** The EID resolved by name and then read back from UCPath. */
 export const FIXTURE_GATE_CHECKED_EID = "10688204";
-/** The person a search on the document's NAME resolves — a different human. */
-export const FIXTURE_GATE_SEARCH_EID = "10412770";
-
 export const FIXTURE_GATE_RESULT_SCHEMA_HASH = deriveSchemaHash(IdentityApprovalResultSchema, "output");
 
 function packetOf(input: Readonly<{ documentName: string; observedAt: string }>): IdentityEvidencePacket {
@@ -59,8 +53,8 @@ function packetOf(input: Readonly<{ documentName: string; observedAt: string }>)
   return buildIdentityEvidencePacket({
     documentNumber: "4502",
     documentName: input.documentName,
-    documentEidText: FIXTURE_GATE_CHECKED_EID,
-    emplIdSource: "document-eid",
+    documentEidText: "the separation document carried no EID",
+    emplIdSource: "name-resolved",
     documentEidConflicts: false,
     jobSummary: {
       pageStateId: "ucpath.person-org.detail-ready",
@@ -74,14 +68,14 @@ function packetOf(input: Readonly<{ documentName: string; observedAt: string }>)
     nameSelection: {
       status: "resolved",
       selected: {
-        emplId: FIXTURE_GATE_SEARCH_EID as never,
+        emplId: FIXTURE_GATE_CHECKED_EID as never,
         name: "Blirea, Glaundi",
         department: "Facilities Management",
         jobTitle: "BLDG MAINT WORKER SR",
         employeeStatus: "active",
         hdh: false,
       },
-      candidateEids: [FIXTURE_GATE_SEARCH_EID as never],
+      candidateEids: [FIXTURE_GATE_CHECKED_EID as never],
     },
     plan: noSeparationWritePlan(
       "this workflow reads an identity and files nothing, so it composes no separation write plan",
@@ -92,7 +86,7 @@ function packetOf(input: Readonly<{ documentName: string; observedAt: string }>)
 /**
  * The server's own option mapping, copied from `run-detail.ts`: the checked EID
  * is `checked`, the one a name search resolved is `name-search`. A surface may
- * not invent either label — the post-gate node re-derives where the approved
+ * not invent either label — the identity-authority node re-derives where the approved
  * EID came from and refuses a contradiction as `identity-approval-choice-mismatch`.
  */
 function optionsOf(packet: IdentityEvidencePacket): unknown[] {

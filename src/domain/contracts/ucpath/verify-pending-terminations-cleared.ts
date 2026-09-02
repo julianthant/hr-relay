@@ -46,6 +46,10 @@ export const UcpathVerifyPendingTerminationsCleared = defineTaskContract({
       scannedRowCount: 3,
       observedAt: "2026-08-13T10:18:00.000Z",
       source: "ss-smart-hr-detail-read",
+      version: 2,
+      selectedTransactionIds: "none",
+      protectedTransactionIds: "T002204014",
+      setDigest: "0".repeat(64),
     },
   },
 });

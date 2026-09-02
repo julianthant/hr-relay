@@ -1020,6 +1020,13 @@ will — fabricating one would make a durable record claim a shape it does not h
 - **a `verified` obligation** for the node, replacing the `unknown` that used to stand for
   "authority holds nothing", which was false.
 
+**Amended by D309 (2026-09-02):** this remains the receipt shape for the name-resolved branch. When
+the identity gate's declarative condition is false, the executor opens no gate and creates no human
+decision. Provenance and receipt composition independently re-evaluate the condition from canonical
+input and authenticated checkpoints, reject any gate-result/checkpoint collision, and record the
+gate obligation absent/non-mandatory with a branch `not-taken` decision. The downstream identity
+subject then names `machine-verification`, never an approver.
+
 **Why the decision arm is declared and not sniffed.** `DecisionEvidence.outcome` is a closed
 five-value enum and a gate's result payload is authored per gate, so mapping one to the other by
 looking for a field called `decision` would put a plausible-but-wrong word on a record of a human
@@ -1903,6 +1910,23 @@ its space on them. Each removes a repetition; none removes a fact.
    two instead collapses column one to min-content and wraps every leaf. Equal halves put the file
    at the same x on every row of every card. A leaf past half the card WRAPS at the boundaries it
    already carries, because the id is the string a failure resolves to and may never be cut.
+
+#### 5.2.3 Recipe view — Explorer shows the authored workflow (D311, 2026-09-02)
+
+<!-- roadmap: workflow-authoring-model -->
+
+For a D311 workflow, the Explorer's primary graph list is grouped by the compiled workflow recipe:
+one group per timeline tuple, in outer-array order, headed by the tuple's stable key, label and task
+count. Tasks appear in tuple order. Opening one still shows the complete descriptor-derived contract,
+inputs, outputs, dependencies, replay policy, evidence and source links specified by §§5.2 and 5.9;
+the recipe view groups those facts and does not create a second description of them.
+
+The server projects this view from the compiled recipe supplied by the registry. The client never
+infers groups from folders, workflow ids, labels or span prose, and a workflow adds no
+Explorer-specific wiring when it uses this generic projection. Until the recipe compiler ships,
+the existing descriptor graph remains the truthful view. During conversion, recipe and descriptor
+projections must compare equal before the recipe becomes authoritative; Explorer never chooses
+between disagreeing sources at runtime.
 
 ### 5.3 Phase B—safe edits only
 

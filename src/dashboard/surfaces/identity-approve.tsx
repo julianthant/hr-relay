@@ -2,11 +2,10 @@
  * THE IDENTITY-APPROVAL CEREMONY (ref write-safety §14.4/§14.6/§14.10, D226).
  *
  * The gate asks one question — *is this the right person* — and ref write-safety §14.6
- * risk 1 is explicit that the control which answers it may not be the same
- * control every time. ALWAYS-GATE fires on EVERY separation, so a gate that is
- * one click on every run carries no signal and trains the operator to approve
- * without reading. The answer §14.6 ratified is that the shape of the decision
- * changes with its risk, and that the SERVER decides which shape.
+ * risk 1 is explicit that the control must reflect the evidence. The gate is
+ * present only for a name-resolved EID; supplied-EID read-back proceeds with
+ * machine authority and never renders this dialog. When present, the SERVER
+ * decides the decision shape.
  *
  * This surface renders what the server said and adds nothing:
  *
@@ -124,7 +123,7 @@ function PacketSubject({ gate }: { gate: IdentityGateDetail }) {
       {/*
         The packet's own identity, cut for the eye and whole on the element's
         `title`. §14.5 binds this approval to THIS digest: if the evidence moves
-        between opening the dialog and pressing the verb, the post-gate check
+        between opening the dialog and pressing the verb, the identity authority check
         refuses with `identity-approval-evidence-moved` and the gate re-opens.
         The ceremony is printed beside it because it is the server's statement
         about this decision's risk, and the operator is entitled to see that the

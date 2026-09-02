@@ -53,6 +53,7 @@ import { RunDryRunPreviewResultSchema } from "../../../../src/domain/run/result.
 import { deriveSchemaHash } from "../../../../src/domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../../src/domain/workflow/checkpoint.js";
 import { KualiSaveSeparationFinalization } from "../../../../src/domain/contracts/kuali/save-separation-finalization.js";
+import { UcpathVerifyTerminationFilingPresent } from "../../../../src/domain/contracts/ucpath/verify-termination-filing-present.js";
 import { SeparationsMatchDepartmentOption } from "../../../../src/domain/contracts/separations/match-department-option.js";
 import { SeparationsVerifyIdentityApproval } from "../../../../src/domain/contracts/separations/verify-identity-approval.js";
 import {
@@ -205,6 +206,12 @@ function graphJobSummary(): UcpathJobSummary {
   };
 }
 
+const NAME_ONLY_FINALIZATION_INPUT = {
+  ...FINALIZATION_RUN_INPUT,
+  emplIdSource: "name-resolved" as const,
+  documentEid: { state: "absent" as const, reason: "name-only structural path" },
+};
+
 function graphNameSearch(): SearchPersonOrgOutput {
   const candidate = {
     emplId: FINALIZATION_RUN_INPUT.emplId,
@@ -231,14 +238,17 @@ async function graphReadJobSummary(): Promise<UcpathJobSummary> {
   }) as UcpathJobSummary;
 }
 
-async function graphComparison(summary: UcpathJobSummary): Promise<MatchIdentityOutput> {
+async function graphComparison(
+  summary: UcpathJobSummary,
+  input: typeof FINALIZATION_RUN_INPUT | typeof NAME_ONLY_FINALIZATION_INPUT = FINALIZATION_RUN_INPUT,
+): Promise<MatchIdentityOutput> {
   return MatchIdentityOutputSchema.parse(await matchIdentityTask.impl.run({
     input: {
-      documentNumber: FINALIZATION_RUN_INPUT.documentNumber,
-      documentName: FINALIZATION_RUN_INPUT.employeeName,
-      documentEid: FINALIZATION_RUN_INPUT.documentEid,
-      emplId: FINALIZATION_RUN_INPUT.emplId,
-      emplIdSource: FINALIZATION_RUN_INPUT.emplIdSource,
+      documentNumber: input.documentNumber,
+      documentName: input.employeeName,
+      documentEid: input.documentEid,
+      emplId: input.emplId,
+      emplIdSource: input.emplIdSource,
       jobSummary: summary,
       nameSelection: graphNameSearch().selection,
       plan: noSeparationWritePlan("this fixture composes no separation write plan"),
@@ -300,11 +310,13 @@ async function refusalCode(run: () => Promise<unknown>): Promise<string> {
 }
 
 /**
- * The two post-gate node outputs, produced by the REAL task implementations
+ * The two post-authority node outputs, produced by the REAL task implementations
  * over the shared identity fixtures — the same call chain the gate-approved
  * walk makes, extracted so both use one source rather than two copies.
  */
-async function graphPostGateOutputs(): Promise<Readonly<{
+async function graphPostGateOutputs(
+  input: typeof FINALIZATION_RUN_INPUT | typeof NAME_ONLY_FINALIZATION_INPUT = FINALIZATION_RUN_INPUT,
+): Promise<Readonly<{
   summary: UcpathJobSummary;
   comparison: MatchIdentityOutput;
   approval: unknown;
@@ -312,13 +324,15 @@ async function graphPostGateOutputs(): Promise<Readonly<{
   department: unknown;
 }>> {
   const summary = await graphReadJobSummary();
-  const comparison = await graphComparison(summary);
-  const approval = {
-    decision: "approved" as const,
-    eid: FINALIZATION_RUN_INPUT.emplId,
-    chosenFrom: "checked" as const,
-    evidenceDigest: comparison.evidenceDigest,
-  };
+  const comparison = await graphComparison(summary, input);
+  const approval = comparison.packet.emplIdSource === "name-resolved"
+    ? {
+      decision: "approved" as const,
+      eid: FINALIZATION_RUN_INPUT.emplId,
+      chosenFrom: "checked" as const,
+      evidenceDigest: comparison.evidenceDigest,
+    }
+    : undefined;
   return {
     summary,
     comparison,
@@ -382,6 +396,15 @@ async function previewDependencyEvidence(run: RunRecord): Promise<readonly unkno
         FINALIZATION_DEPARTMENT_NODE,
         SeparationsMatchDepartmentOption.output,
         outputs.department,
+      ),
+    },
+    {
+      state: "resolved",
+      nodeId: "filing-presence",
+      checkpoint: rowFor(
+        "filing-presence",
+        UcpathVerifyTerminationFilingPresent.output,
+        FINALIZATION_SCOPE_OUTPUTS["filing-presence"],
       ),
     },
   ];
@@ -848,8 +871,8 @@ describe("separations-kuali-finalization scenarios", () => {
   });
 
   it("separations-kuali-finalization/gate-approved — the whole graph, from two reads to one settled finalization", async () => {
-    const outputs = await graphPostGateOutputs();
-    const walk = walkDescriptor(separationsKualiFinalizationDescriptor, FINALIZATION_RUN_INPUT, {
+    const outputs = await graphPostGateOutputs(NAME_ONLY_FINALIZATION_INPUT);
+    const walk = walkDescriptor(separationsKualiFinalizationDescriptor, NAME_ONLY_FINALIZATION_INPUT, {
       outputs: {
         "job-summary": outputs.summary,
         "name-search": graphNameSearch(),
@@ -857,6 +880,7 @@ describe("separations-kuali-finalization scenarios", () => {
         comparison: outputs.comparison,
         "identity-approval": outputs.approval,
         approval: outputs.approvalOutput,
+        "filing-presence": FINALIZATION_SCOPE_OUTPUTS["filing-presence"],
         [FINALIZATION_NODE]: {
           disposition: "committed",
           output: {
@@ -877,9 +901,11 @@ describe("separations-kuali-finalization scenarios", () => {
       assert.ok(walk.covered.includes(point), point);
     }
     const result = walk.result as {
+      approved: { authority: string };
       department: { option: string };
       finalization: { proof: { fields: { transactionNumber: string } } };
     };
+    assert.equal(result.approved.authority, "operator-approval");
     // The department the operator saw at the gate is the department that was
     // staged — the fold's output reaches the terminal result unchanged.
     assert.equal(result.department.option, FINALIZATION_DEPARTMENT_OPTION);

@@ -31,6 +31,7 @@ import { UcpathDeletePendingTerminations } from "../../../../src/domain/contract
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/domain/ids.js";
 import { directIdentifierDigestReference } from "../../../../src/domain/redaction.js";
 import { deriveSchemaHash } from "../../../../src/domain/schema-bound-value.js";
+import { UcpathPendingSweepProofSchema } from "../../../../src/domain/ui/ucpath-smart-hr-termination.js";
 import { deriveIdempotencyKeyDigest } from "../../../../src/domain/write-safety.js";
 import { ledgerFilePath } from "../../../../src/infra/ledger/ledger-projector.js";
 import { createGateParkNotifier } from "../../../../src/services/notifications/gate-park.js";
@@ -132,7 +133,13 @@ describe("separations dashboard — the needs-you alert a parked gate produces",
     }
     const gate = response.payload.value;
     const ceremony = identityCeremonyFor(gate, "approved");
-    const answer = identityGateAnswer(ceremony, EMPTY_IDENTITY_GATE_DRAFT);
+    const option = ceremony.kind === "confirm"
+      ? ceremony.option
+      : ceremony.kind === "choose" || ceremony.kind === "type-the-eid"
+        ? ceremony.options[0]
+        : undefined;
+    assert.ok(option, "the name-only gate served no EID to type");
+    const answer = identityGateAnswer(ceremony, { ...EMPTY_IDENTITY_GATE_DRAFT, eid: option.eid });
     assert.ok(answer);
     if (answer.decision !== "approved") throw new Error("unreachable");
     const applied = world.commands.execute({
@@ -146,7 +153,7 @@ describe("separations dashboard — the needs-you alert a parked gate produces",
           value: {
             decision: "approved",
             eid: answer.eid,
-            chosenFrom: "checked",
+            chosenFrom: option.chosenFrom,
             evidenceDigest: gate.evidenceDigest,
           },
         },
@@ -225,7 +232,7 @@ function writeUcpathPartition(world: SeparationsDashboardWorld): void {
         seq: 0,
         system: "ucpath",
         idempotencyKey: SWEEP_KEY,
-        proofSchema: UcpathDeletePendingTerminations.writeSafety.completion.proofSchema,
+        proofSchema: UcpathPendingSweepProofSchema,
         completionKind: UcpathDeletePendingTerminations.writeSafety.completion.kind,
         proofValue: {
           kind: "ucpath-pending-terminations-clear",

@@ -25,7 +25,15 @@ import {
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../src/domain/trust/evidence.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
+import { RunRecordSchema } from "../../src/domain/run/record.js";
+import {
+  deriveCheckpointOutputDigest,
+  deriveRunResultDigest,
+  deriveTerminalDependencyDigest,
+  RunResultRecordSchema,
+} from "../../src/domain/run/result.js";
 import { deriveIdempotencyKeyDigest, WriteIntentRecordSchema } from "../../src/domain/write-safety.js";
+import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { KualiSaveSeparationFinalization } from "../../src/domain/contracts/kuali/save-separation-finalization.js";
 import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
 import {
@@ -34,6 +42,7 @@ import {
   KUALI_RUN_ID,
   kualiReceiptEvidence,
 } from "./fixtures/receipt-run-fixtures.js";
+import frozenPreD309Receipts from "./fixtures/frozen-pre-d309-separations-receipts.json" with { type: "json" };
 
 function commitActionOfReceipt(receipt: RunEvidenceReceipt) {
   const commit = receipt.actions.find((action) => action.kind === "commit");
@@ -46,9 +55,80 @@ const FROZEN_PRE_RANGE_RECEIPT_DIGESTS = {
   2: "5be0737d8a28ef4669f5f5a057d5c7f09905bc475789102353a5917747943347",
 } as const;
 const FROZEN_PRE_RANGE_DESCRIPTOR_FINGERPRINT = "a457b06d8e0b0b953954e094730405360465b46870336f4cfd8aca7ade8d778b";
+const FROZEN_PRE_D309_INPUT_SCHEMA_HASH = "ba413bac41ff8f34ae7a6ff01391d9eb43eb86884406525465c4ccdbdfb65281";
+const FROZEN_PRE_D309_APPROVAL_SCHEMA_HASH = "9800a5c657bb1731a993e8d1f3b94cdd01a17a0dbcd8862e57e55cf7155f73f9";
+const FROZEN_PRE_D309_RESULT_SCHEMA_HASH = "0addb7592960dc8a0c4280dc2c423de5f035571df60f3c0bde079644c3660d9c";
+
+function withoutApprovalAuthority(value: unknown): unknown {
+  assert.ok(value !== null && typeof value === "object" && !Array.isArray(value));
+  const record = value as Record<string, unknown>;
+  const approved = record["approved"];
+  assert.ok(approved !== null && typeof approved === "object" && !Array.isArray(approved));
+  const { authority: historicalAddition, ...historicalApproved } = approved as Record<string, unknown>;
+  void historicalAddition;
+  return { ...record, approved: historicalApproved };
+}
 
 function frozenPreRangeReceiptEvidence() {
-  return kualiReceiptEvidence({ contractFingerprint: FROZEN_PRE_RANGE_DESCRIPTOR_FINGERPRINT });
+  const evidence = kualiReceiptEvidence({ contractFingerprint: FROZEN_PRE_RANGE_DESCRIPTOR_FINGERPRINT });
+  const run = RunRecordSchema.parse(evidence.run);
+  const result = RunResultRecordSchema.parse(evidence.result);
+  const checkpoints = evidence.checkpoints.map((checkpoint) => RunCheckpointRecordSchema.parse(checkpoint));
+  const approvalIndex = checkpoints.findIndex(({ nodeId }) => nodeId === "approval");
+  assert.notEqual(approvalIndex, -1, "the frozen fixture must include the approval checkpoint");
+  const approval = checkpoints[approvalIndex];
+  assert.ok(approval);
+  const historicalApprovalOutput = {
+    schemaHash: FROZEN_PRE_D309_APPROVAL_SCHEMA_HASH,
+    value: withoutApprovalAuthority(approval.output.value),
+  };
+  const historicalApproval = RunCheckpointRecordSchema.parse({
+    ...approval,
+    output: historicalApprovalOutput,
+  });
+  const historicalCheckpoints = checkpoints.with(approvalIndex, historicalApproval);
+  const historicalDependencies = result.dependencies.map((dependency) => dependency.nodeId === "approval"
+    && dependency.state === "resolved"
+    ? {
+        ...dependency,
+        outputSchemaHash: FROZEN_PRE_D309_APPROVAL_SCHEMA_HASH,
+        outputDigest: deriveCheckpointOutputDigest(historicalApprovalOutput),
+      }
+    : dependency);
+  const historicalResult = {
+    schemaHash: FROZEN_PRE_D309_RESULT_SCHEMA_HASH,
+    value: withoutApprovalAuthority(result.result.value),
+  };
+  return {
+    ...evidence,
+    run: RunRecordSchema.parse({
+      ...run,
+      input: {
+        ...run.input,
+        parsed: {
+          ...run.input.parsed,
+          schemaHash: FROZEN_PRE_D309_INPUT_SCHEMA_HASH,
+        },
+      },
+    }),
+    result: RunResultRecordSchema.parse({
+      ...result,
+      resultSchemaHash: FROZEN_PRE_D309_RESULT_SCHEMA_HASH,
+      result: historicalResult,
+      resultDigest: deriveRunResultDigest(historicalResult),
+      dependencies: historicalDependencies,
+      dependencyDigest: deriveTerminalDependencyDigest(historicalDependencies),
+    }),
+    checkpoints: historicalCheckpoints,
+  };
+}
+
+function frozenPreD309Receipt(composition: 1 | 2): RunEvidenceReceipt {
+  return RunEvidenceReceiptSchema.parse(
+    composition === 1
+      ? frozenPreD309Receipts.composition1
+      : frozenPreD309Receipts.composition2,
+  );
 }
 
 function parkedReceiptEvidence() {
@@ -292,19 +372,13 @@ describe("composition 1 — the stored shape, unchanged", () => {
   });
 
   it("reproduces the pre-hardening residual-write sentence at compositions 1 and 2", () => {
-    const { evidence: parkedEvidence, parked } = parkedReceiptEvidence();
+    const { parked } = parkedReceiptEvidence();
     const expected = `write intent ${parked.writeIntentId} for ${parked.system} key `
       + `"${parked.idempotencyKey}" is still parked; this run left an unsettled external write behind `
       + "and only ref write-safety's typed operator resolutions may release it";
 
     for (const composition of [1, 2] as const) {
-      const receipt = buildRunEvidenceReceipt({
-        descriptor: separationsKualiFinalizationDescriptor,
-        run: parkedEvidence.run,
-        result: parkedEvidence.result,
-        checkpoints: parkedEvidence.checkpoints,
-        writes: [{ intent: parked, attempts: [] }],
-      }, composition);
+      const receipt = frozenPreD309Receipt(composition);
       const warning = receipt.warnings.find(({ code }) => code === "RESIDUAL_WRITE_INTENT");
       assert.equal(warning?.summary, expected, `composition ${String(composition)} historical bytes moved`);
       assert.equal(
@@ -357,17 +431,18 @@ describe("ensureRunEvidenceReceipt — a stored composition-1 receipt is never s
 
   function storeWith(
     stored: RunEvidenceReceipt | undefined,
-    writes: readonly ReceiptWriteEvidence[] = evidence.writes,
+    source: ReturnType<typeof kualiReceiptEvidence> = evidence,
+    writes: readonly ReceiptWriteEvidence[] = source.writes,
   ): EvidenceReceiptStore & {
     readonly inserted: RunEvidenceReceipt[];
   } {
     const inserted: RunEvidenceReceipt[] = [];
     return {
       inserted,
-      getRun: () => evidence.run,
-      getResult: () => evidence.result,
+      getRun: () => source.run,
+      getResult: () => source.result,
       getFailure: () => { throw new Error("the kuali run did not fail"); },
-      listCheckpointsByRun: () => evidence.checkpoints,
+      listCheckpointsByRun: () => source.checkpoints,
       listWritesByRun: () => writes,
       listGateResultsByRun: () => [],
       findReceiptByRun: () => stored,
@@ -385,58 +460,47 @@ describe("ensureRunEvidenceReceipt — a stored composition-1 receipt is never s
     };
   }
 
-  it("re-derives a stored composition-1 receipt under composition 1 and serves it unchanged", () => {
+  it("preserves a stored composition-1 receipt and refuses to restate it through D309's moved schema", () => {
     const { parked } = parkedReceiptEvidence();
     const writes = [{ intent: parked, attempts: [] }];
-    const storedV1 = buildRunEvidenceReceipt({
-      descriptor: separationsKualiFinalizationDescriptor,
-      run: evidence.run,
-      result: evidence.result,
-      checkpoints: evidence.checkpoints,
-      writes,
-    }, 1);
+    const storedV1 = frozenPreD309Receipt(1);
     assert.equal(
       sha256Hex(canonicalJsonStringify(storedV1)),
       FROZEN_PRE_RANGE_RECEIPT_DIGESTS[1],
       "the composition-1 fixture must be the receipt frozen before diagnostic hardening",
     );
-    const outcome = ensureRunEvidenceReceipt(
-      storeWith(storedV1, writes),
-      separationsKualiFinalizationDescriptor,
-      KUALI_RUN_ID,
+    assert.throws(
+      () => ensureRunEvidenceReceipt(
+        storeWith(storedV1, evidence, writes),
+        separationsKualiFinalizationDescriptor,
+        KUALI_RUN_ID,
+      ),
+      /canonical-input moved/u,
     );
-    assert.equal(outcome.state, "existing");
-    assert.equal(outcome.receipt.composition, undefined);
-    for (const action of outcome.receipt.actions) assert.equal(action.proved, undefined);
   });
 
-  it("re-derives a stored composition-2 receipt under composition 2 and serves its exact bytes", () => {
+  it("preserves a stored composition-2 receipt and refuses to restate it through D309's moved schema", () => {
     const { parked } = parkedReceiptEvidence();
     const writes = [{ intent: parked, attempts: [] }];
-    const storedV2 = buildRunEvidenceReceipt({
-      descriptor: separationsKualiFinalizationDescriptor,
-      run: evidence.run,
-      result: evidence.result,
-      checkpoints: evidence.checkpoints,
-      writes,
-    }, 2);
+    const storedV2 = frozenPreD309Receipt(2);
     assert.equal(
       sha256Hex(canonicalJsonStringify(storedV2)),
       FROZEN_PRE_RANGE_RECEIPT_DIGESTS[2],
       "the composition-2 fixture must be the receipt frozen before diagnostic hardening",
     );
-    const outcome = ensureRunEvidenceReceipt(
-      storeWith(storedV2, writes),
-      separationsKualiFinalizationDescriptor,
-      KUALI_RUN_ID,
+    assert.throws(
+      () => ensureRunEvidenceReceipt(
+        storeWith(storedV2, evidence, writes),
+        separationsKualiFinalizationDescriptor,
+        KUALI_RUN_ID,
+      ),
+      /canonical-input moved/u,
     );
-    assert.equal(outcome.state, "existing");
-    assert.deepEqual(outcome.receipt, storedV2);
-    assert.equal(outcome.receipt.composition, 2);
   });
 
   it("derives a run with NO stored receipt at the latest composition", () => {
-    const store = storeWith(undefined);
+    const currentEvidence = kualiReceiptEvidence();
+    const store = storeWith(undefined, currentEvidence);
     const outcome = ensureRunEvidenceReceipt(
       store,
       separationsKualiFinalizationDescriptor,

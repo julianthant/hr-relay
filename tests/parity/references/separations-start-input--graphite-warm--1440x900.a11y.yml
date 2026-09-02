@@ -1,7 +1,7 @@
 # separations-start-input--graphite-warm--1440x900
 # adapter: fixture
 # fixture: separations-start-input
-# descriptorHash: 09980cd5466b191fd7279e9c25c36f450bd72d94fe6f8cb18b31a9ca280ca710
+# descriptorHash: 26584ed3f0c7cb6af09d89674a6613b3854ca98ba2aaccab5dc0af0435f33a68
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -29,7 +29,7 @@
     - listitem: Options
     - listitem: Confirm
   - heading "Separations" [level=3]
-  - paragraph: "The composition: ONE Kuali RRSS separation document becomes ONE terminated employee across three systems. It reads Kuali, UCPath and Kronos, reconciles the dates against what the timecard actually shows, parks for a human to confirm the person, then clears any pending termination, files the termination, verifies the receipt, and finalizes the Kuali document."
+  - paragraph: "The composition: ONE Kuali RRSS separation document becomes ONE terminated employee across three systems. It reads Kuali, UCPath and Kronos, reconciles the dates against what the timecard actually shows, establishes identity from supplied-EID read-back or the name-only gate, then clears any pending termination, files the termination, verifies the receipt, and finalizes the Kuali document."
   - region "Input":
     - text: Examples
     - button "One document"

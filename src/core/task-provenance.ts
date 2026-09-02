@@ -1,3 +1,4 @@
+import { evaluateNodeCondition } from "../domain/workflow/node-condition.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
@@ -49,6 +50,7 @@ export type TaskProvenanceCollectorInput = Readonly<{
   readonly execution: z.input<typeof TaskExecutionIdentitySchema>;
   readonly upstreamEvidence: z.input<typeof TaskUpstreamCheckpointEvidenceSchema>;
   readonly clock: Clock;
+  readonly canonicalInput?: JsonValue;
   /**
    * Where a recorded batch goes AT RECORD TIME (D270). Required, with no no-op
    * default, for the same reason the executor's `SpanEmitter` has none: a
@@ -154,6 +156,7 @@ function validateCheckpointSet(
   const actual = new Set<string>([
     ...evidence.checkpoints.map(({ nodeId }) => nodeId),
     ...evidence.gateResults.map(({ gateId }) => gateId),
+    ...evidence.skippedGates,
   ]);
   for (const checkpoint of evidence.checkpoints) {
     if (!expected.has(checkpoint.nodeId)) {
@@ -164,6 +167,9 @@ function validateCheckpointSet(
     if (!expected.has(gate.gateId)) {
       throw new Error(`task ${taskId} received undeclared upstream gate result ${gate.gateId}`);
     }
+  }
+  for (const gateId of evidence.skippedGates) {
+    if (!expected.has(gateId)) throw new Error(`task ${taskId} received undeclared skipped gate ${gateId}`);
   }
   for (const nodeId of expectedDependencies) {
     if (!actual.has(nodeId)) {
@@ -197,6 +203,17 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
   }
   const evidence = TaskUpstreamCheckpointEvidenceSchema.parse(input.upstreamEvidence);
   validateCheckpointSet(execution.taskId, node.dependsOn, evidence);
+  for (const gateId of evidence.skippedGates) {
+    const gate = nodes.find((candidate) => String(candidate.id) === gateId);
+    if (gate?.kind !== "gate" || gate.resolvedBy !== "operator" || gate.when === undefined) {
+      throw new Error(`task ${execution.taskId} cannot skip unconditional gate ${gateId}`);
+    }
+    if (input.canonicalInput === undefined) throw new Error(`skipped gate ${gateId} requires the validated canonical input`);
+    const outputs = Object.fromEntries(evidence.checkpoints.map((checkpoint) => [checkpoint.nodeId, checkpoint.output.value]));
+    if (evaluateNodeCondition(gate.when, { input: input.canonicalInput, outputs })) {
+      throw new Error(`task ${execution.taskId} cannot skip required gate ${gateId}`);
+    }
+  }
   const upstream = Object.freeze([
     ...evidence.checkpoints.flatMap((checkpoint) =>
       validateCheckpointFacts(execution.workflowId, checkpoint)),

@@ -931,14 +931,15 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   Workflow Panel total == Status Bar sum == rendered Queue Row count **by construction**. Failure
   mode it prevents: a future surface quietly re-deriving a number and re-opening a 4-fix bug class.
 
-- **`identity-gate-before-commit.test.ts` (D77 — ref write-safety §14).** For every descriptor whose commit
-  contract consumes an operator-approved subject, walk the graph and assert the commit node is
-  reachable **only** through the identity-approval gate node — no branch bypasses it, no `startAt`
-  entry point lands past it, and no gate node sits *inside* a transaction node (D26 forbids a park
-  between prepare and commit). Also asserts the gate's result schema is the typed
-  `IdentityApprovalResult`, never a free-form `data` flag — the legacy shape that made a paused run
-  render as `done`. This is the static half of the wrong-person control; the runtime half is that a
-  commit whose `expected` subject has no backing approved gate result cannot fence.
+- **`identity-gate-before-commit.test.ts` (D77, amended by D309 — ref write-safety §14).** For every
+  separation-class descriptor, walk the graph and assert every commit and identity-bearing terminal
+  result crosses the shared `verify-identity-approval` authority task. The task emits either exact
+  supplied-EID machine verification or operator approval; a side read added after it cannot feed a
+  sink. The guard separately pins the gate's exact condition to
+  `comparison.packet.emplIdSource == name-resolved`, its `resolvedBy: operator`, typed
+  `IdentityApprovalResult`, and the authority task's dependency on it. This is the static half of
+  the wrong-person control; the runtime half refuses an unproved supplied EID, a name-resolved EID
+  with no gate result, and stale or contradictory evidence before a fence can be minted.
 
 - **`archive-invariants.test.ts` (D80 — ref dashboard-surfaces §10.2).** Three assertions: (1) rendering an
   archived run touches **zero** version-conditional code paths — the archived payload is
@@ -2108,6 +2109,20 @@ uncalibrated allowance.
 For the agent doing a migration. The 7-step loop in doc 03c cites this list; every item is a gate
 that goes RED before it goes green.
 
+**D311 amendment — test the recipe/compiler boundary once, and workflow behavior where it differs.**
+The recipe implementation adds one registry-wide conformance suite that compiles every registered
+recipe and refuses duplicate tasks, unresolved references, cycles, unstable group keys, descriptor /
+module mismatches and incomplete generic dashboard projections. Person lookup proves the smallest
+shape and separations proves reads, computed facts, a conditional gate, transactions, omissions and
+all current generic surfaces. Once equivalence is green, superseded manual projection tests and
+declarations are deleted; keeping both is not extra assurance because it creates two authorities.
+
+Each workflow still owns the T1 structural scenario, live dry-run manifest and every safety proof
+below that its behavior requires. It adds T2/T3 dashboard coverage only when it is the first workflow
+to introduce a new interaction or wire arm; reusing an already-proved generic surface is covered by
+the registry-wide compiler conformance test. Coverage floors, architecture guards, live selector
+verification and controlled-write evidence are unchanged.
+
 1. **Create `tests/scenario/workflows/<workflow-id>/`.** Two files, no more.
 2. **`structural.scenario.test.ts`** — walk every declared path through `walkDescriptor` and claim
    every coverage point `deriveGraphCoveragePoints` derives from the descriptor. `scenario-coverage`
@@ -2157,8 +2172,10 @@ that goes RED before it goes green.
 4. **If the feature changes what an operator does to a RUN**, it needs a T3 pair (§10.7), not just a
    T2: a control that looks right against a fixture and 422s against a real run is the exact defect
    `wire-connectivity` and D253 were each written after.
-5. **Tick the tree.** Each migration's `Dashboard · wire <workflow>` sub-task carries `- [ ] PROOF T2
-   dashboard scenario for the wired surfaces`.
+5. **Tick the tree.** The generic recipe/compiler conformance proof is ticked once at
+   `{#workflow-authoring-model}`. A migration carries a `PROOF T2/T3` line only for a new dashboard
+   capability it introduces; the line names that capability rather than repeating every inherited
+   surface.
 
 
 ---

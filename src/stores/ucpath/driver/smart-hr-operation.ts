@@ -22,9 +22,11 @@
  *
  * ## The one deliberate asymmetry: the grid is read for IDS ONLY
  *
- * `scanTerminationTransactions` takes the SS Smart HR results grid for exactly
- * one thing — the set of `T…` transaction ids — and then reads every other fact
- * off each transaction's DETAIL page, which carries a stable id per field.
+ * When SS Smart HR renders a results grid, `scanTerminationTransactions` takes
+ * it for exactly one thing — one `T…` transaction id from each row — and then
+ * reads every other fact off each transaction's DETAIL page, which carries a
+ * stable id per field. When one result auto-drills instead, the receipt control
+ * supplies that one id before the same keyed detail reread.
  *
  * That is D205's lesson applied before it could bite. The results grid renders
  * seven unlabelled columns whose header row this repository could not read
@@ -50,7 +52,7 @@
  */
 import type { Locator, Page } from "playwright";
 import type { Clock } from "../../../domain/clock.js";
-import { IsoInstantSchema } from "../../../domain/ids.js";
+import { EidSchema, IsoInstantSchema } from "../../../domain/ids.js";
 import type { Eid, ElementId } from "../../../domain/ids.js";
 import { directIdentifierDigestReference } from "../../../domain/redaction.js";
 import { assertMintedMutationCapability } from "../../../base/mutation-capability.js";
@@ -82,6 +84,7 @@ import {
   UcpathSsSmartHrSettlementDiagnosticSchema,
   UcpathTerminationStagingSchema,
   UcpathTransactionScanSchema,
+  isUcpathTerminationAction,
 } from "../../../domain/ui/ucpath-smart-hr-termination.js";
 import type {
   UcpathInProgressRow,
@@ -103,6 +106,7 @@ import {
   ucpathElementById,
   waitForUcpathState,
 } from "./registry-locators.js";
+import { ucpathPendingSweepVerdict } from "../termination-verdict.js";
 
 /**
  * The anchors this driver binds DIRECTLY, and the reason each one is not a
@@ -189,7 +193,8 @@ const SEARCH_URL = `${HRMS}/c/UC_EXTENSIONS.UC_SS_TBH.GBL`;
 /** `= ` on the SS Smart HR Empl ID filter — live option list, 2026-08-14. */
 const EQUALS_OPERATOR = "2";
 /** PeopleSoft's standard empty-result sentence; see the module note. */
-const NO_RESULTS_MARKER = /no matching values were found/iu;
+const NO_RESULTS_TEXT = "no matching values were found";
+const NO_RESULTS_MARKER = new RegExp(NO_RESULTS_TEXT, "iu");
 const TRANSACTION_ID = /^T\d{6,}$/u;
 const SCAN_BOUND_MS = 45_000;
 // The diagnostic callback performs only synchronous DOM reads. One second is
@@ -207,6 +212,67 @@ const SETTLEMENT_CAPTURE_FAILED = Object.freeze({
   cause: "page-evaluation-failed" as const,
 });
 const PERSON_IDENTIFIER_REMOVED = "[person identifier removed]";
+const TRANSACTION_IDENTIFIER_REMOVED = "[transaction identifier removed]";
+
+type SsSmartHrSettlementObservation = Readonly<{
+  resultRowCount: number;
+  resultRowVisible: boolean;
+  noResultsCount: number;
+  noResultsVisible: boolean;
+  receiptCount: number;
+  receiptVisible: boolean;
+}>;
+
+const hasVisibleSsSmartHrSettlementSignal = (selectors: Readonly<{
+  resultRow: string;
+  receipt: string;
+  noResultsText: string;
+}>): boolean => {
+  const isVisible = (node: Element): boolean => {
+    const style = window.getComputedStyle(node);
+    const bounds = node.getBoundingClientRect();
+    return style.visibility !== "hidden"
+      && style.display !== "none"
+      && bounds.width > 0
+      && bounds.height > 0;
+  };
+  const resultRowVisible = [...document.querySelectorAll(selectors.resultRow)].some(isVisible);
+  const receiptVisible = [...document.querySelectorAll(selectors.receipt)].some(isVisible);
+  const visibleBodyText = document.body?.innerText.toLowerCase() ?? "";
+  return resultRowVisible
+    || receiptVisible
+    || visibleBodyText.includes(selectors.noResultsText);
+};
+
+async function observeSsSmartHrSettlement(
+  resultRows: Locator,
+  noResults: Locator,
+  receipt: Locator,
+): Promise<SsSmartHrSettlementObservation> {
+  const [
+    resultRowCount,
+    resultRowVisible,
+    noResultsCount,
+    noResultsVisible,
+    receiptCount,
+    receiptVisible,
+  ] = await Promise.all([
+    resultRows.count(),
+    resultRows.first().isVisible(),
+    noResults.count(),
+    noResults.first().isVisible(),
+    receipt.count(),
+    receipt.first().isVisible(),
+  ]);
+  return {
+    resultRowCount,
+    resultRowVisible,
+    noResultsCount,
+    noResultsVisible,
+    receiptCount,
+    receiptVisible,
+  };
+}
 
 function redactScanFailureDetail(error: unknown, emplId: Eid): string {
   const fullEid = String(emplId);
@@ -216,7 +282,8 @@ function redactScanFailureDetail(error: unknown, emplId: Eid): string {
     .replace(
       new RegExp("(?<!\\d)" + eidSuffix + "(?!\\d)", "gu"),
       PERSON_IDENTIFIER_REMOVED,
-    );
+    )
+    .replaceAll(/\bT\d{6,}\b/gu, TRANSACTION_IDENTIFIER_REMOVED);
 }
 
 const captureSsSmartHrSettlementDiagnostic = (selectors: Readonly<{
@@ -313,15 +380,55 @@ async function textOf(locator: Locator): Promise<string> {
 }
 
 /**
- * Every distinct `T…` on the results page.
+ * Exactly one distinct `T…` from every rendered result row.
  *
- * Reading them off the whole results region rather than a column index is
- * deliberate: the id's SHAPE identifies it, so no column binding is needed and
- * a reordered grid cannot silently shift the read.
+ * Reading each whole row rather than a column index is deliberate: the id's
+ * SHAPE identifies it, so no column binding is needed and a reordered grid
+ * cannot silently shift the read. Whole-PAGE text is forbidden here: an
+ * unrelated T id elsewhere in the PeopleSoft shell could mask a row whose own
+ * identity is missing. Every row must contribute exactly one id, and no two
+ * rows may contribute the same one.
  */
-async function scanTransactionIds(page: Page): Promise<readonly string[]> {
-  const text = await page.locator("body").innerText();
-  return [...new Set(text.match(/T\d{6,}/gu) ?? [])].filter((id) => TRANSACTION_ID.test(id));
+async function scanTransactionIds(
+  resultRows: Locator,
+  expectedRowCount: number,
+): Promise<readonly string[]> {
+  const rows = await resultRows.all();
+  if (rows.length !== expectedRowCount) {
+    throw new Error(
+      `the SS Smart HR result grid changed from ${String(expectedRowCount)} to `
+      + `${String(rows.length)} rows before transaction ids could be read`,
+    );
+  }
+  const ids: string[] = [];
+  for (const [index, row] of rows.entries()) {
+    if (!(await row.isVisible())) {
+      throw new Error(
+        `the SS Smart HR result row ${String(index + 1)} was not visible; `
+        + "hidden rows cannot contribute current settlement authority",
+      );
+    }
+    const text = await row.innerText();
+    const matches = [...new Set(text.match(/T\d{6,}/gu) ?? [])]
+      .filter((id) => TRANSACTION_ID.test(id));
+    if (matches.length !== 1) {
+      throw new Error(
+        `the SS Smart HR result row ${String(index + 1)} exposed ${String(matches.length)} `
+        + "distinct stable transaction ids; exactly one is required",
+      );
+    }
+    const [transactionId] = matches;
+    if (transactionId === undefined) {
+      throw new Error("the SS Smart HR result-row transaction id disappeared after validation");
+    }
+    ids.push(transactionId);
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new Error(
+      "the SS Smart HR result rows repeated one stable transaction id; each row must be distinct",
+    );
+  }
+  return ids;
 }
 
 async function readTransactionDetail(
@@ -388,27 +495,52 @@ export async function scanTerminationTransactionsOnPage(
     await waitForUcpathState(page, UCPATH_SS_SMART_HR_SEARCH_READY);
     await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_EID_INPUT).fill(input.emplId);
     await page.locator(DRIVER_ANCHOR.searchEmplIdOperator).selectOption(EQUALS_OPERATOR);
+    const autoDrilledReceipt = resolveUcpathElement(
+      page,
+      UCPATH_SS_SMART_HR_RECEIPT_DISPLAY,
+    );
+    const resultRows = page.locator(DRIVER_ANCHOR.searchResultRow);
+    const noResults = page.getByText(NO_RESULTS_MARKER);
+    const beforeSearch = await observeSsSmartHrSettlement(
+      resultRows,
+      noResults,
+      autoDrilledReceipt,
+    );
+    if (
+      beforeSearch.resultRowCount !== 0
+      || beforeSearch.noResultsCount !== 0
+      || beforeSearch.receiptCount !== 0
+    ) {
+      throw new Error(
+        "the SS Smart HR page exposed settlement markers before the current search was submitted "
+        + `(result rows: ${String(beforeSearch.resultRowCount)}, no-results markers: `
+        + `${String(beforeSearch.noResultsCount)}, transaction-id controls: `
+        + `${String(beforeSearch.receiptCount)}); refusing stale response authority`,
+      );
+    }
+    const receiptRecipe = ucpathElementById(UCPATH_SS_SMART_HR_RECEIPT_DISPLAY).locator;
+    if (receiptRecipe.kind !== "css") {
+      throw new Error("the SS Smart HR receipt settlement signal requires its proven CSS anchor");
+    }
     await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_BUTTON).click();
-    let settled: "rows" | "empty";
     try {
-      settled = await Promise.race([
-        page.locator(DRIVER_ANCHOR.searchResultRow).first()
-          .waitFor({ state: "attached", timeout: SCAN_BOUND_MS }).then(() => "rows" as const),
-        page.getByText(NO_RESULTS_MARKER).first()
-          .waitFor({ state: "attached", timeout: SCAN_BOUND_MS }).then(() => "empty" as const),
-      ]);
+      await page.waitForFunction(hasVisibleSsSmartHrSettlementSignal, {
+        resultRow: DRIVER_ANCHOR.searchResultRow,
+        receipt: receiptRecipe.selector,
+        noResultsText: NO_RESULTS_TEXT,
+      }, { timeout: SCAN_BOUND_MS, polling: 50 });
     } catch (error) {
       if (!(error instanceof Error && error.name === "TimeoutError")) {
         throw error;
       }
-      // Only the settlement race rejecting with its actual Playwright timeout
+      // Only the visible-signal wait reaching its actual Playwright timeout
       // authorizes this diagnostic. A page/context failure re-throws above so
       // the outer boundary preserves that failure as unreadable/not-attempted.
-      // Returning "no rows" here is D5 exactly — a search that did not answer
-      // reported as a factual negative.
+      // The timeout becomes `unreadable`; returning an empty read here would be
+      // D5 exactly — a search that did not answer reported as a factual negative.
       const settlementError = new Error(
-        "the SS Smart HR search rendered neither a result row nor PeopleSoft's "
-        + `no-results marker within ${String(SCAN_BOUND_MS)}ms`,
+        "the SS Smart HR search rendered neither a result row, an auto-drilled transaction detail, "
+        + `nor PeopleSoft's no-results marker within ${String(SCAN_BOUND_MS)}ms`,
         { cause: error },
       );
       let diagnostic: UcpathSsSmartHrSettlementDiagnostic;
@@ -433,6 +565,45 @@ export async function scanTerminationTransactionsOnPage(
       }
       return unreadable(failureReason(settlementError), diagnostic);
     }
+    const afterSearch = await observeSsSmartHrSettlement(
+      resultRows,
+      noResults,
+      autoDrilledReceipt,
+    );
+    if (afterSearch.resultRowCount > 0 && !afterSearch.resultRowVisible) {
+      throw new Error("the SS Smart HR search exposed result rows but none were visible");
+    }
+    if (afterSearch.noResultsCount > 0) {
+      if (afterSearch.noResultsCount !== 1 || !afterSearch.noResultsVisible) {
+        throw new Error(
+          `the SS Smart HR search exposed ${String(afterSearch.noResultsCount)} no-results markers; `
+          + "exactly one visible marker is required",
+        );
+      }
+    }
+    if (afterSearch.receiptCount > 0) {
+      if (afterSearch.receiptCount !== 1 || !afterSearch.receiptVisible) {
+        throw new Error(
+          `the SS Smart HR auto-drilled detail exposed ${String(afterSearch.receiptCount)} `
+          + "transaction-id controls; exactly one visible control is required",
+        );
+      }
+    }
+    const settledStates = [
+      ...(afterSearch.resultRowCount > 0 ? ["rows" as const] : []),
+      ...(afterSearch.noResultsCount > 0 ? ["empty" as const] : []),
+      ...(afterSearch.receiptCount > 0 ? ["single-detail" as const] : []),
+    ];
+    if (settledStates.length !== 1) {
+      throw new Error(
+        `the SS Smart HR search settled in ${String(settledStates.length)} states `
+        + `(result rows: ${String(afterSearch.resultRowCount)}, no-results markers: `
+        + `${String(afterSearch.noResultsCount)}, transaction-id controls: `
+        + `${String(afterSearch.receiptCount)}); `
+        + "exactly one is required",
+      );
+    }
+    const [settled] = settledStates;
     if (settled === "empty") {
       return UcpathTransactionScanSchema.parse({
         state: "read",
@@ -442,7 +613,18 @@ export async function scanTerminationTransactionsOnPage(
         observedAt,
       });
     }
-    const ids = await scanTransactionIds(page);
+    let ids: readonly string[];
+    if (settled === "single-detail") {
+      const transactionId = await textOf(autoDrilledReceipt);
+      if (!TRANSACTION_ID.test(transactionId)) {
+        throw new Error(
+          "the SS Smart HR auto-drilled detail rendered no stable T transaction id",
+        );
+      }
+      ids = [transactionId];
+    } else {
+      ids = await scanTransactionIds(resultRows, afterSearch.resultRowCount);
+    }
     const rows: UcpathTransactionRow[] = [];
     for (const id of ids) rows.push(await readTransactionDetail(page, id, input.emplId));
     return UcpathTransactionScanSchema.parse({
@@ -593,14 +775,16 @@ export async function stageTerminationOnPage(
 }
 
 /**
- * Read the *Transactions in Progress* grid rows for one person, and tick the
- * Select checkbox of every `Terminat*` row.
+ * Read the *Transactions in Progress* grid rows for one person, join each
+ * eligible row to a stable SS Smart HR transaction id, and tick exactly that
+ * complete set.
  *
  * The grid's columns are `Select · Transaction Type · Effective Date · Name ·
  * Person ID · Action · Country` (live 2026-08-14) and it has NO transaction id
- * column, which is why a selected row is named by its effective date and
- * action. Row identity is established by the EID appearing in the row's own
- * text — the same test legacy uses (`rowMatchesTerminationEid`).
+ * column. Live read-only mapping on 2026-09-02 proved the stable id on the SS
+ * Smart HR detail page and all six named grid fields; a complete unique join
+ * bridges the two surfaces. Checkbox/row suffixes remain positional DOM
+ * indices and are never treated as identity.
  */
 /**
  * The name the *Transactions in Progress* grid shows for one person.
@@ -658,22 +842,92 @@ export async function readStagedWizardSubjectOnPage(page: Page): Promise<string>
 }
 
 export async function readInProgressSubjectOnPage(page: Page, emplId: Eid): Promise<string> {
-  const name = await page.evaluate((eid) => {
-    for (const cell of document.querySelectorAll("td")) {
-      if ((cell.textContent ?? "").trim() !== eid) continue;
-      const previous = cell.previousElementSibling;
-      const text = (previous?.textContent ?? "").trim();
-      if (text.length > 0) return text;
+  const names: string[] = [];
+  for (const row of await page.locator('tr[id^="trHR_TBH_EULST_VW$0_row"]').all()) {
+    const eid = row.locator('span[id^="EMPLID$"]');
+    if (await eid.count() !== 1) {
+      throw new Error("a Transactions in Progress row has no unique Person ID control");
     }
-    return "";
-  }, emplId);
-  if (name.length === 0) {
+    if ((await eid.innerText()).trim() !== emplId) continue;
+    const name = row.locator('a[id^="NAME$"]');
+    if (await name.count() !== 1) {
+      throw new Error(
+        `a Transactions in Progress row for ${directIdentifierDigestReference(emplId)} has no unique Name control`,
+      );
+    }
+    const text = (await name.innerText()).trim();
+    if (text.length === 0) {
+      throw new Error(
+        `a Transactions in Progress row for ${directIdentifierDigestReference(emplId)} rendered an empty Name`,
+      );
+    }
+    names.push(text);
+  }
+  const normalized = new Set(names.map((name) => name.toLowerCase().split(/[\s,]+/u)
+    .filter((token) => token.length > 0).sort().join(" ")));
+  if (names.length === 0 || normalized.size !== 1) {
     throw new Error(
-      `the Transactions in Progress grid renders no name beside Empl ID ${directIdentifierDigestReference(emplId)}; there is no `
-      + "subject on this page to bind a sweep to",
+      `the Transactions in Progress grid renders ${String(names.length)} rows and ${String(normalized.size)} distinct names for Empl ID ${directIdentifierDigestReference(emplId)}; exactly one subject is required to bind a sweep`,
     );
   }
-  return name;
+  return names[0];
+}
+
+type PendingSweepGridFacts = Omit<UcpathInProgressRow, "transactionId">;
+
+export type PendingSweepGridJoin = Readonly<{
+  candidateIndex: number;
+  selected: UcpathInProgressRow;
+}>;
+
+/**
+ * Join stable SS Smart HR transaction ids to the separate Transactions in
+ * Progress grid. The latter exposes no T id, so the only safe bridge is a
+ * complete unique join over the facts both surfaces carry. Action wording is
+ * compared by the shared termination classification because the detail page
+ * renders `TER` while this grid renders `Terminatn`.
+ */
+export function joinPendingSweepGridRows(
+  input: UcpathPendingSweepTarget,
+  candidates: readonly PendingSweepGridFacts[],
+): readonly PendingSweepGridJoin[] {
+  if (candidates.length !== input.observedSet.eligible.length) {
+    throw new Error(
+      `Transactions in Progress exposed ${String(candidates.length)} eligible rows for ${directIdentifierDigestReference(input.emplId)}, but the stable-id set authorizes `
+      + `${String(input.observedSet.eligible.length)}; refusing before selection`,
+    );
+  }
+  const tokenName = (name: string): string => name.toLowerCase().split(/[\s,]+/u)
+    .filter((token) => token.length > 0).sort().join(" ");
+  const joined = input.observedSet.eligible.map((authorized) => {
+    const matches = candidates.flatMap((candidate, candidateIndex) =>
+      candidate.emplId === authorized.emplId
+      && candidate.effectiveDate === authorized.startDate
+      && isUcpathTerminationAction(candidate.action)
+      && isUcpathTerminationAction(authorized.action)
+      && tokenName(candidate.displayedName) === tokenName(authorized.displayedName)
+        ? [{ candidate, candidateIndex }]
+        : []);
+    if (matches.length !== 1) {
+      throw new Error(
+        `one stable transaction joined ${String(matches.length)} Transactions in Progress rows by EID, name, date and termination action; exactly one is required`,
+      );
+    }
+    const match = matches[0];
+    return {
+      candidateIndex: match.candidateIndex,
+      selected: {
+        ...match.candidate,
+        transactionId: authorized.transactionId,
+      },
+    };
+  });
+  if (new Set(joined.map(({ candidateIndex }) => candidateIndex)).size !== joined.length) {
+    throw new Error(
+      "two stable UCPath transaction ids joined the same Transactions in Progress row; refusing an ambiguous delete",
+    );
+  }
+  return joined;
 }
 
 export async function stagePendingTerminationSweepOnPage(
@@ -681,32 +935,72 @@ export async function stagePendingTerminationSweepOnPage(
   input: UcpathPendingSweepTarget,
   observedAt: string,
 ): Promise<UcpathPendingSweepStaging> {
+  // Re-read the stable-id source immediately before staging. The sequencer's
+  // probe and this read are deliberately separate: a row arriving, moving or
+  // changing between them must stop before any checkbox, fence or click.
+  const current = await scanTerminationTransactionsOnPage(
+    page,
+    { emplId: input.emplId },
+    observedAt,
+  );
+  const verdict = ucpathPendingSweepVerdict(input, current);
+  if (verdict.state !== "absent") {
+    throw new Error(
+      `the pre-selection UCPath transaction set for ${directIdentifierDigestReference(input.emplId)} answered ${verdict.state}; `
+      + "the exact machine-observed pending set changed or is already gone, so no checkbox may be selected",
+    );
+  }
   await page.goto(WIZARD_URL, { waitUntil: "domcontentloaded", timeout: STEP_BOUND_MS });
   await waitForUcpathState(page, UCPATH_SMART_HR_SETUP_READY);
-  const rows = page.locator("tr").filter({ hasText: input.emplId });
-  const count = await rows.count();
-  const selected: UcpathInProgressRow[] = [];
-  for (let index = 0; index < count; index += 1) {
-    const row = rows.nth(index);
-    const text = (await row.innerText()).replace(/\s+/gu, " ").trim();
-    if (!/terminat/iu.test(text)) continue;
-    const date = /\b(\d{2}\/\d{2}\/\d{4})\b/u.exec(text)?.[1];
-    const action = /\b(Terminat\w*)\b/u.exec(text)?.[1];
-    if (date === undefined || action === undefined) {
+  const text = async (row: Locator, selector: string, field: string): Promise<string> => {
+    const matches = row.locator(selector);
+    const count = await matches.count();
+    if (count !== 1) {
       throw new Error(
-        `a Transactions in Progress row for ${directIdentifierDigestReference(input.emplId)} matched "Terminat" but rendered no `
-        + `effective date and action this read could name: ${JSON.stringify(text)}`,
+        `a Transactions in Progress row exposed ${String(count)} ${field} controls; exactly one is required for an exact-set join`,
       );
     }
-    const checkbox = row.locator('input[type="checkbox"]').first();
-    if (await checkbox.count() === 0) {
+    const value = (await matches.innerText()).trim();
+    if (value.length === 0) throw new Error(`a Transactions in Progress row rendered an empty ${field}`);
+    return value;
+  };
+  const gridRows = page.locator('tr[id^="trHR_TBH_EULST_VW$0_row"]');
+  const candidates: Array<Readonly<{
+    facts: Omit<UcpathInProgressRow, "transactionId">;
+    checkbox: Locator;
+  }>> = [];
+  for (const row of await gridRows.all()) {
+    const emplId = EidSchema.parse(await text(row, 'span[id^="EMPLID$"]', "Person ID"));
+    const action = await text(row, 'span[id^="ACTION$"]', "Action");
+    if (emplId !== input.emplId || !isUcpathTerminationAction(action)) continue;
+    const checkbox = row.locator('input[type="checkbox"][id^="SELECT$"]');
+    if (await checkbox.count() !== 1) {
       throw new Error(
-        `a Transactions in Progress row for ${directIdentifierDigestReference(input.emplId)} has no Select checkbox; refusing to `
-        + "report a selection that was never made",
+        `a Transactions in Progress row for ${directIdentifierDigestReference(input.emplId)} has no unique Select checkbox; refusing before selection`,
       );
     }
-    await checkbox.check();
-    selected.push({ transactionType: "JOB", effectiveDate: date, action });
+    candidates.push({
+      facts: {
+        transactionType: await text(row, 'span[id^="TBH_TMPL_TXN_TYP$"]', "Transaction Type"),
+        effectiveDate: await text(row, 'span[id^="EFFDT$"]', "Effective Date"),
+        displayedName: await text(row, 'a[id^="NAME$"]', "Name"),
+        emplId,
+        action,
+        country: await text(row, 'span[id^="COUNTRY$"]', "Country"),
+      },
+      checkbox,
+    });
+  }
+  const joined = joinPendingSweepGridRows(input, candidates.map(({ facts }) => facts));
+  const selected = joined.map(({ selected: row }) => row);
+  for (const { candidateIndex } of joined) {
+    await candidates[candidateIndex].checkbox.check();
+  }
+  for (const { candidateIndex } of joined) {
+    const candidate = candidates[candidateIndex];
+    if (!(await candidate.checkbox.isChecked())) {
+      throw new Error("a uniquely joined Transactions in Progress checkbox did not remain selected; refusing before the fence");
+    }
   }
   // The OBSERVED name, read off the grid — never the expected one echoed back.
   // Prepare only runs when the probe answered `absent`, i.e. when rows exist,

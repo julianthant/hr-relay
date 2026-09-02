@@ -8,7 +8,7 @@
  * every downstream read and the gate packet bind against.
  *
  * §5 item 10's recorded answer is why it is a fold and not a delegation: no
- * child run, candidates resolved inline and handed to the ALWAYS-GATE packet.
+ * child run; candidates are resolved inline and handed to the identity packet.
  */
 import { z } from "zod";
 import { taskId } from "../../ids.js";

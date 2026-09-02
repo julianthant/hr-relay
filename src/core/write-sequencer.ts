@@ -1631,6 +1631,39 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     return current.version;
   }
 
+  /**
+   * A contract may supersede an earlier permanent-key shape without gaining
+   * authority to reinterpret its immutable intents. Any old row is therefore
+   * a stop, before a probe, browser lease, fence, or click.
+   */
+  function refuseRetiredPermanentKeys(
+    commitContract: AnyCommitTaskContract,
+    commitInput: unknown,
+    system: z.output<typeof BrowserSystemIdSchema>,
+    currentKey: string,
+  ): void {
+    const retired = commitContract.writeSafety.idempotency.retiredKeys;
+    if (retired === undefined) return;
+    const seen = new Set<string>([currentKey]);
+    for (const entry of retired) {
+      const raw: unknown = Reflect.apply(entry.key, undefined, [commitInput]);
+      const key = IdempotencyKeySchema.parse(raw);
+      if (seen.has(key)) {
+        throw new Error(
+          `${commitContract.id} declares duplicate current/retired permanent key material; refusing an ambiguous compatibility policy`,
+        );
+      }
+      seen.add(key);
+      const intent = deps.authority.authority.writeIntents.findByPermanentKey(system, key);
+      if (intent === undefined) continue;
+      const digest = deriveIdempotencyKeyDigest(system, key);
+      throw new Error(
+        `${commitContract.id} found immutable retired-key intent ${intent.writeIntentId} (${intent.status}) for `
+        + `${idempotencyKeyDigestReference(digest)}; ${entry.reason}. Refusing before any probe, browser, fence, or click`,
+      );
+    }
+  }
+
   async function executeTransaction(context: WriteSequencerContext): Promise<unknown> {
     const run = RunRecordSchema.parse(context.run);
     const node: TransactionRuntimeNode = context.node;
@@ -1681,6 +1714,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
     const key = IdempotencyKeySchema.parse(keyRaw);
     const keyDigest = deriveIdempotencyKeyDigest(system, key);
+    refuseRetiredPermanentKeys(commitContract, commitInput, system, key);
 
     /* beat ① — durable permanent-key lookup, regardless of status/origin */
     const durable = deps.authority.authority.writeIntents.findByPermanentKey(system, key);
@@ -2213,6 +2247,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
     const key = IdempotencyKeySchema.parse(keyRaw);
     const keyDigest = deriveIdempotencyKeyDigest(system, key);
+    refuseRetiredPermanentKeys(commitContract, commitInput, system, key);
 
     /** The settlement the real path would reuse — DERIVED, never fabricated. */
     const presentFromProof = (proofRaw: unknown): Readonly<{ proof: JsonValue; output: JsonValue }> => {

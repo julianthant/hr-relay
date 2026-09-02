@@ -6,15 +6,15 @@ import {
 import { verifyIdentityApproval } from "../../../domain/separations/identity-approval.js";
 
 /**
- * The post-gate check, executed.
+ * The identity-authority check, executed.
  *
  * The stored `evidenceDigest` from the comparison node is passed in as the
  * re-derivation, rather than recomputed here, for one specific reason: the
- * comparison node's output is what the WIRE served and what the operator
- * approved against, so the digest that must match is the one authority stored
- * beside that packet. Recomputing it here would compare the approval against a
- * value nobody had seen. The fold still parses and re-derives internally, so a
- * stored digest that does not describe its own stored packet fails too.
+ * comparison node's output is what machine verification consumes and, on the
+ * name-only arm, what the WIRE served for operator approval. The digest that
+ * must match is therefore the one authority stored beside that packet. The fold
+ * still parses and re-derives internally, so a stored digest that does not
+ * describe its own packet fails too.
  */
 export const verifyIdentityApprovalTask = defineTask(SeparationsVerifyIdentityApproval, {
   sessions: [],

@@ -1,0 +1,32 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "screenshots": [
+    {
+      "path": ".screenshots/separations-2026-09-02/r2-logs.png",
+      "sha256": "c16b28a9936f9ae26355504d10241a36d78eb4b49bb75bca766be6378263b043",
+      "bytes": 201810,
+      "classification": "restricted local screenshot; may contain person data; ignored"
+    },
+    {
+      "path": ".screenshots/separations-2026-09-02/r2-receipt.png",
+      "sha256": "7f492524dbc2552e83f8e57364ed9bc175944f34e05ed19750d05406fb6a5d68",
+      "bytes": 233100,
+      "classification": "restricted local screenshot; may contain person data; ignored"
+    },
+    {
+      "path": ".screenshots/separations-2026-09-02/r2-start-options.png",
+      "sha256": "46741c3b30142b2cd86ac62dff4d9b02a05dd717e70b4a6c26d318a217977840",
+      "bytes": 167547,
+      "classification": "restricted local screenshot; may contain person data; ignored"
+    },
+    {
+      "path": ".screenshots/separations-2026-09-02/r2-steps.png",
+      "sha256": "fa0e11b39ec0f88cb7f023504cbf2e596aa8ccca77784371826e86d61136e9ac",
+      "bytes": 172904,
+      "classification": "restricted local screenshot; may contain person data; ignored"
+    }
+  ]
+}

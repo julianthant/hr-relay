@@ -32,9 +32,11 @@ import {
 } from "../../../src/core/write-sequencer.js";
 import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../src/core/worker-sessions.js";
 import { kualiFinalizationIdempotencyKey } from "../../../src/domain/contracts/kuali/save-separation-finalization.js";
+import { ucpathPendingSweepIdempotencyKey } from "../../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 import {
   EidSchema,
   FingerprintSchema,
+  IsoInstantSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
 } from "../../../src/domain/ids.js";
@@ -51,6 +53,7 @@ import {
   type KualiObservedFinalizationFields,
 } from "../../../src/domain/ui/kuali-separation-finalization.js";
 import type { UcpathTransactionRow } from "../../../src/domain/ui/ucpath-smart-hr-termination.js";
+import { isUcpathTerminationInProgress } from "../../../src/domain/ui/ucpath-smart-hr-termination.js";
 import type { RuntimeFlowNode } from "../../../src/domain/workflow/graph.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import {
@@ -173,8 +176,27 @@ export const COMPOSITION_ACTION_RESOLUTION = Object.freeze({
   observedAt: COMPOSITION_NOW,
 });
 
+export function compositionPendingSet(rows: readonly UcpathTransactionRow[]) {
+  const ordered = [...rows].sort((left, right) => left.transactionId.localeCompare(right.transactionId));
+  return {
+    kind: "ucpath-pending-termination-set" as const,
+    emplId: COMPOSITION_EID,
+    eligible: ordered.filter(isUcpathTerminationInProgress),
+    protected: ordered.filter((row) => !isUcpathTerminationInProgress(row)),
+    observedAt: IsoInstantSchema.parse(COMPOSITION_NOW),
+    source: "ss-smart-hr-detail-read" as const,
+  };
+}
+
 /** The natural keys the three commit contracts derive — recomputed, never copied. */
-export const SWEEP_IDEMPOTENCY_KEY = `ucpath:pending-terminations-clear|${COMPOSITION_EID}`;
+export function compositionSweepIdempotencyKey(rows: readonly UcpathTransactionRow[]): string {
+  return ucpathPendingSweepIdempotencyKey({
+    emplId: COMPOSITION_EID,
+    expectedName: COMPOSITION_UCPATH_NAME,
+    observedSet: compositionPendingSet(rows),
+  });
+}
+export const SWEEP_IDEMPOTENCY_KEY = compositionSweepIdempotencyKey([]);
 export const TERMINATION_IDEMPOTENCY_KEY =
   `ucpath:termination|${COMPOSITION_EID}|${COMPOSITION_EFFECTIVE_DATE}`;
 export const FINALIZATION_IDEMPOTENCY_KEY = kualiFinalizationIdempotencyKey({
@@ -197,6 +219,7 @@ export const COMPOSITION_SCOPE_OUTPUTS = Object.freeze({
   approval: {
     documentNumber: COMPOSITION_DOCUMENT,
     approved: {
+      authority: "operator-approval",
       emplId: COMPOSITION_EID,
       chosenFrom: "checked" as const,
       evidenceDigest: "a".repeat(64),
@@ -249,6 +272,7 @@ export const COMPOSITION_SCOPE_OUTPUTS = Object.freeze({
     dateChangeComments: COMPOSITION_DATE_CHANGE_COMMENTS,
     source: "kronos-timesheet" as const,
   },
+  "pending-set": compositionPendingSet([]),
   receipt: {
     transactionNumber: COMPOSITION_RECEIPT,
     approvalStatus: "Pending" as const,
@@ -256,6 +280,18 @@ export const COMPOSITION_SCOPE_OUTPUTS = Object.freeze({
     emplId: COMPOSITION_EID,
     displayedName: COMPOSITION_UCPATH_NAME,
     disposition: "committed" as const,
+  },
+  "filing-presence": {
+    kind: "ucpath-termination-filing-presence" as const,
+    transactionId: COMPOSITION_RECEIPT,
+    emplId: COMPOSITION_EID,
+    effectiveDate: COMPOSITION_EFFECTIVE_DATE,
+    approvalStatus: "Pending" as const,
+    displayedName: COMPOSITION_UCPATH_NAME,
+    observedAt: COMPOSITION_NOW,
+    source: "ss-smart-hr-detail-read" as const,
+    receiptDisposition: "committed" as const,
+    authority: "kuali-finalization-precondition" as const,
   },
 });
 
@@ -447,6 +483,7 @@ export function compositionContext(
   claim: { workerId: string; claimGeneration: number },
   nodeId: string,
   dryRun = false,
+  pendingRows: readonly UcpathTransactionRow[] = [],
 ): WriteSequencerContext {
   return {
     descriptor: separationsDescriptor,
@@ -458,7 +495,10 @@ export function compositionContext(
     } as WriteSequencerContext["claim"],
     scope: {
       input: { ...COMPOSITION_RUN_INPUT },
-      outputs: { ...COMPOSITION_SCOPE_OUTPUTS },
+      outputs: {
+        ...COMPOSITION_SCOPE_OUTPUTS,
+        "pending-set": compositionPendingSet(pendingRows),
+      },
     },
     dryRun,
     signal: new AbortController().signal,

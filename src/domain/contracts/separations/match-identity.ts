@@ -1,6 +1,6 @@
 /**
- * `workflow:separations/match-identity` — the ALWAYS-GATE's decision packet,
- * built as a real node.
+ * `workflow:separations/match-identity` — the identity authority packet, built
+ * as a real node.
  *
  * It is a task and not a `derive` for the same reason `match-termination-type`
  * is: a fold that can REFUSE needs somewhere to put the refusal, and a task has
@@ -13,7 +13,8 @@
  * node (rather than at the gate, or on the wire) is what makes it a stored fact
  * every later reader agrees on: the wire serves it, the operator approves
  * against it, and `verify-identity-approval` re-derives it from the same stored
- * packet.
+ * packet. On the name-resolved arm it is the gate decision packet; on a
+ * supplied-EID arm it is the machine-verification input.
  */
 import { z } from "zod";
 import { EidSchema, FingerprintSchema, taskId } from "../../ids.js";
@@ -29,7 +30,7 @@ import { defineTaskContract } from "../base.js";
 
 export const MatchIdentityOutputSchema = z.strictObject({
   packet: IdentityEvidencePacketSchema,
-  /** The digest an approval binds to (ref write-safety §14.5). */
+  /** The digest machine verification or an approval binds to (§14.5). */
   evidenceDigest: FingerprintSchema,
 });
 export type MatchIdentityOutput = z.infer<typeof MatchIdentityOutputSchema>;

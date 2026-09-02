@@ -317,6 +317,8 @@ interface GateNodeBase extends GraphNodeBase {
 }
 export interface OperatorGateNode<ResultSchema extends z.ZodType> extends GateNodeBase {
   readonly resolvedBy: "operator";
+  /** A false declared condition produces no human decision or gate result. */
+  readonly when?: NodeCondition;
   readonly result: ResultSchema;
   readonly subscribes?: never;
   readonly resolve?: never;

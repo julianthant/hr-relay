@@ -213,6 +213,7 @@ export type GateDecl<S, D extends readonly (keyof S & string)[]> =
     label: string;
     statusKey?: string;
     resolvedBy: "operator";
+    when?: NodeConditionSpec;
     result: z.ZodType;
     /** An operator gate is resolved by a command, so it has no event source. */
     subscribes?: never;
@@ -421,7 +422,7 @@ export interface FlowBuilder<
     decl: Decl,
   ): FlowBuilder<
     InputSchema,
-    S & { readonly [K in Id]: NodeEntry<GateOutput<Decl>, false, readonly []> },
+    S & { readonly [K in Id]: NodeEntry<GateOutput<Decl>, HasWhen<Decl>, readonly []> },
     AppendGateNode<Nodes, Decl>
   >;
 
@@ -686,6 +687,7 @@ function makeBuilder(state: MutableFlowState): unknown {
       label: string;
       statusKey?: string;
       resolvedBy: "operator" | "children-terminal" | "external";
+      when?: NodeConditionSpec;
       subscribes?: unknown;
       result: z.ZodType;
       resolve?: (event: never) => unknown;
@@ -703,6 +705,7 @@ function makeBuilder(state: MutableFlowState): unknown {
         label: decl.label,
         ...(decl.statusKey === undefined ? {} : { statusKey: decl.statusKey }),
         resolvedBy: decl.resolvedBy,
+        ...(decl.when === undefined ? {} : { when: parseNodeCondition(decl.when) }),
         ...(decl.subscribes === undefined ? {} : { subscribes: decl.subscribes }),
         result: decl.result,
         ...(decl.resolve === undefined ? {} : { resolve: decl.resolve }),
@@ -902,6 +905,7 @@ export interface OperatorGateNodeFragment<
   StepKey extends string,
   Id extends string,
   Result extends z.ZodType,
+  Conditional extends boolean = false,
 > {
   readonly kind: "gate";
   /** The step folder that OWNS this node (D265 §1.2.2 rule 2). */
@@ -922,7 +926,7 @@ export interface OperatorGateNodeFragment<
     InputSchema,
     S,
     Nodes,
-    S & { readonly [K in Id]: NodeEntry<z.output<Result>, false, readonly []> },
+    S & { readonly [K in Id]: NodeEntry<z.output<Result>, Conditional, readonly []> },
     readonly [...Nodes, OperatorGateNode<Result>]
   >;
 }
@@ -936,7 +940,7 @@ export interface OperatorGateNodeFragment<
 export type NodeFragmentOf<StepKey extends string> =
   | TaskNodeFragment<StepKey, string, AnyReadTaskContract>
   | TransactionNodeFragment<StepKey, string, AnyPrepareTaskContract, AnyCommitTaskContract>
-  | OperatorGateNodeFragment<StepKey, string, z.ZodType>;
+  | OperatorGateNodeFragment<StepKey, string, z.ZodType, boolean>;
 
 /** A fragment of SOME step — the erased form, where only the runtime check remains. */
 export type AnyNodeFragment = NodeFragmentOf<string>;
@@ -1024,13 +1028,14 @@ function defineOperatorGateNode<
   StepKey extends string,
   Id extends string,
   Result extends z.ZodType,
+  const Identity extends Readonly<{ label: string; statusKey?: string; result: Result; when?: NodeConditionSpec }>,
 >(
   step: WorkflowStepOf<StepKey>,
   id: Id,
-  identity: Readonly<{ label: string; statusKey?: string; result: Result }>,
-): OperatorGateNodeFragment<StepKey, Id, Result> {
+  identity: Identity,
+): OperatorGateNodeFragment<StepKey, Id, Identity["result"], HasWhen<Identity>> {
   nodeId(id);
-  const fragment: OperatorGateNodeFragment<StepKey, Id, Result> = {
+  const fragment: OperatorGateNodeFragment<StepKey, Id, Identity["result"], true> = {
     kind: "gate",
     step,
     id,
@@ -1045,6 +1050,7 @@ function defineOperatorGateNode<
         dependsOn: wiring.dependsOn,
         resolvedBy: "operator",
         result: identity.result,
+        ...(identity.when === undefined ? {} : { when: identity.when }),
       });
     },
   };
@@ -1123,9 +1129,9 @@ export function defineWorkflowStepNodeFactory<const Key extends string>(step: Wo
     ) {
       return defineTransactionNode(step, id, identity);
     },
-    operatorGate<const Id extends string, Result extends z.ZodType>(
+    operatorGate<const Id extends string, const Identity extends Readonly<{ label: string; statusKey?: string; result: z.ZodType; when?: NodeConditionSpec }>>(
       id: Id,
-      identity: Readonly<{ label: string; statusKey?: string; result: Result }>,
+      identity: Identity,
     ) {
       return defineOperatorGateNode(step, id, identity);
     },

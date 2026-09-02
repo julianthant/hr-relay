@@ -1156,7 +1156,7 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
  * second implementation of the descriptor's identity. The server states it.
  *
  * **`options` is the checkable half of `chosenFrom`.** Each entry pairs an EID
- * the packet actually showed with the label the post-gate node will verify, so a
+ * the packet actually showed with the label the identity-authority node will verify, so a
  * surface cannot invent a label and cannot offer an EID the run never read.
  */
 export const IdentityGateOptionWireSchema = z.strictObject({

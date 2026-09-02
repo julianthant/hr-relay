@@ -186,6 +186,8 @@ const UCPATH_STAGE_SWEEP = taskOutput("ucpath/stage-pending-termination-sweep");
 const UCPATH_DELETE_PENDING = taskOutput("ucpath/delete-pending-terminations");
 const UCPATH_VERIFY_TERMINATION = taskOutput("ucpath/verify-termination");
 const UCPATH_VERIFY_SWEEP = taskOutput("ucpath/verify-pending-terminations-cleared");
+const UCPATH_PENDING_SET = taskOutput("ucpath/read-pending-termination-set");
+const UCPATH_FILING_PRESENCE = taskOutput("ucpath/verify-termination-filing-present");
 const KUALI_FINALIZATION_INPUT = workflowInput("separations-kuali-finalization");
 const KUALI_FINALIZATION_RESULT = workflowResult("separations-kuali-finalization");
 const KUALI_FINALIZATION_GATE = gateResult("separations-kuali-finalization", "identity-approval");
@@ -250,8 +252,27 @@ function sweepProofLeaves(scope: EvidenceValueScope, prefix: string): unknown[] 
   const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
   return [
     ...person(scope, at("emplId")),
-    ...open(scope, at("kind"), at("scannedRowCount"), at("observedAt"),
-      at("source")),
+    ...open(
+      scope,
+      at("kind"),
+      at("version"),
+      at("selectedTransactionIds"),
+      at("protectedTransactionIds"),
+      at("setDigest"),
+      at("scannedRowCount"),
+      at("observedAt"),
+      at("source"),
+    ),
+  ];
+}
+
+function filingPresenceLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
+  return [
+    ...person(scope, at("emplId"), at("displayedName")),
+    ...open(scope, at("kind"), at("transactionId"), at("effectiveDate"),
+      at("approvalStatus"), at("observedAt"), at("source"), at("receiptDisposition"),
+      at("authority")),
   ];
 }
 
@@ -429,7 +450,7 @@ function approvedSubjectLeaves(scope: EvidenceValueScope, prefix: string): unkno
   const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
   return [
     ...person(scope, at("emplId"), at("ucpathName")),
-    ...open(scope, at("chosenFrom"), at("evidenceDigest"), at("nameTier"), at("approvalShape")),
+    ...open(scope, at("authority"), at("chosenFrom"), at("evidenceDigest"), at("nameTier"), at("approvalShape"), at("source")),
   ];
 }
 
@@ -562,7 +583,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...approvedSubjectLeaves(VERIFY_IDENTITY_APPROVAL, "approved"),
   ...jobClassificationLeaves(VERIFY_IDENTITY_APPROVAL, "jobs"),
 
-  /* separations-identity-check / identity-approval — the ALWAYS-GATE's stored
+  /* separations-identity-check / identity-approval — the name-only gate's stored
      operator decision (D204). Both arms of `IdentityApprovalResultSchema` are
      declared, because which arm a run took is decided at the gate and a receipt
      may not depend on that choice to be classifiable.
@@ -590,7 +611,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "terminationType.reason", "observedTerminationTypeOptions", "emplRecord",
     "effectiveDate", "lastDateWorked", "initiatorComments"),
 
-  /* The ALWAYS-GATE again, on this workflow's own scope. A gate's redaction is
+  /* The conditional name-only gate again, on this workflow's own scope. Its redaction is
      scoped by `(workflow, gate)` (D204), so chunk 3's declaration does not
      cover chunk 4's gate even though the payload schema is identical — which is
      the point: a second workflow must state its own answer. */
@@ -634,6 +655,12 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...person(UCPATH_VERIFY_SWEEP, "emplId"),
   ...open(UCPATH_VERIFY_SWEEP, "state"),
 
+  /* Exact pending-set admission plus the fresh filing-presence precondition. */
+  ...person(UCPATH_PENDING_SET, "emplId"),
+  ...population(UCPATH_PENDING_SET, "eligible", "protected"),
+  ...open(UCPATH_PENDING_SET, "kind", "observedAt", "source"),
+  ...filingPresenceLeaves(UCPATH_FILING_PRESENCE),
+
   /* separations-ucpath-termination terminal result */
   ...open(UCPATH_TERMINATION_RESULT, "documentNumber", "pendingSweep.disposition",
     "termination.disposition"),
@@ -653,9 +680,10 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "ucpathDeptId.reason", "ucpathDepartment.state", "ucpathDepartment.value",
     "ucpathDepartment.reason", "observedDepartmentOptions", "payrollTitleCode", "payrollTitle",
     "lastDayWorked", "separationDate", "terminationEffectiveDate", "transactionNumber",
+    "transactionApprovalStatus",
     "timekeeperComments", "observedExistingComments"),
 
-  /* The ALWAYS-GATE a third time, on this workflow's own scope (D204). */
+  /* The conditional name-only gate on this workflow's own scope (D204). */
   ...person(KUALI_FINALIZATION_GATE, "eid"),
   ...open(KUALI_FINALIZATION_GATE, "decision", "chosenFrom", "evidenceDigest", "reason"),
 
@@ -695,7 +723,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(SEPARATIONS_INPUT, "documentNumber", "searchTimeoutMs",
     "reRead.ordinal", "reRead.reason"),
 
-  /* The ALWAYS-GATE a FOURTH time, on the composition's own scope (D204) — and
+  /* The conditional name-only gate on the composition's own scope (D204) — and
      here it dominates three real writes across two systems. */
   ...person(SEPARATIONS_GATE, "eid"),
   ...open(SEPARATIONS_GATE, "decision", "chosenFrom", "evidenceDigest", "reason"),

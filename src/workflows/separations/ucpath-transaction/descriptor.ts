@@ -16,12 +16,11 @@
  *
  * ## Why the identity gate is in a "write chunk"
  *
- * Because ref write-safety §14's ALWAYS-GATE binds separation FILINGS, and this chunk is
- * the filing. `identity-gate-before-commit` enforces it structurally on any
- * descriptor whose id names the separation class: every ancestry path from a
- * transaction node — and from the terminal result — must reach the gate's own
- * ancestry before a graph root. The read half is chunk 3's tasks, reused rather
- * than reimplemented, which is exactly what §3's lego rule is for.
+ * Ref write-safety §14 requires typed identity authority before a filing. The
+ * supplied-EID arm uses exact UCPath read-back; the name-resolved arm uses the
+ * real operator gate. `identity-gate-before-commit` enforces that every
+ * transaction and identity-bearing result is dominated by the shared authority
+ * task, and pins the gate's exact name-only condition.
  *
  * ## Why `termination-type` hangs off the GATE and not off the transaction
  *
@@ -48,8 +47,8 @@
  *
  * ## dryRun
  *
- * `stop-after-prepare` on both. A dry run reads UCPath, parks at the gate, and
- * on approval walks the whole three-page wizard and the sweep selection — then
+ * `stop-after-prepare` on both. A dry run reads UCPath, parks at the gate only
+ * for name-resolved identity, then walks the whole three-page wizard and the sweep selection — then
  * stops with no intent, no fence, no click and nothing durable, because the
  * 2026-08-13 live check proved the wizard persists nothing before an explicit
  * Save. That makes this the first workflow in the tree whose dry run exercises
@@ -59,7 +58,7 @@ import { z } from "zod";
 import { flow } from "../../../base/flow.js";
 import { defineWorkflowDescriptor } from "../../../base/workflow.js";
 import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
-import { ApprovedIdentitySubjectSchema } from "../../../domain/separations/identity-approval.js";
+import { ResolvedIdentitySubjectSchema } from "../../../domain/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../domain/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../domain/separations/write-plan.js";
 import { KualiDocumentNumberSchema } from "../../../domain/ui/kuali-document-identity.js";
@@ -68,7 +67,7 @@ import {
   KualiOptionFieldSchema,
 } from "../../../domain/ui/kuali-separation-document.js";
 import {
-  UcpathPendingSweepProofSchema,
+  UcpathPendingSweepHistoricalOrCurrentProofSchema,
   UcpathTerminationProofSchema,
   UcpathUsDateSchema,
 } from "../../../domain/ui/ucpath-smart-hr-termination.js";
@@ -90,7 +89,14 @@ import {
 } from "../identity-check/nodes.js";
 import { JOB_SUMMARY_NODE, jobSummaryNode } from "../job-summary/nodes.js";
 import { TERMINATION_TYPE_NODE, terminationTypeNode } from "../kuali-extraction/nodes.js";
-import { SWEEP_NODE, TERMINATION_NODE, clearPendingNode, fileTerminationNode } from "./nodes.js";
+import {
+  PENDING_SET_NODE,
+  SWEEP_NODE,
+  TERMINATION_NODE,
+  clearPendingNode,
+  fileTerminationNode,
+  pendingSetNode,
+} from "./nodes.js";
 
 /**
  * The ingress. It is the identity-check ingress plus exactly the facts a
@@ -144,12 +150,12 @@ export const SeparationsUcpathTerminationCanonicalInput = defineCanonicalInput(
 
 export const SeparationsUcpathTerminationResultSchema = z.strictObject({
   documentNumber: z.string().min(1),
-  /** The subject a human approved, and the evidence they approved it on. */
-  approved: ApprovedIdentitySubjectSchema,
+  /** The subject established by machine verification or operator approval. */
+  approved: ResolvedIdentitySubjectSchema,
   /** Whether the sweep had anything to do, and what the grid showed after it. */
   pendingSweep: z.strictObject({
     disposition: z.enum(["committed", "already-present"]),
-    proof: UcpathPendingSweepProofSchema,
+    proof: UcpathPendingSweepHistoricalOrCurrentProofSchema,
   }),
   /** The filed termination's receipt PAIR — a number alone is never a proof. */
   termination: z.strictObject({
@@ -208,15 +214,24 @@ const separationsUcpathTerminationFlow = flow(SeparationsUcpathTerminationInput)
       approval: outputs[GATE_NODE],
     }),
   }))
-  .pipe(clearPendingNode.wire({
+  .pipe(pendingSetNode.wire({
     dependsOn: [APPROVAL_NODE],
+    bind: ({ outputs }) => ({
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+    }),
+  }))
+  .pipe(clearPendingNode.wire({
+    dependsOn: [APPROVAL_NODE, PENDING_SET_NODE],
     prepare: { bind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+      observedSet: outputs[PENDING_SET_NODE],
     }) },
     commit: { bind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+      observedSet: outputs[PENDING_SET_NODE],
     }) },
   }))
   .pipe(fileTerminationNode.wire({
@@ -346,19 +361,23 @@ export const separationsUcpathTerminationDescriptor = defineWorkflowDescriptor({
     },
     {
       nodeId: "comparison",
-      purpose: "Builds the identity evidence packet the gate shows — DISCONFIRMING evidence first — and the "
-        + "digest an approval binds to. Pure: it reaches no browser.",
+      purpose: "Builds the identity evidence packet — DISCONFIRMING evidence first — and the digest that "
+        + "machine verification or an operator decision binds to. Pure: it reaches no browser.",
     },
     {
       nodeId: "identity-approval",
-      purpose: "The ALWAYS-GATE. A human confirms this is the right person before anything downstream may "
-        + "consume the identity, and only the typed resolve-gate command can settle it.",
+      purpose: "Requires the typed operator resolve-gate command when the packet's EID came from a name search; "
+        + "a supplied-EID packet makes this declared condition false and records no human decision.",
     },
     {
       nodeId: "approval",
-      purpose: "Re-derives the evidence and checks the stored approval against it, so an approval of a packet "
-        + "that has since moved cannot stand. It re-runs on every attempt rather than replaying its own "
-        + "previous answer.",
+      purpose: "Re-derives the evidence and produces explicit machine-verification or operator-approval "
+        + "authority. It re-runs on every attempt, so moved evidence or identity origin cannot reuse an old answer.",
+    },
+    {
+      nodeId: "pending-set",
+      purpose: "Reads and freezes the exact stable-ID set of eligible pending terminations plus every protected "
+        + "transaction before the sweep. The run admission authorizes this machine observation; it is not another gate.",
     },
     {
       nodeId: "clear-pending",

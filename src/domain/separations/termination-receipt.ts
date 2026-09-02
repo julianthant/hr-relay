@@ -42,7 +42,7 @@ import { UcpathUsDateSchema } from "../ui/ucpath-smart-hr-termination.js";
 import { UcpathApprovalStatusSchema } from "../ui/ucpath-ss-smart-hr.js";
 
 export const TERMINATION_RECEIPT_REFUSAL_CODES = [
-  /** The receipt names a different person than the operator approved. */
+  /** The receipt names a different person than identity authority established. */
   "termination-receipt-subject-mismatch",
   /** The receipt names a different effective date than this run filed. */
   "termination-receipt-date-mismatch",
