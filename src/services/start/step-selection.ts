@@ -75,6 +75,7 @@ export class StartStepOmissionRefusedError extends Error {
     | "unknown-step"
     | "step-not-omittable"
     | "step-not-omitted"
+    | "duplicate-step"
     | "facts-missing"
     | "facts-invalid"
     | "cascade-refused";
@@ -216,7 +217,7 @@ export function resolveStartStepOmissions(
     }
     if (submitted.has(entry.step)) {
       throw new StartStepOmissionRefusedError(
-        "unknown-step",
+        "duplicate-step",
         `${descriptor.id} start step ${entry.step} is omitted twice`,
       );
     }

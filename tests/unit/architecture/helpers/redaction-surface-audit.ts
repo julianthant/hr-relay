@@ -1014,6 +1014,16 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.inputField", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.reason", origin: "repository-authored" },
+  /**
+   * D307 — the omission form a STEP FOLDER declares, served so the Steps
+   * screen can draw it. Every leaf is descriptor source: the field's operator
+   * label, its optional help sentence, and the closed enum values it accepts.
+   * The operator's typed ANSWERS never come back this way — they ride the
+   * start-plan request, and the plan wire deliberately does not echo input.
+   */
+  { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].label", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].help", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].values[]", origin: "repository-authored" },
 
   { surface: "wire/activity-report", path: "categories[].category.reason", origin: "repository-authored" },
   { surface: "wire/activity-report", path: "durations.longestMs.reason", origin: "repository-authored" },
