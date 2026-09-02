@@ -1,7 +1,7 @@
 # queue-day--paper-ink--1440x900--panel-dismissed
 # adapter: fixture
 # fixture: queue-day
-# descriptorHash: 949be141781359be036838eca5b7f420bc85aa3bb55363cd075c30089f9ebb2b
+# descriptorHash: 59cfd0ad5215a72628c932f1b7a8ad4ffc172e70707880054bcb3bd69719f15c
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: panel-dismissed
 # capturedAt: 2026-08-03
@@ -125,13 +125,13 @@
     - button "EID 10555001 — failed":
       - text: EID 10555001
       - button "What is this row? — Run Panel"
-      - text: "Failed 9:33 AM #1 pl-090404-0004 took 6m 0s"
+      - text: "Failed 9:33 AM #1 pl-090404-0004 6m 0s"
       - button "Run again"
       - text: Right-click or press m for every command on EID 10555001
     - button "EID 10333015 — done with warnings":
       - text: EID 10333015
       - button "What is this row? — Run Panel"
-      - text: "3 Done 9:24 AM #1 pl-090808-0008 took 5m 0s"
+      - text: "3 Done 9:24 AM #1 pl-090808-0008 5m 0s"
       - button "Run again"
       - text: Right-click or press m for every command on EID 10333015
     - button "Separation audit — August — done with warnings":
@@ -178,13 +178,13 @@
       - button "Mark EID 10410208 checked by you"
       - text: person lookup
       - button "Expand"
-      - text: "9:10 AM #1 pl-091010-0070 took 2m 0s"
+      - text: "9:10 AM #1 pl-091010-0070 2m 0s"
       - button "Run again"
       - text: Right-click or press m for every command on Separation audit — August
     - button "EID 10001573 — done":
       - text: EID 10001573
       - button "What is this row? — Run Panel"
-      - text: "Done 9:35 AM #1 pl-090303-0003 took 5m 0s"
+      - text: "Done 9:35 AM #1 pl-090303-0003 5m 0s"
       - button "Run again"
       - text: Right-click or press m for every command on EID 10001573
     - button "Onboarding cohort — July stragglers — done":
@@ -228,13 +228,13 @@
       - button "Mark EID 10300111 checked by you"
       - text: person lookup
       - button "Expand"
-      - text: "9:05 AM #1 pl-095050-0050 took 2m 0s"
+      - text: "9:05 AM #1 pl-095050-0050 2m 0s"
       - button "Run again"
       - text: Right-click or press m for every command on Onboarding cohort — July stragglers
     - button "EID 10222009 — cancelled":
       - text: EID 10222009
       - button "What is this row? — Run Panel"
-      - text: "Cancelled 9:26 AM #1 pl-090707-0007 took 4m 0s"
+      - text: "Cancelled 9:26 AM #1 pl-090707-0007 4m 0s"
       - button "Run again"
       - text: Right-click or press m for every command on EID 10222009
   - text: No run open Pick a run from the Person Lookup queue and its logs, decisions, data and receipt open here. The run you had open belongs to a different workflow, so it closed when you switched.
