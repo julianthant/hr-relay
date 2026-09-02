@@ -4,9 +4,12 @@
 
 **Plan owner:** `docs/rebuild/03c-migrate-the-remaining-workflows.md` §Order 1
 
-**Inherited contracts:** ref charter §1/§3/§8; ref workflow-model §1.6/§1.6.1/§5.6.1/§5.8/§8; ref task-contract
+**Inherited contracts:** ref charter §1/§3/§8; ref workflow-model §1.6/§8; ref task-contract
 §2.7/§2.8/§3.1; ref stores §2; ref dashboard-surfaces §9; ref guards-and-tests §10.11;
 ref operator-trust §3.2
+
+**Post-base authority amendment:** integration commit `1273c360`, ref workflow-model
+§1.6.1/§5.6.1/§5.8 and D312–D316
 
 This record covers Order 1's two faces of the existing `person-lookup` workflow. It does not
 implement the unlanded D311–D316 compiler/runtime work; its authoring and acceptance obligations are
@@ -53,32 +56,20 @@ and `src/systems/ucpath/navigate.ts` at
 
 ### D312–D316 recipe acceptance
 
-The final recipe declares every Search and Match operation with the closed D315 entry algebra. For
-this pure-read workflow every executable entry is `task(...)`, with a stable entry id and typed
-inputs; the compiler may derive data edges but may not infer another control kind. The named task
-seams above are the minimum behavior-owned delta, not permission to hand-author descriptor, module,
-registry, or generic-dashboard assembly.
+Applied to Person Lookup, the owner text at `1273c360` means:
 
-Neither mode has an omittable step. D313 therefore adds no replacement-value form or hidden skip:
-the recipe declares no omission schema, and every selected read/compute task executes. A future
-omission would require a recipe change whose complete values validate before start; it cannot be
-introduced by a caller or requested mid-run.
-
-There is no write-sensitive operator assertion or downstream transaction in this workflow, so
-D313's separate visible mandatory-verification entry is not applicable here. If a future parent
-uses a Person Lookup result to feed a write, that parent's recipe—not this read-only child—must
-declare any required visible verifier outside an omitted step.
-
-Person Lookup is D316's minimum recipe conversion. R3 acceptance requires equivalent public
-descriptor, module, and wire behavior, followed by deletion of the superseded hand-authored
-declarations and duplicate generic-surface tests. Coexistence or an advanced legacy-authoring escape
-hatch is a failure, not a compatibility phase after equivalence is green.
+- every executable entry is a stable-id `task(...)`; no parallel/delegate/gate/transaction entry;
+- neither mode declares an omission or replacement-value schema, and there is no write-sensitive
+  assertion/verifier inside this read-only workflow (a future writing parent owns its verifier);
+- Match's genuinely new reusable task/driver files are behavior additions, not workflow glue; and
+- Person Lookup is D316's minimum conversion: preserve public descriptor/module/wire behavior, then
+  delete the superseded declarations and duplicate generic-surface tests.
 
 ## 3. Proof and scenario matrix for R3
 
 | Proof | Required cases |
 |---|---|
-| T1 structural — Search | EID and name ingress; unique selection; no result; multiple/ambiguous result; CRM found/missing; CRM transient retry and permanent failure; UCPath drill subject mismatch; optional CRM dates included/not requested; crash after a checkpoint followed by checkpoint resume; restart from start as the same logical item/new attempt, rerunning every read/compute from pristine input; every declared conditional/refusal/result arm. Reuse and relocate current useful scenarios rather than freezing legacy implementation trivia. |
+| T1 structural — Search | EID and name ingress; unique selection; no result; multiple/ambiguous result; CRM found/missing; CRM transient retry and permanent failure; UCPath drill subject mismatch; optional CRM dates included/not requested; crash after a checkpoint followed by checkpoint resume that replays valid ancestors but executes the `always-rerun` active-status ancestor again; restart from start as the same logical item/new attempt, rerunning every read/compute from pristine input; every declared conditional/refusal/result arm. Reuse and relocate current useful scenarios rather than freezing legacy implementation trivia. |
 | T1 structural — Match | DOB+SSN, DOB-only, and SSN-only accepted forms that the final strict schema admits; both identifiers absent rejected at ingress; unique match; no-match; multiple/ambiguous candidates; malformed result grid; subject mismatch; transient retry; permanent auth/page/schema failure; result/probe unknown; crash after the read checkpoint followed by checkpoint resume; restart from start as the same logical item/new attempt with the Match reads and terminal compute executed again. |
 | T1b live — Search | Required by doc 03c/ref guards-and-tests but blocked by the D209 conflict in §4. After an owning-contract resolution, use current registered Search subjects only for truthful input arms and record reached/excluded nodes, checkpoints, verdict and zero write-authority deltas. |
 | T1b live — Match | Required but blocked by §4's D209 conflict. After resolution, use a dated current HR Tasks record whose secret-backed name/DOB/identifier inputs exercise one eligible Match result without exposing values in committed evidence. |
@@ -88,8 +79,9 @@ hatch is a failure, not a compatibility phase after equivalence is green.
 No transaction/probe/commit crash window exists because neither mode has a transaction node. Gate,
 delegation/join and commit-proof branches are also impossible by declared graph shape; they are not
 manufactured as scenarios. D314 still requires two distinct recovery proofs: checkpoint resume
-replays valid ancestors and retries from the failed task, while restart from start mints the same
-logical item's next attempt, ignores the old read/compute checkpoints, and executes all reads and
+replays valid checkpoint ancestors, executes every `always-rerun` ancestor again (including Search's
+active-status read), and retries from the failed task; restart from start mints the same logical
+item's next attempt, ignores the old read/compute checkpoints, and executes all reads and
 computations again. Both preserve the admitted mode/input; neither may become different-input rerun.
 
 R3 must add public labels to `config/test-subjects.json` only after same-day availability checks.

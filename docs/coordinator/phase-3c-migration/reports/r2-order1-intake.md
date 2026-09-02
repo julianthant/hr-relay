@@ -41,8 +41,9 @@ file changed, no external write occurred, and the coordinator board was not writ
   reusable task/driver files own behavior only and do not carry descriptor, module, registry, or
   generic-dashboard glue.
 - Their recipes use stable-id `task(...)` entries only: no `parallel`, `delegate`, `gate`, or
-  `transaction` entry and no omission schema. Structural proof covers both checkpoint resume and
-  restart from start as the same logical item/new attempt, with every read/compute rerun.
+  `transaction` entry and no omission schema. Structural proof distinguishes checkpoint resume
+  (including Search's `always-rerun` active-status read) from restart as the same logical item's new
+  attempt, where every read/compute reruns.
 - `legacy-workflow-person-lookup` and `legacy-workflow-i9-lookup` stay `open` until R3 native/live
   evidence lands. The I-9 entry's derived “pure UCPath read” wording is corrected at that boundary.
 
@@ -56,7 +57,7 @@ and amended the two migration records plus reuse map without implementing compil
 |---|---|
 | D312 | The strict four-artifact cap is recorded as reuse-only. Person Match and I-9 add genuine behavior, so their base four workflow artifacts may be joined only by behavior-owned task/driver/login/UI files; no workflow glue may hide in them. |
 | D313 | Neither read-only workflow declares an omission. There is no replacement-value schema, hidden skip, mid-run value request, write-sensitive assertion, or in-workflow mandatory verifier. A future writing parent owns any separate visible verifier. |
-| D314 | T1 includes both checkpoint resume and restart from start. Restart keeps the same logical item, mints the next attempt, ignores old read/compute checkpoints, and reruns every read/compute from the unchanged admitted input. |
+| D314 | T1 includes both checkpoint resume and restart from start. Resume replays valid checkpoints but reruns every `always-rerun` ancestor, including Person Search's active-status read. Restart keeps the same logical item, mints the next attempt, ignores old read/compute checkpoints, and reruns every read/compute from the unchanged admitted input. |
 | D315 | Every operation is an explicit stable-id `task(...)`; absence of parallel/delegate/gate/transaction entries is graph truth, not missing coverage. |
 | D316 | Person Lookup is a named equivalence/deletion fixture. I-9 is not; it may use only the accepted compiler path after the Person-Lookup/Separations deletion gate and cannot revive the deleted path. |
 
@@ -107,7 +108,7 @@ Pinned initial target: `daa518588b2e415891e3b5f4db52678d97e026a8`.
 | Standards | 2 low + 1 judgement: over-copied inherited trust text and deferred task names | Reduced to workflow deltas; stable ids recorded in `14a801a9`. |
 | Spec | 1 high + 2 medium + 1 low: D209 conflict, Match task classification, I-9 role, task ids | All corrected/preserved in `14a801a9`; focused Terra re-review: `Count: 0 · Worst: none`. |
 | Docs | 3 medium + 3 low, then 1 medium + 1 low: missing crash/impossible cases and confidence mappings, stale citation/base attribution, access-probe wording | Corrected in `14a801a9` and `66e0cd73`; final Luna re-review: `Count: 0 · Worst: none`. |
-| D312–D316 authority reconciliation | Coordinator amendment received after initial close; exact owner text was not yet on this branch | Pinned integration commit `1273c360`; amended artifact budget, omissions, recovery, entry algebra and deletion/equivalence acceptance. Focused amendment review recorded in the closing commit. |
+| D312–D316 authority reconciliation | Coordinator amendment received after initial close; exact owner text was not yet on this branch | Pinned integration commit `1273c360`. Initial focused reviews of `e1a55921` found one spec medium, one standards medium plus two lows, and five docs mediums plus one low, with overlap on `always-rerun` and review-record evidence. The follow-up diff corrects those findings and requires focused re-review before close. |
 
 Correctness, Silent failures, Performance and Tests were skipped as code axes because the branch is
 documentation-only and changes no runtime behavior. Security was supervisor-reviewed: no auth,

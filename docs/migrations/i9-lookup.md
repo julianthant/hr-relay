@@ -5,9 +5,12 @@
 
 **Plan owner:** `docs/rebuild/03c-migrate-the-remaining-workflows.md` §Order 1
 
-**Inherited contracts:** ref charter §1/§3/§8; ref workflow-model §1.6.1/§5.6.1/§5.8;
-ref task-contract §2.7/§2.8/§3.1; ref stores §1/§4; ref guards-and-tests §10.11;
+**Inherited contracts:** ref charter §1/§3/§8; ref task-contract §2.7/§2.8/§3.1;
+ref stores §1/§4; ref guards-and-tests §10.11;
 ref operator-trust §3.2; ref clock-config-secrets §4
+
+**Post-base authority amendment:** integration commit `1273c360`, ref workflow-model
+§1.6.1/§5.6.1/§5.8 and D312–D316
 
 `i9-lookup` answers who signed Form I-9 Section 2. It is a pure read of Tracker I-9 Complete through
 the UCOP portal and UCSD SSO/Duo. The rebuild currently has only an unwired, zero-task `i9` store.
@@ -63,21 +66,16 @@ Two legacy behaviors are explicitly rejected by the rebuild's fail-loud contract
 
 ### D312–D316 recipe acceptance
 
-The final recipe declares the two browser reads and terminal computation as stable-id `task(...)`
-entries. Typed inputs may derive their dependency edges, but no compiler inference may turn them
-into parallel, delegated, gated, or transactional behavior. I-9 introduces no omission: under D313
-it declares no replacement-value schema, every selected task runs, and neither a caller nor worker
-may manufacture a skip or request substitute values mid-run.
+Applied to I-9 Lookup, the owner text at `1273c360` means:
 
-There is no write-sensitive operator assertion or transaction in this workflow, so D313's separate
-visible mandatory-verification entry is not applicable here. A future parent that feeds an I-9 fact
-to a write owns any required visible verifier in its own recipe outside an omitted step.
-
-The I-9 driver, task contracts/implementations, verified login recipe and UI catalog are
-behavior-owned additions beyond the base workflow artifacts, not evidence that I-9 is reuse-only.
-D316 names Person Lookup and Separations—not I-9—as its equivalence fixtures. Once their acceptance
-deletes the superseded authoring path, I-9 enters only through the accepted recipe compiler and
-cannot revive that path as an escape hatch.
+- its two browser reads and terminal computation are stable-id `task(...)` entries; no other entry
+  kind is present;
+- it declares no omission/replacement schema and has no write-sensitive assertion/verifier (a
+  future writing parent owns its verifier);
+- its driver/tasks/login/UI files are genuine behavior additions, so D312 does not classify I-9 as
+  reuse-only and those files may not contain workflow glue; and
+- I-9 is not a named D316 equivalence fixture; after Person Lookup/Separations delete the old path,
+  I-9 cannot recreate it.
 
 ## 3. Proof and scenario matrix for R3
 

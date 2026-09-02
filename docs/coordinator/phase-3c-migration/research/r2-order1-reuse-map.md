@@ -95,7 +95,7 @@ Session `r2i9` was launched headless with the repository's Duo Autopilot through
 | Person Match T1b/T3 | Both are blocked on the contract decision because T3 attaches to a dry-run scenario. After resolution, use a current HR Tasks record with name and DOB plus one usable disambiguator, mode-specific ceremony and subject title, and no committed person values. |
 | I-9 T1b | Blocked on the contract decision and a new current access-visible record with an eligible completed action, modern summary, rendered audit header and non-empty Signed Section 2 Created By. |
 | Negative branches | Synthetic structural scenarios for no-match, ambiguity, malformed schema, transient/permanent failure, subject mismatch and unknown. Never search for a real person merely to manufacture a negative arm. |
-| Recovery | For each workflow, prove both checkpoint resume and D314 restart from start. Restart keeps the same logical item, mints the next attempt, discards read/compute checkpoint reuse, reruns every read/compute, and cannot change admitted input or mode. |
+| Recovery | For each workflow, prove both checkpoint resume and D314 restart from start. Resume replays valid checkpoint ancestors but reruns every `always-rerun` ancestor, including Person Search's active-status read. Restart keeps the same logical item, mints the next attempt, discards read/compute checkpoint reuse, reruns every read/compute, and cannot change admitted input or mode. |
 | Capability close | `legacy-workflow-person-lookup` and `legacy-workflow-i9-lookup` stay open until native workflows, proofs and live records land. Correct the I-9 entry's derived “pure UCPath read” wording to I-9 system read at that boundary. |
 
 ## R3-ready facts, not choices
