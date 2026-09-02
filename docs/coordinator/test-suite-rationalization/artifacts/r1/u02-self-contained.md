@@ -38,7 +38,7 @@ Focused command under the nonexistent override:
 
 ```text
 Test Files  7 passed (7)
-Tests  62 passed (62)
+Tests  63 passed (63)
 ```
 
 Collection under the same override completed (all architecture files listed); the finished guards contain no `HRAUTO_LEGACY_REPO`, external legacy path, `LEGACY_REPO_ROOT`, or external-repository git reader.
@@ -66,3 +66,34 @@ No failure mentions a legacy checkout. `npm run test:coverage` reproduced the sa
 ## Residue
 
 No remaining architecture execution reader reaches the external checkout. `HRAUTO_LEGACY_REPO` remains as historical/test-only registry vocabulary in `src/domain/runtime-environment.ts`; it is no longer read by an architecture guard.
+
+## Follow-up provenance-integrity verification
+
+Parent verification found that the initial snapshot had used `trimEnd()` while reading Git blobs: recorded SHA-1 ids referred to bytes ending in a newline, while frozen `text` omitted that newline. The package script map was also independent of its recorded package blob. This follow-up corrects both defects.
+
+Every text-bearing frozen file now preserves exact UTF-8 Git bytes, including its terminal newline. The helper hashes `blob <byteLength>\0<exact UTF-8 bytes>` with SHA-1 and rejects a mismatch while parsing the whole provenance document. The 44 validated text-bearing entries are the 18 selector/catalog files, one runtime provider file, 24 canonical-field sources, and the legacy `package.json`.
+
+`operationalIsolation.package` is now one ordinary frozen `{ path, blob, text }` file. The operational-isolation guard derives `scripts` by parsing that exact text only after blob integrity passes.
+
+Focused red controls retain their recorded blob while changing frozen text:
+
+```text
+frozen legacy blob mismatch for src/systems/crm/SELECTORS.md: expected 5b928a9bd686727fb10700a61ac116138df7eb44; actual 9bbf201523ab234f34aeb597f5e03f19b55b8d21
+frozen legacy blob mismatch for package.json: expected fd94ce86cef204cd40569f9b7728a2c5999ffc57; actual 68d91ff7581e31a5fcd6ce8579168af76a31723e
+```
+
+Green proof:
+
+```text
+text-bearing=44 blob-mismatches=0
+Test Files  7 passed (7)
+Tests  63 passed (63)
+
+> hr-automation-rebuild@0.1.0 typecheck
+> tsc --noEmit
+
+> hr-automation-rebuild@0.1.0 lint
+> eslint src tests scripts --max-warnings 0
+```
+
+The typecheck, lint, and `git diff --check` gates passed after this follow-up.

@@ -12,6 +12,7 @@ import {
 import {
   FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
   FrozenLegacyArchitectureProvenanceSchema,
+  parseFrozenLegacyArchitectureProvenance,
 } from "./helpers/frozen-legacy-architecture-provenance.js";
 
 const PORT_MAP_PATH = new URL("../../../config/ports/legacy-selector-port-map.json", import.meta.url);
@@ -163,6 +164,12 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     const malformedSelector = malformed.selector as Record<string, unknown>;
     malformedSelector.commit = "not-a-commit";
     assert.throws(() => FrozenLegacyArchitectureProvenanceSchema.parse(malformed), /commit/i);
+
+    const tamperedText = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
+    const tamperedSelector = tamperedText.selector as Record<string, unknown>;
+    const files = tamperedSelector.files as Record<string, unknown>[];
+    files[0] = { ...files[0], text: `${String(files[0]?.text)}tampered` };
+    assert.throws(() => parseFrozenLegacyArchitectureProvenance(tamperedText), /frozen legacy blob mismatch/i);
   });
 
   it("does not treat candidate proposals as classified semantic ids", () => {

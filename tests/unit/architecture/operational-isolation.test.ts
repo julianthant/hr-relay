@@ -5,7 +5,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import isolationJson from "../../../config/runtime-isolation.json" with { type: "json" };
 import { REPO_ROOT } from "./helpers/guard-files.js";
-import { FROZEN_LEGACY_ARCHITECTURE_PROVENANCE } from "./helpers/frozen-legacy-architecture-provenance.js";
+import {
+  FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
+  frozenLegacyScripts,
+  parseFrozenLegacyArchitectureProvenance,
+} from "./helpers/frozen-legacy-architecture-provenance.js";
 import {
   auditOperationalIsolation,
   DISTINCT_RESOURCE_KEYS,
@@ -111,10 +115,21 @@ describe("operational isolation", () => {
         REPO_ROOT,
         isolation,
         scriptsOf(REPO_ROOT),
-        FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.operationalIsolation.package.scripts,
+        frozenLegacyScripts(),
       ),
       [],
     );
+  });
+
+  it("refuses a changed legacy package script when its recorded blob is unchanged", () => {
+    const tampered = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
+    const operationalIsolation = tampered.operationalIsolation as Record<string, unknown>;
+    const legacyPackage = operationalIsolation.package as Record<string, unknown>;
+    legacyPackage.text = String(legacyPackage.text).replace(
+      '"dashboard": "tsx --env-file=.env src/cli.ts dashboard --capture-ngrok"',
+      '"dashboard": "tampered"',
+    );
+    assert.throws(() => parseFrozenLegacyArchitectureProvenance(tampered), /frozen legacy blob mismatch/i);
   });
 
   it("requires an exported direct-const factory call carrying the exact isolated values", () => {
