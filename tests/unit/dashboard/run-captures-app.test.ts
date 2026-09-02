@@ -12,7 +12,33 @@ import {
 let app: Awaited<ReturnType<typeof mountCaptureApp>> | undefined;
 afterEach(async () => { await app?.unmount(); app = undefined; vi.useRealTimers(); });
 
-describe("actual DashboardApp Receipt captures", () => {
+describe("actual DashboardApp run captures", () => {
+  it("shows verified capture controls in the Logs body before the Receipt is opened", async () => {
+    app = await mountCaptureApp({ runId: CAPTURE_RUN_A, section: "logs", runs: new Map([[CAPTURE_RUN_A, {
+      detail: () => captureDetail(), captures: () => Promise.resolve(Response.json({ section: "captures", payload: {
+        runId: CAPTURE_RUN_A, artifacts: [captureImage()],
+      } })),
+    }]]) });
+    const region = document.querySelector('[aria-label="Run captures"]');
+    assert.ok(region, "Logs must mount the app-owned capture section");
+    assert.ok(captureButton(`Open capture ${CAPTURE_ARTIFACT_A}`, region));
+    assert.ok(region.querySelector(`a[download="capture-${CAPTURE_ARTIFACT_A}"]`));
+    assert.equal(app.requests.filter(request => request.url.endsWith("/captures")).length, 1);
+  });
+
+  it("keeps a capture read refusal visible and keyboard-reachable in Logs", async () => {
+    app = await mountCaptureApp({ runId: CAPTURE_RUN_A, section: "logs", runs: new Map([[CAPTURE_RUN_A, {
+      detail: () => captureDetail(), captures: () => Promise.reject(new Error("Capture transport refused this read")),
+    }]]) });
+    const region = document.querySelector('[aria-label="Run captures"]');
+    assert.match(region?.textContent ?? "", /Capture transport refused this read/u);
+    assert.equal(region?.textContent?.includes("No captures"), false);
+    const search = document.querySelector('input[aria-label="Search logs"]');
+    assert.ok(search instanceof HTMLInputElement);
+    search.focus();
+    assert.equal(document.activeElement, search);
+  });
+
   it("keeps current request failure local without manufacturing empty captures", async () => {
     app = await mountCaptureApp({ runId: CAPTURE_RUN_A, section: "receipt", runs: new Map([[CAPTURE_RUN_A, {
       detail: () => captureDetail(), captures: () => Promise.reject(new Error("Capture transport refused this read")),
@@ -80,7 +106,7 @@ describe("actual DashboardApp Receipt captures", () => {
     }
     assert.equal(document.querySelector('[aria-label="Run capture preview"]'), null);
     assert.ok(captureButton(`Open capture ${CAPTURE_ARTIFACT_A}`));
-    assert.equal(app.requests.filter(request => request.url.endsWith("/captures")).length, 2);
+    assert.equal(app.requests.filter(request => request.url.endsWith("/captures")).length, replacement === "revision" ? 2 : 1);
   });
 
   it.each(["resolve", "reject"])("keeps current revision success when its preceding read later %ss", async late => {
@@ -298,7 +324,7 @@ describe("actual DashboardApp Receipt captures", () => {
     assert.equal(document.querySelector('[aria-label="Run captures"] a')?.getAttribute("href"), `http://capture-app.test/artifacts/v1/${CAPTURE_ARTIFACT_B}`);
   });
 
-  it.each(["resolve", "reject"])("does not reuse an earlier Receipt visit when its request later %ss", async late => {
+  it.each(["resolve", "reject"])("keeps one app-owned read across Logs and Receipt when it later %ss", async late => {
     const old = deferredResponse();
     let visits = 0;
     app = await mountCaptureApp({ runId: CAPTURE_RUN_A, section: "receipt", runs: new Map([[CAPTURE_RUN_A, {
@@ -311,16 +337,16 @@ describe("actual DashboardApp Receipt captures", () => {
     }]]) });
     const oldSignal = app.requests.find(request => request.url.endsWith("/captures"))?.signal;
     await pressCaptureControl(captureButton("Logs"));
-    assert.equal(oldSignal?.aborted, true);
-    assert.equal(document.querySelector('[aria-label="Run captures"]'), null);
-    await pressCaptureControl(captureButton("Receipt"));
-    const before = document.querySelector('[aria-label="Run captures"]')?.textContent;
-    assert.ok(before?.includes(CAPTURE_ARTIFACT_B));
+    assert.equal(oldSignal?.aborted, false);
+    assert.ok(document.querySelector('[aria-label="Run captures"]'));
     await act(async () => {
       if (late === "resolve") old.resolve(Response.json({ section: "captures", payload: { runId: CAPTURE_RUN_A, artifacts: [captureData()] } }));
-      else old.reject(new Error("Old tab request rejected after current success"));
+      else old.reject(new Error("Current capture request rejected"));
     });
-    assert.equal(visits, 2);
+    const before = document.querySelector('[aria-label="Run captures"]')?.textContent;
+    assert.ok(before?.includes(late === "resolve" ? CAPTURE_ARTIFACT_A : "Current capture request rejected"));
+    await pressCaptureControl(captureButton("Receipt"));
+    assert.equal(visits, 1);
     assert.equal(document.querySelector('[aria-label="Run captures"]')?.textContent, before);
   });
 
@@ -466,7 +492,7 @@ describe("actual DashboardApp Receipt captures", () => {
         runId: CAPTURE_RUN_A, artifacts: [captureData()],
       } })),
     }]]) });
-    assert.equal(app.requests.filter(request => request.url.endsWith("/captures")).length, 0);
+    assert.equal(app.requests.filter(request => request.url.endsWith("/captures")).length, 1);
     await pressCaptureControl(captureButton("Receipt"));
     const region = document.querySelector('[aria-label="Run captures"]');
     assert.ok(region);
@@ -482,7 +508,7 @@ describe("actual DashboardApp Receipt captures", () => {
     assert.equal(app.requests.filter(request => request.url.endsWith("/captures")).length, 1);
     assert.match(document.body.textContent ?? "", /No receipt yet/u);
   });
-  it("shows the served absence only on Receipt without speculative capture reads", async () => {
+  it("shows the served absence in Logs without speculative capture reads and keeps Receipt canonical", async () => {
     app = await mountCaptureApp({ runId: CAPTURE_RUN_A, runs: new Map([[CAPTURE_RUN_A, {
       detail: () => captureDetail(CAPTURE_RUN_A, {
         captures: { state: "absent", reason: "No indexed diagnostic artifacts for this run" },
@@ -490,11 +516,18 @@ describe("actual DashboardApp Receipt captures", () => {
       }),
       captures: () => { throw new Error("absent captures must not be fetched"); },
     }]]) });
-    assert.equal(document.querySelector('[aria-label="Run captures"]'), null);
-    await pressCaptureControl(captureButton("Receipt"));
     const region = document.querySelector('[aria-label="Run captures"]');
-    assert.ok(region, "Receipt must mount the app-owned captures surface");
+    assert.ok(region, "Logs must mount the app-owned captures surface");
     assert.match(region.textContent ?? "", /No indexed diagnostic artifacts for this run/u);
+    const search = document.querySelector('input[aria-label="Search logs"]');
+    assert.ok(search instanceof HTMLInputElement);
+    search.focus();
+    assert.equal(document.activeElement, search);
+    assert.equal(app.requests.filter(request => request.url.endsWith("/captures")).length, 0);
+    await pressCaptureControl(captureButton("Receipt"));
+    const receiptRegion = document.querySelector('[aria-label="Run captures"]');
+    assert.ok(receiptRegion, "Receipt must retain its canonical captures surface");
+    assert.match(receiptRegion.textContent ?? "", /No indexed diagnostic artifacts for this run/u);
     assert.equal(app.requests.filter(request => request.url.endsWith("/captures")).length, 0);
     assert.match(document.body.textContent ?? "", /No receipt yet/u);
   });

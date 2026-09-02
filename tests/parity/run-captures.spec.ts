@@ -43,6 +43,13 @@ async function openReceipt(page: Page, runId: string): Promise<Locator> {
   return region;
 }
 
+async function openLogs(page: Page, runId: string): Promise<Locator> {
+  await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: runId, section: "logs" });
+  const region = captureRegion(page);
+  await expect(region).toBeVisible();
+  return region;
+}
+
 function captureFor(runId: string, artifactId: string) {
   const section = FIXTURE_RUN_CAPTURE_SECTIONS[runId];
   if (section?.section !== "captures") throw new Error(`run ${runId} has no fixture capture section`);
@@ -267,6 +274,22 @@ async function expectDangerFrame(scope: Locator): Promise<void> {
   expect(proof.border).not.toEqual(proof.declaredOrdinary);
   expect(proof.contrast).toBeGreaterThanOrEqual(3);
 }
+
+test("Logs keeps the compact capture block reachable with the receipt controls", async ({ page }) => {
+  await installTheme(page, { name: "graphite-warm", attribute: "dark" });
+  const region = await openLogs(page, FIXTURE_IDS.doneRun);
+  const jpeg = captureFor(FIXTURE_IDS.doneRun, RUN_CAPTURE_FIXTURE_IDS.jpeg);
+  const tile = region.locator("article").filter({ hasText: jpeg.artifact.artifactId });
+  await expect(tile).toBeVisible();
+  const opener = tile.getByRole("button", { name: `Open capture ${jpeg.artifact.artifactId}` });
+  const download = tile.getByRole("link", { name: "Download" });
+  await opener.focus();
+  await expectKeyboardFocus(opener, region);
+  await expect(download).toHaveAttribute("href", `${server.baseUrl}/artifacts/v1/${jpeg.artifact.artifactId}`);
+  await page.screenshot({ path: test.info().outputPath("run-captures-logs-graphite-desktop.png"), fullPage: false, animations: "disabled" });
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Run capture" })).toBeVisible();
+});
 
 test(
   "full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus",

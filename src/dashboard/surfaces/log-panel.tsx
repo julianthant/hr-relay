@@ -1420,6 +1420,7 @@ export function RunLivenessDot({ status }: { status: QueueSurfaceWire["status"] 
 
 function LogsTab({
   detail,
+  captures,
   notes,
   failure,
   parked,
@@ -1437,6 +1438,7 @@ function LogsTab({
   nowIso,
 }: {
   detail: RunDetailWire;
+  captures: RunCapturesState | undefined;
   notes: NotePage | undefined;
   failure: FailurePayload | undefined;
   parked: ParkedWritePayload | undefined;
@@ -1609,6 +1611,7 @@ function LogsTab({
             </Button>
           </div>
         )}
+        {captures !== undefined && <RunCaptures captures={captures} compact />}
       </div>
 
       {/* Pinned to the FLOOR of the same scroller, not parked below it: a
@@ -1917,6 +1920,11 @@ export const LogPanel = memo(function LogPanel({
       }
     : undefined;
   const receiptComparison = useReceiptComparison(receiptComparisonTarget);
+  const clearCaptureSelection = captures?.state === "available" ? captures.select : undefined;
+  // The same read spans Logs and Receipt, but a dialog belongs to the tab that
+  // opened it. Moving tabs closes that short-lived visual state without
+  // duplicating the capture read or reopening a preview behind the operator.
+  useEffect(() => { clearCaptureSelection?.(undefined); }, [clearCaptureSelection, effectiveTab]);
 
   const gate = detail.gate;
   const gateOpen = gate.state === "open";
@@ -2434,6 +2442,7 @@ export const LogPanel = memo(function LogPanel({
           {effectiveTab === "logs" && (
             <LogsTab
               detail={detail}
+              captures={captures}
               notes={sections.logs}
               failure={sections.failure}
               parked={parked}
