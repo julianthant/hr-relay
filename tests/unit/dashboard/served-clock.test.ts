@@ -70,7 +70,7 @@ describe("the served clock (D256)", () => {
     } as const;
     const early = runTiming(settled, deriveServedNow(BOOTSTRAP_INSTANT, 0), isTerminalQueueStatus);
     const late = runTiming(settled, deriveServedNow(BOOTSTRAP_INSTANT, 3_600_000), isTerminalQueueStatus);
-    assert.deepEqual(early, { text: "took 8m 20s" });
+    assert.deepEqual(early, { text: "8m 20s" });
     assert.deepEqual(late, early);
   });
 });

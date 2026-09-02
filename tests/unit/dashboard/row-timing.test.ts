@@ -28,7 +28,7 @@ const terminalRow = {
 describe("queue row timing (D124)", () => {
   it("shows a settled run's DURATION, not the time since it started", () => {
     const timing = runTiming(terminalRow, MUCH_LATER, isTerminalQueueStatus);
-    assert.deepEqual(timing, { text: "took 14m 33s" });
+    assert.deepEqual(timing, { text: "14m 33s" });
   });
 
   it("does not move as the browser clock advances past a terminal run", () => {

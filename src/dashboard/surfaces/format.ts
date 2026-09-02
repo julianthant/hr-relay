@@ -70,7 +70,7 @@ export function elapsedSecondsBetween(fromIso: string, toIso: string): number {
  * Three shapes, and none of them guesses:
  * - a run that has not started shows nothing;
  * - a run still in flight shows live elapsed against `now`;
- * - a SETTLED run shows `took <duration>` — `endedAt − startedAt`, both served
+ * - a SETTLED run shows its bare duration — `endedAt − startedAt`, both served
  *   instants — because `now − startedAt` answers a question nobody asks of a
  *   finished run and grows forever. The live exit run displayed **2h 47m** for
  *   ~14.5 minutes of execution, which is the defect this closes.
@@ -92,7 +92,10 @@ export function runTiming(
 ): { text: string; title?: string } | undefined {
   if (surface.status === "queued") return undefined;
   if (surface.endedAt.state === "present") {
-    return { text: `took ${fmtElapsed(elapsedSecondsBetween(surface.startedAt, surface.endedAt.value))}` };
+    // Bare, like the demo's `row.duration`: the operator ruled the number
+    // stands alone (2026-09-01). What keeps it from a live elapsed is the row's
+    // terminal status beside it, not a word in front of it.
+    return { text: fmtElapsed(elapsedSecondsBetween(surface.startedAt, surface.endedAt.value)) };
   }
   if (isTerminalStatus(surface.status)) {
     return { text: "duration unknown", title: surface.endedAt.reason };
