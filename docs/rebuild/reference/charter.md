@@ -266,8 +266,11 @@ identity-approval gate. Full enforcement: refs task-contract/write-safety/operat
 
 Enqueue, retry,
 cancel, bump, hide/restore, authoritative tree targeting, dependency transitions, and command
-idempotency/versioning have one server-owned implementation. “Delete” means reversible
-**Hide from queue**; destructive Purge is a separate offline maintenance operation. Workflows
+idempotency/versioning have one server-owned implementation. ~~“Delete” means reversible
+**Hide from queue**; destructive Purge is a separate offline maintenance operation.~~ **Delete means
+delete (D308, 2026-09-01):** a terminal run, on the queue or in the Archive, is removed from authority
+with every row it owns behind one insert-only tombstone, through a journaled kernel command with a
+confirm — never a hide, never an offline-only purge. Hide/restore is retired (D234). Workflows
 can restrict safe actions, never redefine their semantics. Delegation declares typed child
 input/output, stable child identity, join/failure/partial/cascade/retry policy, and is persisted
 atomically with the child manifest. Full design: refs workflow-model/dashboard-surfaces.

@@ -517,6 +517,15 @@ environment-supplied.
 
 ### Dated lessons
 
+- **2026-09-01 — delete means delete, and the tombstone is the admission (D308).** A terminal run on
+  the queue or in the Archive leaves the authority database with every row it owns, write ledger
+  included, in one journaled transaction. Never remove a `*_never_deleted` trigger to make that
+  possible: rewrite it to abort unless an insert-only `deleted_runs` row already names the exact run,
+  and write that row first in the cascade. The tree goes leaves-first and refuses while any member is
+  non-terminal; a member is never deleted alone; an archived run is deleted only through the Archive
+  door that cites its `contentDigest`. Span/notes JSONL are never rewritten (D301) — the storage doctor
+  reads the tombstone. The released idempotency key is stated in the confirm copy, not hidden.
+
 - **2026-08-28 — retry receipt comparison is a closed coordinate authority, not a receipt diff.**
   Seal every Separations fact against the current descriptor's exact node-to-task ownership, then
   match the immutable receipt's collection/source/task/field-path coordinate exactly. Resolve the

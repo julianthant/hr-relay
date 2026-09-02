@@ -7,6 +7,18 @@ lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/store
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
 
+- **2026-09-01: a relaxed never-delete trigger must read a tombstone, not a flag (D308; ref
+  dashboard-surfaces §"D308 — delete means delete").** Removing the `*_never_deleted` triggers to
+  admit one delete command would have admitted every future `DELETE` too. Each trigger instead
+  aborts UNLESS an insert-only `deleted_runs` row already names that exact run, and the cascade
+  writes that row first — so the tombstone is both the admission and the provenance, and a stray
+  delete from a migration or a new repository method still aborts by name. Two things the delete
+  cannot do fell out of the same design: it cannot rewrite the shared span JSONL (D301), so the
+  storage doctor reads the tombstone to classify the root as `deleted`; and it cannot keep a run's
+  idempotency keys once the ledger rows go, so the confirm copy says so instead of a fallback
+  pretending otherwise. Deleting a delegated member alone would leave its manifest naming nothing;
+  the group anchor is the only door and takes the tree leaves-first.
+
 - **2026-09-01: an asserted node needs a durable row, not just an in-memory output (D307; ref
   workflow-model §5.8; ref write-safety §3.1).** A step's declared producer can rebuild a task's
   output from typed facts at plan time, but the write sequencer's own beat ⑦ discipline rebuilds
