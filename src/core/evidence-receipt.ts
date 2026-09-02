@@ -545,8 +545,39 @@ export function deriveRunEvidenceReceipt(
   /* ── node walk ─────────────────────────────────────────────────────────── */
 
   const notRunByNode = new Map<string, TerminalNotRunReason>();
+  /**
+   * D307 — the terminal record's THIRD dependency arm. It is read here only to
+   * be reconciled against the durable checkpoint rows: the row's `assertion`
+   * marker is what makes a value an assertion, and the terminal citation must
+   * agree with it or the two authorities disagree about whether anything was
+   * observed. That is never something a receipt smooths over.
+   */
+  const assertedByNode = new Map<string, Readonly<{ step: string; assertedAt: string }>>();
+  const resolvedByNode = new Set<string>();
   for (const dependency of result?.dependencies ?? []) {
     if (dependency.state === "not-run") notRunByNode.set(dependency.nodeId, dependency.reason);
+    if (dependency.state === "asserted") {
+      assertedByNode.set(dependency.nodeId, { step: dependency.step, assertedAt: dependency.assertedAt });
+    }
+    if (dependency.state === "resolved") resolvedByNode.add(String(dependency.nodeId));
+  }
+  const omittedSteps = [...new Set((envelope.stepOmissions ?? []).map((entry) => String(entry.step)))].sort();
+  for (const [nodeId, cited] of assertedByNode) {
+    const stored = pickCheckpoint(checkpoints, nodeId, envelope.attempt);
+    if (stored?.assertion === undefined) {
+      throw new Error(
+        `run ${envelope.runId}'s terminal record cites node "${nodeId}" as asserted for step "${cited.step}", `
+        + "and authority holds no checkpoint row marked as an assertion for it; a receipt may not "
+        + "describe an operator assertion no durable row carries",
+      );
+    }
+    if (stored.assertion.step !== cited.step || stored.assertion.assertedAt !== cited.assertedAt) {
+      throw new Error(
+        `run ${envelope.runId}'s checkpoint for node "${nodeId}" was asserted for step `
+        + `"${stored.assertion.step}" at ${stored.assertion.assertedAt}, and its terminal record cites step `
+        + `"${cited.step}" at ${cited.assertedAt}; the two authorities disagree about this assertion`,
+      );
+    }
   }
   const terminalDependencies = new Set(
     workflowTerminalResultExecution(descriptor).dependsOn.map(String),
@@ -666,6 +697,36 @@ export function deriveRunEvidenceReceipt(
     }
     if (contract === undefined) {
       throw new Error(`node "${id}" stored a checkpoint but owns no task contract to interpret it`);
+    }
+
+    /*
+     * D307 — an ASSERTED row. The node never ran: the operator omitted its step
+     * at start and the step's producer rebuilt this output from typed facts.
+     * Everything below this branch describes an observation (a source instant,
+     * a read action, a freshness age, a subject the task bound by observing a
+     * page), and none of it happened — so the branch is taken BEFORE any of it,
+     * and the node's obligation is `present`, never `verified`.
+     */
+    if (record.assertion !== undefined) {
+      emitAssertedNodeEvidence({
+        assertion: record.assertion,
+        record,
+        node,
+        nodeId: id,
+        taskId: contract.id,
+        scope: scopeOf(node),
+        declaredDetails,
+        entryId,
+        evidence,
+        omittedSteps,
+        runId: envelope.runId,
+        cited: assertedByNode.get(id),
+        citedResolved: resolvedByNode.has(id),
+        observations,
+        decisions,
+        verification,
+      });
+      continue;
     }
 
     const scope = scopeOf(node);
@@ -949,6 +1010,29 @@ export function deriveRunEvidenceReceipt(
       inputValues,
       byNode,
     }));
+  }
+
+  /* ── omitted steps (D307) ──────────────────────────────────────────────── */
+
+  /*
+   * ONE row, naming the omitted STEP KEYS and nothing else. The facts the
+   * operator typed are the run's own input to those steps and never cross into
+   * a receipt: what an operator reading this needs is which steps of the
+   * timeline nobody read, and the per-node rows above say what each one did.
+   * It is load-bearing: a run that read three of its steps from a form is not
+   * a `verified-done` run, and the verdict must say so on its own.
+   */
+  if (omittedSteps.length > 0) {
+    warnings.push({
+      id: entryId("warning", "step-omitted"),
+      code: ErrorCodeSchema.parse("OPERATOR_OMITTED_STEP"),
+      summary: `the operator omitted ${omittedSteps.length === 1 ? "one step" : `${String(omittedSteps.length)} steps`} `
+        + `at start and typed the facts this run would have read there: ${omittedSteps.join(", ")}. `
+        + "Every node of those steps either carries an operator-asserted value or did not run at all; "
+        + "nothing under them was observed in a live system (D307)",
+      loadBearing: true,
+      evidence: [],
+    });
   }
 
   /* ── residual writes ───────────────────────────────────────────────────── */
@@ -1278,6 +1362,119 @@ function emitGateEvidence(input: GateEvidenceInput): void {
   });
 }
 
+/* ── operator assertions (D307) ──────────────────────────────────────────── */
+
+interface AssertedEvidenceInput {
+  readonly assertion: NonNullable<RunCheckpointRecord["assertion"]>;
+  readonly record: RunCheckpointRecord;
+  readonly node: RuntimeFlowNode;
+  readonly nodeId: string;
+  readonly taskId: string;
+  readonly scope: EvidenceValueScope;
+  readonly declaredDetails: ReadonlySet<string>;
+  readonly entryId: (kind: Parameters<typeof deriveEvidenceEntryId>[1], key: string) => EvidenceEntryId;
+  readonly evidence: NodeEvidence;
+  readonly omittedSteps: readonly string[];
+  readonly runId: string;
+  /** The terminal record's own citation for this node, when it cites one. */
+  readonly cited?: Readonly<{ step: string; assertedAt: string }>;
+  /** True when the terminal record cites this node as RESOLVED — a contradiction. */
+  readonly citedResolved: boolean;
+  readonly observations: Fact[];
+  readonly decisions: Decision[];
+  readonly verification: Verification[];
+}
+
+/**
+ * One asserted node, as receipt rows: its output leaves as facts sourced from
+ * the OPERATOR ASSERTION, ONE `assertion` decision naming the omitted step and
+ * the instant, and a `present` obligation.
+ *
+ * `present`, not `verified`: the value exists, it is schema-bound, and it drove
+ * the run — that is exactly what `present` says. `verified` would say this tree
+ * checked a system and found the value there, which nobody did. `absent` would
+ * be the opposite lie: the run really did consume this value. It is mandatory
+ * whether or not the terminal derive depends on it, because an asserted value
+ * an operator must know about is never optional detail.
+ *
+ * No action row and no reuse row: an assertion performed no read of any system
+ * and reused no observation, so a `external-read` action or a freshness age
+ * beside it would be a sentence about something that did not happen.
+ */
+function emitAssertedNodeEvidence(input: AssertedEvidenceInput): void {
+  const { assertion, record, node, nodeId, taskId, entryId, evidence } = input;
+  if (node.kind !== "task") {
+    throw new Error(
+      `node "${nodeId}" (${node.kind}) of run ${input.runId} stores a checkpoint marked as an operator `
+      + `assertion for step "${assertion.step}"; only a TASK node is ever asserted — a gate always runs `
+      + "and a transaction in an omitted step never runs at all (D307)",
+    );
+  }
+  if (input.citedResolved) {
+    throw new Error(
+      `run ${input.runId}'s terminal record cites node "${nodeId}" as resolved, and its checkpoint is `
+      + `marked as an operator assertion for step "${assertion.step}"; a receipt may not call an asserted `
+      + "value an observed one",
+    );
+  }
+  if (!input.omittedSteps.includes(assertion.step)) {
+    throw new Error(
+      `run ${input.runId}'s checkpoint for node "${nodeId}" is asserted for step "${assertion.step}", `
+      + `and its envelope omits ${input.omittedSteps.length === 0 ? "no step" : `only ${input.omittedSteps.join(", ")}`}; `
+      + "an assertion whose step this run never omitted is not this run's assertion",
+    );
+  }
+  const nonOperator = record.provenance.find((fact) => fact.source !== "operator");
+  if (nonOperator !== undefined) {
+    throw new Error(
+      `run ${input.runId}'s asserted checkpoint for node "${nodeId}" carries a "${nonOperator.source}" `
+      + `provenance row at field "${nonOperator.path}"; every leaf of an assertion is operator-sourced, `
+      + "and a live or derived row inside one means the marker and the provenance disagree",
+    );
+  }
+
+  const source = {
+    kind: "operator-assertion" as const,
+    taskId,
+    step: assertion.step,
+    assertedAt: assertion.assertedAt,
+  };
+  for (const leaf of evidenceLeaves(record.output.value)) {
+    const factId = entryId("observation", `${nodeId}.${leaf.path}`);
+    evidence.factIds.set(leaf.path, factId);
+    evidence.values.set(leaf.path, leaf.value);
+    input.observations.push({
+      id: factId,
+      field: leaf.field,
+      mandatory: input.declaredDetails.has(`${nodeId}\u0000${leaf.path}`),
+      source,
+      state: "satisfied",
+      value: redactEvidenceLeaf(input.scope, leaf),
+    });
+  }
+
+  const decisionId = entryId("decision", `assertion.${nodeId}`);
+  const factRefs = [...evidence.factIds.values()].map(evidenceEntryRef);
+  input.decisions.push({
+    id: decisionId,
+    kind: "assertion",
+    outcome: "taken",
+    reason: `node "${nodeId}" did not run: the operator omitted step "${assertion.step}" at start, and `
+      + `${taskId}'s output was rebuilt at ${assertion.assertedAt} from the facts the operator typed for `
+      + "that step. Every field below it is operator-asserted; none of it was observed in a live "
+      + "system, and no write was made from this node (D307)",
+    evidence: [evidenceEntryRef(evidence.verificationId), ...factRefs],
+  });
+
+  input.verification.push({
+    id: evidence.verificationId,
+    obligation: `node.${nodeId}`,
+    mandatory: true,
+    verdict: "present",
+    evidence: [evidenceEntryRef(decisionId), ...factRefs],
+  });
+}
+
 /* ── fact construction ───────────────────────────────────────────────────── */
 
 interface ObservationFactInput {
@@ -1336,6 +1533,24 @@ function observationFact(input: ObservationFactInput): Fact {
         + "retains only the corrected value, so the pre-correction value is not in authority",
     });
     return { ...base, source: { kind: "operator-correction", supersedes: supersededId } };
+  }
+
+  /*
+   * D307 — an OPERATOR-sourced row that is not a correction can only be an
+   * assertion (`sourceFor` in `src/core/task-provenance.ts` yields exactly
+   * `live` or `derived`, and a checkpoint patch always stamps `correctedAt`).
+   * Its facts belong to `emitAssertedNodeEvidence`, which sources them from the
+   * assertion; falling through to the arms below would date an operator-typed
+   * value as though a task had observed it, which is the one thing this unit
+   * exists to make impossible. Reaching here means the caller skipped the
+   * assertion branch — refuse rather than label it.
+   */
+  if (provenance.source === "operator") {
+    throw new Error(
+      `node "${nodeId}" stored an operator-sourced provenance row for output field "${leaf.path}" that is `
+      + "not an operator correction; only a D307 assertion writes one, and an asserted checkpoint's facts "
+      + "are emitted from its assertion, never as an observation",
+    );
   }
 
   if (provenance.source === "derived") {

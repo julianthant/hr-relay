@@ -199,7 +199,7 @@ export function failureFingerprintHistory(
       });
 }
 
-/** `EvidenceSourceSchema`'s six arms, reached through the receipt's own type. */
+/** `EvidenceSourceSchema`'s seven arms, reached through the receipt's own type. */
 export type EvidenceSourceWire = RunEvidenceReceiptWire["input"][number]["source"];
 
 /**
@@ -235,6 +235,11 @@ export function evidenceSourceMeta(source: EvidenceSourceWire): string {
       return `operator correction · supersedes ${source.supersedes}`;
     case "derived":
       return `derived · from ${plural(source.evidence.length, "entry", "entries")}`;
+    // D307: the operator omitted this step at start and typed the facts; the
+    // instant is when the assertion was made, and the line never says
+    // "observed", because nothing was.
+    case "operator-assertion":
+      return `operator-asserted · step ${source.step} · ${source.taskId} · ${fmtClock(source.assertedAt)}`;
   }
 }
 
