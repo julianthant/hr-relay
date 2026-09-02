@@ -4,7 +4,7 @@
 **Integration target:** `feature/03c-workflow-migration` at base `414d77b810f713d5813c79035fd38064ba04e73c`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-02 15:49 PDT at `81c74fb0e4114891ee3d1261ff27268833a7536d`
+**Last verified:** 2026-09-02 15:51 PDT at `888893c2351e0b8abcf5d6a5da7f3ec013ad5896`
 
 ## Facts every run needs
 
@@ -20,8 +20,8 @@
 
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
-| u01–u06 | R1 | dispatched; setup in progress | — | — | required | D311 compiler, two conversions, projections, conformance/deletion, order-0 T1 |
-| u10–u12 | R2 | dispatched; setup in progress | — | — | required | Order 1 migration intake and live/provenance discovery only |
+| u01–u06 | R1 | running | — | — | required | D311 compiler, two conversions, projections, conformance/deletion, order-0 T1 |
+| u10–u12 | R2 | running | — | — | required | Order 1 migration intake and live/provenance discovery only |
 | u20–u24 | R3 | blocked on R1+R2 | — | — | required | Order 1 implementation and proof |
 | u30–u35 | R4 | planned | — | — | required | Order 2 downloads + viewer |
 | u40–u44 | R5 | planned | — | — | required | Order 3 OCR pipeline + Review capability |
