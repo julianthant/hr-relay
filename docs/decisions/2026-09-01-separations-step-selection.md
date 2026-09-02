@@ -1,6 +1,13 @@
 # Decisions — Separations step selection — 2026-09-01
 _Answer positionally: `1 A, 2 C + "note"`, or `all recommended`. Unanswered items stay open._
 
+> **Answered 2026-09-01 (operator):** "any step should be pickable and we will ask for custom input
+> values that are required in the skipped steps." Ratified as D307 (`docs/rebuild/reference/decisions.md`;
+> normative text in ref workflow-model §5.8, ref write-safety §3.1, ref dashboard-surfaces §9.1, ref
+> operator-trust §2.3, `docs/migrations/separations.md` §4b/§4c/§4d amendments). Slice one landed the same
+> day: Kronos timecard, UCPath transaction and Kuali finalization are omittable; the three read steps
+> follow once the identity packet carries per-row origin marks. Items 1 and 2 below are closed.
+
 **Why this sheet exists.** The Start Run wizard's Steps screen shows all six Separations steps
 checked and disabled ("This workflow requires every node in this step."). That is not a defect in
 the wizard: `src/services/start/step-selection.ts` marks a step selectable only when every node in
