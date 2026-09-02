@@ -463,12 +463,15 @@ interface LinkedRunView {
 }
 
 /**
- * The lease facts `workerCardOf` renders, canonicalised for change detection.
- * `heartbeatAt`, `updatedAt` and `version` move on every heartbeat and draw
- * nothing on the card, so they are left out; everything else the card reads —
- * identity, phase and its instants, the stop reason, the directive, the
- * launch-time browser systems — is in. Insertion order is the caller's sorted
- * order, so equal sets fingerprint equal.
+ * The lease facts `workerCardOf` renders, canonicalised for change detection:
+ * identity, phase and its instants, the stop reason, the directive, and the
+ * launch-time browser systems. `heartbeatAt`, `updatedAt` and `version` move
+ * on every heartbeat and are left out on purpose — counting them would
+ * republish every live card every beat. `version` IS served (`leaseVersion`),
+ * but the worker directive commands re-read the current lease in the kernel
+ * rather than compare-and-swap on the served value, so a `leaseVersion` that
+ * trails a heartbeat between snapshots changes no write. Insertion order is
+ * the caller's sorted order, so equal sets fingerprint equal.
  */
 function workerLeaseFingerprintOf(leases: ReadonlyMap<string, WorkerLeaseRecord>): string {
   const facts = [...leases.values()]
