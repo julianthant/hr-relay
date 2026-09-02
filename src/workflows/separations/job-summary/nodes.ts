@@ -43,10 +43,4 @@ export const departmentOptionNode = nodes.task(DEPARTMENT_NODE, SeparationsMatch
   replay: "checkpoint",
 });
 
-/** The step's timeline category — key and label from `step.ts`, nodes from the fragments above. */
-export const JOB_SUMMARY_STEP_NODES = nodes.category([
-  jobSummaryNode,
-  employmentNode,
-  departmentOptionNode,
-]);
 export { JOB_SUMMARY_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE } from "./node-ids.js";

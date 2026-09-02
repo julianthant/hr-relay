@@ -11,11 +11,13 @@ import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import { declaredWorkflowId } from "../../src/infra/build/workflow-build-manifest.js";
 import { SearchPersonOrg } from "../../src/domain/contracts/ucpath/search-person-org.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
+import type { RegisteredTaskStore } from "../../src/base/store.js";
 import {
   PersonLookupInput,
   personLookupDescriptor,
   personLookupRecipe,
 } from "../../src/workflows/person-lookup/descriptor.js";
+import { actionNode } from "../../src/workflows/separations/kuali-extraction/nodes.js";
 
 const lookupInput = ({ input }: { input: { emplId?: string; name?: string; keepNonHdh: boolean } }) =>
   input.emplId === undefined
@@ -97,6 +99,16 @@ describe("workflow recipe compiler", () => {
     })).toThrow(/kebab-case slug/u);
   });
 
+  it("keeps a fragment bound to its exact owning step object", () => {
+    expect(() => defineWorkflowRecipe(PersonLookupInput, ({ taskFromFragment, result }) => {
+      const action = taskFromFragment(actionNode, [], () => ({ documentNumber: "4510" }));
+      return {
+        steps: [[{ key: "kuali-extraction", label: "Kuali extraction" }, [action]]],
+        result: result(z.string(), [], () => "done"),
+      };
+    })).toThrow(/same key but distinct step objects/u);
+  });
+
   it("refuses unresolved references and dependency cycles by task name", () => {
     expect(() => defineWorkflowRecipe(PersonLookupInput, ({ task, result }) => {
       const missing = task({ id: "missing", contract: SearchPersonOrg, replay: "checkpoint" }, [], lookupInput);
@@ -112,6 +124,15 @@ describe("workflow recipe compiler", () => {
     })).toThrow(/workflow recipe task "consumer" references unresolved task "missing"/u);
 
     expect(() => defineWorkflowRecipe(PersonLookupInput, ({ task, result }) => {
+      const missing = task({ id: "missing", contract: SearchPersonOrg, replay: "checkpoint" }, [], lookupInput);
+      const declared = task({ id: "declared", contract: SearchPersonOrg, replay: "checkpoint" }, [], lookupInput);
+      return {
+        steps: [[{ key: "declared", label: "Declared" }, [declared]]],
+        result: result(z.string(), [missing], () => "done"),
+      };
+    })).toThrow(/workflow recipe result references unresolved task "missing"/u);
+
+    expect(() => defineWorkflowRecipe(PersonLookupInput, ({ task, result }) => {
       const firstReferences: AnyWorkflowRecipeTask[] = [];
       const first = task({ id: "first", contract: SearchPersonOrg, replay: "checkpoint" }, firstReferences, lookupInput);
       const second = task({ id: "second", contract: SearchPersonOrg, replay: "checkpoint" }, [first], lookupInput);
@@ -125,6 +146,9 @@ describe("workflow recipe compiler", () => {
 
   it("derives exact module stores and refuses an incomplete inventory", () => {
     const withoutCrm = taskStoreRegistry.stores.filter(({ namespace }) => namespace !== "crm");
+    const crm = taskStoreRegistry.stores.find(({ namespace }) => namespace === "crm");
+    expect(crm).toBeDefined();
+    if (crm === undefined) throw new Error("fixture registry is missing the crm store");
 
     expect(() => compileWorkflowRecipeModule(
       personLookupRecipe,
@@ -132,6 +156,41 @@ describe("workflow recipe compiler", () => {
       withoutCrm,
       {},
     )).toThrow(/workflow person-lookup recipe requires missing store crm/u);
+
+    expect(() => compileWorkflowRecipeModule(
+      personLookupRecipe,
+      personLookupDescriptor,
+      [...taskStoreRegistry.stores, crm],
+      {},
+    )).toThrow(/workflow person-lookup recipe found duplicate stores for crm/u);
+
+    const wrongContractCrm = {
+      ...crm,
+      tasks: Object.fromEntries(Object.entries(crm.tasks).map(([key, task]) => [
+        key,
+        { ...task, contract: SearchPersonOrg },
+      ])),
+    } as RegisteredTaskStore;
+    expect(() => compileWorkflowRecipeModule(
+      personLookupRecipe,
+      personLookupDescriptor,
+      taskStoreRegistry.stores.map((store) => store === crm ? wrongContractCrm : store),
+      {},
+    )).toThrow(/workflow person-lookup recipe cannot resolve exact contract crm\/read-onboarding-record/u);
+
+    const foreignRecipe = defineWorkflowRecipe(PersonLookupInput, ({ task, result }) => {
+      const only = task({ id: "only", contract: SearchPersonOrg, replay: "checkpoint" }, [], lookupInput);
+      return {
+        steps: [[{ key: "only", label: "Only" }, [only]]],
+        result: result(z.string(), [], () => "done"),
+      };
+    });
+    expect(() => compileWorkflowRecipeModule(
+      foreignRecipe,
+      personLookupDescriptor,
+      taskStoreRegistry.stores,
+      {},
+    )).toThrow(/workflow person-lookup module does not use the recipe that compiled its descriptor/u);
   });
 
   it("keeps recipe-authored descriptor ids visible to the build-manifest guard", () => {

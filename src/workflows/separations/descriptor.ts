@@ -329,7 +329,7 @@ function omittedOr<T, R>(
 
 export const separationsRecipe = defineWorkflowRecipe(
   SeparationsInput,
-  ({ taskFromFragment, transactionFromFragment, gateFromFragment, result }) => {
+  ({ group, taskFromFragment, transactionFromFragment, gateFromFragment, result }) => {
     const action = taskFromFragment(actionNode, [], ({ input }) => ({
       documentNumber: input.documentNumber,
     }));
@@ -610,9 +610,9 @@ export const separationsRecipe = defineWorkflowRecipe(
         [KUALI_EXTRACTION_STEP, [action, document, plan, terminationType]],
         [IDENTITY_CHECK_STEP, [nameSearch, subject, comparison, identityGate, approval]],
         [JOB_SUMMARY_STEP, [jobSummary, employment, departmentOption]],
-        [{ ...KRONOS_TIMECARD_STEP, omission: KRONOS_TIMECARD_OMISSION }, [timecardSearch, timecard, dates]],
-        [{ ...UCPATH_TRANSACTION_STEP, omission: UCPATH_TRANSACTION_OMISSION }, [pendingSet, clearPending, fileTermination, receipt]],
-        [{ ...KUALI_FINALIZATION_STEP, omission: KUALI_FINALIZATION_OMISSION }, [filingPresence, finalizeKuali]],
+        [group(KRONOS_TIMECARD_STEP, { omission: KRONOS_TIMECARD_OMISSION }), [timecardSearch, timecard, dates]],
+        [group(UCPATH_TRANSACTION_STEP, { omission: UCPATH_TRANSACTION_OMISSION }), [pendingSet, clearPending, fileTermination, receipt]],
+        [group(KUALI_FINALIZATION_STEP, { omission: KUALI_FINALIZATION_OMISSION }), [filingPresence, finalizeKuali]],
       ],
       result: result(
         SeparationsResultSchema,

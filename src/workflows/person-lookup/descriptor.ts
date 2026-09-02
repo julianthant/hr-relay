@@ -146,7 +146,6 @@ export const personLookupRecipe = defineWorkflowRecipe(PersonLookupInput, ({ tas
     contract: CrmReadOnboardingDates,
     label: "CRM Dates",
     when: { kind: "is-true", of: { from: "input", path: "includeCrmDates" } },
-    conditional: true,
     replay: "checkpoint",
   }, [searching], ({ outputs }) => ({
     eid: requireFact(outputs.searching.selection.selected, "searching", "selection.selected").emplId,

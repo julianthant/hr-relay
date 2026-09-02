@@ -38,11 +38,13 @@ import type {
 } from "./workflow.js";
 
 type RecipeTaskKind = "task" | "transaction" | "gate";
+const RECIPE_GROUP_OWNER = Symbol("workflow-recipe-group-owner");
 
 export interface WorkflowTimelineGroup {
   readonly key: string;
   readonly label: string;
   readonly omission?: StepOmissionDeclaration;
+  readonly [RECIPE_GROUP_OWNER]?: WorkflowTimelineGroup;
 }
 
 export interface WorkflowRecipeTask<
@@ -53,6 +55,8 @@ export interface WorkflowRecipeTask<
   readonly recipeKind: "workflow-recipe-task";
   readonly kind: RecipeTaskKind;
   readonly id: Id;
+  /** Exact D265 step object that owns a reusable fragment, when one exists. */
+  readonly step?: WorkflowTimelineGroup;
   readonly references: readonly AnyWorkflowRecipeTask[];
   readonly contracts: readonly (AnyReadTaskContract | AnyPrepareTaskContract | AnyCommitTaskContract)[];
   /** Type-only witnesses used by reference-scope inference. */
@@ -136,23 +140,45 @@ export interface WorkflowRecipe<
 }
 
 interface WorkflowRecipeAuthor<InputSchema extends z.ZodType> {
+  group(
+    this: void,
+    step: WorkflowTimelineGroup,
+    options: Readonly<{ omission: StepOmissionDeclaration }>,
+  ): WorkflowTimelineGroup;
+
   task<
     const Id extends string,
     Contract extends AnyReadTaskContract,
     const References extends readonly AnyWorkflowRecipeTask[],
-    const Conditional extends boolean = false,
   >(
+    this: void,
     identity: Readonly<{
       id: Id;
       contract: Contract;
       label?: string;
       replay: "checkpoint" | "always-rerun";
-      when?: NodeConditionSpec;
-      conditional?: Conditional;
+      when: NodeConditionSpec;
     }>,
     references: References,
     bind: (scope: WorkflowRecipeScope<InputSchema, References>) => z.input<Contract["input"]>,
-  ): WorkflowRecipeTask<Id, z.output<Contract["output"]>, Conditional>;
+  ): WorkflowRecipeTask<Id, z.output<Contract["output"]>, true>;
+
+  task<
+    const Id extends string,
+    Contract extends AnyReadTaskContract,
+    const References extends readonly AnyWorkflowRecipeTask[],
+  >(
+    this: void,
+    identity: Readonly<{
+      id: Id;
+      contract: Contract;
+      label?: string;
+      replay: "checkpoint" | "always-rerun";
+      when?: undefined;
+    }>,
+    references: References,
+    bind: (scope: WorkflowRecipeScope<InputSchema, References>) => z.input<Contract["input"]>,
+  ): WorkflowRecipeTask<Id, z.output<Contract["output"]>, false>;
 
   taskFromFragment<
     const StepKey extends string,
@@ -160,6 +186,7 @@ interface WorkflowRecipeAuthor<InputSchema extends z.ZodType> {
     Contract extends AnyReadTaskContract,
     const References extends readonly AnyWorkflowRecipeTask[],
   >(
+    this: void,
     fragment: TaskNodeFragment<StepKey, Id, Contract>,
     references: References,
     bind: (scope: WorkflowRecipeScope<InputSchema, References>) => z.input<Contract["input"]>,
@@ -172,6 +199,7 @@ interface WorkflowRecipeAuthor<InputSchema extends z.ZodType> {
     Commit extends AnyCommitTaskContract,
     const References extends readonly AnyWorkflowRecipeTask[],
   >(
+    this: void,
     fragment: TransactionNodeFragment<StepKey, Id, Prepare, Commit>,
     references: References,
     binds: Readonly<{
@@ -187,6 +215,7 @@ interface WorkflowRecipeAuthor<InputSchema extends z.ZodType> {
     const Conditional extends boolean,
     const References extends readonly AnyWorkflowRecipeTask[],
   >(
+    this: void,
     fragment: OperatorGateNodeFragment<StepKey, Id, Result, Conditional>,
     references: References,
   ): WorkflowRecipeTask<Id, z.output<Result>, Conditional>;
@@ -195,6 +224,7 @@ interface WorkflowRecipeAuthor<InputSchema extends z.ZodType> {
     ResultSchema extends z.ZodType,
     const References extends readonly AnyWorkflowRecipeTask[],
   >(
+    this: void,
     schema: ResultSchema,
     references: References,
     derive: (scope: WorkflowRecipeScope<InputSchema, References>) => z.input<ResultSchema>,
@@ -203,6 +233,17 @@ interface WorkflowRecipeAuthor<InputSchema extends z.ZodType> {
 
 function recipeAuthor<InputSchema extends z.ZodType>(): WorkflowRecipeAuthor<InputSchema> {
   const author = {
+    group(
+      step: WorkflowTimelineGroup,
+      options: Readonly<{ omission: StepOmissionDeclaration }>,
+    ) {
+      return Object.freeze({
+        key: step.key,
+        label: step.label,
+        omission: options.omission,
+        [RECIPE_GROUP_OWNER]: step,
+      });
+    },
     task(
       identity: Readonly<{
         id: string;
@@ -210,7 +251,6 @@ function recipeAuthor<InputSchema extends z.ZodType>(): WorkflowRecipeAuthor<Inp
         label?: string;
         replay: "checkpoint" | "always-rerun";
         when?: NodeConditionSpec;
-        conditional?: boolean;
       }>,
       references: readonly AnyWorkflowRecipeTask[],
       bind: (scope: never) => unknown,
@@ -238,6 +278,7 @@ function recipeAuthor<InputSchema extends z.ZodType>(): WorkflowRecipeAuthor<Inp
         recipeKind: "workflow-recipe-task",
         kind: "task",
         id: fragment.id,
+        step: fragment.step,
         references,
         contracts: Object.freeze([fragment.contract]),
         contract: fragment.contract,
@@ -264,6 +305,7 @@ function recipeAuthor<InputSchema extends z.ZodType>(): WorkflowRecipeAuthor<Inp
         recipeKind: "workflow-recipe-task",
         kind: "transaction",
         id: fragment.id,
+        step: fragment.step,
         references,
         contracts: Object.freeze([fragment.prepare, fragment.commit]),
         prepareContract: fragment.prepare,
@@ -286,6 +328,7 @@ function recipeAuthor<InputSchema extends z.ZodType>(): WorkflowRecipeAuthor<Inp
         recipeKind: "workflow-recipe-task",
         kind: "gate",
         id: fragment.id,
+        step: fragment.step,
         references,
         contracts: Object.freeze([]),
         label: fragment.label,
@@ -335,6 +378,15 @@ function validateRecipe(
     groupLabels.add(parsed.label);
     if (members.length === 0) throw new Error(`workflow recipe timeline group "${parsed.key}" has no tasks`);
     for (const task of members) {
+      const groupOwner = group[RECIPE_GROUP_OWNER] ?? group;
+      if (task.step !== undefined && task.step !== groupOwner) {
+        const sameKeyDifferentObject = task.step.key === parsed.key
+          ? `; same key but distinct step objects: "${parsed.label}" and "${task.step.label}"`
+          : "";
+        throw new Error(
+          `timeline group "${parsed.key}" claims ${taskName(task)}, which belongs to step "${task.step.key}"${sameKeyDifferentObject}`,
+        );
+      }
       if (taskObjects.has(task)) throw new Error(`${taskName(task)} appears in more than one timeline tuple`);
       if (taskIds.has(task.id)) throw new Error(`workflow recipe declares task id "${task.id}" more than once`);
       taskObjects.add(task);
@@ -541,8 +593,10 @@ export function compileWorkflowRecipe<
   readonly string[]
 > {
   const timeline = recipe.steps.map(([group, tasks]) => ({
-    ...group,
+    key: group.key,
+    label: group.label,
     nodes: tasks.map(({ id }) => id),
+    ...(group.omission === undefined ? {} : { omission: group.omission }),
   }));
   const usesDefaultTimeline = recipe.steps.every(([group, tasks]) => {
     const [task] = tasks as readonly RuntimeRecipeTask[];
@@ -585,7 +639,7 @@ export function compileWorkflowRecipeModule<
   recipe: WorkflowRecipe,
   descriptor: Descriptor,
   availableStores: readonly RegisteredTaskStore[],
-  extras: Extras,
+  extras: Extras & Readonly<{ descriptor?: never; stores?: never; recipe?: never }>,
 ): Readonly<{ descriptor: Descriptor; stores: readonly RegisteredTaskStore[]; recipe: WorkflowRecipe } & Extras> {
   if (DESCRIPTOR_RECIPES.get(descriptor) !== recipe) {
     throw new Error(`workflow ${String(descriptor.id)} module does not use the recipe that compiled its descriptor`);
@@ -593,10 +647,15 @@ export function compileWorkflowRecipeModule<
   const contracts = recipeContracts(recipe);
   const namespaces = [...new Set(contracts.map(storeNamespace))];
   const stores = namespaces.map((namespace) => {
-    const store = availableStores.find((candidate) => String(candidate.namespace) === namespace);
-    if (store === undefined) {
+    const matchingStores = availableStores.filter((candidate) => String(candidate.namespace) === namespace);
+    if (matchingStores.length === 0) {
       throw new Error(`workflow ${String(descriptor.id)} recipe requires missing store ${namespace}`);
     }
+    if (matchingStores.length > 1) {
+      throw new Error(`workflow ${String(descriptor.id)} recipe found duplicate stores for ${namespace}`);
+    }
+    const [store] = matchingStores;
+    if (store === undefined) throw new Error(`workflow ${String(descriptor.id)} recipe lost store ${namespace}`);
     for (const contract of contracts.filter((candidate) => storeNamespace(candidate) === namespace)) {
       if (!Object.values(store.tasks).some((task) => task.contract === contract)) {
         throw new Error(`workflow ${String(descriptor.id)} recipe cannot resolve exact contract ${contract.id}`);
@@ -607,7 +666,7 @@ export function compileWorkflowRecipeModule<
     if (left.kind === right.kind) return 0;
     return left.kind === "browser" ? -1 : 1;
   });
-  return Object.freeze({ descriptor, stores: Object.freeze(stores), recipe, ...extras });
+  return Object.freeze({ ...extras, descriptor, stores: Object.freeze(stores), recipe });
 }
 
 /** Registry/conformance seam: recover the exact recipe that compiled a descriptor. */
