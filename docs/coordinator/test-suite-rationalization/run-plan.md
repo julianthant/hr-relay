@@ -89,7 +89,8 @@
 
 ## Decisions gating runs
 
-- No kickoff decision gates. Any proposed guarantee weakening or unique-contract removal becomes a numbered decision sheet before that unit proceeds.
+- `decisions/2026-09-02-test-suite-policy.md` items 1–8 gate integration of every test deletion/consolidation, final taxonomy, runtime budget, and trigger-policy change. R1/R6 may continue inventory and negative-control evidence while answers are pending; later implementation runs are not dispatchable.
+- Any additional proposed guarantee weakening or unique-contract removal becomes a numbered decision sheet before that unit proceeds.
 
 ## Date or external gates
 

@@ -20,16 +20,20 @@
 - 2026-09-02 · direct operator instruction → all lint, type, test, architecture, generated, and other checks must be self-contained in this repository; the old codebase is read-only reference material for building/copying verified facts, not a required test/runtime dependency → normative owner `docs/rebuild/reference/guards-and-tests.md`, with cross-repo rule reconciliation in the paired root instructions and decision pointer during R7.
 - 2026-09-02 · operator objective → rationalize by unique risk/contract and red-capable evidence, not by file/test count; preserve all named safety and parity guarantees → normative owner `docs/rebuild/reference/guards-and-tests.md` during R7.
 
+## Decisions pending
+
+- `decisions/2026-09-02-test-suite-policy.md` items 1–8. Supervisors may continue inventory and read-only evidence work, but no test deletion/consolidation or trigger-policy change may be integrated until the operator answers. Unanswered items remain open.
+
 ## Unit ledger
 
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
-| u01–u06 | R1 | running | isolated `feature/test-r1-architecture-static` from `7982650c` | pending | required | Canonical task setup resolved to worktree `eb84`; u02 worker branch visible |
+| u01–u06 | R1 | running, decision-gated | isolated `feature/test-r1-architecture-static` from `7982650c` | pending | required | Inventory/evidence may continue; deletion/consolidation/trigger changes await policy sheet |
 | u07–u12 | R2 | planned | — | — | required | Core/domain/workflow/write/storage units |
 | u13–u18 | R3 | planned | — | — | required | Server/BFF/runtime/worker and ports |
 | u19–u24 | R4 | planned | — | — | required | Dashboard model/jsdom/component layer |
 | u25–u30 | R5 | planned | — | — | required | Scenario corpus and evidence provenance |
-| u31–u36 | R6 | running | isolated `feature/test-r6-parity-checks` from `7982650c` | pending | required | Canonical task setup resolved to worktree `b4ef` |
+| u31–u36 | R6 | running, decision-gated | isolated `feature/test-r6-parity-checks` from `7982650c` | pending | required | Inventory/evidence may continue; deletion/consolidation/trigger changes await policy sheet |
 | u37–u42 | R7 | planned | — | — | consequential | Cross-family integration, taxonomy, authorities, final proof |
 
 ## Residue
@@ -39,4 +43,4 @@
 
 ## Questions for the operator
 
-- None at kickoff. Supervisors must surface `NEEDS COORDINATOR` for any genuine product-truth, scope, or guarantee tradeoff.
+- Answer `decisions/2026-09-02-test-suite-policy.md` positionally; all eight items are open. Supervisors must surface `NEEDS COORDINATOR` for any additional genuine product-truth, scope, or guarantee tradeoff.
