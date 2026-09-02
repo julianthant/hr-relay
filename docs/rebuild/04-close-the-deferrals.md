@@ -13,7 +13,7 @@ names none of them. Contracts these deferrals belong to live in `reference/`.
 - [x] every deferral names its trigger, and none is a silent drop — nine nodes, each with a trigger, decided stance or retirement
 - [x] two have a decided STANCE instead of a trigger (D193) — the retention sweep's schedule and the content-store refcount; they are `wont-build-unless-asked`
 - [-] the record-sanity-check advisory — **retired** by the operator 2026-08-18 (D192; `config/legacy-capabilities.json`), not deferred any more
-- [ ] the production byte path remains open: `dashboard:prod` still does not serve the built local dashboard. The cross-cutting trigger fired: DCR3–DCR5 close search, its Separations surface and evidenced XLSX; artifact bytes/screenshots and the D289 rerun comparison remain implementation gaps. Settings and Explorer retain explicitly named broader later scope after their DCC subsets close
+- [ ] the production byte path remains open: `dashboard:prod` still does not serve the built local dashboard. The cross-cutting trigger fired: DCR3–DCR6 close search, its Separations surface, evidenced XLSX and rerun comparison; D291/D292/D305 serve run/Archive screenshots. The broader generic resource/gallery family, Settings and Explorer retain explicitly named later scope
 - [ ] the propagation windows — measured for Kuali only (D135/D207); UCPath and ServiceNow wait on their own live probes at order 7
 - [ ] controlled desktop update — v1 is signed manual in-place install; the later updater waits for the packaged upgrade proof and one fail-loud quiescence/ordered-shutdown authority (D297)
 - [ ] the non-phone Phase 3a fidelity residue carried in by D279 (2026-08-27) — see §"Carried in from Phase 3a"; each line closes here or is explicitly parked. D294 closes the retired Capture Mode subset.
@@ -55,11 +55,12 @@ carried past it deliberately, with its trigger still standing.
 ### The honest state
 
 **One remains untriggered as an operator-dashboard delivery gap.** `dashboard:prod` does not serve
-the built dashboard. The screenshot gallery has durable evidence but no artifact-bytes route. DCC1–DCC3 close the
+the built dashboard. Verified run/Archive screenshot evidence is served; the broader generic
+resource/gallery family remains unbuilt. DCC1–DCC3 close the
 resolver-owned Settings edits and preflight/doctor controls. DCC4–DCC5 complete the existing-workflow
 Explorer boundary: label/icon/category hot apply; timeline/grouping and notification unavailable
 without owners; policy/Edit Data strict source briefs. DCR3–DCR5 close cross-date search, its
-Separations Top Bar surface and the evidenced XLSX export; generic artifact bytes remain absent.
+Separations Top Bar surface, evidenced XLSX export and rerun comparison.
 New-workflow authoring and broader legacy settings/editor capability entries remain open by name,
 which is what distinguishes a deferral from a hole.
 
@@ -345,7 +346,7 @@ mechanism transfer D207 allows between two Kuali writes does not reach UCPath at
 - [x] the ONE export that ships is the Activity report's CSV, `GET /api/v1/reports/activity.csv` (`src/server/dashboard/routes/api.ts:192`, D240)
 - [x] the evidence the missing surfaces would serve is all durable already — diagnostic bundles are content-addressed with an attachment index, artifact refs and resource schemas are complete
 - [x] the per-fact half of rerun transparency exists: `retryOf` plus `reuse` rows carrying `ageMs` and the bound they were judged against (`ref operator-trust` §2.4)
-- [ ] BE the artifact-bytes route — nothing serves bytes; it also unblocks the run-detail `captures` section and the screenshot gallery
+- [x] BE the verified run/Archive artifact-byte path — D291/D292 serve diagnostic-index-authorized bytes and D305 mounts the same run collection in Logs and Receipt; only the broader generic resource-status/gallery family remains open
 - [x] BOTH the DCR3 cross-date search authority + transport — strict `GET /api/v1/search` query/page contracts and typed client over the measured current separations corpus
 - [x] FE the DCR4 cross-date search surface — the Top Bar defaults to the durable Separations corpus and retains an explicit served-day scope
 - [x] BE the DCR5 operator xlsx export — a dedicated command verifies and persists exact attachment evidence for a DCR3 snapshot or Activity range; the D164 retention sink remains distinct
@@ -355,8 +356,9 @@ mechanism transfer D207 allows between two Kuali writes does not reach UCPath at
 
 **What the deferral is.** The remaining legacy affordances the rebuild does not surface. DCR3–DCR5
 now serve strict **search runs across dates**, its Separations Top Bar surface and an evidenced XLSX
-for an exact search snapshot or Activity range. You still cannot **look at a screenshot**: diagnostic
-bundles capture, index and retain them, but no route hands the bytes to a browser. The D289 rerun
+for an exact search snapshot or Activity range. Verified diagnostic screenshots can now be opened
+from a run's Logs or Receipt and from frozen Archive evidence; the broader generic gallery family
+remains unbuilt. The D289 rerun
 comparison authority is ratified, but no implementation yet reads the prior receipt beside the current
 one.
 
@@ -377,15 +379,15 @@ comparison being worth shaping rather than on any missing plumbing.
 measure and test the corpus that now exists rather than author ranking from fixture intuition; the
 artifact route, search, export and rerun-diff rows remain open until their proofs land.
 
-**Built today.** Everything underneath. Diagnostic bundles are content-addressed with a durable
-attachment index and per-field redaction applied AT capture; artifact refs and resource schemas are
-complete; the Activity report has a second authority behind it and a served CSV (D236/D240), and
-DCR3–DCR5 add the strict corpus search, surface and evidenced XLSX. The remaining absences are a
-generic byte route/screenshot surface and D289's receipt-comparison implementation.
+**Built today.** Diagnostic bundles are content-addressed with a durable attachment index and
+per-field redaction applied AT capture; D291/D292 serve verified run and Archive bytes, D305 adds
+explicit per-run browser screenshots and exposes the same evidence in Logs and Receipt, the
+Activity report has a second authority behind it and a served CSV (D236/D240), and DCR3–DCR5 add
+the strict corpus search, surface and evidenced XLSX. The remaining absences are the broader
+generic status/gallery family and D289's receipt-comparison implementation.
 
-**Not built.** Two items, above. Note which way the artifact-bytes route cuts: it is one route, and
-it unblocks three things at once — the run-detail `captures` section, the screenshot gallery, and any
-future surface that wants to show a captured page rather than describe it.
+**Not built.** Two items remain: the broader generic status/gallery family and the D289 field-level
+rerun comparison. Run-bound and Archive screenshot evidence no longer waits on either.
 
 ## Auto-purge diagnostics on a measured schedule · reclaim unreferenced artifact bytes
 <!-- roadmap: def-retention -->
