@@ -12,14 +12,13 @@
  * `timecard-search`.
  */
 import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
+import { TIMECARD_SEARCH_NODE, TIMECARD_NODE, DATES_NODE } from "./node-ids.js";
 import { NewKronosReadSeparationTimecard } from "../../../domain/contracts/new-kronos/read-separation-timecard.js";
 import { NewKronosSearchEmployee } from "../../../domain/contracts/new-kronos/search-employee.js";
 import { SeparationsReadSeparationDates } from "../../../domain/contracts/separations/read-separation-dates.js";
 import { KRONOS_TIMECARD_STEP } from "./step.js";
+import { KRONOS_TIMECARD_OMISSION } from "./omission.js";
 
-export const TIMECARD_SEARCH_NODE = "timecard-search";
-export const TIMECARD_NODE = "timecard";
-export const DATES_NODE = "dates";
 
 const nodes = defineWorkflowStepNodeFactory(KRONOS_TIMECARD_STEP);
 
@@ -63,4 +62,5 @@ export const KRONOS_TIMECARD_STEP_NODES = nodes.category([
   timecardSearchNode,
   timecardNode,
   datesNode,
-]);
+], { omission: KRONOS_TIMECARD_OMISSION });
+export { TIMECARD_SEARCH_NODE, TIMECARD_NODE, DATES_NODE } from "./node-ids.js";

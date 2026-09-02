@@ -73,8 +73,13 @@ export const TerminationReceiptSchema = z.strictObject({
   emplId: EidSchema,
   /** The name UCPath's own detail page showed for this transaction's subject. */
   displayedName: z.string().min(1),
-  /** Whether this run filed it, or found it already there (ref write-safety §5). */
-  disposition: z.enum(["committed", "already-present"]),
+  /**
+   * Whether this run filed it, found it already there (ref write-safety §5) —
+   * or, under D307, never touched UCPath and carries the number the operator
+   * typed when omitting the UCPath transaction step. That last arm is the
+   * receipt's own word that nothing here was read from a transaction page.
+   */
+  disposition: z.enum(["committed", "already-present", "operator-asserted"]),
 });
 export type TerminationReceipt = z.infer<typeof TerminationReceiptSchema>;
 
@@ -149,5 +154,43 @@ export function verifyTerminationReceipt(input: Readonly<{
       displayedName: input.proof.displayedName,
       disposition: input.disposition,
     },
+  });
+}
+
+/**
+ * D307 — the receipt when the operator OMITTED the UCPath transaction step and
+ * typed the transaction number and its approval status instead. The subject
+ * and effective date are NOT typed: they come from the identity approval and
+ * the reconciled dates this run still holds, exactly the two facts the fold
+ * path checks a live receipt against. Only a status the fold would accept is
+ * assertable — a Denied or Pushed Back filing is not a filed termination.
+ */
+export function assertTerminationReceipt(input: Readonly<{
+  transactionNumber: string;
+  approvalStatus: string;
+  approvedEmplId: string;
+  approvedName: string;
+  expectedEffectiveDate: string;
+}>): TerminationReceipt {
+  const transactionNumber = KualiTransactionNumberSchema.safeParse(input.transactionNumber);
+  if (!transactionNumber.success) {
+    throw new Error(
+      "asserted UCPath transaction number is not a form the Kuali Transaction Number control can hold "
+      + `(T followed by 6–12 digits): ${transactionNumber.error.issues.map((issue) => issue.message).join("; ")}`,
+    );
+  }
+  if (!TERMINATION_RECEIPT_ACCEPTED_STATUSES.some((status) => status === input.approvalStatus)) {
+    throw new Error(
+      `asserted approval status ${JSON.stringify(input.approvalStatus)} is not one a termination receipt may carry `
+      + `(${TERMINATION_RECEIPT_ACCEPTED_STATUSES.join(", ")}); a filing UCPath refused is not a filed termination`,
+    );
+  }
+  return TerminationReceiptSchema.parse({
+    transactionNumber: transactionNumber.data,
+    approvalStatus: input.approvalStatus,
+    effectiveDate: input.expectedEffectiveDate,
+    emplId: input.approvedEmplId,
+    displayedName: input.approvedName,
+    disposition: "operator-asserted",
   });
 }

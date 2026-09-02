@@ -736,7 +736,9 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "dates.kualiLastDayWorked", "dates.lastDayWorked", "dates.kualiSeparationDate",
     "dates.separationDate", "dates.terminationEffectiveDate",
     "dates.lastDayWorkedChanged", "dates.separationDateChanged",
-    "pendingSweep.disposition", "finalization.disposition"),
+    "pendingSweep.disposition", "finalization.disposition",
+    // D307 — the omitted arm of a write step: a closed state and the step key.
+    "pendingSweep.state", "pendingSweep.step", "finalization.state", "finalization.step"),
   ...approvedSubjectLeaves(SEPARATIONS_RESULT, "approved"),
   ...sweepProofLeaves(SEPARATIONS_RESULT, "pendingSweep.proof"),
   ...terminationReceiptLeaves(SEPARATIONS_RESULT, "termination"),

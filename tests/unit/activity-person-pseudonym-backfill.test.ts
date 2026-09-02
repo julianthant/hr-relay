@@ -474,12 +474,14 @@ describe("reviewed activity person pseudonym backfill", () => {
       manualClock(new Date(COMPOSITION_NOW)),
     );
     try {
+      const performedFinalization = SEPARATIONS_RESULT.finalization;
+      if (!("proof" in performedFinalization)) throw new Error("fixture finalization must be the performed arm");
       const alternateSourceResult = resultWith({
         ...SEPARATIONS_RESULT,
         termination: { ...SEPARATIONS_RESULT.termination, emplId: "10800001" },
         finalization: {
-          ...SEPARATIONS_RESULT.finalization,
-          proof: { ...SEPARATIONS_RESULT.finalization.proof, observedEid: "10800002" },
+          ...performedFinalization,
+          proof: { ...performedFinalization.proof, observedEid: "10800002" },
         },
       });
       seedTerminalSeparationsResult(database, path, TERMINAL_RUN, alternateSourceResult);

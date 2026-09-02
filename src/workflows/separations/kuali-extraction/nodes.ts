@@ -10,16 +10,13 @@
  * lives beside the bind that feeds it.
  */
 import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
+import { ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, TERMINATION_TYPE_NODE } from "./node-ids.js";
 import { KualiReadSeparationDocument } from "../../../domain/contracts/kuali/read-separation-document.js";
 import { KualiSearchSeparationAction } from "../../../domain/contracts/kuali/search-separation-action.js";
 import { SeparationsMatchTerminationType } from "../../../domain/contracts/separations/match-termination-type.js";
 import { SeparationsReadSeparationPlan } from "../../../domain/contracts/separations/read-separation-plan.js";
 import { KUALI_EXTRACTION_STEP } from "./step.js";
 
-export const ACTION_NODE = "resolve-action";
-export const DOCUMENT_NODE = "document";
-export const PLAN_NODE = "plan";
-export const TERMINATION_TYPE_NODE = "termination-type";
 
 const nodes = defineWorkflowStepNodeFactory(KUALI_EXTRACTION_STEP);
 
@@ -75,3 +72,4 @@ export const KUALI_EXTRACTION_STEP_NODES = nodes.category([
   planNode,
   terminationTypeNode,
 ]);
+export { ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, TERMINATION_TYPE_NODE } from "./node-ids.js";

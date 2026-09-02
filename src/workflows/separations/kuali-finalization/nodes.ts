@@ -10,11 +10,12 @@
  * one pure fold only this step's binds consume, so it lives here.
  */
 import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
+import { FINALIZE_NODE } from "./node-ids.js";
 import { KualiSaveSeparationFinalization } from "../../../domain/contracts/kuali/save-separation-finalization.js";
 import { KualiStageSeparationFinalization } from "../../../domain/contracts/kuali/stage-separation-finalization.js";
 import { KUALI_FINALIZATION_STEP } from "./step.js";
+import { KUALI_FINALIZATION_OMISSION } from "./omission.js";
 
-export const FINALIZE_NODE = "finalize-kuali";
 
 const nodes = defineWorkflowStepNodeFactory(KUALI_FINALIZATION_STEP);
 
@@ -42,4 +43,5 @@ export const finalizeKualiNode = nodes.transaction(FINALIZE_NODE, {
 });
 
 /** The step's timeline category — key and label from `step.ts`, nodes from the fragment above. */
-export const KUALI_FINALIZATION_STEP_NODES = nodes.category([finalizeKualiNode]);
+export const KUALI_FINALIZATION_STEP_NODES = nodes.category([finalizeKualiNode], { omission: KUALI_FINALIZATION_OMISSION });
+export { FINALIZE_NODE } from "./node-ids.js";

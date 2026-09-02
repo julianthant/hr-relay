@@ -14,6 +14,7 @@
  * fragments rather than restating them).
  */
 import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
+import { NAME_SEARCH_NODE, SUBJECT_NODE, COMPARISON_NODE, GATE_NODE, APPROVAL_NODE } from "./node-ids.js";
 import { SeparationsMatchIdentity } from "../../../domain/contracts/separations/match-identity.js";
 import { SeparationsMatchSeparationSubject } from "../../../domain/contracts/separations/match-separation-subject.js";
 import { SeparationsVerifyIdentityApproval } from "../../../domain/contracts/separations/verify-identity-approval.js";
@@ -21,11 +22,6 @@ import { SearchPersonOrg } from "../../../domain/contracts/ucpath/search-person-
 import { IdentityApprovalResultSchema } from "../../../domain/separations/identity-approval.js";
 import { IDENTITY_CHECK_STEP } from "./step.js";
 
-export const NAME_SEARCH_NODE = "name-search";
-export const SUBJECT_NODE = "subject";
-export const COMPARISON_NODE = "comparison";
-export const GATE_NODE = "identity-approval";
-export const APPROVAL_NODE = "approval";
 
 const nodes = defineWorkflowStepNodeFactory(IDENTITY_CHECK_STEP);
 
@@ -85,3 +81,4 @@ export const IDENTITY_CHECK_STEP_NODES = nodes.category([
   identityApprovalGate,
   approvalNode,
 ]);
+export { NAME_SEARCH_NODE, SUBJECT_NODE, COMPARISON_NODE, GATE_NODE, APPROVAL_NODE } from "./node-ids.js";

@@ -61,15 +61,24 @@ export const CurrentSeparationsPseudonymSourceResultSchema = z.strictObject({
     lastDayWorkedChanged: z.boolean(),
     separationDateChanged: z.boolean(),
   }),
-  pendingSweep: z.strictObject({
-    disposition: z.enum(["committed", "already-present"]),
-    proof: UcpathPendingSweepProofSchema,
-  }),
+  // D307 — mirrors the descriptor's omitted arms exactly; this schema's hash
+  // must equal the current SeparationsResultSchema's or every current run
+  // reads as unavailable.
+  pendingSweep: z.union([
+    z.strictObject({
+      disposition: z.enum(["committed", "already-present"]),
+      proof: UcpathPendingSweepProofSchema,
+    }),
+    z.strictObject({ state: z.literal("omitted"), step: z.string().min(1) }),
+  ]),
   termination: TerminationReceiptSchema,
-  finalization: z.strictObject({
-    disposition: z.enum(["committed", "already-present"]),
-    proof: KualiSavedFinalizationProofSchema,
-  }),
+  finalization: z.union([
+    z.strictObject({
+      disposition: z.enum(["committed", "already-present"]),
+      proof: KualiSavedFinalizationProofSchema,
+    }),
+    z.strictObject({ state: z.literal("omitted"), step: z.string().min(1) }),
+  ]),
 });
 
 export const ActivityPersonPseudonymBackfillOutcomeSchema = z.discriminatedUnion("state", [

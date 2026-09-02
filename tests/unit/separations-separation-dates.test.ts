@@ -314,6 +314,7 @@ describe("separation dates — the comment builders", () => {
         kualiSeparationDate: "06/12/2026",
         separationDate: "06/19/2026",
         initials: "JZ",
+        source: "kronos-timesheet",
       }),
       documentNumber: "4510",
       transactionNumber: "T002209631",

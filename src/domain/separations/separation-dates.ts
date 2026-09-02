@@ -462,23 +462,94 @@ export function joinSeparationComments(...parts: readonly string[]): string {
  * emitted only for a date that actually moved; the empty string is the ordinary
  * case.
  */
+/** Where a reconciled date came from — the wording a Kuali comment names as its authority. */
+export const SeparationDateSourceSchema = z.enum(["kronos-timesheet", "operator"]);
+export type SeparationDateSource = z.infer<typeof SeparationDateSourceSchema>;
+
+const DATE_SOURCE_WORDING: Readonly<Record<SeparationDateSource, string>> = {
+  "kronos-timesheet": "per Kronos timesheet",
+  operator: "per operator entry at run start",
+};
+
 export function buildDateChangeComments(input: Readonly<{
   kualiLastDayWorked: string;
   lastDayWorked: string;
   kualiSeparationDate: string;
   separationDate: string;
   initials: string;
+  /** Which authority established the dates; every caller says so explicitly. */
+  source: SeparationDateSource;
 }>): string {
+  const wording = DATE_SOURCE_WORDING[input.source];
   return joinSeparationComments(
     input.kualiLastDayWorked === input.lastDayWorked
       ? ""
       : `Updated Last Day Worked from ${input.kualiLastDayWorked} to ${input.lastDayWorked} `
-        + `per Kronos timesheet. -${input.initials}`,
+        + `${wording}. -${input.initials}`,
     input.kualiSeparationDate === input.separationDate
       ? ""
       : `Updated Separation Date from ${input.kualiSeparationDate} to ${input.separationDate} `
-        + `per Kronos timesheet. -${input.initials}`,
+        + `${wording}. -${input.initials}`,
   );
+}
+
+/**
+ * D307 — the reconciled dates when the operator OMITTED the Kronos timecard
+ * step and typed the last day worked and separation date instead.
+ *
+ * Nothing here is read from a card, so nothing here pretends to have been:
+ * every leave field is `null`, the pay-code list is empty, the termination
+ * comment names no leave, and the date-change comment cites operator entry
+ * rather than a timesheet. The one derived value — the effective date — keeps
+ * the same rule the Kronos path applies (separation date + 1), so a typed pair
+ * cannot file a termination effective on a day the operator did not intend.
+ */
+export function assertSeparationDates(input: Readonly<{
+  plan: SeparationPlan;
+  timekeeperName: string;
+  lastDayWorked: string;
+  separationDate: string;
+}>): ReconciledSeparationDates {
+  const lastDayWorked = SeparationDateSchema.parse(input.lastDayWorked);
+  const separationDate = SeparationDateSchema.parse(input.separationDate);
+  if (isLaterSeparationDate(lastDayWorked, separationDate)) {
+    throw new Error(
+      `asserted separation date ${separationDate} precedes the asserted last day worked ${lastDayWorked}; `
+      + "a separation cannot take effect before the last day worked",
+    );
+  }
+  const terminationEffectiveDate = addSeparationDays(separationDate, 1);
+  const initials = separationInitials(input.timekeeperName);
+  return ReconciledSeparationDatesSchema.parse({
+    lastDayWorked,
+    separationDate,
+    terminationEffectiveDate,
+    kualiLastDayWorked: input.plan.kualiLastDayWorked,
+    kualiSeparationDate: input.plan.kualiSeparationDate,
+    lastDayWorkedChanged: input.plan.kualiLastDayWorked !== lastDayWorked,
+    separationDateChanged: input.plan.kualiSeparationDate !== separationDate,
+    latestSickDate: null,
+    firstHolidayDate: null,
+    latestHolidayDate: null,
+    separationDeterminingLeave: null,
+    unclassifiedPayCodes: [],
+    terminationComments: buildTerminationComments({
+      terminationEffectiveDate,
+      lastDayWorked,
+      documentNumber: input.plan.documentNumber,
+      latestSickDate: null,
+      firstHolidayDate: null,
+      latestHolidayDate: null,
+    }),
+    dateChangeComments: buildDateChangeComments({
+      kualiLastDayWorked: input.plan.kualiLastDayWorked,
+      lastDayWorked,
+      kualiSeparationDate: input.plan.kualiSeparationDate,
+      separationDate,
+      initials,
+      source: "operator",
+    }),
+  });
 }
 
 /**
@@ -587,6 +658,7 @@ export function reconcileSeparationDates(input: Readonly<{
     kualiSeparationDate: input.plan.kualiSeparationDate,
     separationDate,
     initials,
+    source: "kronos-timesheet",
   });
 
   /**

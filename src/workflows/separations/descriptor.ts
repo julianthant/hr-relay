@@ -89,6 +89,8 @@
  * re-read can never file a second termination.
  */
 import { z } from "zod";
+import { KUALI_FINALIZATION_STEP } from "./kuali-finalization/step.js";
+import { UCPATH_TRANSACTION_STEP } from "./ucpath-transaction/step.js";
 import { flow } from "../../base/flow.js";
 import { defineWorkflowDescriptor, requireFact } from "../../base/workflow.js";
 import { WorkflowIdSchema } from "../../domain/ids.js";
@@ -250,6 +252,16 @@ export const SeparationsCanonicalInput = defineCanonicalInput(
   ],
 );
 
+/**
+ * D307 — the arm a result carries for a write step the operator omitted: no
+ * disposition is invented, the step is named. The performed arm keeps its
+ * pre-D307 shape byte for byte, so every earlier result still parses.
+ */
+const OmittedStepResultArmSchema = z.strictObject({
+  state: z.literal("omitted"),
+  step: z.string().min(1),
+});
+
 export const SeparationsResultSchema = z.strictObject({
   documentNumber: z.string().min(1),
   /** The subject a human approved, and the evidence they approved it on. */
@@ -276,22 +288,44 @@ export const SeparationsResultSchema = z.strictObject({
     separationDateChanged: z.boolean(),
   }),
   /** Whether the sweep had anything to do, and what the grid showed after it. */
-  pendingSweep: z.strictObject({
-    disposition: z.enum(["committed", "already-present"]),
-    proof: UcpathPendingSweepProofSchema,
-  }),
+  pendingSweep: z.union([
+    z.strictObject({
+      disposition: z.enum(["committed", "already-present"]),
+      proof: UcpathPendingSweepProofSchema,
+    }),
+    OmittedStepResultArmSchema,
+  ]),
   /**
    * §4c's completion shape: the receipt PAIR, checked rather than carried. The
    * number alone is never a proof (D130).
    */
   termination: TerminationReceiptSchema,
   /** The finalization's landing proof — always the reload read-back's (D128/S59). */
-  finalization: z.strictObject({
-    disposition: z.enum(["committed", "already-present"]),
-    proof: KualiSavedFinalizationProofSchema,
-  }),
+  finalization: z.union([
+    z.strictObject({
+      disposition: z.enum(["committed", "already-present"]),
+      proof: KualiSavedFinalizationProofSchema,
+    }),
+    OmittedStepResultArmSchema,
+  ]),
 });
 
+
+/**
+ * D307 — a terminal derive reads an omitted node as `undefined` even though
+ * the scope type says otherwise (the factory admits the `step-omitted` arm
+ * only for nodes of an omittable step). Widening here is a declared read of
+ * that arm, not a fallback: the value is either the node's real output or the
+ * named omission, never a default.
+ */
+function omittedOr<T, R>(
+  value: T,
+  step: string,
+  present: (value: T) => R,
+): R | Readonly<{ state: "omitted"; step: string }> {
+  const widened: T | undefined = value;
+  return widened === undefined ? Object.freeze({ state: "omitted" as const, step }) : present(widened);
+}
 
 const separationsFlow = flow(SeparationsInput)
   .pipe(actionNode.wire({
@@ -616,15 +650,17 @@ const separationsFlow = flow(SeparationsInput)
         lastDayWorkedChanged: outputs[DATES_NODE].lastDayWorkedChanged,
         separationDateChanged: outputs[DATES_NODE].separationDateChanged,
       },
-      pendingSweep: {
-        disposition: outputs[SWEEP_NODE].disposition,
-        proof: outputs[SWEEP_NODE].output.cleared,
-      },
+      // D307 — an omitted write step's node is absent from the scope (the
+      // factory admits it as `step-omitted`); the result names the step.
+      pendingSweep: omittedOr(outputs[SWEEP_NODE], UCPATH_TRANSACTION_STEP.key, (sweep) => ({
+        disposition: sweep.disposition,
+        proof: sweep.output.cleared,
+      })),
       termination: outputs[RECEIPT_NODE],
-      finalization: {
-        disposition: outputs[FINALIZE_NODE].disposition,
-        proof: outputs[FINALIZE_NODE].output.savedState,
-      },
+      finalization: omittedOr(outputs[FINALIZE_NODE], KUALI_FINALIZATION_STEP.key, (finalize) => ({
+        disposition: finalize.disposition,
+        proof: finalize.output.savedState,
+      })),
     }),
   });
 

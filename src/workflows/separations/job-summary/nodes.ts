@@ -11,14 +11,12 @@
  * (rule 3 — they IMPORT it rather than restating it).
  */
 import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
+import { JOB_SUMMARY_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE } from "./node-ids.js";
 import { SeparationsMatchActiveEmployment } from "../../../domain/contracts/separations/match-active-employment.js";
 import { SeparationsMatchDepartmentOption } from "../../../domain/contracts/separations/match-department-option.js";
 import { UcpathReadJobSummary } from "../../../domain/contracts/ucpath/read-job-summary.js";
 import { JOB_SUMMARY_STEP } from "./step.js";
 
-export const JOB_SUMMARY_NODE = "job-summary";
-export const EMPLOYMENT_NODE = "employment";
-export const DEPARTMENT_NODE = "department-option";
 
 const nodes = defineWorkflowStepNodeFactory(JOB_SUMMARY_STEP);
 
@@ -51,3 +49,4 @@ export const JOB_SUMMARY_STEP_NODES = nodes.category([
   employmentNode,
   departmentOptionNode,
 ]);
+export { JOB_SUMMARY_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE } from "./node-ids.js";
