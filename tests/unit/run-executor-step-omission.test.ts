@@ -23,7 +23,7 @@ import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import type { StepOmissionDeclaration } from "../../src/domain/workflow/step-omission.js";
 import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { HASH_A } from "./fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
 import {
   happySessionHarness,
@@ -202,6 +202,28 @@ function queuedRunFor(descriptor: AnyWorkflowDescriptor, stepOmissions?: readonl
   };
 }
 
+/** A SECOND run of the same logical item (attempt 2), with no omission this time. */
+function secondRunFor(descriptor: AnyWorkflowDescriptor, startAt?: string) {
+  return {
+    ...QUEUED_RUN,
+    envelope: {
+      ...QUEUED_RUN.envelope,
+      runId: UUID_4,
+      workflow: descriptor.id,
+      traceId: TraceIdSchema.parse(`${descriptor.code}-170000-3333`),
+      contractFingerprint: descriptor.contractFingerprint,
+      resolvedInstance: {},
+      attempt: 2,
+      ...(startAt === undefined ? {} : { startAt }),
+    },
+    input: {
+      raw: { name: "Battistessa, Johnnie" },
+      parsed: { schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value: { name: "Battistessa, Johnnie" } },
+      ingressSchemaHash: HASH_A,
+    },
+  };
+}
+
 function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): {
   run: RunRecord;
   claim: { workerId: string; claimGeneration: number };
@@ -337,5 +359,58 @@ describe("executor step omission (D307)", () => {
     const failure = database.authority.failures.get(failureId);
     assert.equal(failure?.nodeId, "read");
     assert.match(failure?.summary ?? "", /node "read" declares artifact projections and cannot be asserted/u);
+  });
+
+  it("an assertion never replays as an observation across a resume that no longer omits the step", async () => {
+    const harness = harnessFor(honestDescriptor);
+    const { database } = harness.authority;
+    // First run: omit "reading" so "read" is durable as a MARKED assertion row.
+    database.authority.runs.enqueue(queuedRunFor(honestDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
+    const first = claim(database, honestDescriptor);
+    const firstOutcome = await executeClaimedRun(harness.deps, { ...first, signal: SIGNAL });
+    assert.deepEqual(firstOutcome, { state: "done", runId: RUN_ID });
+
+    // Second run of the SAME item, attempt 2, with NO omission and an explicit
+    // resume PAST the assertion — the resume cannot cross it.
+    database.authority.runs.enqueue(secondRunFor(honestDescriptor, "fold"));
+    const second = claim(database, honestDescriptor);
+    const outcome = await executeClaimedRun(harness.deps, { ...second, signal: SIGNAL });
+    assert.equal(outcome.state, "failed");
+    const run = database.authority.runs.get(UUID_4);
+    assert.ok(run !== undefined && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed");
+    const failureId = run.lifecycle.state === "terminal" ? run.lifecycle.failureId : undefined;
+    assert.ok(failureId !== undefined);
+    const failure = database.authority.failures.get(failureId);
+    assert.match(
+      failure?.summary ?? "",
+      /latest checkpoint is an operator assertion for omitted step "reading", and this run does not omit that step; an assertion never replays as an observation/u,
+    );
+  });
+
+  it("an ordinary second run with no omission and no startAt executes the node fresh, writing an unmarked row", async () => {
+    invocations.length = 0;
+    const harness = harnessFor(honestDescriptor);
+    const { database } = harness.authority;
+    database.authority.runs.enqueue(queuedRunFor(honestDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
+    const first = claim(database, honestDescriptor);
+    const firstOutcome = await executeClaimedRun(harness.deps, { ...first, signal: SIGNAL });
+    assert.deepEqual(firstOutcome, { state: "done", runId: RUN_ID });
+    invocations.length = 0;
+
+    database.authority.runs.enqueue(secondRunFor(honestDescriptor));
+    const second = claim(database, honestDescriptor);
+    const outcome = await executeClaimedRun(harness.deps, { ...second, signal: SIGNAL });
+    if (outcome.state === "failed") {
+      const failure = database.authority.failures.get(outcome.failureId);
+      assert.fail(`second run failed at ${failure?.nodeId ?? "?"}: ${failure?.summary ?? "?"}`);
+    }
+    assert.deepEqual(outcome, { state: "done", runId: UUID_4 });
+    // The task was genuinely invoked again — this is an OBSERVATION, not a replayed assertion.
+    assert.deepEqual(invocations, ["observed", "observed!"]);
+
+    const rows = database.authority.runCheckpoints.listByAttempt(honestDescriptor.id, QUEUED_RUN.envelope.itemId, "read", 2);
+    assert.equal(rows.length, 1, "the second attempt wrote exactly one row for \"read\"");
+    assert.equal(rows[0]?.assertion, undefined, "the fresh observation carries no assertion marker");
+    assert.equal(rows[0]?.runId, UUID_4);
   });
 });
