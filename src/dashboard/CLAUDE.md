@@ -106,6 +106,30 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-01 — a chip per fact is a table wearing borders, and the facts a row REPEATS belong
+  one level up (the run Logs observed ledger).** An observed log row drew one bordered `Chip` per
+  redacted value — twelve for a Kuali document read — each carrying its own direction icon, the
+  whole `field · key` label (which for a leaf key printed `documentNumber · documentNumber`) and,
+  for a served list, the raw JSON; with a warning `attempt 1` badge and the `KUALI` chip on every
+  row under a heading that already named `kuali/read-separation-document`. Every chip was true and
+  the operator's verdict was *"too cluttered"*. Four directions were drafted on a design canvas
+  over the real run's facts before code moved (ledger, transcript, cards, digest); the operator
+  chose the ledger. **What travels:** `logLedgerOf` in `log-panel-model.ts` folds a row into
+  direction sections → fields → key/value facts, and `LedgerSection` in `log-panel.tsx` draws it as
+  a two-column grid on the `--ds-w-chip-cell` track with a 2px rail and ONE caps label per
+  direction; a nested field is a caps sub-head over keys shown without the repeated prefix; a list
+  is a native `<details>` (count + clipped preview closed, one item per line open); the attempt
+  rides one meta line at the row's top; the system chip moved into the sticky producer heading via
+  `groupSystemOf`, which throws if a group's rows name two systems rather than picking one. **Two
+  contracts held byte-for-byte on purpose**: the listitem's `aria-label` and each fact's `title`
+  (`label: value`, the same string the chip carried) — the ledger and `logPillsOf` are asserted to
+  produce identical `label: value` sequences, so the hover, the search and the screen cannot
+  disagree. The parity spec now reads the direction tokens off the section labels instead of a
+  per-fact pill. **And a redesign of one row kind must leave the other kinds' pixels alone**: the
+  first pass grew the NOTE line's clock from `micro` to `meta` and dropped its `pl-5`, and 22
+  frozen run-detail references went red for a row the redesign never meant to touch. No reference
+  was re-frozen; the note and fence lines are back to their exact classes.
+
 - **2026-09-01 — a surface with no demo counterpart is drift even when every fact on it is true
   (D305, the Session Panel restored to the demo's strip).** The drawer had grown two things the demo
   never had: per-workflow pool BANDS (`Separations · no pool declaration · 0 active · pool v0 ·
