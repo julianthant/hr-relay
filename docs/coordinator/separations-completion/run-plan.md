@@ -8,8 +8,8 @@
 | R3a | implement corrected identity approval policy | u10–u12 | complete at `36f0562f`; received | D309, machine verification/name-only gate, 4,809 coverage + 287 parity |
 | R3b | sweep scope and surviving filing proof | u17–u18 | complete at `4d4804ec`; received | D310 exact-set/fresh-filing mechanics, 4,818 coverage + 287 parity |
 | R4a | fresh rehearsal and target packet | u13–u14 | received partial at `fcfd1e5f`; submit-free 4502 run failed missing `source` provenance before D309/D310 | immutable failure evidence, exact-run 0/0/0 |
-| R4b | dates checkpoint provenance repair | u19 | ready; operator requested fix | deterministic red/green regression, smallest repair, full gates and review |
-| R4c | post-repair rehearsal and target packet | u14 | R4b integrated first; dry-run/read-only authorized | one current dashboard dry run, exact-run 0/0/0, D309 visible authority, exact live candidate/disposition packet |
+| R4b | dates checkpoint provenance repair | u19 | complete at `73954594`; received/merged `31da1fe8` | exact red/green regression, one-line repair, 4,819 coverage + 287 parity |
+| R4c | post-repair rehearsal and target packet | u14 | admitted; operator selected exactly document 4495; dry-run/read-only authorized | one 4495 dashboard dry run, exact-run 0/0/0, D309 visible authority, exact live candidate/disposition packet |
 | R4d | controlled proof and close | u15 | R4c + explicit operational authorization for exact live target/disposition | controlled receipts/read-backs/measurements, criterion 5 and close-out |
 
 ## Supervisor wave ledger
@@ -17,8 +17,8 @@
 | Run | Task id / corrections | Host id | Project id | Launch title/time | Worktree/branch | Report | Status | Last cursor |
 |---|---|---|---|---|---|---|---|---|
 | R4a | setup client `client-new-thread:97be6d8a-f75f-4200-92c3-709a0d9e1b4f` → canonical `01a0637f-5933-7db2-abf9-2a98a802040e` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Separations R4a — Fresh Rehearsal and…` / 2026-09-02 12:02 PDT | `/Users/julianhein/.codex/worktrees/8164/hr-automation-rebuild`, `feature/r4a-fresh-rehearsal-and-target-packet` | `reports/r4a-fresh-rehearsal-and-target-packet.md` | received/merged `fcfd1e5f` | none |
-| R4b | setup client `client-new-thread:37f37e61-3d05-4f72-b47e-cf779bb011af` → canonical `01a063aa-212d-7672-a5f2-c8e9c338cc81` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Separations R4b — Dates Provenance Repair` / 2026-09-02 12:48 PDT | `/Users/julianhein/.codex/worktrees/9b54/hr-automation-rebuild`, `feature/r4b-dates-provenance-repair` | `reports/r4b-dates-provenance-repair.md` | running | none |
-| R4c | not briefed; fresh supervisor required | — | — | — | fresh worktree after R4b integration | `reports/r4c-post-repair-rehearsal.md` | blocked on R4b | none |
+| R4b | setup client `client-new-thread:37f37e61-3d05-4f72-b47e-cf779bb011af` → canonical `01a063aa-212d-7672-a5f2-c8e9c338cc81` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Separations R4b — Dates Provenance Repair` / 2026-09-02 12:48 PDT | removed after merge; `feature/r4b-dates-provenance-repair` deleted | `reports/r4b-dates-provenance-repair.md` | received/merged `31da1fe8` | none |
+| R4c | fresh supervisor required; launch pending | — | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Separations R4c — 4495 Post-Repair Rehearsal` | fresh worktree from `feature/03b-live-close` | `reports/r4c-post-repair-rehearsal.md` | briefed/admitted | none |
 | R4d | not briefed; fresh supervisor required | — | — | — | fresh worktree after R4c integration | `reports/r4d-controlled-proof-and-close.md` | blocked on R4c packet + exact operational authorization | none |
 
 ## Dispatch ledger
@@ -31,9 +31,10 @@ R2 used one compact nested `sup_supervisor` because serial runtime access and tw
 - u9 (coordinator): correct stale status from verified records, regenerate roadmap, commit logical doc categories after gates, prepare one concise decision sheet. Historical facts remain historically labeled.
 - u10–u12: reserve stable ids for protocol contract/identity, execution approval path, regression proof; detail and brief only after operator decision.
 - u13 — R4a live rehearsal attempt, now immutable submit-free failure evidence.
-- u14 — exact target packet, carried from incomplete R4a into post-repair R4c.
+- u14 — exact target packet, carried from incomplete R4a into post-repair R4c; R4c execution terms follow below.
 - u15 — controlled writes, measurements, and canonical closure in R4d after exact authorization.
 - u19 — R4b dates-provenance repair: build a deterministic red replay/test for missing `source` provenance, apply the smallest root fix, prove red/green, run complete gates and correctness/silent-failure review. No runtime-row edits or live retry.
+- u14 — R4c post-repair live proof: use exactly document 4495 for one dashboard-started `dryRun=true` run; no substitution or retry. Prove exact-run 0/0/0, D309 authority, D310 packet, and cleanup. If unavailable or defective, return exact evidence without broadening scope.
 
 ## Stop and resume
 R2 may finish its bounded preparation while overall completion remains blocked on the operator-owned protocol and targets. It must not relabel preparation as rebuild-ready. Nested supervisor returns coherent evidence directly; coordinator owns any necessary final handoff. No inferred real-write approval.
@@ -57,3 +58,6 @@ R3b integrated u17/u18 in `1bda8afb`, `730a5030`, `4e00d145`, `f2eee0ae`; proof 
 
 ## R4a received / R4b repair admission
 R4a canonical task `01a0637f-5933-7db2-abf9-2a98a802040e` committed sanitized report/evidence at `3c3c7152`; the coordinator verified a clean branch, no browsers, healthy/current generation 2280 storage, 24/24 reconciled streams, and zero pending commands/write intents/outbox, then merged it at `fcfd1e5f`. The run-data authority proves 4502 reached authenticated New Kronos timecard read and then failed because `workflow:separations/read-separation-dates` recorded no provenance for output field `source`. Fresh R4b owns u19 under `briefs/r4b-dates-provenance-repair.md`; R4c owns the live retry/target packet after integration. R4d replaces the earlier unbriefed controlled-proof R4b label.
+
+## R4b received / R4c dispatch admission
+R4b canonical task `01a063aa-212d-7672-a5f2-c8e9c338cc81` proved the exact immutable failure red, added the one missing `source` data point plus a real-collector regression, passed independent correctness/silent-failure review and the full gates, and completed clean at `73954594`. The coordinator merged it at `31da1fe8`, reran focused 26/26, full coverage 390 files/4,819 tests, parity 287/287, typecheck/lint/manifest/roadmap/diff, restored the dashboard, verified healthy/current generation 2282 and 24/24 reconciled streams with zero pending commands/write intents/outbox, then removed the worktree/branch. The operator's direct instruction selects document `4495` for R4c, replacing 4502 as the post-repair test. R4c is a new supervisor and may run exactly one 4495 `dryRun=true` rehearsal; no fallback document or real write is authorized.
