@@ -10,13 +10,20 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { EnqueuePolicySchema } from "../../../src/domain/workflow/presentation.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
+import { StepOmissionFormSchema, type StepOmissionForm } from "../../../src/domain/workflow/step-omission.js";
 import {
   ENQUEUE_POLICY_MEANING,
   ENQUEUE_POLICY_REASON,
   START_DOOR_ABSENCE,
+  foldStepOmissionFacts,
+  forcedStepOmissions,
+  initialStepOmissionDraft,
+  omittedStepViews,
   runControlGroups,
   startRequestFingerprint,
+  toggleStepSelection,
   type StartRequestShape,
+  type StepOmissionStepView,
 } from "../../../src/dashboard/surfaces/run-start-model.js";
 import { versionTag } from "../../../src/dashboard/surfaces/format.js";
 
@@ -59,7 +66,11 @@ describe("the declared active-run policy, as the modal states it (D251)", () => 
   });
 
   it("states WHY the policy is not a control, so a locked value never reads as a broken one", () => {
-    assert.match(ENQUEUE_POLICY_REASON, /declared by this workflow/u);
+    // The SHIPPED words, not an earlier draft of them: `b5581781` unified the
+    // run-option fields onto "Fixed by this workflow." and the frozen parity
+    // a11y references photograph exactly that sentence, so a regex naming the
+    // old wording was failing against the surface it claims to pin.
+    assert.match(ENQUEUE_POLICY_REASON, /Fixed by this workflow/u);
   });
 });
 
@@ -118,6 +129,7 @@ describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
         captureBrowserScreenshots: true,
         priority: "interactive",
     selectedStepKeys: ["searching", "cross-verify", "active-status"],
+    stepOmissionDrafts: [{ step: "kronos-timecard", draft: { lastDayWorked: "06/30/2026" } }],
   };
 
   it("changes when ANY field of the start request changes", () => {
@@ -133,6 +145,10 @@ describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
       ["captureBrowserScreenshots", { ...base, captureBrowserScreenshots: false }],
       ["priority", { ...base, priority: "bulk" }],
       ["selectedStepKeys", { ...base, selectedStepKeys: [...base.selectedStepKeys, "crm-dates"] }],
+      // D307 — a changed FACT is a changed request. The server binds the plan
+      // token to the omission it planned, so a plan made against 06/30 cannot
+      // start a run that asserts 07/31.
+      ["stepOmissionDrafts", { ...base, stepOmissionDrafts: [{ step: "kronos-timecard", draft: { lastDayWorked: "07/31/2026" } }] }],
     ];
     // The enumeration is only as good as its coverage, and nothing here could
     // see a SIXTH field arriving on `StartRequestShape` with no case for it —
@@ -198,5 +214,181 @@ describe("the run-control rail is numbered by what it draws (C83/C84, D272 item 
       assert.ok(group.title.trim().length > 0, `${group.key} has no title`);
       assert.ok(group.description.trim().length > 0, `${group.key} has no description`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D307 — the Steps screen's omission folds
+// ---------------------------------------------------------------------------
+
+/**
+ * One form per declared kind, parsed through the SAME schema a step folder's
+ * declaration is parsed through — a hand-shaped literal here could pin a form
+ * no descriptor can declare.
+ */
+const EVERY_KIND: StepOmissionForm = StepOmissionFormSchema.parse({
+  fields: [
+    { key: "note", label: "Note", kind: "text" },
+    { key: "lastDayWorked", label: "Last day worked", kind: "us-date", help: "MM/DD/YYYY" },
+    { key: "emplId", label: "Employee id", kind: "eid" },
+    { key: "hours", label: "Hours", kind: "integer", min: 1 },
+    { key: "reviewed", label: "Reviewed", kind: "boolean" },
+    { key: "status", label: "Status", kind: "enum", values: ["Approved", "Pending"] },
+    { key: "codes", label: "Codes", kind: "text-list" },
+  ],
+});
+
+const COMPLETE_DRAFT = Object.freeze({
+  note: "  filed by hand  ",
+  lastDayWorked: "06/30/2026",
+  emplId: "10873698",
+  hours: "8",
+  reviewed: true,
+  status: "Approved",
+  codes: "REG\n\n  OT  \n",
+});
+
+describe("an omission form starts EMPTY (D307)", () => {
+  it("seeds every typed kind with nothing and only a checkbox with an answer", () => {
+    // A seeded date or id would be a fabricated fact about a real person the
+    // moment the operator did not touch it. `false` is a real unchecked answer,
+    // which is why it is the one seeded value.
+    assert.deepEqual(initialStepOmissionDraft(EVERY_KIND), {
+      note: "",
+      lastDayWorked: "",
+      emplId: "",
+      hours: "",
+      reviewed: false,
+      status: "",
+      codes: "",
+    });
+  });
+
+  it("refuses every empty typed field by name rather than filling one in", () => {
+    const fold = foldStepOmissionFacts(EVERY_KIND, initialStepOmissionDraft(EVERY_KIND));
+    assert.equal(fold.state, "invalid");
+    if (fold.state !== "invalid") return;
+    assert.deepEqual(
+      Object.keys(fold.errors).sort(),
+      ["emplId", "hours", "lastDayWorked", "note", "status"],
+      "every kind whose declared schema requires a value must be refused when it has none",
+    );
+    // The two that are NOT refused are the two whose declared schema accepts
+    // what an untouched control holds: a checkbox's `false` is an answer, and
+    // `text-list` declares no minimum, so an empty box is an empty list. The
+    // screen adds no rule the server does not have.
+    assert.equal(fold.errors["reviewed"], undefined);
+    assert.equal(fold.errors["codes"], undefined);
+  });
+});
+
+describe("a complete draft reads as the facts the declared schema produces (D307)", () => {
+  it("reads each kind as its own shape, TRIMMED exactly as the schema trims it", () => {
+    const fold = foldStepOmissionFacts(EVERY_KIND, COMPLETE_DRAFT);
+    assert.equal(fold.state, "facts", fold.state === "invalid" ? JSON.stringify(fold.errors) : "");
+    if (fold.state !== "facts") return;
+    assert.deepEqual(fold.facts, {
+      // the schema's own `.trim()`, so what the operator confirms is what the
+      // server receives
+      note: "filed by hand",
+      lastDayWorked: "06/30/2026",
+      emplId: "10873698",
+      hours: 8,
+      reviewed: true,
+      status: "Approved",
+      codes: ["REG", "OT"],
+    });
+  });
+});
+
+describe("every kind's refusal is the declared schema's own (D307)", () => {
+  const cases: readonly (readonly [string, string, string | boolean])[] = [
+    ["note", "an empty text field", "   "],
+    ["lastDayWorked", "a date that is not MM/DD/YYYY", "6/30/2026"],
+    ["lastDayWorked", "a two-digit year", "06/30/26"],
+    ["emplId", "an employee id of seven digits", "1087369"],
+    ["emplId", "an employee id with a letter", "1087369X"],
+    ["hours", "a number that is not whole", "8.5"],
+    ["hours", "a number below the declared minimum", "0"],
+    ["hours", "text where a number is asked for", "eight"],
+    ["status", "a value outside the declared enum", "Rejected"],
+    ["reviewed", "a string where a yes/no answer is asked for", "yes"],
+  ];
+  for (const [field, why, value] of cases) {
+    it(`refuses ${why}, at ${field}`, () => {
+      const fold = foldStepOmissionFacts(EVERY_KIND, { ...COMPLETE_DRAFT, [field]: value });
+      assert.equal(fold.state, "invalid");
+      if (fold.state !== "invalid") return;
+      assert.deepEqual(Object.keys(fold.errors), [field], "the refusal named the wrong control");
+      assert.ok((fold.errors[field] ?? "").length > 0, "a refusal with no sentence is not drawable");
+    });
+  }
+
+  it("accepts an empty text-list, because the declared schema does", () => {
+    // The screen never invents a rule the server does not have: `text-list`
+    // declares no minimum, so an empty box is an empty list and not a refusal.
+    const fold = foldStepOmissionFacts(EVERY_KIND, { ...COMPLETE_DRAFT, codes: "  \n  " });
+    assert.equal(fold.state, "facts");
+    if (fold.state !== "facts") return;
+    assert.deepEqual(fold.facts["codes"], []);
+  });
+});
+
+/**
+ * A three-step workflow whose first omission forces the second out. No
+ * registered descriptor declares a non-empty `forces` today, and the wire
+ * serves the field regardless — the screen has to lock what the planner would
+ * refuse the day one does.
+ */
+const CASCADING_STEPS: readonly StepOmissionStepView[] = Object.freeze([
+  { key: "read", label: "Read", control: { state: "omittable", form: EVERY_KIND, forces: ["stage"] } },
+  { key: "stage", label: "Stage", control: { state: "omittable", form: { fields: [] }, forces: [] } },
+  { key: "finalize", label: "Finalize", control: { state: "required", reason: "This workflow requires every node in this step." } },
+]);
+
+describe("the cascade locks exactly what the planner would refuse (D307)", () => {
+  it("names nobody while every step is included", () => {
+    assert.deepEqual([...forcedStepOmissions(CASCADING_STEPS, ["read", "stage", "finalize"])], []);
+  });
+
+  it("takes the forced step out with the forcing one, and locks it there", () => {
+    const next = toggleStepSelection(CASCADING_STEPS, ["read", "stage", "finalize"], "read", false);
+    assert.deepEqual(next, ["finalize"], "omitting `read` must drag `stage` out with it");
+    assert.deepEqual([...forcedStepOmissions(CASCADING_STEPS, next)], [["stage", ["read"]]]);
+    // The lock is the fold's, not the checkbox's: pressing the locked row
+    // changes nothing at all.
+    assert.deepEqual(toggleStepSelection(CASCADING_STEPS, next, "stage", true), next);
+  });
+
+  it("puts the forced step back when the choice that held it out is undone", () => {
+    const omitted = toggleStepSelection(CASCADING_STEPS, ["read", "stage", "finalize"], "read", false);
+    assert.deepEqual(
+      toggleStepSelection(CASCADING_STEPS, omitted, "read", true),
+      ["read", "stage", "finalize"],
+    );
+  });
+
+  it("never moves a required step", () => {
+    const all = ["read", "stage", "finalize"];
+    assert.deepEqual(toggleStepSelection(CASCADING_STEPS, all, "finalize", false), all);
+  });
+
+  it("keeps the result in timeline order however the presses arrive", () => {
+    const withoutStage = toggleStepSelection(CASCADING_STEPS, ["read", "stage", "finalize"], "stage", false);
+    assert.deepEqual(toggleStepSelection(CASCADING_STEPS, withoutStage, "stage", true), ["read", "stage", "finalize"]);
+  });
+
+  it("refuses a toggle for a step this workflow does not declare", () => {
+    assert.throws(
+      () => toggleStepSelection(CASCADING_STEPS, ["read"], "invented", false),
+      /does not declare/u,
+    );
+  });
+
+  it("reads the omitted steps in timeline order, and only the omittable ones", () => {
+    assert.deepEqual(
+      omittedStepViews(CASCADING_STEPS, ["finalize"]).map((step) => step.key),
+      ["read", "stage"],
+    );
   });
 });

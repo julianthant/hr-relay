@@ -465,6 +465,35 @@ test.describe("separations start-run continuity", () => {
           variant: "default",
         });
 
+        // D307 — the omission itself. Unchecking an omittable step draws the
+        // step folder's OWN declared form inline, and the run reads what is
+        // typed there instead of the step. Separations is the only workflow
+        // that declares omissions, and Kronos timecard is the one whose form
+        // has fields to photograph.
+        await page.getByRole("checkbox", { name: "Kronos timecard" }).uncheck();
+        await expect(page.getByText("5 of 6 included", { exact: true })).toBeVisible();
+        await page.getByLabel("Last day worked").fill("06/30/2026");
+        await page.getByLabel("Separation date").fill("07/01/2026");
+        await expect(page.getByLabel("Separation date")).toHaveValue("07/01/2026");
+        expect(errors, "page errors while rendering the omitted separations step").toEqual([]);
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "separations-start-steps-omitted",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "separations-start-steps-omitted",
+          descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+
+        // Put it back, so the plan capture below photographs the same request
+        // it always did: the drafts leave with the omission.
+        await page.getByRole("checkbox", { name: "Kronos timecard" }).check();
+        await expect(page.getByText("6 of 6 included", { exact: true })).toBeVisible();
+
         await page.getByRole("button", { name: "Next" }).click();
         await expect(page.getByText("Fixture plan row", { exact: true })).toBeVisible();
         await expect(page.getByText("4502", { exact: true })).toBeVisible();

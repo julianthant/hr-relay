@@ -1,0 +1,70 @@
+# separations-start-steps-omitted--paper-ink--narrow-1024x768
+# adapter: fixture
+# fixture: separations-start-steps-omitted
+# descriptorHash: a390cf914b3d1845ae55561a425ec9392e8695addecb7b516e2a0c1bb94aeba5
+# appVersion: 0.1.0
+# viewport: narrow-1024x768  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Start a run":
+  - banner:
+    - heading "Start a run" [level=2]
+    - paragraph: Choose a workflow, configure its start, review the server plan, and confirm.
+    - button "Close"
+  - text: Filter workflows
+  - textbox "Filter workflows":
+    - /placeholder: Filter
+  - navigation "Workflow":
+    - text: Separations
+    - list:
+      - listitem:
+        - button "Separations sp"
+    - text: Search
+    - list:
+      - listitem:
+        - button "Person Lookup pl"
+  - button "5 not startable"
+  - list "Run configuration path":
+    - listitem: Input
+    - listitem: Options
+    - listitem: Steps
+    - listitem: Confirm
+  - heading "Separations" [level=3]
+  - region "Steps":
+    - heading "Steps" [level=4]
+    - text: 5 of 6 included
+    - list:
+      - listitem:
+        - checkbox "Kuali extraction" [checked] [disabled]
+        - text: Kuali extraction This workflow requires every node in this step.
+      - listitem:
+        - checkbox "Identity check" [checked] [disabled]
+        - text: Identity check This workflow requires every node in this step.
+      - listitem:
+        - checkbox "Job summary" [checked] [disabled]
+        - text: Job summary This workflow requires every node in this step.
+      - listitem:
+        - checkbox "Kronos timecard"
+        - text: Kronos timecard Optional — leave it out and type what the rest of the run would have read.
+        - group "What this run reads instead of Kronos timecard":
+          - text: What this run reads instead of Kronos timecard Last day worked
+          - textbox "Last day worked":
+            - /placeholder: MM/DD/YYYY
+            - text: 06/30/2026
+          - paragraph: The employee's last physical day of work, MM/DD/YYYY. Kronos is not read; this stands in for the card's last punch.
+          - text: Separation date
+          - textbox "Separation date":
+            - /placeholder: MM/DD/YYYY
+            - text: 07/01/2026
+          - paragraph: The last day on pay status, MM/DD/YYYY — the same day as the last day worked unless paid leave follows it. The termination is effective the next day.
+      - listitem:
+        - checkbox "UCPath transaction" [checked]
+        - text: UCPath transaction Optional — leave it out and type what the rest of the run would have read.
+      - listitem:
+        - checkbox "Kuali finalization" [checked]
+        - text: Kuali finalization Optional — leave it out and type what the rest of the run would have read.
+  - contentinfo:
+    - text: Separations v1
+    - button "Back"
+    - button "Cancel"
+    - button "Next"

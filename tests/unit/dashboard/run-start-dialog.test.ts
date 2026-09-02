@@ -50,7 +50,7 @@ import { CommandResultSchema, type CommandResult } from "../../../src/domain/com
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell-model.js";
 import { RunStartDialog, type RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start.js";
 import { START_DOOR_ABSENCE } from "../../../src/dashboard/surfaces/run-start-model.js";
-import { FIXTURE_BOOTSTRAP } from "../../parity/helpers/fixture-day.js";
+import { FIXTURE_BOOTSTRAP, FIXTURE_START_PICKER_BOOTSTRAP } from "../../parity/helpers/fixture-day.js";
 
 /**
  * The two browser APIs Radix's overlay layers ask for that jsdom does not
@@ -239,6 +239,10 @@ async function render(element: ReactElement): Promise<void> {
 interface OpenDialog {
   /** the typed-input box, present on Input and restored after every exit */
   readonly typedInput: () => HTMLTextAreaElement;
+  /** a `Field`-labelled control, by the label a screen reader would read (D307) */
+  readonly fill: (label: string, next: string) => Promise<void>;
+  /** whether a control the dialog draws is currently disabled */
+  readonly disabled: (name: string) => boolean;
   /** the stage the rail says is current */
   readonly stage: () => string;
   readonly text: () => string;
@@ -278,10 +282,12 @@ function buttonName(button: HTMLButtonElement): string {
  * declares `set` in method shorthand, and pulling a method off an object
  * without binding it is a lint error in this tree — correctly, in general.
  */
-function typeInto(node: HTMLTextAreaElement | HTMLSelectElement, next: string): void {
+function typeInto(node: HTMLTextAreaElement | HTMLSelectElement | HTMLInputElement, next: string): void {
   const prototype = node instanceof HTMLSelectElement
     ? HTMLSelectElement.prototype
-    : HTMLTextAreaElement.prototype;
+    : node instanceof HTMLInputElement
+      ? HTMLInputElement.prototype
+      : HTMLTextAreaElement.prototype;
   const descriptor: { set?: (this: unknown, value: string) => void } | undefined =
     Object.getOwnPropertyDescriptor(prototype, "value");
   const setter = descriptor?.set;
@@ -299,15 +305,21 @@ function typeInto(node: HTMLTextAreaElement | HTMLSelectElement, next: string): 
  */
 const intakeHandoffs: { workflowId: string; intakeSessionId: string }[] = [];
 
-async function openDialog(client: DashboardClient): Promise<OpenDialog> {
+async function openDialog(
+  client: DashboardClient,
+  catalogue: Readonly<{ workflows: readonly RunStartWorkflow[]; panelWorkflowId: string }> = {
+    workflows: WORKFLOWS,
+    panelWorkflowId: WORKFLOW_ID,
+  },
+): Promise<OpenDialog> {
   intakeHandoffs.length = 0;
   await render(createElement(DashboardClientProvider, {
     client,
     children: createElement(RunStartDialog, {
       open: true,
       onOpenChange: () => undefined,
-      workflows: WORKFLOWS,
-      panelWorkflowId: WORKFLOW_ID,
+      workflows: catalogue.workflows,
+      panelWorkflowId: catalogue.panelWorkflowId,
       actorId: ACTOR_ID,
       onOpenIntake: (workflowId: string, intakeSessionId: string) => {
         intakeHandoffs.push({ workflowId, intakeSessionId });
@@ -408,8 +420,44 @@ async function openDialog(client: DashboardClient): Promise<OpenDialog> {
     await settle();
   };
 
+  /**
+   * Type into the control a visible LABEL names — the same association a screen
+   * reader follows, which is what makes an unlabelled fact box fail here.
+   */
+  const fill = async (label: string, next: string): Promise<void> => {
+    const found = [...document.body.querySelectorAll("label")]
+      .filter((candidate) => (candidate.textContent ?? "").trim() === label);
+    const only = found[0];
+    if (found.length !== 1 || only === undefined) {
+      throw new Error(`expected exactly one control labelled "${label}", found ${String(found.length)}`);
+    }
+    const control = document.getElementById(only.htmlFor);
+    if (!(control instanceof HTMLInputElement
+      || control instanceof HTMLSelectElement
+      || control instanceof HTMLTextAreaElement)) {
+      throw new Error(`the "${label}" label names ${only.htmlFor}, which is not a form control`);
+    }
+    await act(async () => {
+      typeInto(control, next);
+      // React maps `onBlur` onto the BUBBLING `focusout`; a non-bubbling
+      // `blur` reaches no React handler and would silently prove nothing.
+      control.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+  };
+
+  const disabled = (name: string): boolean => {
+    const found = buttons().filter((button) => buttonName(button) === name);
+    const only = found[0];
+    if (found.length !== 1 || only === undefined) {
+      throw new Error(`expected exactly one control named "${name}", found ${String(found.length)}`);
+    }
+    return only.disabled || only.getAttribute("data-disabled") !== null;
+  };
+
   return {
     typedInput,
+    fill,
+    disabled,
     stage,
     text: () => (document.body.textContent ?? "").replace(/\s+/gu, " "),
     press,
@@ -819,5 +867,323 @@ describe("D296 — the spreadsheet method is the intake workspace's one door", (
     );
     assert.equal(dialog.typedInput().value, "");
     assert.ok(dialog.text().includes("Next"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D307 — omitting a step, and typing what the rest of the run would have read
+// ---------------------------------------------------------------------------
+
+/**
+ * The Separations catalogue, composed from the SAME served bootstrap the parity
+ * corpus photographs. Separations is the tree's only workflow with declared
+ * omissions, and its three omittable steps cover the two shapes that matter: a
+ * form with fields (Kronos timecard, UCPath transaction) and a form with none
+ * (Kuali finalization).
+ */
+const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
+  FIXTURE_START_PICKER_BOOTSTRAP.workflows,
+).map((entry): RunStartWorkflow => {
+  const start = entry.start;
+  return {
+    workflowId: String(entry.id),
+    label: entry.label,
+    categoryId: entry.categoryId,
+    role: entry.role,
+    ...(entry.code === undefined ? {} : { code: entry.code }),
+    ...(start.summary === undefined ? {} : { summary: start.summary }),
+    enqueue: start.enqueue,
+    version: start.version,
+    steps: start.steps,
+    inputRun:
+      start.inputRun === undefined
+        ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
+        : { state: "present", surface: start.inputRun },
+    spreadsheetIntake: start.spreadsheetIntake,
+  };
+});
+
+const SEPARATIONS = Object.freeze({ workflows: SEPARATIONS_WORKFLOWS, panelWorkflowId: "separations" });
+
+/** the descriptor's own first example, so the parser cannot refuse it */
+const DOCUMENT = "4502";
+
+function separationsPlan(omittedSteps?: readonly string[]): StartPlanResponse {
+  return StartPlanResponseSchema.parse({
+    wireVersion: 1,
+    startPlanId: "5a000000-0000-4000-8000-000000000009",
+    workflowId: "separations",
+    expectedVersion: 4,
+    expiresAt: "2026-08-26T21:47:03.000Z",
+    dryRun: false,
+    priority: "interactive",
+    plannedBy: ACTOR_ID,
+    configSnapshotId: "cfg-1",
+    ...(omittedSteps === undefined || omittedSteps.length === 0 ? {} : { omittedSteps: [...omittedSteps] }),
+    fingerprints: {
+      descriptorFingerprint: HASH,
+      configFingerprint: HASH,
+      ingressSchemaHash: HASH,
+      canonicalInputSchemaHash: HASH,
+      inputFingerprint: HASH,
+    },
+    planned: [{
+      runId: "1a000000-0000-4000-8000-000000000009",
+      traceId: "tr-000000000009",
+      title: "Fixture plan row",
+      subtitle: DOCUMENT,
+      matchKey: `kuali-document:${DOCUMENT}`,
+    }],
+    refused: [],
+  });
+}
+
+/** walk to the Steps screen with Customize steps on */
+async function openSteps(client: DashboardClient, typed: string = DOCUMENT): Promise<OpenDialog> {
+  const dialog = await openDialog(client, SEPARATIONS);
+  await dialog.type(typed);
+  await dialog.press("Next");
+  await dialog.press("Customize steps");
+  await dialog.press("Next");
+  assert.equal(dialog.stage(), "Steps");
+  return dialog;
+}
+
+describe("an omittable step draws its own form when it is left out (D307)", () => {
+  it("draws nothing while the step is included, and the step's declared fields once it is not", async () => {
+    // The mutation: draw the form for every omittable step rather than for the
+    // omitted ones. It leaves the fields on screen before the checkbox moves.
+    const dialog = await openSteps(stubClient({}));
+    assert.ok(!dialog.text().includes("Last day worked"), "an included step already asked for facts");
+
+    await dialog.press("Kronos timecard");
+    assert.ok(dialog.text().includes("Last day worked"), "omitting the step drew no form");
+    assert.ok(dialog.text().includes("Separation date"));
+    // the DECLARED help line, verbatim — a form drawn without it would leave
+    // the operator guessing what the fact means
+    assert.ok(dialog.text().includes("The employee's last physical day of work, MM/DD/YYYY"));
+    assert.ok(dialog.text().includes("5 of 6 included"));
+  });
+
+  it("says so when the omitted step asks for nothing at all", async () => {
+    const dialog = await openSteps(stubClient({}));
+    await dialog.press("Kuali finalization");
+    assert.ok(
+      dialog.text().includes("This step asks for nothing"),
+      "a form with no fields drew an empty box instead of saying it is empty",
+    );
+  });
+
+  it("draws an enum as a choice with NO pre-selected value", async () => {
+    // The mutation: seed the select with `values[0]`. It would assert
+    // "Approved" about a real person the operator never chose.
+    const dialog = await openSteps(stubClient({}));
+    await dialog.press("UCPath transaction");
+    const label = [...document.body.querySelectorAll("label")]
+      .find((candidate) => (candidate.textContent ?? "").trim() === "Approval status");
+    assert.ok(label !== undefined, "the enum field drew no label");
+    const select = document.getElementById(label.htmlFor);
+    assert.ok(select instanceof HTMLSelectElement);
+    assert.equal(select.value, "", "an approval status was chosen for the operator");
+    assert.deepEqual(
+      [...select.options].map((option) => option.value),
+      ["", "Approved", "Manually Processed", "Pending"],
+    );
+  });
+});
+
+describe("Confirm is not reachable while an omitted step's form does not parse (D307)", () => {
+  it("holds the Steps stage, draws the declared refusal, and never asks the server", async () => {
+    // The mutation: let `advance` submit regardless. The dialog would send a
+    // date the descriptor's own schema refuses and land on the server's 400.
+    let asked = 0;
+    const dialog = await openSteps(stubClient({
+      submitStartPlan: async () => {
+        asked += 1;
+        return separationsPlan(["kronos-timecard"]);
+      },
+    }));
+    await dialog.press("Kronos timecard");
+    await dialog.fill("Last day worked", "6/30/2026");
+    await dialog.fill("Separation date", "07/01/2026");
+    await dialog.press("Next");
+
+    assert.equal(dialog.stage(), "Steps", "an unparsable fact reached Confirm");
+    assert.equal(asked, 0, "the dialog asked the server for a plan it knew would be refused");
+    assert.ok(dialog.text().includes("a date fact must be MM/DD/YYYY"), "the declared refusal was not drawn");
+    assert.ok(dialog.text().includes("Fill in the facts"), "the footer never said why Next did nothing");
+
+    await dialog.fill("Last day worked", "06/30/2026");
+    await dialog.press("Next");
+    assert.equal(dialog.stage(), "Confirm");
+    assert.equal(asked, 1);
+  });
+});
+
+describe("the request carries the operator's omissions (D307)", () => {
+  it("sends one entry per omitted step, in timeline order, with the typed facts", async () => {
+    // The mutation: send `stepOmissions` unconditionally, or drop the facts.
+    let submitted: unknown;
+    const dialog = await openSteps(stubClient({
+      submitStartPlan: async (input) => {
+        submitted = input;
+        return separationsPlan(["kronos-timecard", "ucpath-transaction"]);
+      },
+    }));
+    await dialog.press("UCPath transaction");
+    await dialog.press("Kronos timecard");
+    await dialog.fill("Last day worked", "06/30/2026");
+    await dialog.fill("Separation date", "07/01/2026");
+    await dialog.fill("UCPath transaction number", "T1234567");
+    await dialog.fill("Approval status", "Approved");
+    await dialog.press("Next");
+    assert.equal(dialog.stage(), "Confirm");
+
+    const request = StartPlanSubmissionSchema.parse(submitted);
+    assert.deepEqual(request.stepOmissions, [
+      { step: "kronos-timecard", facts: { lastDayWorked: "06/30/2026", separationDate: "07/01/2026" } },
+      { step: "ucpath-transaction", facts: { transactionNumber: "T1234567", approvalStatus: "Approved" } },
+    ], "the omissions must ride in TIMELINE order, whatever order the boxes were pressed in");
+    assert.ok(
+      !(request.selectedStepKeys ?? []).includes("kronos-timecard"),
+      "an omitted step was still selected",
+    );
+
+    // The operator's own confirmation names the step and every field LABEL it
+    // asserted, with the value typed into it.
+    const confirmed = dialog.text();
+    assert.ok(confirmed.includes("Omitted: Kronos timecard, UCPath transaction"), confirmed);
+    assert.ok(confirmed.includes("Last day worked: 06/30/2026"));
+    assert.ok(confirmed.includes("Separation date: 07/01/2026"));
+    assert.ok(confirmed.includes("UCPath transaction number: T1234567"));
+    assert.ok(confirmed.includes("Approval status: Approved"));
+    assert.ok(confirmed.includes("4 of 6 included"));
+  });
+
+  it("sends no omissions at all when the operator omitted nothing", async () => {
+    let submitted: unknown;
+    const dialog = await openSteps(stubClient({
+      submitStartPlan: async (input) => {
+        submitted = input;
+        return separationsPlan();
+      },
+    }));
+    await dialog.press("Next");
+    const request = StartPlanSubmissionSchema.parse(submitted);
+    assert.equal(request.stepOmissions, undefined, "an empty omission list still rode the wire");
+  });
+});
+
+describe("a plan that omits a different set cannot be started (D307)", () => {
+  it("refuses Start and says which set each side named", async () => {
+    // The mutation: trust `plan.omittedSteps`. The operator would authorise a
+    // run that keeps a step they omitted, or omits one they kept.
+    const dialog = await openSteps(stubClient({
+      submitStartPlan: async () => separationsPlan(["kuali-finalization"]),
+    }));
+    await dialog.press("Kronos timecard");
+    await dialog.fill("Last day worked", "06/30/2026");
+    await dialog.fill("Separation date", "07/01/2026");
+    await dialog.press("Next");
+    assert.equal(dialog.stage(), "Confirm");
+
+    assert.ok(dialog.text().includes("This plan does not describe the steps you omitted"));
+    assert.ok(dialog.text().includes("kronos-timecard"));
+    assert.ok(dialog.text().includes("kuali-finalization"));
+    assert.equal(dialog.disabled("Start run"), true, "a plan for a different run was startable");
+  });
+
+  it("starts when the plan names exactly the set the dialog sent", async () => {
+    const dialog = await openSteps(stubClient({
+      submitStartPlan: async () => separationsPlan(["kronos-timecard"]),
+    }));
+    await dialog.press("Kronos timecard");
+    await dialog.fill("Last day worked", "06/30/2026");
+    await dialog.fill("Separation date", "07/01/2026");
+    await dialog.press("Next");
+    assert.ok(!dialog.text().includes("This plan does not describe"));
+    assert.equal(dialog.disabled("Start run"), false);
+  });
+});
+
+describe("typed facts describe ONE subject (D307 single-subject-only)", () => {
+  it("does not offer an omission for a box that would create several runs", async () => {
+    // The mutation: ignore the entry count. The dialog would send facts about
+    // one person for a plan that asserts them for two.
+    const dialog = await openSteps(stubClient({}), "4502; 4510");
+    assert.equal(
+      dialog.disabled("Kronos timecard"),
+      true,
+      "a multi-subject box still offered to omit a step",
+    );
+    assert.ok(dialog.text().includes("this run would create 2"), dialog.text());
+  });
+});
+
+/**
+ * The served catalogue with ONE step declaring a cascade.
+ *
+ * `forces` is a served field of the omittable control and the wire admits any
+ * step key on it; no registered descriptor declares a non-empty one TODAY,
+ * which is exactly why the screen's handling of it cannot be left unpinned —
+ * the first descriptor that declares one would otherwise ship an unlocked row
+ * the planner refuses. Only that one served field is changed; every other fact
+ * is the bootstrap's own.
+ */
+const CASCADING_SEPARATIONS = Object.freeze({
+  panelWorkflowId: "separations",
+  workflows: SEPARATIONS_WORKFLOWS.map((workflow): RunStartWorkflow => workflow.workflowId !== "separations"
+    ? workflow
+    : {
+      ...workflow,
+      steps: workflow.steps.map((step) => step.key !== "kronos-timecard" || step.control.state !== "omittable"
+        ? step
+        : { ...step, control: { ...step.control, forces: ["ucpath-transaction"] } }),
+    }),
+});
+
+describe("a forced step is unchecked and LOCKED while the choice that forces it stands (D307)", () => {
+  it("names the forced step up front, drags it out, locks it, and puts it back", async () => {
+    // The mutation: drop the cascade from the toggle. The dialog would send one
+    // omission the planner refuses with `cascade-refused`, after the operator
+    // authorised it.
+    let submitted: unknown;
+    const dialog = await openDialog(stubClient({
+      submitStartPlan: async (input) => {
+        submitted = input;
+        return separationsPlan(["kronos-timecard", "ucpath-transaction"]);
+      },
+    }), CASCADING_SEPARATIONS);
+    await dialog.type(DOCUMENT);
+    await dialog.press("Next");
+    await dialog.press("Customize steps");
+    await dialog.press("Next");
+
+    // named BEFORE the press, so the choice is not a surprise
+    assert.ok(dialog.text().includes("Also omits: UCPath transaction"));
+    assert.equal(dialog.disabled("UCPath transaction"), false);
+
+    await dialog.press("Kronos timecard");
+    assert.ok(dialog.text().includes("4 of 6 included"), dialog.text());
+    assert.equal(dialog.disabled("UCPath transaction"), true, "the forced row stayed pressable");
+    assert.ok(dialog.text().includes("Omitted with Kronos timecard."));
+
+    // pressing the locked row changes nothing
+    await dialog.press("UCPath transaction");
+    assert.ok(dialog.text().includes("4 of 6 included"));
+
+    await dialog.fill("Last day worked", "06/30/2026");
+    await dialog.fill("Separation date", "07/01/2026");
+    await dialog.fill("UCPath transaction number", "T1234567");
+    await dialog.fill("Approval status", "Manually Processed");
+    await dialog.press("Next");
+    assert.equal(dialog.stage(), "Confirm");
+    const request = StartPlanSubmissionSchema.parse(submitted);
+    assert.deepEqual(request.stepOmissions?.map(({ step }) => step), ["kronos-timecard", "ucpath-transaction"]);
+
+    await dialog.press("Back");
+    await dialog.press("Kronos timecard");
+    assert.ok(dialog.text().includes("6 of 6 included"), "undoing the choice left the forced step out");
+    assert.equal(dialog.disabled("UCPath transaction"), false);
   });
 });
