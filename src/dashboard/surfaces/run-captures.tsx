@@ -1,22 +1,41 @@
-/** The original DCA3 capture list stays inside Receipt, including short receipts. */
+/** One exact capture list serves its canonical Receipt placement and compact Logs placement. */
 import { Banner, Button, ButtonLink, Dialog, DialogBody, DialogClose, DialogContent, DialogFooter,
   DialogTrigger, EmptyState, SectionLabel, Skeleton, dsRadius, dsText } from "../ds/ui.js";
 import type { RunCaptureArtifactWire } from "../../domain/dashboard/run-detail.js";
 import { cn } from "../lib/utils.js";
 import { RUN_CAPTURE_TOUCH_TARGET, runCaptureFrame, useRunCaptureImage, type RunCaptureItem, type RunCapturesState } from "./run-captures-model.js";
 
-export function RunCaptures({ captures }: { captures: RunCapturesState }) {
+export function RunCaptures({ captures, compact = false }: { captures: RunCapturesState; compact?: boolean }) {
   if (captures.state === "inactive") return null;
   return (
-    <section aria-label="Run captures" className="flex min-w-0 flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
+    <section
+      aria-label="Run captures"
+      className={cn(
+        "flex min-w-0 flex-col",
+        compact
+          ? "gap-[var(--ds-space-tight)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]"
+          : "gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]",
+      )}
+    >
       <SectionLabel>Captures</SectionLabel>
       {captures.state === "absent" && <EmptyState title="No captures" description={captures.reason} />}
       {captures.state === "loading" && <Skeleton className="h-[var(--ds-h-row)] w-full" />}
       {captures.state === "error" && <Banner tone="danger" title="Captures could not be read">{captures.message}</Banner>}
       {captures.state === "available" && captures.items.map(item => (
-        <article key={`${captures.runId}:${String(captures.generation)}:${item.capture.artifact.artifactId}`} className={cn(runCaptureFrame(item.capture), dsRadius.md, "min-w-0 p-[var(--ds-space-base)]")}>
+        <article
+          key={`${captures.runId}:${String(captures.generation)}:${item.capture.artifact.artifactId}`}
+          className={cn(
+            runCaptureFrame(item.capture),
+            dsRadius.md,
+            "min-w-0",
+            compact ? "p-[var(--ds-space-snug)]" : "p-[var(--ds-space-base)]",
+          )}
+        >
           <RunCaptureFacts capture={item.capture} />
-          <div className="flex flex-wrap gap-[var(--ds-space-base)] pt-[var(--ds-space-base)]">
+          <div className={cn(
+            "flex flex-wrap gap-[var(--ds-space-base)]",
+            compact ? "pt-[var(--ds-space-snug)]" : "pt-[var(--ds-space-base)]",
+          )}>
             {item.capture.artifact.mediaKind === "image" && (
               <Dialog open={captures.selectedId === item.capture.artifact.artifactId}
                 onOpenChange={open => { captures.select(open ? item.capture.artifact.artifactId : undefined); }}>

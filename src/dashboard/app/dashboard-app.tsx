@@ -495,10 +495,13 @@ function LoadedApp({
         ? "logs"
         : defaultTabFor(detailValue));
   const { sections } = usePanelSections(detailValue, effectiveTab);
-  const captureTab = detailValue !== undefined && !offered.includes(effectiveTab)
-    ? defaultTabFor(detailValue) : effectiveTab;
+  const logsAdvertiseCaptures = detailValue?.captures !== undefined
+    || detailValue?.availableSections.includes("captures") === true;
   const captures = useRunCaptures(
-    route.run, detailValue, activeTakeover(route) === "none" && captureTab === "receipt",
+    route.run,
+    detailValue,
+    activeTakeover(route) === "none"
+      && (effectiveTab === "receipt" || (effectiveTab === "logs" && logsAdvertiseCaptures)),
   );
 
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
