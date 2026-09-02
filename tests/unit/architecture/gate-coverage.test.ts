@@ -87,7 +87,11 @@ describe("gate coverage", () => {
   });
 
   it("keeps the architecture and coverage lanes registered", () => {
-    assert.match(pkg.scripts["test:architecture"] ?? "", /vitest run tests\/unit\/architecture/);
+    assert.equal(
+      pkg.scripts["test:architecture"],
+      "vitest run --project architecture --reporter=dot",
+      "the architecture lane must stay addressable by its exact project name",
+    );
     assert.match(pkg.scripts["test:coverage"] ?? "", /--coverage/);
     assert.match(pkg.scripts["test:coverage"] ?? "", /suite-size\.ts/);
     assert.match(pkg.scripts.test ?? "", /vitest run/);

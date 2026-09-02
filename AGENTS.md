@@ -297,6 +297,12 @@ environment-supplied.
 
 ## Conventions
 
+- **2026-09-02 — architecture guards are a named Vitest project, not a unit-project overlap.**
+  `unit` excludes `tests/unit/architecture/**`; `architecture` recursively owns every
+  `tests/unit/architecture/**/*.test.ts`; and `npm run test:architecture` selects that project by
+  name. Keep the project include, the unit exclusion, and the script mechanically pinned together
+  so a path rename cannot orphan the lane or make coverage execute the guards twice.
+
 - **2026-09-02 — a workflow mini-store output is not complete until its implementation records every leaf.**
   Adding a schema leaf without the matching `ctx.recordData` point leaves the task valid in direct
   implementation tests but makes the real executor refuse before checkpointing. R4a exposed this

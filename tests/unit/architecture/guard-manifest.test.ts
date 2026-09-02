@@ -6,8 +6,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import inventory from "../../../docs/rebuild/guard-inventory.json" with { type: "json" };
 import {
+  REBUILD_ARCHITECTURE_TEST_INCLUDE,
   REBUILD_COVERAGE_EXCLUSIONS,
   REBUILD_COVERAGE_FLOORS,
+  REBUILD_UNIT_TEST_EXCLUDE,
+  REBUILD_UNIT_TEST_INCLUDE,
 } from "../../../vitest.config.js";
 import { REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 import {
@@ -38,12 +41,42 @@ export function discoverArchitectureTests(root: string): string[] {
     .sort();
 }
 
-export function architectureCommandViolations(command: string): string[] {
+interface ArchitectureProjectInputs {
+  readonly command: string;
+  readonly unitInclude: readonly string[];
+  readonly unitExclude: readonly string[];
+  readonly architectureInclude: readonly string[];
+}
+
+export function architectureProjectViolations({
+  command,
+  unitInclude,
+  unitExclude,
+  architectureInclude,
+}: ArchitectureProjectInputs): string[] {
+  const violations: string[] = [];
   const normalized = command.trim().replace(/\s+/g, " ");
-  const exact = "vitest run tests/unit/architecture --reporter=dot";
-  return normalized === exact
-    ? []
-    : [`test:architecture must select the complete directory with no file/glob/project/config/exclude narrowing; expected '${exact}'`];
+  const exactCommand = "vitest run --project architecture --reporter=dot";
+  if (normalized !== exactCommand) {
+    violations.push(
+      `test:architecture must select only the named architecture project; expected '${exactCommand}'`,
+    );
+  }
+  if (JSON.stringify(unitInclude) !== JSON.stringify(["tests/unit/**/*.test.ts"])) {
+    violations.push("unit project include must remain tests/unit/**/*.test.ts");
+  }
+  if (JSON.stringify(unitExclude) !== JSON.stringify(["tests/unit/architecture/**"])) {
+    violations.push("unit project must exclude tests/unit/architecture/** exactly once");
+  }
+  if (
+    JSON.stringify(architectureInclude) !==
+      JSON.stringify(["tests/unit/architecture/**/*.test.ts"])
+  ) {
+    violations.push(
+      "architecture project must include every recursive tests/unit/architecture/**/*.test.ts file",
+    );
+  }
+  return violations;
 }
 
 export function coverageExclusionActivationViolations(
@@ -130,16 +163,27 @@ describe("reviewed architecture guard manifest", () => {
     }
   });
 
-  it("keeps test:architecture on the complete directory without any narrowing escape hatch", () => {
-    assert.deepEqual(architectureCommandViolations(packageJson.scripts[inventory.testScript] ?? ""), []);
+  it("keeps architecture recursively complete and out of the unit project", () => {
+    const actual = {
+      command: packageJson.scripts[inventory.testScript] ?? "",
+      unitInclude: REBUILD_UNIT_TEST_INCLUDE,
+      unitExclude: REBUILD_UNIT_TEST_EXCLUDE,
+      architectureInclude: REBUILD_ARCHITECTURE_TEST_INCLUDE,
+    };
+    assert.deepEqual(architectureProjectViolations(actual), []);
+
     for (const bypass of [
-      "vitest run tests/unit/architecture/guard-manifest.test.ts --reporter=dot",
-      "vitest run tests/unit/architecture/*.test.ts --reporter=dot",
-      "vitest run tests/unit/architecture --exclude runtime-isolation.test.ts --reporter=dot",
-      "vitest run tests/unit/architecture --project unit --reporter=dot",
-      "vitest run tests/unit/architecture --config narrow.config.ts --reporter=dot",
+      { ...actual, command: "vitest run tests/unit/architecture --reporter=dot" },
+      { ...actual, command: "vitest run --project unit --reporter=dot" },
+      { ...actual, command: "vitest run --project architecture guard-manifest.test.ts --reporter=dot" },
+      { ...actual, command: "vitest run --project architecture --exclude runtime-isolation.test.ts --reporter=dot" },
+      { ...actual, command: "vitest run --project architecture --config narrow.config.ts --reporter=dot" },
+      { ...actual, unitExclude: [] },
+      { ...actual, unitExclude: ["tests/unit/architecture/guard-manifest.test.ts"] },
+      { ...actual, architectureInclude: ["tests/unit/architecture/guard-manifest.test.ts"] },
+      { ...actual, architectureInclude: ["tests/unit/architecture/*.test.ts"] },
     ]) {
-      assert.ok(architectureCommandViolations(bypass).length > 0, bypass);
+      assert.ok(architectureProjectViolations(bypass).length > 0, JSON.stringify(bypass));
     }
   });
 

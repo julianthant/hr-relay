@@ -3,6 +3,12 @@ import { resolve } from "node:path";
 import { availableParallelism } from "node:os";
 
 export const REBUILD_COVERAGE_INCLUDE = ["src/**/*.ts", "src/**/*.tsx"] as const;
+export const REBUILD_UNIT_TEST_INCLUDE = ["tests/unit/**/*.test.ts"] as const;
+export const REBUILD_UNIT_TEST_EXCLUDE = ["tests/unit/architecture/**"] as const;
+export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
+  "tests/unit/architecture/**/*.test.ts",
+] as const;
+export const REBUILD_SCENARIO_TEST_INCLUDE = ["tests/scenario/**/*.test.ts"] as const;
 export const REBUILD_COVERAGE_EXCLUSIONS = [
   {
     pattern: "src/generated/**/*.ts",
@@ -54,7 +60,16 @@ export default defineConfig({
         extends: true,
         test: {
           name: "unit",
-          include: ["tests/unit/**/*.test.ts"],
+          include: [...REBUILD_UNIT_TEST_INCLUDE],
+          exclude: [...REBUILD_UNIT_TEST_EXCLUDE],
+          fileParallelism: true,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "architecture",
+          include: [...REBUILD_ARCHITECTURE_TEST_INCLUDE],
           fileParallelism: true,
         },
       },
@@ -62,7 +77,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: "scenario",
-          include: ["tests/scenario/**/*.test.ts"],
+          include: [...REBUILD_SCENARIO_TEST_INCLUDE],
           fileParallelism: true,
         },
       },
