@@ -67,6 +67,9 @@ function singleResultAutoDrillPage(
   rereadTransactionId = transactionId,
   coPresent: "none" | "row" | "empty" = "none",
   preExisting: "none" | "row" | "empty" | "detail" = "none",
+  resultRowTexts: readonly string[] = [transactionId],
+  bodyText = resultRowTexts.join(" "),
+  resultRowVisibilities: readonly boolean[] = resultRowTexts.map(() => true),
 ): Page {
   const textBySelector = new Map<string, string>([
     ["#UC_SS_TRANSACT_UC_TRANSACT_ID", transactionId],
@@ -75,8 +78,8 @@ function singleResultAutoDrillPage(
     ['[id="UC_SS_TBH_VW_ACTION$0"]', "TER"],
     ['[id="NAME$0"]', "Person, Deterministic"],
   ]);
-  let receiptReadCount = 0;
   let clicked = false;
+  let detailRequest: string | undefined;
   const present = (state: "row" | "empty" | "detail"): boolean =>
     preExisting === state
     || (clicked && (state === "detail" ? receiptCount > 0 : coPresent === state));
@@ -91,7 +94,7 @@ function singleResultAutoDrillPage(
           return present("detail") ? receiptCount : 0;
         }
         if (selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')) {
-          return present("row") ? 1 : 0;
+          return present("row") ? resultRowTexts.length : 0;
         }
         return 1;
       },
@@ -106,12 +109,18 @@ function singleResultAutoDrillPage(
           await new Promise<never>(() => undefined);
         }
       },
+      all: async () => selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')
+        ? resultRowTexts.map((text, index) => ({
+          innerText: async () => text,
+          isVisible: async () => resultRowVisibilities[index] ?? false,
+        }))
+        : [],
       evaluate: async () => false,
       innerText: async () => {
-        if (selector === "body") return coPresent === "row" ? transactionId : "";
+        if (selector === "body") return present("row") ? bodyText : "";
         if (selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID") {
-          receiptReadCount += 1;
-          return receiptReadCount === 1 ? transactionId : rereadTransactionId;
+          if (detailRequest === undefined) return transactionId;
+          return detailRequest === transactionId ? rereadTransactionId : detailRequest;
         }
         return textBySelector.get(selector) ?? "";
       },
@@ -119,7 +128,10 @@ function singleResultAutoDrillPage(
     return value;
   };
   return {
-    goto: async () => null,
+    goto: async (url: string) => {
+      detailRequest = new URL(url).searchParams.get("UC_TRANSACT_ID") ?? undefined;
+      return null;
+    },
     locator,
     getByText: () => {
       const value = {
@@ -229,7 +241,7 @@ describe("SS Smart HR transaction scan", () => {
 
     assert.equal(scan.state, "unreadable");
     if (scan.state !== "unreadable") return;
-    assert.match(scan.reason, /1 result rows but 0 distinct stable transaction ids/u);
+    assert.match(scan.reason, /result row 1 exposed 0 distinct stable transaction ids/u);
   });
 
   it("refuses a stale no-results marker present before the current search", async () => {
@@ -242,6 +254,92 @@ describe("SS Smart HR transaction scan", () => {
     assert.equal(scan.state, "unreadable");
     if (scan.state !== "unreadable") return;
     assert.match(scan.reason, /before the current search was submitted/u);
+  });
+
+  it("reads one stable transaction id from each populated result row", async () => {
+    const firstId = "T009000001";
+    const secondId = "T009000002";
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage(
+        firstId,
+        0,
+        firstId,
+        "row",
+        "none",
+        [`Transaction ${firstId}`, `Transaction ${secondId}`],
+      ),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "read");
+    if (scan.state !== "read") return;
+    assert.deepEqual(scan.rows.map((row) => row.transactionId), [firstId, secondId]);
+  });
+
+  it("refuses a row with no id even when an unrelated body id masks the count", async () => {
+    const unrelatedId = "T009000002";
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage(
+        unrelatedId,
+        0,
+        unrelatedId,
+        "row",
+        "none",
+        ["Transaction identity unavailable"],
+        unrelatedId,
+      ),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /result row 1 exposed 0 distinct stable transaction ids/u);
+  });
+
+  it("refuses duplicate transaction ids across distinct result rows", async () => {
+    const duplicateId = "T009000001";
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage(
+        duplicateId,
+        0,
+        duplicateId,
+        "row",
+        "none",
+        [duplicateId, duplicateId],
+        `${duplicateId} T009000002`,
+      ),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /result rows repeated one stable transaction id/u);
+  });
+
+  it("refuses a result set containing a hidden row", async () => {
+    const firstId = "T009000001";
+    const secondId = "T009000002";
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage(
+        firstId,
+        0,
+        firstId,
+        "row",
+        "none",
+        [firstId, secondId],
+        `${firstId} ${secondId}`,
+        [true, false],
+      ),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /result row 2 was not visible/u);
   });
 
   it("preserves an early settlement failure without attempting diagnostic capture", async () => {

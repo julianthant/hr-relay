@@ -82,9 +82,10 @@ this family is `page` and legacy's `getContentFrame` funnel does not apply.
   and transaction identifiers before the reason becomes durable. The first marker only wakes the
   scan through one cancellable visible-signal wait: a fresh search page must expose zero settlement
   markers, then a post-wake count must prove exactly one of result rows, one visible no-results marker,
-  or one visible detail receipt. A result grid must expose one distinct stable T ID per rendered row.
-  Stale, hidden, co-present, or incomplete states refuse. Never lengthen the wait or turn the
-  auto-drill into an empty set.
+  or one visible detail receipt. Each result row must itself expose exactly one stable T ID and the
+  row IDs must be globally unique; whole-page T-ID text never participates because an unrelated
+  shell value could mask a missing row identity. Stale, hidden, co-present, duplicate, or incomplete
+  states refuse. Never lengthen the wait or turn the auto-drill into an empty set.
 
 - **2026-08-14: `.or()` is a UNION under strict mode, so waiting on one is a claim
   that its arms are mutually exclusive — and this one's arms were not (D213).**

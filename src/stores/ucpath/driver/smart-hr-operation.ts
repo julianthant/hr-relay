@@ -378,15 +378,55 @@ async function textOf(locator: Locator): Promise<string> {
 }
 
 /**
- * Every distinct `T…` on the results page.
+ * Exactly one distinct `T…` from every rendered result row.
  *
- * Reading them off the whole results region rather than a column index is
- * deliberate: the id's SHAPE identifies it, so no column binding is needed and
- * a reordered grid cannot silently shift the read.
+ * Reading each whole row rather than a column index is deliberate: the id's
+ * SHAPE identifies it, so no column binding is needed and a reordered grid
+ * cannot silently shift the read. Whole-PAGE text is forbidden here: an
+ * unrelated T id elsewhere in the PeopleSoft shell could mask a row whose own
+ * identity is missing. Every row must contribute exactly one id, and no two
+ * rows may contribute the same one.
  */
-async function scanTransactionIds(page: Page): Promise<readonly string[]> {
-  const text = await page.locator("body").innerText();
-  return [...new Set(text.match(/T\d{6,}/gu) ?? [])].filter((id) => TRANSACTION_ID.test(id));
+async function scanTransactionIds(
+  resultRows: Locator,
+  expectedRowCount: number,
+): Promise<readonly string[]> {
+  const rows = await resultRows.all();
+  if (rows.length !== expectedRowCount) {
+    throw new Error(
+      `the SS Smart HR result grid changed from ${String(expectedRowCount)} to `
+      + `${String(rows.length)} rows before transaction ids could be read`,
+    );
+  }
+  const ids: string[] = [];
+  for (const [index, row] of rows.entries()) {
+    if (!(await row.isVisible())) {
+      throw new Error(
+        `the SS Smart HR result row ${String(index + 1)} was not visible; `
+        + "hidden rows cannot contribute current settlement authority",
+      );
+    }
+    const text = await row.innerText();
+    const matches = [...new Set(text.match(/T\d{6,}/gu) ?? [])]
+      .filter((id) => TRANSACTION_ID.test(id));
+    if (matches.length !== 1) {
+      throw new Error(
+        `the SS Smart HR result row ${String(index + 1)} exposed ${String(matches.length)} `
+        + "distinct stable transaction ids; exactly one is required",
+      );
+    }
+    const [transactionId] = matches;
+    if (transactionId === undefined) {
+      throw new Error("the SS Smart HR result-row transaction id disappeared after validation");
+    }
+    ids.push(transactionId);
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new Error(
+      "the SS Smart HR result rows repeated one stable transaction id; each row must be distinct",
+    );
+  }
+  return ids;
 }
 
 async function readTransactionDetail(
@@ -581,13 +621,7 @@ export async function scanTerminationTransactionsOnPage(
       }
       ids = [transactionId];
     } else {
-      ids = await scanTransactionIds(page);
-      if (ids.length !== afterSearch.resultRowCount) {
-        throw new Error(
-          `the SS Smart HR search rendered ${String(afterSearch.resultRowCount)} result rows but `
-          + `${String(ids.length)} distinct stable transaction ids; refusing an incomplete set`,
-        );
-      }
+      ids = await scanTransactionIds(resultRows, afterSearch.resultRowCount);
     }
     const rows: UcpathTransactionRow[] = [];
     for (const id of ids) rows.push(await readTransactionDetail(page, id, input.emplId));
