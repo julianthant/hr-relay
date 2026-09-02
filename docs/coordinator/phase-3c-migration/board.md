@@ -22,7 +22,7 @@
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
 | u01–u06 | R1 | running; D312–D316 amendment delivered | — | — | required | D311 compiler plus follow-on authoring/skip/recovery/combinator acceptance, two conversions, projections, conformance/deletion, order-0 T1 |
-| u10–u12 | R2 | running; D312–D316 amendment delivered; T1 decision residue isolated | — | — | required | Order 1 migration intake and live/provenance discovery only |
+| u10–u12 | R2 | ready; verified 2026-09-02 | branch tip `ed9ee5ac0479a1517d38703b2ad77e2db9d61c9d`; base ancestry/clean tree verified; merge waits for R1 | typecheck, lint, roadmap freshness, diff check PASS; three focused re-reviews Count 0 | complete | Order 1 intake/live provenance complete; read-only T1 decision and fresh I-9 canary remain explicit residue |
 | u15–u19 | R3 | briefed; blocked on integrated R1+R2 | — | — | required | D312–D316 strict artifact guard, entry algebra, whole-step admission, recovery modes and final deletion acceptance |
 | u20–u24 | R4 | blocked on R3 + decision 1 | — | — | required | Order 1 implementation and proof |
 | u30–u35 | R5 | planned | — | — | required | Order 2 downloads + viewer |
