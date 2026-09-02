@@ -324,12 +324,14 @@ async function graphPostGateOutputs(
 }>> {
   const summary = await graphReadJobSummary();
   const comparison = await graphComparison(summary, input);
-  const approval = {
-    decision: "approved" as const,
-    eid: FINALIZATION_RUN_INPUT.emplId,
-    chosenFrom: "checked" as const,
-    evidenceDigest: comparison.evidenceDigest,
-  };
+  const approval = comparison.packet.emplIdSource === "name-resolved"
+    ? {
+      decision: "approved" as const,
+      eid: FINALIZATION_RUN_INPUT.emplId,
+      chosenFrom: "checked" as const,
+      evidenceDigest: comparison.evidenceDigest,
+    }
+    : undefined;
   return {
     summary,
     comparison,

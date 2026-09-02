@@ -484,7 +484,7 @@ name. The two runs that FOUND the defect are permanently frozen at their pre-fix
 are left as they are, and the fix was re-proved on three fresh runs rather than by rewriting
 authority. That trade is what D199 later generalized.
 
-### 3 · UCPath employment grid + the ALWAYS-GATE
+### 3 · UCPath employment grid + identity authority
 <!-- roadmap: sep-3 -->
 
 <!-- roadmap-status: sep-3 -->

@@ -132,7 +132,13 @@ describe("separations dashboard — the needs-you alert a parked gate produces",
     }
     const gate = response.payload.value;
     const ceremony = identityCeremonyFor(gate, "approved");
-    const answer = identityGateAnswer(ceremony, EMPTY_IDENTITY_GATE_DRAFT);
+    const option = ceremony.kind === "confirm"
+      ? ceremony.option
+      : ceremony.kind === "choose" || ceremony.kind === "type-the-eid"
+        ? ceremony.options[0]
+        : undefined;
+    assert.ok(option, "the name-only gate served no EID to type");
+    const answer = identityGateAnswer(ceremony, { ...EMPTY_IDENTITY_GATE_DRAFT, eid: option.eid });
     assert.ok(answer);
     if (answer.decision !== "approved") throw new Error("unreachable");
     const applied = world.commands.execute({
@@ -146,7 +152,7 @@ describe("separations dashboard — the needs-you alert a parked gate produces",
           value: {
             decision: "approved",
             eid: answer.eid,
-            chosenFrom: "checked",
+            chosenFrom: option.chosenFrom,
             evidenceDigest: gate.evidenceDigest,
           },
         },
