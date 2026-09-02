@@ -220,7 +220,7 @@ import {
   archiveSweepVersionRange,
   archiveWarningChip,
   archiveWorkflowCodes,
-  ARCHIVED_NOT_RUN_NOTE,
+  archivedNotRunNote,
   archivedOmittedStepsNote,
   archivedRelaunchCautions,
   archivedRelaunchHeadline,
@@ -1409,13 +1409,12 @@ export function ArchivedRunDetail({
      */
     const measured = timelineEventDuration(event);
     /*
-     * D307 — WHY a skipped step did not run, in the frozen wire's own closed
-     * words. `detail` is the note slot under the label; a step whose span
-     * recorded no reason keeps the server's absence and says nothing.
+     * D307 — WHY a skipped step did not run, in the frozen wire's own words:
+     * the closed vocabulary when the span recorded a reason, and the server's
+     * own served sentence when it did not. Both arms draw; only a step that
+     * RAN leaves the note slot empty.
      */
-    const note = event.state === "skipped" && event.notRun.state === "present"
-      ? ARCHIVED_NOT_RUN_NOTE[event.notRun.reason]
-      : undefined;
+    const note = archivedNotRunNote(event);
     return {
       label: event.label,
       ...(note === undefined ? {} : { detail: note }),

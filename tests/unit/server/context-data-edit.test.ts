@@ -507,5 +507,44 @@ describe("context-data edit projection (2i-C)", () => {
         /cannot be served without an origin/u,
       );
     });
+
+    /*
+     * D307 — the converse of "an asserted value is operator-sourced". There are
+     * exactly two operator arms in authority, a correction and an assertion, and
+     * a leaf claiming `operator` with neither leaf would reach the rail as an
+     * unmarked row with a clock beside it: a value nobody read, drawn exactly
+     * like one a task observed. The wire is where that dies, so the surface does
+     * not have to invent a badge for an unnamed operator.
+     */
+    it("REFUSES an operator leaf that is neither a correction nor an assertion", () => {
+      const operatorEntry = (extra: Record<string, string>) => ({
+        runId: uuidOf(1),
+        editing: { state: "editable", expectedVersion: 4 } as const,
+        entries: [{
+          label: "Invited on",
+          valueRedacted: "2026-06-01",
+          edit: { state: "locked", reason: "fixture" } as const,
+          observedAt: "2026-06-01T00:00:00.000Z",
+          source: "operator" as const,
+          ...extra,
+        }],
+      });
+
+      assert.throws(
+        () => ContextDataSectionSchema.parse(operatorEntry({})),
+        /either a correction or an assertion; without `correctedAt` it must name the omitted step/u,
+      );
+      // Both real arms still parse: a correction, and an assertion.
+      assert.equal(
+        ContextDataSectionSchema.parse(operatorEntry({ correctedAt: "2026-06-02T00:00:00.000Z" }))
+          .entries[0]?.assertedStep,
+        undefined,
+      );
+      assert.equal(
+        ContextDataSectionSchema.parse(operatorEntry({ assertedStep: "kronos-timecard" }))
+          .entries[0]?.assertedStep,
+        "kronos-timecard",
+      );
+    });
   });
 });

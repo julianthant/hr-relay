@@ -552,12 +552,17 @@ export function deriveRunEvidenceReceipt(
    * agree with it or the two authorities disagree about whether anything was
    * observed. That is never something a receipt smooths over.
    */
-  const assertedByNode = new Map<string, Readonly<{ step: string; assertedAt: string }>>();
+  const assertedByNode = new Map<string, CitedAssertion>();
   const resolvedByNode = new Set<string>();
   for (const dependency of result?.dependencies ?? []) {
     if (dependency.state === "not-run") notRunByNode.set(dependency.nodeId, dependency.reason);
     if (dependency.state === "asserted") {
-      assertedByNode.set(dependency.nodeId, { step: dependency.step, assertedAt: dependency.assertedAt });
+      assertedByNode.set(dependency.nodeId, {
+        step: dependency.step,
+        assertedAt: dependency.assertedAt,
+        outputSchemaHash: dependency.outputSchemaHash,
+        outputDigest: dependency.outputDigest,
+      });
     }
     if (dependency.state === "resolved") resolvedByNode.add(String(dependency.nodeId));
   }
@@ -576,6 +581,31 @@ export function deriveRunEvidenceReceipt(
         `run ${envelope.runId}'s checkpoint for node "${nodeId}" was asserted for step `
         + `"${stored.assertion.step}" at ${stored.assertion.assertedAt}, and its terminal record cites step `
         + `"${cited.step}" at ${cited.assertedAt}; the two authorities disagree about this assertion`,
+      );
+    }
+    /*
+     * The step and the instant say the two authorities describe the same ACT.
+     * They say nothing about the VALUE, and the value is the whole reason the
+     * asserted arm binds a schema hash and a digest (ref workflow-model §5.8):
+     * a reader must be able to prove the terminal derive consumed exactly this
+     * row's output. Comparing only the marker would let a row rewritten under
+     * the same assertion — a different rebuilt output, a producer changed
+     * between attempts — pass as the value the run terminalized on, and the
+     * receipt would then describe a value nothing in authority agrees on.
+     */
+    if (stored.output.schemaHash !== cited.outputSchemaHash) {
+      throw new Error(
+        `run ${envelope.runId}'s asserted checkpoint for node "${nodeId}" was parsed with output schema `
+        + `${stored.output.schemaHash}, and its terminal record cites ${cited.outputSchemaHash}; the two `
+        + "authorities disagree about which schema bound this assertion's value",
+      );
+    }
+    const storedDigest = deriveCheckpointOutputDigest(stored.output);
+    if (storedDigest !== cited.outputDigest) {
+      throw new Error(
+        `run ${envelope.runId}'s asserted checkpoint for node "${nodeId}" holds output digest ${storedDigest}, `
+        + `and its terminal record cites ${cited.outputDigest}; the terminal derive did not consume the value `
+        + "this row carries",
       );
     }
   }
@@ -720,7 +750,7 @@ export function deriveRunEvidenceReceipt(
         evidence,
         omittedSteps,
         runId: envelope.runId,
-        cited: assertedByNode.get(id),
+        ...(evidence.notRun === undefined ? {} : { citedNotRun: evidence.notRun }),
         citedResolved: resolvedByNode.has(id),
         observations,
         decisions,
@@ -1364,6 +1394,19 @@ function emitGateEvidence(input: GateEvidenceInput): void {
 
 /* ── operator assertions (D307) ──────────────────────────────────────────── */
 
+/**
+ * The terminal record's `asserted` arm for one node, as the receipt reads it:
+ * the ACT (step, instant) and the VALUE it binds (the schema that parsed the
+ * producer's output and the digest of that whole bound value). Both halves are
+ * reconciled against the durable row; neither is taken on the record's word.
+ */
+interface CitedAssertion {
+  readonly step: string;
+  readonly assertedAt: string;
+  readonly outputSchemaHash: string;
+  readonly outputDigest: string;
+}
+
 interface AssertedEvidenceInput {
   readonly assertion: NonNullable<RunCheckpointRecord["assertion"]>;
   readonly record: RunCheckpointRecord;
@@ -1376,8 +1419,8 @@ interface AssertedEvidenceInput {
   readonly evidence: NodeEvidence;
   readonly omittedSteps: readonly string[];
   readonly runId: string;
-  /** The terminal record's own citation for this node, when it cites one. */
-  readonly cited?: Readonly<{ step: string; assertedAt: string }>;
+  /** The terminal record's `not-run` reason for this node, when it cites one — a contradiction. */
+  readonly citedNotRun?: TerminalNotRunReason;
   /** True when the terminal record cites this node as RESOLVED — a contradiction. */
   readonly citedResolved: boolean;
   readonly observations: Fact[];
@@ -1410,6 +1453,15 @@ function emitAssertedNodeEvidence(input: AssertedEvidenceInput): void {
       + "and a transaction in an omitted step never runs at all (D307)",
     );
   }
+  /*
+   * The reconciliation above this function walks the terminal record's asserted
+   * arms and demands a marked row behind each. THIS is the other direction, and
+   * it is the one that keeps the pair honest: a marked row whose terminal record
+   * says something else — resolved, not-run, or nothing at all for a node the
+   * derive depends on — used to produce an `assertion` decision and a `present`
+   * obligation anyway, which is a receipt asserting on one authority's word while
+   * the other authority contradicts it. Every arm refuses instead.
+   */
   if (input.citedResolved) {
     throw new Error(
       `run ${input.runId}'s terminal record cites node "${nodeId}" as resolved, and its checkpoint is `
@@ -1417,6 +1469,21 @@ function emitAssertedNodeEvidence(input: AssertedEvidenceInput): void {
       + "value an observed one",
     );
   }
+  if (input.citedNotRun !== undefined) {
+    throw new Error(
+      `run ${input.runId}'s terminal record cites node "${nodeId}" as not-run (${input.citedNotRun}), and its `
+      + `checkpoint is marked as an operator assertion for step "${assertion.step}"; a receipt may not call an `
+      + "asserted value a node that produced nothing",
+    );
+  }
+  /*
+   * The THIRD direction — a DECLARED terminal dependency the record leaves out
+   * entirely — has no arm here on purpose: `evaluateReceiptDerivationBinding`
+   * already refuses that whole receipt by name (`terminal-dependency-set
+   * moved`) before this walk starts, and a node the derive does NOT depend on
+   * is absent from `dependencies` by construction, so its silence is no
+   * disagreement at all. An arm here would be one that cannot fail.
+   */
   if (!input.omittedSteps.includes(assertion.step)) {
     throw new Error(
       `run ${input.runId}'s checkpoint for node "${nodeId}" is asserted for step "${assertion.step}", `
@@ -1466,12 +1533,21 @@ function emitAssertedNodeEvidence(input: AssertedEvidenceInput): void {
     evidence: [evidenceEntryRef(evidence.verificationId), ...factRefs],
   });
 
+  /*
+   * The obligation cites the FACTS, not the decision that cites it back. The
+   * decision already names this verification row as its evidence, so listing
+   * the decision here made the two rows a 2-cycle: a reader walking evidence
+   * from either end returns to where it started instead of reaching a value.
+   * `emitGateEvidence` has always ended one-way for exactly this reason, and
+   * an assertion is read the same way — the decision explains the obligation,
+   * the obligation points at what it is an obligation about.
+   */
   input.verification.push({
     id: evidence.verificationId,
     obligation: `node.${nodeId}`,
     mandatory: true,
     verdict: "present",
-    evidence: [evidenceEntryRef(decisionId), ...factRefs],
+    evidence: factRefs,
   });
 }
 

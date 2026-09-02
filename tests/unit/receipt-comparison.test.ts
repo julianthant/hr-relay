@@ -94,6 +94,39 @@ function receiptWithDocumentNumber(seed: number, value: string): RunEvidenceRece
   });
 }
 
+/** The step the operator omitted. It is authority's, and no refusal may name it. */
+const ASSERTED_STEP = "kuali-extraction";
+
+/**
+ * The SAME coordinate as `receiptWithDocumentNumber`, under D307's
+ * `operator-assertion` source: the operator omitted the step and the step's
+ * producer rebuilt this output from the facts they typed.
+ */
+function receiptWithAssertedDocumentNumber(seed: number, value: string): RunEvidenceReceipt {
+  return RunEvidenceReceiptSchema.parse({
+    ...cleanReceiptOf({ seed, workflow: "separations" }),
+    observations: [{
+      id: `${String(seed).padStart(8, "0")}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
+      field: "documentNumber",
+      mandatory: true,
+      source: {
+        kind: "operator-assertion",
+        taskId: "kuali/search-separation-action",
+        step: ASSERTED_STEP,
+        assertedAt: "2026-08-28T12:00:00.000Z",
+      },
+      state: "satisfied",
+      value: {
+        key: "documentNumber",
+        state: "allowed",
+        classification: "safe-diagnostic",
+        transform: "allow",
+        value,
+      },
+    }],
+  });
+}
+
 function receiptWithEmployeeSuffix(seed: number, value: string): RunEvidenceReceipt {
   return RunEvidenceReceiptSchema.parse({
     ...cleanReceiptOf({ seed, workflow: "separations" }),
@@ -257,6 +290,43 @@ describe("receipt comparison registry", () => {
       before: "4502",
       after: "4537",
     }]);
+  });
+
+  /*
+   * D307 — the retry comparison meeting an ASSERTED fact. `exactFacts` selects
+   * on the source kind, so an `operator-assertion` at a reviewed coordinate
+   * matched nothing and the coordinate came out of the cardinality arms as
+   * `removed`: "this value disappeared", about a value the operator typed and
+   * the run consumed. Widening the comparison would be worse — an asserted
+   * value and an observed one are different facts — so it refuses by name.
+   */
+  it("REFUSES an operator-asserted fact at a reviewed coordinate instead of calling it removed", () => {
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [DOCUMENT_NUMBER_FACT],
+    });
+    const prior = receiptWithDocumentNumber(361, "4502");
+    const current = receiptWithAssertedDocumentNumber(362, "4502");
+
+    assert.throws(
+      () => compareReceiptFacts(registry, prior, current),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(
+          error.message,
+          /comparison fact separations\.action\.document-number matched a "operator-assertion" fact/u,
+        );
+        assert.match(
+          error.message,
+          /\(collection=observations, node=resolve-action, task=kuali\/search-separation-action, field=documentNumber\)/u,
+        );
+        assert.match(error.message, /reviewed only system\+checkpoint for that coordinate/u);
+        // The refusal names the failed dimension, never the value or the step.
+        assert.equal(error.message.includes("4502"), false);
+        assert.equal(error.message.includes(ASSERTED_STEP), false);
+        return true;
+      },
+    );
   });
 
   it("returns no comparison arm when a reviewed safe value is unchanged", () => {
