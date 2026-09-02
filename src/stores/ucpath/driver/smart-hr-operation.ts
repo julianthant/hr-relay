@@ -209,6 +209,7 @@ const SETTLEMENT_CAPTURE_FAILED = Object.freeze({
   cause: "page-evaluation-failed" as const,
 });
 const PERSON_IDENTIFIER_REMOVED = "[person identifier removed]";
+const TRANSACTION_IDENTIFIER_REMOVED = "[transaction identifier removed]";
 
 function redactScanFailureDetail(error: unknown, emplId: Eid): string {
   const fullEid = String(emplId);
@@ -218,7 +219,8 @@ function redactScanFailureDetail(error: unknown, emplId: Eid): string {
     .replace(
       new RegExp("(?<!\\d)" + eidSuffix + "(?!\\d)", "gu"),
       PERSON_IDENTIFIER_REMOVED,
-    );
+    )
+    .replaceAll(/\bT\d{6,}\b/gu, TRANSACTION_IDENTIFIER_REMOVED);
 }
 
 const captureSsSmartHrSettlementDiagnostic = (selectors: Readonly<{

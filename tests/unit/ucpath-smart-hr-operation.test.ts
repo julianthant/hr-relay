@@ -59,6 +59,7 @@ function indeterminateSearchPage(
 function singleResultAutoDrillPage(
   transactionId = "T009000001",
   receiptCount = 1,
+  rereadTransactionId = transactionId,
 ): Page {
   const textBySelector = new Map<string, string>([
     ["#UC_SS_TRANSACT_UC_TRANSACT_ID", transactionId],
@@ -67,6 +68,7 @@ function singleResultAutoDrillPage(
     ['[id="UC_SS_TBH_VW_ACTION$0"]', "TER"],
     ['[id="NAME$0"]', "Person, Deterministic"],
   ]);
+  let receiptReadCount = 0;
   const locator = (selector: string) => {
     const value = {
       first: () => value,
@@ -80,7 +82,13 @@ function singleResultAutoDrillPage(
         }
       },
       evaluate: async () => false,
-      innerText: async () => textBySelector.get(selector) ?? "",
+      innerText: async () => {
+        if (selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID") {
+          receiptReadCount += 1;
+          return receiptReadCount === 1 ? transactionId : rereadTransactionId;
+        }
+        return textBySelector.get(selector) ?? "";
+      },
     };
     return value;
   };
@@ -138,6 +146,22 @@ describe("SS Smart HR transaction scan", () => {
     if (scan.state !== "unreadable") return;
     assert.match(scan.reason, /auto-drilled detail exposed 2 transaction-id controls/u);
     assert.doesNotMatch(scan.reason, /rendered neither a result row/u);
+  });
+
+  it("redacts transaction ids when the keyed auto-drill reread resolves another transaction", async () => {
+    const requestedId = "T009000001";
+    const renderedId = "T009000999";
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage(requestedId, 1, renderedId),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /\[transaction identifier removed\]/u);
+    assert.doesNotMatch(scan.reason, new RegExp(requestedId, "u"));
+    assert.doesNotMatch(scan.reason, new RegExp(renderedId, "u"));
   });
 
   it("preserves an early settlement failure without attempting diagnostic capture", async () => {
