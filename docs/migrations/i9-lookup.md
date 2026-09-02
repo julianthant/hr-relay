@@ -5,11 +5,14 @@
 
 **Plan owner:** `docs/rebuild/03c-migrate-the-remaining-workflows.md` §Order 1
 
-**Inherited contracts:** ref charter §1/§3/§8; ref task-contract §2.7/§2.8/§3.1; ref stores §1/§4;
-ref guards-and-tests §10.11; ref operator-trust §3.2; ref clock-config-secrets §4
+**Inherited contracts:** ref charter §1/§3/§8; ref workflow-model §1.6.1/§5.6.1/§5.8;
+ref task-contract §2.7/§2.8/§3.1; ref stores §1/§4; ref guards-and-tests §10.11;
+ref operator-trust §3.2; ref clock-config-secrets §4
 
 `i9-lookup` answers who signed Form I-9 Section 2. It is a pure read of Tracker I-9 Complete through
 the UCOP portal and UCSD SSO/Duo. The rebuild currently has only an unwired, zero-task `i9` store.
+This intake applies the ratified D312–D316 owner text at integration commit `1273c360` without
+implementing its compiler/runtime work.
 
 ## 1. Workflow-specific decisions and §b completeness
 
@@ -27,9 +30,9 @@ implementation facts with fail-loud answers already fixed by repository policy.
 | 7. Reuse map | BUILD the `i9` store driver, verified login recipe, UI/page-state catalog, and two page-visit read tasks described in §2. REUSE common SSO/Duo and browser-store/session contracts. No legacy runtime import is allowed. |
 | 8. Local artifact effects | None. The lookup neither downloads immutable bytes nor updates a mutable local file. A diagnostic screenshot is evidence, not an artifact side effect. |
 | 9. Scenario inventory | §3 enumerates the required matrix. Paper/historical, unsigned, inaccessible, and true not-found are separate states; page uncertainty is never one of them. |
-| 10. Delegation and queue | Register `i9-lookup` as a standalone, single-surface workflow with the standard `reject-active` enqueue policy and ordinary generic projections. A later parent reuses the I-9 tasks or adds its own explicit child edge; it does not change this workflow's role or mint another identity. |
+| 10. Delegation and queue | Register `i9-lookup` as a standalone, single-surface workflow with the standard `reject-active` enqueue policy and ordinary generic projections. D315 requires its own operations to be explicit stable-id `task(...)` entries; this recipe has no `parallel`, `delegate`, `gate`, or `transaction` entry. A later parent's explicit child edge belongs to that parent's recipe and does not change this workflow's role or identity. |
 | 11. Trust contract | Inherit ref operator-trust §3.2 and ref guards-and-tests §10.11. The workflow-specific outcome/confidence predicates are in §3; notably a failed access/summary observation is `error` with `unknown` confidence, never not-found/unsigned. |
-| 12. Authoring boundary | Source-authored. Login facts, selectors, task schemas, bindings, graph/result derivation, and proof remain code changes; the editor may apply only closed presentation/policy edits. |
+| 12. Authoring boundary | Source-authored. D312's strict four-artifact cap applies to a reuse-only workflow; I-9 is not reuse-only because §2 builds new behavior. Its workflow surface is `src/workflows/i9-lookup/recipe.ts`, the structural scenario, the live declaration, and this migration record, plus only the genuinely new driver/task/login/UI files that own that behavior. They may not carry descriptor/module/registry/dashboard glue. |
 
 ## 2. Store, task, and driver seams
 
@@ -58,11 +61,29 @@ Two legacy behaviors are explicitly rejected by the rebuild's fail-loud contract
 - `src/systems/i9/signer.ts` converts an access-alert locator failure to count zero. The rebuild
   preserves `unknown/error`; it cannot report a genuine not-found from a failed distinction check.
 
+### D312–D316 recipe acceptance
+
+The final recipe declares the two browser reads and terminal computation as stable-id `task(...)`
+entries. Typed inputs may derive their dependency edges, but no compiler inference may turn them
+into parallel, delegated, gated, or transactional behavior. I-9 introduces no omission: under D313
+it declares no replacement-value schema, every selected task runs, and neither a caller nor worker
+may manufacture a skip or request substitute values mid-run.
+
+There is no write-sensitive operator assertion or transaction in this workflow, so D313's separate
+visible mandatory-verification entry is not applicable here. A future parent that feeds an I-9 fact
+to a write owns any required visible verifier in its own recipe outside an omitted step.
+
+The I-9 driver, task contracts/implementations, verified login recipe and UI catalog are
+behavior-owned additions beyond the base workflow artifacts, not evidence that I-9 is reuse-only.
+D316 names Person Lookup and Separations—not I-9—as its equivalence fixtures. Once their acceptance
+deletes the superseded authoring path, I-9 enters only through the accepted recipe compiler and
+cannot revive that path as an escape hatch.
+
 ## 3. Proof and scenario matrix for R3
 
 | Proof | Required cases |
 |---|---|
-| T1 structural | Signed modern record; rendered modern record with no Signed Section 2 row; historical redirect; true zero result; visible access-restricted zero result; multiple rows with one eligible action; only incomplete Section 1/2 actions; missing profile/I-9 id; malformed grid row; empty signer cell; audit table timeout; auth/page/schema transient retry; permanent failure; result/probe unknown; subject mismatch; crash after the search checkpoint and resume into summary; crash after summary checkpoint and terminal replay. |
+| T1 structural | Signed modern record; rendered modern record with no Signed Section 2 row; historical redirect; true zero result; visible access-restricted zero result; multiple rows with one eligible action; only incomplete Section 1/2 actions; missing profile/I-9 id; malformed grid row; empty signer cell; audit table timeout; auth/page/schema transient retry; permanent failure; result/probe unknown; subject mismatch; crash after the search checkpoint and checkpoint-resume into summary; crash after summary checkpoint and checkpoint-resume into terminal derivation; restart from start as the same logical item/new attempt, ignoring old read/compute checkpoints and rerunning search, summary, and derivation from pristine input. |
 | T1b live | Required by doc 03c/ref guards-and-tests but blocked by the D209 conflict in §5. After an owning-contract resolution, use at least one same-day `available` signer subject that reaches a modern summary and produces a non-empty signed observation, plus any additional truthful registry arms the manifest claims. |
 | Generic projection | Start/queue/detail/archive/Explorer conformance rides the recipe compiler suite. I-9 adds no new dashboard capability and therefore no duplicate T2/T3 feature pair. |
 
@@ -74,9 +95,11 @@ before the live workflow starts.
 
 No gate/delegation/join, transaction/idempotency-probe/commit, download or mutable-file branch exists
 in this workflow. Those variants are impossible by the declared pure-read graph and must not be
-fabricated for coverage. The read-side access-restriction observation remains mandatory. The
-applicable crash/recovery windows are between the search and summary checkpoints and between the
-summary checkpoint and terminal result derivation.
+fabricated for coverage. The read-side access-restriction observation remains mandatory. D314
+still exposes both recovery choices: checkpoint resume retries from the failed task with valid
+ancestors replayed, while restart from start mints the same logical item's next attempt, ignores old
+read/compute checkpoints, and reruns every read and computation. Both retain the admitted input;
+neither is a different-input run.
 
 ### Outcome confidence
 
@@ -127,11 +150,16 @@ every-workflow proof. A no-op transaction is not a valid option because it misst
 
 `legacy-workflow-i9-lookup` stays `open` during intake. Its current reason incorrectly calls this a
 UCPath read; doc 03c owns the correction: the workflow reads the I-9 system. R3 updates the derived
-capability entry only with the native store/workflow, T1/live evidence and generic projection proof.
-Production routing remains on legacy until D89/D93's all-at-once cutover.
+capability entry only with the native store/workflow, T1/live evidence, generic projection proof,
+and proof that no superseded hand-authored assembly was reintroduced. Production routing remains on
+legacy until D89/D93's all-at-once cutover.
 
 ## 7. Evidence log
 
 - 2026-09-02 — workflow-specific intake completed; login/search locators verified live; source-pinned
   summary canary found ineligible, so summary/audit verification and implementation remain open for
   R3.
+- 2026-09-02 — amended against ratified D312–D316 owner text at integration commit `1273c360`:
+  four workflow artifacts plus behavior-owned store additions, task-only explicit entries, no
+  omissions, both recovery choices, and no legacy-authoring escape are now explicit. D209/T1b
+  remains unresolved.

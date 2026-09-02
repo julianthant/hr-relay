@@ -11,6 +11,9 @@ descendant adding only the Phase 3c coordination plan)
 
 **Legacy evidence HEAD:** `9d19e4141d57617e2bf895e21e34a5bd8f15047c`
 
+**Workflow-authoring authority:** integration commit
+`1273c3605a0ae6776a86db34f36077fae49ff50b` (D312–D316 owner text)
+
 **Mode:** read-only intake; no compiler-dependent implementation and no external write
 
 ## Authority result
@@ -19,6 +22,18 @@ Doc 03c §Order 1/§b and refs task-contract, stores, dashboard-surfaces, guards
 operator-trust settle the workflow-specific product answers. There are no workflow `you:` lines.
 One cross-authority testing decision remains: the mandatory T1b live dry-run and D209's refusal of a
 transaction-free dry run cannot both hold without an owning-contract resolution (§T1b conflict).
+D312 requires the live declaration as one of four authored workflow artifacts but does not redefine
+`dryRun`, so the ratified amendments do not resolve that conflict.
+
+## D312–D316 Order 1 consequences
+
+| Authority | Person Lookup | I-9 Lookup |
+|---|---|---|
+| D312 — authored surface | D312's exact cap is for reuse-only workflows. The base surface is `recipe.ts`, structural scenario, live declaration and migration record; Match's new reusable task/driver files are allowed behavior, never descriptor/module/registry/dashboard glue. | I-9 is not reuse-only because it builds new behavior. Its base workflow surface is the same four artifacts plus only the driver/task/login/UI files that own that behavior; no workflow-glue artifact. |
+| D313 — whole-step omission | No step is omittable and no replacement-value schema exists. Every selected read/compute task executes; no caller or worker supplies a hidden skip. There is no write-sensitive assertion; a future writing parent owns any separate visible verifier. | No step is omittable and no replacement-value schema exists. The mandatory access-restriction observation cannot be skipped or replaced by operator data. There is no write-sensitive assertion; a future writing parent owns any separate visible verifier. |
+| D314 — two recovery choices | Structural proof covers checkpoint resume and restart from start as the same logical item/new attempt. Restart ignores old read/compute checkpoints and reruns the selected mode from pristine admitted input. | Structural proof covers checkpoint resume and root restart. Restart reruns search, summary and derivation from pristine admitted input; no different-input recovery exists. |
+| D315 — explicit algebra | Stable-id `task(...)` entries only. No parallel/delegate/gate/transaction entry. | Stable-id `task(...)` entries only. No parallel/delegate/gate/transaction entry; a future parent owns any explicit delegation. |
+| D316 — deletion/equivalence | This is the minimum compiler conversion: prove existing public descriptor/module/wire behavior, then delete superseded declarations and duplicate generic-surface tests; no escape hatch. | I-9 is not a named D316 equivalence fixture. It enters through the accepted compiler after the Person-Lookup/Separations deletion gate and cannot recreate the retired authoring path. |
 
 ## Reuse classification
 
@@ -80,6 +95,7 @@ Session `r2i9` was launched headless with the repository's Duo Autopilot through
 | Person Match T1b/T3 | Both are blocked on the contract decision because T3 attaches to a dry-run scenario. After resolution, use a current HR Tasks record with name and DOB plus one usable disambiguator, mode-specific ceremony and subject title, and no committed person values. |
 | I-9 T1b | Blocked on the contract decision and a new current access-visible record with an eligible completed action, modern summary, rendered audit header and non-empty Signed Section 2 Created By. |
 | Negative branches | Synthetic structural scenarios for no-match, ambiguity, malformed schema, transient/permanent failure, subject mismatch and unknown. Never search for a real person merely to manufacture a negative arm. |
+| Recovery | For each workflow, prove both checkpoint resume and D314 restart from start. Restart keeps the same logical item, mints the next attempt, discards read/compute checkpoint reuse, reruns every read/compute, and cannot change admitted input or mode. |
 | Capability close | `legacy-workflow-person-lookup` and `legacy-workflow-i9-lookup` stay open until native workflows, proofs and live records land. Correct the I-9 entry's derived “pure UCPath read” wording to I-9 system read at that boundary. |
 
 ## R3-ready facts, not choices
@@ -90,6 +106,8 @@ Session `r2i9` was launched headless with the repository's Duo Autopilot through
 - Both workflows owe T1. Only the new person mode interaction owes T2/T3; I-9 ordinary projections
   ride registry-wide recipe conformance. The structural T1 halves are unblocked; the live halves
   wait on the contract decision below.
+- Both recipes use explicit stable-id `task(...)` entries only and declare no omissions. The absence
+  of other D315 entry kinds is graph truth, not a coverage gap to fill with synthetic behavior.
 - No Order 1 workflow writes. Any transaction, controlled-commit target, probe policy, write
   freshness budget or mutation capability would be scope drift.
 

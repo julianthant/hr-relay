@@ -1,6 +1,7 @@
 # R2 supervisor report — Order 1 workflow-specific intake
 
-**Status:** COMPLETE intake boundary; `NEEDS COORDINATOR` decision residue preserved for R3
+**Status:** COMPLETE intake boundary, including the D312–D316 authority amendment;
+`NEEDS COORDINATOR` decision residue preserved for R3
 
 **Mode:** coordinated-read-only
 (`/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/phase-3c-migration/board.md`)
@@ -20,7 +21,7 @@ file changed, no external write occurred, and the coordinator board was not writ
 |---|---|---|
 | u10 — workflow decisions | Created the complete §b records for `person-lookup` Search/Match and `i9-lookup`; inherited policy is cited, exact task seams are named, no workflow `you:` line remains, and the T1b authority conflict is explicit. | `docs/migrations/person-lookup.md`; `docs/migrations/i9-lookup.md`; commits `daa51858`, `14a801a9`, `66e0cd73` |
 | u11 — reuse/provenance/live map | Classified every Order 1 seam REUSE/CUSTOMIZE/BUILD, pinned legacy source blobs, recorded fail-loud port deltas, live-verified I-9 login/search state, and closed the owned browser session. | `docs/coordinator/phase-3c-migration/research/r2-order1-reuse-map.md`; commits `daa51858`, `14a801a9` |
-| u12 — R3-ready synthesis | Fixed workflow roles and stable contract ids, scenario/crash/impossible-case matrices, confidence maps, canary needs, capability close conditions, T2/T3 scope, and the decision packet below. | This report plus the three intake commits |
+| u12 — R3-ready synthesis | Fixed workflow roles and stable contract ids, scenario/crash/impossible-case matrices, confidence maps, canary needs, capability close conditions, T2/T3 scope, D312–D316 consequences, and the decision packet below. | This report plus the intake and amendment commits |
 
 ## Exact implementation intake
 
@@ -35,8 +36,32 @@ file changed, no external write occurred, and the coordinator board was not writ
 - Both workflows owe structural T1. The person mode chooser owes T2 and its live T3 condition; I-9's
   ordinary projections ride compiler conformance. The live T1b halves and the mode T3 are blocked on
   the decision below.
+- D312's exact four-artifact cap applies to reuse-only workflows. Both Order 1 workflows keep the
+  recipe/structural-scenario/live-declaration/migration-record base surface; their genuinely new
+  reusable task/driver files own behavior only and do not carry descriptor, module, registry, or
+  generic-dashboard glue.
+- Their recipes use stable-id `task(...)` entries only: no `parallel`, `delegate`, `gate`, or
+  `transaction` entry and no omission schema. Structural proof covers both checkpoint resume and
+  restart from start as the same logical item/new attempt, with every read/compute rerun.
 - `legacy-workflow-person-lookup` and `legacy-workflow-i9-lookup` stay `open` until R3 native/live
   evidence lands. The I-9 entry's derived “pure UCPath read” wording is corrected at that boundary.
+
+## D312–D316 authority amendment
+
+The coordinator reopened R2 after its initial close. Integration commit
+`1273c3605a0ae6776a86db34f36077fae49ff50b` ratified the owner text; R2 cited that exact authority
+and amended the two migration records plus reuse map without implementing compiler/runtime behavior.
+
+| Decision | Order 1 intake consequence |
+|---|---|
+| D312 | The strict four-artifact cap is recorded as reuse-only. Person Match and I-9 add genuine behavior, so their base four workflow artifacts may be joined only by behavior-owned task/driver/login/UI files; no workflow glue may hide in them. |
+| D313 | Neither read-only workflow declares an omission. There is no replacement-value schema, hidden skip, mid-run value request, write-sensitive assertion, or in-workflow mandatory verifier. A future writing parent owns any separate visible verifier. |
+| D314 | T1 includes both checkpoint resume and restart from start. Restart keeps the same logical item, mints the next attempt, ignores old read/compute checkpoints, and reruns every read/compute from the unchanged admitted input. |
+| D315 | Every operation is an explicit stable-id `task(...)`; absence of parallel/delegate/gate/transaction entries is graph truth, not missing coverage. |
+| D316 | Person Lookup is a named equivalence/deletion fixture. I-9 is not; it may use only the accepted compiler path after the Person-Lookup/Separations deletion gate and cannot revive the deleted path. |
+
+D312 requires a live declaration but does not redefine `dryRun`; D313–D316 also leave D209 intact.
+The read-only T1 conflict below therefore remains a separate unresolved coordinator decision.
 
 ## Live evidence — 2026-09-02
 
@@ -82,6 +107,7 @@ Pinned initial target: `daa518588b2e415891e3b5f4db52678d97e026a8`.
 | Standards | 2 low + 1 judgement: over-copied inherited trust text and deferred task names | Reduced to workflow deltas; stable ids recorded in `14a801a9`. |
 | Spec | 1 high + 2 medium + 1 low: D209 conflict, Match task classification, I-9 role, task ids | All corrected/preserved in `14a801a9`; focused Terra re-review: `Count: 0 · Worst: none`. |
 | Docs | 3 medium + 3 low, then 1 medium + 1 low: missing crash/impossible cases and confidence mappings, stale citation/base attribution, access-probe wording | Corrected in `14a801a9` and `66e0cd73`; final Luna re-review: `Count: 0 · Worst: none`. |
+| D312–D316 authority reconciliation | Coordinator amendment received after initial close; exact owner text was not yet on this branch | Pinned integration commit `1273c360`; amended artifact budget, omissions, recovery, entry algebra and deletion/equivalence acceptance. Focused amendment review recorded in the closing commit. |
 
 Correctness, Silent failures, Performance and Tests were skipped as code axes because the branch is
 documentation-only and changes no runtime behavior. Security was supervisor-reviewed: no auth,
@@ -126,6 +152,7 @@ decision sheet. R2 did not edit, stage or commit the board.
 | `daa518588b2e415891e3b5f4db52678d97e026a8` | Initial two migration records plus reuse/provenance/live research |
 | `14a801a9fbf3f2bb6b7d8a624ae8e12ca57787c2` | Review fixes and explicit D209/T1b conflict/options |
 | `66e0cd737efbafddfa97d1551276b211a638e987` | Final trust-confidence and access-observation corrections |
+| `06882995c13c289ee674163d2e4f06dc1f720e98` | Initial R2 report before the coordinator's D312–D316 amendment |
 
 Open residue is exact: coordinator decision 1 for the read-only T1 live-proof contract; a new live
 I-9 completed-signer canary; R1 compiler integration before R3 implementation. No successful-run
