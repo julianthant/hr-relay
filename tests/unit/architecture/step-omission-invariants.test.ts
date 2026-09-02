@@ -397,17 +397,21 @@ describe("step-omission invariants (D307)", () => {
     }
     assertSweptEveryDeclaration(audited, "raw declaration sweep");
 
-    // The raw declarations are the ones the registry actually carries: a folder
-    // could otherwise export a pristine declaration the descriptor never sees.
+    // The raw declarations are the ones the registry actually carries, in both
+    // directions: a folder could otherwise export a pristine declaration the
+    // descriptor never sees, or stop wiring one through `nodes.category`.
+    const carried: string[] = [];
     for (const descriptor of SWEPT_DESCRIPTORS) {
       for (const spec of descriptor.stepOmissions) {
         const key = `${String(descriptor.id)}::${spec.step}`;
+        carried.push(key);
         const declared = raw.find((row) => row.key === key);
         assert.ok(declared !== undefined, `${key}: the registry carries an omission this guard does not pin`);
         assert.deepEqual(spec.form, StepOmissionFormSchema.parse(declared?.declaration.form), `${key}: the registry's form is not the folder's`);
         assert.deepEqual(Object.keys(spec.produces), declared?.produces, `${key}: the registry's producers are not the folder's`);
       }
     }
+    assertSweptEveryDeclaration(carried, "registry-carried declaration sweep");
   });
 
   it("never classifies a gate node as asserted or omitted — alone, with its cascade forces, or with every omittable step of its descriptor", () => {
