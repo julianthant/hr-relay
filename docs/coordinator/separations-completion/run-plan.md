@@ -5,8 +5,8 @@
 | R1 | original controlled completion | u0–u5 | historical partial; reports and §§9.33–9.36 | u0 landed; old u2 proof; u3–u5 blocked |
 | R2 | make readiness concrete and inspectable | u6–u9 | received; u7/u8/u9 proved, u6 closed through R2a | current gate table, existing preview visible, exact implementation proposal, reconciled status |
 | R2a | restore a reliable unchanged full-suite gate | u16 | complete, code `5853ef80`, report verified | default full coverage green with assertions/floors/timeouts preserved; lint and current runtime restored |
-| R3a | implement corrected identity approval policy | u10–u12 | ready: explicit operator EID/name-only ruling; no remaining dependency | canonical ratification, exact-EID machine verification, real name-only gate and receipt regression proof; no real HR writes |
-| R3b | sweep scope and surviving filing proof | u17–u18 | after R3a; remaining exact target/protocol disposition | exact-set dedupe/fencing and surviving-filing truth |
+| R3a | implement corrected identity approval policy | u10–u12 | complete at `36f0562f`; received | D309, machine verification/name-only gate, 4,809 coverage + 287 parity |
+| R3b | sweep scope and surviving filing proof | u17–u18 | ready after R3a; target selection deferred to R4 | exact-set dedupe/fencing, typed fresh filing-presence read, real composition refusal/success; no real HR writes |
 | R4 | fresh rehearsal and controlled proof | u13–u15 | R3a/R3b + exact targets/dispositions; corrected EID approval rule | fresh rehearsal, controlled-write receipts/measurements, criterion 5 and close-out |
 
 ## Dispatch ledger
@@ -33,3 +33,6 @@ R2 report verified against raw serial log, source config and rendered screenshot
 
 ## R3a re-sizing and launch
 2026-09-02: the operator explicitly rejects repeat approvals when a supplied EID matches and requires approval for name-only selection. This clears u10 (owning contract ratification), u11 (central typed identity/execution seam), u12 (real run/gate/receipt regression and visibility). Exact scope is briefs/r3a-eid-approval-policy.md. Existing real composition test seams remain approved. u17/u18 own the separate sweep/filing protocol residue; no per-write approval nodes should be implemented for the EID-matched path. Reuse `/root/sup_supervisor_separations_readiness`, native sup_supervisor, local nested launch via followup, same sole checkout/branch. One compact serial run, report reports/r3a-eid-approval-policy.md, evidence evidence/r3a/. Earlier launch/resume text describes prior authority and is superseded by this explicit correction.
+
+## R3a received / R3b dispatch admission
+R3a integrated u10–u12 in commits `47c47666`, `f785a029`, `233cde61`, `8063fb5f`, `5931a695`; proof `36f0562f`. Report and receive record prove gates/review/runtime. R3b exact brief `briefs/r3b-sweep-and-filing-survival.md`, units u17/u18, same nested native supervisor and established primary checkout exception. Exact live target/disposition is deliberately deferred to R4 and does not block safe implementation/tests.
