@@ -151,5 +151,6 @@
       - paragraph: No run data recorded — this run has not extracted or written any fields yet.
 - region "Session Panel":
   - button "Sessions 0 running 0 starting 0 idle"
+  - button "Add workers"
   - text: app 0.1
   - status: Live
