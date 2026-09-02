@@ -22,9 +22,11 @@
  *
  * ## The one deliberate asymmetry: the grid is read for IDS ONLY
  *
- * `scanTerminationTransactions` takes the SS Smart HR results grid for exactly
- * one thing — the set of `T…` transaction ids — and then reads every other fact
- * off each transaction's DETAIL page, which carries a stable id per field.
+ * When SS Smart HR renders a results grid, `scanTerminationTransactions` takes
+ * it for exactly one thing — one `T…` transaction id from each row — and then
+ * reads every other fact off each transaction's DETAIL page, which carries a
+ * stable id per field. When one result auto-drills instead, the receipt control
+ * supplies that one id before the same keyed detail reread.
  *
  * That is D205's lesson applied before it could bite. The results grid renders
  * seven unlabelled columns whose header row this repository could not read
@@ -191,7 +193,8 @@ const SEARCH_URL = `${HRMS}/c/UC_EXTENSIONS.UC_SS_TBH.GBL`;
 /** `= ` on the SS Smart HR Empl ID filter — live option list, 2026-08-14. */
 const EQUALS_OPERATOR = "2";
 /** PeopleSoft's standard empty-result sentence; see the module note. */
-const NO_RESULTS_MARKER = /no matching values were found/iu;
+const NO_RESULTS_TEXT = "no matching values were found";
+const NO_RESULTS_MARKER = new RegExp(NO_RESULTS_TEXT, "iu");
 const TRANSACTION_ID = /^T\d{6,}$/u;
 const SCAN_BOUND_MS = 45_000;
 // The diagnostic callback performs only synchronous DOM reads. One second is
@@ -209,6 +212,67 @@ const SETTLEMENT_CAPTURE_FAILED = Object.freeze({
   cause: "page-evaluation-failed" as const,
 });
 const PERSON_IDENTIFIER_REMOVED = "[person identifier removed]";
+const TRANSACTION_IDENTIFIER_REMOVED = "[transaction identifier removed]";
+
+type SsSmartHrSettlementObservation = Readonly<{
+  resultRowCount: number;
+  resultRowVisible: boolean;
+  noResultsCount: number;
+  noResultsVisible: boolean;
+  receiptCount: number;
+  receiptVisible: boolean;
+}>;
+
+const hasVisibleSsSmartHrSettlementSignal = (selectors: Readonly<{
+  resultRow: string;
+  receipt: string;
+  noResultsText: string;
+}>): boolean => {
+  const isVisible = (node: Element): boolean => {
+    const style = window.getComputedStyle(node);
+    const bounds = node.getBoundingClientRect();
+    return style.visibility !== "hidden"
+      && style.display !== "none"
+      && bounds.width > 0
+      && bounds.height > 0;
+  };
+  const resultRowVisible = [...document.querySelectorAll(selectors.resultRow)].some(isVisible);
+  const receiptVisible = [...document.querySelectorAll(selectors.receipt)].some(isVisible);
+  const visibleBodyText = document.body?.innerText.toLowerCase() ?? "";
+  return resultRowVisible
+    || receiptVisible
+    || visibleBodyText.includes(selectors.noResultsText);
+};
+
+async function observeSsSmartHrSettlement(
+  resultRows: Locator,
+  noResults: Locator,
+  receipt: Locator,
+): Promise<SsSmartHrSettlementObservation> {
+  const [
+    resultRowCount,
+    resultRowVisible,
+    noResultsCount,
+    noResultsVisible,
+    receiptCount,
+    receiptVisible,
+  ] = await Promise.all([
+    resultRows.count(),
+    resultRows.first().isVisible(),
+    noResults.count(),
+    noResults.first().isVisible(),
+    receipt.count(),
+    receipt.first().isVisible(),
+  ]);
+  return {
+    resultRowCount,
+    resultRowVisible,
+    noResultsCount,
+    noResultsVisible,
+    receiptCount,
+    receiptVisible,
+  };
+}
 
 function redactScanFailureDetail(error: unknown, emplId: Eid): string {
   const fullEid = String(emplId);
@@ -218,7 +282,8 @@ function redactScanFailureDetail(error: unknown, emplId: Eid): string {
     .replace(
       new RegExp("(?<!\\d)" + eidSuffix + "(?!\\d)", "gu"),
       PERSON_IDENTIFIER_REMOVED,
-    );
+    )
+    .replaceAll(/\bT\d{6,}\b/gu, TRANSACTION_IDENTIFIER_REMOVED);
 }
 
 const captureSsSmartHrSettlementDiagnostic = (selectors: Readonly<{
@@ -315,15 +380,55 @@ async function textOf(locator: Locator): Promise<string> {
 }
 
 /**
- * Every distinct `T…` on the results page.
+ * Exactly one distinct `T…` from every rendered result row.
  *
- * Reading them off the whole results region rather than a column index is
- * deliberate: the id's SHAPE identifies it, so no column binding is needed and
- * a reordered grid cannot silently shift the read.
+ * Reading each whole row rather than a column index is deliberate: the id's
+ * SHAPE identifies it, so no column binding is needed and a reordered grid
+ * cannot silently shift the read. Whole-PAGE text is forbidden here: an
+ * unrelated T id elsewhere in the PeopleSoft shell could mask a row whose own
+ * identity is missing. Every row must contribute exactly one id, and no two
+ * rows may contribute the same one.
  */
-async function scanTransactionIds(page: Page): Promise<readonly string[]> {
-  const text = await page.locator("body").innerText();
-  return [...new Set(text.match(/T\d{6,}/gu) ?? [])].filter((id) => TRANSACTION_ID.test(id));
+async function scanTransactionIds(
+  resultRows: Locator,
+  expectedRowCount: number,
+): Promise<readonly string[]> {
+  const rows = await resultRows.all();
+  if (rows.length !== expectedRowCount) {
+    throw new Error(
+      `the SS Smart HR result grid changed from ${String(expectedRowCount)} to `
+      + `${String(rows.length)} rows before transaction ids could be read`,
+    );
+  }
+  const ids: string[] = [];
+  for (const [index, row] of rows.entries()) {
+    if (!(await row.isVisible())) {
+      throw new Error(
+        `the SS Smart HR result row ${String(index + 1)} was not visible; `
+        + "hidden rows cannot contribute current settlement authority",
+      );
+    }
+    const text = await row.innerText();
+    const matches = [...new Set(text.match(/T\d{6,}/gu) ?? [])]
+      .filter((id) => TRANSACTION_ID.test(id));
+    if (matches.length !== 1) {
+      throw new Error(
+        `the SS Smart HR result row ${String(index + 1)} exposed ${String(matches.length)} `
+        + "distinct stable transaction ids; exactly one is required",
+      );
+    }
+    const [transactionId] = matches;
+    if (transactionId === undefined) {
+      throw new Error("the SS Smart HR result-row transaction id disappeared after validation");
+    }
+    ids.push(transactionId);
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new Error(
+      "the SS Smart HR result rows repeated one stable transaction id; each row must be distinct",
+    );
+  }
+  return ids;
 }
 
 async function readTransactionDetail(
@@ -390,27 +495,52 @@ export async function scanTerminationTransactionsOnPage(
     await waitForUcpathState(page, UCPATH_SS_SMART_HR_SEARCH_READY);
     await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_EID_INPUT).fill(input.emplId);
     await page.locator(DRIVER_ANCHOR.searchEmplIdOperator).selectOption(EQUALS_OPERATOR);
+    const autoDrilledReceipt = resolveUcpathElement(
+      page,
+      UCPATH_SS_SMART_HR_RECEIPT_DISPLAY,
+    );
+    const resultRows = page.locator(DRIVER_ANCHOR.searchResultRow);
+    const noResults = page.getByText(NO_RESULTS_MARKER);
+    const beforeSearch = await observeSsSmartHrSettlement(
+      resultRows,
+      noResults,
+      autoDrilledReceipt,
+    );
+    if (
+      beforeSearch.resultRowCount !== 0
+      || beforeSearch.noResultsCount !== 0
+      || beforeSearch.receiptCount !== 0
+    ) {
+      throw new Error(
+        "the SS Smart HR page exposed settlement markers before the current search was submitted "
+        + `(result rows: ${String(beforeSearch.resultRowCount)}, no-results markers: `
+        + `${String(beforeSearch.noResultsCount)}, transaction-id controls: `
+        + `${String(beforeSearch.receiptCount)}); refusing stale response authority`,
+      );
+    }
+    const receiptRecipe = ucpathElementById(UCPATH_SS_SMART_HR_RECEIPT_DISPLAY).locator;
+    if (receiptRecipe.kind !== "css") {
+      throw new Error("the SS Smart HR receipt settlement signal requires its proven CSS anchor");
+    }
     await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_BUTTON).click();
-    let settled: "rows" | "empty";
     try {
-      settled = await Promise.race([
-        page.locator(DRIVER_ANCHOR.searchResultRow).first()
-          .waitFor({ state: "attached", timeout: SCAN_BOUND_MS }).then(() => "rows" as const),
-        page.getByText(NO_RESULTS_MARKER).first()
-          .waitFor({ state: "attached", timeout: SCAN_BOUND_MS }).then(() => "empty" as const),
-      ]);
+      await page.waitForFunction(hasVisibleSsSmartHrSettlementSignal, {
+        resultRow: DRIVER_ANCHOR.searchResultRow,
+        receipt: receiptRecipe.selector,
+        noResultsText: NO_RESULTS_TEXT,
+      }, { timeout: SCAN_BOUND_MS, polling: 50 });
     } catch (error) {
       if (!(error instanceof Error && error.name === "TimeoutError")) {
         throw error;
       }
-      // Only the settlement race rejecting with its actual Playwright timeout
+      // Only the visible-signal wait reaching its actual Playwright timeout
       // authorizes this diagnostic. A page/context failure re-throws above so
       // the outer boundary preserves that failure as unreadable/not-attempted.
-      // Returning "no rows" here is D5 exactly — a search that did not answer
-      // reported as a factual negative.
+      // The timeout becomes `unreadable`; returning an empty read here would be
+      // D5 exactly — a search that did not answer reported as a factual negative.
       const settlementError = new Error(
-        "the SS Smart HR search rendered neither a result row nor PeopleSoft's "
-        + `no-results marker within ${String(SCAN_BOUND_MS)}ms`,
+        "the SS Smart HR search rendered neither a result row, an auto-drilled transaction detail, "
+        + `nor PeopleSoft's no-results marker within ${String(SCAN_BOUND_MS)}ms`,
         { cause: error },
       );
       let diagnostic: UcpathSsSmartHrSettlementDiagnostic;
@@ -435,6 +565,45 @@ export async function scanTerminationTransactionsOnPage(
       }
       return unreadable(failureReason(settlementError), diagnostic);
     }
+    const afterSearch = await observeSsSmartHrSettlement(
+      resultRows,
+      noResults,
+      autoDrilledReceipt,
+    );
+    if (afterSearch.resultRowCount > 0 && !afterSearch.resultRowVisible) {
+      throw new Error("the SS Smart HR search exposed result rows but none were visible");
+    }
+    if (afterSearch.noResultsCount > 0) {
+      if (afterSearch.noResultsCount !== 1 || !afterSearch.noResultsVisible) {
+        throw new Error(
+          `the SS Smart HR search exposed ${String(afterSearch.noResultsCount)} no-results markers; `
+          + "exactly one visible marker is required",
+        );
+      }
+    }
+    if (afterSearch.receiptCount > 0) {
+      if (afterSearch.receiptCount !== 1 || !afterSearch.receiptVisible) {
+        throw new Error(
+          `the SS Smart HR auto-drilled detail exposed ${String(afterSearch.receiptCount)} `
+          + "transaction-id controls; exactly one visible control is required",
+        );
+      }
+    }
+    const settledStates = [
+      ...(afterSearch.resultRowCount > 0 ? ["rows" as const] : []),
+      ...(afterSearch.noResultsCount > 0 ? ["empty" as const] : []),
+      ...(afterSearch.receiptCount > 0 ? ["single-detail" as const] : []),
+    ];
+    if (settledStates.length !== 1) {
+      throw new Error(
+        `the SS Smart HR search settled in ${String(settledStates.length)} states `
+        + `(result rows: ${String(afterSearch.resultRowCount)}, no-results markers: `
+        + `${String(afterSearch.noResultsCount)}, transaction-id controls: `
+        + `${String(afterSearch.receiptCount)}); `
+        + "exactly one is required",
+      );
+    }
+    const [settled] = settledStates;
     if (settled === "empty") {
       return UcpathTransactionScanSchema.parse({
         state: "read",
@@ -444,7 +613,18 @@ export async function scanTerminationTransactionsOnPage(
         observedAt,
       });
     }
-    const ids = await scanTransactionIds(page);
+    let ids: readonly string[];
+    if (settled === "single-detail") {
+      const transactionId = await textOf(autoDrilledReceipt);
+      if (!TRANSACTION_ID.test(transactionId)) {
+        throw new Error(
+          "the SS Smart HR auto-drilled detail rendered no stable T transaction id",
+        );
+      }
+      ids = [transactionId];
+    } else {
+      ids = await scanTransactionIds(resultRows, afterSearch.resultRowCount);
+    }
     const rows: UcpathTransactionRow[] = [];
     for (const id of ids) rows.push(await readTransactionDetail(page, id, input.emplId));
     return UcpathTransactionScanSchema.parse({

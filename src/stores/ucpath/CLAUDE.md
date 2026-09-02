@@ -72,6 +72,22 @@ this family is `page` and legacy's `getContentFrame` funnel does not apply.
 
 ## Lessons learned
 
+- **2026-09-02: one exact SS Smart HR search result auto-drills to the transaction detail, so a
+  results-row-or-empty settlement wait cannot observe the valid answer.** The R4d read-only search
+  recorded in `docs/coordinator/separations-completion/evidence/r4d/live-smart-hr-settlement.md`
+  settled on the ordinary component route with zero iframes, no result-grid row, no no-results
+  marker, no nonempty error region, and exactly one complete transaction-detail fact set. The scan
+  now admits the already-proven receipt display as a third settlement signal, requires exactly one
+  receipt control and a stable `T…` value, then uses the existing keyed detail reread. Missing,
+  malformed, or ambiguous detail identity remains `unreadable`, and scan failures redact both person
+  and transaction identifiers before the reason becomes durable. The first marker only wakes the
+  scan through one cancellable visible-signal wait: a fresh search page must expose zero settlement
+  markers, then a post-wake count must prove exactly one of result rows, one visible no-results marker,
+  or one visible detail receipt. Each result row must itself expose exactly one stable T ID and the
+  row IDs must be globally unique; whole-page T-ID text never participates because an unrelated
+  shell value could mask a missing row identity. Stale, hidden, co-present, duplicate, or incomplete
+  states refuse. Never lengthen the wait or turn the auto-drill into an empty set.
+
 - **2026-08-14: `.or()` is a UNION under strict mode, so waiting on one is a claim
   that its arms are mutually exclusive — and this one's arms were not (D213).**
   The Person Org settle wait was `noResults.or(displayedEid).or(resultsGrid)
