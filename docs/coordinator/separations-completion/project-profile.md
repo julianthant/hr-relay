@@ -22,7 +22,7 @@ The operator requested coordinator-led completion so the workflow can be inspect
 ## Git and operations
 Local commits only, explicitly staged paths, no push. Integration remains `feature/03b-live-close` then eventual `master --no-ff` only after verified closure. Preserve other sessions' changes.
 The established primary-checkout exception remains for this small serial runtime/readiness run because it owns `.env`, `.auth`, and `.tracker-rebuild`. Coordinator writes only coordination/canonical docs; supervisor owns its exact report/evidence and runtime operations. No overlapping writers. Any implementation workers require isolated `feature/<unit>` worktrees and `--no-ff` integration followed by worktree-sweep.
-Live reads and dryRun=true are pre-authorized; actual writes require individual approval. No inferred live deletion target, no altered ledger/key to bypass reuse, no UNKNOWN retry, no fabricated transaction number. Browser work uses playwright-cli through `/ui` and the browser reference; close owned browser sessions after proof.
+Live reads and dryRun=true are pre-authorized. Operator correction 2026-09-02: supplied EID verified by exact read-back proceeds without approval; name-only selection requires approval. R3a ratifies this rule; prior individual-write-approval requirements are superseded for the EID-verified path. R3a itself performs no real HR writes. No inferred live deletion target, no altered ledger/key to bypass reuse, no UNKNOWN retry, no fabricated transaction number. Browser work uses playwright-cli through `/ui` and the browser reference; close owned browser sessions after proof.
 
 ## Coordination and close
 One compact nested native `sup_supervisor` run at a time, at most two subordinate worker slots. Only this coordinator may edit/stage/commit the exact board. Run size 3–5 seams; main judgment remains supervisor-owned. Unique writer artifacts named in brief.
@@ -30,3 +30,6 @@ Close targets: phase 03b, migration record, roadmap and generated index, applica
 
 ## R2a authorized reliability scope
 The coordinator received two red full suites and assigned one focused gate-reliability run under the user's completion request. The supervisor may diagnose and fix the runner configuration or the two named expensive test fixture/scanner seams only with evidence. Tests/coverage membership, assertions, floors and 30s limits stay unchanged. Root instruction twins may document a proven runner scheduling rule. No separations protocol or UI implementation is in R2a. Exact scope and evidence are in its brief.
+
+## R3a authority correction
+The user explicitly superseded unconditional identity approval and the proposed repeated per-write approvals. Exact supplied-EID verification must not be inferred from a candidate selected by name. R3a owns canonical ratification and implementation; the old proof protocol/target disposition remains separate residue, not an implementation dependency. See briefs/r3a-eid-approval-policy.md.

@@ -1,8 +1,9 @@
 # Decision — completing separations safely — 2026-09-02
 
 This selects the proof protocol, not advance permission to execute a live write. Implementation
-and the real sequencer/run-gate-receipt test seams are already authorized. No answer has been
-recorded. The existing historical dry-run can be inspected while this is open.
+and the real sequencer/run-gate-receipt test seams are already authorized. The operator has now
+rejected its repeated-approval premise; see the correction below. The target/disposition choice
+has not been answered. The existing historical dry-run can be inspected while this is open.
 
 ## 1 · Preserve the filing that Kuali records
 
@@ -50,3 +51,8 @@ An unavoidable change to the ordinary workflow’s gate UX would require a separ
 this proposal authorizes no test-only rail and must respect D265/D266 harness placement.
 R2's source-review details and gates belong to `research/r2-protocol.md` and
 `reports/r2-readiness.md`. Final write approval is requested only against the fresh exact packet.
+
+## Operator correction — 2026-09-02
+“no, requiring approval should just be if they are not provided an eid. anything with just looking for name should require approval. if eid matches no need approva.”
+
+Decoded: an independently provided EID that matches actual UCPath identity proceeds without approval; selection based only on name requires an actual operator gate even if one match is found. A name-derived candidate EID is not independent supplied identity. No extra per-write approvals on the EID-verified path. R3a owns normative ratification and implementation at the already-approved test seams. All earlier option/implementation text requiring individual approvals is historical proposal and superseded on this point. The correction does not select a disposable deletion target or authorize a false Kuali receipt; that residue remains separate.
