@@ -244,17 +244,26 @@ describe("SS Smart HR transaction scan", () => {
     assert.match(scan.reason, /result row 1 exposed 0 distinct stable transaction ids/u);
   });
 
-  it("refuses a stale no-results marker present before the current search", async () => {
-    const scan = await scanTerminationTransactionsOnPage(
-      singleResultAutoDrillPage("", 0, "", "none", "empty"),
-      { emplId: EID },
-      OBSERVED_AT,
-    );
+  for (const staleState of ["row", "empty", "detail"] as const) {
+    it(`refuses a stale ${staleState} marker present before the current search`, async () => {
+      const transactionId = staleState === "detail" ? "T009000001" : "";
+      const scan = await scanTerminationTransactionsOnPage(
+        singleResultAutoDrillPage(
+          transactionId,
+          staleState === "detail" ? 1 : 0,
+          transactionId,
+          "none",
+          staleState,
+        ),
+        { emplId: EID },
+        OBSERVED_AT,
+      );
 
-    assert.equal(scan.state, "unreadable");
-    if (scan.state !== "unreadable") return;
-    assert.match(scan.reason, /before the current search was submitted/u);
-  });
+      assert.equal(scan.state, "unreadable");
+      if (scan.state !== "unreadable") return;
+      assert.match(scan.reason, /before the current search was submitted/u);
+    });
+  }
 
   it("reads one stable transaction id from each populated result row", async () => {
     const firstId = "T009000001";
