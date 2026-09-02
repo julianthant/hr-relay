@@ -1,4 +1,4 @@
-/** D292: actual DashboardApp → native Receipt/Preview → real query/parser → href/src.
+/** D292/D305: actual DashboardApp → native Logs/Preview → real query/parser → href/src.
  * DOM connectivity only; this does not prove HTTP byte serving, decode or geometry. */
 import assert from "node:assert/strict";
 import { ArtifactIdSchema, RunIdSchema } from "../../../../src/domain/ids.js";
@@ -39,11 +39,11 @@ export async function runCaptureBrowserRouteReferences(input: RunCaptureBrowserP
     assert.deepEqual(app.requests.filter(request => request.url === `${CAPTURE_BASE_URL}/api/v1/runs/${runId}`).map(request => request.url),
       [`${CAPTURE_BASE_URL}/api/v1/runs/${runId}`], "Run capture app did not request its exact initial detail");
     assert.equal(RunDetailWireSchema.parse(input.detail).runId, runId, "Run capture initial detail returned a foreign runId");
-    assert.equal(app.requests.filter(request => request.url.endsWith("/captures")).length, 0,
-      "Run capture app fetched an inactive section");
-    await pressCaptureControl(captureButton("Receipt", app.host));
+    assert.deepEqual(app.requests.filter(request => request.url.endsWith("/captures")).map(request => request.url),
+      [`${CAPTURE_BASE_URL}/api/v1/runs/${runId}/captures`],
+      "Run capture app did not read captures on its active Logs section");
     const region = app.host.querySelector('[aria-label="Run captures"]');
-    assert.ok(region instanceof HTMLElement, "Run capture app did not mount its Receipt capture section");
+    assert.ok(region instanceof HTMLElement, "Run capture app did not mount its Logs capture section");
     assert.deepEqual(app.requests.filter(request => request.url.endsWith("/captures")).map(request => request.url),
       [`${CAPTURE_BASE_URL}/api/v1/runs/${runId}/captures`], "Run capture app requested a different run or section");
     if (region.querySelector("a[download]") === null) {

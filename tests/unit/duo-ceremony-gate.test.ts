@@ -363,7 +363,7 @@ describe("D267 — two workers, one credential, one ceremony at a time", () => {
     assert.equal(a.opens(), 2, "the burned context was replaced by a fresh one");
     assert.equal(a.closes(), 1, "the burned context was closed with proof before the directory was touched");
     assert.deepEqual(a.discards(), [{
-      workerId: WORKER_A, system: SYSTEM, instance: "prod", configFingerprint: RUN_FINGERPRINT,
+      workerId: WORKER_A, system: SYSTEM, instance: "prod", configFingerprint: RUN_FINGERPRINT, browserMode: "headless",
     }]);
     assert.equal(tokens.length, 2);
     assert.equal(tokens[0], tokens[1], "the retry ran under the very token the first ceremony held");

@@ -151,6 +151,15 @@ function browserStoreFor(
   return store;
 }
 
+function effectiveResourceBrowserMode(
+  resource: WorkerBrowserResource,
+  defaultBrowserMode: BrowserPresentationMode,
+): BrowserPresentationMode {
+  return BrowserPresentationModeSchema.parse(
+    resource.browserMode === undefined ? defaultBrowserMode : resource.browserMode,
+  );
+}
+
 function abortError(system: BrowserSystemId): Error {
   return new Error(`${system} driver lease was aborted before acquisition`);
 }
@@ -519,6 +528,8 @@ export class WorkerSessionManager {
       }
       const resource = await this.#acquireBounded(need, instance, configFingerprint, browserMode, signal);
       let operationCompleted = false;
+      const screenshotFailures: unknown[] = [];
+      const poisonCloseFailures: unknown[] = [];
       try {
         const result = await use(resource.driver);
         operationCompleted = true;
@@ -536,20 +547,26 @@ export class WorkerSessionManager {
           try {
             await this.#captureLeaseScreenshot(resource, "failed", configFingerprint);
           } catch (captureError) {
-            failures.push(captureError);
+            screenshotFailures.push(captureError);
           }
         }
         if (this.#resources.get(need.system) === resource) {
           try {
             await this.#closeSystem(need.system, "poisoned");
           } catch (closeError) {
-            failures.push(closeError);
+            poisonCloseFailures.push(closeError);
           }
         }
+        failures.push(...screenshotFailures, ...poisonCloseFailures);
         if (failures.length > 1) {
+          const failureSummary = screenshotFailures.length > 0 && poisonCloseFailures.length > 0
+            ? "operation, selected browser screenshot, and poison-close all failed"
+            : screenshotFailures.length > 0
+              ? "operation and selected browser screenshot both failed"
+              : "operation and poison-close both failed";
           throw new AggregateError(
             failures,
-            `${need.system} driver lease failed and its selected browser screenshot or poison-close also failed`,
+            `${need.system} ${failureSummary}`,
             { cause: leaseError },
           );
         }
@@ -754,7 +771,7 @@ export class WorkerSessionManager {
       // configured under another run snapshot is never reused.
       if (existing.instance !== instance
         || existing.configFingerprint !== configFingerprint
-        || (existing.browserMode !== undefined && existing.browserMode !== browserMode)) {
+        || effectiveResourceBrowserMode(existing, this.#defaultBrowserMode) !== browserMode) {
         await this.#closeSystem(need.system, "fresh-boundary");
       } else {
         if (need.acceptDownloads === true && !existing.acceptDownloads) {
@@ -891,9 +908,15 @@ export class WorkerSessionManager {
           `${need.system} session factory returned resource ${resource.system} with driver ${resource.driver.system}`,
         );
       }
+      // `browserMode` was added after the fixture/session port, so a legacy
+      // resource means the manager's configured default presentation. That
+      // compatibility is deliberately one-way: an omitted echo can satisfy
+      // headless only; a per-run headed request still has to be positively
+      // echoed by the factory before a session can be used.
+      const resourceBrowserMode = effectiveResourceBrowserMode(resource, this.#defaultBrowserMode);
       if (resource.instance !== instance
         || resource.configFingerprint !== configFingerprint
-        || resource.browserMode !== browserMode
+        || resourceBrowserMode !== browserMode
         || resource.acceptDownloads !== (need.acceptDownloads === true)
         || resource.exclusive !== exclusive) {
         throw new Error(`${need.system} session factory returned a resource with mismatched launch options`);

@@ -724,6 +724,24 @@ total attachment bytes, redaction facts, and the strict content list. Missing id
 does not reconstruct an export. It is deliberately a bundle metadata/export surface, **not** the
 unserved generic artifact-byte route in ref frontend-backend-integration §3.6.
 
+#### 2.2.2 Selected browser-lease screenshots (D306)
+
+The Run Options checkbox is an explicit operator-requested diagnostic policy, stored on the start
+plan and copied unchanged to the run envelope. It defaults on for a new dashboard plan and resets
+on when the modal closes; an omitted historical/programmatic field means no periodic screenshot.
+When selected, the worker takes one viewport PNG after every successful browser-driver lease and,
+when the task throws, attempts the same capture before poison-close. Transaction leases use the
+same boundary. Capture happens while the resource still owns its page, before reset or close.
+
+This is load-bearing when selected: a worker without the persistence port, a browser resource
+without screenshot capability, or a capture/persist failure fails the lease by name. If the task
+and capture both fail, both remain in an `AggregateError`; capture never masks the task failure.
+The browser factory returns only PNG bytes and exact dimensions—not a Page or filesystem path—and
+the existing `operatorRequestedCapture` service persists them as `restricted`, content-addressed
+attachments attributed to `local-operator`. Only closed safe metadata (`browserSystem` and
+`leaseOutcome`) accompanies the image. The ordinary 30-day retention and verified D291/D292 byte
+read apply unchanged; there is no second screenshot store or duplicate byte route.
+
 ### 2.3 `RunEvidenceReceipt`
 
 <!-- roadmap: p2-2g -->

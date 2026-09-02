@@ -525,6 +525,12 @@ Autopilot answers the WebAuthn ceremony in-page, so there is no OS dialog to wat
 `paths.duoExtensionDir` (the unpacked extension the session factory loads). `urls.ucpath.*.login`
 joined them under §3's unchanged prod/test rule.
 
+**D306 narrows `browser.headless` to a compatibility/default role.** New dashboard plans require an
+explicit `headless`/`headed` selection and retain it in the immutable plan and run envelope; the
+worker does not re-resolve current Settings to override that choice. Older and programmatic runs
+whose stored contract has no selection continue to resolve this config leaf, preserving their
+captured behavior without manufacturing a new historical field.
+
 ### Every runtime path leaf is absolute, including the profile root and the Duo credential
 
 `paths.browserProfileRoot` is an `AbsolutePathSchema` leaf like its siblings, and

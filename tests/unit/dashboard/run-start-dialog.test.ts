@@ -572,8 +572,8 @@ describe("D293 keeps D285 and removes only per-start destination", () => {
     assert.ok(!dialog.text().includes("Test instance"));
     assert.equal(
       document.body.querySelectorAll("select").length,
-      2,
-      "Options drew controls beyond the workflow picker and Priority",
+      3,
+      "Options must retain the workflow picker, Priority, and Browser mode controls",
     );
 
     await dialog.press("Customize steps");
@@ -604,7 +604,7 @@ describe("D293 keeps D285 and removes only per-start destination", () => {
 });
 
 describe("browser presentation is an immutable Run Options choice", () => {
-  it("defaults to headless, submits headed when chosen, and resets on workflow selection", async () => {
+  it("offers Headless and Headed, defaults to headless, and submits headed when chosen", async () => {
     let submitted: unknown;
     const dialog = await openDialog(stubClient({ submitStartPlan: async (input) => {
       submitted = input;
@@ -612,11 +612,27 @@ describe("browser presentation is an immutable Run Options choice", () => {
     } }));
     await dialog.type(TYPED);
     await dialog.press("Next");
+    const modeLabel = [...document.body.querySelectorAll("label")]
+      .find((candidate) => (candidate.textContent ?? "").trim() === "Browser mode");
+    assert.ok(modeLabel !== undefined, "Options drew no Browser mode label");
+    const mode = document.getElementById(modeLabel.htmlFor);
+    assert.ok(mode instanceof HTMLSelectElement, "Browser mode label did not name a select");
+    assert.equal(mode.value, "headless");
+    assert.deepEqual([...mode.options].map(option => [option.value, option.text]), [
+      ["headless", "Headless"],
+      ["headed", "Headed"],
+    ]);
+    const screenshotControl = buttons().find(button => buttonName(button) === "Capture browser screenshots");
+    assert.ok(screenshotControl !== undefined, "Options drew no screenshot capture control");
+    assert.equal(screenshotControl.getAttribute("data-state"), "checked", "screenshot capture must default on");
     await dialog.chooseBrowserMode("headed");
+    await dialog.press("Capture browser screenshots");
     await dialog.press("Next");
     const request = StartPlanSubmissionSchema.parse(submitted);
     assert.equal(request.browserMode, "headed");
+    assert.equal(request.captureBrowserScreenshots, false);
     assert.ok(dialog.text().includes("Browser: Headed"));
+    assert.ok(dialog.text().includes("Browser screenshots: Off"));
   });
 });
 

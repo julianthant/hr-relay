@@ -1267,6 +1267,8 @@ describe("composed dashboard runtime on the isolation port", () => {
         workflowId: "person-lookup",
         submissions: [{ emplId: "10800000" }],
         dryRun: true,
+        browserMode: "headless",
+        captureBrowserScreenshots: false,
       }),
       /dashboard runtime settings are stale; restart activation is required/u,
     );
@@ -1320,6 +1322,8 @@ describe("composed dashboard runtime on the isolation port", () => {
       workflowId: "person-lookup",
       submissions: [{ emplId: "10800000" }],
       dryRun: false,
+      browserMode: "headed",
+      captureBrowserScreenshots: false,
     });
 
     assert.equal(plan.workflowId, "person-lookup");

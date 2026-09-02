@@ -3214,10 +3214,12 @@ nothing — it is explicitly withheld from the rail and no consumer of `sections
 exists. A fetched section with no reader is a wire round trip that cannot be observed to be wrong,
 which is worse than an unserved one.
 
-Two D19 arms carry over unchanged and are worth restating because they are about where evidence
-lives. **(b) Screenshots is not a tab** — captures are evidence and render inside Receipt, beside
-the outcome they qualify, under both the full `RunEvidenceReceipt` and the honest short receipt shown
-before a full one exists; the failure capture keeps its red frame in the tile and the lightbox.
+Two D19 arms carry over, with D306's deliberate visibility amendment. **(b) Screenshots is not a
+tab** — captures are evidence. The same verified capture collection renders compactly at the foot
+of Logs, where the operator watches the run, and fully inside Receipt beside the outcome it
+qualifies; the honest short receipt keeps the full treatment before a final receipt exists. Both
+placements use one read and one artifact identity, and the failure capture keeps its red frame in
+the tile and preview.
 **(c)/(d) Data is not a tab and not a dialog** — it is a section of the Context rail, edited in
 place (§9.3.1). Tab defaults stay state-driven: a failure opens on Logs, a terminal run on Receipt,
 a running one on Logs.
@@ -3240,8 +3242,9 @@ This extends only the already-indexed generic DCA3 consumer; it creates no produ
 tab, actor/failure-detail egress or Archive/bundle-gallery color change. Repeated per-bundle tiles
 were rejected in favor of the existing one-artifact list. The wire owns the strict projection
 in ref frontend-backend-integration §3.6. The live authority/client now serve the complete origin
-projection. `LoadedApp` owns the lazy capture read and passes it through `LogPanel` into full and
-short Receipts. Requested route run, loaded detail run/revision and active Receipt tab own the read
+projection. `LoadedApp` owns the lazy capture read and passes it through `LogPanel` into compact
+Logs evidence and full/short Receipts. Requested route run, loaded detail run/revision and an active
+Logs or Receipt tab own the read
 generation and selection; replacement invalidates before passive effects and rejects late success
 or error. Native generic artifact downloads retain the complete byte metadata and all origins;
 image previews wait for the mounted image's decode and exact declared dimensions. Whole-app DOM

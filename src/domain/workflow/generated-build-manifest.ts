@@ -1631,7 +1631,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "0eb2d19b5b14415fa8d9df292494b24632f954ec7d6a6383592d5fb28c817363",
+      "fingerprint": "5555544c437f5e3ecfc7086ba0a59f2007e6f29eb930d5de431ef67efe94468e",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1651,7 +1651,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -1720,6 +1720,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -1809,7 +1813,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "6f8eda82b9e99ea99ce2ab30f48a803fd6d592729ef22ffbeedbcf7331d8ca53",
+      "fingerprint": "c470fcec7e1c64018557903014e1c48aa0b7afa97a93f82b0205fa8bfc03e144",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1829,7 +1833,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -1898,6 +1902,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -2267,7 +2275,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-spreadsheet"
     },
     {
-      "fingerprint": "939c5ee3db6f199bade1ef8abd9c26be75313bda2e3049d90c6eba8cfe29525e",
+      "fingerprint": "0f47ec980c3f6d5fad72dc0e363d3e21ef18d0a88eee093b769b7f56f73c6dcf",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2291,7 +2299,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -2356,6 +2364,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/providers.ts",
           "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -2473,7 +2485,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/match-separation-finalization"
     },
     {
-      "fingerprint": "decbd3abb3fa3e7c8e59bf8c4573d295af1f5e49cdfdd78588c1d7e423f2ec7c",
+      "fingerprint": "2e71ab5443880ae433249b944079db5fd5c0647f0f355d9d688a89da6eadbfd9",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2497,7 +2509,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -2558,6 +2570,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/providers.ts",
           "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -2663,7 +2679,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/read-separation-document"
     },
     {
-      "fingerprint": "a90a75d1ef50f660d6e8d26b8560e9f379ceeb70eac7a9f046096f405bd61cca",
+      "fingerprint": "cb9306731877f86810c7e763566fbbfa9f4fa3c28585e5216003ba255207de54",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2687,7 +2703,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -2752,6 +2768,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/providers.ts",
           "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -2857,7 +2877,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/save-separation-finalization"
     },
     {
-      "fingerprint": "edb62dad755e322a80bfa3b263e54a33b38453ea8bd2ec22ce581b53844cf38d",
+      "fingerprint": "82784f531e856b88415f2b40cf7ec6417344b916ec31361a90c6f383b034eec2",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2881,7 +2901,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -2942,6 +2962,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/providers.ts",
           "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -3047,7 +3071,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/search-separation-action"
     },
     {
-      "fingerprint": "34fbd11acbe4e52ffe3b557e9b77d60e66a634018f1e4a3358ea9448f6c751bb",
+      "fingerprint": "945e868e56a3e89b68e9e0bfb2aae3d0b1df38450d1026d2762769e4131e6697",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3071,7 +3095,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -3136,6 +3160,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/providers.ts",
           "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -3241,7 +3269,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/stage-separation-finalization"
     },
     {
-      "fingerprint": "b3c288ced76dc107714877fd358e1aacb89668a2bda84b53522c8fee7e660af7",
+      "fingerprint": "8fc8d1a44d83b2b4f5a206fa253e200d3d845d25e254e96eca21e314e25537f1",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3265,7 +3293,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -3334,6 +3362,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/providers.ts",
           "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -3451,7 +3483,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-separation-finalization"
     },
     {
-      "fingerprint": "7f0826ba503104d10776ba002f3a0821d609a587bb381832b3d212dcd83fa21c",
+      "fingerprint": "e2b0aac07e35e54b0ea27455f56da96e2e01a9d1d5eadc526856754050bbfa11",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3471,7 +3503,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -3544,6 +3576,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -3645,7 +3681,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "830e60b3d5b52a2b7188bba52a600c664509b14a9b3f997fe77be11dc97fdcd3",
+      "fingerprint": "45e53f5c2db931461ab82da5156c986e81a5229e4f44aaa2fd14be758a157d0f",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3665,7 +3701,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -3738,6 +3774,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -4321,7 +4361,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "13c22e76899161f114ab993937765ff1b0db281a9b0db2bb63e4145309e5f802",
+      "fingerprint": "1cd2decf68af8b4405de1bddeecba7463b6ac3f6072c24e6a18b1a5fd84546f1",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4345,7 +4385,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -4430,6 +4470,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -4563,7 +4607,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/create-termination"
     },
     {
-      "fingerprint": "afd9ff0c9d716e642cb2f518eaa92409c7972aeb1f939e3aeef1822108283631",
+      "fingerprint": "f0b07e6d7667162d884b81ed3b48acba308419f32009920091d7beb694c8fab8",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4587,7 +4631,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -4672,6 +4716,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -4805,7 +4853,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/delete-pending-terminations"
     },
     {
-      "fingerprint": "196dc5ffdc83826d9ae37bcb2b9dd965948f0a7a5b55c533e4c074eac941af5c",
+      "fingerprint": "25e0a6c5fd306b82677c7511e2a22d6d748ff06752b8d6c0722ac92794e202bc",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4829,7 +4877,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -4914,6 +4962,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -5047,7 +5099,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-existing-termination"
     },
     {
-      "fingerprint": "06dec3f79268e2a5b087c2a61644f8a6d1f88321e418ec42f9733405c3d8df27",
+      "fingerprint": "9d6f6d4d7e4958c7edf5e39cb4ae5e85167de8482d52b5f3b6d6bb9e3d08633f",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5071,7 +5123,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -5156,6 +5208,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -5289,7 +5345,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-pending-terminations"
     },
     {
-      "fingerprint": "9230210ea312dc7ec4f41385607f48f2268fefcfbc5ad634f053b3d780fa804d",
+      "fingerprint": "746020677b5dc21e84811ffe1839e2a0931bd90133e6181bfe3caa35d1c85990",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5313,7 +5369,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -5386,6 +5442,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -5507,7 +5567,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "9caf0090f519676d79176e30fa7ebf559b31e638273ff5a377dc9e1a44340544",
+      "fingerprint": "255105b2261683525981bb504dae1235088df1d8c4d1d9e69fdfff6a6ea5a76c",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5531,7 +5591,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -5600,6 +5660,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -5721,7 +5785,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "176a7bd4bbf4cd9df5d4ee17cc5f1d6c2c49f265a6ea785c908e9ceb1b10c847",
+      "fingerprint": "2fcb09656f4c1f1b494460ddb8da9be45e5f0a400c17cd310c90aeb7d40cabaf",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5745,7 +5809,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -5818,6 +5882,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -5939,7 +6007,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-pending-termination-sweep"
     },
     {
-      "fingerprint": "ec1b342c43519a7b847d3114da768ab21c78f42cab6c59032d8db0f84739291c",
+      "fingerprint": "2dee66dae3fd6ac2250546dacb5a7d9ae0b167bfc637a4146fb1e389ca842a96",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5963,7 +6031,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -6036,6 +6104,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -6157,7 +6229,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-termination"
     },
     {
-      "fingerprint": "06c21d69a24327d1e1fa60fe0315ea0e513b8bf43a35a07414df6f21bb885929",
+      "fingerprint": "eda27c789b9a22992276a41a57f6ec7e6a1fb235753072808079df3f28cb1328",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6181,7 +6253,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -6270,6 +6342,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
@@ -6403,7 +6479,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-pending-terminations-cleared"
     },
     {
-      "fingerprint": "efdd63b36b80755c38e9ad651892fd1356644a8515782c7826d50f952426d941",
+      "fingerprint": "30b1715bf045f0569a58f7bbc14763eeca4cf77e9a4b31a5a7014d7e3f977570",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6427,7 +6503,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "05fd4bbdad8b97bb7c1142bcf00adca06c09e85a27f0053a7b99c9f4fbd0a610"
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
         },
         {
           "path": "src/base/store.ts",
@@ -6516,6 +6592,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "736f29bb17531abb57a52a0c7989d2a83295610f03b3cfcb3bd564edff241889"
         },
         {
           "path": "src/domain/schema-bound-value.ts",
