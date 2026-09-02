@@ -1539,3 +1539,15 @@ binding would contradict them.
   file, leaving the a11y and PNG corpus describing different byte lengths and digests. Gallery
   evidence now comes from a deterministic synthetic PNG in `tests/fixtures/`, and an architecture
   test prevents `fixture-day.ts` from reading the reference corpus again.
+- **2026-09-01 — the queue footer's `#N` is the ATTEMPT, and the trace id is text, not a chip.** The
+  rebuild had read the demo's `#{row.run}` as the run's ordinal within its workflow and drawn it
+  beside a second, outlined chip for the trace id plus a fourth `attempt N` segment — three
+  provenance segments where the demo has one chip and one string (`DemoQueue.tsx:695-717`). The
+  operator ruled the number is the attempt count, so the footer is now `time · #attempt · trace ·
+  duration`: `#1` is drawn on every row (a slot that appears only on re-runs would shift the trace
+  id sideways between neighbours), the trace id is plain `fg-secondary` text, and the present
+  workflow ordinal moved into the ⓘ (`rowInfoFacts`, "Run number") beside its already-recorded
+  absence arm. Re-freezing this touched 216 references because every start modal and takeover
+  captures the queue behind it. `runTiming`'s `took` prefix on settled rows was left as-is (D124:
+  a settled and a live duration must not render as the same number); the demo prints the bare
+  duration.
