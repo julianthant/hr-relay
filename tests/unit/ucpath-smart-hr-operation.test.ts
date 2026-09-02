@@ -32,7 +32,10 @@ function indeterminateSearchPage(
       selectOption: async () => [],
       click: async () => undefined,
       waitFor: async () => {
-        if (selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')) {
+        if (
+          selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')
+          || selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID"
+        ) {
           throw settlementFailure();
         }
       },
@@ -53,7 +56,90 @@ function indeterminateSearchPage(
   } as unknown as Page;
 }
 
+function singleResultAutoDrillPage(
+  transactionId = "T009000001",
+  receiptCount = 1,
+): Page {
+  const textBySelector = new Map<string, string>([
+    ["#UC_SS_TRANSACT_UC_TRANSACT_ID", transactionId],
+    ["#UC_SS_TRANSACT_APPR_STATUS", "Pending"],
+    ['[id="UC_SS_TBH_VW_START_DT$0"]', "06/11/2026"],
+    ['[id="UC_SS_TBH_VW_ACTION$0"]', "TER"],
+    ['[id="NAME$0"]', "Person, Deterministic"],
+  ]);
+  const locator = (selector: string) => {
+    const value = {
+      first: () => value,
+      fill: async () => undefined,
+      selectOption: async () => [],
+      click: async () => undefined,
+      count: async () => selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID" ? receiptCount : 1,
+      waitFor: async () => {
+        if (selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')) {
+          await new Promise<never>(() => undefined);
+        }
+      },
+      evaluate: async () => false,
+      innerText: async () => textBySelector.get(selector) ?? "",
+    };
+    return value;
+  };
+  return {
+    goto: async () => null,
+    locator,
+    getByText: () => {
+      const value = {
+        first: () => value,
+        waitFor: async () => await new Promise<never>(() => undefined),
+      };
+      return value;
+    },
+  } as unknown as Page;
+}
+
 describe("SS Smart HR transaction scan", () => {
+  it("reads the one transaction when PeopleSoft auto-drills a single search result", async () => {
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage(),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.deepEqual(scan, {
+      state: "read",
+      emplId: EID,
+      rows: [transactionRow()],
+      scannedRowCount: 1,
+      observedAt: OBSERVED_AT,
+    });
+  });
+
+  it("refuses an auto-drilled detail page without one stable transaction id", async () => {
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage("not-a-transaction"),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /auto-drilled detail rendered no stable T transaction id/u);
+    assert.doesNotMatch(scan.reason, /rendered neither a result row/u);
+  });
+
+  it("refuses ambiguous transaction-id controls on an auto-drilled detail page", async () => {
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage("T009000001", 2),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /auto-drilled detail exposed 2 transaction-id controls/u);
+    assert.doesNotMatch(scan.reason, /rendered neither a result row/u);
+  });
+
   it("preserves an early settlement failure without attempting diagnostic capture", async () => {
     let evaluationCount = 0;
     const page = indeterminateSearchPage(
@@ -100,7 +186,7 @@ describe("SS Smart HR transaction scan", () => {
     assert.match(scan.reason, /SS Smart HR transaction scan/u);
     assert.match(
       scan.reason,
-      /SS Smart HR search rendered neither a result row nor PeopleSoft's no-results marker/u,
+      /SS Smart HR search rendered neither a result row, an auto-drilled transaction detail, nor PeopleSoft's no-results marker/u,
     );
     assert.match(scan.reason, /45000ms/u);
     assert.deepEqual(Reflect.get(scan, "diagnostic"), {
@@ -127,7 +213,8 @@ describe("SS Smart HR transaction scan", () => {
     assert.equal(
       scan.reason,
       "the SS Smart HR transaction scan failed: the SS Smart HR search "
-      + "rendered neither a result row nor PeopleSoft's no-results marker within 45000ms",
+      + "rendered neither a result row, an auto-drilled transaction detail, nor PeopleSoft's "
+      + "no-results marker within 45000ms",
     );
     assert.deepEqual(Reflect.get(scan, "diagnostic"), {
       state: "capture-failed",
@@ -161,7 +248,8 @@ describe("SS Smart HR transaction scan", () => {
       assert.equal(
         outcome.scan.reason,
         "the SS Smart HR transaction scan failed: the SS Smart HR search "
-        + "rendered neither a result row nor PeopleSoft's no-results marker within 45000ms",
+        + "rendered neither a result row, an auto-drilled transaction detail, nor PeopleSoft's "
+        + "no-results marker within 45000ms",
       );
       assert.deepEqual(outcome.scan.diagnostic, {
         state: "capture-failed",

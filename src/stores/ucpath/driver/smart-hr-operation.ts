@@ -391,13 +391,20 @@ export async function scanTerminationTransactionsOnPage(
     await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_EID_INPUT).fill(input.emplId);
     await page.locator(DRIVER_ANCHOR.searchEmplIdOperator).selectOption(EQUALS_OPERATOR);
     await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_BUTTON).click();
-    let settled: "rows" | "empty";
+    const autoDrilledReceipt = resolveUcpathElement(
+      page,
+      UCPATH_SS_SMART_HR_RECEIPT_DISPLAY,
+    );
+    let settled: "rows" | "empty" | "single-detail";
     try {
       settled = await Promise.race([
         page.locator(DRIVER_ANCHOR.searchResultRow).first()
           .waitFor({ state: "attached", timeout: SCAN_BOUND_MS }).then(() => "rows" as const),
         page.getByText(NO_RESULTS_MARKER).first()
           .waitFor({ state: "attached", timeout: SCAN_BOUND_MS }).then(() => "empty" as const),
+        autoDrilledReceipt
+          .waitFor({ state: "visible", timeout: SCAN_BOUND_MS })
+          .then(() => "single-detail" as const),
       ]);
     } catch (error) {
       if (!(error instanceof Error && error.name === "TimeoutError")) {
@@ -409,8 +416,8 @@ export async function scanTerminationTransactionsOnPage(
       // Returning "no rows" here is D5 exactly — a search that did not answer
       // reported as a factual negative.
       const settlementError = new Error(
-        "the SS Smart HR search rendered neither a result row nor PeopleSoft's "
-        + `no-results marker within ${String(SCAN_BOUND_MS)}ms`,
+        "the SS Smart HR search rendered neither a result row, an auto-drilled transaction detail, "
+        + `nor PeopleSoft's no-results marker within ${String(SCAN_BOUND_MS)}ms`,
         { cause: error },
       );
       let diagnostic: UcpathSsSmartHrSettlementDiagnostic;
@@ -444,7 +451,24 @@ export async function scanTerminationTransactionsOnPage(
         observedAt,
       });
     }
-    const ids = await scanTransactionIds(page);
+    let ids: readonly string[];
+    if (settled === "single-detail") {
+      const receiptCount = await autoDrilledReceipt.count();
+      if (receiptCount !== 1) {
+        throw new Error(
+          `the SS Smart HR auto-drilled detail exposed ${String(receiptCount)} transaction-id controls; exactly one is required`,
+        );
+      }
+      const transactionId = await textOf(autoDrilledReceipt);
+      if (!TRANSACTION_ID.test(transactionId)) {
+        throw new Error(
+          "the SS Smart HR auto-drilled detail rendered no stable T transaction id",
+        );
+      }
+      ids = [transactionId];
+    } else {
+      ids = await scanTransactionIds(page);
+    }
     const rows: UcpathTransactionRow[] = [];
     for (const id of ids) rows.push(await readTransactionDetail(page, id, input.emplId));
     return UcpathTransactionScanSchema.parse({
