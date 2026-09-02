@@ -197,8 +197,10 @@ describe("THE run/queue projection (D81)", () => {
       (day.queueSurfaces.find(({ runId }) => runId === uuidOf(seed))?.actions ?? []).map(({ key }) => key);
     assert.deepEqual(actionKeys(1), ["bump", "cancel", "rename"], "the queued row");
     assert.deepEqual(actionKeys(2), ["cancel", "rename"], "the running row");
-    assert.deepEqual(actionKeys(3), ["retry", "rename"], "the done row");
-    assert.deepEqual(actionKeys(4), ["retry", "rename"], "the failed row");
+    // D308's 🗑 is last, so the footer's most destructive control is furthest
+    // from the click an operator makes by reflex.
+    assert.deepEqual(actionKeys(3), ["retry", "rename", "delete"], "the done row");
+    assert.deepEqual(actionKeys(4), ["retry", "rename", "delete"], "the failed row");
     assert.deepEqual(actionKeys(9), ["cancel", "rename"], "the awaiting-approval row");
     // A settled delegated member carries no re-run: the kernel refuses generic
     // retry for a child ("child retries route through their delegation edge
@@ -212,10 +214,14 @@ describe("THE run/queue projection (D81)", () => {
     // prints the person that item is about. This row is the projector's own
     // proof of it — `isMember` is read from the same `operation-member` shape
     // the surface kind comes from.
-    // With D234's retirement of `hide`, a settled member is the one row this
-    // projection serves NO control for at all — and that is the honest answer,
-    // not a gap: every verb it could draw is one the kernel or the row shape
-    // refuses.
+    // A settled member is the one row this projection serves NO control for at
+    // all — and that is the honest answer, not a gap: every verb it could draw
+    // is one the kernel or the row shape refuses. D308's `delete` did NOT
+    // change that. It is the verb most tempting to put here (the member is
+    // terminal, and 🗑 is exactly what D234 took away), but `executeDelete`
+    // refuses any run whose `envelope.parent` is set — "delete the group" —
+    // because the kernel takes the tree leaves-first from its anchor. Row 6,
+    // the operation, is where that door is.
     assert.deepEqual(actionKeys(8), []);
     // The operation's cancel is the TREE cancel, keyed so the footer titles it
     // with its blast radius.

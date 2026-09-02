@@ -126,11 +126,13 @@ describe("queue-row action descriptors — the per-status set", () => {
     running: ["cancel", "rename"],
     blocked: ["cancel", "rename"],
     "awaiting-approval": ["cancel", "rename"],
-    // Terminal: nothing to cancel, nothing to bump, a re-run is possible.
-    done: ["retry", "rename"],
-    failed: ["retry", "rename"],
-    cancelled: ["retry", "rename"],
-    partial: ["retry", "rename"],
+    // Terminal: nothing to cancel, nothing to bump, a re-run is possible — and
+    // since D308, the run can be DELETED. `delete` is last in `SERVED_ORDER`
+    // so its 🗑 sits at the right end of the footer, after the ✕.
+    done: ["retry", "rename", "delete"],
+    failed: ["retry", "rename", "delete"],
+    cancelled: ["retry", "rename", "delete"],
+    partial: ["retry", "rename", "delete"],
   };
 
   it("serves exactly the declared set for every queue status", () => {
@@ -166,6 +168,8 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.deepEqual(placements("done"), {
       retry: ["footer", "menu"],
       rename: ["menu"],
+      // D308's 🗑, back in the footer slot D234 emptied.
+      delete: ["footer", "menu"],
     });
     for (const status of QueueStatusSchema.options) {
       for (const action of queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor(status))) {
@@ -184,7 +188,7 @@ describe("queue-row action descriptors — the per-status set", () => {
    */
   it("drops retry for a delegated child, and keeps rename", () => {
     assert.deepEqual(keysFor("failed", { isChild: true }), ["rename"]);
-    assert.deepEqual(keysFor("failed"), ["retry", "rename"]);
+    assert.deepEqual(keysFor("failed"), ["retry", "rename", "delete"]);
   });
 
   /**
@@ -206,6 +210,73 @@ describe("queue-row action descriptors — the per-status set", () => {
         .find(({ key }) => key === "rename")?.label;
     assert.equal(labelFor(false), "Name this run\u2026");
     assert.equal(labelFor(true), "Rename run\u2026");
+  });
+
+  /**
+   * D308's terminal-only 🗑, both halves.
+   *
+   * The kernel's `executeDelete` refuses a non-terminal run ("cancel it
+   * first") and refuses ANY run whose `envelope.parent` is set ("delete the
+   * group"), which the projector mirrors as `terminal && !isChild` —
+   * `isChild` being the exact projection of `envelope.parent !== undefined`.
+   * The member arm is the one that would be easy to get subtly wrong: a
+   * `linked` child is not a `member`, so an admission written against
+   * `isMember` would serve a 🗑 the kernel refuses on every click.
+   */
+  it("serves delete on every terminal row and on no other, never for a delegated child", () => {
+    const TERMINAL: readonly Status[] = ["done", "failed", "cancelled", "partial"];
+    for (const status of QueueStatusSchema.options) {
+      const keys = keysFor(status);
+      if (TERMINAL.includes(status)) {
+        assert.equal(keys.at(-1), "delete", `${status} did not serve delete last`);
+      } else {
+        assert.ok(!keys.includes("delete"), `${status} is not terminal but served delete`);
+      }
+      // Neither shape of delegated child may draw it: the kernel takes the
+      // whole tree from its anchor, leaves-first.
+      assert.ok(
+        !keysFor(status, { isChild: true }).includes("delete"),
+        `${status}/child served delete, which executeDelete refuses by name`,
+      );
+      assert.ok(
+        !keysFor(status, { isChild: true, isMember: true }).includes("delete"),
+        `${status}/member served delete, which executeDelete refuses by name`,
+      );
+    }
+  });
+
+  /**
+   * The sentence the operator has to read before an irreversible act. It is
+   * UNCONDITIONAL: this projector knows the run is terminal, not whether it
+   * reached a fenced write, and a warning that appeared only when the row
+   * looked like it had written would be a guess about write-safety authority.
+   */
+  it("names the released idempotency key, the rows, and the group in the delete confirm", () => {
+    const single = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("done"))
+      .find(({ key }) => key === "delete");
+    assert.ok(single?.kind === "command" && single.command === "delete");
+    assert.equal(single.label, "Delete run");
+    assert.equal(single.intent, "destructive");
+    assert.equal(single.icon, "delete");
+    assert.equal(single.confirm?.title, "Delete this run");
+    assert.equal(single.confirm?.confirmLabel, "Delete");
+    assert.equal(single.confirm?.tone, "destructive");
+    assert.match(single.confirm?.body ?? "", /results, checkpoints, receipts, diagnostics, and its write ledger/);
+    assert.match(
+      single.confirm?.body ?? "",
+      /permanent idempotency key that stops the same write from being submitted twice is released with it/,
+    );
+    assert.match(single.confirm?.body ?? "", /Person Lookup's systems/);
+    assert.match(single.confirm?.body ?? "", /This is final; there is no undo\./);
+
+    const group = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed", { memberCount: 9 }))
+      .find(({ key }) => key === "delete");
+    assert.ok(group?.kind === "command");
+    assert.equal(group.label, "Delete group");
+    assert.equal(group.confirm?.title, "Delete this group");
+    assert.match(group.confirm?.body ?? "", /its 9 delegated members with it/);
+    // The idempotency sentence does not become optional for a group.
+    assert.match(group.confirm?.body ?? "", /permanent idempotency key/);
   });
 
   /** The demo's group row: one key `FooterActions` titles with the blast radius. */
