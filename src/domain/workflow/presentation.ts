@@ -115,7 +115,7 @@ export const EnqueuePolicySchema = z.enum(["reject-active", "supersede-active", 
 export type EnqueuePolicy = z.infer<typeof EnqueuePolicySchema>;
 
 export const CommandActionIdSchema = z.enum([
-  "retry", "cancel", "bump", "rename",
+  "retry", "cancel", "bump", "rename", "delete",
   "edit-checkpoint", "resolve-write-present", "resolve-write-absent",
 ]);
 export const NavigationActionIdSchema = z.enum(["open-review", "open-evidence"]);
@@ -142,10 +142,19 @@ export const WorkflowActionPolicySchema = z.strictObject({
 });
 export type WorkflowActionPolicy = z.infer<typeof WorkflowActionPolicySchema>;
 
-/** The action set every ordinary workflow gets; a descriptor opts into more, never fewer by accident. */
+/**
+ * The action set every ordinary workflow gets; a descriptor opts into more, never fewer by accident.
+ *
+ * `delete` is in the STANDARD set (D308) rather than an opt-in, because the
+ * ruling it came from was about ordinary runs — *"some runs were just error
+ * runs"* — and a workflow that had to remember to enable it would leave those
+ * rows undeletable for a reason nobody chose. The narrowing that keeps it safe
+ * is the kernel's own, mirrored in `queue-row-actions.ts`: terminal, and not a
+ * delegated child.
+ */
 export const STANDARD_WORKFLOW_ACTIONS: WorkflowActionPolicy = Object.freeze(
   WorkflowActionPolicySchema.parse({
-    enabled: ["retry", "cancel", "bump", "rename"],
+    enabled: ["retry", "cancel", "bump", "rename", "delete"],
   }),
 );
 
