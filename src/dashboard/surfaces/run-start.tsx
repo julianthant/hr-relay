@@ -1293,14 +1293,10 @@ export function RunStartDialog({
                         onChange={setCaptureBrowserScreenshots}
                       />
                     </div>
-                    {visibleConstants.length > 0 && (
-                      <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] @min-[560px]:grid-cols-2">
-                        {visibleConstants.map((constant) => (
-                          <StartChoiceControl key={constant.field} constant={constant} reason="fixed by this workflow's input surface" />
-                        ))}
-                      </div>
-                    )}
                     <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] @min-[480px]:grid-cols-2">
+                      {visibleConstants.map((constant) => (
+                        <StartChoiceControl key={constant.field} constant={constant} reason="Fixed by this workflow." />
+                      ))}
                       {workflow !== undefined && (
                         <LockedFact label="Active-run policy" value={ENQUEUE_POLICY_MEANING[workflow.enqueue]} reason={ENQUEUE_POLICY_REASON} />
                       )}

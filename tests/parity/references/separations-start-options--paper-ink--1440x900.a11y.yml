@@ -1,7 +1,7 @@
 # separations-start-options--paper-ink--1440x900
 # adapter: fixture
 # fixture: separations-start-options
-# descriptorHash: 982b9e5a35302983ff229c0c01936a56530141d89ceee04ef45899bc5322f4b4
+# descriptorHash: 0d23419f4d96fcfbf89d6b2e0515d886ef69c29648fca7a53ffc19dc459bc3d5
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -35,10 +35,14 @@
     - checkbox "Dry run"
     - text: Dry run
     - checkbox "Capture browser screenshots" [checked]
-    - text: Capture browser screenshots timekeeperName Julian Zaw
-    - paragraph: fixed by this workflow's input surface
-    - text: Active-run policy Refuses the start while a run for the same subject is unfinished
-    - paragraph: declared by this workflow — the planner reads it, not the form
+    - text: Capture browser screenshots timekeeperName
+    - combobox "timekeeperName" [disabled]:
+      - option "Julian Zaw" [selected]
+    - paragraph: Fixed by this workflow.
+    - text: Active-run policy
+    - combobox "Active-run policy" [disabled]:
+      - option "Refuse overlapping subject runs" [selected]
+    - paragraph: Fixed by this workflow.
     - text: Priority
     - combobox "Priority":
       - option "Interactive" [selected]
@@ -46,8 +50,8 @@
     - paragraph: Bulk work yields whenever interactive work needs the browser.
     - text: Browser mode
     - combobox "Browser mode":
-      - option "Headless" [selected]
-      - option "Headed"
+      - option "Headless"
+      - option "Headed" [selected]
   - contentinfo:
     - text: Separations v1
     - button "Back"

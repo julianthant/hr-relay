@@ -572,8 +572,13 @@ describe("D293 keeps D285 and removes only per-start destination", () => {
     assert.ok(!dialog.text().includes("Test instance"));
     assert.equal(
       document.body.querySelectorAll("select").length,
-      3,
-      "Options must retain the workflow picker, Priority, and Browser mode controls",
+      5,
+      "Options must align the workflow picker, two locked values, Priority, and Browser mode as controls",
+    );
+    assert.equal(
+      document.body.querySelectorAll("select:disabled").length,
+      2,
+      "the fixed workflow values must remain visibly and semantically locked",
     );
 
     await dialog.press("Customize steps");

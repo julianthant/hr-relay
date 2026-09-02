@@ -92,7 +92,7 @@ describe("a locked value states its reason ON SCREEN (C48 / C81, D272 item 9)", 
     const markup = renderToStaticMarkup(
       createElement(LockedFact, {
         label: "Active-run policy",
-        value: "Refuses the start while a run for the same subject is unfinished",
+        value: "Refuse overlapping subject runs",
         reason: ENQUEUE_POLICY_REASON,
       }),
     );
@@ -114,7 +114,7 @@ describe("a locked value states its reason ON SCREEN (C48 / C81, D272 item 9)", 
     const markup = renderToStaticMarkup(
       createElement(LockedFact, {
         label: "Active-run policy",
-        value: "Refuses the start while a run for the same subject is unfinished",
+        value: "Refuse overlapping subject runs",
         reason: ENQUEUE_POLICY_REASON,
       }),
     );
@@ -124,6 +124,7 @@ describe("a locked value states its reason ON SCREEN (C48 / C81, D272 item 9)", 
       1,
       "a screen reader reads this locked value's reason more than once",
     );
+    assert.match(markup, /<select[^>]*disabled=""/u, "the locked fact does not share the field control shell");
   });
 
   it("is the SAME component behind the sub-selection, so the two cannot drift", () => {

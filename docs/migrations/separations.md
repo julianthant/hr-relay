@@ -5348,7 +5348,7 @@ run 1 re-read everything live; runs 2 and 3 replayed what their predecessors had
 
 | Surface | UI claim | Paired authority / wire fact | Verdict |
 |---|---|---|---|
-| Run modal, B3/D250/D251 rows | `Examples` (One EID · An EID and a name), the parser prose *"An employee ID is eight digits beginning 10…"*, the `How this run is shaped` summary, `Active-run policy — Refuses the start while a run for the same subject is unfinished` | `person-lookup` descriptor `surfaces.inputRun`; `enqueue: "reject-active"` | **MET** |
+| Run modal, B3/D250/D251 rows | `Examples` (One EID · An EID and a name), the parser prose *"An employee ID is eight digits beginning 10…"*, the `How this run is shaped` summary, `Active-run policy: Refuse overlapping subject runs` | `person-lookup` descriptor `surfaces.inputRun`; `enqueue: "reject-active"` | **MET** |
 | Run modal, Separation | listed under **7 not startable** with *"This workflow declares no typed-input surface, so this dialog has no box for it."* | `src/workflows/separations/descriptor.ts` `surfaces: {}` — deliberate, with its reason in the descriptor | **MET as declared** (item 4) |
 | Run modal, D241 taxonomy | `Kuali Timekeeper Annotation` under **Test equipment**; the six separation harnesses carry *", a proving harness of Separation"* | the served taxonomy `role`/`categoryId` | **MET** |
 | Queue row, D230 | `#8` / `#9` / `#10` with title *"Run #N of this workflow"* | `tasks.run_number` = 8 / 9 / 10 | **MET** |

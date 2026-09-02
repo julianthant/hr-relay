@@ -1520,3 +1520,7 @@ binding would contradict them.
   remains an explicit per-run choice that is persisted unchanged. Historical and programmatic omissions
   keep the compatibility behavior owned by `ref clock-config-secrets`; the dashboard never omits either
   field.
+- **2026-09-01 — fixed and editable Run Options share one field shell and grid by operator ruling.**
+  Fixed workflow values use a disabled native select with their reason visible below it; Priority and
+  Browser mode remain enabled selects. The disabled state carries the lock semantics while one
+  two-column grid keeps every value control aligned.

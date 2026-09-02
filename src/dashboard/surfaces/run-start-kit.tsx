@@ -29,10 +29,11 @@ import {
   Card,
   CardBody,
   Checkbox,
+  Field,
   KeyValueList,
-  LockedValue,
   MetaLine,
   Refusal,
+  Select,
   Well,
   dsFg,
   dsIcon,
@@ -74,9 +75,9 @@ export function RunFlagChips({
  * One sub-selection, rendered the same way for every workflow that declares
  * one. In 1i the only sub-selections a descriptor declares are its input
  * surface's parser CONSTANTS — fields the panel contributes to every entry at
- * a value the workflow fixes. DESIGN.md's rule for exactly this case: a choice
- * the target fixes is a `LockedValue` with its reason, never a one-option
- * select, so "you may not change this" is legible without clicking it.
+ * a value the workflow fixes. The operator's 2026-09-01 ruling makes all Run
+ * Options values use the same field shell; the disabled state and visible
+ * reason keep "you may not change this" legible without clicking it.
  *
  * The operator-variable arm (a served option list) has no 1i wire counterpart —
  * declaring one here would mean inventing a contract the server never sends —
@@ -90,11 +91,10 @@ export function StartChoiceControl({ constant, reason }: { constant: SurfaceFiel
  * A value the operator may not change, with the reason ON SCREEN (C48/C81,
  * D272 item 9 — `ref dashboard-surfaces` §10).
  *
- * `LockedValue` puts its `reason` on `title`, and a tooltip is unavailable to
- * touch and to the keyboard — DESIGN.md bans a fact that is reachable by mouse
- * alone, and the 1440x900 parity reference showed both of this modal's locked
- * values with their reason nowhere on the page. The demo draws the same `<p>`
- * beneath (`DemoRunStartKit.tsx:175-183`).
+ * A disabled native select preserves the same control geometry as the editable
+ * Priority and Browser mode fields while making the fixed state semantic. The
+ * reason remains on screen because a tooltip is unavailable to touch and to
+ * the keyboard.
  *
  * It is ONE component because there were two of these and they were already
  * drifting: the sub-selection had the label span and the active-run policy had
@@ -111,17 +111,11 @@ export function LockedFact({
   reason: string;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
-      <span className={cn(dsText.meta, "font-medium", dsFg.secondary)}>{label}</span>
-      {/* `reason` is deliberately NOT handed to `LockedValue` (unit F5b finding
-          4). It puts what it is given on `title`, and `title` is not a second
-          rendering of the same fact — it joins the accessible description, so a
-          screen reader reads the sentence once from the tooltip and again from
-          the `<p>` below. The `<p>` is the whole point of this component; the
-          tooltip is the thing it replaced. */}
-      <LockedValue value={value} />
-      <p className={cn(dsText.meta, dsFg.muted)}>{reason}</p>
-    </div>
+    <Field label={label} description={reason} disabled>
+      <Select disabled className="disabled:cursor-not-allowed disabled:opacity-70">
+        <option value={value}>{value}</option>
+      </Select>
+    </Field>
   );
 }
 

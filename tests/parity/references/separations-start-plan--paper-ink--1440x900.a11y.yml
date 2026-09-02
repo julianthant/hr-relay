@@ -1,7 +1,7 @@
 # separations-start-plan--paper-ink--1440x900
 # adapter: fixture
 # fixture: separations-start-plan
-# descriptorHash: 982b9e5a35302983ff229c0c01936a56530141d89ceee04ef45899bc5322f4b4
+# descriptorHash: 0d23419f4d96fcfbf89d6b2e0515d886ef69c29648fca7a53ffc19dc459bc3d5
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -43,9 +43,9 @@
     - term: Values
     - definition: "timekeeperName: Julian Zaw"
     - term: Options
-    - definition: "Browser: Headless · Browser screenshots: On"
+    - definition: "Browser: Headed · Browser screenshots: On"
     - term: Safety
-    - definition: Refuses the start while a run for the same subject is unfinished
+    - definition: Refuse overlapping subject runs
     - text: 1 run
     - list "Runs this start will create":
       - listitem: Fixture plan row generic layout evidencematch key fixture:plan-row-1trace fixture-plan-01

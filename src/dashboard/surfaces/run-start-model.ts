@@ -42,7 +42,7 @@ export type StartDoorAbsenceCode = keyof typeof START_DOOR_ABSENCE;
  * the same defect as offering the policy as an operator choice.
  */
 export const ENQUEUE_POLICY_MEANING: Readonly<Record<EnqueuePolicy, string>> = Object.freeze({
-  "reject-active": "Refuses the start while a run for the same subject is unfinished",
+  "reject-active": "Refuse overlapping subject runs",
   "supersede-active": "Declared, and not implemented — the planner supersedes nothing",
   "allow-parallel": "Starts regardless of what is already running for the same subject",
 });
@@ -52,7 +52,7 @@ export const ENQUEUE_POLICY_MEANING: Readonly<Record<EnqueuePolicy, string>> = O
  * `descriptor.enqueue` in the planner and accepts no per-start override, so a
  * select would let an operator choose an answer the server would ignore.
  */
-export const ENQUEUE_POLICY_REASON = "declared by this workflow — the planner reads it, not the form";
+export const ENQUEUE_POLICY_REASON = "Fixed by this workflow.";
 
 /** the two queue priorities `StartPlanIngress` accepts */
 export type StartPriority = "interactive" | "bulk";
