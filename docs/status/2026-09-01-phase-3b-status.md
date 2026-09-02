@@ -1,5 +1,13 @@
 # Status — Phase 3b / separations — 2026-09-01 (HEAD 38786bb4)
 
+> **Correction — 2026-09-02:** the “Next” sequence below described the plan without proving an
+> executable path. Preflight at `769e23c9` found one identity gate followed by sweep → filing →
+> finalization, not separately gated filing → sweep → finalization. The sweep's permanent
+> person-level key also reuses an earlier no-op after a later filing. In addition, the current
+> descriptor fingerprint differs from the 4589 rehearsal. See migration §9.35 and the dated
+> [handoff](../handoffs/2026-09-02-separations-controlled-sequence-preflight.md). Approvals alone
+> cannot complete Phase 3b; no controlled write was started.
+
 _Plan source: `docs/rebuild/03b-finish-separations.md`, `docs/migrations/separations.md`,
 `docs/roadmap/roadmap.md`. Verified against: `npm run cli -- phase`, current authority storage,
 git/worktree state, the 4589 rehearsal record, `typecheck`, `lint`, build-manifest/roadmap checks,

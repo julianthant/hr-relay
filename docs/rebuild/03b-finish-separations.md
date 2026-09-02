@@ -16,6 +16,14 @@ cited below as **§N**; it is the child plan and it wins on any question of what
 saw. The decisions live in `reference/decisions.md`.
 
 ## Phase summary
+
+> **2026-09-02 preflight correction (§9.35):** controlled execution is blocked by a newly verified
+> plan/implementation mismatch, not only missing approvals. D287's separately gated filing →
+> sweep → finalization sequence has no supported path in the current graph; its person-level
+> sweep key also permanently reuses an earlier no-op. The 4589 rehearsal fingerprint no longer
+> matches current source. Reconcile the execution contract under explicit authorization, then
+> repeat fresh admission/rehearsal before any controlled write. No write occurred in this preflight.
+
 <!-- roadmap: phase-3 -->
 
 <!-- roadmap-status: phase-3 -->
@@ -948,7 +956,7 @@ at **8 of 9**, and the ninth is open on controlled-write evidence, not on the ca
 | 2 | **`typecheck` + `lint` + `test:coverage` green (D191); `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing** | **MET** | green at HEAD; the build manifest regenerates clean |
 | 3 | **Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id and subject observation resolves; no raw `Page`/`Locator`/selector outside the system driver** | **MET** | `strict-boundary-schemas`, `semantic-ui-registry`, `scenario-coverage`, `task-driver-boundary` |
 | 4 | **Live dry-run green against Kuali, UCPath and New Kronos — submit-free, zero durable write rows ASSERTED** | **MET** 2026-08-14, re-proved twice since | run `7565a88d` / `sp-105939-7565` to the preview terminal (§9.17); run `e1b8ae3e` / `sp-081217-e1b8` driven from the real dashboard (§9.22); run `1e0b7cc2` / `sp-105225-1e0b` from one typed number (§9.24). Zero write rows proved from authority every time |
-| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **BLOCKED — all three open** | D300 admission passed on 2026-09-01, but live u1 found sole registry canary 4537 absent before S7/gate/write (§9.33). The operator then named seven candidates (§9.34): three stopped as future-dated, two on current person/employment facts, and 4589 plus 4502 reached `identity-approval`, with exact-run 0/0/0 for all seven. The operator approved 4589's fresh attempt-1 packet; its resumed run reached terminal `done` at the `clear-pending` preview with receipt `0fa49971…` and remained 0/0/0. Source and canonical input are frozen from that green rehearsal through ② → immediate ① → ③, each with its separate approval. No write approval has been consumed |
+| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **BLOCKED — all three open** | 4537 was gone (§9.33); operator-named 4589 rehearsed green with receipt `0fa49971…` and exact-run 0/0/0 (§9.34). Preflight on 2026-09-02 found that rehearsal's fingerprint no longer matches source, and the existing graphs cannot execute D287's separately gated ② → immediate ① → ③ sequence; the person-level permanent sweep key also reuses a prior no-op (§9.35). Resolve the implementation/contract gap under explicit authorization, then obtain fresh admission/rehearsal and freeze source/input through the controlled sequence. No real-write gate approval has been consumed |
 | 6 | **`identity-gate-before-commit` green — every commit and the terminal result graph-reachable only through the gate** | **MET** | the guard walks both sinks (`tests/unit/architecture/identity-gate-before-commit.test.ts`), and §14.5's digest binding is proved LIVE: the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's (§9.14) |
 | 7 | **D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved** | **MET** 2026-08-14, and its one finding since CLOSED | three entries touched, none stale under D188's arm, no legacy path deleted (§9.17 item 6). The flagged item — D192's condition on `legacy-tool-ops-sanity-check-record` — was closed by the operator on 2026-08-18 and the entry is `retired` |
 | 8 | **Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated** | **MET** | D212/D213 (`d00b66c`, `1d019ee`), D214/D215, the `already-present` receipt arm (`b73b546`), the span-wire fork (`e1ba81b`), D221 (`tests/unit/retry-item-attempt.test.ts`, live-proved §9.20) and the browser-profile wedge (D243/D244, `tests/unit/duo-sign-count.test.ts`, both arms verified RED pre-fix) |

@@ -7145,3 +7145,55 @@ settlement `already-present`, and no external write. The exact-run counts remain
 the green u2 rehearsal; source and canonical input freeze here through the three controlled
 commits. The sanitized UI manifest is
 `docs/coordinator/separations-completion/evidence/ui/2026-09-01-candidate-dry-runs.md`.
+
+### 9.35 Controlled-sequence preflight stops before execution — 2026-09-02
+
+The operator selected an exclusive runtime window and **individual** approval of each real write
+(“1A, 2A”), not advance approval of any gate. The primary checkout was clean at `769e23c9`; it was
+pinned as `feature/03b-live-close`. The existing dashboard launcher was gracefully stopped, both
+ports were observed free, and `playwright-cli list` reported no browsers. No worker, live workflow,
+new gate, or external write was started in this preflight.
+
+**Plan/implementation mismatch, not an operator-access blocker.** D287 requires filing ② →
+immediate sweep ① → finalization ③ with separate operator-visible approval of each write. At this
+source, `src/workflows/separations/descriptor.ts` wires one identity gate, then `clear-pending` →
+`file-termination` → receipt → `finalize-kuali`, without intervening gates. The independently
+startable `ucpath-transaction/descriptor.ts` likewise includes sweep before filing under one gate.
+D307 omits that whole UCPath step; it does not select a filing-only or sweep-only transaction.
+No supported separately gated execution path for the D287 order was found in these registered
+graphs or the start-plan service. This corrects the earlier status report's claim that only
+operational approvals remained.
+
+There is a second load-bearing conflict: `ucpathPendingSweepIdempotencyKey` in
+`src/domain/contracts/ucpath/delete-pending-terminations.ts` is permanent per person. In
+`src/core/write-sequencer.ts`, a live “nothing pending” probe settles `observed-present`; subsequent
+execution reuses a committed/observed-present key **before** another live probe. Therefore using
+the ordinary real graph's initial no-op sweep would prevent a later sweep from witnessing deletion
+of the newly filed row. A fresh item or retry does not fix that key. Existing sequencer tests pin
+permanent-key reuse. No key, ledger, checkpoint, gate, or browser boundary was bypassed or changed.
+Resolving this conflict requires an explicitly authorized implementation/contract reconciliation;
+this observation ratifies no replacement design and does not change D287.
+
+The §9.34 rehearsal is historical, not current-source admission: its fingerprint is
+`0e750f535bf9d1f94be1ce1de83469c698a7fa9d6c7f0768cd9dab62afe458f6`, while the current separations
+manifest is `955991960b7b388ac4f44e64badd0ce895288797e5eb327bc9d6c5f0ccb7c6f1`. A fresh observation
+and submit-free rehearsal are required on the eventual fixed, pinned source. Doc 4589 was **not**
+re-observed here. The gone 4537 registry entry and environment were untouched; no substitute was
+selected.
+
+| Preflight proof | Result |
+|---|---|
+| `npm run typecheck` / `npm run lint` | both exit 0 |
+| `npm run test:coverage` | exit 0; statements 85.26%, branches 76.34%, functions 89.13%, lines 87.20% |
+| `npm run build:manifest:check` | exit 0, manifest current |
+| `npm run roadmap:check` | exit 1: `docs/roadmap/index.html is stale`; present on the clean intake source, not repaired here |
+| `git diff --check` | exit 0, run separately after the chained gate stopped at roadmap |
+| SQLite read-only global counts | `write_intents=0`, `write_attempts=0`, `durable_outbox=0` |
+| Storage doctor after dashboard restoration | exit 0; healthy generation 2012, verified-compatible current backup, generation gap 0 |
+| Restored dashboard | ports 3938/5174 listening; `/api/v1/bootstrap` and frontend HTTP 200; no browser sessions |
+
+The dashboard was restored with `npm run dashboard`; no workflow worker was started. These are
+global unchanged-write counts, **not** a new run's rehearsal evidence. All three controlled commits,
+their measurements and final close-out remain open. Resume boundary and exact git/runtime checks:
+`docs/handoffs/2026-09-02-separations-controlled-sequence-preflight.md`. The coordinator-owned board
+was not rewritten by this operational preflight.
