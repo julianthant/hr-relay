@@ -266,7 +266,15 @@ function ProvenanceMarks({ entry }: { entry: ContextDataEntry }) {
           was exactly a value carrying `correctedAt`, which the `corrected`
           badge above already says; D307 added the second operator arm — an
           ASSERTED value — and it draws its own badge above, naming the omitted
-          step. Either way the word is said once. */}
+          step. Either way the word is said once.
+
+          There is no THIRD operator arm to draw, and that is a wire invariant
+          rather than an assumption this file makes on its own:
+          `ContextDataSectionSchema` REFUSES an `operator` entry carrying
+          neither `correctedAt` nor `assertedStep`, because such a leaf would
+          arrive here unmarked with a clock beside it — a value nobody read,
+          drawn exactly like one a task observed. If that refusal is ever
+          relaxed, this comment is the one that has to change with it. */}
       {source === "derived" && (
         <Badge
           className="shrink-0"

@@ -730,6 +730,27 @@ export const ContextDataSectionSchema = z.strictObject({
           message: `an asserted value is operator-sourced; a ${entry.source} leaf never names an omitted step`,
         });
       }
+      /*
+       * D307 — the CONVERSE, and the one that actually protects the rail. There
+       * are exactly two operator-sourced values: a CORRECTION, which carries
+       * `correctedAt` and draws the `corrected` badge, and an ASSERTION, which
+       * carries `assertedStep` and draws the `asserted` badge naming the omitted
+       * step (`src/domain/workflow/checkpoint.ts` marks the row; `checkpoint-patch.ts`
+       * always stamps `correctedAt` and never sets `assertion`, so no third kind
+       * exists in authority). A leaf claiming `operator` with NEITHER leaf is
+       * therefore a producer defect, and the rail would draw it as an unmarked
+       * row with a clock beside it — a value nobody read, presented exactly like
+       * one a task observed. The wire refuses it here so the surface may assume
+       * the invariant instead of inventing a badge for an unnamed operator.
+       */
+      if (entry.source === "operator" && entry.correctedAt === undefined && entry.assertedStep === undefined) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "assertedStep"],
+          message: "an operator-sourced value is either a correction or an assertion; "
+            + "without `correctedAt` it must name the omitted step it was asserted for",
+        });
+      }
       if (entry.freshness !== undefined && entry.origin === undefined) {
         context.addIssue({
           code: "custom",
