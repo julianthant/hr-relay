@@ -327,7 +327,7 @@ function validateRecipe(
   const taskObjects = new Set<AnyWorkflowRecipeTask>();
   const taskIds = new Set<string>();
   for (const [group, members] of steps) {
-    const parsed = WorkflowStepSchema.parse(group);
+    const parsed = WorkflowStepSchema.parse({ key: group.key, label: group.label });
     TimelineCategoryKeySchema.parse(parsed.key);
     if (groupKeys.has(parsed.key)) throw new Error(`workflow recipe repeats timeline group key "${parsed.key}"`);
     if (groupLabels.has(parsed.label)) throw new Error(`workflow recipe repeats timeline group label "${parsed.label}"`);
@@ -603,6 +603,9 @@ export function compileWorkflowRecipeModule<
       }
     }
     return store;
+  }).sort((left, right) => {
+    if (left.kind === right.kind) return 0;
+    return left.kind === "browser" ? -1 : 1;
   });
   return Object.freeze({ descriptor, stores: Object.freeze(stores), recipe, ...extras });
 }
