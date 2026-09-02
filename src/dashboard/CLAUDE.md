@@ -1552,3 +1552,19 @@ binding would contradict them.
   ruled the duration stands bare, as the demo's `row.duration` does; D124's arithmetic
   (`endedAt − startedAt`, never `now`) is unchanged and the terminal status beside the number is
   what tells a settled duration from a live one.
+- **2026-09-01 — the Steps screen's omission form validates with the DESCRIPTOR's schema, not a copy
+  of it (D307).** `foldStepOmissionFacts` reads each control's raw draft into the shape its declared
+  kind names — and nothing more — then hands the whole candidate to `stepOmissionFactsSchema(form)`,
+  the same schema the plan service and the run envelope parse with. Restating the MM/DD/YYYY or
+  eight-digit regexes in the surface would let the screen refuse a fact the server accepts, or accept
+  one it refuses; it also cost nothing to discover that `text-list` declares no minimum, so an empty
+  box is a valid empty list rather than a refusal the screen invented. Two consequences worth
+  keeping: the facts sent are `parsed.data`, never the candidate, because the declared schemas
+  TRANSFORM (a `text` fact is trimmed) and the operator must confirm the same bytes the server
+  receives; and the request fingerprint carries the RAW drafts, so a half-typed date already clears a
+  settled plan instead of leaving one standing over `06/3`. The cascade (`forces`) has exactly one
+  application point — `toggleStepSelection` recomputes it against the NEW selection, and a second
+  deletion inside the uncheck branch was a line no mutation could turn red. Finally, `omittedSteps`
+  on the plan response is reconciled as a SET against what the dialog sent, and a mismatch disables
+  Start with both lists named: a plan token that describes a different run is not a run to start
+  hopefully.

@@ -466,8 +466,10 @@ export function StepOmissionFactsForm({
   }
   return (
     <fieldset className="grid min-w-0 grid-cols-1 gap-[var(--ds-space-cozy)] @min-[480px]:grid-cols-2">
+      {/* The legend NAMES the group, so a screen reader landing inside it
+          knows which omitted step these boxes stand in for. */}
       <legend className={cn(dsText.meta, "font-medium", dsFg.secondary)}>
-        What this run reads instead
+        {`What this run reads instead of ${step}`}
       </legend>
       {form.fields.map((field) => {
         const value = draft[field.key];
@@ -540,7 +542,6 @@ export function StepOmissionFactsForm({
           </Field>
         );
       })}
-      <span className="sr-only">{`These facts replace the ${step} step.`}</span>
     </fieldset>
   );
 }
