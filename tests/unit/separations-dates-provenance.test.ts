@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import type { AnyTaskContract } from "../../src/domain/contracts/base.js";
+import { redactObservedDataPoints } from "../../src/core/observed-data.js";
 import { createTaskProvenanceCollector, jsonLeafPaths } from "../../src/core/task-provenance.js";
+import type { ObservedDataPoint } from "../../src/core/span-emitter.js";
 import { JsonValueSchema } from "../../src/domain/canonical-json.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { NewKronosReadSeparationTimecard } from "../../src/domain/contracts/new-kronos/read-separation-timecard.js";
@@ -49,6 +51,7 @@ describe("separations dates task provenance", () => {
   it("records every reconciled output leaf before executor finalization", async () => {
     const plan = SeparationsReadSeparationPlan.example;
     const timecard = NewKronosReadSeparationTimecard.example;
+    const observed: ObservedDataPoint[] = [];
     const collector = createTaskProvenanceCollector({
       descriptor: separationsDescriptor,
       execution: {
@@ -66,7 +69,9 @@ describe("separations dates task provenance", () => {
         ],
       },
       clock: manualClock(new Date(NOW)),
-      onRecord: () => undefined,
+      onRecord: ({ points }) => {
+        observed.push(...redactObservedDataPoints(SeparationsReadSeparationDates.id, points));
+      },
     });
 
     const output = await readSeparationDatesTask.impl.run({
@@ -100,5 +105,16 @@ describe("separations dates task provenance", () => {
         originalObservedAt: NOW,
       },
     );
+    assert.deepEqual(observed.filter((point) => point.field === "source"), [{
+      direction: "read",
+      field: "source",
+      values: [{
+        key: "source",
+        classification: "safe-diagnostic",
+        transform: "allow",
+        state: "allowed",
+        value: "kronos-timesheet",
+      }],
+    }]);
   });
 });
