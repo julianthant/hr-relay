@@ -70,7 +70,19 @@ function singleResultAutoDrillPage(
   resultRowTexts: readonly string[] = [transactionId],
   bodyText = resultRowTexts.join(" "),
   resultRowVisibilities: readonly boolean[] = resultRowTexts.map(() => true),
+  options: Readonly<{
+    noResultsCount?: number;
+    noResultsVisible?: boolean;
+    keyedReceiptPresent?: boolean;
+    keyedReceiptVisible?: boolean;
+    autoReceiptVisible?: boolean;
+  }> = {},
 ): Page {
+  const noResultsCount = options.noResultsCount ?? 1;
+  const noResultsVisible = options.noResultsVisible ?? true;
+  const keyedReceiptPresent = options.keyedReceiptPresent ?? true;
+  const keyedReceiptVisible = options.keyedReceiptVisible ?? true;
+  const autoReceiptVisible = options.autoReceiptVisible ?? true;
   const textBySelector = new Map<string, string>([
     ["#UC_SS_TRANSACT_UC_TRANSACT_ID", transactionId],
     ["#UC_SS_TRANSACT_APPR_STATUS", "Pending"],
@@ -83,6 +95,11 @@ function singleResultAutoDrillPage(
   const present = (state: "row" | "empty" | "detail"): boolean =>
     preExisting === state
     || (clicked && (state === "detail" ? receiptCount > 0 : coPresent === state));
+  const currentReceiptCount = (): number => detailRequest === undefined
+    ? (present("detail") ? receiptCount : 0)
+    : (keyedReceiptPresent ? 1 : 0);
+  const currentReceiptVisible = (): boolean => currentReceiptCount() > 0
+    && (detailRequest === undefined ? autoReceiptVisible : keyedReceiptVisible);
   const locator = (selector: string) => {
     const value = {
       first: () => value,
@@ -91,7 +108,7 @@ function singleResultAutoDrillPage(
       click: async () => { clicked = true; },
       count: async () => {
         if (selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID") {
-          return present("detail") ? receiptCount : 0;
+          return currentReceiptCount();
         }
         if (selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')) {
           return present("row") ? resultRowTexts.length : 0;
@@ -99,11 +116,17 @@ function singleResultAutoDrillPage(
         return 1;
       },
       isVisible: async () => {
-        if (selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID") return present("detail");
+        if (selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID") {
+          return currentReceiptVisible();
+        }
         if (selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')) return present("row");
         return true;
       },
       waitFor: async () => {
+        if (selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID") {
+          if (currentReceiptCount() === 1 && currentReceiptVisible()) return;
+          throw timeoutError("fixture keyed detail receipt unavailable");
+        }
         if (selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')) {
           if (present("row")) return;
           await new Promise<never>(() => undefined);
@@ -133,19 +156,88 @@ function singleResultAutoDrillPage(
       return null;
     },
     locator,
-    getByText: () => {
+    getByText: (pattern: RegExp | string) => {
+      const markerMatches = pattern instanceof RegExp
+        ? pattern.test("No matching values were found")
+        : pattern === "No matching values were found";
       const value = {
         first: () => value,
-        count: async () => present("empty") ? 1 : 0,
-        isVisible: async () => present("empty"),
+        count: async () => markerMatches && present("empty") ? noResultsCount : 0,
+        isVisible: async () => markerMatches && present("empty") && noResultsVisible,
         waitFor: async () => {
-          if (present("empty")) return;
+          if (markerMatches && present("empty") && noResultsVisible) return;
           await new Promise<never>(() => undefined);
         },
       };
       return value;
     },
-    waitForFunction: async () => undefined,
+    waitForFunction: async (
+      predicate: unknown,
+      argument: unknown,
+      waitOptions: Readonly<{ timeout?: number; polling?: number }>,
+    ) => {
+      assert.equal(typeof predicate, "function");
+      const selectors = argument as Readonly<{
+        resultRow: string;
+        receipt: string;
+        noResultsText: string;
+      }>;
+      assert.deepEqual(selectors, {
+        resultRow: 'tr[id^="trPTS_CFG_CL_STD_RSL"]',
+        receipt: "#UC_SS_TRANSACT_UC_TRANSACT_ID",
+        noResultsText: "no matching values were found",
+      });
+      assert.deepEqual(waitOptions, { timeout: 45_000, polling: 50 });
+      const fixtureNode = (visible: boolean) => ({
+        fixtureVisible: visible,
+        getBoundingClientRect: () => ({
+          width: visible ? 10 : 0,
+          height: visible ? 10 : 0,
+        }),
+      });
+      const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+      const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: {
+          body: {
+            innerText: present("empty") && noResultsVisible
+              ? "No matching values were found"
+              : bodyText,
+          },
+          querySelectorAll: (selector: string) => {
+            if (selector === selectors.resultRow && present("row")) {
+              return resultRowVisibilities.map(fixtureNode);
+            }
+            if (selector === selectors.receipt) {
+              return Array.from(
+                { length: currentReceiptCount() },
+                () => fixtureNode(currentReceiptVisible()),
+              );
+            }
+            return [];
+          },
+        },
+      });
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: {
+          getComputedStyle: (node: Readonly<{ fixtureVisible: boolean }>) => ({
+            visibility: node.fixtureVisible ? "visible" : "hidden",
+            display: node.fixtureVisible ? "block" : "none",
+          }),
+        },
+      });
+      try {
+        const visible = (predicate as (value: typeof selectors) => unknown)(selectors);
+        if (visible !== true) throw timeoutError("fixture settlement wait expired");
+      } finally {
+        if (previousDocument === undefined) Reflect.deleteProperty(globalThis, "document");
+        else Object.defineProperty(globalThis, "document", previousDocument);
+        if (previousWindow === undefined) Reflect.deleteProperty(globalThis, "window");
+        else Object.defineProperty(globalThis, "window", previousWindow);
+      }
+    },
   } as unknown as Page;
 }
 
@@ -232,6 +324,66 @@ describe("SS Smart HR transaction scan", () => {
     assert.match(scan.reason, /settled in 2 states/u);
   });
 
+  it("returns an empty read only for one visible current no-results marker", async () => {
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage("", 0, "", "empty"),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.deepEqual(scan, {
+      state: "read",
+      emplId: EID,
+      rows: [],
+      scannedRowCount: 0,
+      observedAt: OBSERVED_AT,
+    });
+  });
+
+  it("refuses duplicate no-results markers", async () => {
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage(
+        "",
+        0,
+        "",
+        "empty",
+        "none",
+        [""],
+        "",
+        [true],
+        { noResultsCount: 2 },
+      ),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /exposed 2 no-results markers/u);
+  });
+
+  it("refuses a hidden no-results marker rather than manufacturing absence", async () => {
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage(
+        "",
+        0,
+        "",
+        "empty",
+        "none",
+        [""],
+        "",
+        [true],
+        { noResultsVisible: false },
+      ),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /rendered neither a result row/u);
+  });
+
   it("refuses a populated result grid whose rows expose no stable transaction id", async () => {
     const scan = await scanTerminationTransactionsOnPage(
       singleResultAutoDrillPage("", 0, "", "row"),
@@ -284,6 +436,31 @@ describe("SS Smart HR transaction scan", () => {
     assert.equal(scan.state, "read");
     if (scan.state !== "read") return;
     assert.deepEqual(scan.rows.map((row) => row.transactionId), [firstId, secondId]);
+    assert.equal(scan.scannedRowCount, 2);
+    assert.equal(scan.observedAt, OBSERVED_AT);
+  });
+
+  it("refuses a keyed result-row reread whose receipt is absent", async () => {
+    const transactionId = "T009000001";
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage(
+        transactionId,
+        0,
+        transactionId,
+        "row",
+        "none",
+        [transactionId],
+        transactionId,
+        [true],
+        { keyedReceiptPresent: false },
+      ),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /fixture keyed detail receipt unavailable/u);
   });
 
   it("refuses a row with no id even when an unrelated body id masks the count", async () => {
