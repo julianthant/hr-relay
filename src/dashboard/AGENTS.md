@@ -115,6 +115,9 @@ binding would contradict them.
   slots on terminal cards. An unopened requirement says `Opens when needed` and never carries a
   session id, age or health word; only an observed open span may say `Not checked` and expose its
   exact session identity. Historical leases without the field say authority is unavailable.
+  Because cards are lease authority and the projection's change triggers were spans, the BFF's
+  span-tail tick now also reconciles the lease set and publishes a snapshot on any card-drawn
+  lease move; heartbeats alone publish nothing.
 
 - **2026-09-02 — machine identity is not an approval card (D309).** The Separations identity-gate
   section is reachable only for a `name-resolved` packet, and its current ceremony requires the

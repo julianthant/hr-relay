@@ -142,6 +142,34 @@ describe("dashboard stream hub", () => {
     connection.close();
   });
 
+  it("resnapshots worker cards when a lease moves without any span", async () => {
+    const { w, hub } = harness();
+    const connection = await hub.connect({ day: DAY });
+    const observed: DashboardStreamEnvelope[] = [];
+    connection.subscribe((envelope) => observed.push(envelope));
+    const [initial] = connection.initial.filter((envelope) => envelope.type === "snapshot");
+    if (initial?.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
+    assert.deepEqual(initial.payload.workerCards, []);
+
+    // A worker process wrote its lease and has not emitted its first span yet.
+    w.authority.putWorkerLease(workerLeaseOf({
+      lifecycle: { state: "starting", startedAt: w.clock.now().toISOString() },
+    }));
+    w.projection.reconcileWorkerLeases();
+
+    const latest = observed.filter((envelope) => envelope.type === "snapshot").at(-1);
+    assert.ok(latest);
+    if (latest.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
+    assert.equal(latest.payload.workerCards.length, 1);
+    assert.equal(latest.payload.workerCards[0]?.state, "starting");
+    assert.deepEqual(latest.payload.workerCards[0]?.browserRequirements, {
+      state: "present",
+      systems: ["crm", "ucpath"],
+    });
+    assert.deepEqual(latest.payload.workerCards[0]?.browsers, []);
+    connection.close();
+  });
+
   it("replays retained patches for a resumable cursor and never re-snapshots", async () => {
     const { w, hub } = harness();
     queuedEventOf(w, { seed: 1 });

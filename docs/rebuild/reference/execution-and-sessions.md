@@ -430,7 +430,12 @@ producer this sentence gains when §10 lands, and the reason the two sections cr
 The lease persists the descriptor's ordered browser-system set when the worker starts; the
 dashboard never re-derives that set from its own potentially newer code. An older lease without the
 field remains readable and projects explicit unavailable authority. Ref dashboard-surfaces §9.9
-owns the requirement/open-session overlay. There is no **health** on an open tile: nothing probes a
+owns the requirement/open-session overlay. Because the card set is lease authority while the
+projection's change triggers are spans, the dashboard's span-tail tick also re-reads the exact
+lease set the cards render and publishes a fresh snapshot when a card-drawn fact moves — a lease
+born before its first span, the ticker's `starting` → `idle`, an operator directive, or a crash or
+expiry settled by another process. Heartbeat instants and the versions they bump draw nothing and
+publish nothing. There is no **health** on an open tile: nothing probes a
 live session, so it states which system its session speaks to and how long it has been open, and
 reads `Not checked`
 (`src/dashboard/surfaces/shell.tsx:710`) — which is the honest verdict and must never be drawn as a
