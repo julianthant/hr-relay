@@ -11,6 +11,7 @@ Verified 2026-09-02 at R4a admission source `318baa75` (code repair `5853ef80`),
 - Dashboard restored and exact historical run link verified; healthy/current storage generation 2021, 19/19 span streams, 19 total runs, global writes 0/0/0. No new workflow or actual HR write occurred.
 - User authorization: finish separations and prepare it for UI inspection. On 2026-09-02 the operator rejected repeated approvals: a provided EID that matches requires no approval; name-only selection requires approval. R3a ratifies and implements this correction. On 2026-09-02 the operator supplied the current possible document set `4593, 4579, 4564, 4544, 4502, 4495` for read-only R4a inspection. Prior implementation/test-seam authorization persists; no real deletion target or retention disposition is inferred.
 - Supervisor policy: every new run uses a newly created standalone supervisor task; do not reuse the R2/R2a/R3a/R3b nested supervisor. R4a and R4b each require their own fresh supervisor.
+- Integration authorization: after R4b, close reconciliation, and the full declared gates are verified, the coordinator is authorized to merge `feature/03b-live-close` into local `master` with `--no-ff`. No remote push is authorized.
 
 ## Unit ledger
 | Unit | Run | Status | Evidence | Disposition |
