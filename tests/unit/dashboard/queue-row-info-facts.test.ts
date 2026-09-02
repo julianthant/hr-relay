@@ -84,6 +84,9 @@ const operationSurface = surfaceOf(OPERATION_PRESENT);
 /** The present subtitle's entry, which LEADS every list the fold returns. */
 const SUBTITLE_ENTRY = { label: "Subtitle", state: "present", text: "person lookup" } as const;
 
+/** The present run number reads in the ⓘ, whole, since the footer's `#N` became the attempt (2026-09-01). */
+const RUN_NUMBER_ENTRY = { label: "Run number", state: "present", text: "#7 of this workflow" } as const;
+
 describe("the ⓘ carries the subtitle, and carries it whole", () => {
   it("carries a present subtitle's FULL value — the row shows it nowhere else", () => {
     const entries = rowInfoFacts(surfaceOf({
@@ -135,7 +138,7 @@ describe("the ⓘ excludes the run's extracted values", () => {
     }));
     assert.deepEqual(
       entries,
-      [SUBTITLE_ENTRY],
+      [SUBTITLE_ENTRY, RUN_NUMBER_ENTRY],
       "the receipt's output belongs to the row's chips; repeating it here made the ⓘ a second row",
     );
   });
@@ -147,7 +150,7 @@ describe("the ⓘ excludes the run's extracted values", () => {
     const entries = rowInfoFacts(surfaceOf({ ...SINGLE_PRESENT, facts: ABSENT_FIELDS.facts }));
     assert.deepEqual(
       entries,
-      [SUBTITLE_ENTRY],
+      [SUBTITLE_ENTRY, RUN_NUMBER_ENTRY],
       "no `Outcome` entry in either state",
     );
   });
@@ -169,13 +172,14 @@ describe("the ⓘ excludes the run's extracted values", () => {
  */
 describe("the ⓘ's absence arms", () => {
   it("reports NOTHING absent when the server served every field", () => {
-    assert.deepEqual(rowInfoFacts(singleSurface), [SUBTITLE_ENTRY]);
-    assert.deepEqual(rowInfoFacts(operationSurface), [SUBTITLE_ENTRY]);
+    assert.deepEqual(rowInfoFacts(singleSurface), [SUBTITLE_ENTRY, RUN_NUMBER_ENTRY]);
+    assert.deepEqual(rowInfoFacts(operationSurface), [SUBTITLE_ENTRY, RUN_NUMBER_ENTRY]);
   });
 
   it("reports the subtitle's own absence, and only it", () => {
     assert.deepEqual(rowInfoFacts(surfaceOf({ ...SINGLE_PRESENT, subtitle: ABSENT_FIELDS.subtitle })), [
       { label: "Subtitle", state: "absent", text: REASONS.subtitle },
+      RUN_NUMBER_ENTRY,
     ]);
   });
 
@@ -183,6 +187,7 @@ describe("the ⓘ's absence arms", () => {
     assert.deepEqual(rowInfoFacts(surfaceOf({ ...SINGLE_PRESENT, liveMessage: ABSENT_FIELDS.liveMessage })), [
       SUBTITLE_ENTRY,
       { label: "Live message", state: "absent", text: REASONS.liveMessage },
+      RUN_NUMBER_ENTRY,
     ]);
   });
 
@@ -196,11 +201,11 @@ describe("the ⓘ's absence arms", () => {
   it("reports a GROUP's missing member preview, and only for a group", () => {
     assert.deepEqual(
       rowInfoFacts(surfaceOf({ ...OPERATION_PRESENT, memberPreview: { state: "absent", reason: REASONS.memberPreview } })),
-      [SUBTITLE_ENTRY, { label: "Members", state: "absent", text: REASONS.memberPreview }],
+      [SUBTITLE_ENTRY, RUN_NUMBER_ENTRY, { label: "Members", state: "absent", text: REASONS.memberPreview }],
     );
     assert.deepEqual(
       rowInfoFacts(operationSurface),
-      [SUBTITLE_ENTRY],
+      [SUBTITLE_ENTRY, RUN_NUMBER_ENTRY],
       "a group that HAS a preview has no absence to report",
     );
   });

@@ -568,39 +568,19 @@ function RowFooterLine({
       >
         <span className="whitespace-nowrap">{fmtClock(surface.startedAt)}</span>
         {/*
-          #N — the run's ORDINAL within its workflow, in the demo's own slot
-          (`DemoQueue.tsx:709`, `#{row.run}`): the footer's second segment.
+          #N — the run's ATTEMPT, in the demo's own chip slot
+          (`DemoQueue.tsx:709`). The operator ruled the number here is the
+          attempt — how many times this item has been run — not the run's
+          ordinal within its workflow. `#1` is the ordinary case and is still
+          drawn, because the demo draws it on every row and a slot that appears
+          only on re-runs would shift the trace id sideways between rows.
 
-          It is a SIBLING of the trace chip beside it, never a substitute. The
-          ordinal is the short number an operator says out loud (*"#7 failed
-          again"*) and the trace id is the string every log, receipt and support
-          conversation is grepped by; the demo drew only the first because its
-          fixtures had no trace to print in the footer at all.
-
-          Absent is drawn as ABSENCE (D230/D133): a run enqueued before schema
-          v15 carries no ordinal, so the chip simply is not there and the trace
-          chip is the whole of the row's name. Nothing is substituted — a `#0`,
-          or the day-position of the row, would be a number an operator could
-          quote that means something else tomorrow.
+          The workflow ordinal (`runNumber`) is context, not provenance; it
+          moved into the ⓘ (`rowInfoFacts`), whole, where its absence was
+          already recorded (D230/D133).
         */}
-        {surface.runNumber.state === "present" && (
-          <span
-            title={`Run #${String(surface.runNumber.value)} of this workflow`}
-            className={cn(
-              "inline-flex shrink-0 items-center border px-[var(--ds-space-tight)] whitespace-nowrap",
-              "h-[var(--ds-h-xs)]",
-              dsRadius.sm,
-              "border-[color:var(--ds-recess-border)] bg-transparent",
-            )}
-          >
-            #{surface.runNumber.value}
-          </span>
-        )}
-        {/* The trace id is the run's NAME in every log, every receipt and every
-            support conversation, so it is the last thing that may be cut. It is
-            `nowrap`: if the line runs out, the SEGMENTS AFTER IT wrap. It reads
-            as an inset in the recessed band — no fill of its own. */}
         <span
+          title={surface.attempt > 1 ? `Attempt ${String(surface.attempt)} of this item` : "First attempt"}
           className={cn(
             "inline-flex shrink-0 items-center border px-[var(--ds-space-tight)] whitespace-nowrap",
             "h-[var(--ds-h-xs)]",
@@ -608,11 +588,16 @@ function RowFooterLine({
             "border-[color:var(--ds-recess-border)] bg-transparent",
           )}
         >
+          #{surface.attempt}
+        </span>
+        {/* The trace id is the run's NAME in every log, every receipt and every
+            support conversation, so it is the last thing that may be cut. It is
+            `nowrap`: if the line runs out, the SEGMENTS AFTER IT wrap. It is
+            plain text in the band's secondary ink (`DemoQueue.tsx:715`) — the
+            chip beside it is the only outlined segment on the line. */}
+        <span className="whitespace-nowrap text-[color:var(--ds-fg-secondary)]" title={surface.traceId}>
           {surface.traceId}
         </span>
-        {/* A first attempt is the ordinary case and says nothing; a re-run is a
-            fact about this run that changes how its evidence reads. */}
-        {surface.attempt > 1 && <span className="whitespace-nowrap">attempt {surface.attempt}</span>}
         {timing !== undefined && (
           <span className="whitespace-nowrap" {...(timing.title === undefined ? {} : { title: timing.title })}>
             {timing.text}

@@ -95,6 +95,14 @@ export function rowInfoFacts(surface: QueueSurfaceWire): readonly RowInfoFact[] 
   }
   if (surface.liveMessage.state === "absent") absent("Live message", surface.liveMessage.reason);
   if (surface.runNumber.state === "absent") absent("Run number", surface.runNumber.reason);
+  /*
+    PRESENT — the workflow ordinal left the footer too. The footer's `#N` chip
+    is the ATTEMPT (operator ruling, 2026-09-01); the ordinal is context about
+    where this run sits in its workflow's history and reads here, whole.
+  */
+  if (surface.runNumber.state === "present") {
+    facts.push({ label: "Run number", state: "present", text: `#${String(surface.runNumber.value)} of this workflow` });
+  }
   if (surface.surfaceKind === "operation" && surface.memberPreview.state === "absent") {
     absent("Members", surface.memberPreview.reason);
   }
