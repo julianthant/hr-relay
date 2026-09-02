@@ -15,7 +15,7 @@ tiles:
 - Workflows migrated | 2 of 15 | + separations at 8 of 9 exit criteria
 - Decisions | D1–D309 | D309 makes Separations identity authority source-conditioned: supplied/read-back EID is machine-verified; name-only requires the real gate · D131 retired, never reused
 - Gates | 69 active guards | integrated D191 2,729/2,729 · parity last frozen 157/157 on 08-25 · schema v18
-- !Critical-path blocker | Separations controlled-test protocol | 2026-09-02: historical 4589 preview is inspectable; §§9.35–9.36 block D287 because its sweep deletes the filing Kuali cites. Resolve the deletion/finalization and sweep-identity protocol, then rehearse and obtain explicit live-run authorization
+- !Critical-path blocker | Separations controlled proof | 2026-09-02: D310 implements exact-set deletion authority and requires the real filing to survive through finalization. Historical 4589 remains inspection-only; select the independent disposable target and restoration/retention disposition, then rehearse and obtain explicit live-run authorization
 
 <!-- roadmap:start -->
 
@@ -794,7 +794,7 @@ size: XL
 chip: historical preview available — controlled protocol blocked
 doc: 03b §Separations — order 8, the first migration · 03b §Exit criteria · 03c §Phase summary · 03c §Exit criteria · 03c §Recommended migration order (by risk / complexity / reuse) · ref:write-safety §12 · ref:write-safety §14.7
 
-> Write-heavy — UCPath termination + Kuali finalization, entered first by operator choice (D193). The workflow is built and 4589’s historical green preview is available for inspection (§9.34). The sole registered canary 4537 is gone (§9.33). D309 supersedes D287’s extra in-workflow approvals. Current controlled execution remains blocked: its person-level sweep key reuses a prior no-op, and D287’s post-filing sweep deletes the transaction Kuali would cite (§§9.35–9.36). Resolve the protocol decision and implementation, then obtain current-source rehearsal and explicit live-run authorization; criterion 5 remains open.
+> Write-heavy — UCPath termination + Kuali finalization, entered first by operator choice (D193). The workflow is built and 4589’s historical green preview is available for inspection (§9.34). The sole registered canary 4537 is gone (§9.33). D309 supersedes D287’s extra in-workflow approvals. D310 resolves §§9.35–9.36 in code with exact-set sweep authority and a fresh surviving-filing precondition. Controlled execution remains blocked on the independent disposable target and restoration/retention disposition, then current-source rehearsal and explicit live-run authorization; criterion 5 remains open.
 
 needs:
 - dash-defaults
@@ -802,6 +802,7 @@ needs:
 
 log:
 - 2026-09-02 | D309 identity authority | supplied/read-back EID now proceeds with explicit machine provenance and no gate row; name-only still parks for the actual operator command; D287 extra workflow approvals are superseded; deletion/finalization protocol remains pending (§9.38)
+- 2026-09-02 | D310 exact-set and filing survival | pending deletion now binds a canonical stable-T-ID eligible/protected set and refuses immutable person-only intents; Kuali finalization always re-verifies the exact filing still exists. No live target, target disposition or controlled-write proof is inferred (§9.39)
 - 2026-09-02 | coordinator readiness correction | §§9.33–9.36 supersede the old runtime-only blocker: gone 4537, historical green 4589 preview, then unsupported approval sequencing/sweep identity and a deleted-receipt protocol conflict. All controlled writes remain open; no protocol amendment or write approval inferred
 - 2026-08-20 | docs-cohesion 03b | the migration's own section rewritten as-built — the nineteen-node graph over four stores, the D260 → D261 start door, the ALWAYS-GATE, and the program's first canary registry (4537 the canary · 4502 the dry-run subject · 4495 future-dated; 4510 and 4524 both evaporated between passes) · left: the three commits, and the registry moving into `config/test-subjects.json` under cohesion 5.2c (`test-tiers` owns it)
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
@@ -964,7 +965,7 @@ doc: 03b §Track A · separations backend completion · 03b §Exit criteria · r
 > Separations has historical proof for 8 of 9 exit criteria; criterion 5 remains open. §9.34’s 4589 preview and exact-run 0/0/0 are inspectable history, not fresh admission. D309 removes approval sequencing from the blocker set; §§9.35–9.36 still block D287 on sweep identity and the deleted-filing reference. A proposed independent disposable-target deletion proof is pending operator judgment; implementation/test seams are already authorized. After that decision: implement and prove, freeze current source/input after a fresh rehearsal, obtain explicit live-run authorization, measure A5 and close A8. Gone registry canary 4537 is not silently replaced; UNKNOWN stops without retry.
 
 builds:
-- [ ] PROOF every controlled write with its own approval, fence, read-back and receipt; blocked until §§9.35–9.36’s protocol and implementation conflicts are resolved — no controlled write has run
+- [ ] PROOF every controlled write with its own fence, read-back and receipt under D309 identity authority; D310 mechanics are built, but the disposable target/disposition, current rehearsal and explicit live-run authorization remain — no controlled write has run
 - [ ] PROOF `probeToFenceMaxMs` per beat; D207's 30 s Kuali window on this write's own evidence; seven Kuali payload shapes observed live; the `would-prepare` preview arm live
 - [x] PROOF the first live RETRY on the composed graph — six retries, two lineages, one `done` (§9.20)
 - [x] BE browser-profile wedge root-caused (A7)
@@ -975,12 +976,12 @@ builds:
 needs:
 - sep-6c
 - you(met): name the §4f2 canary target(s) — doc 4537, 2026-08-19
-- fact: §§9.35–9.36 protocol decision and implementation first, then fresh target observation/rehearsal and explicit live-run authorization; 4537 is gone and 4589’s prior preview is historical
+- fact: D310 exact-set and filing-survival mechanics are built; next are disposable target/restoration-or-retention disposition, fresh observation/rehearsal and explicit live-run authorization; 4537 is gone and 4589’s prior preview is historical
 
 | # | Step | Status |
 |---|---|---|
 | ✓A1 | **Canary named: doc 4537** (08-19) — §9.19 mapped it live: one Active terminable employment, every finalization control resolving; 4524 and 4510 both gone. A subject is named by document number ONLY — a document number is not a person, and EIDs stay out of the repository (03b §The canary registry — every subject this migration has mapped) | done |
-| A2–A4 | Controlled filing, pending-sweep and finalization proof; explicit live-run authorization | **open** — §§9.35–9.36 protocol/implementation conflict; no controlled write |
+| A2–A4 | Controlled filing, pending-sweep and finalization proof; explicit live-run authorization | **open** — D310 mechanics are built; disposable target/disposition and current admission remain; no controlled write |
 | A5 | Obligations only the commits discharge (timings, propagation window, seven payload shapes, the preview arm live) | **open** — no fresh evidence; after A2–A4 |
 | ✓A6 | Live RETRY on the composed graph — six retries, no collision, one reached `done` (§9.20) | done |
 | ✓A7 | Root-cause the browser-profile wedge — **closed by D243/D244** | done |
@@ -1075,10 +1076,10 @@ status: you
 chip: needs you
 doc: 03b §Smaller operator calls open · ref:dashboard-surfaces §9.10 · 03c §Non-workflow capability closure inventory (D58) · ref:guards-and-tests §3.11 · ref:operator-trust §10 · ref:write-safety §13
 
-> The pending-sweep witness remains open. §9.36 proves D287’s post-filing sweep can delete the filing that Kuali then cites. The proposed replacement is an independent disposable-target deletion proof while preserving the real filing; it awaits operator decision and an explicitly named/approved target. D309 supersedes extra per-write workflow gates; explicit operational authorization remains mandatory before a real run. The gate-age pill, D192, A6, D239, D223/D240 and D254 remain settled; no earlier decision is reopened by this status correction.
+> The pending-sweep witness remains open. D310 replaces §9.36’s invalid post-filing deletion with an independent exact-set disposable-target proof while preserving the real filing through Kuali finalization. The mechanics are built; the target and restoration/retention disposition remain operator-owned. D309 supersedes extra per-write workflow gates; explicit operational authorization remains mandatory before a real run. The gate-age pill, D192, A6, D239, D223/D240 and D254 remain settled.
 
 builds:
-- [!] PROOF ① UCPath pending sweep’s COMMITTED arm needs a valid live witness; the proposed immediate post-filing witness is blocked by §9.36’s deleted-receipt contradiction. Resolve protocol and exact target before any deletion
+- [!] PROOF ① UCPath pending sweep’s COMMITTED arm needs a valid live witness; D310 supplies the exact-set protocol, but the independent disposable target and restoration/retention disposition must be fixed before any deletion
 - [x] DOCS keep or retire `kuali-timekeeper-annotation` — ANSWERED 2026-08-21: RETIRE (D266), dismantled into the testing framework as the Kuali finalization step's T1 pair (`workflow-tree`)
 - [x] FE the gate-age pill — ANSWERED 2026-08-18: the status pill carries NO age (*the word names the work, not the wait*); the age renders in the row's footer meta and in the log panel (`ref dashboard-surfaces` amended; `src/dashboard/surfaces/queue.tsx:281`)
 - [x] DOCS D192's re-disposition of `legacy-tool-ops-sanity-check-record` — ANSWERED 2026-08-18: no AI feature; §14.2's server-computed `comparisons` array IS the sanity check, deterministically. The register entry is `retired` with the ruling's own words (`config/legacy-capabilities.json`)

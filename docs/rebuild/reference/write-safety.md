@@ -1231,9 +1231,9 @@ status is the gate. The standing deferral is doc 04's `{#def-propagation}`.
 
 <!-- roadmap-status: sep-4 -->
 - [x] the termination write exists as a transaction pair — `ucpath/stage-termination` → `ucpath/create-termination`, `save-verify` through `ucpath/verify-termination`, probe `ucpath/match-existing-termination`, key `ucpath:termination|<eid>|<effectiveDate>`
-- [x] the date-agnostic pending sweep exists as its OWN transaction pair with its own permanent key — `ucpath/stage-pending-termination-sweep` → `ucpath/delete-pending-terminations`, key `ucpath:pending-terminations-clear|<eid>` — composed BEFORE the termination
+- [x] the pending sweep exists as its OWN transaction pair with an exact-set permanent key — `ucpath/stage-pending-termination-sweep` → `ucpath/delete-pending-terminations`, key `ucpath:pending-terminations-clear:v2|<eid>|<set-digest>` — composed BEFORE the termination (D310)
 - [x] both are `recoveryAbsence: operator-only` and both carry their reason in the contract (§4.2)
-- [ ] neither has run its §3.2 controlled commit; the sweep's COMMITTED arm additionally has **no witness** — clearing the last pending row removed the only mapped subject that had anything to sweep, so the only honest window is re-running the sweep immediately after the termination files (doc 03b, an operator call for 08-28)
+- [ ] neither has run its §3.2 controlled commit; the sweep's COMMITTED arm additionally has **no witness**. D310 forbids deleting the real filing as that witness; the independent disposable target and its restoration/retention disposition remain an operator-owned R4 packet (doc 03b)
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/ucpath/{create-termination,delete-pending-terminations,stage-termination,stage-pending-termination-sweep}.ts`; left: both controlled commits, and the sweep's committed-arm witness
 <!-- /roadmap-status -->
 
@@ -1250,7 +1250,7 @@ system-prefixed so two systems can never collide on one string:
 | contract | key |
 |---|---|
 | `ucpath/create-termination` | `ucpath:termination\|<emplId>\|<effectiveDate>` |
-| `ucpath/delete-pending-terminations` | `ucpath:pending-terminations-clear\|<emplId>` |
+| `ucpath/delete-pending-terminations` | `ucpath:pending-terminations-clear:v2\|<emplId>\|<canonical-eligible/protected-set-digest>` |
 | `kuali/save-separation-finalization` | `kuali:<documentNumber>\|finalization\|<transactionNumber>` |
 
 A key **never** incorporates run position, attempt number, array index, or the OCR fan-out index —
@@ -1260,6 +1260,14 @@ derive the same key, so beat ① sees the first run's committed intent and refus
 The digest the row is UNIQUE on is `sha256("hrauto:permanent-write-key:v1" ‖ system ‖ key)`, and
 `WriteIntentRecordSchema` re-derives it from the row's own fields, so a stored row cannot claim a
 key it does not hold.
+
+**Contract evolution cannot reinterpret immutable keys (D310).** A commit contract may declare
+`idempotency.retiredKeys`, each with its former key derivation and a closed refusal reason. Before
+either real or dry-run beat ①, the sequencer derives the current key and every retired key, rejects
+duplicate key material, and queries immutable intents by each retired permanent key. Finding one
+refuses before any probe, browser lease, fence or click. The row is neither rewritten nor counted as
+current proof. This is how the pre-D310 person-only sweep key remains readable history without
+letting an earlier empty no-op suppress a later nonempty exact set.
 
 **Historical D135 note — the retired timekeeper key included the VALUE deliberately.**
 `…|timekeeper-name|<eid>|<value>`
@@ -1272,13 +1280,30 @@ dedupe for reversibility, and only a write whose repetition is harmless may make
 **Two probe kinds are distinct and both are built** (separations taught the difference):
 - The **idempotency probe** reads *processed / filed* transactions (a committed `T…` exists) —
   `ucpath/match-existing-termination`, keyed EID + effdt + "Terminatn".
-- The **date-agnostic pending sweep** is a *commit cleanup* that deletes ALL in-progress unprocessed
-  Terminat rows for the EID regardless of effdt — it catches a stale prior attempt carrying a
-  *different* computed effdt that the date-keyed probe misses. It is NOT a probe and NOT a step
+- The **pending sweep** is a *commit cleanup* over the complete canonical set of in-progress
+  unprocessed Terminat rows observed for the EID — it catches a stale prior attempt carrying a
+  *different* computed effdt that the date-keyed filing probe misses. It is NOT a probe and NOT a step
   inside the termination: it is its own transaction pair
   (`ucpath/stage-pending-termination-sweep` → `ucpath/delete-pending-terminations`) with its own
   permanent key, its own binding proof and its own typed proof, composed BEFORE the termination.
-  Deleting nothing is a validated no-op; the deleted row identities are its proof.
+  Its v2 key hashes stable transaction ID, EID, action, current status, effective date and normalized
+  subject name across both eligible and protected partitions. Prepare re-reads that exact set,
+  uniquely joins every eligible stable T ID to the separate Transactions in Progress grid by the
+  facts both surfaces carry, and refuses any missing/new/changed/ambiguous set before selection.
+  Verification proves the selected IDs absent and every protected row present and unchanged.
+  Deleting nothing is a validated no-op for that observed empty set, but cannot suppress a later
+  nonempty set because it derives a different key.
+
+**The real filing must survive through Kuali finalization (D310).** Ordinary composition remains
+pending sweep → UCPath filing → Kuali finalization. The filing's durable typed receipt is necessary
+but no longer sufficient to stage Kuali: `ucpath/verify-termination-filing-present` always re-runs
+after the receipt and immediately before finalization. It must find exactly the receipt's stable T ID
+with the same supplied/read-back EID, effective date, normalized name, termination action and one of
+the currently accepted statuses. Missing, deleted, denied, changed, unreadable or ambiguous state
+stops before Kuali prepare/fence/click, preserves the existing receipt, and never re-files as repair.
+The result is current-presence authority only. A D307 operator-asserted receipt keeps
+`receiptDisposition: "operator-asserted"`; observing the row cannot turn an assertion into proof that
+this automation performed the filing.
 
 > **A DRY RUN runs these probes too (D215, 2026-08-14; normative text in ref workflow-model §2.1).** `executeDryRun`
 > used to evaluate `prepare` with no probe, so it rehearsed a path the real run never takes: the

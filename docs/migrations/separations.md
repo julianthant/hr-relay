@@ -7347,3 +7347,56 @@ supersedes D287's extra in-workflow per-write approval requirement for a supplie
 path. Explicit operational authorization and normal runtime admission still precede any real run, but
 are not workflow gates. The deletion target, sweep identity, filing-survival design and explicit
 target restoration/retention disposition remain pending exactly as recorded in §§9.35–9.37.
+
+### 9.39 Exact pending-set authority and a surviving filing — 2026-09-02 (D310)
+
+D310 resolves the two implementation contradictions from §§9.35–9.36 without running a live HR
+write or selecting a disposable target. Ordinary composition remains sweep → filing → finalization.
+The sweep is independent of the real filing, and finalization now requires fresh proof that the
+exact filing it will cite still exists.
+
+**Exact sweep identity.** `ucpath/read-pending-termination-set` performs the EID-filtered SS Smart
+HR search/detail read and partitions the canonical, stable-T-ID rows into every eligible `Pending`
+or `Pushed Back` termination and every protected other transaction. The sweep's v2 permanent key is
+`ucpath:pending-terminations-clear:v2|<eid>|<set-digest>`; the digest includes transaction ID, EID,
+action, approval status, effective date and displayed name across both partitions. Re-observing the
+same set dedupes without another browser/click. An empty set and a later nonempty set are different
+authorities. Any immutable person-only v1 intent causes a pre-probe/browser/fence/click refusal and
+is neither rewritten nor counted as current proof.
+
+Immediately before selection, the real driver repeats the stable-detail scan and requires the exact
+eligible/protected set. It then opens Transactions in Progress, where the live read-only mapping
+found no T-ID field but did find six named row fields: transaction type, effective date, name,
+Person ID, action and country. The row and checkbox DOM suffixes were positional. Prepare therefore
+joins each authorized eligible stable T ID to exactly one grid row using the EID, normalized name,
+effective date and termination-action facts common to both surfaces. Transaction type and country
+exist only on this grid, so each must resolve as one nonempty named control and is retained in staged
+evidence, but neither is fabricated as cross-surface identity. The suffix is never identity. Missing,
+changed, newly appeared, extra or ambiguous
+rows refuse before any checkbox/fence/click. The verifier requires exactly the selected stable IDs
+absent afterward and all protected rows still present and unchanged. The read-only mapping observed
+one in-progress grid row, five distinct stable transaction IDs on the detail search, one in-progress
+termination, and one unique common-fact join; the durable R3b evidence is sanitized and stores no
+name, EID or transaction value.
+
+**Surviving filing.** The durable UCPath filing receipt now feeds
+`ucpath/verify-termination-filing-present`, an `always-rerun`, zero-freshness, override-forbidden read
+immediately before `finalize-kuali`. It must find exactly the receipt's T ID with the same EID,
+effective date, normalized displayed name, termination action and a current accepted approval
+status. Missing/deleted/denied/changed/unreadable/ambiguous authority fails at `filing-presence`
+before Kuali prepare, fence or click. The run never re-files to repair downstream failure. A D307
+asserted transaction retains `receiptDisposition: "operator-asserted"`; the fresh read proves only
+that the row currently exists and cannot turn asserted ingress into controlled-filing evidence.
+
+**Regression boundary.** The real executor/gate/receipt composition over temporary SQLite and fake
+external systems now proves the surviving path and the §9.36 deleted-filing path. Removing the fake
+filing after the name-only identity gate makes the run terminalize at `filing-presence` with
+`FILING_NOT_CURRENT`, zero Kuali stage and zero write-intent/attempt/outbox rows. Supplied-EID
+composition retains D309 machine authority with no gate row; name-only retains its one real command
+gate; dry-run stays submit-free. Pure folds cover changed, denied, missing and ambiguous rows, and
+the always-rerun node prevents an earlier checkpoint from substituting for current presence.
+
+No live workflow, gate approval, deletion, registry/environment mutation or HR write occurred. The
+read-only browser session was closed. D310 supplies mechanics, not criterion-5 evidence: the exact
+disposable target, independent deletion proof, restoration/retention disposition, fresh rehearsal,
+explicit live-run authorization and all three controlled commits remain open for R4.
