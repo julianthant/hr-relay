@@ -7092,7 +7092,11 @@ explicit pool members drained the other six. No identity or write gate was resol
 Exact-run SQLite queries returned `write_intents=0`, `write_attempts=0`, and `durable_outbox=0` for
 every row. The three future-dated documents were therefore skipped at their own date admission and
 were not retried. The other two terminal failures are subject-specific current facts, not runtime
-failures, and were not retried. Of the two viable candidates, 4589 provides the clean attempt-1
-lineage for the next operator identity decision; it is not yet a green u2 rehearsal because the
-gate remains open and no preview terminal exists. The sanitized UI manifest is
+failures, and were not retried. Of the two viable candidates, 4589 provided the clean attempt-1
+lineage. The operator approved its fresh identity packet, which requeued the run; one explicit
+worker drain then verified that exact approval and reached terminal `done` at `clear-pending`'s
+dry-run preview. Receipt `0fa49971-bd6a-5a80-8c23-6392614d46c7` records `DRY_RUN_PREVIEW`,
+settlement `already-present`, and no external write. The exact-run counts remained 0/0/0. This is
+the green u2 rehearsal; source and canonical input freeze here through the three controlled
+commits. The sanitized UI manifest is
 `docs/coordinator/separations-completion/evidence/ui/2026-09-01-candidate-dry-runs.md`.

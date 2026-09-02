@@ -153,9 +153,11 @@ on current subject facts (`CONCURRENT_ACTIVE_EMPLOYMENTS`, `EMPLOYEE_NOT_FOUND`)
 approvals was consumed.
 
 The run for 4589 is the clean attempt-1 continuation candidate: current Kuali, UCPath and New Kronos
-facts reached comparison, and the Logs panel rendered those recorded observations. The adjacent Run
-data rail remained empty and used copy claiming no fields had been extracted; that rail is backed by
-the checkpoint/edit ledger rather than the observed-log projection, so the sentence is misleading
-for this run. u2 remains open until the operator resolves 4589's identity gate and its resumed dry
-run reaches the preview terminal. Source/canonical input are not frozen yet, and u3–u5 have not
-started.
+facts reached comparison, and the Logs panel rendered those recorded observations. The operator
+approved its fresh identity packet; an explicit worker drain resumed the queued run and reached
+terminal `done` at `clear-pending`'s `already-present` dry-run preview. Receipt `0fa49971…` carries
+the load-bearing `DRY_RUN_PREVIEW` warning, and exact-run authority remained 0/0/0. u2 is green;
+source and canonical input freeze here through ③. The adjacent Run data rail remained empty and
+used copy claiming no fields had been extracted; that rail is backed by the checkpoint/edit ledger
+rather than the observed-log projection, so the sentence is misleading for this settled run.
+u3–u5 have not started and none of the three write approvals has been consumed.
