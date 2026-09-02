@@ -109,10 +109,11 @@ import { resolveSubjectTitle } from "../projectors/run-subject-title.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../support.js";
 import { sha256Hex } from "../../../domain/sha256.js";
 import { idempotencyKeyDigestReference } from "../../../domain/redaction.js";
-import { deriveRunStatus, panelKindOf, taskStateOf } from "../run-status.js";
+import { deriveRunStatus, panelKindOf, taskStateOf, type TaskSpanOutcome } from "../run-status.js";
 import {
   DiagnosticBundleBytesMissingError,
   DiagnosticBundleCorruptError,
+  ProjectionDegradedError,
   SectionUnavailableError,
   TargetNotFoundError,
 } from "../../failures.js";
@@ -482,6 +483,40 @@ type TimelineStepState = TimelineStepWire["state"];
 type TimelineNotRunReason = NonNullable<TimelineStepWire["members"][number]["notRunReason"]>;
 
 /**
+ * D307 — one span's not-run reason, and the CONTRADICTION that used to be
+ * dropped on the floor beside it.
+ *
+ * Both readers below asked "is this fold skipped?" before reading the span's
+ * `notRunReason`, so a span carrying a reason whose own outcome folds to `done`,
+ * `failed` or anything else simply lost it: the strip drew a step that RAN, the
+ * wire's own refinement never saw the pair (it refuses a reason on a member that
+ * ran, and the reason had already been discarded), and authority's disagreement
+ * with itself reached nobody. A span that says both "I did not run, for this
+ * reason" and "I finished" is a recorder defect, and this projection refuses it
+ * by name rather than picking the half that renders.
+ *
+ * The message names the node id, the outcome and the closed reason — all
+ * repository-authored or closed vocabulary. No span path, trace id or run id:
+ * this reaches the operator as an HTTP body.
+ */
+function spanNotRunReason(
+  span: Readonly<{ outcome?: TaskSpanOutcome; notRunReason?: TimelineNotRunReason }> | undefined,
+  nodeId: string | undefined,
+): TimelineNotRunReason | undefined {
+  const reason = span?.notRunReason;
+  if (reason === undefined) return undefined;
+  const state = taskStateOf(span?.outcome);
+  if (state !== "skipped") {
+    throw new ProjectionDegradedError(
+      `${nodeId === undefined ? "a task span with no resolvable node" : `node "${nodeId}"`} recorded the `
+      + `not-run reason "${reason}" and an outcome this projection folds to "${state}"; a span cannot both `
+      + "have not run and have finished, and this projection will not choose which half to draw",
+    );
+  }
+  return reason;
+}
+
+/**
  * Fold the member node states into ONE category state. Precedence tells the
  * truth loudest-first: a failure anywhere in the category is the category's
  * fact; a gate waiting beats everything but a failure; live work beats a
@@ -616,9 +651,10 @@ function buildTimelineSteps(
      * span, so the strip can draw an operator-asserted node distinctly from an
      * omitted one. A span that recorded no reason contributes none: a member
      * whose reason authority does not hold says nothing rather than a likely
-     * thing.
+     * thing — and a span that recorded one beside a non-skipped outcome REFUSES
+     * rather than losing it (`spanNotRunReason`).
      */
-    const notRunReason = state === "skipped" ? latest?.notRunReason : undefined;
+    const notRunReason = spanNotRunReason(latest, node.id);
     let ms = 0;
     let measured = false;
     for (const span of executions) {
@@ -691,12 +727,15 @@ export function buildRunDetail(
   for (const span of row.taskSpans) {
     const state = taskStateOf(span.outcome);
     // A skip is not a cancellation, and a skip WITHOUT a recorded reason is
-    // not a skip with a guessed one. Both absences stay named.
+    // not a skip with a guessed one. Both absences stay named — and a reason
+    // recorded beside a non-skipped outcome refuses here too, through the one
+    // helper both timeline readers share.
+    const spanReason = spanNotRunReason(span, nodeIdOfTaskSpanPath(span.spanPath));
     const notRun = state !== "skipped"
       ? { state: "absent", reason: "this step ran" } as const
-      : span.notRunReason === undefined
+      : spanReason === undefined
         ? { state: "absent", reason: "this step did not run; its span recorded no reason" } as const
-        : { state: "present", reason: span.notRunReason } as const;
+        : { state: "present", reason: spanReason } as const;
     // The seed carries ref dashboard-surfaces §1.1's whole span identity. `<trace>/<node>#<taskAttempt>`
     // repeats verbatim across RUN attempts, so a node re-run after a recovered
     // failure yields two genuinely distinct folded spans that share a path — both

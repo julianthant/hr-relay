@@ -135,6 +135,40 @@ describe("run detail under step omission (D307)", () => {
     assert.equal(detail.outcome.result, "verified-done");
   });
 
+  /*
+   * D307 — the contradiction the projection used to drop on the floor. Both
+   * timeline readers asked "is this fold skipped?" before reading the span's
+   * reason, so a span saying BOTH "I did not run, for this reason" and "I
+   * finished" simply lost the reason: the strip drew a step that ran, and the
+   * wire's own refinement never saw the pair because the half that would have
+   * tripped it had already been discarded.
+   */
+  it("refuses a span that recorded a not-run reason beside an outcome that RAN", () => {
+    const w = world();
+    queuedEventOf(w, { seed: 1, lifecycle: TERMINAL_DONE });
+    claimEventOf(w, 1);
+    taskEventsOf(w, 1, "timecard", "skipped", "operator-asserted");
+
+    /*
+     * The pair cannot be EMITTED: `SpanEventWireSchema` refuses a not-run
+     * reason on a non-skipped task span at the write boundary. It can be HELD:
+     * `TaskSpanFoldSchema` — the schema the projection persists and restores a
+     * fold row through — pairs the two fields with no refinement between them,
+     * so a durable row is exactly where this contradiction reaches
+     * `buildRunDetail`. The fold row is mutated here to be that row.
+     */
+    const fold = w.projection.runFold(uuidOf(1));
+    const span = fold?.taskSpans.find((entry) => entry.name === "timecard");
+    assert.ok(span !== undefined, "the fixture must have folded a timecard span");
+    assert.equal(span.notRunReason, "operator-asserted");
+    span.outcome = "done";
+
+    assert.throws(
+      () => detailOf(w),
+      /node "timecard" recorded the not-run reason "operator-asserted" and an outcome this projection folds to "done"/u,
+    );
+  });
+
   it("leaves a member whose span recorded no reason without one", () => {
     const w = world();
     queuedEventOf(w, { seed: 1, lifecycle: TERMINAL_DONE });
