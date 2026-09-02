@@ -20,7 +20,7 @@ import {
 } from "../../../domain/dashboard/settings.js";
 import { LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../domain/ids.js";
 import type { WorkflowModuleRole } from "../../../domain/workflow/module-role.js";
-import { projectStartSteps } from "../../../services/start/step-selection.js";
+import { projectStartSteps, startStepWireControl } from "../../../services/start/step-selection.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 
 /**
@@ -157,9 +157,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
           key: step.key,
           label: step.label,
           includedByDefault: step.includedByDefault,
-          control: step.control.state === "selectable"
-            ? { state: "selectable" as const, inputField: step.control.inputField }
-            : { state: "required" as const, reason: step.control.reason },
+          control: startStepWireControl(step.control),
         })),
         ...(descriptor.surfaces.inputRun === undefined
           ? {}

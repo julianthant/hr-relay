@@ -138,9 +138,16 @@ describe("bootstrap start-surface block", () => {
             key: step.key,
             label: step.label,
             includedByDefault: step.includedByDefault,
+            // Reconstructed inline ON PURPOSE: the server maps this union
+            // through `startStepWireControl`, and a test that called the same
+            // helper would be the producer agreeing with itself. The three
+            // arms are restated here so the wire's shape is asserted, not
+            // shared.
             control: step.control.state === "selectable"
               ? { state: "selectable", inputField: step.control.inputField }
-              : { state: "required", reason: step.control.reason },
+              : step.control.state === "omittable"
+                ? { state: "omittable", form: step.control.form, forces: step.control.forces }
+                : { state: "required", reason: step.control.reason },
           })),
           ...(descriptor.surfaces.inputRun === undefined
             ? {}

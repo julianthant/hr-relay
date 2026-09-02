@@ -12,6 +12,7 @@ import { InputRunSurfaceSchema } from "../workflow/ingress.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
 import { PreflightCheckIdSchema } from "../preflight-contract.js";
 import { EnqueuePolicySchema, WorkflowCodeSchema } from "../workflow/presentation.js";
+import { StepOmissionFormSchema } from "../workflow/step-omission.js";
 import {
   AppVersionSchema,
   DashboardWireVersionSchema,
@@ -145,6 +146,8 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
  * nothing can produce is the D181/`degraded` shape, and it belongs in the commit
  * that adds the first upload surface.
  */
+const StepKeySchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+
 export const WorkflowStartWireSchema = z.strictObject({
   summary: z.string().min(1).optional(),
   enqueue: EnqueuePolicySchema,
@@ -152,11 +155,26 @@ export const WorkflowStartWireSchema = z.strictObject({
   inputRun: InputRunSurfaceSchema.optional(),
   spreadsheetIntake: z.boolean(),
   steps: z.array(z.strictObject({
-    key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    key: StepKeySchema,
     label: z.string().min(1),
     includedByDefault: z.boolean(),
+    /**
+     * D285/D307 — the step's ONE way not to run, as a closed union.
+     *
+     * `omittable` carries the step folder's declared FORM (the closed field
+     * vocabulary the Steps screen draws, imported from the domain module that
+     * owns it rather than restated here — a second declaration of the same
+     * vocabulary is how a wire and a planner drift) and `forces`, the other
+     * step keys this choice would drag out with it, so the screen can lock
+     * exactly what `planStepOmissions` would refuse.
+     */
     control: z.discriminatedUnion("state", [
       z.strictObject({ state: z.literal("selectable"), inputField: z.string().min(1) }),
+      z.strictObject({
+        state: z.literal("omittable"),
+        form: StepOmissionFormSchema,
+        forces: z.array(StepKeySchema),
+      }),
       z.strictObject({ state: z.literal("required"), reason: z.string().min(1) }),
     ]),
   })).min(1),
