@@ -10,8 +10,15 @@
 | R4a | fresh rehearsal and target packet | u13–u14 | ready after R3b; dry-run/read-only authorized | one current dashboard dry run, exact-run 0/0/0, D309 visible authority, exact live candidate/disposition packet |
 | R4b | controlled proof and close | u15 | R4a + explicit operational authorization for exact live target/disposition | controlled receipts/read-backs/measurements, criterion 5 and close-out |
 
+## Supervisor wave ledger
+
+| Run | Task id / corrections | Host id | Project id | Launch title/time | Worktree/branch | Report | Status | Last cursor |
+|---|---|---|---|---|---|---|---|---|
+| R4a | pending fresh launch | pending | pending | `Separations R4a — Fresh Rehearsal and Target Packet` / pending | fresh worktree from `feature/03b-live-close` | `reports/r4a-fresh-rehearsal-and-target-packet.md` | briefed | none |
+| R4b | not briefed; fresh supervisor required | — | — | — | fresh worktree after R4a integration | `reports/r4b-controlled-proof-and-close.md` | blocked on R4a packet + exact operational authorization | none |
+
 ## Dispatch ledger
-R2 uses one compact nested `sup_supervisor` because serial runtime access and two worker slots suffice; no new user-owned task is requested. Primary checkout exception is in profile. R2 reported without source commits. Agent id `/root/sup_supervisor_separations_readiness` (native `sup_supervisor`, clean-context launch, 2026-09-02). Report `reports/r2-readiness.md`; evidence `evidence/r2/`; read-only review findings `research/r2-protocol.md`. Coordinator owns board, plan, decisions and canonical status docs; supervisor owns report/evidence/research only.
+R2 used one compact nested `sup_supervisor` because serial runtime access and two worker slots sufficed. That historical supervisor was reused through R3b, but the operator superseded that launch policy on 2026-09-02: every new run now gets a newly created standalone supervisor task. R4a and R4b are serial and each gets its own fresh task/worktree. R2 reported without source commits. Historical agent id `/root/sup_supervisor_separations_readiness` (native `sup_supervisor`, clean-context launch, 2026-09-02). Report `reports/r2-readiness.md`; evidence `evidence/r2/`; read-only review findings `research/r2-protocol.md`. Coordinator owns board, plan, decisions and canonical status docs; each supervisor owns only its exact report/evidence/research paths.
 
 ## Units
 - u6 (supervisor): verify storage/authority and full gates; quiesce/restore own dashboard, preserve exact failures and lint results. No source changes without a bounded defect report and coordinator clarification.
@@ -39,4 +46,4 @@ R2 report verified against raw serial log, source config and rendered screenshot
 R3a integrated u10–u12 in commits `47c47666`, `f785a029`, `233cde61`, `8063fb5f`, `5931a695`; proof `36f0562f`. Report and receive record prove gates/review/runtime. R3b exact brief `briefs/r3b-sweep-and-filing-survival.md`, units u17/u18, same nested native supervisor and established primary checkout exception. Exact live target/disposition is deliberately deferred to R4 and does not block safe implementation/tests.
 
 ## R3b received / R4a dispatch admission
-R3b integrated u17/u18 in `1bda8afb`, `730a5030`, `4e00d145`, `f2eee0ae`; proof `4d4804ec`. R4a brief `briefs/r4a-fresh-rehearsal-and-target-packet.md`, units u13/u14, same nested native supervisor, serial live-runtime exception. It may start exactly one dashboard `dryRun=true` run and perform live reads; no gate approval or HR write. u15 remains dependent on the exact operator-facing packet and explicit operational authorization.
+R3b integrated u17/u18 in `1bda8afb`, `730a5030`, `4e00d145`, `f2eee0ae`; proof `4d4804ec`. R4a brief `briefs/r4a-fresh-rehearsal-and-target-packet.md`, units u13/u14, uses a fresh standalone supervisor worktree. It may start exactly one dashboard `dryRun=true` run and perform read-only inspection of the exact current candidate set `4593, 4579, 4564, 4544, 4502, 4495`; no gate approval or HR write. u15 remains dependent on the exact operator-facing packet and explicit operational authorization, and R4b must launch under another fresh supervisor.

@@ -2,7 +2,7 @@
 
 Repository: `/Users/julianhein/Projects/hr-automation-rebuild`.
 Workspace: `/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/separations-completion`.
-Verified 2026-09-02 at status commit `9321fe2f`, runtime/test configuration `5853ef80`; sole worktree on `feature/03b-live-close`, master `769e23c9`. Reports/evidence are committed with this refreshed profile.
+Verified 2026-09-02 at coordination admission `318baa75`, runtime/test configuration `5853ef80`; primary checkout on `feature/03b-live-close`, master `769e23c9`. Reports/evidence are committed with this refreshed profile.
 
 R2a default full gate: 388 files / 4,795 tests pass, no skips; typecheck/lint/manifest/roadmap green. R2 parity 287/287 covers unchanged UI. Dashboard restored on 3938/5174; storage healthy/current, 19 runs, zero writes. Exact evidence lives in R2/R2a reports. The original 85d3b082 intake and its red gates remain historical evidence.
 
@@ -12,8 +12,8 @@ The operator requested coordinator-led completion so the workflow can be inspect
 - Plan/status: `docs/roadmap/roadmap.md`, `docs/rebuild/03b-finish-separations.md`.
 - Live/as-built authority: `docs/migrations/separations.md`, especially §§9.33–9.36 and §6.
 - Contracts: `docs/rebuild/reference/{write-safety,workflow-model,operator-trust,clock-config-secrets,guards-and-tests,dashboard-surfaces,frontend-backend-integration}.md`; decisions is a pointer index, never a substitute for its owner.
-- D284/D300 retain gone canary 4537 and one document-number environment reference. Operator-named batch evidence in §9.34 permits historical inspection; it does not register 4589 as the replacement controlled target.
-- D287's filing → deletion → finalization sequence is blocked by §9.36's deleted-receipt contradiction. The protocol amendment is not ratified.
+- D284/D300 retain gone canary 4537 and one document-number environment reference. Operator-named batch evidence in §9.34 permits historical inspection; it does not register a replacement controlled target. On 2026-09-02 the operator supplied the current read-only candidate set `4593, 4579, 4564, 4544, 4502, 4495`; R4a may inspect those exact documents but may not infer a write target or disposition.
+- D287's original filing → deletion → finalization proof was blocked by §9.36's deleted-receipt contradiction. R3b ratified D310 and implemented the replacement exact-set sweep plus surviving-filing proof; only the live target/disposition and controlled execution remain open.
 - Prior implementation and real sequencer plus run/gate/receipt test seams are authorized in `docs/handoffs/2026-09-02-separations-controlled-sequence-preflight.md`. Protocol choice and each actual live write remain operator-owned.
 
 ## Gates
@@ -25,7 +25,7 @@ The established primary-checkout exception remains for this small serial runtime
 Live reads and dryRun=true are pre-authorized. Operator correction 2026-09-02: supplied EID verified by exact read-back proceeds without approval; name-only selection requires approval. R3a ratifies this rule; prior individual-write-approval requirements are superseded for the EID-verified path. R3a itself performs no real HR writes. No inferred live deletion target, no altered ledger/key to bypass reuse, no UNKNOWN retry, no fabricated transaction number. Browser work uses playwright-cli through `/ui` and the browser reference; close owned browser sessions after proof.
 
 ## Coordination and close
-One compact nested native `sup_supervisor` run at a time, at most two subordinate worker slots. Only this coordinator may edit/stage/commit the exact board. Run size 3–5 seams; main judgment remains supervisor-owned. Unique writer artifacts named in brief.
+Every newly briefed run receives a fresh standalone `gpt-5.6-sol` high-reasoning supervisor task in its own worktree; supervisors are never reused across runs. R4a and R4b remain serial because R4b consumes R4a's exact target packet. Only this coordinator may edit/stage/commit the exact board. Run size 3–5 seams; main judgment remains supervisor-owned. Unique writer artifacts are named in each brief.
 Close targets: phase 03b, migration record, roadmap and generated index, applicable instruction twins only if behavior changes; decision pointer only on actual ratification. Keep workspace. Retain unresolved handoffs; remove only after recovery state is verified and fully represented.
 
 ## R2a authorized reliability scope

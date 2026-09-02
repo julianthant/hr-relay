@@ -1,7 +1,7 @@
 # Board — separations completion
 
 Profile: `project-profile.md`. Board owner: this coordinator only. Integration line: `feature/03b-live-close`, eventual `master --no-ff` after completion.
-Verified 2026-09-02 at `9321fe2f` (code repair `5853ef80`), sole checkout. R2/R2a received; overall completion remains open; the 2026-09-02 operator correction clears R3a identity-policy implementation. Coordination artifacts are committed with this board. This replaces stale board facts from `1bbd1005`; historical reports remain evidence, not current admission.
+Verified 2026-09-02 at R4a admission source `318baa75` (code repair `5853ef80`), primary checkout. R2/R2a/R3a/R3b received; overall completion remains open. Coordination artifacts are committed with this board. This replaces stale board facts from `1bbd1005`; historical reports remain evidence, not current admission.
 
 ## Current facts
 - Built workflow and historical live preview are proved, including 4589 run `ca6a5462-4e52-43b7-ac85-f9bdb7fd30cf`, receipt `0fa49971-bd6a-5a80-8c23-6392614d46c7`, exact-run 0/0/0 (§9.34).
@@ -9,7 +9,8 @@ Verified 2026-09-02 at `9321fe2f` (code repair `5853ef80`), sole checkout. R2/R2
 - All three controlled writes remain open. §§9.35–9.36 prove unsupported individual approval sequencing, permanently reused sweep identity, and a deleted filing still cited by finalization. None is waived by green tests.
 - R2 full coverage was red twice; R2a repaired file-worker scheduling in `5853ef80`. Default full gate now passes 388/388 files, 4,795/4,795 tests, zero skips; typecheck/lint/manifest/roadmap pass. R2 parity 287/287 applies to unchanged UI. Earlier red evidence is retained in evidence/r2/; default green and unchanged checks are in evidence/r2a/.
 - Dashboard restored and exact historical run link verified; healthy/current storage generation 2021, 19/19 span streams, 19 total runs, global writes 0/0/0. No new workflow or actual HR write occurred.
-- User authorization: finish separations and prepare it for UI inspection. On 2026-09-02 the operator rejected repeated approvals: a provided EID that matches requires no approval; name-only selection requires approval. R3a ratifies and implements this correction. Prior implementation/test-seam authorization persists; no real deletion target or retention disposition is inferred.
+- User authorization: finish separations and prepare it for UI inspection. On 2026-09-02 the operator rejected repeated approvals: a provided EID that matches requires no approval; name-only selection requires approval. R3a ratifies and implements this correction. On 2026-09-02 the operator supplied the current possible document set `4593, 4579, 4564, 4544, 4502, 4495` for read-only R4a inspection. Prior implementation/test-seam authorization persists; no real deletion target or retention disposition is inferred.
+- Supervisor policy: every new run uses a newly created standalone supervisor task; do not reuse the R2/R2a/R3a/R3b nested supervisor. R4a and R4b each require their own fresh supervisor.
 
 ## Unit ledger
 | Unit | Run | Status | Evidence | Disposition |
@@ -29,14 +30,14 @@ Verified 2026-09-02 at `9321fe2f` (code repair `5853ef80`), sole checkout. R2/R2
 ## Residue and decisions
 - Exact real/disposable targets and restoration/retention disposition remain unresolved in the decision sheet. Its proposed individual write approvals are superseded by the operator's EID rule; do not re-request them for an EID-verified separation. This separate residue does not block R3a.
 - u17/u18 exact-set deletion and filing-survival mechanics: R3b complete and received.
-- u13/u14 fresh submit-free rehearsal plus read-only exact target packet: R4a dispatched.
+- u13/u14 fresh submit-free rehearsal plus read-only exact target packet: R4a ready for fresh-supervisor dispatch.
 - u15 controlled writes, measurements and rebuild-ready close: after R4a and explicit operational authorization for the exact target/disposition.
 - Run-data rail misleading empty-state confirmed in R2 screenshot at context-rail.tsx:872; owned future UI correction. Fresh Start Run modal currently has Dry run unchecked: inspection is not authorization to start; hr-manage operations explicitly choose dryRun=true.
 - Historical 4568/R3, omitted identity/Kuali/job-summary steps, and unrelated dashboard redesign remain in their canonical owners.
 - Exact unresolved handoffs: `docs/handoffs/2026-09-02-separations-controlled-sequence-preflight.md`, workspace handoffs `2026-09-01-finish-separations-r1-rev4.md` and `rev5.md`. Retain pending verified recovery/disposition.
 
 ## Current recovery boundary
-R2/R2a are verified; this is not a closed separations board. R3a and R3b are received complete through `4d4804ec`; receive reports record proof. Next: R4a runs one fixed-source submit-free rehearsal and prepares the exact live target/disposition packet under `briefs/r4a-fresh-rehearsal-and-target-packet.md`. R4 controlled writes remain separately authorization-gated. Current handoff: `handoffs/2026-09-02-separations-ready-for-protocol-decision.md`. Earlier exact handoffs listed above remain active/historical recovery evidence because their controlled-proof close conditions have not been met; no file was deleted. Receive proof: `reports/2026-09-02-coordinator-receive.md`. Workspace retained.
+R2/R2a are verified; this is not a closed separations board. R3a and R3b are received complete through `4d4804ec`; receive reports record proof. Next: a fresh R4a supervisor runs one current-source submit-free rehearsal against the operator's exact six-document candidate set and prepares the exact live target/disposition packet under `briefs/r4a-fresh-rehearsal-and-target-packet.md`. R4b controlled writes remain separately authorization-gated and will use another fresh supervisor. Current handoff: `handoffs/2026-09-02-separations-ready-for-protocol-decision.md`. Earlier exact handoffs listed above remain active/historical recovery evidence because their controlled-proof close conditions have not been met; no file was deleted. Receive proof: `reports/2026-09-02-coordinator-receive.md`. Workspace retained.
 
 ## R3a admission — 2026-09-02
 Verified clean cde45a5b, sole primary worktree, current roadmap/manifest; storage healthy schema29 generation2021, 19/19 reconciled streams. Units u10/u11/u12 now mean policy ratification, conditional identity execution, and real composition proof. Reuse exact native supervisor `/root/sup_supervisor_separations_readiness`; report `reports/r3a-eid-approval-policy.md`. Canonical ratification is assigned to that run, not claimed complete here.
@@ -45,4 +46,4 @@ Verified clean cde45a5b, sole primary worktree, current roadmap/manifest; storag
 R3a proof accepted: clean sole worktree, full coverage 389 files/4,809 tests, parity 287/287, typecheck/lint/manifest/roadmap green, review PASS, runtime restored and no writes. u17/u18 are ready for code-only protocol mechanics. This admission does not select or authorize a real UCPath deletion target. Reuse `/root/sup_supervisor_separations_readiness`; report `reports/r3b-sweep-and-filing-survival.md`; evidence `evidence/r3b/`.
 
 ## R4a admission — 2026-09-02
-R3b proof accepted: D310 mechanics, live read-only identity mapping, full coverage 4,818/4,818, parity 287/287, review PASS, runtime healthy and unchanged at 19/0/0/0. u13/u14 are authorized for one dashboard-started `dryRun=true` run and read-only target packet. No workflow gate resolution or actual HR write/delete/finalization is authorized. Reuse `/root/sup_supervisor_separations_readiness`; report `reports/r4a-fresh-rehearsal-and-target-packet.md`; evidence `evidence/r4a/`.
+R3b proof accepted: D310 mechanics, live read-only identity mapping, full coverage 4,818/4,818, parity 287/287, review PASS, runtime healthy and unchanged at 19/0/0/0. u13/u14 are authorized for one dashboard-started `dryRun=true` run and read-only inspection of exactly `4593, 4579, 4564, 4544, 4502, 4495`. No workflow gate resolution or actual HR write/delete/finalization is authorized. Launch a fresh standalone supervisor; report `reports/r4a-fresh-rehearsal-and-target-packet.md`; evidence `evidence/r4a/`.
