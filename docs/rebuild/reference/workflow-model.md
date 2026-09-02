@@ -2211,7 +2211,7 @@ A successful workflow has one durable terminal result. The executor evaluates `r
 itself from the run's stored canonical input and the exact schema-validated checkpoint outputs;
 no caller supplies a candidate result. The descriptor factory fixes dependency order and maps
 each conditional dependency to its one legal absence reason (`condition-false` or
-`branch-not-selected`). It parses the derived value through the descriptor's exact result schema
+`branch-not-selected`, plus D307's `operator-asserted` and `step-omitted` — §5.8). It parses the derived value through the descriptor's exact result schema
 and issues an in-process authorization seal bound to both the parsed current run and result. An
 initial authority write rejects a structurally valid hand-built record without that seal and
 independently rereads every named checkpoint; a not-run dependency is rejected when the same
@@ -2225,6 +2225,47 @@ JSON, and the exact dependency/checkpoint identities used to derive it. An await
 and reparses this record through the target workflow result schema; spans, tracker prose, a task
 example, or an in-memory return value are never result authority. A failed/cancelled/partial run
 has a typed terminal outcome but no fabricated successful result record.
+
+### 5.8 Step omission (D307)
+
+A step folder may declare an `omission` beside its nodes, passed to `nodes.category(fragments, {
+omission })` (`src/domain/workflow/step-omission.ts`): a closed `form` (field kinds `text`,
+`us-date`, `eid`, `integer`, `boolean`, `enum`, `text-list`) the Steps screen draws, and a `produces`
+map keyed by the step's TASK node ids — each a pure function that rebuilds one complete, schema-valid
+node output from the typed facts and the run's scope. Producers rebuild TASK nodes only: gate nodes
+in an omitted step always run (ALWAYS-GATE, D77/§4d, stands under every omission) and transaction
+nodes in an omitted step never run and mint no envelope (D144 — the write sequencer's row is the only
+thing that may say a write happened). A node the step cannot honestly rebuild is `omitted`; a running
+node elsewhere in the graph that depends on an omitted node refuses at plan time, by node and step
+name, before anything executes (`planStepOmissions`).
+
+The executor's plan (`src/core/run-executor.ts`, `PlanEntry`) gains two modes: `asserted` (a
+producer-rebuilt task) and `omitted` (nothing runs, nothing is produced), alongside the existing
+`execute` / `replay` / `skipped-condition` / `replay-gate`. An asserted node's output is persisted as
+an ordinary `run_checkpoints` row carrying an `assertion: { step, assertedAt }` marker
+(`src/domain/workflow/checkpoint.ts`), whose every provenance leaf is `operator`-sourced. Replay of
+that row is admitted only under the SAME assertion; a run that later executes the node (a
+recomposition, never a mode change mid-run) ignores it. A gate resume — a new claim of the same
+attempt reaching the node again — republishes THIS run's own marked row rather than minting a second
+one, so one attempt holds exactly one row per node.
+
+Terminal evidence gets a third dependency arm: `AssertedTerminalDependencySchema` (ref
+`src/domain/run/result.ts`) binds the node id, step, `assertedAt`, output-schema hash and output
+digest, so a reader can prove the terminal derive consumed exactly the asserted value and never
+mistakes it for an observed one. It is distinct from `not-run`: a task an omitted step's producer
+rebuilt is `operator-asserted` on its span but arrives as the `asserted` arm in the terminal record,
+never as `not-run`; `step-omitted` is reserved for a transaction, or a task no producer rebuilds, in
+a step the operator omitted.
+
+Omissions ride the run envelope as `stepOmissions` (`src/domain/run/envelope.ts`,
+`src/domain/run/start-plan.ts`) — ordered, one entry per step, present only when nonempty — never the
+canonical input: an omission changes which nodes execute, not what the item is. It is copied
+unchanged through retry, relaunch and fan-out exactly like `dryRun`, and keys only on the
+`run.queued` span. `src/services/start/step-selection.ts` (`resolveStartStepOmissions`) reconciles
+the operator's typed submission against the descriptor's declared forms and cascade BEFORE a plan
+row exists, through the same `planStepOmissions` the executor runs, so a cascade the Steps screen let
+through refuses here instead of at the worker. See ref dashboard-surfaces §9.1 (the Steps screen), ref
+write-safety (never a transaction) and ref frontend-backend-integration (the wire and refusal codes).
 
 ---
 

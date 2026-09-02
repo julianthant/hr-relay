@@ -290,6 +290,13 @@ environment-supplied.
 
 ## Conventions
 
+- **2026-09-01 — D307 step omission.** Declare an omission BESIDE the step's own nodes
+  (`nodes.category(fragments, { omission })`), never as a separate mechanism. Its `produces` map
+  rebuilds TASK node outputs only — a gate always runs (ALWAYS-GATE) and a transaction never runs and
+  mints no envelope (D144). A typed fact an omission consumes never crosses a served wire or a span;
+  the receipt and result name the assertion (`disposition: "operator-asserted"`, an `{ state:
+  "omitted", step }` arm) instead of replaying the value.
+
 - **2026-08-31 — D294 retires mobile/phone document Capture Mode.** Do not reintroduce its QR start,
   page, ingress/tunnel, session/bundle/handoff authority, routes, configuration, or tests. Diagnostic
   screenshots, run Capture tiles, receipts, and Archive evidence are separate diagnostic authority

@@ -1160,6 +1160,38 @@ registered workflow declares one); presets; preflight results in the modal; per-
 host lines; the plan's `warnings`/`decisions` prose and per-row role/panel/containment; and D264 row
 D11, which is what makes step 1 read a projection rather than the bundle.
 
+##### D307 — the Steps screen's third control arm, and the start plan's omission wire (2026-09-01)
+
+`projectStartSteps` (`src/services/start/step-selection.ts`) gains a third `control.state`, beside
+D285's `selectable`/`required`: **`omittable`** — a step whose folder declares an omission form
+(ref workflow-model §5.8). Its wire shape carries `form` (the closed field vocabulary) and `forces`
+(the other steps the cascade drags out with it); `startStepWireControl` maps all three arms onto
+`WorkflowStartWire["steps"][number]["control"]` as one total mapping, never a two-arm ternary a third
+arm can silently fall through.
+
+The start-plan **request** carries `stepOmissions: [{ step, facts }]` beside `selectedStepKeys` —
+one entry per omitted step, typed facts only for that step's declared form. The plan **response**
+serves `omittedSteps` as KEYS ONLY; the typed facts never cross back onto a wire. `resolveStartStepOmissions`
+reconciles the submission against the descriptor's forms and cascade before a plan row exists, and
+refuses with HTTP 400 `START_STEP_OMISSION_REFUSED` naming one `StartStepOmissionRefusedError` code:
+
+| code | when |
+|---|---|
+| `selection-required` | `stepOmissions` arrived with no `selectedStepKeys` |
+| `unknown-step` | the named step is not on this workflow's timeline |
+| `step-not-omittable` | the named step declares no omission; it must run |
+| `step-not-omitted` | the named step is selected to run; it may not carry omission facts |
+| `duplicate-step` | the same step is omitted twice |
+| `facts-missing` | an omitted omittable step carries no typed facts |
+| `facts-invalid` | the typed facts fail the step's own form schema (field keys named, never values) |
+| `cascade-refused` | a running node reads what this omission would leave unread |
+| `single-subject-only` | typed facts describe ONE subject; a multi-subject plan cannot carry them |
+| `selection-invalid` | the D285 selection itself is malformed (unknown/repeated key, a required step deselected) |
+
+The refusal message names step keys and field keys only — never a typed value, since a typed fact is
+operator input about a real person (a date, an EID, a transaction number) and echoing it would put it
+in a wire body, a log line and a browser console at once.
+
 ##### D250 — the typed box DESCRIBES itself, and its examples are proved typeable (2026-08-20)
 
 The demo's typed-input block carries three things this tree served none of (R8 finding 17): an
