@@ -3,14 +3,14 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 28;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 29;
 
 /**
  * Tables created by the immutable v1 migration and retired by v28. They stay
  * named here only so the released migration can retain its exact bytes; they
  * are absent from the current authority registry and from every repository.
  */
-const RETIRED_PHONE_CAPTURE_TABLES = [
+export const RETIRED_PHONE_CAPTURE_TABLES = [
   "capture_sessions",
   "capture_photo_order",
   "capture_finalization_outboxes",
@@ -414,6 +414,20 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   `,
   artifact_outbox: jsonRecordTable("artifact_outbox"),
   artifact_sink_heads: jsonRecordTable("artifact_sink_heads"),
+  // D308 — the delete tombstone. One row per deleted run, inserted FIRST in the
+  // delete transaction; every relaxed `*_never_deleted` trigger reads it.
+  deleted_runs: `
+    CREATE TABLE deleted_runs (
+      record_key TEXT PRIMARY KEY,
+      workflow TEXT NOT NULL,
+      trace_id TEXT NOT NULL,
+      origin TEXT NOT NULL CHECK (origin IN ('queue', 'archive')),
+      command_id TEXT NOT NULL,
+      deleted_at TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
   /**
    * Ref data-intake-and-edit-data §2.2's in-progress upload → map → validate session (2i-E1). The
    * operator's decisions plus the immutable source identity — rows and
@@ -666,6 +680,7 @@ const POST_V1_TABLE_ORDER = [
   "runtime_config",
   "settings_current",
   "bulk_command_acceptances",
+  "deleted_runs",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly MigrationTableName[];
@@ -1486,6 +1501,87 @@ export const SQLITE_MIGRATIONS = deepFreeze([
       "DROP TABLE capture_finalization_outboxes",
       "DROP TABLE capture_photo_order",
       "DROP TABLE capture_sessions",
+    ],
+  },
+  {
+    // D308 — delete means delete. A terminal run, on the queue or in the
+    // Archive, can be removed from authority with every row it owns. The
+    // `deleted_runs` tombstone is insert-only and written FIRST; each
+    // never-delete trigger below is relaxed to pass ONLY behind a tombstone for
+    // that exact run, so no other code path gains a delete. This migration
+    // removes no rows.
+    version: 29,
+    statements: [
+      SQLITE_TABLE_DDL.deleted_runs,
+      "CREATE INDEX deleted_runs_workflow_idx ON deleted_runs(workflow, deleted_at)",
+      // The tombstone is written with an EMPTY tally before the cascade (the
+      // relaxed triggers must see it) and settled with the final tally once.
+      // Only that one-way settle is an admitted UPDATE; every other change aborts.
+      `CREATE TRIGGER deleted_runs_immutable_update
+        BEFORE UPDATE ON deleted_runs
+        WHEN NOT (
+          NEW.record_key = OLD.record_key
+          AND NEW.workflow = OLD.workflow
+          AND NEW.trace_id = OLD.trace_id
+          AND NEW.origin = OLD.origin
+          AND NEW.command_id = OLD.command_id
+          AND NEW.deleted_at = OLD.deleted_at
+          AND NEW.created_at = OLD.created_at
+          AND json_array_length(OLD.record_json, '$.removed') = 0
+          AND json_array_length(NEW.record_json, '$.removed') > 0
+        )
+        BEGIN SELECT RAISE(ABORT, 'deleted run tombstones are immutable once their tally is settled'); END`,
+      `CREATE TRIGGER deleted_runs_never_deleted
+        BEFORE DELETE ON deleted_runs
+        BEGIN SELECT RAISE(ABORT, 'deleted run tombstones are never deleted'); END`,
+      `CREATE TRIGGER deleted_runs_immutable_insert_conflict
+        BEFORE INSERT ON deleted_runs
+        WHEN EXISTS (SELECT 1 FROM deleted_runs WHERE record_key = NEW.record_key)
+        BEGIN SELECT RAISE(ABORT, 'deleted run tombstone already exists for this run'); END`,
+      `CREATE TRIGGER deleted_runs_require_live_run_insert
+        BEFORE INSERT ON deleted_runs
+        WHEN NOT EXISTS (SELECT 1 FROM tasks WHERE record_key = NEW.record_key)
+        BEGIN SELECT RAISE(ABORT, 'a deleted run tombstone names a run that authority does not hold'); END`,
+      "DROP TRIGGER archived_runs_never_deleted",
+      `CREATE TRIGGER archived_runs_never_deleted
+        BEFORE DELETE ON archived_runs
+        WHEN NOT EXISTS (SELECT 1 FROM deleted_runs WHERE record_key = OLD.record_key)
+        BEGIN
+          SELECT RAISE(ABORT, 'archived runs are never deleted outside a D308 deleted_runs tombstone');
+        END`,
+      "DROP TRIGGER archive_relaunches_never_deleted",
+      `CREATE TRIGGER archive_relaunches_never_deleted
+        BEFORE DELETE ON archive_relaunches
+        WHEN NOT EXISTS (
+          SELECT 1 FROM deleted_runs WHERE record_key = OLD.archived_run_id OR record_key = OLD.record_key
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'relaunch provenance is never deleted outside a D308 deleted_runs tombstone');
+        END`,
+      "DROP TRIGGER dry_run_scenario_results_never_deleted",
+      `CREATE TRIGGER dry_run_scenario_results_never_deleted
+        BEFORE DELETE ON dry_run_scenario_results
+        WHEN OLD.run_id IS NULL OR NOT EXISTS (SELECT 1 FROM deleted_runs WHERE record_key = OLD.run_id)
+        BEGIN
+          SELECT RAISE(ABORT, 'dry-run scenario results are never deleted outside a D308 deleted_runs tombstone');
+        END`,
+      "DROP TRIGGER activity_person_pseudonyms_never_deleted",
+      `CREATE TRIGGER activity_person_pseudonyms_never_deleted
+        BEFORE DELETE ON activity_person_pseudonyms
+        WHEN NOT EXISTS (SELECT 1 FROM deleted_runs WHERE record_key = OLD.run_id)
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym evidence is never deleted outside a D308 deleted_runs tombstone'); END`,
+      "DROP TRIGGER ledger_projections_never_deleted",
+      `CREATE TRIGGER ledger_projections_never_deleted
+        BEFORE DELETE ON ledger_projections
+        WHEN NOT EXISTS (
+          SELECT 1 FROM durable_outbox AS outbox
+          JOIN write_intents AS intent ON intent.record_key = outbox.write_intent_id
+          JOIN deleted_runs AS tombstone ON tombstone.record_key = json_extract(intent.record_json, '$.runId')
+          WHERE outbox.record_key = OLD.record_key
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'ledger projections are never deleted outside a D308 deleted_runs tombstone');
+        END`,
     ],
   },
 ] as const);

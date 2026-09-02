@@ -2,6 +2,7 @@ import { z } from "zod";
 import { OperatorXlsxExportEvidenceSchema } from "../../domain/dashboard/xlsx-export.js";
 import { DuoCeremonyLeaseRecordSchema } from "../../domain/duo-ceremony-lease.js";
 import { RunSessionRecordSchema } from "../../domain/run/session.js";
+import { DeletedRunRecordSchema } from "../../domain/run/deleted-run.js";
 import { WorkerPoolRecordSchema } from "../../domain/run/worker-pool.js";
 import type { AuthorityTableName } from "../../domain/authority.js";
 import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
@@ -288,6 +289,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   /** D269 / ref execution-and-sessions §11 — the per-workflow pool declaration and the run session. */
   worker_pools: WorkerPoolRecordSchema,
   run_sessions: RunSessionRecordSchema,
+  /** D308 — the delete tombstone: the one row a deleted run leaves behind. */
+  deleted_runs: DeletedRunRecordSchema,
 } satisfies Record<AuthorityRecordTableName, z.ZodType>);
 
 export type DiagnosticAttachmentStorageRecord = z.infer<typeof DiagnosticAttachmentStorageRecordSchema>;

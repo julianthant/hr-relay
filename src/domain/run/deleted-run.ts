@@ -1,0 +1,79 @@
+/**
+ * The DELETE tombstone (D308).
+ *
+ * The operator ruled on 2026-09-01 that *delete means delete*: a terminal run —
+ * on the queue or in the Archive — is removed from the authority database with
+ * every row it owns, its write ledger included. What survives is exactly ONE
+ * row: this tombstone, keyed by the run id, inserted FIRST in the same
+ * transaction that removes everything else.
+ *
+ * It exists for three reasons, none of them nostalgia:
+ *
+ * 1. **The never-delete triggers are relaxed behind it, not removed.** Schema
+ *    v29 rewrites each `*_never_deleted` trigger on a run-owned table to abort
+ *    UNLESS a tombstone for that run already exists. A stray `DELETE` from any
+ *    other code path still aborts by name; only the delete command, which
+ *    writes the tombstone first, can pass.
+ * 2. **Span files are never rewritten (D301).** The run's span lines stay in
+ *    their shared daily JSONL until the 30-day prune. The storage doctor reads
+ *    this table so a root whose run was deleted is classified as deleted, not
+ *    reported as missing authority forever.
+ * 3. **The idempotency key is gone with the ledger.** `removed` records how
+ *    many `write_intents` rows left with the run, so the fact that a permanent
+ *    write key was released is visible in authority even though the key is not.
+ */
+import { z } from "zod";
+import { CommandIdSchema, IsoInstantSchema, RunIdSchema, TraceIdSchema, WorkflowIdSchema } from "../ids.js";
+
+/** Which door the operator used. The cascade is the same; the admission is not. */
+export const DeletedRunOriginSchema = z.enum(["queue", "archive"]);
+
+/** Every table the cascade may touch, so a count can never name a table it did not read. */
+export const DeletedRunTableSchema = z.enum([
+  "ledger_projections",
+  "durable_outbox",
+  "write_attempts",
+  "write_intents",
+  "diagnostic_attachments",
+  "diagnostic_bundles",
+  "evidence_receipts",
+  "dry_run_scenario_results",
+  "activity_person_pseudonyms",
+  "provider_admissions",
+  "failures",
+  "run_terminal_outbox",
+  "run_results",
+  "run_terminal_authorizations",
+  "run_checkpoints",
+  "notifications",
+  "dependencies",
+  "delegation_manifests",
+  "archive_relaunches",
+  "archived_runs",
+  "tasks",
+]);
+
+export const DeletedRunRecordSchema = z.strictObject({
+  runId: RunIdSchema,
+  workflow: WorkflowIdSchema,
+  traceId: TraceIdSchema,
+  origin: DeletedRunOriginSchema,
+  /** the journaled command that performed the delete — the tombstone's provenance */
+  commandId: CommandIdSchema,
+  deletedAt: IsoInstantSchema,
+  /** rows removed per table, in cascade order; a table absent here removed nothing */
+  removed: z.array(z.strictObject({
+    table: DeletedRunTableSchema,
+    rows: z.number().int().nonnegative(),
+  })),
+});
+export type DeletedRunRecord = z.infer<typeof DeletedRunRecordSchema>;
+
+/** The repository's input: the identity facts plus who is deleting and when. */
+export const RunDeleteInputSchema = z.strictObject({
+  runId: RunIdSchema,
+  origin: DeletedRunOriginSchema,
+  commandId: CommandIdSchema,
+  now: IsoInstantSchema,
+});
+export type RunDeleteInput = z.infer<typeof RunDeleteInputSchema>;
