@@ -108,7 +108,7 @@ Pinned initial target: `daa518588b2e415891e3b5f4db52678d97e026a8`.
 | Standards | 2 low + 1 judgement: over-copied inherited trust text and deferred task names | Reduced to workflow deltas; stable ids recorded in `14a801a9`. |
 | Spec | 1 high + 2 medium + 1 low: D209 conflict, Match task classification, I-9 role, task ids | All corrected/preserved in `14a801a9`; focused Terra re-review: `Count: 0 · Worst: none`. |
 | Docs | 3 medium + 3 low, then 1 medium + 1 low: missing crash/impossible cases and confidence mappings, stale citation/base attribution, access-probe wording | Corrected in `14a801a9` and `66e0cd73`; final Luna re-review: `Count: 0 · Worst: none`. |
-| D312–D316 authority reconciliation | Coordinator amendment received after initial close; exact owner text was not yet on this branch | Pinned integration commit `1273c360`. Initial focused reviews of `e1a55921` found one spec medium, one standards medium plus two lows, and five docs mediums plus one low, with overlap on `always-rerun` and review-record evidence. The follow-up diff corrects those findings and requires focused re-review before close. |
+| D312–D316 authority reconciliation | Coordinator amendment received after initial close; exact owner text was not yet on this branch | Pinned integration commit `1273c360`. Initial focused reviews of `e1a55921` found one spec medium, one standards medium plus two lows, and five docs mediums plus one low, with overlap on `always-rerun` and review-record evidence. Corrected in `9bd30dc5`; focused Terra spec, Luna standards and Luna docs re-reviews each returned `Count: 0 · Worst: none`. |
 
 Correctness, Silent failures, Performance and Tests were skipped as code axes because the branch is
 documentation-only and changes no runtime behavior. Security was supervisor-reviewed: no auth,
@@ -139,12 +139,19 @@ At intake, the exact read-only board was observed at main-checkout HEAD
 `51259faa944c1663f979659cb82a24ce7e3ae13d`, SHA-256
 `1f0254397458c44fcafdaf04e557df2ec1c0bf56242abec75a6dd10da6aac95e`.
 
-At close it had changed under the coordinator to main-checkout HEAD
+At the initial close it had changed under the coordinator to main-checkout HEAD
 `7b3325d672542c2c5f4c54396bb1a28c9d2597b8`, Git blob
 `bf66a5def7fa0223b00eb0e4b069cb0cb2cdafd7`, SHA-256
-`d814ff89527ca6a16465e0822a8b036b9cbb5e77794041e0fcd543626cccaf8c`. The current board records R2
-as running with decision residue isolated and points its operator question to the coordinator-owned
-decision sheet. R2 did not edit, stage or commit the board.
+`d814ff89527ca6a16465e0822a8b036b9cbb5e77794041e0fcd543626cccaf8c`.
+
+At amendment close the coordinator-owned board had advanced independently to main-checkout HEAD
+`889ca344f9c2740a4bf0f5664854773d81aeb628`, Git blob
+`06bca6af98cf3596ab96f5faae2bf4aa7ec32a3d`, SHA-256
+`fc56aa32eafbc6f9d4cb09600a563daedbde84e1b8e695d163068021f087f07f`. It records the D312–D316
+amendment, permits R2 to close with the T1 residue isolated, and points the question to the
+coordinator-owned decision sheet. The board bytes were unchanged at final verification while the
+main checkout advanced to `db72bae6cfce55b5632f68176bfac1d86a895589`. R2 did not edit, stage or
+commit the board.
 
 ## Commits and residue
 
@@ -154,6 +161,8 @@ decision sheet. R2 did not edit, stage or commit the board.
 | `14a801a9fbf3f2bb6b7d8a624ae8e12ca57787c2` | Review fixes and explicit D209/T1b conflict/options |
 | `66e0cd737efbafddfa97d1551276b211a638e987` | Final trust-confidence and access-observation corrections |
 | `06882995c13c289ee674163d2e4f06dc1f720e98` | Initial R2 report before the coordinator's D312–D316 amendment |
+| `e1a55921a7468d980447ebf0e6c54d70b6b29f3d` | D312–D316 application pinned to integration authority `1273c360` |
+| `9bd30dc5f604842d4bd0044543188dc4e18d6f71` | Focused review fixes and commit-qualified owner citations |
 
 Open residue is exact: coordinator decision 1 for the read-only T1 live-proof contract; a new live
 I-9 completed-signer canary; R1 compiler integration before R3 implementation. No successful-run
