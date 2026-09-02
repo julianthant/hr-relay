@@ -869,6 +869,7 @@ export function RunStartDialog({
   const [priority, setPriority] = useState<StartPriority>("interactive");
   const [dryRunRequested, setDryRunRequested] = useState(false);
   const [browserMode, setBrowserMode] = useState<BrowserMode>("headless");
+  const [captureBrowserScreenshots, setCaptureBrowserScreenshots] = useState(true);
   const [plan, setPlan] = useState<StartPlanResponse | null>(null);
   const [result, setResult] = useState<CommandResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -897,6 +898,7 @@ export function RunStartDialog({
     setPriority("interactive");
     setDryRunRequested(false);
     setBrowserMode("headless");
+    setCaptureBrowserScreenshots(true);
   }, [workflows]);
 
   // Opening lands on the panel you are standing in, every time — including the
@@ -945,6 +947,7 @@ export function RunStartDialog({
     text,
     dryRun,
     browserMode,
+    captureBrowserScreenshots,
     priority,
     selectedStepKeys,
   });
@@ -1016,6 +1019,7 @@ export function RunStartDialog({
         submissions: preview.entries.map((entry) => toRawSubmission(entry)),
         dryRun,
         browserMode,
+        captureBrowserScreenshots,
         priority,
         ...(customizeSteps ? { selectedStepKeys } : {}),
       });
@@ -1038,7 +1042,7 @@ export function RunStartDialog({
     } finally {
       setBusy(false);
     }
-  }, [browserMode, client, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, workflowId]);
+  }, [browserMode, captureBrowserScreenshots, client, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, workflowId]);
 
   const confirmStart = useCallback(async (): Promise<void> => {
     if (plan === null) return;
@@ -1096,6 +1100,7 @@ export function RunStartDialog({
     ...(priority === "bulk" ? ["Priority: Bulk"] : []),
     ...(dryRun ? ["Dry run: On"] : []),
     `Browser: ${browserMode === "headless" ? "Headless" : "Headed"}`,
+    `Browser screenshots: ${captureBrowserScreenshots ? "On" : "Off"}`,
   ];
   const inputSummary = preview.entries.map((entry) => entry.sourceText).join(", ");
   const valuesSummary = visibleConstants.length === 0
@@ -1282,6 +1287,11 @@ export function RunStartDialog({
                       {supportsDryRun && (
                         <StartFlagControl label="Dry run" checked={dryRun} onChange={setDryRunRequested} />
                       )}
+                      <StartFlagControl
+                        label="Capture browser screenshots"
+                        checked={captureBrowserScreenshots}
+                        onChange={setCaptureBrowserScreenshots}
+                      />
                     </div>
                     {visibleConstants.length > 0 && (
                       <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] @min-[560px]:grid-cols-2">

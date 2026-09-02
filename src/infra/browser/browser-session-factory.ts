@@ -283,6 +283,11 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         acceptDownloads: input.acceptDownloads,
         exclusive: input.exclusive,
         driver: binding.createDriver(page, this.#options.clock),
+        screenshot: async () => Object.freeze({
+          bytes: new Uint8Array(await page.screenshot({ type: "png" })),
+          width: config.display.screenWidth,
+          height: config.display.screenHeight,
+        }),
         authentication: {
           authenticate: async (requested: BrowserSystemId, options): Promise<"logged-in" | "already-authenticated"> => {
             if (requested !== system) {

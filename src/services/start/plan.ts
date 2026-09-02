@@ -62,6 +62,8 @@ export interface StartPlanRequest {
   readonly dryRun: boolean;
   /** Dashboard starts are explicit; other historical/non-dashboard callers may omit it. */
   readonly browserMode?: BrowserPresentationMode;
+  /** Omission retains the pre-capture behavior (no browser screenshot). */
+  readonly captureBrowserScreenshots?: boolean;
   readonly priority: RunPriority;
   readonly shape: RunShape;
   readonly configFingerprint: string;
@@ -232,6 +234,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     priority: request.priority,
     dryRun: request.dryRun,
     ...(request.browserMode === undefined ? {} : { browserMode: request.browserMode }),
+    captureBrowserScreenshots: request.captureBrowserScreenshots ?? false,
     planned,
     refused,
     plannedBy: request.plannedBy,

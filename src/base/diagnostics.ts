@@ -22,3 +22,15 @@ export interface RunDiagnosticCapture {
   captureForFailure(context: RunDiagnosticCaptureContext): Promise<DiagnosticBundle>;
   persist(bundle: DiagnosticBundle): DiagnosticBundle;
 }
+
+/** A capture selected on the immutable run envelope, taken while a lease still owns its page. */
+export interface RunBrowserScreenshotCapture {
+  capture(context: Readonly<{
+    runId: string;
+    descriptorFingerprint: string;
+    configFingerprint: string;
+    system: string;
+    leaseOutcome: "succeeded" | "failed";
+    screenshot: Readonly<{ bytes: Uint8Array; width: number; height: number }>;
+  }>): Promise<void>;
+}

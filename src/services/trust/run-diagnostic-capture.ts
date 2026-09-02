@@ -20,6 +20,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../domain/ids.js";
 import type {
   RunDiagnosticCapture,
   RunDiagnosticCaptureContext,
+  RunBrowserScreenshotCapture,
 } from "../../base/diagnostics.js";
 import type { DiagnosticBundle } from "../../domain/trust/diagnostic.js";
 import type { FailureRecord } from "../../domain/trust/failure.js";
@@ -137,5 +138,33 @@ export function operatorRequestedCapture(input: Readonly<{
     fields: input.fields,
     attachments: input.attachments ?? [],
     ...(input.retention === undefined ? {} : { retention: input.retention }),
+  });
+}
+
+/** Persist a selected lease screenshot through the existing restricted diagnostic authority. */
+export function createRunBrowserScreenshotCapture(input: Readonly<{
+  service: DiagnosticCaptureService;
+}>): RunBrowserScreenshotCapture {
+  return Object.freeze({
+    async capture(context: Parameters<RunBrowserScreenshotCapture["capture"]>[0]) {
+      await operatorRequestedCapture({
+        service: input.service,
+        runId: context.runId,
+        configFingerprint: context.configFingerprint,
+        descriptorFingerprint: context.descriptorFingerprint,
+        fields: [
+          { key: "browserSystem", classification: "safe-diagnostic", transform: "allow", value: context.system },
+          { key: "leaseOutcome", classification: "safe-diagnostic", transform: "allow", value: context.leaseOutcome },
+        ],
+        attachments: [{
+          kind: "screenshot",
+          mediaType: "image/png",
+          sensitivity: "restricted",
+          bytes: context.screenshot.bytes,
+          width: context.screenshot.width,
+          height: context.screenshot.height,
+        }],
+      });
+    },
   });
 }

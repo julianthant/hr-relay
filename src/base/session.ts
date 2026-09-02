@@ -54,6 +54,12 @@ export interface WorkerBrowserResource {
   readonly exclusive: boolean;
   readonly authentication: BrowserAuthenticationHandle;
   readonly driver: BrowserDriver;
+  /** A viewport PNG from the resource's owned page; never a raw Page or path. */
+  readonly screenshot?: () => Promise<Readonly<{
+    bytes: Uint8Array;
+    width: number;
+    height: number;
+  }>>;
   readonly reset: (input: Readonly<{ signal: AbortSignal }>) => Promise<void>;
   readonly close: (input: Readonly<{ reason: BrowserSessionCloseReason }>) =>
     Promise<BrowserSessionCloseProof>;

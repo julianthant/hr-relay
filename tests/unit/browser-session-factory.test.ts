@@ -64,6 +64,7 @@ interface FakePage {
   isClosed: () => boolean;
   close: () => Promise<void>;
   goto: (url: string) => Promise<null>;
+  screenshot: (options: Readonly<{ type: "png" }>) => Promise<Buffer>;
 }
 
 function fakePage(options: Readonly<{ url?: string; refuseClose?: boolean }> = {}): FakePage {
@@ -82,6 +83,7 @@ function fakePage(options: Readonly<{ url?: string; refuseClose?: boolean }> = {
       current = url;
       return null;
     },
+    screenshot: async () => Buffer.from([137, 80, 78, 71]),
   };
   return page;
 }
@@ -265,7 +267,7 @@ describe("worker browser session factory", () => {
         profileRoot,
         rebuildRuntimeIsolation.browserSessionNamespace,
         WORKER_ID,
-        `ucpath-prod-${FINGERPRINT.slice(0, 12)}`,
+        `ucpath-prod-${FINGERPRINT.slice(0, 12)}-headless`,
       ),
     );
     // The legacy runtime's profile root and session namespace must be
@@ -328,6 +330,21 @@ describe("worker browser session factory", () => {
       assert.equal(launch.profileDirectory.startsWith(`${config.paths.browserProfileRoot}/`), true);
       assert.equal(resource.configFingerprint, FINGERPRINT);
       assert.equal(resource.system, "ucpath");
+      await resource.close({ reason: "worker-stop" });
+    });
+  });
+
+  it("captures only PNG bytes and the configured viewport dimensions", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const factory = factoryFor(config, fakeLauncher(), recordingBindings());
+      const resource = await factory.open(OPEN_INPUT);
+      const screenshot = await resource.screenshot?.();
+      assert.ok(screenshot);
+      assert.deepEqual([...screenshot.bytes], [137, 80, 78, 71]);
+      assert.deepEqual(
+        { width: screenshot.width, height: screenshot.height },
+        { width: config.display.screenWidth, height: config.display.screenHeight },
+      );
       await resource.close({ reason: "worker-stop" });
     });
   });

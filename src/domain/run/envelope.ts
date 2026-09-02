@@ -83,6 +83,8 @@ export const RunEnvelopeSchema = z.strictObject({
   dryRun: z.boolean(),
   /** Optional only so historical authority rows remain readable. */
   browserMode: BrowserPresentationModeSchema.optional(),
+  /** Optional only so historical authority rows remain readable. */
+  captureBrowserScreenshots: z.boolean().optional(),
   /** A resumable graph-node id, never an internal transaction arm (ref workflow-model §5.7). */
   startAt: NodeIdSchema.optional(),
   injected: z.array(CheckpointPatchSchema).min(1).optional(),

@@ -74,6 +74,7 @@ export interface FanOutEnvelope {
   readonly dryRun: boolean;
   /** Optional only for non-dashboard/historical-compatible enqueue doors. */
   readonly browserMode?: BrowserPresentationMode;
+  readonly captureBrowserScreenshots?: boolean;
   readonly ingressSchemaHash: string;
   /**
    * Charter §25 / D179: the app build stamped on every run AT ENQUEUE. It is
@@ -173,6 +174,9 @@ export function fanOutQueuedRuns(
         priority: envelope.priority,
         dryRun: envelope.dryRun,
         ...(envelope.browserMode === undefined ? {} : { browserMode: envelope.browserMode }),
+        ...(envelope.captureBrowserScreenshots === undefined
+          ? {}
+          : { captureBrowserScreenshots: envelope.captureBrowserScreenshots }),
         /*
          * D221 — the attempt belongs to the ITEM. A fan-out entry whose item has
          * run before (a re-run of the same subject, a superseded predecessor)

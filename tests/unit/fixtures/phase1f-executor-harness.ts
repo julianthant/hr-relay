@@ -265,6 +265,7 @@ export function sessionFactoryHarness(
           system: input.system,
           ...(input.instance === undefined ? {} : { instance: input.instance }),
           configFingerprint: input.configFingerprint,
+          ...(input.browserMode === undefined ? {} : { browserMode: input.browserMode }),
           acceptDownloads: input.acceptDownloads,
           exclusive: input.exclusive,
           driver,
