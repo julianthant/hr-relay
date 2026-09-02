@@ -15,7 +15,7 @@ import { z } from "zod";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
-import { projectStartSteps } from "../../../src/services/start/step-selection.js";
+import { projectStartSteps, startStepWireControl } from "../../../src/services/start/step-selection.js";
 import { personLookupModule } from "../../../src/workflows/person-lookup/module.js";
 import { separationsIdentityCheckModule } from "../../../src/workflows/separations/identity-check/module.js";
 import { separationsKronosTimecardModule } from "../../../src/workflows/separations/kronos-timecard/module.js";
@@ -1519,9 +1519,7 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
         key: step.key,
         label: step.label,
         includedByDefault: step.includedByDefault,
-        control: step.control.state === "selectable"
-          ? { state: "selectable", inputField: step.control.inputField }
-          : { state: "required", reason: step.control.reason },
+        control: startStepWireControl(step.control),
       })),
       ...(personLookupDescriptor.surfaces.inputRun === undefined
         ? {}
@@ -1723,9 +1721,7 @@ export const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBoo
         key: step.key,
         label: step.label,
         includedByDefault: step.includedByDefault,
-        control: step.control.state === "selectable"
-          ? { state: "selectable", inputField: step.control.inputField }
-          : { state: "required", reason: step.control.reason },
+        control: startStepWireControl(step.control),
       })),
       ...(module.descriptor.surfaces.inputRun === undefined
         ? {}

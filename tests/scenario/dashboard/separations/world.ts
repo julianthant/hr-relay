@@ -564,6 +564,7 @@ export function separationsIdentityPacket(
         separationDateChanged: false,
         separationDeterminingLeave: null,
         unclassifiedPayCodes: ["Farmworkers Day"],
+        source: "kronos-timesheet",
       },
     }),
   });

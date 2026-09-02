@@ -15,6 +15,7 @@
  * declares. A served block that drifted from the registry would be the second
  * source D251 was right to refuse.
  */
+import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { flow } from "../../../src/base/flow.js";
@@ -37,6 +38,12 @@ import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry
 import { FixtureReadReceipt } from "../architecture/helpers/descriptor-fixtures.js";
 import { AT, makeWorld, type DashboardWorld } from "./helpers/dashboard-harness.js";
 import { healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
+import {
+  AUDITING_FORM,
+  FOLDING_FORM,
+  omissionCascadingDescriptor,
+  READING_FORM,
+} from "../fixtures/start-step-omission-fixtures.js";
 
 const VersionSevenInput = z.strictObject({ eid: EidSchema });
 const VersionSevenCanonicalInput = defineCanonicalInput(
@@ -138,9 +145,16 @@ describe("bootstrap start-surface block", () => {
             key: step.key,
             label: step.label,
             includedByDefault: step.includedByDefault,
+            // Reconstructed inline ON PURPOSE: the server maps this union
+            // through `startStepWireControl`, and a test that called the same
+            // helper would be the producer agreeing with itself. The three
+            // arms are restated here so the wire's shape is asserted, not
+            // shared.
             control: step.control.state === "selectable"
               ? { state: "selectable", inputField: step.control.inputField }
-              : { state: "required", reason: step.control.reason },
+              : step.control.state === "omittable"
+                ? { state: "omittable", form: step.control.form, forces: step.control.forces }
+                : { state: "required", reason: step.control.reason },
           })),
           ...(descriptor.surfaces.inputRun === undefined
             ? {}
@@ -173,6 +187,64 @@ describe("bootstrap start-surface block", () => {
     } finally {
       world.dispose();
     }
+  });
+
+  /**
+   * D307 — the third control arm, served. No registered workflow declares an
+   * omission yet, so without a fixture module this arm would exist on the
+   * schema and never leave the server: the "built one half, never connected"
+   * defect the wire-connectivity guard exists for, one block down.
+   */
+  it("serves a declared omission's form and cascade on the step's control", () => {
+    const world = makeWorld();
+    try {
+      const wire = FrontendBootstrapWireSchema.parse(buildBootstrap({
+        ...depsOf(world),
+        modules: [{
+          descriptor: omissionCascadingDescriptor,
+          role: defineWorkflowRole({ kind: "standalone" }),
+        }],
+      }));
+      const served = WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)[0]?.start.steps;
+      assert.deepEqual(served, [
+        {
+          key: "reading",
+          label: "Reading",
+          includedByDefault: true,
+          control: { state: "omittable", form: READING_FORM, forces: ["folding"] },
+        },
+        {
+          key: "folding",
+          label: "Folding",
+          includedByDefault: true,
+          control: { state: "omittable", form: FOLDING_FORM, forces: [] },
+        },
+        {
+          key: "auditing",
+          label: "Auditing",
+          includedByDefault: true,
+          control: { state: "omittable", form: AUDITING_FORM, forces: [] },
+        },
+      ]);
+    } finally {
+      world.dispose();
+    }
+  });
+
+  it("refuses a start control arm that names a field kind the form vocabulary does not close over", () => {
+    const step = {
+      key: "reading",
+      label: "Reading",
+      includedByDefault: true,
+      control: {
+        state: "omittable",
+        form: { fields: [{ key: "value", label: "Value", kind: "free-form" }] },
+        forces: [],
+      },
+    };
+    expect(WorkflowStartWireSchema.safeParse({
+      enqueue: "reject-active", version: 1, spreadsheetIntake: false, steps: [step],
+    }).success).toBe(false);
   });
 
   it("refuses a start block carrying a field the modal does not read", () => {

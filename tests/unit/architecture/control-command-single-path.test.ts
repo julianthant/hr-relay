@@ -66,6 +66,8 @@ const EXPECTED_ACTIVE = {
   ],
   run: [
     "retry", "cancel", "bump", "rename",
+    // D308: delete means delete — the terminal queue run's own door.
+    "delete",
     "resolve-write-present", "resolve-write-absent",
     // D166: the Edit-Data save activated with its CAS-against-resume-fence arm.
     "edit-checkpoint",
@@ -82,7 +84,8 @@ const EXPECTED_ACTIVE = {
   ],
   settings: ["apply-settings"],
   // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
-  "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
+  // D308: the Archive's delete door.
+  "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run", "delete-archived-run"],
   explorer: ["apply-explorer-edit"],
 } as const;
 

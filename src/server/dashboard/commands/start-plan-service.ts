@@ -27,9 +27,10 @@ import {
 } from "../../../domain/ids.js";
 import { BrowserPresentationModeSchema, InstanceSelectionSchema, RunPrioritySchema } from "../../../domain/run/envelope.js";
 import { StartRefusalCodeSchema } from "../../../domain/run/start-plan.js";
+import { TimelineCategoryKeySchema } from "../../../domain/workflow/presentation.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { planStart } from "../../../services/start/plan.js";
-import { applyStartStepSelection } from "../../../services/start/step-selection.js";
+import { StartStepOmissionRefusedError, applyStartStepSelection, resolveStartStepOmissions } from "../../../services/start/step-selection.js";
 import { StepOmissionsSchema } from "../../../domain/workflow/step-omission.js";
 import type { StartPlannerDeps } from "../../../services/start/plan.js";
 import { TargetNotFoundError } from "../../failures.js";
@@ -46,7 +47,14 @@ const StartPlanIngressSchema = z.strictObject({
   priority: RunPrioritySchema.default("interactive"),
   requestedInstance: InstanceSelectionSchema.optional(),
   selectedStepKeys: z.array(z.string().min(1)).min(1).optional(),
-  /** D307 — typed facts for each omitted step; validated against the descriptor's forms before planning. */
+  /**
+   * D307 — typed facts for each omitted step. The schema proves the SHAPE; the
+   * descriptor's own forms and cascade prove the content, in
+   * `resolveStartStepOmissions`, before a plan row exists. A request carrying
+   * omissions without an explicit `selectedStepKeys` is refused there: which
+   * steps run is the operator's statement, and facts without it would be
+   * omissions for steps nobody said were omitted.
+   */
   stepOmissions: StepOmissionsSchema.optional(),
 });
 
@@ -60,7 +68,17 @@ const StartPlanWireSchema = z.strictObject({
   dryRun: z.boolean(),
   browserMode: BrowserPresentationModeSchema.optional(),
   captureBrowserScreenshots: z.boolean().optional(),
-  stepOmissions: StepOmissionsSchema.optional(),
+  /**
+   * D307 — the omitted step KEYS, in timeline order, and never the facts.
+   *
+   * The response wire already refuses to echo `rawInput` back (see the module
+   * note): reflecting submitted values through an HTTP response bypasses the
+   * schema-owned redaction lane. Typed omission facts are the same kind of
+   * value — a step form can ask for an employee id or a date about a real
+   * person — so the plan retains them durably for audit and the wire carries
+   * only which steps were left out. The browser already holds what it typed.
+   */
+  omittedSteps: z.array(TimelineCategoryKeySchema).min(1).optional(),
   priority: RunPrioritySchema,
   plannedBy: ActorIdSchema,
   configSnapshotId: ConfigSnapshotIdSchema,
@@ -113,6 +131,21 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
       if (descriptor === undefined) {
         throw new TargetNotFoundError(`workflow ${ingress.workflowId} is not registered; nothing to plan`);
       }
+      // D307 — the omissions are reconciled against THIS descriptor's forms
+      // and cascade BEFORE anything is planned, so a refusal costs no plan row
+      // and no run identity. The ingress schema only proved the shape; the
+      // descriptor is what proves the step is omittable, that every omitted
+      // step carries the facts its own form requires, and that nothing still
+      // running would read what the omission leaves unread.
+      if (ingress.stepOmissions !== undefined && ingress.submissions.length !== 1) {
+        // Typed facts (a last day worked, a transaction number) describe ONE
+        // subject; a plan that fans out to several would assert them for all.
+        throw new StartStepOmissionRefusedError(
+          "single-subject-only",
+          `${descriptor.id} step omissions require exactly one submission; this plan carries ${String(ingress.submissions.length)}`,
+        );
+      }
+      const stepOmissions = resolveStartStepOmissions(descriptor, ingress.selectedStepKeys, ingress.stepOmissions);
       const record = planStart(
         {
           authority: deps.authorityRead,
@@ -128,7 +161,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           dryRun: ingress.dryRun,
           browserMode: ingress.browserMode,
           captureBrowserScreenshots: ingress.captureBrowserScreenshots,
-          ...(ingress.stepOmissions === undefined ? {} : { stepOmissions: ingress.stepOmissions }),
+          ...(stepOmissions === undefined ? {} : { stepOmissions }),
           priority: ingress.priority,
           shape: "single",
           configFingerprint: deps.configFingerprint,
@@ -154,7 +187,9 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         ...(record.captureBrowserScreenshots === undefined
           ? {}
           : { captureBrowserScreenshots: record.captureBrowserScreenshots }),
-        ...(record.stepOmissions === undefined ? {} : { stepOmissions: record.stepOmissions }),
+        ...(record.stepOmissions === undefined
+          ? {}
+          : { omittedSteps: record.stepOmissions.map((entry) => entry.step) }),
         priority: record.priority,
         plannedBy: record.plannedBy,
         configSnapshotId: record.configSnapshotId,

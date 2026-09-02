@@ -7,6 +7,29 @@ lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/store
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
 
+- **2026-09-01: a relaxed never-delete trigger must read a tombstone, not a flag (D308; ref
+  dashboard-surfaces §"D308 — delete means delete").** Removing the `*_never_deleted` triggers to
+  admit one delete command would have admitted every future `DELETE` too. Each trigger instead
+  aborts UNLESS an insert-only `deleted_runs` row already names that exact run, and the cascade
+  writes that row first — so the tombstone is both the admission and the provenance, and a stray
+  delete from a migration or a new repository method still aborts by name. Two things the delete
+  cannot do fell out of the same design: it cannot rewrite the shared span JSONL (D301), so the
+  storage doctor reads the tombstone to classify the root as `deleted`; and it cannot keep a run's
+  idempotency keys once the ledger rows go, so the confirm copy says so instead of a fallback
+  pretending otherwise. Deleting a delegated member alone would leave its manifest naming nothing;
+  the group anchor is the only door and takes the tree leaves-first.
+
+- **2026-09-01: an asserted node needs a durable row, not just an in-memory output (D307; ref
+  workflow-model §5.8; ref write-safety §3.1).** A step's declared producer can rebuild a task's
+  output from typed facts at plan time, but the write sequencer's own beat ⑦ discipline rebuilds
+  COMMIT input from stored checkpoints — an output that never lands as a `run_checkpoints` row is
+  invisible to everything downstream. Persist it as an ordinary checkpoint row, but MARK it: an
+  `assertion: { step, assertedAt }` field whose every provenance leaf is `operator`-sourced, so a
+  reader can never mistake it for an observation. That row must replay only under the SAME
+  assertion — a run that later executes the node for real (a recomposition, never a mode switch
+  mid-run) ignores it — and a gate resume (a new claim of the same attempt reaching the node again)
+  must republish this run's own marked row rather than mint a second one, so one attempt still holds
+  exactly one row per node.
 - **2026-08-29: identity admission and immutable attribution must age independently (D75; ref
   operator-trust §7; ref frontend-backend-integration §3.4/§6.7).** A required actor field added to
   an existing evidence schema tempts a migration to stamp the current local operator on old rows,

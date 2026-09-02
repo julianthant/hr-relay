@@ -1290,6 +1290,7 @@ Command semantics are binding:
 | Bump | **Run-family only:** changes priority/claim order through an idempotent transactional command; it does not fabricate a requeue, mutate business input, change a descriptor version, or archive anything. Only a `queued` run can be bumped — the scheduler supports no cooperative yield, so a running run is a typed `invalid-state` rejection — and an already-`interactive` run is idempotently `applied` with no version change. |
 | Rename | Replaces only the operator-visible run display name with a strict `RunDisplayName`: NFC-normalized, already trimmed, 1–120 Unicode code points, no control characters. Empty, whitespace-padded, overlong, non-normalized or unknown-key payloads fail boundary parsing. Identity and trace id never change. |
 | ~~Hide / Unhide~~ | **RETIRED (D234.)** The queue's model is runs and archived runs; there is no third hidden class. `ActionCommandKeySchema` carries neither key and `RunRecord.hidden` is a parse-tolerated vestige nothing writes. |
+| Delete | **D308.** `delete` on a terminal, non-member queue row and `delete-archived-run` on an archived detail (citing the record's `contentDigest`). One journaled transaction removes the run and every row it owns — write ledger included — behind an insert-only `deleted_runs` tombstone; the tree goes leaves-first and refuses while any member is non-terminal. Confirm, destructive; the copy names the released idempotency key. See §"D308 — delete means delete". |
 | Purge | Not a row action. `cli purge-run <exact-run-id> --backup <path>` is an offline maintenance command requiring a fresh verified backup and refusing any active/dependency/write-authority reference. It writes a purge receipt. |
 | Edit checkpoint | Uses `ref data-intake-and-edit-data`'s field-level patch/provenance model (D166), creates a new run/attempt as specified there, and never mutates original input or a completed proof. |
 
@@ -2634,6 +2635,21 @@ At container widths of at least 480px, Customize steps and Dry run occupy one ro
 and priority occupy the next. The production modal must not display an Automation workers choice until
 the start planner owns a per-run worker-count capability.
 
+**D307 — any step is pickable; an omitted step asks for the facts it would have read (2026-09-01).**
+A step control now has three arms: `selectable` (D285's boolean-condition steps), `required` (with a
+served reason), and `omittable` — a step whose folder declares an omission form (closed field kinds:
+text, us-date, eid, integer, boolean, enum, text-list) and the OTHER steps its omission `forces` out.
+Un-checking an omittable step renders its form inline and auto-locks the forced steps; a step whose
+cascade is blocked by a step that must run projects as `required` with the sentence *Omitting this step
+would also require omitting "<label>", which must run.* The request carries `stepOmissions: [{ step,
+facts }]` beside `selectedStepKeys`; the plan service validates every entry against the descriptor's
+forms and cascade before planning and refuses with HTTP 400 `START_STEP_OMISSION_REFUSED` (codes
+`selection-required | unknown-step | step-not-omittable | step-not-omitted | duplicate-step |
+facts-missing | facts-invalid | cascade-refused`). The plan RESPONSE serves `omittedSteps` (keys only);
+typed facts never return on a wire. Separations declares three omittable steps in slice one — Kronos
+timecard (last day worked, separation date), UCPath transaction (transaction number, approval status)
+and Kuali finalization (no fields); its three read steps stay required.
+
 1. **The parser sentence is derived, never authored.** `inputRunValueNoun`,
    `inputRunSeparatorLabel` and `inputRunParserLabel` (`src/domain/workflow/ingress.ts`) read a
    legend declared beside `ENTRY_PATTERNS`, so a pattern whose regex moves has its words in the same
@@ -3018,6 +3034,11 @@ raises.
 
 #### D234 — the queue's model is runs and archived runs
 
+> **Amended by D308 (2026-09-01).** The two-class model stands — nothing is ever *hidden* — but a
+> third, non-rendered class now exists: a **deleted** run, which leaves authority behind one
+> insert-only tombstone. The footer slot that D234 said "no longer varies with status" varies again:
+> `delete` is served on terminal, non-member rows. See §"D308 — delete means delete" below.
+
 **Operator ruling, dated 2026-08-19:** *"There are runs and archived runs; there should be no hidden
 runs."* The `hide` / `unhide` presentation pair is RETIRED across the whole stack. This subsection is
 the normative text; every earlier sentence in this doc that describes hiding is superseded by it,
@@ -3062,6 +3083,64 @@ comment-stripped descriptor literals of `queries/run-detail.ts`. Comments are st
 load-bearing: `unhide` appeared in the projector ONLY inside the prose explaining why it is never
 served, so a scan that counted prose would have called the dead key healthy for the whole phase it was
 dead.
+
+#### D308 — delete means delete
+
+**Operator ruling, dated 2026-09-01:** *"delete means delete … some runs were just error runs or
+things like that which I don't want in the database. I should be able to delete normal runs like
+this and archived runs."* This subsection is the normative text. It supersedes charter §17's
+sentence that destructive purge is "a separate offline maintenance operation", and it amends D234
+(above) and D86's "ledger forever" for exactly the run being deleted.
+
+**What delete is.** One journaled command that removes a TERMINAL run — on the queue or in the
+Archive — from the authority database with every row it owns, in one SQLite transaction, behind one
+insert-only `deleted_runs` tombstone. Two doors, two kernel verbs:
+
+| Door | Verb | Target | Admission (kernel-owned) |
+|---|---|---|---|
+| Queue row footer 🗑 | `delete` (run family) | `{ runId, expectedVersion }` — CAS like every run verb (D233) | terminal; not archived (refused by name — use the Archive door); not a delegated member (refused by name — delete the group); every run in the tree terminal |
+| Archived detail 🗑 | `delete-archived-run` (version-archive family) | `{ archivedRunId, archiveFingerprint }` — the archive record's `contentDigest`, cited exactly as a relaunch cites it | record exists; digest matches (`schema-mismatch` otherwise, nothing removed); retained `tasks` row terminal |
+
+Both take the tree LEAVES FIRST — a group anchor deletes its members, then itself — and refuse the
+whole tree while any member is non-terminal. A non-terminal run is never deletable: cancel is the
+one door that settles a run.
+
+**What leaves.** In foreign-key order: the write ledger (`ledger_projections` → `durable_outbox` →
+`write_attempts` → `write_intents`), `diagnostic_attachments`, `diagnostic_bundles`,
+`evidence_receipts`, `dry_run_scenario_results`, `activity_person_pseudonyms`,
+`provider_admissions`, `failures`, `run_terminal_outbox`, `run_results`,
+`run_terminal_authorizations`, `run_checkpoints`, the inbox `notifications` whose links name the
+run, `dependencies` in either direction and the `delegation_manifests` the run authored,
+`archive_relaunches` and `archived_runs`, and last the `tasks` row itself. The tombstone's
+`removed` tally records rows per table.
+
+**What stays, and why.** (1) The `commands` / `command_audits` journal — the delete command is the
+provenance: which run, who, when. (2) Span and note lines in their shared per-workflow-per-day
+JSONL — D301 forbids rewriting those files; the 30-day prune (D86) clears them, and the storage
+doctor classifies a root whose run has a tombstone as **`deleted`**, an accounted state beside
+`archived`, never `missing`. (3) `run_sessions`, `start_plans`, `intake_manifests`,
+`config_snapshots`, `checkpoint_payloads` and the content-addressed artifact bytes — shared or
+pre-run authority a single run does not own. (4) The tombstone.
+
+**The tombstone is the admission.** Schema v29 does not remove any never-delete trigger; it
+rewrites each one on a run-owned table (`archived_runs`, `archive_relaunches`,
+`dry_run_scenario_results`, `activity_person_pseudonyms`, `ledger_projections`) to abort UNLESS a
+`deleted_runs` row for that exact run already exists. The cascade writes the tombstone first with an
+empty tally and settles the tally once at the end — the only UPDATE the tombstone's own trigger
+admits. A stray `DELETE` from any other path still aborts by name, so no code gained a delete that
+was not this one. `PRAGMA secure_delete = ON` zeros freed pages, so the bytes leave the file, not
+only the b-tree.
+
+**What is knowingly given up.** A run's `write_intents` rows carry the permanent idempotency keys
+that stop the same live UCPath / Kuali write from being submitted twice (ref write-safety §4). Deleting
+a run that WROTE releases those keys: a later run for the same person can submit again. The confirm
+dialog on both doors says this in one sentence; the kernel does not second-guess a ruling given
+twice. An error run that never wrote has nothing to lose.
+
+**Surfaces.** The queue footer's 🗑 sits last, after ✕, on every terminal non-member row (the demo's
+`hide` slot, `DemoQueue.tsx`); it carries a confirm authored server-side, destructive tone. The
+archived detail's 🗑 sits beside Relaunch with the same confirm. Neither is offered where the
+kernel would refuse; a refusal that reaches the wire anyway prints the kernel's own sentence.
 
 #### D235 — a bulk command is N children and one vector
 

@@ -118,6 +118,7 @@ const PHASE1_ACTIVE = {
     "cancel",
     "bump",
     "rename",
+    "delete",
     "resolve-write-present",
     "resolve-write-absent",
     "edit-checkpoint",
@@ -137,7 +138,7 @@ const PHASE1_ACTIVE = {
   ],
   settings: ["apply-settings"],
   // D179 (2i-G): the D80 archive model — plan, apply, relaunch.
-  "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
+  "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run", "delete-archived-run"],
   explorer: ["apply-explorer-edit"],
 } as const;
 
@@ -202,6 +203,7 @@ type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
 type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
 export type SettingsCommand = Extract<CommandRequest, { family: "settings" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
+type RunDeleteCommand = Extract<RunCommand, { type: "delete" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
 
 export interface ExplorerEditExecutor {
@@ -974,6 +976,119 @@ function executeCancel(
     });
   }
   return applied(request, affectedTargets, versionChanges, dependencyIds);
+}
+
+/**
+ * D308 — delete means delete.
+ *
+ * The operator's ruling (2026-09-01): *"some runs were just error runs … I
+ * should be able to delete normal runs like this and archived runs."* A
+ * terminal queue run leaves authority with every row it owns — results,
+ * checkpoints, failures, receipts, diagnostics, and its WRITE LEDGER — behind
+ * one insert-only tombstone. What this arm decides, and the repository does
+ * not, is admission over the TREE: every delegated child must be terminal, and
+ * the leaves go first so no `parent_run_id` is left pointing at nothing.
+ *
+ * Two refusals are the kernel's own. A non-terminal run cannot be deleted —
+ * cancel it first, which is the one door that settles a run — and an ARCHIVED
+ * run is refused here by name: its door is `delete-archived-run`, which cites
+ * the archive record's content digest, so an operator deleting from the
+ * Archive can never remove a record other than the one on their screen.
+ *
+ * What is knowingly given up: the run's `write_intents` rows carry the
+ * permanent idempotency keys that stop the same live write from being
+ * submitted twice. Deleting a run that WROTE releases those keys. The confirm
+ * copy says so; this arm does not second-guess a ruling that was given twice.
+ */
+function executeDelete(
+  repositories: AuthorityRepositories,
+  request: RunDeleteCommand,
+  now: string,
+): CommandApplication {
+  const current = requireRun(repositories, request, request.target.runId);
+  if (current.version !== request.target.expectedVersion) {
+    conflict(
+      request,
+      current.version,
+      `run ${request.target.runId} is at version ${String(current.version)}, not `
+      + `${String(request.target.expectedVersion)}; refresh before deleting it`,
+    );
+  }
+  if (!isTerminalRunState(current.lifecycle)) {
+    reject(
+      request,
+      "invalid-state",
+      `run ${request.target.runId} is ${current.lifecycle.state}; only a terminal run can be deleted — cancel it first`,
+    );
+  }
+  if (repositories.archivedRuns.isArchived(current.envelope.runId)) {
+    reject(
+      request,
+      "invalid-state",
+      `run ${request.target.runId} is archived; delete it from the Archive, which cites the record it removes`,
+    );
+  }
+  // A delegated member is one leaf of its group's manifest. Deleting it alone
+  // would leave that manifest naming a run nobody holds; the group anchor is
+  // the door, and it takes the whole tree leaves-first.
+  if (current.envelope.parent !== undefined) {
+    reject(
+      request,
+      "invalid-state",
+      `run ${request.target.runId} is a delegated member of run ${current.envelope.parent.runId}; delete the group`,
+    );
+  }
+  const order = deleteTreeOrder(repositories, request, current);
+  const affectedTargets: TargetReference[] = [];
+  for (const run of order) {
+    repositories.runs.delete({ runId: run.envelope.runId, origin: "queue", commandId: request.commandId, now });
+    affectedTargets.push(runTarget(run.envelope.runId));
+  }
+  return applied(request, affectedTargets, []);
+}
+
+/**
+ * Leaves first, the target last. Every run in the tree must be terminal: a
+ * running child under a failed parent is work in flight, and deleting its
+ * parent would orphan it. An inconsistent tree (a child without its edge)
+ * refuses the whole delete, exactly as `executeCancel` refuses the cancel.
+ */
+function deleteTreeOrder(
+  repositories: AuthorityRepositories,
+  request: CommandRequest,
+  root: RunRecord,
+): readonly RunRecord[] {
+  const order: RunRecord[] = [];
+  const visited = new Set<string>([root.envelope.runId]);
+  const walk = (parent: RunRecord): void => {
+    const edges = repositories.dependencies.listByParentRun(parent.envelope.runId);
+    for (const child of repositories.runs.listChildren(parent.envelope.runId)) {
+      const childRunId = child.envelope.runId;
+      if (visited.has(childRunId)) {
+        throw new Error(`run ${childRunId} appears twice in the dependency tree under ${root.envelope.runId}`);
+      }
+      visited.add(childRunId);
+      if (!edges.some((candidate) => candidate.childRunId === childRunId)) {
+        throw new Error(
+          `run ${childRunId} is a child of ${parent.envelope.runId} but has no dependency edge in authority; `
+          + "the tree is inconsistent, so nothing was deleted",
+        );
+      }
+      if (!isTerminalRunState(child.lifecycle)) {
+        reject(
+          request,
+          "invalid-state",
+          `run ${root.envelope.runId} has a delegated child ${childRunId} that is ${child.lifecycle.state}; `
+          + "every member must be terminal before the tree can be deleted",
+        );
+      }
+      walk(child);
+      order.push(child);
+    }
+  };
+  walk(root);
+  order.push(root);
+  return order;
 }
 
 function executeBump(
@@ -2792,6 +2907,46 @@ function executeVersionBumpApply(
   }]);
 }
 
+/**
+ * D308 — the Archive's delete door. The archived record's content digest is
+ * cited exactly as a relaunch cites it (ref frontend-backend-integration §5):
+ * a mismatch means the operator is looking at a different record than the one
+ * their command names, and nothing is removed. The retained `tasks` row and
+ * everything under it go with the archive record; the tombstone records the
+ * `archive` origin.
+ */
+function executeArchivedRunDelete(
+  repositories: AuthorityRepositories,
+  request: Extract<VersionArchiveCommand, { type: "delete-archived-run" }>,
+  now: string,
+): CommandApplication {
+  const archived = repositories.archivedRuns.get(request.target.archivedRunId);
+  if (archived === undefined) {
+    reject(request, "target-not-found", `archived run ${request.target.archivedRunId} is not in the archive`);
+  }
+  if (archived.contentDigest !== request.target.archiveFingerprint) {
+    reject(
+      request,
+      "schema-mismatch",
+      `archived run ${archived.runId} holds content digest ${archived.contentDigest.slice(0, 12)}…, `
+      + `not the ${request.target.archiveFingerprint.slice(0, 12)}… this delete cited`,
+    );
+  }
+  const retained = requireRun(repositories, request, archived.runId);
+  const order = deleteTreeOrder(repositories, request, retained);
+  const affectedTargets: TargetReference[] = [];
+  for (const run of order) {
+    repositories.runs.delete({
+      runId: run.envelope.runId,
+      origin: run.envelope.runId === archived.runId ? "archive" : "queue",
+      commandId: request.commandId,
+      now,
+    });
+    affectedTargets.push(runTarget(run.envelope.runId));
+  }
+  return applied(request, affectedTargets, []);
+}
+
 function executeArchivedRunRelaunch(
   dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
@@ -2955,6 +3110,7 @@ function executeVersionArchive(
     case "plan-version-bump": return executeVersionBumpPlan(dependencies, repositories, request, now);
     case "apply-version-bump": return executeVersionBumpApply(dependencies, repositories, request, now);
     case "relaunch-archived-run": return executeArchivedRunRelaunch(dependencies, repositories, request, now);
+    case "delete-archived-run": return executeArchivedRunDelete(repositories, request, now);
   }
 }
 
@@ -3081,6 +3237,7 @@ function dispatchActive(
           repositories.runtimeConfig.requireSettingsCurrent();
           return executeRetry(dependencies, repositories, request, now);
         case "cancel": return executeCancel(repositories, request, now);
+        case "delete": return executeDelete(repositories, request, now);
         case "bump": return executeBump(repositories, request, now);
         case "rename": return executePresentation(repositories, request, now);
         case "resolve-write-present":

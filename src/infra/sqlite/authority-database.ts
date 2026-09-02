@@ -96,6 +96,12 @@ import {
   type RunRecord,
 } from "../../domain/run/record.js";
 import {
+  DeletedRunRecordSchema,
+  RunDeleteInputSchema,
+  type DeletedRunRecord,
+  type DeletedRunTableSchema,
+} from "../../domain/run/deleted-run.js";
+import {
   RunResultRecordSchema,
   deriveCheckpointOutputDigest,
   deriveCheckpointProvenanceDigest,
@@ -278,6 +284,7 @@ import {
   AUTHORITY_APPLICATION_ID,
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   SQLITE_TABLE_DDL,
+  RETIRED_PHONE_CAPTURE_TABLES,
   SQLITE_MIGRATIONS,
   auditMigrationTableCoverage,
   tableClassification,
@@ -500,8 +507,21 @@ type RunCheckpointRepository = Readonly<{
  * in the same transaction that reads it, and a heartbeat that no longer matches
  * `(workerId, claimGeneration)` reports `lost` instead of quietly succeeding.
  */
+/** D308 — the delete tombstones, read-only here: the only writer is `RunRepository.delete`. */
+type DeletedRunRepository = Readonly<{
+  get(runId: string): DeletedRunRecord | undefined;
+  list(): readonly DeletedRunRecord[];
+}>;
+
 type RunRepository = Readonly<{
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
+  /**
+   * D308 — remove ONE terminal run and every row it owns, in one transaction,
+   * behind a `deleted_runs` tombstone written first. Children must already be
+   * gone (the kernel walks the tree); a remaining child refuses by name. The
+   * archive rows go too when the run is archived.
+   */
+  delete(input: unknown): DeletedRunRecord;
   get(runId: string): RunRecord | undefined;
   /** A bounded, keyset-ordered read over exact non-archived run authority. */
   search(input: unknown): RunSearchAuthorityPage;
@@ -905,6 +925,7 @@ export type AuthorityRepositories = Readonly<{
   duoCeremonyLeases: DuoCeremonyLeaseRepository;
   workerPools: WorkerPoolRepository;
   runSessions: RunSessionRepository;
+  deletedRuns: DeletedRunRepository;
   commands: CommandRepository;
   commandAudits: CommandAuditRepository;
   bulkCommandAcceptances: ImmutableRepository<z.infer<typeof BulkRunCommandAcceptanceRecordSchema>>;
@@ -3216,6 +3237,9 @@ export class AuthorityDatabase implements Disposable {
 
   #configureConnection(): void {
     this.#database.exec("PRAGMA foreign_keys = ON");
+    // D308 — a deleted run's bytes leave the file, not just the b-tree: freed
+    // pages are overwritten with zeros rather than kept until reuse.
+    this.#database.exec("PRAGMA secure_delete = ON");
     this.#database.exec("PRAGMA journal_mode = WAL");
     this.#database.exec("PRAGMA synchronous = FULL");
     this.#database.exec(`PRAGMA busy_timeout = ${String(this.#busyTimeoutMs)}`);
@@ -3244,11 +3268,25 @@ export class AuthorityDatabase implements Disposable {
         WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
         ORDER BY name
       `).all().map((row) => TableNameRowSchema.parse(row).name);
-      const integratedV27Tables = Object.keys(SQLITE_TABLE_DDL).sort();
-      const isExactIntegratedV27 = userVersion === 27
-        && existingTables.length === integratedV27Tables.length
-        && existingTables.every((name, index) => name === integratedV27Tables[index]);
-      if (isExactIntegratedV27) return userVersion;
+      /*
+       * D290 admits only the common integrated lineage: the exact table set a
+       * database holds at each released version on THIS suffix. v27 is the
+       * whole DDL before the phone-capture retirement; v28 is that set with
+       * the capture tables dropped (D294). Later tables (D308's
+       * `deleted_runs`) are absent from both. Any other set at these versions
+       * is a divergent suffix and refuses below.
+       */
+      const ddlTables = Object.keys(SQLITE_TABLE_DDL);
+      const retired: readonly string[] = RETIRED_PHONE_CAPTURE_TABLES;
+      const integratedByVersion: Readonly<Record<number, readonly string[]>> = {
+        27: ddlTables.filter((name) => name !== "deleted_runs").sort(),
+        28: ddlTables.filter((name) => name !== "deleted_runs" && !retired.includes(name)).sort(),
+      };
+      const integratedTables = integratedByVersion[userVersion];
+      const isExactIntegrated = integratedTables !== undefined
+        && existingTables.length === integratedTables.length
+        && existingTables.every((name, index) => name === integratedTables[index]);
+      if (isExactIntegrated) return userVersion;
       const rows = this.#database.prepare(`
         SELECT name FROM sqlite_master
         WHERE type IN ('table', 'index', 'trigger')
@@ -5033,6 +5071,15 @@ export class AuthorityDatabase implements Disposable {
           VersionBumpApplicationStorageRecordSchema, JsonRowSchema.parse(row).record_json,
         ))),
       }),
+      deletedRuns: Object.freeze({
+        get: (runId: string) => this.#readRecord("deleted_runs", RunIdSchema.parse(runId), DeletedRunRecordSchema),
+        list: () => {
+          const rows = this.#database.prepare(
+            "SELECT record_json FROM deleted_runs ORDER BY deleted_at, record_key",
+          ).all();
+          return Object.freeze(rows.map((row) => parseJsonRecord(DeletedRunRecordSchema, JsonRowSchema.parse(row).record_json)));
+        },
+      }),
       archivedRuns: Object.freeze({
         insert: (input: unknown) => {
           const record = ArchivedRunStorageRecordSchema.parse(input);
@@ -5813,6 +5860,112 @@ export class AuthorityDatabase implements Disposable {
           }
           return record;
         }));
+      },
+      delete: (input: unknown) => {
+        const { runId, origin, commandId, now } = RunDeleteInputSchema.parse(input);
+        return this.#authorityWrite("tasks", () => {
+          const run = this.#readRunRow(runId);
+          if (run === undefined) throw new Error(`run ${runId} does not exist; nothing to delete`);
+          if (run.lifecycle.state !== "terminal") {
+            throw new Error(`run ${runId} is ${run.lifecycle.state}, not terminal; only a terminal run can be deleted`);
+          }
+          const remainingChildren = CountRowSchema.parse(
+            this.#database.prepare("SELECT count(*) AS count FROM tasks WHERE parent_run_id = ?").get(runId),
+          ).count;
+          if (remainingChildren > 0) {
+            throw new Error(
+              `run ${runId} still has ${String(remainingChildren)} child run(s) in authority; delete the tree `
+              + "leaves first",
+            );
+          }
+          const archived = this.#readRecord("archived_runs", runId, ArchivedRunStorageRecordSchema);
+          if (origin === "archive" && archived === undefined) {
+            throw new Error(`run ${runId} is not archived; the archive door cannot delete it`);
+          }
+          if (origin === "queue" && archived !== undefined) {
+            throw new Error(`run ${runId} is archived; delete it from the Archive, not the queue`);
+          }
+          const removed: { table: z.infer<typeof DeletedRunTableSchema>; rows: number }[] = [];
+          const tombstone = (rows: readonly { table: z.infer<typeof DeletedRunTableSchema>; rows: number }[]) =>
+            DeletedRunRecordSchema.parse({
+              runId,
+              workflow: run.envelope.workflow,
+              traceId: run.envelope.traceId,
+              origin,
+              commandId,
+              deletedAt: now,
+              removed: rows,
+            });
+          /*
+           * The tombstone goes in FIRST with an empty tally: every relaxed
+           * never-delete trigger reads it, so nothing below can pass without
+           * it. Its one admitted UPDATE is the one-way settle at the end of
+           * this transaction — empty tally to final tally, once; the trigger
+           * aborts anything else.
+           */
+          const inserted = this.#database.prepare(`
+            INSERT INTO deleted_runs
+              (record_key, workflow, trace_id, origin, command_id, deleted_at, record_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            runId, run.envelope.workflow, run.envelope.traceId, origin, commandId, now,
+            canonicalJsonStringify(tombstone([])), now,
+          );
+          if (sqliteChanges(inserted.changes) !== 1) throw new Error(`deleted_runs tombstone for ${runId} was not written`);
+          const remove = (table: z.infer<typeof DeletedRunTableSchema>, sql: string, ...params: readonly string[]): void => {
+            const rows = sqliteChanges(this.#database.prepare(sql).run(...params).changes);
+            if (rows > 0) removed.push({ table, rows });
+          };
+          const intents = "SELECT record_key FROM write_intents WHERE json_extract(record_json, '$.runId') = ?";
+          // The ledger, leaves first: projection → outbox → attempts → intents.
+          remove("ledger_projections", `
+            DELETE FROM ledger_projections WHERE record_key IN (
+              SELECT outbox.record_key FROM durable_outbox AS outbox WHERE outbox.write_intent_id IN (${intents})
+            )`, runId);
+          remove("durable_outbox", `DELETE FROM durable_outbox WHERE write_intent_id IN (${intents})`, runId);
+          remove("write_attempts", `DELETE FROM write_attempts WHERE write_intent_id IN (${intents})`, runId);
+          remove("write_intents", "DELETE FROM write_intents WHERE json_extract(record_json, '$.runId') = ?", runId);
+          // Evidence and diagnostics.
+          remove("diagnostic_attachments", `
+            DELETE FROM diagnostic_attachments WHERE bundle_id IN (
+              SELECT record_key FROM diagnostic_bundles WHERE run_id = ?
+            )`, runId);
+          remove("diagnostic_bundles", "DELETE FROM diagnostic_bundles WHERE run_id = ?", runId);
+          remove("evidence_receipts", "DELETE FROM evidence_receipts WHERE run_id = ?", runId);
+          remove("dry_run_scenario_results", "DELETE FROM dry_run_scenario_results WHERE run_id = ?", runId);
+          remove("activity_person_pseudonyms", "DELETE FROM activity_person_pseudonyms WHERE run_id = ?", runId);
+          remove("provider_admissions", "DELETE FROM provider_admissions WHERE run_id = ?", runId);
+          remove("failures", "DELETE FROM failures WHERE run_id = ?", runId);
+          // Terminal authority.
+          remove("run_terminal_outbox", "DELETE FROM run_terminal_outbox WHERE run_id = ?", runId);
+          remove("run_results", "DELETE FROM run_results WHERE record_key = ?", runId);
+          remove("run_terminal_authorizations", "DELETE FROM run_terminal_authorizations WHERE record_key = ?", runId);
+          remove("run_checkpoints", "DELETE FROM run_checkpoints WHERE run_id = ?", runId);
+          // Inbox items that would otherwise link to a run nobody can open.
+          remove("notifications", `
+            DELETE FROM notifications WHERE EXISTS (
+              SELECT 1 FROM json_each(record_json, '$.links') AS link WHERE json_extract(link.value, '$.runId') = ?
+            )`, runId);
+          // Delegation edges in either direction, then the manifests this run authored.
+          remove("dependencies", `
+            DELETE FROM dependencies
+            WHERE json_extract(record_json, '$.parentRunId') = ? OR json_extract(record_json, '$.childRunId') = ?`, runId, runId);
+          remove("delegation_manifests", "DELETE FROM delegation_manifests WHERE json_extract(record_json, '$.parentRunId') = ?", runId);
+          // The Archive, when this run is in it — or was relaunched from it.
+          remove("archive_relaunches", "DELETE FROM archive_relaunches WHERE archived_run_id = ? OR record_key = ?", runId, runId);
+          remove("archived_runs", "DELETE FROM archived_runs WHERE record_key = ?", runId);
+          // Last, the run itself.
+          const task = sqliteChanges(this.#database.prepare("DELETE FROM tasks WHERE record_key = ?").run(runId).changes);
+          if (task !== 1) throw new Error(`deleting run ${runId} removed ${String(task)} tasks rows, not exactly one`);
+          removed.push({ table: "tasks", rows: task });
+          const record = tombstone(removed);
+          // The one-way settle: the trigger admits exactly this transition.
+          const restamped = sqliteChanges(this.#database.prepare(
+            "UPDATE deleted_runs SET record_json = ? WHERE record_key = ? AND record_json = ?",
+          ).run(canonicalJsonStringify(record), runId, canonicalJsonStringify(tombstone([]))).changes);
+          if (restamped !== 1) throw new Error(`deleted_runs tombstone for ${runId} could not carry its tally`);
+          return { result: record, changes: 1 + removed.reduce((sum, entry) => sum + entry.rows, 0) };
+        });
       },
       listChildren: (parentRunId: string) => {
         const rows = this.#database.prepare(`

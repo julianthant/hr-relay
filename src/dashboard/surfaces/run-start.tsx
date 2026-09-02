@@ -119,6 +119,7 @@ import {
   RunFlagChips,
   StartChoiceControl,
   StartFlagControl,
+  StepOmissionFactsForm,
 } from "./run-start-kit.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
 import { INTAKE_ACCEPT, INTAKE_DROPZONE_HINT, intakeDropzoneLabel } from "./intake-model.js";
@@ -126,10 +127,19 @@ import {
   ENQUEUE_POLICY_MEANING,
   ENQUEUE_POLICY_REASON,
   START_METHOD_LABEL,
+  foldStepOmissionFacts,
+  forcedStepOmissions,
+  initialStepOmissionDraft,
+  omittedStepViews,
   startRequestFingerprint,
+  toggleStepSelection,
   type StartMethod,
   type BrowserMode,
   type StartPriority,
+  type StepOmissionDraft,
+  type StepOmissionFactDraft,
+  type StepOmissionFactsFold,
+  type StepOmissionFactValue,
 } from "./run-start-model.js";
 import {
   adjacentRunStartStage,
@@ -138,6 +148,7 @@ import {
   type RunStartStage,
 } from "./run-start-timeline.js";
 import { versionTag } from "./format.js";
+import type { StepOmissionForm } from "../../domain/workflow/step-omission.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration §3.4) */
 const SOURCE_SURFACE = "run-start";
@@ -192,7 +203,18 @@ export interface RunStartWorkflow {
     key: string;
     label: string;
     includedByDefault: boolean;
-    control: { state: "selectable"; inputField: string } | { state: "required"; reason: string };
+    control:
+      | { state: "selectable"; inputField: string }
+      /**
+       * D307 — the step declares an omission the operator may take instead of
+       * running it, with the closed form to draw and the other steps the
+       * choice forces out. The Steps screen's OMISSION UI lands with its own
+       * unit; the arm is carried here so the served wire assigns without a
+       * widening cast, and the existing `required`/`selectable` branches keep
+       * drawing exactly what they drew.
+       */
+      | { state: "omittable"; form: StepOmissionForm; forces: readonly string[] }
+      | { state: "required"; reason: string };
   }>[];
   /** the descriptor's declared typed-input surface, or why there is none */
   readonly inputRun:
@@ -235,10 +257,89 @@ function isStartable(workflow: RunStartWorkflow): boolean {
  * declaration — and it is a module constant so the parse preview memo is not
  * re-keyed by a fresh object on every render.
  */
+/** a stable empty step list, so "no workflow selected" is not a fresh array each render */
+const EMPTY_STEPS: RunStartWorkflow["steps"] = Object.freeze([]);
+
 const NO_WORKFLOW_SELECTED = Object.freeze({
   state: "absent",
   reason: "no workflow is selected",
 } as const);
+
+/**
+ * One omitted step, with the facts form it asks for and what the operator has
+ * typed into it so far (D307).
+ */
+interface StepOmissionRow {
+  readonly step: string;
+  readonly label: string;
+  readonly form: StepOmissionForm;
+  readonly draft: StepOmissionDraft;
+  readonly fold: StepOmissionFactsFold;
+}
+
+/**
+ * The `stepOmissions` this request would carry — or `null`, because one of its
+ * forms does not parse yet.
+ *
+ * `null` is not "send fewer": an omission whose facts are missing is a step the
+ * run would reach with nothing to read, and the server refuses it by name
+ * (`facts-missing` / `facts-invalid`). The dialog therefore does not ask.
+ */
+function completeStepOmissions(
+  rows: readonly StepOmissionRow[],
+): readonly Readonly<{ step: string; facts: Readonly<Record<string, StepOmissionFactValue>> }>[] | null {
+  const entries: Readonly<{ step: string; facts: Readonly<Record<string, StepOmissionFactValue>> }>[] = [];
+  for (const row of rows) {
+    if (row.fold.state !== "facts") return null;
+    entries.push({ step: row.step, facts: row.fold.facts });
+  }
+  return Object.freeze(entries);
+}
+
+/**
+ * One omitted step's typed facts, in the operator's own words: the form's own
+ * field LABELS, in its own declared order, with what was typed into each.
+ *
+ * The Confirm screen is the operator confirming their own input, so it shows
+ * the values. Nothing here crosses a wire — `stepOmissions` carries the facts
+ * once, and every other projection of this run redacts them.
+ */
+function stepOmissionFactsSummary(row: StepOmissionRow): string {
+  if (row.form.fields.length === 0) return "no facts to supply";
+  if (row.fold.state !== "facts") {
+    // Confirm is unreachable with an unparsed form: `advance` refuses it and
+    // the fingerprint clears the plan on every keystroke. Reaching here means
+    // one of those two is broken, and a plausible sentence would hide it.
+    throw new Error(`the Confirm summary reached step "${row.step}" with facts that do not parse`);
+  }
+  const facts = row.fold.facts;
+  return row.form.fields
+    .map((field) => `${field.label}: ${stepOmissionFactLabel(field.key, facts[field.key])}`)
+    .join(" \u00b7 ");
+}
+
+/** one parsed fact, in the words the operator reads — never the raw JSON shape */
+function stepOmissionFactLabel(field: string, value: StepOmissionFactValue | undefined): string {
+  if (value === undefined) throw new Error(`omission field "${field}" parsed to no value`);
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.length === 0 ? "None" : value.join(", ");
+  return String(value);
+}
+
+/**
+ * The omitted steps a plan says it retained, versus the ones this dialog sent.
+ *
+ * Compared as a SET: which steps are out is the fact, and two orderings of the
+ * same set are the same answer. Anything else — a key the plan added, dropped
+ * or renamed — is the plan describing a different run, and the dialog refuses
+ * to start it.
+ */
+function sameStepKeys(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  const sortedLeft = [...left].sort();
+  const sortedRight = [...right].sort();
+  return sortedLeft.every((key, index) => key === sortedRight[index]);
+}
 
 // ---------------------------------------------------------------------------
 // The launcher
@@ -865,6 +966,22 @@ export function RunStartDialog({
   const [customizeSteps, setCustomizeSteps] = useState(false);
   const [selectedStepKeys, setSelectedStepKeys] = useState<string[]>(() =>
     initialWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
+  /**
+   * D307 — what the operator has typed into each omitted step's form, keyed by
+   * step key, and which of those controls they have finished with.
+   *
+   * The drafts survive a re-check of the step (re-typing two dates because a
+   * checkbox was pressed twice is a cost with no benefit); they do NOT survive
+   * a workflow change or leaving `Customize steps`, because a fact typed for
+   * one workflow's step is not a fact about another's.
+   *
+   * `touchedFacts` and `factsAttempted` decide only WHEN a refusal is drawn,
+   * never whether one exists: an empty box the operator has not reached yet is
+   * still an incomplete form, and the footer says so from the moment it is.
+   */
+  const [stepDrafts, setStepDrafts] = useState<Readonly<Record<string, StepOmissionDraft>>>({});
+  const [touchedFacts, setTouchedFacts] = useState<ReadonlySet<string>>(() => new Set());
+  const [factsAttempted, setFactsAttempted] = useState(false);
   const [text, setText] = useState("");
   const [priority, setPriority] = useState<StartPriority>("interactive");
   const [dryRunRequested, setDryRunRequested] = useState(false);
@@ -895,6 +1012,9 @@ export function RunStartDialog({
     setMethod("typed");
     const nextWorkflow = workflows.find((entry) => entry.workflowId === next);
     setSelectedStepKeys(nextWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
+    setStepDrafts({});
+    setTouchedFacts(new Set());
+    setFactsAttempted(false);
     setPriority("interactive");
     setDryRunRequested(false);
     setBrowserMode("headed");
@@ -942,6 +1062,28 @@ export function RunStartDialog({
    * plan token is bound to these exact fingerprints server-side, so once any of
    * them moves the token is unusable and saying so is the only honest state.
    */
+  /**
+   * D307 — the steps the operator has left OUT, each with the form it asks for
+   * and the facts (or refusals) its draft currently reads as.
+   *
+   * `forcedByStep` is the cascade the descriptor already computed: a step
+   * another omitted step forces out is unchecked and LOCKED for as long as that
+   * choice stands, so this screen locks exactly what the planner would refuse
+   * rather than a rule restated here.
+   */
+  const steps = workflow?.steps ?? EMPTY_STEPS;
+  const forcedByStep = forcedStepOmissions(steps, selectedStepKeys);
+  const omissionRows: readonly StepOmissionRow[] = (customizeSteps ? omittedStepViews(steps, selectedStepKeys) : []).map(
+    (step): StepOmissionRow => {
+      if (step.control.state !== "omittable") {
+        throw new Error(`step "${step.key}" is omitted but declares no omission`);
+      }
+      const form = step.control.form;
+      const draft = stepDrafts[step.key] ?? initialStepOmissionDraft(form);
+      return { step: step.key, label: step.label, form, draft, fold: foldStepOmissionFacts(form, draft) };
+    },
+  );
+  const stepOmissions = completeStepOmissions(omissionRows);
   const requestFingerprint = startRequestFingerprint({
     workflowId,
     text,
@@ -950,6 +1092,7 @@ export function RunStartDialog({
     captureBrowserScreenshots,
     priority,
     selectedStepKeys,
+    stepOmissionDrafts: omissionRows.map(({ step, draft }) => ({ step, draft })),
   });
   /**
    * The identity of the request the dialog is CURRENTLY describing, readable
@@ -1022,6 +1165,10 @@ export function RunStartDialog({
         captureBrowserScreenshots,
         priority,
         ...(customizeSteps ? { selectedStepKeys } : {}),
+        // D307 — sent only when the operator is customizing steps, and only
+        // when every omitted step's form parses. `stepOmissions === null` is
+        // an incomplete form, and `advance` never reaches this call with one.
+        ...(customizeSteps && stepOmissions !== null && stepOmissions.length > 0 ? { stepOmissions } : {}),
       });
       // The operator edited the form while this was on the wire, so the server
       // answered a question the form no longer asks and the plan token it
@@ -1042,7 +1189,7 @@ export function RunStartDialog({
     } finally {
       setBusy(false);
     }
-  }, [browserMode, captureBrowserScreenshots, client, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, workflowId]);
+  }, [browserMode, captureBrowserScreenshots, client, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId]);
 
   const confirmStart = useCallback(async (): Promise<void> => {
     if (plan === null) return;
@@ -1094,6 +1241,60 @@ export function RunStartDialog({
       : preview.entries.length === 0
         ? "Type at least one value."
         : null;
+  /**
+   * D307 — why the Steps screen cannot go on to Confirm.
+   *
+   * An omitted step whose form does not parse is a step the run would reach
+   * with nothing to read, and the server refuses exactly that (`facts-missing`
+   * / `facts-invalid`). Saying so here is not a second rule: `stepOmissions` is
+   * `null` precisely when the descriptor's OWN facts schema refused the draft.
+   */
+  /**
+   * D307 — typed facts describe ONE subject.
+   *
+   * A last day worked or a transaction number is a fact about a person, and a
+   * plan that fans out to several would assert it for all of them; the plan
+   * service refuses exactly that (`single-subject-only`). So a multi-subject
+   * box does not OFFER an omission, and an omission chosen before the box grew
+   * blocks the advance by name rather than reaching the server to be refused.
+   */
+  const subjectCount = preview.entries.length;
+  const multiSubject = subjectCount > 1;
+  const multiSubjectOmissionReason = `Omitting a step describes one subject; this run would create ${String(subjectCount)}.`;
+  const stepsBlockedReason = customizeSteps && multiSubject && omissionRows.length > 0
+    ? `${multiSubjectOmissionReason} Include every step, or type one value.`
+    : customizeSteps && stepOmissions === null
+    ? omissionRows.length === 1
+      ? "Fill in the facts the omitted step asks for."
+      : "Fill in the facts every omitted step asks for."
+    : null;
+  /**
+   * The plan has to describe the run this dialog asked for. `omittedSteps` is
+   * the server's own account of which steps it retained as omitted; if that
+   * set is not the set this dialog sent, the token in hand belongs to a
+   * different run and Start is refused rather than pressed hopefully.
+   */
+  const sentOmittedSteps = customizeSteps && stepOmissions !== null ? stepOmissions.map(({ step }) => step) : [];
+  const planOmittedSteps = plan?.omittedSteps ?? [];
+  const omissionMismatch = plan !== null && !sameStepKeys(planOmittedSteps, sentOmittedSteps);
+  const stepLabel = (key: string): string => {
+    const step = steps.find((candidate) => candidate.key === key);
+    if (step === undefined) throw new Error(`the Steps screen named step "${key}", which this workflow does not declare`);
+    return step.label;
+  };
+  const stepLabels = (keys: readonly string[]): string => keys.map(stepLabel).join(", ");
+  /**
+   * Which refusals are DRAWN. Every refusal exists from the moment the draft
+   * does — the footer reason and the blocked advance both read the whole fold —
+   * but a box the operator has not reached yet does not wear a red line.
+   */
+  const visibleFactErrors = (row: StepOmissionRow): Readonly<Record<string, string>> => {
+    if (row.fold.state !== "invalid") return {};
+    if (factsAttempted) return row.fold.errors;
+    return Object.fromEntries(
+      Object.entries(row.fold.errors).filter(([field]) => touchedFacts.has(`${row.step}:${field}`)),
+    );
+  };
   const previousStage = adjacentRunStartStage(launchStages, currentStage, "previous");
   const nextStage = adjacentRunStartStage(launchStages, currentStage, "next");
   const optionChanges = [
@@ -1111,20 +1312,57 @@ export function RunStartDialog({
     setCustomizeSteps(next);
     if (!next) {
       setSelectedStepKeys(workflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
+      // Leaving the screen drops the facts with the choice that asked for them:
+      // a draft kept behind an un-customized run is a fact nothing on screen
+      // says this run would assert.
+      setStepDrafts({});
+      setTouchedFacts(new Set());
+      setFactsAttempted(false);
     } else if (currentStage === "Confirm") {
       setCurrentStage("Steps");
     }
   }, [currentStage, workflow]);
 
+  /**
+   * One step checkbox, pressed — through the ONE fold that owns the cascade
+   * (D307). The screen never edits the key list itself, so a row that is locked
+   * by another omission cannot be moved by a press the fold would refuse.
+   */
+  const toggleStep = useCallback((key: string, next: boolean) => {
+    setSelectedStepKeys((current) => [...toggleStepSelection(workflow?.steps ?? EMPTY_STEPS, current, key, next)]);
+  }, [workflow]);
+
+  const changeFact = useCallback(
+    (step: string, form: StepOmissionForm, field: string, next: StepOmissionFactDraft) => {
+      setStepDrafts((current) => ({
+        ...current,
+        [step]: { ...(current[step] ?? initialStepOmissionDraft(form)), [field]: next },
+      }));
+    },
+    [],
+  );
+
+  const touchFact = useCallback((step: string, field: string) => {
+    const id = `${step}:${field}`;
+    setTouchedFacts((current) => current.has(id) ? current : new Set([...current, id]));
+  }, []);
+
   const advance = useCallback(async (): Promise<void> => {
     if (nextStage === null) return;
+    if (currentStage === "Steps" && stepsBlockedReason !== null) {
+      // The press is what asks for every refusal at once: the operator has now
+      // said they are done with the form, so every empty box is a real answer
+      // of "nothing" and gets its line.
+      setFactsAttempted(true);
+      return;
+    }
     if (nextStage === "Confirm") {
       if (plan === null) await submitPlan();
       else setCurrentStage("Confirm");
       return;
     }
     setCurrentStage(nextStage);
-  }, [nextStage, plan, submitPlan]);
+  }, [currentStage, nextStage, plan, stepsBlockedReason, submitPlan]);
 
   /**
    * The ONE exit from a settled banner — C69's `Reload the form` and C72's
@@ -1328,20 +1566,54 @@ export function RunStartDialog({
                   <ul className="divide-y divide-[color:var(--ds-border)] border-y border-[color:var(--ds-border)]">
                     {workflow.steps.map((step) => {
                       const selected = selectedStepKeys.includes(step.key);
+                      const control = step.control;
+                      const forcedBy = forcedByStep.get(step.key) ?? [];
+                      const row = omissionRows.find((candidate) => candidate.step === step.key);
                       return (
-                        <li key={step.key} className="py-[var(--ds-space-cozy)]">
+                        <li key={step.key} className="flex min-w-0 flex-col gap-[var(--ds-space-base)] py-[var(--ds-space-cozy)]">
                           <Checkbox
                             checked={selected}
-                            disabled={step.control.state === "required"}
-                            onCheckedChange={(next) => {
-                              if (step.control.state === "required") return;
-                              setSelectedStepKeys((current) => next === true
-                                ? [...current, step.key]
-                                : current.filter((key) => key !== step.key));
-                            }}
+                            /* A required step never moves; a step another
+                               omission forces out never moves WHILE that
+                               omission stands, because the planner refuses the
+                               pair and a checkbox that undoes nothing is a lie
+                               about what this screen can do. */
+                            disabled={
+                              control.state === "required"
+                              || forcedBy.length > 0
+                              || (control.state === "omittable" && multiSubject && selected)
+                            }
+                            onCheckedChange={(next) => toggleStep(step.key, next === true)}
                             label={step.label}
-                            description={step.control.state === "required" ? step.control.reason : "Optional for this workflow."}
+                            description={
+                              control.state === "required"
+                                ? control.reason
+                                : forcedBy.length > 0
+                                  ? `Omitted with ${stepLabels(forcedBy)}.`
+                                  : control.state === "omittable"
+                                    ? multiSubject
+                                      ? multiSubjectOmissionReason
+                                      : "Optional — leave it out and type what the rest of the run would have read."
+                                    : "Optional for this workflow."
+                            }
                           />
+                          {control.state === "omittable" && control.forces.length > 0 && (
+                            <p className={cn(dsText.meta, dsFg.muted, "pl-[calc(1rem+var(--ds-space-base))]")}>
+                              {`Also omits: ${stepLabels(control.forces)}`}
+                            </p>
+                          )}
+                          {row !== undefined && (
+                            <div className="ml-[calc(1rem+var(--ds-space-base))] border-l-2 border-[color:var(--ds-border)] pl-[var(--ds-space-cozy)]">
+                              <StepOmissionFactsForm
+                                step={row.label}
+                                form={row.form}
+                                draft={row.draft}
+                                errors={visibleFactErrors(row)}
+                                onChange={(field, next) => changeFact(row.step, row.form, field, next)}
+                                onTouch={(field) => touchFact(row.step, field)}
+                              />
+                            </div>
+                          )}
                         </li>
                       );
                     })}
@@ -1362,13 +1634,42 @@ export function RunStartDialog({
                         { key: "Workflow", value: workflow?.label ?? plan.workflowId },
                         { key: "Input", value: inputSummary },
                         { key: "Creates", value: plan.planned.length === 1 ? "1 run" : `${String(plan.planned.length)} runs` },
-                        { key: "Steps", value: customizeSteps ? `${String(selectedStepKeys.length)} of ${String(workflow?.steps.length ?? 0)} included` : "Default workflow" },
+                        {
+                          key: "Steps",
+                          value: customizeSteps ? (
+                            /* D307 — this is the operator's OWN confirmation of
+                               what they typed, so it names the step and the
+                               field LABELS with their values. It is not a wire:
+                               nothing here is sent, and the same facts leave the
+                               browser once, in `stepOmissions`. */
+                            <span className="flex flex-col gap-[var(--ds-space-tight)]">
+                              <span>{`${String(selectedStepKeys.length)} of ${String(workflow?.steps.length ?? 0)} included`}</span>
+                              {omissionRows.length > 0 && (
+                                <span className={cn(dsText.meta, dsFg.secondary)}>
+                                  {`Omitted: ${omissionRows.map((row) => row.label).join(", ")}`}
+                                </span>
+                              )}
+                              {omissionRows.map((row) => (
+                                <span key={row.step} className={cn(dsText.meta, dsFg.secondary)}>
+                                  {`${row.label} — ${stepOmissionFactsSummary(row)}`}
+                                </span>
+                              ))}
+                            </span>
+                          ) : "Default workflow",
+                        },
                         { key: "Values", value: valuesSummary },
                         { key: "Options", value: optionChanges.length > 0 ? optionChanges.join(" · ") : "Defaults retained" },
                         { key: "Safety", value: workflow === undefined ? "Workflow unavailable" : ENQUEUE_POLICY_MEANING[workflow.enqueue] },
                       ]}
                     />
                   </Well>
+                  {omissionMismatch && (
+                    <Banner tone="danger" title="This plan does not describe the steps you omitted">
+                      {`You omitted ${sentOmittedSteps.length === 0 ? "no steps" : sentOmittedSteps.join(", ")}; the plan came back omitting `
+                        + `${planOmittedSteps.length === 0 ? "no steps" : planOmittedSteps.join(", ")}. `
+                        + "Go back and plan the run again — this plan would start a different run."}
+                    </Banner>
+                  )}
                   <PlanPreview plan={plan} />
                   <PlanRefusals refused={plan.refused} />
                 </section>
@@ -1391,6 +1692,8 @@ export function RunStartDialog({
                   ? undefined
                   : currentStage === "Input"
                   ? blockedReason ?? undefined
+                  : currentStage === "Steps"
+                  ? stepsBlockedReason ?? undefined
                   : currentStage === "Confirm" && plan !== null
                     ? `${String(plan.planned.length)} to create`
                     : undefined,
@@ -1416,7 +1719,7 @@ export function RunStartDialog({
               variant="primary"
               icon={<Play aria-hidden className={dsIcon.md} />}
               loading={busy}
-              disabled={busy || applied || plan.planned.length === 0}
+              disabled={busy || applied || omissionMismatch || plan.planned.length === 0}
               onClick={() => void confirmStart()}
             >
               {plan.dryRun ? "Start dry run" : "Start run"}

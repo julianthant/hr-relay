@@ -280,6 +280,7 @@ function packetWithPlan(): IdentityEvidencePacket {
         separationDateChanged: true,
         separationDeterminingLeave: "holiday",
         unclassifiedPayCodes: ["Independence Day Observed", "Juneteenth Observed"],
+        source: "kronos-timesheet",
       },
     }),
   });

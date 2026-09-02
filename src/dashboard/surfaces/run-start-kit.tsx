@@ -30,10 +30,12 @@ import {
   CardBody,
   Checkbox,
   Field,
+  Input,
   KeyValueList,
   MetaLine,
   Refusal,
   Select,
+  Textarea,
   Well,
   dsFg,
   dsIcon,
@@ -43,6 +45,8 @@ import { fmtClock } from "./format.js";
 import type { CommandResult } from "../../domain/commands.js";
 import type { StartPlanResponse } from "../client/index.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
+import type { StepOmissionDraft, StepOmissionFactDraft } from "./run-start-model.js";
+import type { StepOmissionForm } from "../../domain/workflow/step-omission.js";
 /** the non-default run flags shown in the preview and confirmation */
 export function RunFlagChips({
   dryRun,
@@ -416,5 +420,128 @@ export function StageRail({
         );
       })}
     </nav>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// D307 — the facts an omitted step's form asks for
+// ---------------------------------------------------------------------------
+
+/**
+ * ONE omitted step's form, drawn from the step's own declared field
+ * vocabulary.
+ *
+ * Every kind gets the control its kind means and nothing more: there is no
+ * free-text date box that a `us-date` refusal would then have to explain, and
+ * no enum typed by hand. The refusal that DOES reach a control is the declared
+ * schema's own — `Field`'s error slot replaces the help line, so the operator
+ * never has to choose which of two sentences to believe.
+ *
+ * The form is a `fieldset` named by its step: a screen reader reaching these
+ * controls hears which omitted step it is filling in, and every control is an
+ * ordinary tab stop inside it.
+ */
+export function StepOmissionFactsForm({
+  step,
+  form,
+  draft,
+  errors,
+  onChange,
+  onTouch,
+}: {
+  step: string;
+  form: StepOmissionForm;
+  draft: StepOmissionDraft;
+  /** field key → the refusal to draw; a key absent from it draws its help line */
+  errors: Readonly<Record<string, string>>;
+  onChange: (fieldKey: string, next: StepOmissionFactDraft) => void;
+  onTouch: (fieldKey: string) => void;
+}) {
+  if (form.fields.length === 0) {
+    return (
+      <p className={cn(dsText.meta, dsFg.muted)}>
+        This step asks for nothing — omitting it leaves no fact for you to supply.
+      </p>
+    );
+  }
+  return (
+    <fieldset className="grid min-w-0 grid-cols-1 gap-[var(--ds-space-cozy)] @min-[480px]:grid-cols-2">
+      {/* The legend NAMES the group, so a screen reader landing inside it
+          knows which omitted step these boxes stand in for. */}
+      <legend className={cn(dsText.meta, "font-medium", dsFg.secondary)}>
+        {`What this run reads instead of ${step}`}
+      </legend>
+      {form.fields.map((field) => {
+        const value = draft[field.key];
+        const error = errors[field.key] ?? null;
+        const help = field.help;
+        if (field.kind === "boolean") {
+          return (
+            <Checkbox
+              key={field.key}
+              checked={value === true}
+              onCheckedChange={(next) => {
+                onTouch(field.key);
+                onChange(field.key, next === true);
+              }}
+              label={field.label}
+              {...(help === undefined ? {} : { description: help })}
+            />
+          );
+        }
+        const text = typeof value === "string" ? value : "";
+        const commonField = {
+          label: field.label,
+          ...(help === undefined ? {} : { description: help }),
+          error,
+        };
+        if (field.kind === "enum") {
+          return (
+            <Field key={field.key} {...commonField}>
+              <Select
+                value={text}
+                onBlur={() => onTouch(field.key)}
+                onChange={(event) => {
+                  onTouch(field.key);
+                  onChange(field.key, event.target.value);
+                }}
+              >
+                {/* An empty first option, and never a pre-selected one: a
+                    status this run would assert about a real person is the
+                    operator's answer or it is missing. */}
+                <option value="">Choose a value…</option>
+                {field.values.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </Select>
+            </Field>
+          );
+        }
+        if (field.kind === "text-list") {
+          return (
+            <Field key={field.key} {...commonField} hint="One per line">
+              <Textarea
+                rows={3}
+                value={text}
+                onBlur={() => onTouch(field.key)}
+                onChange={(event) => onChange(field.key, event.target.value)}
+              />
+            </Field>
+          );
+        }
+        return (
+          <Field key={field.key} {...commonField}>
+            <Input
+              value={text}
+              {...(field.kind === "us-date" ? { placeholder: "MM/DD/YYYY", inputMode: "numeric" as const } : {})}
+              {...(field.kind === "eid" ? { placeholder: "12345678", inputMode: "numeric" as const } : {})}
+              {...(field.kind === "integer" ? { inputMode: "numeric" as const } : {})}
+              onBlur={() => onTouch(field.key)}
+              onChange={(event) => onChange(field.key, event.target.value)}
+            />
+          </Field>
+        );
+      })}
+    </fieldset>
   );
 }

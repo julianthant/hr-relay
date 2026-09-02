@@ -63,10 +63,12 @@ export const CommandActionSchema = z.enum([
   "plan-version-bump",
   "apply-version-bump",
   "relaunch-archived-run",
+  "delete-archived-run",
   "retry",
   "cancel",
   "bump",
   "rename",
+  "delete",
   "edit-checkpoint",
   "resolve-write-present",
   "resolve-write-absent",
@@ -255,10 +257,19 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("relaunch-archived-run"),
     target: z.strictObject({ archivedRunId: RunIdSchema, archiveFingerprint: FingerprintSchema }),
   }),
+  /** D308 — delete means delete: the archived run and every row it owns leave authority. */
+  z.strictObject({
+    ...CommandEnvelopeFields,
+    family: z.literal("version-archive"),
+    type: z.literal("delete-archived-run"),
+    target: z.strictObject({ archivedRunId: RunIdSchema, archiveFingerprint: FingerprintSchema }),
+  }),
 ]);
 
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "cancel", "bump"]), target: RunVersionTargetSchema }),
+  /** D308 — delete means delete: a terminal queue run and every row it owns leave authority. */
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("delete"), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
   // D166: ref data-intake-and-edit-data §6.3's field-level patch model. The earlier whole-checkpoint
   // blob payload was a deferred-arm placeholder no producer ever sent.
@@ -528,8 +539,8 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"],
   settings: ["apply-settings"],
-  "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
-  run: ["retry", "cancel", "bump", "rename", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"],
+  "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run", "delete-archived-run"],
+  run: ["retry", "cancel", "bump", "rename", "delete", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze"],
   explorer: ["apply-explorer-edit"],
@@ -558,8 +569,8 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"] },
   { family: "settings", actions: ["apply-settings"] },
-  { family: "version-archive", actions: ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"] },
-  { family: "run", actions: ["retry", "cancel", "bump", "rename", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"] },
+  { family: "version-archive", actions: ["plan-version-bump", "apply-version-bump", "relaunch-archived-run", "delete-archived-run"] },
+  { family: "run", actions: ["retry", "cancel", "bump", "rename", "delete", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze"] },
   { family: "explorer", actions: ["apply-explorer-edit"] },

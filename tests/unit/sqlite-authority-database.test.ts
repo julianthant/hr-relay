@@ -1635,6 +1635,22 @@ describe("authority generation accounting", () => {
       },
     },
     { table: "run_sessions", mutate: (db) => { db.authority.runSessions.insert(RUN_SESSION); } },
+    {
+      // D308 — the tombstone is written by the delete cascade and by nothing else.
+      table: "deleted_runs",
+      prepare: (db) => {
+        const run = prepareRunning(db);
+        const settled = db.authority.runs.transition({
+          runId: RUN_ID,
+          expectedVersion: run.version,
+          claim: { workerId: WORKER_ID, claimGeneration: 1 },
+          lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+          now: NOW,
+        });
+        if (settled.state !== "applied") throw new Error("deleted_runs fixture could not settle its run");
+      },
+      mutate: (db) => { db.authority.runs.delete({ runId: RUN_ID, origin: "queue", commandId: UUID_7, now: NOW }); },
+    },
     { table: "delegation_manifests", mutate: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); } },
     { table: "dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
