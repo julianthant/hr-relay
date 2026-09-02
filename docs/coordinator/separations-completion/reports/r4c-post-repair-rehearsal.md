@@ -94,10 +94,16 @@ were visible before and after R4c; this run did not clear or mutate unrelated ru
 
 ## Coordination boundary
 
-Mode: `coordinated-read-only` board. Intake primary HEAD `eade8626`, close primary HEAD `e1a1b8ad`;
-the board blob remained `58d9b66fbbdcd94b35ddfd0cc64e18ce38aeb4f0` and SHA-256
-`9ca8f137a090e372b92aa39e2f37a259e23ca9a63222dc1e94d5bf092da8f698`. R4c did not edit, stage,
-or commit the board. The coordinator must reconcile this report against its newer primary HEAD.
+Mode: `coordinated-read-only` board. At intake the primary checkout was HEAD `eade8626`; the exact
+board had blob `58d9b66fbbdcd94b35ddfd0cc64e18ce38aeb4f0` and SHA-256
+`9ca8f137a090e372b92aa39e2f37a259e23ca9a63222dc1e94d5bf092da8f698`. An intermediate close
+check at `e1a1b8ad` still matched. After the R4c evidence commit, a concurrent primary-checkout
+switch placed the exact path on `master` at `769e23c9`; the board there has blob
+`f2b9d7698e066cf9b50175898dd6f9b9ddfb6dd0` and SHA-256
+`35c34d02b49db331e650fba13b485aec0b9d6ce6498f228355b17ca98ad6be4f`, an older R1-state board.
+This is a board-identity conflict under `/supervise`: R4c retained its report and did not edit,
+stage, or commit either board version. The coordinator must reconcile this report against the
+current integration-line board after restoring/selecting its intended checkout.
 
 The fresh `sup_scout` operational map and fresh `sup_analyst` authority reconciliation are
 read-only units; the Analyst returned PASS across one-start/no-retry, D309/R4b, D310, zero-write,
