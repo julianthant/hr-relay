@@ -2641,14 +2641,21 @@ served reason), and `omittable` — a step whose folder declares an omission for
 text, us-date, eid, integer, boolean, enum, text-list) and the OTHER steps its omission `forces` out.
 Un-checking an omittable step renders its form inline and auto-locks the forced steps; a step whose
 cascade is blocked by a step that must run projects as `required` with the sentence *Omitting this step
-would also require omitting "<label>", which must run.* The request carries `stepOmissions: [{ step,
+would also require omitting "<label>", which must run.* — or, when the step's own gate would read what
+its omission leaves unread, *A gate in this step reads what omitting it would leave unread, so this step
+must run.* The request carries `stepOmissions: [{ step,
 facts }]` beside `selectedStepKeys`; the plan service validates every entry against the descriptor's
 forms and cascade before planning and refuses with HTTP 400 `START_STEP_OMISSION_REFUSED` (codes
 `selection-required | unknown-step | step-not-omittable | step-not-omitted | duplicate-step |
-facts-missing | facts-invalid | cascade-refused`). The plan RESPONSE serves `omittedSteps` (keys only);
+facts-missing | facts-invalid | cascade-refused | single-subject-only | selection-invalid`; typed facts
+describe one subject, so a multi-entry box refuses omissions). The plan RESPONSE serves `omittedSteps` (keys only);
 typed facts never return on a wire. Separations declares three omittable steps in slice one — Kronos
 timecard (last day worked, separation date), UCPath transaction (transaction number, approval status)
-and Kuali finalization (no fields); its three read steps stay required.
+and Kuali finalization (no fields); its three read steps stay required. Downstream, run detail serves the
+run's `omittedSteps` and each timeline member's closed not-run reason (`operator-asserted` draws as
+asserted, never as an observation; a done run with an omitted step folds to `partial`), the Data rail
+marks an asserted leaf with its step, Explain lists the omitted steps and an `operator-asserted`
+disposition, and the receipt carries the `OPERATOR_OMITTED_STEP` warning (ref operator-trust).
 
 1. **The parser sentence is derived, never authored.** `inputRunValueNoun`,
    `inputRunSeparatorLabel` and `inputRunParserLabel` (`src/domain/workflow/ingress.ts`) read a

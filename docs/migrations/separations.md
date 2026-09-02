@@ -643,7 +643,9 @@ effective date is still separation date + 1, a separation date after the plan's 
 refuses (the same bound the Kuali read applies), no leave day and no pay code is invented, the
 UCPath comment names no leave, and the Kuali date-change comment cites *operator entry at run start*,
 never a timesheet. The reconciled dates carry `source: "operator"`, which rides into the identity
-packet and its digest, so the approver sees typed dates as typed. "The check could not run" and
+packet's write-plan block (`plan.dates.source`; the comparison node executes after the dates node
+even though the timeline draws Identity check earlier) and therefore into the evidence digest, so
+the approver sees typed dates as typed. "The check could not run" and
 "the operator chose not to run the check" remain two different values: the first is a failure, the
 second is a named omission on the run envelope, the timeline (`step-omitted` / `operator-asserted`),
 the receipt and the result.
@@ -736,7 +738,8 @@ only the write sequencer's row may say a write happened — and the `receipt` fo
 the typed pair over the run's OWN identity approval and reconciled dates (`assertTerminationReceipt`),
 which are the two facts a live receipt is checked against. The typed number must be one the Kuali
 control can hold, and the status must be one a receipt may carry (Approved, Manually Processed,
-Pending); Denied and Pushed Back refuse, because a filing UCPath refused is not a filed termination.
+Pending); Denied, Error and Pushed Back refuse, because a filing UCPath refused is not a filed
+termination.
 The receipt's `disposition` is `operator-asserted`, the result's `pendingSweep` is the named
 `omitted` arm, and the Kuali finalization stages the typed number exactly as it would a read one.
 This is the operator's own ruling on the trade §4c's Option C weighed: the number is unverified by

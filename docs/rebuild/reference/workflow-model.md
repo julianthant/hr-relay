@@ -2211,7 +2211,7 @@ A successful workflow has one durable terminal result. The executor evaluates `r
 itself from the run's stored canonical input and the exact schema-validated checkpoint outputs;
 no caller supplies a candidate result. The descriptor factory fixes dependency order and maps
 each conditional dependency to its one legal absence reason (`condition-false` or
-`branch-not-selected`, plus D307's `operator-asserted` and `step-omitted` — §5.8). It parses the derived value through the descriptor's exact result schema
+`branch-not-selected`, plus D307's `step-omitted`; `operator-asserted` is a SPAN reason the terminal factory refuses by name, because an asserted node arrives as the `asserted` evidence arm — §5.8). It parses the derived value through the descriptor's exact result schema
 and issues an in-process authorization seal bound to both the parsed current run and result. An
 initial authority write rejects a structurally valid hand-built record without that seal and
 independently rereads every named checkpoint; a not-run dependency is rejected when the same
@@ -2245,7 +2245,9 @@ producer-rebuilt task) and `omitted` (nothing runs, nothing is produced), alongs
 an ordinary `run_checkpoints` row carrying an `assertion: { step, assertedAt }` marker
 (`src/domain/workflow/checkpoint.ts`), whose every provenance leaf is `operator`-sourced. Replay of
 that row is admitted only under the SAME assertion; a run that later executes the node (a
-recomposition, never a mode change mid-run) ignores it. A gate resume — a new claim of the same
+recomposition, never a mode change mid-run) ignores it on an ordinary start and executes the node
+fresh; an EXPLICIT resume (`startAt`) that would cross it refuses as an entry-validation failure
+naming the omitted step. A gate resume — a new claim of the same
 attempt reaching the node again — republishes THIS run's own marked row rather than minting a second
 one, so one attempt holds exactly one row per node.
 

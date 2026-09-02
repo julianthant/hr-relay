@@ -1242,6 +1242,29 @@ one OCR task. They are listed rather than guessed at because no run can reach th
 | `extraction/extract-spreadsheet` · `extraction/extract-pdf-pages` · `normalization/read-contact-advice` · `roster/match-spreadsheet` | wired into no descriptor, so no run can reach them; declaring a shape nothing has executed would be a guess. |
 | `ocr/extract-form-page` — its OWN output leaves | same, plus a real finding: the task records `pageFingerprint` and `hasRecord`, and `AdmittedExtractionSchema` carries neither, so `finalizeRead` would refuse it (`task provenance path … does not exist in the output`) the first time a descriptor composed it. Declaring `AdmittedExtraction`'s leaves would hide that; it is recorded here instead, unowned, for whoever wires the OCR route. |
 
+#### 2.3.x — D307: an asserted node is present, never verified (2026-09-01)
+
+When the operator omitted a step at start, the receipt says so in three closed places and never lets a
+typed value read as an observation:
+
+- **Fact source `operator-assertion { taskId, step, assertedAt }`** — every leaf of an asserted node's
+  marked checkpoint row (`assertion: { step, assertedAt }`, every provenance entry `operator` with no
+  `correctedAt`) carries this source. An `operator`-sourced leaf that is neither a correction
+  (`correctedAt`) nor backed by the row's `assertion` is a contradiction the receipt refuses.
+- **Decision `kind: "assertion"`, outcome `taken`**, one per asserted node, naming the omitted step and
+  the instant; the node's `node.<id>` obligation is **`present` and mandatory** — the value existed and
+  drove the run — never `verified` (nothing observed it) and never `absent`.
+- **Warning `OPERATOR_OMITTED_STEP`**, once per omitted step key, load-bearing: a `done` run with an
+  omitted step folds to `partial`, not `verified-done`.
+
+Nodes of an omitted step that nothing rebuilt (every transaction, some tasks) keep the ordinary not-run
+shape with the closed reason `step-omitted`; their obligation is `absent` and not mandatory. The receipt
+reconciles an asserted terminal dependency against the exact marked row (step, instant, output schema
+hash and output digest) in both directions: a cited assertion without its row, and a marked row the
+terminal record cites as not-run or does not cite, both refuse by name. Explain (§2.5) lists the run's
+omitted step keys and renders an asserted node with the `operator-asserted` disposition; typed fact
+VALUES never appear in a receipt, an Explain, a span or a wire — only step keys and field keys.
+
 ### 2.4 Rerun transparency
 
 <!-- roadmap: p2-2g -->

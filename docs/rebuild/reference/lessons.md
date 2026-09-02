@@ -27,7 +27,8 @@ write-safety work.
   `assertion: { step, assertedAt }` field whose every provenance leaf is `operator`-sourced, so a
   reader can never mistake it for an observation. That row must replay only under the SAME
   assertion — a run that later executes the node for real (a recomposition, never a mode switch
-  mid-run) ignores it — and a gate resume (a new claim of the same attempt reaching the node again)
+  mid-run) ignores it on an ordinary start, while an explicit `startAt` resume refuses it as an
+  entry-validation failure — and a gate resume (a new claim of the same attempt reaching the node again)
   must republish this run's own marked row rather than mint a second one, so one attempt still holds
   exactly one row per node.
 - **2026-08-29: identity admission and immutable attribution must age independently (D75; ref
