@@ -7,6 +7,17 @@ lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/store
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
 
+- **2026-09-01: an asserted node needs a durable row, not just an in-memory output (D307; ref
+  workflow-model §5.8; ref write-safety §3.1).** A step's declared producer can rebuild a task's
+  output from typed facts at plan time, but the write sequencer's own beat ⑦ discipline rebuilds
+  COMMIT input from stored checkpoints — an output that never lands as a `run_checkpoints` row is
+  invisible to everything downstream. Persist it as an ordinary checkpoint row, but MARK it: an
+  `assertion: { step, assertedAt }` field whose every provenance leaf is `operator`-sourced, so a
+  reader can never mistake it for an observation. That row must replay only under the SAME
+  assertion — a run that later executes the node for real (a recomposition, never a mode switch
+  mid-run) ignores it — and a gate resume (a new claim of the same attempt reaching the node again)
+  must republish this run's own marked row rather than mint a second one, so one attempt still holds
+  exactly one row per node.
 - **2026-08-29: identity admission and immutable attribution must age independently (D75; ref
   operator-trust §7; ref frontend-backend-integration §3.4/§6.7).** A required actor field added to
   an existing evidence schema tempts a migration to stamp the current local operator on old rows,

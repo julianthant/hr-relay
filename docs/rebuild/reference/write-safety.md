@@ -565,6 +565,18 @@ deleted `tests/unit/transaction-terminal-dependency.test.ts` proof against the r
 reads. `SubjectEvidence`, `AbsentEvidence`, `probeVerdictSchema`, `NegativeSettlementPolicy` and the
 dry-run preview travel with it for the same reason.
 
+**D307 — an omitted step never substitutes a transaction node (2026-09-01).** A step folder's
+declared omission (ref workflow-model §5.8) may rebuild a TASK node's output from operator-typed
+facts; it may never rebuild a transaction. An omitted step's transaction node does not run and mints
+no outcome envelope, no `write_intents` row, no `write_attempts` row and no `durable_outbox` row —
+D144 stands: the write sequencer's row is the only thing that may say a write happened. A typed
+transaction number (separations §4c's UCPath-transaction omission) reaches Kuali finalization as a
+typed FACT, consumed by the finalization receipt fold with `disposition: "operator-asserted"`; the
+result's `pendingSweep` carries the named `{ state: "omitted", step }` arm
+(`OmittedStepResultArmSchema`, `src/domain/workflow/step-omission.ts`) rather than a fabricated
+`TransactionOutcome`. Gate nodes in an omitted step still run — ALWAYS-GATE is not a step choice —
+so an asserted receipt is approved as typed, never auto-approved.
+
 ### 3.2 The controlled-commit criterion — every write workflow owes its own
 <!-- roadmap: track-a -->
 

@@ -554,6 +554,11 @@ function StepStrip({
                       {member.state}
                       {member.durationSec !== undefined ? ` · ${fmtElapsed(member.durationSec)}` : ""}
                       {member.replayedFrom === undefined ? "" : ` · ${replaySourceText(member.replayedFrom)}`}
+                      {/* D307 — an operator-asserted member and a step-omitted
+                          one both fold to `skipped`, and they are opposite
+                          facts: one produced the value this run consumed, the
+                          other produced nothing. The served reason says which. */}
+                      {member.notRunReason === undefined ? "" : ` · ${NOT_RUN_PHRASE[member.notRunReason]}`}
                     </span>
                   </li>
                 ))}

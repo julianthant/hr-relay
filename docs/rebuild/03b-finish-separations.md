@@ -882,6 +882,7 @@ required `build:manifest` regeneration.
 - [x] D192's re-disposition of `legacy-tool-ops-sanity-check-record` — **ANSWERED 2026-08-18**: no AI feature; the §14.2 packet's server-computed `comparisons` array is the sanity check, deterministically. The register entry is `retired` with the ruling's own words (`config/legacy-capabilities.json:1266`)
 - [x] A6's first live retry as evidence — delivered 2026-08-19 (§9.20)
 > 2026-08-20 | docs-cohesion 03b | the two doc-side items were verified CLOSED against reference/dashboard-surfaces.md, src/dashboard/surfaces/queue.tsx and config/legacy-capabilities.json — the tree still listed both as open and is corrected; left: the ① witness call
+- [x] whether any step should be pickable, with typed facts standing in for its browser reads — **ANSWERED 2026-09-01 (D307)**: yes, slice one. Kronos timecard, UCPath transaction and Kuali finalization each declare an omission (`docs/migrations/separations.md` §4b/§4c amendments); gates and transactions are never substituted. **Open:** *identity check*, *Kuali extraction* and *Job summary* stay required — their omission waits on the identity packet carrying per-row origin marks for asserted evidence (§4d's amendment)
 <!-- /roadmap-status -->
 
 **Three of the four calls this node was drawn for are settled**, and they were settled before this
@@ -928,6 +929,7 @@ and the normative pointer stay in the ledger; this is the phase index.
 | 90 | 2026-08-21 | D266 | **the crash-test dummy is dismantled** — `kuali-timekeeper-annotation` goes; its harness becomes the first T1 pair (Kuali finalization); `proving` / `Test equipment` / `proving/` / D127's exemption retire with it |
 | 101 | 2026-08-28 | D284 | **4537 is the one active test subject** — one exact label serves both separations workflow resolvers; every other active label retires to dated migration history |
 | 112 | 2026-09-01 | D300 | **the canary is ONE document number in `.env`** — a single closed reference replaces D286's three person-value secrets; the composed chain derives every person fact live; the standalone finalization harness blocks by name |
+| 113 | 2026-09-01 | D307 | **any timeline step is pickable; an omitted step's browser reads are replaced by operator-typed facts** — slice one declares omissions for Kronos timecard, UCPath transaction and Kuali finalization; gates and transactions are never substituted; identity check/Kuali extraction/Job summary stay required pending the identity packet's per-row origin marks |
 
 **Ratified elsewhere, load-bearing here.** D77 (the ALWAYS-GATE itself, Phase 0) is what this
 migration implements; D222, D223, D225 and D230–D242 (phase 3a) are the dashboard defaults the wire

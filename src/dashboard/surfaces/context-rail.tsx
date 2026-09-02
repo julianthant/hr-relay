@@ -216,8 +216,10 @@ function parseDraft(
  * run read, and a hazard is never disclosed behind a width.
  */
 function ProvenanceMarks({ entry }: { entry: ContextDataEntry }) {
-  const { observedAt, source, correctedAt } = entry;
-  if (observedAt === undefined && source === undefined && correctedAt === undefined) return null;
+  const { observedAt, source, correctedAt, assertedStep } = entry;
+  if (observedAt === undefined && source === undefined && correctedAt === undefined && assertedStep === undefined) {
+    return null;
+  }
   return (
     <>
       {/* `info`, not `warning` (R6 f.10, demo `DemoContextRail.tsx:363-371`): a
@@ -238,15 +240,33 @@ function ProvenanceMarks({ entry }: { entry: ContextDataEntry }) {
           corrected
         </Badge>
       )}
+      {/* D307 — the operator OMITTED this value's step at start and typed the
+          facts its producer rebuilt this value from. It is operator-sourced
+          with no correction, so the `corrected` badge above does not cover it
+          and the note below no longer holds for every operator arm: without
+          this badge an asserted value would draw exactly like one a task read
+          from a live system, with a clock beside it and nothing saying nobody
+          looked. The step is named because it is the fact that makes the row
+          checkable against the run's own start. */}
+      {assertedStep !== undefined && (
+        <Badge
+          tone="warning"
+          className="shrink-0"
+          title={`No system was read for this value: the operator omitted the "${assertedStep}" step at start and typed the facts it was rebuilt from. The instant beside it is when it was asserted, not when anything was observed.`}
+        >
+          asserted
+        </Badge>
+      )}
       {/* `live` is the unmarked default — it is what most rows are, and a badge
           on every row is a badge on none. `derived` earns one because a
           computed value's clock is not a live observation of anything.
 
-          THE `operator` ARM DRAWS NOTHING, and that is deliberate rather than
-          unhandled (R6 f.23). A value whose source is the operator is exactly a
-          value that carries `correctedAt`, so it already has the `corrected`
-          badge above — a second badge saying the same thing in a different word
-          is the redundancy this pass is removing everywhere else. */}
+          THE `operator` ARM DRAWS NO BADGE OF ITS OWN, and that is deliberate
+          rather than unhandled (R6 f.23). Until D307 an operator-sourced value
+          was exactly a value carrying `correctedAt`, which the `corrected`
+          badge above already says; D307 added the second operator arm — an
+          ASSERTED value — and it draws its own badge above, naming the omitted
+          step. Either way the word is said once. */}
       {source === "derived" && (
         <Badge
           className="shrink-0"

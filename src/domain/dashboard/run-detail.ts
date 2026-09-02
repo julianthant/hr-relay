@@ -28,6 +28,7 @@ import { UnscopedCommitReasonIdSchema } from "../unscoped-commit.js";
 import { directIdentifierDigestReference } from "../redaction.js";
 import { IdentityEvidencePacketSchema } from "../separations/identity-evidence.js";
 import { ContractFieldPathSchema } from "../contracts/base.js";
+import { TimelineCategoryKeySchema } from "../workflow/presentation.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
 import {
   FailureCauseSchema,
@@ -177,7 +178,26 @@ export const TimelineStepMemberWireSchema = z.strictObject({
   durationSec: z.number().int().nonnegative().optional(),
   /** D259 — present exactly when this member replayed; see the refinement. */
   replayedFrom: TimelineReplaySourceSchema.optional(),
+  /**
+   * D307 — WHY a `skipped` member did not run, read off its span's own closed
+   * reason and never re-derived. It is what lets the strip draw an
+   * `operator-asserted` member (the operator omitted its step and typed the
+   * facts its producer rebuilt the output from) distinctly from a
+   * `step-omitted` one (nothing rebuilt it and it did not run at all) — two
+   * completely different facts that both fold to `skipped`.
+   *
+   * Absent when the span recorded no reason, which stays exactly that: a
+   * member whose reason authority does not hold, never a plausible one.
+   */
+  notRunReason: TimelineNotRunReasonSchema.optional(),
 }).superRefine((member, context) => {
+  if (member.state !== "skipped" && member.notRunReason !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["notRunReason"],
+      message: `a ${member.state} member cannot carry a not-run reason`,
+    });
+  }
   if ((member.state === "replayed") !== (member.replayedFrom !== undefined)) {
     context.addIssue({
       code: "custom",
@@ -355,6 +375,18 @@ export const RunDetailWireSchema = z.strictObject({
   context: ContextSummaryWireSchema,
   /** Optional only for archived records frozen before DCA3; every live read emits it. */
   captures: RunCaptureAvailabilityWireSchema.optional(),
+  /**
+   * D307 — the timeline steps this run OMITTED at start, by descriptor key.
+   *
+   * Keys only. The operator's typed facts are the run's input to those steps
+   * and never cross this wire: what a panel needs to say is WHICH steps nobody
+   * read, and the timeline's own members say what each node of them did.
+   *
+   * Present only when the run omitted something (`.min(1)`), so absence is one
+   * fact and not two: no run before D307 could omit a step, so an archived
+   * record frozen without this field omitted none either.
+   */
+  omittedSteps: z.array(TimelineCategoryKeySchema).min(1).optional(),
   availableSections: z.array(RunDetailSectionSchema),
 }).superRefine((detail, context) => {
   if (detail.runId !== detail.header.runId) {
@@ -368,6 +400,18 @@ export const RunDetailWireSchema = z.strictObject({
   }
   if (detail.outcome.state === "terminal" && detail.gate.state === "open") {
     context.addIssue({ code: "custom", path: ["gate"], message: "terminal detail cannot retain an open gate" });
+  }
+  /*
+   * D307 — a run that read a step from an operator's form is not a verified
+   * completion, exactly as D238's rehearsal is not. Structural, so no producer
+   * can serve the two together by forgetting the rule.
+   */
+  if (detail.omittedSteps !== undefined && detail.outcome.state === "terminal" && detail.outcome.result === "verified-done") {
+    context.addIssue({
+      code: "custom",
+      path: ["outcome", "result"],
+      message: "a run with an omitted step cannot be verified-done; nothing verified the values typed in its place",
+    });
   }
 });
 
@@ -656,6 +700,18 @@ export const ContextDataSectionSchema = z.strictObject({
     observedAt: IsoInstantSchema.optional(),
     source: z.enum(["live", "derived", "operator"]).optional(),
     correctedAt: IsoInstantSchema.optional(),
+    /**
+     * D307 — the omitted STEP this value was asserted for, present exactly when
+     * the checkpoint row that carries it is an operator assertion.
+     *
+     * Before D307 an `operator` source meant one thing — a correction, which
+     * carries `correctedAt` — and the rail drew nothing for it because the
+     * `corrected` badge already said it. An asserted value is operator-sourced
+     * with NO correction, so without this leaf it would draw as an unmarked
+     * row with a clock beside it: a value nobody read, presented exactly like
+     * one a task observed.
+     */
+    assertedStep: TimelineCategoryKeySchema.optional(),
     origin: ContextDataOriginSchema.optional(),
     freshness: ContextDataFreshnessSchema.optional(),
   })).superRefine((entries, context) => {
@@ -664,6 +720,16 @@ export const ContextDataSectionSchema = z.strictObject({
       // resolved from the producing node's contract, so an entry that cannot
       // name its step cannot have one either. Refused here rather than left to
       // a surface that would print an unattributed age.
+      // An asserted ROW may hold a leaf no provenance point covers, which is
+      // dateless and sourceless — and still asserted. What it may never be is
+      // live or derived: those two say a task established the value.
+      if (entry.assertedStep !== undefined && (entry.source === "live" || entry.source === "derived")) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "assertedStep"],
+          message: `an asserted value is operator-sourced; a ${entry.source} leaf never names an omitted step`,
+        });
+      }
       if (entry.freshness !== undefined && entry.origin === undefined) {
         context.addIssue({
           code: "custom",
