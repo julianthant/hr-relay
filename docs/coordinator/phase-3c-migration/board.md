@@ -23,15 +23,16 @@
 |---|---|---|---|---|---|---|
 | u01–u06 | R1 | running; D312–D316 amendment delivered | — | — | required | D311 compiler plus follow-on authoring/skip/recovery/combinator acceptance, two conversions, projections, conformance/deletion, order-0 T1 |
 | u10–u12 | R2 | running; D312–D316 amendment delivered; T1 decision residue isolated | — | — | required | Order 1 migration intake and live/provenance discovery only |
-| u20–u24 | R3 | blocked on R1+R2 + decision 1 | — | — | required | Order 1 implementation and proof |
-| u30–u35 | R4 | planned | — | — | required | Order 2 downloads + viewer |
-| u40–u44 | R5 | planned | — | — | required | Order 3 OCR pipeline + Review capability |
-| u50–u54 | R6 | planned | — | — | required | Order 4 OCR fan-out/light writes |
-| u60–u64 | R7 | planned | — | — | required | Order 5 I-9 check + workbook projection/export |
-| u70–u74 | R8 | planned | — | — | required | Order 6 work-study + Kronos pay rule |
-| u80–u84 | R9 | planned | — | — | required | Order 7 oath upload + OnBase |
-| u90–u94 | R10 | planned | — | — | required | Order 9 onboarding |
-| u100–u105 | R11 | planned | — | — | required | remaining cross-cutting capability closure and zero-open audit |
+| u15–u19 | R3 | briefed; blocked on integrated R1+R2 | — | — | required | D312–D316 strict artifact guard, entry algebra, whole-step admission, recovery modes and final deletion acceptance |
+| u20–u24 | R4 | blocked on R3 + decision 1 | — | — | required | Order 1 implementation and proof |
+| u30–u35 | R5 | planned | — | — | required | Order 2 downloads + viewer |
+| u40–u44 | R6 | planned | — | — | required | Order 3 OCR pipeline + Review capability |
+| u50–u54 | R7 | planned | — | — | required | Order 4 OCR fan-out/light writes |
+| u60–u64 | R8 | planned | — | — | required | Order 5 I-9 check + workbook projection/export |
+| u70–u74 | R9 | planned | — | — | required | Order 6 work-study + Kronos pay rule |
+| u80–u84 | R10 | planned | — | — | required | Order 7 oath upload + OnBase |
+| u90–u94 | R11 | planned | — | — | required | Order 9 onboarding |
+| u100–u105 | R12 | planned | — | — | required | remaining cross-cutting capability closure and zero-open audit |
 
 ## Residue
 
