@@ -2314,6 +2314,13 @@ holding the unchanged `FactLine`/`FactChips`/`SourceLink` treatment, a hairline 
 the last, and no horizontal cell inset so the labels stay in line with the node-level rows above the
 cards. The schema-hash `MetaLine` stays below the table. The node-level rows keep `FactRow`; only
 the arm record is a table. The a11y half of `explorer-transaction` now carries a `table` per arm.
+Two things the first cut got wrong, seen on the live rail: the record's labels are the panel's
+longest and broke over two lines in 7rem, so the table's own column is 8.5rem (measured: `Subject
+binding` is 118px in caps); and the middle-dot runs let the browser break inside a value with the
+dot stranded at a line end, so `FactLine` is now a flex-wrap of pairs — the line breaks BETWEEN
+pairs, a pair breaks only when one value is wider than the column, the column gap is the visible
+separator and a `sr-only` comma is the spoken one. The record's container also lost its `border-t`:
+the Outputs group's last row already rules that seam, and the two lines read as a double rule.
 
 **A node's `when`, in words.** §5.7 recorded the conditional line as "runs when the descriptor's own
 when() predicate holds" and named an authored `whenLabel` as the fix. The fix taken instead is

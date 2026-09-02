@@ -246,16 +246,18 @@ function FactRow({ label, children }: { label: string; children: ReactNode }) {
  * of them two or three wrapping lines of ids) the eye lost which line belonged
  * to which label. A table gives it what a key/value list is: a hairline under
  * each row, the label as a row HEADER (`<th scope="row">`, so a screen reader
- * names the fact before every value), and a fixed 7rem label column that the
- * whole node panel already agrees on. The rows do not pad horizontally — the
- * record's container owns the inset, and a cell inset on top of it would
- * push the labels out of line with the node-level rows above the arm cards.
+ * names the fact before every value), and a fixed label column. The column is
+ * wider than the node-level rows' 7rem because the record's labels are the
+ * panel's longest (`Implemented by`, `Subject binding`, `UI vocabulary`) and
+ * a label broken over two lines reads as two facts. The rows do not pad
+ * horizontally — the record's container owns the inset, and a cell inset on
+ * top of it would push the labels out of line with the rows above the cards.
  */
 function RecordTable({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Table label={label} layout="fixed">
       <colgroup>
-        <col className="w-[7rem]" />
+        <col className="w-[8.5rem]" />
         <col />
       </colgroup>
       <TBody>{children}</TBody>
@@ -270,13 +272,13 @@ function RecordRow({ label, children }: { label: string; children: ReactNode }) 
       <TH
         scope="row"
         className={cn(
-          "border-[color:var(--ds-border-subtle)] px-0 pr-[var(--ds-space-base)] align-top",
+          "border-[color:var(--ds-border-subtle)] px-0 py-[var(--ds-space-base)] pr-[var(--ds-space-base)] align-top",
           "text-[color:var(--ds-fg-muted)]",
         )}
       >
         {label}
       </TH>
-      <TD className="px-0 align-top">{children}</TD>
+      <TD className="px-0 py-[var(--ds-space-base)] align-top">{children}</TD>
     </TR>
   );
 }
@@ -292,20 +294,28 @@ interface FactItem {
 
 /**
  * The record's one value treatment (D304): `label value` pairs on a WRAPPING
- * line, joined by middle dots, values in mono.
+ * line, values in mono.
  *
- * The chips this replaces were single-line tokens by contract (`Chip`'s own
+ * The chips this replaced were single-line tokens by contract (`Chip`'s own
  * docstring: a fact that cannot survive truncation is not a chip), and the
  * record's facts are catalog ids, error codes and source paths — the exact
  * strings that were being cut to `kuali.action-list.match…` and recovered on
  * `title` alone. A line wraps; nothing here is reachable by pointer only.
+ *
+ * The first cut joined the pairs with middle dots in one run of text, and the
+ * browser broke that run wherever it liked — inside a value, with the dot
+ * stranded at a line end — so a six-pair fact read as a clump. The pairs are
+ * now flex items: the line wraps BETWEEN pairs first, each pair stays whole
+ * unless a single value is wider than the column, and the column gap is the
+ * separator. No dot is needed once the seams are where the eye expects them.
  */
 function FactLine({ items }: { items: readonly FactItem[] }) {
   return (
-    <span className={cn(dsText.meta, "block min-w-0 break-words text-[color:var(--ds-fg-secondary)]")}>
+    <span className={cn(dsText.meta, "flex min-w-0 flex-wrap gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-hair)] text-[color:var(--ds-fg-secondary)]")}>
       {items.map((item, index) => (
-        <span key={item.key}>
-          {index > 0 && <span className="text-[color:var(--ds-fg-faint)]">{" · "}</span>}
+        <span key={item.key} className="min-w-0 max-w-full break-words">
+          {/* The gap is the visual separator; a reader hears the pairs run together without one. */}
+          {index > 0 && <span className="sr-only">{", "}</span>}
           {item.icon}
           {item.label !== undefined && (
             <span className="text-[color:var(--ds-fg-muted)]">{`${item.label} `}</span>
@@ -1210,7 +1220,7 @@ function ArmRecord({ task }: { task: ExplorerTaskWire }) {
     .map((kind) => ({ kind, links: task.ui.filter((link) => link.kind === kind) }))
     .filter((group) => group.links.length > 0);
   return (
-    <div className="flex flex-col gap-[var(--ds-space-base)] border-t border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-base)]">
+    <div className="flex flex-col gap-[var(--ds-space-base)] px-[var(--ds-space-base)] pb-[var(--ds-space-base)]">
       <RecordTable label={`${String(task.taskId)} record`}>
         <RecordRow label="Implemented by">
           {task.binding.state === "bound" ? (
