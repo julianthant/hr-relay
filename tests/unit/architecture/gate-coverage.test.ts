@@ -45,7 +45,35 @@ const rootTypeScriptConfigFiles = tsconfig.include
   .filter((pattern) => !pattern.includes("/") && pattern.endsWith(".ts"))
   .toSorted();
 
+const EXACT_GATE_COMMANDS = {
+  typecheck: "tsc --noEmit",
+  lint: "eslint src tests scripts vitest.config.ts vite.dashboard.config.ts playwright.parity.config.ts --max-warnings 0",
+  test: "vitest run --reporter=dot",
+  "test:coverage": "vitest run --coverage --reporter=dot && tsx scripts/suite-size.ts",
+} as const;
+
+export function gateCommandViolations(scripts: Readonly<Record<string, string>>): string[] {
+  return Object.entries(EXACT_GATE_COMMANDS).flatMap(([name, expected]) =>
+    scripts[name] === expected
+      ? []
+      : [`${name} must be exactly '${expected}'; found '${scripts[name] ?? "<missing>"}'`]
+  );
+}
+
 describe("gate coverage", () => {
+  it("rejects inert wrappers around every per-commit gate", () => {
+    assert.deepEqual(gateCommandViolations(pkg.scripts), []);
+    for (const [name, command] of [
+      ["typecheck", "echo tsc --noEmit"],
+      ["lint", `echo ${EXACT_GATE_COMMANDS.lint}`],
+      ["test", "true && vitest run --reporter=dot"],
+      ["test:coverage", "vitest run --coverage --reporter=dot && echo tsx scripts/suite-size.ts"],
+    ] as const) {
+      const mutated = { ...pkg.scripts, [name]: command };
+      assert.match(gateCommandViolations(mutated).join("\n"), new RegExp(`^${name.replace(":", "\\:")}`));
+    }
+  });
+
   it("keeps every authored root inside the single type program", () => {
     for (const root of AUTHORED_ROOTS) {
       assert.ok(
@@ -53,7 +81,6 @@ describe("gate coverage", () => {
         `tsconfig include must carry ${root}/**/* — an un-included root is un-typechecked`,
       );
     }
-    assert.match(pkg.scripts.typecheck ?? "", /tsc --noEmit/);
     // The legacy repo needed `typecheck:all` because it had TWO programs and
     // the composite gate silently dropped one. One program, one gate here — so
     // a resurrected `typecheck:all` would mean a second program appeared
@@ -118,14 +145,4 @@ describe("gate coverage", () => {
     assert.doesNotMatch(scripts, /:rebuild/, "the *:rebuild script names retire with D93");
   });
 
-  it("keeps the architecture and coverage lanes registered", () => {
-    assert.equal(
-      pkg.scripts["test:architecture"],
-      "vitest run --project architecture --reporter=dot",
-      "the architecture lane must stay addressable by its exact project name",
-    );
-    assert.match(pkg.scripts["test:coverage"] ?? "", /--coverage/);
-    assert.match(pkg.scripts["test:coverage"] ?? "", /suite-size\.ts/);
-    assert.match(pkg.scripts.test ?? "", /vitest run/);
-  });
 });

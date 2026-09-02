@@ -132,11 +132,20 @@ describe("reviewed architecture guard manifest", () => {
     // an assertion that could only hold until the second retirement — exactly
     // the shape of check this program keeps finding and replacing.
     const retired = inventory.guards.filter(({ status }) => status === "retired");
+    const activeNames = new Set(
+      inventory.guards.filter(({ status }) => status === "active").map(({ name }) => name),
+    );
     assert.ok(retired.length > 0, "retirements must stay recorded");
     for (const entry of retired) {
       assert.match(entry.retiredBy ?? "", /^D\d+$/, `${entry.name} must name the deciding decision`);
       assert.ok(entry.invariant.trim().length > 40, `${entry.name} must explain where its invariant went`);
       assert.equal(entry.replacementRequired, true, entry.name);
+      if (entry.replacedBy !== undefined && entry.replacedBy !== null) {
+        assert.ok(
+          activeNames.has(entry.replacedBy),
+          `${entry.name} replacement must resolve to an active guard: ${entry.replacedBy}`,
+        );
+      }
     }
     assert.ok(
       retired.some(({ replacedBy }) => replacedBy === "operational-isolation"),
