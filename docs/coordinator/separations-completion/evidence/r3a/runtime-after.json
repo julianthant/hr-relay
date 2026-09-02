@@ -1,0 +1,47 @@
+{
+  "checkedAt": "2026-09-02T17:23:11Z",
+  "dashboard": {
+    "bff": {
+      "pid": 93076,
+      "url": "http://127.0.0.1:3938",
+      "status": 200
+    },
+    "vite": {
+      "pid": 93074,
+      "url": "http://127.0.0.1:5174",
+      "status": 200
+    },
+    "bootstrapDescriptorHash": "b20c628d09fb866ad45940e5fa824b48d72d559596deea770f000e75ef38045b",
+    "separationsContractFingerprint": "ea47a1839f9d3bb89509962217203663d9e1ff422847d3abb8217723949bd417",
+    "manifestFingerprintMatches": true
+  },
+  "inspection": {
+    "tool": "playwright-cli",
+    "session": "r3a",
+    "route": "http://127.0.0.1:5174/?day=2026-09-01&run=ca6a5462-4e52-43b7-ac85-f9bdb7fd30cf",
+    "clickPath": [
+      "Open the exact historical run route",
+      "Open Workflow Panel",
+      "Select Separations"
+    ],
+    "observed": {
+      "historicalRows": 12,
+      "identityCheck": "done",
+      "jobSummary": "done",
+      "kronosTimecard": "done",
+      "ucpathTransaction": "pending",
+      "kualiFinalization": "pending",
+      "receipt": "dry-run partial; no receipt advertised"
+    },
+    "consoleResidue": [
+      "favicon.ico returned 404",
+      "the historical run receipt endpoint returned 500 while the UI truthfully rendered 'No receipt'"
+    ],
+    "sanitizedScreenshot": "runtime-workflow-shape.png",
+    "newWorkflowRunStarted": false,
+    "operatorMutationIssued": false,
+    "browserClosed": true,
+    "remainingPlaywrightBrowsers": 0
+  },
+  "runtimeLeftRunning": true
+}
