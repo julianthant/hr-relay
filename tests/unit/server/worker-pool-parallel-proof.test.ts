@@ -379,6 +379,7 @@ function proveBirth(harness: SoakHarness, member: WorkerPoolMember): void {
   assert.equal(harness.database.authority.workerLeases.start({
     workerId: member.workerId,
     workflow: member.workflowId,
+    browserSystems: member.workflowId === PL ? ["crm", "ucpath"] : ["ucpath"],
     processId: pid,
     requestedBy: "local-operator",
     now: harness.clock.now().toISOString(),
@@ -437,7 +438,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
       const pl1Child = required(harness.children[0], "PL-1's child");
       const pl1Pid = required(pl1Child.pid, "PL-1's pid");
       assert.equal(harness.database.authority.workerLeases.start({
-        workerId: PL_1.workerId, workflow: PL, processId: pl1Pid,
+        workerId: PL_1.workerId, workflow: PL, browserSystems: ["crm", "ucpath"], processId: pl1Pid,
         requestedBy: "local-operator", now: harness.clock.now().toISOString(),
       }).state, "started");
       fireBirthPoll(harness);

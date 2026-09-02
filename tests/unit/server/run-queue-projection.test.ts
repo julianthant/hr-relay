@@ -244,6 +244,10 @@ describe("THE run/queue projection (D81)", () => {
     // it to a queue row.
     const w = world();
     w.authority.putWorkerLease(workerLeaseOf({
+      // The dashboard's current person-lookup descriptor declares CRM +
+      // UCPath. This launch-time lease deliberately differs so a BFF restart
+      // cannot silently rewrite what the already-running worker loaded.
+      browserSystems: ["kuali"],
       lifecycle: {
         state: "busy",
         startedAt: instantOffsetOf(0),
@@ -280,6 +284,7 @@ describe("THE run/queue projection (D81)", () => {
     assert.deepEqual(card.browsers, [
       { sessionId: uuidOf(50), system: "ucpath", openedAt: instantOffsetOf(0) },
     ]);
+    assert.deepEqual(card.browserRequirements, { state: "present", systems: ["kuali"] });
     assert.deepEqual(card.currentRun, { state: "present", runId: uuidOf(1), traceId: traceOf(1) });
   });
 
@@ -675,6 +680,109 @@ describe("THE run/queue projection (D81)", () => {
  * done, then `crm-dates` skipped by its own `when`, and a terminal run whose
  * execution took minutes rather than the hours a live clock kept counting.
  */
+describe("lease-only transitions reach the Session Panel without a span (D248 freshness)", () => {
+  const workerId = "person-lookup-worker-1";
+  const startedAt = instantOffsetOf(0);
+  const workerPath = "worker/person-lookup/person-lookup-worker-1";
+  function snapshots(w: ReturnType<typeof world>): number {
+    return w.changes.filter((change) => change.kind === "snapshot").length;
+  }
+
+  it("publishes a snapshot for a lease born before its first span, and an idle tick publishes nothing", () => {
+    const w = world();
+    assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards.length, 0);
+    w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "starting", startedAt } }));
+    w.projection.reconcileWorkerLeases();
+    assert.equal(snapshots(w), 1);
+    const [card] = w.projection.buildDashboardDayWire(DAY).workerCards;
+    assert.equal(card?.state, "starting");
+    assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"] });
+    w.projection.reconcileWorkerLeases();
+    w.projection.reconcileWorkerLeases();
+    assert.equal(snapshots(w), 1);
+  });
+
+  it("ignores heartbeat-only writes and publishes each phase, directive and settlement move exactly once", () => {
+    const w = world();
+    w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "starting", startedAt } }));
+    w.projection.reconcileWorkerLeases();
+    assert.equal(snapshots(w), 1);
+
+    // The maintenance ticker settles `idle`: a lease-only phase move.
+    w.authority.putWorkerLease(workerLeaseOf({
+      workerId, lifecycle: { state: "idle", startedAt, heartbeatAt: instantOffsetOf(0, 5_000) }, version: 2,
+    }));
+    w.projection.reconcileWorkerLeases();
+    assert.equal(snapshots(w), 2);
+    assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0]?.state, "idle");
+
+    // A heartbeat bumps the instant and the version and draws nothing.
+    w.authority.putWorkerLease(workerLeaseOf({
+      workerId, lifecycle: { state: "idle", startedAt, heartbeatAt: instantOffsetOf(0, 10_000) }, version: 3,
+    }));
+    w.projection.reconcileWorkerLeases();
+    assert.equal(snapshots(w), 2);
+
+    // An operator directive is a lease write with no span of its own.
+    w.authority.putWorkerLease(workerLeaseOf({
+      workerId, lifecycle: { state: "idle", startedAt, heartbeatAt: instantOffsetOf(0, 10_000) }, directive: "pause", version: 4,
+    }));
+    w.projection.reconcileWorkerLeases();
+    assert.equal(snapshots(w), 3);
+    assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0]?.directive, "pause");
+  });
+
+  it("publishes a crash or expiry another process settled, keeping the card while its spans are retained", () => {
+    const w = world();
+    w.authority.putWorkerLease(workerLeaseOf({ workerId }));
+    w.writer.emit({
+      t: "span.started", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
+      workerId, spanPath: workerPath, name: "person-lookup",
+    });
+    const before = snapshots(w);
+    w.authority.putWorkerLease(workerLeaseOf({
+      workerId,
+      lifecycle: { state: "stopped", startedAt, stoppedAt: instantOffsetOf(0, 60_000), reason: "lease-expired" },
+      directive: "stop",
+      version: 5,
+    }));
+    w.projection.reconcileWorkerLeases();
+    assert.equal(snapshots(w), before + 1);
+    const [card] = w.projection.buildDashboardDayWire(DAY).workerCards;
+    assert.equal(card?.state, "failed");
+    assert.equal(card?.stopReason, "lease-expired");
+    assert.deepEqual(card?.browsers, []);
+  });
+
+  it("publishes the disappearance of a settled lease the span stream never named", () => {
+    const w = world();
+    w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "starting", startedAt } }));
+    w.projection.reconcileWorkerLeases();
+    assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards.length, 1);
+    w.authority.putWorkerLease(workerLeaseOf({
+      workerId,
+      lifecycle: { state: "stopped", startedAt, stoppedAt: instantOffsetOf(0, 1_000), reason: "crashed" },
+      directive: "stop",
+      version: 2,
+    }));
+    w.projection.reconcileWorkerLeases();
+    assert.equal(snapshots(w), 2);
+    // D248: a settled lease is a card only while the spans still name its worker.
+    assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards.length, 0);
+  });
+
+  it("degrades loudly when lease authority cannot be read instead of serving a stale card set", () => {
+    const w = world({ collectRebuilds: true });
+    w.authority.listLiveWorkerLeases = () => {
+      throw new Error("leases table unreadable");
+    };
+    w.projection.reconcileWorkerLeases();
+    assert.equal(w.projection.health().state, "degraded");
+    assert.match(w.projection.health().lastError ?? "", /worker lease reconcile failed: leases table unreadable/);
+    assert.equal(w.scheduledRebuilds.length, 1);
+  });
+});
+
 describe("the live exit-run presentation shapes (D123/D124)", () => {
   /** Exactly the exit run's node walk, at one run attempt. */
   function seedExitRunShape(w: DashboardWorld): void {

@@ -462,6 +462,54 @@ interface LinkedRunView {
   readonly status: string;
 }
 
+/**
+ * The lease facts `workerCardOf` renders, canonicalised for change detection:
+ * identity, phase and its instants, the stop reason, the directive, and the
+ * launch-time browser systems. `heartbeatAt`, `updatedAt` and `version` move
+ * on every heartbeat and are left out on purpose — counting them would
+ * republish every live card every beat. `version` IS served (`leaseVersion`),
+ * but the worker directive commands re-read the current lease in the kernel
+ * rather than compare-and-swap on the served value, so a `leaseVersion` that
+ * trails a heartbeat between snapshots changes no write. Insertion order is
+ * the caller's sorted order, so equal sets fingerprint equal.
+ */
+function workerLeaseFingerprintOf(leases: ReadonlyMap<string, WorkerLeaseRecord>): string {
+  const facts = [...leases.values()]
+    .sort((a, b) => a.workerId.localeCompare(b.workerId))
+    .map((lease) => ({
+      workerId: lease.workerId,
+      workflow: lease.workflow,
+      leaseGeneration: lease.leaseGeneration,
+      processId: lease.processId,
+      browserSystems: lease.browserSystems ?? null,
+      directive: lease.control.directive,
+      lifecycle: lifecycleCardFactsOf(lease.lifecycle),
+    }));
+  return JSON.stringify(facts);
+}
+
+/** The lifecycle arm's card-drawn fields — every arm named, so a new arm is a type error here. */
+function lifecycleCardFactsOf(lifecycle: WorkerLeaseRecord["lifecycle"]): Record<string, string> {
+  switch (lifecycle.state) {
+    case "starting":
+      return { state: lifecycle.state, startedAt: lifecycle.startedAt };
+    case "idle":
+    case "stopping":
+      return { state: lifecycle.state, startedAt: lifecycle.startedAt };
+    case "busy":
+      return { state: lifecycle.state, startedAt: lifecycle.startedAt, runId: lifecycle.runId };
+    case "paused":
+      return { state: lifecycle.state, startedAt: lifecycle.startedAt, pausedAt: lifecycle.pausedAt };
+    case "stopped":
+      return {
+        state: lifecycle.state,
+        startedAt: lifecycle.startedAt,
+        stoppedAt: lifecycle.stoppedAt,
+        reason: lifecycle.reason,
+      };
+  }
+}
+
 /* ── the projection ──────────────────────────────────────────────────────── */
 
 export class RunQueueProjection {
@@ -479,6 +527,13 @@ export class RunQueueProjection {
    * only by `ingestFromDisk`.
    */
   #spanCursors: ReadonlyMap<string, EventStreamFileCursor> = new Map();
+  /**
+   * The card-relevant lease facts as of the last authority reconcile, so a
+   * lease-only transition (a lease born before its first span, `starting` →
+   * `idle` from the maintenance ticker, an operator directive, a crash or
+   * expiry settled by another process) reaches subscribers without a span.
+   */
+  #workerLeaseFingerprint: string;
   #cursorValue = 0;
   #generationValue: number;
   #health: RunQueueProjectionHealth = { state: "live" };
@@ -487,6 +542,7 @@ export class RunQueueProjection {
     this.#deps = deps;
     this.#generationValue = Math.max(1, Math.trunc(deps.clock.nowMs()));
     this.#foldSchemaHash = deriveSchemaHash(RunFoldRecordSchema, "output");
+    this.#workerLeaseFingerprint = workerLeaseFingerprintOf(this.#cardLeases());
   }
 
   onChange(listener: (change: RunQueueProjectionChange) => void): () => void {
@@ -579,6 +635,30 @@ export class RunQueueProjection {
   }
 
   /**
+   * The Session Panel's card set is AUTHORITY's (D248), but every change
+   * trigger above is a span. A lease moves without a span when a worker
+   * process writes `starting`, when its maintenance ticker settles `idle`,
+   * when an operator directive lands, and when a crash or expiry is settled
+   * by whichever process observed it — so the same tick that tails the span
+   * files re-reads the exact leases the card set renders and publishes a
+   * snapshot when a card-relevant fact moved. Heartbeat instants and the
+   * versions they bump are not card facts and are excluded on purpose:
+   * counting them would republish every live card every beat.
+   */
+  reconcileWorkerLeases(): void {
+    if (this.#health.state === "degraded") return;
+    try {
+      const fingerprint = workerLeaseFingerprintOf(this.#cardLeases());
+      if (fingerprint === this.#workerLeaseFingerprint) return;
+      this.#workerLeaseFingerprint = fingerprint;
+      this.#cursorValue += 1;
+      this.#notify({ runIds: [], workerChanged: true });
+    } catch (error) {
+      this.#degrade(`worker lease reconcile failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
    * Ref dashboard-surfaces §2.3's failure policy, shared by every ingest path: degraded
    * health carrying the exact error, plus the guarded rebuild.
    */
@@ -642,6 +722,7 @@ export class RunQueueProjection {
       this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
       this.#cursorValue = Math.max(1, this.#cursorValue);
       this.#health = { state: "live" };
+      this.#workerLeaseFingerprint = workerLeaseFingerprintOf(this.#cardLeases());
       const change: RunQueueProjectionChange = { kind: "generation", cursor: this.cursor() };
       for (const listener of this.#listeners) listener(change);
     } catch (error) {
@@ -981,6 +1062,36 @@ export class RunQueueProjection {
     for (const change of changes) {
       for (const listener of this.#listeners) listener(change);
     }
+  }
+
+  /**
+   * D248 — the card set is AUTHORITY's, not the span stream's.
+   *
+   * Every live lease is a card, because a live lease is a worker that exists
+   * whether or not this process has tailed a single one of its spans. A
+   * settled lease is a card only while the span stream still names its
+   * worker: that keeps a crashed worker on screen exactly as long as the
+   * evidence of its run is retained (`pruneEventStreams`), and stops the
+   * panel accumulating one card per worker id ever started, which is the
+   * cardinality a bare listing of the lease table would have.
+   *
+   * A worker the SPANS name and authority does not is deliberately not a
+   * card: authority is what says a worker exists, and drawing one from a
+   * pruned-authority stream would be the panel inventing a daemon.
+   *
+   * `buildDashboardDayWire` renders exactly this map and
+   * `reconcileWorkerLeases` fingerprints exactly this map, so a card can never
+   * be drawn from one lease set and watched from another.
+   */
+  #cardLeases(): ReadonlyMap<string, WorkerLeaseRecord> {
+    const leases = new Map<string, WorkerLeaseRecord>();
+    for (const lease of this.#deps.authority.listLiveWorkerLeases()) leases.set(lease.workerId, lease);
+    for (const workerId of this.#workers.keys()) {
+      if (leases.has(workerId)) continue;
+      const settled = this.#deps.authority.getWorkerLease(workerId);
+      if (settled !== undefined) leases.set(workerId, settled);
+    }
+    return leases;
   }
 
   /* ── the authority join ────────────────────────────────────────────────── */
@@ -1653,29 +1764,8 @@ export class RunQueueProjection {
       byStatus.set(surface.status, (byStatus.get(surface.status) ?? 0) + 1);
     }
 
-    /**
-     * D248 — the card set is AUTHORITY's, not the span stream's.
-     *
-     * Every live lease is a card, because a live lease is a worker that exists
-     * whether or not this process has tailed a single one of its spans. A
-     * settled lease is a card only while the span stream still names its
-     * worker: that keeps a crashed worker on screen exactly as long as the
-     * evidence of its run is retained (`pruneEventStreams`), and stops the
-     * panel accumulating one card per worker id ever started, which is the
-     * cardinality a bare listing of the lease table would have.
-     *
-     * A worker the SPANS name and authority does not is deliberately not a
-     * card: authority is what says a worker exists, and drawing one from a
-     * pruned-authority stream would be the panel inventing a daemon.
-     */
-    const leases = new Map<string, WorkerLeaseRecord>();
-    for (const lease of this.#deps.authority.listLiveWorkerLeases()) leases.set(lease.workerId, lease);
-    for (const workerId of this.#workers.keys()) {
-      if (leases.has(workerId)) continue;
-      const settled = this.#deps.authority.getWorkerLease(workerId);
-      if (settled !== undefined) leases.set(workerId, settled);
-    }
-    const workerCards = [...leases.values()]
+    // D248 — the card set is authority's; `#cardLeases` says why and how.
+    const workerCards = [...this.#cardLeases().values()]
       .sort((a, b) => a.workerId.localeCompare(b.workerId))
       .map((lease) => {
         const fold = this.#workers.get(lease.workerId);

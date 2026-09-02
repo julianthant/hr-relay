@@ -1354,6 +1354,7 @@ describe("D113 worker-browser arms", () => {
   const WORKER_START = {
     workerId: "worker-1",
     workflow: "kernel-reject",
+    browserSystems: [],
     processId: 4242,
     requestedBy: "local-operator",
     now: NOW,

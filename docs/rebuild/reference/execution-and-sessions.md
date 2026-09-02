@@ -413,8 +413,10 @@ concurrency. That is workflow-owned behavior with its own tests, not a generic e
 model.
 
 **What the Session Panel shows** (ref dashboard-surfaces owns the surface): worker phase, queued
-count, trace id, current step, browser session tiles, and failure state. It does not show lane or
-per-system capacity counters, and Settings has no lane/budget reference page.
+count, trace id, current step, the lease's launch-time browser-system requirements, the exact
+sessions currently open, and failure state. Ref dashboard-surfaces §9.9 owns how those separate facts
+are drawn. It does not show lane or per-system capacity counters, and Settings has no lane/budget
+reference page.
 
 **As-built (D248, 2026-08-20).** The panel's card is this section's lease — `workflow`, lifecycle
 phase, the operator's standing directive, the started/stopped instants, the stop reason and the row
@@ -425,8 +427,17 @@ so a second worker opens its own UCPath window rather than queueing behind the f
 no cross-worker lease to name a holder for. *(§10 introduces exactly one such lease — for the Duo
 ceremony, not for the session — and a waiter blocked on it will have a holder to name. That is a
 producer this sentence gains when §10 lands, and the reason the two sections cross-reference.)*
-And there is no **health** on a tile: nothing probes a live session, so a tile states which system
-its session speaks to and how long it has been open, and reads `Not checked`
+The lease persists the descriptor's ordered browser-system set when the worker starts; the
+dashboard never re-derives that set from its own potentially newer code. An older lease without the
+field remains readable and projects explicit unavailable authority. Ref dashboard-surfaces §9.9
+owns the requirement/open-session overlay. Because the card set is lease authority while the
+projection's change triggers are spans, the dashboard's span-tail tick also re-reads the exact
+lease set the cards render and publishes a fresh snapshot when a card-drawn fact moves — a lease
+born before its first span, the ticker's `starting` → `idle`, an operator directive, or a crash or
+expiry settled by another process. Heartbeat instants and the versions they bump draw nothing and
+publish nothing. There is no **health** on an open tile: nothing probes a
+live session, so it states which system its session speaks to and how long it has been open, and
+reads `Not checked`
 (`src/dashboard/surfaces/shell.tsx:710`) — which is the honest verdict and must never be drawn as a
 passing one. `stop-worker` and `pause-worker` reach the lease from the panel; `spawn-worker` and
 `refresh`/`reopen-browser` do not, because their process effects refuse by name in the dashboard
@@ -1226,9 +1237,9 @@ its served run status. A worker is shown on that member only where its authority
 the group with its served `reason`, never a guessed session. A pool row is a declaration only:
 `desiredWorkers` is shown alongside non-terminal authority worker-card facts, and a missing
 `workerPools[]` row reads as no declaration rather than version 0 or a target of one. The two
-honesty rules carry over unchanged: a browser tile still reads `Not checked` because nothing probes
-a live session, and a wait reason is drawn only where a real holder can be named — which, once §10
-lands, is exactly one place.
+honesty rules carry over unchanged: requirement and open-session facts stay distinct as ref
+dashboard-surfaces §9.9 specifies, and a wait reason is drawn only where a real holder can be named
+— which, once §10 lands, is exactly one place.
 
 **7. This does not weaken any per-run invariant.** One worker still owns one active item (§0.3);
 a parked run still owns no browser resources (§2.1); the write fence is still per permanent key

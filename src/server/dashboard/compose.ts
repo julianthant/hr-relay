@@ -928,7 +928,13 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
    * after it, and the command service ticks the same cursor after its own
    * emissions so an operator's follow-up read is never a poll behind.
    */
-  const spanTailTimer = setInterval(() => projection.ingestFromDisk(), SPAN_TAIL_POLL_MS);
+  const spanTailTimer = setInterval(() => {
+    projection.ingestFromDisk();
+    // The Session Panel's cards are lease authority (D248); a lease moves
+    // without a span at birth, on the ticker's `starting` → `idle`, on an
+    // operator directive, and on a crash/expiry settled elsewhere.
+    projection.reconcileWorkerLeases();
+  }, SPAN_TAIL_POLL_MS);
   spanTailTimer.unref();
 
   /**

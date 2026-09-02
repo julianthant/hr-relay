@@ -78,6 +78,7 @@ import {
   WORKER_TONE,
   WORKFLOW_PANEL_MODE_LABEL,
   type WorkerCardWire,
+  type WorkerBrowserSlot,
   type WorkerPoolWire,
   type WorkerSessionMembership,
   type WorkerState,
@@ -105,6 +106,7 @@ import {
   toolbarControl,
   totalCount,
   workerDirectiveNote,
+  workerBrowserView,
   workerElapsedSeconds,
   workflowCount,
   workflowStatusCounts,
@@ -756,6 +758,35 @@ function BrowserTile({
   );
 }
 
+/** A descriptor-required browser before this worker has opened its session. */
+function RequiredBrowserTile({
+  system,
+  span,
+}: {
+  system: Extract<WorkerBrowserSlot, { readonly state: "required" }>["system"];
+  span: boolean;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={`${SYSTEM_LABEL[system]} browser requirement, opens when needed`}
+      className={cn(
+        "flex w-full min-w-0 flex-col border border-dashed",
+        "gap-[var(--ds-space-hair)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]",
+        dsRadius.md,
+        "border-[color:var(--ds-border-subtle)] bg-transparent text-[color:var(--ds-fg-faint)]",
+        span && "col-span-2",
+      )}
+    >
+      <span className={cn(dsText.caps, "flex min-w-0 items-center gap-[var(--ds-space-tight)]")}>
+        <CircleDashed aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
+        <span className="min-w-0 flex-1 truncate">{SYSTEM_LABEL[system]}</span>
+      </span>
+      <span className={cn(dsText.micro, "truncate opacity-80")}>Opens when needed</span>
+    </div>
+  );
+}
+
 /** Keyboard/touch route from a dense clipped value to every served character. */
 interface AuthorityDetailsOwnership {
   readonly open: boolean;
@@ -893,6 +924,7 @@ function WorkerCard({
   const tone = WORKER_TONE[card.state];
   const directive = workerDirectiveNote(card);
   const elapsed = workerElapsedSeconds(card, nowIso);
+  const browserView = workerBrowserView(card);
 
   /*
    * A daemon that DIED is a different object: no tiles, no clock, nothing to
@@ -1026,16 +1058,24 @@ function WorkerCard({
 
       {/* An odd last tile spans both columns: a lone half-width tile beside dead
           space reads as one that failed to render. */}
-      {card.browsers.length > 0 && (
+      {browserView.unavailableReason !== undefined && (
+        <MetaLine items={[`Browser requirements unavailable — ${browserView.unavailableReason}`]} />
+      )}
+      {browserView.slots.length > 0 && (
         <div className="grid grid-cols-2 gap-[var(--ds-space-tight)]">
-          {card.browsers.map((browser, index) => (
-            <BrowserTile
-              key={String(browser.sessionId)}
-              browser={browser}
-              nowIso={nowIso}
-              span={card.browsers.length % 2 === 1 && index === card.browsers.length - 1}
-            />
-          ))}
+          {browserView.slots.map((slot, index) => {
+            const span = browserView.slots.length % 2 === 1 && index === browserView.slots.length - 1;
+            return slot.state === "open" ? (
+              <BrowserTile
+                key={`open:${String(slot.browser.sessionId)}`}
+                browser={slot.browser}
+                nowIso={nowIso}
+                span={span}
+              />
+            ) : (
+              <RequiredBrowserTile key={`required:${slot.system}`} system={slot.system} span={span} />
+            );
+          })}
         </div>
       )}
 

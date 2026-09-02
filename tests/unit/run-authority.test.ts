@@ -738,6 +738,7 @@ describe("worker leases", () => {
     assert.equal(started.state, "started");
     if (started.state !== "started") throw new Error("start should succeed");
     assert.equal(started.lease.leaseGeneration, 1);
+    assert.deepEqual(started.lease.browserSystems, ["crm", "ucpath"]);
 
     const second = database.authority.workerLeases.start({ ...WORKER_START_REQUEST, processId: 4243 });
     assert.equal(second.state, "conflict");

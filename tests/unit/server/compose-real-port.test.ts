@@ -737,6 +737,82 @@ describe("composed dashboard runtime on the isolation port", () => {
     assert.equal(bootstrap.settingsSchemaHash, SETTINGS_SCHEMA_HASH);
   });
 
+  it("publishes a lease-only worker card from the real tail tick, before any span exists (D248 freshness)", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-lease-tick-"));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+
+    const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+    const day = "2026-08-28";
+    const initial = await client.dashboardDay(day);
+    assert.deepEqual(initial.workerCards, []);
+
+    // Subscribe first, so the card can only arrive through a published snapshot.
+    const days: (typeof initial)[] = [];
+    let resolveCard: (() => void) | undefined;
+    const cardArrived = new Promise<void>((resolve) => {
+      resolveCard = resolve;
+    });
+    const live = new Promise<void>((resolve) => {
+      const subscription = client.subscribeDay({
+        day,
+        onDay: (received) => {
+          days.push(received);
+          if (received.workerCards.length === 1) resolveCard?.();
+        },
+        onState: (state) => {
+          if (state.state === "live") resolve();
+        },
+      });
+      cleanups.push(() => subscription.close());
+    });
+    await live;
+    assert.equal(days.at(-1)?.workerCards.length, 0);
+
+    // A worker PROCESS writes its lease in authority and has emitted no span:
+    // nothing on disk moves, so only the tick's lease reconcile can publish it.
+    const database = AuthorityDatabase.open({
+      path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
+      busyTimeoutMs: 250,
+      migrationOwner: "unit-test",
+    });
+    try {
+      const started = database.authority.workerLeases.start({
+        workerId: "person-lookup-worker-1",
+        workflow: "person-lookup",
+        browserSystems: ["crm", "ucpath"],
+        processId: 4242,
+        requestedBy: "local-operator",
+        now: "2026-08-28T12:00:01.000Z",
+      });
+      assert.equal(started.state, "started");
+    } finally {
+      database.close();
+    }
+
+    const deadline = setTimeout(() => {
+      assert.fail(`no worker-card snapshot within 5s; snapshots seen: ${String(days.length)}`);
+    }, 5_000);
+    try {
+      await cardArrived;
+    } finally {
+      clearTimeout(deadline);
+    }
+    const card = days.at(-1)?.workerCards[0];
+    assert.equal(card?.workerId, "person-lookup-worker-1");
+    assert.equal(card?.state, "starting");
+    assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"] });
+    assert.deepEqual(card?.browsers, []);
+  }, 20_000);
+
   it("clears a durable prepare when the process died before the live settings rename", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-pre-rename-settings-"));
     copyRuntimePackageFixture(repoRoot);

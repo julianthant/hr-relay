@@ -20,6 +20,7 @@ import {
   runRecordOf,
   taskEventsOf,
   uuidOf,
+  workerLeaseOf,
   type DashboardWorld,
 } from "./helpers/dashboard-harness.js";
 
@@ -99,6 +100,73 @@ describe("dashboard stream hub", () => {
     const fresh = w.projection.buildDashboardDayWire(DAY);
     assert.notEqual(local, undefined);
     assert.deepEqual({ ...local, snapshotCursor: "pc:1" }, { ...fresh, snapshotCursor: "pc:1" });
+    connection.close();
+  });
+
+  it("resnapshots worker cards when a browser session opens", async () => {
+    const { w, hub } = harness();
+    w.authority.putWorkerLease(workerLeaseOf());
+    const connection = await hub.connect({ day: DAY });
+    const observed: DashboardStreamEnvelope[] = [];
+    connection.subscribe((envelope) => observed.push(envelope));
+    const workerPath = "worker/person-lookup/person-lookup-worker-1";
+
+    w.writer.emit({
+      t: "span.started",
+      kind: "worker",
+      ts: w.clock.now().toISOString(),
+      workflow: "person-lookup",
+      workerId: "person-lookup-worker-1",
+      spanPath: workerPath,
+      name: "person-lookup",
+    });
+    w.writer.emit({
+      t: "span.started",
+      kind: "browser",
+      ts: w.clock.now().toISOString(),
+      workflow: "person-lookup",
+      workerId: "person-lookup-worker-1",
+      spanPath: `${workerPath}/browser:ucpath#${uuidOf(50)}`,
+      parentSpanPath: workerPath,
+      name: "browser-session:ucpath",
+      system: "ucpath",
+    });
+
+    const latest = observed.filter((envelope) => envelope.type === "snapshot").at(-1);
+    assert.ok(latest);
+    assert.equal(latest.topic, "dashboard-day");
+    if (latest.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
+    assert.deepEqual(latest.payload.workerCards[0]?.browsers, [
+      { sessionId: uuidOf(50), system: "ucpath", openedAt: w.clock.now().toISOString() },
+    ]);
+    connection.close();
+  });
+
+  it("resnapshots worker cards when a lease moves without any span", async () => {
+    const { w, hub } = harness();
+    const connection = await hub.connect({ day: DAY });
+    const observed: DashboardStreamEnvelope[] = [];
+    connection.subscribe((envelope) => observed.push(envelope));
+    const [initial] = connection.initial.filter((envelope) => envelope.type === "snapshot");
+    if (initial?.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
+    assert.deepEqual(initial.payload.workerCards, []);
+
+    // A worker process wrote its lease and has not emitted its first span yet.
+    w.authority.putWorkerLease(workerLeaseOf({
+      lifecycle: { state: "starting", startedAt: w.clock.now().toISOString() },
+    }));
+    w.projection.reconcileWorkerLeases();
+
+    const latest = observed.filter((envelope) => envelope.type === "snapshot").at(-1);
+    assert.ok(latest);
+    if (latest.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
+    assert.equal(latest.payload.workerCards.length, 1);
+    assert.equal(latest.payload.workerCards[0]?.state, "starting");
+    assert.deepEqual(latest.payload.workerCards[0]?.browserRequirements, {
+      state: "present",
+      systems: ["crm", "ucpath"],
+    });
+    assert.deepEqual(latest.payload.workerCards[0]?.browsers, []);
     connection.close();
   });
 
