@@ -4,7 +4,7 @@
 **Integration target:** `feature/test-suite-rationalization`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-02 15:55 PDT at `12ae781b`
+**Last verified:** 2026-09-02 16:05 PDT at kickoff commit `7982650c`
 
 ## Facts every run needs
 
@@ -24,12 +24,12 @@
 
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
-| u01–u06 | R1 | briefed | — | — | required | Architecture guards, static gates, self-contained inputs |
+| u01–u06 | R1 | running | isolated `feature/test-r1-architecture-static` from `7982650c` | pending | required | Canonical task setup resolved to worktree `eb84`; u02 worker branch visible |
 | u07–u12 | R2 | planned | — | — | required | Core/domain/workflow/write/storage units |
 | u13–u18 | R3 | planned | — | — | required | Server/BFF/runtime/worker and ports |
 | u19–u24 | R4 | planned | — | — | required | Dashboard model/jsdom/component layer |
 | u25–u30 | R5 | planned | — | — | required | Scenario corpus and evidence provenance |
-| u31–u36 | R6 | briefed | — | — | required | Playwright parity/perf/smoke/Duo/generated checks |
+| u31–u36 | R6 | running | isolated `feature/test-r6-parity-checks` from `7982650c` | pending | required | Canonical task setup resolved to worktree `b4ef` |
 | u37–u42 | R7 | planned | — | — | consequential | Cross-family integration, taxonomy, authorities, final proof |
 
 ## Residue

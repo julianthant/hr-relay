@@ -14,8 +14,8 @@
 
 | Run | Task id / corrections | Host id | Project id | Launch title/time | Worktree/branch | Report | Status | Last cursor |
 |---|---|---|---|---|---|---|---|---|
-| R1 | pending dispatch | pending | pending | `R1 — architecture and static gates` / pending | `feature/test-r1-architecture-static` | `reports/r1-architecture-static.md` | briefed | none |
-| R6 | pending dispatch | pending | pending | `R6 — parity performance and generated checks` / pending | `feature/test-r6-parity-checks` | `reports/r6-parity-checks.md` | briefed | none |
+| R1 | setup `client-new-thread:81effb1a-9f30-41f9-bbab-20f5426d6661`; canonical task id pending list reconciliation | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `R1 — architecture and static gates` / 2026-09-02 16:01 PDT | `/Users/julianhein/.codex/worktrees/eb84/hr-automation-rebuild` · `feature/test-r1-architecture-static` | `reports/r1-architecture-static.md` | running | none |
+| R6 | setup `client-new-thread:038fb57d-1f1e-48f2-a16a-fb4f27dc896a`; canonical task id pending list reconciliation | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `R6 — parity performance and generated checks` / 2026-09-02 16:01 PDT | `/Users/julianhein/.codex/worktrees/b4ef/hr-automation-rebuild` · `feature/test-r6-parity-checks` | `reports/r6-parity-checks.md` | running | none |
 | R2 | — | — | — | — | `feature/test-r2-core-domain` | `reports/r2-core-domain.md` | planned | none |
 | R4 | — | — | — | — | `feature/test-r4-dashboard` | `reports/r4-dashboard.md` | planned | none |
 | R3 | — | — | — | — | `feature/test-r3-server-runtime` | `reports/r3-server-runtime.md` | planned | none |
