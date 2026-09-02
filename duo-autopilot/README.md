@@ -70,7 +70,7 @@ You'll see the status hero: **No credential** until you set one up.
 
 ## Headless / automated use (playwright-cli)
 
-This extension is part of the **hr-automation** repo so it can clear Duo inside an
+This extension is part of the **hr-automation rebuild** repo so it can clear Duo inside an
 automated browser — specifically the `playwright-cli` session used for headless
 selector mapping against UCSD's auth-gated systems. There is no Options UI to
 click in that browser, so the extension **self-arms**: on service-worker startup,
@@ -91,13 +91,13 @@ From the repo root:
 
 ```bash
 playwright-cli install-browser chromium      # one-time: full Chromium (supports --load-extension)
-npm run sel:browser -- <login-url>           # opens session 'sel' headless with the extension loaded
+node duo-autopilot/launch-selector-browser.mjs <login-url> # opens session 'sel' headless with the extension loaded
 # …fill SSO username/password (e.g. from .env); the extension answers the Duo prompt itself…
 playwright-cli -s=sel snapshot               # map selectors on deep, auth-gated pages
 playwright-cli -s=sel close
 ```
 
-`npm run sel:browser` (→ `launch-selector-browser.mjs`) generates a gitignored
+`node duo-autopilot/launch-selector-browser.mjs <login-url>` generates a gitignored
 `.playwright/duo-autopilot.config.json` that loads this folder via
 `--load-extension`, then opens a persistent-context session (extensions require a
 persistent context). It uses Playwright's **full** bundled Chromium
@@ -105,6 +105,12 @@ persistent context). It uses Playwright's **full** bundled Chromium
 `--load-extension` in 2024 and the lightweight `headless-shell` can't run
 extensions. The extension only answers the **Duo MFA** step — you still fill the
 SSO username/password yourself.
+
+This launcher is a **live, read-only HR/Duo verification** command, not an
+offline test: it can log in to an auth-gated system to map selectors, but makes
+no HR transaction writes. It writes only local browser-profile/config artifacts
+(`.auth/<session>-profile` and `.playwright/duo-autopilot.config.json`), both
+gitignored. Always close the `sel` session when finished.
 
 > **Chromium install under Node 26:** `playwright-cli install-browser chromium`
 > hangs in Playwright's zip extractor right before the ~230MB framework. Workaround:
@@ -240,16 +246,23 @@ duo-autopilot/
     options.html / .js   status, toggles, and the enrollment / import flow
   credentials/           GITIGNORED — your private key, never committed
   launch-selector-browser.mjs  opens a headless playwright-cli session with the
-                         extension loaded (npm run sel:browser, from the repo root)
-  test/crypto.test.mjs   offline self-test (run: npm test)
+                         extension loaded (run with node from the repo root)
+  test/crypto.test.mjs   offline self-test (run: npm --prefix duo-autopilot test from repo root)
   BUILD_PLAN.md          the full design spec
 ```
 
 ## Develop / test
 
 ```bash
-npm test   # offline crypto self-test: base64, DER, assertion + registration round-trips
+# From the repo root:
+npm --prefix duo-autopilot test  # offline crypto self-test: base64, DER, assertion + registration round-trips
+
+# Or from duo-autopilot/:
+npm test
 ```
+
+The repository-root `npm test` command runs the rebuild's Vitest suite; it does
+**not** run this Duo crypto self-test.
 
 The test generates throwaway keys (never your real one) and proves the byte-exact
 path Duo's server checks: that a freshly *registered* key produces an *assertion*

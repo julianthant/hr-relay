@@ -6,8 +6,8 @@
 //
 // Usage:
 //   node duo-autopilot/launch-selector-browser.mjs [url] [--headed]
-//   npm run sel:browser -- <url>            # headless (default)
-//   npm run sel:browser -- <url> --headed   # watch it
+//   node duo-autopilot/launch-selector-browser.mjs <url>            # headless (default)
+//   node duo-autopilot/launch-selector-browser.mjs <url> --headed   # watch it
 //
 // After this returns, the session stays alive — drive it with the normal CLI:
 //   playwright-cli -s=sel snapshot
