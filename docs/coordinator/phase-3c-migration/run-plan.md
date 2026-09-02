@@ -18,8 +18,8 @@
 
 | Run | Task id / corrections | Host id | Project id | Launch title/time | Worktree/branch | Report | Status | Last cursor |
 |---|---|---|---|---|---|---|---|---|
-| R1 | pending launch | — | — | `Phase 3c R1 — Workflow Recipe Compiler` | expected isolated worktree / `feature/03c-r1-workflow-recipe` | `reports/r1-workflow-recipe.md` | briefed | none |
-| R2 | pending launch | — | — | `Phase 3c R2 — Order 1 Migration Intake` | expected isolated worktree / `feature/03c-r2-order1-intake` | `reports/r2-order1-intake.md` | briefed | none |
+| R1 | setup client `client-new-thread:c1cc491a-c7e5-4dea-a20d-d8ad03a19528` → canonical `01a0644f-936c-7d72-8fbc-12a04b527b3e` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Phase 3c R1 — Workflow Recipe Compiler` / 2026-09-02 15:48 PDT | `/Users/julianhein/.codex/worktrees/359c/hr-automation-rebuild`; `feature/03c-r1-workflow-recipe` | `reports/r1-workflow-recipe.md` | running; operator's D312–D316 authoring/skip/recovery/combinator amendment delivered 16:27 PDT; must reconcile after authority commit | `ad4befac-fbcb-4e31-be1a-0a893e4558b7:62` |
+| R2 | setup client `client-new-thread:cde8bb1e-1a7b-498f-b36a-a3fefe4457b1` → canonical `01a0644f-936c-7d72-8fbc-128e5f1b1a47` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Phase 3c R2 — Order 1 Migration Intake` / 2026-09-02 15:48 PDT | `/Users/julianhein/.codex/worktrees/28d9/hr-automation-rebuild`; `feature/03c-r2-order1-intake` | `reports/r2-order1-intake.md` | running; D312–D316 intake amendment delivered 16:27 PDT; read-only T1 conflict remains separate | `c6ef543f-98f6-45fa-83a2-844ba655e479:47` |
 | R3–R11 | not briefed | — | — | — | fresh worktree per run | unique report per run | blocked/planned | none |
 
 ## Units
@@ -34,8 +34,8 @@
 - Review: correctness and test-quality.
 
 ### u02 — recipe and compiler contracts
-- Scope: `defineWorkflowRecipe`, ordered tuple groups, typed reference dependency derivation, existing descriptor/module outputs.
-- Acceptance: strict validation of duplicate tasks, unresolved references, cycles and unstable group keys; no second runtime or durable format.
+- Scope: `defineWorkflowRecipe`, ordered tuple groups, typed task/parallel/delegate/gate/transaction entries, typed reference dependency derivation, existing descriptor/module outputs.
+- Acceptance: strict validation of duplicate tasks, unresolved references, cycles and unstable group keys; no second runtime or durable format; explicit consequential behavior rather than hidden compiler inference.
 - Dependency: u01.
 - Role: supervisor main seam.
 - Mode: R1 only.
@@ -52,8 +52,8 @@
 - Review: correctness/tests.
 
 ### u04 — separations conversion
-- Scope: complete recipe conversion including D307 omissions, conditional D309 gate, transactions, receipts, screenshots/logs and write safety.
-- Acceptance: exact current descriptor/module/wire behavior preserved.
+- Scope: complete recipe conversion including the D307→D313 whole-step transition, pre-start validated supplied outputs, separate visible verification tasks, conditional D309 gate, transactions, receipts, screenshots/logs and write safety.
+- Acceptance: existing public behavior remains equivalent except for the ratified whole-step semantics; checkpoint resume and restart-from-start preserve completed writes and receipts without re-execution.
 - Dependency: u02, u03.
 - Role: supervisor main hard seam with Terra support.
 - Mode: R1 only.
@@ -71,7 +71,7 @@
 
 ### u06 — single-authority deletion and integrated proof
 - Scope: remove superseded manual declarations and duplicate generic-dashboard tests; regenerate manifests/docs.
-- Acceptance: no second authoring path remains; all profile gates green; clean branch and report.
+- Acceptance: no second authoring path remains; Person Lookup and Separations meet hard equivalence; grouping/run-option changes touch one recipe; a reuse-only workflow fits recipe + structural scenario + live/dry-run manifest + migration record; all profile gates green; clean branch and report.
 - Dependency: u01–u05.
 - Role: supervisor integration.
 - Mode: R1 only.
@@ -107,6 +107,7 @@
 
 ## Decisions gating runs
 
+- `decisions/2026-09-02-read-only-t1-live-proof.md` item 1 → R3.
 - Actual external writes in R6/R8/R9/R10 require exact target, reversibility/disposition and stop condition; prepare a decision sheet only when the preceding intake returns concrete options.
 - OnBase completion arm remains blocked without a real probe target; do not infer `unverifiableByPage`.
 

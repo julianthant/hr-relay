@@ -1054,6 +1054,40 @@ refactor. The rejected alternatives are keeping the current multi-file assembly 
 API, or replacing the proven runtime with a second workflow engine. The first preserves the cost;
 the second spends write-safety evidence to solve an authoring problem.
 
+#### 1.6.1 The simplicity budget and explicit entry algebra (D312/D315/D316, 2026-09-02)
+
+For a workflow that reuses existing tasks and generic surfaces, the authored workflow surface is
+exactly four artifacts:
+
+1. `src/workflows/<id>/recipe.ts`;
+2. `tests/scenario/workflows/<id>/structural.scenario.test.ts`;
+3. `tests/scenario/workflows/<id>/dry-run.scenario.ts`; and
+4. `docs/migrations/<id>.md`.
+
+Generated descriptors, module requirements, registry values, build-manifest rows and generic
+dashboard projections do not count because they are not authored. New driver operations, reusable
+store tasks or genuinely new dashboard capabilities are allowed only when the workflow requires new
+behavior; they may not carry descriptor/module/registry glue under another name. A grouping, label,
+run-option or omission-form change to a reuse-only workflow changes `recipe.ts` once.
+
+The tuple's second member is a readonly array over one closed, explicit recipe-entry algebra:
+`task(...) | parallel(...) | delegate(...) | gate(...) | transaction(...)`. Every entry and every
+leaf has a stable id. `parallel` declares its join/failure policy and checkpoints each leaf
+independently, so one failed leaf may retry without replaying successful siblings. `delegate`
+compiles to the existing typed child-run edge, cardinality, result, retry and cancellation policies;
+it is never an in-process call. `gate` and `transaction` compile to their existing node kinds and
+retain every authority boundary. Compiler inference may derive edges from typed inputs, but it may
+not infer whether an operation is parallel, delegated, gated or transactional.
+
+The acceptance test is deletion, not coexistence. Person Lookup must prove the minimum recipe and
+Separations must prove grouped steps, rich reads, computed facts, omissions, conditional gates,
+retries and transactions. Registry-wide compiler conformance proves parallel and delegated entries
+whether or not either acceptance workflow currently uses them. Both workflows must compile to their
+current public descriptor/module/wire behavior before cutover; then their redundant hand-authored
+declarations are removed. The old graph-authoring path is not an advanced escape hatch. A reuse-only
+workflow outside the four-artifact budget, a generic dashboard branch keyed by workflow id, or a
+grouping/options fix requiring another file fails D312/D316.
+
 ---
 
 ## 2. Workflow-constant input + the RunEnvelope
@@ -2065,6 +2099,28 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
    checkpoints by construction**. `injected` is rejected on a new-input run — the two affordances
    are separate endpoints so changed input can never silently ride stale context.
 
+#### 5.6.1 Two operator recovery choices (D314, 2026-09-02)
+
+A failed run exposes exactly two ordinary recovery choices when no unknown write is parked:
+
+1. **Resume from checkpoints.** This is §5.6 item 1: mint a new run at the item's next attempt,
+   `startAt` the failed node, replay valid checkpoint ancestors, rerun `always-rerun` ancestors and
+   retry failed parallel leaves independently. Successful siblings and delegated children retain
+   their typed results under their declared replay policy.
+2. **Restart from start.** Mint a new run at the same item's next attempt with `startAt` the graph
+   root. Ignore prior read/compute checkpoints so every read and computation executes again.
+   A transaction whose permanent intent is already `committed` or `observed-present` never enters
+   prepare or commit: the executor validates its durable proof and reconstructs its typed output.
+   An unfinished intent still follows §5.6 item 2's recovery-probe-first path. If the fresh
+   read/compute values no longer match the preserved transaction's subject, permanent key or frozen
+   commit input, the run refuses/parks by name; it never relabels an old write as the consequence of
+   new facts.
+
+Both choices preserve the logical item, pristine canonical input, configuration/fingerprint rules,
+trace lineage and D221 attempt allocation. Neither is “rerun with different input,” and neither
+permits a successful external write to execute twice. A parked unknown write continues to expose
+only its evidence-resolution actions; these two choices do not bypass write recovery.
+
 ### 5.7 The checkpoint store — and resume scope (D9)
 
 <!-- roadmap: p1-authority -->
@@ -2318,6 +2374,25 @@ the operator's typed submission against the descriptor's declared forms and casc
 row exists, through the same `planStepOmissions` the executor runs, so a cascade the Steps screen let
 through refuses here instead of at the worker. See ref dashboard-surfaces §9.1 (the Steps screen), ref
 write-safety (never a transaction) and ref frontend-backend-integration (the wire and refusal codes).
+
+**D313 — the run modal is the complete omission authority (2026-09-02; declared, unbuilt).** In the
+compiled recipe path this supersedes D307's rule that a gate physically inside an omitted step may
+still execute: whole-step omission means no entry in that tuple executes, so any mandatory check
+must be declared separately outside it. Until the recipe conversion lands, D307 above remains the
+as-built omission behavior. Every recipe step has one strict compiled value schema: the complete
+values available after its entries settle. A step is
+omittable only when its recipe declares how the run modal supplies every required value in that
+schema. Selecting omissions and entering those custom values is complete before start-plan
+admission; missing or invalid values refuse the plan, and no worker pauses mid-run to request them.
+The omitted step executes no entry at all. Its schema-valid replacement values are persisted as
+operator assertions with D307 provenance, never observations.
+
+An independent verification entry elsewhere in the selected recipe may still be mandatory before a
+write. That entry is not part of the omitted step, receives the asserted value as typed input and
+runs normally; it cannot be silently omitted when a selected transaction depends on it. Thus the
+modal decides the whole omission up front without making “well-typed” synonymous with “verified.”
+Retry, relaunch and fan-out copy the exact admitted omission bundle unchanged; choosing different
+omissions or values is a new start plan, never a mid-run edit.
 
 ---
 

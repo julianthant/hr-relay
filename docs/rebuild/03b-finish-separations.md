@@ -973,6 +973,14 @@ roadmap. The implementation is intentionally not marked complete: doc 03c
 conversions. Likewise Phase 3b remains **8 of 9** until criterion 5's controlled-write evidence is
 either produced or explicitly superseded by a separate operator decision; D311 does neither.
 
+**D312–D316 sharpen that handoff without reopening Phase 3b.** Separations must prove the exact
+four-artifact reuse-only budget and the explicit task/parallel/delegate/gate/transaction recipe
+algebra. Its run modal must collect the complete values for a whole-step omission before start, with
+no mid-run prompt, while any separate mandatory verifier remains selected. Its failed runs expose
+checkpoint resume and root restart; root restart reruns reads/computations but validates and reuses
+completed write proof without another prepare/commit. These are Phase 3c implementation obligations.
+They neither supply nor waive Phase 3b criterion 5's controlled-write evidence.
+
 ## Decisions this phase ratified
 
 Checked against `reference/decisions.md`'s `_phase: 3b_` markers on 2026-08-20. The ratification act

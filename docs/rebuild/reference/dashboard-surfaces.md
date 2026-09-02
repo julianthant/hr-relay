@@ -1294,6 +1294,15 @@ Command semantics are binding:
 | Purge | Not a row action. `cli purge-run <exact-run-id> --backup <path>` is an offline maintenance command requiring a fresh verified backup and refusing any active/dependency/write-authority reference. It writes a purge receipt. |
 | Edit checkpoint | Uses `ref data-intake-and-edit-data`'s field-level patch/provenance model (D166), creates a new run/attempt as specified there, and never mutates original input or a completed proof. |
 
+**D314 amendment — recovery has two named choices (2026-09-02; declared, unbuilt).** The current
+Retry control becomes **Resume from checkpoints**: it starts at the failed node, reuses valid
+ancestors and retries failed parallel leaves independently. Its sibling, **Restart from start**,
+mints the same logical item's next attempt and reruns every read/computation from the graph root,
+while a completed transaction reconstructs from validated durable proof and never prepares or
+commits again. Confirmation names what will rerun and which completed writes will be reused. A
+fresh-fact mismatch against a completed write refuses/parks, and an unknown write exposes only its
+evidence-resolution actions. Neither choice changes business input or the admitted omission bundle.
+
 **`supersede-active` says two different things in three places, and the doc says so rather than
 picking one.** The kernel implements the row above exactly. The PLANNER does not anticipate it:
 `src/services/start/plan.ts` checks for an active run only under `reject-active`, so a plan composed
@@ -2656,6 +2665,16 @@ run's `omittedSteps` and each timeline member's closed not-run reason (`operator
 asserted, never as an observation; a done run with an omitted step folds to `partial`), the Data rail
 marks an asserted leaf with its step, Explain lists the omitted steps and an `operator-asserted`
 disposition, and the receipt carries the `OPERATOR_OMITTED_STEP` warning (ref operator-trust).
+
+**D313 amendment — omission is decided completely in this modal (2026-09-02; declared, unbuilt).**
+The recipe compiler serves each step's complete value schema and its operator-suppliable form.
+Unchecking a step means none of its entries execute. Before Confirm can produce a start plan, every
+required replacement value must be present and schema-valid; otherwise the modal/server refuses by
+step and field key. There is no mid-run request for values. A separately declared mandatory
+verification entry may still run downstream and remains visible as selected work. Confirmation
+identifies omitted steps and assertion provenance, never the entered values. This supersedes the
+D307 same-step-gate exception for compiled recipes; D307 remains the current built behavior until
+the conversion lands.
 
 1. **The parser sentence is derived, never authored.** `inputRunValueNoun`,
    `inputRunSeparatorLabel` and `inputRunParserLabel` (`src/domain/workflow/ingress.ts`) read a
