@@ -1524,3 +1524,20 @@ binding would contradict them.
   Fixed workflow values use a disabled native select with their reason visible below it; Priority and
   Browser mode remain enabled selects. The disabled state carries the lock semantics while one
   two-column grid keeps every value control aligned.
+- **2026-09-01 — two doors on one panel footer share one result slot, and an applied DELETE has
+  nowhere to land (D308).** The Archive's archived-run detail now carries a 🗑 Delete beside D179's
+  Relaunch. Three things that were not obvious from the relaunch it copies. **One:** `ArchiveWorkspace`
+  held a single `result` plus a `relaunched: string | undefined` keyed to the run — with a second door
+  that pair is ambiguous, so it became `acted: { runId, action }` and every answer is drawn only for
+  the door that asked. **Two:** a REFUSED footer command drew nothing at all before this. The applied
+  banner was the detail's only answer, so `schema-mismatch` — the one refusal both doors are built to
+  produce, and the reason each cites `archiveFingerprint` — left the operator's click looking like it
+  had never happened; `ArchivedCommandRefusal` now draws it through D253's fold, never off
+  `result.state`. **Three:** an applied delete removes the record this pane is READING, so
+  `onCommand` gained an `onApplied` hook that returns the selection to the ledger beside the re-read
+  it already ordered. Without it the re-read answers a successful delete with "That archived run could
+  not be read", which is a failure sentence for a success. The delete deliberately has NO availability
+  arm on the wire: the relaunch's exists because a retired descriptor makes a relaunch impossible and
+  the reason is undiscoverable from the record, while the kernel's own delete admission (a
+  non-terminal delegated member) would have to be re-derived here as a second, drifting copy of a rule
+  the refusal pane already reports honestly.
