@@ -30,7 +30,7 @@ The eager `LEGACY_REPO_ROOT` module initializer made every architecture import d
 | Canonical-field scan | 24 source text/blob records at the resolved `4deabc5a` commit. |
 | Operational isolation | Legacy `package.json` script map and blob at `9d19e4141d57617e2bf895e21e34a5bd8f15047c`. |
 
-The shared helper parses the closed schema and fails loud for duplicate paths, malformed commits/blobs, and missing selector source files. Focused negative controls prove missing selector source, malformed commit, and duplicate frozen test/runtime/capability paths all fail.
+The shared helper parses the closed schema and fails loud for malformed commits/blobs and missing selector source files. The provenance-owner test is the single generic parser oracle; it owns malformed generated-path records, ordering, duplicate entries, and every named snapshot's drop-entry control, while consumer guards retain only their distinct behavioral assertions.
 
 ## After gates
 
@@ -97,3 +97,44 @@ Tests  63 passed (63)
 ```
 
 The typecheck, lint, and `git diff --check` gates passed after this follow-up.
+
+## Follow-up 2 — authenticated generated path inventories
+
+**High finding repaired:** six frozen legacy path inventories were arrays checked only for nonempty/unique shape. Removing an entry could therefore weaken a guard while leaving all frozen file-blob checks green.
+
+Each path list is now one named generated text snapshot: `name`, exact source command, `contentAddress`, and `text`. These are deliberately not called Git blobs: the commands produce inventories rather than objects reachable from a legacy commit. The surrounding legacy commit remains the source revision; `contentAddress` is the SHA-256 of the snapshot's exact UTF-8 bytes.
+
+| Snapshot | Source revision and collection command |
+| --- | --- |
+| Browser-system paths (87) | `9d19e4141d57617e2bf895e21e34a5bd8f15047c`; `git ls-tree -r --name-only <commit> -- src/systems` |
+| Capability discovered/source paths (78 each) | `9d19e4141d57617e2bf895e21e34a5bd8f15047c`; `jq -r '[.entries[].sourcePaths[]] | sort[]' config/legacy-capabilities.json` |
+| Capability evidence paths (79) | `9d19e4141d57617e2bf895e21e34a5bd8f15047c`; `jq -r '[.entries[].sourcePaths[], "src/services/timecard/index.ts"] | sort[]' config/legacy-capabilities.json` |
+| Legacy-test baseline (518) | `353739ac9e1db01cae9da8a13da53605cd767574`; `git ls-tree -r --name-only <commit> -- tests | grep -v '^tests/rebuild/'` |
+| Legacy-test current (534) | `9d19e4141d57617e2bf895e21e34a5bd8f15047c`; same test-tree command |
+
+`frozenLegacyPaths` authenticates the content address before returning paths, then rejects missing final newlines, empty/malformed records, duplicates, and non-lexical order. Runtime-dependency, capability-disposition, and legacy-test-disposition guards consume only that parser.
+
+The mapped surviving control is `legacy-selector-port-provenance.test.ts`: its table drives all six named snapshots. With a path dropped while the recorded digest remains unchanged, each fails red with the named `content-address mismatch`; separate authenticated fixtures prove malformed, unordered, duplicate, and missing-final-newline text also fails. The former identical consumer-level duplicate-path assertions were removed.
+
+Representative red output (dropping the first browser-system entry without changing its recorded address):
+
+```text
+frozen legacy path snapshot content-address mismatch for legacy-browser-system-files:
+expected sha256:d0a90aa07b59e544a0f766dc6b3b4181a55ee287302410b9870e6f7aef50e808;
+actual sha256:b747115cb3ab92e175949a0a4f3c6f1df8208240594a687362669d173121e901
+```
+
+Focused green proof under a deliberately nonexistent legacy checkout:
+
+```text
+HRAUTO_LEGACY_REPO=/definitely/nonexistent/hr-automation npm run test:architecture -- \
+  tests/unit/architecture/legacy-selector-port-provenance.test.ts \
+  tests/unit/architecture/runtime-dependency-coverage.test.ts \
+  tests/unit/architecture/legacy-capability-disposition.test.ts \
+  tests/unit/architecture/legacy-test-disposition.test.ts
+
+Test Files  4 passed (4)
+Tests  39 passed (39)
+```
+
+The source commands reproduced all six recorded content addresses (`87/78/78/79/518/534` paths). `npm run typecheck`, `npm run lint`, and `git diff --check` passed.

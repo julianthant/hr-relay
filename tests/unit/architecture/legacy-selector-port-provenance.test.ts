@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, it } from "vitest";
 import {
@@ -12,6 +13,7 @@ import {
 import {
   FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
   FrozenLegacyArchitectureProvenanceSchema,
+  frozenLegacyPaths,
   parseFrozenLegacyArchitectureProvenance,
 } from "./helpers/frozen-legacy-architecture-provenance.js";
 
@@ -19,6 +21,25 @@ const PORT_MAP_PATH = new URL("../../../config/ports/legacy-selector-port-map.js
 
 function readPortMap(): unknown {
   return JSON.parse(readFileSync(PORT_MAP_PATH, "utf8"));
+}
+
+const FROZEN_PATH_SNAPSHOT_CASES = [
+  { name: "legacy-browser-system-files", path: ["runtime", "browserSystemFiles"] },
+  { name: "legacy-capability-discovered-paths", path: ["capabilities", "discoveredPaths"] },
+  { name: "legacy-capability-source-paths", path: ["capabilities", "sourcePaths"] },
+  { name: "legacy-capability-evidence-paths", path: ["capabilities", "legacyPaths"] },
+  { name: "legacy-test-baseline-files", path: ["testDisposition", "baselineFiles"] },
+  { name: "legacy-test-current-files", path: ["testDisposition", "currentFiles"] },
+] as const;
+
+function snapshotAt(draft: Record<string, unknown>, path: readonly string[]): Record<string, unknown> {
+  let cursor: unknown = draft;
+  for (const key of path) cursor = (cursor as Record<string, unknown>)[key];
+  return cursor as Record<string, unknown>;
+}
+
+function sha256ContentAddress(text: string): string {
+  return `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
 }
 
 describe("legacy selector port provenance", { timeout: 180_000 }, () => {
@@ -170,6 +191,62 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     const files = tamperedSelector.files as Record<string, unknown>[];
     files[0] = { ...files[0], text: `${String(files[0]?.text)}tampered` };
     assert.throws(() => parseFrozenLegacyArchitectureProvenance(tamperedText), /frozen legacy blob mismatch/i);
+  });
+
+  it("authenticates every named generated legacy path snapshot before exposing paths", () => {
+    assert.deepEqual(
+      FROZEN_PATH_SNAPSHOT_CASES.map(({ name, path }) => [name, frozenLegacyPaths(snapshotAt(
+        FROZEN_LEGACY_ARCHITECTURE_PROVENANCE as unknown as Record<string, unknown>, path,
+      ) as Parameters<typeof frozenLegacyPaths>[0]).length]),
+      [
+        ["legacy-browser-system-files", 87],
+        ["legacy-capability-discovered-paths", 78],
+        ["legacy-capability-source-paths", 78],
+        ["legacy-capability-evidence-paths", 79],
+        ["legacy-test-baseline-files", 518],
+        ["legacy-test-current-files", 534],
+      ],
+    );
+  });
+
+  it.each(FROZEN_PATH_SNAPSHOT_CASES)("refuses a dropped entry from $name while its content address is unchanged", ({ name, path }) => {
+    const dropped = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as unknown as Record<string, unknown>;
+    const snapshot = snapshotAt(dropped, path);
+    snapshot.text = String(snapshot.text).replace(/^[^\n]+\n/u, "");
+    assert.throws(
+      () => parseFrozenLegacyArchitectureProvenance(dropped),
+      new RegExp(`content-address mismatch for ${name}: expected`, "u"),
+    );
+  });
+
+  it("refuses malformed, unordered, or duplicate generated path records even with a matching content address", () => {
+    const malformed = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as unknown as Record<string, unknown>;
+    const malformedSnapshot = snapshotAt(malformed, ["runtime", "browserSystemFiles"]);
+    malformedSnapshot.text = "src/systems/crm/selectors.ts\n\n";
+    malformedSnapshot.contentAddress = sha256ContentAddress(String(malformedSnapshot.text));
+    assert.throws(() => parseFrozenLegacyArchitectureProvenance(malformed), /malformed path entry/i);
+
+    const unordered = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as unknown as Record<string, unknown>;
+    const unorderedSnapshot = snapshotAt(unordered, ["runtime", "browserSystemFiles"]);
+    const unorderedPaths = String(unorderedSnapshot.text).trimEnd().split("\n");
+    [unorderedPaths[0], unorderedPaths[1]] = [unorderedPaths[1] ?? "", unorderedPaths[0] ?? ""];
+    unorderedSnapshot.text = `${unorderedPaths.join("\n")}\n`;
+    unorderedSnapshot.contentAddress = sha256ContentAddress(String(unorderedSnapshot.text));
+    assert.throws(() => parseFrozenLegacyArchitectureProvenance(unordered), /must be sorted/i);
+
+    const duplicate = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as unknown as Record<string, unknown>;
+    const duplicateSnapshot = snapshotAt(duplicate, ["runtime", "browserSystemFiles"]);
+    const duplicatePaths = String(duplicateSnapshot.text).trimEnd().split("\n");
+    duplicatePaths.splice(1, 0, duplicatePaths[0] ?? "");
+    duplicateSnapshot.text = `${duplicatePaths.join("\n")}\n`;
+    duplicateSnapshot.contentAddress = sha256ContentAddress(String(duplicateSnapshot.text));
+    assert.throws(() => parseFrozenLegacyArchitectureProvenance(duplicate), /must not contain duplicate paths/i);
+
+    const missingNewline = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as unknown as Record<string, unknown>;
+    const missingNewlineSnapshot = snapshotAt(missingNewline, ["runtime", "browserSystemFiles"]);
+    missingNewlineSnapshot.text = String(missingNewlineSnapshot.text).trimEnd();
+    missingNewlineSnapshot.contentAddress = sha256ContentAddress(String(missingNewlineSnapshot.text));
+    assert.throws(() => parseFrozenLegacyArchitectureProvenance(missingNewline), /must end with one trailing newline/i);
   });
 
   it("does not treat candidate proposals as classified semantic ids", () => {

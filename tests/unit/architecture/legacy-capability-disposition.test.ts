@@ -8,7 +8,7 @@ import { startRebuildRuntime } from "../../../src/core/runtime-composition.js";
 import { gitVisibleFiles } from "./helpers/guard-files.js";
 import {
   FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
-  FrozenLegacyArchitectureProvenanceSchema,
+  frozenLegacyPaths,
 } from "./helpers/frozen-legacy-architecture-provenance.js";
 
 /**
@@ -26,7 +26,7 @@ import {
  * reported complete by the runtime.
  */
 function discoveredCapabilityPaths(): string[] {
-  return [...FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.capabilities.discoveredPaths];
+  return [...frozenLegacyPaths(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.capabilities.discoveredPaths)];
 }
 
 /**
@@ -281,7 +281,7 @@ const closureFacts: CapabilityClosureFacts = {
   completedThrough: runtimeCompletedThrough(),
   repoPaths: repoPathIndex(),
   npmScripts: new Set(Object.keys(packageJson.scripts)),
-  legacyPathExists: (path) => FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.capabilities.legacyPaths.includes(path),
+  legacyPathExists: (path) => frozenLegacyPaths(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.capabilities.legacyPaths).includes(path),
 };
 
 function entryOf(draft: CapabilityInventory, id: string): CapabilityEntry {
@@ -310,13 +310,6 @@ describe("D58 legacy capability disposition", () => {
     for (const entry of parsedInventory.entries) {
       for (const path of entry.sourcePaths) assert.ok(closureFacts.legacyPathExists(path), path);
     }
-  });
-
-  it("refuses a malformed frozen legacy capability inventory", () => {
-    const malformed = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
-    const capabilities = malformed.capabilities as Record<string, unknown>;
-    capabilities.sourcePaths = ["src/cli.ts", "src/cli.ts"];
-    assert.throws(() => FrozenLegacyArchitectureProvenanceSchema.parse(malformed), /must be unique/i);
   });
 
   it("closes every disposition against the as-built (D184)", () => {

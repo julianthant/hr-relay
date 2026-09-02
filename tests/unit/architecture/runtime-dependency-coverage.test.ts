@@ -19,7 +19,7 @@ import {
 import { SECRET_FAMILY_SPECS } from "../../../src/domain/secrets.js";
 import {
   FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
-  FrozenLegacyArchitectureProvenanceSchema,
+  frozenLegacyPaths,
 } from "./helpers/frozen-legacy-architecture-provenance.js";
 
 /**
@@ -49,7 +49,7 @@ import {
 function legacySystemIds(): readonly string[] {
   const shared = new Set(["common"]);
   const ids = new Set<string>();
-  for (const path of FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.runtime.browserSystemFiles) {
+  for (const path of frozenLegacyPaths(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.runtime.browserSystemFiles)) {
     const rest = path.slice("src/systems/".length);
     const [directory] = rest.split("/");
     if (directory !== undefined && rest.includes("/") && !shared.has(directory)) ids.add(directory);
@@ -191,10 +191,4 @@ describe("runtime dependency coverage", () => {
     );
   });
 
-  it("refuses malformed frozen runtime provenance", () => {
-    const malformed = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
-    const runtime = malformed.runtime as Record<string, unknown>;
-    runtime.browserSystemFiles = ["src/systems/crm/selectors.ts", "src/systems/crm/selectors.ts"];
-    assert.throws(() => FrozenLegacyArchitectureProvenanceSchema.parse(malformed), /must be unique/i);
-  });
 });
