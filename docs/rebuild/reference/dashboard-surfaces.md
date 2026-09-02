@@ -5107,6 +5107,51 @@ height. The row-and-panel catalog derives its per-kind tab lists from `tabsForPa
 function the panel itself calls, so the catalog can never describe a tab set the panel does not
 render.
 
+#### The Session Panel is the demo's strip, and its pool controls live behind `+` (D305)
+
+The drawer under the Sessions bar is ONE horizontal strip of worker cards, one per served worker
+lease across every workflow, in wire order — the demo's `DemoSessionPanel` (`DemoShell.tsx:1825-1957`)
+and its `SessionCard`, ported with provenance. A card is titled by its **workflow** (the demo strips
+even the instance ordinal from the title), carries the served `queued` chip and the state word,
+prints the trace id or the server's absence reason on its subline, its browser tiles in two columns,
+a RESERVED micro-pipeline row, and a footer of step slot · elapsed · `Stop`. A worker whose lease
+settled `crashed` / `lease-expired` is the demo's crashed card: no tiles, no clock, its recorded stop
+reason underneath, kept on screen so the failure is learned. The worker id, the run and trace ids and
+the run's session membership are the card's identity-popover facts, on the subline's `AuthorityDetails`
+route — never a `title` alone.
+
+**The pool controls are the demo's `+ Add workers` dialog**, which is the shape ref
+execution-and-sessions names (*"`+ Add workers` chooses a workflow and a count"*): a workflow
+`Select` over the bootstrap's own list, a two-button count stepper capped at three (D271), and
+D271's contract as the body — the served declaration and CAS basis, the exact excess members a plan
+of N would cover with their running flags, the roster of declared indices with no LIVE worker (never
+started, or ended with its recorded reason) each with its own `spawn-worker`, and the command's
+answer drawn in the dialog against the basis it was issued with. The dialog PLANS; a member is
+started only by its explicit spawn, so a raised count shows its new indices here on the next
+snapshot rather than chaining a spawn against a version the server has not served. The bar carries
+a `N declared members not running` chip beside the attention chip, with the worker ids on its
+title, so D271's "visibly unmet declaration" is visible before the dialog opens.
+
+**What D305 retired, and why.** The per-workflow pool BANDS (`workflowLabel · no pool declaration ·
+0 active · pool v0 · Plan workers`) with `Member N` cards, dashed unmet-member cards and per-card
+spawn buttons, and the virtualized **session membership list** beneath them (every queue row of the
+day grouped by session id, with `No current worker card claims this run` under each). Neither has a
+demo counterpart, and the operator's verdict on 2026-09-01 was that the panel *"looks very different
+from the demo's"*. The membership list was P4's authority join drawn as a surface; the join itself
+survives as each card's session facts, and the session id is already on the queue row. The bands
+were D271's controls given a home before the demo's `+` had a CAS basis to open on; D269 served the
+basis, and the dialog is where the demo puts them. No fact left the panel: every declaration,
+version, excess member and unmet index the band printed is in the dialog or on the bar chip.
+
+**What is still not drawn, and where that is booked.** The demo card's STEP (`UCPath transaction`),
+its `steps[]` pipeline dots and each tile's health word (`Ready` / `Refreshing`) have no producer:
+the card is folded from the worker lease plus browser child spans, which carry no node, no step
+vector and no health observation. The slots are reserved (the pipeline row keeps its height, the
+step slot is `flex-1`, the tile prints the demo's `unknown` tone word `Not checked`) and the gap is
+recorded in `docs/findings/dashboard-projection.md` ("The worker card's step, pipeline and browser
+health have no producer") with the fold that would serve it. The tally vocabulary is the served
+lease state (`starting`, not the demo's `authenticating` — R7's ruling).
+
 #### A live elapsed TICKS, from ONE calibration against the server's instant (D256)
 
 **What was wrong.** `useBootstrap` fetches once, and `boot.serverClock.now` — the instant that ONE

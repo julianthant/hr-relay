@@ -173,3 +173,35 @@ That is an operator/architecture call, not a rendering one. What F8a DID do is s
 hiding it: the confidence chip now sits beside the verdict word, and the receipt's own `result`
 deliberately stays on the body's trailing line rather than being suppressed as a duplicate of the
 band — precisely because, as this record shows, it is not one.
+
+## The worker card's step, pipeline and browser health have no producer — OPEN
+
+**Recorded:** 2026-09-01 (D305, the Session Panel restored to the demo's strip) · **Status:** OPEN
+against a named producer · **Owning doc:** ref dashboard-surfaces §9.9 (the card) / ref
+execution-and-sessions §1 (browser sessions)
+
+**Symptom.** Side by side with the demo's `SessionCard` (`DemoShell.tsx:1544-1681`), the rebuild's
+worker card is the same shape with three slots left honestly empty: the footer's STEP (`UCPath
+transaction` on the demo, `s.step`), the micro-pipeline of one dot per step with the current one
+ringed (`s.steps[]`), and each browser tile's health word (`Ready` / `Refreshing` / `Unhealthy`,
+`b.health`) — the rebuild's tile reads `Not checked · open 3m`. The demo's strip is unmistakably
+"what is every worker doing right now"; the rebuild's is "which workers exist and on which run".
+
+**Evidence.** `WorkerCardWireSchema` (`src/domain/dashboard/projection.ts:708`) carries `workerId`,
+`workflowId`, `state`, `directive`, `startedAt`/`endedAt`, `stopReason`, `currentRun` and
+`browsers[{sessionId, system, openedAt}]` — no node id, no step vector, no health. `shell.tsx`'s
+card comment records the two absences by name and the tile comment records the third.
+
+**Mechanism.** The card is folded from the worker LEASE (D248) plus the browser child spans of the
+worker span. The lease knows the run it holds, not the node inside it; the run's own timeline
+projection (`ref dashboard-surfaces` §2.3) knows the node and every step, but the day wire's
+`workerCards[]` block is snapshot-level and does not join it. Browser health has no probe at all
+(`refresh-browser` / `reopen-browser` are refused by name by the dashboard supervisor).
+
+**A fix would involve.** (1) The projector joining each working card's `currentRun.runId` to that
+run's timeline fold and serving `currentStep: {nodeId, label}` plus `steps[{label, state}]` on the
+card — the same fold the run panel draws, so the two cannot disagree; (2) a browser-session health
+observation with a producer (a heartbeat span per session, or the supervisor's own probe), served
+as a closed enum with `Not checked` as its honest default — never inferred from age. Both are
+projection/execution work, not rendering; the card already reserves the slots (the pipeline row
+holds its height, the step slot is `flex-1`), so serving the facts draws them.
