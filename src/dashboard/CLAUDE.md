@@ -106,6 +106,13 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-01 — a dense key/value record wants a table, not a stack of flex pairs.** The Explorer
+  arm record (D304) drew eight facts as `FactRow`s with nothing between them; at two or three
+  wrapping lines of ids per value, the reader lost which line belonged to which label. `RecordTable`
+  / `RecordRow` in `surfaces/explorer.tsx` draw it as the ds `Table` with `<th scope="row">` labels
+  in the shared 7rem caps column and a hairline per row. Only the arm record changed; node-level
+  rows keep `FactRow`. Refreeze `explorer-transaction` when touching it — its a11y tree carries a
+  `table` per arm.
 - **2026-09-01 — a record that re-heads the thing it is about, and a chip on a value that cannot
   survive a cut, are the same two defects the table above had, one screen lower (D304, the
   Explorer's arm record).** The `TaskRecord` under the contract re-printed the arm's verb, id and

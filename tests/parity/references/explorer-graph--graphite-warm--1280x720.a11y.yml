@@ -128,7 +128,27 @@
           - listitem: selection.selected.jobTitle string · sometimes
           - listitem: selection.selected.name string · sometimes
           - listitem: selection.status literal
-        - text: Implemented by store ucpath · kind browser Subject binding the person search resolves identity rather than confirming it Errors search-unavailable · unexpected-page-state UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios person-lookup/happy-by-eid · person-lookup/ambiguous-name · person-lookup/not-found · person-lookup/ucpath-drill-subject-mismatch Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts input ee4776e0a94eoutput 6b08cc3af988impl 9caf0090f519
+        - table "ucpath/search-person-org record":
+          - rowgroup:
+            - row "Implemented by store ucpath · kind browser":
+              - rowheader "Implemented by"
+              - cell "store ucpath · kind browser"
+            - row "Subject binding the person search resolves identity rather than confirming it":
+              - rowheader "Subject binding"
+              - cell "the person search resolves identity rather than confirming it"
+            - row "Errors search-unavailable · unexpected-page-state":
+              - rowheader "Errors"
+              - cell "search-unavailable · unexpected-page-state"
+            - row "UI vocabulary No catalog entry names this contract — it reaches no browser page.":
+              - rowheader "UI vocabulary"
+              - cell "No catalog entry names this contract — it reaches no browser page."
+            - row "Scenarios person-lookup/happy-by-eid · person-lookup/ambiguous-name · person-lookup/not-found · person-lookup/ucpath-drill-subject-mismatch":
+              - rowheader "Scenarios"
+              - cell "person-lookup/happy-by-eid · person-lookup/ambiguous-name · person-lookup/not-found · person-lookup/ucpath-drill-subject-mismatch"
+            - row "Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts":
+              - rowheader "Source"
+              - cell "contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts"
+        - text: input ee4776e0a94eoutput 6b08cc3af988impl 9caf0090f519
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - text: app 0.1

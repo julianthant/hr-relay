@@ -2287,6 +2287,16 @@ the node-level rows sit above the arm cards. The pin is `explorer-arm-record.tes
 per arm id, no `Freshness`/`Provenance`, and every error code and catalog id printed whole outside any
 `whitespace-nowrap` or `truncate` span.
 
+**2026-09-01 — the arm record is a two-column table.** D304's stacked `FactRow`s put eight facts,
+most of them two or three wrapping lines of ids, one above the other with nothing between the pairs,
+and at that density the eye lost which line belonged to which label. The record is now a
+`RecordTable` (the ds `Table`, `layout="fixed"`, labelled `<task id> record`): one `RecordRow` per
+fact, the label a `<th scope="row">` in the same caps ink and the same 7rem column, the value a `<td>`
+holding the unchanged `FactLine`/`FactChips`/`SourceLink` treatment, a hairline under every row but
+the last, and no horizontal cell inset so the labels stay in line with the node-level rows above the
+cards. The schema-hash `MetaLine` stays below the table. The node-level rows keep `FactRow`; only
+the arm record is a table. The a11y half of `explorer-transaction` now carries a `table` per arm.
+
 **A node's `when`, in words.** §5.7 recorded the conditional line as "runs when the descriptor's own
 when() predicate holds" and named an authored `whenLabel` as the fix. The fix taken instead is
 **D228** (ref workflow-model §3.3): the condition is DECLARED data, the executor evaluates it and the surface

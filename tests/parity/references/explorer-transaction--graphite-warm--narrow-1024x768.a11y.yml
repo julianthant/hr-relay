@@ -198,7 +198,27 @@
           - listitem: renderContext.entry enum
           - listitem: renderContext.searchResultRows number
           - listitem: rowCount number
-        - text: Implemented by store ucpath · kind browser Subject binding kind person · identity eid · from input emplId observes ucpath.person-org.displayed-eid · match normalized-exact-eid · required at before-subject-read Errors employee-not-found · subject-mismatch · unexpected-page-state UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios separations-identity-check/single-active-job · separations-identity-check/already-terminated-single-row · separations-identity-check/already-terminated-multi-row · separations-identity-check/concurrent-active-jobs · separations-identity-check/unreadable-department · separations-identity-check/job-summary-not-found Source contract src/domain/contracts/ucpath/read-job-summary.ts impl src/stores/ucpath/tasks/read-job-summary.ts input 5578ac7d2220output 52e6b39a1c20impl 9230210ea312
+        - table "ucpath/read-job-summary record":
+          - rowgroup:
+            - row "Implemented by store ucpath · kind browser":
+              - rowheader "Implemented by"
+              - cell "store ucpath · kind browser"
+            - row "Subject binding kind person · identity eid · from input emplId observes ucpath.person-org.displayed-eid · match normalized-exact-eid · required at before-subject-read":
+              - rowheader "Subject binding"
+              - cell "kind person · identity eid · from input emplId observes ucpath.person-org.displayed-eid · match normalized-exact-eid · required at before-subject-read"
+            - row "Errors employee-not-found · subject-mismatch · unexpected-page-state":
+              - rowheader "Errors"
+              - cell "employee-not-found · subject-mismatch · unexpected-page-state"
+            - row "UI vocabulary No catalog entry names this contract — it reaches no browser page.":
+              - rowheader "UI vocabulary"
+              - cell "No catalog entry names this contract — it reaches no browser page."
+            - row "Scenarios separations-identity-check/single-active-job · separations-identity-check/already-terminated-single-row · separations-identity-check/already-terminated-multi-row · separations-identity-check/concurrent-active-jobs · separations-identity-check/unreadable-department · separations-identity-check/job-summary-not-found":
+              - rowheader "Scenarios"
+              - cell "separations-identity-check/single-active-job · separations-identity-check/already-terminated-single-row · separations-identity-check/already-terminated-multi-row · separations-identity-check/concurrent-active-jobs · separations-identity-check/unreadable-department · separations-identity-check/job-summary-not-found"
+            - row "Source contract src/domain/contracts/ucpath/read-job-summary.ts impl src/stores/ucpath/tasks/read-job-summary.ts":
+              - rowheader "Source"
+              - cell "contract src/domain/contracts/ucpath/read-job-summary.ts impl src/stores/ucpath/tasks/read-job-summary.ts"
+        - text: input 5578ac7d2220output 52e6b39a1c20impl 9230210ea312
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - text: app 0.1

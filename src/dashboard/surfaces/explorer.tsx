@@ -238,6 +238,49 @@ function FactRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/**
+ * The arm record as a TABLE: one label column, one value column.
+ *
+ * D304 drew the record as stacked `FactRow`s — a flex pair per fact with
+ * nothing between the pairs — and at the record's density (eight facts, most
+ * of them two or three wrapping lines of ids) the eye lost which line belonged
+ * to which label. A table gives it what a key/value list is: a hairline under
+ * each row, the label as a row HEADER (`<th scope="row">`, so a screen reader
+ * names the fact before every value), and a fixed 7rem label column that the
+ * whole node panel already agrees on. The rows do not pad horizontally — the
+ * record's container owns the inset, and a cell inset on top of it would
+ * push the labels out of line with the node-level rows above the arm cards.
+ */
+function RecordTable({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Table label={label} layout="fixed">
+      <colgroup>
+        <col className="w-[7rem]" />
+        <col />
+      </colgroup>
+      <TBody>{children}</TBody>
+    </Table>
+  );
+}
+
+/** One fact of a `RecordTable`: the label heads the row, the value fills it. */
+function RecordRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <TR className="h-auto [&:last-child>*]:border-b-0">
+      <TH
+        scope="row"
+        className={cn(
+          "border-[color:var(--ds-border-subtle)] px-0 pr-[var(--ds-space-base)] align-top",
+          "text-[color:var(--ds-fg-muted)]",
+        )}
+      >
+        {label}
+      </TH>
+      <TD className="px-0 align-top">{children}</TD>
+    </TR>
+  );
+}
+
 interface FactItem {
   readonly key: string;
   /** the fact's name, in the muted ink; omitted when the value names itself */
@@ -1168,133 +1211,135 @@ function ArmRecord({ task }: { task: ExplorerTaskWire }) {
     .filter((group) => group.links.length > 0);
   return (
     <div className="flex flex-col gap-[var(--ds-space-base)] border-t border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-base)]">
-      <FactRow label="Implemented by">
-        {task.binding.state === "bound" ? (
-          <FactLine
-            items={[
-              { key: "store", label: "store", value: task.binding.storeNamespace },
-              { key: "kind", label: "kind", value: task.binding.storeKind },
-              // The driver is named only when it is not the store's own name —
-              // `store kuali · driver kuali` is one fact twice.
-              ...(task.binding.driverSystem !== undefined && task.binding.driverSystem !== task.binding.storeNamespace
-                ? [{ key: "driver", label: "driver", value: String(task.binding.driverSystem) }]
-                : []),
-            ]}
-          />
-        ) : (
-          // A contract no store implements yet is a legitimate mid-program
-          // state (D107) and it is stated, never hidden: a workflow that cannot
-          // run must not read here as one that can.
-          <Banner tone="warning" title="No implementation is bound yet">
-            {task.binding.note}
-          </Banner>
-        )}
-      </FactRow>
-
-      <FactRow label="Subject binding">
-        {task.subject.kind === "none" ? (
-          <span className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
-            {task.subject.reason ?? "none declared"}
-          </span>
-        ) : (
-          <FactLines>
+      <RecordTable label={`${String(task.taskId)} record`}>
+        <RecordRow label="Implemented by">
+          {task.binding.state === "bound" ? (
             <FactLine
               items={[
-                { key: "kind", label: "kind", value: task.subject.kind },
-                { key: "identity", label: "identity", value: task.subject.identity },
-                { key: "from", label: "from input", value: String(task.subject.fromInput) },
+                { key: "store", label: "store", value: task.binding.storeNamespace },
+                { key: "kind", label: "kind", value: task.binding.storeKind },
+                // The driver is named only when it is not the store's own name —
+                // `store kuali · driver kuali` is one fact twice.
+                ...(task.binding.driverSystem !== undefined && task.binding.driverSystem !== task.binding.storeNamespace
+                  ? [{ key: "driver", label: "driver", value: String(task.binding.driverSystem) }]
+                  : []),
               ]}
             />
-            <FactLine
-              items={[
-                {
-                  key: "observes",
-                  label: "observes",
-                  value: String(task.subject.observe),
-                  icon: <ScanEye aria-hidden className={cn(dsIcon.sm, "mr-[var(--ds-space-tight)] inline align-[-0.15em] text-[color:var(--ds-fg-muted)]")} />,
-                },
-                { key: "match", label: "match", value: task.subject.match },
-                { key: "required", label: "required at", value: task.subject.requiredAt },
-              ]}
-            />
-          </FactLines>
-        )}
-      </FactRow>
+          ) : (
+            // A contract no store implements yet is a legitimate mid-program
+            // state (D107) and it is stated, never hidden: a workflow that cannot
+            // run must not read here as one that can.
+            <Banner tone="warning" title="No implementation is bound yet">
+              {task.binding.note}
+            </Banner>
+          )}
+        </RecordRow>
 
-      {task.writeSafety !== undefined && (
-        <FactRow label="Write safety">
-          <FactChips>
-            <Chip label="completion" tone="warning">{task.writeSafety.completionKind}</Chip>
-            {task.writeSafety.verifyTaskId !== undefined && (
-              <Chip label="verifies with">{task.writeSafety.verifyTaskId}</Chip>
-            )}
-            <Chip label="probes with">{task.writeSafety.probeTaskId}</Chip>
-            <Chip label="absence after fence" tone="warning">
-              {task.writeSafety.recoveryAbsence.kind === "operator-only"
-                ? "operator-only"
-                : `stabilized · ${String(task.writeSafety.recoveryAbsence.minSinceFenceMs)}ms · `
-                  + `${String(task.writeSafety.recoveryAbsence.consistentReads)} reads`}
-            </Chip>
-            {task.writeSafety.unverifiableByPage !== undefined && (
-              <Chip
-                label="unverifiable by page"
-                tone="danger"
-                title={task.writeSafety.unverifiableByPage.reason}
-              >
-                {task.writeSafety.unverifiableByPage.policy}
-              </Chip>
-            )}
-          </FactChips>
-        </FactRow>
-      )}
-
-      <FactRow label="Errors">
-        <FactLine items={task.errorCodes.map((code) => ({ key: code, value: code }))} />
-      </FactRow>
-
-      {(task.requires.length > 0 || task.providers.length > 0) && (
-        <FactRow label="Requires">
-          <FactLine
-            items={[
-              ...task.requires.map((requirement) => ({ key: `requires:${String(requirement)}`, label: "secret", value: String(requirement) })),
-              ...task.providers.map((provider) => ({ key: `provider:${String(provider)}`, label: "provider", value: String(provider) })),
-            ]}
-          />
-        </FactRow>
-      )}
-
-      <FactRow label="UI vocabulary">
-        {task.ui.length === 0 ? (
-          <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>
-            No catalog entry names this contract — it reaches no browser page.
-          </span>
-        ) : (
-          <FactLines>
-            {uiByKind.map((group) => (
+        <RecordRow label="Subject binding">
+          {task.subject.kind === "none" ? (
+            <span className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+              {task.subject.reason ?? "none declared"}
+            </span>
+          ) : (
+            <FactLines>
               <FactLine
-                key={group.kind}
-                items={group.links.map((link, index) => ({
-                  key: link.catalogId,
-                  ...(index === 0 ? { label: group.kind } : {}),
-                  value: link.catalogId,
-                  title: `${link.label} — verified ${link.verifiedAt}`,
-                }))}
+                items={[
+                  { key: "kind", label: "kind", value: task.subject.kind },
+                  { key: "identity", label: "identity", value: task.subject.identity },
+                  { key: "from", label: "from input", value: String(task.subject.fromInput) },
+                ]}
               />
-            ))}
-          </FactLines>
+              <FactLine
+                items={[
+                  {
+                    key: "observes",
+                    label: "observes",
+                    value: String(task.subject.observe),
+                    icon: <ScanEye aria-hidden className={cn(dsIcon.sm, "mr-[var(--ds-space-tight)] inline align-[-0.15em] text-[color:var(--ds-fg-muted)]")} />,
+                  },
+                  { key: "match", label: "match", value: task.subject.match },
+                  { key: "required", label: "required at", value: task.subject.requiredAt },
+                ]}
+              />
+            </FactLines>
+          )}
+        </RecordRow>
+
+        {task.writeSafety !== undefined && (
+          <RecordRow label="Write safety">
+            <FactChips>
+              <Chip label="completion" tone="warning">{task.writeSafety.completionKind}</Chip>
+              {task.writeSafety.verifyTaskId !== undefined && (
+                <Chip label="verifies with">{task.writeSafety.verifyTaskId}</Chip>
+              )}
+              <Chip label="probes with">{task.writeSafety.probeTaskId}</Chip>
+              <Chip label="absence after fence" tone="warning">
+                {task.writeSafety.recoveryAbsence.kind === "operator-only"
+                  ? "operator-only"
+                  : `stabilized · ${String(task.writeSafety.recoveryAbsence.minSinceFenceMs)}ms · `
+                    + `${String(task.writeSafety.recoveryAbsence.consistentReads)} reads`}
+              </Chip>
+              {task.writeSafety.unverifiableByPage !== undefined && (
+                <Chip
+                  label="unverifiable by page"
+                  tone="danger"
+                  title={task.writeSafety.unverifiableByPage.reason}
+                >
+                  {task.writeSafety.unverifiableByPage.policy}
+                </Chip>
+              )}
+            </FactChips>
+          </RecordRow>
         )}
-      </FactRow>
 
-      <FactRow label="Scenarios">
-        <FactLine items={task.scenarios.map((scenario) => ({ key: String(scenario), value: String(scenario) }))} />
-      </FactRow>
+        <RecordRow label="Errors">
+          <FactLine items={task.errorCodes.map((code) => ({ key: code, value: code }))} />
+        </RecordRow>
 
-      <FactRow label="Source">
-        <FactLines>
-          <SourceLink label="contract" link={task.contractSource} />
-          <SourceLink label="impl" link={task.implSource} />
-        </FactLines>
-      </FactRow>
+        {(task.requires.length > 0 || task.providers.length > 0) && (
+          <RecordRow label="Requires">
+            <FactLine
+              items={[
+                ...task.requires.map((requirement) => ({ key: `requires:${String(requirement)}`, label: "secret", value: String(requirement) })),
+                ...task.providers.map((provider) => ({ key: `provider:${String(provider)}`, label: "provider", value: String(provider) })),
+              ]}
+            />
+          </RecordRow>
+        )}
+
+        <RecordRow label="UI vocabulary">
+          {task.ui.length === 0 ? (
+            <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>
+              No catalog entry names this contract — it reaches no browser page.
+            </span>
+          ) : (
+            <FactLines>
+              {uiByKind.map((group) => (
+                <FactLine
+                  key={group.kind}
+                  items={group.links.map((link, index) => ({
+                    key: link.catalogId,
+                    ...(index === 0 ? { label: group.kind } : {}),
+                    value: link.catalogId,
+                    title: `${link.label} — verified ${link.verifiedAt}`,
+                  }))}
+                />
+              ))}
+            </FactLines>
+          )}
+        </RecordRow>
+
+        <RecordRow label="Scenarios">
+          <FactLine items={task.scenarios.map((scenario) => ({ key: String(scenario), value: String(scenario) }))} />
+        </RecordRow>
+
+        <RecordRow label="Source">
+          <FactLines>
+            <SourceLink label="contract" link={task.contractSource} />
+            <SourceLink label="impl" link={task.implSource} />
+          </FactLines>
+        </RecordRow>
+      </RecordTable>
 
       <MetaLine
         tone="faint"
