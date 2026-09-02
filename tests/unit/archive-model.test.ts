@@ -1172,6 +1172,67 @@ describe("the D80 archive model", () => {
     if (stale.state === "rejected") assert.equal(stale.code, "schema-mismatch");
   });
 
+  /**
+   * D308 — the Archive's DELETE door, from the digest the surface reads to the
+   * rows that leave. The dashboard half (the confirm, the envelope, the
+   * navigation) is pressed in `tests/unit/dashboard/archive-delete-door.test.ts`;
+   * this is the half only real authority can answer.
+   */
+  it("deletes an archived run against the digest its detail served, and refuses any other", () => {
+    const world = createWorld();
+    const archived = startRun(world, "10873698", true);
+    world.registry = V2;
+    assert.equal(apply(world, plan(world)).state, "applied");
+
+    const record = world.database.authority.archivedRuns.get(archived);
+    assert.notEqual(record, undefined);
+
+    /*
+      What the ARCHIVED DETAIL serves is what the delete cites back. The
+      surface reads no other digest, so this equality is the whole reason
+      `schema-mismatch` can mean "you are looking at a different record".
+    */
+    const detail = buildArchivedRunDetail(emptyRegistryDeps(world), archived);
+    assert.equal(detail.archiveFingerprint, record?.contentDigest);
+
+    // A delete citing a digest the record does not hold removes NOTHING.
+    const stale = CommandResultSchema.parse(world.kernel.execute({
+      ...envelope(),
+      family: "version-archive",
+      type: "delete-archived-run",
+      target: { archivedRunId: archived, archiveFingerprint: HASH_A },
+    }));
+    assert.equal(stale.state, "rejected");
+    if (stale.state === "rejected") assert.equal(stale.code, "schema-mismatch");
+    assert.equal(world.database.authority.archivedRuns.isArchived(archived), true);
+    assert.notEqual(world.database.authority.runs.get(archived), undefined);
+    assert.equal(world.database.authority.deletedRuns.get(archived), undefined);
+
+    // The served digest opens it.
+    const result = CommandResultSchema.parse(world.kernel.execute({
+      ...envelope(),
+      family: "version-archive",
+      type: "delete-archived-run",
+      target: { archivedRunId: archived, archiveFingerprint: detail.archiveFingerprint },
+    }));
+    assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "delete refused");
+
+    // The archived record, the retained run, and the ledger row are gone —
+    // behind the one tombstone that records the origin they left through.
+    assert.equal(world.database.authority.archivedRuns.get(archived), undefined);
+    assert.equal(world.database.authority.archivedRuns.isArchived(archived), false);
+    assert.equal(world.database.authority.runs.get(archived), undefined);
+    assert.equal(world.database.authority.deletedRuns.get(archived)?.origin, "archive");
+
+    // The ledger the surface returns to no longer lists it, and its detail
+    // route refuses by name rather than serving a hollow record.
+    assert.equal(
+      buildArchiveIndex(emptyRegistryDeps(world)).entries.some((entry) => entry.runId === archived),
+      false,
+    );
+    assert.throws(() => buildArchivedRunDetail(emptyRegistryDeps(world), archived));
+  });
+
   it("refuses an apply whose plan was reviewed against a registry that has since moved", () => {
     const world = createWorld();
     startRun(world, "10873698", true);
