@@ -29,7 +29,12 @@ import {
   WorkflowIdSchema,
 } from "../ids.js";
 import { SchemaBoundCanonicalValueSchema } from "../schema-bound-value.js";
-import { InstanceSelectionSchema, RunPrioritySchema, RunShapeSchema } from "./envelope.js";
+import {
+  BrowserPresentationModeSchema,
+  InstanceSelectionSchema,
+  RunPrioritySchema,
+  RunShapeSchema,
+} from "./envelope.js";
 
 /** Why a submission cannot become a run. Every arm is a state the operator can act on. */
 export const StartRefusalCodeSchema = z.enum([
@@ -89,6 +94,8 @@ export const StartPlanRecordSchema = z.strictObject({
   shape: RunShapeSchema,
   priority: RunPrioritySchema,
   dryRun: z.boolean(),
+  /** Optional only so plans written before browser presentation was introduced remain readable. */
+  browserMode: BrowserPresentationModeSchema.optional(),
   planned: z.array(PlannedRunSchema),
   refused: z.array(StartRefusalSchema),
   plannedBy: ActorIdSchema,

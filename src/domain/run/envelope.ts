@@ -44,6 +44,10 @@ export type RunShape = z.infer<typeof RunShapeSchema>;
 export const RunPrioritySchema = z.enum(["interactive", "bulk"]);
 export type RunPriority = z.infer<typeof RunPrioritySchema>;
 
+/** The browser presentation the operator chose for this immutable run. */
+export const BrowserPresentationModeSchema = z.enum(["headless", "headed"]);
+export type BrowserPresentationMode = z.infer<typeof BrowserPresentationModeSchema>;
+
 /**
  * A partial map over the closed browser-system set. `partialRecord` keeps the
  * key set closed — an unknown system id fails rather than riding along as an
@@ -77,6 +81,8 @@ export const RunEnvelopeSchema = z.strictObject({
   priority: RunPrioritySchema,
   /** D6 — the ONLY home of this flag. */
   dryRun: z.boolean(),
+  /** Optional only so historical authority rows remain readable. */
+  browserMode: BrowserPresentationModeSchema.optional(),
   /** A resumable graph-node id, never an internal transaction arm (ref workflow-model §5.7). */
   startAt: NodeIdSchema.optional(),
   injected: z.array(CheckpointPatchSchema).min(1).optional(),
