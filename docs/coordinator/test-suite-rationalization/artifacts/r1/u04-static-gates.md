@@ -5,11 +5,14 @@
 `tsconfig.json` has one program and its exact authored roots remain `src/**/*`,
 `tests/**/*`, and `scripts/**/*`; it has no `exclude`. Its three explicit root
 TypeScript config inputs are `vitest.config.ts`, `vite.dashboard.config.ts`, and
-`playwright.parity.config.ts` (3 files). `npm run lint` now targets the three
-authored roots plus those exact three config files (6 CLI targets), with
-`--max-warnings 0`. The ESLint strict typed block names the same 3 configs; it
-does not introduce an arbitrary root-file glob. Coverage thresholds, Vitest
-project membership, and all existing exclusions are unchanged.
+`playwright.parity.config.ts` (3 files). The guard derives every slash-free
+`.ts` input from `tsconfig.include` and requires that observed set to equal
+those same three files before checking each in lint and the ESLint typed block.
+`npm run lint` now targets the three authored roots plus those exact three
+config files (6 CLI targets), with `--max-warnings 0`. The ESLint strict typed
+block names the same 3 configs; it does not introduce an arbitrary root-file
+glob. Coverage thresholds, Vitest project membership, and all existing
+exclusions are unchanged.
 
 `roadmap:check` is registered exactly as:
 
@@ -34,6 +37,13 @@ typed block failed with:
 
 ```
 AssertionError: the typed ESLint config must explicitly cover vitest.config.ts; a command target without a strict block passes vacuously
+```
+
+Temporarily adding `"unlinted.config.ts"` to `tsconfig.include` failed with:
+
+```
+AssertionError: root TypeScript entries in tsconfig must remain the approved exact set; a new typechecked root config requires deliberate lint coverage
++   'unlinted.config.ts',
 ```
 
 Temporarily changing `roadmap:check` to `tsx scripts/generate-roadmap.ts`

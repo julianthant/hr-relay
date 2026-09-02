@@ -33,12 +33,17 @@ const tsconfig = JSON.parse(readFileSync(join(REPO_ROOT, "tsconfig.json"), "utf8
 
 /** Every root this repo authors code in. Adding one means gating it. */
 const AUTHORED_ROOTS = ["src", "tests", "scripts"] as const;
-/** Root TS configs included by the sole tsconfig program require the same lint gate. */
-const ROOT_TYPESCRIPT_CONFIG_FILES = [
+/** The approved root TS inputs in the sole tsconfig program. */
+const EXPECTED_ROOT_TYPESCRIPT_CONFIG_FILES = [
   "vitest.config.ts",
   "vite.dashboard.config.ts",
   "playwright.parity.config.ts",
 ] as const;
+
+/** Root TS inputs are explicit tsconfig entries, never a broad lint glob. */
+const rootTypeScriptConfigFiles = tsconfig.include
+  .filter((pattern) => !pattern.includes("/") && pattern.endsWith(".ts"))
+  .toSorted();
 
 describe("gate coverage", () => {
   it("keeps every authored root inside the single type program", () => {
@@ -75,11 +80,12 @@ describe("gate coverage", () => {
 
   it("lints every root TypeScript config the type program includes", () => {
     const lint = pkg.scripts.lint ?? "";
-    for (const configFile of ROOT_TYPESCRIPT_CONFIG_FILES) {
-      assert.ok(
-        tsconfig.include.includes(configFile),
-        `tsconfig must include ${configFile}; this gate only names root configs the type program owns`,
-      );
+    assert.deepEqual(
+      rootTypeScriptConfigFiles,
+      [...EXPECTED_ROOT_TYPESCRIPT_CONFIG_FILES].toSorted(),
+      "root TypeScript entries in tsconfig must remain the approved exact set; a new typechecked root config requires deliberate lint coverage",
+    );
+    for (const configFile of rootTypeScriptConfigFiles) {
       assert.match(
         lint,
         new RegExp(`(^|\\s)${configFile.replace(/\\./g, "\\\\.")}(\\s|$)`),
