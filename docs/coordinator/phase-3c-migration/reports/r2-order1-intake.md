@@ -161,8 +161,9 @@ commit the board.
 | `14a801a9fbf3f2bb6b7d8a624ae8e12ca57787c2` | Review fixes and explicit D209/T1b conflict/options |
 | `66e0cd737efbafddfa97d1551276b211a638e987` | Final trust-confidence and access-observation corrections |
 | `06882995c13c289ee674163d2e4f06dc1f720e98` | Initial R2 report before the coordinator's D312–D316 amendment |
-| `e1a55921a7468d980447ebf0e6c54d70b6b29f3d` | D312–D316 application pinned to integration authority `1273c360` |
-| `9bd30dc5f604842d4bd0044543188dc4e18d6f71` | Focused review fixes and commit-qualified owner citations |
+| `e1a559210999a5753967b16f472f8a2bfd418f76` | D312–D316 application pinned to integration authority `1273c360` |
+| `9bd30dc5be88fc1a82c1d32c139a0d9890bd046d` | Focused review fixes and commit-qualified owner citations |
+| `8a7243a1ac9bfc29a429f84c7d584c27475a9fd2` | Amendment review, final gate, board-snapshot and cleanup close record |
 
 Open residue is exact: coordinator decision 1 for the read-only T1 live-proof contract; a new live
 I-9 completed-signer canary; R1 compiler integration before R3 implementation. No successful-run
