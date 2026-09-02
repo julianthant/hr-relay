@@ -148,7 +148,8 @@ function formatReport(report: StorageDoctorReport): string {
   if (report.spanAuthority.state === "reconciled") {
     lines.push(
       `span authority: reconciled (${String(report.spanAuthority.streamRunCount)} stream runs; `
-      + `${String(report.spanAuthority.archived.length)} archived)`,
+      + `${String(report.spanAuthority.archived.length)} archived; `
+      + `${String(report.spanAuthority.deleted.length)} deleted)`,
     );
   } else if (report.spanAuthority.state === "degraded") {
     const problemSummary = report.spanAuthority.problems.map((problem) => {
@@ -179,6 +180,13 @@ function formatReport(report: StorageDoctorReport): string {
   if (report.spanAuthority.state !== "unavailable") {
     for (const archived of report.spanAuthority.archived) {
       lines.push(`  archived: ${archived.runId}`);
+    }
+    // D308 tombstone facts: run identity and when it left, nothing about a person.
+    for (const deleted of report.spanAuthority.deleted) {
+      lines.push(
+        `  deleted: ${deleted.runId} — ${deleted.workflow} · trace ${deleted.traceId} `
+        + `· ${deleted.origin} · ${deleted.deletedAt}`,
+      );
     }
   }
   if (report.spanAuthority.state === "degraded") {
