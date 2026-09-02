@@ -630,6 +630,24 @@ adopted), and it does not proceed on the Kuali dates (B is not adopted).
   though all three currently fail, because the day the operator flags a real special case, those are
   the values the new composition will be selected on.
 
+#### AMENDMENT (operator), 2026-09-01 — D307: the operator may OMIT the Kronos step at start and type the dates.
+
+The operator ruled, verbatim: **"any step should be pickable and we will ask for custom input values
+that are required in the skipped steps."** Option C's hard-fail is unchanged for a run that INCLUDES
+the Kronos timecard step: an unreachable Kronos, a failed search, an unreadable card still
+terminalize `failed`, and there is still no mid-run fallback to the Kuali dates. What D307 adds is a
+choice made BEFORE the run, on the Start Run Steps screen: the operator un-checks *Kronos timecard*
+and types the last day worked and the separation date. The step's two browser reads are then not
+run at all, and the `dates` fold is rebuilt from the typed pair (`assertSeparationDates`): the
+effective date is still separation date + 1, a separation date after the plan's as-of day still
+refuses (the same bound the Kuali read applies), no leave day and no pay code is invented, the
+UCPath comment names no leave, and the Kuali date-change comment cites *operator entry at run start*,
+never a timesheet. The reconciled dates carry `source: "operator"`, which rides into the identity
+packet and its digest, so the approver sees typed dates as typed. "The check could not run" and
+"the operator chose not to run the check" remain two different values: the first is a failure, the
+second is a named omission on the run envelope, the timeline (`step-omitted` / `operator-asserted`),
+the receipt and the result.
+
 ---
 
 ### 4c. Partial completion — UCPath submitted, Kuali finalization fails
@@ -709,6 +727,21 @@ transaction number carried DURABLY.**
   deliberate "save the Kuali form blank for manual entry" half-finished document cannot arise. It is
   not a rejected option; it is an unreachable state.
 
+#### AMENDMENT (operator), 2026-09-01 — D307: the operator may OMIT the UCPath transaction step and type the receipt.
+
+Option A's park-and-resume stands for every run that INCLUDES the UCPath transaction step. D307 adds
+the start-time choice: the operator un-checks *UCPath transaction* and types the transaction number
+and its approval status. Neither transaction node runs and neither mints an outcome — D144 holds,
+only the write sequencer's row may say a write happened — and the `receipt` fold is rebuilt from
+the typed pair over the run's OWN identity approval and reconciled dates (`assertTerminationReceipt`),
+which are the two facts a live receipt is checked against. The typed number must be one the Kuali
+control can hold, and the status must be one a receipt may carry (Approved, Manually Processed,
+Pending); Denied and Pushed Back refuse, because a filing UCPath refused is not a filed termination.
+The receipt's `disposition` is `operator-asserted`, the result's `pendingSweep` is the named
+`omitted` arm, and the Kuali finalization stages the typed number exactly as it would a read one.
+This is the operator's own ruling on the trade §4c's Option C weighed: the number is unverified by
+this run, and every projection says so.
+
 ---
 
 ### 4d. The identity gate under run modes and resumes
@@ -781,6 +814,15 @@ no resume path, and no run mode of any kind can disable identity approval.**
   changes the graph at all** in this workflow. A future "Kuali dates only" case is a §3.1
   **recomposition**, which is a different descriptor with its own gate node, not a mode that edits
   this one.
+- **Amended by D307 (2026-09-01):** "no run mode changes the graph" is narrowed to "no run mode
+  changes the graph MID-RUN". A step may be omitted at start, and its declared producers rebuild
+  its task outputs from typed facts — but a GATE is never substituted (the planner refuses a
+  producer that names one, the factory refuses it at definition, and the guard
+  `step-omission-invariants` sweeps every registered descriptor), so ALWAYS-GATE stands under every
+  omission. Slice one (2026-09-01) declares omissions for Kronos timecard, UCPath transaction and
+  Kuali finalization only; *Identity check*, *Kuali extraction* and *Job summary* remain required
+  until the identity packet carries per-row origin marks for asserted evidence, at which point the
+  gate will still open on the asserted packet and the operator will approve typed identity AS typed.
 
 ---
 

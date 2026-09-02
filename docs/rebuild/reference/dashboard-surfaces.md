@@ -2634,6 +2634,21 @@ At container widths of at least 480px, Customize steps and Dry run occupy one ro
 and priority occupy the next. The production modal must not display an Automation workers choice until
 the start planner owns a per-run worker-count capability.
 
+**D307 — any step is pickable; an omitted step asks for the facts it would have read (2026-09-01).**
+A step control now has three arms: `selectable` (D285's boolean-condition steps), `required` (with a
+served reason), and `omittable` — a step whose folder declares an omission form (closed field kinds:
+text, us-date, eid, integer, boolean, enum, text-list) and the OTHER steps its omission `forces` out.
+Un-checking an omittable step renders its form inline and auto-locks the forced steps; a step whose
+cascade is blocked by a step that must run projects as `required` with the sentence *Omitting this step
+would also require omitting "<label>", which must run.* The request carries `stepOmissions: [{ step,
+facts }]` beside `selectedStepKeys`; the plan service validates every entry against the descriptor's
+forms and cascade before planning and refuses with HTTP 400 `START_STEP_OMISSION_REFUSED` (codes
+`selection-required | unknown-step | step-not-omittable | step-not-omitted | duplicate-step |
+facts-missing | facts-invalid | cascade-refused`). The plan RESPONSE serves `omittedSteps` (keys only);
+typed facts never return on a wire. Separations declares three omittable steps in slice one — Kronos
+timecard (last day worked, separation date), UCPath transaction (transaction number, approval status)
+and Kuali finalization (no fields); its three read steps stay required.
+
 1. **The parser sentence is derived, never authored.** `inputRunValueNoun`,
    `inputRunSeparatorLabel` and `inputRunParserLabel` (`src/domain/workflow/ingress.ts`) read a
    legend declared beside `ENTRY_PATTERNS`, so a pattern whose regex moves has its words in the same

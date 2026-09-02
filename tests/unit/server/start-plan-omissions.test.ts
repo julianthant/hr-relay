@@ -159,6 +159,17 @@ describe("start plan step omissions (D307)", () => {
     assert.equal(harness.transactions(), 0);
   });
 
+  it("refuses typed facts for a plan that carries more than one subject", () => {
+    const harness = harnessFor(omissionAssertingDescriptor);
+    const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {
+      submissions: [{ eid: "10873698" }, { eid: "10001573" }],
+      selectedStepKeys: ["folding", "auditing"],
+      stepOmissions: [{ step: "reading", facts: READING_FACTS }],
+    })));
+    assert.equal(error.code, "single-subject-only");
+    assert.equal(harness.transactions(), 0);
+  });
+
   it("refuses an omitted step whose facts never arrived", () => {
     const harness = harnessFor(omissionAssertingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {

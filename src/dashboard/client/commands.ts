@@ -73,7 +73,11 @@ export const StartPlanSubmissionSchema = z.strictObject({
   requestedInstance: z.record(z.string(), z.enum(["prod", "test"])).optional(),
   selectedStepKeys: z.array(z.string().min(1)).min(1).optional(),
   /** D307 — one entry per omitted step, carrying the operator's typed facts for that step's form. */
-  stepOmissions: z.array(z.strictObject({ step: z.string().min(1), facts: z.record(z.string(), z.unknown()) })).min(1).optional(),
+  /** D307 — one entry per omitted step; a fact is a closed leaf, never an open unknown the wire could drop. */
+  stepOmissions: z.array(z.strictObject({
+    step: z.string().min(1),
+    facts: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])),
+  })).min(1).optional(),
 });
 
 export interface DashboardCommands {
