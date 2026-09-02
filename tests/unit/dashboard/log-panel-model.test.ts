@@ -4,6 +4,7 @@ import { LogRowWireSchema, NotePageSchema } from "../../../src/domain/dashboard/
 import {
   appendLogPage,
   groupLogRows,
+  logLedgerOf,
   logPillsOf,
   logRowsOf,
   rowMatchesLogQuery,
@@ -118,6 +119,93 @@ describe("observed log presentation fold", () => {
     const fenced = fence(4);
     assert.equal(fenced.kind, "transaction-fenced");
     assert.deepEqual(logPillsOf(fenced), []);
+  });
+
+  it("lays an observed row out as a ledger: direction once per section, field prefixes dropped, lists kept whole", () => {
+    const row = LogRowWireSchema.parse({
+      kind: "observed",
+      logId: "e1b8ae3e-0000-4000-8000-000000000021",
+      sequence: 21,
+      at: AT,
+      attempt: 1,
+      traceId: TRACE,
+      spanPath: "run/read-document",
+      producer: { nodeId: "read-document", step: "Separation Document", taskId: "kuali/read-separation-document", system: "kuali" },
+      points: [
+        {
+          direction: "read",
+          field: "documentNumber",
+          values: [{ key: "documentNumber", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "4495" }],
+        },
+        {
+          direction: "read",
+          field: "employee",
+          values: [
+            { key: "employee.location.value", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "Hospitality" },
+            { key: "employee.name.state", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "present" },
+          ],
+        },
+        {
+          direction: "write",
+          field: "options",
+          values: [{ key: "options.department", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: ["- - -", "000412 - Housing", 7] }],
+        },
+        {
+          direction: "read",
+          field: "person.employeeId",
+          values: [{ key: "employeeId", state: "redacted", classification: "direct-identifier", transform: "drop" }],
+        },
+      ],
+    });
+    assert.deepEqual(logLedgerOf(row), [
+      {
+        direction: "read",
+        fields: [
+          {
+            field: "documentNumber",
+            nested: false,
+            facts: [{ key: "documentNumber", label: "documentNumber · documentNumber", value: "4495", items: undefined }],
+          },
+          {
+            field: "employee",
+            nested: true,
+            facts: [
+              { key: "location.value", label: "employee · employee.location.value", value: "Hospitality", items: undefined },
+              { key: "name.state", label: "employee · employee.name.state", value: "present", items: undefined },
+            ],
+          },
+        ],
+      },
+      {
+        direction: "write",
+        fields: [{
+          field: "options",
+          nested: true,
+          facts: [{
+            key: "department",
+            label: "options · options.department",
+            value: '["- - -","000412 - Housing",7]',
+            items: ["- - -", "000412 - Housing", "7"],
+          }],
+        }],
+      },
+      {
+        direction: "read",
+        fields: [{
+          field: "person.employeeId",
+          nested: true,
+          facts: [{ key: "employeeId", label: "person.employeeId · employeeId", value: "redacted", items: undefined }],
+        }],
+      },
+    ]);
+    // The ledger and the pills are the same facts in the same order: the
+    // hover title and the search contract may never disagree with the screen.
+    assert.deepEqual(
+      logLedgerOf(row).flatMap((section) => section.fields.flatMap((field) => field.facts.map((fact) => `${fact.label}: ${fact.value}`))),
+      logPillsOf(row).map((pill) => `${pill.label}: ${pill.value}`),
+    );
+    assert.deepEqual(logLedgerOf(fence(4)), []);
+    assert.deepEqual(logLedgerOf(note(1)), []);
   });
 
   it("searches notes and the observed pill label and value, never a fabricated fence detail", () => {

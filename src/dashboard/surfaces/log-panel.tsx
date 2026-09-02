@@ -36,6 +36,7 @@
  * know" are the two sentences an operator acts on most differently.
  */
 import {
+  Fragment,
   memo,
   useCallback,
   useEffect,
@@ -49,6 +50,7 @@ import {
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  ChevronRight,
   ClipboardList,
   CornerDownRight,
   Database,
@@ -66,7 +68,6 @@ import {
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import {
-  Badge,
   Button,
   Chip,
   EmptyState,
@@ -131,7 +132,11 @@ import { DETAIL_THREE_COLUMN_PX } from "./layout-metrics.js";
 import { PANEL_TAB_LABEL, defaultTabFor, tabsFor, terminalOutcomeText, type PanelTab } from "./log-panel-model.js";
 import {
   groupLogRows,
+  logLedgerOf,
   logPillsOf,
+  type LogLedgerFact,
+  type LogLedgerSection,
+  type LogRowGroup,
   logRowsOf,
   rowMatchesLogQuery,
   timelineAxisTotals,
@@ -141,6 +146,7 @@ import {
   type TimelineAxisTotals,
 } from "./log-panel-model.js";
 import { SystemChip } from "./system-chip.js";
+import type { BrowserSystemId } from "./system-chip-model.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DashboardClientError } from "../client/index.js";
 
@@ -1294,23 +1300,124 @@ function anchorIndex(rows: readonly LogRow[], at: string): number {
   return index;
 }
 
-function LogFactPill({ direction, label, value }: { direction: "read" | "write"; label: string; value: string }) {
-  const read = direction === "read";
+/**
+ * THE OBSERVED LEDGER (2026-09-01 redesign). An observed row used to render one
+ * bordered chip per fact, each carrying its own direction icon, the full
+ * `field · key` label and, for a served list, the raw JSON; with `attempt N`
+ * and the system chip repeated on every row. Twelve facts became twelve
+ * boxes and the stream stopped being readable. Now:
+ *
+ *  - facts are a two-column key · value grid, keys in the meta tone on a
+ *    `--ds-w-chip-cell` track, values in `dsText.nums`;
+ *  - the direction is stated ONCE per section — a 2px rail in the direction's
+ *    border token plus a caps label in its text token — instead of an icon
+ *    per fact (the parity spec reads the token colour off that label);
+ *  - a nested field is a caps sub-head over keys shown without the repeated
+ *    field prefix; a field that IS its single key is a plain row;
+ *  - a served list renders as a native `<details>`: a count plus a clipped
+ *    preview closed, one item per line open. The full rendered value stays
+ *    on the row's `title`, exactly the string the chip used to carry, so
+ *    nothing the old surface exposed is lost;
+ *  - the clock and attempt sit on one meta line at the row's top, and the
+ *    system chip moved up to the sticky producer heading (`groupSystemOf`).
+ */
+function LedgerValue({ fact }: { fact: LogLedgerFact }) {
+  if (fact.items === undefined) {
+    return <span className={cn(dsText.body, dsText.nums, "break-all text-[color:var(--ds-fg)]")}>{fact.value}</span>;
+  }
+  return (
+    <details className="group min-w-0">
+      <summary
+        className={cn(
+          "flex min-w-0 cursor-pointer list-none items-center gap-[var(--ds-space-snug)] [&::-webkit-details-marker]:hidden",
+          dsRadius.xs,
+          dsFocus,
+        )}
+      >
+        <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-secondary)]")}>
+          {fact.items.length} {fact.items.length === 1 ? "value" : "values"}
+        </span>
+        <span className={cn(dsText.meta, dsClip.text, "text-[color:var(--ds-fg-muted)] group-open:hidden")}>
+          {fact.items.join(" · ")}
+        </span>
+        <ChevronRight
+          aria-hidden
+          className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]", dsMotion.base, "group-open:rotate-90")}
+        />
+      </summary>
+      <ul className="m-0 flex list-none flex-col gap-[var(--ds-space-hair)] p-0 pt-[var(--ds-space-tight)]">
+        {fact.items.map((item, index) => (
+          <li key={`${String(index)}:${item}`} className={cn(dsText.body, dsText.nums, "break-all text-[color:var(--ds-fg)]")}>
+            {item}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function LedgerSection({ section }: { section: LogLedgerSection }) {
+  const read = section.direction === "read";
   const Icon = read ? ArrowDownToLine : ArrowUpFromLine;
   return (
-    <Chip
-      label={label}
-      icon={<Icon aria-hidden className={cn(dsIcon.sm, read ? "text-[color:var(--ds-read-fg)]" : "text-[color:var(--ds-write-fg)]")} />}
-      title={`${label}: ${value}`}
+    <div
       className={cn(
-        read
-          ? "border-[color:var(--ds-read-border)] bg-[var(--ds-read-bg)] text-[color:var(--ds-read-fg)]"
-          : "border-[color:var(--ds-write-border)] bg-[var(--ds-write-bg)] text-[color:var(--ds-write-fg)]",
+        "grid min-w-0 items-baseline gap-x-[var(--ds-space-cozy)] gap-y-[var(--ds-space-hair)] border-l-2 pl-[var(--ds-space-cozy)]",
+        "grid-cols-[minmax(0,var(--ds-w-chip-cell))_minmax(0,1fr)]",
+        read ? "border-l-[color:var(--ds-read-border)]" : "border-l-[color:var(--ds-write-border)]",
       )}
     >
-      {value}
-    </Chip>
+      <span
+        className={cn(
+          dsText.caps,
+          "col-span-full flex items-center gap-[var(--ds-space-tight)]",
+          read ? "text-[color:var(--ds-read-fg)]" : "text-[color:var(--ds-write-fg)]",
+        )}
+      >
+        <Icon aria-hidden className={dsIcon.sm} />
+        {section.direction}
+      </span>
+      {section.fields.map((field, fieldIndex) => (
+        <Fragment key={`${field.field}:${String(fieldIndex)}`}>
+          {field.nested && (
+            <span className={cn(dsText.caps, "col-span-full pt-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
+              {field.field}
+            </span>
+          )}
+          {field.facts.map((fact, factIndex) => (
+            <Fragment key={`${fact.label}:${String(factIndex)}`}>
+              <span
+                className={cn(dsText.meta, "min-w-0 break-words text-[color:var(--ds-fg-muted)]", field.nested && "pl-[var(--ds-space-base)]")}
+              >
+                {fact.key}
+              </span>
+              <span title={`${fact.label}: ${fact.value}`} className="min-w-0">
+                <LedgerValue fact={fact} />
+              </span>
+            </Fragment>
+          ))}
+        </Fragment>
+      ))}
+    </div>
   );
+}
+
+/**
+ * The one browser system a producer group can truthfully name in its sticky
+ * heading. Every observed row in a group shares its `(step, taskId)` producer
+ * and the Logs query resolves a system per exact origin, so the rows agree;
+ * a group whose rows disagree is a composition defect and is named, never
+ * averaged. A group with no observed row, or a service origin, has none.
+ */
+function groupSystemOf(group: LogRowGroup): BrowserSystemId | undefined {
+  const systems = new Set<BrowserSystemId | undefined>();
+  for (const row of group.rows) {
+    if (row.kind !== "note") systems.add(row.producer.system);
+  }
+  if (systems.size > 1) {
+    throw new Error(`log producer group ${group.label ?? "(notes)"} names ${String(systems.size)} browser systems; a group has one producer`);
+  }
+  return [...systems][0];
 }
 
 function logIconOf(row: LogRow): { readonly Icon: typeof Info; readonly tone: string } {
@@ -1340,10 +1447,29 @@ function logRowLabel(row: LogRow): string {
 }
 
 function LogLine({ row, dim, hit }: { row: LogRow; dim: boolean; hit: boolean }) {
+  if (row.kind === "observed") {
+    return (
+      <div
+        role="listitem"
+        aria-label={logRowLabel(row)}
+        className={cn(
+          "flex min-w-0 flex-col gap-[var(--ds-space-tight)] px-[var(--ds-space-cozy)] py-[var(--ds-space-tight)]",
+          hit && cn(dsRadius.xs, "bg-[var(--ds-info-bg)]"),
+          dim && "opacity-35",
+        )}
+      >
+        <span className={cn(dsText.meta, dsText.nums, "flex items-center gap-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]")}>
+          <span>{fmtClock(row.at)}</span>
+          <span>attempt {row.attempt}</span>
+        </span>
+        {logLedgerOf(row).map((section, index) => (
+          <LedgerSection key={`${section.direction}:${String(index)}`} section={section} />
+        ))}
+      </div>
+    );
+  }
   const { Icon, tone } = logIconOf(row);
-  const observed = row.kind === "observed";
   const note = row.kind === "note" ? row.note : undefined;
-  const fenced = row.kind === "transaction-fenced";
   const at = row.kind === "note" ? row.note.at : row.at;
   return (
     <div
@@ -1362,16 +1488,12 @@ function LogLine({ row, dim, hit }: { row: LogRow; dim: boolean; hit: boolean })
       </span>
       <span className={cn(dsText.body, "min-w-0 break-words", note !== undefined && NOTE_TONE[note.level], hit && cn(dsRadius.xs, "bg-[var(--ds-info-bg)]"))}>
         {note !== undefined && note.message}
-        {observed && (
-          <span className="inline-flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">
-            {row.producer.system !== undefined && <SystemChip system={row.producer.system} />}
-            {logPillsOf(row).map((pill, index) => (
-              <LogFactPill key={`${pill.direction}:${pill.label}:${pill.value}:${String(index)}`} {...pill} />
-            ))}
-          </span>
+        {row.kind === "transaction-fenced" && (
+          <>
+            <span className="text-[color:var(--ds-fg-secondary)]">Authority fence</span>
+            <span className={cn(dsText.meta, dsText.nums, "ml-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]")}>attempt {row.attempt}</span>
+          </>
         )}
-        {fenced && <span className="text-[color:var(--ds-fg-secondary)]">Authority fence</span>}
-        {row.kind !== "note" && <Badge tone="warning" className="ml-[var(--ds-space-tight)]">attempt {row.attempt}</Badge>}
       </span>
     </div>
   );
@@ -1554,7 +1676,9 @@ function LogsTab({
           />
         ) : (
           <div role="list" aria-label="Run log lines">
-            {groups.map((group, groupIndex) => (
+            {groups.map((group, groupIndex) => {
+              const groupSystem = groupSystemOf(group);
+              return (
               <div key={`${group.label ?? "note"}:${String(groupIndex)}`}>
                 {group.label !== undefined && (
                   <div
@@ -1568,6 +1692,7 @@ function LogsTab({
                     )}
                   >
                     <span className="min-w-0 break-words">{group.label}</span>
+                    {groupSystem !== undefined && <SystemChip system={groupSystem} className="mr-0" />}
                     <span aria-hidden className="h-px min-w-0 flex-1 bg-[var(--ds-border-subtle)]" />
                   </div>
                 )}
@@ -1587,7 +1712,8 @@ function LogsTab({
                   );
                 })}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
         {paged.error !== undefined && (

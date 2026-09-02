@@ -73,6 +73,71 @@ export function logPillsOf(row: LogRowWire): readonly LogPill[] {
   })));
 }
 
+/**
+ * One row of the observed ledger: the key the operator reads in the left
+ * column, the whole `field · key` label + rendered value the search and the
+ * hover title keep (the same pair `logPillsOf` serves), and, for a served
+ * list, its items so the surface can show a count with a preview instead of
+ * a JSON dump.
+ */
+export interface LogLedgerFact {
+  readonly key: string;
+  readonly label: string;
+  readonly value: string;
+  readonly items: readonly string[] | undefined;
+}
+
+/** A field's facts. `nested` is false only when the field IS its single key. */
+export interface LogLedgerField {
+  readonly field: string;
+  readonly nested: boolean;
+  readonly facts: readonly LogLedgerFact[];
+}
+
+/** One direction's fields, in served order. A row carries one section per direction it has. */
+export interface LogLedgerSection {
+  readonly direction: "read" | "write";
+  readonly fields: readonly LogLedgerField[];
+}
+
+function renderedListItem(item: unknown): string {
+  return typeof item === "string" ? item : JSON.stringify(item);
+}
+
+/**
+ * The redesigned observed row (2026-09-01): a key · value ledger instead of
+ * one bordered chip per fact. Facts keep their served order; a key that
+ * repeats its field prefix (`employee.location.value` under `employee`) is
+ * shown without it, and a point whose only key IS its field
+ * (`documentNumber`) is a plain row with no sub-head. Contiguous points of one
+ * direction fold into one section so the direction is stated once, not once
+ * per fact; a direction change starts a new section rather than reordering
+ * served facts behind an earlier heading.
+ */
+export function logLedgerOf(row: LogRowWire): readonly LogLedgerSection[] {
+  if (row.kind !== "observed") return [];
+  const sections: { direction: "read" | "write"; fields: LogLedgerField[] }[] = [];
+  for (const point of row.points) {
+    const facts = point.values.map((value): LogLedgerFact => {
+      const prefix = `${point.field}.`;
+      const key = value.key.startsWith(prefix) ? value.key.slice(prefix.length) : value.key;
+      const items = value.state === "allowed" && Array.isArray(value.value)
+        ? value.value.map(renderedListItem)
+        : undefined;
+      return { key, label: `${point.field} · ${value.key}`, value: renderedRedactedValue(value), items };
+    });
+    const nested = !(facts.length === 1 && facts[0]?.key === point.field);
+    const field: LogLedgerField = { field: point.field, nested, facts };
+    const last = sections.at(-1);
+    if (last !== undefined && last.direction === point.direction) {
+      last.fields.push(field);
+    } else {
+      sections.push({ direction: point.direction, fields: [field] });
+    }
+  }
+  return sections;
+}
+
 /** The exact search contract: note prose, or an observed pill's label/value. */
 export function rowMatchesLogQuery(row: LogRowWire, query: string): boolean {
   const normalized = query.trim().toLocaleLowerCase();

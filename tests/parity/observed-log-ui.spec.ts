@@ -403,11 +403,17 @@ for (const viewport of [
     await expect(observedRow).toMatchAriaSnapshot(`
       - 'listitem "5:00 AM: observed at Find person, ucpath/person-read, system ucpath, directions read, write, attempt 2. person.employeeId · employeeId: redacted; person.employeeId · matchCount: 1; person.status · status: staged"'
     `);
-    const readPill = log.getByTitle("person.employeeId · employeeId: redacted");
-    const writePill = log.getByTitle("person.status · status: staged");
+    // The ledger states each direction ONCE, on its section label, in the
+    // direction's own text token; the facts under it are plain key · value
+    // rows. The pill-per-fact colour this used to read is gone by design.
+    await expect(log.getByTitle("person.status · status: staged")).toBeVisible();
+    const readLabel = observedRow.getByText("read", { exact: true });
+    const writeLabel = observedRow.getByText("write", { exact: true });
+    await expect(readLabel).toHaveCount(1);
+    await expect(writeLabel).toHaveCount(1);
     const [readColor, writeColor, readTokenColor, writeTokenColor] = await Promise.all([
-      readPill.evaluate((element) => getComputedStyle(element).color),
-      writePill.evaluate((element) => getComputedStyle(element).color),
+      readLabel.evaluate((element) => getComputedStyle(element).color),
+      writeLabel.evaluate((element) => getComputedStyle(element).color),
       page.evaluate(() => {
         const probe = document.createElement("span");
         probe.style.color = "var(--ds-read-fg)";
