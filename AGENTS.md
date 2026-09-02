@@ -377,6 +377,16 @@ environment-supplied.
   pointers. The workspace is retained unless the operator explicitly requests archival or removal;
   successful close never auto-handoffs. A coordinator enters stateless discussion or grilling only
   when explicitly asked and writes none of it until the operator says to record it.
+- **Parallel work has one recorded lifecycle.** Follow the active platform's
+  `skill-library/parallel-agent-work/REFERENCE.md`: supervisors own worker rows and coordinators own
+  supervisor-task/session rows. Before dispatch, every writable row records the exact task/agent id,
+  base SHA, `feature/<unit>` branch, absolute worktree, non-overlapping scope/artifact, gate,
+  integration order and state; read-only agents need no worktree. A row is not closed by merging.
+  After verified integration and a green gate, remove it with `git worktree remove`, verify both its
+  Git registration and physical worktree directory are absent, delete/prune its branch, and record
+  residue for any failure. For a separate Codex task, the coordinator then archives that exact
+  recorded task from the active sidebar; nested agents have no sidebar step. Never associate or
+  archive a task by title or recency.
 - `src/workflows/` has exactly two folder kinds (D265/D266): a top-level folder is a rail workflow,
   and a child folder is one declared timeline step. A chunk harness lives in the matching step
   folder with role `{ kind: "chunk-harness", of, step }`; it remains independently startable,
