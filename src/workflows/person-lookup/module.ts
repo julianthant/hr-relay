@@ -13,7 +13,9 @@ import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
 import { defineIntakeProjection } from "../../domain/intake/projection.js";
 import { CANONICAL_FIELDS } from "../../domain/fields/registry.js";
 import { compileWorkflowRecipeModule } from "../../base/workflow-recipe.js";
-import { taskStoreRegistry } from "../../stores/index.js";
+import { crmStore } from "../../stores/crm/index.js";
+import { personLookupStore } from "../../stores/person-lookup/index.js";
+import { ucpathStore } from "../../stores/ucpath/index.js";
 import {
   personLookupDescriptor,
   personLookupRecipe,
@@ -51,7 +53,7 @@ export const personLookupIntake = defineIntakeProjection(PersonLookupInput, {
 export const personLookupModule = compileWorkflowRecipeModule(
   personLookupRecipe,
   personLookupDescriptor,
-  taskStoreRegistry.stores,
+  [ucpathStore, crmStore, personLookupStore],
   {
   intake: personLookupIntake,
   // An ordinary workflow that stands on its own — no composition owns it (D219).

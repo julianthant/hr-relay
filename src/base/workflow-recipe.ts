@@ -203,8 +203,8 @@ interface WorkflowRecipeAuthor<InputSchema extends z.ZodType> {
     fragment: TransactionNodeFragment<StepKey, Id, Prepare, Commit>,
     references: References,
     binds: Readonly<{
-      prepare: (scope: WorkflowRecipeScope<InputSchema, References>) => z.input<Prepare["input"]>;
-      commit: (scope: WorkflowRecipeScope<InputSchema, References>) => z.input<Commit["input"]>;
+      prepareBind: (scope: WorkflowRecipeScope<InputSchema, References>) => z.input<Prepare["input"]>;
+      commitBind: (scope: WorkflowRecipeScope<InputSchema, References>) => z.input<Commit["input"]>;
     }>,
   ): WorkflowRecipeTask<Id, TypedTransactionOutcome<Commit>, false>;
 
@@ -297,8 +297,8 @@ function recipeAuthor<InputSchema extends z.ZodType>(): WorkflowRecipeAuthor<Inp
       >,
       references: readonly AnyWorkflowRecipeTask[],
       binds: Readonly<{
-        prepare: (scope: never) => unknown;
-        commit: (scope: never) => unknown;
+        prepareBind: (scope: never) => unknown;
+        commitBind: (scope: never) => unknown;
       }>,
     ) {
       const task: TransactionRecipeTask<string, unknown> = {
@@ -315,8 +315,8 @@ function recipeAuthor<InputSchema extends z.ZodType>(): WorkflowRecipeAuthor<Inp
         probePolicy: fragment.probePolicy,
         probeToFenceMaxMs: fragment.probeToFenceMaxMs,
         ...(fragment.retryBeforeFence === undefined ? {} : { retryBeforeFence: fragment.retryBeforeFence }),
-        prepareBind: (scope) => binds.prepare(scope as never),
-        commitBind: (scope) => binds.commit(scope as never),
+        prepareBind: (scope) => binds.prepareBind(scope as never),
+        commitBind: (scope) => binds.commitBind(scope as never),
       };
       return Object.freeze(task);
     },

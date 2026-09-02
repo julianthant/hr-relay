@@ -15,7 +15,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "e1ae8d01d3d362cd7e00a787632dbaf505083f342d0b04df568de2f432009b78",
+      "fingerprint": "fd6027c2a0eb9acedbec18191d9c9e8da86b1ed5ceba0acdeb40e20e42be021b",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -51,7 +51,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/workflow-recipe.ts",
-          "sha256": "55b2af365baad688d6a806a18c0b46d2b917916037b7a5ea2d514e038a38ccae"
+          "sha256": "2f65e317bf4407c9d4f5349009c493d5637334788efa0775847650d955f17470"
         },
         {
           "path": "src/base/workflow.ts",
@@ -233,7 +233,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "7ad04ec815d7c8136ab250624fbc4024e9849f8992129fbcf326767ee4421729",
+      "fingerprint": "3aa2a879a831fca24dd771fba47a239cd309ad6f37feae938b693a0631bbd961",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -269,7 +269,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/workflow-recipe.ts",
-          "sha256": "55b2af365baad688d6a806a18c0b46d2b917916037b7a5ea2d514e038a38ccae"
+          "sha256": "2f65e317bf4407c9d4f5349009c493d5637334788efa0775847650d955f17470"
         },
         {
           "path": "src/base/workflow.ts",
@@ -613,7 +613,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/descriptor.ts",
-          "sha256": "00ebf7fe569ab7219bc193ab4b54233cd583cd2f7c55ee884a9a10749b707b22"
+          "sha256": "af13954a297283186d141f5561a2683e38dcd658b9d12e05c459247a0a5dd47a"
         },
         {
           "path": "src/workflows/separations/identity-check/node-ids.ts",

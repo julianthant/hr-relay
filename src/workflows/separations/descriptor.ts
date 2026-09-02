@@ -490,12 +490,12 @@ export const separationsRecipe = defineWorkflowRecipe(
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
     }));
     const clearPending = transactionFromFragment(clearPendingNode, [approval, pendingSet], {
-    prepare: ({ outputs }) => ({
+    prepareBind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
       observedSet: outputs[PENDING_SET_NODE],
     }),
-    commit: ({ outputs }) => ({
+    commitBind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
       observedSet: outputs[PENDING_SET_NODE],
@@ -505,7 +505,7 @@ export const separationsRecipe = defineWorkflowRecipe(
       fileTerminationNode,
       [approval, terminationType, employment, dates, clearPending],
       {
-    prepare: ({ outputs }) => ({
+    prepareBind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
       emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
@@ -515,7 +515,7 @@ export const separationsRecipe = defineWorkflowRecipe(
       lastDateWorked: outputs[DATES_NODE].lastDayWorked,
       initiatorComments: outputs[DATES_NODE].terminationComments,
     }),
-    commit: ({ outputs }) => ({
+    commitBind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
       emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
@@ -541,7 +541,7 @@ export const separationsRecipe = defineWorkflowRecipe(
       finalizeKualiNode,
       [approval, action, document, plan, employment, departmentOption, dates, receipt, filingPresence],
       {
-    prepare: ({ input, outputs }) => ({
+    prepareBind: ({ input, outputs }) => ({
       actionId: outputs[ACTION_NODE].actionId,
       documentNumber: input.documentNumber,
       emplId: outputs[APPROVAL_NODE].approved.emplId,
@@ -577,7 +577,7 @@ export const separationsRecipe = defineWorkflowRecipe(
      * output. That is what makes the permanent key stable before any page
      * mutation (ref workflow-model §3.1), and what the beat-⑥ read-back compares against.
      */
-    commit: ({ input, outputs }) => ({
+    commitBind: ({ input, outputs }) => ({
       actionId: outputs[ACTION_NODE].actionId,
       documentNumber: input.documentNumber,
       emplId: outputs[APPROVAL_NODE].approved.emplId,
