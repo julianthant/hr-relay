@@ -814,7 +814,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       }),
     });
     assert.equal(planResponse.status, 200);
-    const plan = await json(planResponse) as Record<string, unknown>;
+    const plan = await json(planResponse);
     assert.equal(plan.browserMode, "headed");
 
     const stored = h.database.authority.startPlans.get(String(plan.startPlanId));

@@ -353,7 +353,7 @@ describe("worker browser session factory", () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher();
       const factory = factoryFor(config, harness, recordingBindings());
-      const resource = await factory.open({ ...OPEN_INPUT, browserMode: "headed" } as typeof OPEN_INPUT & { browserMode: "headed" });
+      const resource = await factory.open({ ...OPEN_INPUT, browserMode: "headed" });
       const launch = harness.launches()[0];
       assert.ok(launch);
       assert.equal(launch.headless, false);
