@@ -245,6 +245,36 @@ export function archiveWarningChip(warnings: ArchiveEntryWire["warnings"]): Arch
  * component can append archive provenance without fabricating descriptive
  * copy the start plan never supplied.
  */
+/**
+ * D307 — the one note an archived step that did NOT run is allowed to say
+ * about itself, in the run-detail wire's own closed vocabulary.
+ *
+ * `operator-asserted` and `step-omitted` are the two halves of one omitted
+ * step and they are completely different facts: the first node's output was
+ * rebuilt from what the operator typed and DROVE the run, the second never
+ * existed at all. A frozen page that drew both as a grey "skipped" segment
+ * would hide which of the two happened here.
+ */
+export const ARCHIVED_NOT_RUN_NOTE: Record<
+  Extract<ArchivedRunDetailWire["detail"]["timeline"]["events"][number]["notRun"], { state: "present" }>["reason"],
+  string
+> = {
+  "condition-false": "did not run — its condition was false",
+  "branch-not-selected": "did not run — its branch was not selected",
+  "operator-asserted": "did not run — the operator asserted its facts at start",
+  "step-omitted": "did not run — its step was omitted at start",
+};
+
+/**
+ * D307 — the archived run's omitted steps, as one line. Keys only: the facts
+ * the operator typed for those steps are the run's own input and were never
+ * served to this page.
+ */
+export function archivedOmittedStepsNote(steps: readonly string[] | undefined): string | undefined {
+  if (steps === undefined || steps.length === 0) return undefined;
+  return `Omitted at start: ${steps.join(", ")}. Nothing read those steps; their nodes were asserted from typed facts or did not run.`;
+}
+
 export function archivedRunHeading(row: ArchivedRunDetailWire["row"]): Readonly<{
   title: string;
   subtitle: ArchivedRunDetailWire["row"]["subtitle"];

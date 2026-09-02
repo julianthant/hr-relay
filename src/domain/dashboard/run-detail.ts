@@ -401,6 +401,18 @@ export const RunDetailWireSchema = z.strictObject({
   if (detail.outcome.state === "terminal" && detail.gate.state === "open") {
     context.addIssue({ code: "custom", path: ["gate"], message: "terminal detail cannot retain an open gate" });
   }
+  /*
+   * D307 — a run that read a step from an operator's form is not a verified
+   * completion, exactly as D238's rehearsal is not. Structural, so no producer
+   * can serve the two together by forgetting the rule.
+   */
+  if (detail.omittedSteps !== undefined && detail.outcome.state === "terminal" && detail.outcome.result === "verified-done") {
+    context.addIssue({
+      code: "custom",
+      path: ["outcome", "result"],
+      message: "a run with an omitted step cannot be verified-done; nothing verified the values typed in its place",
+    });
+  }
 });
 
 export const NoteWireSchema = z.strictObject({
@@ -688,6 +700,18 @@ export const ContextDataSectionSchema = z.strictObject({
     observedAt: IsoInstantSchema.optional(),
     source: z.enum(["live", "derived", "operator"]).optional(),
     correctedAt: IsoInstantSchema.optional(),
+    /**
+     * D307 — the omitted STEP this value was asserted for, present exactly when
+     * the checkpoint row that carries it is an operator assertion.
+     *
+     * Before D307 an `operator` source meant one thing — a correction, which
+     * carries `correctedAt` — and the rail drew nothing for it because the
+     * `corrected` badge already said it. An asserted value is operator-sourced
+     * with NO correction, so without this leaf it would draw as an unmarked
+     * row with a clock beside it: a value nobody read, presented exactly like
+     * one a task observed.
+     */
+    assertedStep: TimelineCategoryKeySchema.optional(),
     origin: ContextDataOriginSchema.optional(),
     freshness: ContextDataFreshnessSchema.optional(),
   })).superRefine((entries, context) => {
@@ -696,6 +720,16 @@ export const ContextDataSectionSchema = z.strictObject({
       // resolved from the producing node's contract, so an entry that cannot
       // name its step cannot have one either. Refused here rather than left to
       // a surface that would print an unattributed age.
+      // An asserted ROW may hold a leaf no provenance point covers, which is
+      // dateless and sourceless — and still asserted. What it may never be is
+      // live or derived: those two say a task established the value.
+      if (entry.assertedStep !== undefined && (entry.source === "live" || entry.source === "derived")) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "assertedStep"],
+          message: `an asserted value is operator-sourced; a ${entry.source} leaf never names an omitted step`,
+        });
+      }
       if (entry.freshness !== undefined && entry.origin === undefined) {
         context.addIssue({
           code: "custom",
