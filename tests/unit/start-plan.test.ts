@@ -167,6 +167,60 @@ describe("start planning", () => {
     assert.equal(Object.hasOwn(plain, "stepOmissions"), false);
   });
 
+  it("buildQueuedRun carries stepOmissions onto the run envelope byte for byte (D307)", () => {
+    const database = openDatabase();
+    const itemId = deriveItemId("person-lookup", PERSON_EID_MATCH_KEY);
+    const stepOmissions = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/19/2026" } }];
+    const withOmissions = buildQueuedRun({
+      descriptor: personLookupDescriptor,
+      appVersion: "0.1.0",
+      runId: "aaaaaaaa-0002-4000-8000-000200000000",
+      itemId,
+      traceId: "pl-170000-bbbb",
+      rawInput: { emplId: "10873698" },
+      canonicalInput: {
+        schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
+        value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
+      },
+      ingressSchemaHash: deriveSchemaHash(PersonLookupInput, "input"),
+      configFingerprint: HASH_A,
+      configSnapshotId: UUID_4,
+      resolvedInstance: { ucpath: "prod", crm: "prod" },
+      shape: "single",
+      priority: "bulk",
+      dryRun: false,
+      stepOmissions,
+      attempt: database.authority.runs.nextItemAttempt({ workflow: "person-lookup", itemId }),
+      runNumber: database.authority.runs.nextWorkflowRunNumber("person-lookup"),
+      now: NOW,
+    });
+    assert.deepEqual(withOmissions.envelope.stepOmissions, stepOmissions);
+
+    const withoutOmissions = buildQueuedRun({
+      descriptor: personLookupDescriptor,
+      appVersion: "0.1.0",
+      runId: "aaaaaaaa-0003-4000-8000-000300000000",
+      itemId: deriveItemId("person-lookup", "eid:10001573"),
+      traceId: "pl-170000-cccc",
+      rawInput: { emplId: "10001573" },
+      canonicalInput: {
+        schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
+        value: { emplId: "10001573", keepNonHdh: false, includeCrmDates: false },
+      },
+      ingressSchemaHash: deriveSchemaHash(PersonLookupInput, "input"),
+      configFingerprint: HASH_A,
+      configSnapshotId: UUID_4,
+      resolvedInstance: { ucpath: "prod", crm: "prod" },
+      shape: "single",
+      priority: "bulk",
+      dryRun: false,
+      attempt: 1,
+      runNumber: 1,
+      now: NOW,
+    });
+    assert.equal(Object.hasOwn(withoutOmissions.envelope, "stepOmissions"), false);
+  });
+
   it("refuses an unparseable submission by name instead of dropping it", () => {
     const database = openDatabase();
     const plan = planStart(plannerDeps(database), baseRequest([
