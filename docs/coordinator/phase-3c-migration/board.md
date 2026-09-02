@@ -4,7 +4,7 @@
 **Integration target:** `feature/03c-workflow-migration` at base `414d77b810f713d5813c79035fd38064ba04e73c`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-02 15:51 PDT at `888893c2351e0b8abcf5d6a5da7f3ec013ad5896`
+**Last verified:** 2026-09-02 16:02 PDT at `f35beb03`
 
 ## Facts every run needs
 
@@ -21,8 +21,8 @@
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
 | u01–u06 | R1 | running | — | — | required | D311 compiler, two conversions, projections, conformance/deletion, order-0 T1 |
-| u10–u12 | R2 | running | — | — | required | Order 1 migration intake and live/provenance discovery only |
-| u20–u24 | R3 | blocked on R1+R2 | — | — | required | Order 1 implementation and proof |
+| u10–u12 | R2 | running; decision residue isolated | — | — | required | Order 1 migration intake and live/provenance discovery only |
+| u20–u24 | R3 | blocked on R1+R2 + decision 1 | — | — | required | Order 1 implementation and proof |
 | u30–u35 | R4 | planned | — | — | required | Order 2 downloads + viewer |
 | u40–u44 | R5 | planned | — | — | required | Order 3 OCR pipeline + Review capability |
 | u50–u54 | R6 | planned | — | — | required | Order 4 OCR fan-out/light writes |
@@ -41,4 +41,4 @@
 
 ## Questions for the operator
 
-- None at kickoff. Supervisors must surface only genuinely unresolved product/write-target choices as `NEEDS COORDINATOR`; this coordinator will batch them into decision-brief form.
+- Read-only T1 live-proof contract → `decisions/2026-09-02-read-only-t1-live-proof.md` item 1; R2 may close intake, R3 waits for the answer.
