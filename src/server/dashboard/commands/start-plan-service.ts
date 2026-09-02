@@ -27,6 +27,7 @@ import {
 } from "../../../domain/ids.js";
 import { BrowserPresentationModeSchema, InstanceSelectionSchema, RunPrioritySchema } from "../../../domain/run/envelope.js";
 import { StartRefusalCodeSchema } from "../../../domain/run/start-plan.js";
+import { TimelineCategoryKeySchema } from "../../../domain/workflow/presentation.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { planStart } from "../../../services/start/plan.js";
 import { applyStartStepSelection, resolveStartStepOmissions } from "../../../services/start/step-selection.js";
@@ -67,7 +68,17 @@ const StartPlanWireSchema = z.strictObject({
   dryRun: z.boolean(),
   browserMode: BrowserPresentationModeSchema.optional(),
   captureBrowserScreenshots: z.boolean().optional(),
-  stepOmissions: StepOmissionsSchema.optional(),
+  /**
+   * D307 — the omitted step KEYS, in timeline order, and never the facts.
+   *
+   * The response wire already refuses to echo `rawInput` back (see the module
+   * note): reflecting submitted values through an HTTP response bypasses the
+   * schema-owned redaction lane. Typed omission facts are the same kind of
+   * value — a step form can ask for an employee id or a date about a real
+   * person — so the plan retains them durably for audit and the wire carries
+   * only which steps were left out. The browser already holds what it typed.
+   */
+  omittedSteps: z.array(TimelineCategoryKeySchema).min(1).optional(),
   priority: RunPrioritySchema,
   plannedBy: ActorIdSchema,
   configSnapshotId: ConfigSnapshotIdSchema,
@@ -168,7 +179,9 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         ...(record.captureBrowserScreenshots === undefined
           ? {}
           : { captureBrowserScreenshots: record.captureBrowserScreenshots }),
-        ...(record.stepOmissions === undefined ? {} : { stepOmissions: record.stepOmissions }),
+        ...(record.stepOmissions === undefined
+          ? {}
+          : { omittedSteps: record.stepOmissions.map((entry) => entry.step) }),
         priority: record.priority,
         plannedBy: record.plannedBy,
         configSnapshotId: record.configSnapshotId,

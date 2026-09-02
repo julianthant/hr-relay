@@ -32,7 +32,12 @@ import {
 } from "../fixtures/start-step-omission-fixtures.js";
 
 const CLOCK = manualClock(new Date(NOW));
-const READING_FACTS = { eid: "10873698", effectiveDate: "01/02/2026" };
+/**
+ * Deliberately NOT the submitted subject's eid: the plan legitimately serves
+ * the submission's own title and match key, so a fact that repeated it would
+ * make the "no facts on the wire" assertion below unfalsifiable.
+ */
+const READING_FACTS = { eid: "20111222", effectiveDate: "01/02/2026" };
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 
@@ -101,7 +106,12 @@ describe("start plan step omissions (D307)", () => {
       stepOmissions: [{ step: "reading", facts: READING_FACTS }],
     }));
 
-    assert.deepEqual(wire.stepOmissions, [{ step: "reading", facts: READING_FACTS }]);
+    // KEYS only on the wire. The typed facts are the same kind of value the
+    // response already refuses to echo back for `rawInput`: a step form can
+    // ask for an employee id or a date about a real person.
+    assert.deepEqual(wire.omittedSteps, ["reading"]);
+    assert.equal(JSON.stringify(wire).includes(READING_FACTS.eid), false);
+    assert.equal(JSON.stringify(wire).includes(READING_FACTS.effectiveDate), false);
     assert.equal(harness.transactions(), 1);
     // The wire is a projection; the RECORD is what a `start-run` command
     // consumes, so the omissions have to be durable there too.
@@ -115,7 +125,7 @@ describe("start plan step omissions (D307)", () => {
     const wire = harness.service.plan(request(omissionAssertingDescriptor, {
       selectedStepKeys: ["reading", "folding", "auditing"],
     }));
-    assert.equal(wire.stepOmissions, undefined);
+    assert.equal(wire.omittedSteps, undefined);
     assert.equal(harness.database.authority.startPlans.get(wire.startPlanId)?.stepOmissions, undefined);
   });
 
@@ -123,7 +133,7 @@ describe("start plan step omissions (D307)", () => {
     const harness = harnessFor(omissionAssertingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {
       selectedStepKeys: ["folding", "auditing"],
-      stepOmissions: [{ step: "reading", facts: { eid: "10873698", effectiveDate: "2026-01-02" } }],
+      stepOmissions: [{ step: "reading", facts: { eid: "20111222", effectiveDate: "2026-01-02" } }],
     })));
 
     assert.equal(error.code, "facts-invalid");
@@ -175,9 +185,10 @@ describe("start plan step omissions (D307)", () => {
         { step: "folding", facts: { folded: "typed" } },
       ],
     }));
-    assert.deepEqual(wire.stepOmissions, [
-      { step: "reading", facts: READING_FACTS },
-      { step: "folding", facts: { folded: "typed" } },
-    ]);
+    assert.deepEqual(wire.omittedSteps, ["reading", "folding"]);
+    assert.deepEqual(
+      harness.database.authority.startPlans.get(wire.startPlanId)?.stepOmissions,
+      [{ step: "reading", facts: READING_FACTS }, { step: "folding", facts: { folded: "typed" } }],
+    );
   });
 });
