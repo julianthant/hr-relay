@@ -92,7 +92,7 @@ export type SpanOutcomeWire = z.infer<typeof SpanOutcomeWireSchema>;
  * result and the timeline must name a skip with the SAME closed word, or the
  * surface and the record disagree about the same fact.
  */
-export const SpanNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected"]);
+export const SpanNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]);
 
 /** Why a queued row re-queued; pinned against `RequeueCauseSchema`. */
 export const SpanRequeueCauseSchema = z.enum(["reassign", "bump", "recovery", "provider-capacity"]);
@@ -144,6 +144,8 @@ const RunQueuedSchema = z.strictObject({
   shape: z.enum(["single", "preview", "operation", "operation-member"]),
   priority: z.enum(["interactive", "bulk"]),
   dryRun: z.boolean(),
+  /** D307 — the step keys this run omits; the typed facts stay in run authority, never in a span. */
+  omittedSteps: z.array(SlugSchema).min(1).optional(),
   retryOf: UuidSchema.optional(),
   actorId: SlugSchema,
   /** The exact title/subtitle the confirmation surface showed (start-plan D109). */

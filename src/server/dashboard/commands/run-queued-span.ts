@@ -27,6 +27,9 @@ export function runQueuedSpanEvent(input: Readonly<{
     shape: run.envelope.shape,
     priority: run.envelope.priority,
     dryRun: run.envelope.dryRun,
+    ...(run.envelope.stepOmissions === undefined
+      ? {}
+      : { omittedSteps: run.envelope.stepOmissions.map((entry) => entry.step) }),
     ...(run.envelope.retryOf === undefined ? {} : { retryOf: run.envelope.retryOf }),
     actorId: input.actorId,
     title: input.title,

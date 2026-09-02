@@ -284,9 +284,11 @@ const STEP_TONE: Record<TimelineStep["state"], { dot: string; bar: string; text:
 };
 
 /** The one sentence a skipped step is allowed to say about itself. */
-const NOT_RUN_PHRASE: Record<"condition-false" | "branch-not-selected", string> = {
+const NOT_RUN_PHRASE: Record<"condition-false" | "branch-not-selected" | "operator-asserted" | "step-omitted", string> = {
   "condition-false": "its condition was false",
   "branch-not-selected": "its branch was not selected",
+  "operator-asserted": "the operator asserted its facts at start",
+  "step-omitted": "its step was omitted at start",
 };
 
 function timelineEventLabel(event: TimelineEvent): string {

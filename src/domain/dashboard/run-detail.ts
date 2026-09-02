@@ -62,7 +62,7 @@ export const RunIdentityWireSchema = z.strictObject({
  * mirrored by `RunResultRecord`'s `not-run` arm). This is the SAME vocabulary
  * the durable result uses; the timeline never invents a third value.
  */
-export const TimelineNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected"]);
+export const TimelineNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]);
 
 /**
  * How long ONE step took, or why that is not a number.

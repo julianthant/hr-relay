@@ -63,7 +63,7 @@ export type SpanOutcome = z.infer<typeof SpanOutcomeSchema>;
  * durable result uses (`TerminalNotRunReasonSchema`, ref workflow-model §5.5). The
  * timeline reads this; it never re-derives a skip reason from a descriptor.
  */
-export const SpanNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected"]);
+export const SpanNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]);
 
 /** Run/task span identity — `(runId, attempt, spanPath)` (ref dashboard-surfaces §1.1). */
 const RunSpanIdentityFields = {

@@ -113,7 +113,7 @@ const TaskSpanFoldSchema = z.strictObject({
    * span carried none — the run-detail timeline then says exactly that rather
    * than choosing a likely one.
    */
-  notRunReason: z.enum(["condition-false", "branch-not-selected"]).optional(),
+  notRunReason: z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]).optional(),
 });
 
 const RunFoldRecordSchema = z.strictObject({

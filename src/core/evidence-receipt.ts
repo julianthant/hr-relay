@@ -342,6 +342,16 @@ function pickCheckpoint(
 export type ReceiptComposition = 1 | 2 | 3;
 export const LATEST_RECEIPT_COMPOSITION = 3 satisfies ReceiptComposition;
 
+/** The one sentence a receipt says about each closed not-run reason; a new reason must be authored here, never inherited. */
+const NOT_RUN_SENTENCE: Record<TerminalNotRunReason, (id: string) => string> = {
+  "condition-false": (id) => `node "${id}" did not run: its declared \`when\` condition was false for this run's input`,
+  "branch-not-selected": (id) => `node "${id}" did not run: the branch controller selected another case`,
+  "step-omitted": (id) => `node "${id}" did not run: the operator omitted its step at start (D307)`,
+  // Unreachable by construction (the sealed factory refuses it as a not-run
+  // reason), authored so the closed map stays exhaustive rather than defaulted.
+  "operator-asserted": (id) => `node "${id}" did not run: the operator asserted its facts at start (D307)`,
+};
+
 export function buildRunEvidenceReceipt(
   input: ReceiptBuildInput,
   composition: ReceiptComposition = LATEST_RECEIPT_COMPOSITION,
@@ -610,9 +620,7 @@ export function deriveRunEvidenceReceipt(
           id: decisionId,
           kind: "branch",
           outcome: "not-taken",
-          reason: reason === "condition-false"
-            ? `node "${id}" did not run: its declared \`when\` condition was false for this run's input`
-            : `node "${id}" did not run: the branch controller selected another case`,
+          reason: NOT_RUN_SENTENCE[reason](id),
           evidence: [evidenceEntryRef(terminalResultVerificationId)],
         });
         verification.push({

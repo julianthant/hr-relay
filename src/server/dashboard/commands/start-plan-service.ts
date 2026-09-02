@@ -30,6 +30,7 @@ import { StartRefusalCodeSchema } from "../../../domain/run/start-plan.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { planStart } from "../../../services/start/plan.js";
 import { applyStartStepSelection } from "../../../services/start/step-selection.js";
+import { StepOmissionsSchema } from "../../../domain/workflow/step-omission.js";
 import type { StartPlannerDeps } from "../../../services/start/plan.js";
 import { TargetNotFoundError } from "../../failures.js";
 
@@ -45,6 +46,8 @@ const StartPlanIngressSchema = z.strictObject({
   priority: RunPrioritySchema.default("interactive"),
   requestedInstance: InstanceSelectionSchema.optional(),
   selectedStepKeys: z.array(z.string().min(1)).min(1).optional(),
+  /** D307 — typed facts for each omitted step; validated against the descriptor's forms before planning. */
+  stepOmissions: StepOmissionsSchema.optional(),
 });
 
 const StartPlanWireSchema = z.strictObject({
@@ -57,6 +60,7 @@ const StartPlanWireSchema = z.strictObject({
   dryRun: z.boolean(),
   browserMode: BrowserPresentationModeSchema.optional(),
   captureBrowserScreenshots: z.boolean().optional(),
+  stepOmissions: StepOmissionsSchema.optional(),
   priority: RunPrioritySchema,
   plannedBy: ActorIdSchema,
   configSnapshotId: ConfigSnapshotIdSchema,
@@ -124,6 +128,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           dryRun: ingress.dryRun,
           browserMode: ingress.browserMode,
           captureBrowserScreenshots: ingress.captureBrowserScreenshots,
+          ...(ingress.stepOmissions === undefined ? {} : { stepOmissions: ingress.stepOmissions }),
           priority: ingress.priority,
           shape: "single",
           configFingerprint: deps.configFingerprint,
@@ -149,6 +154,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         ...(record.captureBrowserScreenshots === undefined
           ? {}
           : { captureBrowserScreenshots: record.captureBrowserScreenshots }),
+        ...(record.stepOmissions === undefined ? {} : { stepOmissions: record.stepOmissions }),
         priority: record.priority,
         plannedBy: record.plannedBy,
         configSnapshotId: record.configSnapshotId,
