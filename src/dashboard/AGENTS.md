@@ -106,6 +106,37 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-01 — a surface with no demo counterpart is drift even when every fact on it is true
+  (D305, the Session Panel restored to the demo's strip).** The drawer had grown two things the demo
+  never had: per-workflow pool BANDS (`Separations · no pool declaration · 0 active · pool v0 ·
+  Plan workers`, `Member 1` cards, dashed unmet cards) and a virtualized session-membership list
+  under them printing every queue row of the day by session id with `No current worker card claims
+  this run`. Every line was a served fact and each had a decision behind it (D271's controls, P4's
+  authority join) — and the operator's verdict on sight was *"this session panel looks very
+  different from the demo's. make it the same."* Three things travel. **Port the demo's component,
+  then fit the contract INSIDE it, not around it**: `SessionCard` and `AddWorkersDialog` came across
+  with provenance, and D271's whole body (basis, excess list, unmet roster with spawns, outcome
+  notice) fits inside the dialog the demo already had — the bands were that contract given a home
+  before the `+` had a CAS basis to open on (D269 served it). **Retiring a surface is not losing its
+  facts**: the membership join is the card's identity-popover facts, the session id is on the queue
+  row, the unmet declaration is a bar chip plus the dialog's roster; say where each fact went, in
+  the ruling. **A line the demo's card does not carry earns its place only by an a11y rule** — the
+  `NO SESSION RECORDED` line and the tile's `open 55m 4s` (truncated to `open 5…` in a half-width
+  tile) both went behind the existing `AuthorityDetails` route, which is the one thing the card
+  keeps that the demo's lacks, because DESIGN.md bans a hover-only identity. The unit that mounts
+  and presses the real panel (`session-panel-pool-press.test.ts`) now opens the dialog through the
+  bar's `+` and steps the count; the parity lane's `pool-control-touch-target.spec.ts` serves a
+  declared pool so the roster has a spawn to measure. The `+` is on the bar under every view, so
+  every a11y reference gained one `button "Add workers"` line and the corpus was re-frozen once,
+  with that diff reviewed.
+
+- **2026-09-01 — a dense key/value record wants a table, not a stack of flex pairs.** The Explorer
+  arm record (D304) drew eight facts as `FactRow`s with nothing between them; at two or three
+  wrapping lines of ids per value, the reader lost which line belonged to which label. `RecordTable`
+  / `RecordRow` in `surfaces/explorer.tsx` draw it as the ds `Table` with `<th scope="row">` labels
+  in the shared 7rem caps column and a hairline per row. Only the arm record changed; node-level
+  rows keep `FactRow`. Refreeze `explorer-transaction` when touching it — its a11y tree carries a
+  `table` per arm.
 - **2026-09-01 — a record that re-heads the thing it is about, and a chip on a value that cannot
   survive a cut, are the same two defects the table above had, one screen lower (D304, the
   Explorer's arm record).** The `TaskRecord` under the contract re-printed the arm's verb, id and

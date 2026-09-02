@@ -387,11 +387,13 @@ environment-supplied.
 - Archive subviews are dashboard route state (`archiveView`), not `ArchiveWorkspace` local state; a
   cross-takeover door must name the real Archive view in that state rather than open the ledger and
   require a second click.
-- **2026-08-25 — dashboard session joins stay authority-shaped (P4).** Group `QueueSurface` rows
-  only by their present `session.sessionId`, join a worker only by exact `currentRun.runId`, and retain an
+- **2026-08-25 — dashboard session joins stay authority-shaped (P4; the grouped list is retired by
+  D305, the per-card join stays).** Join a worker only by exact `currentRun.runId`, and retain an
   absent arm's served reason. A pool's declared `desiredWorkers` is distinct from non-terminal
   authority worker-card facts; a missing pool row is no declaration, never a target of one.
-- **2026-08-25 — virtual session rows preserve authority across dashboard ticks (P4).** Flatten every
+- **2026-08-25 — virtual session rows preserve authority across dashboard ticks (P4). RETIRED by D305
+  (2026-09-01): the Session Panel's membership list has no demo counterpart and is gone; the
+  technique below is kept for the next virtualized authority list.** Flatten every
   served member into a fixed layout, mount only the viewport plus bounded overscan, and memoize that
   renderer away from the one-second elapsed-time tick. Give one mounted `listitem` the roving tab stop;
   keyboard moves mount and then focus the designated row. Native scroll owns focus across the whole row
