@@ -22,6 +22,7 @@ import {
   FIXTURE_DAY_WIRE,
   FIXTURE_DESCRIPTOR_HASH,
   FIXTURE_IDS,
+  FIXTURE_IDENTITY_GATE,
   FIXTURE_STORAGE_DEGRADED_BOOTSTRAP,
   FIXTURE_START_PICKER_BOOTSTRAP,
   FIXTURE_START_PICKER_DAY_WIRE,
@@ -1095,8 +1096,13 @@ test.describe("identity gate ceremonies", () => {
 
     await page.getByRole("button", { name: /^Approve the chosen EID/u }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    // The choice is the operator's, so the reference makes it the way they do.
-    await page.getByRole("radio").first().check();
+    // The EID came from a name search, so D309 requires the operator to type
+    // one of the candidates the packet actually showed.
+    const candidate = FIXTURE_IDENTITY_GATE.options[0];
+    if (candidate === undefined) throw new Error("the refusal fixture served no identity candidate");
+    await page.getByRole("textbox", {
+      name: "Type the employee ID this separation is about (required)",
+    }).fill(candidate.eid);
     await page.getByRole("button", { name: "Approve" }).click();
     // The refusal lands in TWO places on purpose (a dialog can be scrolled), so
     // this waits on the one INSIDE the dialog — the record beside the answer it

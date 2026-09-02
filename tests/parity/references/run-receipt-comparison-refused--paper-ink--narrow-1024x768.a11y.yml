@@ -1,7 +1,7 @@
 # run-receipt-comparison-refused--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: run-receipt-comparison-refused
-# descriptorHash: 5692b33370ef298e28627663fcc299af90e169ecebd6c26a02f1742b4ea54372
+# descriptorHash: f30d37304f37952934b2908ee5ae99a8c8ecc0135652bfadc684ef8b496e591f
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -256,7 +256,7 @@
     - tablist "Run detail sections":
       - tab "Logs"
       - tab "Receipt" [selected]
-    - text: Done confidence verified — read back from the system of record receipt 00000000-1091-4000-8000-000000001091generated 9:58 AMattempt 2retry of 00000000-0089-4000-8000-000000000089run 00000000-0091-4000-8000-000000000091completed 9:58 AM result verified-done trace pl-093131-0091 descriptor 95599196 config bbbbbbbb
+    - text: Done confidence verified — read back from the system of record receipt 00000000-1091-4000-8000-000000001091generated 9:58 AMattempt 2retry of 00000000-0089-4000-8000-000000000089run 00000000-0091-4000-8000-000000000091completed 9:58 AM result verified-done trace pl-093131-0091 descriptor ea47a183 config bbbbbbbb
     - region "Earlier run comparison":
       - heading "Earlier run comparison" [level=3]
       - paragraph: Reviewed details from this run and its earlier attempt. Protected details remain withheld.

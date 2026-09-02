@@ -1,7 +1,7 @@
 # explorer-transaction--paper-ink--1440x900
 # adapter: fixture
 # fixture: explorer-transaction
-# descriptorHash: 5692b33370ef298e28627663fcc299af90e169ecebd6c26a02f1742b4ea54372
+# descriptorHash: f30d37304f37952934b2908ee5ae99a8c8ecc0135652bfadc684ef8b496e591f
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -48,7 +48,7 @@
         - listitem:
           - button "Person Lookup 4"
     - heading "Kuali Finalization v1" [level=2]
-    - text: 7 nodes · 91 reads · 13 writes
+    - text: 7 nodes · 93 reads · 13 writes
     - button "What is this graph? — Kuali Finalization"
     - group "Kuali Finalization identity": code sf version 1 shape single enqueue reject-active subject eid systems kuali · ucpath
     - region "Editable workflow presentation":
@@ -218,7 +218,7 @@
             - row "Source contract src/domain/contracts/ucpath/read-job-summary.ts impl src/stores/ucpath/tasks/read-job-summary.ts":
               - rowheader "Source"
               - cell "contract src/domain/contracts/ucpath/read-job-summary.ts impl src/stores/ucpath/tasks/read-job-summary.ts"
-        - text: input 5578ac7d2220output 52e6b39a1c20impl 738dc9880a18
+        - text: input 5578ac7d2220output 52e6b39a1c20impl 4eb7aa1a724c
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"
