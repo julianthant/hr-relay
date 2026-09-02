@@ -62,6 +62,7 @@ function sessionFactory(options: Readonly<{
           system: input.system,
           ...(input.instance === undefined ? {} : { instance: input.instance }),
           configFingerprint: input.configFingerprint,
+          ...(input.browserMode === undefined ? {} : { browserMode: input.browserMode }),
           acceptDownloads: input.acceptDownloads,
           exclusive: input.exclusive,
           driver: { system: input.system },
@@ -447,6 +448,21 @@ describe("worker browser sessions", () => {
     assert.equal(harness.opens(), 2);
     const closes = events.filter((event) => event.type === "browser-session:close");
     assert.deepEqual(closes.map((event) => event.reason), ["fresh-boundary"]);
+  });
+
+  it("treats a changed browser presentation as identity drift, not silent reuse", async () => {
+    const harness = sessionFactory();
+    const events: WorkerSessionEvent[] = [];
+    const sessions = manager(harness, events);
+    await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "headless-run");
+    sessions.releaseRunConfigFingerprint();
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT, "headed");
+    await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "headed-run");
+    assert.equal(harness.opens(), 2);
+    assert.deepEqual(
+      events.filter((event) => event.type === "browser-session:close").map((event) => event.reason),
+      ["fresh-boundary"],
+    );
   });
 
   it("refuses a factory resource that echoes a different fingerprint (D116)", async () => {

@@ -31,6 +31,7 @@ import {
   WorkflowIdSchema,
 } from "../domain/ids.js";
 import type { BrowserSessionId, PositiveInt, WorkerId, WorkflowId } from "../domain/ids.js";
+import type { BrowserPresentationMode } from "../domain/run/envelope.js";
 import { WorkerDirectiveSchema, type WorkerDirective } from "../domain/run/worker.js";
 import type {
   CanonicalInputSnapshotMigration,
@@ -96,6 +97,8 @@ export interface WorkerLoopDependencies {
    * whole-task deadline for session liveness.
    */
   readonly sessionAcquireMs: number;
+  /** Compatibility mode used only by historical envelopes with no browserMode. */
+  readonly defaultBrowserMode?: BrowserPresentationMode;
   /** D267 (ref execution-and-sessions §10): the per-credential Duo ceremony lease gate factory. */
   readonly duoCeremony: DuoCeremonyGateFactory;
   readonly heartbeatIntervalMs: number;
@@ -237,6 +240,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     scheduler: deps.scheduler,
     acquireDeadlineMs: deps.sessionAcquireMs,
     duoCeremony: deps.duoCeremony,
+    ...(deps.defaultBrowserMode === undefined ? {} : { defaultBrowserMode: deps.defaultBrowserMode }),
     onEvent: (event: WorkerSessionEvent): void => {
       const spanPath = browserSessionSpanPath(workflowId, workerId, event.system, event.sessionId);
       if (event.type === "browser-session:start") {
@@ -378,6 +382,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             ...(deps.artifacts === undefined ? {} : { artifacts: deps.artifacts }),
             ...(deps.artifactProjector === undefined ? {} : { artifactProjector: deps.artifactProjector }),
           }, { run, claim, signal: runController.signal }),
+          run.envelope.browserMode,
         );
         outcomes.push(outcome);
       } finally {

@@ -56,6 +56,7 @@ export const ENQUEUE_POLICY_REASON = "declared by this workflow — the planner 
 
 /** the two queue priorities `StartPlanIngress` accepts */
 export type StartPriority = "interactive" | "bulk";
+export type BrowserMode = "headless" | "headed";
 
 // ---------------------------------------------------------------------------
 // D296 — the two ways work enters this queue, inside the dialog that starts it
@@ -136,6 +137,7 @@ export interface StartRequestShape {
   workflowId: string;
   text: string;
   dryRun: boolean;
+  browserMode: BrowserMode;
   priority: StartPriority;
   selectedStepKeys: readonly string[];
 }
@@ -149,6 +151,7 @@ export function startRequestFingerprint(request: StartRequestShape): string {
     request.workflowId,
     request.text,
     request.dryRun,
+    request.browserMode,
     request.priority,
     [...request.selectedStepKeys].sort(),
   ]);

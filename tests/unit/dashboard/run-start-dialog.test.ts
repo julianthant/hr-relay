@@ -245,6 +245,7 @@ interface OpenDialog {
   readonly press: (name: string) => Promise<void>;
   readonly type: (next: string) => Promise<void>;
   readonly choosePriority: (next: string) => Promise<void>;
+  readonly chooseBrowserMode: (next: string) => Promise<void>;
   readonly drop: (file: File) => Promise<void>;
 }
 
@@ -373,6 +374,15 @@ async function openDialog(client: DashboardClient): Promise<OpenDialog> {
     });
   };
 
+  const chooseBrowserMode = async (next: string): Promise<void> => {
+    const label = [...document.body.querySelectorAll("label")]
+      .find((candidate) => (candidate.textContent ?? "").trim() === "Browser mode");
+    if (label === undefined) throw new Error("the run-control rail drew no Browser mode field");
+    const select = document.getElementById(label.htmlFor);
+    if (!(select instanceof HTMLSelectElement)) throw new Error(`the Browser mode label names ${label.htmlFor}, which is not a select`);
+    await act(async () => { typeInto(select, next); });
+  };
+
   /**
    * Drop a file on the spreadsheet arm's zone (D298).
    *
@@ -405,6 +415,7 @@ async function openDialog(client: DashboardClient): Promise<OpenDialog> {
     press,
     type,
     choosePriority,
+    chooseBrowserMode,
     drop,
   };
 }
@@ -589,6 +600,23 @@ describe("D293 keeps D285 and removes only per-start destination", () => {
       ["searching", "cross-verify", "active-status", "crm-dates"],
       "Customize steps sent stale/default keys instead of the operator's exact selection",
     );
+  });
+});
+
+describe("browser presentation is an immutable Run Options choice", () => {
+  it("defaults to headless, submits headed when chosen, and resets on workflow selection", async () => {
+    let submitted: unknown;
+    const dialog = await openDialog(stubClient({ submitStartPlan: async (input) => {
+      submitted = input;
+      return planResponse("5a000000-0000-4000-8000-000000000001");
+    } }));
+    await dialog.type(TYPED);
+    await dialog.press("Next");
+    await dialog.chooseBrowserMode("headed");
+    await dialog.press("Next");
+    const request = StartPlanSubmissionSchema.parse(submitted);
+    assert.equal(request.browserMode, "headed");
+    assert.ok(dialog.text().includes("Browser: Headed"));
   });
 });
 

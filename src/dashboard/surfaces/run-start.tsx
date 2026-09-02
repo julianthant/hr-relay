@@ -128,6 +128,7 @@ import {
   START_METHOD_LABEL,
   startRequestFingerprint,
   type StartMethod,
+  type BrowserMode,
   type StartPriority,
 } from "./run-start-model.js";
 import {
@@ -867,6 +868,7 @@ export function RunStartDialog({
   const [text, setText] = useState("");
   const [priority, setPriority] = useState<StartPriority>("interactive");
   const [dryRunRequested, setDryRunRequested] = useState(false);
+  const [browserMode, setBrowserMode] = useState<BrowserMode>("headless");
   const [plan, setPlan] = useState<StartPlanResponse | null>(null);
   const [result, setResult] = useState<CommandResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -894,6 +896,7 @@ export function RunStartDialog({
     setSelectedStepKeys(nextWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
     setPriority("interactive");
     setDryRunRequested(false);
+    setBrowserMode("headless");
   }, [workflows]);
 
   // Opening lands on the panel you are standing in, every time — including the
@@ -941,6 +944,7 @@ export function RunStartDialog({
     workflowId,
     text,
     dryRun,
+    browserMode,
     priority,
     selectedStepKeys,
   });
@@ -1011,6 +1015,7 @@ export function RunStartDialog({
         workflowId,
         submissions: preview.entries.map((entry) => toRawSubmission(entry)),
         dryRun,
+        browserMode,
         priority,
         ...(customizeSteps ? { selectedStepKeys } : {}),
       });
@@ -1033,7 +1038,7 @@ export function RunStartDialog({
     } finally {
       setBusy(false);
     }
-  }, [client, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, workflowId]);
+  }, [browserMode, client, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, workflowId]);
 
   const confirmStart = useCallback(async (): Promise<void> => {
     if (plan === null) return;
@@ -1090,6 +1095,7 @@ export function RunStartDialog({
   const optionChanges = [
     ...(priority === "bulk" ? ["Priority: Bulk"] : []),
     ...(dryRun ? ["Dry run: On"] : []),
+    `Browser: ${browserMode === "headless" ? "Headless" : "Headed"}`,
   ];
   const inputSummary = preview.entries.map((entry) => entry.sourceText).join(", ");
   const valuesSummary = visibleConstants.length === 0
@@ -1292,6 +1298,12 @@ export function RunStartDialog({
                         <Select value={priority} onChange={(event) => setPriority(event.target.value === "bulk" ? "bulk" : "interactive")}>
                           <option value="interactive">Interactive</option>
                           <option value="bulk">Bulk</option>
+                        </Select>
+                      </Field>
+                      <Field label="Browser mode">
+                        <Select value={browserMode} onChange={(event) => setBrowserMode(event.target.value === "headed" ? "headed" : "headless")}>
+                          <option value="headless">Headless</option>
+                          <option value="headed">Headed</option>
                         </Select>
                       </Field>
                     </div>

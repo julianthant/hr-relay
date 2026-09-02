@@ -8,6 +8,7 @@ import type {
   WorkerId,
   WorkflowId,
 } from "../domain/ids.js";
+import type { BrowserPresentationMode } from "../domain/run/envelope.js";
 import {
   IdleRefreshCadenceSchema,
   LoginResultSchema,
@@ -39,7 +40,7 @@ export type BrowserSessionCloseReason =
 /**
  * One authenticated worker-owned browser session for one system (ref execution-and-sessions §1).
  * The D116 reuse identity is part of the resource itself: `instance` and
- * `configFingerprint` record exactly which resolved instance and immutable
+ * `configFingerprint` and `browserMode` record exactly which resolved instance and immutable
  * run-config snapshot the session was authenticated under.
  */
 export interface WorkerBrowserResource {
@@ -47,6 +48,8 @@ export interface WorkerBrowserResource {
   readonly system: BrowserSystemId;
   readonly instance?: string;
   readonly configFingerprint: Fingerprint;
+  /** Optional only for legacy fixture/session ports; real Playwright resources always report it. */
+  readonly browserMode?: BrowserPresentationMode;
   readonly acceptDownloads: boolean;
   readonly exclusive: boolean;
   readonly authentication: BrowserAuthenticationHandle;
@@ -68,6 +71,7 @@ export interface WorkerBrowserSessionFactory {
     system: BrowserSystemId;
     instance?: string;
     configFingerprint: Fingerprint;
+    browserMode?: BrowserPresentationMode;
     acceptDownloads: boolean;
     exclusive: boolean;
     signal: AbortSignal;
@@ -92,6 +96,7 @@ export interface WorkerBrowserSessionFactory {
     system: BrowserSystemId;
     instance?: string;
     configFingerprint: Fingerprint;
+    browserMode?: BrowserPresentationMode;
   }>) => Promise<Readonly<{ profileDirectory: string }>>;
 }
 

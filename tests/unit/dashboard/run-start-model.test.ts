@@ -114,6 +114,7 @@ describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
     workflowId: "person-lookup",
     text: "E1234567",
     dryRun: false,
+    browserMode: "headless",
     priority: "interactive",
     selectedStepKeys: ["searching", "cross-verify", "active-status"],
   };
@@ -127,6 +128,7 @@ describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
       ["workflowId", { ...base, workflowId: "kuali-separation" }],
       ["text", { ...base, text: "E7654321" }],
       ["dryRun", { ...base, dryRun: true }],
+      ["browserMode", { ...base, browserMode: "headed" }],
       ["priority", { ...base, priority: "bulk" }],
       ["selectedStepKeys", { ...base, selectedStepKeys: [...base.selectedStepKeys, "crm-dates"] }],
     ];

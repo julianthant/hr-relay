@@ -42,6 +42,8 @@ import { RuntimeInstanceSchema, resolveSystemEntryUrl } from "../../domain/confi
 import type { RuntimeInstance } from "../../domain/config/instance.js";
 import { AbsolutePathSchema } from "../../domain/config/schema.js";
 import type { Config } from "../../domain/config/schema.js";
+import { BrowserPresentationModeSchema } from "../../domain/run/envelope.js";
+import type { BrowserPresentationMode } from "../../domain/run/envelope.js";
 import {
   BrowserSessionIdSchema,
   BrowserSystemIdSchema,
@@ -153,17 +155,19 @@ export function workerProfileDirectory(input: Readonly<{
   system: BrowserSystemId;
   instance: RuntimeInstance;
   configFingerprint: Fingerprint;
+  browserMode?: BrowserPresentationMode;
 }>): string {
   const root = AbsolutePathSchema.parse(input.profileRoot);
   const worker = WorkerIdSchema.parse(input.workerId);
   const system = BrowserSystemIdSchema.parse(input.system);
   const instance = RuntimeInstanceSchema.parse(input.instance);
   const fingerprint = FingerprintSchema.parse(input.configFingerprint);
+  const browserMode = BrowserPresentationModeSchema.parse(input.browserMode ?? "headless");
   return resolve(
     root,
     input.isolation.browserSessionNamespace,
     worker,
-    `${system}-${instance}-${fingerprint.slice(0, 12)}`,
+    `${system}-${instance}-${fingerprint.slice(0, 12)}-${browserMode}`,
   );
 }
 
@@ -219,6 +223,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     system: BrowserSystemId;
     instance?: string;
     configFingerprint: Fingerprint;
+    browserMode?: BrowserPresentationMode;
     acceptDownloads: boolean;
     exclusive: boolean;
     signal: AbortSignal;
@@ -229,6 +234,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     WorkflowIdSchema.parse(input.workflowId);
     const system = BrowserSystemIdSchema.parse(input.system);
     const configFingerprint = FingerprintSchema.parse(input.configFingerprint);
+    const browserMode = BrowserPresentationModeSchema.parse(
+      input.browserMode ?? (config.browser.headless ? "headless" : "headed"),
+    );
     const instance = RuntimeInstanceSchema.parse(input.instance);
     const binding = bindingFor(this.#bindings, system);
     if (input.exclusive) {
@@ -241,13 +249,13 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     assertDuoAutopilotReady(config);
     const profileDirectory = workerProfileDirectory({
       profileRoot: config.paths.browserProfileRoot,
-      isolation, workerId, system, instance, configFingerprint,
+      isolation, workerId, system, instance, configFingerprint, browserMode,
     });
     mkdirSync(profileDirectory, { recursive: true });
 
     const context = await this.#launcher.launch({
       profileDirectory,
-      headless: config.browser.headless,
+      headless: browserMode === "headless",
       extensionDirectory: config.paths.duoExtensionDir,
       acceptDownloads: input.acceptDownloads,
       downloadsPath: config.paths.downloadsDir,
@@ -271,6 +279,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         system,
         ...(input.instance === undefined ? {} : { instance: input.instance }),
         configFingerprint,
+        browserMode,
         acceptDownloads: input.acceptDownloads,
         exclusive: input.exclusive,
         driver: binding.createDriver(page, this.#options.clock),
@@ -336,8 +345,12 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     system: BrowserSystemId;
     instance?: string;
     configFingerprint: Fingerprint;
+    browserMode?: BrowserPresentationMode;
   }>): Promise<Readonly<{ profileDirectory: string }>> {
     const { config, isolation } = this.#options;
+    const browserMode = BrowserPresentationModeSchema.parse(
+      input.browserMode ?? (config.browser.headless ? "headless" : "headed"),
+    );
     const profileDirectory = workerProfileDirectory({
       profileRoot: config.paths.browserProfileRoot,
       isolation,
@@ -345,6 +358,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       system: input.system,
       instance: RuntimeInstanceSchema.parse(input.instance),
       configFingerprint: input.configFingerprint,
+      browserMode,
     });
     const namespaceRoot = resolve(config.paths.browserProfileRoot, isolation.browserSessionNamespace);
     if (!profileDirectory.startsWith(`${namespaceRoot}/`)) {

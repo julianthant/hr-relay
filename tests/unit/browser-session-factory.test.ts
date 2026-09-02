@@ -332,6 +332,20 @@ describe("worker browser session factory", () => {
     });
   });
 
+  it("launches the run's headed presentation in its own profile partition", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const harness = fakeLauncher();
+      const factory = factoryFor(config, harness, recordingBindings());
+      const resource = await factory.open({ ...OPEN_INPUT, browserMode: "headed" } as typeof OPEN_INPUT & { browserMode: "headed" });
+      const launch = harness.launches()[0];
+      assert.ok(launch);
+      assert.equal(launch.headless, false);
+      assert.match(String(launch.profileDirectory), /ucpath-prod-[a-f0-9]{12}-headed$/u);
+      assert.equal((resource as { browserMode?: unknown }).browserMode, "headed");
+      await resource.close({ reason: "worker-stop" });
+    });
+  });
+
   it("refuses to launch when the Duo extension or credential is not ready", async () => {
     await withTempRuntime(async ({ config, root }) => {
       const missingExtension: Config = {
