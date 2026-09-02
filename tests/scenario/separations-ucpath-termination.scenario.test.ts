@@ -153,6 +153,12 @@ const RUN_INPUT = {
   lastDateWorked: LAST_DATE_WORKED,
   initiatorComments: TARGET.initiatorComments,
 };
+const NAME_ONLY_RUN_INPUT = {
+  ...RUN_INPUT,
+  emplIdSource: "name-resolved" as const,
+  documentEid: { state: "absent" as const, reason: "name-only structural path" },
+};
+
 
 function jobSummaryFixture(): UcpathJobSummary {
   const jobRows = [deriveJobRowFromCells(CELLS, 0)];
@@ -197,14 +203,17 @@ async function readJobSummaryFixture(): Promise<UcpathJobSummary> {
   }) as UcpathJobSummary;
 }
 
-async function comparisonFixture(summary: UcpathJobSummary): Promise<MatchIdentityOutput> {
+async function comparisonFixture(
+  summary: UcpathJobSummary,
+  input: typeof RUN_INPUT | typeof NAME_ONLY_RUN_INPUT = RUN_INPUT,
+): Promise<MatchIdentityOutput> {
   return MatchIdentityOutputSchema.parse(await matchIdentityTask.impl.run({
     input: {
-      documentNumber: RUN_INPUT.documentNumber,
-      documentName: RUN_INPUT.employeeName,
-      documentEid: RUN_INPUT.documentEid,
-      emplId: RUN_INPUT.emplId,
-      emplIdSource: RUN_INPUT.emplIdSource,
+      documentNumber: input.documentNumber,
+      documentName: input.employeeName,
+      documentEid: input.documentEid,
+      emplId: input.emplId,
+      emplIdSource: input.emplIdSource,
       jobSummary: summary,
       nameSelection: nameSearchFixture().selection,
       plan: noSeparationWritePlan("this fixture composes no separation write plan"),
@@ -467,14 +476,14 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
 
   it("separations-ucpath-termination/gate-approved — the whole graph, from two reads to two settled transactions", async () => {
     const summary = await readJobSummaryFixture();
-    const comparison = await comparisonFixture(summary);
+    const comparison = await comparisonFixture(summary, NAME_ONLY_RUN_INPUT);
     const approval = {
       decision: "approved" as const,
       eid: EID,
       chosenFrom: "checked" as const,
       evidenceDigest: comparison.evidenceDigest,
     };
-    const walk = walkDescriptor(separationsUcpathTerminationDescriptor, RUN_INPUT, {
+    const walk = walkDescriptor(separationsUcpathTerminationDescriptor, NAME_ONLY_RUN_INPUT, {
       outputs: {
         "job-summary": summary,
         "name-search": nameSearchFixture(),
@@ -524,7 +533,8 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
     for (const point of claimFor("separations-ucpath-termination/gate-approved")) {
       assert.ok(walk.covered.includes(point), point);
     }
-    const result = walk.result as { termination: { proof: { transactionId: string } } };
+    const result = walk.result as { approved: { authority: string }; termination: { proof: { transactionId: string } } };
+    assert.equal(result.approved.authority, "operator-approval");
     assert.equal(result.termination.proof.transactionId, "T002209631");
   });
 

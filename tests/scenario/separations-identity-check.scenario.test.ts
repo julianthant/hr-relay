@@ -1,7 +1,7 @@
 /**
  * Executable scenarios for `separations-identity-check` — separations chunk 3
  * (`docs/migrations/separations.md` §3), the UCPath identity passage and ref write-safety
- * §14's ALWAYS-GATE.
+ * §14's supplied-EID machine authority and name-only operator gate.
  *
  * The corpus covers every identity scenario the behaviour review names
  * (S14–S24) plus the three gate paths, and it is deliberately split by what each
@@ -128,6 +128,12 @@ const RUN_INPUT = {
   documentEid: { state: "present" as const, value: EID },
 };
 
+const NAME_ONLY_INPUT = {
+  ...RUN_INPUT,
+  emplIdSource: "name-resolved" as const,
+  documentEid: { state: "absent" as const, reason: "the separation document carried no EID" },
+};
+
 async function readJobSummary(summary: UcpathJobSummary, emplId = EID): Promise<UcpathJobSummary> {
   const driver = createDeterministicUcpathPersonOrgDriver(
     undefined,
@@ -142,7 +148,7 @@ async function readJobSummary(summary: UcpathJobSummary, emplId = EID): Promise<
 async function comparisonFor(
   summary: UcpathJobSummary,
   search: SearchPersonOrgOutput = nameSearch(),
-  input: typeof RUN_INPUT = RUN_INPUT,
+  input: typeof RUN_INPUT | typeof NAME_ONLY_INPUT = RUN_INPUT,
 ): Promise<MatchIdentityOutput> {
   return MatchIdentityOutputSchema.parse(await matchIdentityTask.impl.run({
     input: {
@@ -200,58 +206,37 @@ describe("separations-identity-check scenarios", () => {
     }
   });
 
-  it("separations-identity-check/single-active-job — S14: one active job, names agree, one-click gate", async () => {
+  it("separations-identity-check/single-active-job — exact supplied EID needs no approval", async () => {
     const summary = await readJobSummary(jobSummary([cells()]));
-    assert.equal(summary.rowCount, 1);
-    assert.deepEqual(summary.jobRows[0]?.expectedJobEndDate, {
-      state: "absent",
-      reason: "the Person Org Employment Instances grid rendered Expected Job End Date as an empty cell",
-    });
-
     const comparison = await comparisonFor(summary);
     assert.equal(comparison.packet.nameTier, "same");
-    assert.equal(comparison.packet.approvalShape, "one-click");
     assert.equal((comparison.packet.jobs as { disposition: string }).disposition, "single-active-job");
 
-    const approval = {
-      decision: "approved" as const,
-      eid: EID,
-      chosenFrom: "checked" as const,
-      evidenceDigest: comparison.evidenceDigest,
-    };
-    const approved = await verifyIdentityApprovalTask.impl.run({
-      input: { packet: comparison.packet, evidenceDigest: comparison.evidenceDigest, approval },
+    const verified = await verifyIdentityApprovalTask.impl.run({
+      input: { packet: comparison.packet, evidenceDigest: comparison.evidenceDigest },
       ctx: taskCtx,
     });
-
     const walk = walkDescriptor(separationsIdentityCheckDescriptor, RUN_INPUT, {
       outputs: {
         "job-summary": summary,
         "name-search": nameSearch(),
         comparison,
-        "identity-approval": approval,
-        approval: approved,
+        approval: verified,
       },
     });
-    assert.deepEqual(walk.visited, [
-      "job-summary", "name-search", "comparison", "identity-approval", "approval",
-    ]);
-    assert.deepEqual(walk.skipped, []);
-    // The gate is a REAL graph point, and this is the first production
-    // descriptor in the tree that produces one.
-    assert.deepEqual(walk.covered, [
-      "gate:identity-approval/opened",
-      "gate:identity-approval/resolved",
-    ]);
-    const result = walk.result as { approved: { emplId: string; approvalShape: string } };
+    assert.deepEqual(walk.visited, ["job-summary", "name-search", "comparison", "approval"]);
+    assert.deepEqual(walk.skipped, ["identity-approval"]);
+    assert.deepEqual(walk.covered, []);
+    const result = walk.result as { approved: { authority: string; emplId: string } };
     assert.equal(result.approved.emplId, EID);
-    assert.equal(result.approved.approvalShape, "one-click");
+    assert.equal(result.approved.authority, "machine-verification");
   });
 
   it("separations-identity-check/similar-name-never-auto-proceeds — S15's silent risk, closed", async () => {
     // Kuali "Hernandez, Jose Santo" vs UCPath "Hernandez, Jose Santos": one edit.
     // Legacy calls this `similar`, trusts the EID, proceeds AND rewrites the
-    // name in the live document. Here it is a gate that cannot be one-clicked.
+    // name in the live document. Here it remains disconfirming evidence, while
+    // exact supplied-EID read-back determines that no approval is required.
     const summary = await readJobSummary(jobSummary([cells()]));
     const comparison = await comparisonFor(summary, nameSearch(), {
       ...RUN_INPUT,
@@ -267,15 +252,16 @@ describe("separations-identity-check scenarios", () => {
 
   it("separations-identity-check/different-name-two-candidates — S17: the T002173685 shape", async () => {
     // The document's EID resolves one person; a search on the document's NAME
-    // resolves a DIFFERENT career employee. Both candidates reach the gate.
+    // resolves a DIFFERENT career employee. Both candidates remain visible.
     //
-    // A finding worth recording, because it is the argument for ALWAYS-GATE in
-    // one line: the incident's OWN pair — Kuali "Hernandez, Jose Santos" versus
+    // A finding worth recording: the incident's OWN pair — Kuali
+    // "Hernandez, Jose Santos" versus
     // the UCPath detail's "Santos Hernandez" — classifies as `same` under the
     // ported tier function, because the alignment tolerates extra tokens on the
     // longer side. Legacy fires its wrong-person control only on `different`,
-    // so a tier-triggered gate would not have fired on the very case it exists
-    // for. This one fires on every run.
+    // so a tier-triggered identity rule would not have detected the very case
+    // it exists for. The independently supplied/read-back EID is decisive here;
+    // the contradictory name candidate remains evidence rather than a fallback.
     assert.equal(
       classifyNameSimilarity("Hernandez, Jose Santos", "Santos Hernandez"),
       "same",
@@ -304,31 +290,15 @@ describe("separations-identity-check scenarios", () => {
     assert.equal(comparison.packet.approvalShape, "type-the-eid");
     assert.deepEqual(comparison.packet.approvableEids, [EID, OTHER_EID]);
 
-    // S16 read from the other side: approving the CHECKED eid is legal and is
-    // labelled `checked`; approving the name-search candidate is legal too and
-    // must be labelled `name-search`, never `checked`.
-    const mislabelled = {
-      decision: "approved" as const,
-      eid: OTHER_EID,
-      chosenFrom: "checked" as const,
-      evidenceDigest: comparison.evidenceDigest,
-    };
-    await assert.rejects(
-      verifyIdentityApprovalTask.impl.run({
-        input: { packet: comparison.packet, evidenceDigest: comparison.evidenceDigest, approval: mislabelled },
-        ctx: taskCtx,
-      }),
-      /identity-approval-choice-mismatch/,
-    );
-    const approved = await verifyIdentityApprovalTask.impl.run({
-      input: {
-        packet: comparison.packet,
-        evidenceDigest: comparison.evidenceDigest,
-        approval: { ...mislabelled, chosenFrom: "name-search" as const },
-      },
+    // The contradictory name candidate remains visible but does not replace
+    // the supplied EID whose UCPath detail read back exactly.
+    const verified = await verifyIdentityApprovalTask.impl.run({
+      input: { packet: comparison.packet, evidenceDigest: comparison.evidenceDigest },
       ctx: taskCtx,
-    }) as { approved: { emplId: string } };
-    assert.equal(approved.approved.emplId, OTHER_EID);
+    }) as { approved: { authority: string; emplId: string; nameTier: string } };
+    assert.equal(verified.approved.authority, "machine-verification");
+    assert.equal(verified.approved.emplId, EID);
+    assert.equal(verified.approved.nameTier, "different");
   });
 
   it("separations-identity-check/already-terminated-single-row — S22's silent risk, closed", async () => {
@@ -406,9 +376,9 @@ describe("separations-identity-check scenarios", () => {
     );
   });
 
-  it("separations-identity-check/gate-approved — the whole path, gate included", async () => {
+  it("separations-identity-check/gate-approved — name-only path, real gate included", async () => {
     const summary = await readJobSummary(jobSummary([cells()]));
-    const comparison = await comparisonFor(summary);
+    const comparison = await comparisonFor(summary, nameSearch(), NAME_ONLY_INPUT);
     // The digest is a pure function of the stored packet: re-derivation agrees.
     assert.equal(
       deriveIdentityEvidenceDigest(comparison.packet),
@@ -432,7 +402,7 @@ describe("separations-identity-check scenarios", () => {
 
   it("separations-identity-check/gate-rejected — a rejection names what the operator saw", async () => {
     const summary = await readJobSummary(jobSummary([cells({ hrStatus: "Inactive" })]));
-    const comparison = await comparisonFor(summary);
+    const comparison = await comparisonFor(summary, nameSearch(), NAME_ONLY_INPUT);
     await assert.rejects(
       verifyIdentityApprovalTask.impl.run({
         input: {
@@ -451,7 +421,11 @@ describe("separations-identity-check scenarios", () => {
   });
 
   it("separations-identity-check/gate-evidence-moved — §14.5: an approval never outlives its packet", async () => {
-    const comparison = await comparisonFor(await readJobSummary(jobSummary([cells()])));
+    const comparison = await comparisonFor(
+      await readJobSummary(jobSummary([cells()])),
+      nameSearch(),
+      NAME_ONLY_INPUT,
+    );
     await assert.rejects(
       verifyIdentityApprovalTask.impl.run({
         input: {
@@ -490,14 +464,14 @@ describe("separations-identity-check scenarios", () => {
 
   it("claims exactly the coverage points the gate path walks", async () => {
     const summary = await readJobSummary(jobSummary([cells()]));
-    const comparison = await comparisonFor(summary);
+    const comparison = await comparisonFor(summary, nameSearch(), NAME_ONLY_INPUT);
     const approval = {
       decision: "approved" as const,
       eid: EID,
       chosenFrom: "checked" as const,
       evidenceDigest: comparison.evidenceDigest,
     };
-    const walk = walkDescriptor(separationsIdentityCheckDescriptor, RUN_INPUT, {
+    const walk = walkDescriptor(separationsIdentityCheckDescriptor, NAME_ONLY_INPUT, {
       outputs: {
         "job-summary": summary,
         "name-search": nameSearch(),
@@ -510,7 +484,7 @@ describe("separations-identity-check scenarios", () => {
       },
     });
     const claimed = SEPARATIONS_IDENTITY_CHECK_CLAIMS
-      .find(({ scenarioId }) => scenarioId === "separations-identity-check/single-active-job");
+      .find(({ scenarioId }) => scenarioId === "separations-identity-check/gate-approved");
     assert.deepEqual([...(claimed?.covers ?? [])].sort(), [...walk.covered].sort());
   });
 });

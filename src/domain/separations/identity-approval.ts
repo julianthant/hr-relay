@@ -1,6 +1,7 @@
 /**
- * The ALWAYS-GATE identity approval's typed result, and the fold that consumes
- * it — ref write-safety §14.4/§14.5, implemented.
+ * Separations identity authority: the typed operator result for a name-only
+ * selection and the fold that either verifies supplied-EID evidence or consumes
+ * that result — ref write-safety §14.4/§14.5.
  *
  * ## What the payload carries, and what it deliberately does NOT
  *
@@ -28,7 +29,7 @@
  * reason recorded is indistinguishable from a run that died.
  */
 import { z } from "zod";
-import { EidSchema, FingerprintSchema } from "../ids.js";
+import { EidSchema, FingerprintSchema, type Fingerprint } from "../ids.js";
 import { directIdentifierDigestReference } from "../redaction.js";
 import {
   IdentityEvidencePacketSchema,
@@ -62,6 +63,7 @@ export const IdentityApprovalResultSchema = z.discriminatedUnion("decision", [
 export type IdentityApprovalResult = z.infer<typeof IdentityApprovalResultSchema>;
 
 export const ApprovedIdentitySubjectSchema = z.strictObject({
+  authority: z.literal("operator-approval"),
   emplId: EidSchema,
   chosenFrom: IdentityApprovalChoiceSchema,
   /** The packet the approval was granted on, re-derived and proved identical. */
@@ -72,6 +74,20 @@ export const ApprovedIdentitySubjectSchema = z.strictObject({
   approvalShape: z.enum(["one-click", "choose-a-candidate", "type-the-eid"]),
 });
 export type ApprovedIdentitySubject = z.infer<typeof ApprovedIdentitySubjectSchema>;
+
+/** Machine evidence is a different authority from an operator's choice. */
+export const VerifiedIdentitySubjectSchema = z.strictObject({
+  authority: z.literal("machine-verification"),
+  source: z.enum(["document-eid", "canonical-eid"]),
+  emplId: EidSchema,
+  evidenceDigest: FingerprintSchema,
+  ucpathName: z.string().min(1),
+  nameTier: z.enum(["same", "similar", "different"]),
+});
+export const ResolvedIdentitySubjectSchema = z.discriminatedUnion("authority", [
+  ApprovedIdentitySubjectSchema,
+  VerifiedIdentitySubjectSchema,
+]);
 
 /**
  * The literal tuple a contract's `errorCodes` needs, and the schema derived
@@ -84,11 +100,14 @@ export const IDENTITY_APPROVAL_REFUSAL_CODES = [
   "identity-approval-evidence-moved",
   "identity-approval-eid-not-shown",
   "identity-approval-choice-mismatch",
+  "identity-approval-required",
+  "identity-supplied-eid-unproved",
 ] as const;
 export const IdentityApprovalRefusalCodeSchema = z.enum(IDENTITY_APPROVAL_REFUSAL_CODES);
 export type IdentityApprovalRefusalCode = z.infer<typeof IdentityApprovalRefusalCodeSchema>;
 
 export const IdentityApprovalVerificationSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("verified"), subject: VerifiedIdentitySubjectSchema }),
   z.strictObject({ state: z.literal("approved"), subject: ApprovedIdentitySubjectSchema }),
   z.strictObject({
     state: z.literal("refused"),
@@ -107,7 +126,10 @@ function choiceFor(packet: IdentityEvidencePacket, eid: string): IdentityApprova
 }
 
 /**
- * The post-gate check, run as a real node so every refusal has a durable code.
+ * The identity-authority check, run as a real node so every refusal has a
+ * durable code. A supplied EID yields machine-verification authority only after
+ * the packet and actual UCPath read-back agree. A name-resolved EID has no such
+ * arm: it requires the stored operator result.
  *
  * Four things are checked and none of them is ceremony:
  *
@@ -125,16 +147,63 @@ function choiceFor(packet: IdentityEvidencePacket, eid: string): IdentityApprova
  *    defect D197 found on the first live receipt.
  */
 export function verifyIdentityApproval(
-  packet: IdentityEvidencePacket,
-  result: IdentityApprovalResult,
-  reDerivedDigest = deriveIdentityEvidenceDigest(IdentityEvidencePacketSchema.parse(packet)),
+  packetInput: IdentityEvidencePacket,
+  result: IdentityApprovalResult | undefined,
+  reDerivedDigest?: Fingerprint,
 ): IdentityApprovalVerification {
-  if (result.evidenceDigest !== reDerivedDigest) {
+  const packet = IdentityEvidencePacketSchema.parse(packetInput);
+  const actualDigest = deriveIdentityEvidenceDigest(packet);
+  const expectedDigest = reDerivedDigest ?? actualDigest;
+  if (actualDigest !== expectedDigest) {
+    return IdentityApprovalVerificationSchema.parse({
+      state: "refused",
+      code: "identity-approval-evidence-moved",
+      reason: `the stored identity digest ${expectedDigest.slice(0, 12)}… does not describe this packet, which re-derives to ${actualDigest.slice(0, 12)}…`,
+    });
+  }
+
+  if (result !== undefined && packet.emplIdSource !== "name-resolved") {
+    return IdentityApprovalVerificationSchema.parse({
+      state: "refused",
+      code: "identity-supplied-eid-unproved",
+      reason: `a ${packet.emplIdSource} packet requires machine verification and cannot consume an operator gate result`,
+    });
+  }
+
+  if (result === undefined) {
+    if (packet.emplIdSource === "name-resolved") {
+      return IdentityApprovalVerificationSchema.parse({
+        state: "refused",
+        code: "identity-approval-required",
+        reason: "an EID resolved by name requires an operator identity decision",
+      });
+    }
+    if (packet.emplIdSource === "document-eid" && packet.documentEidText !== packet.emplId) {
+      return IdentityApprovalVerificationSchema.parse({
+        state: "refused",
+        code: "identity-supplied-eid-unproved",
+        reason: "the supplied document EID does not match the UCPath read-back bound to this packet",
+      });
+    }
+    return IdentityApprovalVerificationSchema.parse({
+      state: "verified",
+      subject: {
+        authority: "machine-verification",
+        source: packet.emplIdSource,
+        emplId: packet.emplId,
+        evidenceDigest: actualDigest,
+        ucpathName: packet.ucpathName,
+        nameTier: packet.nameTier,
+      },
+    });
+  }
+
+  if (result.evidenceDigest !== expectedDigest) {
     return IdentityApprovalVerificationSchema.parse({
       state: "refused",
       code: "identity-approval-evidence-moved",
       reason: `the approval is bound to evidence ${result.evidenceDigest.slice(0, 12)}…, and this run's `
-        + `identity evidence re-derives to ${reDerivedDigest.slice(0, 12)}…. An approval is an `
+        + `identity evidence re-derives to ${expectedDigest.slice(0, 12)}…. An approval is an `
         + "observation of a specific packet (ref write-safety §14.5); it never survives the disappearance of "
         + "what it approved.",
     });
@@ -162,8 +231,7 @@ export function verifyIdentityApproval(
       code: "identity-approval-eid-not-shown",
       reason: `EID ${directIdentifierDigestReference(result.eid)} was approved for separation document ${packet.documentNumber}, and the `
         + `identity packet never showed it (it showed ${packet.approvableEids.map(directIdentifierDigestReference).join(", ")}). A typed EID `
-        + "is an assertion, not evidence: nothing in this run read that person, so there is nothing to "
-        + "approve.",
+        + "is an assertion, not evidence: nothing in this run read that person, so there is nothing to approve.",
     });
   }
   if (actual !== result.chosenFrom) {
@@ -171,19 +239,19 @@ export function verifyIdentityApproval(
       state: "refused",
       code: "identity-approval-choice-mismatch",
       reason: `the approval labels EID ${directIdentifierDigestReference(result.eid)} as "${result.chosenFrom}", and on this packet it is `
-        + `"${actual}". A receipt that mislabels where an approved identity came from states something `
-        + "false about the human decision it records.",
+        + `"${actual}". A receipt that mislabels where an approved identity came from states something false about the human decision it records.`,
     });
   }
   return IdentityApprovalVerificationSchema.parse({
     state: "approved",
-    subject: ApprovedIdentitySubjectSchema.parse({
+    subject: {
+      authority: "operator-approval",
       emplId: result.eid,
       chosenFrom: result.chosenFrom,
       evidenceDigest: result.evidenceDigest,
       ucpathName: packet.ucpathName,
       nameTier: packet.nameTier,
       approvalShape: packet.approvalShape,
-    }),
+    },
   });
 }

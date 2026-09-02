@@ -38,20 +38,17 @@
  *
  * ## Why a "Kuali write chunk" carries the identity gate
  *
- * Because ref write-safety §14's ALWAYS-GATE binds separation FILINGS, and finalizing the
- * RRSS document is what records a real termination against a real person on the
- * source record. `identity-gate-before-commit` enforces it structurally on any
- * descriptor whose id names the separation class: every ancestry path from the
- * transaction node — and from the terminal result — must reach the gate's own
- * ancestry before a graph root. The read half is chunk 3's tasks, reused rather
- * than reimplemented (§3's lego rule).
+ * Ref write-safety §14 requires typed identity authority before finalization
+ * records a real termination on the source document. The supplied-EID arm uses
+ * UCPath read-back; the name-resolved arm uses the operator gate.
+ * `identity-gate-before-commit` enforces the shared authority task structurally
+ * for the transaction and terminal result.
  *
- * §4d is absolute here: no preset, no prefill, no resume path and no run mode
- * disables the gate, and there is no branch and no `when` anywhere in this
- * graph for one to hide in. §4c's resume — UCPath filed, Kuali finalization
- * parked — re-enters this node under its own permanent key and still crosses
- * this gate; legacy's `txnNumberPrefilled ⇒ skip identity` derivation (pattern
- * D7) does not port in any form.
+ * §4d remains absolute about authority: no preset, prefill, resume path or run
+ * mode controls the condition. §4c's resume — UCPath filed, Kuali finalization
+ * parked — re-enters this node under its own permanent key and proves identity
+ * from its declared origin. Legacy's `txnNumberPrefilled ⇒ skip identity`
+ * derivation (pattern D7) does not port.
  *
  * ## Why `department-option` hangs off the GATE
  *
@@ -70,8 +67,8 @@
  *
  * ## dryRun
  *
- * `stop-after-prepare`. A dry run reads UCPath, parks at the gate, and on
- * approval stages all twelve Kuali controls and reads every one of them back —
+ * `stop-after-prepare`. A dry run reads UCPath, parks at the gate only for a
+ * name-resolved EID, then stages all twelve Kuali controls and reads every one back —
  * then stops with no intent, no fence, no click and nothing durable. A Kuali
  * Build document holds staged edits in its own in-page form model until an
  * explicit `Save`, so the document is unchanged afterwards. Legacy makes the
@@ -83,7 +80,7 @@ import { z } from "zod";
 import { flow } from "../../../base/flow.js";
 import { defineWorkflowDescriptor } from "../../../base/workflow.js";
 import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
-import { ApprovedIdentitySubjectSchema } from "../../../domain/separations/identity-approval.js";
+import { ResolvedIdentitySubjectSchema } from "../../../domain/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../domain/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../domain/separations/write-plan.js";
 import {
@@ -201,8 +198,8 @@ export const SeparationsKualiFinalizationCanonicalInput = defineCanonicalInput(
 
 export const SeparationsKualiFinalizationResultSchema = z.strictObject({
   documentNumber: z.string().min(1),
-  /** The subject a human approved, and the evidence they approved it on. */
-  approved: ApprovedIdentitySubjectSchema,
+  /** The subject established by machine verification or operator approval. */
+  approved: ResolvedIdentitySubjectSchema,
   /** Which department option was staged, and the UCPath code it was keyed by. */
   department: z.strictObject({
     option: z.string().min(1),
@@ -408,19 +405,18 @@ export const separationsKualiFinalizationDescriptor = defineWorkflowDescriptor({
     },
     {
       nodeId: "comparison",
-      purpose: "Builds the identity evidence packet the gate shows — DISCONFIRMING evidence first — and the "
-        + "digest an approval binds to. Pure: it reaches no browser.",
+      purpose: "Builds the identity evidence packet — DISCONFIRMING evidence first — and the digest that "
+        + "machine verification or an operator decision binds to. Pure: it reaches no browser.",
     },
     {
       nodeId: "identity-approval",
-      purpose: "The ALWAYS-GATE. A human confirms this is the right person before anything downstream may "
-        + "consume the identity, and only the typed resolve-gate command can settle it.",
+      purpose: "Requires the typed operator resolve-gate command when the packet's EID came from a name search; "
+        + "a supplied-EID packet makes this declared condition false and records no human decision.",
     },
     {
       nodeId: "approval",
-      purpose: "Re-derives the evidence and checks the stored approval against it, so an approval of a packet "
-        + "that has since moved cannot stand. It re-runs on every attempt rather than replaying its own "
-        + "previous answer.",
+      purpose: "Re-derives the evidence and produces explicit machine-verification or operator-approval "
+        + "authority. It re-runs on every attempt, so moved evidence or identity origin cannot reuse an old answer.",
     },
     {
       nodeId: "finalize-kuali",

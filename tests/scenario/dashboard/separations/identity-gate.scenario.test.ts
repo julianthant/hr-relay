@@ -4,7 +4,7 @@
  * D226, D253).
  *
  * This is the wired square §9.22 exercised by hand on 2026-08-20: a parked run,
- * the ceremony the server chose, one click, and a checkpoint carrying the exact
+ * the ceremony the server chose, a typed EID, and a checkpoint carrying the exact
  * digest the dialog printed. What no unit could pin is the CHAIN — the section
  * the run-detail query serves, the ceremony the client folds from it, the
  * command that composer builds, and the kernel's answer to that command. Every
@@ -106,65 +106,63 @@ function composeResolveGate(
 }
 
 describe("separations dashboard — the ceremony the SERVER chose", () => {
-  it("serves a one-click confirm for the unambiguous packet, bound to the digest it showed", () => {
+  it("serves a typed-EID ceremony for a name-resolved packet, bound to the digest it showed", () => {
     const parked = parkedRun();
 
-    assert.equal(parked.gate.approvalShape, "one-click");
+    assert.equal(parked.gate.approvalShape, "type-the-eid");
     const ceremony = identityCeremonyFor(parked.gate, "approved");
-    assert.equal(ceremony.kind, "confirm");
-    if (ceremony.kind !== "confirm") return;
-    // The one candidate IS the answer; a one-click ceremony asks for no draft.
-    assert.equal(identityDraftProblem(ceremony, EMPTY_IDENTITY_GATE_DRAFT), undefined);
-    assert.deepEqual(
-      identityGateAnswer(ceremony, EMPTY_IDENTITY_GATE_DRAFT),
-      { decision: "approved", eid: ceremony.option.eid },
+    assert.equal(ceremony.kind, "type-the-eid");
+    if (ceremony.kind !== "type-the-eid") return;
+    assert.match(
+      identityDraftProblem(ceremony, EMPTY_IDENTITY_GATE_DRAFT) ?? "",
+      /Type the 8-digit employee ID/u,
     );
-    assert.equal(ceremony.option.chosenFrom, "checked");
+    const [option] = ceremony.options;
+    assert.ok(option);
+    assert.deepEqual(
+      identityGateAnswer(ceremony, { eid: option.eid, reason: "" }),
+      { decision: "approved", eid: option.eid },
+    );
+    assert.equal(option.chosenFrom, "checked");
     // §14.5: the packet the operator is looking at, named on the wire.
     assert.equal(parked.gate.evidenceDigest.length, 64);
     assert.equal(parked.gate.gateId, GATE_ID);
   });
 
-  it("upgrades to a CHOICE when the name search listed several people and picked none", () => {
-    const parked = parkedRun({ nameSearch: "ambiguous" });
+  it("does not downgrade an exact name-only selection to one click", () => {
+    const parked = parkedRun();
 
-    // The shape is the server's conclusion from the evidence, not a flag a
-    // surface set: an ambiguous search is ambiguity, and ambiguity is a choice.
-    assert.equal(parked.gate.approvalShape, "choose-a-candidate");
+    // Even one exact name-search candidate remains a human identity decision.
+    // The source, not the candidate count, determines that a typed EID is owed.
+    assert.equal(parked.gate.approvalShape, "type-the-eid");
     const ceremony = identityCeremonyFor(parked.gate, "approved");
-    assert.equal(ceremony.kind, "choose");
-    if (ceremony.kind !== "choose") return;
-    assert.ok(ceremony.options.length >= 2);
-    // An empty draft cannot be sent — the whole point of the upgrade.
-    assert.match(
-      identityDraftProblem(ceremony, EMPTY_IDENTITY_GATE_DRAFT) ?? "",
-      /Pick which candidate the separation document means/u,
-    );
+    assert.equal(ceremony.kind, "type-the-eid");
+    if (ceremony.kind !== "type-the-eid") return;
+    assert.equal(ceremony.options.length, 1);
     assert.equal(identityGateAnswer(ceremony, EMPTY_IDENTITY_GATE_DRAFT), undefined);
   });
 
-  it("refuses an EID the packet never showed, naming the post-gate check that would refuse it", () => {
-    const parked = parkedRun({ nameSearch: "ambiguous" });
+  it("refuses an EID the packet never showed, naming the authority check that would refuse it", () => {
+    const parked = parkedRun();
     const ceremony = identityCeremonyFor(parked.gate, "approved");
-    if (ceremony.kind !== "choose") throw new Error("expected a choose ceremony");
+    if (ceremony.kind !== "type-the-eid") throw new Error("expected a typed-EID ceremony");
 
     const problem = identityDraftProblem(ceremony, { eid: "19999999", reason: "" });
-    assert.match(problem ?? "", /is not one of the candidates this packet showed/u);
+    assert.match(problem ?? "", /packet never showed EID/u);
   });
 
   it("refuses BY NAME when the served shape and the served candidates contradict each other", () => {
     // A server upgraded ahead of this bundle (or behind it) can serve a
-    // `one-click` packet carrying two candidates. §14.6 risk 1's whole point is
-    // that the surface may not resolve that on its own: one click names exactly
-    // one person, and this packet does not say which.
-    const parked = parkedRun({ nameSearch: "ambiguous" });
-    assert.ok(parked.gate.options.length >= 2);
-    const contradictory = { ...parked.gate, approvalShape: "one-click" as const };
+    // choice shape with only one candidate. The surface cannot reinterpret
+    // that contradiction as either a typed-EID or one-click ceremony.
+    const parked = parkedRun();
+    assert.equal(parked.gate.options.length, 1);
+    const contradictory = { ...parked.gate, approvalShape: "choose-a-candidate" as const };
 
     const ceremony = identityCeremonyFor(contradictory, "approved");
     assert.equal(ceremony.kind, "unsupported");
     if (ceremony.kind !== "unsupported") return;
-    assert.match(ceremony.reason, /One click names exactly one person/u);
+    assert.match(ceremony.reason, /asked for a candidate to be CHOSEN and served 1/u);
     // The refusal is what the operator sees, and the send control is blocked:
     // an unsupported ceremony yields no answer at all.
     assert.equal(identityDraftProblem(ceremony, EMPTY_IDENTITY_GATE_DRAFT), ceremony.reason);
@@ -188,10 +186,12 @@ describe("separations dashboard — the ceremony the SERVER chose", () => {
 });
 
 describe("separations dashboard — the gate command the ceremony composes", () => {
-  it("APPLIES a one-click approval, stores the decision, and resumes the run", () => {
+  it("APPLIES a typed-EID approval, stores the decision, and resumes the run", () => {
     const parked = parkedRun();
     const ceremony = identityCeremonyFor(parked.gate, "approved");
-    const answer = identityGateAnswer(ceremony, EMPTY_IDENTITY_GATE_DRAFT);
+    const [option] = parked.gate.options;
+    assert.ok(option);
+    const answer = identityGateAnswer(ceremony, { eid: option.eid, reason: "" });
     assert.ok(answer);
 
     const result = parked.world.commands.execute(composeResolveGate(parked, answer));
@@ -217,7 +217,9 @@ describe("separations dashboard — the gate command the ceremony composes", () 
   it("REJECTS a result bound to a schema the descriptor does not declare, and changes nothing", () => {
     const parked = parkedRun();
     const ceremony = identityCeremonyFor(parked.gate, "approved");
-    const answer = identityGateAnswer(ceremony, EMPTY_IDENTITY_GATE_DRAFT);
+    const [option] = parked.gate.options;
+    assert.ok(option);
+    const answer = identityGateAnswer(ceremony, { eid: option.eid, reason: "" });
     assert.ok(answer);
     // A bundle running against a server whose gate schema moved: the payload is
     // well-formed and bound to the WRONG identity. The serve-side hash is the
@@ -243,7 +245,9 @@ describe("separations dashboard — the gate command the ceremony composes", () 
   it("CONFLICTS when the panel the operator is holding is one revision stale", () => {
     const parked = parkedRun();
     const ceremony = identityCeremonyFor(parked.gate, "approved");
-    const answer = identityGateAnswer(ceremony, EMPTY_IDENTITY_GATE_DRAFT);
+    const [option] = parked.gate.options;
+    assert.ok(option);
+    const answer = identityGateAnswer(ceremony, { eid: option.eid, reason: "" });
     assert.ok(answer);
 
     const stale = parked.gate.expectedVersion - 1;
@@ -260,16 +264,15 @@ describe("separations dashboard — the gate command the ceremony composes", () 
     assert.equal(parked.world.database.authority.runs.get(parked.runId)?.lifecycle.state, "parked-gate");
   });
 
-  it("refuses to compose a choice the operator never made, rather than picking one", () => {
-    const parked = parkedRun({ nameSearch: "ambiguous" });
+  it("refuses to compose a typed-EID decision the operator never made", () => {
+    const parked = parkedRun();
     const [action] = parked.gate.actions;
     assert.ok(action);
     assert.equal(action.kind, "command");
     if (action.kind !== "command") return;
 
-    // No `gateAnswer`: the composer has a served packet and two candidates, and
-    // the one thing it may not do is choose. §14.6 risk 1, at the last seam
-    // before the wire.
+    // No `gateAnswer`: the composer has a served name-only packet, but it may
+    // not invent the EID the operator was required to type.
     const composed = composeCommandRequest(
       action,
       { runId: parked.runId, expectedVersion: action.expectedVersion },

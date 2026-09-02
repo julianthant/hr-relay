@@ -175,6 +175,12 @@ const PREVIEW_RECEIPT_VERIFICATION = [
   { obligation: "write.proof-is-a-read-back", verdict: "absent", mandatory: true },
 ] as const;
 
+const NAME_ONLY_FINALIZATION_INPUT = SeparationsKualiFinalizationCanonicalInput.parse({
+  ...FINALIZATION_RUN_INPUT,
+  emplIdSource: "name-resolved",
+  documentEid: { state: "absent", reason: "name-only composition fixture" },
+});
+
 const TEST_MANIFEST = parseDryRunScenarioManifest({
   scenarioId: "separations-kuali-finalization/dry-run",
   workflow: "separations-kuali-finalization",
@@ -260,7 +266,7 @@ function admissionFixture(env: NodeJS.ProcessEnv = {}) {
     root, clock, ...settings, runtime,
     request: {
       manifest: TEST_MANIFEST, scenarioCase,
-      canonicalInput: SeparationsKualiFinalizationCanonicalInput.parse(FINALIZATION_RUN_INPUT),
+      canonicalInput: NAME_ONLY_FINALIZATION_INPUT,
     },
   };
 }
@@ -736,7 +742,7 @@ describe("dry-run scenario production composition boundary", () => {
     const started = await runtime.start({
       manifest: TEST_MANIFEST,
       scenarioCase,
-      canonicalInput: SeparationsKualiFinalizationCanonicalInput.parse(FINALIZATION_RUN_INPUT),
+      canonicalInput: NAME_ONLY_FINALIZATION_INPUT,
     });
     await runtime.drain(TEST_MANIFEST.workflow);
     await runtime.resolveGate({ manifest: TEST_MANIFEST, scenarioCase, runId: started.runId });
@@ -812,7 +818,7 @@ describe("dry-run scenario production composition boundary", () => {
     const started = await runtime.start({
       manifest: FAILED_TEST_MANIFEST,
       scenarioCase,
-      canonicalInput: SeparationsKualiFinalizationCanonicalInput.parse(FINALIZATION_RUN_INPUT),
+      canonicalInput: NAME_ONLY_FINALIZATION_INPUT,
     });
     await runtime.drain(FAILED_TEST_MANIFEST.workflow);
     await runtime.resolveGate({

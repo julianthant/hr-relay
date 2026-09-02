@@ -106,7 +106,7 @@ export const EVIDENCE_OBLIGATIONS: readonly EvidenceObligation[] = Object.freeze
       { kind: "workflow-input", path: "emplId" },
       { kind: "node-output", nodeId: "finalize-kuali", path: "savedState.observedEid" },
     ],
-    summary: "the finalized document displays the EID the operator approved",
+    summary: "the finalized document displays the EID identity authority established",
   },
   {
     rule: "all-equal",

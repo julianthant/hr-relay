@@ -466,48 +466,29 @@ export function seedJobSummaryCheckpoint(world: SeparationsDashboardWorld, runId
 export function separationsIdentityPacket(
   overrides: Readonly<{
     documentName?: string;
-    /**
-     * `ambiguous` is the SECOND ceremony's real cause: a UCPath name search
-     * that listed several people and picked none. It is stated as the search's
-     * own status rather than as an approval shape, because the shape is the
-     * SERVER's conclusion and a fixture that set it directly would be testing
-     * the ceremony against a packet the builder never produces.
-     */
-    nameSearch?: "resolved" | "ambiguous";
-    otherCandidateEid?: string;
   }> = {},
 ): IdentityEvidencePacket {
   const eid = "10001754";
   const documentName = overrides.documentName ?? "Cramia, Dreitho";
-  const otherEid = overrides.otherCandidateEid ?? "10620118";
   // Parsed through the search contract's OWN selection schema, so a fixture can
   // never express a selection UCPath's reader could not have produced.
-  const nameSelection = UcpathPersonSelectionSchema.parse(
-    overrides.nameSearch === "ambiguous"
-      ? {
-        status: "ambiguous",
-        selected: null,
-        candidateEids: [eid, otherEid],
-        searchName: documentName,
-      }
-      : {
-        status: "resolved",
-        selected: {
-          emplId: eid,
-          name: "Cramia, Dreitho",
-          department: "Housing Dining Hospitality",
-          jobTitle: "STDT 3",
-          employeeStatus: "active",
-          hdh: true,
-        },
-        candidateEids: [eid],
-      },
-  );
+  const nameSelection = UcpathPersonSelectionSchema.parse({
+    status: "resolved",
+    selected: {
+      emplId: eid,
+      name: "Cramia, Dreitho",
+      department: "Housing Dining Hospitality",
+      jobTitle: "STDT 3",
+      employeeStatus: "active",
+      hdh: true,
+    },
+    candidateEids: [eid],
+  });
   return buildIdentityEvidencePacket({
     documentNumber: DOCUMENT_NUMBER,
     documentName,
-    documentEidText: eid,
-    emplIdSource: "document-eid",
+    documentEidText: "the separation document carried no EID",
+    emplIdSource: "name-resolved",
     documentEidConflicts: false,
     jobSummary: {
       pageStateId: "ucpath.person-org.detail-ready",

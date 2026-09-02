@@ -30,27 +30,29 @@
  * composition could need — and the five sub-workflow descriptors stay exactly
  * what §3 said they were: the scaffolding that made each piece provable.
  *
- * ## No branch, no `when`, anywhere
+ * ## No branch; one identity-origin condition
  *
- * §3.1 says scenario variability is served by recomposition, never by
- * conditionals; §4b's hard-fail removed the one arm legacy had (skip Kronos for
- * a non-HDH department); §4d says **no run mode changes the graph at all**. A
- * graph with no conditional edge cannot have one, and that is the structural
- * half of pattern D7's death.
+ * §4b's hard-fail removed the legacy arm that skipped Kronos for a non-HDH
+ * department. The only declared condition is the operator identity gate: it is
+ * required for `name-resolved` identity and skipped for an independently
+ * supplied EID that UCPath actually reads back. No run mode, caller or frontend
+ * controls that condition.
  *
  * ## The reads all land first, and the GATE sits in the gap they leave
  *
  * §4e is normative: every read lands as a typed variable before anything is
  * written, and the whole write half consumes those variables rather than
- * re-deriving anything at fill time. The gate sits between the two halves —
- * ref write-safety §14.3, and D26, which forbids any park between `prepare` and `commit`.
- * So the ALWAYS-GATE opens once, after the last read, before the first fence.
+ * re-deriving anything at fill time. Identity authority sits between the two
+ * halves — ref write-safety §14.3, and D26, which forbids any park between
+ * `prepare` and `commit`. The operator gate opens there only for name-resolved
+ * identity; supplied-EID machine verification settles at the same seam.
  *
  * §5A widened that gap on purpose (`maxAgeMs: Infinity` on the three reads —
  * the separation document is a saved, stable artifact and refresh is a
  * deliberate operator RE-RUN, never an age check firing mid-run), which is what
- * makes the packet's write-plan block load-bearing: the operator approves the
- * VALUES, and §14.5's digest binds the approval to them.
+ * makes the packet's write-plan block load-bearing: the authority task verifies
+ * those VALUES, and §14.5's digest binds either machine or operator authority
+ * to them.
  *
  * ## Three transaction nodes, in ref write-safety's order
  *
@@ -95,7 +97,7 @@ import { UCPATH_TRANSACTION_STEP } from "./ucpath-transaction/step.js";
 import { flow } from "../../base/flow.js";
 import { defineWorkflowDescriptor, requireFact } from "../../base/workflow.js";
 import { WorkflowIdSchema } from "../../domain/ids.js";
-import { ApprovedIdentitySubjectSchema } from "../../domain/separations/identity-approval.js";
+import { ResolvedIdentitySubjectSchema } from "../../domain/separations/identity-approval.js";
 import {
   buildFinalizationComments,
   separationInitials,
@@ -257,8 +259,8 @@ export const SeparationsCanonicalInput = defineCanonicalInput(
 // every earlier result still parses; the omitted arm is the domain's.
 export const SeparationsResultSchema = z.strictObject({
   documentNumber: z.string().min(1),
-  /** The subject a human approved, and the evidence they approved it on. */
-  approved: ApprovedIdentitySubjectSchema,
+  /** The subject established by machine verification or operator approval. */
+  approved: ResolvedIdentitySubjectSchema,
   /** The one employment row the termination was filed against (S23). */
   employment: z.strictObject({
     emplRecord: z.string().min(1),
@@ -436,10 +438,10 @@ const separationsFlow = flow(SeparationsInput)
   }))
   .pipe(comparisonNode.wire({
     /**
-     * Everything the gate must have seen depends INTO this node, which is what
-     * makes `identity-gate-before-commit` pass on a graph with three transaction
-     * nodes: the gate's own ancestry is the whole read half, so no write can
-     * consume a value the operator did not see.
+     * Everything identity authority consumes depends INTO this node. That is
+     * what makes `identity-gate-before-commit` pass on a graph with three
+     * transaction nodes: no write can consume a value outside the packet that
+     * machine verification or the operator decision was bound to.
      */
     dependsOn: [
       DOCUMENT_NODE, PLAN_NODE, SUBJECT_NODE, JOB_SUMMARY_NODE, NAME_SEARCH_NODE,
@@ -670,7 +672,7 @@ export const separationsDescriptor = defineWorkflowDescriptor({
   summary:
     "The composition: ONE Kuali RRSS separation document becomes ONE terminated employee across three "
     + "systems. It reads Kuali, UCPath and Kronos, reconciles the dates against what the timecard "
-    + "actually shows, parks for a human to confirm the person, then clears any pending termination, "
+    + "actually shows, establishes identity from supplied-EID read-back or the name-only gate, then clears any pending termination, "
     + "files the termination, verifies the receipt, and finalizes the Kuali document.",
   icon: "ShieldCheck",
   category: "separation",
@@ -918,19 +920,18 @@ export const separationsDescriptor = defineWorkflowDescriptor({
     },
     {
       nodeId: "comparison",
-      purpose: "Builds the identity evidence packet the gate shows — DISCONFIRMING evidence first — and the "
-        + "digest an approval binds to. Pure: it reaches no browser.",
+      purpose: "Builds the identity evidence packet — DISCONFIRMING evidence first — and the digest that "
+        + "machine verification or an operator decision binds to. Pure: it reaches no browser.",
     },
     {
       nodeId: "identity-approval",
-      purpose: "The ALWAYS-GATE. A human confirms this is the right person before anything downstream may "
-        + "consume the identity, and only the typed resolve-gate command can settle it.",
+      purpose: "Requires the typed operator resolve-gate command when the packet's EID came from a name search; "
+        + "a supplied-EID packet makes this declared condition false and records no human decision.",
     },
     {
       nodeId: "approval",
-      purpose: "Re-derives the evidence and checks the stored approval against it, so an approval of a packet "
-        + "that has since moved cannot stand. It re-runs on every attempt rather than replaying its own "
-        + "previous answer.",
+      purpose: "Re-derives the evidence and produces explicit machine-verification or operator-approval "
+        + "authority. It re-runs on every attempt, so moved evidence or identity origin cannot reuse an old answer.",
     },
     {
       nodeId: "clear-pending",

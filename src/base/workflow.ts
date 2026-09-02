@@ -792,7 +792,7 @@ function deriveSteps(nodes: readonly RuntimeFlowNode[]): readonly StepProjection
       label: labelOf(node),
       kind: node.kind,
       ...(node.kind === "task" ? { taskId: node.uses.id } : {}),
-      conditional: node.kind === "task" && node.when !== undefined,
+      conditional: (node.kind === "task" || (node.kind === "gate" && node.resolvedBy === "operator")) && node.when !== undefined,
     }));
   }
   return Object.freeze(steps);
@@ -1125,7 +1125,7 @@ export function defineWorkflowDescriptor<
    * there.
    */
   for (const node of nodes) {
-    if (node.kind !== "task" || node.when === undefined) continue;
+    if ((node.kind !== "task" && !(node.kind === "gate" && node.resolvedBy === "operator")) || node.when === undefined) continue;
     const condition = node.when;
     const rule = condition.kind === "is-present" || condition.kind === "is-absent"
       ? "offers" as const
@@ -1364,7 +1364,7 @@ export function defineWorkflowDescriptor<
         throw new Error(`${id}: ${purpose} dependency ${nodeId} owns no output schema`);
       }
       const isBranchTarget = branchTargets.has(nodeId);
-      const hasWhen = node.kind === "task" && node.when !== undefined;
+      const hasWhen = (node.kind === "task" || (node.kind === "gate" && node.resolvedBy === "operator")) && node.when !== undefined;
       if (isBranchTarget && hasWhen) {
         throw new Error(
           `${id}: ${purpose} dependency ${nodeId} has both branch and when conditionality; `

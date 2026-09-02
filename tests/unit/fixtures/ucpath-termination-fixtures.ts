@@ -100,6 +100,7 @@ export const TERMINATION_SCOPE_OUTPUTS = Object.freeze({
   approval: {
     documentNumber: TERMINATION_DOCUMENT,
     approved: {
+      authority: "operator-approval",
       emplId: TERMINATION_EID,
       chosenFrom: "checked" as const,
       evidenceDigest: "a".repeat(64),

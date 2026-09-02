@@ -19,6 +19,12 @@ claim on either would count a path nobody executed as executed.
 `workflows/<workflow-id>/dry-run.scenario.ts` (T1b) is deliberately **not** `.test.` — a checkpoint
 manifest vitest collected would start a browser inside the per-commit gate.
 
+D309's Separations supplied-EID cases list the conditional `identity-approval` gate in
+`nodesExcluded`, carry no `gateResults`, and expect its receipt obligation `absent`/non-mandatory;
+`approval` still checkpoints the machine-verification subject. Name-resolved coverage must exercise
+the real park/command/resume chain. A manifest must never invent an operator result for the skipped
+arm or use a name-search EID to qualify itself as supplied.
+
 ## `dashboard/` — the T2 tier
 
 A T2 file drives a dashboard feature through the **real** run/queue projection and the **real**

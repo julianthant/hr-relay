@@ -92,7 +92,7 @@ export interface CommandContext {
  * client never derives them (ref frontend-backend-integration's own note: a client computing that hash
  * would be a second implementation of the descriptor's identity). The
  * `chosenFrom` label comes from the served `options`, which the wire refines
- * against the packet the operator was shown — the post-gate node re-derives
+ * against the packet the operator was shown — the identity authority node re-derives
  * where the EID actually came from and refuses a label the packet contradicts
  * (`identity-approval-choice-mismatch`), so a label invented here would put a
  * false statement on the receipt.
@@ -106,7 +106,7 @@ export interface CommandContext {
  *    `type-the-eid` or a rejection reached without the dialog. Picking the first
  *    option, or minting an empty reason, would be this surface authoring the
  *    human's decision;
- *  - **an EID the packet never showed** — the post-gate check refuses it as
+ *  - **an EID the packet never showed** — the identity authority check refuses it as
  *    `identity-approval-eid-not-shown`, and refusing at composition means the
  *    run never has to. The same sentence is stated at the field the operator
  *    types into, so this arm is a backstop rather than the first they hear of it.

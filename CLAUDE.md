@@ -297,6 +297,15 @@ environment-supplied.
 
 ## Conventions
 
+- **2026-09-02 — a conditional operator gate is descriptor evidence, never caller permission (D309).**
+  A false `when` opens no gate and creates no operator decision or `gate_results` row. Downstream
+  provenance and receipts re-evaluate the same condition from canonical input and authenticated
+  checkpoints; a skipped gate cannot coexist with a checkpoint/result, and a stale result after the
+  condition changes fails loud. Separations conditions only `identity-approval` on a validated
+  `name-resolved` packet: exact independently supplied/UCPath-read-back EID is explicit
+  `machine-verification`, while name-only always requires the real command-resolved gate. Step
+  omission never suppresses or manufactures either arm.
+
 - **2026-09-01 — D307 step omission.** Declare an omission BESIDE the step's own nodes
   (`nodes.category(fragments, { omission })`), never as a separate mechanism. Its `produces` map
   rebuilds TASK node outputs only — a gate always runs (ALWAYS-GATE) and a transaction never runs and

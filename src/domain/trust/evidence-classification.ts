@@ -429,7 +429,7 @@ function approvedSubjectLeaves(scope: EvidenceValueScope, prefix: string): unkno
   const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
   return [
     ...person(scope, at("emplId"), at("ucpathName")),
-    ...open(scope, at("chosenFrom"), at("evidenceDigest"), at("nameTier"), at("approvalShape")),
+    ...open(scope, at("authority"), at("chosenFrom"), at("evidenceDigest"), at("nameTier"), at("approvalShape"), at("source")),
   ];
 }
 
@@ -562,7 +562,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...approvedSubjectLeaves(VERIFY_IDENTITY_APPROVAL, "approved"),
   ...jobClassificationLeaves(VERIFY_IDENTITY_APPROVAL, "jobs"),
 
-  /* separations-identity-check / identity-approval — the ALWAYS-GATE's stored
+  /* separations-identity-check / identity-approval — the name-only gate's stored
      operator decision (D204). Both arms of `IdentityApprovalResultSchema` are
      declared, because which arm a run took is decided at the gate and a receipt
      may not depend on that choice to be classifiable.
@@ -590,7 +590,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "terminationType.reason", "observedTerminationTypeOptions", "emplRecord",
     "effectiveDate", "lastDateWorked", "initiatorComments"),
 
-  /* The ALWAYS-GATE again, on this workflow's own scope. A gate's redaction is
+  /* The conditional name-only gate again, on this workflow's own scope. Its redaction is
      scoped by `(workflow, gate)` (D204), so chunk 3's declaration does not
      cover chunk 4's gate even though the payload schema is identical — which is
      the point: a second workflow must state its own answer. */
@@ -655,7 +655,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "lastDayWorked", "separationDate", "terminationEffectiveDate", "transactionNumber",
     "timekeeperComments", "observedExistingComments"),
 
-  /* The ALWAYS-GATE a third time, on this workflow's own scope (D204). */
+  /* The conditional name-only gate on this workflow's own scope (D204). */
   ...person(KUALI_FINALIZATION_GATE, "eid"),
   ...open(KUALI_FINALIZATION_GATE, "decision", "chosenFrom", "evidenceDigest", "reason"),
 
@@ -695,7 +695,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(SEPARATIONS_INPUT, "documentNumber", "searchTimeoutMs",
     "reRead.ordinal", "reRead.reason"),
 
-  /* The ALWAYS-GATE a FOURTH time, on the composition's own scope (D204) — and
+  /* The conditional name-only gate on the composition's own scope (D204) — and
      here it dominates three real writes across two systems. */
   ...person(SEPARATIONS_GATE, "eid"),
   ...open(SEPARATIONS_GATE, "decision", "chosenFrom", "evidenceDigest", "reason"),

@@ -1,14 +1,13 @@
 /**
- * `workflow:separations/verify-identity-approval` — the node immediately after
- * the gate, and the reason a resolved gate is not the end of the story.
+ * `workflow:separations/verify-identity-approval` — the node that converts the
+ * comparison packet into explicit identity authority.
  *
- * The command kernel proves that a gate result PARSES through the descriptor's
- * exact gate schema and stores it under the run's identity. It cannot prove the
- * result is about THIS run's evidence, that the approved EID was ever displayed,
- * or that `chosenFrom` is true — those are facts about the packet, and the
- * kernel does not read packets. So they are checked here, as a node, where each
- * refusal gets its own durable code and lands as a terminal `FailureRecord` an
- * operator can query on.
+ * For a supplied EID, it re-derives the packet digest and accepts only the EID
+ * UCPath actually read back; this yields machine-verification authority and no
+ * gate result. For a name-resolved EID, the command kernel first proves that a
+ * gate result parses through the descriptor's exact schema and stores it under
+ * the run's identity. This node then proves the decision describes THIS packet,
+ * the approved EID was shown, and `chosenFrom` is true.
  *
  * Every refusal is fail-closed by construction: there is no arm that downgrades
  * a failed check into a warning, and no arm that proceeds on the run's own
@@ -17,7 +16,7 @@
 import { z } from "zod";
 import { taskId } from "../../ids.js";
 import {
-  ApprovedIdentitySubjectSchema,
+  ResolvedIdentitySubjectSchema,
   IDENTITY_APPROVAL_REFUSAL_CODES,
   IdentityApprovalResultSchema,
 } from "../../separations/identity-approval.js";
@@ -28,20 +27,17 @@ import { defineTaskContract } from "../base.js";
 
 /**
  * The run's PRODUCT, and it is deliberately the whole thing rather than just the
- * subject.
+ * subject or lets a name-resolved identity self-qualify.
  *
- * `identity-gate-before-separation-commit` (ref write-safety §14.6 #2) requires the
- * terminal result to be graph-reachable only through the gate — and it caught a
- * real defect here: a terminal result that read the document number and the
- * employment picture straight off the PRE-gate comparison node had two ancestry
- * paths to the root that never crossed the gate. So the post-gate node carries
- * them forward instead. The rule generalises: in a gated graph, whatever the run
- * PRODUCES has to be a post-approval fact, or the gate dominates the decision
- * without dominating the output.
+ * `identity-gate-before-separation-commit` requires the terminal result to be
+ * graph-reachable only through this authority task. It caught a real defect in
+ * the earlier gate-only design: a terminal result read the document number and
+ * employment picture directly from the comparison node. Carrying them through
+ * this task makes both authority arms dominate the run's product.
  */
 export const VerifyIdentityApprovalOutputSchema = z.strictObject({
   documentNumber: z.string().min(1),
-  approved: ApprovedIdentitySubjectSchema,
+  approved: ResolvedIdentitySubjectSchema,
   jobs: JobSummaryClassificationSchema,
 });
 export type VerifyIdentityApprovalOutput = z.infer<typeof VerifyIdentityApprovalOutputSchema>;
@@ -54,14 +50,14 @@ export const SeparationsVerifyIdentityApproval = defineTaskContract({
     packet: IdentityEvidencePacketSchema,
     /** The digest the comparison node stored, re-checked against the packet. */
     evidenceDigest: FingerprintSchema,
-    /** The operator's typed gate result, exactly as authority stored it. */
-    approval: IdentityApprovalResultSchema,
+    /** The operator's typed gate result when the packet came from a name search. */
+    approval: IdentityApprovalResultSchema.optional(),
   }),
   output: VerifyIdentityApprovalOutputSchema,
   errorCodes: IDENTITY_APPROVAL_REFUSAL_CODES,
   subject: {
     kind: "none",
-    reason: "a pure fold over a stored gate result and the packet it was granted on",
+    reason: "a pure fold over the packet and its optional name-only gate result",
   },
   freshness: { defaultMaxAgeMs: Number.POSITIVE_INFINITY, defaultOverride: "forbidden" },
   provenance: { default: "derived" },
@@ -73,6 +69,7 @@ export const SeparationsVerifyIdentityApproval = defineTaskContract({
   example: {
     documentNumber: "4510",
     approved: {
+      authority: "operator-approval",
       emplId: "10873698",
       chosenFrom: "checked",
       evidenceDigest: "0".repeat(64),

@@ -52,7 +52,7 @@ const RUN_ID = uuidOf(1);
 const HASH = "a".repeat(64);
 const GATE_RESULT_SCHEMA_HASH = deriveSchemaHash(IdentityApprovalResultSchema, "output");
 const RESOLVED_AT = "2026-08-19T09:15:00.000Z";
-/** The declared workflow/gate pair D204 owns — `separations`, ALWAYS-GATE. */
+/** The declared name-only workflow/gate pair D204 owns — `separations`. */
 const WORKFLOW = "separations";
 const GATE = "identity-approval";
 

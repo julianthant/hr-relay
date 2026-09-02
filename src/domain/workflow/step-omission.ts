@@ -16,8 +16,9 @@
  *    cannot honestly rebuild), and which executing node would read an omitted
  *    one and therefore refuses BY NAME before anything starts.
  *
- * Gates in an omitted step still run — ALWAYS-GATE (D77, §4d) is not a step
- * choice. Transactions in an omitted step never run and mint no envelope:
+ * An omission never removes a gate node. A conditional gate still evaluates
+ * its own descriptor evidence; omission is not another way to suppress it.
+ * Transactions in an omitted step never run and mint no envelope:
  * the write sequencer's row is the only thing that may say a write happened
  * (D144), so a typed transaction number is a typed FACT a fold consumes, not
  * a substitute outcome.

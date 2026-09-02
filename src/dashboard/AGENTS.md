@@ -106,6 +106,37 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-02 — machine identity is not an approval card (D309).** The Separations identity-gate
+  section is reachable only for a `name-resolved` packet, and its current ceremony requires the
+  operator to type the EID. A supplied/read-back EID proceeds with machine-verification authority and
+  no gate result, so the BFF refuses an impossible historical supplied-EID park by name instead of
+  drawing it as approval work. The client never suppresses a gate from caller state and never labels
+  a skipped gate as an operator decision.
+
+- **2026-09-01 — a chip per fact is a table wearing borders, and the facts a row REPEATS belong
+  one level up (the run Logs observed ledger).** An observed log row drew one bordered `Chip` per
+  redacted value — twelve for a Kuali document read — each carrying its own direction icon, the
+  whole `field · key` label (which for a leaf key printed `documentNumber · documentNumber`) and,
+  for a served list, the raw JSON; with a warning `attempt 1` badge and the `KUALI` chip on every
+  row under a heading that already named `kuali/read-separation-document`. Every chip was true and
+  the operator's verdict was *"too cluttered"*. Four directions were drafted on a design canvas
+  over the real run's facts before code moved (ledger, transcript, cards, digest); the operator
+  chose the ledger. **What travels:** `logLedgerOf` in `log-panel-model.ts` folds a row into
+  direction sections → fields → key/value facts, and `LedgerSection` in `log-panel.tsx` draws it as
+  a two-column grid on the `--ds-w-chip-cell` track with a 2px rail and ONE caps label per
+  direction; a nested field is a caps sub-head over keys shown without the repeated prefix; a list
+  is a native `<details>` (count + clipped preview closed, one item per line open); the attempt
+  rides one meta line at the row's top; the system chip moved into the sticky producer heading via
+  `groupSystemOf`, which throws if a group's rows name two systems rather than picking one. **Two
+  contracts held byte-for-byte on purpose**: the listitem's `aria-label` and each fact's `title`
+  (`label: value`, the same string the chip carried) — the ledger and `logPillsOf` are asserted to
+  produce identical `label: value` sequences, so the hover, the search and the screen cannot
+  disagree. The parity spec now reads the direction tokens off the section labels instead of a
+  per-fact pill. **And a redesign of one row kind must leave the other kinds' pixels alone**: the
+  first pass grew the NOTE line's clock from `micro` to `meta` and dropped its `pl-5`, and 22
+  frozen run-detail references went red for a row the redesign never meant to touch. No reference
+  was re-frozen; the note and fence lines are back to their exact classes.
+
 - **2026-09-01 — a surface with no demo counterpart is drift even when every fact on it is true
   (D305, the Session Panel restored to the demo's strip).** The drawer had grown two things the demo
   never had: per-workflow pool BANDS (`Separations · no pool declaration · 0 active · pool v0 ·
@@ -1524,6 +1555,35 @@ binding would contradict them.
   Fixed workflow values use a disabled native select with their reason visible below it; Priority and
   Browser mode remain enabled selects. The disabled state carries the lock semantics while one
   two-column grid keeps every value control aligned.
+- **2026-09-01 — the queue footer's `#N` is the ATTEMPT, and the trace id is text, not a chip.** The
+  rebuild had read the demo's `#{row.run}` as the run's ordinal within its workflow and drawn it
+  beside a second, outlined chip for the trace id plus a fourth `attempt N` segment — three
+  provenance segments where the demo has one chip and one string (`DemoQueue.tsx:695-717`). The
+  operator ruled the number is the attempt count, so the footer is now `time · #attempt · trace ·
+  duration`: `#1` is drawn on every row (a slot that appears only on re-runs would shift the trace
+  id sideways between neighbours), the trace id is plain `fg-secondary` text, and the present
+  workflow ordinal moved into the ⓘ (`rowInfoFacts`, "Run number") beside its already-recorded
+  absence arm. Re-freezing this touched 216 references because every start modal and takeover
+  captures the queue behind it. The `took` prefix on a settled row went the same way: the operator
+  ruled the duration stands bare, as the demo's `row.duration` does; D124's arithmetic
+  (`endedAt − startedAt`, never `now`) is unchanged and the terminal status beside the number is
+  what tells a settled duration from a live one.
+- **2026-09-01 — the Steps screen's omission form validates with the DESCRIPTOR's schema, not a copy
+  of it (D307).** `foldStepOmissionFacts` reads each control's raw draft into the shape its declared
+  kind names — and nothing more — then hands the whole candidate to `stepOmissionFactsSchema(form)`,
+  the same schema the plan service and the run envelope parse with. Restating the MM/DD/YYYY or
+  eight-digit regexes in the surface would let the screen refuse a fact the server accepts, or accept
+  one it refuses; it also cost nothing to discover that `text-list` declares no minimum, so an empty
+  box is a valid empty list rather than a refusal the screen invented. Two consequences worth
+  keeping: the facts sent are `parsed.data`, never the candidate, because the declared schemas
+  TRANSFORM (a `text` fact is trimmed) and the operator must confirm the same bytes the server
+  receives; and the request fingerprint carries the RAW drafts, so a half-typed date already clears a
+  settled plan instead of leaving one standing over `06/3`. The cascade (`forces`) has exactly one
+  application point — `toggleStepSelection` recomputes it against the NEW selection, and a second
+  deletion inside the uncheck branch was a line no mutation could turn red. Finally, `omittedSteps`
+  on the plan response is reconciled as a SET against what the dialog sent, and a mismatch disables
+  Start with both lists named: a plan token that describes a different run is not a run to start
+  hopefully.
 
 - **2026-09-01 — a delegated MEMBER and a delegated CHILD are two different narrowings, and D308's
   🗑 needs the wider one.** `queue-row-actions.ts` already carried both facts: `isMember` is

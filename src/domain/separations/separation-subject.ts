@@ -11,8 +11,7 @@
  * ## It is a fold, not a delegation
  *
  * §5 item 10's recorded answer is **no delegation**: candidates are resolved
- * inline and handed to the ALWAYS-GATE packet, because under §4d the operator
- * sees them on every run anyway. So the resolution is one pure decision over two
+ * inline and handed to the identity packet. So the resolution is one pure decision over two
  * facts the graph already holds — the document's own EID field, and the UCPath
  * search on the document's name, which chunk 3 runs UNCONDITIONALLY for exactly
  * this reason.
@@ -22,9 +21,9 @@
  * When the document names the EID, the run is checking a person the department
  * wrote down. When it does not, the run is checking a person a NAME SEARCH
  * picked — and `deriveApprovalShape` turns `emplIdSource: "name-resolved"` into
- * a `type-the-eid` gate, the strictest control there is. That is the whole
- * safety property: an EID nobody wrote on the form can never be approved by one
- * click.
+ * a `type-the-eid` gate, the strictest control there is. An EID the document did
+ * supply proceeds only after UCPath's actual read-back agrees; an EID learned
+ * from the name search can never qualify itself for that machine path.
  *
  * ## What it refuses
  *

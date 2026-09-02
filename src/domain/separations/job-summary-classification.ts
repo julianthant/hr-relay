@@ -111,7 +111,7 @@ export function classifyJobStatus(hrStatus: string): JobStatusTier {
 
 /**
  * An absent cell renders as its OWN reason rather than as a blank or a dash.
- * The gate shows this string to a human deciding whether to terminate somebody;
+ * The identity packet carries this string for the authority deciding the subject;
  * "" and "the grid rendered this cell empty" are different facts and the second
  * one is the true one.
  */

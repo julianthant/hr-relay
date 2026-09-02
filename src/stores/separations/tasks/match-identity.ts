@@ -31,11 +31,11 @@ export const matchIdentityTask = defineTask(SeparationsMatchIdentity, {
     }
     const documentEidValue = input.documentEid.state === "present" ? input.documentEid.value : undefined;
     const documentEidPresent = documentEidValue !== undefined;
-    if (input.emplIdSource === "document-eid" && documentEidValue !== input.emplId) {
+    if ((input.emplIdSource === "document-eid" && documentEidValue !== input.emplId)
+      || (input.emplIdSource !== "document-eid" && documentEidPresent)) {
       return ctx.fail(
         "identity-source-inconsistent",
-        "document-eid was declared as the identity source, but the document field does not match the "
-        + "checked subject; correct the canonical input or identity-source classification before retrying.",
+        `identity source ${input.emplIdSource} is inconsistent with the document EID field; correct the canonical input or source classification before retrying.`,
       );
     }
 

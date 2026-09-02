@@ -628,7 +628,7 @@ describe("separations scenarios — the composition", () => {
    *
    * The composition puts an `always-rerun` node (`timecard-search`, by chunk 1's
    * rule that a node whose product is BROWSER state may not replay) UPSTREAM of
-   * the ALWAYS-GATE, with task nodes downstream of it — so a gate resume
+   * the name-only operator gate, with task nodes downstream of it — so a gate resume
    * necessarily re-executes it inside the same attempt. Two things must both
    * hold, and either one alone is not enough: the graph must be that shape (or
    * this whole class of defect is unreachable and the guard is theatre), and the
@@ -777,7 +777,7 @@ describe("separations scenarios — the composition", () => {
 
   it("separations/subject-mismatch — a page that moved after staging yields zero fence and zero click", async () => {
     // Ref write-safety beat ③, on all three writes. The composition is where this matters
-    // most: three fences over two systems, and the operator approved ONE person.
+    // most: three fences over two systems, all bound to ONE verified identity.
     for (const node of [SWEEP_NODE, TERMINATION_NODE]) {
       // The sweep needs something to sweep, or its probe settles
       // `already-present` before the subject is ever observed.
@@ -1039,7 +1039,7 @@ describe("separations scenarios — the composition", () => {
       input: {
         documentNumber: COMPOSITION_DOCUMENT,
         employeeName: plan.employeeName,
-        documentEid: { state: "present", value: COMPOSITION_EID },
+        documentEid: { state: "absent", reason: "name-only structural path" },
         nameSelection: nameSearch.selection,
       },
       ctx: taskCtx,
@@ -1077,7 +1077,7 @@ describe("separations scenarios — the composition", () => {
       formType: { observed: "RRSS Separation Request Form" as const, matches: true as const },
       employee: {
         name: { state: "present" as const, value: COMPOSITION_DOCUMENT_NAME },
-        eid: { state: "present" as const, value: COMPOSITION_EID },
+        eid: { state: "absent" as const, reason: "name-only structural path" },
         employeeType: { state: "present" as const, value: "Student" },
         studentTitleCode: { state: "present" as const, value: "004921 - STDT 2" },
         division: { state: "present" as const, value: "Housing/Dining/Hospitality" },
@@ -1289,11 +1289,13 @@ describe("separations scenarios — the composition", () => {
       assert.ok(walk.covered.includes(point), point);
     }
     const result = walk.result as {
+      approved: { authority: string };
       termination: { transactionNumber: string; approvalStatus: string };
       dates: { terminationEffectiveDate: string };
       department: { option: string };
       employment: { emplRecord: string };
     };
+    assert.equal(result.approved.authority, "operator-approval");
     // §4c's completion shape: the PAIR, on the terminal result.
     assert.equal(result.termination.transactionNumber, COMPOSITION_RECEIPT);
     assert.equal(result.termination.approvalStatus, "Pending");

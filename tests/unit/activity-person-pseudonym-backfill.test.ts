@@ -395,15 +395,10 @@ describe("reviewed activity person pseudonym backfill", () => {
       ...TERMINAL_RUN,
       envelope: { ...TERMINAL_RUN.envelope, workflow: "person-lookup" },
     });
+    const { emplId: _missingEmplId, ...subjectWithoutEid } = SEPARATIONS_RESULT.approved;
     const missingSubject = resultWith({
       ...SEPARATIONS_RESULT,
-      approved: {
-        chosenFrom: SEPARATIONS_RESULT.approved.chosenFrom,
-        evidenceDigest: SEPARATIONS_RESULT.approved.evidenceDigest,
-        ucpathName: SEPARATIONS_RESULT.approved.ucpathName,
-        nameTier: SEPARATIONS_RESULT.approved.nameTier,
-        approvalShape: SEPARATIONS_RESULT.approved.approvalShape,
-      },
+      approved: subjectWithoutEid,
     });
     const malformedSubject = resultWith({
       ...SEPARATIONS_RESULT,

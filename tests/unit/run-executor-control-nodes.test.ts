@@ -222,6 +222,77 @@ function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): 
 
 const SIGNAL = new AbortController().signal;
 
+const conditionalGateDescriptor = defineWorkflowDescriptor({
+  ...descriptorMeta("conditional-gate-fixture", "cq"),
+  flow: flow(ControlInput)
+    .gate("review", {
+      dependsOn: [],
+      label: "Review",
+      resolvedBy: "operator",
+      result: GateResultSchema,
+      when: { kind: "equals", of: { from: "input", path: "route" }, value: "right" },
+    })
+    .build({
+      schema: z.strictObject({ done: z.boolean() }),
+      dependsOn: ["review"],
+      derive: () => ({ done: true }),
+    }),
+});
+
+describe("conditional operator gates", () => {
+  it("records a false declared condition without a gate result or opened gate", async () => {
+    const harness = controlHarness(conditionalGateDescriptor);
+    const { database } = harness.authority;
+    database.authority.runs.enqueue(controlQueuedRun(conditionalGateDescriptor, "left"));
+    const outcome = await executeClaimedRun(harness.deps, {
+      ...claim(database, conditionalGateDescriptor),
+      signal: SIGNAL,
+    });
+    assert.equal(outcome.state, "done");
+    assert.deepEqual(database.authority.gateResults.listByRun(RUN_ID), []);
+    assert.equal(harness.emitter.events().some((event) => event.t === "gate.opened"), false);
+  });
+
+  it("parks when the declared evidence condition requires an operator", async () => {
+    const harness = controlHarness(conditionalGateDescriptor);
+    const { database } = harness.authority;
+    database.authority.runs.enqueue(controlQueuedRun(conditionalGateDescriptor, "right"));
+    const outcome = await executeClaimedRun(harness.deps, {
+      ...claim(database, conditionalGateDescriptor),
+      signal: SIGNAL,
+    });
+    assert.deepEqual(outcome, { state: "parked-gate", runId: RUN_ID, gateId: "review" });
+    assert.equal(harness.emitter.events().some((event) => event.t === "gate.opened"), true);
+  });
+
+  it("refuses a stored human result after current evidence makes the gate inapplicable", async () => {
+    const harness = controlHarness(conditionalGateDescriptor);
+    const { database } = harness.authority;
+    database.authority.runs.enqueue(controlQueuedRun(conditionalGateDescriptor, "left"));
+    const gateResult = {
+      schemaHash: deriveSchemaHash(GateResultSchema, "output"),
+      value: { approved: true },
+    };
+    assert.equal(database.authority.gateResults.insert({
+      runId: RUN_ID,
+      gateId: "review",
+      commandId: UUID_7,
+      expectedVersion: 1,
+      resolvedBy: "local-operator",
+      resolvedAt: harness.authority.clock.now().toISOString(),
+      checkpointFingerprint: deriveGateResultCheckpointFingerprint(gateResult),
+      result: gateResult,
+    }).state, "inserted");
+    const outcome = await executeClaimedRun(harness.deps, {
+      ...claim(database, conditionalGateDescriptor),
+      signal: SIGNAL,
+    });
+    assert.equal(outcome.state, "failed");
+    if (outcome.state !== "failed") return;
+    assert.match(harness.authority.database.authority.failures.get(outcome.failureId)?.summary ?? "", /inapplicable gate/u);
+  });
+});
+
 describe("branch + gate dispatch", () => {
   /**
    * Ref write-safety §14 / separations §4d: **no run mode can disable a gate.**

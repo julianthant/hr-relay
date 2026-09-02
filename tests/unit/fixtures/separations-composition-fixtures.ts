@@ -197,6 +197,7 @@ export const COMPOSITION_SCOPE_OUTPUTS = Object.freeze({
   approval: {
     documentNumber: COMPOSITION_DOCUMENT,
     approved: {
+      authority: "operator-approval",
       emplId: COMPOSITION_EID,
       chosenFrom: "checked" as const,
       evidenceDigest: "a".repeat(64),

@@ -671,6 +671,10 @@ export function identityGateReceiptEvidence(): IdentityGateReceiptEvidence {
     writtenAt: GATE_APPROVAL_AT,
   });
 
+  if (!("chosenFrom" in approvalOutput.approved)) {
+    throw new Error("the gate fixture requires an operator-approved identity subject");
+  }
+
   const gateResult = GateResultRecordSchema.parse({
     runId: GATE_RUN_ID,
     gateId: "identity-approval",

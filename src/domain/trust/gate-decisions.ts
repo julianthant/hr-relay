@@ -81,7 +81,8 @@ export type GateDecisionDeclaration = z.infer<typeof GateDecisionDeclarationSche
 
 export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze([
   /**
-   * The ALWAYS-GATE identity approval (ref write-safety §14.4). `rejected` terminalizes
+   * The name-resolved identity approval (ref write-safety §14.4). A supplied
+   * EID creates no gate row. When this gate does open, `rejected` terminalizes
    * the run, so both arms are real outcomes an operator-facing record must be
    * able to state — a receipt that could only describe approvals would be a
    * receipt that never shows a refusal.
@@ -94,19 +95,19 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
       {
         value: "approved",
         outcome: "approved",
-        summary: "an operator approved this identity at the ALWAYS-GATE",
+        summary: "an operator approved this name-resolved identity",
       },
       {
         value: "rejected",
         outcome: "rejected",
-        summary: "an operator REJECTED this identity at the ALWAYS-GATE",
+        summary: "an operator REJECTED this name-resolved identity",
       },
     ],
     boundEvidencePath: "evidenceDigest",
   },
   {
     /**
-     * Chunk 4's write carries the SAME ALWAYS-GATE, and it needs its own
+     * Chunk 4's write carries the same conditional name-only gate, and it needs its own
      * declaration rather than inheriting chunk 3's: a gate decision is scoped by
      * `(workflow, gate)` on purpose (D204), because the payload is authored per
      * gate and a second workflow reusing a schema is not the same thing as a
@@ -135,8 +136,8 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
   },
   {
     /**
-     * Chunk 5's Kuali finalization, declaring its own answer for the third time
-     * — and the repetition is the contract, not an oversight (D204). What
+     * Chunk 5's Kuali finalization declares its own name-only gate answer; the
+     * per-workflow declaration is the contract (D204). What
      * `rejected` means here is different again: no separation is recorded on the
      * source document, so the UCPath termination this run was going to cite
      * stays unattributed on the Kuali record an auditor reads.
@@ -162,7 +163,7 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     /**
      * Chunk 6's COMPOSITION, declaring its own answer for the fourth time — and
      * here the repetition earns the most, because this gate is the only one
-     * whose approval dominates THREE real writes across two systems. What
+     * whose name-only approval dominates THREE real writes across two systems. What
      * `rejected` means: no pending sweep, no UCPath termination and no Kuali
      * finalization happen at all, so the separation the department filed stays
      * exactly as they left it.

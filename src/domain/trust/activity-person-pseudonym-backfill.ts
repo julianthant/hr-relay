@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { NonNegativeIntSchema, RunIdSchema } from "../ids.js";
-import { ApprovedIdentitySubjectSchema } from "../separations/identity-approval.js";
+import { ResolvedIdentitySubjectSchema } from "../separations/identity-approval.js";
 import { TerminationReceiptSchema } from "../separations/termination-receipt.js";
 import { OmittedStepResultArmSchema } from "../workflow/step-omission.js";
 import { KualiSavedFinalizationProofSchema } from "../ui/kuali-separation-finalization.js";
@@ -43,7 +43,7 @@ export const ActivityPersonPseudonymBackfillUnavailableReasonSchema = z.enum([
  */
 export const CurrentSeparationsPseudonymSourceResultSchema = z.strictObject({
   documentNumber: z.string().min(1),
-  approved: ApprovedIdentitySubjectSchema,
+  approved: ResolvedIdentitySubjectSchema,
   employment: z.strictObject({
     emplRecord: z.string().min(1),
     payrollTitleCode: z.string().min(1),

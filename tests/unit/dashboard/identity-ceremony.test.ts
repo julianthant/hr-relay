@@ -1,11 +1,10 @@
 /**
  * THE THREE IDENTITY-APPROVAL CEREMONIES (ref write-safety §14.6 risk 1, D226).
  *
- * ALWAYS-GATE fires on every separation, so the dominant failure mode is
- * RUBBER-STAMPING: a control that is one click on every run trains the operator
- * to approve without reading. §14.6's answer is that the shape of the decision
- * changes with its risk and that the SERVER decides the shape — which is only
- * true if the client obeys it. These are the arms that make it true.
+ * The current separations gate fires for a name-resolved EID and uses the
+ * typed-EID ceremony. The other server-shaped ceremonies remain strict wire
+ * compatibility arms. The client must obey whichever shape was served; these
+ * tests make every refusal explicit.
  *
  * The load-bearing assertions here are the REFUSALS. A composer that answered
  * where the server asked a question would be the exact rot §14.6 predicts, and

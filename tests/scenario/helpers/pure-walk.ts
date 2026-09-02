@@ -149,6 +149,12 @@ export function walkDescriptor(
         break;
       }
       case "gate": {
+        if (node.resolvedBy === "operator" && node.when !== undefined
+          && !evaluateNodeCondition(node.when, scope)) {
+          skipped.push(id);
+          outputs[id] = undefined;
+          break;
+        }
         const supplied = requireSupplied(supply, id);
         outputs[id] = node.resolvedBy === "operator"
           ? node.result.parse(supplied)

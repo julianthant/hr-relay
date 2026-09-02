@@ -206,6 +206,7 @@ export const FINALIZATION_SCOPE_OUTPUTS = Object.freeze({
   approval: {
     documentNumber: FINALIZATION_DOCUMENT,
     approved: {
+      authority: "operator-approval",
       emplId: FINALIZATION_EID,
       chosenFrom: "checked" as const,
       evidenceDigest: "a".repeat(64),

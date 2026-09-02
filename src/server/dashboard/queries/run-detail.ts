@@ -1758,6 +1758,12 @@ function buildIdentityGatePayload(
   const found = evidence[0];
   if (found === undefined) throw new Error(`gate "${gate.nodeId}" evidence disappeared mid-projection`);
   const { packet, evidenceDigest } = found;
+  if (packet.emplIdSource !== "name-resolved") {
+    return missing(
+      `gate "${gate.nodeId}" is parked on ${packet.emplIdSource} evidence, but this build requires an `
+      + "operator decision only for a name-resolved EID; this historical run cannot be resolved under the current contract",
+    );
+  }
   const nameSearchEid = packet.nameSearch.status === "resolved" ? packet.nameSearch.candidate.eid : undefined;
   const options = packet.approvableEids.map((eid) => ({
     eid,

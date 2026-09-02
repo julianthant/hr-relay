@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
+import { flow } from "../../src/base/flow.js";
+import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
 import { createTaskProvenanceCollector } from "../../src/core/task-provenance.js";
 import type { RecordedDataBatch } from "../../src/core/task-provenance.js";
 import { JsonValueSchema } from "../../src/domain/canonical-json.js";
@@ -39,6 +41,8 @@ import {
   fixtureDescriptor,
 } from "./architecture/helpers/descriptor-fixtures.js";
 import { noSeparationWritePlan } from "../../src/domain/separations/write-plan.js";
+import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 
 const NOW = "2026-08-02T18:00:00.000Z";
 const EARLIER = "2026-08-02T16:00:00.000Z";
@@ -116,6 +120,41 @@ const IDENTITY_PACKET = buildIdentityEvidencePacket({
   } as never,
   nameSelection: person.selection,
   plan: noSeparationWritePlan("this fixture composes no separation write plan"),
+});
+
+const UnconditionalInput = z.strictObject({ name: z.string().min(1) });
+const UnconditionalCanonicalInput = defineCanonicalInput(UnconditionalInput, UnconditionalInput, [{ name: "Fixture Person" }]);
+const unconditionalGateDescriptor = defineWorkflowDescriptor({
+  id: "unconditional-gate-provenance-fixture",
+  version: 1,
+  contractFingerprint: HASH_A,
+  code: "ugp",
+  label: "Unconditional gate provenance fixture",
+  icon: "ShieldCheck",
+  category: "operations",
+  canonicalInput: UnconditionalCanonicalInput,
+  inputSubject: "name",
+  surface: { shape: "single" },
+  enqueue: "reject-active",
+  actions: STANDARD_WORKFLOW_ACTIONS,
+  surfaces: {},
+  details: [],
+  identity: { matchKey: (input) => `name:${input.name}` },
+  presentation: { title: (input) => input.name },
+  scenarios: ["unconditional-gate-provenance-fixture/happy"],
+  flow: flow(UnconditionalInput)
+    .gate("approval", {
+      dependsOn: [],
+      label: "Approval",
+      resolvedBy: "operator",
+      result: z.strictObject({ approved: z.boolean() }),
+    })
+    .step("searching", SearchPersonOrg, {
+      dependsOn: ["approval"],
+      replay: "checkpoint",
+      bind: ({ input }) => ({ kind: "by-name" as const, name: input.name, keepNonHdh: true }),
+    })
+    .build({ schema: SearchPersonOrg.output, dependsOn: ["searching"], derive: ({ outputs }) => outputs.searching }),
 });
 
 const IDENTITY_JOBS = {
@@ -353,6 +392,7 @@ describe("task provenance collector", () => {
     const output = {
       documentNumber: "4510",
       approved: {
+        authority: "operator-approval",
         emplId: "10873698",
         chosenFrom: "checked",
         evidenceDigest: HASH_A,
@@ -394,6 +434,105 @@ describe("task provenance collector", () => {
       clock: manualClock(new Date(NOW)),
       onRecord: recordBatch,
     }), /received undeclared upstream gate result not-declared/);
+  });
+
+
+  it("accepts only an inapplicable conditional gate as machine provenance", () => {
+    const comparison = identityComparisonCheckpoint();
+    const canonicalInput = {
+      documentNumber: "4510",
+      employeeName: "Battistessa, Johnnie",
+      emplId: candidate.emplId,
+      emplIdSource: "document-eid",
+      documentEid: { state: "present", value: candidate.emplId },
+    };
+    const executionIdentity = {
+      runId: RUN_ID,
+      traceId: "si-000001-aaaa",
+      attempt: 1,
+      workflowId: separationsIdentityCheckDescriptor.id,
+      nodeId: "approval",
+      taskId: SeparationsVerifyIdentityApproval.id,
+    };
+    const machine = createTaskProvenanceCollector({
+      descriptor: separationsIdentityCheckDescriptor,
+      execution: executionIdentity,
+      canonicalInput,
+      upstreamEvidence: { checkpoints: [comparison], skippedGates: ["identity-approval"] },
+      clock: manualClock(new Date(NOW)),
+      onRecord: recordBatch,
+    });
+    const output = SeparationsVerifyIdentityApproval.output.parse({
+      documentNumber: "4510",
+      approved: {
+        authority: "machine-verification",
+        source: "document-eid",
+        emplId: candidate.emplId,
+        evidenceDigest: deriveIdentityEvidenceDigest(IDENTITY_PACKET),
+        ucpathName: "Battistessa, Johnnie",
+        nameTier: "same",
+      },
+      jobs: IDENTITY_JOBS,
+    });
+    machine.recordData([
+      { direction: "read", field: "documentNumber", value: output.documentNumber },
+      { direction: "read", field: "approved", value: output.approved },
+      { direction: "read", field: "jobs", value: output.jobs },
+    ]);
+    assert.equal(machine.finalizeRead(output).provenance.every(({ source }) => source === "derived"), true);
+
+    const gateResult = {
+      runId: RUN_ID,
+      gateId: "identity-approval",
+      commandId: "cccccccc-0001-4000-8000-000100000000",
+      expectedVersion: 3,
+      resolvedBy: "local-operator",
+      resolvedAt: NOW,
+      checkpointFingerprint: HASH_B,
+      result: { schemaHash: HASH_A, value: { decision: "approved", eid: candidate.emplId, chosenFrom: "checked", evidenceDigest: HASH_A } },
+    };
+    assert.throws(() => createTaskProvenanceCollector({
+      descriptor: separationsIdentityCheckDescriptor,
+      execution: executionIdentity,
+      canonicalInput,
+      upstreamEvidence: { checkpoints: [comparison], skippedGates: ["identity-approval"], gateResults: [gateResult] },
+      clock: manualClock(new Date(NOW)),
+      onRecord: recordBatch,
+    }), /duplicate upstream evidence/);
+
+    const namePacket = { ...IDENTITY_PACKET, emplIdSource: "name-resolved" as const };
+    const nameValue = JsonValueSchema.parse(MatchIdentityOutputSchema.parse({
+      packet: namePacket,
+      evidenceDigest: deriveIdentityEvidenceDigest(namePacket),
+    }));
+    const nameComparison = RunCheckpointRecordSchema.parse({
+      ...comparison,
+      output: { ...comparison.output, value: nameValue },
+    });
+    assert.throws(() => createTaskProvenanceCollector({
+      descriptor: separationsIdentityCheckDescriptor,
+      execution: executionIdentity,
+      canonicalInput: {
+        ...canonicalInput,
+        emplIdSource: "name-resolved",
+        documentEid: { state: "absent", reason: "name-only test" },
+      },
+      upstreamEvidence: { checkpoints: [nameComparison], skippedGates: ["identity-approval"] },
+      clock: manualClock(new Date(NOW)),
+      onRecord: recordBatch,
+    }), /cannot skip required gate/);
+
+    assert.throws(() => createTaskProvenanceCollector({
+      descriptor: unconditionalGateDescriptor,
+      execution: {
+        ...execution("searching", SearchPersonOrg.id),
+        workflowId: unconditionalGateDescriptor.id,
+      },
+      canonicalInput: { name: "Fixture Person" },
+      upstreamEvidence: { checkpoints: [], skippedGates: ["approval"] },
+      clock: manualClock(new Date(NOW)),
+      onRecord: recordBatch,
+    }), /cannot skip unconditional gate/);
   });
 
   it("refuses missing, duplicate, wrong-direction, contradictory, and extra points", () => {

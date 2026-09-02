@@ -57,14 +57,14 @@
  *
  * **What a dry run of THIS workflow actually does**, so the expectations below
  * are not guesses (`src/core/write-sequencer.ts`, `src/core/run-executor.ts`):
- * the four read/fold nodes execute and checkpoint normally, the gate parks and
- * takes a REAL operator approval through the real command endpoint, and only
- * `finalize-kuali` branches on `envelope.dryRun` — its declared
+ * the four read/fold nodes execute and checkpoint normally, the canonical
+ * document-EID path verifies the UCPath read-back without opening a gate, and
+ * only `finalize-kuali` branches on `envelope.dryRun` — its declared
  * `dryRun: "stop-after-prepare"` runs beat ①'s durable-intent lookup, then the
  * live probe, then the real prepare against a live Kuali document (all twelve
  * controls staged and read back) with no fence minted and no `commit` invoked,
- * and ends the run. So the run DOES write spans, checkpoints, a gate row and a
- * real terminal settlement; what it never writes is the write-safety family,
+ * and ends the run. So the run DOES write spans, checkpoints and a real terminal
+ * settlement; it writes no operator gate row and never writes the write-safety family,
  * which is what the three zero deltas assert.
  *
  * The Kuali caveat this manifest is the instrument for: a Build document holds
@@ -78,13 +78,13 @@ import {
   type DryRunScenarioManifest,
 } from "../../../../src/domain/trust/dry-run-scenario.js";
 
-/** The graph, in execution order. Three roots, a gate, a check, one write. */
+/** The supplied-EID path, in execution order. Four reads, authority, one write. */
 const READ_NODES = ["job-summary", "name-search", "department-option", "comparison"] as const;
 const GATE_NODE = "identity-approval";
 const APPROVAL_NODE = "approval";
 const TRANSACTION_NODE = "finalize-kuali";
 
-const FULL_PATH = [...READ_NODES, GATE_NODE, APPROVAL_NODE, TRANSACTION_NODE] as const;
+const FULL_PATH = [...READ_NODES, APPROVAL_NODE, TRANSACTION_NODE] as const;
 
 /**
  * The four read/fold nodes checkpoint (`replay: "checkpoint"`); `approval` is
@@ -111,17 +111,9 @@ const EXPECTED_CHECKPOINTS = [
  * rows from earlier real proofs, so an absolute count would be false. */
 const NO_WRITES = { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 } as const;
 
-/** The gate is unconditional here (§4d): no preset, prefill, resume path or run
- * mode disables it, and `envelope.dryRun` is not an exception. */
-const IDENTITY_GATE = {
-  gate: GATE_NODE,
-  decision: "approved",
-  resolvedBy: "local-operator",
-} as const;
-
 /** The receipt service's complete ordered authority vocabulary for a preview.
- * Every graph node is present: the five checkpointed nodes and resolved gate
- * are verified, while the transaction has no checkpoint. The terminal result
+ * Every graph node is present: the five checkpointed nodes are verified, the
+ * inapplicable name-only gate is absent/non-mandatory, and the transaction has no checkpoint. The terminal result
  * and four cross-source comparisons are unknown; literal reload read-back is
  * absent. These are authority verdicts, not a lossy met/unmet projection. */
 const PREVIEW_RECEIPT_VERIFICATION = [
@@ -129,7 +121,7 @@ const PREVIEW_RECEIPT_VERIFICATION = [
   { obligation: "node.name-search", verdict: "verified", mandatory: false },
   { obligation: "node.department-option", verdict: "verified", mandatory: true },
   { obligation: "node.comparison", verdict: "verified", mandatory: false },
-  { obligation: "node.identity-approval", verdict: "verified", mandatory: false },
+  { obligation: "node.identity-approval", verdict: "absent", mandatory: false },
   { obligation: "node.approval", verdict: "verified", mandatory: true },
   { obligation: "node.finalize-kuali", verdict: "unknown", mandatory: true },
   { obligation: "completion.terminal-result", verdict: "unknown", mandatory: true },
@@ -160,9 +152,9 @@ const MANIFEST = {
       // Nothing sits downstream of the transaction node in this graph, so the
       // "it did more than expected" half is carried by the zero deltas and by
       // `staged: true` meaning staged-and-read-back rather than saved.
-      nodesExcluded: [],
+      nodesExcluded: [GATE_NODE],
       checkpoints: [...EXPECTED_CHECKPOINTS],
-      gateResults: [IDENTITY_GATE],
+      gateResults: [],
       durableDeltas: NO_WRITES,
       receipt: {
         result: "partial",

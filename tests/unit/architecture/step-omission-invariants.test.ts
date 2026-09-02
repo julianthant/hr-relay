@@ -35,12 +35,12 @@
  *     with the exact pinned field keys and no duplicate key, declares exactly
  *     the pinned `produces` node ids, and reaches the descriptor unchanged.
  * (d) `planStepOmissions` never classifies ANY gate node as `asserted` or
- *     `omitted` — the ALWAYS-GATE rule (D77) is a planner invariant, not a
- *     per-descriptor promise — for three plan shapes per declaration: the step
+ *     `omitted` — an omission cannot suppress or manufacture a gate decision —
+ *     for three plan shapes per declaration: the step
  *     alone, the step together with its cascade `forces` set, and every
  *     omittable step of the descriptor at once. Separations' `identity-approval`
- *     gate is required to be present and to EXECUTE (classified neither way,
- *     under a refusal-free plan) in all three, and each plan's asserted/omitted
+ *     gate is required to remain present (classified neither way) in all three;
+ *     its own evidence condition still decides whether it opens. Each plan's asserted/omitted
  *     node ids are pinned: `dates` and `receipt` are the only asserted nodes,
  *     while `clear-pending`, `file-termination` and `finalize-kuali` are only
  *     ever omitted.

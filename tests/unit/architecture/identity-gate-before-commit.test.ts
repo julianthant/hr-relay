@@ -1,73 +1,65 @@
 /**
- * Ref write-safety §14.6 #2 — the identity-approval gate cannot be bypassed by graph
- * shape: in a separation-class descriptor, a commit AND the terminal result are
- * graph-reachable ONLY through an operator gate node. The checker walks every
- * dependsOn ancestry path from a sink toward the graph roots; any path that
- * reaches a root without crossing an operator gate leaves that sink un-gated.
+ * Ref write-safety §14's identity authority cannot be bypassed by graph shape.
+ * Every separation commit and identity-bearing terminal result must cross the
+ * `verify-identity-approval` task. That task produces one of two explicit
+ * authorities: machine verification of an independently supplied EID against
+ * UCPath's actual read-back, or an operator approval for a name-resolved EID.
  *
- * **The terminal half landed with separations chunk 3 (2026-08-12).** Until then
- * only transaction nodes were audited, which was the whole truth while every
- * separation-class descriptor that existed was read-only and gate-free. It stops
- * being the whole truth the moment a read-only chunk produces an APPROVED
- * SUBJECT that a later composition consumes as a write's `expected` side: a
- * terminal result reachable without the gate would hand that composition an
- * identity no human ever confirmed, and the transaction it eventually feeds
- * would be perfectly gated on a graph that never asked. Both sinks are audited,
- * and the terminal arm is what `separations-identity-check` — the first
- * registered separation-class descriptor with a gate — actually exercises.
+ * The name-only branch remains a real operator gate. Its condition is graph
+ * data, fixed to `comparison.packet.emplIdSource === "name-resolved"`; neither
+ * a caller nor the dashboard can suppress it. The supplied-EID branch skips
+ * that gate without manufacturing a human decision, then the same authority
+ * task validates the packet and produces machine-verification provenance.
  *
- * ALWAYS-GATE is ratified for separations (D77): every registered descriptor
- * whose id names the separation class MUST pass. The checker is also executed
- * against fixtures BOTH ways — the graph fixture's gated transaction passes and
- * an ungated separation-shaped graph fails — which keeps the sweep non-vacuous
- * even for the arms no registered descriptor reaches yet.
+ * The ancestry walk also catches a side read added after identity resolution:
+ * a transaction may consume only facts that were inputs to the authority task.
+ * This preserves the original D77 guard's useful dominance property while
+ * replacing its superseded claim that every separation requires a human gate.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
+import { SeparationsVerifyIdentityApproval } from "../../../src/domain/contracts/separations/verify-identity-approval.js";
 import { IdentityApprovalResultSchema } from "../../../src/domain/separations/identity-approval.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import type { RuntimeFlowNode } from "../../../src/domain/workflow/graph.js";
-import { fixtureDescriptor } from "./helpers/descriptor-fixtures.js";
 import {
   writeFixtureDescriptor,
   writeFixtureSaveDescriptor,
 } from "../fixtures/write-sequencer-fixtures.js";
 
-/** Workflow ids that carry ref write-safety §14's ALWAYS-GATE separation policy. */
 const SEPARATION_CLASS_PATTERN = /separation|termination|offboard/iu;
+const IDENTITY_AUTHORITY_TASK_ID = String(SeparationsVerifyIdentityApproval.id);
+const IDENTITY_GATE_ID = "identity-approval";
+const IDENTITY_GATE_CONDITION = {
+  kind: "equals",
+  of: { from: "node", nodeId: "comparison", path: "packet.emplIdSource" },
+  value: "name-resolved",
+} as const;
 
-interface UngatedPath {
+interface UnauthorisedPath {
   readonly transactionId: string;
   readonly path: readonly string[];
 }
 
-/**
- * The nodes the gate's decision was made IN THE PRESENCE OF: every operator gate
- * plus its whole transitive `dependsOn` closure.
- *
- * This set is what makes the walk below mean the right thing. The property that
- * matters is not "the gate is literally on every edge" — a post-gate node has to
- * be able to read the evidence it is checking the approval against, so it
- * necessarily also depends on the node that produced that evidence. What must
- * never happen is data reaching a sink that the OPERATOR NEVER SAW: a side read
- * hanging off the graph root, feeding the commit, invisible at the gate. A node
- * inside the gate's own ancestry was, by the descriptor's own declaration, part
- * of the decision; a node outside it was not.
- */
-function gateAncestry(nodes: readonly RuntimeFlowNode[]): ReadonlySet<string> {
+function isIdentityAuthorityNode(node: RuntimeFlowNode): boolean {
+  return node.kind === "task" && String(node.uses.id) === IDENTITY_AUTHORITY_TASK_ID;
+}
+
+/** The identity authority task and every fact it consumed. */
+function identityAuthorityAncestry(nodes: readonly RuntimeFlowNode[]): ReadonlySet<string> {
   const byId = new Map(nodes.map((node) => [String(node.id), node]));
   const seen = new Set<string>();
   const visit = (id: string): void => {
     if (seen.has(id)) return;
     seen.add(id);
     const node = byId.get(id);
-    if (node === undefined) throw new Error(`gate ancestry reached unknown node "${id}"`);
+    if (node === undefined) throw new Error(`identity authority ancestry reached unknown node "${id}"`);
     for (const dependency of node.dependsOn) visit(String(dependency));
   };
   for (const node of nodes) {
-    if (node.kind === "gate" && node.resolvedBy === "operator") visit(String(node.id));
+    if (isIdentityAuthorityNode(node)) visit(String(node.id));
   }
   return seen;
 }
@@ -76,12 +68,12 @@ function walkToRoots(
   nodes: readonly RuntimeFlowNode[],
   sinkId: string,
   starts: readonly string[],
-): readonly UngatedPath[] {
+): readonly UnauthorisedPath[] {
   const byId = new Map(nodes.map((node) => [String(node.id), node]));
-  const gated = gateAncestry(nodes);
-  const violations: UngatedPath[] = [];
+  const authorised = identityAuthorityAncestry(nodes);
+  const violations: UnauthorisedPath[] = [];
   const walk = (node: RuntimeFlowNode, path: readonly string[]): void => {
-    if (gated.has(String(node.id))) return;
+    if (authorised.has(String(node.id))) return;
     if (node.dependsOn.length === 0) {
       violations.push({ transactionId: sinkId, path: [...path, String(node.id)] });
       return;
@@ -102,28 +94,18 @@ function walkToRoots(
   return violations;
 }
 
-/**
- * Every dependsOn ancestry path from each transaction node must reach the gate's
- * ancestry before a root. Returns each violating path.
- */
-export function ungatedTransactionPaths(nodes: readonly RuntimeFlowNode[]): readonly UngatedPath[] {
+export function unauthorisedTransactionPaths(
+  nodes: readonly RuntimeFlowNode[],
+): readonly UnauthorisedPath[] {
   return nodes.flatMap((node) => (
     node.kind === "transaction" ? walkToRoots(nodes, String(node.id), [String(node.id)]) : []
   ));
 }
 
-/**
- * The same walk from the TERMINAL RESULT's declared dependencies.
- *
- * A read-only separation chunk has no transaction node, and its product — an
- * approved subject — is exactly what a later composition binds a real write's
- * `expected` side to. So the terminal result is a sink in its own right, and the
- * gate must dominate it too.
- */
-export function ungatedTerminalPaths(
+export function unauthorisedTerminalPaths(
   nodes: readonly RuntimeFlowNode[],
   terminalDependsOn: readonly string[],
-): readonly UngatedPath[] {
+): readonly UnauthorisedPath[] {
   return walkToRoots(nodes, "<terminal>", terminalDependsOn.map(String));
 }
 
@@ -132,111 +114,112 @@ function terminalDependsOnOf(descriptor: AnyWorkflowDescriptor): readonly string
   return result.dependsOn.map(String);
 }
 
-function auditDescriptor(descriptor: AnyWorkflowDescriptor): readonly UngatedPath[] {
-  return ungatedTransactionPaths(descriptorRuntimeNodes(descriptor));
+function auditDescriptor(descriptor: AnyWorkflowDescriptor): readonly UnauthorisedPath[] {
+  return unauthorisedTransactionPaths(descriptorRuntimeNodes(descriptor));
 }
 
-describe("identity gate before commit", () => {
-  it("every separation-class registered descriptor routes its commits through an operator gate", () => {
+function authorityFixtureNodes(withSideRead = false): readonly RuntimeFlowNode[] {
+  return [
+    { kind: "task", id: "comparison", dependsOn: [], uses: { id: "fixture:comparison" } },
+    {
+      kind: "gate",
+      id: IDENTITY_GATE_ID,
+      resolvedBy: "operator",
+      dependsOn: ["comparison"],
+      result: IdentityApprovalResultSchema,
+      when: IDENTITY_GATE_CONDITION,
+    },
+    {
+      kind: "task",
+      id: "approval",
+      dependsOn: ["comparison", IDENTITY_GATE_ID],
+      uses: SeparationsVerifyIdentityApproval,
+    },
+    ...(withSideRead ? [{ kind: "task", id: "side-read", dependsOn: [], uses: { id: "fixture:side-read" } }] : []),
+    {
+      kind: "transaction",
+      id: "terminate",
+      dependsOn: withSideRead ? ["approval", "side-read"] : ["approval"],
+    },
+  ] as unknown as readonly RuntimeFlowNode[];
+}
+
+describe("identity authority before commit", () => {
+  it("routes every separation-class commit through typed identity authority", () => {
     for (const descriptor of DESCRIPTORS) {
       if (!SEPARATION_CLASS_PATTERN.test(String(descriptor.id))) continue;
-      const violations = auditDescriptor(descriptor);
       assert.deepEqual(
-        violations,
+        auditDescriptor(descriptor),
         [],
-        `${descriptor.id}: a separation commit is reachable without the identity-approval gate`,
+        `${descriptor.id}: a separation commit is reachable without verified identity authority`,
       );
     }
   });
 
-  it("accepts the gated fixture transaction (positive executable arm)", () => {
-    // fixture-graph's "submit" transaction depends on the "approval" operator
-    // gate: every ancestry path crosses it.
-    assert.deepEqual(auditDescriptor(fixtureDescriptor), []);
+  it("accepts a transaction dominated by the identity authority task", () => {
+    assert.deepEqual(unauthorisedTransactionPaths(authorityFixtureNodes()), []);
   });
 
-  it("flags an ungated transaction (negative executable arm)", () => {
-    // The write-fixture descriptors are deliberately gate-free (they are NOT
-    // separation-class workflows); the checker must SEE that, or the sweep
-    // above could pass by being blind.
+  it("flags transactions without the identity authority task", () => {
     for (const descriptor of [writeFixtureDescriptor, writeFixtureSaveDescriptor]) {
-      assert.ok(
-        !SEPARATION_CLASS_PATTERN.test(String(descriptor.id)),
-        `${descriptor.id} must not claim the separation class while ungated`,
-      );
+      assert.ok(!SEPARATION_CLASS_PATTERN.test(String(descriptor.id)), String(descriptor.id));
       const violations = auditDescriptor(descriptor);
       assert.equal(violations.length, 1, String(descriptor.id));
-      assert.equal(violations[0].transactionId, "submit-write");
+      assert.equal(violations[0]?.transactionId, "submit-write");
     }
   });
 
-  it("catches a gate that guards only ONE of two paths to the commit", () => {
-    const nodes = [
-      { kind: "task", id: "resolve", dependsOn: [] },
-      { kind: "gate", id: "identity-approval", resolvedBy: "operator", dependsOn: ["resolve"] },
-      { kind: "task", id: "side-read", dependsOn: [] },
-      { kind: "transaction", id: "terminate", dependsOn: ["identity-approval", "side-read"] },
-    ] as unknown as readonly RuntimeFlowNode[];
-    const violations = ungatedTransactionPaths(nodes);
+  it("catches a side read that bypasses identity authority", () => {
+    const violations = unauthorisedTransactionPaths(authorityFixtureNodes(true));
     assert.equal(violations.length, 1);
-    assert.deepEqual(violations[0].path, ["terminate", "side-read"]);
+    assert.deepEqual(violations[0]?.path, ["terminate", "side-read"]);
   });
 
-  it("routes every separation-class TERMINAL RESULT through the gate too", () => {
+  it("routes every identity-bearing separation terminal through typed authority", () => {
     let audited = 0;
     for (const descriptor of DESCRIPTORS) {
       if (!SEPARATION_CLASS_PATTERN.test(String(descriptor.id))) continue;
       const nodes = descriptorRuntimeNodes(descriptor);
-      // Only descriptors that HAVE a gate owe this: chunks 1 and 2 read a
-      // timecard and a document and resolve no person, so §14.8's two checkable
-      // facts hold for them and the sweep must not claim otherwise.
-      if (!nodes.some((node) => node.kind === "gate" && node.resolvedBy === "operator")) continue;
+      if (!nodes.some(isIdentityAuthorityNode)) continue;
       audited += 1;
       assert.deepEqual(
-        ungatedTerminalPaths(nodes, terminalDependsOnOf(descriptor)),
+        unauthorisedTerminalPaths(nodes, terminalDependsOnOf(descriptor)),
         [],
-        `${descriptor.id}: the terminal result is derivable without the identity-approval gate`,
+        `${descriptor.id}: the terminal result is derivable without verified identity authority`,
       );
     }
-    assert.ok(audited > 0, "no registered separation-class descriptor declares an operator gate");
+    assert.ok(audited > 0, "no registered separation-class descriptor declares identity authority");
   });
 
-  it("flags a separation-shaped graph whose terminal result reads what the gate never saw (negative arm)", () => {
-    const nodes = [
-      { kind: "task", id: "job-summary", dependsOn: [] },
-      { kind: "gate", id: "identity-approval", resolvedBy: "operator", dependsOn: ["job-summary"] },
-      { kind: "task", id: "approval", dependsOn: ["job-summary", "identity-approval"] },
-      // A read hanging off the graph root that the gate does NOT depend on:
-      // the operator's decision was made without ever seeing it.
-      { kind: "task", id: "side-read", dependsOn: [] },
-    ] as unknown as readonly RuntimeFlowNode[];
-    // The post-gate node may read the evidence it is checking: `job-summary` is
-    // inside the gate's own ancestry, so that path is part of the decision.
-    assert.deepEqual(ungatedTerminalPaths(nodes, ["approval"]), []);
-    const violations = ungatedTerminalPaths(nodes, ["approval", "side-read"]);
+  it("flags a terminal result that reads a fact the authority task never consumed", () => {
+    const nodes = authorityFixtureNodes(true).filter((node) => node.kind !== "transaction");
+    assert.deepEqual(unauthorisedTerminalPaths(nodes, ["approval"]), []);
+    const violations = unauthorisedTerminalPaths(nodes, ["approval", "side-read"]);
     assert.equal(violations.length, 1);
-    assert.deepEqual(violations[0].path, ["<terminal>", "side-read"]);
+    assert.deepEqual(violations[0]?.path, ["<terminal>", "side-read"]);
   });
 
-  it("binds the registered gate to ref write-safety §14.4's typed result, not to a free-form payload", () => {
-    // §14.6 risk 5: a gate result that is not schema-bound becomes free-form
-    // control state. The kernel compares an incoming payload against THIS hash,
-    // so asserting the registered gate carries the identity-approval schema is
-    // what makes "only an IdentityApprovalResult resolves this gate" true.
-    const expected = deriveSchemaHash(IdentityApprovalResultSchema, "output");
-    const gates = DESCRIPTORS
-      .filter((descriptor) => SEPARATION_CLASS_PATTERN.test(String(descriptor.id)))
-      .flatMap((descriptor) => descriptorRuntimeNodes(descriptor)
-        .filter((node) => node.kind === "gate" && node.resolvedBy === "operator")
-        .map((node) => ({ workflow: String(descriptor.id), node })));
-    assert.ok(gates.length > 0, "no separation-class operator gate is registered");
-    for (const { workflow, node } of gates) {
-      assert.equal(
-        node.kind === "gate" ? deriveSchemaHash(node.result, "output") : "not-a-gate",
-        expected,
-        `${workflow}: gate "${String(node.id)}" is not bound to IdentityApprovalResultSchema`,
-      );
+  it("keeps the name-resolved branch behind the exact typed operator gate", () => {
+    const expectedSchemaHash = deriveSchemaHash(IdentityApprovalResultSchema, "output");
+    let gates = 0;
+    for (const descriptor of DESCRIPTORS) {
+      if (!SEPARATION_CLASS_PATTERN.test(String(descriptor.id))) continue;
+      const nodes = descriptorRuntimeNodes(descriptor);
+      for (const node of nodes) {
+        if (node.kind !== "gate" || String(node.id) !== IDENTITY_GATE_ID) continue;
+        gates += 1;
+        assert.equal(node.resolvedBy, "operator", String(descriptor.id));
+        assert.deepEqual(node.when, IDENTITY_GATE_CONDITION, String(descriptor.id));
+        assert.equal(deriveSchemaHash(node.result, "output"), expectedSchemaHash, String(descriptor.id));
+        const authority = nodes.find(isIdentityAuthorityNode);
+        assert.ok(authority, `${descriptor.id}: identity gate has no authority task`);
+        assert.ok(
+          authority.dependsOn.map(String).includes(IDENTITY_GATE_ID),
+          `${descriptor.id}: authority task does not depend on the name-only gate`,
+        );
+      }
     }
+    assert.ok(gates > 0, "no separation-class identity gate is registered");
   });
 
   it("keeps the separation-class pattern anchored to real vocabulary", () => {

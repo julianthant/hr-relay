@@ -206,8 +206,8 @@ export const UcpathUsDateSchema = z.string().regex(
 export const UcpathTerminationTargetSchema = z.strictObject({
   emplId: EidSchema,
   /**
-   * The name the operator approved at the ALWAYS-GATE, compared against Page
-   * B's own rendering before anything is fenced. It is REQUIRED: a termination
+   * The name established by machine verification or operator approval, compared
+   * against Page B's own rendering before anything is fenced. It is REQUIRED: a termination
    * whose subject binding is optional is a termination with no wrong-person
    * control, which is `T002173685`.
    */
