@@ -724,7 +724,7 @@ total attachment bytes, redaction facts, and the strict content list. Missing id
 does not reconstruct an export. It is deliberately a bundle metadata/export surface, **not** the
 unserved generic artifact-byte route in ref frontend-backend-integration §3.6.
 
-#### 2.2.2 Selected browser-lease screenshots (D305)
+#### 2.2.2 Selected browser-lease screenshots (D306)
 
 The Run Options checkbox is an explicit operator-requested diagnostic policy, stored on the start
 plan and copied unchanged to the run envelope. It defaults on for a new dashboard plan and resets

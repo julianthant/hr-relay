@@ -1675,11 +1675,11 @@ doc: 04 §Search runs across dates / view screenshots / export Excel · ref:fron
 
 > DCR3–DCR6 deliver current-corpus search authority/transport, its Separations Top Bar surface,
 > actor-attributed evidenced XLSX and the strict immutable-receipt rerun comparison. D291/D292
-> serve verified run/Archive capture bytes, and D305 adds selected browser-lease screenshots plus
+> serve verified run/Archive capture bytes, and D306 adds selected browser-lease screenshots plus
 > the shared Logs/Receipt viewer; only the broader generic resource/gallery family remains open.
 
 builds:
-- [x] BOTH verified run/Archive screenshot evidence — D291/D292 serve diagnostic-index-authorized bytes; D305 persists selected browser-lease screenshots and mounts one verified collection in Logs and Receipt. The broader generic resource-status/gallery family remains open by name
+- [x] BOTH verified run/Archive screenshot evidence — D291/D292 serve diagnostic-index-authorized bytes; D306 persists selected browser-lease screenshots and mounts one verified collection in Logs and Receipt. The broader generic resource-status/gallery family remains open by name
 - [ ] FE the archive's `Change records` section — the record rides `ArchiveSweepWire.changeRecord` today, so this is buildable with no wire change (fidelity-3 AR234)
 - [x] BOTH the DCR3 cross-date search authority + transport — strict bounded route and typed client over the measured current separations corpus
 - [x] FE the DCR4 cross-date search surface — the Top Bar defaults to durable Separations corpus search and retains an explicit served-day scope
@@ -1690,7 +1690,7 @@ needs:
 - cross-cutting
 
 log:
-- 2026-09-01 | D305 browser evidence | per-run Headless/Headed is immutable start/run authority; selected browser-lease screenshots persist as restricted diagnostic attachments and the same verified collection renders in Logs and Receipt
+- 2026-09-01 | D306 browser evidence | per-run Headless/Headed is immutable start/run authority; selected browser-lease screenshots persist as restricted diagnostic attachments and the same verified collection renders in Logs and Receipt
 - 2026-08-29 | R-DCR close | DCR1 and DCR3–DCR6 closed: D288 serves honest unavailable for the seven current ineligible Separations rows while strict fixtures prove the populated arm; D289's exact receipt comparison is built; D75's solo request checkpoint attributes new XLSX v2 evidence; artifact bytes/screenshots remain open
 - 2026-08-28 | DCR receive | DCR3–DCR5 search authority/transport, Separations surface and evidenced XLSX delivered; artifact bytes and D289 comparison implementation remain open
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code

@@ -367,7 +367,7 @@ loss makes ref write-safety §4 recovery the owner; it never becomes detached li
   properties, downloads and exclusivity. Any drift closes the old resource with an accepted proof
   BEFORE a replacement is authenticated; a context configured under another run snapshot is never
   reused, on disk or in memory (§1's profile path).
-- **Browser presentation is immutable run input (D305).** A dashboard start plan records exactly
+- **Browser presentation is immutable run input (D306).** A dashboard start plan records exactly
   `headless` or `headed`, copies it into every fan-out/retry/relaunch envelope, and the worker binds
   that value before the first lease. It is part of in-memory reuse compatibility and the persistent
   profile partition, so changing presentation closes the old context before opening another one.

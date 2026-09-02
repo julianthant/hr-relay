@@ -3214,7 +3214,7 @@ nothing — it is explicitly withheld from the rail and no consumer of `sections
 exists. A fetched section with no reader is a wire round trip that cannot be observed to be wrong,
 which is worse than an unserved one.
 
-Two D19 arms carry over, with D305's deliberate visibility amendment. **(b) Screenshots is not a
+Two D19 arms carry over, with D306's deliberate visibility amendment. **(b) Screenshots is not a
 tab** — captures are evidence. The same verified capture collection renders compactly at the foot
 of Logs, where the operator watches the run, and fully inside Receipt beside the outcome it
 qualifies; the honest short receipt keeps the full treatment before a final receipt exists. Both
