@@ -14,7 +14,7 @@
 
 | Run | Task id / corrections | Host id | Project id | Launch title/time | Worktree/branch | Report | Status | Last cursor |
 |---|---|---|---|---|---|---|---|---|
-| R4a | pending fresh launch | pending | pending | `Separations R4a — Fresh Rehearsal and Target Packet` / pending | fresh worktree from `feature/03b-live-close` | `reports/r4a-fresh-rehearsal-and-target-packet.md` | briefed | none |
+| R4a | `client-new-thread:97be6d8a-f75f-4200-92c3-709a0d9e1b4f` (setup-pending client id; replace only with the tool-returned canonical task id) | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Separations R4a — Fresh Rehearsal and Target Packet` / 2026-09-02 12:02 PDT | `/Users/julianhein/.codex/worktrees/8164/hr-automation-rebuild`, detached from `e8cd9dc5` while setup resolves | `reports/r4a-fresh-rehearsal-and-target-packet.md` | setup-pending | none |
 | R4b | not briefed; fresh supervisor required | — | — | — | fresh worktree after R4a integration | `reports/r4b-controlled-proof-and-close.md` | blocked on R4a packet + exact operational authorization | none |
 
 ## Dispatch ledger
