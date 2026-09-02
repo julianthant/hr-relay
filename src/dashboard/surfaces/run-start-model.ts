@@ -9,7 +9,6 @@
  *
  * Everything here is D251: three facts the modal already held and did not draw.
  */
-import type { JsonValue } from "../../domain/canonical-json.js";
 import type { EnqueuePolicy } from "../../domain/workflow/presentation.js";
 import {
   stepOmissionFactsSchema,
@@ -276,8 +275,23 @@ export function initialStepOmissionDraft(form: StepOmissionForm): StepOmissionDr
  * or refuse one it accepts.
  */
 export type StepOmissionFieldRead =
-  | Readonly<{ state: "value"; value: JsonValue }>
+  | Readonly<{ state: "value"; value: StepOmissionFactValue }>
   | Readonly<{ state: "unreadable"; message: string }>;
+
+/**
+ * What a fact IS on the wire — the closed leaf `StartPlanSubmissionSchema`
+ * declares, and exactly the four shapes the seven declared kinds produce. It is
+ * narrower than `JsonValue` on purpose: an open value here is a value the wire
+ * would drop without saying so.
+ */
+export type StepOmissionFactValue = string | number | boolean | readonly string[];
+
+/** the parsed value of one declared field, or a loud refusal — never a widened `unknown` */
+function asFactValue(field: string, value: unknown): StepOmissionFactValue {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) return Object.freeze([...value]);
+  throw new Error(`omission field "${field}" parsed to a value no declared kind produces`);
+}
 
 export function readStepOmissionField(
   field: StepOmissionField,
@@ -318,12 +332,12 @@ export function readStepOmissionField(
  * the schema has one; nothing here restates a regex the domain already owns.
  */
 export type StepOmissionFactsFold =
-  | Readonly<{ state: "facts"; facts: Readonly<Record<string, JsonValue>> }>
+  | Readonly<{ state: "facts"; facts: Readonly<Record<string, StepOmissionFactValue>> }>
   | Readonly<{ state: "invalid"; errors: Readonly<Record<string, string>> }>;
 
 export function foldStepOmissionFacts(form: StepOmissionForm, draft: StepOmissionDraft): StepOmissionFactsFold {
   const errors: Record<string, string> = {};
-  const candidate: Record<string, JsonValue> = {};
+  const candidate: Record<string, StepOmissionFactValue> = {};
   for (const field of form.fields) {
     const read = readStepOmissionField(field, draft[field.key]);
     if (read.state === "unreadable") errors[field.key] = read.message;
@@ -347,7 +361,12 @@ export function foldStepOmissionFacts(form: StepOmissionForm, draft: StepOmissio
     // refused.
     throw new Error("a step omission form refused without naming a field");
   }
-  return { state: "facts", facts: Object.freeze({ ...parsed.data } as Record<string, JsonValue>) };
+  // `parsed.data` — never `candidate` — because the declared schemas TRANSFORM
+  // (a `text` fact is trimmed), and what the operator confirms and the server
+  // receives has to be the same bytes.
+  const facts: Record<string, StepOmissionFactValue> = {};
+  for (const [key, value] of Object.entries(parsed.data)) facts[key] = asFactValue(key, value);
+  return { state: "facts", facts: Object.freeze(facts) };
 }
 
 /** the Steps screen's view of one step — the bootstrap projection, narrowed to what the folds read */

@@ -139,6 +139,7 @@ import {
   type StepOmissionDraft,
   type StepOmissionFactDraft,
   type StepOmissionFactsFold,
+  type StepOmissionFactValue,
 } from "./run-start-model.js";
 import {
   adjacentRunStartStage,
@@ -147,7 +148,6 @@ import {
   type RunStartStage,
 } from "./run-start-timeline.js";
 import { versionTag } from "./format.js";
-import type { JsonValue } from "../../domain/canonical-json.js";
 import type { StepOmissionForm } from "../../domain/workflow/step-omission.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration §3.4) */
@@ -287,13 +287,43 @@ interface StepOmissionRow {
  */
 function completeStepOmissions(
   rows: readonly StepOmissionRow[],
-): readonly Readonly<{ step: string; facts: Readonly<Record<string, JsonValue>> }>[] | null {
-  const entries: Readonly<{ step: string; facts: Readonly<Record<string, JsonValue>> }>[] = [];
+): readonly Readonly<{ step: string; facts: Readonly<Record<string, StepOmissionFactValue>> }>[] | null {
+  const entries: Readonly<{ step: string; facts: Readonly<Record<string, StepOmissionFactValue>> }>[] = [];
   for (const row of rows) {
     if (row.fold.state !== "facts") return null;
     entries.push({ step: row.step, facts: row.fold.facts });
   }
   return Object.freeze(entries);
+}
+
+/**
+ * One omitted step's typed facts, in the operator's own words: the form's own
+ * field LABELS, in its own declared order, with what was typed into each.
+ *
+ * The Confirm screen is the operator confirming their own input, so it shows
+ * the values. Nothing here crosses a wire — `stepOmissions` carries the facts
+ * once, and every other projection of this run redacts them.
+ */
+function stepOmissionFactsSummary(row: StepOmissionRow): string {
+  if (row.form.fields.length === 0) return "no facts to supply";
+  if (row.fold.state !== "facts") {
+    // Confirm is unreachable with an unparsed form: `advance` refuses it and
+    // the fingerprint clears the plan on every keystroke. Reaching here means
+    // one of those two is broken, and a plausible sentence would hide it.
+    throw new Error(`the Confirm summary reached step "${row.step}" with facts that do not parse`);
+  }
+  const facts = row.fold.facts;
+  return row.form.fields
+    .map((field) => `${field.label}: ${stepOmissionFactLabel(field.key, facts[field.key])}`)
+    .join(" \u00b7 ");
+}
+
+/** one parsed fact, in the words the operator reads — never the raw JSON shape */
+function stepOmissionFactLabel(field: string, value: StepOmissionFactValue | undefined): string {
+  if (value === undefined) throw new Error(`omission field "${field}" parsed to no value`);
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.length === 0 ? "None" : value.join(", ");
+  return String(value);
 }
 
 /**
@@ -1219,7 +1249,21 @@ export function RunStartDialog({
    * / `facts-invalid`). Saying so here is not a second rule: `stepOmissions` is
    * `null` precisely when the descriptor's OWN facts schema refused the draft.
    */
-  const stepsBlockedReason = customizeSteps && stepOmissions === null
+  /**
+   * D307 — typed facts describe ONE subject.
+   *
+   * A last day worked or a transaction number is a fact about a person, and a
+   * plan that fans out to several would assert it for all of them; the plan
+   * service refuses exactly that (`single-subject-only`). So a multi-subject
+   * box does not OFFER an omission, and an omission chosen before the box grew
+   * blocks the advance by name rather than reaching the server to be refused.
+   */
+  const subjectCount = preview.entries.length;
+  const multiSubject = subjectCount > 1;
+  const multiSubjectOmissionReason = `Omitting a step describes one subject; this run would create ${String(subjectCount)}.`;
+  const stepsBlockedReason = customizeSteps && multiSubject && omissionRows.length > 0
+    ? `${multiSubjectOmissionReason} Include every step, or type one value.`
+    : customizeSteps && stepOmissions === null
     ? omissionRows.length === 1
       ? "Fill in the facts the omitted step asks for."
       : "Fill in the facts every omitted step asks for."
@@ -1534,7 +1578,11 @@ export function RunStartDialog({
                                omission stands, because the planner refuses the
                                pair and a checkbox that undoes nothing is a lie
                                about what this screen can do. */
-                            disabled={control.state === "required" || forcedBy.length > 0}
+                            disabled={
+                              control.state === "required"
+                              || forcedBy.length > 0
+                              || (control.state === "omittable" && multiSubject && selected)
+                            }
                             onCheckedChange={(next) => toggleStep(step.key, next === true)}
                             label={step.label}
                             description={
@@ -1543,7 +1591,9 @@ export function RunStartDialog({
                                 : forcedBy.length > 0
                                   ? `Omitted with ${stepLabels(forcedBy)}.`
                                   : control.state === "omittable"
-                                    ? "Optional — leave it out and type what the rest of the run would have read."
+                                    ? multiSubject
+                                      ? multiSubjectOmissionReason
+                                      : "Optional — leave it out and type what the rest of the run would have read."
                                     : "Optional for this workflow."
                             }
                           />
