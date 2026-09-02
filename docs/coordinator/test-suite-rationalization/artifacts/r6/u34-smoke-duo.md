@@ -15,7 +15,7 @@
 
 ## Truthfulness findings
 
-The Duo extension README advertised two commands that did not exist from the repository root: `npm run sel:browser` and root `npm test`. The real commands are the direct selector launcher and `npm --prefix duo-autopilot test`. u35 owns the documentation correction; a convenient root alias, if desired, belongs to R7 because R6 must not edit `package.json`.
+The Duo extension README advertised an absent root `npm run sel:browser` alias and presented root `npm test` as though it ran the Duo crypto self-test. Root `npm test` does exist, but it runs the rebuild's Vitest suite; the real Duo commands are the direct selector launcher and `npm --prefix duo-autopilot test`. u35 owns the documentation correction; a convenient root launcher alias, if desired, belongs to R7 because R6 must not edit `package.json`.
 
 The Duo `.mjs` self-test should not be chained into root coverage. D244 deliberately pins its load-bearing sign-count behavior through `tests/unit/duo-sign-count.test.ts`; the standalone suite remains a focused offline crypto check.
 
