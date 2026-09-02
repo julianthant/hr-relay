@@ -29,7 +29,7 @@ import { BrowserPresentationModeSchema, InstanceSelectionSchema, RunPrioritySche
 import { StartRefusalCodeSchema } from "../../../domain/run/start-plan.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { planStart } from "../../../services/start/plan.js";
-import { applyStartStepSelection } from "../../../services/start/step-selection.js";
+import { applyStartStepSelection, resolveStartStepOmissions } from "../../../services/start/step-selection.js";
 import { StepOmissionsSchema } from "../../../domain/workflow/step-omission.js";
 import type { StartPlannerDeps } from "../../../services/start/plan.js";
 import { TargetNotFoundError } from "../../failures.js";
@@ -46,7 +46,14 @@ const StartPlanIngressSchema = z.strictObject({
   priority: RunPrioritySchema.default("interactive"),
   requestedInstance: InstanceSelectionSchema.optional(),
   selectedStepKeys: z.array(z.string().min(1)).min(1).optional(),
-  /** D307 — typed facts for each omitted step; validated against the descriptor's forms before planning. */
+  /**
+   * D307 — typed facts for each omitted step. The schema proves the SHAPE; the
+   * descriptor's own forms and cascade prove the content, in
+   * `resolveStartStepOmissions`, before a plan row exists. A request carrying
+   * omissions without an explicit `selectedStepKeys` is refused there: which
+   * steps run is the operator's statement, and facts without it would be
+   * omissions for steps nobody said were omitted.
+   */
   stepOmissions: StepOmissionsSchema.optional(),
 });
 
@@ -113,6 +120,13 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
       if (descriptor === undefined) {
         throw new TargetNotFoundError(`workflow ${ingress.workflowId} is not registered; nothing to plan`);
       }
+      // D307 — the omissions are reconciled against THIS descriptor's forms
+      // and cascade BEFORE anything is planned, so a refusal costs no plan row
+      // and no run identity. The ingress schema only proved the shape; the
+      // descriptor is what proves the step is omittable, that every omitted
+      // step carries the facts its own form requires, and that nothing still
+      // running would read what the omission leaves unread.
+      const stepOmissions = resolveStartStepOmissions(descriptor, ingress.selectedStepKeys, ingress.stepOmissions);
       const record = planStart(
         {
           authority: deps.authorityRead,
@@ -128,7 +142,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           dryRun: ingress.dryRun,
           browserMode: ingress.browserMode,
           captureBrowserScreenshots: ingress.captureBrowserScreenshots,
-          ...(ingress.stepOmissions === undefined ? {} : { stepOmissions: ingress.stepOmissions }),
+          ...(stepOmissions === undefined ? {} : { stepOmissions }),
           priority: ingress.priority,
           shape: "single",
           configFingerprint: deps.configFingerprint,
