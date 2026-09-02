@@ -72,10 +72,11 @@ eligible completed action. Name, SSN and any other person values live in ignored
 the owning field policy. A missing, inaccessible, incomplete, gone, or unknown candidate blocks
 before the live workflow starts.
 
-No gate/delegation/join, transaction/probe/commit, download or mutable-file branch exists in this
-workflow. Those variants are impossible by the declared pure-read graph and must not be fabricated
-for coverage. The applicable crash/recovery windows are between the search and summary checkpoints
-and between the summary checkpoint and terminal result derivation.
+No gate/delegation/join, transaction/idempotency-probe/commit, download or mutable-file branch exists
+in this workflow. Those variants are impossible by the declared pure-read graph and must not be
+fabricated for coverage. The read-side access-restriction observation remains mandatory. The
+applicable crash/recovery windows are between the search and summary checkpoints and between the
+summary checkpoint and terminal result derivation.
 
 ### Outcome confidence
 

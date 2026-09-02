@@ -72,6 +72,18 @@ All person values that feed live identity/search remain in ignored configuration
 cleanup/read-only obligations only. A missing, gone, unknown, or incomplete subject is `blocked`
 before browser start, never converted into a fixture or a failed run.
 
+### Outcome confidence
+
+| Mode/outcome | Confidence | Required evidence |
+|---|---|---|
+| Search `active` / `inactive` | `verified` | Resolved UCPath candidate, CRM observation and the typed active-status fold agree on identity and produce the stated result. |
+| Search `undetermined` | `partial` | The successful reads and the reason for the missing/conflicting conclusion are retained, but the workflow cannot verify active status. |
+| Search `not-found` | `verified` search outcome; run refuses | UCPath search completed with zero candidates. Downstream bindings do not fabricate a selected person. |
+| Search `ambiguous` | `partial`; run refuses | UCPath returns two or more candidate EIDs and no selected person; evidence proves ambiguity, not identity. |
+| Match `match` / `no-match` | `verified` | The live HR Tasks result grid or definitive no-matching-person dialog settled, and the task retained the observed subject/candidate evidence. |
+| Match `ambiguous` | `partial`; run refuses | More than one plausible candidate is retained with no automatic first-row selection. |
+| Either mode `unknown` / failure | `unknown` | Auth, page, selector, schema, subject, or outcome-race evidence did not support a trustworthy business result. The run fails with that evidence. |
+
 ## 4. NEEDS COORDINATOR — read-only T1b contract
 
 Authority conflict, preserved without resolution:
