@@ -191,7 +191,8 @@ const SEARCH_URL = `${HRMS}/c/UC_EXTENSIONS.UC_SS_TBH.GBL`;
 /** `= ` on the SS Smart HR Empl ID filter — live option list, 2026-08-14. */
 const EQUALS_OPERATOR = "2";
 /** PeopleSoft's standard empty-result sentence; see the module note. */
-const NO_RESULTS_MARKER = /no matching values were found/iu;
+const NO_RESULTS_TEXT = "no matching values were found";
+const NO_RESULTS_MARKER = new RegExp(NO_RESULTS_TEXT, "iu");
 const TRANSACTION_ID = /^T\d{6,}$/u;
 const SCAN_BOUND_MS = 45_000;
 // The diagnostic callback performs only synchronous DOM reads. One second is
@@ -210,6 +211,66 @@ const SETTLEMENT_CAPTURE_FAILED = Object.freeze({
 });
 const PERSON_IDENTIFIER_REMOVED = "[person identifier removed]";
 const TRANSACTION_IDENTIFIER_REMOVED = "[transaction identifier removed]";
+
+type SsSmartHrSettlementObservation = Readonly<{
+  resultRowCount: number;
+  resultRowVisible: boolean;
+  noResultsCount: number;
+  noResultsVisible: boolean;
+  receiptCount: number;
+  receiptVisible: boolean;
+}>;
+
+const hasVisibleSsSmartHrSettlementSignal = (selectors: Readonly<{
+  resultRow: string;
+  receipt: string;
+  noResultsText: string;
+}>): boolean => {
+  const isVisible = (node: Element): boolean => {
+    const style = window.getComputedStyle(node);
+    const bounds = node.getBoundingClientRect();
+    return style.visibility !== "hidden"
+      && style.display !== "none"
+      && bounds.width > 0
+      && bounds.height > 0;
+  };
+  const resultRowVisible = [...document.querySelectorAll(selectors.resultRow)].some(isVisible);
+  const receiptVisible = [...document.querySelectorAll(selectors.receipt)].some(isVisible);
+  const visibleBodyText = document.body?.innerText.toLowerCase() ?? "";
+  return resultRowVisible
+    || receiptVisible
+    || visibleBodyText.includes(selectors.noResultsText);
+};
+
+async function observeSsSmartHrSettlement(
+  resultRows: Locator,
+  noResults: Locator,
+  receipt: Locator,
+): Promise<SsSmartHrSettlementObservation> {
+  const [
+    resultRowCount,
+    resultRowVisible,
+    noResultsCount,
+    noResultsVisible,
+    receiptCount,
+    receiptVisible,
+  ] = await Promise.all([
+    resultRows.count(),
+    resultRows.first().isVisible(),
+    noResults.count(),
+    noResults.first().isVisible(),
+    receipt.count(),
+    receipt.first().isVisible(),
+  ]);
+  return {
+    resultRowCount,
+    resultRowVisible,
+    noResultsCount,
+    noResultsVisible,
+    receiptCount,
+    receiptVisible,
+  };
+}
 
 function redactScanFailureDetail(error: unknown, emplId: Eid): string {
   const fullEid = String(emplId);
@@ -392,23 +453,40 @@ export async function scanTerminationTransactionsOnPage(
     await waitForUcpathState(page, UCPATH_SS_SMART_HR_SEARCH_READY);
     await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_EID_INPUT).fill(input.emplId);
     await page.locator(DRIVER_ANCHOR.searchEmplIdOperator).selectOption(EQUALS_OPERATOR);
-    await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_BUTTON).click();
     const autoDrilledReceipt = resolveUcpathElement(
       page,
       UCPATH_SS_SMART_HR_RECEIPT_DISPLAY,
     );
     const resultRows = page.locator(DRIVER_ANCHOR.searchResultRow);
     const noResults = page.getByText(NO_RESULTS_MARKER);
+    const beforeSearch = await observeSsSmartHrSettlement(
+      resultRows,
+      noResults,
+      autoDrilledReceipt,
+    );
+    if (
+      beforeSearch.resultRowCount !== 0
+      || beforeSearch.noResultsCount !== 0
+      || beforeSearch.receiptCount !== 0
+    ) {
+      throw new Error(
+        "the SS Smart HR page exposed settlement markers before the current search was submitted "
+        + `(result rows: ${String(beforeSearch.resultRowCount)}, no-results markers: `
+        + `${String(beforeSearch.noResultsCount)}, transaction-id controls: `
+        + `${String(beforeSearch.receiptCount)}); refusing stale response authority`,
+      );
+    }
+    const receiptRecipe = ucpathElementById(UCPATH_SS_SMART_HR_RECEIPT_DISPLAY).locator;
+    if (receiptRecipe.kind !== "css") {
+      throw new Error("the SS Smart HR receipt settlement signal requires its proven CSS anchor");
+    }
+    await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_BUTTON).click();
     try {
-      await Promise.race([
-        resultRows.first()
-          .waitFor({ state: "attached", timeout: SCAN_BOUND_MS }).then(() => "rows" as const),
-        noResults.first()
-          .waitFor({ state: "attached", timeout: SCAN_BOUND_MS }).then(() => "empty" as const),
-        autoDrilledReceipt
-          .waitFor({ state: "visible", timeout: SCAN_BOUND_MS })
-          .then(() => "single-detail" as const),
-      ]);
+      await page.waitForFunction(hasVisibleSsSmartHrSettlementSignal, {
+        resultRow: DRIVER_ANCHOR.searchResultRow,
+        receipt: receiptRecipe.selector,
+        noResultsText: NO_RESULTS_TEXT,
+      }, { timeout: SCAN_BOUND_MS, polling: 50 });
     } catch (error) {
       if (!(error instanceof Error && error.name === "TimeoutError")) {
         throw error;
@@ -445,21 +523,41 @@ export async function scanTerminationTransactionsOnPage(
       }
       return unreadable(failureReason(settlementError), diagnostic);
     }
-    const [resultRowCount, noResultsCount, receiptCount] = await Promise.all([
-      resultRows.count(),
-      noResults.count(),
-      autoDrilledReceipt.count(),
-    ]);
+    const afterSearch = await observeSsSmartHrSettlement(
+      resultRows,
+      noResults,
+      autoDrilledReceipt,
+    );
+    if (afterSearch.resultRowCount > 0 && !afterSearch.resultRowVisible) {
+      throw new Error("the SS Smart HR search exposed result rows but none were visible");
+    }
+    if (afterSearch.noResultsCount > 0) {
+      if (afterSearch.noResultsCount !== 1 || !afterSearch.noResultsVisible) {
+        throw new Error(
+          `the SS Smart HR search exposed ${String(afterSearch.noResultsCount)} no-results markers; `
+          + "exactly one visible marker is required",
+        );
+      }
+    }
+    if (afterSearch.receiptCount > 0) {
+      if (afterSearch.receiptCount !== 1 || !afterSearch.receiptVisible) {
+        throw new Error(
+          `the SS Smart HR auto-drilled detail exposed ${String(afterSearch.receiptCount)} `
+          + "transaction-id controls; exactly one visible control is required",
+        );
+      }
+    }
     const settledStates = [
-      ...(resultRowCount > 0 ? ["rows" as const] : []),
-      ...(noResultsCount > 0 ? ["empty" as const] : []),
-      ...(receiptCount > 0 ? ["single-detail" as const] : []),
+      ...(afterSearch.resultRowCount > 0 ? ["rows" as const] : []),
+      ...(afterSearch.noResultsCount > 0 ? ["empty" as const] : []),
+      ...(afterSearch.receiptCount > 0 ? ["single-detail" as const] : []),
     ];
     if (settledStates.length !== 1) {
       throw new Error(
         `the SS Smart HR search settled in ${String(settledStates.length)} states `
-        + `(result rows: ${String(resultRowCount)}, no-results markers: `
-        + `${String(noResultsCount)}, transaction-id controls: ${String(receiptCount)}); `
+        + `(result rows: ${String(afterSearch.resultRowCount)}, no-results markers: `
+        + `${String(afterSearch.noResultsCount)}, transaction-id controls: `
+        + `${String(afterSearch.receiptCount)}); `
         + "exactly one is required",
       );
     }
@@ -475,11 +573,6 @@ export async function scanTerminationTransactionsOnPage(
     }
     let ids: readonly string[];
     if (settled === "single-detail") {
-      if (receiptCount !== 1) {
-        throw new Error(
-          `the SS Smart HR auto-drilled detail exposed ${String(receiptCount)} transaction-id controls; exactly one is required`,
-        );
-      }
       const transactionId = await textOf(autoDrilledReceipt);
       if (!TRANSACTION_ID.test(transactionId)) {
         throw new Error(
@@ -489,6 +582,12 @@ export async function scanTerminationTransactionsOnPage(
       ids = [transactionId];
     } else {
       ids = await scanTransactionIds(page);
+      if (ids.length !== afterSearch.resultRowCount) {
+        throw new Error(
+          `the SS Smart HR search rendered ${String(afterSearch.resultRowCount)} result rows but `
+          + `${String(ids.length)} distinct stable transaction ids; refusing an incomplete set`,
+        );
+      }
     }
     const rows: UcpathTransactionRow[] = [];
     for (const id of ids) rows.push(await readTransactionDetail(page, id, input.emplId));

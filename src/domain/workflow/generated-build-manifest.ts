@@ -4621,7 +4621,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "c80b6b079d6635e83a0f697b2a9a14b569699e73d4b0f37c382d911e241df7e1",
+      "fingerprint": "c384e7a4051f886c6a390e3f7a0a47a110008b985f4569c45f7085831a22b278",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4865,7 +4865,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "909de4d77afbb3d4954d37addd902f505e9b40aeeee3c9ae39fc9d5488a70522"
+          "sha256": "e4a14fe38af0c6c2d134efd38d1f86c0b37ce17de0be709e4acf11b8d001bfbd"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -4887,7 +4887,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/create-termination"
     },
     {
-      "fingerprint": "a86e5be408aa3dd93585cc7c3157ffd694671c44430210e6fe214b3168bed06a",
+      "fingerprint": "15920a2fa2837eca3c7c9cd60429ce0bdfe5d32cf86598c9e8e3e5dcf660f725",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5131,7 +5131,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "909de4d77afbb3d4954d37addd902f505e9b40aeeee3c9ae39fc9d5488a70522"
+          "sha256": "e4a14fe38af0c6c2d134efd38d1f86c0b37ce17de0be709e4acf11b8d001bfbd"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -5153,7 +5153,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/delete-pending-terminations"
     },
     {
-      "fingerprint": "693ae536d978002605f53238359913b6b491595e5754a2c8c463fd2e4b4e21a9",
+      "fingerprint": "454acd890f5c8a5f739a1d2be2c401d37751613e5cb6fe4e66e737a458413a01",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5397,7 +5397,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "909de4d77afbb3d4954d37addd902f505e9b40aeeee3c9ae39fc9d5488a70522"
+          "sha256": "e4a14fe38af0c6c2d134efd38d1f86c0b37ce17de0be709e4acf11b8d001bfbd"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -5419,7 +5419,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-existing-termination"
     },
     {
-      "fingerprint": "04a6086c9eca26f9fe5d77dad3d0ae37aa7291b8090d6be8c0eec5cfaba9ed08",
+      "fingerprint": "325508a85c194a3bac18ba7fa3bacbf8a419bf1c0fecf4dd5136af989b0e7060",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5663,7 +5663,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "909de4d77afbb3d4954d37addd902f505e9b40aeeee3c9ae39fc9d5488a70522"
+          "sha256": "e4a14fe38af0c6c2d134efd38d1f86c0b37ce17de0be709e4acf11b8d001bfbd"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -5685,7 +5685,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-pending-terminations"
     },
     {
-      "fingerprint": "855013737f78a9db88b591e48a43a71a35a0a1d970e5007ac724bcfc65971e13",
+      "fingerprint": "258efd575ab5bc36df9199950ca80b94703a31e33ceaae0a1c76c7cec08abf19",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5933,7 +5933,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "909de4d77afbb3d4954d37addd902f505e9b40aeeee3c9ae39fc9d5488a70522"
+          "sha256": "e4a14fe38af0c6c2d134efd38d1f86c0b37ce17de0be709e4acf11b8d001bfbd"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -5955,7 +5955,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "5f8d103d5b03b7b82a4e687e71588201179c7df0141abc72e29e3febca1b576a",
+      "fingerprint": "5d384e3e851c300cc2c7e9b2ad8e7725f3207e9893962f4eb1cfedf3e6751f9d",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6203,7 +6203,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "909de4d77afbb3d4954d37addd902f505e9b40aeeee3c9ae39fc9d5488a70522"
+          "sha256": "e4a14fe38af0c6c2d134efd38d1f86c0b37ce17de0be709e4acf11b8d001bfbd"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -6225,7 +6225,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-pending-termination-set"
     },
     {
-      "fingerprint": "0acb43e3ab2b25027b3bd7cf01001052db36f49ae72468c60366b498115bef61",
+      "fingerprint": "31065bfc3d635bc91b1e3e4edaf03af34c73d42e35abfe52e7f05c69231f8448",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6469,7 +6469,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "909de4d77afbb3d4954d37addd902f505e9b40aeeee3c9ae39fc9d5488a70522"
+          "sha256": "e4a14fe38af0c6c2d134efd38d1f86c0b37ce17de0be709e4acf11b8d001bfbd"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -6491,7 +6491,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "610ea92a92784fd0c3966fc52ab8626e6d50dc70c1c7b78cbcbc9b1ee05fb621",
+      "fingerprint": "8606014b279d4adb5d5961c5e144623f501f3040d316c0931f66a0c95ae20273",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6739,7 +6739,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "909de4d77afbb3d4954d37addd902f505e9b40aeeee3c9ae39fc9d5488a70522"
+          "sha256": "e4a14fe38af0c6c2d134efd38d1f86c0b37ce17de0be709e4acf11b8d001bfbd"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -6761,7 +6761,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-pending-termination-sweep"
     },
     {
-      "fingerprint": "32effb24504435704146a733461b47a848f314078ecfb3311d413888427af44f",
+      "fingerprint": "8134694cbf455e1b1e4b3aa700351859c1bf7fcbff385b17848f49709d0a5a30",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7009,7 +7009,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "909de4d77afbb3d4954d37addd902f505e9b40aeeee3c9ae39fc9d5488a70522"
+          "sha256": "e4a14fe38af0c6c2d134efd38d1f86c0b37ce17de0be709e4acf11b8d001bfbd"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -7031,7 +7031,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-termination"
     },
     {
-      "fingerprint": "98f021069adef412af2027cfa6ba5fd42a505a922017fe17aebd1cfa2ff66c0e",
+      "fingerprint": "16b5a0c6a206e26627776ba232e461f042539012604ca00dfa45ae86a044f55e",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7279,7 +7279,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "909de4d77afbb3d4954d37addd902f505e9b40aeeee3c9ae39fc9d5488a70522"
+          "sha256": "e4a14fe38af0c6c2d134efd38d1f86c0b37ce17de0be709e4acf11b8d001bfbd"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -7301,7 +7301,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-pending-terminations-cleared"
     },
     {
-      "fingerprint": "9d39f900a223d2077a83e87e4b4432065f6fe8d5b2255bfcbce173b2e54b73ef",
+      "fingerprint": "54fb86b2ff110108dd3c4ac4dfb843e88ff6a820b0d9a07c1d4d757a1aed0c22",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7549,7 +7549,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "909de4d77afbb3d4954d37addd902f505e9b40aeeee3c9ae39fc9d5488a70522"
+          "sha256": "e4a14fe38af0c6c2d134efd38d1f86c0b37ce17de0be709e4acf11b8d001bfbd"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -7571,7 +7571,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination"
     },
     {
-      "fingerprint": "2d2efc74fe5e1a50ad4e8140ab69b5efba5982f6b9baae87d3084d3bc1bd855d",
+      "fingerprint": "d66a5e72a9adaabf1a99948222638c3dc8562730d3e8e9ddcf2fa6757b6bd052",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7819,7 +7819,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "909de4d77afbb3d4954d37addd902f505e9b40aeeee3c9ae39fc9d5488a70522"
+          "sha256": "e4a14fe38af0c6c2d134efd38d1f86c0b37ce17de0be709e4acf11b8d001bfbd"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",

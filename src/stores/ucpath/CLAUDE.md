@@ -80,8 +80,10 @@ this family is `page` and legacy's `getContentFrame` funnel does not apply.
   receipt control and a stable `T…` value, then uses the existing keyed detail reread. Missing,
   malformed, or ambiguous detail identity remains `unreadable`, and scan failures redact both person
   and transaction identifiers before the reason becomes durable. The first marker only wakes the
-  scan: a post-wake count must prove exactly one of result rows, no-results marker, or detail receipt,
-  so stale co-present states refuse instead of winning a race. Never lengthen the wait or turn the
+  scan through one cancellable visible-signal wait: a fresh search page must expose zero settlement
+  markers, then a post-wake count must prove exactly one of result rows, one visible no-results marker,
+  or one visible detail receipt. A result grid must expose one distinct stable T ID per rendered row.
+  Stale, hidden, co-present, or incomplete states refuse. Never lengthen the wait or turn the
   auto-drill into an empty set.
 
 - **2026-08-14: `.or()` is a UNION under strict mode, so waiting on one is a claim

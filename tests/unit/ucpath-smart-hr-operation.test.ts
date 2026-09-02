@@ -31,6 +31,8 @@ function indeterminateSearchPage(
       fill: async () => undefined,
       selectOption: async () => [],
       click: async () => undefined,
+      count: async () => 0,
+      isVisible: async () => false,
       waitFor: async () => {
         if (
           selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')
@@ -48,11 +50,14 @@ function indeterminateSearchPage(
     getByText: () => {
       const value = {
         first: () => value,
+        count: async () => 0,
+        isVisible: async () => false,
         waitFor: async () => { throw settlementFailure(); },
       };
       return value;
     },
     evaluate,
+    waitForFunction: async () => { throw settlementFailure(); },
   } as unknown as Page;
 }
 
@@ -61,6 +66,7 @@ function singleResultAutoDrillPage(
   receiptCount = 1,
   rereadTransactionId = transactionId,
   coPresent: "none" | "row" | "empty" = "none",
+  preExisting: "none" | "row" | "empty" | "detail" = "none",
 ): Page {
   const textBySelector = new Map<string, string>([
     ["#UC_SS_TRANSACT_UC_TRANSACT_ID", transactionId],
@@ -70,22 +76,33 @@ function singleResultAutoDrillPage(
     ['[id="NAME$0"]', "Person, Deterministic"],
   ]);
   let receiptReadCount = 0;
+  let clicked = false;
+  const present = (state: "row" | "empty" | "detail"): boolean =>
+    preExisting === state
+    || (clicked && (state === "detail" ? receiptCount > 0 : coPresent === state));
   const locator = (selector: string) => {
     const value = {
       first: () => value,
       fill: async () => undefined,
       selectOption: async () => [],
-      click: async () => undefined,
+      click: async () => { clicked = true; },
       count: async () => {
-        if (selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID") return receiptCount;
+        if (selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID") {
+          return present("detail") ? receiptCount : 0;
+        }
         if (selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')) {
-          return coPresent === "row" ? 1 : 0;
+          return present("row") ? 1 : 0;
         }
         return 1;
       },
+      isVisible: async () => {
+        if (selector === "#UC_SS_TRANSACT_UC_TRANSACT_ID") return present("detail");
+        if (selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')) return present("row");
+        return true;
+      },
       waitFor: async () => {
         if (selector.startsWith('tr[id^="trPTS_CFG_CL_STD_RSL"]')) {
-          if (coPresent === "row") return;
+          if (present("row")) return;
           await new Promise<never>(() => undefined);
         }
       },
@@ -107,14 +124,16 @@ function singleResultAutoDrillPage(
     getByText: () => {
       const value = {
         first: () => value,
-        count: async () => coPresent === "empty" ? 1 : 0,
+        count: async () => present("empty") ? 1 : 0,
+        isVisible: async () => present("empty"),
         waitFor: async () => {
-          if (coPresent === "empty") return;
+          if (present("empty")) return;
           await new Promise<never>(() => undefined);
         },
       };
       return value;
     },
+    waitForFunction: async () => undefined,
   } as unknown as Page;
 }
 
@@ -199,6 +218,30 @@ describe("SS Smart HR transaction scan", () => {
     assert.equal(scan.state, "unreadable");
     if (scan.state !== "unreadable") return;
     assert.match(scan.reason, /settled in 2 states/u);
+  });
+
+  it("refuses a populated result grid whose rows expose no stable transaction id", async () => {
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage("", 0, "", "row"),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /1 result rows but 0 distinct stable transaction ids/u);
+  });
+
+  it("refuses a stale no-results marker present before the current search", async () => {
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage("", 0, "", "none", "empty"),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /before the current search was submitted/u);
   });
 
   it("preserves an early settlement failure without attempting diagnostic capture", async () => {
