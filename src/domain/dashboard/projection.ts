@@ -676,6 +676,25 @@ export const WorkerBrowserWireSchema = z.strictObject({
 });
 
 /**
+ * The browser systems a worker for this workflow may need, independently of
+ * whether any session is open yet. `browsers[]` remains observation of open
+ * contexts; this block is descriptor authority for the Session Panel's
+ * pre-acquisition tiles. Optional is read-forward compatibility with older
+ * dashboard producers, never permission for the current producer to omit it.
+ */
+export const WorkerBrowserRequirementsWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("present"),
+    systems: z.array(BrowserSystemIdSchema).superRefine((systems, context) => {
+      if (new Set(systems).size !== systems.length) {
+        context.addIssue({ code: "custom", message: "worker browser requirement systems must be unique" });
+      }
+    }),
+  }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+]);
+
+/**
  * ONE worker, AS AUTHORITY HOLDS IT (D248).
  *
  * The card is the durable worker lease (`src/domain/run/worker.ts`) joined with
@@ -721,6 +740,7 @@ export const WorkerCardWireSchema = z.strictObject({
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
     z.strictObject({ state: z.literal("present"), runId: RunIdSchema, traceId: TraceIdSchema }),
   ]),
+  browserRequirements: WorkerBrowserRequirementsWireSchema.optional(),
   browsers: z.array(WorkerBrowserWireSchema),
   leaseVersion: RowRevisionSchema,
   revision: RowRevisionSchema,

@@ -26,6 +26,7 @@
  */
 import { z } from "zod";
 import {
+  WorkerBrowserRequirementsWireSchema,
   WorkerBrowserWireSchema,
   WorkerCardWireSchema,
 } from "../../../domain/dashboard/projection.js";
@@ -121,6 +122,7 @@ function currentRunOf(
 export function workerCardOf(input: Readonly<{
   lease: WorkerLeaseRecord;
   fold: WorkerSpanFold | undefined;
+  browserRequirements: unknown;
   resolveTrace: (runId: string) => string | undefined;
 }>): WorkerCardWire {
   const { lease, fold } = input;
@@ -136,6 +138,7 @@ export function workerCardOf(input: Readonly<{
       ? { endedAt: lease.lifecycle.stoppedAt, stopReason: lease.lifecycle.reason }
       : {}),
     currentRun: currentRunOf(lease, fold, input.resolveTrace),
+    browserRequirements: WorkerBrowserRequirementsWireSchema.parse(input.browserRequirements),
     /*
      * A settled lease holds nothing. Its process is gone and its Chromium
      * children went with it, so the sessions the fold still shows open are the

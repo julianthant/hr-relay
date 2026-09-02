@@ -47,6 +47,7 @@ function leaseOf(overrides: Readonly<Record<string, unknown>> = {}): ReturnType<
 }
 
 const NO_TRACE = (): undefined => undefined;
+const UCPATH_BROWSER_REQUIREMENTS = { state: "present", systems: ["ucpath"] } as const;
 
 describe("the card the projector composes from a lease (D248)", () => {
   it("reads identity, phase, directive and the CAS basis off the lease", () => {
@@ -56,6 +57,7 @@ describe("the card the projector composes from a lease (D248)", () => {
         control: { directive: "pause", requestedAt: STARTED, requestedBy: "local-operator" },
       }),
       fold: { revision: 12, browsers: [{ sessionId: SESSION, system: "ucpath", openedAt: STARTED }] },
+      browserRequirements: UCPATH_BROWSER_REQUIREMENTS,
       resolveTrace: () => TRACE,
     });
     assert.equal(card.workflowId, "person-lookup");
@@ -76,6 +78,7 @@ describe("the card the projector composes from a lease (D248)", () => {
     const card = workerCardOf({
       lease: leaseOf({ lifecycle: { state: "busy", startedAt: STARTED, heartbeatAt: STARTED, runId: RUN } }),
       fold: undefined,
+      browserRequirements: UCPATH_BROWSER_REQUIREMENTS,
       resolveTrace: NO_TRACE,
     });
     assert.equal(card.currentRun.state, "absent");
@@ -96,6 +99,7 @@ describe("the card the projector composes from a lease (D248)", () => {
         control: { directive: "stop", requestedAt: STARTED, requestedBy: "local-operator" },
       }),
       fold: held,
+      browserRequirements: UCPATH_BROWSER_REQUIREMENTS,
       resolveTrace: NO_TRACE,
     });
     const crashed = workerCardOf({
@@ -104,6 +108,7 @@ describe("the card the projector composes from a lease (D248)", () => {
         control: { directive: "stop", requestedAt: STARTED, requestedBy: "local-operator" },
       }),
       fold: held,
+      browserRequirements: UCPATH_BROWSER_REQUIREMENTS,
       resolveTrace: NO_TRACE,
     });
     assert.equal(stopped.state, "stopped");
@@ -121,11 +126,17 @@ describe("the card the projector composes from a lease (D248)", () => {
       lease: leaseOf({ lifecycle: { state: "starting", startedAt: STARTED } }),
       fold: undefined,
       resolveTrace: NO_TRACE,
+      browserRequirements: { state: "present", systems: ["ucpath", "crm"] },
     });
     // The demo's own rule: a daemon that is alive and has not reported a phase
     // is not idle, and calling it idle misreads capacity.
     assert.equal(card.state, "starting");
     assert.deepEqual(card.currentRun, { state: "absent", reason: "no claimed run" });
+    assert.deepEqual(Reflect.get(card, "browserRequirements"), {
+      state: "present",
+      systems: ["ucpath", "crm"],
+    });
+    assert.deepEqual(card.browsers, [], "a required browser is not reported as open before its span starts");
   });
 });
 
@@ -156,13 +167,19 @@ describe("the browser span path is read, never guessed (D248)", () => {
 });
 
 describe("the words the card carries (D249)", () => {
-  const live = workerCardOf({ lease: leaseOf(), fold: undefined, resolveTrace: NO_TRACE });
+  const live = workerCardOf({
+    lease: leaseOf(),
+    fold: undefined,
+    browserRequirements: UCPATH_BROWSER_REQUIREMENTS,
+    resolveTrace: NO_TRACE,
+  });
 
   it("states a standing directive beside the state word, never as it", () => {
     assert.equal(workerDirectiveNote(live), undefined);
     const pausing = workerCardOf({
       lease: leaseOf({ control: { directive: "pause", requestedAt: STARTED, requestedBy: "local-operator" } }),
       fold: undefined,
+      browserRequirements: UCPATH_BROWSER_REQUIREMENTS,
       resolveTrace: NO_TRACE,
     });
     assert.equal(workerDirectiveNote(pausing), "Pausing after this item");
@@ -174,6 +191,7 @@ describe("the words the card carries (D249)", () => {
         control: { directive: "stop", requestedAt: STARTED, requestedBy: "local-operator" },
       }),
       fold: undefined,
+      browserRequirements: UCPATH_BROWSER_REQUIREMENTS,
       resolveTrace: NO_TRACE,
     });
     assert.equal(workerDirectiveNote(settled), undefined);
@@ -184,6 +202,7 @@ describe("the words the card carries (D249)", () => {
     const stopping = workerCardOf({
       lease: leaseOf({ control: { directive: "stop", requestedAt: STARTED, requestedBy: "local-operator" } }),
       fold: undefined,
+      browserRequirements: UCPATH_BROWSER_REQUIREMENTS,
       resolveTrace: NO_TRACE,
     });
     assert.equal(canStopWorker(stopping), false);
@@ -193,6 +212,7 @@ describe("the words the card carries (D249)", () => {
         control: { directive: "stop", requestedAt: STARTED, requestedBy: "local-operator" },
       }),
       fold: undefined,
+      browserRequirements: UCPATH_BROWSER_REQUIREMENTS,
       resolveTrace: NO_TRACE,
     });
     assert.equal(canStopWorker(dead), false);
@@ -206,6 +226,7 @@ describe("the words the card carries (D249)", () => {
         control: { directive: "stop", requestedAt: STARTED, requestedBy: "local-operator" },
       }),
       fold: undefined,
+      browserRequirements: UCPATH_BROWSER_REQUIREMENTS,
       resolveTrace: NO_TRACE,
     });
     // D124's rule one surface over: `now − startedAt` for something that has

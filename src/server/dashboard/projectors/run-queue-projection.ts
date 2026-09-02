@@ -39,7 +39,7 @@
  */
 import { z } from "zod";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
-import { descriptorRuntimeNodes } from "../../../base/workflow.js";
+import { descriptorRuntimeNodes, workflowProjections } from "../../../base/workflow.js";
 import type { Clock } from "../../../domain/clock.js";
 import { localDatePart } from "../../../domain/clock.js";
 import {
@@ -1679,6 +1679,7 @@ export class RunQueueProjection {
       .sort((a, b) => a.workerId.localeCompare(b.workerId))
       .map((lease) => {
         const fold = this.#workers.get(lease.workerId);
+        const descriptor = this.#deps.descriptors.resolve(lease.workflow);
         return workerCardOf({
           lease,
           fold: fold === undefined
@@ -1688,6 +1689,12 @@ export class RunQueueProjection {
               ...(fold.currentRunId === undefined ? {} : { currentRunId: fold.currentRunId }),
               browsers: [...fold.browsers.values()],
             },
+          browserRequirements: descriptor === undefined
+            ? {
+              state: "unavailable",
+              reason: `workflow ${lease.workflow} is not registered in this dashboard build`,
+            }
+            : { state: "present", systems: [...workflowProjections(descriptor).systems] },
           resolveTrace: (runId) => this.#rows.get(runId)?.queued.traceId,
         });
       });
