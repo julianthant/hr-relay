@@ -76,6 +76,12 @@ function singleResultAutoDrillPage(
     keyedReceiptPresent?: boolean;
     keyedReceiptVisible?: boolean;
     autoReceiptVisible?: boolean;
+    detailFacts?: Readonly<Record<string, Readonly<{
+      approvalStatus: string;
+      startDate: string;
+      action: string;
+      displayedName: string;
+    }>>>;
   }> = {},
 ): Page {
   const noResultsCount = options.noResultsCount ?? 1;
@@ -83,13 +89,12 @@ function singleResultAutoDrillPage(
   const keyedReceiptPresent = options.keyedReceiptPresent ?? true;
   const keyedReceiptVisible = options.keyedReceiptVisible ?? true;
   const autoReceiptVisible = options.autoReceiptVisible ?? true;
-  const textBySelector = new Map<string, string>([
-    ["#UC_SS_TRANSACT_UC_TRANSACT_ID", transactionId],
-    ["#UC_SS_TRANSACT_APPR_STATUS", "Pending"],
-    ['[id="UC_SS_TBH_VW_START_DT$0"]', "06/11/2026"],
-    ['[id="UC_SS_TBH_VW_ACTION$0"]', "TER"],
-    ['[id="NAME$0"]', "Person, Deterministic"],
-  ]);
+  const defaultDetailFacts = {
+    approvalStatus: "Pending",
+    startDate: "06/11/2026",
+    action: "TER",
+    displayedName: "Person, Deterministic",
+  } as const;
   let clicked = false;
   let detailRequest: string | undefined;
   const present = (state: "row" | "empty" | "detail"): boolean =>
@@ -145,7 +150,14 @@ function singleResultAutoDrillPage(
           if (detailRequest === undefined) return transactionId;
           return detailRequest === transactionId ? rereadTransactionId : detailRequest;
         }
-        return textBySelector.get(selector) ?? "";
+        const detailFacts = detailRequest === undefined
+          ? defaultDetailFacts
+          : (options.detailFacts?.[detailRequest] ?? defaultDetailFacts);
+        if (selector === "#UC_SS_TRANSACT_APPR_STATUS") return detailFacts.approvalStatus;
+        if (selector === '[id="UC_SS_TBH_VW_START_DT$0"]') return detailFacts.startDate;
+        if (selector === '[id="UC_SS_TBH_VW_ACTION$0"]') return detailFacts.action;
+        if (selector === '[id="NAME$0"]') return detailFacts.displayedName;
+        return "";
       },
     };
     return value;
@@ -420,6 +432,18 @@ describe("SS Smart HR transaction scan", () => {
   it("reads one stable transaction id from each populated result row", async () => {
     const firstId = "T009000001";
     const secondId = "T009000002";
+    const firstFacts = {
+      approvalStatus: "Pending",
+      startDate: "06/11/2026",
+      action: "TER",
+      displayedName: "Person, First",
+    } as const;
+    const secondFacts = {
+      approvalStatus: "Approved",
+      startDate: "06/12/2026",
+      action: "HIR",
+      displayedName: "Person, Second",
+    } as const;
     const scan = await scanTerminationTransactionsOnPage(
       singleResultAutoDrillPage(
         firstId,
@@ -428,6 +452,9 @@ describe("SS Smart HR transaction scan", () => {
         "row",
         "none",
         [`Transaction ${firstId}`, `Transaction ${secondId}`],
+        `${firstId} ${secondId}`,
+        [true, true],
+        { detailFacts: { [firstId]: firstFacts, [secondId]: secondFacts } },
       ),
       { emplId: EID },
       OBSERVED_AT,
@@ -435,9 +462,16 @@ describe("SS Smart HR transaction scan", () => {
 
     assert.equal(scan.state, "read");
     if (scan.state !== "read") return;
-    assert.deepEqual(scan.rows.map((row) => row.transactionId), [firstId, secondId]);
-    assert.equal(scan.scannedRowCount, 2);
-    assert.equal(scan.observedAt, OBSERVED_AT);
+    assert.deepEqual(scan, {
+      state: "read",
+      emplId: EID,
+      rows: [
+        transactionRow({ transactionId: firstId, ...firstFacts }),
+        transactionRow({ transactionId: secondId, ...secondFacts }),
+      ],
+      scannedRowCount: 2,
+      observedAt: OBSERVED_AT,
+    });
   });
 
   it("refuses a keyed result-row reread whose receipt is absent", async () => {
@@ -453,6 +487,29 @@ describe("SS Smart HR transaction scan", () => {
         transactionId,
         [true],
         { keyedReceiptPresent: false },
+      ),
+      { emplId: EID },
+      OBSERVED_AT,
+    );
+
+    assert.equal(scan.state, "unreadable");
+    if (scan.state !== "unreadable") return;
+    assert.match(scan.reason, /fixture keyed detail receipt unavailable/u);
+  });
+
+  it("refuses a keyed result-row reread whose receipt is present but hidden", async () => {
+    const transactionId = "T009000001";
+    const scan = await scanTerminationTransactionsOnPage(
+      singleResultAutoDrillPage(
+        transactionId,
+        0,
+        transactionId,
+        "row",
+        "none",
+        [transactionId],
+        transactionId,
+        [true],
+        { keyedReceiptVisible: false },
       ),
       { emplId: EID },
       OBSERVED_AT,
