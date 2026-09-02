@@ -266,6 +266,29 @@ export const ARCHIVED_NOT_RUN_NOTE: Record<
 };
 
 /**
+ * ONE skipped step's note, across BOTH arms of the frozen wire's `notRun`.
+ *
+ * The `absent` arm is not an empty arm: it carries the server's own SENTENCE
+ * saying why no reason is held ("its span recorded no reason"), and a frozen
+ * page that drew the present arm and dropped the absent one told the operator
+ * nothing at all about a step that did not run — the same blank a step that
+ * ran leaves, which is the one reading that is false. The served reason is
+ * drawn verbatim rather than prefixed: it is already a whole sentence about
+ * this step, and `log-panel.tsx` reaches the same place through its own
+ * "no reason was recorded".
+ *
+ * A step that RAN has no note at all, which is what the `undefined` arm is.
+ */
+export function archivedNotRunNote(
+  event: ArchivedRunDetailWire["detail"]["timeline"]["events"][number],
+): string | undefined {
+  if (event.state !== "skipped") return undefined;
+  return event.notRun.state === "present"
+    ? ARCHIVED_NOT_RUN_NOTE[event.notRun.reason]
+    : event.notRun.reason;
+}
+
+/**
  * D307 — the archived run's omitted steps, as one line. Keys only: the facts
  * the operator typed for those steps are the run's own input and were never
  * served to this page.

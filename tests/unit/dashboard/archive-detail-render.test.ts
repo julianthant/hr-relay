@@ -22,6 +22,14 @@ import { describe, it } from "vitest";
 import { ToastProvider } from "../../../src/dashboard/ds/ui.js";
 import { NoteWireSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { ArchivedRunDetail, FrozenLogLine } from "../../../src/dashboard/surfaces/archive.js";
+import {
+  ARCHIVED_NOT_RUN_NOTE,
+  archivedNotRunNote,
+} from "../../../src/dashboard/surfaces/archive-model.js";
+import {
+  ArchivedRunDetailWireSchema,
+  type ArchivedRunDetailWire,
+} from "../../../src/domain/dashboard/archive.js";
 import { FIXTURE_ARCHIVED_RUN, FIXTURE_ARCHIVE_INDEX } from "../../parity/helpers/fixture-archive.js";
 
 const noop = (): void => undefined;
@@ -79,6 +87,80 @@ describe("the sweep record card's name (unit F10d finding 1)", () => {
     const [, title, ariaLabel] = match ?? [];
     assert.equal(title, ariaLabel);
     assert.equal(title?.includes("person-lookup v2"), true);
+  });
+});
+
+/*
+ * D307 — the frozen timeline drew a note for a skipped step ONLY when its span
+ * recorded a closed reason, and dropped the `absent` arm's served sentence. A
+ * step that did not run then looked exactly like a step that ran: no note under
+ * either. Both arms draw now, and this is the arm nobody would have written a
+ * test for, because its absence is a blank rather than a wrong word.
+ */
+describe("a skipped step whose span recorded no reason (D307)", () => {
+  const NO_REASON = "this step did not run; its span recorded no reason";
+
+  function detailWithSkips(): ArchivedRunDetailWire {
+    const timeline = FIXTURE_ARCHIVED_RUN.detail.timeline;
+    return ArchivedRunDetailWireSchema.parse({
+      ...FIXTURE_ARCHIVED_RUN,
+      detail: {
+        ...FIXTURE_ARCHIVED_RUN.detail,
+        timeline: {
+          ...timeline,
+          events: [
+            ...timeline.events,
+            {
+              noteId: "aa11bb22-0007-4000-8000-aa11bb220007",
+              sequence: 2,
+              at: FIXTURE_ARCHIVED_RUN.archivedAt,
+              label: "Reconcile",
+              state: "skipped",
+              notRun: { state: "absent", reason: NO_REASON },
+            },
+            {
+              noteId: "aa11bb22-0008-4000-8000-aa11bb220008",
+              sequence: 3,
+              at: FIXTURE_ARCHIVED_RUN.archivedAt,
+              label: "Timecard",
+              state: "skipped",
+              notRun: { state: "present", reason: "step-omitted" },
+            },
+          ],
+        },
+      },
+    });
+  }
+
+  function skipMarkup(): string {
+    return renderToStaticMarkup(createElement(ToastProvider, {
+      children: createElement(ArchivedRunDetail, {
+        detail: detailWithSkips(),
+        sweep: FIXTURE_ARCHIVE_INDEX.sweeps[0],
+        codes: new Map<string, string>([["person-lookup@2", "pl"]]),
+        busy: false,
+        relaunched: false,
+        onRelaunch: noop,
+        onDismiss: noop,
+        onReadCapture: unreadCapture,
+      }),
+    }));
+  }
+
+  it("draws the served absent reason beside the step that did not run", () => {
+    assert.equal(
+      skipMarkup().includes(NO_REASON),
+      true,
+      "the frozen page dropped the server's own sentence about why no reason is held",
+    );
+  });
+
+  it("still draws the closed vocabulary when the span DID record a reason", () => {
+    assert.equal(skipMarkup().includes(ARCHIVED_NOT_RUN_NOTE["step-omitted"]), true);
+  });
+
+  it("leaves a step that RAN with no note at all", () => {
+    assert.equal(archivedNotRunNote(detailWithSkips().detail.timeline.events[0]), undefined);
   });
 });
 
