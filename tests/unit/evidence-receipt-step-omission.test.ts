@@ -34,6 +34,7 @@ import {
 } from "../../src/domain/run/result.js";
 import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js";
 import type { RunEvidenceReceipt } from "../../src/domain/trust/evidence.js";
+import { evidenceEntryRef } from "../../src/domain/trust/evidence-identity.js";
 import { buildExplainRunView, renderExplainRun } from "../../src/server/explain/explain-run.js";
 import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
 import { EXIT_RUN_ID, seedPersonLookupExitRun } from "./fixtures/receipt-run-fixtures.js";
@@ -83,6 +84,14 @@ function omittedStepFixture(overrides?: Readonly<{
   dropAssertedCheckpoint?: boolean;
   citeAssertedAsResolved?: boolean;
   dropAssertionMarker?: boolean;
+  /** Cite a DIFFERENT output schema than the row was parsed with. */
+  citeForeignSchemaHash?: boolean;
+  /** Cite a DIFFERENT output digest than the row's own value hashes to. */
+  citeForeignOutputDigest?: boolean;
+  /** Cite the marked node as `not-run` instead of `asserted`. */
+  citeAssertedAsNotRun?: boolean;
+  /** Leave the marked node out of the terminal record's dependencies entirely. */
+  dropAssertedDependency?: boolean;
 }>): Fixture {
   const database = openDatabase();
   const seeded = seedPersonLookupExitRun(database);
@@ -106,24 +115,35 @@ function omittedStepFixture(overrides?: Readonly<{
     })),
   });
 
-  const dependencies = storedResult.dependencies.map((dependency) => {
-    if (String(dependency.nodeId) === ASSERTED_NODE) {
-      return overrides?.citeAssertedAsResolved === true
-        ? dependency
-        : {
+  /* A different, well-formed fingerprint — never the one the row's own value derives. */
+  const foreign = deriveCheckpointOutputDigest({ schemaHash: asserted.output.schemaHash, value: { foreign: true } });
+
+  const dependencies = storedResult.dependencies
+    .filter((dependency) => !(
+      overrides?.dropAssertedDependency === true && String(dependency.nodeId) === ASSERTED_NODE
+    ))
+    .map((dependency) => {
+      if (String(dependency.nodeId) === ASSERTED_NODE) {
+        if (overrides?.citeAssertedAsResolved === true) return dependency;
+        if (overrides?.citeAssertedAsNotRun === true) {
+          return { state: "not-run" as const, nodeId: dependency.nodeId, reason: "step-omitted" as const };
+        }
+        return {
           state: "asserted" as const,
           nodeId: dependency.nodeId,
           step: STEP,
           assertedAt: ASSERTED_AT,
-          outputSchemaHash: asserted.output.schemaHash,
-          outputDigest: deriveCheckpointOutputDigest(asserted.output),
+          outputSchemaHash: overrides?.citeForeignSchemaHash === true ? foreign : asserted.output.schemaHash,
+          outputDigest: overrides?.citeForeignOutputDigest === true
+            ? foreign
+            : deriveCheckpointOutputDigest(asserted.output),
         };
-    }
-    if (String(dependency.nodeId) === OMITTED_NODE) {
-      return { state: "not-run" as const, nodeId: dependency.nodeId, reason: "step-omitted" as const };
-    }
-    return dependency;
-  });
+      }
+      if (String(dependency.nodeId) === OMITTED_NODE) {
+        return { state: "not-run" as const, nodeId: dependency.nodeId, reason: "step-omitted" as const };
+      }
+      return dependency;
+    });
 
   const result = RunResultRecordSchema.parse({
     ...storedResult,
@@ -252,6 +272,63 @@ describe("evidence receipt under step omission (D307)", () => {
       () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ citeAssertedAsResolved: true }))),
       /may not call an asserted value an observed one/u,
     );
+  });
+
+  it("refuses a citation whose output schema is not the one that parsed the row", () => {
+    assert.throws(
+      () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ citeForeignSchemaHash: true }))),
+      /disagree about which schema bound this assertion's value/u,
+    );
+  });
+
+  it("refuses a citation whose output digest is not the row's own value", () => {
+    assert.throws(
+      () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ citeForeignOutputDigest: true }))),
+      /the terminal derive did not consume the value this row carries/u,
+    );
+  });
+
+  it("refuses a marked row the terminal record calls not-run", () => {
+    assert.throws(
+      () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ citeAssertedAsNotRun: true }))),
+      /cites node "active-status" as not-run \(step-omitted\).*may not call an asserted value a node that produced nothing/su,
+    );
+  });
+
+  /*
+   * The third direction of the same reconciliation. There is no arm for it
+   * inside the asserted emitter on purpose — the derivation binding refuses the
+   * whole receipt first — and this test is what proves that claim rather than
+   * leaving it as a comment: a declared dependency the terminal record does not
+   * cite never reaches a `present` obligation.
+   */
+  it("refuses a marked row the terminal record leaves out of a dependency the derive declares", () => {
+    assert.throws(
+      () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ dropAssertedDependency: true }))),
+      /\[MOVED\] terminal-dependency-set — the stored result was built from \[crm-dates\]/u,
+    );
+  });
+
+  it("points the asserted obligation at its facts, never back at the decision that cites it", () => {
+    const receipt = buildRunEvidenceReceipt(receiptInput(omittedStepFixture()));
+
+    const obligation = nodeObligation(receipt, ASSERTED_NODE);
+    const decision = receipt.decisions.find((entry) => entry.kind === "assertion");
+    assert.ok(decision !== undefined);
+    assert.ok(
+      decision.evidence.includes(evidenceEntryRef(obligation.id)),
+      "the assertion decision explains the obligation, so it cites it",
+    );
+    assert.equal(
+      obligation.evidence.includes(evidenceEntryRef(decision.id)),
+      false,
+      "and the obligation must not cite the decision back: a 2-cycle walks a reader in a circle",
+    );
+    const factIds = new Set(receipt.observations.map((fact) => evidenceEntryRef(fact.id)));
+    assert.ok(obligation.evidence.length > 0, "it cites the asserted facts instead");
+    for (const ref of obligation.evidence) {
+      assert.ok(factIds.has(ref), "an asserted obligation's evidence is its facts");
+    }
   });
 
   it("refuses operator-sourced leaves on a row that carries no assertion marker", () => {
