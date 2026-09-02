@@ -162,13 +162,23 @@ export function workerProfileDirectory(input: Readonly<{
   const system = BrowserSystemIdSchema.parse(input.system);
   const instance = RuntimeInstanceSchema.parse(input.instance);
   const fingerprint = FingerprintSchema.parse(input.configFingerprint);
-  const browserMode = BrowserPresentationModeSchema.parse(input.browserMode ?? "headless");
+  const browserMode = BrowserPresentationModeSchema.parse(
+    input.browserMode === undefined ? "headless" : input.browserMode,
+  );
   return resolve(
     root,
     input.isolation.browserSessionNamespace,
     worker,
     `${system}-${instance}-${fingerprint.slice(0, 12)}-${browserMode}`,
   );
+}
+
+function browserModeFor(
+  requested: BrowserPresentationMode | undefined,
+  configuredHeadless: boolean,
+): BrowserPresentationMode {
+  const configured = configuredHeadless ? "headless" : "headed";
+  return BrowserPresentationModeSchema.parse(requested === undefined ? configured : requested);
 }
 
 /**
@@ -234,9 +244,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     WorkflowIdSchema.parse(input.workflowId);
     const system = BrowserSystemIdSchema.parse(input.system);
     const configFingerprint = FingerprintSchema.parse(input.configFingerprint);
-    const browserMode = BrowserPresentationModeSchema.parse(
-      input.browserMode ?? (config.browser.headless ? "headless" : "headed"),
-    );
+    const browserMode = browserModeFor(input.browserMode, config.browser.headless);
     const instance = RuntimeInstanceSchema.parse(input.instance);
     const binding = bindingFor(this.#bindings, system);
     if (input.exclusive) {
@@ -353,9 +361,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     browserMode?: BrowserPresentationMode;
   }>): Promise<Readonly<{ profileDirectory: string }>> {
     const { config, isolation } = this.#options;
-    const browserMode = BrowserPresentationModeSchema.parse(
-      input.browserMode ?? (config.browser.headless ? "headless" : "headed"),
-    );
+    const browserMode = browserModeFor(input.browserMode, config.browser.headless);
     const profileDirectory = workerProfileDirectory({
       profileRoot: config.paths.browserProfileRoot,
       isolation,

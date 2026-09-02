@@ -539,6 +539,36 @@ describe("worker browser sessions", () => {
     );
   });
 
+  it("admits a legacy headless resource only at the configured default, never for a headed run", async () => {
+    const harness = sessionFactory();
+    const legacy: WorkerBrowserSessionFactory = {
+      async open(input) {
+        const resource = await harness.factory.open(input);
+        const { browserMode: _browserMode, ...withoutMode } = resource;
+        return withoutMode;
+      },
+    };
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID,
+      workflowId: WORKFLOW_ID,
+      stores: taskStoreRegistry,
+      factory: legacy,
+      clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
+      scheduler: new ManualScheduler(manualClock(new Date("2026-08-02T18:00:00.000Z"))),
+      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(),
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "legacy-headless");
+    sessions.releaseRunConfigFingerprint();
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT, "headed");
+    await assert.rejects(
+      sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "must not run"),
+      /mismatched launch options/,
+    );
+    assert.equal(harness.opens(), 2, "headed identity drift must force a fresh acquisition before refusing its missing echo");
+  });
+
   it("refuses a factory resource that echoes a different fingerprint (D116)", async () => {
     const harness = sessionFactory();
     const forging: WorkerBrowserSessionFactory = {
