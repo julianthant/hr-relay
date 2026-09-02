@@ -213,7 +213,19 @@ describe("evidence receipt under step omission (D307)", () => {
     assert.equal(obligation.mandatory, false);
     const decision = receipt.decisions.find((entry) => entry.reason.includes(`node "${OMITTED_NODE}"`));
     assert.ok(decision !== undefined);
-    assert.match(decision.reason, /the operator omitted its step at start/u);
+    /*
+     * D307 — the EXACT `NOT_RUN_SENTENCE["step-omitted"]` sentence, not a
+     * substring of it. `NOT_RUN_SENTENCE` is a closed map with five reasons
+     * whose sentences differ only in their tail, so a loose match would still
+     * pass if `step-omitted` were wired to the `operator-asserted` sentence
+     * ("the operator asserted its facts at start") or to a defaulted one.
+     */
+    assert.equal(
+      decision.reason,
+      `node "${OMITTED_NODE}" did not run: the operator omitted its step at start (D307)`,
+    );
+    assert.equal(decision.kind, "branch");
+    assert.equal(decision.outcome, "not-taken");
   });
 
   it("names the omitted step keys once, carries no typed fact, and refuses verified-done", () => {
