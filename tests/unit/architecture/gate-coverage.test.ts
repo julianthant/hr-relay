@@ -33,6 +33,12 @@ const tsconfig = JSON.parse(readFileSync(join(REPO_ROOT, "tsconfig.json"), "utf8
 
 /** Every root this repo authors code in. Adding one means gating it. */
 const AUTHORED_ROOTS = ["src", "tests", "scripts"] as const;
+/** Root TS configs included by the sole tsconfig program require the same lint gate. */
+const ROOT_TYPESCRIPT_CONFIG_FILES = [
+  "vitest.config.ts",
+  "vite.dashboard.config.ts",
+  "playwright.parity.config.ts",
+] as const;
 
 describe("gate coverage", () => {
   it("keeps every authored root inside the single type program", () => {
@@ -65,6 +71,26 @@ describe("gate coverage", () => {
       /--no-error-on-unmatched-pattern/,
       "an unmatched lint pattern must fail, never silently lint nothing",
     );
+  });
+
+  it("lints every root TypeScript config the type program includes", () => {
+    const lint = pkg.scripts.lint ?? "";
+    for (const configFile of ROOT_TYPESCRIPT_CONFIG_FILES) {
+      assert.ok(
+        tsconfig.include.includes(configFile),
+        `tsconfig must include ${configFile}; this gate only names root configs the type program owns`,
+      );
+      assert.match(
+        lint,
+        new RegExp(`(^|\\s)${configFile.replace(/\\./g, "\\\\.")}(\\s|$)`),
+        `lint must target ${configFile}; otherwise a root config is typechecked but escapes lint`,
+      );
+      assert.match(
+        eslintConfig,
+        new RegExp(`files:\\s*\\[[^\\]]*"${configFile.replace(/\\./g, "\\\\.")}"`),
+        `the typed ESLint config must explicitly cover ${configFile}; a command target without a strict block passes vacuously`,
+      );
+    }
   });
 
   it("keeps the typed ESLint config covering the same roots the CLI targets", () => {
