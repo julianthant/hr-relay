@@ -1690,7 +1690,7 @@ needs:
 - cross-cutting
 
 log:
-- 2026-09-01 | D306 browser evidence | per-run Headless/Headed is immutable start/run authority; selected browser-lease screenshots persist as restricted diagnostic attachments and the same verified collection renders in Logs and Receipt
+- 2026-09-01 | D306 browser evidence | new/reset dashboard starts default to Headed with screenshot capture on; per-run Headless/Headed and capture policy are immutable start/run authority, and the same verified restricted capture collection renders in Logs and Receipt
 - 2026-08-29 | R-DCR close | DCR1 and DCR3–DCR6 closed: D288 serves honest unavailable for the seven current ineligible Separations rows while strict fixtures prove the populated arm; D289's exact receipt comparison is built; D75's solo request checkpoint attributes new XLSX v2 evidence; artifact bytes/screenshots remain open
 - 2026-08-28 | DCR receive | DCR3–DCR5 search authority/transport, Separations surface and evidenced XLSX delivered; artifact bytes and D289 comparison implementation remain open
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code

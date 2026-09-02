@@ -371,6 +371,8 @@ loss makes ref write-safety §4 recovery the owner; it never becomes detached li
   `headless` or `headed`, copies it into every fan-out/retry/relaunch envelope, and the worker binds
   that value before the first lease. It is part of in-memory reuse compatibility and the persistent
   profile partition, so changing presentation closes the old context before opening another one.
+  The Run Options surface defaults a new or reset dashboard start to `headed`; the operator may
+  explicitly select `headless`, and either choice is persisted rather than inferred by the worker.
   Historical/programmatic envelopes that predate the field retain `browser.headless` from their
   captured config as their compatibility default; a newly planned dashboard run never omits it.
 - **A `session:"fresh"` boundary uses that same close proof** before replacing the session, and a

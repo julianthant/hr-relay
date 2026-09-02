@@ -1515,3 +1515,8 @@ binding would contradict them.
   file, leaving the a11y and PNG corpus describing different byte lengths and digests. Gallery
   evidence now comes from a deterministic synthetic PNG in `tests/fixtures/`, and an architecture
   test prevents `fixture-day.ts` from reading the reference corpus again.
+- **2026-09-01 — D306's dashboard defaults are Headed with browser screenshot capture on.** A new or
+  reset Start Run modal presents those values before planning; selecting Headless or disabling capture
+  remains an explicit per-run choice that is persisted unchanged. Historical and programmatic omissions
+  keep the compatibility behavior owned by `ref clock-config-secrets`; the dashboard never omits either
+  field.

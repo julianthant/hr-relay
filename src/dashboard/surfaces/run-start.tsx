@@ -868,7 +868,7 @@ export function RunStartDialog({
   const [text, setText] = useState("");
   const [priority, setPriority] = useState<StartPriority>("interactive");
   const [dryRunRequested, setDryRunRequested] = useState(false);
-  const [browserMode, setBrowserMode] = useState<BrowserMode>("headless");
+  const [browserMode, setBrowserMode] = useState<BrowserMode>("headed");
   const [captureBrowserScreenshots, setCaptureBrowserScreenshots] = useState(true);
   const [plan, setPlan] = useState<StartPlanResponse | null>(null);
   const [result, setResult] = useState<CommandResult | null>(null);
@@ -897,7 +897,7 @@ export function RunStartDialog({
     setSelectedStepKeys(nextWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
     setPriority("interactive");
     setDryRunRequested(false);
-    setBrowserMode("headless");
+    setBrowserMode("headed");
     setCaptureBrowserScreenshots(true);
   }, [workflows]);
 

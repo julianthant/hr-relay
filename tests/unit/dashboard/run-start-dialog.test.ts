@@ -604,7 +604,7 @@ describe("D293 keeps D285 and removes only per-start destination", () => {
 });
 
 describe("browser presentation is an immutable Run Options choice", () => {
-  it("offers Headless and Headed, defaults to headless, and submits headed when chosen", async () => {
+  it("offers both modes, defaults to headed with screenshots on, and submits an explicit override", async () => {
     let submitted: unknown;
     const dialog = await openDialog(stubClient({ submitStartPlan: async (input) => {
       submitted = input;
@@ -617,7 +617,7 @@ describe("browser presentation is an immutable Run Options choice", () => {
     assert.ok(modeLabel !== undefined, "Options drew no Browser mode label");
     const mode = document.getElementById(modeLabel.htmlFor);
     assert.ok(mode instanceof HTMLSelectElement, "Browser mode label did not name a select");
-    assert.equal(mode.value, "headless");
+    assert.equal(mode.value, "headed");
     assert.deepEqual([...mode.options].map(option => [option.value, option.text]), [
       ["headless", "Headless"],
       ["headed", "Headed"],
@@ -625,13 +625,13 @@ describe("browser presentation is an immutable Run Options choice", () => {
     const screenshotControl = buttons().find(button => buttonName(button) === "Capture browser screenshots");
     assert.ok(screenshotControl !== undefined, "Options drew no screenshot capture control");
     assert.equal(screenshotControl.getAttribute("data-state"), "checked", "screenshot capture must default on");
-    await dialog.chooseBrowserMode("headed");
+    await dialog.chooseBrowserMode("headless");
     await dialog.press("Capture browser screenshots");
     await dialog.press("Next");
     const request = StartPlanSubmissionSchema.parse(submitted);
-    assert.equal(request.browserMode, "headed");
+    assert.equal(request.browserMode, "headless");
     assert.equal(request.captureBrowserScreenshots, false);
-    assert.ok(dialog.text().includes("Browser: Headed"));
+    assert.ok(dialog.text().includes("Browser: Headless"));
     assert.ok(dialog.text().includes("Browser screenshots: Off"));
   });
 });
