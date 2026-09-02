@@ -1,0 +1,36 @@
+{
+  "checkedAt": "2026-09-02T18:40:00.995Z",
+  "dashboard": {
+    "frontend": {
+      "url": "http://127.0.0.1:5174/",
+      "httpStatus": 200,
+      "pid": 39297
+    },
+    "bff": {
+      "url": "http://127.0.0.1:3938/api/v1/bootstrap",
+      "httpStatus": 200,
+      "pid": 39300
+    },
+    "descriptorHash": "26584ed3f0c7cb6af09d89674a6613b3854ca98ba2aaccab5dc0af0435f33a68",
+    "separationsFingerprint": "a6a1600a4398f7caa9d14f14821a9abc606de603ed2a3e83af58d99c72e1d81a"
+  },
+  "storage": {
+    "authority": "healthy",
+    "schemaVersion": 29,
+    "generation": 2025,
+    "quickCheck": "ok",
+    "backup": "current",
+    "backupGenerationGap": 0,
+    "spanAuthority": "healthy",
+    "reconciledCurrentRuns": 19
+  },
+  "durableCounts": {
+    "runs_view": 19,
+    "write_intents": 0,
+    "write_attempts": 0,
+    "durable_outbox": 0
+  },
+  "browsers": 0,
+  "newWorkflowRunStarted": false,
+  "realHrWriteAttempted": false
+}
