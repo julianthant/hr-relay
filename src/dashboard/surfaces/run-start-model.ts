@@ -438,13 +438,17 @@ export function toggleStepSelection(
   const forces = step.control.state === "omittable" ? step.control.forces : [];
   if (next) {
     selected.add(key);
+    // Only the step this press let back in is offered a return; whether it
+    // GETS one is the cascade's answer, below.
     for (const forced of forces) selected.add(forced);
   } else {
     selected.delete(key);
-    for (const forced of forces) selected.delete(forced);
   }
-  // Re-check the cascade against the NEW selection: a step this press let back
-  // in that another omitted step still forces out has to stay out.
+  // The cascade, applied to the NEW selection, is the only rule that removes a
+  // step: it takes out everything any omitted step forces — the one this press
+  // omitted included — and it keeps out a step another omission still holds.
+  // Deleting `forces` in the branch above as well would be a line no test could
+  // make fail.
   const stillForced = forcedStepOmissions(steps, [...selected]);
   for (const forced of stillForced.keys()) selected.delete(forced);
   return Object.freeze(steps.filter((candidate) => selected.has(candidate.key)).map((candidate) => candidate.key));
