@@ -101,6 +101,7 @@ import {
   Lock,
   RotateCw,
   ShieldAlert,
+  Trash2,
   TriangleAlert,
 } from "lucide-react";
 import { cn } from "../lib/utils.js";
@@ -222,6 +223,7 @@ import {
   archiveWorkflowCodes,
   ARCHIVED_NOT_RUN_NOTE,
   archivedOmittedStepsNote,
+  archivedDeleteConfirm,
   archivedRelaunchCautions,
   archivedRelaunchHeadline,
   archivedRunHeading,
@@ -237,6 +239,14 @@ import { settleCommandResult } from "../app/command-result.js";
 const SOURCE_SURFACE = "archive";
 
 type ArchiveTab = "summary" | "logs" | "data" | "people" | "evidence";
+
+/**
+ * The two doors an archived record's footer opens (D179's relaunch, D308's
+ * delete). Both are confirmed first and both settle into the SAME result slot,
+ * so the surface has to name which one is being confirmed and which one an
+ * answer belongs to.
+ */
+type ArchivedRunAction = "relaunch" | "delete";
 
 /**
  * Why a run is prior-version, in the operator's words. The wire's reasons are a
@@ -1305,7 +1315,9 @@ export function ArchivedRunDetail({
   codes,
   busy,
   relaunched,
+  refusal,
   onRelaunch,
+  onDelete,
   onDismiss,
   onReadCapture,
 }: {
@@ -1315,7 +1327,16 @@ export function ArchivedRunDetail({
   codes: ReadonlyMap<string, string>;
   busy: boolean;
   relaunched: boolean;
+  /**
+   * The refused answer to a command THIS record's footer issued, keyed to this
+   * run by its owner (D308). Before it existed a refused relaunch drew nothing
+   * at all: the applied banner was the only answer the detail could give, so a
+   * `schema-mismatch` — the one refusal both footer commands are built to
+   * produce — left the operator's click looking like it had never happened.
+   */
+  refusal: CommandResult | undefined;
   onRelaunch: () => void;
+  onDelete: () => void;
   onDismiss: () => void;
   onReadCapture: (runId: string, artifactId: string, signal?: AbortSignal) => Promise<ArchivedCaptureResourceWire>;
 }) {
@@ -1468,6 +1489,18 @@ export function ArchivedRunDetail({
               “Relaunched as” once the archive is re-read.
             </span>
           </Banner>
+        </div>
+      )}
+
+      {/*
+        The footer's refusals, drawn where its applied banner is drawn. Both
+        footer commands cite `archiveFingerprint`, so `schema-mismatch` is the
+        refusal this pane exists to show: the record moved under the page, and
+        the operator has to re-read it before either door will open.
+      */}
+      {refusal !== undefined && (
+        <div className="px-[var(--ds-space-cozy)] pt-[var(--ds-space-cozy)]">
+          <ArchivedCommandRefusal result={refusal} onDismiss={onDismiss} />
         </div>
       )}
 
@@ -1964,6 +1997,29 @@ export function ArchivedRunDetail({
             {detail.relaunch.reason}
           </span>
         )}
+        {/*
+          D308's delete, beside the relaunch and never in front of it. It is
+          `dangerGhost` rather than `danger` because the footer already spends
+          its one solid on the affirmative door (`primitives-core.tsx`: at most
+          one primary and one danger per surface) — the solid `danger` belongs
+          to the confirm, which is the press that actually removes rows.
+
+          It carries no availability arm. The relaunch's exists because a
+          retired descriptor makes a relaunch impossible and the reason is not
+          otherwise discoverable; a delete needs nothing but the record on
+          screen, and the kernel's own admission (a non-terminal delegated
+          member) is answered by the refusal pane above rather than guessed at
+          here by a second, drifting copy of that rule.
+        */}
+        <Button
+          variant="dangerGhost"
+          size="sm"
+          loading={busy}
+          icon={<Trash2 aria-hidden className={dsIcon.md} />}
+          onClick={onDelete}
+        >
+          Delete…
+        </Button>
       </PanelFooter>
     </Panel>
   );
@@ -2954,6 +3010,111 @@ function RelaunchConfirmDialog({
   );
 }
 
+/* ── the footer's refusals, and D308's delete ────────────────────────────── */
+
+/**
+ * The answer to a footer command that did NOT land.
+ *
+ * The verdict comes from D253's one fold, never re-derived from `result.state`
+ * here, and the sentence is the kernel's own: `schema-mismatch` already names
+ * both digests, and a paraphrase would be a second account of a refusal that
+ * has exactly one author.
+ */
+function ArchivedCommandRefusal({ result, onDismiss }: { result: CommandResult; onDismiss: () => void }) {
+  const settlement = settleCommandResult(result);
+  if (settlement.kind === "applied") return null;
+  return (
+    <Refusal
+      title="That command was refused"
+      code={settlement.reason === "conflict" ? "version-conflict" : settlement.code}
+      outcome="Nothing was changed. This archived record is exactly as it was."
+      meta={settlement.reason === "conflict" ? [`now at version ${String(settlement.currentVersion)}`] : []}
+      action={<Button size="sm" variant="ghost" onClick={onDismiss}>Dismiss</Button>}
+    >
+      <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{settlement.message}</p>
+    </Refusal>
+  );
+}
+
+/**
+ * D308's confirm. Its copy is `archivedDeleteConfirm`'s, so the three sentences
+ * an operator cannot recover after this press have ONE author (ref
+ * dashboard-surfaces §9.5.1).
+ *
+ * The evidence counts are the archived record's own pointers, not a fresh read:
+ * they are what "every row it owns" means for THIS run, and the write-intent
+ * count is the one that makes the idempotency sentence concrete rather than
+ * theoretical.
+ */
+function DeleteConfirmDialog({
+  detail,
+  onCancel,
+  onConfirm,
+}: {
+  detail: ArchivedRunDetailWire | undefined;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const copy = detail === undefined ? undefined : archivedDeleteConfirm(detail);
+  return (
+    <Dialog open={detail !== undefined} onOpenChange={(open) => { if (!open) onCancel(); }}>
+      {detail !== undefined && copy !== undefined && (
+        <DialogContent size="lg" title={copy.title} description={copy.description}>
+          <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
+            {(detail.evidence.writeIntentIds.length > 0 || detail.ledger.length > 0) && (
+              <Banner
+                tone="danger"
+                title={`This run filed ${plural(Math.max(detail.evidence.writeIntentIds.length, detail.ledger.length), "record")} in a real system`}
+                icon={<TriangleAlert aria-hidden className={dsIcon.lg} />}
+              >
+                <span className={dsText.body}>
+                  Those keys are what a later run checks before it submits. Once they are gone, nothing in this
+                  system knows the write already happened.
+                </span>
+              </Banner>
+            )}
+
+            <Field label="What leaves authority">
+              <Well>
+                <div className="flex min-w-0 flex-col gap-[var(--ds-space-snug)]">
+                  <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
+                    <Trash2 aria-hidden className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-danger)]")} />
+                    <span className={cn(dsText.ui, "min-w-0 truncate text-[color:var(--ds-fg)]")}>
+                      {detail.detail.header.title}
+                    </span>
+                    <Badge tone="neutral" className="ml-auto">{detail.workflowLabel}</Badge>
+                  </div>
+                  <MetaLine
+                    items={[
+                      `trace ${detail.detail.header.traceId}`,
+                      plural(detail.evidence.writeIntentIds.length, "write intent"),
+                      plural(detail.ledger.length, "ledger line"),
+                      plural(detail.evidence.artifactIds.length, "artifact"),
+                      plural(detail.evidence.checkpointNodeIds.length, "checkpoint"),
+                    ]}
+                  />
+                </div>
+              </Well>
+            </Field>
+
+            <div className="min-w-0">
+              <SectionLabel className="mb-[var(--ds-space-snug)]">Before you press it</SectionLabel>
+              <BulletList items={[...copy.consequences]} />
+            </div>
+          </DialogBody>
+
+          <DialogFooter meta={`Cites integrity ${shortHash(detail.archiveFingerprint)} — the exact record on this screen.`}>
+            <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+            <Button variant="danger" icon={<Trash2 aria-hidden className={dsIcon.md} />} onClick={onConfirm}>
+              {copy.confirmLabel}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      )}
+    </Dialog>
+  );
+}
+
 /* ── the version-bump flow ───────────────────────────────────────────────── */
 
 /**
@@ -3589,14 +3750,17 @@ export function ArchiveWorkspace({
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CommandResult | undefined>(undefined);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<ArchivedRunAction | undefined>(undefined);
   /**
-   * The relaunch answer is keyed to the run it came from. Clearing it on a
-   * list CLICK is not enough: filtering re-selects a run without one, so a
-   * result from the previous run would sit above a different run's detail
-   * claiming to be about it.
+   * The footer's answer is keyed to the run it came from AND to the door it
+   * came through. Clearing it on a list CLICK is not enough: filtering
+   * re-selects a run without one, so a result from the previous run would sit
+   * above a different run's detail claiming to be about it. D308 added the
+   * second half: two doors now share this one result slot, and a delete's
+   * refusal drawn under a relaunch's applied banner would be two answers to
+   * one click.
    */
-  const [relaunched, setRelaunched] = useState<string | undefined>(undefined);
+  const [acted, setActed] = useState<{ runId: string; action: ArchivedRunAction } | undefined>(undefined);
   const [nonce, setNonce] = useState(0);
   const readArchiveCapture = useCallback(
     (runId: string, artifactId: string, signal?: AbortSignal) =>
@@ -3645,7 +3809,14 @@ export function ArchiveWorkspace({
   }, [client, selection, nonce]);
 
   const onCommand = useCallback(
-    (request: unknown) => {
+    /**
+     * `onApplied` runs only on the ONE fold's applied verdict, beside the
+     * re-read. D308's delete needs it because the record it removes is the
+     * record this pane is reading: leaving the selection where it is would
+     * re-read a run that no longer exists and answer a successful delete with
+     * "that archived run could not be read".
+     */
+    (request: unknown, onApplied?: () => void) => {
       setBusy(true);
       setResult(undefined);
       client.executeCommand(request).then(
@@ -3658,7 +3829,10 @@ export function ArchiveWorkspace({
           // "Applied" is the ONE fold's verdict (D253, Track D row D3) — a
           // re-read triggered by a refused command would show the operator an
           // unchanged index as though it were the result of their click.
-          if (settleCommandResult(next).kind === "applied") setNonce((value) => value + 1);
+          if (settleCommandResult(next).kind === "applied") {
+            setNonce((value) => value + 1);
+            onApplied?.();
+          }
         },
         (error: unknown) => {
           setBusy(false);
@@ -3680,7 +3854,7 @@ export function ArchiveWorkspace({
 
   const relaunch = useCallback(
     (target: ArchivedRunDetailWire) => {
-      setRelaunched(target.runId);
+      setActed({ runId: target.runId, action: "relaunch" });
       onCommand({
         commandId: crypto.randomUUID(),
         requestedAt: systemClock.now().toISOString(),
@@ -3692,6 +3866,34 @@ export function ArchiveWorkspace({
       });
     },
     [actorId, onCommand],
+  );
+
+  /**
+   * D308's delete, composed exactly as the relaunch above it is — same
+   * envelope, same family, and the same `archiveFingerprint` off the record
+   * this pane read, which is what makes the kernel's `schema-mismatch` a real
+   * check rather than a formality.
+   */
+  const deleteArchivedRun = useCallback(
+    (target: ArchivedRunDetailWire) => {
+      setActed({ runId: target.runId, action: "delete" });
+      onCommand(
+        {
+          commandId: crypto.randomUUID(),
+          requestedAt: systemClock.now().toISOString(),
+          requestedBy: actorId,
+          source: SOURCE_SURFACE,
+          family: "version-archive",
+          type: "delete-archived-run",
+          target: { archivedRunId: target.runId, archiveFingerprint: target.archiveFingerprint },
+        },
+        // Back to the ledger, which the same applied verdict has already
+        // ordered re-read — so the list the operator lands on is the one that
+        // no longer holds this run.
+        () => { onSelection(ARCHIVE_INDEX); },
+      );
+    },
+    [actorId, onCommand, onSelection],
   );
 
   const toggleSection = useCallback((applicationId: string) => {
@@ -3746,12 +3948,21 @@ export function ArchiveWorkspace({
         codes={codes}
         busy={busy}
         relaunched={
-          relaunched === detail.value.runId
+          acted?.runId === detail.value.runId
+          && acted.action === "relaunch"
           && result !== undefined
           && settleCommandResult(result).kind === "applied"
         }
-        onRelaunch={() => setConfirming(true)}
-        onDismiss={() => setRelaunched(undefined)}
+        refusal={
+          acted?.runId === detail.value.runId
+          && result !== undefined
+          && settleCommandResult(result).kind !== "applied"
+            ? result
+            : undefined
+        }
+        onRelaunch={() => setConfirming("relaunch")}
+        onDelete={() => setConfirming("delete")}
+        onDismiss={() => { setActed(undefined); setResult(undefined); }}
         onReadCapture={readArchiveCapture}
       />
     );
@@ -3860,11 +4071,19 @@ export function ArchiveWorkspace({
       />
       {body()}
       <RelaunchConfirmDialog
-        detail={confirming ? loadedDetail : undefined}
-        onCancel={() => setConfirming(false)}
+        detail={confirming === "relaunch" ? loadedDetail : undefined}
+        onCancel={() => setConfirming(undefined)}
         onConfirm={() => {
-          setConfirming(false);
+          setConfirming(undefined);
           if (loadedDetail !== undefined) relaunch(loadedDetail);
+        }}
+      />
+      <DeleteConfirmDialog
+        detail={confirming === "delete" ? loadedDetail : undefined}
+        onCancel={() => setConfirming(undefined)}
+        onConfirm={() => {
+          setConfirming(undefined);
+          if (loadedDetail !== undefined) deleteArchivedRun(loadedDetail);
         }}
       />
     </TakeoverFrame>

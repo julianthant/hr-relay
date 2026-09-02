@@ -963,3 +963,51 @@ export function archivedRelaunchHeadline(detail: ArchivedRunDetailWire): string 
       );
   }
 }
+
+/**
+ * D308's confirm copy for the Archive's delete door.
+ *
+ * The relaunch beside it is additive — it enqueues a run and leaves the record
+ * exactly as it ended — so its dialog can spend its whole body on what the
+ * fresh run WOULD do. This one removes authority, and the three sentences
+ * below are the three facts an operator cannot recover after pressing it:
+ *
+ *  1. WHAT leaves. Not "the archived record": the retained `tasks` row and
+ *     every row it owns go with it, and the write ledger is one of them.
+ *  2. WHAT that costs. The write ledger carries the permanent idempotency keys
+ *     that stop the same live write from being submitted twice; deleting the
+ *     run releases them. The sentence is conditional because the archive holds
+ *     rehearsals too, and it names the WORKFLOW so the operator reads it as
+ *     "UCPath" rather than as a database noun.
+ *  3. That there is no undo. The tombstone records that a run was deleted; it
+ *     does not hold what was deleted.
+ *
+ * It is model-authored rather than served: the archived detail wire carries no
+ * confirm (the relaunch's does not either), and inventing a server-authored
+ * confirm for one control would put this surface's two destructive-copy
+ * authors in two different places.
+ */
+export interface ArchivedDeleteConfirm {
+  readonly title: string;
+  readonly description: string;
+  /** The consequences, in the order an operator reads them. */
+  readonly consequences: readonly string[];
+  readonly confirmLabel: string;
+}
+
+export function archivedDeleteConfirm(
+  detail: Pick<ArchivedRunDetailWire, "workflowLabel">,
+): ArchivedDeleteConfirm {
+  return Object.freeze({
+    title: "Delete this archived run",
+    description:
+      "It removes the archived record, the retained run, and every row it owns from the database, "
+      + "including its write ledger.",
+    consequences: Object.freeze([
+      `If this run wrote to ${detail.workflowLabel}'s systems, the permanent idempotency key that stops `
+      + "the same write from being submitted twice is released with it.",
+      "This is final; there is no undo.",
+    ]),
+    confirmLabel: "Delete",
+  });
+}

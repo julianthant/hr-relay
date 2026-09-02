@@ -86,8 +86,9 @@ export async function archiveBrowserRouteReferences(input: ArchiveBrowserProbe):
       mounted.render(createElement(ToastProvider, {
         children: createElement(ArchivedRunDetail, {
           detail: input.detail, sweep: undefined, codes: new Map<string, string>(),
-          busy: false, relaunched: false,
+          busy: false, relaunched: false, refusal: undefined,
           onRelaunch: () => { throw new Error("Archive browser probe must not relaunch"); },
+          onDelete: () => { throw new Error("Archive browser probe must not delete"); },
           onDismiss: () => { throw new Error("Archive browser probe must not dismiss the parent"); },
           onReadCapture: read,
         }),
