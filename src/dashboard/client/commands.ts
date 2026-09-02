@@ -36,7 +36,8 @@ export const StartPlanResponseSchema = z.strictObject({
   dryRun: z.boolean(),
   browserMode: z.enum(["headless", "headed"]).optional(),
   captureBrowserScreenshots: z.boolean().optional(),
-  stepOmissions: z.array(z.strictObject({ step: z.string().min(1), facts: z.record(z.string(), z.unknown()) })).min(1).optional(),
+  /** D307 — the omitted step KEYS the plan retained; the typed facts never come back (they are person data, and the browser already holds them). */
+  omittedSteps: z.array(z.string().min(1)).min(1).optional(),
   priority: z.enum(["interactive", "bulk"]),
   plannedBy: z.string().min(1),
   configSnapshotId: z.string().min(1),

@@ -20,6 +20,7 @@ import {
   SectionUnavailableError,
   TargetNotFoundError,
 } from "../../../src/server/failures.js";
+import { StartStepOmissionRefusedError } from "../../../src/services/start/step-selection.js";
 
 /** Every phrase the retired `NOT_FOUND_MARKERS` table and its two siblings keyed on. */
 const RETIRED_MARKERS = [
@@ -52,6 +53,26 @@ describe("failureStatus", () => {
     for (const marker of RETIRED_MARKERS) {
       assert.equal(String(body.message).includes(marker), false, marker);
     }
+  });
+
+  it("answers 400 for a D307 step-omission refusal, distinguishable from a shape failure", () => {
+    const { status, body } = failureStatus(new StartStepOmissionRefusedError(
+      "facts-invalid",
+      "separations start step kronos-timecard omission facts are invalid at: lastDayWorked",
+    ));
+    assert.equal(status, 400);
+    // Same 400 family as a schema failure, its OWN code: a surface that only
+    // saw SCHEMA_INVALID could not tell "this body is malformed" from "this
+    // omission does not reconcile with the descriptor".
+    assert.equal(body.code, "START_STEP_OMISSION_REFUSED");
+    const shapeFailure = failureStatus(z.strictObject({ step: z.string() }).safeParse({}).error);
+    assert.equal(shapeFailure.status, 400);
+    assert.notEqual(body.code, shapeFailure.body.code);
+    assert.equal(body.retryable, false);
+    assert.equal(
+      body.message,
+      "separations start step kronos-timecard omission facts are invalid at: lastDayWorked",
+    );
   });
 
   it("answers 409 for a section refusal and 500+retryable for a degraded projection", () => {

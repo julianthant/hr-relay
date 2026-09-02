@@ -138,6 +138,7 @@ import {
   type RunStartStage,
 } from "./run-start-timeline.js";
 import { versionTag } from "./format.js";
+import type { StepOmissionForm } from "../../domain/workflow/step-omission.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration §3.4) */
 const SOURCE_SURFACE = "run-start";
@@ -192,7 +193,18 @@ export interface RunStartWorkflow {
     key: string;
     label: string;
     includedByDefault: boolean;
-    control: { state: "selectable"; inputField: string } | { state: "required"; reason: string };
+    control:
+      | { state: "selectable"; inputField: string }
+      /**
+       * D307 — the step declares an omission the operator may take instead of
+       * running it, with the closed form to draw and the other steps the
+       * choice forces out. The Steps screen's OMISSION UI lands with its own
+       * unit; the arm is carried here so the served wire assigns without a
+       * widening cast, and the existing `required`/`selectable` branches keep
+       * drawing exactly what they drew.
+       */
+      | { state: "omittable"; form: StepOmissionForm; forces: readonly string[] }
+      | { state: "required"; reason: string };
   }>[];
   /** the descriptor's declared typed-input surface, or why there is none */
   readonly inputRun:

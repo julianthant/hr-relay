@@ -19,6 +19,7 @@ import {
   SectionUnavailableError,
   TargetNotFoundError,
 } from "../../failures.js";
+import { StartStepOmissionRefusedError } from "../../../services/start/step-selection.js";
 import { errorText } from "../support.js";
 
 export type WireError = z.infer<typeof WireErrorSchema>;
@@ -69,6 +70,13 @@ export function failureStatus(
   const message = errorText(error);
   if (error instanceof TargetNotFoundError) {
     return { status: 404, body: wireError("TARGET_NOT_FOUND", message, false) };
+  }
+  if (error instanceof StartStepOmissionRefusedError) {
+    // A caller-input refusal, in the same 400 family a schema failure leaves
+    // as: the request named a real workflow and asked a coherent question, and
+    // the answer is that this omission does not reconcile with the descriptor.
+    // Its own code travels so the surface can tell it from a shape failure.
+    return { status: 400, body: wireError("START_STEP_OMISSION_REFUSED", message, false) };
   }
   if (error instanceof SectionUnavailableError) {
     return { status: 409, body: wireError("SECTION_UNAVAILABLE", message, false) };
