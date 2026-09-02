@@ -9,7 +9,13 @@
  *
  * Everything here is D251: three facts the modal already held and did not draw.
  */
+import type { JsonValue } from "../../domain/canonical-json.js";
 import type { EnqueuePolicy } from "../../domain/workflow/presentation.js";
+import {
+  stepOmissionFactsSchema,
+  type StepOmissionField,
+  type StepOmissionForm,
+} from "../../domain/workflow/step-omission.js";
 
 /**
  * Why THIS DIALOG cannot start a workflow.
@@ -141,6 +147,16 @@ export interface StartRequestShape {
   captureBrowserScreenshots: boolean;
   priority: StartPriority;
   selectedStepKeys: readonly string[];
+  /**
+   * D307 — the operator's omission DRAFTS, in timeline order, exactly as typed.
+   *
+   * The raw draft is the identity rather than the parsed facts because a plan
+   * has to stop describing the request the moment the request moves, and a
+   * half-typed date is a moved request: parsed facts would leave a settled plan
+   * standing over `06/3` on its way to `06/30/2026`, which is the very state
+   * C109 exists to make unrepresentable.
+   */
+  stepOmissionDrafts: readonly Readonly<{ step: string; draft: StepOmissionDraft }>[];
 }
 
 /**
@@ -156,6 +172,12 @@ export function startRequestFingerprint(request: StartRequestShape): string {
     request.captureBrowserScreenshots,
     request.priority,
     [...request.selectedStepKeys].sort(),
+    request.stepOmissionDrafts.map(({ step, draft }) => [
+      step,
+      // Key order is a property of how the draft object was built, not of the
+      // request; sorting keeps two identical forms one identity.
+      Object.keys(draft).sort().map((key) => [key, draft[key]]),
+    ]),
   ]);
 }
 
@@ -208,4 +230,203 @@ export function runControlGroups(supportsDryRun: boolean): readonly RunControlGr
     step: String(index + 1).padStart(2, "0"),
     ...RUN_CONTROL_GROUP_COPY[key],
   }));
+}
+
+// ---------------------------------------------------------------------------
+// D307 — the Steps screen's omission half, as folds
+// ---------------------------------------------------------------------------
+
+/**
+ * One control's raw draft.
+ *
+ * Every kind but `boolean` is typed into a text control, so its draft is the
+ * string the operator has actually typed — never a value coerced early. A
+ * checkbox has no "not yet answered" state, so `boolean` is the one kind whose
+ * draft IS its value: `false` is the operator's own unchecked answer, not a
+ * default substituted for something missing.
+ */
+export type StepOmissionFactDraft = string | boolean;
+
+/** one omitted step's whole form, keyed by field key */
+export type StepOmissionDraft = Readonly<Record<string, StepOmissionFactDraft>>;
+
+/**
+ * The draft a form starts on: EMPTY for every typed kind.
+ *
+ * A seeded date, id, number, enum choice or list would be a fabricated fact
+ * about a real person the moment the operator did not touch it — the exact
+ * substitution this tree bans. The only seeded value is a checkbox's `false`,
+ * which is an answer rather than an absence.
+ */
+export function initialStepOmissionDraft(form: StepOmissionForm): StepOmissionDraft {
+  const draft: Record<string, StepOmissionFactDraft> = {};
+  for (const field of form.fields) draft[field.key] = field.kind === "boolean" ? false : "";
+  return Object.freeze(draft);
+}
+
+/**
+ * A control's draft, read as the JSON shape the field's kind declares — or the
+ * reason it cannot be read as one yet.
+ *
+ * This step is only the SHAPE. Whether `06/31/2026` is a date, whether an id is
+ * eight digits, whether an integer clears its declared `min` and whether an
+ * enum value is one of the declared ones are all decided by
+ * `stepOmissionFactsSchema`, the same schema the plan service and the run
+ * envelope parse with — so the screen cannot accept a fact the server refuses,
+ * or refuse one it accepts.
+ */
+export type StepOmissionFieldRead =
+  | Readonly<{ state: "value"; value: JsonValue }>
+  | Readonly<{ state: "unreadable"; message: string }>;
+
+export function readStepOmissionField(
+  field: StepOmissionField,
+  draft: StepOmissionFactDraft | undefined,
+): StepOmissionFieldRead {
+  if (draft === undefined) return { state: "unreadable", message: "Type a value." };
+  if (field.kind === "boolean") {
+    // A string here means the row is drawing the wrong control for the kind.
+    // Coercing it would let a checkbox-shaped fact reach the wire as text.
+    if (typeof draft !== "boolean") return { state: "unreadable", message: "This field is a yes/no answer." };
+    return { state: "value", value: draft };
+  }
+  if (typeof draft !== "string") return { state: "unreadable", message: "This field is typed, not a yes/no answer." };
+  switch (field.kind) {
+    case "integer": {
+      const typed = draft.trim();
+      if (typed.length === 0) return { state: "unreadable", message: "Type a whole number." };
+      if (!/^-?\d+$/u.test(typed)) return { state: "unreadable", message: "Type a whole number, digits only." };
+      return { state: "value", value: Number(typed) };
+    }
+    case "text-list":
+      // Blank lines are not values; an empty box is an empty list, which the
+      // field's own schema accepts or refuses. Nothing is filled in for it.
+      return {
+        state: "value",
+        value: draft.split("\n").map((line) => line.trim()).filter((line) => line.length > 0),
+      };
+    default:
+      return { state: "value", value: draft };
+  }
+}
+
+/**
+ * One omitted step's facts, or the per-field reasons they are not facts yet.
+ *
+ * `invalid` carries a message per FIELD KEY so the row can draw the refusal on
+ * the control it is about. The messages come from the declared schema wherever
+ * the schema has one; nothing here restates a regex the domain already owns.
+ */
+export type StepOmissionFactsFold =
+  | Readonly<{ state: "facts"; facts: Readonly<Record<string, JsonValue>> }>
+  | Readonly<{ state: "invalid"; errors: Readonly<Record<string, string>> }>;
+
+export function foldStepOmissionFacts(form: StepOmissionForm, draft: StepOmissionDraft): StepOmissionFactsFold {
+  const errors: Record<string, string> = {};
+  const candidate: Record<string, JsonValue> = {};
+  for (const field of form.fields) {
+    const read = readStepOmissionField(field, draft[field.key]);
+    if (read.state === "unreadable") errors[field.key] = read.message;
+    else candidate[field.key] = read.value;
+  }
+  const parsed = stepOmissionFactsSchema(form).safeParse(candidate);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      const key = issue.path.map(String)[0];
+      // A key already refused for its SHAPE keeps that message: it is the one
+      // the operator can act on, and the schema's follow-on "required" for the
+      // same key would replace it with a vaguer sentence.
+      if (key === undefined || errors[key] !== undefined) continue;
+      errors[key] = issue.message;
+    }
+  }
+  if (Object.keys(errors).length > 0) return { state: "invalid", errors: Object.freeze(errors) };
+  if (!parsed.success) {
+    // Unreachable by construction — a strict object over the declared fields
+    // can only fail at one of them. Saying so beats returning facts the schema
+    // refused.
+    throw new Error("a step omission form refused without naming a field");
+  }
+  return { state: "facts", facts: Object.freeze({ ...parsed.data } as Record<string, JsonValue>) };
+}
+
+/** the Steps screen's view of one step — the bootstrap projection, narrowed to what the folds read */
+export interface StepOmissionStepView {
+  readonly key: string;
+  readonly label: string;
+  readonly control:
+    | Readonly<{ state: "selectable"; inputField: string }>
+    | Readonly<{ state: "omittable"; form: StepOmissionForm; forces: readonly string[] }>
+    | Readonly<{ state: "required"; reason: string }>;
+}
+
+/** the steps the operator has left OUT and that declare an omission, in timeline order */
+export function omittedStepViews<T extends StepOmissionStepView>(
+  steps: readonly T[],
+  selectedStepKeys: readonly string[],
+): readonly T[] {
+  return steps.filter((step) => step.control.state === "omittable" && !selectedStepKeys.includes(step.key));
+}
+
+/**
+ * step key → the omitted steps currently forcing it out.
+ *
+ * A forced row is UNCHECKED and LOCKED while its forcing step is unchecked,
+ * because the planner refuses the pair otherwise — the screen must lock exactly
+ * what the plan would refuse, and `forces` is the descriptor's own fixpoint of
+ * that rule.
+ */
+export function forcedStepOmissions(
+  steps: readonly StepOmissionStepView[],
+  selectedStepKeys: readonly string[],
+): ReadonlyMap<string, readonly string[]> {
+  const declared = new Set(steps.map((step) => step.key));
+  const forcedBy = new Map<string, string[]>();
+  for (const step of omittedStepViews(steps, selectedStepKeys)) {
+    if (step.control.state !== "omittable") continue;
+    for (const forced of step.control.forces) {
+      if (!declared.has(forced)) {
+        throw new Error(`step "${step.key}" forces "${forced}", which this workflow does not declare`);
+      }
+      const owners = forcedBy.get(forced) ?? [];
+      owners.push(step.key);
+      forcedBy.set(forced, owners);
+    }
+  }
+  return new Map([...forcedBy].map(([key, owners]) => [key, Object.freeze(owners)]));
+}
+
+/**
+ * One checkbox press, folded — and the ONE place the cascade is applied.
+ *
+ * Unchecking an omittable step takes its `forces` out with it; re-checking it
+ * puts back only those its own choice was holding out. A `required` step, and a
+ * step another omitted step is still forcing, do not move at all. The result is
+ * always in TIMELINE order, which is the order `stepOmissions` and
+ * `selectedStepKeys` both ride the wire in.
+ */
+export function toggleStepSelection(
+  steps: readonly StepOmissionStepView[],
+  selectedStepKeys: readonly string[],
+  key: string,
+  next: boolean,
+): readonly string[] {
+  const step = steps.find((candidate) => candidate.key === key);
+  if (step === undefined) throw new Error(`the Steps screen toggled "${key}", which this workflow does not declare`);
+  if (step.control.state === "required") return selectedStepKeys;
+  if (forcedStepOmissions(steps, selectedStepKeys).has(key)) return selectedStepKeys;
+  const selected = new Set(selectedStepKeys);
+  const forces = step.control.state === "omittable" ? step.control.forces : [];
+  if (next) {
+    selected.add(key);
+    for (const forced of forces) selected.add(forced);
+  } else {
+    selected.delete(key);
+    for (const forced of forces) selected.delete(forced);
+  }
+  // Re-check the cascade against the NEW selection: a step this press let back
+  // in that another omitted step still forces out has to stay out.
+  const stillForced = forcedStepOmissions(steps, [...selected]);
+  for (const forced of stillForced.keys()) selected.delete(forced);
+  return Object.freeze(steps.filter((candidate) => selected.has(candidate.key)).map((candidate) => candidate.key));
 }
