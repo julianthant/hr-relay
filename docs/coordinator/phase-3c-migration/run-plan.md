@@ -18,8 +18,8 @@
 
 | Run | Task id / corrections | Host id | Project id | Launch title/time | Worktree/branch | Report | Status | Last cursor |
 |---|---|---|---|---|---|---|---|---|
-| R1 | setup client `client-new-thread:c1cc491a-c7e5-4dea-a20d-d8ad03a19528` → canonical `01a0644f-936c-7d72-8fbc-12a04b527b3e` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Phase 3c R1 — Workflow Recipe Compiler` / 2026-09-02 15:48 PDT | `/Users/julianhein/.codex/worktrees/359c/hr-automation-rebuild`; `feature/03c-r1-workflow-recipe` | `reports/r1-workflow-recipe.md` | running | `ad4befac-fbcb-4e31-be1a-0a893e4558b7:17` |
-| R2 | setup client `client-new-thread:cde8bb1e-1a7b-498f-b36a-a3fefe4457b1` → canonical `01a0644f-936c-7d72-8fbc-128e5f1b1a47` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Phase 3c R2 — Order 1 Migration Intake` / 2026-09-02 15:48 PDT | `/Users/julianhein/.codex/worktrees/28d9/hr-automation-rebuild`; `feature/03c-r2-order1-intake` | `reports/r2-order1-intake.md` | running | `c6ef543f-98f6-45fa-83a2-844ba655e479:19` |
+| R1 | setup client `client-new-thread:c1cc491a-c7e5-4dea-a20d-d8ad03a19528` → canonical `01a0644f-936c-7d72-8fbc-12a04b527b3e` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Phase 3c R1 — Workflow Recipe Compiler` / 2026-09-02 15:48 PDT | `/Users/julianhein/.codex/worktrees/359c/hr-automation-rebuild`; `feature/03c-r1-workflow-recipe` | `reports/r1-workflow-recipe.md` | running | `ad4befac-fbcb-4e31-be1a-0a893e4558b7:26` |
+| R2 | setup client `client-new-thread:cde8bb1e-1a7b-498f-b36a-a3fefe4457b1` → canonical `01a0644f-936c-7d72-8fbc-128e5f1b1a47` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Phase 3c R2 — Order 1 Migration Intake` / 2026-09-02 15:48 PDT | `/Users/julianhein/.codex/worktrees/28d9/hr-automation-rebuild`; `feature/03c-r2-order1-intake` | `reports/r2-order1-intake.md` | running | `c6ef543f-98f6-45fa-83a2-844ba655e479:25` |
 | R3–R11 | not briefed | — | — | — | fresh worktree per run | unique report per run | blocked/planned | none |
 
 ## Units
