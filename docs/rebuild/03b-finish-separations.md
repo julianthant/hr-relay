@@ -46,6 +46,8 @@ saw. The decisions live in `reference/decisions.md`.
 - [ ] step 5 controlled commits — all three OPEN. 4537 is gone (§9.33); operator-named 4589 reached a historical green preview with exact-run 0/0/0 (§9.34). D309 removes unsupported separate approvals from the blocker set; current execution remains blocked by permanent sweep-key reuse and the deleted-receipt contradiction (§§9.35–9.36). Resolve the protocol decision, implement at the approved test seams, then obtain fresh admission/rehearsal and explicit operational authorization for the eventual live run. No controlled write has run
 - [ ] step 6 rebuild-ready — blocked by step 5; the open exit criterion is the only one of nine
 - [ ] step 7 close-out — regression scenarios, knowledge records, capability dispositions, docs to as-built (Track A row A8)
+- [x] D311 plan reconciliation — the authoring problem, tuple recipe, compiler boundary, Explorer projection, generic-dashboard rule and test reduction are recorded in their owning docs and roadmap
+- [ ] D311 acceptance conversion — separations proves the recipe/compiler's complete shape without changing any step-5 write obligation; owned by doc 03c `{#workflow-authoring-model}` and not a claim that controlled writes are complete
 > 2026-08-20 | docs-cohesion 03b | verified against src/workflows/separations/**, src/stores/{kuali,ucpath,new-kronos,separations}/**, config/pending-impl-bindings.json and the §9.x record; left: the three commits and everything only they discharge
 > 2026-08-27 | R2a u28 close | doc 4568 registered `819ff38f`, doc 03b row `6a876627`, composed dry run refused at `timecard` `1622afcf`, this close `26ee2e1a` + this commit; no controlled commit ran; step 5 stays OPEN — all three; R3 carries the WFD range-field clear fix (§9.29 item 11)
 > 2026-08-28 | R2 u1r D284 built | registry `936fabc0` (ONE subject `finalization-canary` / doc 4537, an arm per workflow, the finalization arm `pending` until ②), both T1b manifests, the both-directions guard and doc 03b `b511bdfc`, `ref guards-and-tests` §10.4/§10.5 `b0cb2593`, `docs/migrations/separations.md` §9.31 `0dd3d260`, review fixes `b1acd712`/`58665183`; 4537 re-read read-only 2026-08-28 (§9.31); no rehearsal, gate, worker or write ran; left: the three controlled commits
@@ -772,10 +774,10 @@ naming the real cause instead of burning the bound and blaming Duo hand-approval
 > 2026-08-20 | docs-cohesion 03b | nine squares verified against src/workflows/separations/descriptor.ts (inputRun · timeline · nodePurposes · subjectProjection · presentation · verdicts), src/domain/archive/ledger-resolution.ts:167, src/services/notifications/gate-park.ts wired at src/server/dashboard/compose.ts:497, src/dashboard/app/identity-ceremony.ts; left: the two PROOF lines
 <!-- /roadmap-status -->
 
-A migration's `Dashboard · wire` task supplies DECLARATIONS and a proof, never a new surface — the
-surfaces are doc 03a's `{#dash-defaults}`. Separations was the forcing function for most of them, so
-the squares filled as Track B built them; the table below is the separations half, verified in the
-code at HEAD.
+This `Dashboard · wire` record is retained as historical acceptance evidence. Under D311 its
+declarations become compiler output and its generic proof becomes the completeness fixture rather
+than a task copied by each later workflow. Separations was the forcing function for most surfaces,
+so the squares filled as Track B built them; the table below is verified in the code at HEAD.
 
 | # | Square | What separations declares | Verified at |
 |---|---|---|---|
@@ -935,6 +937,42 @@ harness seeds the Kuali finalization step's T1 pair (§The workflow tree, above)
 **Also settled, recorded so nobody re-opens them:** the Activity hours-saved tile is DROPPED (D239),
 archive tabs and export are closed by D223/D240, and `span.patched` is RETIRED (D254).
 
+**D311 does not reopen the workflow.** Separations is the completeness acceptance case for the new
+recipe/compiler seam because it already exercises grouped timeline steps, rich reads, computed
+facts, a conditional identity gate, D307 omissions and three transactions. Its conversion must
+preserve the existing run modal, graph, screenshots, semantic logs, gates, receipts, write safety
+and durable bytes. The conversion belongs to doc 03c's workflow-authoring-model node and neither
+discharges nor adds a controlled-write requirement to criterion 5 below.
+
+### D311 workflow-authoring reconciliation — COMPLETE 2026-09-02
+
+What happened is now explicit. The Separations runtime and dashboard behavior were not the source of
+the setup difficulty; the authoring path was. `src/workflows/separations/` currently contains 33
+TypeScript files and about 3,682 lines, spread across step fragments, descriptor declarations and
+module composition before its reusable store drivers/tasks are counted. The same workflow facts
+then had to be represented again for the run modal, timeline, Explorer and per-workflow dashboard
+proof rows.
+
+D311 closes the design/plan part of that problem:
+
+- one ordered `steps` array of `[timeline group, tasks[]]` tuples becomes the workflow source form;
+- typed task input references derive execution dependencies, so grouping does not become hidden
+  execution order;
+- one compiler derives the existing descriptor, module requirements, run-modal/timeline/detail and
+  Explorer projections;
+- generic archive, activity, notifications and other existing surfaces require no per-workflow
+  wiring or duplicate T2/T3 proof;
+- a new workflow authors selectors/driver operations only for genuinely new browser behavior,
+  authors or reuses typed tasks, supplies the recipe, and proves its own T1/live behavior;
+- a fix to workflow grouping or run options changes the recipe once; a selector fix changes the
+  system driver once; a generic dashboard fix changes the shared surface once.
+
+This documentation reconciliation is complete and is recorded as D311 in the owner docs and
+roadmap. The implementation is intentionally not marked complete: doc 03c
+`{#workflow-authoring-model}` owns the compiler plus person-lookup/separations equivalence
+conversions. Likewise Phase 3b remains **8 of 9** until criterion 5's controlled-write evidence is
+either produced or explicitly superseded by a separate operator decision; D311 does neither.
+
 ## Decisions this phase ratified
 
 Checked against `reference/decisions.md`'s `_phase: 3b_` markers on 2026-08-20. The ratification act
@@ -967,6 +1005,7 @@ and the normative pointer stay in the ledger; this is the phase index.
 | 112 | 2026-09-01 | D300 | **the canary is ONE document number in `.env`** — a single closed reference replaces D286's three person-value secrets; the composed chain derives every person fact live; the standalone finalization harness blocks by name |
 | 113 | 2026-09-01 | D307 | **any timeline step is pickable; an omitted step's browser reads are replaced by operator-typed facts** — slice one declares omissions for Kronos timecard, UCPath transaction and Kuali finalization; gates and transactions are never substituted; identity check/Kuali extraction/Job summary stay required pending an authority design that preserves source and read-back proof |
 | 119 | 2026-09-02 | D309 | **an independently supplied EID proceeds only after exact UCPath read-back machine verification; a name-resolved EID always uses the real operator gate** — the shared authority task dominates both sinks, and the supplied arm creates no human decision |
+| 121 | 2026-09-02 | D311 | **separations is the completeness acceptance workflow for the tuple recipe/compiler** — behavior-preserving conversion only; its open controlled-write proof remains exactly where it was |
 
 **Ratified elsewhere, load-bearing here.** D77's human gate remains the name-resolved arm under
 D309–D310; D222, D223, D225 and D230–D242 (phase 3a) are the dashboard defaults the wire squares fill;
@@ -1014,10 +1053,10 @@ The second migration is entitled to assume all of the following, none of which d
 3. **A typed start door is a solved problem, including when the ingress needs a value nobody types.**
    D260 states the rule; D261 shows the escape hatch — derive the value as a graph OUTPUT — and what
    it costs (a moved fingerprint, and a refusal arm per way the derivation can fail).
-4. **The `Dashboard · wire` pattern is proved end to end.** Nine squares, filled by DECLARATIONS on
+4. **The generic dashboard behavior is proved end to end.** Nine squares, filled by declarations on
    the descriptor plus one entry table for the ledger, with the connection proved against a real run
-   and each UI claim paired to authority. Doc 03c's `Dashboard · wire <workflow>` template is this
-   table with the workflow's name substituted.
+   and each UI claim paired to authority. Under D311 this becomes the completeness fixture for the
+   recipe compiler and generic projection, not a table every later workflow copies.
 5. **The platform corrections a composed, gated, multi-process workflow forces have all landed** —
    the cross-process projector, the item-scoped retry attempt, the claim generation in the checkpoint
    key, the probing dry run, the module roles, and the Duo counter. A second migration should not

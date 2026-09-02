@@ -1001,6 +1001,59 @@ Settings' work (ref operator-trust §5.2) and it is named here because a reader 
 I rename a step" needs the answer to be "you edit the descriptor, for now" rather than a path that
 resolves to nothing.
 
+### 1.6 Workflow recipe — the one authoring seam (D311, 2026-09-02)
+
+<!-- roadmap: workflow-authoring-model -->
+
+The runtime model above remains authoritative, but workflow authors no longer hand-maintain each of
+its projections independently. A **workflow recipe** is the reviewed source form for every new or
+converted workflow. Its central field is one ordered array of **timeline tuples**:
+
+```ts
+steps: [
+  [
+    { key: "kuali-extraction", label: "Kuali extraction" },
+    [findKualiAction, readKualiDocument, buildSeparationPlan],
+  ],
+  [
+    { key: "ucpath-identity", label: "UCPath identity" },
+    [findEmployee, readEmployeeDetails, verifyIdentity],
+  ],
+]
+```
+
+The tuple contract is exact:
+
+1. `steps` is a readonly ordered array of two-tuples
+   `[WorkflowTimelineGroup, readonly WorkflowRecipeTask[]]`. The group has a stable `key` and an
+   operator-facing `label`; the outer array is the timeline's order and grouping authority.
+2. Each task is a typed reusable value over an existing task contract and appears in exactly one
+   tuple. Tuple order is presentation order, **not** hidden execution authority. Input references
+   derive the execution edges; an unresolved reference, duplicate task, cycle, or cross-group
+   dependency the compiler cannot represent refuses the build by name.
+3. Read, compute, gate and transaction tasks retain the existing task, checkpoint, provenance,
+   replay, write-safety and receipt contracts. A recipe does not turn selectors into workflow code:
+   selectors and page-state interpretation remain in the system driver, while a browser task names
+   the typed operation it needs.
+4. One recipe compiler derives the existing `WorkflowDescriptor`, workflow module requirements,
+   start/run-modal projection, timeline/detail projection, Explorer projection and registry-facing
+   value. The compiled products must be equivalent to the hand-authored forms they replace; D311
+   changes authoring, not run execution or durable bytes.
+5. D265's folder rule becomes an organization and audit rule, not the semantic source of the rail.
+   A top-level workflow folder and step sub-folders remain, and a guard may require them to agree
+   with recipe keys, but the recipe tuples are what define timeline membership and order.
+6. Conversion is additive only until equivalence is proved. Person lookup is the smallest compiler
+   proof; separations is the completeness proof. After both match their existing public descriptor,
+   module and dashboard behavior, the redundant hand-authored declarations and tests are deleted.
+   Permanent dual authoring is refused.
+
+The first implementation deliberately preserves the current run modal, D307 step-omission
+semantics, diagnostic screenshot policy, `data.observed` logging, gates and transaction sequencer.
+Changing those behaviors requires their own decision; they are not smuggled into an authoring
+refactor. The rejected alternatives are keeping the current multi-file assembly as the migration
+API, or replacing the proven runtime with a second workflow engine. The first preserves the cost;
+the second spends write-safety evidence to solve an authoring problem.
+
 ---
 
 ## 2. Workflow-constant input + the RunEnvelope

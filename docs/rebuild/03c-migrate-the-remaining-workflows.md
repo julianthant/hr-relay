@@ -20,28 +20,32 @@ property of migrating a workflow, not of any one workflow; the tiers' own normat
 <!-- roadmap-status: migrations -->
 - [x] the risk-proof order is fixed and its entry point is chosen — separations (order 8) first, the table deliberately NOT re-sequenced (D84/D193)
 - [x] order 0 · person-lookup is migrated and live-proven (D74, run `4ebf7275-0158-49af-a78f-1f37948efb27`); `src/workflows/person-lookup/descriptor.ts` is registered
-- [x] the seven-step loop, the §b questionnaire and the per-workflow exit criteria are written and have been run once, by separations (doc 03b)
+- [x] D311 ratifies the workflow recipe and compiler as the new authoring seam; person lookup and separations are its acceptance workflows
+- [ ] `{#workflow-authoring-model}` — build the compiler, prove equivalence on person lookup and separations, then delete their redundant manual declarations
 - [ ] orders 1 · 2 · 3 · 4 · 5 · 6 · 7 · 9 — **no descriptor exists for any of them**; `src/control/workflow-registry.ts` registers 7 modules and every one is person-lookup or a separations composition/harness
 - [ ] the five declaration-only stores — `i9`, `old-kronos`, `onbase`, `servicenow`, `sharepoint` are `declareDriver(…, "unwired")` with `{}` tasks (`i9` is 4 lines, the other four 9); orders 1, 2 and 7 build them
 - [ ] the legacy capability register — **47 open · 20 replaced · 7 native · 4 retired** of 78 (recounted from `config/legacy-capabilities.json`, 2026-08-20); all 47 open name milestone `phase-3-workflow-migration`, and cutover requires zero open
-- [ ] every `Dashboard · wire <workflow>` sub-task — nine of them, one per order; only `{#order-0-dash}`'s four squares are ticked
-- [ ] the T1/T2 PROOF lines on every order node — the tiers are specified (`ref guards-and-tests` §10, landed in d5b0f8f2, as of dc2901de) and no workflow has its pair yet
+- [ ] generic recipe-to-dashboard conformance for every migrated workflow; a per-workflow dashboard task remains only when that workflow introduces a new surface capability
+- [ ] the T1 PROOF lines on every order node, plus T2/T3 only for the first workflow to introduce a new dashboard behavior
 > 2026-08-20 | docs-cohesion 03c | verified against `src/control/workflow-registry.ts:38-47`, `src/workflows/*/descriptor.ts` (8 files), `src/stores/*` and `config/legacy-capabilities.json` (recount 47/20/7/4 matches the tree's note); left: every order after 0, minus 8
 > 2026-08-25 | D266 | the test-only Kuali annotation workflow retired; the registry now holds seven modules and the Kuali finalization T1 pair carries its reusable proof shape
 <!-- /roadmap-status -->
 
 **Phase 3c is the rest of the program.** Phase 3a built the dashboard every workflow inherits and
-3b takes separations — the deepest write — through the loop once. 3c runs that same loop for the
-**thirteen remaining workflows**, one at a time, in the order below, until the legacy capability
+3b takes separations — the deepest write — through the safety loop once. Before 3c authors the
+**thirteen remaining workflows**, D311 builds one recipe/compiler seam so later migrations describe
+their business steps without reassembling descriptor, module and dashboard projections by hand.
+The phase then migrates the remaining workflows in the order below until the legacy capability
 register has no open entry left and the cutover gate (doc 05) can be read.
 
 **What it reads as met before it starts.** From **03a**: the generic surfaces — run modal, queue
 row, run detail + timeline, gate ceremony, notifications, archive · activity · explorer, intake and
 capture — exist and answer for a workflow they were not written for (Track C proved that once
-against a real composed run). A migration WIRES them; it never builds one. From **03b**: the store
+against a real composed run). D311 makes them compiler projections; a migration builds one only when
+it introduces a new capability. From **03b**: the store
 task libraries the entry was chosen to force into existence (`ucpath` 10 tasks, `kuali` 10,
 `new-kronos` 2, `crm` 2, `separations` 9 service tasks), the ALWAYS-GATE identity approval, the
-typed start door (D250/D251/D261), and the wiring pattern each `Dashboard · wire` sub-task repeats.
+typed start door (D250/D251/D261), and the behavior the D311 compiler must preserve.
 
 **The honest state at HEAD.** One of the nine order rows this phase owns is migrated.
 `src/control/workflow-registry.ts` registers seven modules: `person-lookup` (order 0) and the six
@@ -51,28 +55,55 @@ Kuali finalization T1 pair rather than treating testing machinery as an order ro
 `config/pending-impl-bindings.json` is the checked-in EMPTY set, so nothing is half-bound either.
 
 **The rule every order below inherits.** A migration is not done when its workflow runs. It carries
-(1) its own `Dashboard · wire <workflow>` sub-task — the seven wire squares of
-`ref frontend-backend-integration` §5.1.1–§5.1.7 plus whatever that workflow is first to need —
-and (2) its **T1/T2 PROOF** lines: a structural fixture scenario and a live dry-run scenario for the
-workflow, and a dashboard scenario for the surfaces it wired (`ref guards-and-tests` §10.11/§10.12).
-Neither is optional and neither is 03a's job.
+its **T1 behavior proof**: a structural fixture scenario and live dry-run manifest, plus controlled
+evidence for every write. The recipe compiler supplies already-built generic dashboard surfaces and
+the registry-wide conformance suite proves that mapping. A workflow owns a separate dashboard
+feature task and T2/T3 proof only when it introduces a genuinely new interaction or wire arm
+(`ref guards-and-tests` §10.11/§10.12; `ref frontend-backend-integration` §6.8).
+
+## Workflow authoring model — prerequisite to orders 1–7 and 9
+
+<!-- roadmap: workflow-authoring-model -->
+
+<!-- roadmap-status: workflow-authoring-model -->
+- [x] DOCS D311 ratified in `ref workflow-model` §1.6, with the dashboard, Explorer and test consequences in their owning references
+- [ ] BE add `defineWorkflowRecipe` and a compiler to the current descriptor/module contracts; do not add a second runtime or durable format
+- [ ] BE convert person lookup as the smallest equivalence proof
+- [ ] BOTH convert separations as the completeness proof while preserving its run modal, graph, D307 omissions, gates, screenshots, logs, write safety and public wire
+- [ ] BOTH project the tuple groups to Explorer and the current descriptor fields to the existing run modal/timeline/detail surfaces
+- [ ] PROOF add one registry-wide recipe/compiler conformance suite, then remove superseded manual declarations and duplicate generic-dashboard tests
+- [x] DOCS re-scope each remaining `Dashboard · wire` row to the capability delta that order actually introduces; generic rows inherit compiler conformance
+> 2026-09-02 | D311 | owner-first design ratified; no compiler or conversion is claimed by this documentation change
+<!-- /roadmap-status -->
+
+The implementation order is deliberate: pin the current public descriptor/module/wire behavior;
+add the compiler behind that seam; convert person lookup; convert separations; expose the same tuple
+projection in Explorer; then delete the old authoring path before migrating another workflow. The
+deletion step is an acceptance criterion, because a convenience layer that leaves every old file
+mandatory would make setup harder, not easier.
+
+The alternatives rejected by D311 are (A) leave the current setup process and improve its docs,
+which does not remove duplicate declarations, and (B) replace the executor with a selector-script
+engine, which discards proven gates, receipts, replay and write safety to solve an authoring problem.
+The selected path keeps the current dashboard and worker behavior and changes where workflow authors
+express it.
 
 ## The seven-step migration playbook
 
-This is the loop, written as the checklist an agent follows for ONE workflow. It is the same loop
-separations ran (doc 03b) and every order section below points back here rather than restating it.
-Steps run in order; each names the artefact it produces and the gate that proves it. A step whose
-gate is red is not a step you pass with a note.
+This is the safety loop an agent follows for one workflow after the D311 compiler exists. Separations
+ran its pre-D311 form; the business and safety obligations remain, while recipe compilation replaces
+the manual descriptor/module/dashboard assembly described by the older wording. Steps run in order;
+each names the artefact it produces and the gate that proves it. A red gate is not passed with a note.
 
-**1 · The §b questionnaire — asked and answered BEFORE any code.** Charter §b: *cover everything
-for each workflow as we migrate*. Create `docs/migrations/<workflow>.md`, embed the 12-item
-template (§The §b migration questionnaire below) and answer it WITH the operator.
-`docs/migrations/separations.md` §1 is the worked shape: every question answered in prose, each
-answer carrying the decision it forces and the thing it refuses. Unanswerable questions become
-`you:` lines on the workflow's tree node, not assumptions. **Artefact:** the migration doc's §1.
-**Gate:** the operator's answers, recorded — a `you:` line stays open until they give one.
+**1 · Record only the workflow-specific decisions before code.** Create
+`docs/migrations/<workflow>.md` and use the §b questionnaire as a completeness checklist. Cite
+inherited platform answers instead of copying or re-asking them; record only this workflow's facts,
+deltas, real operator choices and unresolved `you:` lines. `docs/migrations/separations.md` remains
+the worked full-risk example, not the minimum prose every read workflow must reproduce.
+**Artefact:** the migration doc's decision/delta section. **Gate:** every real unresolved choice is
+named; settled generic policy is referenced, not reopened.
 
-**2 · Author.** Reuse store tasks peer-to-peer (charter §1); add new ones as reusable bases and
+**2 · Author the recipe.** Reuse store tasks peer-to-peer (charter §1); add new ones as reusable bases and
 name the workflow-specific customization (charter §3/§8); reuse or add canonical UI ids and typed
 driver operations FIRST, then write strict contracts → scenarios → impls → pure-logic unit tests
 (`fakeCtx`) → descriptor/result/delegation policies, in `ref guards-and-tests` §6's red→green order.
@@ -81,9 +112,11 @@ catalog is the reuse ledger, and a task that already exists under another name i
 cheapest thing to get wrong. **Layout (D265, `ref workflow-model` §1.2.2):** a rail workflow is a top-level folder
 `src/workflows/<id>/`; each declared timeline category is a sub-folder `<id>/<step>/` holding that
 step's node fragments and, when chunk-proved, its harness; there is no `src/workflows/proving/`.
-The `workflow-layout` guard pins role ↔ path. **Artefacts:** `src/workflows/<id>/descriptor.ts` (bundle-safe: zod,
-`src/domain/**`, audited `src/base/**` only — D106) + `module.ts` (server composition) + the tuple
-entry in `src/control/workflow-registry.ts` + any new `src/stores/<system>/tasks/*.ts`; a contract
+The `workflow-layout` guard pins role ↔ path. Under D311, author one ordered array of
+`[timeline group, tasks[]]` tuples; typed task input references derive execution dependencies, and
+the compiler derives the descriptor, module requirements, registry value and generic dashboard
+projections. **Artefacts:** `src/workflows/<id>/recipe.ts` plus any genuinely new
+`src/stores/<system>/tasks/*.ts`; a contract
 no store implements yet goes into `config/pending-impl-bindings.json` in the SAME commit (D107,
 checked both directions). **Gate:** `npm run build:manifest` then `descriptor-coverage`.
 
@@ -130,18 +163,12 @@ commits cited; the affected `config/legacy-capabilities.json` entries advanced f
 `native` / `replaced` / `retired` **with evidence** (a wrong `native` is worse than an honest
 `open` — D184). **Gate:** `legacy-capability-disposition`.
 
-**7 · Wire the dashboard, then close the loop.** The `Dashboard · wire <workflow>` sub-task is part
-of the migration, not a follow-up. Its squares are the seven from `ref frontend-backend-integration`
-§5.1.1–§5.1.7 — **run modal** (§5.1.1: the descriptor's `surfaces.inputRun`, its declared examples,
-the start plan), **queue row** (§5.1.2: subject title, workflow class, linked-run chips, per-row
-actions), **run detail** (§5.1.3: the descriptor's timeline categories, the receipt, the Context
-rail's step · direction · bound), **gate ceremony** (§5.1.4, only if it gates: the approval shape
-the SERVER computes, plus the parked-write panel beside it), **archive · activity · explorer**
-(§5.1.5: ledger presentation declarations for its commits, its cross-tab category, its descriptor
-prose), **notifications** (§5.1.6: park / needs-you triggers into the durable inbox), **intake and
-capture** (§5.1.7, only where it consumes a spreadsheet or a photograph) — plus the workflow's own
-extra square where it is the first to need one, and **`- [ ] PROOF T2` a dashboard scenario for the
-wired surfaces** (`ref guards-and-tests` §10.12). Then close out: any failure discovered becomes a
+**7 · Prove the generic projection, add only real UI deltas, then close the loop.** The recipe must
+pass registry-wide start/run-modal, queue, timeline/detail, gate, archive/activity, notifications and
+Explorer conformance. There is no `Dashboard · wire <workflow>` implementation task for a workflow
+that uses those surfaces as already defined. If this workflow introduces a new interaction or wire
+arm, extend the generic surface once and add its T2/T3 scenario; later workflows inherit it. Then
+close out: any failure discovered becomes a
 regression scenario plus a structured knowledge/fix record (stale knowledge is SUPERSEDED, never
 appended beside the correction); the status blocks in this doc are ticked with commits cited; a
 `log:` line lands on the tree node; the dated line goes into `docs/migrations/<workflow>.md` — and
@@ -439,10 +466,10 @@ row plus a dated line in the workflow's migration record, which is what a `PROOF
 migration node cites. The **end-to-end tier** is an agent-operated run of MANY dry-run scenarios in
 parallel, across workflows and across two runs of the same workflow (`{#parallel-runs}`). Fixture
 scenarios that pretend are rewritten into the honest structural one or into a dry-run scenario.
-The coverage floor moves to **80 %** lines/statements/functions global. So a migration below owes
-three test artefacts, not one: its T1 pair (the structural fixture scenario and the dry-run
-scenario), its T3 pair (the dashboard conditions attached to that dry-run scenario), and its
-`Dashboard · wire` task's T2 dashboard scenario. The normative spec — folder layout, file naming,
+The coverage floor moves to **80 %** lines/statements/functions global. Under D311 every migration
+owes its T1 pair (the structural fixture scenario and dry-run manifest). T2/T3 are added only when
+that workflow introduces a new dashboard interaction or wire arm; reused generic projections are
+covered once by registry-wide recipe/compiler conformance. The normative spec — folder layout, file naming,
 the vitest project per tier, the run policy, the subject registry, the durable result row — is
 `reference/guards-and-tests.md` (R10, 2026-08-20).
 
@@ -480,8 +507,8 @@ shipped. And its legacy directory does not close here: order 1 is what closes it
 - [x] queue row — the person-lookup row with status and timing, after D123/D124/D126 (§5.1.2)
 - [x] run detail — timeline, receipt, Context rail; the two-pixel panel D187 found and fixed (§5.1.3)
 - [x] archive · activity · explorer — person-lookup rows appear through the generic surfaces (§5.1.5)
-- [ ] PROOF T2 dashboard scenario for the wired surfaces (`ref guards-and-tests` §10.12)
-> 2026-08-20 | docs-cohesion 03c | the four wire squares are the 1i-spine slice, live-proven by D74 and re-frozen in 2j's parity pass; left: the T2 scenario
+- [ ] D311 acceptance — compile the person-lookup recipe to these same four projections and compare them exactly
+> 2026-09-02 | D311 | retained as historical acceptance evidence; no duplicate generic-surface T2 is required
 <!-- /roadmap-status -->
 
 The first wiring, done in 1i-spine before the `Dashboard · wire` template existed — which is why it
@@ -494,11 +521,11 @@ empty when the wire has not been run.
 <!-- roadmap: order-1 -->
 
 <!-- roadmap-status: order-1 -->
-- [ ] the §b questionnaire for person-lookup Search + Match and for i9-lookup — unasked; no `docs/migrations/` doc exists for either
+- [ ] the §b completeness pass for person-lookup Search + Match and i9-lookup — inherited answers cited, workflow-specific deltas recorded; no migration doc exists yet
 - [ ] Search + Match as MODES on the existing person-lookup descriptor (D15, `ref dashboard-surfaces` §9) — nothing in `src/workflows/person-lookup/descriptor.ts` carries a mode today
 - [ ] the `i9` store — `src/stores/i9/index.ts` is 4 lines: `defineBrowserStore("i9", declareDriver("i9", "unwired"), i9Session, {})`. No driver, no login recipe, **zero tasks**
 - [ ] the `i9-lookup` workflow descriptor + module + registry tuple entry
-- [ ] PROOF T1 — structural fixture scenario + dry-run manifest per workflow, and their T3 pair
+- [ ] PROOF T1 — structural fixture scenario + dry-run manifest per workflow; T3 only for the new mode interaction
 - [ ] the capability entries `legacy-workflow-i9-lookup` and `legacy-workflow-person-lookup` both close here
 > 2026-08-20 | docs-cohesion 03c | verified against `src/stores/i9/index.ts:4` (unwired, `{}` tasks) and `src/workflows/person-lookup/descriptor.ts` (no mode); nothing is built — this row is a plan
 <!-- /roadmap-status -->
@@ -522,20 +549,16 @@ written from scratch, and D120's lesson is that a URL predicate passes on a sign
 store, and Search + Match is the mode mechanism orders 3-9 reuse whenever one workflow needs two
 faces.
 
-### Dashboard · wire Search + Match · i9-lookup
+### Dashboard capability delta · Search + Match · i9-lookup
 <!-- roadmap: order-1-dash -->
 
 <!-- roadmap-status: order-1-dash -->
-- [ ] 5.1.1 run modal — typed start inputs + start plan for person-lookup's two modes and for i9-lookup (`surfaces.inputRun`)
-- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
-- [ ] 5.1.3 run detail — the descriptor's timeline categories, receipt, data rail (step, direction, bound)
-- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox (`ref dashboard-surfaces` §2.6)
-- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
-- [ ] PROOF T2 dashboard scenario for the wired surfaces
-> 2026-08-20 | docs-cohesion 03c | six squares, not seven: no gate (§5.1.4) and no intake (§5.1.7) — both workflows are reads with typed inputs. Blocked behind the workflows themselves
+- [ ] BOTH generic recipe-declared mode chooser — Search and Match are two run-modal options of one workflow without a second workflow identity
+- [ ] PROOF T2/T3 only for that mode interaction; i9-lookup's ordinary start/queue/detail/archive projections ride compiler conformance
+> 2026-09-02 | D311 | re-scoped from six repeated wires to the one new mode capability
 <!-- /roadmap-status -->
 
-Wiring only — the surfaces exist. The one thing this sub-task must get right is the **mode**: the
+The surfaces exist. The one capability delta must get the **mode** right: the
 run modal has to offer Search and Match as two rows of one workflow, and the queue row has to name
 the subject differently per mode without minting a second workflow class.
 
@@ -543,12 +566,12 @@ the subject differently per mode without minting a second workflow class.
 <!-- roadmap: order-2 -->
 
 <!-- roadmap-status: order-2 -->
-- [ ] the §b questionnaire for all three workflows — unasked
+- [ ] the §b completeness pass for all three workflows — inherited answers cited and workflow-specific deltas recorded
 - [ ] the `sharepoint` and `old-kronos` stores — 9 lines each, `declareDriver(…, "unwired")`, zero tasks
 - [ ] CRM document download on the EXISTING crm driver — `src/stores/crm/tasks/` holds two read tasks and no download
 - [ ] downloads land as content-addressed immutable artifacts (`artifact-effect-boundary`, `ref guards-and-tests` §3.7)
 - [ ] the artifact-bytes route — there is **no** endpoint serving artifact bytes today; the only byte-serving route in the tree is the phone's own `GET /api/v1/capture/phone/photos/:photoId/bytes` (`legacy-route-files`, still open)
-- [ ] PROOF T1 per workflow + the T3 pair
+- [ ] PROOF T1 per workflow; T3 only for the download viewer capability
 > 2026-08-20 | docs-cohesion 03c | verified against `src/stores/sharepoint/index.ts`, `src/stores/old-kronos/index.ts` (both unwired, `{}` tasks), `src/stores/crm/tasks/` (2 read tasks) and `config/legacy-capabilities.json`'s `legacy-route-files` reason; nothing built
 <!-- /roadmap-status -->
 
@@ -571,35 +594,30 @@ route here or orders 3, 5 and 7 each rediscover it.
 stores at zero write risk is the cheapest way to learn each system's login and page shape before a
 later order has to write to it.
 
-### Dashboard · wire the downloads
+### Dashboard capability delta · downloads
 <!-- roadmap: order-2-dash -->
 
 <!-- roadmap-status: order-2-dash -->
-- [ ] 5.1.1 run modal — typed start inputs + start plan for the three download workflows
-- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
-- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
-- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
-- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
 - [ ] the download viewer — the artifact-bytes route plus a per-run downloads tile (`ref frontend-backend-integration` §3.6)
-- [ ] PROOF T2 dashboard scenario for the wired surfaces
-> 2026-08-20 | docs-cohesion 03c | seven squares: the six standard reads plus the download viewer, which is the FIRST consumer of the artifact-bytes route and therefore builds it
+- [ ] PROOF T2/T3 for download availability, verified bytes and refusal; ordinary projections ride compiler conformance
+> 2026-09-02 | D311 | re-scoped from six repeated wires plus viewer to the viewer capability alone
 <!-- /roadmap-status -->
 
 The extra square here is a real build, not a wire: the run-detail `captures` section is schema'd
 and DECLARED-UNSERVED today — `config/pending-wire-bindings.json` carries
 `RunDetailSectionResponseSchema#captures` as `declared-unserved` (D184), `availableSections` cannot
-return it, and the bytes behind it are unrouted (03a's finding). This sub-task is where a downloaded
+return it, and the bytes behind it are unrouted (03a's finding). This capability is where a downloaded
 document becomes something the operator can open.
 
 ## Order 3 · the OCR pipeline workflow
 <!-- roadmap: order-3 -->
 
 <!-- roadmap-status: order-3 -->
-- [ ] the §b questionnaire for the OCR pipeline — unasked
+- [ ] the §b completeness pass for the OCR pipeline — inherited answers cited and workflow-specific deltas recorded
 - [x] the four service stores it consumes are BUILT (2h) — `extraction` (`extract-pdf-pages`, `extract-spreadsheet`), `ocr` (`extract-form-page`), `normalization` (`read-contact-advice`), `roster` (`match-spreadsheet`)
 - [ ] the OCR pipeline WORKFLOW over them — no descriptor exists; this order migrates the pipeline on top of stores that already work
 - [ ] D189/D294's byte path — the production BFF serves **no frontend bytes**: `src/server/dashboard/http-server.ts` has no static handler and `dashboard:prod` names a mode the runtime never parsed
-- [ ] PROOF T1 + the T3 pair
+- [ ] PROOF T1; T3 only for the Review capability
 > 2026-08-20 | docs-cohesion 03c | verified against `src/stores/{extraction,ocr,normalization,roster}/tasks/`, `src/control/workflow-registry.ts:194` and `config/legacy-capabilities.json`'s `legacy-route-static` reason; the stores are real, the workflow is not
 <!-- /roadmap-status -->
 
@@ -633,24 +651,18 @@ reuse leverage the ordering exists to protect.
 **Store tasks.** REUSE all four service stores. BUILD the pipeline descriptor, the byte route, and
 the capture binding.
 
-### Dashboard · wire the OCR pipeline
+### Dashboard capability delta · OCR pipeline
 <!-- roadmap: order-3-dash -->
 
 <!-- roadmap-status: order-3-dash -->
-- [ ] 5.1.1 run modal — typed start inputs + start plan for the OCR pipeline
-- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
-- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
-- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
-- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
-- [ ] 5.1.7 intake and capture — the capture bundle as a start source
 - [ ] the OCR review UI — the expanded page ↔ extracted-text pair, approve / reject / retry page, ONE atomic correction list (never a collapsed table; the 2026-07-24 layout ratification)
 - [ ] the review/approve commands + progressive record patches over the SSE stream
 - [ ] the run-detail **Review** panel BODY — `review` is in `TAB_ORDER` but `availableSections` can never return it, so the tab is structurally unreachable and `UnservedTab` is dead code (03a's finding)
-- [ ] PROOF T2 dashboard scenario for the wired surfaces
-> 2026-08-20 | docs-cohesion 03c | verified against `src/domain/dashboard/run-detail.ts:309-311` (`sectionsCompatible`) and 03a's surface table — the Review tab exists and its body cannot be served; this sub-task is what makes it reachable
+- [ ] PROOF T2/T3 for Review; start/queue/timeline/intake/archive projections ride compiler conformance
+> 2026-09-02 | D311 | re-scoped to the first real Review capability and its commands
 <!-- /roadmap-status -->
 
-The heaviest wire sub-task in the doc, and the only one that is mostly a BUILD. The OCR review
+The largest dashboard capability delta in the doc is mostly a build. The OCR review
 surface is not a generic surface a migration inherits: `ref data-intake-and-edit-data` §4.3's three
 producers admit identically, and `ref dashboard-surfaces` §9's D7/D8/D10 shape the review row
 (extracted count while still at review, approval only after Review, depth-2 delegated lookups
@@ -661,11 +673,11 @@ building it earlier would shape a review UI against no corpus.
 <!-- roadmap: order-4 -->
 
 <!-- roadmap-status: order-4 -->
-- [ ] the §b questionnaire for oath-signature and for emergency-contact — unasked; both need a controlled-commit target the operator approves
+- [ ] the §b completeness pass for oath-signature and emergency-contact — inherited answers cited and workflow-specific deltas recorded; both still need an operator-approved controlled-commit target
 - [ ] the first operation FAN-OUT and its approval gates, exercised through the real OCR review UI
 - [ ] the `oath-signature` and `emergency-contact` descriptors + modules + tuple entries
 - [ ] the first non-separations controlled commits — a bounded UCPath enter/fill, under `ref write-safety` §3.2
-- [ ] PROOF T1 per workflow + the T3 pair (this row's T3 is the group/member view, which no other workflow produces)
+- [ ] PROOF T1 per workflow; T3 only for the new gate/Group People capability
 > 2026-08-20 | docs-cohesion 03c | nothing built; `RunShapeSchema`'s `operation` / `operation-member` arms still have no producer, so every group surface below is drawn against a shape no run has had
 <!-- /roadmap-status -->
 
@@ -698,20 +710,15 @@ easiest real write in the program, and that is exactly the argument for running 
 contract over it rather than an abbreviated version — the contract is being proved here for every
 row after it.
 
-### Dashboard · wire oath-signature · emergency-contact
+### Dashboard capability delta · oath-signature · emergency-contact
 <!-- roadmap: order-4-dash -->
 
 <!-- roadmap-status: order-4-dash -->
-- [ ] 5.1.1 run modal — typed start inputs + start plan for oath-signature and emergency-contact
-- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
-- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
-- [ ] 5.1.4 gate ceremony — the approval shape this workflow's gate demands, computed SERVER-side (`ref write-safety` §14.11)
-- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
-- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
+- [ ] the generalized server-declared gate packet this workflow's approval requires (`ref write-safety` §14.11)
 - [ ] Group People — paged members, rollup and containment over REAL operation members
 - [ ] the group People panel BODY — declared in `TAB_ORDER`, never servable (03a's finding, same shape as order 3's Review tab)
-- [ ] PROOF T2 dashboard scenario for the wired surfaces
-> 2026-08-20 | docs-cohesion 03c | nine squares — the standard seven minus intake, plus Group People and its unservable panel body; the gate square is present because this row gates
+- [ ] PROOF T2/T3 for the new gate shape and Group People; ordinary projections ride compiler conformance
+> 2026-09-02 | D311 | re-scoped to two new capabilities: generalized gate packet and Group People
 <!-- /roadmap-status -->
 
 The gate square is not optional here and it is not separations' gate: `ref write-safety` §14.11's
@@ -725,13 +732,13 @@ rejected members never count toward done, and D16 says cancelling a group is tre
 <!-- roadmap: order-5 -->
 
 <!-- roadmap-status: order-5 -->
-- [ ] the §b questionnaire for i9-check — unasked
+- [ ] the §b completeness pass for i9-check — inherited answers cited and workflow-specific deltas recorded
 - [ ] the operation coordinator AT SCALE — member enqueue, display-only rows, the join; `ref dashboard-surfaces` §7 and `ref execution-and-sessions` §8 are the same worked example from two sides
 - [x] the stable-keyed idempotent workbook SINK exists — `src/infra/artifacts/xlsx-retention-sink.ts` proves `ref data-intake-and-edit-data` §4.1's contract (duplicate key is a verified no-op, changed record is an in-place update, rows sorted by stable key, atomic replace)
 - [ ] the sink is NOT composed in production (D164) — no descriptor declares a projection, so nothing writes a workbook today
 - [ ] the operator-facing workbook layout — the sink's four columns (`stableKey`, `keyValues`, `record`, `projectedAt`) are deliberately the DURABILITY layout; the real column set belongs to this migration, which knows the real fields
 - [ ] the first Excel EXPORT writer (`legacy-export-i9-check-tracker`, open)
-- [ ] PROOF T1 + the T3 pair
+- [ ] PROOF T1; T3 only for retention/export behavior
 > 2026-08-20 | docs-cohesion 03c | verified against `src/infra/artifacts/xlsx-retention-sink.ts`'s own header (it names this migration as the owner of the display layout) and `config/legacy-capabilities.json`; the durability half is built, the workflow and the display half are not
 <!-- /roadmap-status -->
 
@@ -759,21 +766,16 @@ layout and the export, not a second durability model.
 column set is a redaction decision as much as a layout one, and it should be answered in the
 questionnaire's item 11 (trust contract) before a column exists.
 
-### Dashboard · wire i9-check
+### Dashboard capability delta · i9-check
 <!-- roadmap: order-5-dash -->
 
 <!-- roadmap-status: order-5-dash -->
-- [ ] 5.1.1 run modal — typed start inputs + start plan for i9-check
-- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
-- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
-- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
-- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
 - [ ] member rows carrying retention status, and the workbook export control
-- [ ] PROOF T2 dashboard scenario for the wired surfaces
-> 2026-08-20 | docs-cohesion 03c | seven squares — six standard (no gate, no intake) plus the retention/member view; it reuses order 4's Group People rather than rebuilding it
+- [ ] PROOF T2/T3 for retention status and export; Group People and ordinary projections are reused
+> 2026-09-02 | D311 | re-scoped to retention status and workbook export
 <!-- /roadmap-status -->
 
-This sub-task reuses order 4's group surfaces and adds two things of its own: a member row that
+This capability delta reuses order 4's group surfaces and adds two things: a member row that
 shows RETENTION status (which is a fact about a document's lifecycle, not about the run), and the
 export control. D17 — per-member confirmation numbers inline on the packet receipt — is the receipt
 detail this row is the first to need.
@@ -782,12 +784,12 @@ detail this row is the first to need.
 <!-- roadmap: order-6 -->
 
 <!-- roadmap-status: order-6 -->
-- [ ] the §b questionnaire for work-study and for kronos-pay-rule — unasked; both need an approved controlled-commit target
+- [ ] the §b completeness pass for work-study and kronos-pay-rule — inherited answers cited and workflow-specific deltas recorded; both still need an approved controlled-commit target
 - [x] the `new-kronos` store exists with a driver, a session provider and two READ tasks — `read-separation-timecard`, `search-employee` (D196, `ref task-contract` §2.9); separations chunk 1 built it
 - [ ] the new-kronos WRITE family — the pay-rule commit contracts; the store has no write path today
 - [ ] the `work-study` and `kronos-pay-rule` descriptors + modules + tuple entries
 - [ ] the canonical-EID audit gate — replay real stored / fixture inputs through `EidSchema` (`src/domain/ids.ts:184`, `/^10\d{6}$/`) and surface every rejection
-- [ ] PROOF T1 per workflow + the T3 pair
+- [ ] PROOF T1 per workflow; T3 only for the run-constant interaction
 > 2026-08-20 | docs-cohesion 03c | verified against `src/stores/new-kronos/tasks/` (two read tasks, no write) and `src/domain/ids.ts:184`; the store is half-built by separations and the write half is this order
 <!-- /roadmap-status -->
 
@@ -815,19 +817,13 @@ right.
 meets a WRITE for the first time. The column mapping, the validation and the immutable intake
 manifest all already exist from 2h; what is new is that a mapping mistake now reaches UCPath.
 
-### Dashboard · wire work-study · kronos-pay-rule
+### Dashboard capability delta · work-study · kronos-pay-rule
 <!-- roadmap: order-6-dash -->
 
 <!-- roadmap-status: order-6-dash -->
-- [ ] 5.1.1 run modal — typed start inputs + start plan for work-study and kronos-pay-rule
-- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
-- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
-- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
-- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
-- [ ] 5.1.7 intake — the work-study spreadsheet as a start source
 - [ ] the intake grid's constants entry + its unbind arm (`effectiveDate`, D172/D173)
-- [ ] PROOF T2 dashboard scenario for the wired surfaces
-> 2026-08-20 | docs-cohesion 03c | eight squares — seven standard minus the gate, plus the constants entry; the intake workspace itself is 2i-E3 and built, so this is a wire on top of it
+- [ ] PROOF T2/T3 for bind/unbind of the run constant; intake and ordinary projections are reused
+> 2026-09-02 | D311 | re-scoped to the constants interaction alone
 <!-- /roadmap-status -->
 
 The intake workspace exists (2i-E3, `ref dashboard-surfaces` §9.7.1) and this sub-task adds the one
@@ -839,13 +835,13 @@ data-intake-and-edit-data` §2.8 is D172/D173's as-built union resolution behind
 <!-- roadmap: order-7 -->
 
 <!-- roadmap-status: order-7 -->
-- [ ] the §b questionnaire for oath-upload and for onbase — unasked
+- [ ] the §b completeness pass for oath-upload and onbase — inherited answers cited and workflow-specific deltas recorded
 - [ ] the `servicenow` and `onbase` stores — 9 lines each, `declareDriver(…, "unwired")`, zero tasks, no login recipe
 - [!] the ServiceNow `receipt` probe — **the operator must name a live probe target**; §Live probe status has carried this as ⏳ since D92
 - [!] OnBase `upload-verify` **or** an argued `unverifiableByPage` → always-park — **blocked: no probe target exists today**, and it is gated on the next real document upload
 - [ ] oath-upload's born-at-upload fence (`ref dashboard-surfaces` §4.5)
 - [ ] PROOF rebuild-verified propagation windows for ServiceNow (`ref write-safety` §4.2; doc 04 `{#def-propagation}` carries the deferral)
-- [ ] PROOF T1 per workflow + the T3 pair
+- [ ] PROOF T1 per workflow; T3 only for the receipt capability delta
 > 2026-08-20 | docs-cohesion 03c | verified against `src/stores/servicenow/index.ts`, `src/stores/onbase/index.ts` (both unwired, `{}` tasks) and §Live probe status; TWO of this row's blockers need the operator, not an agent
 <!-- /roadmap-status -->
 
@@ -878,18 +874,13 @@ success over a signer who never signed.
 consumes through a sibling task born at the upload, which is how the fence gets a permanent key for
 a document that did not exist when the run started.
 
-### Dashboard · wire oath-upload · onbase
+### Dashboard capability delta · oath-upload · onbase
 <!-- roadmap: order-7-dash -->
 
 <!-- roadmap-status: order-7-dash -->
-- [ ] 5.1.1 run modal — typed start inputs + start plan for oath-upload and onbase
-- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips (this row's chips are `linked` children, D6/D13), per-row actions
-- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
-- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
-- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
 - [ ] the ServiceNow ticket receipt and the OnBase upload-verify on the run-detail receipt (`ref operator-trust` §2.3)
-- [ ] PROOF T2 dashboard scenario for the wired surfaces
-> 2026-08-20 | docs-cohesion 03c | seven squares — six standard (no gate, no intake) plus the two new receipt arms; if OnBase lands on `unverifiableByPage` the receipt square grows an always-park presentation instead of a verify
+- [ ] PROOF T2/T3 for those receipt arms or the explicit always-park arm; ordinary projections are reused
+> 2026-09-02 | D311 | re-scoped to the two new completion-proof presentations
 <!-- /roadmap-status -->
 
 The receipt square is the one that carries this row's risk onto the screen. `ref operator-trust`
@@ -901,11 +892,11 @@ directly — a label and a derived verdict describing the same run must not be d
 <!-- roadmap: order-9 -->
 
 <!-- roadmap-status: order-9 -->
-- [ ] the §b questionnaire for onboarding — unasked; it needs a HIRE canary the operator approves, which is the hardest target in the program
+- [ ] the §b completeness pass for onboarding — inherited answers cited and workflow-specific deltas recorded; it still needs an operator-approved HIRE canary
 - [ ] the hire probe with the **no-EID key** — `probeVerdictSchema` today has four arms (`present` · `absent` · `ambiguous` · `unknown`, `src/domain/write-safety-primitives.ts:50`) and every permanent key in the tree is EID-derived; a hire has no EID until it lands
 - [ ] roster ingest (`ref data-intake-and-edit-data` §4; the `roster` store's `match-spreadsheet` exists, the ingest workflow does not)
 - [ ] the onboarding composition over the `ucpath` / `crm` / `kuali` / `new-kronos` stores
-- [ ] PROOF T1 + the T3 pair
+- [ ] PROOF T1; T3 only for roster ingest or a new hire-gate arm
 > 2026-08-20 | docs-cohesion 03c | verified against `src/domain/write-safety-primitives.ts:50-63` and `src/stores/roster/tasks/`; nothing built, and this row's canary is a `you:` line that has no cheap answer
 <!-- /roadmap-status -->
 
@@ -939,26 +930,20 @@ no harmless real hire. Expect the controlled-commit proof here to need a configu
 (the questionnaire's item 6, `ref clock-config-secrets` §4) rather than a canary, and expect naming
 it to be the long pole.
 
-### Dashboard · wire onboarding
+### Dashboard capability delta · onboarding
 <!-- roadmap: order-9-dash -->
 
 <!-- roadmap-status: order-9-dash -->
-- [ ] 5.1.1 run modal — typed start inputs + start plan for onboarding
-- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
-- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
-- [ ] 5.1.4 gate ceremony — the approval shape this workflow's gate demands, computed SERVER-side (`ref write-safety` §14.11)
-- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
-- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
 - [ ] 5.1.7 the roster-ingest surface, and the hire canary's ceremony
-- [ ] PROOF T2 dashboard scenario for the wired surfaces
-> 2026-08-20 | docs-cohesion 03c | eight squares — the full standard seven plus the roster-ingest surface; it is the only row that uses every square in the template
+- [ ] the server-declared hire gate packet where it differs from the generalized gate capability
+- [ ] PROOF T2/T3 for roster ingest and any new gate arm; ordinary projections are reused
+> 2026-09-02 | D311 | re-scoped to roster ingest and the genuinely new hire-gate evidence shape
 <!-- /roadmap-status -->
 
-The only sub-task in the doc that fills every square, which makes it the template's own proof: if
-onboarding can be wired without a new generic surface, `{#dash-defaults}` was built right. Its gate
-ceremony is a DIFFERENT shape from separations' — a hire's disconfirming evidence is *this person
-may already exist* rather than *this may be the wrong person* — and the shape is the server's to
-compute, not the panel's to choose.
+Onboarding reuses every ordinary compiled projection. Its real deltas are roster ingest and, only if
+the generalized gate cannot express it, the hire evidence shape: *this person may already exist*
+rather than Separations' *this may be the wrong person*. The shape remains the server's to compute,
+not the panel's to choose.
 
 ## Cross-cutting Phase 3 capabilities (no single order)
 <!-- roadmap: cross-cutting -->
@@ -992,11 +977,9 @@ traceback that names each one's trigger.
 
 ## Decisions this phase ratified
 
-**None yet, and that is the accurate answer.** `reference/decisions.md` carries **zero** rounds
-marked `_phase: 3c_` (checked at HEAD 2026-08-20; 3a has 19, 3b has 20). No migration after
-separations has started, so there is nothing for this phase to have ratified. What follows is
-therefore the **standing set the loop runs under** — decisions ratified elsewhere that bind every
-order row — not a record of work done here.
+**D311 is this phase's first decision.** It ratifies the workflow recipe/compiler before another
+migration starts; the implementation remains open at `{#workflow-authoring-model}`. The rest of the
+table is the standing set ratified elsewhere that still binds every order row.
 
 | D | Where it binds in this doc |
 |---|---|
@@ -1008,7 +991,8 @@ order row — not a record of work done here.
 | D184 (2026-08-09, 2j) | `open` carries a required reason, `status` is the disposition's projection, and a wrong `native` is worse than an honest `open` |
 | D191 (round 46, 2026-08-12) | the per-commit gate every step-3 run uses (`test:coverage`) |
 | D193 (round 47, 2026-08-12) | the entry point — separations first, the table deliberately NOT re-sequenced |
-| R10 (operator, 2026-08-20) | the testing tiers every order owes: T1 per workflow, T2 per wire sub-task, T3 pairs, the 80 % floor |
+| D311 (round 121, 2026-09-02) | one tuple recipe/compiler authoring seam; generic dashboard conformance once; T2/T3 only for new capability deltas |
+| R10 (operator, 2026-08-20; amended D311) | T1 behavior per workflow, T2/T3 per new dashboard capability, the 80 % floor |
 
 A round ratified by a future migration is added here in the same commit that records it, with its
 `_phase: 3c_` marker in the ledger.
@@ -1023,10 +1007,10 @@ line's MET/open state at HEAD, then the per-workflow contract each order row is 
 
 | # | Criterion | State at HEAD (2026-08-20) |
 |---|---|---|
-| 1 | Every order row (0–9, minus 8, which is doc 03b) has been through the seven-step loop | **open** — 1 of 9. Only order 0 · person-lookup is migrated; orders 1–7 and 9 have no descriptor |
+| 1 | D311's recipe/compiler seam is built, equivalent on person lookup and separations, and every remaining order row has been through the resulting migration loop | **open** — D311 is ratified but unbuilt; only order 0 · person-lookup is migrated and orders 1–7 and 9 have no descriptor |
 | 2 | Every migrated workflow is marked **rebuild-ready** with its live dry run green and, for writes, its `ref write-safety` §3.2 controlled-commit proof recorded | **open** — order 0 is a read and predates the tiers; no other row has run |
-| 3 | Every order row's `Dashboard · wire <workflow>` sub-task is complete | **open** — 1 of 9, and order 0's is four squares because it needs no more |
-| 4 | Every order row carries its **T1** pair (structural fixture scenario + dry-run manifest) and every wire sub-task its **T2** dashboard scenario | **open** — the spec landed (`ref guards-and-tests` §10, d5b0f8f2, as of dc2901de) and **no workflow in the tree has a T1 pair yet**, including the migrated one |
+| 3 | Every recipe passes generic dashboard/Explorer conformance; every genuinely new surface capability has its one feature task and T2/T3 proof | **open** — the compiler and conformance suite are unbuilt; capability-delta rows are identified but remain unimplemented |
+| 4 | Every order row carries its **T1** pair (structural fixture scenario + dry-run manifest), with T2/T3 only for dashboard behavior it introduces | **open** — the tier spec exists, but the recipes and registry-wide compiler proof do not |
 | 5 | The four live probes are settled: each system produces a typed completion proof or an argued `unverifiableByPage` | **open** — 2 of 4. Kuali and UCPath are RESOLVED and BUILT; ServiceNow needs a named target and OnBase has none |
 | 6 | `config/legacy-capabilities.json` has **zero open entries** — every one advanced to `native` / `replaced` / `retired` with evidence | **open** — 47 of 78 open, all owned by this phase |
 | 7 | The §Cross-cutting capabilities are built or retired with evidence | **open** — none of the five is started |
@@ -1040,17 +1024,22 @@ phase that has run one of its nine rows.
 Every order row answers all of these before its node goes `[x]`. This is the contract the playbook's
 seven steps produce, restated as the thing to check at the end.
 
-- §b questionnaire answered + recorded in the workflow's migration doc.
+- §b completeness checklist applied, with inherited answers cited and only workflow-specific facts,
+  deltas and real operator decisions recorded in the migration doc.
 - the rebuild repo's `typecheck` + `lint` + `test:coverage` green (D191 — `test:coverage` REPLACED
   the earlier `test` + `test:architecture` pair as the per-commit gate); the workflow's descriptor
   passes `descriptor-coverage`; every commit contract passes `write-safety-contract` (its completion arm +
   probe + probe-policy) and transaction pairing.
+- the workflow recipe compiles without duplicate authority and passes registry-wide descriptor,
+  module, run-modal, timeline/detail and Explorer conformance.
 - Workflow/task inputs, outputs, results, commands, details, and evidence parse strict; every UI id,
   scenario id, child result/policy, and subject observation resolves. No raw Page/Locator/selector
   appears outside the system driver.
 - **Live dry-run** green against every real system it touches (submit-free).
 - Every commit/probe/verify has controlled live evidence on the configured target; unavailable safe
   evidence blocks rebuild-ready status rather than converting dry-run success into a write-safety claim.
+- A T2/T3 dashboard scenario exists only for a new interaction or wire arm this workflow introduces;
+  reuse of a generic surface is covered by compiler conformance rather than a copied workflow test.
 - Old per-system `src` code and tests remain runnable and preserved through initial cutover. A
   capability may become `candidate-for-later-retirement`, but deletion requires separate explicit
   operator authorization after cutover and rollback-window closure.
