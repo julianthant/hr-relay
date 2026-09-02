@@ -1,0 +1,103 @@
+# Run plan — test-suite rationalization — 2026-09-02
+
+| Run | Theme | Units | Worker roles | Base | Integration order | Parallel-ready | Needs first | Exit evidence |
+|---|---|---|---|---|---:|---|---|---|
+| R1 | Architecture guards and static/type/lint gates | u01–u06 | Scout/Analyst/Terra | kickoff commit | 1 | yes, Wave 1 with R6 | — | self-contained architecture gate, correct static project wiring, evidence/report |
+| R6 | Playwright parity, performance, smoke, Duo, generated checks | u31–u36 | Scout/Analyst/Terra | kickoff commit | 2 | yes, Wave 1 with R1 | — | parity/check-family inventory, retained-risk evidence, focused gates/report |
+| R2 | Core/domain/workflow/write/storage unit tests | u07–u12 | Scout/Analyst/Terra | after R1+R6 | 3 | yes, Wave 2 with R4 | R1, R6 | audited non-server/non-dashboard unit family, focused and full-family gates/report |
+| R4 | Dashboard model/jsdom/component tests versus parity/T2 | u19–u24 | Scout/Analyst/Terra | after R1+R6 | 4 | yes, Wave 2 with R2 | R1, R6 | jsdom/pure-model split, overlap evidence, focused gates/report |
+| R3 | Server/BFF/runtime/worker tests and real-port hermeticity | u13–u18 | Scout/Analyst/Terra | after R2+R4 | 5 | yes, Wave 3 with R5 | R1, R2, R4 | active-port full gate, isolated runtime evidence, focused gates/report |
+| R5 | Entire scenario corpus and proof provenance | u25–u30 | Scout/Analyst/Terra | after R2+R4 | 6 | yes, Wave 3 with R3 | R1, R2, R4 | T1/T2/T3/walk/T1b matrix, useful branches, coverage/layout gates/report |
+| R7 | Cross-family reorganization, consequential review, authorities, close proof | u37–u42 | Analyst/Terra | after R1–R6 | 7 | no, serial final run | R1–R6 | canonical taxonomy, all authorities reconciled, every final gate + delta/runtime evidence |
+
+## Supervisor wave ledger
+
+| Run | Task id / corrections | Host id | Project id | Launch title/time | Worktree/branch | Report | Status | Last cursor |
+|---|---|---|---|---|---|---|---|---|
+| R1 | pending dispatch | pending | pending | `R1 — architecture and static gates` / pending | `feature/test-r1-architecture-static` | `reports/r1-architecture-static.md` | briefed | none |
+| R6 | pending dispatch | pending | pending | `R6 — parity performance and generated checks` / pending | `feature/test-r6-parity-checks` | `reports/r6-parity-checks.md` | briefed | none |
+| R2 | — | — | — | — | `feature/test-r2-core-domain` | `reports/r2-core-domain.md` | planned | none |
+| R4 | — | — | — | — | `feature/test-r4-dashboard` | `reports/r4-dashboard.md` | planned | none |
+| R3 | — | — | — | — | `feature/test-r3-server-runtime` | `reports/r3-server-runtime.md` | planned | none |
+| R5 | — | — | — | — | `feature/test-r5-scenarios` | `reports/r5-scenarios.md` | planned | none |
+| R7 | — | — | — | — | `feature/test-r7-integration-review` | `reports/r7-integration-review.md` | planned | none |
+
+## Units
+
+### R1 — architecture guards and static/type/lint gates
+
+- **u01 — Inventory every guard and static gate.** Scope: architecture tests/helpers/fixtures, guard inventory, TypeScript/ESLint/Vitest wiring. Acceptance: per-file contract, owner, negative control, overlap, cost, and truthfulness table at `artifacts/r1/u01-inventory.md`. Role: Scout/Analyst. Review: correctness + guard coverage.
+- **u02 — Remove the legacy-checkout gate dependency.** Scope: architecture inputs that read outside this repo. Acceptance: required facts frozen in-repo with provenance; list, architecture, typecheck, lint work with no override and with the legacy checkout unavailable; evidence `artifacts/r1/u02-self-contained.md`. Role: Terra. Review: cross-repo safety + silent failures.
+- **u03 — Correct Vitest project and architecture membership.** Scope: `vitest.config.ts`, architecture script semantics, duplicate project collection. Acceptance: named/addressable architecture project with exact bidirectional membership and no accidental duplicate coverage execution; evidence `artifacts/r1/u03-projects.md`. Role: Terra. Review: configuration + performance.
+- **u04 — Audit TypeScript, ESLint, and generated/static check scope.** Scope: tsconfig, ESLint config/command, generator check entry points. Acceptance: every intended source/test/script is checked once at the correct layer; violating fixtures/commands prove exclusions cannot silently widen; evidence `artifacts/r1/u04-static-gates.md`. Role: Analyst/Terra. Review: silent failures.
+- **u05 — Rationalize guard assertions and naming.** Scope: architecture files only. Acceptance: every retain/delete/move/merge row has unique invariant and red-capable/equivalence proof; filenames/titles state behavior/refusal; evidence `artifacts/r1/u05-changes.md`. Role: Terra. Review: correctness + tests.
+- **u06 — Consequential R1 review and gate.** Scope: whole R1 diff. Acceptance: independent correctness, repository-standard, silent-failure, performance, test, docs, and security review; focused red/green plus architecture/type/lint/manifest/roadmap/diff gates; evidence `artifacts/r1/u06-review.md`. Role: Analyst/Terra reviewer.
+
+### R2 — core/domain/workflow/write/storage unit tests
+
+- **u07 — Domain/contracts/model units.** Primary SUTs under `src/base/**` and `src/domain/**`, excluding server/dashboard/runtime-worker ownership. Acceptance artifact `artifacts/r2/u07-domain.md`.
+- **u08 — Workflow recipe/compiler/task units.** Primary SUTs under workflow authoring, descriptors, tasks, graphs, omissions, and provenance. Acceptance artifact `artifacts/r2/u08-workflows.md`.
+- **u09 — Core planning/execution/commands/projections units.** Primary SUTs under `src/core/**`, excluding server/runtime process composition. Acceptance artifact `artifacts/r2/u09-core.md`.
+- **u10 — Write authority/gates/receipts/fail-loud units.** Transactions, mutation capability, sequencer, identity/approval, receipts, refusal arms. Acceptance artifact `artifacts/r2/u10-write.md`.
+- **u11 — Storage/migrations/recovery/outbox/events units.** Authority stores, SQLite/file stores, journal/recovery/dedupe/outbox/event behavior. Acceptance artifact `artifacts/r2/u11-storage.md`.
+- **u12 — Cross-seam unit consolidation and review.** Resolve duplicate fixtures/assertions, wrong-layer cases, false names, and family gate; keep a before/after inventory and negative-control table at `artifacts/r2/u12-review.md`.
+
+### R3 — server/BFF/runtime/worker tests and real-port hermeticity
+
+- **u13 — Server/BFF route and wire tests.** Routes, request identity, schemas, SSE/download/error semantics. Acceptance artifact `artifacts/r3/u13-bff.md`.
+- **u14 — Runtime/CLI/process composition tests.** Startup, shutdown, config admission, process edges, runtime ownership. Acceptance artifact `artifacts/r3/u14-runtime.md`.
+- **u15 — Worker/session/lease/concurrency tests.** Worker pool, claims, sessions, Duo lease boundaries, teardown/soak. Acceptance artifact `artifacts/r3/u15-workers.md`.
+- **u16 — Real-port hermeticity.** Reproduce the active-dashboard collision, move tests to ephemeral/owned ports and isolated state without weakening production isolation checks, and prove the full gate passes while 3938/5174 remain legitimately occupied. Evidence `artifacts/r3/u16-ports.md`.
+- **u17 — Layering/duplication/naming consolidation.** Compare server tests against core units and scenarios; remove only proven equivalence, relocate wrong-layer files, update imports/config. Artifact `artifacts/r3/u17-consolidation.md`.
+- **u18 — Consequential R3 review and gate.** Independent axes review, leak/orphan checks, focused negative controls, full active-port coverage run, type/lint/diff. Artifact `artifacts/r3/u18-review.md`.
+
+### R4 — dashboard model/jsdom/component tests versus parity/T2
+
+- **u19 — Inventory dashboard test claims.** All `tests/unit/dashboard/**` plus dashboard-owned root unit files; identify pure-model, DOM wiring, visual, T2, and parity claims. Artifact `artifacts/r4/u19-inventory.md`.
+- **u20 — Pure model tests.** Keep decision/data transforms in Node without jsdom; consolidate duplicated cases and fixtures. Artifact `artifacts/r4/u20-models.md`.
+- **u21 — jsdom interaction/focus/wiring tests.** Require DOM only for dispatch, focus, lifecycle, and accessibility semantics that pure models cannot prove. Artifact `artifacts/r4/u21-jsdom.md`.
+- **u22 — Parity/T2 overlap equivalence.** Consume R6 evidence; remove unit/component visual assertions only when parity/T2 uniquely owns the same claim, and retain lower-layer failure logic. Artifact `artifacts/r4/u22-overlap.md`.
+- **u23 — Placement and truthful names.** Organize by capability, move/update imports safely, rewrite filenames/titles to behavior + failure condition. Artifact `artifacts/r4/u23-layout.md`.
+- **u24 — Consequential R4 review and gate.** Focused red controls, jsdom count/runtime before/after, type/lint/dashboard unit/scenario/parity checks as applicable. Artifact `artifacts/r4/u24-review.md`.
+
+### R5 — entire scenario corpus and proof provenance
+
+- **u25 — Corpus/provenance inventory.** Map all 18 offline files and two live manifests to kind, subject, unique risk, source of truth, and claimed evidence. Artifact `artifacts/r5/u25-inventory.md`.
+- **u26 — T1 structural workflow walks.** Enforce one honest structural pair per workflow, real graph paths, refusal/idempotency branches, no world claims; audit ordinary graph scenarios for ownership. Artifact `artifacts/r5/u26-t1.md`.
+- **u27 — Ordinary graph scenarios and integration walks.** Test slice-crossing joins only where cheaper units cannot, use realistic branches, remove cannot-fail/duplicate walks, preserve no-coverage-claim rule. Artifact `artifacts/r5/u27-walks.md`.
+- **u28 — T2/T3 dashboard scenarios.** Distinguish projection/command authority from unit/parity; require both refusal arms; add/retain T3 only for unique run interaction claims. Artifact `artifacts/r5/u28-dashboard.md`.
+- **u29 — T1b live manifests and coverage claims.** Audit manifest truth, unavailable/blocked states, exact no-write authority, live versus synthetic data, and stale coverage claims without running unauthorized live workflows. Artifact `artifacts/r5/u29-live.md`.
+- **u30 — Scenario layout/naming/config review and gate.** Path-sensitive moves, imports/manifests/config/coverage guard updates, before/after corpus metrics, focused negative controls, type/lint/scenario/architecture gates. Artifact `artifacts/r5/u30-review.md`.
+
+### R6 — Playwright parity, performance, smoke, Duo, generated checks
+
+- **u31 — Parity inventory.** Map 17 specs/287 cases and every reference family to unique visual/a11y/wire risk, viewport/theme multiplication, and owner. Artifact `artifacts/r6/u31-parity.md`.
+- **u32 — Parity equivalence and negative controls.** Prove which matrix cases are materially distinct, remove only equivalent coverage, preserve strict pixel/a11y/reference-pair authority; inspect screenshots for retained visual claims. Artifact `artifacts/r6/u32-equivalence.md`.
+- **u33 — Performance checks.** Audit benchmark/test thresholds, fixture realism, warmup/noise, failure capability, and runtime cost. Artifact `artifacts/r6/u33-performance.md`.
+- **u34 — Smoke and Duo checks.** Audit startup/document-number smoke, Duo extension/lease tests, generated or external-harness checks for correct offline/live classification and truthful triggers. Artifact `artifacts/r6/u34-smoke-duo.md`.
+- **u35 — Runner/config/naming rationalization.** `playwright.parity.config.ts`, parity helpers/spec names, performance/smoke/generated entry points; no `package.json` edits in this parallel run—record script changes for R7. Artifact `artifacts/r6/u35-runner.md`.
+- **u36 — Consequential R6 review and gate.** Independent axes review, exact before/after test/reference/runtime counts, parity full pass, relevant smoke/generated dry checks, type/lint/diff. Artifact `artifacts/r6/u36-review.md`.
+
+### R7 — cross-family integration, reorganization, authorities, close proof
+
+- **u37 — Reconcile every family inventory.** One before/after table with retain/delete/move/merge and unique purpose; no unowned deletion. Artifact `artifacts/r7/u37-reconciliation.md`.
+- **u38 — Land final taxonomy/config/scripts.** Resolve cross-family duplicates and wrong-layer files; make paths, Vitest/Playwright projects, package scripts, lint/type/generated checks, and names truthful. Artifact `artifacts/r7/u38-taxonomy.md`.
+- **u39 — Consequential cross-family review.** Repository standards, originating objective, correctness, silent failures, performance, tests, docs, security, plus mutation/equivalence spot checks. Artifact `artifacts/r7/u39-review.md`.
+- **u40 — Reconcile canonical test authorities.** Update paired root instructions, paired scenario instructions, guards-and-tests, guard inventory, and decision pointer/owning cross-repo contract for self-contained gates. Preserve byte-identical twins. Artifact `artifacts/r7/u40-authorities.md`.
+- **u41 — Reconcile roadmap and generated authorities.** Update only truth that changed, regenerate roadmap/manifest as required, prove no stale docs/config. Artifact `artifacts/r7/u41-generated.md`.
+- **u42 — Final proof and deltas.** From clean isolated state and no legacy override: typecheck, lint, coverage, architecture, parity, manifest, roadmap, diff; active-port hermeticity; coverage/suite/runtime deltas; report exact run-worker cleanup. Artifact `artifacts/r7/u42-final-gates.md`.
+
+## Decisions gating runs
+
+- No kickoff decision gates. Any proposed guarantee weakening or unique-contract removal becomes a numbered decision sheet before that unit proceeds.
+
+## Date or external gates
+
+- None. No live HR workflow is required. Local parity browser work is permitted; close every owned browser/server process.
+
+## Residue carried in
+
+- Prior 16-test real-port contention evidence → u16.
+- Existing external legacy-checkout guard dependency → u02.
+- Existing normative/project-layout drift between guards-and-tests §10.9 and current two-project Vitest config → u03/u38/u40.
+- D91 branch-floor gap remains an explicit authority item, not an assumed threshold change → u04/u40.
