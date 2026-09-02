@@ -15,12 +15,12 @@
  * every one of them folded a row array, which is precisely the second path this
  * projection exists to delete.
  */
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type ReactElement, type SVGProps, type UIEvent } from "react";
-import { flushSync } from "react-dom";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactElement, type SVGProps } from "react";
 import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  CircleDashed,
   CircleHelp,
   Eye,
   LayoutDashboard,
@@ -29,17 +29,23 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PictureInPicture2,
+  Plus,
 } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
   Banner,
   Button,
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  Field,
   IconButton,
   MetaLine,
   Popover,
   PopoverContent,
   PopoverTrigger,
-  StatusDot,
+  Select,
   Tooltip,
   dsBorder,
   dsElev,
@@ -73,11 +79,6 @@ import {
   WORKFLOW_PANEL_MODE_LABEL,
   type WorkerCardWire,
   type WorkerPoolWire,
-  type SessionMemberView,
-  type SessionGroupView,
-  type SessionListItem,
-  type SessionListLayoutRow,
-  type SessionView,
   type WorkerSessionMembership,
   type WorkerState,
   type WorkflowBootstrapPrimitive,
@@ -85,7 +86,6 @@ import {
   type QueueSurfaceWire,
   type WorkflowPanelMode,
   activeCount,
-  buildSessionListLayout,
   buildWorkflowRailGroups,
   buildSessionPanelView,
   canStopWorker,
@@ -94,18 +94,13 @@ import {
   needsYouCount,
   POOL_CONTROL_TOUCH_TARGET,
   POOL_COUNT_TOUCH_TARGET,
-  SESSION_LIST_DEFAULT_VIEWPORT_HEIGHT,
   SESSION_POOL_MAX_WORKERS,
   type PoolPlanIntent,
   type SessionPoolGroup,
   type SessionPoolMemberSlot,
   planPoolIntent,
   poolSlotIsUnmet,
-  sessionPoolDisplay,
-  sessionListNavigationTarget,
-  sessionListScrollTopForIndex,
-  sessionListVisibleIndex,
-  sessionListWindow,
+  sessionPoolGroupFor,
   statusCount,
   toolbarControl,
   totalCount,
@@ -705,10 +700,11 @@ export function StatusFilters({
  *   carries its comment verbatim — *it must NOT read as healthy.* Nothing in
  *   this build probes a live session, so any other word would be a health
  *   claim nobody made.
- * - **The second line is the session's AGE, not a URL.** No span, checkpoint or
- *   lease records a page address; composing one from the system id would put a
- *   plausible-looking string where an observation belongs. How long a session
- *   has been open is a fact the wire actually carries.
+ * - **The second line is the tone word alone, and the session's AGE is a
+ *   popover fact — never a URL.** No span, checkpoint or lease records a page
+ *   address; composing one from the system id would put a plausible-looking
+ *   string where an observation belongs. How long a session has been open is
+ *   a fact the wire actually carries, reachable behind the tile's control.
  *
  * The demo's right-click menu (Peek / Check now / Bring to front / Refresh /
  * Reopen / Pause auto-recovery) is NOT ported. `refresh-browser` and
@@ -752,7 +748,10 @@ function BrowserTile({
           ]}
         />
       </span>
-      <span className={cn(dsText.micro, "truncate opacity-80")}>Not checked · open {openFor}</span>
+      {/* The tone word alone, as the demo's tile prints it (`tone.label`); the
+          session's age is a popover fact, because `Not checked · open 55m 4s`
+          truncated to `Not checked · open 5…` in a two-column tile. */}
+      <span className={cn(dsText.micro, "truncate opacity-80")}>Not checked</span>
     </div>
   );
 }
@@ -834,474 +833,62 @@ function AuthorityDetails({
   );
 }
 
-/** The current worker's session membership, read from its claimed run's row. */
-function WorkerSessionLine({ membership }: { membership: WorkerSessionMembership }) {
-  if (membership.state === "unassigned") return null;
+/**
+ * The current worker's session membership, as identity-popover facts. An
+ * unassigned worker has no run and therefore no session row to describe, so it
+ * contributes nothing; the other three arms each keep the server's own words.
+ */
+function workerSessionFacts(
+  membership: WorkerSessionMembership,
+): readonly Readonly<{ label: string; value: string; kind?: "id" | "prose" }>[] {
+  if (membership.state === "unassigned") return [];
   if (membership.state === "present") {
-    return (
-      <div
-        className={cn(
-          "flex min-w-0 items-center border-t",
-          dsBorder.subtle,
-          "gap-[var(--ds-space-tight)] pt-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]",
-        )}
-      >
-        <span className={cn(dsText.caps, "shrink-0")}>Session</span>
-        <span className={cn(dsText.micro, dsText.nums, "min-w-0 flex-1 truncate")}>
-          {String(membership.sessionId)}
-        </span>
-        <AuthorityDetails
-          label={`Show full session and run details for ${membership.row.title}`}
-          title="Current session member"
-          facts={[
-            { label: "Session ID", value: String(membership.sessionId) },
-            { label: "Member", value: membership.row.title },
-            { label: "Run ID", value: String(membership.row.runId) },
-          ]}
-        />
-        <StatusDot status={dsStatusOf(membership.row.status)} className="shrink-0" />
-      </div>
-    );
+    return [
+      { label: "Session ID", value: String(membership.sessionId) },
+      { label: "Session member", value: membership.row.title, kind: "prose" },
+    ];
   }
   if (membership.state === "absent") {
-    return (
-      <div className={cn("min-w-0 border-t pt-[var(--ds-space-snug)]", dsBorder.subtle)}>
-        <span className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
-          <span className={cn(dsText.caps, "min-w-0 flex-1 text-[color:var(--ds-fg-muted)]")}>No session recorded</span>
-          <AuthorityDetails
-            label="Show full reason no session was recorded"
-            title="No session recorded"
-            facts={[{ label: "Served reason", value: membership.reason }]}
-          />
-        </span>
-        <span className={cn(dsText.micro, "block truncate text-[color:var(--ds-fg-muted)]")}>{membership.reason}</span>
-      </div>
-    );
+    return [{ label: "Session", value: `No session recorded — ${membership.reason}`, kind: "prose" }];
   }
-  return (
-    <div className={cn("min-w-0 border-t pt-[var(--ds-space-snug)]", dsBorder.subtle)}>
-      <span className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
-        <span className={cn(dsText.caps, "min-w-0 flex-1 text-[color:var(--ds-fg-muted)]")}>Session row not served</span>
-        <AuthorityDetails
-          label={`Show full unserved run ID ${String(membership.runId)}`}
-          title="Session row not served"
-          facts={[{ label: "Run ID", value: String(membership.runId) }]}
-        />
-      </span>
-      <span className={cn(dsText.micro, dsText.nums, "block truncate text-[color:var(--ds-fg-muted)]")}>{String(membership.runId)}</span>
-    </div>
-  );
-}
-
-/** One row of a session's authority membership list; it remains a compact divider, not a nested card. */
-function SessionMemberRow({
-  member,
-  sessionId,
-  authorityDetails,
-}: {
-  member: SessionMemberView;
-  sessionId: SessionGroupView["sessionId"];
-  authorityDetails: AuthorityDetailsOwnership;
-}) {
-  const status = dsStatusOf(member.row.status);
-  const workerDetails = member.workers.length === 0
-    ? "No current worker card claims this run"
-    : member.workers.map((worker) => `${WORKER_TONE[worker.state].label} · ${String(worker.workerId)}`).join(" · ");
-  return (
-    <div className={cn("grid h-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-[var(--ds-space-snug)] px-[var(--ds-shell-inset)] py-[var(--ds-space-snug)]")}>
-      <StatusDot status={status} className="mt-px" />
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
-          <span className={cn(dsText.meta, "min-w-0 flex-1 truncate text-[color:var(--ds-fg)]")}>
-            {member.row.title}
-          </span>
-          <span className={cn(dsText.micro, "shrink-0 text-[color:var(--ds-fg-muted)]")}>{PROPOSED_STATUS[status].label}</span>
-          <AuthorityDetails
-            label={`Show full details for ${member.row.title}`}
-            title="Session member"
-            facts={[
-              { label: "Member", value: member.row.title },
-              { label: "Run ID", value: String(member.row.runId) },
-              { label: "Session ID", value: String(sessionId) },
-              { label: "Run state", value: PROPOSED_STATUS[status].label },
-              { label: "Current worker cards", value: workerDetails },
-            ]}
-            touchAlign="down"
-            ownership={authorityDetails}
-          />
-        </div>
-        <div className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-hair)] min-w-0 truncate text-[color:var(--ds-fg-muted)]")}>
-          {String(member.row.runId)}
-        </div>
-        {member.workers.length === 0 ? (
-          <span className={cn(dsText.micro, "block mt-[var(--ds-space-hair)] text-[color:var(--ds-fg-muted)]")}>
-            No current worker card claims this run
-          </span>
-        ) : (
-          <span className={cn(dsText.micro, "block mt-[var(--ds-space-hair)] text-[color:var(--ds-fg-muted)]")}>
-            {member.workers.map((worker) => (
-              <span key={String(worker.workerId)} className="mr-[var(--ds-space-snug)] inline-block">
-                {WORKER_TONE[worker.state].label} · {String(worker.workerId)}
-              </span>
-            ))}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SessionHeaderRow({
-  session,
-  authorityDetails,
-}: {
-  session: SessionGroupView;
-  authorityDetails: AuthorityDetailsOwnership;
-}) {
-  const pool = sessionPoolDisplay(session);
-  return (
-    <div className="flex h-full min-w-0 items-center gap-[var(--ds-space-snug)] px-[var(--ds-shell-inset)]">
-      <span className={cn(dsText.caps, "shrink-0 text-[color:var(--ds-fg-muted)]")}>Session</span>
-      <span className={cn(dsText.micro, dsText.nums, "min-w-0 flex-1 truncate text-[color:var(--ds-fg)]")}>
-        {String(session.sessionId)}
-      </span>
-      {pool.summary !== undefined && (
-        <span className={cn(dsText.micro, "max-w-[45%] shrink truncate text-[color:var(--ds-fg-muted)]")}>
-          {pool.summary}
-        </span>
-      )}
-      <AuthorityDetails
-        label={`Show full details for session ${String(session.sessionId)}`}
-        title="Session details"
-        facts={[{ label: "Session ID", value: String(session.sessionId) }, ...pool.facts]}
-        ownership={authorityDetails}
-      />
-    </div>
-  );
-}
-
-function AbsentSessionMemberRow({
-  member,
-  authorityDetails,
-}: {
-  member: Extract<SessionListItem, { kind: "absent-member" }>["member"];
-  authorityDetails: AuthorityDetailsOwnership;
-}) {
-  return (
-    <div className="h-full min-w-0 px-[var(--ds-shell-inset)] py-[var(--ds-space-snug)]">
-      <div className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
-        <span className={cn(dsText.meta, "min-w-0 flex-1 truncate text-[color:var(--ds-fg)]")}>{member.row.title}</span>
-        <AuthorityDetails
-          label={`Show full details for ${member.row.title}`}
-          title="Run without a recorded session"
-          facts={[
-            { label: "Member", value: member.row.title },
-            { label: "Run ID", value: String(member.row.runId) },
-            { label: "Served reason", value: member.reason },
-          ]}
-          touchAlign="down"
-          ownership={authorityDetails}
-        />
-      </div>
-      <span className={cn(dsText.micro, "block truncate text-[color:var(--ds-fg-muted)]")}>{member.reason}</span>
-      <span className={cn(dsText.micro, dsText.nums, "block truncate text-[color:var(--ds-fg-muted)]")}>{String(member.row.runId)}</span>
-    </div>
-  );
-}
-
-function SessionVirtualRow({
-  row,
-  totalRows,
-  active,
-  rowRef,
-  onFocus,
-  onKeyDown,
-  authorityOpen,
-  onAuthorityOpenChange,
-  onAuthoritySurfaceRef,
-}: {
-  row: SessionListLayoutRow;
-  totalRows: number;
-  active: boolean;
-  rowRef: (node: HTMLDivElement | null) => void;
-  onFocus: () => void;
-  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
-  authorityOpen: boolean;
-  onAuthorityOpenChange: (rowIndex: number, open: boolean) => void;
-  onAuthoritySurfaceRef: (rowIndex: number, node: HTMLDivElement | null) => void;
-}) {
-  const item = row.item;
-  const authorityDetails: AuthorityDetailsOwnership = {
-    open: authorityOpen,
-    onOpenChange: (open) => onAuthorityOpenChange(row.index, open),
-    surfaceRef: (node) => onAuthoritySurfaceRef(row.index, node),
-  };
-  const ariaLabel = item.kind === "session-header"
-    ? `Session ${String(item.session.sessionId)}`
-    : item.kind === "session-member"
-      ? `${item.member.row.title}, run ${String(item.member.row.runId)}, session ${String(item.sessionId)}`
-      : item.kind === "absent-header"
-        ? "Runs without a recorded session"
-        : `${item.member.row.title}, run ${String(item.member.row.runId)}, no recorded session`;
-  return (
-    <div
-      id={`session-membership-row-${String(row.index)}`}
-      role="listitem"
-      aria-label={ariaLabel}
-      aria-posinset={row.index + 1}
-      aria-setsize={totalRows}
-      tabIndex={active ? 0 : -1}
-      ref={rowRef}
-      onFocus={onFocus}
-      onKeyDown={onKeyDown}
-      data-session-virtual-row
-      data-session-active={active ? "true" : undefined}
-      data-session-row-index={row.index}
-      data-session-run-id={item.kind === "session-member" || item.kind === "absent-member" ? String(item.member.row.runId) : undefined}
-      className={cn(
-        "absolute inset-x-0 border-b border-[color:var(--ds-border-subtle)]",
-        dsFocus,
-        active && "bg-[var(--ds-surface-2)]",
-      )}
-      style={{ top: row.top, height: row.height }}
-    >
-      {item.kind === "session-header" && (
-        <SessionHeaderRow session={item.session} authorityDetails={authorityDetails} />
-      )}
-      {item.kind === "session-member" && (
-        <SessionMemberRow member={item.member} sessionId={item.sessionId} authorityDetails={authorityDetails} />
-      )}
-      {item.kind === "absent-header" && (
-        <div className="flex h-full items-center px-[var(--ds-shell-inset)]">
-          <span className={cn(dsText.caps, "text-[color:var(--ds-fg-muted)]")}>No session recorded</span>
-        </div>
-      )}
-      {item.kind === "absent-member" && (
-        <AbsentSessionMemberRow member={item.member} authorityDetails={authorityDetails} />
-      )}
-    </div>
-  );
+  return [{ label: "Session", value: `Queue row not served for run ${String(membership.runId)}`, kind: "prose" }];
 }
 
 /**
- * All day members stay in the layout; only one viewport plus one row of
- * overscan mounts. Memoization keeps the one-second worker elapsed tick from
- * reconciling this list when the authority arrays have not changed.
- */
-export const SessionMembershipList = memo(function SessionMembershipList({ sessionView }: { sessionView: SessionView }) {
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const rowRefs = useRef(new Map<number, HTMLDivElement>());
-  // AuthorityDetails portals outside its row, so DOM ancestry alone cannot
-  // preserve that row's focus ownership across a virtual-window swap.
-  const authoritySurfaceRefs = useRef(new Map<number, HTMLDivElement>());
-  const pendingFocusIndexRef = useRef<number | undefined>(undefined);
-  const scrollOwnedRowIndexRef = useRef<number | undefined>(undefined);
-  const scrollFrameRef = useRef<number | undefined>(undefined);
-  const pendingScrollTopRef = useRef(0);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(SESSION_LIST_DEFAULT_VIEWPORT_HEIGHT);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [openAuthorityRowIndex, setOpenAuthorityRowIndex] = useState<number | undefined>(undefined);
-  const layout = useMemo(() => buildSessionListLayout(sessionView), [sessionView]);
-  const windowed = useMemo(
-    () => sessionListWindow(layout, scrollTop, viewportHeight),
-    [layout, scrollTop, viewportHeight],
-  );
-  const rovingIndex = windowed.rows.some((row) => row.index === activeIndex)
-    ? activeIndex
-    : sessionListVisibleIndex(layout, scrollTop);
-
-  useEffect(() => {
-    const scroller = scrollerRef.current;
-    if (scroller === null) return;
-    const measure = (): void => setViewportHeight(Math.max(1, scroller.clientHeight));
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(scroller);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => () => {
-    if (scrollFrameRef.current !== undefined) cancelAnimationFrame(scrollFrameRef.current);
-  }, []);
-
-  useLayoutEffect(() => {
-    const pendingIndex = pendingFocusIndexRef.current;
-    if (pendingIndex !== undefined) {
-      const row = rowRefs.current.get(pendingIndex);
-      if (row === undefined) return;
-      pendingFocusIndexRef.current = undefined;
-      scrollOwnedRowIndexRef.current = pendingIndex;
-      row.focus({ preventScroll: true });
-      return;
-    }
-
-    const focusedBeforeScroll = scrollOwnedRowIndexRef.current;
-    if (focusedBeforeScroll === undefined || rowRefs.current.has(focusedBeforeScroll)) return;
-    const activeElement = document.activeElement;
-    if (activeElement !== null && activeElement !== document.body) {
-      scrollOwnedRowIndexRef.current = undefined;
-      return;
-    }
-    const row = rowRefs.current.get(rovingIndex);
-    if (row === undefined) return;
-    scrollOwnedRowIndexRef.current = rovingIndex;
-    row.focus({ preventScroll: true });
-  }, [rovingIndex, windowed.rows]);
-
-  const onScroll = useCallback((event: UIEvent<HTMLDivElement>): void => {
-    scrollOwnedRowIndexRef.current = undefined;
-    const activeElement = document.activeElement;
-    for (const [index, row] of rowRefs.current) {
-      if (row.contains(activeElement)) {
-        scrollOwnedRowIndexRef.current = index;
-        break;
-      }
-    }
-    if (scrollOwnedRowIndexRef.current === undefined) {
-      for (const [index, surface] of authoritySurfaceRefs.current) {
-        if (surface.contains(activeElement)) {
-          scrollOwnedRowIndexRef.current = index;
-          break;
-        }
-      }
-    }
-    pendingScrollTopRef.current = event.currentTarget.scrollTop;
-    if (scrollFrameRef.current !== undefined) return;
-    scrollFrameRef.current = requestAnimationFrame(() => {
-      scrollFrameRef.current = undefined;
-      const nextScrollTop = pendingScrollTopRef.current;
-      const focusedOwner = scrollOwnedRowIndexRef.current;
-      if (
-        focusedOwner !== undefined
-        && openAuthorityRowIndex === focusedOwner
-        && !sessionListWindow(layout, nextScrollTop, viewportHeight).rows.some((row) => row.index === focusedOwner)
-      ) {
-        // Let Radix close and restore to its still-mounted trigger before this
-        // render swaps the owner row out; the layout effect then moves that
-        // owned focus to the new visible roving row.
-        flushSync(() => setOpenAuthorityRowIndex(undefined));
-      }
-      setScrollTop(nextScrollTop);
-    });
-  }, [layout, openAuthorityRowIndex, viewportHeight]);
-
-  const onAuthorityOpenChange = useCallback((rowIndex: number, open: boolean): void => {
-    setOpenAuthorityRowIndex((current) => open ? rowIndex : current === rowIndex ? undefined : current);
-  }, []);
-
-  const onAuthoritySurfaceRef = useCallback((rowIndex: number, node: HTMLDivElement | null): void => {
-    if (node === null) authoritySurfaceRefs.current.delete(rowIndex);
-    else authoritySurfaceRefs.current.set(rowIndex, node);
-  }, []);
-
-  const focusIndex = useCallback((index: number): void => {
-    const target = Math.max(0, Math.min(index, layout.rows.length - 1));
-    const nextScrollTop = sessionListScrollTopForIndex(layout, target, viewportHeight);
-    pendingFocusIndexRef.current = target;
-    if (scrollerRef.current !== null) scrollerRef.current.scrollTop = nextScrollTop;
-    pendingScrollTopRef.current = nextScrollTop;
-    setScrollTop(nextScrollTop);
-    setActiveIndex(target);
-  }, [layout, viewportHeight]);
-
-  const onRowKeyDown = useCallback((index: number, event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.target !== event.currentTarget) return;
-    const target = sessionListNavigationTarget(index, event.key, layout.rows.length, viewportHeight);
-    if (target === undefined) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (target === index) {
-      pendingFocusIndexRef.current = undefined;
-      return;
-    }
-    focusIndex(target);
-  }, [focusIndex, layout.rows.length, viewportHeight]);
-
-  if (sessionView.sessions.length === 0 && sessionView.absentMembers.length === 0) {
-    return <p className={cn(dsText.meta, "px-[var(--ds-shell-inset)] py-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>No run rows on this day.</p>;
-  }
-  return (
-    <div
-      ref={scrollerRef}
-      role="list"
-      aria-label={`Session membership, ${String(layout.rows.length)} rows. Focus a row, then use arrow, page, Home, or End keys to move through all rows.`}
-      onScroll={onScroll}
-      data-session-membership
-      className="max-h-[min(48dvh,32rem)] overflow-y-auto border-t border-[color:var(--ds-border-subtle)]"
-    >
-      <div className="relative min-w-0" style={{ height: windowed.totalHeight }}>
-        {windowed.rows.map((row) => (
-          <SessionVirtualRow
-            key={row.key}
-            row={row}
-            totalRows={layout.rows.length}
-            active={row.index === rovingIndex}
-            rowRef={(node) => {
-              if (node === null) rowRefs.current.delete(row.index);
-              else rowRefs.current.set(row.index, node);
-            }}
-            onFocus={() => setActiveIndex(row.index)}
-            onKeyDown={(event) => onRowKeyDown(row.index, event)}
-            authorityOpen={openAuthorityRowIndex === row.index}
-            onAuthorityOpenChange={onAuthorityOpenChange}
-            onAuthoritySurfaceRef={onAuthoritySurfaceRef}
-          />
-        ))}
-      </div>
-    </div>
-  );
-});
-
-/**
- * One worker card — the authority lease, drawn (D248/D249).
+ * One worker card — the authority lease, drawn (D248/D249) in the demo's own
+ * shape: ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+ * `DemoShell.tsx:1544-1681` (`SessionCard`), and restored to it by D305.
  *
  * The header names the WORKFLOW, because that is what the operator started and
- * what the panel is about; the worker id is a process name and lives in the
- * title. The queued chip beside it is the SERVED per-workflow status count
- * (D81's one fold), never a client-side pass over the queue.
+ * what the panel is about — the demo strips even the instance ordinal from the
+ * title (`DemoShell.tsx:1586`), so three members of one pool read as three
+ * cards of one workflow, and the worker id rides the subline's identity route.
+ * The queued chip beside it is the SERVED per-workflow status count (D81's one
+ * fold), never a client-side pass over the queue.
  *
- * Two demo elements are still absent, each for a producer that does not exist.
- * The lease-wait block ("waiting 4m for the ucpath lease, held by …") has
- * nothing to report: every worker opens its OWN browser session per system
- * (ref execution-and-sessions §1), so there is no cross-worker lease and no holder to name. The
- * micro-pipeline stays reserved and EMPTY: the wire serves no `steps[]`, and
- * dots drawn from nothing would be the worst kind of lie on a panel about what
- * a worker is doing.
+ * Two demo elements are still absent, each for a producer that does not exist
+ * (`docs/findings/dashboard-projection.md`, "The worker card's step, pipeline
+ * and browser health have no producer"). The lease-wait block ("waiting 4m for
+ * the ucpath lease, held by …") has nothing to report: every worker opens its
+ * OWN browser session per system (ref execution-and-sessions §1), so there is
+ * no cross-worker lease and no holder to name. The micro-pipeline stays
+ * reserved and EMPTY: the wire serves no `steps[]`, and dots drawn from nothing
+ * would be the worst kind of lie on a panel about what a worker is doing.
  */
 function WorkerCard({
   card,
   workflowLabel,
-  memberLabel,
   queued,
   nowIso,
   membership,
   onStop,
-  spawn,
 }: {
   card: WorkerCardWire;
   workflowLabel: string;
-  /**
-   * What the card is CALLED inside its pool band. The band header already names
-   * the workflow, so repeating it on every card would spend the one prominent
-   * line on the fact the cards have in common instead of the one that tells
-   * them apart: `Member 2`. A card the pool contract cannot address is called
-   * by its served worker id, which is the honest identity and reads at a glance
-   * as the one card that is not a member. `workflowLabel` still carries every
-   * accessible name, so nothing loses the workflow it belongs to.
-   */
-  memberLabel?: string;
   queued: number;
   nowIso: string;
   membership: WorkerSessionMembership;
   onStop?: (card: WorkerCardWire) => void;
-  /**
-   * D271's replacement control, present only on a RETAINED card whose pool
-   * index the operator still declares: the reason it ended stays on screen, the
-   * declaration stays visibly unmet, and the member is replaced only by an
-   * explicit spawn. Nothing here retries on its own.
-   */
-  spawn?: { readonly label: string; readonly title: string; readonly pending: boolean; readonly onSpawn: () => void };
 }) {
   const tone = WORKER_TONE[card.state];
   const directive = workerDirectiveNote(card);
@@ -1312,7 +899,9 @@ function WorkerCard({
    * stop. Ported from `DemoShell.tsx:1545-1569` — its own comment is the
    * reason it stays on screen at all: *keep it visible so the failure is
    * learned.* The word underneath is the lease's recorded reason, so "crashed"
-   * and "you stopped it" can never render the same.
+   * and "you stopped it" can never render the same. The replacement spawn D271
+   * grants a retained member lives in the Add workers dialog (D305), which is
+   * the one door through which a worker is ever started.
    */
   if (card.state === "failed") {
     return (
@@ -1328,10 +917,10 @@ function WorkerCard({
         <div className="flex items-center gap-[var(--ds-space-base)]">
           <span aria-hidden className="size-2 shrink-0 rounded-full bg-[var(--ds-danger)]" />
           <span className={cn(dsText.ui, "min-w-0 flex-1 truncate font-semibold text-[color:var(--ds-fg)]")}>
-            {memberLabel ?? workflowLabel}
+            {workflowLabel}
           </span>
           <WorkerIdentityDetails
-            label={`Show full worker identity for ${memberLabel ?? workflowLabel}`}
+            label={`Show full worker identity for ${workflowLabel}`}
             workerId={String(card.workerId)}
             facts={[{ label: "Workflow", value: workflowLabel }]}
           />
@@ -1340,18 +929,6 @@ function WorkerCard({
         <p className={cn(dsText.meta, "text-[color:var(--ds-danger)] opacity-85")}>
           {card.stopReason === undefined ? "" : WORKER_STOP_REASON_LABEL[card.stopReason]}
         </p>
-        {spawn !== undefined && (
-          <Button
-            size="sm"
-            variant="outline"
-            className={cn("mt-auto shrink-0 self-start", POOL_CONTROL_TOUCH_TARGET)}
-            disabled={spawn.pending}
-            title={spawn.title}
-            onClick={spawn.onSpawn}
-          >
-            {spawn.label}
-          </Button>
-        )}
       </article>
     );
   }
@@ -1373,7 +950,7 @@ function WorkerCard({
       <div className="flex items-center gap-[var(--ds-space-snug)]">
         <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", tone.dot)} />
         <span className={cn(dsText.ui, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>
-          {memberLabel ?? workflowLabel}
+          {workflowLabel}
         </span>
         {queued > 0 && (
           <span
@@ -1404,22 +981,21 @@ function WorkerCard({
           {card.currentRun.state === "present" ? String(card.currentRun.traceId) : card.currentRun.reason}
         </span>
         {/*
-          THE CARD'S ONE IDENTITY ROUTE, and it is no longer conditional on the
+          THE CARD'S ONE IDENTITY ROUTE, and it is not conditional on the
           worker holding a run.
 
-          The header label above is `Member 2` for a pool member and the raw
-          worker id for a worker the pool contract cannot address — and it is
-          `truncate`, so the second case was an ellipsis with the full id on the
-          article's `title` and nowhere else: readable by a mouse, by nobody
-          else, which DESIGN.md bans outright. The id rides HERE rather than
-          beside the label because this is the line whose value span is
+          The header label above is the workflow, so the worker id — the one
+          string that says WHICH of a pool's cards this is — is reachable here
+          rather than on the article's `title` alone (readable by a mouse, by
+          nobody else, which DESIGN.md bans outright). The id rides HERE rather
+          than beside the label because this is the line whose value span is
           `flex-1 truncate`, which is the geometry `AuthorityDetails` is drawn
           for — its 44px target hangs on a negative margin over the truncation
           point, so a control on a content-width label would sit on top of the
           label's own text.
         */}
         <AuthorityDetails
-          label={`Show full worker identity and run IDs for ${memberLabel ?? workflowLabel}`}
+          label={`Show full worker identity and run IDs for ${workflowLabel}`}
           title="Worker identity"
           facts={[
             { label: "Worker ID", value: String(card.workerId) },
@@ -1432,12 +1008,15 @@ function WorkerCard({
               // The subline this control sits on is `truncate`, so a long
               // absence reason is clipped there and THIS is its only route.
               : [{ label: "Current run", value: card.currentRun.reason, kind: "prose" as const }]),
+            // The run's SESSION membership, read from its claimed run's queue
+            // row (P4's join). It was a line of the card; the demo's card has
+            // none, so since D305 the fact rides here, and each arm keeps its
+            // served reason rather than collapsing to "no session".
+            ...workerSessionFacts(membership),
           ]}
           touchAlign="up"
         />
       </span>
-
-      <WorkerSessionLine membership={membership} />
 
       {/* The operator's standing directive, beside the state and never as it —
           a worker asked to pause finishes its item first. */}
@@ -1498,11 +1077,8 @@ function WorkerCard({
           <span className={cn(dsText.nums, "shrink-0 tabular-nums")}>
             {elapsed > 0 ? fmtElapsed(elapsed) : "—"}
           </span>
-          {/*
-            The footer's two pool controls take the same coarse floor as the
-            band's: they sit on ONE row, so growing the spawn alone would leave
-            a 44px target beside a 24px one that stops a running worker.
-          */}
+          {/* The one control the demo's card carries. It takes the coarse
+              44px floor because it stops a real worker process. */}
           <Button
             size="sm"
             variant="outline"
@@ -1515,18 +1091,6 @@ function WorkerCard({
           >
             Stop
           </Button>
-          {spawn !== undefined && (
-            <Button
-              size="sm"
-              variant="outline"
-              className={cn("shrink-0", POOL_CONTROL_TOUCH_TARGET)}
-              disabled={spawn.pending}
-              title={spawn.title}
-              onClick={spawn.onSpawn}
-            >
-              {spawn.label}
-            </Button>
-          )}
         </div>
       </div>
     </article>
@@ -1534,84 +1098,70 @@ function WorkerCard({
 }
 
 /**
- * A DECLARED pool index the wire serves no live worker for (D271's visibly
- * unmet declaration).
+ * A DECLARED pool index the wire serves no LIVE worker for (D271's visibly
+ * unmet declaration), drawn as one row of the Add workers dialog's roster.
  *
- * It is drawn as a card because it occupies a member's place in the roster —
- * an index the operator declared and the pool does not currently hold — and
- * the sentence on it is the absence itself. It does NOT say "crashed" or
- * "never started": this wire carries worker leases, and no lease for an index
- * means authority has no card for it. Which of those two happened is a
- * supervisor fact this projection does not serve, and the panel may not pick
- * one (a retained card that DID end says why, on the card itself).
+ * It was a dashed card in the drawer. The demo's strip holds SESSIONS, and an
+ * index nobody is running is not a session (D305) — so the fact moved to the
+ * two places it is acted on: the bar's chip counts every unmet index, and this
+ * row, in the dialog that starts workers, carries the replacement spawn. It
+ * does NOT say "crashed" or "never started": this wire carries worker leases,
+ * and no lease for an index means authority has no card for it. Which of those
+ * two happened is a supervisor fact this projection does not serve, and the
+ * row may not pick one. A retained card that DID end says why, and this row
+ * repeats that recorded reason beside the spawn that replaces it.
  */
-export function UnmetMemberCard({
-  workerId,
-  poolIndex,
+export function UnmetMemberRow({
+  slot,
   spawn,
 }: {
-  workerId: string;
-  poolIndex: number;
+  slot: SessionPoolMemberSlot;
   spawn: { readonly title: string; readonly pending: boolean; readonly onSpawn: () => void };
 }) {
+  const retained = slot.membership.state === "retained" ? slot.membership.card : undefined;
   return (
-    <article
-      title={`Worker ${workerId}`}
-      data-pool-unmet-member={workerId}
+    <li
+      data-pool-unmet-member={slot.workerId}
       className={cn(
-        "flex shrink-0 flex-col border border-dashed",
-        "w-[var(--ds-w-session-card)] gap-[var(--ds-space-tight)] p-[var(--ds-space-base)]",
-        dsRadius.lg,
-        dsBorder.base,
-        "bg-[var(--ds-recess-bg)]",
+        "flex min-w-0 items-center border-b last:border-b-0",
+        dsBorder.subtle,
+        "gap-[var(--ds-space-base)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]",
+        dsText.meta,
       )}
     >
-      <div className="flex items-center gap-[var(--ds-space-snug)]">
-        <span aria-hidden className="size-1.5 shrink-0 rounded-full border border-[color:var(--ds-border)]" />
-        {/*
-          `flex-1`, because the control beside it is `AuthorityDetails`: its
-          44px target hangs on a negative margin over the value's truncation
-          point, so the value has to OWN the free space or the eye lands on the
-          label's own text.
-        */}
-        <span className={cn(dsText.ui, "min-w-0 flex-1 truncate font-semibold text-[color:var(--ds-fg-muted)]")}>
-          Member {poolIndex}
+      <span
+        aria-hidden
+        className={cn(
+          "size-1.5 shrink-0 rounded-full",
+          retained === undefined ? "border border-[color:var(--ds-border)]" : WORKER_TONE[retained.state].dot,
+        )}
+      />
+      <span className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-hair)]">
+        <span className="flex min-w-0 items-baseline gap-[var(--ds-space-tight)]">
+          <span className="shrink-0 font-medium text-[color:var(--ds-fg)]">Member {slot.poolIndex}</span>
+          {/* THE ID IS THE CONFIRMATION, so it may not be clipped: `break-all`
+              because a worker id has no word boundary the browser would find. */}
+          <span className={cn(dsText.nums, "min-w-0 break-all text-[color:var(--ds-fg-muted)]")}>{slot.workerId}</span>
         </span>
-        {/*
-          The id the spawn will address, reachable rather than hover-only. It
-          was on the article's `title` alone — a mouse could read it and nobody
-          else could, which DESIGN.md bans — and it is the one string that says
-          WHICH worker this card's button is about to start.
-        */}
-        <WorkerIdentityDetails
-          label={`Show full worker identity for member ${String(poolIndex)}`}
-          workerId={workerId}
-          facts={[
-            { label: "Pool member", value: `Index ${String(poolIndex)}`, kind: "prose" },
-            {
-              label: "Worker lease",
-              value: "None served — authority holds no lease for this index. "
-                + "Whether it never started or ended is a supervisor fact this projection does not serve.",
-              kind: "prose",
-            },
-          ]}
-        />
-        <span className={cn(dsText.caps, "ml-auto shrink-0 text-[color:var(--ds-fg-muted)]")}>Unmet</span>
-      </div>
-      <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-        No worker lease served for this pool index
-      </p>
+        <span className="text-[color:var(--ds-fg-muted)]">
+          {retained === undefined
+            ? "No worker lease served for this pool index"
+            : `${WORKER_TONE[retained.state].label}${
+              retained.stopReason === undefined ? "" : ` — ${WORKER_STOP_REASON_LABEL[retained.stopReason]}`
+            }`}
+        </span>
+      </span>
       <Button
         size="sm"
         variant="outline"
-        className={cn("mt-auto shrink-0 self-start", POOL_CONTROL_TOUCH_TARGET)}
+        className={cn("shrink-0", POOL_CONTROL_TOUCH_TARGET)}
         disabled={spawn.pending}
         title={spawn.title}
         onClick={spawn.onSpawn}
       >
-        Spawn worker {poolIndex}
+        Spawn worker {slot.poolIndex}
       </Button>
-    </article>
+    </li>
   );
 }
 
@@ -1645,6 +1195,7 @@ function WorkerIdentityDetails({
     />
   );
 }
+
 
 /**
  * What happened to the last pool command issued for ONE workflow, held against
@@ -1737,314 +1288,266 @@ export function PoolOutcomeNotice({ outcome }: { outcome: PoolControlOutcome }) 
   );
 }
 
+
 /**
- * `plan-worker-count`, with the scale-down named before it is issued.
+ * ADD WORKERS — workflow + count. The demo's own door, ported from legacy
+ * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc, `DemoShell.tsx:1683-1823`
+ * (`AddWorkersDialog`), and given D271's contract as its body (D305).
  *
- * The count is capped at three (D271), and the members a plan would STOP are
- * the kernel's own excess set — canonical indices above the chosen count — so
- * the popover states exactly which worker ids that is and which of them are
- * running, and the operator confirms THAT list. It is the explicit-index
- * scale-down expressed against the arm the wire carries: nothing here selects
- * a member by idleness, and nothing implies the supervisor picks.
+ * The demo's dialog is the shape ref execution-and-sessions names — *`+ Add
+ * workers` chooses a workflow and a count* — and it is where the panel's pool
+ * controls live now, instead of a band per workflow in the drawer. Two things
+ * the demo's mock could skip are real here, and both are D271's:
+ *
+ * - **The count is a PLAN, not a start.** `plan-worker-count` declares N
+ *   against the pool's served CAS version, and the kernel derives which members
+ *   that stops — canonical indices `N+1..MAX`, whose running ones must each be
+ *   covered by a bounded graceful stop. The dialog names exactly that list from
+ *   the same derivation (`planPoolIntent`) and the operator confirms THAT list;
+ *   nothing here selects a member by idleness. The cap is three (D271), so the
+ *   demo's twenty-step counter is a three-step one.
+ * - **A member is started by an explicit `spawn-worker`.** The roster under the
+ *   count lists every declared index with no LIVE worker — never started, or
+ *   ended with its recorded reason — each with its own spawn. A plan that
+ *   raises the count therefore shows its new indices here on the next
+ *   snapshot, which is the two-step D271 ratified and never a client-side
+ *   chain of commands against a version the server has not served yet.
+ *
+ * The answer to a command is drawn in the dialog it was issued from, against
+ * the CAS basis it was issued with (`PoolOutcomeNotice`): once the served pool
+ * version moves past it, the note is about a basis nobody is looking at.
  */
-function PoolPlanControl({
-  group,
-  workflowLabel,
-  pending,
-  onPlan,
-}: {
-  group: SessionPoolGroup;
-  workflowLabel: string;
-  pending: boolean;
-  onPlan: (intent: Extract<PoolPlanIntent, { kind: "ready" }>) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [choice, setChoice] = useState<number | undefined>(undefined);
-  const intent = choice === undefined ? undefined : planPoolIntent(group, choice);
-  /**
-   * The members this plan will actually STOP — the excess indices that hold a
-   * running lease. The rest of the excess set is still named above (they are
-   * the indices the plan covers), but nothing is stopped for them: D271's
-   * visibly unmet declaration has no process to end.
-   */
-  const stopping = intent !== undefined && intent.kind === "ready"
-    ? intent.excess.filter((member) => member.running)
-    : [];
-
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setChoice(undefined);
-      }}
-    >
-      <PopoverTrigger asChild>
-        <Button
-          size="sm"
-          variant="outline"
-          className={cn("shrink-0", POOL_CONTROL_TOUCH_TARGET)}
-          title={`Plan how many workers ${workflowLabel} runs (pool version ${String(group.expectedVersion)})`}
-        >
-          Plan workers
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        title={`Workers for ${workflowLabel}`}
-        align="end"
-        width="lg"
-        className="flex flex-col gap-[var(--ds-space-snug)]"
-      >
-        <MetaLine
-          items={[
-            group.facts.state === "declared"
-              ? `${String(group.facts.desiredWorkers)} declared`
-              : "no pool declaration",
-            `pool version ${String(group.expectedVersion)}`,
-            `cap ${String(SESSION_POOL_MAX_WORKERS)}`,
-          ]}
-        />
-        {/*
-          NAMED as a set, because each button is named `1`. A bare digit is a
-          legible name for nothing: read on its own it says only that a control
-          called "2" exists, and this popover's title is the pool's, not this
-          row's. The group carries the noun the digits are counting.
-        */}
-        <span role="group" aria-label="Desired workers" className="flex items-center gap-[var(--ds-space-tight)]">
-          {Array.from({ length: SESSION_POOL_MAX_WORKERS }, (_, offset) => offset + 1).map((count) => (
-            <Button
-              key={count}
-              size="sm"
-              variant={choice === count ? "primary" : "outline"}
-              className={cn("shrink-0", POOL_COUNT_TOUCH_TARGET)}
-              aria-pressed={choice === count}
-              onClick={() => setChoice(count)}
-            >
-              {count}
-            </Button>
-          ))}
-        </span>
-        {intent !== undefined && intent.kind === "refused" && (
-          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{intent.reason}</span>
-        )}
-        {intent !== undefined && intent.kind === "ready" && (
-          <span className="flex flex-col gap-[var(--ds-space-tight)]">
-            {intent.excess.length === 0 ? (
-              <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-                No member is above this count; nothing is stopped.
-              </span>
-            ) : (
-              <>
-                <span className={cn(dsText.meta, "text-[color:var(--ds-fg-secondary)]")}>
-                  {intent.excess.some((member) => member.running)
-                    ? "This plan stops these members, each after its current item settles:"
-                    : "These indices are above the count. None is running, so this plan stops nothing:"}
-                </span>
-                {/*
-                  THE IDS ARE THE CONFIRMATION, so none of them may be clipped.
-                  `truncate` put an ellipsis through the one string that says
-                  WHICH worker this press stops — `person-lookup-worker-…` — and
-                  left the operator confirming a list they cannot read. The list
-                  already stacks one member per line, so the space to wrap is
-                  free; `break-all` because a worker id has no word boundary the
-                  browser would find.
-                */}
-                <ul className={cn(dsText.meta, "flex flex-col gap-[var(--ds-space-hair)]")}>
-                  {intent.excess.map((member) => (
-                    <li key={member.workerId} className={cn(dsText.nums, "flex items-baseline gap-[var(--ds-space-tight)]")}>
-                      <span className="min-w-0 break-all text-[color:var(--ds-fg)]">{member.workerId}</span>
-                      <span className="shrink-0 text-[color:var(--ds-fg-muted)]">
-                        {member.running ? "running — graceful stop" : "no running worker served"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-            <Button
-              size="sm"
-              /*
-                The button says what the press DOES, and a stop is only in the
-                sentence when a member is actually running: "Stop 0 members"
-                names an act that does not happen, and a danger tone for a plan
-                that stops nothing spends the alarm where there is no hazard.
-                The declared count still drops — that is the plan itself, and
-                the list above says which indices it covers.
-              */
-              variant={stopping.length > 0 ? "danger" : "primary"}
-              className={cn("self-start", POOL_CONTROL_TOUCH_TARGET)}
-              disabled={pending}
-              title={`Plan ${plural(intent.desiredWorkers, "worker")} for ${workflowLabel} against pool version `
-                + `${String(intent.expectedVersion)}`}
-              onClick={() => {
-                setOpen(false);
-                setChoice(undefined);
-                onPlan(intent);
-              }}
-            >
-              {stopping.length > 0
-                ? `Stop ${plural(stopping.length, "member")} and plan ${plural(intent.desiredWorkers, "worker")}`
-                : `Plan ${plural(intent.desiredWorkers, "worker")}`}
-            </Button>
-          </span>
-        )}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/**
- * One workflow's pool: what is declared, what is running, and the two controls
- * that change it. The roster below the header holds exactly one element per
- * canonical index — a card when authority serves a worker for it, an unmet
- * slot when it does not — so no member is offered two roads to one command.
- */
-function PoolGroupRow({
-  group,
-  workflowLabel,
-  queued,
-  nowIso,
-  membershipOf,
-  outcome,
-  onStopWorker,
+function AddWorkersDialog({
+  open,
+  onOpenChange,
+  workflows,
+  workerCards,
+  workerPools,
+  outcomes,
   onPlan,
   onSpawn,
 }: {
-  group: SessionPoolGroup;
-  workflowLabel: string;
-  queued: number;
-  nowIso: string;
-  membershipOf: (card: WorkerCardWire) => WorkerSessionMembership;
-  outcome: PoolControlOutcome | undefined;
-  onStopWorker?: (card: WorkerCardWire) => void;
-  onPlan: (intent: Extract<PoolPlanIntent, { kind: "ready" }>) => void;
-  onSpawn: (member: Readonly<{ workerId: string; poolIndex: number }>) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  workflows: readonly WorkflowBootstrapPrimitive[];
+  workerCards: readonly WorkerCardWire[];
+  workerPools: readonly WorkerPoolWire[];
+  outcomes: Readonly<Record<string, PoolControlOutcome>>;
+  onPlan: (group: SessionPoolGroup, intent: Extract<PoolPlanIntent, { kind: "ready" }>) => void;
+  onSpawn: (group: SessionPoolGroup, member: Readonly<{ workerId: string; poolIndex: number }>) => void;
 }) {
+  const first = workflows[0];
+  const [chosenWorkflowId, setChosenWorkflowId] = useState<string | undefined>(undefined);
+  const [count, setCount] = useState(1);
+  // A fresh open is a fresh ask (the demo's own rule): the count resets, and
+  // an outcome from an earlier basis is already dropped by the panel.
+  useEffect(() => {
+    if (!open) return;
+    setCount(1);
+  }, [open]);
+
+  // A workflow the bootstrap no longer lists cannot be planned; the selection
+  // falls back to the first served one rather than posting for a ghost.
+  const workflowId = chosenWorkflowId !== undefined && workflows.some((workflow) => String(workflow.id) === chosenWorkflowId)
+    ? chosenWorkflowId
+    : first === undefined ? undefined : String(first.id);
+  const workflow = workflows.find((entry) => String(entry.id) === workflowId);
+  const group = useMemo(
+    () => (workflowId === undefined ? undefined : sessionPoolGroupFor(workflowId, workerCards, workerPools)),
+    [workflowId, workerCards, workerPools],
+  );
+  const intent = group === undefined ? undefined : planPoolIntent(group, count);
+  const stopping = intent !== undefined && intent.kind === "ready"
+    ? intent.excess.filter((member) => member.running)
+    : [];
+  const unmet = group === undefined ? [] : group.slots.filter(poolSlotIsUnmet);
+  const outcome = group === undefined ? undefined : outcomes[group.workflowId];
   const pending = outcome?.state.kind === "pending";
-  const spawnFor = (slot: SessionPoolMemberSlot) => ({
-    label: `Spawn worker ${String(slot.poolIndex)}`,
-    title: `Spawn ${slot.workerId} against pool version ${String(group.expectedVersion)}`,
-    pending,
-    onSpawn: () => onSpawn({ workerId: slot.workerId, poolIndex: slot.poolIndex }),
-  });
 
   return (
-    <section
-      aria-label={`Worker pool — ${workflowLabel}`}
-      data-worker-pool={group.workflowId}
-      className="flex flex-col gap-[var(--ds-space-snug)] px-[var(--ds-shell-inset)]"
-    >
-      <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
-        <span className={cn(dsText.ui, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>
-          {workflowLabel}
-        </span>
-        {/*
-          The declaration and the leases, side by side and never folded into
-          one number: `desiredWorkers` is what an operator asked for and the
-          cards are what authority holds. A pool with no row says so — reading
-          a missing row as "one worker" would invent an intent nobody recorded.
-        */}
-        <MetaLine
-          items={[
-            group.facts.state === "declared"
-              ? `${String(group.facts.desiredWorkers)} declared`
-              : "no pool declaration",
-            `${String(group.facts.activeWorkers)} active`,
-            group.facts.state === "declared" ? `pool v${String(group.facts.version)}` : "pool v0",
-          ]}
-        />
-        {/*
-          The pool row VERBATIM, plus the one absence that governs every control
-          on this band. Supervisor ownership — supervised, or externally running
-          after a restart (D271) — is NOT served by the day projection, so this
-          panel cannot withhold a control it would be refused on. It says so, in
-          the same keyboard-reachable place the served facts are, rather than
-          leaving the operator to discover it from a refusal; the server's
-          refusal stays the authority on every one of them.
-        */}
-        <AuthorityDetails
-          label={`Show full worker pool facts for ${workflowLabel}`}
-          title={`Worker pool — ${workflowLabel}`}
-          facts={[
-            { label: "Workflow", value: group.workflowId },
-            {
-              label: "Declared workers",
-              value: group.facts.state === "declared"
-                ? `${String(group.facts.desiredWorkers)} (cap ${String(SESSION_POOL_MAX_WORKERS)}, D271)`
-                : "No pool declaration — nothing has planned a worker count for this workflow",
-            },
-            {
-              label: "Pool version (CAS basis)",
-              value: group.facts.state === "declared"
-                ? String(group.facts.version)
-                : "0 — the honest basis for a first plan; no row exists to hold a version",
-            },
-            ...(group.declaration === undefined ? [] : [
-              { label: "Planned by", value: String(group.declaration.plannedBy) },
-              { label: "Planned at", value: String(group.declaration.plannedAt) },
-            ]),
-            { label: "Active authority worker cards", value: String(group.facts.activeWorkers) },
-            {
-              label: "Supervisor ownership",
-              value: "Not served — this wire carries no supervised/external ownership per worker. "
-                + "A control on a worker this dashboard's supervisor does not durably own is refused by the server, by name.",
-            },
-          ]}
-        />
-        <span className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-tight)]">
-          <PoolPlanControl group={group} workflowLabel={workflowLabel} pending={pending} onPlan={onPlan} />
-        </span>
-      </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="md" title="Add workers" description="Start parallel executors for one workflow">
+        <DialogBody>
+          {workflow === undefined || group === undefined ? (
+            <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+              No workflow is registered, so there is nothing to plan a pool for.
+            </span>
+          ) : (
+            <div className="flex flex-col gap-[var(--ds-space-loose)]">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-[var(--ds-space-base)]">
+                <Field label="Workflow">
+                  <Select value={String(workflow.id)} onChange={(event) => setChosenWorkflowId(event.target.value)}>
+                    {workflows.map((entry) => (
+                      <option key={String(entry.id)} value={String(entry.id)}>
+                        {entry.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                {/* THE COUNT IS THE ASK. A stepper, not a repeat press.
+                    It is NOT wrapped in `Field`: `Field` labels one form control
+                    through its context, and this is a group of three. Its label
+                    row mirrors `Field`'s exactly — same type class, same gap — so
+                    the two controls sit on one baseline. */}
+                <div role="group" aria-label="How many workers to plan" className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
+                  <span className={cn(dsText.meta, "font-medium text-[color:var(--ds-fg-secondary)]")}>Workers</span>
+                  <span className="flex items-center gap-[var(--ds-space-tight)]">
+                    <IconButton
+                      size="md"
+                      label="One fewer worker"
+                      className={POOL_COUNT_TOUCH_TARGET}
+                      disabled={count <= 1}
+                      onClick={() => setCount((value) => Math.max(1, value - 1))}
+                      icon={<Minus aria-hidden className={dsIcon.md} />}
+                    />
+                    <span
+                      aria-live="polite"
+                      className={cn(dsText.section, dsText.nums, "w-8 text-center font-semibold text-[color:var(--ds-fg)]")}
+                    >
+                      {count}
+                    </span>
+                    <IconButton
+                      size="md"
+                      label="One more worker"
+                      className={POOL_COUNT_TOUCH_TARGET}
+                      disabled={count >= SESSION_POOL_MAX_WORKERS}
+                      onClick={() => setCount((value) => Math.min(SESSION_POOL_MAX_WORKERS, value + 1))}
+                      icon={<Plus aria-hidden className={dsIcon.md} />}
+                    />
+                  </span>
+                </div>
+              </div>
 
-      {outcome !== undefined && outcome.basis === group.expectedVersion && (
-        <PoolOutcomeNotice outcome={outcome} />
-      )}
+              {/*
+                The declaration and the leases, side by side and never folded
+                into one number: `desiredWorkers` is what an operator asked for
+                and the cards are what authority holds. A pool with no row says
+                so — reading a missing row as "one worker" would invent an
+                intent nobody recorded. Supervisor ownership (supervised, or
+                externally running after a restart, D271) is NOT served by the
+                day projection, so no control here is withheld on it; the
+                server's refusal by name stays the authority.
+              */}
+              <MetaLine
+                items={[
+                  group.facts.state === "declared"
+                    ? `${String(group.facts.desiredWorkers)} declared`
+                    : "no pool declaration",
+                  `${String(group.facts.activeWorkers)} active`,
+                  `pool version ${String(group.expectedVersion)}`,
+                  `cap ${String(SESSION_POOL_MAX_WORKERS)}`,
+                ]}
+              />
 
-      <div className="flex items-stretch gap-[var(--ds-space-base)] overflow-x-auto pb-[var(--ds-space-hair)]">
-        {group.slots.map((slot) => (
-          slot.membership.state === "not-served"
-            ? (
-              <UnmetMemberCard
-                key={slot.workerId}
-                workerId={slot.workerId}
-                poolIndex={slot.poolIndex}
-                spawn={spawnFor(slot)}
-              />
-            )
-            : (
-              <WorkerCard
-                key={String(slot.membership.card.workerId)}
-                card={slot.membership.card}
-                workflowLabel={workflowLabel}
-                memberLabel={`Member ${String(slot.poolIndex)}`}
-                queued={queued}
-                nowIso={nowIso}
-                membership={membershipOf(slot.membership.card)}
-                {...(onStopWorker === undefined ? {} : { onStop: onStopWorker })}
-                {...(poolSlotIsUnmet(slot) ? { spawn: spawnFor(slot) } : {})}
-              />
-            )
-        ))}
-        {group.unindexedCards.map((card) => (
-          <WorkerCard
-            key={String(card.workerId)}
-            card={card}
-            workflowLabel={workflowLabel}
-            memberLabel={String(card.workerId)}
-            queued={queued}
-            nowIso={nowIso}
-            membership={membershipOf(card)}
-            {...(onStopWorker === undefined ? {} : { onStop: onStopWorker })}
-          />
-        ))}
-      </div>
-    </section>
+              {intent !== undefined && intent.kind === "refused" && (
+                <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{intent.reason}</span>
+              )}
+              {intent !== undefined && intent.kind === "ready" && (
+                <span className="flex flex-col gap-[var(--ds-space-tight)]">
+                  {intent.excess.length === 0 ? (
+                    <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+                      No member is above this count; nothing is stopped.
+                    </span>
+                  ) : (
+                    <>
+                      <span className={cn(dsText.meta, "text-[color:var(--ds-fg-secondary)]")}>
+                        {stopping.length > 0
+                          ? "This plan stops these members, each after its current item settles:"
+                          : "These indices are above the count. None is running, so this plan stops nothing:"}
+                      </span>
+                      {/*
+                        THE IDS ARE THE CONFIRMATION, so none of them may be
+                        clipped: `break-all` because a worker id has no word
+                        boundary the browser would find.
+                      */}
+                      <ul className={cn(dsText.meta, "flex flex-col gap-[var(--ds-space-hair)]")}>
+                        {intent.excess.map((member) => (
+                          <li key={member.workerId} className={cn(dsText.nums, "flex items-baseline gap-[var(--ds-space-tight)]")}>
+                            <span className="min-w-0 break-all text-[color:var(--ds-fg)]">{member.workerId}</span>
+                            <span className="shrink-0 text-[color:var(--ds-fg-muted)]">
+                              {member.running ? "running — graceful stop" : "no running worker served"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </span>
+              )}
+
+              {/* D271's visibly unmet declaration, and its replacement spawn. */}
+              {unmet.length > 0 && (
+                <div className="flex flex-col gap-[var(--ds-space-snug)]">
+                  <span className={cn(dsText.ui, "font-semibold text-[color:var(--ds-fg)]")}>
+                    {plural(unmet.length, "declared member")} not running
+                  </span>
+                  <ul
+                    aria-label={`Declared members of ${workflow.label} with no running worker`}
+                    className={cn("flex flex-col overflow-hidden border", dsRadius.md, dsBorder.base)}
+                  >
+                    {unmet.map((slot) => (
+                      <UnmetMemberRow
+                        key={slot.workerId}
+                        slot={slot}
+                        spawn={{
+                          title: `Spawn ${slot.workerId} against pool version ${String(group.expectedVersion)}`,
+                          pending,
+                          onSpawn: () => onSpawn(group, { workerId: slot.workerId, poolIndex: slot.poolIndex }),
+                        }}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {outcome !== undefined && outcome.basis === group.expectedVersion && (
+                <PoolOutcomeNotice outcome={outcome} />
+              )}
+            </div>
+          )}
+        </DialogBody>
+        <DialogFooter meta={group === undefined ? undefined : `${group.workflowId} · pool version ${String(group.expectedVersion)}`}>
+          <Button variant="secondary" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+          {/*
+            The button says what the press DOES, and a stop is only in the
+            sentence when a member is actually running: "Stop 0 members" names
+            an act that does not happen, and a danger tone for a plan that
+            stops nothing spends the alarm where there is no hazard. A refused
+            intent leaves the verb on screen, disabled, with its reason above:
+            a control that vanishes reads as a control that was never there.
+          */}
+          <Button
+            variant={stopping.length > 0 ? "danger" : "primary"}
+            className={POOL_CONTROL_TOUCH_TARGET}
+            disabled={group === undefined || intent === undefined || intent.kind !== "ready" || pending}
+            title={group === undefined
+              ? "No workflow to plan"
+              : `Plan ${plural(count, "worker")} for ${workflow?.label ?? group.workflowId} against pool version `
+                + `${String(group.expectedVersion)}`}
+            onClick={() => {
+              if (group === undefined || intent === undefined || intent.kind !== "ready") return;
+              onPlan(group, intent);
+            }}
+          >
+            {stopping.length > 0
+              ? `Stop ${plural(stopping.length, "member")} and plan ${plural(count, "worker")}`
+              : `Plan ${plural(count, "worker")}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 /**
  * The Session Panel — the bar that is mounted under every view, and the drawer
- * of worker cards behind it.
+ * of worker cards behind it. Ported from legacy
+ * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc, `DemoShell.tsx:1825-1957`
+ * (`DemoSessionPanel`), and restored to that shape by D305: the drawer is ONE
+ * strip of cards, one per served worker across every workflow, and the pool
+ * controls live behind the bar's `+`.
  *
  * The APP's version is stated ONCE here, for the whole dashboard: every run on
  * screen is being served by this build, so one statement in the one bar that is
@@ -2083,7 +1586,7 @@ export function SessionPanel({
   /**
    * D271's two pool controls. Both RETURN the folded settlement rather than
    * reporting it themselves: a CAS refusal is about the pool version this
-   * panel was drawn from, so it is drawn in the group it was issued for. A
+   * panel was drawn from, so it is drawn in the dialog it was issued from. A
    * rejected promise means the post never reached the kernel — a different
    * fact, kept distinguishable from a refusal the server sent.
    */
@@ -2095,6 +1598,7 @@ export function SessionPanel({
   ) => Promise<CommandSettlement>;
 }) {
   const [open, setOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [outcomes, setOutcomes] = useState<Readonly<Record<string, PoolControlOutcome>>>({});
   const sessionPanelView = useMemo(
     () => buildSessionPanelView(queueSurfaces, workerCards, workerPools),
@@ -2119,10 +1623,21 @@ export function SessionPanel({
     [workerCards],
   );
   /**
-   * The workflow's label and its queued count, joined ONCE for every card.
-   * A workflow the bootstrap does not list falls back to its own id — the
-   * honest stand-in, and the only one available: inventing a display name for
-   * an unregistered workflow would name it something no descriptor declares.
+   * D271's visibly unmet declaration, on the bar: every declared index with no
+   * live worker, across every pool. The demo's second chip is "N waiting on a
+   * lease", which this platform has no producer for (every worker owns its
+   * browser sessions); this is the one standing capacity fact the wire DOES
+   * carry, in the same chip, with the ids on its title and the spawn behind `+`.
+   */
+  const unmet = useMemo(
+    () => sessionPanelView.poolGroups.flatMap((group) => group.slots.filter(poolSlotIsUnmet)),
+    [sessionPanelView.poolGroups],
+  );
+  /**
+   * The workflow's label, joined ONCE for every card. A workflow the bootstrap
+   * does not list falls back to its own id — the honest stand-in, and the only
+   * one available: inventing a display name for an unregistered workflow would
+   * name it something no descriptor declares.
    */
   const workflowLabels = useMemo(
     () => new Map(workflows.map((workflow) => [String(workflow.id), workflow.label])),
@@ -2136,8 +1651,8 @@ export function SessionPanel({
 
   /**
    * The membership join is computed ONCE for the whole panel (it is a pass over
-   * the served queue rows per card), and the roster reads it by worker id — the
-   * grouping below must not become a second place that joins runs to cards.
+   * the served queue rows per card), and the strip reads it by worker id — the
+   * card list must not become a second place that joins runs to cards.
    */
   const membershipByWorkerId = useMemo(
     () => new Map(sessionPanelView.workers.map(({ card, membership }) => [String(card.workerId), membership])),
@@ -2146,7 +1661,7 @@ export function SessionPanel({
   const membershipOf = useCallback(
     (card: WorkerCardWire): WorkerSessionMembership => {
       const membership = membershipByWorkerId.get(String(card.workerId));
-      // The map is built from the SAME card list the roster is folded from, so
+      // The map is built from the SAME card list the strip is drawn from, so
       // a miss is a broken fold, not a state to render around.
       if (membership === undefined) {
         throw new Error(`worker ${String(card.workerId)} is drawn on the Session Panel with no folded membership`);
@@ -2241,6 +1756,12 @@ export function SessionPanel({
               </span>
             ))}
           </span>
+          {unmet.length > 0 && (
+            <span title={unmet.map((slot) => slot.workerId).join(" · ")} className={capacityChip(true)}>
+              <CircleDashed aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
+              {unmet.length} declared members not running
+            </span>
+          )}
           {/* Renders only when the count is above zero — honest absence. Since
               D248 it CAN fire: a worker whose lease settled `crashed` or
               `lease-expired` is a `failed` card, which is the state this chip
@@ -2265,16 +1786,17 @@ export function SessionPanel({
           )}
         </button>
         <span className="flex shrink-0 items-center gap-[var(--ds-space-snug)]">
-          {/*
-            THE DEMO'S `+` (Add workers) LANDED — as the drawer's per-workflow
-            `Plan workers` and per-member `Spawn`, not as a bar button. D269
-            served the pool's exact CAS version, and the dashboard supervisor
-            now performs the process effect and acknowledges only after it has
-            settled, which are the two things a control needs before it may
-            claim a worker exists. It is in the DRAWER because a pool is
-            per-workflow: a single `+` on a bar that summarises every workflow
-            would have to pick one, and the panel does not know which.
-          */}
+          {/* N AT ONCE, never one at a time. The dialog owns the count and the
+              per-member answer; this is only its door (the demo's `+`,
+              `DemoShell.tsx:1903-1910`, D305). */}
+          <IconButton
+            size="sm"
+            label="Add workers"
+            title="Start parallel executors — pick a workflow and how many"
+            aria-haspopup="dialog"
+            onClick={() => setAddOpen(true)}
+            icon={<Plus aria-hidden className={dsIcon.md} />}
+          />
           {/* The full sentence, ported from legacy
               hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
               `DemoShell.tsx:1919-1924` (R7-11). The rebuild IMPLEMENTS D179's
@@ -2306,61 +1828,79 @@ export function SessionPanel({
         </span>
       </div>
 
-      {open && sessionPanelView.poolGroups.length > 0 && (
+      {open && (
         <div
+          data-session-strip
           className={cn(
-            // One band per workflow, because a pool is per-workflow: the
-            // declaration, its members and its two controls have to be read
-            // together, and a flat row of cards across workflows had nowhere
-            // to put the declaration they belong to.
-            "flex flex-col border-t",
+            // items-stretch: every card is as tall as the tallest. This
+            // OVERRIDES an earlier "a card is as tall as what it knows" — true
+            // of one card, wrong of the row, because five intrinsic heights
+            // made the strip read as ragged debris and put every footer on its
+            // own baseline, so `Stop` was in five places and the elapsed clocks
+            // could not be compared down a column. Uniform height is what makes
+            // the row scannable; the empty space inside a quiet card is left
+            // empty (see the footer note in `WorkerCard`) rather than filled.
+            "flex items-stretch overflow-x-auto border-t",
             dsBorder.subtle,
-            "gap-[var(--ds-space-cozy)] py-[var(--ds-space-cozy)]",
+            "gap-[var(--ds-space-base)] px-[var(--ds-shell-inset)] py-[var(--ds-space-cozy)]",
           )}
         >
-          {sessionPanelView.poolGroups.map((group) => (
-            <PoolGroupRow
-              key={group.workflowId}
-              group={group}
-              workflowLabel={workflowLabels.get(group.workflowId) ?? group.workflowId}
-              queued={statusCount(workflowStatusCounts(counts, group.workflowId), "queued")}
+          {workerCards.length === 0 ? (
+            // Nothing running is a STATE, not an absent element (ref
+            // dashboard-surfaces §9.9): it says so, and names the one door.
+            <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+              No worker is running. Add workers starts one.
+            </span>
+          ) : workerCards.map((card) => (
+            <WorkerCard
+              key={String(card.workerId)}
+              card={card}
+              workflowLabel={labelOf(card)}
+              queued={statusCount(workflowStatusCounts(counts, String(card.workflowId)), "queued")}
               nowIso={nowIso}
-              membershipOf={membershipOf}
-              outcome={outcomes[group.workflowId]}
-              {...(onStopWorker === undefined ? {} : { onStopWorker })}
-              onPlan={(intent) => {
-                const plan = onPlanWorkerCount;
-                if (plan === undefined) return;
-                trackPoolCommand(
-                  group.workflowId,
-                  intent.expectedVersion,
-                  `Plan ${String(intent.desiredWorkers)} workers`,
-                  () => plan({
-                    workflowId: group.workflowId,
-                    desiredWorkers: intent.desiredWorkers,
-                    expectedVersion: intent.expectedVersion,
-                  }),
-                );
-              }}
-              onSpawn={(member) => {
-                const spawn = onSpawnWorker;
-                if (spawn === undefined) return;
-                trackPoolCommand(
-                  group.workflowId,
-                  group.expectedVersion,
-                  `Spawn ${member.workerId}`,
-                  () => spawn({
-                    workflowId: group.workflowId,
-                    workerId: member.workerId,
-                    expectedVersion: group.expectedVersion,
-                  }),
-                );
-              }}
+              membership={membershipOf(card)}
+              {...(onStopWorker === undefined ? {} : { onStop: onStopWorker })}
             />
           ))}
         </div>
       )}
-      {open && <SessionMembershipList sessionView={sessionPanelView.sessionView} />}
+
+      <AddWorkersDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        workflows={workflows}
+        workerCards={workerCards}
+        workerPools={workerPools}
+        outcomes={outcomes}
+        onPlan={(group, intent) => {
+          const plan = onPlanWorkerCount;
+          if (plan === undefined) return;
+          trackPoolCommand(
+            group.workflowId,
+            intent.expectedVersion,
+            `Plan ${String(intent.desiredWorkers)} workers`,
+            () => plan({
+              workflowId: group.workflowId,
+              desiredWorkers: intent.desiredWorkers,
+              expectedVersion: intent.expectedVersion,
+            }),
+          );
+        }}
+        onSpawn={(group, member) => {
+          const spawn = onSpawnWorker;
+          if (spawn === undefined) return;
+          trackPoolCommand(
+            group.workflowId,
+            group.expectedVersion,
+            `Spawn ${member.workerId}`,
+            () => spawn({
+              workflowId: group.workflowId,
+              workerId: member.workerId,
+              expectedVersion: group.expectedVersion,
+            }),
+          );
+        }}
+      />
     </section>
   );
 }

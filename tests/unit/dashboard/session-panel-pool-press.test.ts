@@ -26,8 +26,12 @@
  * 1. **The dispatched basis is the SERVED pool row's version**, carried down
  *    from the view the operator was reading. Replacing either handler's
  *    `expectedVersion` source with `0` turns both press tests red.
- * 2. **Nothing is dispatched until the confirmation.** Opening the popover and
- *    choosing a count are not the act; only the button that names the act is.
+ * 2. **Nothing is dispatched until the confirmation.** Opening the dialog and
+ *    stepping the count are not the act; only the button that names the act is.
+ *
+ * Since D305 the controls live behind the bar's `+` (the demo's Add workers
+ * dialog) rather than in per-workflow bands of the drawer, so every press below
+ * starts by opening that dialog — the surface an operator is looking at.
  */
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -114,9 +118,14 @@ type SpawnDispatch = Readonly<{ workflowId: string; workerId: string; expectedVe
 interface MountedPanel {
   readonly plans: PlanDispatch[];
   readonly spawns: SpawnDispatch[];
-  /** Every rendered button, portalled popover content included. */
+  /** Every rendered button, portalled dialog and popover content included. */
   buttons: () => HTMLButtonElement[];
+  /** Press the ONE button whose visible text is `name`. */
   press: (name: string) => Promise<void>;
+  /** Press the ONE button whose accessible name (`aria-label`) is `label`. */
+  pressLabel: (label: string) => Promise<void>;
+  /** The Add workers dialog's content, or throws when it is not open. */
+  dialog: () => Element;
 }
 
 let mounted: Root | undefined;
@@ -175,31 +184,39 @@ async function mountPanel(): Promise<MountedPanel> {
   });
 
   const buttons = (): HTMLButtonElement[] => [...document.body.querySelectorAll("button")];
-  const press = async (name: string): Promise<void> => {
-    const target = buttons().filter((button) => (button.textContent ?? "").trim() === name);
-    if (target.length !== 1) {
+  const pressOnly = async (found: HTMLButtonElement[], described: string): Promise<void> => {
+    if (found.length !== 1) {
       throw new Error(
-        `expected exactly one control named "${name}", found ${String(target.length)} among `
-        + `[${buttons().map((button) => JSON.stringify((button.textContent ?? "").trim())).join(", ")}]`,
+        `expected exactly one control ${described}, found ${String(found.length)} among `
+        + `[${buttons().map((button) => JSON.stringify(button.getAttribute("aria-label") ?? (button.textContent ?? "").trim())).join(", ")}]`,
       );
     }
-    const only = target[0];
-    if (only === undefined) throw new Error(`control "${name}" vanished between find and press`);
+    const only = found[0];
+    if (only === undefined) throw new Error(`control ${described} vanished between find and press`);
     await act(async () => {
       only.click();
     });
     await settle();
   };
+  const press = async (name: string): Promise<void> => pressOnly(
+    buttons().filter((button) => (button.textContent ?? "").trim() === name),
+    `named "${name}"`,
+  );
+  const pressLabel = async (label: string): Promise<void> => pressOnly(
+    buttons().filter((button) => button.getAttribute("aria-label") === label),
+    `labelled "${label}"`,
+  );
+  const dialog = (): Element => {
+    const found = document.body.querySelector("[role='dialog']");
+    if (found === null) throw new Error("the Add workers dialog is not open");
+    return found;
+  };
 
-  // The pool bands live in the drawer, which is closed until the operator opens
-  // it — every press below happens on the surface an operator is looking at.
-  const bar = buttons().find((button) => (button.textContent ?? "").startsWith("Sessions"));
-  if (bar === undefined) throw new Error("the Session Panel rendered no bar toggle");
-  await act(async () => {
-    bar.click();
-  });
+  // The pool controls live behind the bar's `+` (D305) — every press below
+  // happens on the surface an operator is looking at.
+  await pressLabel("Add workers");
 
-  return { plans, spawns, buttons, press };
+  return { plans, spawns, buttons, press, pressLabel, dialog };
 }
 
 describe("a pool command carries the CAS basis the operator was reading", () => {
@@ -219,8 +236,8 @@ describe("a pool command carries the CAS basis the operator was reading", () => 
   it("plans against the SERVED pool version, and sends the count that was confirmed", async () => {
     const panel = await mountPanel();
 
-    await panel.press("Plan workers");
-    await panel.press("1");
+    // The dialog opens at a count of one (the demo's own reset), which is a
+    // scale-down of the served three: member 2 is running and would be stopped.
     await panel.press("Stop 1 member and plan 1 worker");
 
     assert.deepEqual(panel.plans, [{
@@ -233,42 +250,50 @@ describe("a pool command carries the CAS basis the operator was reading", () => 
 });
 
 describe("the worker id is reachable without a mouse", () => {
-  it("prints the served id behind the unmet member's identity control", async () => {
+  it("prints the unmet member's served id in the dialog's roster, and the card's behind its identity control", async () => {
     const panel = await mountPanel();
 
+    // The roster row IS the confirmation for its spawn, so the id is its text.
+    assert.match(panel.dialog().textContent ?? "", /person-lookup-worker-3/u);
+
+    // The strip's card is titled by WORKFLOW (the demo's rule), so its id is
+    // behind the identity control — a named route, never `title` alone.
+    await panel.press("Close");
+    const bar = panel.buttons().find((button) => (button.textContent ?? "").startsWith("Sessions"));
+    assert.ok(bar, "the Session Panel rendered no bar toggle");
+    await act(async () => {
+      bar.click();
+    });
     const route = panel.buttons().find(
-      (button) => button.getAttribute("aria-label") === "Show full worker identity for member 3",
+      (button) => button.getAttribute("aria-label") === "Show full worker identity and run IDs for Person Lookup",
     );
-    assert.ok(route, "the unmet member card offers no named route to its worker id");
-    // It was `title="Worker person-lookup-worker-3"` and nothing else: readable
-    // by hovering a mouse, unreachable by a keyboard and by a finger.
-    assert.doesNotMatch(document.body.textContent ?? "", /person-lookup-worker-3/u);
+    assert.ok(route, "the worker card offers no named route to its worker id");
+    assert.doesNotMatch(document.body.textContent ?? "", /person-lookup-worker-1/u);
 
     await act(async () => {
       route.click();
     });
 
-    const dialog = document.body.querySelector("[role='dialog']");
-    assert.ok(dialog, "the identity control opened no popover");
-    assert.match(dialog.textContent ?? "", /person-lookup-worker-3/u);
+    const popover = document.body.querySelector("[role='dialog']");
+    assert.ok(popover, "the identity control opened no popover");
+    assert.match(popover.textContent ?? "", /person-lookup-worker-1/u);
   });
 });
 
 describe("nothing is dispatched until the confirmation is pressed", () => {
-  it("sends nothing for opening the popover or choosing a count", async () => {
+  it("sends nothing for opening the dialog or stepping the count", async () => {
     const panel = await mountPanel();
+    assert.deepEqual(panel.plans, [], "opening the dialog posted a command");
 
-    await panel.press("Plan workers");
-    assert.deepEqual(panel.plans, [], "opening the popover posted a command");
+    await panel.pressLabel("One more worker");
+    assert.deepEqual(panel.plans, [], "stepping the count posted a command");
 
-    await panel.press("1");
-    assert.deepEqual(panel.plans, [], "choosing a count posted a command");
-
-    // The choice is only NAMED at this point, and the sentence beside it names
-    // the member the confirmation would stop.
-    const confirm = panel.buttons().find((button) => (button.textContent ?? "").startsWith("Stop 1 member"));
-    assert.ok(confirm, "the popover drew no confirmation for a scale-down");
-    assert.match(document.body.textContent ?? "", /person-lookup-worker-2/u);
+    // The choice is only NAMED at this point: a plan of two covers index 3,
+    // which holds no running lease, so the sentence names it and stops nothing.
+    const confirm = panel.buttons().find((button) => (button.textContent ?? "").trim() === "Plan 2 workers");
+    assert.ok(confirm, "the dialog drew no confirmation for a plan of two");
+    assert.match(panel.dialog().textContent ?? "", /person-lookup-worker-3/u);
+    assert.doesNotMatch(panel.dialog().textContent ?? "", /Stop 1 member/u);
 
     await act(async () => {
       confirm.click();
@@ -277,19 +302,25 @@ describe("nothing is dispatched until the confirmation is pressed", () => {
 
     assert.deepEqual(panel.plans, [{
       workflowId: WORKFLOW_ID,
-      desiredWorkers: 1,
+      desiredWorkers: 2,
       expectedVersion: SERVED_POOL_VERSION,
     }]);
   });
 
-  it("re-choosing a count before confirming sends only the LAST choice, once", async () => {
+  it("re-stepping the count before confirming sends only the LAST count, once", async () => {
     const panel = await mountPanel();
 
-    await panel.press("Plan workers");
-    await panel.press("1");
-    await panel.press("2");
+    await panel.pressLabel("One more worker");
+    await panel.pressLabel("One more worker");
+    // Three is what the pool already declares: the verb stays on screen,
+    // disabled, and the reason is stated rather than a control vanishing.
+    const same = panel.buttons().find((button) => (button.textContent ?? "").trim() === "Plan 3 workers");
+    assert.ok(same, "the dialog drew no verb for the declared count");
+    assert.equal(same.disabled, true);
+    assert.match(panel.dialog().textContent ?? "", /already declares 3 workers at pool version 7/u);
     assert.deepEqual(panel.plans, []);
 
+    await panel.pressLabel("One fewer worker");
     await panel.press("Plan 2 workers");
 
     assert.deepEqual(panel.plans, [{

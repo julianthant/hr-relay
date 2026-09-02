@@ -295,201 +295,6 @@ export function needsYouCount(counts: readonly StatusCountWire[]): number {
 
 /* ── Session Panel ───────────────────────────────────────────────────────── */
 
-/** One membership row, with only authority worker cards that claim this exact run. */
-export interface SessionMemberView {
-  readonly row: QueueSurfaceWire;
-  readonly workers: readonly WorkerCardWire[];
-}
-
-/** A session is the ordered set of queue rows that serve one exact session id. */
-export interface SessionGroupView {
-  readonly sessionId: Extract<QueueSurfaceWire["session"], { readonly state: "present" }>["sessionId"];
-  readonly members: readonly SessionMemberView[];
-  /** A session's rows may name one workflow; retain the keyed proof rather than assuming it in JSX. */
-  readonly pools: readonly SessionPoolView[];
-}
-
-export interface SessionPoolView {
-  readonly workflowId: string;
-  readonly facts: WorkerPoolFacts;
-}
-
-/** A row whose authority record deliberately names no session. */
-export interface AbsentSessionMemberView {
-  readonly row: QueueSurfaceWire;
-  readonly reason: string;
-}
-
-export interface SessionView {
-  readonly sessions: readonly SessionGroupView[];
-  readonly absentMembers: readonly AbsentSessionMemberView[];
-}
-
-/**
- * The membership panel has a one-second parent tick, while the performance
- * fixture has 1,240 rows. Fixed-height rows make the viewport math exact and
- * keep the DOM bounded without dropping an authority record. Long opaque
- * values remain available through each row's detail trigger in the renderer.
- */
-export const SESSION_LIST_DEFAULT_VIEWPORT_HEIGHT = 512;
-const SESSION_LIST_OVERSCAN_PX = 72;
-const SESSION_LIST_HEADER_HEIGHT = 48;
-const SESSION_LIST_MEMBER_HEIGHT = 72;
-
-export type SessionListItem =
-  | Readonly<{ kind: "session-header"; session: SessionGroupView }>
-  | Readonly<{
-    kind: "session-member";
-    sessionId: SessionGroupView["sessionId"];
-    member: SessionMemberView;
-  }>
-  | Readonly<{ kind: "absent-header" }>
-  | Readonly<{ kind: "absent-member"; member: AbsentSessionMemberView }>;
-
-export interface SessionListLayoutRow {
-  readonly index: number;
-  readonly key: string;
-  readonly top: number;
-  readonly height: number;
-  readonly item: SessionListItem;
-}
-
-export interface SessionListLayout {
-  readonly rows: readonly SessionListLayoutRow[];
-  readonly totalHeight: number;
-}
-
-export interface SessionListWindow {
-  readonly rows: readonly SessionListLayoutRow[];
-  readonly totalHeight: number;
-}
-
-export interface SessionPoolDisplay {
-  readonly summary?: string;
-  readonly facts: readonly Readonly<{ label: string; value: string }>[];
-}
-
-/** Dense resting copy plus the complete authority values opened from it. */
-export function sessionPoolDisplay(session: SessionGroupView): SessionPoolDisplay {
-  const summaries = session.pools.map(({ facts }) => facts.state === "declared"
-    ? `${String(facts.desiredWorkers)} declared · ${String(facts.activeWorkers)} active`
-    : `No pool declaration · ${String(facts.activeWorkers)} active`);
-  const first = summaries[0];
-  return {
-    summary: first === undefined
-      ? undefined
-      : summaries.length === 1
-        ? first
-        : `${first} · +${String(summaries.length - 1)} workflows`,
-    facts: session.pools.map(({ workflowId, facts }) => ({
-      label: `Workflow ${workflowId}`,
-      value: facts.state === "declared"
-        ? `${String(facts.desiredWorkers)} declared at pool version ${String(facts.version)} · ${String(facts.activeWorkers)} active authority worker cards`
-        : `No worker-pool declaration · ${String(facts.activeWorkers)} active authority worker cards`,
-    })),
-  };
-}
-
-/** Flatten grouped authority data into one addressable layout, without filtering. */
-export function buildSessionListLayout(sessionView: SessionView): SessionListLayout {
-  const rows: SessionListLayoutRow[] = [];
-  let top = 0;
-  const push = (key: string, height: number, item: SessionListItem): void => {
-    rows.push({ index: rows.length, key, top, height, item });
-    top += height;
-  };
-
-  for (const session of sessionView.sessions) {
-    const sessionId = String(session.sessionId);
-    push(`session:${sessionId}`, SESSION_LIST_HEADER_HEIGHT, { kind: "session-header", session });
-    for (const member of session.members) {
-      push(`session:${sessionId}:run:${String(member.row.runId)}`, SESSION_LIST_MEMBER_HEIGHT, {
-        kind: "session-member",
-        sessionId: session.sessionId,
-        member,
-      });
-    }
-  }
-  if (sessionView.absentMembers.length > 0) {
-    push("absent:header", SESSION_LIST_HEADER_HEIGHT, { kind: "absent-header" });
-    for (const member of sessionView.absentMembers) {
-      push(`absent:run:${String(member.row.runId)}`, SESSION_LIST_MEMBER_HEIGHT, {
-        kind: "absent-member",
-        member,
-      });
-    }
-  }
-
-  return { rows, totalHeight: top };
-}
-
-/** Binary-search the first layout row whose bottom crosses the requested top. */
-function firstSessionListRowAfter(layout: SessionListLayout, top: number): number {
-  let low = 0;
-  let high = layout.rows.length;
-  while (low < high) {
-    const middle = Math.floor((low + high) / 2);
-    const row = layout.rows[middle];
-    if (row === undefined || row.top + row.height > top) high = middle;
-    else low = middle + 1;
-  }
-  return low;
-}
-
-/** The retained row intersecting the viewport's leading edge. */
-export function sessionListVisibleIndex(layout: SessionListLayout, scrollTop: number): number {
-  if (layout.rows.length === 0) return 0;
-  return Math.min(firstSessionListRowAfter(layout, Math.max(0, scrollTop)), layout.rows.length - 1);
-}
-
-/** The only rows the renderer mounts for one scroll position. */
-export function sessionListWindow(
-  layout: SessionListLayout,
-  scrollTop: number,
-  viewportHeight: number,
-): SessionListWindow {
-  const safeViewportHeight = Math.max(1, viewportHeight);
-  const overscanTop = Math.max(0, scrollTop - SESSION_LIST_OVERSCAN_PX);
-  const overscanBottom = Math.min(
-    layout.totalHeight,
-    Math.max(0, scrollTop) + safeViewportHeight + SESSION_LIST_OVERSCAN_PX,
-  );
-  const first = firstSessionListRowAfter(layout, overscanTop);
-  let last = first;
-  while (last < layout.rows.length && (layout.rows[last]?.top ?? layout.totalHeight) < overscanBottom) last += 1;
-  return { rows: layout.rows.slice(first, last), totalHeight: layout.totalHeight };
-}
-
-/** A keyboard/scroll target that makes any retained row visible. */
-export function sessionListScrollTopForIndex(
-  layout: SessionListLayout,
-  index: number,
-  viewportHeight: number,
-): number {
-  const row = layout.rows[index];
-  if (row === undefined) throw new Error(`Session membership row ${String(index)} is outside the served layout`);
-  return Math.max(0, Math.min(row.top, layout.totalHeight - Math.max(1, viewportHeight)));
-}
-
-/** Resolve one list-row keyboard move without changing the retained authority layout. */
-export function sessionListNavigationTarget(
-  activeIndex: number,
-  key: string,
-  totalRows: number,
-  viewportHeight: number,
-): number | undefined {
-  if (totalRows === 0) return undefined;
-  const pageRows = Math.max(1, Math.floor(Math.max(1, viewportHeight) / SESSION_LIST_MEMBER_HEIGHT));
-  const target = key === "ArrowDown" ? activeIndex + 1
-    : key === "ArrowUp" ? activeIndex - 1
-      : key === "PageDown" ? activeIndex + pageRows
-        : key === "PageUp" ? activeIndex - pageRows
-          : key === "Home" ? 0
-            : key === "End" ? totalRows - 1
-              : undefined;
-  return target === undefined ? undefined : Math.max(0, Math.min(target, totalRows - 1));
-}
-
 /**
  * How a particular worker relates to the selected day's session rows.
  *
@@ -536,64 +341,16 @@ export function sessionMembershipForWorker(
     : { state: "absent", reason: row.session.reason };
 }
 
-/** Session membership is every queue row that names the same authority session id. */
-export function buildSessionView(
-  queueSurfaces: readonly QueueSurfaceWire[],
-  workerCards: readonly WorkerCardWire[],
-  workerPools: readonly WorkerPoolWire[],
-): SessionView {
-  const workersByRunId = new Map<string, WorkerCardWire[]>();
-  for (const worker of workerCards) {
-    if (worker.currentRun.state !== "present") continue;
-    const runId = String(worker.currentRun.runId);
-    const workers = workersByRunId.get(runId);
-    if (workers === undefined) workersByRunId.set(runId, [worker]);
-    else workers.push(worker);
-  }
-
-  const sessionsById = new Map<string, SessionMemberView[]>();
-  const sessionIds: SessionGroupView["sessionId"][] = [];
-  const absentMembers: AbsentSessionMemberView[] = [];
-  for (const row of queueSurfaces) {
-    if (row.session.state === "absent") {
-      absentMembers.push({ row, reason: row.session.reason });
-      continue;
-    }
-    const sessionId = String(row.session.sessionId);
-    const members = sessionsById.get(sessionId);
-    const member = { row, workers: workersByRunId.get(String(row.runId)) ?? [] };
-    if (members === undefined) {
-      sessionsById.set(sessionId, [member]);
-      sessionIds.push(row.session.sessionId);
-    } else {
-      members.push(member);
-    }
-  }
-
-  return {
-    sessions: sessionIds.map((sessionId) => ({
-      sessionId,
-      members: sessionsById.get(String(sessionId)) ?? [],
-      pools: [...new Set((sessionsById.get(String(sessionId)) ?? []).map((member) => String(member.row.workflowId)))].map(
-        (workflowId) => ({ workflowId, facts: poolFactsForWorkflow(workflowId, workerCards, workerPools) }),
-      ),
-    })),
-    absentMembers,
-  };
-}
-
 /** The complete presentation fold for the Session Panel, all from the day wire. */
 export function buildSessionPanelView(
   queueSurfaces: readonly QueueSurfaceWire[],
   workerCards: readonly WorkerCardWire[],
   workerPools: readonly WorkerPoolWire[],
 ): Readonly<{
-  sessionView: SessionView;
   workers: readonly Readonly<{ card: WorkerCardWire; membership: WorkerSessionMembership }>[];
   poolGroups: readonly SessionPoolGroup[];
 }> {
   return {
-    sessionView: buildSessionView(queueSurfaces, workerCards, workerPools),
     workers: workerCards.map((card) => ({ card, membership: sessionMembershipForWorker(card, queueSurfaces) })),
     poolGroups: buildSessionPoolGroups(workerCards, workerPools),
   };
@@ -759,48 +516,61 @@ export function buildSessionPoolGroups(
     if (!workflowIds.includes(workflowId)) workflowIds.push(workflowId);
   }
 
-  return workflowIds.map((workflowId) => {
-    const facts = poolFactsForWorkflow(workflowId, workerCards, workerPools);
-    const cards = workerCards.filter((card) => String(card.workflowId) === workflowId);
-    const cardsByIndex = new Map<number, WorkerCardWire>();
-    const unindexedCards: WorkerCardWire[] = [];
-    for (const card of cards) {
-      const index = poolIndexOfWorkerId(workflowId, String(card.workerId));
-      // A duplicate canonical id cannot reach here — the day wire refuses a
-      // repeated `workerId` — so the first writer wins is not a policy, it is
-      // an impossibility. An id the pool contract cannot address stays visible
-      // as itself rather than being folded onto an index it does not name.
-      if (index === undefined) unindexedCards.push(card);
-      else cardsByIndex.set(index, card);
-    }
+  return workflowIds.map((workflowId) => sessionPoolGroupFor(workflowId, workerCards, workerPools));
+}
 
-    const declaredCount = facts.state === "declared" ? facts.desiredWorkers : 0;
-    const indices: number[] = [];
-    for (let index = 1; index <= SESSION_POOL_MAX_WORKERS; index += 1) {
-      if (index <= declaredCount || cardsByIndex.has(index)) indices.push(index);
-    }
+/**
+ * ONE workflow's pool group, from the served facts alone — the same fold the
+ * roster is built from, reachable by workflow id so the Add workers dialog can
+ * plan a pool for a workflow that has neither a card nor a pool row yet
+ * (D305). Such a workflow folds to basis 0 with an empty roster, which is the
+ * honest first plan and never a fabricated declaration.
+ */
+export function sessionPoolGroupFor(
+  workflowId: string,
+  workerCards: readonly WorkerCardWire[],
+  workerPools: readonly WorkerPoolWire[],
+): SessionPoolGroup {
+  const facts = poolFactsForWorkflow(workflowId, workerCards, workerPools);
+  const cards = workerCards.filter((card) => String(card.workflowId) === workflowId);
+  const cardsByIndex = new Map<number, WorkerCardWire>();
+  const unindexedCards: WorkerCardWire[] = [];
+  for (const card of cards) {
+    const index = poolIndexOfWorkerId(workflowId, String(card.workerId));
+    // A duplicate canonical id cannot reach here — the day wire refuses a
+    // repeated `workerId` — so the first writer wins is not a policy, it is
+    // an impossibility. An id the pool contract cannot address stays visible
+    // as itself rather than being folded onto an index it does not name.
+    if (index === undefined) unindexedCards.push(card);
+    else cardsByIndex.set(index, card);
+  }
 
-    return {
-      workflowId,
-      facts,
-      declaration: workerPools.find((entry) => String(entry.workflowId) === workflowId),
-      expectedVersion: facts.state === "declared" ? facts.version : 0,
-      slots: indices.map((poolIndex) => {
-        const card = cardsByIndex.get(poolIndex);
-        return {
-          poolIndex,
-          workerId: poolMemberWorkerId(workflowId, poolIndex),
-          declared: poolIndex <= declaredCount,
-          membership: card === undefined
-            ? { state: "not-served" as const }
-            : card.state === "stopped" || card.state === "failed"
-              ? { state: "retained" as const, card }
-              : { state: "live" as const, card },
-        };
-      }),
-      unindexedCards,
-    };
-  });
+  const declaredCount = facts.state === "declared" ? facts.desiredWorkers : 0;
+  const indices: number[] = [];
+  for (let index = 1; index <= SESSION_POOL_MAX_WORKERS; index += 1) {
+    if (index <= declaredCount || cardsByIndex.has(index)) indices.push(index);
+  }
+
+  return {
+    workflowId,
+    facts,
+    declaration: workerPools.find((entry) => String(entry.workflowId) === workflowId),
+    expectedVersion: facts.state === "declared" ? facts.version : 0,
+    slots: indices.map((poolIndex) => {
+      const card = cardsByIndex.get(poolIndex);
+      return {
+        poolIndex,
+        workerId: poolMemberWorkerId(workflowId, poolIndex),
+        declared: poolIndex <= declaredCount,
+        membership: card === undefined
+          ? { state: "not-served" as const }
+          : card.state === "stopped" || card.state === "failed"
+            ? { state: "retained" as const, card }
+            : { state: "live" as const, card },
+      };
+    }),
+    unindexedCards,
+  };
 }
 
 /**

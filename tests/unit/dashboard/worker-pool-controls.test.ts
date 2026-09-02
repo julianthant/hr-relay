@@ -46,7 +46,7 @@ import {
   type SessionPoolGroup,
   type WorkerCardWire,
 } from "../../../src/dashboard/surfaces/shell-model.js";
-import { PoolOutcomeNotice, UnmetMemberCard } from "../../../src/dashboard/surfaces/shell.js";
+import { PoolOutcomeNotice, UnmetMemberRow } from "../../../src/dashboard/surfaces/shell.js";
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-day.js";
 
 const ACTOR = { actorId: "local-operator", source: "session-panel" } as const;
@@ -320,10 +320,10 @@ describe("the controls post the arms the wire declares", () => {
 });
 
 describe("an unmet member states the ABSENCE, and never a cause nobody served", () => {
-  const unmet = (): string => renderToStaticMarkup(createElement(UnmetMemberCard, {
-    workerId: "person-lookup-worker-2",
-    poolIndex: 2,
-    spawn: { title: "Spawn person-lookup-worker-2 against pool version 4", pending: false, onSpawn: () => {} },
+  const spawn = { title: "Spawn person-lookup-worker-2 against pool version 4", pending: false, onSpawn: () => {} };
+  const unmet = (): string => renderToStaticMarkup(createElement(UnmetMemberRow, {
+    slot: slotAt(groupFor(dayOf([], [poolRow("person-lookup", 2, 4)]), "person-lookup"), 2),
+    spawn,
   }));
 
   it("says only that no lease is served for the index", () => {
@@ -331,33 +331,48 @@ describe("an unmet member states the ABSENCE, and never a cause nobody served", 
 
     assert.match(markup, /No worker lease served for this pool index/u);
     assert.match(markup, /Member 2/u);
-    assert.match(markup, /Unmet/u);
+    assert.match(markup, /Spawn worker 2/u);
   });
 
   it("never names a cause the wire does not carry", () => {
     const markup = unmet();
 
-    // D271's rule, held on the RENDERED card rather than in a comment above it:
+    // D271's rule, held on the RENDERED row rather than in a comment above it:
     // this wire carries worker leases, and no lease for an index says nothing
     // about whether the member crashed or never started. Either word would be
-    // the panel picking a supervisor fact the projection does not serve — and
+    // the dialog picking a supervisor fact the projection does not serve — and
     // a retained card that DID end says why, on the card itself.
     assert.doesNotMatch(markup, /crash/iu);
     assert.doesNotMatch(markup, /never started/iu);
     // `Spawn worker 2` is the control, not a claim about the past: nothing on
-    // this card may say the member started, was starting, or failed to start.
+    // this row may say the member started, was starting, or failed to start.
     assert.doesNotMatch(markup, /(did not|failed to|never) start/iu);
   });
 
-  it("offers a named route to the worker id the spawn addresses", () => {
+  it("prints the worker id the spawn addresses, unclipped", () => {
     const markup = unmet();
 
-    // The id was on the article's `title` alone — a mouse could read it and
-    // nobody else could. The route to it is a NAMED control now; that the
-    // popover behind it prints the id is pressed and asserted in
-    // `session-panel-pool-press.test.ts`, because a closed popover renders
-    // nothing here and a markup assertion would pass on an empty one.
-    assert.match(markup, /aria-label="Show full worker identity for member 2"/u);
+    // THE ID IS THE CONFIRMATION. On the retired card it sat on the article's
+    // `title` and behind a popover; in the dialog's roster it is the row's own
+    // text, wrapped rather than truncated, because the press beside it starts
+    // exactly this process.
+    assert.match(markup, /person-lookup-worker-2/u);
+    assert.match(markup, /break-all/u);
+  });
+
+  it("repeats a retained member's RECORDED reason beside its replacement spawn (D271)", () => {
+    const markup = renderToStaticMarkup(createElement(UnmetMemberRow, {
+      slot: slotAt(
+        groupFor(dayOf([retainedCardOf({ workerId: "person-lookup-worker-2" })], [poolRow("person-lookup", 2, 4)]), "person-lookup"),
+        2,
+      ),
+      spawn,
+    }));
+
+    // The one crash word this dialog may ever print is the lease's own.
+    assert.match(markup, /Failed — crashed/u);
+    assert.doesNotMatch(markup, /No worker lease served/u);
+    assert.match(markup, /Spawn worker 2/u);
   });
 });
 
