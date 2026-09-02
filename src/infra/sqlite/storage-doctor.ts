@@ -703,6 +703,18 @@ function reconcileSpanAuthority(
   const archived = resolutions.flatMap((resolution) => resolution.state === "archived"
     ? [{ runId: resolution.runId, archivedAt: resolution.archivedAt }]
     : []);
+  // D308: a root whose run carries a tombstone is ACCOUNTED. It is listed
+  // beside the archived roots and is never a problem arm.
+  const deleted = resolutions.flatMap((resolution) => resolution.state === "deleted"
+    ? [{
+      runId: resolution.runId,
+      workflow: resolution.workflow,
+      traceId: resolution.traceId,
+      origin: resolution.origin,
+      commandId: resolution.commandId,
+      deletedAt: resolution.deletedAt,
+    }]
+    : []);
   const malformedResolutionKeys = new Set(resolutions.flatMap((resolution) =>
     resolution.state === "malformed" ? [`${resolution.table}\0${resolution.runId}`] : []));
   const problems = snapshot.malformedRecords.length > 0
@@ -717,8 +729,8 @@ function reconcileSpanAuthority(
       ];
   return {
     reconciliation: SpanAuthorityReconciliationSchema.parse(problems.length === 0
-      ? { state: "reconciled", streamRunCount: corpus.roots.length, liveRunCount, archived }
-      : { state: "degraded", streamRunCount: corpus.roots.length, liveRunCount, archived, problems }),
+      ? { state: "reconciled", streamRunCount: corpus.roots.length, liveRunCount, archived, deleted }
+      : { state: "degraded", streamRunCount: corpus.roots.length, liveRunCount, archived, deleted, problems }),
     authorityIdentity: {
       authorityGeneration: snapshot.authorityGeneration,
       authorityContentFingerprint: snapshot.authorityContentFingerprint,
@@ -795,7 +807,8 @@ export function summarizeSpanAuthorityReconciliation(input: unknown): SpanAuthor
   if (reconciliation.state === "reconciled") {
     return SpanAuthorityHealthSummarySchema.parse({
       state: "healthy",
-      summary: `span/authority identities reconcile (${String(reconciliation.liveRunCount)} current, ${String(reconciliation.archived.length)} archived)`,
+      summary: `span/authority identities reconcile (${String(reconciliation.liveRunCount)} current, `
+        + `${String(reconciliation.archived.length)} archived, ${String(reconciliation.deleted.length)} deleted)`,
     });
   }
   if (reconciliation.state === "degraded") {

@@ -169,6 +169,7 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
       streamRunCount: 1,
       liveRunCount: 0,
       archived: [],
+      deleted: [],
       problems: [{
         state: "malformed",
         runId: "11111111-1111-4111-8111-111111111111",

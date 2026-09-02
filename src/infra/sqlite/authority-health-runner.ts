@@ -30,7 +30,8 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
         check: this.check,
         state: "healthy",
         summary: `authority schema ${String(report.authority.inspection.schemaVersion)}, verified backup generation `
-          + `${String(report.backup.latest.authorityGeneration)}, and ${String(report.spanAuthority.streamRunCount)} span run(s) are reconciled`,
+          + `${String(report.backup.latest.authorityGeneration)}, and ${String(report.spanAuthority.streamRunCount)} span run(s) are reconciled`
+          + ` (${String(report.spanAuthority.archived.length)} archived, ${String(report.spanAuthority.deleted.length)} deleted)`,
       });
     }
     const authorityState = report.authority.state === "healthy"

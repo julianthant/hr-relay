@@ -2259,6 +2259,11 @@ function inspectSpanRunAuthorityReadOnly(
     const archivedRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count;
     const archivedRunById = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?");
     const taskById = database.prepare("SELECT record_json FROM tasks WHERE record_key = ?");
+    // D308: the delete cascade removes the `tasks` row (and any `archived_runs`
+    // row) but writes ONE tombstone first, and span files are never rewritten
+    // (D301). So a root with neither authority row is not yet missing — the
+    // tombstone is consulted, in this same read transaction, before absence.
+    const deletedRunById = database.prepare("SELECT record_json FROM deleted_runs WHERE record_key = ?");
     // Reverse reconciliation shares this exact read transaction/fingerprint with
     // the forward root lookup. Malformed rows never become absence facts.
     const queuedRunIds = new Set(roots.map(({ runId }) => runId));
@@ -2383,7 +2388,47 @@ function inspectSpanRunAuthorityReadOnly(
           });
         }
       }
-      if (taskRow === undefined) return SpanAuthorityRunResolutionSchema.parse({ state: "missing", runId: root.runId });
+      if (taskRow === undefined) {
+        const deletedRow = deletedRunById.get(root.runId);
+        if (deletedRow === undefined) {
+          return SpanAuthorityRunResolutionSchema.parse({ state: "missing", runId: root.runId });
+        }
+        let tombstone: DeletedRunRecord;
+        try {
+          tombstone = parseJsonRecord(DeletedRunRecordSchema, JsonRowSchema.parse(deletedRow).record_json);
+          if (tombstone.runId !== root.runId) throw new Error(`tombstone names run ${tombstone.runId}`);
+        } catch {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "deleted_runs",
+            summary: "deleted_runs tombstone failed its strict record or identity validation",
+          });
+        }
+        // A tombstone that disagrees with the root it would account for is a
+        // contradiction, never a `deleted` verdict: name the field.
+        const tombstoneMismatches = [
+          tombstone.workflow === root.workflow ? undefined : "workflow",
+          tombstone.traceId === root.traceId ? undefined : "traceId",
+        ].filter((field): field is string => field !== undefined);
+        if (tombstoneMismatches.length > 0) {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "deleted_runs",
+            summary: `deleted_runs tombstone contradicts the span root: ${tombstoneMismatches.join(", ")}`,
+          });
+        }
+        return SpanAuthorityRunResolutionSchema.parse({
+          state: "deleted",
+          runId: root.runId,
+          workflow: tombstone.workflow,
+          traceId: tombstone.traceId,
+          origin: tombstone.origin,
+          commandId: tombstone.commandId,
+          deletedAt: tombstone.deletedAt,
+        });
+      }
       try {
         const run = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(taskRow).record_json);
         if (run.envelope.runId !== root.runId) throw new Error(`task record names run ${run.envelope.runId}`);

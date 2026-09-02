@@ -9,7 +9,8 @@ import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js"
 import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
 import { doctorAuthorityStorage, summarizeSpanAuthorityReconciliation } from "../../src/infra/sqlite/storage-doctor.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { NOW, UUID_1, UUID_2, UUID_3, UUID_4, UUID_5, UUID_6 } from "./fixtures/phase1c-contract-fixtures.js";
+import { SpanAuthorityReconciliationWireSchema } from "../../src/domain/dashboard/storage.js";
+import { NOW, UUID_1, UUID_2, UUID_3, UUID_4, UUID_5, UUID_6, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
 import { DAY, makeWorld, queuedEventOf, uuidOf } from "./server/helpers/dashboard-harness.js";
 
@@ -31,13 +32,17 @@ function currentRun(runId = UUID_1, itemId = UUID_4, traceId = "pl-120000-0000")
   });
 }
 
-function fixture(runs: readonly RunRecord[] = [currentRun()]) {
+function fixture(
+  runs: readonly RunRecord[] = [currentRun()],
+  after?: (database: AuthorityDatabase) => void,
+) {
   const root = mkdtempSync(join(tmpdir(), "hrauto-span-authority-"));
   roots.push(root);
   const authorityPath = join(root, "state.db");
   const database = AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs: 500, migrationOwner: "span-authority-test" }, clock);
   try {
     for (const run of runs) database.authority.runs.enqueue(run);
+    after?.(database);
   } finally {
     database.close();
   }
@@ -90,7 +95,7 @@ describe("storage doctor span/authority reconciliation", () => {
     f.emit(rootEvent(currentRun(UUID_3, UUID_6, "pl-120002-0000")));
     const report = await f.read();
     assert.deepEqual(report, {
-      state: "degraded", streamRunCount: 2, liveRunCount: 1, archived: [],
+      state: "degraded", streamRunCount: 2, liveRunCount: 1, archived: [], deleted: [],
       problems: [{ state: "missing", runId: UUID_3 }, { state: "missing-span", runId: UUID_2 }],
     });
     assert.equal(summarizeSpanAuthorityReconciliation(report).state, "degraded");
@@ -100,7 +105,7 @@ describe("storage doctor span/authority reconciliation", () => {
     const f = fixture();
     mkdirSync(join(f.root, "spans"));
     assert.deepEqual(await f.read(), {
-      state: "degraded", streamRunCount: 0, liveRunCount: 0, archived: [],
+      state: "degraded", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [],
       problems: [{ state: "missing-span", runId: UUID_1 }],
     });
   });
@@ -167,7 +172,9 @@ describe("storage doctor span/authority reconciliation", () => {
     });
     const f = fixture([run]);
     f.emit({ ...rootEvent(run), resolvedInstance: { ucpath: "test", crm: "prod" } });
-    assert.deepEqual(await f.read(), { state: "reconciled", streamRunCount: 1, liveRunCount: 1, archived: [] });
+    assert.deepEqual(await f.read(), {
+      state: "reconciled", streamRunCount: 1, liveRunCount: 1, archived: [], deleted: [],
+    });
   });
 
   it.each([
@@ -253,7 +260,7 @@ describe("storage doctor span/authority reconciliation", () => {
     f.emit(taskStartedBeforeRoot());
     f.emit({ ...rootEvent(), repair: AUTHORITY_RECONSTRUCTION });
     assert.deepEqual(await f.read(), {
-      state: "reconciled", streamRunCount: 1, liveRunCount: 1, archived: [],
+      state: "reconciled", streamRunCount: 1, liveRunCount: 1, archived: [], deleted: [],
     });
   });
 
@@ -313,6 +320,86 @@ describe("storage doctor span/authority reconciliation", () => {
       summary: "tasks record failed its strict authority schema",
     }]);
   });
+
+  /**
+   * D308: the delete cascade removes the `tasks` row, and span files are never
+   * rewritten (D301) — so the run's queued root outlives its run. The tombstone
+   * is what accounts for it.
+   */
+  function deleteRun(run: RunRecord, commandId = UUID_7) {
+    return (database: AuthorityDatabase) => {
+      const terminal = database.authority.runs.transition({
+        runId: run.envelope.runId,
+        expectedVersion: run.version,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+        now: NOW,
+      });
+      if (terminal.state !== "applied") throw new Error("delete fixture could not terminalize its run");
+      database.authority.runs.delete({ runId: run.envelope.runId, origin: "queue", commandId, now: NOW });
+    };
+  }
+
+  const DELETED_UUID_1 = {
+    runId: UUID_1,
+    workflow: "person-lookup",
+    traceId: "pl-120000-0000",
+    origin: "queue",
+    commandId: UUID_7,
+    deletedAt: NOW,
+  } as const;
+
+  it("accounts a deleted run's surviving queued root instead of reporting missing authority", async () => {
+    const run = currentRun();
+    const f = fixture([run], deleteRun(run));
+    f.emit(rootEvent(run));
+    const report = await f.read();
+    assert.deepEqual(report, {
+      state: "reconciled", streamRunCount: 1, liveRunCount: 0, archived: [], deleted: [DELETED_UUID_1],
+    });
+    assert.equal(summarizeSpanAuthorityReconciliation(report).state, "healthy");
+    assert.match(summarizeSpanAuthorityReconciliation(report).summary, /0 archived, 1 deleted/u);
+    // The browser-safe wire carries the same accounted state without widening it.
+    assert.deepEqual(SpanAuthorityReconciliationWireSchema.parse(report), report);
+  });
+
+  it("still names a root with neither authority row nor tombstone as missing", async () => {
+    const deletedRun = currentRun();
+    const orphan = currentRun(UUID_2, UUID_5, "pl-120001-0000");
+    const f = fixture([deletedRun], deleteRun(deletedRun));
+    f.emit(rootEvent(deletedRun));
+    f.emit(rootEvent(orphan));
+    const report = await f.read();
+    assert.deepEqual(report, {
+      state: "degraded",
+      streamRunCount: 2,
+      liveRunCount: 0,
+      archived: [],
+      deleted: [DELETED_UUID_1],
+      problems: [{ state: "missing", runId: UUID_2 }],
+    });
+  });
+
+  it.each([
+    ["workflow", { workflow: "ucpath-person-search" }, "workflow"],
+    ["traceId", { traceId: "zz-120000-0000", spanPath: "zz-120000-0000" }, "traceId"],
+  ] as const)(
+    "refuses a tombstone whose %s contradicts the span root it would account for",
+    async (_name, change, field) => {
+      const run = currentRun();
+      const f = fixture([run], deleteRun(run));
+      f.emit({ ...rootEvent(run), ...change });
+      const report = await f.read();
+      assert.equal(report.state, "degraded");
+      if (report.state !== "degraded") throw new Error("a contradicting tombstone must degrade");
+      assert.deepEqual(report.deleted, []);
+      assert.deepEqual(report.problems, [{
+        state: "malformed",
+        runId: UUID_1,
+        table: "deleted_runs",
+        summary: `deleted_runs tombstone contradicts the span root: ${field}`,
+      }]);
+    },
+  );
 
   it("preserves the queue projection's exact refusal for a span-only run", () => {
     const world = makeWorld();

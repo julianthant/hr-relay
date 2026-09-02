@@ -11,7 +11,7 @@
  * unpinned from constants the client has no business embedding.
  */
 import { z } from "zod";
-import { IsoInstantSchema, RunIdSchema } from "../ids.js";
+import { CommandIdSchema, IsoInstantSchema, RunIdSchema, TraceIdSchema, WorkflowIdSchema } from "../ids.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const StorageDiagnosticMessageSchema = z.string().min(1).refine(
@@ -88,18 +88,34 @@ export const BackupServiceStateWireSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
+/**
+ * D308: a span root whose run was deleted. Span files are never rewritten
+ * (D301), so the root survives its run and the tombstone is what accounts for
+ * it. Closed identity facts only — never a person value.
+ */
+const DeletedSpanAuthorityWireSchema = z.strictObject({
+  runId: RunIdSchema,
+  workflow: WorkflowIdSchema,
+  traceId: TraceIdSchema,
+  origin: z.enum(["queue", "archive"]),
+  commandId: CommandIdSchema,
+  deletedAt: IsoInstantSchema,
+});
+
 export const SpanAuthorityReconciliationWireSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("reconciled"),
     streamRunCount: NonNegativeIntSchema,
     liveRunCount: NonNegativeIntSchema,
     archived: z.array(z.strictObject({ runId: RunIdSchema, archivedAt: IsoInstantSchema })),
+    deleted: z.array(DeletedSpanAuthorityWireSchema),
   }),
   z.strictObject({
     state: z.literal("degraded"),
     streamRunCount: NonNegativeIntSchema,
     liveRunCount: NonNegativeIntSchema,
     archived: z.array(z.strictObject({ runId: RunIdSchema, archivedAt: IsoInstantSchema })),
+    deleted: z.array(DeletedSpanAuthorityWireSchema),
     problems: z.array(z.discriminatedUnion("state", [
       z.strictObject({ state: z.literal("missing"), runId: RunIdSchema }),
       z.strictObject({ state: z.literal("missing-span"), runId: RunIdSchema }),
@@ -112,7 +128,7 @@ export const SpanAuthorityReconciliationWireSchema = z.discriminatedUnion("state
       z.strictObject({
         state: z.literal("malformed"),
         runId: RunIdSchema,
-        table: z.enum(["tasks", "archived_runs", "span_stream"]),
+        table: z.enum(["tasks", "archived_runs", "span_stream", "deleted_runs"]),
         summary: StorageDiagnosticMessageSchema,
       }),
     ])).min(1),
