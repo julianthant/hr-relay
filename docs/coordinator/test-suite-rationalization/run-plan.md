@@ -14,8 +14,8 @@
 
 | Run | Task id / corrections | Host id | Project id | Launch title/time | Worktree/branch | Report | Status | Last cursor |
 |---|---|---|---|---|---|---|---|---|
-| R1 | setup `client-new-thread:81effb1a-9f30-41f9-bbab-20f5426d6661`; canonical task id pending list reconciliation | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `R1 — architecture and static gates` / 2026-09-02 16:01 PDT | `/Users/julianhein/.codex/worktrees/eb84/hr-automation-rebuild` · `feature/test-r1-architecture-static` | `reports/r1-architecture-static.md` | running | none |
-| R6 | setup `client-new-thread:038fb57d-1f1e-48f2-a16a-fb4f27dc896a`; canonical task id pending list reconciliation | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `R6 — parity performance and generated checks` / 2026-09-02 16:01 PDT | `/Users/julianhein/.codex/worktrees/b4ef/hr-automation-rebuild` · `feature/test-r6-parity-checks` | `reports/r6-parity-checks.md` | running | none |
+| R1 | setup `client-new-thread:81effb1a-9f30-41f9-bbab-20f5426d6661` → reconciled exact task `01a0645c-1e13-7581-8a20-67314a86e195` from unique project/title/prompt/worktree/session match | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `R1 — architecture and static gates` / 2026-09-02 16:01 PDT | `/Users/julianhein/.codex/worktrees/eb84/hr-automation-rebuild` · `feature/test-r1-architecture-static` | `reports/r1-architecture-static.md` | running; policy answer relayed | `04658527-aac5-4a09-956d-5ae020d9b531:1` |
+| R6 | setup `client-new-thread:038fb57d-1f1e-48f2-a16a-fb4f27dc896a` → reconciled exact task `01a0645c-1e18-7d70-9dfc-c7fb53fa0b66` from unique project/title/prompt/worktree/session match | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `R6 — parity performance and generated checks` / 2026-09-02 16:01 PDT | `/Users/julianhein/.codex/worktrees/b4ef/hr-automation-rebuild` · `feature/test-r6-parity-checks` | `reports/r6-parity-checks.md` | running; policy answer relayed | `914b4829-f1ad-4972-a2cc-a737811ff44e:1` |
 | R2 | — | — | — | — | `feature/test-r2-core-domain` | `reports/r2-core-domain.md` | planned | none |
 | R4 | — | — | — | — | `feature/test-r4-dashboard` | `reports/r4-dashboard.md` | planned | none |
 | R3 | — | — | — | — | `feature/test-r3-server-runtime` | `reports/r3-server-runtime.md` | planned | none |
@@ -89,7 +89,8 @@
 
 ## Decisions gating runs
 
-- No kickoff decision gates. Any proposed guarantee weakening or unique-contract removal becomes a numbered decision sheet before that unit proceeds.
+- The 2026-09-02 eight-item test-policy gate is cleared by the operator's `all recommended` answer, decoded as `1 C · 2 B · 3 C · 4 C · 5 B · 6 B · 7 B · 8 B` and recorded on the board. R7/u40 must ratify the resulting normative contract and D191 change without recreating the operator-rejected Markdown question sheet.
+- Any new guarantee weakening or unique-contract removal becomes a numbered operator decision before that unit proceeds.
 
 ## Date or external gates
 

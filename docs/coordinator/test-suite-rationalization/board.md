@@ -4,7 +4,7 @@
 **Integration target:** `feature/test-suite-rationalization`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-02 16:05 PDT at kickoff commit `7982650c`
+**Last verified:** 2026-09-02 16:17 PDT at coordinator commit `1a919de2`; Wave 1 worktrees and task identities reverified live
 
 ## Facts every run needs
 
@@ -19,17 +19,18 @@
 
 - 2026-09-02 · direct operator instruction → all lint, type, test, architecture, generated, and other checks must be self-contained in this repository; the old codebase is read-only reference material for building/copying verified facts, not a required test/runtime dependency → normative owner `docs/rebuild/reference/guards-and-tests.md`, with cross-repo rule reconciliation in the paired root instructions and decision pointer during R7.
 - 2026-09-02 · operator objective → rationalize by unique risk/contract and red-capable evidence, not by file/test count; preserve all named safety and parity guarantees → normative owner `docs/rebuild/reference/guards-and-tests.md` during R7.
+- 2026-09-02 · operator answered `all recommended`, decoded before action as `1 C · 2 B · 3 C · 4 C · 5 B · 6 B · 7 B · 8 B` → preserve unique failure protection first; duplicates require the same failure mode, seam, and oracle; deletion/consolidation requires a mapped survivor plus red-capable evidence or proof the old test could not fail meaningfully; use runner/type-first hybrid layout; reserve scenarios for distinct graph/boundary paths; allow targeted local iteration but require full type/lint/coverage at supervisor integration and before merge; target affected ≤30 s, full coverage ≤90 s, parity ≤75 s without sacrificing unique protection; organize files by coherent risk family with truthful behavior/refusal names. The operator required the question sheet to remain chat-only; R7/u40 owns normative `guards-and-tests`, D191, paired-rule, and decision-index ratification.
 
 ## Unit ledger
 
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
-| u01–u06 | R1 | running | isolated `feature/test-r1-architecture-static` from `7982650c` | pending | required | Canonical task setup resolved to worktree `eb84`; u02 worker branch visible |
+| u01–u06 | R1 | running, policy cleared | isolated `feature/test-r1-architecture-static` from `7982650c`; exact task `01a0645c-1e13-7581-8a20-67314a86e195` | pending | required | Operator answer relayed; u02 worker branch remains supervisor-owned |
 | u07–u12 | R2 | planned | — | — | required | Core/domain/workflow/write/storage units |
 | u13–u18 | R3 | planned | — | — | required | Server/BFF/runtime/worker and ports |
 | u19–u24 | R4 | planned | — | — | required | Dashboard model/jsdom/component layer |
 | u25–u30 | R5 | planned | — | — | required | Scenario corpus and evidence provenance |
-| u31–u36 | R6 | running | isolated `feature/test-r6-parity-checks` from `7982650c` | pending | required | Canonical task setup resolved to worktree `b4ef` |
+| u31–u36 | R6 | running, policy cleared | isolated `feature/test-r6-parity-checks` from `7982650c`; exact task `01a0645c-1e18-7d70-9dfc-c7fb53fa0b66` | pending | required | Operator answer relayed; parity refresh still requires independently proved expectation change |
 | u37–u42 | R7 | planned | — | — | consequential | Cross-family integration, taxonomy, authorities, final proof |
 
 ## Residue
@@ -39,4 +40,4 @@
 
 ## Questions for the operator
 
-- None at kickoff. Supervisors must surface `NEEDS COORDINATOR` for any genuine product-truth, scope, or guarantee tradeoff.
+- None. Supervisors must surface `NEEDS COORDINATOR` for any new product-truth, scope, or guarantee tradeoff.
