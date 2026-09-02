@@ -423,7 +423,6 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "apply-version-bump": "archive scope target, not a run row",
   "relaunch-archived-run": "D179 serves the relaunch from the ARCHIVED detail, which is not a live run row",
   "delete-archived-run": "D308 serves the delete from the ARCHIVED detail, which is not a live run row",
-  delete: "D308's terminal-row 🗑 — the row projector arm lands with the queue-surface unit; reviewed until it does",
   "apply-explorer-edit": "D283's reviewed Explorer draft targets a workflow override revision, not a run row",
 };
 

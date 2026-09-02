@@ -93,7 +93,7 @@ export interface QueueRowActionFacts {
 }
 
 /** The verbs this projection may serve, each a member of `ActionCommandKeySchema`. */
-type ServedCommand = "retry" | "cancel" | "bump" | "rename";
+type ServedCommand = "retry" | "cancel" | "bump" | "rename" | "delete";
 
 /**
  * The kernel's own preconditions, restated as row-level admission.
@@ -139,6 +139,30 @@ const KERNEL_ADMITS: Readonly<Record<ServedCommand, (facts: QueueRowActionFacts)
    * `demo-wire.ts:2564`, `spec.rowType !== "member"`.)
    */
   rename: (facts) => !facts.isMember,
+  /*
+   * `executeDelete` (D308): rejects a non-terminal run ("only a terminal run
+   * can be deleted — cancel it first"), rejects an ARCHIVED run by name (the
+   * Archive's own `delete-archived-run` door cites the record's content
+   * digest), and rejects any run whose `envelope.parent` is set ("delete the
+   * group") because the tree goes leaves-first from its anchor.
+   *
+   * Two of those three are mirrored here and the third is not, each for a
+   * reason:
+   *
+   *  - TERMINAL is a stable row fact, so it is mirrored. A row that goes
+   *    terminal between the projection and the click is the kernel's CAS to
+   *    catch, not this projector's to pre-empt.
+   *  - `isChild` is the exact projection of `envelope.parent !== undefined`
+   *    (`run-queue-projection.ts`), so it is the kernel's own condition and
+   *    not a paraphrase. It is deliberately WIDER than `isMember`: a `linked`
+   *    child keeps its own row, and serving it a 🗑 would draw a control the
+   *    kernel refuses by name every single time — the one thing this module
+   *    exists to make impossible.
+   *  - ARCHIVED is not mirrored because it cannot occur: an archived run is
+   *    not folded into the queue projection at all, so no row exists to hang
+   *    this descriptor off.
+   */
+  delete: (facts) => TERMINAL_QUEUE_STATUSES.has(facts.status) && !facts.isChild,
 };
 
 /** Ref dashboard-surfaces §2.4's closed condition rules, evaluated over projected row state. */
@@ -174,9 +198,13 @@ function policyEnables(
  * demo is the visual oracle). A queued row's frequent commands are `≫` and `×`;
  * a finished row's is `↺`. Everything served is ALSO at `menu`, which is what
  * makes the right-click the row's full set and the footer a subset of the same
- * list rather than a second vocabulary. Since D234 retired `hide` — whose `🗑`
- * was the one footer slot that depended on the row being terminal — placement
- * no longer varies with status at all.
+ * list rather than a second vocabulary. D234 retired `hide`, whose `🗑` was the
+ * one footer slot that depended on the row being terminal, and for that window
+ * placement did not vary with status at all. D308 puts a `🗑` back in that
+ * slot: `delete` is terminal-only, so the footer's shape is once again a fact
+ * about the row's lifecycle. Placement itself is still unconditional — it is
+ * `KERNEL_ADMITS.delete` that decides whether the descriptor is served, which
+ * keeps "where a control sits" and "whether it exists" separate questions.
  */
 function placementOf(command: ServedCommand): ActionDescriptorWire["placement"] {
   // `rename` is menu-only in the demo and here, for the reason the footer set
@@ -211,6 +239,29 @@ function cancelBody(facts: QueueRowActionFacts): string {
       + "write panel first, then cancel.";
   }
   return `${scope}Cancelling is final: a cancelled run is never resumed, only run again.`;
+}
+
+/**
+ * D308's blast radius, in the operator's own terms.
+ *
+ * The idempotency sentence is UNCONDITIONAL and that is the load-bearing
+ * choice. This projector knows the run is terminal; it does not know whether
+ * the run reached a fenced write, and a body that only warned about released
+ * keys when it thought a write had happened would be this module guessing at
+ * write-safety authority from a lifecycle status. The permanent key in
+ * `write_intents` is what stops the same live HR transaction from being
+ * submitted twice, so the honest sentence names the condition ("if this run
+ * wrote…") and lets the operator hold it against what they know.
+ */
+function deleteBody(facts: QueueRowActionFacts): string {
+  const scope = facts.memberCount > 0
+    ? "This removes the run and every row it owns from the database — results, checkpoints, receipts, "
+      + `diagnostics, and its write ledger — and its ${String(facts.memberCount)} delegated members with it. `
+    : "This removes the run and every row it owns from the database — results, checkpoints, receipts, "
+      + "diagnostics, and its write ledger. ";
+  return `${scope}If this run wrote to ${facts.workflowLabel}'s systems, the permanent idempotency key `
+    + "that stops the same write from being submitted twice is released with it. "
+    + "This is final; there is no undo.";
 }
 
 function retryBody(facts: QueueRowActionFacts): string {
@@ -267,6 +318,20 @@ function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
       // descriptor version, no archive — and a dialog in front of a reversible
       // reordering is ceremony that teaches the operator to click through.
       return { ...base, key: "bump", label: "Run next", intent: "neutral", icon: "bump" };
+    case "delete":
+      return {
+        ...base,
+        key: "delete",
+        label: facts.memberCount > 0 ? "Delete group" : "Delete run",
+        intent: "destructive",
+        icon: "delete",
+        confirm: {
+          title: facts.memberCount > 0 ? "Delete this group" : "Delete this run",
+          body: deleteBody(facts),
+          confirmLabel: "Delete",
+          tone: "destructive",
+        },
+      };
     case "rename":
       /*
        * No `confirm` — and that is not the same omission `bump` makes. A
@@ -290,8 +355,14 @@ function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
   }
 }
 
-/** The served command order, which is also the footer's left-to-right order. */
-const SERVED_ORDER: readonly ServedCommand[] = ["retry", "bump", "cancel", "rename"];
+/**
+ * The served command order, which is also the footer's left-to-right order.
+ *
+ * `delete` is LAST so its `🗑` sits at the right end, after the `✕` — the
+ * demo's own footer order, and the one that keeps the most destructive control
+ * furthest from the click an operator makes by reflex.
+ */
+const SERVED_ORDER: readonly ServedCommand[] = ["retry", "bump", "cancel", "rename", "delete"];
 
 /**
  * Every control this row may draw.

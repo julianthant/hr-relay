@@ -228,9 +228,19 @@ export function composeCommandRequest(
     case "retry":
     case "cancel":
     case "bump":
-      // Three verbs whose whole payload is the target. `rename` is deliberately
-      // NOT in this list even though its target is identical — it carries a
-      // value, and a fall-through here would post a rename with no name.
+    case "delete":
+      /*
+       * Four verbs whose whole payload is the target. `rename` is deliberately
+       * NOT in this list even though its target is identical — it carries a
+       * value, and a fall-through here would post a rename with no name.
+       *
+       * `delete` (D308) belongs here rather than beside `rename`: the confirm
+       * dialog it carries re-states a decision the operator has already made,
+       * so there is nothing for this composer to collect. The descriptor's
+       * `confirm` is what gates the click — this arm is reached only after the
+       * dialog is answered — and the sentence naming the released idempotency
+       * key is authored server-side, where the blast radius is known.
+       */
       return {
         state: "ready",
         request: {

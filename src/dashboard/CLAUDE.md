@@ -1568,3 +1568,19 @@ binding would contradict them.
   on the plan response is reconciled as a SET against what the dialog sent, and a mismatch disables
   Start with both lists named: a plan token that describes a different run is not a run to start
   hopefully.
+
+- **2026-09-01 — a delegated MEMBER and a delegated CHILD are two different narrowings, and D308's
+  🗑 needs the wider one.** `queue-row-actions.ts` already carried both facts: `isMember` is
+  `surfaceKind === "operation-member"` (one line of a group's tally), and `isChild` is the exact
+  projection of `envelope.parent !== undefined`. `rename` is narrowed by `isMember`, and for a
+  presentation-only verb that is right — the reason is row shape, not the kernel, because
+  `displayName` replaces the title on the row it rides. `delete` looks like the same case and is
+  not: `executeDelete` refuses EVERY run whose `envelope.parent` is set ("delete the group"),
+  because the kernel takes the tree leaves-first from its anchor. A `linked` child is a child that
+  is not a member, so an admission written against `isMember` would have drawn a 🗑 on rows the
+  kernel refuses on every single click — the one failure this module exists to make impossible.
+  When mirroring a kernel precondition, mirror the field the kernel reads, not the nearest fact
+  that happens to be true for the row you were looking at. The delete confirm's idempotency
+  sentence is unconditional for the same family of reason: this projector knows the run is
+  terminal, not whether it reached a fenced write, and a warning that appeared only when the row
+  looked like it had written would be a guess about write-safety authority.

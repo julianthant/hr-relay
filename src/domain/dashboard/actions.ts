@@ -41,11 +41,21 @@ export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "delete", 
  * that *"there are runs and archived runs; there should be no hidden runs."*
  * `unhide` had never been serveable at all — a hidden run was filtered out of
  * the queue projection, so no row existed to hang it off — and `hide` was a
- * one-way door dressed as a reversible tombstone. Archiving is the model that
- * takes a run off the queue, and it is the only one.
+ * one-way door dressed as a reversible tombstone.
+ *
+ * `delete` JOINED with D308, on the operator's second ruling: *"some runs were
+ * just error runs … I should be able to delete normal runs like this and
+ * archived runs."* It is what `hide` only pretended to be. A hidden run was
+ * still there — filtered out of one projection and rendered by nothing, which
+ * is why `unhide` could never be served. A DELETED run is gone: the terminal
+ * run and every row it owns leave authority behind one insert-only tombstone,
+ * so there is no hidden state to reveal and nothing left to render. Archiving
+ * is still the model that takes a run off the queue and KEEPS it; delete is
+ * the one that ends it, and its blast radius is why every served descriptor
+ * carries a confirm.
  */
 export const ActionCommandKeySchema = z.enum([
-  "retry", "cancel", "bump", "rename", "resolve-gate",
+  "retry", "cancel", "bump", "rename", "delete", "resolve-gate",
   "resolve-write-present", "resolve-write-absent",
 ]);
 
