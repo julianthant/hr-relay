@@ -297,6 +297,13 @@ environment-supplied.
 
 ## Conventions
 
+- **2026-09-02 — a workflow mini-store output is not complete until its implementation records every leaf.**
+  Adding a schema leaf without the matching `ctx.recordData` point leaves the task valid in direct
+  implementation tests but makes the real executor refuse before checkpointing. R4a exposed this
+  when D307 added reconciled-dates `source` without adding its provenance point. Pin these changes
+  with the real task plus `createTaskProvenanceCollector`; a no-op recording fake cannot prove the
+  executor seam.
+
 - **2026-09-02 — a conditional operator gate is descriptor evidence, never caller permission (D309).**
   A false `when` opens no gate and creates no operator decision or `gate_results` row. Downstream
   provenance and receipts re-evaluate the same condition from canonical input and authenticated
