@@ -106,6 +106,14 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-02 — an empty open-session list is not an empty browser requirement set.** The Session
+  Panel used `WorkerCard.browsers[]` for both facts, so a starting worker showed no browser systems
+  until each child span opened. `browserRequirements` now carries the workflow descriptor's ordered
+  systems separately; `workerBrowserView` overlays exact observed sessions onto those stable slots,
+  keeps unexpected observed sessions visible, and suppresses all slots on terminal cards. An
+  unopened requirement says `Opens when needed` and never carries a session id, age or health word;
+  only an observed open span may say `Not checked` and expose its exact session identity.
+
 - **2026-09-02 — machine identity is not an approval card (D309).** The Separations identity-gate
   section is reachable only for a `name-resolved` packet, and its current ceremony requires the
   operator to type the EID. A supplied/read-back EID proceeds with machine-verification authority and

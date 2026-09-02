@@ -5209,6 +5209,15 @@ reason underneath, kept on screen so the failure is learned. The worker id, the 
 the run's session membership are the card's identity-popover facts, on the subline's `AuthorityDetails`
 route — never a `title` alone.
 
+The two-column browser area overlays two authorities instead of treating either as the other.
+`browserRequirements` is the exact workflow descriptor's ordered system set, projected for every
+served worker card from its first snapshot; `browsers[]` is only the worker's currently open child
+spans. A required system with no open span is a dashed `Opens when needed` slot and carries no
+session id, age or health. Its matching observed span upgrades that same slot to the ordinary open
+tile with exact identity; observed sessions outside the requirement set remain appended and visible.
+A missing or unregistered descriptor is an explicit unavailable reason, never an empty set. A
+terminal worker draws neither kind because its process owns no browser resources.
+
 **The pool controls are the demo's `+ Add workers` dialog**, which is the shape ref
 execution-and-sessions names (*"`+ Add workers` chooses a workflow and a count"*): a workflow
 `Select` over the bootstrap's own list, a two-button count stepper capped at three (D271), and
@@ -5233,10 +5242,10 @@ basis, and the dialog is where the demo puts them. No fact left the panel: every
 version, excess member and unmet index the band printed is in the dialog or on the bar chip.
 
 **What is still not drawn, and where that is booked.** The demo card's STEP (`UCPath transaction`),
-its `steps[]` pipeline dots and each tile's health word (`Ready` / `Refreshing`) have no producer:
+its `steps[]` pipeline dots and each OPEN tile's health word (`Ready` / `Refreshing`) have no producer:
 the card is folded from the worker lease plus browser child spans, which carry no node, no step
 vector and no health observation. The slots are reserved (the pipeline row keeps its height, the
-step slot is `flex-1`, the tile prints the demo's `unknown` tone word `Not checked`) and the gap is
+step slot is `flex-1`, an open tile prints the demo's `unknown` tone word `Not checked`) and the gap is
 recorded in `docs/findings/dashboard-projection.md` ("The worker card's step, pipeline and browser
 health have no producer") with the fold that would serve it. The tally vocabulary is the served
 lease state (`starting`, not the demo's `authenticating` — R7's ruling).
