@@ -186,6 +186,8 @@ const UCPATH_STAGE_SWEEP = taskOutput("ucpath/stage-pending-termination-sweep");
 const UCPATH_DELETE_PENDING = taskOutput("ucpath/delete-pending-terminations");
 const UCPATH_VERIFY_TERMINATION = taskOutput("ucpath/verify-termination");
 const UCPATH_VERIFY_SWEEP = taskOutput("ucpath/verify-pending-terminations-cleared");
+const UCPATH_PENDING_SET = taskOutput("ucpath/read-pending-termination-set");
+const UCPATH_FILING_PRESENCE = taskOutput("ucpath/verify-termination-filing-present");
 const KUALI_FINALIZATION_INPUT = workflowInput("separations-kuali-finalization");
 const KUALI_FINALIZATION_RESULT = workflowResult("separations-kuali-finalization");
 const KUALI_FINALIZATION_GATE = gateResult("separations-kuali-finalization", "identity-approval");
@@ -250,8 +252,18 @@ function sweepProofLeaves(scope: EvidenceValueScope, prefix: string): unknown[] 
   const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
   return [
     ...person(scope, at("emplId")),
-    ...open(scope, at("kind"), at("scannedRowCount"), at("observedAt"),
-      at("source")),
+    ...open(scope, at("kind"), at("clearedTransactionIds"), at("protectedTransactionIds"),
+      at("setDigest"), at("scannedRowCount"), at("observedAt"), at("source")),
+  ];
+}
+
+function filingPresenceLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
+  return [
+    ...person(scope, at("emplId"), at("displayedName")),
+    ...open(scope, at("kind"), at("transactionId"), at("effectiveDate"),
+      at("approvalStatus"), at("observedAt"), at("source"), at("receiptDisposition"),
+      at("authority")),
   ];
 }
 
@@ -634,6 +646,12 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...person(UCPATH_VERIFY_SWEEP, "emplId"),
   ...open(UCPATH_VERIFY_SWEEP, "state"),
 
+  /* Exact pending-set admission plus the fresh filing-presence precondition. */
+  ...person(UCPATH_PENDING_SET, "emplId"),
+  ...population(UCPATH_PENDING_SET, "eligible", "protected"),
+  ...open(UCPATH_PENDING_SET, "kind", "observedAt", "source"),
+  ...filingPresenceLeaves(UCPATH_FILING_PRESENCE),
+
   /* separations-ucpath-termination terminal result */
   ...open(UCPATH_TERMINATION_RESULT, "documentNumber", "pendingSweep.disposition",
     "termination.disposition"),
@@ -653,6 +671,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "ucpathDeptId.reason", "ucpathDepartment.state", "ucpathDepartment.value",
     "ucpathDepartment.reason", "observedDepartmentOptions", "payrollTitleCode", "payrollTitle",
     "lastDayWorked", "separationDate", "terminationEffectiveDate", "transactionNumber",
+    "transactionApprovalStatus",
     "timekeeperComments", "observedExistingComments"),
 
   /* The conditional name-only gate on this workflow's own scope (D204). */

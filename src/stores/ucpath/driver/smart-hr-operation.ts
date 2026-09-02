@@ -50,7 +50,7 @@
  */
 import type { Locator, Page } from "playwright";
 import type { Clock } from "../../../domain/clock.js";
-import { IsoInstantSchema } from "../../../domain/ids.js";
+import { EidSchema, IsoInstantSchema } from "../../../domain/ids.js";
 import type { Eid, ElementId } from "../../../domain/ids.js";
 import { directIdentifierDigestReference } from "../../../domain/redaction.js";
 import { assertMintedMutationCapability } from "../../../base/mutation-capability.js";
@@ -82,6 +82,7 @@ import {
   UcpathSsSmartHrSettlementDiagnosticSchema,
   UcpathTerminationStagingSchema,
   UcpathTransactionScanSchema,
+  isUcpathTerminationAction,
 } from "../../../domain/ui/ucpath-smart-hr-termination.js";
 import type {
   UcpathInProgressRow,
@@ -103,6 +104,7 @@ import {
   ucpathElementById,
   waitForUcpathState,
 } from "./registry-locators.js";
+import { ucpathPendingSweepVerdict } from "../termination-verdict.js";
 
 /**
  * The anchors this driver binds DIRECTLY, and the reason each one is not a
@@ -593,14 +595,16 @@ export async function stageTerminationOnPage(
 }
 
 /**
- * Read the *Transactions in Progress* grid rows for one person, and tick the
- * Select checkbox of every `Terminat*` row.
+ * Read the *Transactions in Progress* grid rows for one person, join each
+ * eligible row to a stable SS Smart HR transaction id, and tick exactly that
+ * complete set.
  *
  * The grid's columns are `Select · Transaction Type · Effective Date · Name ·
  * Person ID · Action · Country` (live 2026-08-14) and it has NO transaction id
- * column, which is why a selected row is named by its effective date and
- * action. Row identity is established by the EID appearing in the row's own
- * text — the same test legacy uses (`rowMatchesTerminationEid`).
+ * column. Live read-only mapping on 2026-09-02 proved the stable id on the SS
+ * Smart HR detail page and all six named grid fields; a complete unique join
+ * bridges the two surfaces. Checkbox/row suffixes remain positional DOM
+ * indices and are never treated as identity.
  */
 /**
  * The name the *Transactions in Progress* grid shows for one person.
@@ -658,22 +662,92 @@ export async function readStagedWizardSubjectOnPage(page: Page): Promise<string>
 }
 
 export async function readInProgressSubjectOnPage(page: Page, emplId: Eid): Promise<string> {
-  const name = await page.evaluate((eid) => {
-    for (const cell of document.querySelectorAll("td")) {
-      if ((cell.textContent ?? "").trim() !== eid) continue;
-      const previous = cell.previousElementSibling;
-      const text = (previous?.textContent ?? "").trim();
-      if (text.length > 0) return text;
+  const names: string[] = [];
+  for (const row of await page.locator('tr[id^="trHR_TBH_EULST_VW$0_row"]').all()) {
+    const eid = row.locator('span[id^="EMPLID$"]');
+    if (await eid.count() !== 1) {
+      throw new Error("a Transactions in Progress row has no unique Person ID control");
     }
-    return "";
-  }, emplId);
-  if (name.length === 0) {
+    if ((await eid.innerText()).trim() !== emplId) continue;
+    const name = row.locator('a[id^="NAME$"]');
+    if (await name.count() !== 1) {
+      throw new Error(
+        `a Transactions in Progress row for ${directIdentifierDigestReference(emplId)} has no unique Name control`,
+      );
+    }
+    const text = (await name.innerText()).trim();
+    if (text.length === 0) {
+      throw new Error(
+        `a Transactions in Progress row for ${directIdentifierDigestReference(emplId)} rendered an empty Name`,
+      );
+    }
+    names.push(text);
+  }
+  const normalized = new Set(names.map((name) => name.toLowerCase().split(/[\s,]+/u)
+    .filter((token) => token.length > 0).sort().join(" ")));
+  if (names.length === 0 || normalized.size !== 1) {
     throw new Error(
-      `the Transactions in Progress grid renders no name beside Empl ID ${directIdentifierDigestReference(emplId)}; there is no `
-      + "subject on this page to bind a sweep to",
+      `the Transactions in Progress grid renders ${String(names.length)} rows and ${String(normalized.size)} distinct names for Empl ID ${directIdentifierDigestReference(emplId)}; exactly one subject is required to bind a sweep`,
     );
   }
-  return name;
+  return names[0];
+}
+
+type PendingSweepGridFacts = Omit<UcpathInProgressRow, "transactionId">;
+
+export type PendingSweepGridJoin = Readonly<{
+  candidateIndex: number;
+  selected: UcpathInProgressRow;
+}>;
+
+/**
+ * Join stable SS Smart HR transaction ids to the separate Transactions in
+ * Progress grid. The latter exposes no T id, so the only safe bridge is a
+ * complete unique join over the facts both surfaces carry. Action wording is
+ * compared by the shared termination classification because the detail page
+ * renders `TER` while this grid renders `Terminatn`.
+ */
+export function joinPendingSweepGridRows(
+  input: UcpathPendingSweepTarget,
+  candidates: readonly PendingSweepGridFacts[],
+): readonly PendingSweepGridJoin[] {
+  if (candidates.length !== input.observedSet.eligible.length) {
+    throw new Error(
+      `Transactions in Progress exposed ${String(candidates.length)} eligible rows for ${directIdentifierDigestReference(input.emplId)}, but the stable-id set authorizes `
+      + `${String(input.observedSet.eligible.length)}; refusing before selection`,
+    );
+  }
+  const tokenName = (name: string): string => name.toLowerCase().split(/[\s,]+/u)
+    .filter((token) => token.length > 0).sort().join(" ");
+  const joined = input.observedSet.eligible.map((authorized) => {
+    const matches = candidates.flatMap((candidate, candidateIndex) =>
+      candidate.emplId === authorized.emplId
+      && candidate.effectiveDate === authorized.startDate
+      && isUcpathTerminationAction(candidate.action)
+      && isUcpathTerminationAction(authorized.action)
+      && tokenName(candidate.displayedName) === tokenName(authorized.displayedName)
+        ? [{ candidate, candidateIndex }]
+        : []);
+    if (matches.length !== 1) {
+      throw new Error(
+        `one stable transaction joined ${String(matches.length)} Transactions in Progress rows by EID, name, date and termination action; exactly one is required`,
+      );
+    }
+    const match = matches[0];
+    return {
+      candidateIndex: match.candidateIndex,
+      selected: {
+        ...match.candidate,
+        transactionId: authorized.transactionId,
+      },
+    };
+  });
+  if (new Set(joined.map(({ candidateIndex }) => candidateIndex)).size !== joined.length) {
+    throw new Error(
+      "two stable UCPath transaction ids joined the same Transactions in Progress row; refusing an ambiguous delete",
+    );
+  }
+  return joined;
 }
 
 export async function stagePendingTerminationSweepOnPage(
@@ -681,32 +755,72 @@ export async function stagePendingTerminationSweepOnPage(
   input: UcpathPendingSweepTarget,
   observedAt: string,
 ): Promise<UcpathPendingSweepStaging> {
+  // Re-read the stable-id source immediately before staging. The sequencer's
+  // probe and this read are deliberately separate: a row arriving, moving or
+  // changing between them must stop before any checkbox, fence or click.
+  const current = await scanTerminationTransactionsOnPage(
+    page,
+    { emplId: input.emplId },
+    observedAt,
+  );
+  const verdict = ucpathPendingSweepVerdict(input, current);
+  if (verdict.state !== "absent") {
+    throw new Error(
+      `the pre-selection UCPath transaction set for ${directIdentifierDigestReference(input.emplId)} answered ${verdict.state}; `
+      + "the exact machine-observed pending set changed or is already gone, so no checkbox may be selected",
+    );
+  }
   await page.goto(WIZARD_URL, { waitUntil: "domcontentloaded", timeout: STEP_BOUND_MS });
   await waitForUcpathState(page, UCPATH_SMART_HR_SETUP_READY);
-  const rows = page.locator("tr").filter({ hasText: input.emplId });
-  const count = await rows.count();
-  const selected: UcpathInProgressRow[] = [];
-  for (let index = 0; index < count; index += 1) {
-    const row = rows.nth(index);
-    const text = (await row.innerText()).replace(/\s+/gu, " ").trim();
-    if (!/terminat/iu.test(text)) continue;
-    const date = /\b(\d{2}\/\d{2}\/\d{4})\b/u.exec(text)?.[1];
-    const action = /\b(Terminat\w*)\b/u.exec(text)?.[1];
-    if (date === undefined || action === undefined) {
+  const text = async (row: Locator, selector: string, field: string): Promise<string> => {
+    const matches = row.locator(selector);
+    const count = await matches.count();
+    if (count !== 1) {
       throw new Error(
-        `a Transactions in Progress row for ${directIdentifierDigestReference(input.emplId)} matched "Terminat" but rendered no `
-        + `effective date and action this read could name: ${JSON.stringify(text)}`,
+        `a Transactions in Progress row exposed ${String(count)} ${field} controls; exactly one is required for an exact-set join`,
       );
     }
-    const checkbox = row.locator('input[type="checkbox"]').first();
-    if (await checkbox.count() === 0) {
+    const value = (await matches.innerText()).trim();
+    if (value.length === 0) throw new Error(`a Transactions in Progress row rendered an empty ${field}`);
+    return value;
+  };
+  const gridRows = page.locator('tr[id^="trHR_TBH_EULST_VW$0_row"]');
+  const candidates: Array<Readonly<{
+    facts: Omit<UcpathInProgressRow, "transactionId">;
+    checkbox: Locator;
+  }>> = [];
+  for (const row of await gridRows.all()) {
+    const emplId = EidSchema.parse(await text(row, 'span[id^="EMPLID$"]', "Person ID"));
+    const action = await text(row, 'span[id^="ACTION$"]', "Action");
+    if (emplId !== input.emplId || !isUcpathTerminationAction(action)) continue;
+    const checkbox = row.locator('input[type="checkbox"][id^="SELECT$"]');
+    if (await checkbox.count() !== 1) {
       throw new Error(
-        `a Transactions in Progress row for ${directIdentifierDigestReference(input.emplId)} has no Select checkbox; refusing to `
-        + "report a selection that was never made",
+        `a Transactions in Progress row for ${directIdentifierDigestReference(input.emplId)} has no unique Select checkbox; refusing before selection`,
       );
     }
-    await checkbox.check();
-    selected.push({ transactionType: "JOB", effectiveDate: date, action });
+    candidates.push({
+      facts: {
+        transactionType: await text(row, 'span[id^="TBH_TMPL_TXN_TYP$"]', "Transaction Type"),
+        effectiveDate: await text(row, 'span[id^="EFFDT$"]', "Effective Date"),
+        displayedName: await text(row, 'a[id^="NAME$"]', "Name"),
+        emplId,
+        action,
+        country: await text(row, 'span[id^="COUNTRY$"]', "Country"),
+      },
+      checkbox,
+    });
+  }
+  const joined = joinPendingSweepGridRows(input, candidates.map(({ facts }) => facts));
+  const selected = joined.map(({ selected: row }) => row);
+  for (const { candidateIndex } of joined) {
+    await candidates[candidateIndex].checkbox.check();
+  }
+  for (const { candidateIndex } of joined) {
+    const candidate = candidates[candidateIndex];
+    if (!(await candidate.checkbox.isChecked())) {
+      throw new Error("a uniquely joined Transactions in Progress checkbox did not remain selected; refusing before the fence");
+    }
   }
   // The OBSERVED name, read off the grid — never the expected one echoed back.
   // Prepare only runs when the probe answered `absent`, i.e. when rows exist,

@@ -1070,6 +1070,18 @@ environment-supplied.
   count looked like a delta but could blame concurrent work on the rehearsal; derive all three
   counts from the named run's intent set, before and after, and assert the exact zero tuple.
 
+- **2026-09-02 — D310 pending deletion authority is an exact stable transaction set, and the real
+  filing must survive through Kuali finalization.** A person-only sweep key lets an earlier empty
+  no-op suppress a later nonempty set. Bind the v2 key to the canonical eligible/protected SS Smart
+  HR row set; refuse any immutable v1 intent rather than reinterpreting it. Immediately before
+  selection, re-read the stable T-ID source and uniquely join every eligible row to the separate
+  Transactions in Progress grid by its shared facts; a positional checkbox suffix is not identity.
+  Verify the selected set absent and every protected row unchanged. After the ordinary sweep and
+  filing, always re-read the exact filed T ID immediately before Kuali staging and require matching
+  EID, date, name, termination action and accepted current status. That read proves current presence
+  only: it never upgrades a D307 asserted receipt into controlled-write evidence and never authorizes
+  re-filing as downstream repair.
+
 ## After changes
 
 - **2026-08-30 — deduplicating capture bytes must not deduplicate provenance (D292).** Live run

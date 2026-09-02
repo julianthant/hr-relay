@@ -158,18 +158,22 @@ import {
   terminationTypeNode,
 } from "./kuali-extraction/nodes.js";
 import {
+  FILING_PRESENCE_NODE,
   FINALIZE_NODE,
   KUALI_FINALIZATION_STEP_NODES,
   existingComments,
+  filingPresenceNode,
   finalizeKualiNode,
 } from "./kuali-finalization/nodes.js";
 import {
+  PENDING_SET_NODE,
   RECEIPT_NODE,
   SWEEP_NODE,
   TERMINATION_NODE,
   UCPATH_TRANSACTION_STEP_NODES,
   clearPendingNode,
   fileTerminationNode,
+  pendingSetNode,
   receiptNode,
 } from "./ucpath-transaction/nodes.js";
 
@@ -507,15 +511,24 @@ const separationsFlow = flow(SeparationsInput)
       approval: outputs[GATE_NODE],
     }),
   }))
-  .pipe(clearPendingNode.wire({
+  .pipe(pendingSetNode.wire({
     dependsOn: [APPROVAL_NODE],
+    bind: ({ outputs }) => ({
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+    }),
+  }))
+  .pipe(clearPendingNode.wire({
+    dependsOn: [APPROVAL_NODE, PENDING_SET_NODE],
     prepare: { bind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+      observedSet: outputs[PENDING_SET_NODE],
     }) },
     commit: { bind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+      observedSet: outputs[PENDING_SET_NODE],
     }) },
   }))
   .pipe(fileTerminationNode.wire({
@@ -552,10 +565,14 @@ const separationsFlow = flow(SeparationsInput)
       expectedEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
     }),
   }))
+  .pipe(filingPresenceNode.wire({
+    dependsOn: [RECEIPT_NODE],
+    bind: ({ outputs }) => outputs[RECEIPT_NODE],
+  }))
   .pipe(finalizeKualiNode.wire({
     dependsOn: [
       APPROVAL_NODE, ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE,
-      DATES_NODE, RECEIPT_NODE,
+      DATES_NODE, RECEIPT_NODE, FILING_PRESENCE_NODE,
     ],
     prepare: { bind: ({ input, outputs }) => ({
       actionId: outputs[ACTION_NODE].actionId,
@@ -575,12 +592,12 @@ const separationsFlow = flow(SeparationsInput)
         lastDayWorked: outputs[DATES_NODE].lastDayWorked,
         separationDate: outputs[DATES_NODE].separationDate,
         terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-        transactionNumber: outputs[RECEIPT_NODE].transactionNumber,
+        transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
         timekeeperComments: buildFinalizationComments({
           existingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
           dateChangeComments: outputs[DATES_NODE].dateChangeComments,
           documentNumber: input.documentNumber,
-          transactionNumber: outputs[RECEIPT_NODE].transactionNumber,
+          transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
           initials: separationInitials(input.timekeeperName),
           asOfDate: outputs[PLAN_NODE].asOfDate,
         }),
@@ -606,12 +623,12 @@ const separationsFlow = flow(SeparationsInput)
         lastDayWorked: outputs[DATES_NODE].lastDayWorked,
         separationDate: outputs[DATES_NODE].separationDate,
         terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-        transactionNumber: outputs[RECEIPT_NODE].transactionNumber,
+        transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
         timekeeperComments: buildFinalizationComments({
           existingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
           dateChangeComments: outputs[DATES_NODE].dateChangeComments,
           documentNumber: input.documentNumber,
-          transactionNumber: outputs[RECEIPT_NODE].transactionNumber,
+          transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
           initials: separationInitials(input.timekeeperName),
           asOfDate: outputs[PLAN_NODE].asOfDate,
         }),
@@ -934,6 +951,11 @@ export const separationsDescriptor = defineWorkflowDescriptor({
         + "authority. It re-runs on every attempt, so moved evidence or identity origin cannot reuse an old answer.",
     },
     {
+      nodeId: "pending-set",
+      purpose: "Reads and freezes the exact stable-ID set of eligible pending terminations plus every protected "
+        + "transaction before the sweep. The run admission authorizes this machine observation; it is not another gate.",
+    },
+    {
       nodeId: "clear-pending",
       purpose: "Sweeps any pending termination already sitting on the subject's record, so the filing below is "
         + "not the second one. It probes before it fences, and a dry run stops after staging.",
@@ -985,6 +1007,11 @@ export const separationsDescriptor = defineWorkflowDescriptor({
       nodeId: "receipt",
       purpose: "Checks the receipt the filing produced against the approved subject and the effective date. It "
         + "re-runs on every attempt rather than replaying its own previous answer.",
+    },
+    {
+      nodeId: "filing-presence",
+      purpose: "Freshly re-reads the exact UCPath transaction named by the durable receipt and requires its "
+        + "subject, effective date, termination action, and acceptable status to survive before Kuali can prepare.",
     },
   ],
   scenarios: [

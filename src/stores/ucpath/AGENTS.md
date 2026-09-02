@@ -14,6 +14,7 @@ means "Person Org" must say so rather than quantifying over the whole registry.
 | Task | Effect | What it visits |
 |---|---|---|
 | `ucpath/match-existing-termination` | read | SS Smart HR — is there a `TER` on THIS effective date? (S44) |
+| `ucpath/read-pending-termination-set` | read | captures the complete eligible/protected stable-T-ID set for the sweep |
 | `ucpath/match-pending-terminations` | read | the same read, folded date-agnostically for the sweep |
 | `ucpath/stage-pending-termination-sweep` | prepare | ticks every in-progress row |
 | `ucpath/delete-pending-terminations` | **commit** | clicks `Delete Selected Transactions` |
@@ -21,6 +22,7 @@ means "Person Org" must say so rather than quantifying over the whole registry.
 | `ucpath/stage-termination` | prepare | the whole three-page Smart HR wizard |
 | `ucpath/create-termination` | **commit** | clicks `Save and Submit` |
 | `ucpath/verify-termination` | read | the post-submit re-read — the ONLY landing proof |
+| `ucpath/verify-termination-filing-present` | read | a fresh exact-T-ID read that must pass before Kuali finalization |
 
 Naming follows `EFFECT_VERBS`, which is why the probes are `match-*` and the prepares are `stage-*`.
 The whole family is a SIBLING on the store's ONE `DriverDeclaration`
@@ -46,6 +48,19 @@ this family is `page` and legacy's `getContentFrame` funnel does not apply.
 - **A settled row is never swept.** Only `Pending` and `Pushed Back` are in progress; deleting an
   `Approved`/`Denied`/`Error`/`Manually Processed` row would destroy a record of something that
   already happened.
+- **A sweep is one exact stable transaction set (D310).** The EID-filtered SS Smart HR detail read
+  supplies stable T IDs and every eligible/protected row fact. The separate Transactions in Progress
+  grid has no T-ID column, so prepare re-reads the set, then uniquely joins each authorized eligible
+  row by EID, normalized name, effective date and termination-action class before checking any box.
+  Transaction type and country exist only on that grid: each must be one nonempty named control and
+  is retained in staging evidence, but neither is invented as cross-surface identity. The positional
+  DOM suffix is never identity. A changed, missing, extra or ambiguous row refuses
+  before fence/click, and the verifier requires the selected set absent while protected rows survive.
+- **Kuali may cite only a currently surviving filing (D310).** The finalization graph always re-runs
+  `verify-termination-filing-present` after the durable filing receipt and before Kuali staging. The
+  read must find exactly that T ID with the same EID, effective date, normalized name, termination
+  action and an accepted current status. It grants current-presence authority only: a D307 asserted
+  receipt remains asserted and never becomes controlled-filing evidence.
 - **A number alone is never a receipt.** `present` requires the `T…` AND its approval status,
   because a Denied transaction carries a perfectly well-formed number.
 - **Post-fence absence is `operator-only`** on both commits: no propagation window has been measured

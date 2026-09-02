@@ -43,6 +43,9 @@ export const UcpathVerifyPendingTerminationsCleared = defineTaskContract({
     proof: {
       kind: "ucpath-pending-terminations-clear",
       emplId: EidSchema.parse("10800000"),
+      clearedTransactionIds: [],
+      protectedTransactionIds: [],
+      setDigest: "d".repeat(64),
       scannedRowCount: 3,
       observedAt: "2026-08-13T10:18:00.000Z",
       source: "ss-smart-hr-detail-read",

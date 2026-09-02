@@ -11,6 +11,8 @@ import { readJobSummaryTask } from "./tasks/read-job-summary.js";
 import { searchPersonOrgTask } from "./tasks/search-person-org.js";
 import { verifyPendingTerminationsClearedTask } from "./tasks/verify-pending-terminations-cleared.js";
 import { verifyTerminationTask } from "./tasks/verify-termination.js";
+import { readPendingTerminationSetTask } from "./tasks/read-pending-termination-set.js";
+import { verifyTerminationFilingPresentTask } from "./tasks/verify-termination-filing-present.js";
 
 export { ucpathDriver };
 
@@ -25,6 +27,8 @@ export const ucpathStore = defineBrowserStore(
     prepareTermination: stageTerminationTask,
     createTermination: createTerminationTask,
     verifyTermination: verifyTerminationTask,
+    verifyTerminationFilingPresent: verifyTerminationFilingPresentTask,
+    readPendingTerminationSet: readPendingTerminationSetTask,
     probePendingTerminations: matchPendingTerminationsTask,
     preparePendingTerminationSweep: stagePendingTerminationSweepTask,
     clearPendingTerminations: deletePendingTerminationsTask,

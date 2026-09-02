@@ -89,7 +89,14 @@ import {
 } from "../identity-check/nodes.js";
 import { JOB_SUMMARY_NODE, jobSummaryNode } from "../job-summary/nodes.js";
 import { TERMINATION_TYPE_NODE, terminationTypeNode } from "../kuali-extraction/nodes.js";
-import { SWEEP_NODE, TERMINATION_NODE, clearPendingNode, fileTerminationNode } from "./nodes.js";
+import {
+  PENDING_SET_NODE,
+  SWEEP_NODE,
+  TERMINATION_NODE,
+  clearPendingNode,
+  fileTerminationNode,
+  pendingSetNode,
+} from "./nodes.js";
 
 /**
  * The ingress. It is the identity-check ingress plus exactly the facts a
@@ -207,15 +214,24 @@ const separationsUcpathTerminationFlow = flow(SeparationsUcpathTerminationInput)
       approval: outputs[GATE_NODE],
     }),
   }))
-  .pipe(clearPendingNode.wire({
+  .pipe(pendingSetNode.wire({
     dependsOn: [APPROVAL_NODE],
+    bind: ({ outputs }) => ({
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+    }),
+  }))
+  .pipe(clearPendingNode.wire({
+    dependsOn: [APPROVAL_NODE, PENDING_SET_NODE],
     prepare: { bind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+      observedSet: outputs[PENDING_SET_NODE],
     }) },
     commit: { bind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+      observedSet: outputs[PENDING_SET_NODE],
     }) },
   }))
   .pipe(fileTerminationNode.wire({
@@ -357,6 +373,11 @@ export const separationsUcpathTerminationDescriptor = defineWorkflowDescriptor({
       nodeId: "approval",
       purpose: "Re-derives the evidence and produces explicit machine-verification or operator-approval "
         + "authority. It re-runs on every attempt, so moved evidence or identity origin cannot reuse an old answer.",
+    },
+    {
+      nodeId: "pending-set",
+      purpose: "Reads and freezes the exact stable-ID set of eligible pending terminations plus every protected "
+        + "transaction before the sweep. The run admission authorizes this machine observation; it is not another gate.",
     },
     {
       nodeId: "clear-pending",

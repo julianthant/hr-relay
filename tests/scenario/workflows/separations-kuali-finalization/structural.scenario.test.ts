@@ -53,6 +53,7 @@ import { RunDryRunPreviewResultSchema } from "../../../../src/domain/run/result.
 import { deriveSchemaHash } from "../../../../src/domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../../src/domain/workflow/checkpoint.js";
 import { KualiSaveSeparationFinalization } from "../../../../src/domain/contracts/kuali/save-separation-finalization.js";
+import { UcpathVerifyTerminationFilingPresent } from "../../../../src/domain/contracts/ucpath/verify-termination-filing-present.js";
 import { SeparationsMatchDepartmentOption } from "../../../../src/domain/contracts/separations/match-department-option.js";
 import { SeparationsVerifyIdentityApproval } from "../../../../src/domain/contracts/separations/verify-identity-approval.js";
 import {
@@ -395,6 +396,15 @@ async function previewDependencyEvidence(run: RunRecord): Promise<readonly unkno
         FINALIZATION_DEPARTMENT_NODE,
         SeparationsMatchDepartmentOption.output,
         outputs.department,
+      ),
+    },
+    {
+      state: "resolved",
+      nodeId: "filing-presence",
+      checkpoint: rowFor(
+        "filing-presence",
+        UcpathVerifyTerminationFilingPresent.output,
+        FINALIZATION_SCOPE_OUTPUTS["filing-presence"],
       ),
     },
   ];
@@ -870,6 +880,7 @@ describe("separations-kuali-finalization scenarios", () => {
         comparison: outputs.comparison,
         "identity-approval": outputs.approval,
         approval: outputs.approvalOutput,
+        "filing-presence": FINALIZATION_SCOPE_OUTPUTS["filing-presence"],
         [FINALIZATION_NODE]: {
           disposition: "committed",
           output: {

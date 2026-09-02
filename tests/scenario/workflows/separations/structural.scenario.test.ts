@@ -43,11 +43,16 @@ import { afterEach, describe, it } from "vitest";
 import { descriptorRuntimeNodes } from "../../../../src/base/workflow.js";
 import { WriteParkedError } from "../../../../src/core/write-sequencer.js";
 import { NewKronosReadSeparationTimecard } from "../../../../src/domain/contracts/new-kronos/read-separation-timecard.js";
+import {
+  legacyUcpathPendingSweepIdempotencyKey,
+  ucpathPendingTransactionSetDigest,
+} from "../../../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 import { deriveItemId } from "../../../../src/domain/identifiers.js";
 import { checkpointLookupKey } from "../../../../src/domain/workflow/checkpoint.js";
 import { DateOnlySchema, EidSchema, IsoInstantSchema } from "../../../../src/domain/ids.js";
 import { MatchIdentityOutputSchema } from "../../../../src/domain/contracts/separations/match-identity.js";
 import { deriveIdentityEvidenceDigest } from "../../../../src/domain/separations/identity-evidence.js";
+import { deriveIdempotencyKeyDigest } from "../../../../src/domain/write-safety.js";
 import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../../src/domain/separations/termination-type.js";
 import type { KualiDateField } from "../../../../src/domain/ui/kuali-separation-document.js";
 import type { UcpathPersonSelection } from "../../../../src/domain/contracts/ucpath/search-person-org.js";
@@ -106,7 +111,9 @@ import {
   compositionContext,
   compositionDurableFootprint,
   compositionHarness,
+  compositionPendingSet,
   compositionQueuedRun,
+  compositionSweepIdempotencyKey,
   type CompositionHarness,
 } from "../../../unit/fixtures/separations-composition-fixtures.js";
 
@@ -697,7 +704,7 @@ describe("separations scenarios — the composition", () => {
       withPending.database, withPending.clock, compositionQueuedRun({ dryRun: true }), SWEEP_NODE,
     );
     const sweepWithWork = await withPending.bound(() => withPending.sequencer.executeDryRun(
-      compositionContext(pendingRun.run, pendingRun.claim, SWEEP_NODE, true),
+      compositionContext(pendingRun.run, pendingRun.claim, SWEEP_NODE, true, withPending.ucpath.rows),
     ));
     assert.equal(sweepWithWork.kind, "transaction-dry-run-preview");
     assert.equal(sweepWithWork.probe.state, "absent", "there is a row to sweep, so the key reads absent");
@@ -787,7 +794,7 @@ describe("separations scenarios — the composition", () => {
         h.database, h.clock, compositionQueuedRun(), node,
       );
       await assert.rejects(
-        h.bound(() => h.sequencer.executeTransaction(compositionContext(run, claim, node))),
+        h.bound(() => h.sequencer.executeTransaction(compositionContext(run, claim, node, false, rows))),
         /subject mismatch, zero fence, zero click/u,
         node,
       );
@@ -820,20 +827,23 @@ describe("separations scenarios — the composition", () => {
   it("separations/pending-sweep-committed — the sweep is a fenced write, and it runs FIRST", async () => {
     // S30/S31: in legacy this delete is the first mutation of the run, with no
     // fence, no permanent key and no read-back.
-    const h = harness({ rows: [inProgressTermination(), inProgressTermination({
+    const pendingRows = [inProgressTermination(), inProgressTermination({
       transactionId: "T009000002", startDate: "05/01/2026",
-    })] });
+    })];
+    const h = harness({ rows: pendingRows });
     const { run, claim } = compositionClaimRunning(
       h.database, h.clock, compositionQueuedRun(), SWEEP_NODE,
     );
 
     const outcome = await h.bound(() => h.sequencer.executeTransaction(
-      compositionContext(run, claim, SWEEP_NODE),
+      compositionContext(run, claim, SWEEP_NODE, false, pendingRows),
     ));
 
     assert.equal(Reflect.get(outcome as object, "disposition"), "committed");
     assert.deepEqual(h.ucpath.rows, [], "both in-progress rows were swept");
-    const footprint = compositionDurableFootprint(h, "ucpath", SWEEP_NODE, SWEEP_IDEMPOTENCY_KEY);
+    const footprint = compositionDurableFootprint(
+      h, "ucpath", SWEEP_NODE, compositionSweepIdempotencyKey(pendingRows),
+    );
     assert.notEqual(footprint.intent, undefined, "a delete gets a fence like every other write");
 
     assert.deepEqual(claimFor("separations/pending-sweep-committed"), [
@@ -842,13 +852,14 @@ describe("separations scenarios — the composition", () => {
   });
 
   it("separations/pending-sweep-nothing-to-do — a SETTLED termination is never swept", async () => {
-    const h = harness({ rows: [inProgressTermination({ approvalStatus: "Approved" })] });
+    const settledRows = [inProgressTermination({ approvalStatus: "Approved" })];
+    const h = harness({ rows: settledRows });
     const { run, claim } = compositionClaimRunning(
       h.database, h.clock, compositionQueuedRun(), SWEEP_NODE,
     );
 
     const outcome = await h.bound(() => h.sequencer.executeTransaction(
-      compositionContext(run, claim, SWEEP_NODE),
+      compositionContext(run, claim, SWEEP_NODE, false, settledRows),
     ));
 
     assert.equal(Reflect.get(outcome as object, "disposition"), "already-present");
@@ -858,6 +869,68 @@ describe("separations scenarios — the composition", () => {
     assert.deepEqual(claimFor("separations/pending-sweep-nothing-to-do"), [
       `transaction:${SWEEP_NODE}/already-present`,
     ]);
+  });
+
+  it("refuses an immutable pre-exact-set sweep intent before any probe, browser, fence, or click", async () => {
+    const pendingRows = [inProgressTermination()];
+    const h = harness({ rows: pendingRows });
+    const { run, claim } = compositionClaimRunning(
+      h.database, h.clock, compositionQueuedRun(), SWEEP_NODE,
+    );
+    const oldKey = legacyUcpathPendingSweepIdempotencyKey({
+      emplId: COMPOSITION_EID,
+      expectedName: COMPOSITION_UCPATH_NAME,
+      observedSet: compositionPendingSet(pendingRows),
+    });
+    const recorded = h.database.authority.writeIntents.recordObservedPresent({
+      writeIntentId: "88888888-8888-4888-8888-888888888888",
+      workflowId: COMPOSITION_WORKFLOW_ID,
+      itemId: run.envelope.itemId,
+      taskId: "ucpath/delete-pending-terminations",
+      system: "ucpath",
+      idempotencyKey: oldKey,
+      idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", oldKey),
+      generation: 1,
+      status: "observed-present",
+      // Historical authority keeps its historical schema/value bytes. The
+      // current contract may detect this row, but may never reinterpret it as
+      // exact-set proof or rewrite it under the v2 key.
+      observedProof: {
+        schemaHash: "9".repeat(64),
+        value: {
+          kind: "ucpath-pending-terminations-clear",
+          emplId: COMPOSITION_EID,
+          scannedRowCount: 0,
+          observedAt: COMPOSITION_NOW,
+          source: "ss-smart-hr-detail-read",
+        },
+      },
+      observedAt: COMPOSITION_NOW,
+      version: 1,
+      createdAt: COMPOSITION_NOW,
+      updatedAt: COMPOSITION_NOW,
+    });
+    assert.equal(recorded.state, "recorded-observed-present");
+
+    await assert.rejects(
+      h.bound(() => h.sequencer.executeTransaction(
+        compositionContext(run, claim, SWEEP_NODE, false, pendingRows),
+      )),
+      /immutable retired-key intent .* Refusing before any probe, browser, fence, or click/u,
+    );
+    assert.deepEqual(h.ucpath.events, [], "the old intent stopped before the first live read");
+    assert.equal(
+      h.database.authority.writeIntents.findByPermanentKey(
+        "ucpath", compositionSweepIdempotencyKey(pendingRows),
+      ),
+      undefined,
+      "no current v2 intent was minted beside the immutable old row",
+    );
+    assert.equal(
+      h.database.authority.writeIntents.findByPermanentKey("ucpath", oldKey)?.status,
+      "observed-present",
+      "the historical row stayed byte-authoritative",
+    );
   });
 
   it("separations/termination-committed — ONE fenced click files the termination", async () => {
@@ -1255,12 +1328,16 @@ describe("separations scenarios — the composition", () => {
           },
           ctx: taskCtx,
         }),
+        "pending-set": compositionPendingSet([]),
         [SWEEP_NODE]: {
           disposition: "committed",
           output: {
             cleared: {
               kind: "ucpath-pending-terminations-clear",
               emplId: COMPOSITION_EID,
+              clearedTransactionIds: [],
+              protectedTransactionIds: [],
+              setDigest: ucpathPendingTransactionSetDigest(compositionPendingSet([])),
               scannedRowCount: 0,
               observedAt: OBSERVED_AT,
               source: "ss-smart-hr-detail-read",
@@ -1269,6 +1346,18 @@ describe("separations scenarios — the composition", () => {
         },
         [TERMINATION_NODE]: { disposition: "committed", output: { receipt: receiptProof } },
         receipt,
+        "filing-presence": {
+          kind: "ucpath-termination-filing-presence",
+          transactionId: COMPOSITION_RECEIPT,
+          emplId: COMPOSITION_EID,
+          effectiveDate: COMPOSITION_EFFECTIVE_DATE,
+          approvalStatus: "Pending",
+          displayedName: COMPOSITION_UCPATH_NAME,
+          observedAt: OBSERVED_AT,
+          source: "ss-smart-hr-detail-read",
+          receiptDisposition: "committed",
+          authority: "kuali-finalization-precondition",
+        },
         [FINALIZE_NODE]: {
           disposition: "committed",
           output: {

@@ -15,7 +15,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "c4e877f567ccbb567536c544502f5d95ce3a35597bc4794cebe4944c676d0f27",
+      "fingerprint": "7ea51059f408ae537714b281b5fe590c8e0fcca67de2f82cf642ce94c3411973",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -51,7 +51,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/fields/cell-coercion.ts",
@@ -165,7 +165,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "ea47a1839f9d3bb89509962217203663d9e1ff422847d3abb8217723949bd417",
+      "fingerprint": "531507da9cb934bbc203e2ad466579afe40a470081b91700d0fe3de993848a2f",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -257,11 +257,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "98146527567a84ec50bf0696e71eada17ce6d56fed4a220a70414a49f12126fb"
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
         },
         {
           "path": "src/domain/contracts/ucpath/read-job-summary.ts",
           "sha256": "35b45912bed43b7b2f1361669574ae74413ba0c35e4976a9e5adfc58bddb6650"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/read-pending-termination-set.ts",
+          "sha256": "62dc86544642509dea24ccadbcf1998c42ce8ae5290665f30649c0742d52a59b"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -269,15 +273,19 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/stage-pending-termination-sweep.ts",
-          "sha256": "8b6280b4580ee562426dec821ad414b128dcce564296fd594f38bde3cd9670da"
+          "sha256": "8dd45da996cd3fa6f8cba1f92ce72bcde69de8e3069567978d6617c03614ffc9"
         },
         {
           "path": "src/domain/contracts/ucpath/stage-termination.ts",
           "sha256": "690c4bef38cfe52ce875203c27eb0bfb0a76ef6764b1019e58080d1c30f3aa7f"
         },
         {
+          "path": "src/domain/contracts/ucpath/verify-termination-filing-present.ts",
+          "sha256": "59851bd1e59c29e6b7d0d615055337b50e0ebc33ecb5333825642a3bf7eb88b2"
+        },
+        {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/ids.ts",
@@ -405,7 +413,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "83b6eca1986e126b53f59f86155b5c9086f69fd97b480af59e185455feedee06"
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -473,7 +481,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/descriptor.ts",
-          "sha256": "ad4efe53ae05909d4001a84ee74f524b1c4e859bbb8029a7da527669dcdd234e"
+          "sha256": "5497497e76c1c8e066a671e3137440a5fbfcd29c9730620d07962c52ba51bf96"
         },
         {
           "path": "src/workflows/separations/identity-check/node-ids.ts",
@@ -529,11 +537,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/kuali-finalization/node-ids.ts",
-          "sha256": "b97a476af2005ee1218327077913d2a84af656ddfcc7e928b55daf5de7d6417a"
+          "sha256": "2df19de7ace2501cb06710dd1b688e47d54353f310d09ab61719d9b08177a1b5"
         },
         {
           "path": "src/workflows/separations/kuali-finalization/nodes.ts",
-          "sha256": "8f2ec59b72e8510e7cadbd25ee0c59fc8bc48a4dd62051ce69d789ee7b0b2bc0"
+          "sha256": "8b9de49cb7045129523b14d87d7ea35955f0c5f9b0f47857756bfeac7b5132f0"
         },
         {
           "path": "src/workflows/separations/kuali-finalization/omission.ts",
@@ -545,11 +553,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/node-ids.ts",
-          "sha256": "62ad7c70ffbf39aee32e52f512303dcf6d2912b7f5cccd2b2d0b30940ded2e3a"
+          "sha256": "754bb8309372a6624aaf93b1c71c1f9b129c35c2509e0cb94df38baa950b1a82"
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/nodes.ts",
-          "sha256": "be6f0725a8f5ffab435089dc0becfbb42dab89287f2669ff06965fbdd9e7ab96"
+          "sha256": "281a17fb008797d93751b328a8da263c9fa9a433a3586b171845e850edcde4cf"
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/omission.ts",
@@ -563,7 +571,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations"
     },
     {
-      "fingerprint": "ae514fe8618a4eab2e0ce241897644ff01f4f1cfa1bb28386cbb45bfd5f68366",
+      "fingerprint": "b65de13f0f5c3d98f67eaf0247e8de98f9fec9d6742aac402c34ca6589d699c6",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -611,7 +619,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/ids.ts",
@@ -793,7 +801,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-identity-check"
     },
     {
-      "fingerprint": "f630b5eda9f121687d44aae6b326eaa22c644b98312f6c6afb0c52124f622620",
+      "fingerprint": "1feda4af6a5f9f69d98f2acd9753e90134c7698caf49e4d558eaa7c1083e38ea",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -833,7 +841,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/fields/cell-coercion.ts",
@@ -999,7 +1007,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "7278bde6c518a3e7e782099db9b8dd3367f597f79528062eb9a4bc495aaffbcf",
+      "fingerprint": "d21b260201c5171f4fc17d051044bb059a9bce20a83473318a38c347f507d103",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -1058,8 +1066,12 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "cb2e6a84899f512fa0d7169a252884db7cf03cb57663197995b2b675dfb2fdb2"
         },
         {
+          "path": "src/domain/contracts/ucpath/verify-termination-filing-present.ts",
+          "sha256": "59851bd1e59c29e6b7d0d615055337b50e0ebc33ecb5333825642a3bf7eb88b2"
+        },
+        {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/ids.ts",
@@ -1122,6 +1134,14 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "90c87aa616aa5d2183f0cf149a3da5494e4b485d1cb4a96a58eac65a0dde679c"
         },
         {
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "b02284b61f40371150a7dfe260057f0a51a53e66c88744b0caccc74279ffc693"
+        },
+        {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
           "path": "src/domain/separations/write-plan.ts",
           "sha256": "6b6fc1283cd98ef3e2a3450b1a31da66a20b54fd3fc71552de6b9ccb2513b594"
         },
@@ -1160,6 +1180,14 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/ui/ucpath-job-summary.ts",
           "sha256": "7454b4e954b1ab67ca0d206d63c345d8befd72ca6654c52332cbe896d0b887ea"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+        },
+        {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "55a5c20bbfb256eb77264ed4f862035de6ba8fffe7ffc3b3917436a7a11bc5f3"
         },
         {
           "path": "src/domain/unscoped-commit.ts",
@@ -1247,15 +1275,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/kuali-finalization/descriptor.ts",
-          "sha256": "e1b9b976caa2081d263397a2ccc1da4fb0f69a8d1d74a23fcb34cdcab5ed0224"
+          "sha256": "c87fa066af2ee65248d484579ce1a480a3faa6e99a63f84a970a1f6f501d9d2a"
         },
         {
           "path": "src/workflows/separations/kuali-finalization/node-ids.ts",
-          "sha256": "b97a476af2005ee1218327077913d2a84af656ddfcc7e928b55daf5de7d6417a"
+          "sha256": "2df19de7ace2501cb06710dd1b688e47d54353f310d09ab61719d9b08177a1b5"
         },
         {
           "path": "src/workflows/separations/kuali-finalization/nodes.ts",
-          "sha256": "8f2ec59b72e8510e7cadbd25ee0c59fc8bc48a4dd62051ce69d789ee7b0b2bc0"
+          "sha256": "8b9de49cb7045129523b14d87d7ea35955f0c5f9b0f47857756bfeac7b5132f0"
         },
         {
           "path": "src/workflows/separations/kuali-finalization/omission.ts",
@@ -1269,7 +1297,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-finalization"
     },
     {
-      "fingerprint": "b2778fa05492d39988642776210647c0ace95be9ca620787da99f8dc86974abc",
+      "fingerprint": "5ef6fd0a73c47d2cf8d96f2500231ee165534b96c1850fdb1c7f1b1008b20134",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -1305,7 +1333,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/ids.ts",
@@ -1435,7 +1463,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-read"
     },
     {
-      "fingerprint": "1d5f26e251a643759d8d5e83d85c22c98ffcffc0ce3f73059328482db63586a1",
+      "fingerprint": "54f080192f5d0c2a82e30e6c3cbe82473361336cf99b95f69a0d4fa0593c4737",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -1507,11 +1535,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "98146527567a84ec50bf0696e71eada17ce6d56fed4a220a70414a49f12126fb"
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
         },
         {
           "path": "src/domain/contracts/ucpath/read-job-summary.ts",
           "sha256": "35b45912bed43b7b2f1361669574ae74413ba0c35e4976a9e5adfc58bddb6650"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/read-pending-termination-set.ts",
+          "sha256": "62dc86544642509dea24ccadbcf1998c42ce8ae5290665f30649c0742d52a59b"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -1519,7 +1551,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/stage-pending-termination-sweep.ts",
-          "sha256": "8b6280b4580ee562426dec821ad414b128dcce564296fd594f38bde3cd9670da"
+          "sha256": "8dd45da996cd3fa6f8cba1f92ce72bcde69de8e3069567978d6617c03614ffc9"
         },
         {
           "path": "src/domain/contracts/ucpath/stage-termination.ts",
@@ -1527,7 +1559,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/ids.ts",
@@ -1647,7 +1679,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "83b6eca1986e126b53f59f86155b5c9086f69fd97b480af59e185455feedee06"
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -1755,15 +1787,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/descriptor.ts",
-          "sha256": "6c32a7c6c01bee3688c27ec032a50f4934a0e65781ac0d57ce07ea89ae0bcb1b"
+          "sha256": "ec71d7eaf0967933a96504bb72aa1a3b191dfd2cde6da9af1c673b362844b50a"
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/node-ids.ts",
-          "sha256": "62ad7c70ffbf39aee32e52f512303dcf6d2912b7f5cccd2b2d0b30940ded2e3a"
+          "sha256": "754bb8309372a6624aaf93b1c71c1f9b129c35c2509e0cb94df38baa950b1a82"
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/nodes.ts",
-          "sha256": "be6f0725a8f5ffab435089dc0becfbb42dab89287f2669ff06965fbdd9e7ab96"
+          "sha256": "281a17fb008797d93751b328a8da263c9fa9a433a3586b171845e850edcde4cf"
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/omission.ts",
@@ -1779,7 +1811,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "d04f1612765d978afc480e8f80f1c3652deb406f71f8b92223032f755ab02c57",
+      "fingerprint": "fbad3a7694c6cd7fde6b83c8f2b43349375dd20e8b1187348548e708429ed1c9",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1835,7 +1867,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -1969,7 +2001,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "7a6e6d3238a6676cb16f6b523be98227aa7b0e5d99f5f14b844f4a88b6889e70",
+      "fingerprint": "d8e8d2f9b4c80587c0fff270c9ce7312d99f0dfd3d3a4f02c65006703b8f3cb4",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2025,7 +2057,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -2159,7 +2191,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "d552096e1dd20650aa8747d270bfe71d5fa1d0110e3790e11ae4316ce56c9ddf",
+      "fingerprint": "78f0792a2a34e44077c84f3c0f8a4062219efed1bdb193a8024968422c03a349",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2199,7 +2231,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/gates.ts",
@@ -2281,7 +2313,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-pdf-pages"
     },
     {
-      "fingerprint": "f3fe7ec05a95a7c06fe65383d44be1e71c357274d7728e1f7855ca29a0bc9ac4",
+      "fingerprint": "f8431f2a461eb5b7d5fa0d11e503be68f875cd57bb32ef07ea1e58cc75bdb898",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2321,7 +2353,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/fields/cell-coercion.ts",
@@ -2439,7 +2471,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-spreadsheet"
     },
     {
-      "fingerprint": "15f96661f3fc33b2896f22cbabdfd3c3bb4b248265e75e80db66b1300191bb8f",
+      "fingerprint": "53541c050db5678331b09ab35dba95ff2194a4796d9f865c3c8c0873ec5b196c",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2503,7 +2535,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -2657,7 +2689,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/match-separation-finalization"
     },
     {
-      "fingerprint": "f8bdaa448a2106fcbeed65fe46dbfb24bf9c1815a8c46092c5a1e50f40512506",
+      "fingerprint": "ed7fa8e7a26549d2ef845ef5d514d5b0f48361fbf9c5e902dbcb75b5ae19cd6b",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2717,7 +2749,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -2859,7 +2891,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/read-separation-document"
     },
     {
-      "fingerprint": "11acdaea94c82b620a7a21402bb9a223704d99fac31eeddb2971e2cf6c2f7559",
+      "fingerprint": "1ef1ed26c13e4029b7b50283346bf03ffce11509f5f18e7db8edc0f07d56da28",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2923,7 +2955,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -3065,7 +3097,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/save-separation-finalization"
     },
     {
-      "fingerprint": "13111548085275500e96e7562b4e730a554117bc0e93127961a2d8019a18fa90",
+      "fingerprint": "c373c305764a9ef1d53e1e4dd607b50209770d12c3b9c7dda367cc922258d3a2",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3125,7 +3157,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -3267,7 +3299,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/search-separation-action"
     },
     {
-      "fingerprint": "982bd2a409e0405add6a003cb4088f22426930a8840c3904af5943bf64c5382a",
+      "fingerprint": "4f782733a46ca48bebc7ee793e868388103bd03a2cb80c1507b00ec4b54916fe",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3331,7 +3363,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -3473,7 +3505,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/stage-separation-finalization"
     },
     {
-      "fingerprint": "cfaa7ed4cfd98db6cc72db8de819d6a53ee307da9beea78e9cfeeb9176d7a9d2",
+      "fingerprint": "7e33e80183866328060418441a4c187f184d0c5d17bbf7253e181d5946c73faa",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3541,7 +3573,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -3695,7 +3727,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-separation-finalization"
     },
     {
-      "fingerprint": "fa54a9e10c5b2eedcbfd87c350d4b3324cc354c79f75564e2401287ec6c29ea6",
+      "fingerprint": "7ee4c18f7e1ed107ca379d84bfb4a5251b986323dcbecb8518123978d0cdae8b",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3751,7 +3783,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -3901,7 +3933,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "52ecf21ea08e0aadf780840a5cedd2f5eb60f390717243360b2baf73d2438cde",
+      "fingerprint": "13ed9f8b361b8b2db20514e1d927cfb37f414e50cce7c526e1bf2f4616a8c0f3",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3957,7 +3989,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -4107,7 +4139,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/search-employee"
     },
     {
-      "fingerprint": "fd99dd47d2d7ad2e51c6d8a4ce04b8ce92180733f81db64908b33241ac71f779",
+      "fingerprint": "1d8370d0644e54f5784e6fef97226cdd3ccfe6d7bd918ed9fbc859b431016e21",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4147,7 +4179,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/fields/cell-coercion.ts",
@@ -4269,7 +4301,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "normalization/read-contact-advice"
     },
     {
-      "fingerprint": "7e01ad9fe22ee776eec58da143cf36fa3ceb6a5c9c147281cea5ee6aa60409cb",
+      "fingerprint": "39edd26f4bf6d8c31da3cc81d9182f880d36fc7546b869f973709fdca41ead1b",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4309,7 +4341,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/fields/cell-coercion.ts",
@@ -4419,7 +4451,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr/extract-form-page"
     },
     {
-      "fingerprint": "1fcd0df297318df8339a6137438acd9508311f84a30d505e9ef9247012c88af7",
+      "fingerprint": "7246758d8f3cdaaf4f3fc4d8938173c5ee8335117f828f25f8ec326de06a1883",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4459,7 +4491,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/fields/cell-coercion.ts",
@@ -4589,7 +4621,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "42f19d04abd1eca82fcaad45290d1f3097b2c84a30a0ead62bed70cf84fe7869",
+      "fingerprint": "9525b5ff2aacd2def16be624c20888f0fe192cee0bc1258ab6054744f0bb522d",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4649,7 +4681,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "98146527567a84ec50bf0696e71eada17ce6d56fed4a220a70414a49f12126fb"
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -4657,7 +4689,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "a0202fb71cdd58eb1d8a70f790a804df2843c7f60e149c39899f7f56e7a296a4"
+          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -4665,7 +4697,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -4712,6 +4744,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "7dad2496d3a8593725be92415fc5d39304f0ee7c9ad51eb36095dbc028708189"
         },
         {
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "b02284b61f40371150a7dfe260057f0a51a53e66c88744b0caccc74279ffc693"
+        },
+        {
           "path": "src/domain/separations/termination-type.ts",
           "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
         },
@@ -4744,6 +4780,14 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
         },
         {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
           "path": "src/domain/ui/ucpath-driver.ts",
           "sha256": "4dea7d199ddb472e535b56b8e0586582378e05c36364a4b6a08d144be8dc75ae"
         },
@@ -4757,7 +4801,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "83b6eca1986e126b53f59f86155b5c9086f69fd97b480af59e185455feedee06"
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -4821,7 +4865,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "e33bb340e88ad19db61221c1a594fee81551d205555daeecf1ca1e5c654f8a9e"
+          "sha256": "aa260347f268d8cc4888608355b07f2e9d3040a8a0f0e25b62449acd63a9c21e"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -4833,7 +4877,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "85bf1da019e30a0ea6a268742e4092cb5201670a11458e6a4800794b1dc59bc6"
+          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -4843,7 +4887,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/create-termination"
     },
     {
-      "fingerprint": "cc1695049ab7f0f80a474c011d79a4adc7f632bdceb79067302235280594d1c3",
+      "fingerprint": "088b52242af3801901abc40ab9d868e5b6c09f8988d9f8403145460659027707",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4903,7 +4947,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "98146527567a84ec50bf0696e71eada17ce6d56fed4a220a70414a49f12126fb"
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -4911,7 +4955,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "a0202fb71cdd58eb1d8a70f790a804df2843c7f60e149c39899f7f56e7a296a4"
+          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -4919,7 +4963,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -4966,6 +5010,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "7dad2496d3a8593725be92415fc5d39304f0ee7c9ad51eb36095dbc028708189"
         },
         {
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "b02284b61f40371150a7dfe260057f0a51a53e66c88744b0caccc74279ffc693"
+        },
+        {
           "path": "src/domain/separations/termination-type.ts",
           "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
         },
@@ -4998,6 +5046,14 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
         },
         {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
           "path": "src/domain/ui/ucpath-driver.ts",
           "sha256": "4dea7d199ddb472e535b56b8e0586582378e05c36364a4b6a08d144be8dc75ae"
         },
@@ -5011,7 +5067,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "83b6eca1986e126b53f59f86155b5c9086f69fd97b480af59e185455feedee06"
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -5075,7 +5131,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "e33bb340e88ad19db61221c1a594fee81551d205555daeecf1ca1e5c654f8a9e"
+          "sha256": "aa260347f268d8cc4888608355b07f2e9d3040a8a0f0e25b62449acd63a9c21e"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -5087,7 +5143,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "85bf1da019e30a0ea6a268742e4092cb5201670a11458e6a4800794b1dc59bc6"
+          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -5097,7 +5153,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/delete-pending-terminations"
     },
     {
-      "fingerprint": "8dee5a44eacc31fc031d6408d09005d530932728d35e94862773c28a2dc2d7fa",
+      "fingerprint": "0093b0ad332f648c0f5c66ab810d770aff8caf96b175534dda93e63795cc73e0",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5157,7 +5213,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "98146527567a84ec50bf0696e71eada17ce6d56fed4a220a70414a49f12126fb"
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -5165,7 +5221,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "a0202fb71cdd58eb1d8a70f790a804df2843c7f60e149c39899f7f56e7a296a4"
+          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -5173,7 +5229,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -5220,6 +5276,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "7dad2496d3a8593725be92415fc5d39304f0ee7c9ad51eb36095dbc028708189"
         },
         {
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "b02284b61f40371150a7dfe260057f0a51a53e66c88744b0caccc74279ffc693"
+        },
+        {
           "path": "src/domain/separations/termination-type.ts",
           "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
         },
@@ -5252,6 +5312,14 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
         },
         {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
           "path": "src/domain/ui/ucpath-driver.ts",
           "sha256": "4dea7d199ddb472e535b56b8e0586582378e05c36364a4b6a08d144be8dc75ae"
         },
@@ -5265,7 +5333,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "83b6eca1986e126b53f59f86155b5c9086f69fd97b480af59e185455feedee06"
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -5329,7 +5397,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "e33bb340e88ad19db61221c1a594fee81551d205555daeecf1ca1e5c654f8a9e"
+          "sha256": "aa260347f268d8cc4888608355b07f2e9d3040a8a0f0e25b62449acd63a9c21e"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -5341,7 +5409,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "85bf1da019e30a0ea6a268742e4092cb5201670a11458e6a4800794b1dc59bc6"
+          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -5351,7 +5419,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-existing-termination"
     },
     {
-      "fingerprint": "8fe337d47968008d196d3dca92c63bdeee5e0dd9e29f6d8163aae13d81123e97",
+      "fingerprint": "776500b55484b7320ad204e3589bdcdbb05982c5ca8c1a87de0a314e374b5b65",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5411,7 +5479,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "98146527567a84ec50bf0696e71eada17ce6d56fed4a220a70414a49f12126fb"
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -5419,7 +5487,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "a0202fb71cdd58eb1d8a70f790a804df2843c7f60e149c39899f7f56e7a296a4"
+          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -5427,7 +5495,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -5474,6 +5542,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "7dad2496d3a8593725be92415fc5d39304f0ee7c9ad51eb36095dbc028708189"
         },
         {
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "b02284b61f40371150a7dfe260057f0a51a53e66c88744b0caccc74279ffc693"
+        },
+        {
           "path": "src/domain/separations/termination-type.ts",
           "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
         },
@@ -5506,6 +5578,14 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
         },
         {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
           "path": "src/domain/ui/ucpath-driver.ts",
           "sha256": "4dea7d199ddb472e535b56b8e0586582378e05c36364a4b6a08d144be8dc75ae"
         },
@@ -5519,7 +5599,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "83b6eca1986e126b53f59f86155b5c9086f69fd97b480af59e185455feedee06"
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -5583,7 +5663,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "e33bb340e88ad19db61221c1a594fee81551d205555daeecf1ca1e5c654f8a9e"
+          "sha256": "aa260347f268d8cc4888608355b07f2e9d3040a8a0f0e25b62449acd63a9c21e"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -5595,7 +5675,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "85bf1da019e30a0ea6a268742e4092cb5201670a11458e6a4800794b1dc59bc6"
+          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -5605,7 +5685,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-pending-terminations"
     },
     {
-      "fingerprint": "4eb7aa1a724c0e860fac410c5fb88eb94ecb2742c9203282134d67f9b8a3e4bb",
+      "fingerprint": "b205f3d724aacbc2c279b1ec8516a7c5156c2a92c83d7ccca42fe6048a4becf3",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5658,6 +5738,22 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/contracts/base.ts",
           "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "26bab195012b72f86bd63a0512e6313b6f90df7553206798cbb5df8e701be226"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
+          "sha256": "5a4d659961c9ef56d4d28d19d3101ff1c90a21d799f250790191369cfb2d957d"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
+          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
         },
         {
           "path": "src/domain/contracts/ucpath/read-job-summary.ts",
@@ -5669,7 +5765,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -5716,6 +5812,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "7dad2496d3a8593725be92415fc5d39304f0ee7c9ad51eb36095dbc028708189"
         },
         {
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "b02284b61f40371150a7dfe260057f0a51a53e66c88744b0caccc74279ffc693"
+        },
+        {
           "path": "src/domain/separations/termination-type.ts",
           "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
         },
@@ -5748,6 +5848,14 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
         },
         {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
           "path": "src/domain/ui/ucpath-driver.ts",
           "sha256": "4dea7d199ddb472e535b56b8e0586582378e05c36364a4b6a08d144be8dc75ae"
         },
@@ -5761,7 +5869,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "83b6eca1986e126b53f59f86155b5c9086f69fd97b480af59e185455feedee06"
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -5796,8 +5904,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "31fb6946536898c9b0613667b078c15d5e4656b79db98a68353019b8137702d3"
         },
         {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
           "path": "src/domain/write-safety-primitives.ts",
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
+        },
+        {
+          "path": "src/domain/write-safety.ts",
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
         },
         {
           "path": "src/stores/ucpath/driver-declaration.ts",
@@ -5817,7 +5933,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "e33bb340e88ad19db61221c1a594fee81551d205555daeecf1ca1e5c654f8a9e"
+          "sha256": "aa260347f268d8cc4888608355b07f2e9d3040a8a0f0e25b62449acd63a9c21e"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -5828,6 +5944,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "cc9929f19a9fca5a73a55f1b91c0a4fd2d7863d19687d4b0468e5b6477aaa391"
         },
         {
+          "path": "src/stores/ucpath/termination-verdict.ts",
+          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+        },
+        {
           "path": "src/validation/contract-boundary.ts",
           "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
         }
@@ -5835,7 +5955,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "721fc3bec187d8121f3caea49de449b1ecb4c9b14d322c7304d71c58ab07721d",
+      "fingerprint": "29731a155084aa984957217544ba378f115f569b6607e74ad0acf1d7000ad604",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5890,12 +6010,32 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
         },
         {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "26bab195012b72f86bd63a0512e6313b6f90df7553206798cbb5df8e701be226"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
+          "sha256": "5a4d659961c9ef56d4d28d19d3101ff1c90a21d799f250790191369cfb2d957d"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
+          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/read-pending-termination-set.ts",
+          "sha256": "62dc86544642509dea24ccadbcf1998c42ce8ae5290665f30649c0742d52a59b"
+        },
+        {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
           "sha256": "cb2e6a84899f512fa0d7169a252884db7cf03cb57663197995b2b675dfb2fdb2"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -5942,6 +6082,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "7dad2496d3a8593725be92415fc5d39304f0ee7c9ad51eb36095dbc028708189"
         },
         {
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "b02284b61f40371150a7dfe260057f0a51a53e66c88744b0caccc74279ffc693"
+        },
+        {
           "path": "src/domain/separations/termination-type.ts",
           "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
         },
@@ -5974,6 +6118,14 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
         },
         {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
           "path": "src/domain/ui/ucpath-driver.ts",
           "sha256": "4dea7d199ddb472e535b56b8e0586582378e05c36364a4b6a08d144be8dc75ae"
         },
@@ -5987,7 +6139,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "83b6eca1986e126b53f59f86155b5c9086f69fd97b480af59e185455feedee06"
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -6022,8 +6174,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "31fb6946536898c9b0613667b078c15d5e4656b79db98a68353019b8137702d3"
         },
         {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
           "path": "src/domain/write-safety-primitives.ts",
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
+        },
+        {
+          "path": "src/domain/write-safety.ts",
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
         },
         {
           "path": "src/stores/ucpath/driver-declaration.ts",
@@ -6043,7 +6203,273 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "e33bb340e88ad19db61221c1a594fee81551d205555daeecf1ca1e5c654f8a9e"
+          "sha256": "aa260347f268d8cc4888608355b07f2e9d3040a8a0f0e25b62449acd63a9c21e"
+        },
+        {
+          "path": "src/stores/ucpath/driver/ui-registry.ts",
+          "sha256": "41808cedfb5e5a5d8f9f151f200cbfa790a96f25396e80b825aa3fe8a6955606"
+        },
+        {
+          "path": "src/stores/ucpath/tasks/read-pending-termination-set.ts",
+          "sha256": "bd9ef0db0b26c8f57b5bb61c484cb2cc97934ef0ff29d41019320b2d856fafe4"
+        },
+        {
+          "path": "src/stores/ucpath/termination-verdict.ts",
+          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+        },
+        {
+          "path": "src/validation/contract-boundary.ts",
+          "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
+        }
+      ],
+      "id": "ucpath/read-pending-termination-set"
+    },
+    {
+      "fingerprint": "e99cf2a97d11a6200b78fda4146505b4ae289d9c34e6ab33f47cb2d410d0ad8d",
+      "sources": [
+        {
+          "path": "src/base/artifacts.ts",
+          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
+        },
+        {
+          "path": "src/base/duo-ceremony-lease.ts",
+          "sha256": "7f8cb8bb6135aada79670b7bc5e1d24ae835548d0642cc3232812937960b9901"
+        },
+        {
+          "path": "src/base/errors.ts",
+          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
+        },
+        {
+          "path": "src/base/mutation-capability.ts",
+          "sha256": "b6ea76a857a3ac9be50bfa6388773b22b3a52b988bf56dd62816faf77187074e"
+        },
+        {
+          "path": "src/base/providers.ts",
+          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
+        },
+        {
+          "path": "src/base/session.ts",
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
+        },
+        {
+          "path": "src/base/store.ts",
+          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
+        },
+        {
+          "path": "src/base/task.ts",
+          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
+        },
+        {
+          "path": "src/domain/artifacts.ts",
+          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
+        },
+        {
+          "path": "src/domain/canonical-json.ts",
+          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/clock.ts",
+          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
+        },
+        {
+          "path": "src/domain/config/schema.ts",
+          "sha256": "d3cc30107f109138ee96f7f76c75709b42b4648712cafa2fe76ebfdad77cc8ec"
+        },
+        {
+          "path": "src/domain/contracts/base.ts",
+          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "26bab195012b72f86bd63a0512e6313b6f90df7553206798cbb5df8e701be226"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
+          "sha256": "5a4d659961c9ef56d4d28d19d3101ff1c90a21d799f250790191369cfb2d957d"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
+          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/search-person-org.ts",
+          "sha256": "cb2e6a84899f512fa0d7169a252884db7cf03cb57663197995b2b675dfb2fdb2"
+        },
+        {
+          "path": "src/domain/contracts/write-safety.ts",
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
+        },
+        {
+          "path": "src/domain/duo-ceremony-lease.ts",
+          "sha256": "2ad55e89212e0fa85422a6aa9fae16bc52536df0bc218b64d10825bea77a5b54"
+        },
+        {
+          "path": "src/domain/gates.ts",
+          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
+        },
+        {
+          "path": "src/domain/ids.ts",
+          "sha256": "a8bcc4ae53fc6af0d782b81234b4db97c80ecb8a83ccd43108b445f1f59b411f"
+        },
+        {
+          "path": "src/domain/immutability.ts",
+          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/domain/provider-admission.ts",
+          "sha256": "4a96c13fea16706f037219d938ba9eea721e3734545ebccd1d27524ef25e2ece"
+        },
+        {
+          "path": "src/domain/providers.ts",
+          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/redaction-policy.ts",
+          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+        },
+        {
+          "path": "src/domain/redaction.ts",
+          "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "7df250d461fe4f7a28efb3a66e08d98a42ca76b51cf4068bc4128807bac90614"
+        },
+        {
+          "path": "src/domain/schema-bound-value.ts",
+          "sha256": "e2aac9cd9d217716d729a5fce2729a7cb1618d586cdce6b9612b9e42782798d8"
+        },
+        {
+          "path": "src/domain/secret-names.ts",
+          "sha256": "7dad2496d3a8593725be92415fc5d39304f0ee7c9ad51eb36095dbc028708189"
+        },
+        {
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "b02284b61f40371150a7dfe260057f0a51a53e66c88744b0caccc74279ffc693"
+        },
+        {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
+          "path": "src/domain/session.ts",
+          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
+        },
+        {
+          "path": "src/domain/task-provenance.ts",
+          "sha256": "d0c7ede9e932f380b08d282ae1810326cccf2956036694b5d2cc328df2017ace"
+        },
+        {
+          "path": "src/domain/trust/preflight-scenarios.ts",
+          "sha256": "b1d6ff577fca95685a0efa90555d28c67f4c7484c1085a9698228dd77295f5ae"
+        },
+        {
+          "path": "src/domain/trust/scenario.ts",
+          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
+        },
+        {
+          "path": "src/domain/ui/contracts.ts",
+          "sha256": "c584d8d1e21e9075b5f37285ec3cea0318f11994de804a5c3e3cafef55ffc725"
+        },
+        {
+          "path": "src/domain/ui/driver.ts",
+          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
+        },
+        {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
+          "path": "src/domain/ui/ucpath-driver.ts",
+          "sha256": "4dea7d199ddb472e535b56b8e0586582378e05c36364a4b6a08d144be8dc75ae"
+        },
+        {
+          "path": "src/domain/ui/ucpath-job-summary.ts",
+          "sha256": "7454b4e954b1ab67ca0d206d63c345d8befd72ca6654c52332cbe896d0b887ea"
+        },
+        {
+          "path": "src/domain/ui/ucpath-person-org.ts",
+          "sha256": "a10e354b8d25de70987b932afb07818988bbbef0fc5e2abc0dbe240426efa53d"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+        },
+        {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "55a5c20bbfb256eb77264ed4f862035de6ba8fffe7ffc3b3917436a7a11bc5f3"
+        },
+        {
+          "path": "src/domain/unscoped-commit.ts",
+          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
+        },
+        {
+          "path": "src/domain/workflow/checkpoint.ts",
+          "sha256": "adde9aa54b78f72f9033edb384db07022b82943ee51784d8a5aa3815193c8bdf"
+        },
+        {
+          "path": "src/domain/workflow/delegation-policy.ts",
+          "sha256": "e034aeb57fd3f97dff1872023c736de320f115760d47c5ae0e623dc77de8eb45"
+        },
+        {
+          "path": "src/domain/workflow/graph.ts",
+          "sha256": "9c816e8f9113329156c82fe5275132c6d02d2bcb50a5808d6dfa7542743d7c4b"
+        },
+        {
+          "path": "src/domain/workflow/node-condition.ts",
+          "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
+        },
+        {
+          "path": "src/domain/workflow/presentation.ts",
+          "sha256": "841c4e39f0c1a0f3e5464caa6bfae6a4a5283986aaa3c50009ba69099d5fe5cc"
+        },
+        {
+          "path": "src/domain/workflow/step-omission.ts",
+          "sha256": "31fb6946536898c9b0613667b078c15d5e4656b79db98a68353019b8137702d3"
+        },
+        {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
+          "path": "src/domain/write-safety-primitives.ts",
+          "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
+        },
+        {
+          "path": "src/domain/write-safety.ts",
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
+        },
+        {
+          "path": "src/stores/ucpath/driver-declaration.ts",
+          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
+        },
+        {
+          "path": "src/stores/ucpath/driver/interpreter.ts",
+          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+        },
+        {
+          "path": "src/stores/ucpath/driver/person-org-operation.ts",
+          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+        },
+        {
+          "path": "src/stores/ucpath/driver/registry-locators.ts",
+          "sha256": "01bc084c5ee4163bde98168f089b8cf847242da1efcac6da90d778674521c585"
+        },
+        {
+          "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
+          "sha256": "aa260347f268d8cc4888608355b07f2e9d3040a8a0f0e25b62449acd63a9c21e"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -6054,6 +6480,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "066bf3389a8e050f8774a3829651b6a3fe328cc12760bd321d12a157557fac20"
         },
         {
+          "path": "src/stores/ucpath/termination-verdict.ts",
+          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+        },
+        {
           "path": "src/validation/contract-boundary.ts",
           "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
         }
@@ -6061,7 +6491,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "9694951a1b221886c579e7004e923362b73f0eed914fb0cc5e9992e5b09b16d5",
+      "fingerprint": "08735ed7e3af86b6df01192f55914a864495eaa6d38e955cce71dbeef1d5d446",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6116,16 +6546,32 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
         },
         {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "26bab195012b72f86bd63a0512e6313b6f90df7553206798cbb5df8e701be226"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
+          "sha256": "5a4d659961c9ef56d4d28d19d3101ff1c90a21d799f250790191369cfb2d957d"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
+          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+        },
+        {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
           "sha256": "cb2e6a84899f512fa0d7169a252884db7cf03cb57663197995b2b675dfb2fdb2"
         },
         {
           "path": "src/domain/contracts/ucpath/stage-pending-termination-sweep.ts",
-          "sha256": "8b6280b4580ee562426dec821ad414b128dcce564296fd594f38bde3cd9670da"
+          "sha256": "8dd45da996cd3fa6f8cba1f92ce72bcde69de8e3069567978d6617c03614ffc9"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -6172,6 +6618,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "7dad2496d3a8593725be92415fc5d39304f0ee7c9ad51eb36095dbc028708189"
         },
         {
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "b02284b61f40371150a7dfe260057f0a51a53e66c88744b0caccc74279ffc693"
+        },
+        {
           "path": "src/domain/separations/termination-type.ts",
           "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
         },
@@ -6204,6 +6654,14 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
         },
         {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
           "path": "src/domain/ui/ucpath-driver.ts",
           "sha256": "4dea7d199ddb472e535b56b8e0586582378e05c36364a4b6a08d144be8dc75ae"
         },
@@ -6217,7 +6675,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "83b6eca1986e126b53f59f86155b5c9086f69fd97b480af59e185455feedee06"
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -6252,8 +6710,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "31fb6946536898c9b0613667b078c15d5e4656b79db98a68353019b8137702d3"
         },
         {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
           "path": "src/domain/write-safety-primitives.ts",
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
+        },
+        {
+          "path": "src/domain/write-safety.ts",
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
         },
         {
           "path": "src/stores/ucpath/driver-declaration.ts",
@@ -6273,7 +6739,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "e33bb340e88ad19db61221c1a594fee81551d205555daeecf1ca1e5c654f8a9e"
+          "sha256": "aa260347f268d8cc4888608355b07f2e9d3040a8a0f0e25b62449acd63a9c21e"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -6284,6 +6750,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "bb7a86c8fef8ce3fa958d24a0843f27acf3d151747841816f62bb40701905b5d"
         },
         {
+          "path": "src/stores/ucpath/termination-verdict.ts",
+          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+        },
+        {
           "path": "src/validation/contract-boundary.ts",
           "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
         }
@@ -6291,7 +6761,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-pending-termination-sweep"
     },
     {
-      "fingerprint": "aec759f669d550ec329d512c5c60fd8d3a74cb617b6ddc3b1076784eb30a63e5",
+      "fingerprint": "0aca962719e832042eb79fe2ca8b547e7614fa47da1bde597c57391ed817db67",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6344,6 +6814,22 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/contracts/base.ts",
           "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "26bab195012b72f86bd63a0512e6313b6f90df7553206798cbb5df8e701be226"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
+          "sha256": "5a4d659961c9ef56d4d28d19d3101ff1c90a21d799f250790191369cfb2d957d"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
+          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -6355,7 +6841,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -6402,250 +6888,8 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "7dad2496d3a8593725be92415fc5d39304f0ee7c9ad51eb36095dbc028708189"
         },
         {
-          "path": "src/domain/separations/termination-type.ts",
-          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
-        },
-        {
-          "path": "src/domain/session.ts",
-          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
-        },
-        {
-          "path": "src/domain/sha256.ts",
-          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
-        },
-        {
-          "path": "src/domain/task-provenance.ts",
-          "sha256": "d0c7ede9e932f380b08d282ae1810326cccf2956036694b5d2cc328df2017ace"
-        },
-        {
-          "path": "src/domain/trust/preflight-scenarios.ts",
-          "sha256": "b1d6ff577fca95685a0efa90555d28c67f4c7484c1085a9698228dd77295f5ae"
-        },
-        {
-          "path": "src/domain/trust/scenario.ts",
-          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
-        },
-        {
-          "path": "src/domain/ui/contracts.ts",
-          "sha256": "c584d8d1e21e9075b5f37285ec3cea0318f11994de804a5c3e3cafef55ffc725"
-        },
-        {
-          "path": "src/domain/ui/driver.ts",
-          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
-        },
-        {
-          "path": "src/domain/ui/ucpath-driver.ts",
-          "sha256": "4dea7d199ddb472e535b56b8e0586582378e05c36364a4b6a08d144be8dc75ae"
-        },
-        {
-          "path": "src/domain/ui/ucpath-job-summary.ts",
-          "sha256": "7454b4e954b1ab67ca0d206d63c345d8befd72ca6654c52332cbe896d0b887ea"
-        },
-        {
-          "path": "src/domain/ui/ucpath-person-org.ts",
-          "sha256": "a10e354b8d25de70987b932afb07818988bbbef0fc5e2abc0dbe240426efa53d"
-        },
-        {
-          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "83b6eca1986e126b53f59f86155b5c9086f69fd97b480af59e185455feedee06"
-        },
-        {
-          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
-          "sha256": "55a5c20bbfb256eb77264ed4f862035de6ba8fffe7ffc3b3917436a7a11bc5f3"
-        },
-        {
-          "path": "src/domain/unscoped-commit.ts",
-          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
-        },
-        {
-          "path": "src/domain/workflow/checkpoint.ts",
-          "sha256": "adde9aa54b78f72f9033edb384db07022b82943ee51784d8a5aa3815193c8bdf"
-        },
-        {
-          "path": "src/domain/workflow/delegation-policy.ts",
-          "sha256": "e034aeb57fd3f97dff1872023c736de320f115760d47c5ae0e623dc77de8eb45"
-        },
-        {
-          "path": "src/domain/workflow/graph.ts",
-          "sha256": "9c816e8f9113329156c82fe5275132c6d02d2bcb50a5808d6dfa7542743d7c4b"
-        },
-        {
-          "path": "src/domain/workflow/node-condition.ts",
-          "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
-        },
-        {
-          "path": "src/domain/workflow/presentation.ts",
-          "sha256": "841c4e39f0c1a0f3e5464caa6bfae6a4a5283986aaa3c50009ba69099d5fe5cc"
-        },
-        {
-          "path": "src/domain/workflow/step-omission.ts",
-          "sha256": "31fb6946536898c9b0613667b078c15d5e4656b79db98a68353019b8137702d3"
-        },
-        {
-          "path": "src/domain/write-safety-primitives.ts",
-          "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
-        },
-        {
-          "path": "src/stores/ucpath/driver-declaration.ts",
-          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
-        },
-        {
-          "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
-        },
-        {
-          "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
-        },
-        {
-          "path": "src/stores/ucpath/driver/registry-locators.ts",
-          "sha256": "01bc084c5ee4163bde98168f089b8cf847242da1efcac6da90d778674521c585"
-        },
-        {
-          "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "e33bb340e88ad19db61221c1a594fee81551d205555daeecf1ca1e5c654f8a9e"
-        },
-        {
-          "path": "src/stores/ucpath/driver/ui-registry.ts",
-          "sha256": "41808cedfb5e5a5d8f9f151f200cbfa790a96f25396e80b825aa3fe8a6955606"
-        },
-        {
-          "path": "src/stores/ucpath/tasks/stage-termination.ts",
-          "sha256": "40ee01bf7b67ecf01900e461987fbb4f5d82b3d174b6645ce8e645c0de724f30"
-        },
-        {
-          "path": "src/validation/contract-boundary.ts",
-          "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
-        }
-      ],
-      "id": "ucpath/stage-termination"
-    },
-    {
-      "fingerprint": "291c6894fa53cc5a171796e845ba97e687cddb2327a2c79518aa1774a303f3f4",
-      "sources": [
-        {
-          "path": "src/base/artifacts.ts",
-          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
-        },
-        {
-          "path": "src/base/duo-ceremony-lease.ts",
-          "sha256": "7f8cb8bb6135aada79670b7bc5e1d24ae835548d0642cc3232812937960b9901"
-        },
-        {
-          "path": "src/base/errors.ts",
-          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
-        },
-        {
-          "path": "src/base/mutation-capability.ts",
-          "sha256": "b6ea76a857a3ac9be50bfa6388773b22b3a52b988bf56dd62816faf77187074e"
-        },
-        {
-          "path": "src/base/providers.ts",
-          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
-        },
-        {
-          "path": "src/base/session.ts",
-          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
-        },
-        {
-          "path": "src/base/store.ts",
-          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
-        },
-        {
-          "path": "src/base/task.ts",
-          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
-        },
-        {
-          "path": "src/domain/artifacts.ts",
-          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
-        },
-        {
-          "path": "src/domain/canonical-json.ts",
-          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
-        },
-        {
-          "path": "src/domain/clock.ts",
-          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
-        },
-        {
-          "path": "src/domain/config/schema.ts",
-          "sha256": "d3cc30107f109138ee96f7f76c75709b42b4648712cafa2fe76ebfdad77cc8ec"
-        },
-        {
-          "path": "src/domain/contracts/base.ts",
-          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
-        },
-        {
-          "path": "src/domain/contracts/ucpath/create-termination.ts",
-          "sha256": "26bab195012b72f86bd63a0512e6313b6f90df7553206798cbb5df8e701be226"
-        },
-        {
-          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "98146527567a84ec50bf0696e71eada17ce6d56fed4a220a70414a49f12126fb"
-        },
-        {
-          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
-          "sha256": "5a4d659961c9ef56d4d28d19d3101ff1c90a21d799f250790191369cfb2d957d"
-        },
-        {
-          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "a0202fb71cdd58eb1d8a70f790a804df2843c7f60e149c39899f7f56e7a296a4"
-        },
-        {
-          "path": "src/domain/contracts/ucpath/search-person-org.ts",
-          "sha256": "cb2e6a84899f512fa0d7169a252884db7cf03cb57663197995b2b675dfb2fdb2"
-        },
-        {
-          "path": "src/domain/contracts/ucpath/verify-pending-terminations-cleared.ts",
-          "sha256": "1bb597188eef26f75d7d69316e6ea2e6d5f3a43e31311f0234a9a150c7d47704"
-        },
-        {
-          "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
-        },
-        {
-          "path": "src/domain/duo-ceremony-lease.ts",
-          "sha256": "2ad55e89212e0fa85422a6aa9fae16bc52536df0bc218b64d10825bea77a5b54"
-        },
-        {
-          "path": "src/domain/gates.ts",
-          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
-        },
-        {
-          "path": "src/domain/ids.ts",
-          "sha256": "a8bcc4ae53fc6af0d782b81234b4db97c80ecb8a83ccd43108b445f1f59b411f"
-        },
-        {
-          "path": "src/domain/immutability.ts",
-          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
-        },
-        {
-          "path": "src/domain/provider-admission.ts",
-          "sha256": "4a96c13fea16706f037219d938ba9eea721e3734545ebccd1d27524ef25e2ece"
-        },
-        {
-          "path": "src/domain/providers.ts",
-          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
-        },
-        {
-          "path": "src/domain/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
-        },
-        {
-          "path": "src/domain/redaction.ts",
-          "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
-        },
-        {
-          "path": "src/domain/run/envelope.ts",
-          "sha256": "7df250d461fe4f7a28efb3a66e08d98a42ca76b51cf4068bc4128807bac90614"
-        },
-        {
-          "path": "src/domain/schema-bound-value.ts",
-          "sha256": "e2aac9cd9d217716d729a5fce2729a7cb1618d586cdce6b9612b9e42782798d8"
-        },
-        {
-          "path": "src/domain/secret-names.ts",
-          "sha256": "7dad2496d3a8593725be92415fc5d39304f0ee7c9ad51eb36095dbc028708189"
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "b02284b61f40371150a7dfe260057f0a51a53e66c88744b0caccc74279ffc693"
         },
         {
           "path": "src/domain/separations/termination-type.ts",
@@ -6680,6 +6924,14 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
         },
         {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
           "path": "src/domain/ui/ucpath-driver.ts",
           "sha256": "4dea7d199ddb472e535b56b8e0586582378e05c36364a4b6a08d144be8dc75ae"
         },
@@ -6693,7 +6945,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "83b6eca1986e126b53f59f86155b5c9086f69fd97b480af59e185455feedee06"
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -6757,7 +7009,277 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "e33bb340e88ad19db61221c1a594fee81551d205555daeecf1ca1e5c654f8a9e"
+          "sha256": "aa260347f268d8cc4888608355b07f2e9d3040a8a0f0e25b62449acd63a9c21e"
+        },
+        {
+          "path": "src/stores/ucpath/driver/ui-registry.ts",
+          "sha256": "41808cedfb5e5a5d8f9f151f200cbfa790a96f25396e80b825aa3fe8a6955606"
+        },
+        {
+          "path": "src/stores/ucpath/tasks/stage-termination.ts",
+          "sha256": "40ee01bf7b67ecf01900e461987fbb4f5d82b3d174b6645ce8e645c0de724f30"
+        },
+        {
+          "path": "src/stores/ucpath/termination-verdict.ts",
+          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+        },
+        {
+          "path": "src/validation/contract-boundary.ts",
+          "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
+        }
+      ],
+      "id": "ucpath/stage-termination"
+    },
+    {
+      "fingerprint": "8d49efc831c838199acf8c3c05aca65f79e4ea5c8817d63e141461268afab6d3",
+      "sources": [
+        {
+          "path": "src/base/artifacts.ts",
+          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
+        },
+        {
+          "path": "src/base/duo-ceremony-lease.ts",
+          "sha256": "7f8cb8bb6135aada79670b7bc5e1d24ae835548d0642cc3232812937960b9901"
+        },
+        {
+          "path": "src/base/errors.ts",
+          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
+        },
+        {
+          "path": "src/base/mutation-capability.ts",
+          "sha256": "b6ea76a857a3ac9be50bfa6388773b22b3a52b988bf56dd62816faf77187074e"
+        },
+        {
+          "path": "src/base/providers.ts",
+          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
+        },
+        {
+          "path": "src/base/session.ts",
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
+        },
+        {
+          "path": "src/base/store.ts",
+          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
+        },
+        {
+          "path": "src/base/task.ts",
+          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
+        },
+        {
+          "path": "src/domain/artifacts.ts",
+          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
+        },
+        {
+          "path": "src/domain/canonical-json.ts",
+          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/clock.ts",
+          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
+        },
+        {
+          "path": "src/domain/config/schema.ts",
+          "sha256": "d3cc30107f109138ee96f7f76c75709b42b4648712cafa2fe76ebfdad77cc8ec"
+        },
+        {
+          "path": "src/domain/contracts/base.ts",
+          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "26bab195012b72f86bd63a0512e6313b6f90df7553206798cbb5df8e701be226"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
+          "sha256": "5a4d659961c9ef56d4d28d19d3101ff1c90a21d799f250790191369cfb2d957d"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
+          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/search-person-org.ts",
+          "sha256": "cb2e6a84899f512fa0d7169a252884db7cf03cb57663197995b2b675dfb2fdb2"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/verify-pending-terminations-cleared.ts",
+          "sha256": "a7f249dae72e394cd099f9321b826f66fbbdb133554c923a0c62f5a5a37d0bfc"
+        },
+        {
+          "path": "src/domain/contracts/write-safety.ts",
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
+        },
+        {
+          "path": "src/domain/duo-ceremony-lease.ts",
+          "sha256": "2ad55e89212e0fa85422a6aa9fae16bc52536df0bc218b64d10825bea77a5b54"
+        },
+        {
+          "path": "src/domain/gates.ts",
+          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
+        },
+        {
+          "path": "src/domain/ids.ts",
+          "sha256": "a8bcc4ae53fc6af0d782b81234b4db97c80ecb8a83ccd43108b445f1f59b411f"
+        },
+        {
+          "path": "src/domain/immutability.ts",
+          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/domain/provider-admission.ts",
+          "sha256": "4a96c13fea16706f037219d938ba9eea721e3734545ebccd1d27524ef25e2ece"
+        },
+        {
+          "path": "src/domain/providers.ts",
+          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/redaction-policy.ts",
+          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+        },
+        {
+          "path": "src/domain/redaction.ts",
+          "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "7df250d461fe4f7a28efb3a66e08d98a42ca76b51cf4068bc4128807bac90614"
+        },
+        {
+          "path": "src/domain/schema-bound-value.ts",
+          "sha256": "e2aac9cd9d217716d729a5fce2729a7cb1618d586cdce6b9612b9e42782798d8"
+        },
+        {
+          "path": "src/domain/secret-names.ts",
+          "sha256": "7dad2496d3a8593725be92415fc5d39304f0ee7c9ad51eb36095dbc028708189"
+        },
+        {
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "b02284b61f40371150a7dfe260057f0a51a53e66c88744b0caccc74279ffc693"
+        },
+        {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
+          "path": "src/domain/session.ts",
+          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
+        },
+        {
+          "path": "src/domain/task-provenance.ts",
+          "sha256": "d0c7ede9e932f380b08d282ae1810326cccf2956036694b5d2cc328df2017ace"
+        },
+        {
+          "path": "src/domain/trust/preflight-scenarios.ts",
+          "sha256": "b1d6ff577fca95685a0efa90555d28c67f4c7484c1085a9698228dd77295f5ae"
+        },
+        {
+          "path": "src/domain/trust/scenario.ts",
+          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
+        },
+        {
+          "path": "src/domain/ui/contracts.ts",
+          "sha256": "c584d8d1e21e9075b5f37285ec3cea0318f11994de804a5c3e3cafef55ffc725"
+        },
+        {
+          "path": "src/domain/ui/driver.ts",
+          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
+        },
+        {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
+          "path": "src/domain/ui/ucpath-driver.ts",
+          "sha256": "4dea7d199ddb472e535b56b8e0586582378e05c36364a4b6a08d144be8dc75ae"
+        },
+        {
+          "path": "src/domain/ui/ucpath-job-summary.ts",
+          "sha256": "7454b4e954b1ab67ca0d206d63c345d8befd72ca6654c52332cbe896d0b887ea"
+        },
+        {
+          "path": "src/domain/ui/ucpath-person-org.ts",
+          "sha256": "a10e354b8d25de70987b932afb07818988bbbef0fc5e2abc0dbe240426efa53d"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+        },
+        {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "55a5c20bbfb256eb77264ed4f862035de6ba8fffe7ffc3b3917436a7a11bc5f3"
+        },
+        {
+          "path": "src/domain/unscoped-commit.ts",
+          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
+        },
+        {
+          "path": "src/domain/workflow/checkpoint.ts",
+          "sha256": "adde9aa54b78f72f9033edb384db07022b82943ee51784d8a5aa3815193c8bdf"
+        },
+        {
+          "path": "src/domain/workflow/delegation-policy.ts",
+          "sha256": "e034aeb57fd3f97dff1872023c736de320f115760d47c5ae0e623dc77de8eb45"
+        },
+        {
+          "path": "src/domain/workflow/graph.ts",
+          "sha256": "9c816e8f9113329156c82fe5275132c6d02d2bcb50a5808d6dfa7542743d7c4b"
+        },
+        {
+          "path": "src/domain/workflow/node-condition.ts",
+          "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
+        },
+        {
+          "path": "src/domain/workflow/presentation.ts",
+          "sha256": "841c4e39f0c1a0f3e5464caa6bfae6a4a5283986aaa3c50009ba69099d5fe5cc"
+        },
+        {
+          "path": "src/domain/workflow/step-omission.ts",
+          "sha256": "31fb6946536898c9b0613667b078c15d5e4656b79db98a68353019b8137702d3"
+        },
+        {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
+          "path": "src/domain/write-safety-primitives.ts",
+          "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
+        },
+        {
+          "path": "src/domain/write-safety.ts",
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
+        },
+        {
+          "path": "src/stores/ucpath/driver-declaration.ts",
+          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
+        },
+        {
+          "path": "src/stores/ucpath/driver/interpreter.ts",
+          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+        },
+        {
+          "path": "src/stores/ucpath/driver/person-org-operation.ts",
+          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+        },
+        {
+          "path": "src/stores/ucpath/driver/registry-locators.ts",
+          "sha256": "01bc084c5ee4163bde98168f089b8cf847242da1efcac6da90d778674521c585"
+        },
+        {
+          "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
+          "sha256": "aa260347f268d8cc4888608355b07f2e9d3040a8a0f0e25b62449acd63a9c21e"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -6769,7 +7291,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "85bf1da019e30a0ea6a268742e4092cb5201670a11458e6a4800794b1dc59bc6"
+          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -6779,7 +7301,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-pending-terminations-cleared"
     },
     {
-      "fingerprint": "8f787c176a9e6a65bab446aa3dcc9fc7e0f52ee15747ee9494246eb592c28baa",
+      "fingerprint": "6e92df072704872e1d18b670ba37fc72ed742a7c55e395dc02f602f6341c9412",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6839,7 +7361,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
-          "sha256": "98146527567a84ec50bf0696e71eada17ce6d56fed4a220a70414a49f12126fb"
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
         },
         {
           "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
@@ -6847,7 +7369,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
-          "sha256": "a0202fb71cdd58eb1d8a70f790a804df2843c7f60e149c39899f7f56e7a296a4"
+          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -6859,7 +7381,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/duo-ceremony-lease.ts",
@@ -6906,6 +7428,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "7dad2496d3a8593725be92415fc5d39304f0ee7c9ad51eb36095dbc028708189"
         },
         {
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "b02284b61f40371150a7dfe260057f0a51a53e66c88744b0caccc74279ffc693"
+        },
+        {
           "path": "src/domain/separations/termination-type.ts",
           "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
         },
@@ -6938,6 +7464,14 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
         },
         {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
           "path": "src/domain/ui/ucpath-driver.ts",
           "sha256": "4dea7d199ddb472e535b56b8e0586582378e05c36364a4b6a08d144be8dc75ae"
         },
@@ -6951,7 +7485,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "83b6eca1986e126b53f59f86155b5c9086f69fd97b480af59e185455feedee06"
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -7015,7 +7549,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "e33bb340e88ad19db61221c1a594fee81551d205555daeecf1ca1e5c654f8a9e"
+          "sha256": "aa260347f268d8cc4888608355b07f2e9d3040a8a0f0e25b62449acd63a9c21e"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -7027,7 +7561,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",
-          "sha256": "85bf1da019e30a0ea6a268742e4092cb5201670a11458e6a4800794b1dc59bc6"
+          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -7037,7 +7571,277 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination"
     },
     {
-      "fingerprint": "0408409a061826b6ce541f9d3b557bcaf135019ceb25788cc44eb7dc801351e3",
+      "fingerprint": "717ed5c68113578e950ca3beb261d9ab62e2c83536dd1fd84c8e321dc86c52ce",
+      "sources": [
+        {
+          "path": "src/base/artifacts.ts",
+          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
+        },
+        {
+          "path": "src/base/duo-ceremony-lease.ts",
+          "sha256": "7f8cb8bb6135aada79670b7bc5e1d24ae835548d0642cc3232812937960b9901"
+        },
+        {
+          "path": "src/base/errors.ts",
+          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
+        },
+        {
+          "path": "src/base/mutation-capability.ts",
+          "sha256": "b6ea76a857a3ac9be50bfa6388773b22b3a52b988bf56dd62816faf77187074e"
+        },
+        {
+          "path": "src/base/providers.ts",
+          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
+        },
+        {
+          "path": "src/base/session.ts",
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
+        },
+        {
+          "path": "src/base/store.ts",
+          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
+        },
+        {
+          "path": "src/base/task.ts",
+          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
+        },
+        {
+          "path": "src/domain/artifacts.ts",
+          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
+        },
+        {
+          "path": "src/domain/canonical-json.ts",
+          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/clock.ts",
+          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
+        },
+        {
+          "path": "src/domain/config/schema.ts",
+          "sha256": "d3cc30107f109138ee96f7f76c75709b42b4648712cafa2fe76ebfdad77cc8ec"
+        },
+        {
+          "path": "src/domain/contracts/base.ts",
+          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "26bab195012b72f86bd63a0512e6313b6f90df7553206798cbb5df8e701be226"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "bd810be641f701a211015bf152060456c31e2a0a28d9d5ed75159139bbed7ab5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
+          "sha256": "5a4d659961c9ef56d4d28d19d3101ff1c90a21d799f250790191369cfb2d957d"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
+          "sha256": "5ef0ba8178fec33f375d33da6009d8856a1b694a384aa447ab90e2368065d171"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/search-person-org.ts",
+          "sha256": "cb2e6a84899f512fa0d7169a252884db7cf03cb57663197995b2b675dfb2fdb2"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/verify-termination-filing-present.ts",
+          "sha256": "59851bd1e59c29e6b7d0d615055337b50e0ebc33ecb5333825642a3bf7eb88b2"
+        },
+        {
+          "path": "src/domain/contracts/write-safety.ts",
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
+        },
+        {
+          "path": "src/domain/duo-ceremony-lease.ts",
+          "sha256": "2ad55e89212e0fa85422a6aa9fae16bc52536df0bc218b64d10825bea77a5b54"
+        },
+        {
+          "path": "src/domain/gates.ts",
+          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
+        },
+        {
+          "path": "src/domain/ids.ts",
+          "sha256": "a8bcc4ae53fc6af0d782b81234b4db97c80ecb8a83ccd43108b445f1f59b411f"
+        },
+        {
+          "path": "src/domain/immutability.ts",
+          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/domain/provider-admission.ts",
+          "sha256": "4a96c13fea16706f037219d938ba9eea721e3734545ebccd1d27524ef25e2ece"
+        },
+        {
+          "path": "src/domain/providers.ts",
+          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/redaction-policy.ts",
+          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+        },
+        {
+          "path": "src/domain/redaction.ts",
+          "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "7df250d461fe4f7a28efb3a66e08d98a42ca76b51cf4068bc4128807bac90614"
+        },
+        {
+          "path": "src/domain/schema-bound-value.ts",
+          "sha256": "e2aac9cd9d217716d729a5fce2729a7cb1618d586cdce6b9612b9e42782798d8"
+        },
+        {
+          "path": "src/domain/secret-names.ts",
+          "sha256": "7dad2496d3a8593725be92415fc5d39304f0ee7c9ad51eb36095dbc028708189"
+        },
+        {
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "b02284b61f40371150a7dfe260057f0a51a53e66c88744b0caccc74279ffc693"
+        },
+        {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
+          "path": "src/domain/session.ts",
+          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
+        },
+        {
+          "path": "src/domain/task-provenance.ts",
+          "sha256": "d0c7ede9e932f380b08d282ae1810326cccf2956036694b5d2cc328df2017ace"
+        },
+        {
+          "path": "src/domain/trust/preflight-scenarios.ts",
+          "sha256": "b1d6ff577fca95685a0efa90555d28c67f4c7484c1085a9698228dd77295f5ae"
+        },
+        {
+          "path": "src/domain/trust/scenario.ts",
+          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
+        },
+        {
+          "path": "src/domain/ui/contracts.ts",
+          "sha256": "c584d8d1e21e9075b5f37285ec3cea0318f11994de804a5c3e3cafef55ffc725"
+        },
+        {
+          "path": "src/domain/ui/driver.ts",
+          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
+        },
+        {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
+          "path": "src/domain/ui/ucpath-driver.ts",
+          "sha256": "4dea7d199ddb472e535b56b8e0586582378e05c36364a4b6a08d144be8dc75ae"
+        },
+        {
+          "path": "src/domain/ui/ucpath-job-summary.ts",
+          "sha256": "7454b4e954b1ab67ca0d206d63c345d8befd72ca6654c52332cbe896d0b887ea"
+        },
+        {
+          "path": "src/domain/ui/ucpath-person-org.ts",
+          "sha256": "a10e354b8d25de70987b932afb07818988bbbef0fc5e2abc0dbe240426efa53d"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
+        },
+        {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "55a5c20bbfb256eb77264ed4f862035de6ba8fffe7ffc3b3917436a7a11bc5f3"
+        },
+        {
+          "path": "src/domain/unscoped-commit.ts",
+          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
+        },
+        {
+          "path": "src/domain/workflow/checkpoint.ts",
+          "sha256": "adde9aa54b78f72f9033edb384db07022b82943ee51784d8a5aa3815193c8bdf"
+        },
+        {
+          "path": "src/domain/workflow/delegation-policy.ts",
+          "sha256": "e034aeb57fd3f97dff1872023c736de320f115760d47c5ae0e623dc77de8eb45"
+        },
+        {
+          "path": "src/domain/workflow/graph.ts",
+          "sha256": "9c816e8f9113329156c82fe5275132c6d02d2bcb50a5808d6dfa7542743d7c4b"
+        },
+        {
+          "path": "src/domain/workflow/node-condition.ts",
+          "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
+        },
+        {
+          "path": "src/domain/workflow/presentation.ts",
+          "sha256": "841c4e39f0c1a0f3e5464caa6bfae6a4a5283986aaa3c50009ba69099d5fe5cc"
+        },
+        {
+          "path": "src/domain/workflow/step-omission.ts",
+          "sha256": "31fb6946536898c9b0613667b078c15d5e4656b79db98a68353019b8137702d3"
+        },
+        {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
+          "path": "src/domain/write-safety-primitives.ts",
+          "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
+        },
+        {
+          "path": "src/domain/write-safety.ts",
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
+        },
+        {
+          "path": "src/stores/ucpath/driver-declaration.ts",
+          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
+        },
+        {
+          "path": "src/stores/ucpath/driver/interpreter.ts",
+          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+        },
+        {
+          "path": "src/stores/ucpath/driver/person-org-operation.ts",
+          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+        },
+        {
+          "path": "src/stores/ucpath/driver/registry-locators.ts",
+          "sha256": "01bc084c5ee4163bde98168f089b8cf847242da1efcac6da90d778674521c585"
+        },
+        {
+          "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
+          "sha256": "aa260347f268d8cc4888608355b07f2e9d3040a8a0f0e25b62449acd63a9c21e"
+        },
+        {
+          "path": "src/stores/ucpath/driver/ui-registry.ts",
+          "sha256": "41808cedfb5e5a5d8f9f151f200cbfa790a96f25396e80b825aa3fe8a6955606"
+        },
+        {
+          "path": "src/stores/ucpath/tasks/verify-termination-filing-present.ts",
+          "sha256": "e1d5313ba9b4b6e04c5a2ed7c792aee8d942933335ebcee7fbd0b515f0cf9f8d"
+        },
+        {
+          "path": "src/stores/ucpath/termination-verdict.ts",
+          "sha256": "03990e6dba9e9e587e46ca587f2ce8fc669480fd5b776f00d1835eb9766d5b60"
+        },
+        {
+          "path": "src/validation/contract-boundary.ts",
+          "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
+        }
+      ],
+      "id": "ucpath/verify-termination-filing-present"
+    },
+    {
+      "fingerprint": "576d8089d006d75f15ced559762d619130629773df8e124045ed318a3fa27698",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7085,7 +7889,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/gates.ts",
@@ -7175,7 +7979,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:person-lookup/read-active-status"
     },
     {
-      "fingerprint": "79aac6ba79ea368d892802894dbb91289c7624e4d70e2fc24a832b2bd1ba0e6b",
+      "fingerprint": "656858fd9cac0d7e975d1c396eec3ba02fc3915a0b6ace46b92c95c7cab602ec",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7215,7 +8019,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/gates.ts",
@@ -7321,7 +8125,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-active-employment"
     },
     {
-      "fingerprint": "e120d72e42e876529e9edf73fd08fa2b9b574b280fd1eddc912577fad5f002d9",
+      "fingerprint": "0bea8a24984c820b3fec0735716e1c7b127922a79ff3db25c6be921da6685ed3",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7361,7 +8165,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/gates.ts",
@@ -7463,7 +8267,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-department-option"
     },
     {
-      "fingerprint": "57ab115326429622804c8204357dc7c4714e47944abda7d40f7f9834c5b1691d",
+      "fingerprint": "ce59e983e438c7bc3e960e2ebbdbce867fe11dae2a64b277fa42df4eca807a96",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7507,7 +8311,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/gates.ts",
@@ -7629,7 +8433,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-identity"
     },
     {
-      "fingerprint": "a7d43f2a6f633a8a3333dbb038bf5040d93e0982114ade7f121eadcc158be406",
+      "fingerprint": "ca25c452f86fcb72f37bd967f48cd64e3565e1de7a6425c71d28c3a6078cc6a8",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7673,7 +8477,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/gates.ts",
@@ -7799,7 +8603,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-separation-subject"
     },
     {
-      "fingerprint": "87ee486fe9d23d97b6e1f4eab2dea385bfbcbda4e88977d6e63f16a1be0d8735",
+      "fingerprint": "ce26d9aaab49edec741ef1df1af8eac3ed615ca5b811a1f16f3ca25eab7a3e83",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7839,7 +8643,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/gates.ts",
@@ -7933,7 +8737,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-termination-type"
     },
     {
-      "fingerprint": "171e29dfd1bbafeda69122b72b2329cc47a6405c64efb521a92e2cd8adfd4daa",
+      "fingerprint": "32352f8ff54fe176411e8103ebdf67193ea1f06989cb23d7cd3670e7cb8d6ae2",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7977,7 +8781,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/gates.ts",
@@ -8079,7 +8883,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/read-separation-dates"
     },
     {
-      "fingerprint": "7111f77bff2e6abf583f68bfee2be98ef8d0247e6e1a8601d65bda129f1a093a",
+      "fingerprint": "a576f18c7973be7a1e44c352cb1cba68cbf8c1692ce16e2aa0a4a16aad344f39",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -8119,7 +8923,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/gates.ts",
@@ -8213,7 +9017,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/read-separation-plan"
     },
     {
-      "fingerprint": "3fd4db2223a5a4642c9d18f2c2665414a09e066954a52b1133d4b50819969e67",
+      "fingerprint": "71c26a8f19c077e5578423b34244cbbb000d808d641dab1ed43a79b5947f26e7",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -8257,7 +9061,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/gates.ts",
@@ -8375,7 +9179,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/verify-identity-approval"
     },
     {
-      "fingerprint": "ee83eab5050c3da2026363c0cf06aa0c746ec405c8b36244444c6e82fd47d488",
+      "fingerprint": "876654f8113fba1462017391b1bf6225fa436df44a822c2f95c470fafbe2d708",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -8415,7 +9219,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+          "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
           "path": "src/domain/gates.ts",
@@ -8487,7 +9291,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "83b6eca1986e126b53f59f86155b5c9086f69fd97b480af59e185455feedee06"
+          "sha256": "e504578191543cd842c221cd713cc8d83c3e5a1032fd578b88d1c024141a6b2e"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",

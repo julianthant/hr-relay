@@ -25,6 +25,10 @@ import { loadDryRunScenarioManifest } from "../../src/server/dry-run-scenario/ma
 import { createProductionDryRunScenarioRuntime } from "../../src/server/dry-run-scenario/runtime.js";
 import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../src/stores/kuali/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
+import {
+  createDeterministicUcpathSmartHrWorldDriver,
+  createUcpathSmartHrFakeWorld,
+} from "../../src/stores/ucpath/driver/smart-hr-fake.js";
 import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org-operation.js";
 import { SeparationsKualiFinalizationCanonicalInput } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
 import {
@@ -131,13 +135,25 @@ function composedSessions(clock: TestClock, displayedEidAfterStage?: string) {
     "0", "07/01/2025", "Active", "SDCMP", "40012345", "000412",
     "HOUSING/DINING/HOSPITALITY", "004921", "STDT 2", "", "0.500000", "Student",
   ], 0)];
+  const filingWorld = createUcpathSmartHrFakeWorld({
+    emplId: FINALIZATION_EID,
+    displayedName: "Deterministic Person",
+    nextTransactionId: FINALIZATION_RUN_INPUT.transactionNumber,
+    rows: [{
+      transactionId: FINALIZATION_RUN_INPUT.transactionNumber,
+      emplId: FINALIZATION_EID,
+      action: "TER",
+      approvalStatus: "Pending",
+      startDate: FINALIZATION_RUN_INPUT.terminationEffectiveDate,
+      displayedName: "Deterministic Person",
+    }],
+  });
   const sessions = sessionFactoryHarness({
-    ucpath: () => createDeterministicUcpathPersonOrgDriver(
-      {
+    ucpath: () => {
+      const person = createDeterministicUcpathPersonOrgDriver({
         results: [candidate],
         selection: { status: "resolved", selected: candidate, candidateEids: [FINALIZATION_EID] },
-      },
-      UcpathJobSummaryReadSchema.parse({
+      }, UcpathJobSummaryReadSchema.parse({
         state: "read",
         summary: {
           pageStateId: "ucpath.person-org.detail-ready",
@@ -152,11 +168,19 @@ function composedSessions(clock: TestClock, displayedEidAfterStage?: string) {
           },
           observedAt: "2026-08-25T18:00:00.000Z",
         },
-      }),
-    ),
+      }));
+      const filing = createDeterministicUcpathSmartHrWorldDriver(filingWorld, () => clock.now());
+      return {
+        ...person,
+        scanTerminationTransactions: filing.scanTerminationTransactions,
+        stageTermination: filing.stageTermination,
+        stagePendingTerminationSweep: filing.stagePendingTerminationSweep,
+        commit: filing.commit,
+      };
+    },
     kuali: () => createDeterministicKualiDriver(world, clock),
   });
-  return { sessions, world };
+  return { sessions, world, filingWorld };
 }
 
 const PREVIEW_RECEIPT_VERIFICATION = [
@@ -166,6 +190,7 @@ const PREVIEW_RECEIPT_VERIFICATION = [
   { obligation: "node.comparison", verdict: "verified", mandatory: false },
   { obligation: "node.identity-approval", verdict: "verified", mandatory: false },
   { obligation: "node.approval", verdict: "verified", mandatory: true },
+  { obligation: "node.filing-presence", verdict: "verified", mandatory: false },
   { obligation: "node.finalize-kuali", verdict: "unknown", mandatory: true },
   { obligation: "completion.terminal-result", verdict: "unknown", mandatory: true },
   { obligation: "write.timekeeper-matches-request", verdict: "unknown", mandatory: true },
@@ -193,10 +218,10 @@ const TEST_MANIFEST = parseDryRunScenarioManifest({
     why: "the composition fixture exercises the ordinary declaration",
     nodesReached: [
       "job-summary", "name-search", "department-option", "comparison",
-      "identity-approval", "approval", "finalize-kuali",
+      "identity-approval", "approval", "filing-presence", "finalize-kuali",
     ],
     nodesExcluded: [],
-    checkpoints: ["job-summary", "name-search", "department-option", "comparison", "approval"].map((node) => ({
+    checkpoints: ["job-summary", "name-search", "department-option", "comparison", "approval", "filing-presence"].map((node) => ({
       node,
       attempt: 1,
       keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"],
@@ -401,6 +426,7 @@ describe("dry-run scenario production composition boundary", () => {
       separationDate: "06/10/2026",
       terminationEffectiveDate: "06/11/2026",
       transactionNumber: "T002209631",
+      transactionApprovalStatus: "Pending",
       timekeeperComments: "Fixture finalization comments.",
       observedExistingComments: "",
     });
@@ -759,10 +785,9 @@ describe("dry-run scenario production composition boundary", () => {
       };
       terminal: unknown;
     };
-
     assert.deepEqual(evidence.reachedNodeIds, [
       "job-summary", "name-search", "department-option", "comparison",
-      "identity-approval", "approval", "finalize-kuali",
+      "identity-approval", "approval", "filing-presence", "finalize-kuali",
     ]);
     assert.deepEqual(evidence.checkpoints, scenarioCase.checkpoints);
     assert.deepEqual(evidence.gateResults, [
@@ -784,6 +809,68 @@ describe("dry-run scenario production composition boundary", () => {
       stoppedAtNodeId: "finalize-kuali",
       preview: { outcome: "would-prepare", subject: "match", staged: true },
     });
+  });
+
+  it("refuses a deleted UCPath filing after the real gate and before any Kuali prepare, fence, or click", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-deleted-filing-"));
+    roots.push(root);
+    writeFileSync(join(root, "package.json"), readFileSync(join(process.cwd(), "package.json"), "utf8"));
+    mkdirSync(join(root, rebuildRuntimeIsolation.stateRoot), { recursive: true });
+    const clock = manualClock(new Date("2026-08-25T18:00:00.000Z"));
+    const settings = selectedSettingsFixture(root, clock);
+    const { sessions, world, filingWorld } = composedSessions(clock);
+    settings.activate();
+    const runtime = createProductionDryRunScenarioRuntime({
+      isolation: rebuildRuntimeIsolation,
+      repoRoot: root,
+      env: {},
+      clock,
+      ids: sequentialIdFactory("f"),
+      sessionFactory: sessions.factory,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
+      processId: 4244,
+      processIdentityObserver: (pid) => ({
+        state: "alive",
+        identity: { platform: "darwin", startToken: `synthetic-${String(pid)}` },
+      }),
+      write: () => undefined,
+    });
+    const scenarioCase = TEST_MANIFEST.cases[0];
+    assert.ok(scenarioCase);
+
+    const started = await runtime.start({
+      manifest: TEST_MANIFEST,
+      scenarioCase,
+      canonicalInput: NAME_ONLY_FINALIZATION_INPUT,
+    });
+    await runtime.drain(TEST_MANIFEST.workflow);
+    // Migration §9.36's diagnostic, reproduced at the supported seam: the
+    // durable/asserted receipt survives, but its exact UCPath row disappears
+    // between identity settlement and the fresh finalization precondition.
+    filingWorld.rows = [];
+    await runtime.resolveGate({ manifest: TEST_MANIFEST, scenarioCase, runId: started.runId });
+    await runtime.drain(TEST_MANIFEST.workflow);
+
+    const run = settings.database.authority.runs.get(started.runId);
+    assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.failureId !== undefined);
+    const failure = settings.database.authority.failures.get(run.lifecycle.failureId);
+    assert.equal(failure?.nodeId, "filing-presence");
+    assert.equal(failure?.taskId, "ucpath/verify-termination-filing-present");
+    assert.equal(failure?.code, "FILING_NOT_CURRENT");
+    assert.match(failure?.summary ?? "", /exact durable UCPath filing transaction is absent/iu);
+    assert.equal(world.persistedFinalization, undefined);
+    assert.equal(world.events.some((event) => event.startsWith("stage-finalization:")), false);
+
+    const raw = new DatabaseSync(settings.path, { readOnly: true });
+    try {
+      assert.deepEqual({
+        intents: raw.prepare("SELECT count(*) AS n FROM write_intents").get()?.n,
+        attempts: raw.prepare("SELECT count(*) AS n FROM write_attempts").get()?.n,
+        outbox: raw.prepare("SELECT count(*) AS n FROM durable_outbox").get()?.n,
+      }, { intents: 0, attempts: 0, outbox: 0 });
+    } finally {
+      raw.close();
+    }
   });
 
   it("derives transaction reach and EID-safe failure evidence from every durable worker sink", async () => {
@@ -834,7 +921,7 @@ describe("dry-run scenario production composition boundary", () => {
 
     assert.deepEqual(evidence.reachedNodeIds, [
       "job-summary", "name-search", "department-option", "comparison",
-      "identity-approval", "approval", "finalize-kuali",
+      "identity-approval", "approval", "filing-presence", "finalize-kuali",
     ]);
     assert.deepEqual(evidence.terminal, {
       lifecycle: "failed",

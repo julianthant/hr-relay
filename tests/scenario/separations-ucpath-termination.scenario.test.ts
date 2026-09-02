@@ -56,6 +56,7 @@ import { SEPARATIONS_UCPATH_TERMINATION_CLAIMS } from "./coverage-claims.js";
 import { walkDescriptor } from "./helpers/pure-walk.js";
 import {
   SWEEP_IDEMPOTENCY_KEY,
+  sweepIdempotencyKey,
   TERMINATION_EFFECTIVE_DATE,
   TERMINATION_EID,
   TERMINATION_FILE_NODE,
@@ -68,6 +69,7 @@ import {
   terminationContext,
   terminationDurableFootprint,
   terminationHarness,
+  terminationPendingSet,
   terminationQueuedRun,
   type TerminationHarness,
 } from "../unit/fixtures/ucpath-termination-fixtures.js";
@@ -97,7 +99,18 @@ const TARGET = Object.freeze({
   initiatorComments: "Separation filed from Kuali RRSS document 4510.",
 });
 
-const SWEEP_TARGET = Object.freeze({ emplId: EID, expectedName: NAME });
+const SWEEP_TARGET = Object.freeze({
+  emplId: EID,
+  expectedName: NAME,
+  observedSet: {
+    kind: "ucpath-pending-termination-set" as const,
+    emplId: EID,
+    eligible: [],
+    protected: [],
+    observedAt: OBSERVED_AT,
+    source: "ss-smart-hr-detail-read" as const,
+  },
+});
 
 function scan(rows: readonly UcpathTransactionRow[]): UcpathTransactionScan {
   return { state: "read", emplId: EID, rows: [...rows], scannedRowCount: rows.length, observedAt: OBSERVED_AT };
@@ -274,7 +287,7 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
       TERMINATION_SWEEP_NODE,
     );
     const sweepWithWork = await withPending.bound(() => withPending.sequencer.executeDryRun(
-      terminationContext(pending.run, pending.claim, TERMINATION_SWEEP_NODE, true),
+      terminationContext(pending.run, pending.claim, TERMINATION_SWEEP_NODE, true, withPending.world.rows),
     ));
     assert.equal(sweepWithWork.probe.state, "absent");
     assert.equal(
@@ -313,9 +326,12 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
     assert.equal(h.world.lastCapability, undefined, "no mutation capability was ever minted");
     assert.equal(withPending.world.rows.length, 1, "the pending row was neither swept nor duplicated");
 
-    for (const world of [withPending, h]) {
+    for (const [world, sweepKey] of [
+      [withPending, sweepIdempotencyKey(withPending.world.rows)],
+      [h, SWEEP_IDEMPOTENCY_KEY],
+    ] as const) {
       for (const [node, key] of [
-        [TERMINATION_SWEEP_NODE, SWEEP_IDEMPOTENCY_KEY],
+        [TERMINATION_SWEEP_NODE, sweepKey],
         [TERMINATION_FILE_NODE, TERMINATION_IDEMPOTENCY_KEY],
       ] as const) {
         const footprint = terminationDurableFootprint(world, node, key);
@@ -349,13 +365,15 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
         h.database, h.clock, terminationQueuedRun(), node,
       );
       await assert.rejects(
-        h.bound(() => h.sequencer.executeTransaction(terminationContext(run, claim, node))),
+        h.bound(() => h.sequencer.executeTransaction(
+          terminationContext(run, claim, node, false, rows),
+        )),
         /subject mismatch, zero fence, zero click/,
         node,
       );
       assert.equal(h.world.events.some((event) => event.startsWith("commit:")), false, `${node}: zero clicks`);
       assert.deepEqual(h.world.rows, rows, `${node}: UCPath was not written`);
-      const key = node === TERMINATION_SWEEP_NODE ? SWEEP_IDEMPOTENCY_KEY : TERMINATION_IDEMPOTENCY_KEY;
+      const key = node === TERMINATION_SWEEP_NODE ? sweepIdempotencyKey(rows) : TERMINATION_IDEMPOTENCY_KEY;
       const footprint = terminationDurableFootprint(h, node, key);
       assert.equal(footprint.intent, undefined, `${node}: the fence was never reached`);
       assert.equal(footprint.checkpoint, undefined, node);
@@ -427,20 +445,27 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
     );
 
     const outcome = await h.bound(() => h.sequencer.executeTransaction(
-      terminationContext(run, claim, TERMINATION_SWEEP_NODE),
+      terminationContext(run, claim, TERMINATION_SWEEP_NODE, false, h.world.rows),
     ));
 
     assert.equal(Reflect.get(outcome as object, "disposition"), "committed");
     assert.deepEqual(h.world.rows, [], "both in-progress rows were swept");
     // The selection happened BEFORE the fence and the delete AFTER it. The
-    // grid names a row by its effective date and action, never by a transaction
-    // id — an in-progress transaction has not been assigned one yet.
+    // grid has no T-id column, so the driver associates the stable SS Smart HR
+    // detail id only after a unique EID/name/date/action join.
     assert.ok(
       h.world.events.some((event) => event.startsWith("select:")
         && event.includes("06/11/2026") && event.includes("05/01/2026")),
       h.world.events.join(" | "),
     );
-    const footprint = terminationDurableFootprint(h, TERMINATION_SWEEP_NODE, SWEEP_IDEMPOTENCY_KEY);
+    const footprint = terminationDurableFootprint(
+      h,
+      TERMINATION_SWEEP_NODE,
+      sweepIdempotencyKey([
+        pendingTerminationRow(),
+        pendingTerminationRow({ transactionId: "T009000002", startDate: "05/01/2026" }),
+      ]),
+    );
     assert.notEqual(footprint.intent, undefined, "a delete gets a fence like every other write");
 
     assert.deepEqual(claimFor("separations-ucpath-termination/pending-sweep-committed"), [
@@ -462,7 +487,7 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
     );
 
     const outcome = await h.bound(() => h.sequencer.executeTransaction(
-      terminationContext(run, claim, TERMINATION_SWEEP_NODE),
+      terminationContext(run, claim, TERMINATION_SWEEP_NODE, false, [settled]),
     ));
 
     assert.equal(Reflect.get(outcome as object, "disposition"), "already-present");
@@ -500,12 +525,16 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
           input: { packet: comparison.packet, evidenceDigest: comparison.evidenceDigest, approval },
           ctx: taskCtx,
         }),
+        "pending-set": terminationPendingSet([], EID),
         "clear-pending": {
           disposition: "already-present",
           output: {
             cleared: {
               kind: "ucpath-pending-terminations-clear",
               emplId: EID,
+              clearedTransactionIds: [],
+              protectedTransactionIds: [],
+              setDigest: "d".repeat(64),
               scannedRowCount: 1,
               observedAt: OBSERVED_AT,
               source: "ss-smart-hr-detail-read",

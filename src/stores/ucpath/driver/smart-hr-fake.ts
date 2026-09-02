@@ -247,6 +247,8 @@ export interface UcpathSmartHrFakeWorld {
   nextTransactionId: string;
   /** What `prepare` last staged, which is what a commit files. */
   staged?: UcpathTerminationTarget;
+  /** Stable ids the exact-set prepare selected for deletion. */
+  stagedSweepTransactionIds?: string[];
 }
 
 /** The `T…` a fixture mints when the caller does not name one. */
@@ -327,11 +329,34 @@ export function createDeterministicUcpathSmartHrWorldDriver(
       });
     },
     async stagePendingTerminationSweep(input) {
-      const selected = world.rows.filter(isUcpathTerminationInProgress).map((row) => ({
+      const ordered = [...world.rows].sort((left, right) =>
+        left.transactionId.localeCompare(right.transactionId));
+      const eligible = ordered.filter(isUcpathTerminationInProgress);
+      const protectedRows = ordered.filter((row) => !isUcpathTerminationInProgress(row));
+      const facts = (rows: readonly UcpathTransactionRow[]): string => JSON.stringify(rows.map((row) => [
+        row.transactionId,
+        row.emplId,
+        row.action,
+        row.approvalStatus,
+        row.startDate,
+        row.displayedName,
+      ]));
+      if (facts(eligible) !== facts(input.observedSet.eligible)
+        || facts(protectedRows) !== facts(input.observedSet.protected)) {
+        throw new Error(
+          `${half} current rows do not exactly match the machine-observed pending set; refusing before selection`,
+        );
+      }
+      const selected = eligible.map((row) => ({
         transactionType: "JOB",
         effectiveDate: row.startDate,
+        displayedName: row.displayedName,
+        emplId: row.emplId,
         action: "Terminatn",
+        country: "United States",
+        transactionId: row.transactionId,
       }));
+      world.stagedSweepTransactionIds = selected.map((row) => row.transactionId);
       world.events.push(`select:${selected.map(({ effectiveDate }) => effectiveDate).join(",")}`);
       return UcpathPendingSweepStagingSchema.parse({
         stagedPageState: UCPATH_SMART_HR_TERMINATION_STAGED,
@@ -360,7 +385,10 @@ export function createDeterministicUcpathSmartHrWorldDriver(
         });
       }
       if (id === UCPATH_SMART_HR_DELETE_SELECTED_BUTTON) {
-        world.rows = world.rows.filter((row) => !isUcpathTerminationInProgress(row));
+        const selected = world.stagedSweepTransactionIds;
+        if (selected === undefined) throw new Error(`${half} was asked to delete a set nothing staged`);
+        const selectedIds = new Set(selected);
+        world.rows = world.rows.filter((row) => !selectedIds.has(row.transactionId));
       } else {
         const staged = world.staged;
         if (staged === undefined) {

@@ -100,6 +100,8 @@ import {
   KualiSavedFinalizationProofSchema,
 } from "../../../domain/ui/kuali-separation-finalization.js";
 import { UcpathJobCellSchema } from "../../../domain/ui/ucpath-job-summary.js";
+import { UcpathApprovalStatusSchema } from "../../../domain/ui/ucpath-ss-smart-hr.js";
+import { assertTerminationReceipt } from "../../../domain/separations/termination-receipt.js";
 import {
   BUILD_MANIFEST,
   resolveWorkflowFingerprint,
@@ -117,7 +119,12 @@ import {
   nameSearchNode,
 } from "../identity-check/nodes.js";
 import { DEPARTMENT_NODE, JOB_SUMMARY_NODE, departmentOptionNode, jobSummaryNode } from "../job-summary/nodes.js";
-import { FINALIZE_NODE, finalizeKualiNode } from "./nodes.js";
+import {
+  FILING_PRESENCE_NODE,
+  FINALIZE_NODE,
+  filingPresenceNode,
+  finalizeKualiNode,
+} from "./nodes.js";
 
 /**
  * The ingress: the identity-check ingress, plus exactly the staged variables no
@@ -161,6 +168,8 @@ const FinalizationInputShape = {
   terminationEffectiveDate: KualiFormDateSchema,
   /** §4c's receipt: the finalization is never entered without the filed transaction. */
   transactionNumber: KualiTransactionNumberSchema,
+  /** The other half of D130's receipt pair; a number alone is not filing authority. */
+  transactionApprovalStatus: UcpathApprovalStatusSchema,
   /** The COMPLETE final comments text, composed upstream from the read below. */
   timekeeperComments: KualiFinalizationCommentsSchema,
   /** What that read saw in the comments control, verbatim — S56's baseline. */
@@ -190,6 +199,7 @@ export const SeparationsKualiFinalizationCanonicalInput = defineCanonicalInput(
       separationDate: "06/10/2026",
       terminationEffectiveDate: "06/11/2026",
       transactionNumber: "T002209631",
+      transactionApprovalStatus: "Pending",
       timekeeperComments: "Termination effective date set from the reconciled separation date.",
       observedExistingComments: "",
     },
@@ -270,8 +280,18 @@ const separationsKualiFinalizationFlow = flow(SeparationsKualiFinalizationInput)
       approval: outputs[GATE_NODE],
     }),
   }))
+  .pipe(filingPresenceNode.wire({
+    dependsOn: [APPROVAL_NODE],
+    bind: ({ input, outputs }) => assertTerminationReceipt({
+      transactionNumber: input.transactionNumber,
+      approvalStatus: input.transactionApprovalStatus,
+      approvedEmplId: outputs[APPROVAL_NODE].approved.emplId,
+      approvedName: outputs[APPROVAL_NODE].approved.ucpathName,
+      expectedEffectiveDate: input.terminationEffectiveDate,
+    }),
+  }))
   .pipe(finalizeKualiNode.wire({
-    dependsOn: [APPROVAL_NODE, DEPARTMENT_NODE],
+    dependsOn: [APPROVAL_NODE, DEPARTMENT_NODE, FILING_PRESENCE_NODE],
     prepare: { bind: ({ input, outputs }) => ({
       actionId: input.actionId,
       documentNumber: input.documentNumber,
@@ -284,7 +304,7 @@ const separationsKualiFinalizationFlow = flow(SeparationsKualiFinalizationInput)
         lastDayWorked: input.lastDayWorked,
         separationDate: input.separationDate,
         terminationEffectiveDate: input.terminationEffectiveDate,
-        transactionNumber: input.transactionNumber,
+        transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
         timekeeperComments: input.timekeeperComments,
         observedExistingComments: input.observedExistingComments,
       },
@@ -301,7 +321,7 @@ const separationsKualiFinalizationFlow = flow(SeparationsKualiFinalizationInput)
         lastDayWorked: input.lastDayWorked,
         separationDate: input.separationDate,
         terminationEffectiveDate: input.terminationEffectiveDate,
-        transactionNumber: input.transactionNumber,
+        transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
         timekeeperComments: input.timekeeperComments,
         observedExistingComments: input.observedExistingComments,
       },
@@ -417,6 +437,11 @@ export const separationsKualiFinalizationDescriptor = defineWorkflowDescriptor({
       nodeId: "approval",
       purpose: "Re-derives the evidence and produces explicit machine-verification or operator-approval "
         + "authority. It re-runs on every attempt, so moved evidence or identity origin cannot reuse an old answer.",
+    },
+    {
+      nodeId: "filing-presence",
+      purpose: "Freshly verifies the exact asserted UCPath transaction still exists for the approved subject, "
+        + "effective date, termination action, and acceptable status before Kuali can prepare.",
     },
     {
       nodeId: "finalize-kuali",

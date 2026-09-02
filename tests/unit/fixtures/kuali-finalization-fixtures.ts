@@ -27,6 +27,7 @@ import {
 import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../src/core/worker-sessions.js";
 import { kualiFinalizationIdempotencyKey } from "../../../src/domain/contracts/kuali/save-separation-finalization.js";
 import { SearchPersonOrgOutputSchema } from "../../../src/domain/contracts/ucpath/search-person-org.js";
+import { UcpathVerifyTerminationFilingPresent } from "../../../src/domain/contracts/ucpath/verify-termination-filing-present.js";
 import { SeparationsMatchDepartmentOption } from "../../../src/domain/contracts/separations/match-department-option.js";
 import { SeparationsVerifyIdentityApproval } from "../../../src/domain/contracts/separations/verify-identity-approval.js";
 import {
@@ -134,6 +135,7 @@ export const FINALIZATION_RUN_INPUT = Object.freeze({
   separationDate: FINALIZATION_VARIABLES.separationDate,
   terminationEffectiveDate: FINALIZATION_VARIABLES.terminationEffectiveDate,
   transactionNumber: FINALIZATION_VARIABLES.transactionNumber,
+  transactionApprovalStatus: "Pending" as const,
   timekeeperComments: FINALIZATION_VARIABLES.timekeeperComments,
   observedExistingComments: FINALIZATION_VARIABLES.observedExistingComments,
 });
@@ -238,6 +240,18 @@ export const FINALIZATION_SCOPE_OUTPUTS = Object.freeze({
     optionDescription: "Housing/Dining/Hospitality",
     ucpathDepartment: "HOUSING/DINING/HOSPITALITY",
     observedOptionCount: 6,
+  },
+  "filing-presence": {
+    kind: "ucpath-termination-filing-presence" as const,
+    transactionId: FINALIZATION_TRANSACTION_NUMBER,
+    emplId: FINALIZATION_EID,
+    effectiveDate: FINALIZATION_VARIABLES.terminationEffectiveDate,
+    approvalStatus: "Pending" as const,
+    displayedName: FINALIZATION_NAME,
+    observedAt: FINALIZATION_NOW,
+    source: "ss-smart-hr-detail-read" as const,
+    receiptDisposition: "operator-asserted" as const,
+    authority: "kuali-finalization-precondition" as const,
   },
 });
 
@@ -471,6 +485,15 @@ export function finalizationPreviewDependencies(run: RunRecord): readonly unknow
         FINALIZATION_DEPARTMENT_NODE,
         SeparationsMatchDepartmentOption.output,
         FINALIZATION_SCOPE_OUTPUTS[FINALIZATION_DEPARTMENT_NODE],
+      ),
+    },
+    {
+      state: "resolved",
+      nodeId: "filing-presence",
+      checkpoint: rowFor(
+        "filing-presence",
+        UcpathVerifyTerminationFilingPresent.output,
+        FINALIZATION_SCOPE_OUTPUTS["filing-presence"],
       ),
     },
   ];

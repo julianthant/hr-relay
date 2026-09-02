@@ -182,11 +182,13 @@ describe("Phase 1f Person Lookup task implementations", () => {
         "ucpath/match-existing-termination",
         "ucpath/match-pending-terminations",
         "ucpath/read-job-summary",
+        "ucpath/read-pending-termination-set",
         "ucpath/search-person-org",
         "ucpath/stage-pending-termination-sweep",
         "ucpath/stage-termination",
         "ucpath/verify-pending-terminations-cleared",
         "ucpath/verify-termination",
+        "ucpath/verify-termination-filing-present",
         "workflow:person-lookup/read-active-status",
         // The `separations` pure workflow mini-store, complete as of chunk 6:
         // §4a's termination-type refusal, chunk 3's identity comparison and

@@ -46,6 +46,7 @@ import { z } from "zod";
 import {
   EidSchema,
   ElementIdSchema,
+  FingerprintSchema,
   IsoInstantSchema,
   ObservationIdSchema,
 } from "../ids.js";
@@ -221,13 +222,6 @@ export const UcpathTerminationTargetSchema = z.strictObject({
 });
 export type UcpathTerminationTarget = z.infer<typeof UcpathTerminationTargetSchema>;
 
-/** The date-agnostic sweep's target: a person, and nothing else (ref write-safety §5). */
-export const UcpathPendingSweepTargetSchema = z.strictObject({
-  emplId: EidSchema,
-  expectedName: z.string().min(1),
-});
-export type UcpathPendingSweepTarget = z.infer<typeof UcpathPendingSweepTargetSchema>;
-
 /**
  * ONE transaction row as the SS Smart HR search surface renders it — the rich
  * read (D194). Nothing here is classified: `action` and `approvalStatus` are
@@ -245,6 +239,64 @@ export const UcpathTransactionRowSchema = z.strictObject({
   displayedName: z.string().min(1),
 });
 export type UcpathTransactionRow = z.infer<typeof UcpathTransactionRowSchema>;
+
+/**
+ * The exact transaction set the SS Smart HR search/detail surface observed
+ * before a pending sweep was admitted. `eligible` contains every in-progress
+ * termination; `protected` contains every other transaction the same EID
+ * search returned. Both lists are ordered by the stable `T…` transaction id,
+ * so their digest and replay identity are canonical rather than page ordered.
+ */
+export const UcpathPendingTransactionSetSchema = z.strictObject({
+  kind: z.literal("ucpath-pending-termination-set"),
+  emplId: EidSchema,
+  eligible: z.array(UcpathTransactionRowSchema),
+  protected: z.array(UcpathTransactionRowSchema),
+  observedAt: IsoInstantSchema,
+  source: z.literal("ss-smart-hr-detail-read"),
+}).superRefine((set, ctx) => {
+  const rows = [...set.eligible, ...set.protected];
+  const ids = rows.map((row) => row.transactionId);
+  if (new Set(ids).size !== ids.length) {
+    ctx.addIssue({ code: "custom", message: "a pending transaction set requires unique transaction ids" });
+  }
+  for (const [partition, partitionRows] of [
+    ["eligible", set.eligible],
+    ["protected", set.protected],
+  ] as const) {
+    const sorted = [...partitionRows].sort((left, right) =>
+      left.transactionId.localeCompare(right.transactionId));
+    if (partitionRows.some((row, index) => row.transactionId !== sorted[index]?.transactionId)) {
+      ctx.addIssue({ code: "custom", message: `${partition} transaction rows must be ordered by transaction id` });
+    }
+    for (const row of partitionRows) {
+      if (row.emplId !== set.emplId) {
+        ctx.addIssue({ code: "custom", message: `${partition} transaction ${row.transactionId} belongs to another EID` });
+      }
+      const inProgress = isUcpathTerminationInProgress(row);
+      if ((partition === "eligible") !== inProgress) {
+        ctx.addIssue({ code: "custom", message: `${partition} transaction ${row.transactionId} is in the wrong partition` });
+      }
+    }
+  }
+});
+export type UcpathPendingTransactionSet = z.infer<typeof UcpathPendingTransactionSetSchema>;
+
+/**
+ * A pending sweep is authorized for one machine-observed exact transaction
+ * set. The set comes from the workflow's authenticated identity path and run
+ * admission; it is not a caller switch or an additional human approval gate.
+ */
+export const UcpathPendingSweepTargetSchema = z.strictObject({
+  emplId: EidSchema,
+  expectedName: z.string().min(1),
+  observedSet: UcpathPendingTransactionSetSchema,
+}).superRefine((target, ctx) => {
+  if (target.observedSet.emplId !== target.emplId) {
+    ctx.addIssue({ code: "custom", message: "the pending transaction set belongs to another EID" });
+  }
+});
+export type UcpathPendingSweepTarget = z.infer<typeof UcpathPendingSweepTargetSchema>;
 
 /**
  * Redacted facts captured only when the SS Smart HR settlement race cannot
@@ -328,6 +380,29 @@ export const UcpathTerminationProofSchema = z.strictObject({
 export type UcpathTerminationProof = z.infer<typeof UcpathTerminationProofSchema>;
 
 /**
+ * A fresh SS Smart HR detail read proving that the exact filing named by the
+ * durable receipt still exists before Kuali is allowed to record it. This is
+ * deliberately limited authority: it is a finalization precondition, not a
+ * new filing receipt and not controlled-write evidence for an asserted D307
+ * transaction number.
+ */
+export const UcpathTerminationFilingPresenceProofSchema = z.strictObject({
+  kind: z.literal("ucpath-termination-filing-presence"),
+  transactionId: UcpathTransactionReceiptSchema,
+  emplId: EidSchema,
+  effectiveDate: UcpathUsDateSchema,
+  approvalStatus: UcpathApprovalStatusSchema,
+  displayedName: z.string().min(1),
+  observedAt: IsoInstantSchema,
+  source: z.literal("ss-smart-hr-detail-read"),
+  receiptDisposition: z.enum(["committed", "already-present", "operator-asserted"]),
+  authority: z.literal("kuali-finalization-precondition"),
+});
+export type UcpathTerminationFilingPresenceProof = z.infer<
+  typeof UcpathTerminationFilingPresenceProofSchema
+>;
+
+/**
  * The sweep's proof, stated as what a scan can actually establish: **at
  * `observedAt`, this person's transaction grid carried no in-progress
  * termination rows.**
@@ -345,6 +420,11 @@ export type UcpathTerminationProof = z.infer<typeof UcpathTerminationProofSchema
 export const UcpathPendingSweepProofSchema = z.strictObject({
   kind: z.literal("ucpath-pending-terminations-clear"),
   emplId: EidSchema,
+  /** Stable ids this fresh post-read proved absent. */
+  clearedTransactionIds: z.array(UcpathTransactionReceiptSchema),
+  /** Stable ids this fresh post-read proved still present and unchanged. */
+  protectedTransactionIds: z.array(UcpathTransactionReceiptSchema),
+  setDigest: FingerprintSchema,
   scannedRowCount: z.number().int().min(0),
   observedAt: IsoInstantSchema,
   source: z.literal("ss-smart-hr-detail-read"),
@@ -375,21 +455,24 @@ export const UcpathTerminationStagingSchema = z.strictObject({
 export type UcpathTerminationStaging = z.infer<typeof UcpathTerminationStagingSchema>;
 
 /**
- * One row of the *Transactions in Progress* grid, as that grid can actually
- * name it.
- *
- * It is NOT a transaction id, and that is a live finding rather than a
- * simplification: the in-progress grid's columns are
+ * One row of the *Transactions in Progress* grid joined to its stable SS Smart
+ * HR transaction identity. The grid itself has no transaction-id column; its
+ * columns are
  * `Select · Transaction Type · Effective Date · Name · Person ID · Action ·
- * Country` (observed 2026-08-14) — there is no Transaction ID column at all,
- * because an in-progress transaction has not been assigned one yet. A
- * `selected` list of `T…` ids would therefore be a list this page cannot
- * produce, which is a schema describing something that does not exist.
+ * Country` (re-verified 2026-09-02). The driver therefore obtains the stable
+ * T id from the EID-filtered SS Smart HR detail read, then requires a complete
+ * unique EID/name/effective-date/termination-action join before associating it
+ * with this six-field grid row. DOM position is never row identity.
  */
 export const UcpathInProgressRowSchema = z.strictObject({
   transactionType: z.string().min(1),
   effectiveDate: UcpathUsDateSchema,
+  displayedName: z.string().min(1),
+  emplId: EidSchema,
   action: z.string().min(1),
+  country: z.string().min(1),
+  /** The stable SS Smart HR transaction id joined by exact row facts. */
+  transactionId: UcpathTransactionReceiptSchema,
 });
 export type UcpathInProgressRow = z.infer<typeof UcpathInProgressRowSchema>;
 
@@ -398,7 +481,7 @@ export const UcpathPendingSweepStagingSchema = z.strictObject({
   stagedPageState: z.literal(UCPATH_SMART_HR_TERMINATION_STAGED),
   emplId: EidSchema,
   observedName: z.string().min(1),
-  /** The in-progress rows this sweep ticked, by what the grid renders. */
+  /** The in-progress rows this sweep ticked, each joined to its stable T id. */
   selected: z.array(UcpathInProgressRowSchema),
   observedAt: IsoInstantSchema,
 });

@@ -25,6 +25,13 @@ D309's Separations supplied-EID cases list the conditional `identity-approval` g
 the real park/command/resume chain. A manifest must never invent an operator result for the skipped
 arm or use a name-search EID to qualify itself as supplied.
 
+D310's Separations composition keeps the sweep before filing and inserts one always-rerun UCPath
+filing-presence read between the durable filing receipt and Kuali finalization. Exact-set scenarios
+must derive the v2 sweep key from the complete eligible/protected transaction set; a pre-D310
+person-only intent is immutable history and must cause a pre-browser refusal. A finalization test
+that deletes the fake filing after the identity gate must fail at `filing-presence` with zero Kuali
+stage, fence, click or durable write rows; it must not re-file as repair.
+
 ## `dashboard/` — the T2 tier
 
 A T2 file drives a dashboard feature through the **real** run/queue projection and the **real**

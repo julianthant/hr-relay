@@ -59,6 +59,14 @@ export type CompletionCheck<Output extends z.ZodType, Proof extends z.ZodType> =
 export interface Idempotency<Input extends z.ZodType> {
   readonly probe: ReadTaskReference;
   readonly key: (input: z.output<Input>) => string;
+  /**
+   * Earlier permanent-key contracts whose immutable intents cannot be
+   * reinterpreted under this contract. Presence of one is a loud refusal.
+   */
+  readonly retiredKeys?: Array<Readonly<{
+    key: (input: z.output<Input>) => string;
+    reason: string;
+  }>>;
   readonly recoveryAbsence: z.input<typeof NegativeSettlementPolicySchema>;
 }
 
@@ -111,6 +119,10 @@ export const WriteSafetyRuntimeSchema = z.strictObject({
   idempotency: z.strictObject({
     probe: ReadTaskReferenceSchema,
     key: RuntimeFunctionSchema,
+    retiredKeys: z.array(z.strictObject({
+      key: RuntimeFunctionSchema,
+      reason: z.string().min(1),
+    })).optional(),
     recoveryAbsence: NegativeSettlementPolicySchema,
   }),
 });

@@ -27,6 +27,7 @@ import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../sr
 import {
   EidSchema,
   FingerprintSchema,
+  IsoInstantSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
 } from "../../../src/domain/ids.js";
@@ -40,9 +41,12 @@ import {
   type UcpathSmartHrFakeWorld,
 } from "../../../src/stores/ucpath/driver/smart-hr-fake.js";
 import type {
+  UcpathPendingTransactionSet,
   UcpathSsSmartHrSettlementDiagnostic,
   UcpathTransactionRow,
 } from "../../../src/domain/ui/ucpath-smart-hr-termination.js";
+import { isUcpathTerminationInProgress } from "../../../src/domain/ui/ucpath-smart-hr-termination.js";
+import { ucpathPendingSweepIdempotencyKey } from "../../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
 import {
   SeparationsUcpathTerminationCanonicalInput,
@@ -93,7 +97,30 @@ export const TERMINATION_RUN_INPUT = Object.freeze({
 /** The natural keys the two commit contracts derive — recomputed, never copied. */
 export const TERMINATION_IDEMPOTENCY_KEY =
   `ucpath:termination|${TERMINATION_EID}|${TERMINATION_EFFECTIVE_DATE}`;
-export const SWEEP_IDEMPOTENCY_KEY = `ucpath:pending-terminations-clear|${TERMINATION_EID}`;
+export function terminationPendingSet(
+  rows: readonly UcpathTransactionRow[],
+  emplId = TERMINATION_EID,
+): UcpathPendingTransactionSet {
+  const ordered = [...rows].sort((left, right) => left.transactionId.localeCompare(right.transactionId));
+  return {
+    kind: "ucpath-pending-termination-set",
+    emplId,
+    eligible: ordered.filter(isUcpathTerminationInProgress),
+    protected: ordered.filter((row) => !isUcpathTerminationInProgress(row)),
+    observedAt: IsoInstantSchema.parse(TERMINATION_NOW),
+    source: "ss-smart-hr-detail-read",
+  };
+}
+
+export function sweepIdempotencyKey(rows: readonly UcpathTransactionRow[]): string {
+  return ucpathPendingSweepIdempotencyKey({
+    emplId: TERMINATION_EID,
+    expectedName: TERMINATION_NAME,
+    observedSet: terminationPendingSet(rows),
+  });
+}
+
+export const SWEEP_IDEMPOTENCY_KEY = sweepIdempotencyKey([]);
 
 /** The post-gate scope both transaction nodes bind against. */
 export const TERMINATION_SCOPE_OUTPUTS = Object.freeze({
@@ -293,6 +320,7 @@ export function terminationContext(
   claim: { workerId: string; claimGeneration: number },
   nodeId: string,
   dryRun = false,
+  pendingRows: readonly UcpathTransactionRow[] = [],
 ): WriteSequencerContext {
   return {
     descriptor: separationsUcpathTerminationDescriptor,
@@ -304,7 +332,10 @@ export function terminationContext(
     } as WriteSequencerContext["claim"],
     scope: {
       input: { ...TERMINATION_RUN_INPUT },
-      outputs: { ...TERMINATION_SCOPE_OUTPUTS },
+      outputs: {
+        ...TERMINATION_SCOPE_OUTPUTS,
+        "pending-set": terminationPendingSet(pendingRows),
+      },
     },
     dryRun,
     signal: new AbortController().signal,

@@ -17,12 +17,14 @@
  * It is composed BEFORE the termination, which is also why the two keys are
  * independent: sweeping is not "part of" filing, it is a precondition of it.
  *
- * ## The permanent key is the person alone
+ * ## The permanent key is the exact eligible/protected transaction set
  *
- * That is the point of the date-agnostic probe: the transaction is "this
- * person has no in-progress termination rows", which no date qualifies. Two
- * runs sweeping the same person derive the same key, so the second sees the
- * first's committed intent and does not click again.
+ * A person-only key let an earlier empty no-op suppress a later nonempty set,
+ * even though those are different deletion authorities. The v2 key binds the
+ * EID plus a canonical digest of every stable transaction row and partition.
+ * Re-observing the same set reuses the intent without a browser or click;
+ * observing a different set derives a distinct key. Immutable v1 person-only
+ * intents are detected and refused, never reinterpreted as v2 authority.
  *
  * ## `recoveryAbsence` is `operator-only`, for the same reason as its sibling
  *
@@ -31,13 +33,15 @@
  * on a control that adds them.
  */
 import { z } from "zod";
-import { EidSchema, TaskIdSchema, ObservationIdSchema, taskId } from "../../ids.js";
+import { EidSchema, FingerprintSchema, TaskIdSchema, ObservationIdSchema, taskId } from "../../ids.js";
+import { sha256Hex } from "../../sha256.js";
 import {
   UCPATH_SMART_HR_IN_PROGRESS_NAME,
   UcpathPendingSweepProofSchema,
   UcpathPendingSweepTargetSchema,
 } from "../../ui/ucpath-smart-hr-termination.js";
 import type { UcpathPendingSweepProof } from "../../ui/ucpath-smart-hr-termination.js";
+import type { UcpathPendingTransactionSet } from "../../ui/ucpath-smart-hr-termination.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../base.js";
 
 /**
@@ -56,7 +60,41 @@ export type UcpathDeletePendingTerminationsOutput =
 export function ucpathPendingSweepIdempotencyKey(
   input: z.output<typeof UcpathPendingSweepTargetSchema>,
 ): string {
+  return [
+    "ucpath:pending-terminations-clear:v2",
+    input.emplId,
+    ucpathPendingTransactionSetDigest(input.observedSet),
+  ].join("|");
+}
+
+/** The immutable person-only key used before the exact-set contract. */
+export function legacyUcpathPendingSweepIdempotencyKey(
+  input: z.output<typeof UcpathPendingSweepTargetSchema>,
+): string {
   return ["ucpath:pending-terminations-clear", input.emplId].join("|");
+}
+
+/**
+ * Canonical digest of every load-bearing row fact. Observation time is not
+ * part of the set identity: observing the same set twice must reuse one key.
+ */
+export function ucpathPendingTransactionSetDigest(
+  set: UcpathPendingTransactionSet,
+): string {
+  const facts = (row: UcpathPendingTransactionSet["eligible"][number]) => [
+    row.transactionId,
+    row.emplId,
+    row.action,
+    row.approvalStatus,
+    row.startDate,
+    row.displayedName,
+  ];
+  return FingerprintSchema.parse(sha256Hex(JSON.stringify({
+    schema: "hrauto:ucpath-pending-termination-set:v2",
+    emplId: set.emplId,
+    eligible: set.eligible.map(facts),
+    protected: set.protected.map(facts),
+  })));
 }
 
 export const UcpathDeletePendingTerminations = defineTaskContract({
@@ -91,6 +129,12 @@ export const UcpathDeletePendingTerminations = defineTaskContract({
     idempotency: {
       probe: { taskId: TaskIdSchema.parse("ucpath/match-pending-terminations"), effect: "read" },
       key: ucpathPendingSweepIdempotencyKey,
+      retiredKeys: [{
+        key: legacyUcpathPendingSweepIdempotencyKey,
+        reason:
+          "the pre-D310 person-only sweep key did not identify a stable transaction set; its immutable "
+          + "intent cannot authorize or suppress an exact-set deletion",
+      }],
       recoveryAbsence: {
         kind: "operator-only",
         reason:
@@ -104,6 +148,9 @@ export const UcpathDeletePendingTerminations = defineTaskContract({
     cleared: {
       kind: "ucpath-pending-terminations-clear",
       emplId: EidSchema.parse("10800000"),
+      clearedTransactionIds: [],
+      protectedTransactionIds: [],
+      setDigest: "d".repeat(64),
       scannedRowCount: 3,
       observedAt: "2026-08-13T10:18:00.000Z",
       source: "ss-smart-hr-detail-read",
