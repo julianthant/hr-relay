@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AuthorityTableNameSchema, ProjectionTableNameSchema } from "../../domain/authority.js";
 import {
   ActorIdSchema,
+  CommandIdSchema,
   ConfigSnapshotIdSchema,
   FingerprintSchema,
   ItemIdSchema,
@@ -156,16 +157,35 @@ export const SpanAuthorityRunRootSchema = z.strictObject({
   }
 });
 
+/**
+ * The D308 tombstone facts a span root resolves to when its run was deleted.
+ * Span files are never rewritten (D301), so the root outlives the run; the
+ * tombstone is what makes that root ACCOUNTED instead of missing authority.
+ * Identity facts only — no person values ever entered this tuple.
+ */
+export const DeletedSpanAuthoritySchema = z.strictObject({
+  runId: RunIdSchema,
+  workflow: WorkflowIdSchema,
+  traceId: TraceIdSchema,
+  origin: z.enum(["queue", "archive"]),
+  commandId: CommandIdSchema,
+  deletedAt: IsoInstantSchema,
+});
+
+const MissingSpanAuthorityRunSchema = z.strictObject({ state: z.literal("missing"), runId: RunIdSchema });
+const MalformedSpanAuthorityRunSchema = z.strictObject({
+  state: z.literal("malformed"),
+  runId: RunIdSchema,
+  table: z.enum(["span_stream", "tasks", "archived_runs", "deleted_runs"]),
+  summary: z.string().min(1),
+});
+
 export const SpanAuthorityRunResolutionSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("live"), runId: RunIdSchema }),
   z.strictObject({ state: z.literal("archived"), runId: RunIdSchema, archivedAt: IsoInstantSchema }),
-  z.strictObject({ state: z.literal("missing"), runId: RunIdSchema }),
-  z.strictObject({
-    state: z.literal("malformed"),
-    runId: RunIdSchema,
-    table: z.enum(["span_stream", "tasks", "archived_runs"]),
-    summary: z.string().min(1),
-  }),
+  MissingSpanAuthorityRunSchema,
+  MalformedSpanAuthorityRunSchema,
+  DeletedSpanAuthoritySchema.extend({ state: z.literal("deleted") }),
 ]);
 
 const MalformedAuthorityRecordSchema = z.strictObject({
@@ -190,9 +210,10 @@ const ArchivedSpanAuthoritySchema = z.strictObject({
   archivedAt: IsoInstantSchema,
 });
 
+/** `deleted` and `archived` are ACCOUNTED, so neither is ever a problem arm. */
 const SpanAuthorityProblemSchema = z.discriminatedUnion("state", [
-  SpanAuthorityRunResolutionSchema.options[2],
-  SpanAuthorityRunResolutionSchema.options[3],
+  MissingSpanAuthorityRunSchema,
+  MalformedSpanAuthorityRunSchema,
   z.strictObject({ state: z.literal("missing-span"), runId: RunIdSchema }),
   MalformedAuthorityRecordSchema,
 ]);
@@ -203,12 +224,14 @@ export const SpanAuthorityReconciliationSchema = z.discriminatedUnion("state", [
     streamRunCount: NonNegativeIntSchema,
     liveRunCount: NonNegativeIntSchema,
     archived: z.array(ArchivedSpanAuthoritySchema),
+    deleted: z.array(DeletedSpanAuthoritySchema),
   }),
   z.strictObject({
     state: z.literal("degraded"),
     streamRunCount: NonNegativeIntSchema,
     liveRunCount: NonNegativeIntSchema,
     archived: z.array(ArchivedSpanAuthoritySchema),
+    deleted: z.array(DeletedSpanAuthoritySchema),
     problems: z.array(SpanAuthorityProblemSchema).min(1),
   }),
   z.strictObject({
