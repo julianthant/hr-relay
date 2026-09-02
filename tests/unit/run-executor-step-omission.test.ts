@@ -84,7 +84,18 @@ const fixtureTask = defineTask(fixtureContract, {
   },
 });
 
-function fixtureDescriptor(id: string, code: string, omission: StepOmissionDeclaration) {
+function fixtureDescriptor(
+  id: string,
+  code: string,
+  omission: StepOmissionDeclaration,
+  artifactProjections?: readonly Readonly<{
+    id: string;
+    source: Readonly<{ nodeId: "read" | "fold"; fieldPath: string }>;
+    keyFields: readonly [string, ...string[]];
+    sink: "xlsx-retention";
+    blocking: true;
+  }>[],
+) {
   const fixtureFlow = flow(FixtureInput)
     .step("read", fixtureContract, { dependsOn: [], replay: "checkpoint", bind: () => ({ disposition: "observed" }) })
     .step("fold", fixtureContract, {
@@ -120,6 +131,7 @@ function fixtureDescriptor(id: string, code: string, omission: StepOmissionDecla
       { key: "folding", label: "Folding", nodes: ["fold"] },
     ],
     flow: fixtureFlow,
+    ...(artifactProjections === undefined ? {} : { artifactProjections }),
   });
 }
 
@@ -133,6 +145,19 @@ const lyingDescriptor = fixtureDescriptor("omission-lying", "ol", {
   produces: { read: () => ({ wrong: "shape" }) },
 });
 const bareDescriptor = fixtureDescriptor("omission-bare", "ob", { form: FORM, produces: {} });
+/** Bullet 5 — the asserted node ("read") also declares an artifact projection; an assertion projects nothing. */
+const projectingDescriptor = fixtureDescriptor(
+  "omission-projecting",
+  "op",
+  { form: FORM, produces: { read: ({ facts }) => ({ disposition: facts.value, providerState: facts.value }) } },
+  [{
+    id: "retention-row",
+    source: { nodeId: "read", fieldPath: "disposition" },
+    keyFields: ["disposition"],
+    sink: "xlsx-retention",
+    blocking: true,
+  }],
+);
 
 const registry = defineTaskStoreRegistry([defineServiceStore("ocr", { fixture: fixtureTask })], {
   scenarioIds: [SCENARIO],
@@ -296,5 +321,21 @@ describe("executor step omission (D307)", () => {
     assert.ok(failureId !== undefined);
     const failure = database.authority.failures.get(failureId);
     assert.match(failure?.summary ?? "", /step omission refused \[dependency-omitted\]: node "fold" \(step "folding"\) reads "read"/u);
+  });
+
+  it("fails an asserted node by name when it also declares an artifact projection — an assertion projects nothing", async () => {
+    const harness = harnessFor(projectingDescriptor);
+    const { database } = harness.authority;
+    database.authority.runs.enqueue(queuedRunFor(projectingDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
+    const claimed = claim(database, projectingDescriptor);
+    const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
+    assert.equal(outcome.state, "failed");
+    const run = database.authority.runs.get(RUN_ID);
+    assert.ok(run !== undefined && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed");
+    const failureId = run.lifecycle.state === "terminal" ? run.lifecycle.failureId : undefined;
+    assert.ok(failureId !== undefined);
+    const failure = database.authority.failures.get(failureId);
+    assert.equal(failure?.nodeId, "read");
+    assert.match(failure?.summary ?? "", /node "read" declares artifact projections and cannot be asserted/u);
   });
 });
