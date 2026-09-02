@@ -15,6 +15,7 @@ import { buildWorkflowExplorer } from "../../src/server/dashboard/queries/explor
 import { buildRunDetail } from "../../src/server/dashboard/queries/run-detail.js";
 import { descriptorSetHash } from "../../src/server/dashboard/compose.js";
 import { projectStartSteps } from "../../src/services/start/step-selection.js";
+import { WorkflowBootstrapPrimitiveSchema } from "../../src/domain/dashboard/bootstrap.js";
 import { healthyDashboardPreflightReport } from "../fixtures/preflight-seams.js";
 import { explorerQueryDeps } from "../fixtures/explorer-seams.js";
 import {
@@ -91,7 +92,8 @@ describe("workflow recipe registry conformance", () => {
           reason: "no ai.advisory provider is composed in this test",
         }),
       });
-      const starts = new Map(bootstrap.workflows.map((workflow) => [String(workflow.id), workflow.start]));
+      const bootstrapWorkflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);
+      const starts = new Map(bootstrapWorkflows.map((workflow) => [String(workflow.id), workflow.start]));
       const explorer = buildWorkflowExplorer(explorerQueryDeps(manualClock(AT), EXPLORER_HASH));
       const explorerWorkflows = new Map(explorer.workflows.map((workflow) => [String(workflow.id), workflow]));
 
@@ -137,7 +139,9 @@ describe("workflow recipe registry conformance", () => {
           members: step.members.map((member) => member.label),
         })), id).toEqual(expectedGroups.map(({ label, nodes }) => ({
           label,
-          members: nodes.map((nodeId) => descriptor.nodes.find((node) => String(node.id) === nodeId)?.label),
+          members: nodes.map((nodeId) => descriptor.timeline
+            .flatMap((group) => group.nodes)
+            .find((node) => String(node.id) === nodeId)?.label),
         })));
       }
     } finally {
