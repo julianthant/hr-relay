@@ -19,6 +19,7 @@ import {
   WriteBindingProofIdSchema,
 } from "../ids.js";
 import { RedactedFieldSchema } from "../redaction.js";
+import { TimelineCategoryKeySchema } from "../workflow/presentation.js";
 import { WriteStateSchema } from "./failure.js";
 
 const EvidenceSourceSchema = z.discriminatedUnion("kind", [
@@ -44,6 +45,24 @@ const EvidenceSourceSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({ kind: z.literal("operator-correction"), supersedes: EvidenceEntryIdSchema }),
   z.strictObject({ kind: z.literal("derived"), evidence: z.array(EvidenceRefSchema).min(1) }),
+  /**
+   * D307 — an OPERATOR ASSERTION. The operator omitted this node's timeline
+   * step at start and typed the facts the step would have read; the step's
+   * producer rebuilt this node's output from them and the executor stored a
+   * MARKED checkpoint row (every provenance leaf `operator`-sourced).
+   *
+   * It is its own arm, and NOT `system`/`checkpoint`, for the reason the whole
+   * unit exists: those two arms say a task observed a page at an instant, and
+   * this value was observed by nobody. `assertedAt` is when the assertion was
+   * made, never when anything was seen, and `step` names the omitted step so
+   * the sentence beside the fact is checkable against the run's own envelope.
+   */
+  z.strictObject({
+    kind: z.literal("operator-assertion"),
+    taskId: TaskIdSchema,
+    step: TimelineCategoryKeySchema,
+    assertedAt: IsoInstantSchema,
+  }),
 ]);
 
 const EvidenceFactFields = {
@@ -60,7 +79,13 @@ export const EvidenceFactSchema = z.discriminatedUnion("state", [
 
 export const DecisionEvidenceSchema = z.strictObject({
   id: EvidenceEntryIdSchema,
-  kind: z.enum(["branch", "gate", "identity", "dedupe"]),
+  /**
+   * D307 adds `assertion`: the operator omitted a step at start and the step's
+   * producer rebuilt this node's output from typed facts. It is not a `branch`
+   * (no controller chose anything) and emphatically not a `gate` (nobody
+   * approved an observation), so it is its own closed kind.
+   */
+  kind: z.enum(["branch", "gate", "identity", "dedupe", "assertion"]),
   outcome: z.enum(["taken", "not-taken", "blocked", "approved", "rejected"]),
   reason: z.string().min(1),
   evidence: z.array(EvidenceRefSchema).min(1),

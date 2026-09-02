@@ -21,6 +21,7 @@
  */
 import { z } from "zod";
 import { FingerprintSchema } from "../../domain/ids.js";
+import { TimelineCategoryKeySchema } from "../../domain/workflow/presentation.js";
 import { idempotencyKeyDigestReference } from "../../domain/redaction.js";
 import type { RunEvidenceReceipt } from "../../domain/trust/evidence.js";
 import { projectReceiptForOperator } from "../../domain/trust/evidence.js";
@@ -53,9 +54,26 @@ export const ExplainRunViewSchema = z.strictObject({
   outcome: present(z.string().min(1)),
   dryRun: z.boolean(),
   resolvedInstance: z.record(z.string(), z.string()),
+  /**
+   * D307 — the steps the operator omitted at start, by KEY. The typed facts
+   * that replaced those steps' reads are the run's own input and never appear
+   * here: what an operator explaining a run needs is which steps nobody read.
+   */
+  omittedSteps: z.array(TimelineCategoryKeySchema),
   timeline: z.array(z.strictObject({
     nodeId: z.string().min(1),
-    disposition: z.enum(["observed-this-attempt", "replayed-from-checkpoint", "not-run", "no-record"]),
+    /**
+     * `operator-asserted` is its own disposition (D307): the node stored a
+     * checkpoint, so it is not `not-run`, and nothing observed it, so calling
+     * it `observed-this-attempt` would be the exact lie this arm prevents.
+     */
+    disposition: z.enum([
+      "observed-this-attempt",
+      "replayed-from-checkpoint",
+      "operator-asserted",
+      "not-run",
+      "no-record",
+    ]),
     detail: z.string().min(1),
   })),
   reuse: z.array(z.strictObject({
@@ -187,6 +205,14 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
         }
         : { nodeId, disposition: "not-run" as const, detail: `closed reason: ${reason}` };
     }
+    if (record.assertion !== undefined) {
+      return {
+        nodeId,
+        disposition: "operator-asserted" as const,
+        detail: `the operator omitted step "${record.assertion.step}" at start; this node's output was `
+          + `asserted at ${record.assertion.assertedAt} and observed by nobody`,
+      };
+    }
     const replayed = record.runId !== envelope.runId || record.attempt !== envelope.attempt;
     return {
       nodeId,
@@ -220,6 +246,7 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
       : { state: "absent", reason: "this run has not settled" },
     dryRun: envelope.dryRun,
     resolvedInstance: envelope.resolvedInstance,
+    omittedSteps: [...new Set((envelope.stepOmissions ?? []).map((entry) => String(entry.step)))].sort(),
     timeline,
     reuse: (receipt?.reuse ?? []).map((entry) => ({
       // The reuse row's source ref names the node's verification entry; the
@@ -343,6 +370,8 @@ export function renderExplainRun(view: ExplainRunView): string {
       `${view.state}${shown(view.outcome, (outcome) => ` → ${outcome}`)}`,
       `dryRun=${String(view.dryRun)}  instances: ${instances === "" ? "(none resolved)" : instances}`,
     ]),
+    ...section("omitted steps", view.omittedSteps.map((step) =>
+      `${step} — omitted at start; its nodes are operator-asserted or did not run`)),
     ...section("node timeline", view.timeline.map((entry) =>
       `${entry.nodeId.padEnd(22)} ${entry.disposition.padEnd(26)} ${entry.detail}`)),
     ...section("checkpoint reuse", view.reuse.map((entry) =>

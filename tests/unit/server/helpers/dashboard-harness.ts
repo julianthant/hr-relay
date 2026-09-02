@@ -457,7 +457,8 @@ export function taskEventsOf(
   seed: number,
   node: string,
   outcome?: SpanOutcomeWire,
-  notRunReason?: "condition-false" | "branch-not-selected",
+  /** The run-detail wire's whole closed vocabulary, D307's two reasons included. */
+  notRunReason?: "condition-false" | "branch-not-selected" | "operator-asserted" | "step-omitted",
 ): void {
   const base = {
     ts: world.clock.now().toISOString(),

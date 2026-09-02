@@ -478,6 +478,8 @@ function spanDuration(span: Readonly<{ startedAt?: string; endedAt?: string }>):
 /* ── D225: the categorical timeline fold ─────────────────────────────────── */
 
 type TimelineStepState = TimelineStepWire["state"];
+/** D307 — the closed reason a member span recorded for not running. */
+type TimelineNotRunReason = NonNullable<TimelineStepWire["members"][number]["notRunReason"]>;
 
 /**
  * Fold the member node states into ONE category state. Precedence tells the
@@ -585,6 +587,7 @@ function buildTimelineSteps(
     durationMs?: number;
     executions: number;
     replayedFrom?: { attempt: number; claimGeneration?: number };
+    notRunReason?: TimelineNotRunReason;
   } => {
     const executions = spansByNode.get(node.id) ?? [];
     if (executions.length === 0) {
@@ -608,6 +611,14 @@ function buildTimelineSteps(
       (a.startedAt ?? a.endedAt ?? "").localeCompare(b.startedAt ?? b.endedAt ?? ""));
     const latest = ordered[ordered.length - 1];
     const state: TimelineStepState = taskStateOf(latest?.outcome);
+    /*
+     * D307 — the member's own closed not-run reason, off the LATEST execution's
+     * span, so the strip can draw an operator-asserted node distinctly from an
+     * omitted one. A span that recorded no reason contributes none: a member
+     * whose reason authority does not hold says nothing rather than a likely
+     * thing.
+     */
+    const notRunReason = state === "skipped" ? latest?.notRunReason : undefined;
     let ms = 0;
     let measured = false;
     for (const span of executions) {
@@ -617,7 +628,13 @@ function buildTimelineSteps(
         measured = true;
       }
     }
-    return { label: node.label, state, ...(measured ? { durationMs: ms } : {}), executions: executions.length };
+    return {
+      label: node.label,
+      state,
+      ...(measured ? { durationMs: ms } : {}),
+      executions: executions.length,
+      ...(notRunReason === undefined ? {} : { notRunReason }),
+    };
   };
 
   return timeline.map((category) => {
@@ -635,6 +652,7 @@ function buildTimelineSteps(
         state: member.state,
         ...(member.durationMs === undefined ? {} : { durationSec: Math.round(member.durationMs / 1000) }),
         ...(member.replayedFrom === undefined ? {} : { replayedFrom: member.replayedFrom }),
+        ...(member.notRunReason === undefined ? {} : { notRunReason: member.notRunReason }),
       })),
     };
   });
@@ -648,6 +666,9 @@ export function buildRunDetail(
   const { row, authority } = requireRun(deps, runId);
   const status = deriveRunStatus(row, authority);
   const descriptorView = deps.descriptors.resolve(row.queued.workflow);
+  const omittedSteps = [...new Set(
+    (authority.envelope.stepOmissions ?? []).map((entry) => String(entry.step)),
+  )].sort();
 
   const timelineEvents: {
     at: string;
@@ -765,12 +786,24 @@ export function buildRunDetail(
   const rehearsed = lifecycle.state === "terminal"
     && lifecycle.outcome === "done"
     && authority.envelope.dryRun;
+  /**
+   * D307 — the same rule for an OMITTED step, for the same reason. A run whose
+   * operator omitted a step read that step from a typed form instead of a
+   * system: nothing verified those values, so the run may not wear
+   * `verified-done` either. It is `partial`, which is exactly what its receipt
+   * derives for it (its omitted-step warning is load-bearing). It carries no
+   * `rehearsal` marker — that word names a dry run, and an omitted step in a
+   * REAL run is a different fact the panel must not blur into it.
+   */
+  const omitted = lifecycle.state === "terminal"
+    && lifecycle.outcome === "done"
+    && omittedSteps.length > 0;
   const outcome = lifecycle.state === "terminal"
     ? lifecycle.outcome === "interrupted"
       ? { state: "absent", reason: "run interrupted; ref write-safety recovery will requeue or settle it" }
       : {
         state: "terminal",
-        result: rehearsed
+        result: rehearsed || omitted
           ? "partial"
           : ({ done: "verified-done", failed: "failed", cancelled: "cancelled", discarded: "cancelled", superseded: "cancelled" } as const)[lifecycle.outcome],
         completedAt: lifecycle.endedAt,
@@ -831,6 +864,14 @@ export function buildRunDetail(
       attempts: row.attempt,
     },
     ...(captures === undefined ? {} : { captures }),
+    /*
+     * D307 — the run envelope's own list, by step KEY. It is read from the
+     * envelope and never re-derived from spans: a step whose every node happens
+     * to have been skipped for some other reason is not an omitted step, and
+     * only the envelope says what the operator chose at start. The typed facts
+     * beside each key stay in authority.
+     */
+    ...(omittedSteps.length === 0 ? {} : { omittedSteps }),
     availableSections: availableSections(row, authority, deps.trust, captures),
   });
 }
@@ -1851,6 +1892,8 @@ type FactProvenanceWire = {
   observedAt?: string;
   source?: "live" | "derived" | "operator";
   correctedAt?: string;
+  /** D307 — the omitted step this leaf was asserted for; see the wire's own note. */
+  assertedStep?: string;
 };
 
 /**
@@ -2003,11 +2046,23 @@ function provenanceFor(
     if (path !== fieldPath && !fieldPath.startsWith(`${path}.`)) continue;
     if (best === undefined || path.length > String(best.path).length) best = point;
   }
-  if (best === undefined) return {};
+  /*
+   * D307 — the row's own marker, not an inference from the leaf's source: an
+   * assertion is a property of the ROW (the executor stamps it when the step
+   * was omitted), and every one of its leaves is operator-sourced by
+   * construction. A leaf with no covering provenance point still carries it,
+   * because "this row was asserted" is true of the row whether or not one
+   * point covers this path.
+   */
+  const asserted = stored.assertion === undefined
+    ? {}
+    : { assertedStep: String(stored.assertion.step) };
+  if (best === undefined) return asserted;
   return {
     observedAt: best.observedAt,
     source: best.source,
     ...(best.correctedAt === undefined ? {} : { correctedAt: best.correctedAt }),
+    ...asserted,
   };
 }
 

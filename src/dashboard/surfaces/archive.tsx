@@ -220,6 +220,8 @@ import {
   archiveSweepVersionRange,
   archiveWarningChip,
   archiveWorkflowCodes,
+  ARCHIVED_NOT_RUN_NOTE,
+  archivedOmittedStepsNote,
   archivedRelaunchCautions,
   archivedRelaunchHeadline,
   archivedRunHeading,
@@ -1397,6 +1399,7 @@ export function ArchivedRunDetail({
    * state from a descriptor, which is what makes the whole page renderable
    * with the workflow registry emptied.
    */
+  const omittedStepsNote = archivedOmittedStepsNote(detail.detail.omittedSteps);
   const steps: DsStep[] = detail.detail.timeline.events.map((event) => {
     /*
      * The step's OWN measured duration, read FORWARD: a record frozen before
@@ -1405,8 +1408,17 @@ export function ArchivedRunDetail({
      * a gate, disagreeing instants). Nothing here differences two events.
      */
     const measured = timelineEventDuration(event);
+    /*
+     * D307 — WHY a skipped step did not run, in the frozen wire's own closed
+     * words. `detail` is the note slot under the label; a step whose span
+     * recorded no reason keeps the server's absence and says nothing.
+     */
+    const note = event.state === "skipped" && event.notRun.state === "present"
+      ? ARCHIVED_NOT_RUN_NOTE[event.notRun.reason]
+      : undefined;
     return {
       label: event.label,
+      ...(note === undefined ? {} : { detail: note }),
       state: event.state === "active"
         ? "current"
         : event.state === "done" || event.state === "failed" || event.state === "skipped"
@@ -1568,6 +1580,9 @@ export function ArchivedRunDetail({
           <Card>
             <CardBody className="flex flex-col gap-[var(--ds-space-snug)]">
               <SectionLabel>Step timeline</SectionLabel>
+              {omittedStepsNote !== undefined && (
+                <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{omittedStepsNote}</p>
+              )}
               {steps.length === 0
                 ? <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>This run recorded no steps.</p>
                 : <TimelineSteps steps={steps} variant="full" label="Archived run timeline" />}
