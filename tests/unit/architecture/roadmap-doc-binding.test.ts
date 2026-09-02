@@ -81,6 +81,9 @@ import {
 import { REPO_ROOT } from "./helpers/guard-files.js";
 
 const FIXTURE_ROOT = "tests/unit/architecture/fixtures/roadmap-binding";
+const packageScripts = (JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
+  readonly scripts: Readonly<Record<string, string>>;
+}).scripts;
 
 /**
  * Arm (c)'s ratchet: the nodes that carry no `doc:` ref at HEAD.
@@ -451,6 +454,10 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     const generator = await scanDocs(REPO_ROOT);
     expect(sortBindings(audit.tags)).toEqual(sortBindings(generator.tags));
     expect(sortBindings(audit.statuses)).toEqual(sortBindings(generator.statuses));
+  });
+
+  it("registers the roadmap freshness check against the generator's check mode", () => {
+    expect(packageScripts["roadmap:check"]).toBe("tsx scripts/generate-roadmap.ts --check");
   });
 
   it("records the unbound nodes as a ratchet that can only shrink", () => {
