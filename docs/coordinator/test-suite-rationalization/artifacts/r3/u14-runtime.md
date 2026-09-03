@@ -28,4 +28,32 @@ isolated file forks. R3a will not add retries, skips, longer timeouts, or a smal
 
 ## Verification record
 
-Pending owned-family gate, repeated timeout checks, and no-residue proof.
+No file or case was deleted, moved, or merged. Each table row names the retained boundary and its
+direct failure oracle. The verbose gate printed the `unit` project, every file, and every complete
+behavior/refusal title:
+
+```text
+u14_tests=(${(f)"$(sed -n '/| Retained test file |/,/^$/p' \
+  docs/coordinator/test-suite-rationalization/artifacts/r3/u14-runtime.md \
+  | rg -o 'tests/unit(?:/server)?/[^`]+\.test\.ts' | sort -u)"})
+npm exec vitest run -- --project unit ${u14_tests[@]} --reporter=verbose
+
+Test Files  11 passed (11)
+Tests       151 passed (151)
+Duration    13.17s (real 13.64s)
+```
+
+The six-case performance fixture passed with its declared ≥20,000-note corpus; its individual
+cases completed in 12–178ms. The full 64-case composition file, including real settings recovery,
+HTTP/SSE, process-launch injection, and shutdown, also passed. Together with u13 this is the exact
+49-file/868-case owned family.
+
+The earlier 30-second Archive and performance failures are classified as historical full-suite
+contention, not deterministic retained defects: both focused files, the owned family, and the later
+uncontended R2 coverage run pass at the supported four-fork cap. R3a changed no timeout, retry,
+skip, fixture size, or production runner setting.
+
+After the final family run, no process command referenced this worktree, no
+`/tmp/hrauto-{compose,dashboard,perf}-*` directory remained, and `.tracker-rebuild/locks` contained
+no entry. The legitimate dashboard listeners remained the same PIDs 95609/95590, proving the test
+run neither killed nor replaced them.

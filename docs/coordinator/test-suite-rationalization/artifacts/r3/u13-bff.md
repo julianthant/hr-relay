@@ -54,4 +54,25 @@ absence observe different seams and failure oracles.
 
 ## Verification record
 
-Pending focused/family gates and negative controls.
+No file or case was deleted, moved, or merged. The table's second column is the per-file risk and
+red-capable failure oracle: source inspection confirmed that each retained file drives its named
+boundary directly and asserts the returned wire, status, bytes, authority, refusal, or cleanup
+state. The verbose gate printed the `unit` project, every file, and every complete behavior/refusal
+title, providing the profile's equivalent evidence without manufacturing 38 temporary production
+mutations.
+
+```text
+u13_tests=(${(f)"$(sed -n '/| Retained test file |/,/^$/p' \
+  docs/coordinator/test-suite-rationalization/artifacts/r3/u13-bff.md \
+  | rg -o 'tests/unit/server/[^`]+\.test\.ts' | sort -u)"})
+npm exec vitest run -- --project unit ${u13_tests[@]} --reporter=verbose
+
+Test Files  38 passed (38)
+Tests       717 passed (717)
+Duration    8.55s (real 9.27s)
+```
+
+This gate ran while the legitimate dashboard remained on PIDs 95609/95590 at 3938/5174. The carried
+Archive real-client-disconnect case passed in 362ms. Its direct abort/lease assertion is distinct
+from the generic HTTP adapter's transfer-cancellation oracle and from query-level absence; no
+equivalence justified consolidation.

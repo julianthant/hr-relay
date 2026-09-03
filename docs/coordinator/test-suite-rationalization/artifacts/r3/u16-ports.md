@@ -37,4 +37,31 @@ gate. No production port or isolation contract will change.
 
 ## Verification record
 
-Pending red/green reversal, listener identity before/after, ephemeral rebind, and temp/lock cleanup.
+The red was reversed with the legitimate dashboard still active:
+
+```text
+npm exec vitest run -- --project unit tests/unit/server/compose-real-port.test.ts \
+  --reporter=verbose \
+  -t 'serves bootstrap, day, and SSE through a real ephemeral listener and releases it at teardown'
+
+Test Files  1 passed (1)
+Tests       1 passed | 63 skipped (64)
+Duration    2.71s
+```
+
+One test-local wrapper now forces both literal-zero override seams for every composition in the
+file, so its 64 cases cannot claim 3938 or 5174. The focused case keeps the real client path,
+encloses all post-start assertions in teardown authority, closes its SSE subscription, awaits the
+runtime stop, and then binds a fresh Node server to the exact returned ephemeral port. That bind is
+the direct teardown oracle; its own listener also closes in `finally`.
+
+Before and after the focused and full owned-family gates, `lsof` reported the same legitimate
+listeners: PID 95609 on 127.0.0.1:3938 and PID 95590 on 127.0.0.1:5174. No process command referenced
+this worktree afterward, no matching temp-authority directory remained, and the rebuild lock root
+contained no entry.
+
+A deliberately broader diagnostic that crossed the brief's ownership boundary still found active-
+port failures in `worker-pool-composition.test.ts` and `worker-pool-parallel-proof.test.ts`, plus a
+cleanup-time artifact-reader `ENOENT` after that failed worker composition. Those files are unchanged
+and remain R3b u15/u17/u18 residue; the R3a exit gate is the exact owned family above, while R3b owns
+the full active-port coverage gate.
