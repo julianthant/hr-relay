@@ -742,6 +742,21 @@ publish. A disconnect, timeout, malformed cursor, current or future cursor, cros
 cursor, missing generation, ordinary reconnect and subscriber-buffer overflow do not; overflow is
 the separate `reset-required` arm.
 
+**Delivery is demand-driven, so the pending bound holds end to end (2026-09-02).** A hub
+connection hands out live envelopes one `next()` at a time and queues everything a consumer has not
+yet asked for; `subscriptions/sse-response.ts` is the ONE bridge from that connection to an SSE
+body, a Web Stream `pull()` source that asks only when the Node adapter has drained the socket. A
+browser that stops reading therefore backs up in the hub's single bounded queue — never in an
+unbounded stream buffer the hub cannot see — and when the bound trips the queue collapses to exactly
+one `reset-required{cursor-expired}`, re-minted at hand-out so its cursor names the head the client
+resnapshots from; nothing after it queues until it is consumed, and nothing before it is dropped or
+reordered. Stream cancellation (client disconnect, adapter cancellation, server shutdown) closes the
+connection exactly once; a hub close resolves the outstanding pull with `undefined` and ends the body
+cleanly. A count-bearing change builds one immutable snapshot envelope per distinct day and shares it
+across that day's subscribers. Proof: `dashboard-stream.test.ts` (bound, hand-out, close, one
+snapshot per day) and `dashboard-stream-backpressure.test.ts` (the bridge with a reader that stops
+pulling, and the real Node adapter with a paused client that resumes to exactly one reset).
+
 The hub captures one complete `DashboardDayWire` and derives hello's generation/cursor/hash and the
 snapshot envelope from that same object. It awaits the durable publication before exposing the
 replacement. If publication itself moves the projection generation or cursor, the captured pair is

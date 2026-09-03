@@ -325,6 +325,11 @@ environment-supplied.
   screenshots, run Capture tiles, receipts, and Archive evidence are separate diagnostic authority
   and remain supported. `dashboard:prod` static serving is still an independent local-dashboard gap.
 
+- **2026-09-02 — the SSE hub delivers on demand; never push into a stream controller.** A hub
+  connection exposes `next()`/`pending`, and `subscriptions/sse-response.ts` drains it from a Web
+  Stream `pull()`, so socket backpressure reaches the hub's ONE bounded queue and overflow becomes
+  exactly one `reset-required`. A push listener bypasses the bound the moment it registers. Prove
+  slow-consumer behaviour through the real Node adapter with a paused client, not a fake sink.
 - **2026-09-02 — every browser-reachable BFF mutation is admitted by the loopback Host/Origin
   door before its handler runs (D75).** Register `app.use(<path>, operatorMutationIngressGuard)`
   (JSON envelope: also requires `application/json`) or `operatorOpaqueIngressGuard` (intake bytes,
