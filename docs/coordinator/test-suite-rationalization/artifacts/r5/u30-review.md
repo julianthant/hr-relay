@@ -33,8 +33,8 @@ changed because R7/u38 owns the final cross-family taxonomy and runner contract.
 
 ## Synthetic-data ratchet and controlled red
 
-`tests/unit/architecture/scenario-coverage.test.ts` scans only collected `*.test.ts` sources for
-standalone eight-digit EID shapes in collected roots and local scenario support. It accepts only
+`tests/unit/architecture/scenario-coverage.test.ts` scans collected scenario sources and local
+support for standalone eight-digit EID shapes. It accepts only
 `10800000`–`10800099` and the explicit invalid sentinel `19999999`; a failure prints file/line,
 never the matched value. The two uncollected `dry-run.scenario.ts` T1b declarations are the sole
 source exclusion.
