@@ -39,7 +39,7 @@ Order 1 deltas.
 | 9. Scenario inventory | §3 is the required structural/live matrix. Negative and impossible-world variants stay synthetic; live cases correspond only to truthful registry arms. |
 | 10. Delegation and queue | Keep the existing standalone workflow and `reject-active` enqueue policy. D315 requires every workflow operation to be an explicit stable-id `task(...)` entry; there are no `parallel`, `delegate`, `gate`, or `transaction` entries, child edges, or joins. Both modes remain rows of `person-lookup`, never child workflow identities. |
 | 11. Trust contract | Inherit ref operator-trust §3.2 and ref guards-and-tests §10.11. The workflow-specific delta is that each mode preserves its typed result/evidence, and a Match lookup/page failure is `unknown/failed`, never no-match. |
-| 12. Authoring boundary | Source-authored. D312's strict four-artifact cap applies to a reuse-only workflow. Person Lookup's workflow surface is `src/workflows/person-lookup/recipe.ts`, the structural scenario, the live declaration, and this migration record; Match may additionally add only the genuinely new behavior-owned reusable task/driver files named in §2. No descriptor/module/registry/dashboard glue is authored elsewhere. |
+| 12. Authoring boundary | Source-authored. D312's strict four-artifact cap applies to a reuse-only workflow. Person Lookup's workflow surface is `src/workflows/person-lookup/workflow.ts`, the structural scenario, the live declaration, and this migration record; Match may additionally add only the genuinely new behavior-owned reusable task/driver files named in §2. No descriptor/module/registry/dashboard glue is authored elsewhere. |
 
 ## 2. Mode and task delta
 
