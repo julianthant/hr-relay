@@ -1053,6 +1053,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
       const runtime: DashboardRuntime = await composeDashboardRuntime({
         isolation: rebuildRuntimeIsolation,
         backendPortOverride: 0,
+        frontendPortOverride: 0,
         env: {},
         repoRoot,
         workerProcess: {
