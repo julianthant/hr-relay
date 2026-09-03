@@ -325,6 +325,13 @@ environment-supplied.
   screenshots, run Capture tiles, receipts, and Archive evidence are separate diagnostic authority
   and remain supported. `dashboard:prod` static serving is still an independent local-dashboard gap.
 
+- **2026-09-02 — every browser-reachable BFF mutation is admitted by the loopback Host/Origin
+  door before its handler runs (D75).** Register `app.use(<path>, operatorMutationIngressGuard)`
+  (JSON envelope: also requires `application/json`) or `operatorOpaqueIngressGuard` (intake bytes,
+  the body-less advisory) BEFORE the `app.post`; the `operator-mutation-admission` guard pins the
+  closed route → door table in `routes/api.ts`. A JSON-shaped `text/plain` body parses through
+  `c.req.json()`, so media type is part of the admission. Refuse with the body unread and zero
+  planner/intake/authority/provider effects; prove it with `Request` read spies and `bodyUsed`.
 - **2026-08-29 — BFF request identity is one admission checkpoint.** Every request crosses the
   first middleware exactly once. Solo composition accepts only the strict configured
   `local-operator`; body, query, headers, XLSX metadata and mobile-capture credentials are not actor

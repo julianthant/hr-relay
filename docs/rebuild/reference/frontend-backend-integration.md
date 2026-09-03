@@ -619,6 +619,27 @@ independently derived actor to its service while its strict request schema remai
 internal callers remain responsible for trusted context. Phase 3d may extend the adapter with a
 closed second credential-derived actor; it does not change this admission seam.
 
+**Every browser-reachable mutation is admitted by one loopback Host/Origin door before its handler
+reads a byte (D75, 2026-09-02).** `operator-mutation-ingress.ts` exports one policy factory with two
+body arms. The JSON arm (`operatorMutationIngressGuard`) admits `POST /api/v1/commands`,
+`/commands/bulk`, `/exports/xlsx`, `/start-plans` and `/explorer/validate`: Host must be a bare
+loopback authority, Origin must equal exactly `http://<Host>`, and `Content-Type` must be
+`application/json` — Hono's `c.req.json()` parses a JSON-shaped `text/plain` body that a hostile page
+can send as a simple no-CORS POST, so the media type is part of the admission, not a client nicety.
+The opaque arm (`operatorOpaqueIngressGuard`) admits `POST /api/v1/intake/files`, whose bytes travel
+under the file's own media type (D170) and whose media refusal stays the intake service's typed
+`INTAKE_*` code, and `POST /api/v1/runs/:runId/advisory`, which carries no body but spends a
+constrained provider and records admission metering (ref operator-trust §4.4) — a page that can
+reach loopback must not be able to drain that budget. `POST /api/v1/preflight/rerun` keeps its own
+inline door (§3.1). Refusals ride the wire-error shape (`OPERATOR_MUTATION_ORIGIN_REFUSED` 403,
+`OPERATOR_MUTATION_MEDIA_TYPE_REFUSED` 415) with the request body unread and zero planner, intake,
+authority or provider effects. The `operator-mutation-admission` guard pins the closed route → door
+table against `routes/api.ts` and refuses a mutating route without a row, a guard registered after
+its route, or a stale row. The client transport attaches its own Origin to every non-GET request so
+Node and fake transports exercise the same door a browser supplies for free; the server never relies
+on that header being client-authored. Every other `GET` remains unguarded by design: it reads served
+projections and never changes state.
+
 **A command whose target is not a run is composed beside the composer, not inside it** (D249,
 2026-08-20). `composeCommandRequest` is exhaustive over the SERVED row-action vocabulary and every
 one of its arms targets a `runId`; the Session Panel's `Stop` targets a worker lease, so widening
