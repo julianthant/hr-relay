@@ -35,7 +35,7 @@
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
 | u01–u06 | R1 | closed | merged `--no-ff` as `81e6f3c3`; run worktree and branch removed; exact task `01a0645c-1e13-7581-8a20-67314a86e195` archived | integrated continuation gate at `37c080bc`: type/lint/70-file architecture/manifest/roadmap/diff PASS | complete | Self-contained architecture/static work retained on the integration line |
-| u07–u12 | R2 | reserved | — | — | required | Wave 2A supervisor slot reserved; core/domain/workflow/write/storage units |
+| u07–u12 | R2 | active | task `01a064e5-e38c-7e31-9f3c-90d108a186cd`; worktree `/Users/julianhein/.codex/worktrees/0b41/hr-automation-rebuild` | exact-base detached-start repair authorized before writes | required | Core/domain/workflow/write/storage units |
 | u13, u14, u16 | R3a | planned | — | — | required | Wave 2 server/BFF/runtime and real-port hermeticity |
 | u15, u17, u18 | R3b | planned | — | — | required | Post-Wave-2 worker/consolidation/review |
 | u19–u24 | R4 | reserved | — | — | required | Wave 2A supervisor slot reserved; dashboard model/jsdom/component layer |
