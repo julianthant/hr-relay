@@ -48,6 +48,9 @@ export default defineConfig({
     },
   },
   test: {
+    // Every named project, including architecture, must fail if its include or
+    // exclude leaves it empty; an empty lane proves no invariant.
+    passWithNoTests: false,
     // Each test file runs in its own isolated fork, so process.env mutations
     // and module-level caches are per-file no matter the scheduling.
     pool: "forks",
