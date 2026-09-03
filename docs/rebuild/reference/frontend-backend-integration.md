@@ -1967,17 +1967,22 @@ daily local tool.
 <!-- roadmap: p1-spine -->
 <!-- roadmap: track-c -->
 
-**The corpus as built (2026-08-20): 139 reference triples — a `.png`, a `.a11y.yml` and a
-`.meta.json` each, 417 files under `tests/parity/references/`.** The matrix axis is 3 viewports
-(1280×720, 1440×900, narrow 1024×768) × 2 themes (Graphite Warm, Paper Ink), driven by
+**The corpus as built (2026-09-02): 222 reference triples — a `.png`, a `.a11y.yml` and a
+`.meta.json` each, 666 files under `tests/parity/references/` — plus the non-reference browser
+assertions, for 281 Playwright cases across 17 specs.** The principal matrix axis remains three
+viewports (1280×720, 1440×900, narrow 1024×768) × two themes (Graphite Warm, Paper Ink), driven by
 `tests/parity/dashboard-reference.spec.ts` over the routes `tests/parity/helpers/app-driver.ts`
-exposes.
+exposes. Focused specs own accessibility, evidence, touch-target, search, capture, toast and adapter
+contracts that are not honest pixel-matrix duplicates.
 
 | Block | States | Axis |
 |---|---|---|
-| Matrixed | `queue-day` · `run-open-gate` · `run-failed` · `run-running` · `run-done` · `run-queued` · `run-parked-write` · `run-group` · `run-member` · `run-receipt` · `start-run` · `intake-upload` · `intake-mapping` · `intake-review` · `explorer-graph` · `explorer-transaction` · `catalog-search` · `archive-ledger` · `archive-run` · `activity-report` | 20 × 3 viewports × 2 themes = 120 |
-| Variants (1440×900 only) | the two panel-dismissed states in both themes; `queue-day--keyboard` and `queue-day--reduced-motion` in Paper Ink; the four gate-ceremony variants and the two park resolutions in Graphite Warm; `run-receipt-populated` in both themes, over the SEEDED adapter | 14 |
-| Phone (its own block) | `capture-empty` · `capture-photos` · `capture-reorder` · `capture-sent` · `capture-failed` | 5, at 390×844, Paper Ink only |
+| Principal matrix | queue/run/gate/member/receipt; start/input/step/omission; intake; Explorer/catalog; archive/activity; Settings/storage | both themes at the viewports each state contract declares |
+| Focused variants | keyboard/reduced-motion, panel dismissal, gate ceremony and park resolution, populated/refused receipts, degraded authority, diagnostic/evidence and design-system states | one or more explicit theme/viewport/adapter variants per owning assertion |
+
+The executable capture lists and `parity-reference-authority` own exact membership. This prose names
+the contract categories deliberately; adding a manually maintained 222-row inventory here would
+recreate the parallel registry D132 removed.
 
 The stored reference includes state id, viewport, theme, adapter, fixture id, descriptor hash, app
 version, capture date and variant. A screenshot without the matching a11y snapshot is incomplete —
@@ -1986,9 +1991,10 @@ version, capture date and variant. A screenshot without the matching a11y snapsh
 **What the matrix still owes.** These are contract, not description: each is a state the product has
 and the corpus does not photograph.
 
-- **Settings, healthy and degraded**, and the **Session Panel**'s worker/browser states: neither is
-  reachable from `AppRoute`, so the harness structurally cannot drive them. This is the largest gap
-  and it is a harness gap before it is a corpus gap.
+- The **Session Panel**'s worker/browser states are not reachable from `AppRoute`, so the harness
+  structurally cannot drive them. Settings healthy/degraded and the storage-doctor routes are now
+  served by the target parity corpus; the remaining Session Panel absence is a harness gap before
+  it is a corpus gap.
 - **Per-status queue rows and the three row types.** One `queue-day` frame carries whatever the
   fixture holds; the eight statuses are not separately frozen.
 - **Group member counts at 1, 3, 4, 12 and 13.** The smaller groups exist in the day fixture to
@@ -2142,12 +2148,12 @@ backend here is this repo's own, never the legacy one.
 | projector | event fold, count conservation, group collapse, action policy, panel capability and archive self-containment invariants | yes — `one-projection-counts`, `archive-invariants`, `tests/unit/dashboard/**` |
 | subscription | duplicate/gap/reconnect/reset/generation/hash cases; snapshot + patches = fresh snapshot | yes — `tests/unit/dashboard/client-transport.test.ts` |
 | command | idempotency, conflict, rejection, actor/source audit, bulk result vectors and fail-closed authority lookup | yes — `command-kernel`, `commands-authority`, `control-command-single-path`, `command-result-exhaustive` |
-| component | closed enum exhaustiveness, draft preservation, no hidden load-bearing info, keyboard/focus/reduced-motion behavior | **not as a layer** — this tree renders no React in the unit lane (no jsdom, no testing-library) and `vitest.config.ts` excludes every `*.tsx` from coverage with that reason stated. Enum exhaustiveness is held by `command-result-exhaustive`; keyboard and reduced-motion by exactly two parity references; draft preservation and "no hidden load-bearing info" by nothing named |
+| component | closed enum exhaustiveness, draft preservation, no hidden load-bearing info, keyboard/focus/reduced-motion behavior | **not as a full render layer** — this tree has per-file `jsdom` wiring tests, but no React-render/testing-library component layer; `vitest.config.ts` excludes every `*.tsx` from coverage with that reason stated. Enum exhaustiveness is held by `command-result-exhaustive`; keyboard and reduced-motion by exactly two parity references; draft preservation and "no hidden load-bearing info" by nothing named |
 | end-to-end | seeded Hono + built React + Playwright a11y assertions and screenshots | yes — the parity lane — but it is **not** a vitest project and **not** part of `test:coverage`, the per-commit gate (D191). It runs only on `npm run test:parity` |
 | live | Person Lookup in Phase 1; controlled write/recovery in Phase 2; each workflow migration thereafter | yes as evidence (D74, D135), no as a runnable layer |
 
-**The component row is the honest gap of this table, and R10 is the plan for it.** Because nothing
-renders a component under `vitest`, an operator-facing sentence is only as pinned as the parity
+**The component row is the honest gap of this table, and R10 is the plan for it.** Because no full
+component renders under `vitest`, an operator-facing sentence is only as pinned as the parity
 corpus unless it is EXTRACTED — which is why the surface/model pairing rule (§8 #14) is a testability
 rule as much as a Fast Refresh one, and why `terminalOutcomeText`, `deriveServedNow`,
 `planRunDetailFollow` and `classifyRunShape` are exported pure functions. The tiers that close the
@@ -2313,6 +2319,18 @@ the whole reason they are in the table.
 | `sqliteStatements` (row 4) | 14 | **13** | The receipt dedupe reaching the frozen row. |
 | `corpus…Available` (row 3) | 20,800 / 5,691,200 / 4 | unchanged | **By design, and the baseline predicted it**: these are the corpus SIZE, a fixture fact, not an observation of what the reader read. They are why the two `…InScope` counters were added. |
 | `dayWireSchemaParses` (row 2) | 1 | 1 | D4's row, untouched by D5. Its millisecond movement is machine noise. |
+
+**2026-09-02 ratification — the current structural baseline is executable, and the day wire is
+5,569 by design.** D269 added the one `listWorkerPools()` authority read needed to serve worker-pool
+state, so today's repeatable day-wire count is 5,569 rather than D5's historical 5,568 above. R7
+keeps that one-statement change and makes the current bounds fail-capable in
+`tests/perf/dashboard-benchmark.ts`: day-wire statements ≤5,569; row-patch whole-day parses exactly
+0; Logs GET span-event parses exactly 0 and files in scope ≤2; archive-freeze statements ≤13; and
+member-preview delta statements ≤6. The benchmark asserts those bounds before publishing its
+report, while `dashboard-perf-fixture-shape.test.ts` increments every counter in turn and proves the
+corresponding named refusal. Elapsed milliseconds remain observational: host contention cannot turn
+a structurally unchanged read into a correctness failure. These current bounds do not rewrite the
+dated D5 table; they supersede it only as the acceptance ceiling for code running now.
 
 **The logs row is the honest disappointment, and the reason is a property of THIS fixture, not of
 the fix.** 15 % fewer lines in scope is not the order of magnitude audit P3 describes, and the cause

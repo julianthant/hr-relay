@@ -22,8 +22,10 @@
  * (`ref frontend-backend-integration` §7.4, D264).
  */
 import { execFileSync } from "node:child_process";
-import { statSync, writeFileSync } from "node:fs";
+import { realpathSync, statSync, writeFileSync } from "node:fs";
 import { cpus, totalmem } from "node:os";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { applyDashboardDayPatch } from "../../src/dashboard/client/day-state.js";
 import {
@@ -216,6 +218,68 @@ const ReportSchema = z.strictObject({
   })),
 });
 type Report = z.infer<typeof ReportSchema>;
+
+export interface DashboardPerformanceStructuralCounters {
+  readonly dayWireStatements: number;
+  readonly rowPatchDayWireParses: number;
+  readonly logsSpanEventParses: number;
+  readonly logsFilesInScope: number;
+  readonly archiveFreezeStatements: number;
+  readonly memberPreviewDeltaStatements: number;
+}
+
+export const DASHBOARD_PERFORMANCE_STRUCTURAL_BOUNDS = {
+  dayWireStatements: 5_569,
+  rowPatchDayWireParses: 0,
+  logsSpanEventParses: 0,
+  logsFilesInScope: 2,
+  archiveFreezeStatements: 13,
+  memberPreviewDeltaStatements: 6,
+} as const;
+
+export function assertDashboardPerformanceStructuralBounds(
+  actual: DashboardPerformanceStructuralCounters,
+): void {
+  const bounds = DASHBOARD_PERFORMANCE_STRUCTURAL_BOUNDS;
+  const exact: readonly (keyof DashboardPerformanceStructuralCounters)[] = [
+    "rowPatchDayWireParses",
+    "logsSpanEventParses",
+  ];
+  for (const key of exact) {
+    if (actual[key] !== bounds[key]) {
+      throw new Error(`dashboard performance ${key} must equal ${String(bounds[key])}; measured ${String(actual[key])}`);
+    }
+  }
+  const maximum: readonly (keyof DashboardPerformanceStructuralCounters)[] = [
+    "dayWireStatements",
+    "logsFilesInScope",
+    "archiveFreezeStatements",
+    "memberPreviewDeltaStatements",
+  ];
+  for (const key of maximum) {
+    if (actual[key] > bounds[key]) {
+      throw new Error(`dashboard performance ${key} must be at most ${String(bounds[key])}; measured ${String(actual[key])}`);
+    }
+  }
+}
+
+function structuralCounters(measurements: Report["measurements"]): DashboardPerformanceStructuralCounters {
+  const counter = (id: string, name: string): number => {
+    const measurement = measurements.find((candidate) => candidate.id === id);
+    if (measurement === undefined) throw new Error(`dashboard performance report is missing measurement ${id}`);
+    const value = measurement.counters[name];
+    if (value === undefined) throw new Error(`dashboard performance measurement ${id} is missing counter ${name}`);
+    return value;
+  };
+  return {
+    dayWireStatements: counter("day-wire", "sqliteStatements"),
+    rowPatchDayWireParses: counter("row-patch", "dayWireSchemaParses"),
+    logsSpanEventParses: counter("logs-section", "spanEventSchemaParses"),
+    logsFilesInScope: counter("logs-section", "corpusFilesInScope"),
+    archiveFreezeStatements: counter("archive-freeze", "sqliteStatements"),
+    memberPreviewDeltaStatements: counter("member-preview", "previewDeltaStatements"),
+  };
+}
 
 function gitFacts(): { commit: string; trackedTreeClean: boolean } {
   const commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
@@ -503,7 +567,7 @@ function markdownTable(report: Report): string {
   return lines.join("\n");
 }
 
-function main(): void {
+export function runDashboardBenchmark(): void {
   const argv = process.argv.slice(2);
   const iterationsFlag = argv.indexOf("--iterations");
   const iterations = iterationsFlag === -1
@@ -546,6 +610,7 @@ function main(): void {
       },
       measurements: measure(fixture, iterations),
     });
+    assertDashboardPerformanceStructuralBounds(structuralCounters(report.measurements));
 
     const summary = [
       "",
@@ -579,4 +644,8 @@ function main(): void {
   }
 }
 
-main();
+const entryPath = process.argv[1];
+if (entryPath !== undefined
+  && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(resolve(entryPath))) {
+  runDashboardBenchmark();
+}

@@ -37,7 +37,7 @@
       "file": "tests/unit/architecture/gate-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "The exact per-commit typecheck, lint, test and coverage commands cannot be replaced by inert wrappers; the single TypeScript program and strict typed ESLint configuration cover every authored src/tests/scripts root plus the exact root TypeScript config set, lint warnings remain fatal, and no legacy debt or unmatched-pattern escape hatch can return.",
+      "invariant": "The exact per-commit typecheck, lint and coverage commands plus the targeted all-project test convenience cannot be replaced by inert wrappers; the single TypeScript program and strict typed ESLint configuration cover every authored src/tests/scripts root plus the exact root TypeScript config set, lint warnings remain fatal, and no legacy debt or unmatched-pattern escape hatch can return.",
       "replacementRequired": true
     },
     {
@@ -45,7 +45,7 @@
       "file": "tests/unit/architecture/guard-manifest.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Every active architecture guard exists exactly once, every named retired replacement resolves to an active guard, and the recursive architecture project remains excluded from unit while the exact test:architecture command selects it; coverage exclusions, floors and all required ratchet arms stay executable against violating fixtures.",
+      "invariant": "Every active architecture guard exists exactly once, every named retired replacement resolves to an active guard, and every offline authored Vitest file is collected exactly once across the disjoint unit, architecture and scenario projects; future live-dependent combined tests remain explicitly uncollected until their own runner exists. The recursive architecture project remains excluded from unit while the exact test:architecture command selects it, one configured verbose reporter owns labeled output, and coverage exclusions, floors and all required ratchet arms stay executable against violating fixtures.",
       "replacementRequired": true
     },
     {

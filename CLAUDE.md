@@ -63,7 +63,7 @@ what it found, and what left it by explicit disposition (Phases 1–2 complete 2
 ```bash
 npm run typecheck          # tsc --noEmit over src/, tests/, scripts/ — one program, no exclusions
 npm run lint               # eslint src tests scripts --max-warnings 0 — zero-debt, no manifest
-npm run test               # every vitest project (unit + architecture)
+npm run test               # every vitest project (unit + architecture + scenario)
 npm run test:architecture  # the guard suite alone
 npm run test:coverage      # 60/80 lines/statements/functions floors + the suite-size report
 npm run test:watch
@@ -150,8 +150,8 @@ enforcement.
 
 - **Never import, invoke, proxy, or read the legacy repo's live state from `src/`.** Two
   repositories share no module graph — this is now structural, not merely banned. Finished lint,
-  type, test, architecture, and generated gates are self-contained too: read-only porting work may
-  consult legacy, but a committed gate may not resolve its checkout.
+  type, test, architecture, parity, performance, smoke, Duo, and generated gates are self-contained
+  too: read-only porting work may consult legacy, but a committed gate may not resolve its checkout.
 - **Porting = copy with provenance.** When you bring verified knowledge across (a selector, a
   parsing rule, a page-state fact), copy it and record **the legacy commit hash and source path** in
   the ported code. Never link it at runtime — which is impossible anyway.
@@ -314,6 +314,17 @@ environment-supplied.
   `tests/unit/architecture/**/*.test.ts`; and `npm run test:architecture` selects that project by
   name. Keep the project include, the unit exclusion, and the script mechanically pinned together
   so a path rename cannot orphan the lane or make coverage execute the guards twice.
+
+- **2026-09-02 — test retention and output are correctness contracts, not count targets.** Retain
+  every unique risk/contract; call two tests duplicates only when failure mode, seam, and oracle all
+  match, and delete or consolidate only with a mapped survivor plus red-capable evidence (or proof
+  the removed test could not fail meaningfully). `unit`, `architecture`, and `scenario` collect
+  every offline Vitest file exactly once; the future live-dependent `combined` tier stays excluded
+  until it owns a deliberate runner. One configured verbose stream names project, file, suite, and full
+  behavior/refusal title; only genuinely multi-stage harnesses add stable phase markers. The
+  affected ≤30 s, coverage ≤90 s, and parity ≤75 s goals are measurements, never authority to lower
+  a floor, widen an allowance, add an exclusion, or weaken isolation/parallelism. Structural
+  performance counters fail the gate; host-dependent durations remain observational.
 
 - **2026-09-02 — a workflow mini-store output is not complete until its implementation records every leaf.**
   Adding a schema leaf without the matching `ctx.recordData` point leaves the task valid in direct
@@ -1147,8 +1158,9 @@ environment-supplied.
   compatibility without enriching it from current authority.
 
 Run `npm run typecheck && npm run lint && npm run test:coverage` before committing (D191 —
-`test:coverage` REPLACES the earlier `test` + `test:architecture` pair as the per-commit gate; both
-scripts stay available for a targeted run). Add a new guard file **and** its
+`test:coverage` runs the disjoint `unit`, `architecture`, and `scenario` projects exactly once and
+REPLACES the earlier `test` + `test:architecture` pair as the per-commit gate; both scripts stay
+available for a targeted run). Add a new guard file **and** its
 `docs/rebuild/guard-inventory.json` entry in the same commit — `guard-manifest.test.ts` checks both
 directions. Retiring a guard requires an explicit `retired` entry naming the deciding decision and
 where the invariant went; a guard that simply disappears is indistinguishable from an accident.

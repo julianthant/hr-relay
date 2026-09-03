@@ -87,6 +87,13 @@ const ALL: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, fixtureDescriptor
  */
 const BUNDLE_SAFE_ROOTS = ["src/domain/", "src/base/", "src/validation/", "src/workflows/"];
 
+let currentBuildManifest: ReturnType<typeof computeBuildManifest> | undefined;
+
+function computeCurrentBuildManifest(): ReturnType<typeof computeBuildManifest> {
+  currentBuildManifest ??= computeBuildManifest(REPO_ROOT);
+  return currentBuildManifest;
+}
+
 function valueImportSpecifiers(path: string, content: string): readonly string[] {
   const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const specifiers: string[] = [];
@@ -395,7 +402,7 @@ describe("descriptor coverage", () => {
   });
 
   it("keeps the checked-in build manifest current", () => {
-    const regenerated = computeBuildManifest(REPO_ROOT);
+    const regenerated = computeCurrentBuildManifest();
     assert.deepEqual(regenerated, BUILD_MANIFEST, "run `npm run build:manifest` and commit the result");
     for (const descriptor of DESCRIPTORS) {
       const entry = regenerated.workflows.find(({ id }) => id === descriptor.id);
@@ -413,7 +420,7 @@ describe("descriptor coverage", () => {
   });
 
   it("fails on manifest BYTE drift the parsed comparison structurally cannot see", () => {
-    const manifest = computeBuildManifest(REPO_ROOT);
+    const manifest = computeCurrentBuildManifest();
     const onDisk = readFileSync(join(REPO_ROOT, BUILD_MANIFEST_PATH), "utf8");
     assert.deepEqual(auditBuildManifestBytes(onDisk, manifest), [], BUILD_MANIFEST_PATH);
 
@@ -445,7 +452,7 @@ describe("descriptor coverage", () => {
   });
 
   it("changes a browser-task fingerprint when its driver interpreter closure changes", () => {
-    const regenerated = computeBuildManifest(REPO_ROOT);
+    const regenerated = computeCurrentBuildManifest();
     const task = regenerated.tasks.find(({ id }) => id === "crm/read-onboarding-record");
     assert.ok(task, "CRM onboarding task has no implementation fingerprint");
     const driverPath = "src/stores/crm/driver/interpreter.ts";

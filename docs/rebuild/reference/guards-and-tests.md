@@ -1,13 +1,13 @@
 # 10 — Guards & Tests: the test suite and the guard umbrella
 
-Status: **as-built through 2026-08-20, and normative for the testing tiers R10 ratifies.** Every
+Status: **as-built through 2026-09-02, and normative for the testing tiers R10 ratifies.** Every
 guard named here is checked against `docs/rebuild/guard-inventory.json` and
 `tests/unit/architecture/` at HEAD, never against this document's own earlier prose (D252). At HEAD
-the tree carries **75 inventory entries — 65 active, 8 retired, 2 planned**, exactly 65 files under
+the tree carries **81 inventory entries — 70 active, 9 retired, 2 planned**, exactly 70 files under
 `tests/unit/architecture/`, nine executable ratchet arms in
-`tests/unit/architecture/helpers/ratchet-arms.ts`, 16 scenario files under `tests/scenario/`, 139
-parity reference triples, and a measured `test:coverage` of **84.23 % lines / 82.15 % statements /
-84.74 % functions / 71.76 % branches** (18,920 / 23,029 statements). §10 is the new normative half:
+`tests/unit/architecture/helpers/ratchet-arms.ts`, 17 scenario files under `tests/scenario/`, 222
+parity reference triples, and a measured `test:coverage` of **87.34 % lines / 85.40 % statements /
+89.41 % functions / 76.39 % branches** (28,534 / 33,412 statements). §10 is the normative half:
 `tests/` is organized by **what a test needs**, and every test that must RUN a workflow is a live
 dry-run scenario.
 
@@ -1018,7 +1018,7 @@ explicit replacement in the guard inventory, not a silent shrink.
 <!-- roadmap-status: p2-2j -->
 - [x] D190 closed the safety-critical floor (70.08 % → 99.43 % on `run-queue-projection.ts`) and D191 made `test:coverage` the per-commit gate
 - [x] `redaction-surface-scan` (D183) and the D188 inventory re-disposition landed — six placeholder `planned` guards became four retirements with successors and two kept with real triggers
-- [ ] D91's BRANCH half is UNMET and its Phase-2-exit trigger has passed: `coverage.thresholds` configures lines/statements/functions only, so branches are report-only at a measured 71.76 % global (§3.14 as-built, §10.10)
+- [ ] D91's BRANCH half is UNMET and its Phase-2-exit trigger has passed: `coverage.thresholds` configures lines/statements/functions only, so branches are report-only at a measured 76.39 % global (§3.14 as-built, §10.10)
 - [x] D85's parts 2 and 3 landed later under R10's names: `config/test-subjects.json`, insert-only `dry_run_scenario_results`, and `cli dry-run-scenario <workflow> --subject <label>` (§10.5–§10.6)
 > 2026-08-25 | test-tiers | the first finalization case exercised the unavailable-subject path: durable `blocked`/`not-started`, no run or trace id, and no browser runtime composed; the honest live green waits for the 2026-08-28 canary
 <!-- /roadmap-status -->
@@ -1069,10 +1069,10 @@ diagnostics are governed by §1.1; rebuild tests are zero-debt from their first 
 `branches: { phase1ReportOnly: true, phase2Global: 50, phase2SafetyCritical: 70 }`, but the
 `coverage.thresholds` block configures **lines, statements and functions only** — no `branches` key,
 global or per-glob. So branches are still report-only past the exit that was supposed to harden
-them, and nothing fails when they fall. The measurement at HEAD is **71.76 % global** (9,320 /
-12,987), comfortably over D91's 50 % global floor, so adopting the global half costs nothing today;
+them, and nothing fails when they fall. The 2026-09-02 measurement at HEAD is **76.39 % global**
+(15,367 / 20,115), comfortably over D91's 50 % global floor, so adopting the global half costs nothing today;
 the 70 % safety-critical half needs a per-glob measurement first. The suite-size report at HEAD:
-**unit 154 files / 49,398 lines · scenario 16 files / 6,023 lines · architecture 65 files / 19,320
+**unit 306 files / 111,789 lines · scenario 17 files / 7,105 lines · architecture 70 files / 27,587
 lines**, printed by `scripts/suite-size.ts`, which `test:coverage` chains and `gate-coverage` pins as
 still chained (never as still passing — see D190 below for why that distinction is the whole
 lesson).
@@ -1145,11 +1145,11 @@ slipped in behind a coverage fix.
 > 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `package.json` and `CLAUDE.md`'s After-changes section
 <!-- /roadmap-status -->
 
-**The measurement above is now the rule.** The operator adopted the D190 recommendation as written:
+**Historical adoption record (2026-08-12).** The operator adopted the D190 recommendation as written:
 the per-commit gate family is `npm run typecheck && npm run lint && npm run test:coverage`,
 REPLACING the separate `npm run test && npm run test:architecture` pair. `test:coverage` runs every
-Vitest project `test` runs (`tests/unit/architecture` is inside the `unit` project's glob) plus the
-lines/statements/functions floors, and it measured faster — **28.2 s against `test` 21.5 s +
+Vitest project `test` ran at adoption (`tests/unit/architecture` was then inside the `unit` project's
+glob) plus the lines/statements/functions floors, and it measured faster — **28.2 s against `test` 21.5 s +
 `test:architecture` 17.4 s ≈ 39 s** — so the floors are a saving, not a cost. `test` and
 `test:architecture` stay available as scripts for a targeted run; `test:parity` and
 `build:manifest --check` are unchanged obligations, unaffected by this decision. Root `CLAUDE.md`'s
@@ -1157,6 +1157,15 @@ lines/statements/functions floors, and it measured faster — **28.2 s against `
 objection D190 raised — a mid-slice commit can honestly dip a coverage floor — stays true and stays
 the operator's to accept case by case; nothing here waives a floor, it only moves WHEN the floor is
 checked, from "the slice will check at the end" (the assumption that just failed) to every commit.
+
+**2026-09-02 amendment — D191 now binds the self-contained three-project gate actually shipped.**
+`test:coverage` collects each offline authored Vitest file exactly once across the disjoint `unit`,
+`architecture`, and `scenario` projects; architecture is no longer inside the unit glob. The command
+remains the per-commit gate because it still strictly contains the cases available through `test`
+and `test:architecture`, adds coverage floors, and runs without the legacy checkout. `test` is the
+all-project targeted convenience and `test:architecture` is the guard-only targeted convenience;
+neither is an additional per-commit obligation. The 2026-08-12 timings above remain the historical
+evidence that adopted D191, not a claim about today's topology or runtime.
 
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
@@ -1327,9 +1336,12 @@ set. The test asserts:
 1. every inventory name maps to a real file recursively under `tests/unit/architecture/`;
 2. every recursively discovered `*.test.ts` file is in the inventory (no unregistered guard — forces a
    conscious add, and forces this doc's inventory to stay honest);
-3. the named `architecture` Vitest project includes the complete recursive directory exactly,
-   `unit` excludes that directory exactly, the architecture project excludes nothing, and
-   `test:architecture` selects only that project while forcing empty collection to fail; an
+3. the named `unit`, `architecture`, and `scenario` Vitest projects form one exhaustive,
+   non-overlapping collection of every offline authored `*.test.ts`/`*.test.tsx` file; the future
+   live-dependent combined tier stays uncollected until it has its own runner; architecture includes
+   the complete recursive guard directory exactly, `unit` excludes it exactly, the architecture
+   project excludes nothing, and `test:architecture` selects only that project while forcing empty
+   collection to fail; an
    independently collected unit test exercises that refusal so
    the architecture lane cannot be its sole witness (a rename or nested guard cannot orphan or
    double-run it);
@@ -1339,8 +1351,8 @@ set. The test asserts:
    every scanner is run against a violating fixture so a comment or dead declaration cannot stand in
    for enforcement, and active scanner results are non-empty;
 6. `gate-coverage`'s assertions are kept inline and pin the exact per-commit command family
-   (`typecheck`, `lint --max-warnings 0`, `test`, `test:coverage`) so an inert wrapper cannot satisfy
-   the gate by merely containing the expected words;
+   (`typecheck`, `lint --max-warnings 0`, `test:coverage`) plus the targeted `test` convenience, so an
+   inert wrapper cannot satisfy the gate by merely containing the expected words;
 7. ESLint's CLI target and the matching `eslint.config.js` typed rule blocks both include the three
    authored roots and the exact root TypeScript configs admitted by `tsconfig.json`;
 8. D70's scope split survives the repo split, and **as-built the rebuild half is enforced as a
@@ -1398,7 +1410,7 @@ makes no stronger mechanical claim.
 
 The inventory is the one machine-readable place the umbrella is enumerated. Each doc owns its
 guards' contracts; the manifest owns that they exist and stay wired. **This list is the as-built set
-at HEAD, read from `docs/rebuild/guard-inventory.json` — 75 entries: 65 `active`, 8 `retired`, 2
+at HEAD, read from `docs/rebuild/guard-inventory.json` — 81 entries: 70 `active`, 9 `retired`, 2
 `planned`** — not an aspiration. `guard-manifest.test.ts` compares the active `file` list against a
 recursive walk of `tests/unit/architecture/` with `deepEqual`, which is bidirectional by
 construction and has one consequence worth stating outright: **a retired or planned guard's
@@ -1413,7 +1425,7 @@ the real tree and against its own violating fixture.
 - **Meta — the guard-of-guards and the gates (this doc, §5):** `guard-manifest`, `gate-coverage`,
   `parity-reference-authority` (item 9), `roadmap-doc-binding` (D263 — the plan ↔ docs binding),
   `config-snapshot-generations` (item 10), `migration-history-immutability`,
-  `operational-isolation`, `test-runtime-root-isolation`.
+  `operational-isolation`, `test-runtime-root-isolation`, `test-target-registry`.
 - **Descriptor and contract SSOT (ref workflow-model §1.4, ref task-contract):** `descriptor-coverage`,
   `task-contract-sealing`, `task-store-boundaries`, `task-driver-boundary`, `semantic-ui-registry`,
   `canonical-input-snapshot`, `strict-boundary-schemas`, `intake-canonical-field-registry`,
@@ -1435,25 +1447,27 @@ the real tree and against its own violating fixture.
 - **Dashboard and the wire (ref dashboard-surfaces, ref frontend-backend-integration):**
   `dashboard-wire-boundary` (no Node built-in reachable from the bundle entry),
   `dashboard-refresh-boundary` (doc 13 §8.14 — a surface module exports components only),
-  `wire-connectivity` (the four joints), `one-projection-counts`.
+  `dashboard-memo-prop-stability`, `wire-connectivity` (the four joints), `one-projection-counts`.
 - **Trust surfaces (ref operator-trust):** `evidence-receipt`, `notification-durability`,
-  `knowledge-fix-integrity`, `workflow-editor-compile-integrity`, `capture-durability-and-scope`,
+  `knowledge-fix-integrity`, `workflow-editor-compile-integrity`, `phone-capture-retired`,
   `ai-advisory-no-authority`, `redaction-surface-scan` (§3.15), `scenario-coverage` (§3.10, and the
-  guard §10 extends).
+  guard §10 extends), `workflow-layout`, `step-omission-invariants`.
 - **Clock, config and secrets (ref clock-config-secrets):** `clock-single-source`,
   `manual-clock-test-only`, `secrets-single-source`, `no-secret-values-in-logs`.
 - **Legacy-facing inventories (audited as DATA, never linked at runtime):**
   `legacy-selector-port-provenance` (406 keys pinned to one legacy commit's blobs),
   `legacy-capability-disposition` (§3.11), `legacy-test-disposition`,
   `runtime-environment-coverage`, `runtime-dependency-coverage`.
+- **Authentication ceremony:** `duo-ceremony-lease`.
 
 **Planned — two, each with a concrete missing executor/input:** `preflight-coverage` (six DCC2
 dashboard runners exist, but the declared fault corpus has no executor) and `one-time-import-offline`
 (the cutover data migration, doc 05 §Exit criteria).
 
-**Retired — eight, each naming its successor in the inventory:** `runtime-isolation` → `operational-isolation`
+**Retired — nine, each naming its successor or disposition in the inventory:** `runtime-isolation` → `operational-isolation`
 (D93), `rebuild-gates` → `gate-coverage` (D93), `legacy-preservation` → nothing, deliberately (D93),
-`legacy-change-accounting` → live re-verification at each migration (D150), and D188's four:
+`legacy-change-accounting` → live re-verification at each migration (D150),
+`capture-durability-and-scope` → `phone-capture-retired` (D294), and D188's four:
 `authority-target-no-fallback` → `storage-recovery`, `commit-routes-through-mutation` →
 `task-driver-boundary`, `dry-run-composition-submit-free` → `write-safety-contract` plus the
 `separations-kuali-finalization/dry-run` T1 manifest and its structural executor proof,
@@ -1684,19 +1698,18 @@ asks for it and its result is recorded.
 
 ### 10.1 The test family, as built
 
-Nine members. Folder, runner, when it runs, what it may touch, what it proves. Rows retain their
-dated 2026-08-20 census unless they name a later refresh; R5a refreshed the fixture-scenario row's
-topology and count on 2026-09-02, while R7 owns the family-wide census and taxonomy reconciliation.
+Ten members. Folder, runner, when it runs, what it may touch, what it proves. R7 refreshed the
+family-wide census and taxonomy on 2026-09-02.
 
 | family | folder | runner | when | may touch | proves |
 |---|---|---|---|---|---|
-| **unit** | `tests/unit/**` (154 files / 49,398 lines, architecture excluded) | vitest project `unit` | every commit | pure functions, fake ctx, temp dirs, its own SQLite files under a temp root — **never** a real runtime root (`test-runtime-root-isolation`) | one module's decision logic, against its own schemas |
-| **architecture guards** | `tests/unit/architecture/**` (65 files / 19,320 lines) | vitest project `unit` (its glob contains them); `npm run test:architecture` is a PATH FILTER for a targeted run, not a project — §10.9 changes that | every commit | the tree as DATA — source text, ASTs, the registries, `package.json`, `tsconfig.json`, the legacy repo read-only | that a rule holds everywhere, and — through `guard-manifest` — that each of the nine arms still fires against a violating fixture |
-| **fixture scenarios** | `tests/scenario/*.scenario.test.ts` (6 capability files) + `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts` (7 T1a files) | vitest project `scenario` | every commit | `walkDescriptor` over a real descriptor with caller-supplied node outputs; fake stores; no browser | that ONE declared graph path binds, refuses and terminates as authored, and that the coverage points it claims are the ones it walked |
+| **unit** | `tests/unit/**` (306 files / 111,789 lines, architecture excluded) | vitest project `unit` | every commit | pure functions, fake ctx, temp dirs, its own SQLite files under a temp root — **never** a real runtime root (`test-runtime-root-isolation`) | one module's decision logic, against its own schemas |
+| **architecture guards** | `tests/unit/architecture/**` (70 files / 27,587 lines) | vitest project `architecture`; `npm run test:architecture` selects that project by name | every commit | this repository as DATA — source text, ASTs, registries, `package.json`, and TypeScript configs; authenticated frozen provenance may describe legacy facts, but no finished gate reads the legacy checkout | that a rule holds everywhere, and — through `guard-manifest` — that each of the nine arms still fires against a violating fixture |
+| **fixture scenarios** | `tests/scenario/*.scenario.test.ts` (6 capability files) + `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts` (7 T1a files) + `tests/scenario/dashboard/**` (3 T2 files) | vitest project `scenario` | every commit | `walkDescriptor` over a real descriptor with caller-supplied node outputs; fake stores or one isolated authority database; no browser | that one declared graph or dashboard command/projection path binds, refuses and terminates as authored, and that graph coverage points claimed are the ones walked |
 | **integration walks** | `tests/scenario/*.walk.test.ts` (1) | vitest project `scenario` | every commit | ONE real authority database and the production read models | the JOINS only composition can falsify; it claims no coverage point and carries no manifest row (D185) |
-| **dashboard unit tests** | `tests/unit/dashboard/**` (25 files) | vitest project `unit` | every commit | the extracted `*-model.ts` halves — folds, vocabularies, command composition; **no DOM by default** — a wiring-level test (press-to-dispatch payloads, focus restoration) opts into `jsdom` per file with `@vitest-environment jsdom` (D277, 2026-08-27; nine files at HEAD); anything visual stays in the parity lane | that a surface's pure half computes what the surface claims |
-| **parity** | `tests/parity/**` — 3 specs, 13 helpers, **139 reference triples** (`.png` + `.a11y.yml` + `.meta.json`) over 27 scenarios × 2 themes × 3 viewports (+ the phone surface's own viewport) | `npm run test:parity` (Playwright, OUTSIDE vitest and outside coverage) | on a dashboard change, and before a slice closes | the built bundle over an ephemeral fixture BFF and an ephemeral seeded BFF; never ports 3938/5174 | that the rendered surface has not moved: both halves of every pair are ASSERTED (D132), the pixel allowance is `maxDiffPixels: 0` (D145), and `dual-adapter.spec.ts` compares the a11y SKELETON — role and depth, every literal dropped — between the fixture adapter and the real projection over real HTTP/SSE, which is what makes a fixture-built reference worth storing |
-| **performance budgets** | — | — | — | — | **NOTHING IS MEASURED.** Doc 13 §7.4's budgets and D71's `tsc --extendedDiagnostics` ceiling (§3.12) are both written down and neither has a runner. Stated here rather than implied by silence: this family is a name with no member. |
+| **dashboard unit tests** | `tests/unit/dashboard/**` (102 files) | vitest project `unit` | every commit | extracted `*-model.ts` decisions plus wiring-level `jsdom` tests that opt in per file; anything visual stays in parity | that a surface's pure half computes what it claims and its wiring dispatches/focuses as contracted |
+| **parity** | `tests/parity/**` — 17 specs, **281 cases**, **222 reference triples** (`.png` + `.a11y.yml` + `.meta.json`) | `npm run test:parity` (Playwright, outside Vitest and coverage) | on a dashboard change, and before a slice closes | the built bundle over ephemeral fixture and seeded BFFs; never ports 3938/5174 | that the rendered pixel/a11y/browser contract has not moved; every stored reference half is asserted, `maxDiffPixels: 0`, and dual-adapter structure proves fixture relevance |
+| **performance budgets** | `tests/perf/dashboard-benchmark.ts` | `npm run perf:dashboard` plus unit negative controls | before a slice closes and after a measured dashboard data-path change | one deterministic seeded authority database under a temp root; no production ports or runtime root | exact non-duration bounds on day-wire SQL, patch reparses, log scope, archive freeze and member-preview delta; elapsed timings remain observational because host contention is not a stable correctness oracle |
 | **the recovery drill** | inside `storage-recovery.test.ts` | vitest project `unit` | every commit | temporary SQLite databases and the official `node:sqlite` online-backup API | that a corrupted authority database restores from the newest verified backup, rebuilds projections ONLY, and that D181's stopped-system proof is derivable from real runtime-lock files |
 | **the controlled-commit proof** | `docs/rebuild/reference/write-safety.md` §Phase-2 controlled-commit as-built | **recorded, never re-run** | once, 2026-08-04 | a real Kuali document | that the write kernel fences, commits, verifies by reload read-back and refuses a replay in 2 ms. A recorded proof is evidence; re-running it would be a second real HR write, so it is cited, not executed. Each workflow still owes its own §3.2 controlled-commit proof at its migration. |
 | **live selector re-verification** | no folder — a pre-authorized act at each migration | `playwright-cli`, by the agent | at every workflow's migration | real pages, read-only (`snapshot`) | that a ported selector still resolves. D150 retired the cross-repo accounting in favour of exactly this, because a selector checked against the live system beats one diffed against legacy's copy of it. |
@@ -2035,28 +2048,23 @@ a manifest that vitest picked up would start a browser inside the per-commit gat
 them by GLOB rather than by discipline. `*.walk.test.ts` keeps D185's meaning exactly: a walk claims
 no coverage point and the manifest's `file` regex refuses a walk path outright.
 
-**Vitest projects.** Five, replacing today's two. At HEAD `vitest.config.ts` declares exactly
-`unit` (`tests/unit/**/*.test.ts` — the architecture suite is INSIDE that glob) and `scenario`
-(`tests/scenario/**/*.test.ts`), and `test:architecture` is a **path filter**
-(`vitest run tests/unit/architecture`), not a project. R10 makes each tier a named project so a tier
-is addressable by name rather than by a path string a rename can orphan:
+**Vitest projects.** Three, as built. `vitest.config.ts` makes every authored Vitest file belong to
+exactly one named project; `guard-manifest` enumerates the real corpus and rejects both orphaned and
+multiply collected files. A future dry-run-dependent `combined` tier stays uncollected until it has
+an executor and a deliberate script.
 
 | project | include | in `test:coverage` |
 |---|---|---|
 | `unit` | `tests/unit/**/*.test.ts`, **excluding** `tests/unit/architecture/**` | yes |
 | `architecture` | `tests/unit/architecture/**/*.test.ts` | yes |
-| `scenario-workflows` | `tests/scenario/workflows/**/*.scenario.test.ts` + `tests/scenario/*.walk.test.ts` | yes |
-| `scenario-dashboard` | `tests/scenario/dashboard/**/*.scenario.test.ts` | yes |
-| `combined` | `tests/scenario/combined/**/*.combined.test.ts` | **no** — needs a dry run |
+| `scenario` | `tests/scenario/**/*.test.ts`, excluding future live-dependent `tests/scenario/combined/**` | yes |
 
 **jsdom, per file (D277, 2026-08-27).** `jsdom` is a devDependency and is never a project default: a test that needs a real DOM to pin wiring — what a press dispatches, where focus returns — declares `@vitest-environment jsdom` at the top of its own file inside `unit`. The environment is opted into by the file, so a pure `*-model.ts` test never pays for a DOM, and a DOM test can never be mistaken for a visual claim — visual claims belong to `tests/parity/**`.
 
-The `unit` exclusion is the point of splitting them: today the architecture files are collected by
-`unit` and collected AGAIN by `test:architecture`, which is harmless as a targeted run and pure
-duplication inside `test:coverage`. `test:architecture` becomes `vitest run --project architecture`,
-and `guard-manifest` item 3 — "`test:architecture` selects the complete directory exactly, with no
-narrower file/glob/project/config/exclude escape hatch" — binds to the project's `include` instead of
-to a script's path argument, which is strictly the stronger of the two.
+The `unit` exclusion is the point of the architecture split: guard files execute once inside
+`test:coverage`. `test:architecture` is `vitest run --project architecture`, and `guard-manifest`
+binds its script, complete recursive include, empty exclude, unit exclusion, and non-empty
+collection together.
 
 `tests/e2e/**` is outside the vitest projects entirely, like `tests/parity/**`, and both are excluded
 from coverage instrumentation.
@@ -2067,7 +2075,8 @@ and D190's lesson is that a lane nobody chains is a lane that cannot fail.
 | script | runs | trigger |
 |---|---|---|
 | `npm run typecheck && npm run lint && npm run test:coverage` | unit + architecture + T1 structural + T2 + the walks, with the floors | **every commit** (D191) |
-| `npm run test:parity` | the 139 reference triples + the dual-adapter comparison | every dashboard change; before a slice closes |
+| `npm run test:parity` | 281 browser cases, including 222 reference triples and the dual-adapter comparison | every dashboard change; before a slice closes |
+| `npm run perf:dashboard` | reproducible structural counters plus observational timings | after a measured dashboard data-path change; before a slice closes |
 | `npm run cli -- dry-run-scenario <workflow> --subject <label>` | ONE T1b manifest against the real systems | at a workflow's migration; whenever its graph or its transaction node changes; to refresh a stale recorded result |
 | `npm run test:combined` | T3, against a live dry run | when a dashboard surface a workflow depends on changes, and at that workflow's migration |
 | `npm run test:e2e` | T4, agent-operated | deliberately, after `{#parallel-runs}` and `{#duo-lease}` land; before cutover |
@@ -2084,16 +2093,33 @@ which moves exactly one thing in the REAL corpus. A typo stays slug-shaped and t
 claim and FAILS — reclassifying an unrecognised id as prose is precisely how
 `person-lookup/ucpath-drill-subject-mismatch` executed unregistered until D185.
 
-**`tests/CLAUDE.md`** is one page and states: the five tiers and what each needs; the folder map
-above; which script runs which tier and when; the rule that a dry-run scenario is never collected by
-vitest; the `blocked`-not-`failed` rule; and a pointer here for everything normative. It is a map,
-not a second spec — a second spec is a second opinion that can drift (D252).
+**Retention and output are part of the gate contract (operator decision, 2026-09-02).** Retain a
+test when it uniquely protects a risk or contract. Two tests are duplicates only when they exercise
+the same failure mode at the same seam with the same oracle; deletion or consolidation requires a
+mapped survivor and red-capable evidence, or proof that the removed test could not fail meaningfully.
+Use the runner/type-first layout and reserve scenarios for distinct graph or cross-boundary paths.
+Targeted local iteration is allowed, while supervisor integration and merge require the complete
+type/lint/coverage family. The affected-suite ≤30 s, full-coverage ≤90 s, and parity ≤75 s targets
+are measured objectives, never permission to delete unique protection, weaken isolation/parallelism,
+raise an allowance, lower a floor, or add an exclusion.
+
+One configured streaming `verbose` reporter owns Vitest output: project, file, suite, and the full
+behavior/refusal title remain visible as work completes. Scripts do not layer a second reporter.
+Only genuinely long or multi-stage harnesses emit stable named phase begin/complete markers; short
+units do not chatter per assertion. Expected diagnostics are captured and asserted. Unexpected
+failures name the exact operation with actionable non-secret context and are never globally hidden.
+
+**`tests/scenario/AGENTS.md` and its byte-identical `CLAUDE.md` twin** map the three collected
+scenario kinds and their current paths, state why T1b is not a Vitest file, and point here for the
+normative tier/trigger contract. They are a map, not a second spec — a second spec is a second
+opinion that can drift (D252).
 
 ### 10.10 Coverage floors — 80/80/80 global
 
-**The floor follows the measurement, and the measurement is at HEAD:** `npm run test:coverage`
-reports **84.23 % lines (17,419 / 20,680) · 82.15 % statements (18,920 / 23,029) · 84.74 % functions
-(3,793 / 4,476) · 71.76 % branches (9,320 / 12,987)**.
+**The floor follows the measurement, and the 2026-09-02 measurement at HEAD is:**
+`npm run test:coverage` reports **87.34 % lines (26,293 / 30,103) · 85.40 % statements
+(28,534 / 33,412) · 89.41 % functions (5,660 / 6,330) · 76.39 % branches
+(15,367 / 20,115)**.
 
 The global floors move **60 → 80** for lines, statements and functions. Nothing else changes: the
 safety-critical per-glob floors stay at 80, the reviewed exclusion list is untouched (its SHA-256 is
@@ -2105,7 +2131,7 @@ Two things this deliberately does not do. It does **not** raise the safety-criti
 already met at 97 %+ after D190 and whose value is that it is per-glob. And it does **not** invent a
 branch floor: D91's branch half is UNMET and its Phase-2-exit trigger has passed (§3.14 as-built), so
 the honest move is the one D91 already specifies — adopt the **50 % global** branch gate that the
-measured 71.76 % already clears — and defer the 70 % safety-critical half until it is measured
+measured 76.39 % already clears — and defer the 70 % safety-critical half until it is measured
 per-glob. Raising a floor above a number nobody has measured is the mirror image of D145's
 uncalibrated allowance.
 

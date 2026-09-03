@@ -48,8 +48,8 @@ const rootTypeScriptConfigFiles = tsconfig.include
 const EXACT_GATE_COMMANDS = {
   typecheck: "tsc --noEmit",
   lint: "eslint src tests scripts vitest.config.ts vite.dashboard.config.ts playwright.parity.config.ts --max-warnings 0",
-  test: "vitest run --reporter=dot",
-  "test:coverage": "vitest run --coverage --reporter=dot && tsx scripts/suite-size.ts",
+  test: "vitest run",
+  "test:coverage": "vitest run --coverage && tsx scripts/suite-size.ts",
 } as const;
 
 export function gateCommandViolations(scripts: Readonly<Record<string, string>>): string[] {
@@ -66,8 +66,8 @@ describe("gate coverage", () => {
     for (const [name, command] of [
       ["typecheck", "echo tsc --noEmit"],
       ["lint", `echo ${EXACT_GATE_COMMANDS.lint}`],
-      ["test", "true && vitest run --reporter=dot"],
-      ["test:coverage", "vitest run --coverage --reporter=dot && echo tsx scripts/suite-size.ts"],
+      ["test", "true && vitest run"],
+      ["test:coverage", "vitest run --coverage && echo tsx scripts/suite-size.ts"],
     ] as const) {
       const mutated = { ...pkg.scripts, [name]: command };
       assert.match(gateCommandViolations(mutated).join("\n"), new RegExp(`^${name.replace(":", "\\:")}`));
