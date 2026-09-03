@@ -9,10 +9,12 @@
 | R1 | D311 workflow recipe/compiler | u01–u06 | supervisor + native Luna/Terra tree | `414d77b8` | 1 | yes, with R2 only | — | equivalence/conformance green, obsolete path deleted, full gates, report |
 | R2 | Order 1 workflow-specific intake | u10–u12 | supervisor + read-only Scout/Analyst as needed | `414d77b8` | 2 | yes, with R1 only | — | two migration docs, verified reuse/provenance/live map, no compiler-dependent code |
 | R3 | D312–D318 authoring/runtime foundation (3c-A finish) — `Supervisor · phase-3c-migration · C57c2dec9 · R03 · authoring runtime foundation` | u15–u19 | Claude supervisor + `sup-opus` default / `sup-sonnet` trivial-only / `sup-scout` / `sup-analyst` | `cb9a1476` (integrated R1+R2+D317+D318+session panel) | 3 | no | — | workflow-only API, discoverable task catalog, four-artifact guard, closed entry algebra, whole-step admission, two recovery modes, D318 `live-read` arm + Person Lookup T1 pair, guide and final equivalence/deletion proof |
+| R3b | stabilize the R3 branch (re-size, 2026-09-02 20:20 PDT) — `Supervisor · phase-3c-migration · C57c2dec9 · R3b · stabilize` | u25–u28 | Claude supervisor + `sup-opus` / `sup-sonnet` | `0566b181` | 3 (with R3) | no | — | typecheck/lint/coverage/parity green, report `reports/r3-authoring-runtime.md` — CLOSED via merge `c258677b` |
+| R3c | deletion acceptance + retired-path guard + T1b states — `Supervisor · phase-3c-migration · C57c2dec9 · R3c · deletion acceptance` | u29–u32 | Claude supervisor (u29/u31/u32) + one `sup-opus` (u30) | `c258677b` | 3.1 | no | — | old authoring path deleted, four-artifact/retired-path guard red-capable, equivalence + Person Lookup `live-read` green, Separations blocked arm recorded, integrated gate green, report |
+| R3d | 3c-A documentation package — `Supervisor · phase-3c-migration · C57c2dec9 · R3d · author docs` | u33–u36 | Claude supervisor (u33) + `sup-opus` (u34, u35) + `sup-analyst` (u36 proof) | integrated R3c | 3.2 | no | R3c integrated (root paragraph and guide depend on the final file set) | guide + root rules + agent reference + reference reconciliation landed; guide-following proof zero gaps; integrated gate green; report `reports/r3d-author-docs.md` |
 | R4 | 3c-B Person Lookup + Separations acceptance and Phase 3 close | u110–u113 | supervisor + native Luna/Terra tree | integrated R3 | 4 | no | R3 + explicit operator start | both acceptance workflows verified through generic surfaces and canonical T1; Phase 3 authorities reconciled; integrated gates and worktree sweep green |
 
-**Active scope (operator, D319, 2026-09-02):** finish 3c-A in R3 without changing its brief. R4 is
-the only possible next run, but it remains held until the operator explicitly starts 3c-B. No third
+**Active scope (operator, D319, 2026-09-02; re-sized 20:20 PDT to ≤350k per run):** finish 3c-A through R3c (deletion/guard/T1b) then R3d (docs package); each is one hard seam plus small units. R4 (3c-B) remains held until the operator explicitly starts it. No third
 workflow is admitted. The old migration sequence is withdrawn before dispatch.
 
 ## Superseded pre-D319 run sequence
@@ -171,6 +173,48 @@ assignment. A candidate returns only after the operator approves its complete D3
 - Mode: R3 only.
 - Artifact: `reports/r3-authoring-runtime.md`.
 - Review: deletion test, architecture, correctness, write safety, docs.
+
+### u25 — finish the in-flight review-fix set (R3b)
+- Scope: the seven `0566b181` fix intents and the five `TS2554` call sites. Acceptance: each intent kept with a red-capable test or explicitly reverted; typecheck green. Role: supervisor. Artifact: R3 branch. Review: correctness, silent failures.
+
+### u26 — re-verify R3's committed seams (R3b)
+- Scope: focused suites for every R3 seam plus `build:manifest:check`. Acceptance: counts reported, every red dispositioned. Role: `sup-opus`. Artifact: report table.
+
+### u27 — integrated gate on the R3 branch (R3b)
+- Scope: the profile's integrated gate on a frozen tree. Acceptance: every line green, parity refreeze only with a stated visible reason. Role: supervisor.
+
+### u28 — R3 verification report (R3b)
+- Scope: `reports/r3-authoring-runtime.md`. Acceptance: per-unit SHAs, gate lines, worker ledger, exact R3c/R3d residue. Role: supervisor.
+
+### u29 — remaining old-authoring-path deletion (R3c)
+- Scope: convert `separations/identity-check` and `separations/job-summary` to the compiled path; delete every fragment factory, `node-ids`, `step`, `omission`, hand-authored `descriptor`/`module` and registry wiring the compiled path supersedes; the `run-executor.ts:800,818` no-op re-parse; stale doc references the deletion makes false; root twins `defineWorkflowStepNodeFactory` paragraph.
+- Acceptance: R1 equivalence fixtures green (identifier changes stated); before/after authored-artifact inventory with every extra file justified as behavior-owned or deleted; manifest and store catalog regenerated; twins identical.
+- Dependency: integrated R3/R3b (`c258677b`). Role: supervisor hard seam. Artifact: R3c branch. Review: deletion test, correctness, write safety.
+
+### u30 — retired-path and escape-hatch architecture guard (R3c)
+- Scope: one guard under `tests/unit/architecture/` plus its `guard-inventory.json` entry. Acceptance: red-capable against fixtures that reintroduce recipe names, a hand descriptor/module/fragment beside `workflow.ts`, a workflow-keyed generic dashboard adapter, or a fifth authored artifact; `guard-manifest.test.ts` green. Dependency: u29. Role: `sup-opus`, one dispatch. Review: test quality.
+
+### u31 — equivalence, grouping proof and T1b states (R3c)
+- Scope: Person Lookup + Separations public equivalence and the grouping/options-only proof; Person Lookup `live-read` T1b executed live with run id and durable result row; Separations typed blocked arm recorded (canary `gone`, no replacement chosen — D284). Dependency: u29. Role: supervisor. Review: proof quality.
+
+### u32 — R3c gates and report (R3c)
+- Scope: the profile's integrated gate on the run branch plus `reports/r3c-deletion-acceptance.md`. Acceptance: every gate line green by count; report carries SHAs, deletion inventory, guard red lines, T1b evidence, review record, worker ledger, residue for R3d, clean status. Dependency: u29–u31. Role: supervisor.
+
+### u33 — practical author guide (R3d)
+- Scope: `docs/guides/workflow-authoring.md` per doc 03c §3c-A documentation package: find/reuse/build decision, complete `defineWorkflow` API examples, omissions, parallel/delegate/gate/transaction examples, testing and debugging, a minimal Person Lookup example, a complete Separations excerpt, a reuse-only example, a new-task example, the "what file do I change?" table matching doc 03c's routing table, and what the compiler/runtime generate versus what an author never hand-maintains.
+- Acceptance: every example compiles against the integrated tree (excerpts are copied from the real `workflow.ts` files at their SHA); no undocumented step for either acceptance workflow. Dependency: integrated R3c. Role: supervisor hard seam. Review: docs, spec fidelity.
+
+### u34 — root rules and internal agent reference (R3d)
+- Scope: rewrite the root `AGENTS.md`/`CLAUDE.md` D311–D317 convention paragraph (the `b1b36349` transitional sentence is false after R3c) into concise mandatory rules plus a pointer to the guide, byte-identical twins; write `.agents/skill-library/workflow-authoring/REFERENCE.md` as a checklist pointing at guide/spec with no new operator command and no independent policy; `.claude/skills/` helper only with `user-invocable: false` if one is added.
+- Acceptance: `cmp AGENTS.md CLAUDE.md` identical; no duplicated tutorial; `roadmap-doc-binding` and `guard-manifest` green. Dependency: u33. Role: `sup-opus`. Review: docs.
+
+### u35 — reference reconciliation (R3d)
+- Scope: `ref workflow-model` §1.6 (normative types, compiler products, invariants, refusals as built), §5.6 and §5.8 (D313/D318 text the root paragraph cites); `ref stores` reconciled with the generated task-store catalog (system, capability, effect, inputs/outputs, implementation status); doc 03c 3c-A checklist boxes that the R3c/R3d evidence now proves, with the evidence SHA.
+- Acceptance: no stale `workflow-recipe`/fragment wording outside the forbidden-names clause; `npm run roadmap && npm run roadmap:check` current. Dependency: u33. Role: `sup-opus` (may run beside u34; disjoint files). Review: spec cohesion.
+
+### u36 — guide-following proof, gates and report (R3d)
+- Scope: a read-only `sup-analyst` follows ONLY the finished guide and agent reference to reconstruct the authored artifacts for Person Lookup and Separations and reports every step the docs did not cover (doc 03c L116: an undocumented step or a required escape hatch fails 3c-A); then the integrated gate and `reports/r3d-author-docs.md`.
+- Acceptance: zero undocumented steps, or each fixed in u33–u35 within the run; every gate line green by count. Dependency: u33–u35. Role: `sup-analyst` proof + supervisor gate/report.
 
 ### u110 - accept Person Lookup
 - Scope: verify the final compiled workflow, Search + Match run-modal behavior, grouped timeline/Explorer projection and canonical structural plus D318 live-read T1 pair.

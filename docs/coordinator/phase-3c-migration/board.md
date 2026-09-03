@@ -41,7 +41,7 @@
 | u10–u12 | R2 | closed 2026-09-02 | branch tip `ed9ee5ac`; merge `b1b36349`, contained by master merge `29186a31`; supervisor worktree/branch removed; exact task `01a0644f-936c-7d72-8fbc-128e5f1b1a47` archived | typecheck, lint, roadmap freshness, diff check PASS; three focused re-reviews Count 0 | complete | Order 1 intake/live provenance complete; read-only T1 decision and fresh I-9 canary remain explicit residue |
 | u25–u28 | R3b | closed 2026-09-02 ~21:00 PDT | branch tip `915d9702`; merge `c258677b` into `feature/03c-workflow-migration`; branch ref deleted; worktree retained by plan for R3c (re-pointed to `feature/phase-3c-migration-c57c2dec9-r3c-deletion-acceptance` at `c258677b`); session `7dee2c47` stopped | coordinator re-ran on `c258677b`: typecheck 0 errors, lint clean, coverage 401 files / 4,921 tests (85.48/76.54/89.43/87.41), parity 287/287, manifest/roadmap/catalog current, diff --check clean, twins identical | Correctness 5 (worst low, 2 fixed), Silent failures 2 (1 fixed allowlist; 1 ruled judgement → D314 wording question), Tests 1 | report `reports/r3-authoring-runtime.md`; residue → R3c/R3d |
 | u29–u32 | R3c | session `8dacde07` LOST 2026-09-02 ~21:10 PDT (absent from `claude agents --json`, zero commits on its branch, no report/handoff); relaunched 21:12 PDT as session `133425d0` by the successor coordinator (run-plan wave ledger) | base `c258677b` | pending | required | deletion acceptance + retired-path guard + T1b states |
-| u33–u36 | R3d | planned | — | — | required | author documentation package |
+| u33–u36 | R3d | briefed (draft `briefs/r3d-author-docs.md`); Needs first: R3c integrated | — | — | required | author documentation package |
 | u15–u19 | R3 | closed 2026-09-02 ~21:00 PDT via R3b | commits `8a931cc6..c1bdcf68` + safety `0566b181`, stabilized by R3b and integrated in merge `c258677b`; branch ref deleted; session `e266c808` stopped 20:21 PDT (context exhausted, over cap) | as R3b row | as R3b row | u15–u18 complete; u19 slice (Person Lookup T1 pair + live-read met, four harness conversions, grouping proof) complete; u19 remainder superseded by u29–u36 |
 | u110–u113 | R4 | held for operator after R3 | — | — | required | 3c-B: accept Person Lookup and Separations, reconcile Phase 3 authorities, run integrated gates and sweep; do not dispatch without operator instruction |
 
@@ -67,10 +67,12 @@ D319 admission process and receives fresh units after operator approval.
 
 ## Progress
 
-Steps - 2/6 complete
+Steps - 3/8 complete
 - [x] R1 — D311 workflow recipe/compiler
 - [x] R2 — Order 1 workflow-specific intake
-- [>] R3 — D312–D317 authoring/runtime foundation
+- [x] R3 — D312–D317 authoring/runtime foundation (closed via R3b merge `c258677b`; its u19 remainder continues as R3c/R3d, added 2026-09-02 21:20 PDT by the 350k re-size)
+- [>] R3c — old-authoring-path deletion, retired-path guard, T1b states (session `133425d0`)
+- [ ] R3d — 3c-A documentation package (brief drafted; needs R3c integrated)
 - [ ] R4 — 3c-B Person Lookup + Separations acceptance (operator-triggered)
 - [ ] RECONCILE — canonical Phase 3 and D319 authorities
 - [ ] CLOSE — integrated gates, worktree sweep and final board
