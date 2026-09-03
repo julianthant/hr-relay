@@ -958,8 +958,8 @@ Track D's checklist for every row that lands on this section — D1, D4, D6, D7,
 <!-- roadmap: order-7-dash -->
 <!-- roadmap: order-9-dash -->
 
-This matrix is the generic surface completeness checklist. Under D311 the recipe compiler fills its
-workflow-varying declarations and one registry-wide conformance suite checks every recipe. A
+This matrix is the generic surface completeness checklist. Under D311/D317 the workflow compiler fills its
+workflow-varying declarations and one registry-wide conformance suite checks every workflow definition. A
 separate `Dashboard · wire` task is retained only as historical evidence or as a capability-delta
 task when a workflow introduces a new interaction or wire arm. A production surface is not ready
 until every cell in its row has an implementation and a test. The **Built** column is the
@@ -1020,10 +1020,10 @@ until every cell in its row has an implementation and a test. The **Built** colu
 <!-- roadmap: order-9-dash -->
 
 **A flow is a WIRE SQUARE.** Each subsection below is one square built once in `{#dash-defaults}`.
-D311 makes the recipe compiler its per-workflow declaration path and the registry-wide conformance
+D311/D317 make the workflow compiler its per-workflow declaration path and the registry-wide conformance
 suite its repeated proof. A workflow-specific dashboard task exists only for a new capability;
 each square remains separately citable so that delta has one owner. Per square: the flow as
-contracted, the files that implement it, what is generic versus recipe-derived, and what is left.
+contracted, the files that implement it, what is generic versus workflow-derived, and what is left.
 
 Three rules hold across every square and are stated once here.
 
@@ -1196,12 +1196,12 @@ operator input about a real person (a date, an EID, a transaction number) and ec
 in a wire body, a log line and a browser console at once.
 
 **D313 amendment — one complete pre-start omission submission (2026-09-02; declared, unbuilt).** The
-recipe compiler supplies each step's complete value schema and omission form to the start
+workflow compiler supplies each step's complete value schema and omission form to the start
 projection. The modal submits one complete `stepOmissions` bundle before planning; the server cannot
 produce a start plan until every omitted step's required value is present and schema-valid. There
 is no running-worker request/response command for omitted values. The response continues to expose
 only step/field keys and assertion provenance, never values. A mandatory verifier is an ordinary
-selected recipe entry outside the omitted step, not a hidden continuation of that step.
+selected workflow entry outside the omitted step, not a hidden continuation of that step.
 
 **D314 amendment — two recovery commands, one immutable admission (2026-09-02; declared, unbuilt).**
 The run command family gains `resume-from-checkpoints` and `restart-from-start`, each naming the
@@ -1886,28 +1886,28 @@ and DELETE remain refused.
 <!-- roadmap: dash-defaults -->
 <!-- roadmap: migrations -->
 
-**D311 replaces the repeated per-workflow wire project with one compiler contract.** A workflow
-recipe compiles to the existing start/run-modal, queue, timeline/detail, gate, archive/activity,
+**D311/D317 replace the repeated per-workflow wire project with one compiler contract.** A workflow
+definition compiles to the existing start/run-modal, queue, timeline/detail, gate, archive/activity,
 notification and Explorer projections. A workflow using an already-built generic surface adds no
 surface adapter, no workflow-id branch and no duplicate dashboard scenario merely to prove that the
-same projection works again. One registry-wide recipe-to-wire conformance suite proves the common
-mapping for every recipe.
+same projection works again. One registry-wide workflow-to-wire conformance suite proves the common
+mapping for every workflow definition.
 
 The migration still owns its business evidence: schema-valid run states, provenance for every
 system read/write, strict commands for its actual operator decisions, live dry-run evidence and the
 controlled-write proof where it commits. A workflow gets feature-specific dashboard work only when
 it is the first to introduce a genuinely new interaction or wire arm (for example a Review panel,
 Group People, or a new gate packet shape). That change extends §5 once, adds the T2/T3 proof for the
-new capability once, and every later recipe reuses it.
+new capability once, and every later workflow reuses it.
 
 This is an authoring change, not a redesign of the current run modal or worker. The compiler supplies
 the same `WorkflowStartWireSchema` fields and descriptor-derived surfaces the dashboard consumes
 today; existing generic behavior stays byte- and interaction-compatible through conversion.
 
 <!-- roadmap-status: migrations -->
-- [x] D311 ratifies the recipe-to-wire compiler as the one generic integration contract
+- [x] D311/D317 ratify the workflow-to-wire compiler as the one generic integration contract
 - [x] person-lookup (`{#order-0-dash}`) and separations (`{#sep-dash}`) supply the existing behavior the compiler must preserve
-- [ ] the recipe compiler, registry-wide conformance suite and two acceptance conversions
+- [ ] the workflow compiler, registry-wide conformance suite and two acceptance conversions
 - [ ] retire the repeated `Dashboard · wire` tasks for workflows that introduce no new capability
 - [ ] the squares a later migration needs and this build has not got: the Review panel kind, Group People, a generalised gate packet, the artifact byte route (§5)
 > 2026-09-02 | D311 | owner-first design ratified; implementation remains open in doc 03c §Workflow authoring model

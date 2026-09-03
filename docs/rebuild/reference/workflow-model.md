@@ -1001,13 +1001,22 @@ Settings' work (ref operator-trust §5.2) and it is named here because a reader 
 I rename a step" needs the answer to be "you edit the descriptor, for now" rather than a path that
 resolves to nothing.
 
-### 1.6 Workflow recipe — the one authoring seam (D311, 2026-09-02)
+### 1.6 Workflow definition — the one authoring seam (D311/D317, 2026-09-02)
 
 <!-- roadmap: workflow-authoring-model -->
 
+**Implementation status at `b1b36349` (2026-09-02).** The bounded D311 transition is built:
+`src/base/workflow-recipe.ts` compiles tuple groups for Person Lookup and Separations into their
+existing descriptor/module/runtime projections, and the equivalence/conformance gates are green.
+The names and adapter shape predate D317. `defineWorkflowRecipe`, fragment-backed gate/transaction
+entries, retained descriptor/module files, D307 omission behavior and ordinary checkpoint replay are
+transitional, not this section's completed contract. Doc 03c 3c-A owns the final rename/direct entry
+algebra, D313/D314 behavior, four-artifact deletion, guide and T1 acceptance.
+
 The runtime model above remains authoritative, but workflow authors no longer hand-maintain each of
-its projections independently. A **workflow recipe** is the reviewed source form for every new or
-converted workflow. Its central field is one ordered array of **timeline tuples**:
+its projections independently. A **workflow definition** is the reviewed source form for every new
+or converted workflow. “Recipe” is only a teaching analogy and is not a type, file, API or second
+domain concept. Its central field is one ordered array of **timeline tuples**:
 
 ```ts
 steps: [
@@ -1025,23 +1034,23 @@ steps: [
 The tuple contract is exact:
 
 1. `steps` is a readonly ordered array of two-tuples
-   `[WorkflowTimelineGroup, readonly WorkflowRecipeTask[]]`. The group has a stable `key` and an
+   `[WorkflowTimelineGroup, readonly WorkflowTaskEntry[]]`. The group has a stable `key` and an
    operator-facing `label`; the outer array is the timeline's order and grouping authority.
 2. Each task is a typed reusable value over an existing task contract and appears in exactly one
    tuple. Tuple order is presentation order, **not** hidden execution authority. Input references
    derive the execution edges; an unresolved reference, duplicate task, cycle, or cross-group
    dependency the compiler cannot represent refuses the build by name.
 3. Read, compute, gate and transaction tasks retain the existing task, checkpoint, provenance,
-   replay, write-safety and receipt contracts. A recipe does not turn selectors into workflow code:
+   replay, write-safety and receipt contracts. A workflow does not turn selectors into workflow code:
    selectors and page-state interpretation remain in the system driver, while a browser task names
    the typed operation it needs.
-4. One recipe compiler derives the existing `WorkflowDescriptor`, workflow module requirements,
+4. One workflow compiler derives the existing `WorkflowDescriptor`, workflow module requirements,
    start/run-modal projection, timeline/detail projection, Explorer projection and registry-facing
    value. The compiled products must be equivalent to the hand-authored forms they replace; D311
    changes authoring, not run execution or durable bytes.
 5. D265's folder rule becomes an organization and audit rule, not the semantic source of the rail.
    A top-level workflow folder and step sub-folders remain, and a guard may require them to agree
-   with recipe keys, but the recipe tuples are what define timeline membership and order.
+   with workflow group keys, but the workflow tuples are what define timeline membership and order.
 6. Conversion is additive only until equivalence is proved. Person lookup is the smallest compiler
    proof; separations is the completeness proof. After both match their existing public descriptor,
    module and dashboard behavior, the redundant hand-authored declarations and tests are deleted.
@@ -1059,7 +1068,7 @@ the second spends write-safety evidence to solve an authoring problem.
 For a workflow that reuses existing tasks and generic surfaces, the authored workflow surface is
 exactly four artifacts:
 
-1. `src/workflows/<id>/recipe.ts`;
+1. `src/workflows/<id>/workflow.ts` containing one `defineWorkflow(...)` call;
 2. `tests/scenario/workflows/<id>/structural.scenario.test.ts`;
 3. `tests/scenario/workflows/<id>/dry-run.scenario.ts`; and
 4. `docs/migrations/<id>.md`.
@@ -1068,9 +1077,9 @@ Generated descriptors, module requirements, registry values, build-manifest rows
 dashboard projections do not count because they are not authored. New driver operations, reusable
 store tasks or genuinely new dashboard capabilities are allowed only when the workflow requires new
 behavior; they may not carry descriptor/module/registry glue under another name. A grouping, label,
-run-option or omission-form change to a reuse-only workflow changes `recipe.ts` once.
+run-option or omission-form change to a reuse-only workflow changes `workflow.ts` once.
 
-The tuple's second member is a readonly array over one closed, explicit recipe-entry algebra:
+The tuple's second member is a readonly array over one closed, explicit workflow-entry algebra:
 `task(...) | parallel(...) | delegate(...) | gate(...) | transaction(...)`. Every entry and every
 leaf has a stable id. `parallel` declares its join/failure policy and checkpoints each leaf
 independently, so one failed leaf may retry without replaying successful siblings. `delegate`
@@ -1079,7 +1088,7 @@ it is never an in-process call. `gate` and `transaction` compile to their existi
 retain every authority boundary. Compiler inference may derive edges from typed inputs, but it may
 not infer whether an operation is parallel, delegated, gated or transactional.
 
-The acceptance test is deletion, not coexistence. Person Lookup must prove the minimum recipe and
+The acceptance test is deletion, not coexistence. Person Lookup must prove the minimum workflow and
 Separations must prove grouped steps, rich reads, computed facts, omissions, conditional gates,
 retries and transactions. Registry-wide compiler conformance proves parallel and delegated entries
 whether or not either acceptance workflow currently uses them. Both workflows must compile to their
@@ -1087,6 +1096,13 @@ current public descriptor/module/wire behavior before cutover; then their redund
 declarations are removed. The old graph-authoring path is not an advanced escape hatch. A reuse-only
 workflow outside the four-artifact budget, a generic dashboard branch keyed by workflow id, or a
 grouping/options fix requiring another file fails D312/D316.
+
+**D317 terminology amendment.** The public authoring API is `defineWorkflow`, its authored value is
+`WorkflowDefinition`, its generated executable representation is `CompiledWorkflow`, and one
+execution is a `WorkflowRun`. The compiler may retain current descriptor/module shapes as internal
+compatibility products during conversion, but neither is an authored workflow. `recipe`,
+`WorkflowRecipe`, `defineWorkflowRecipe` and `recipe.ts` are forbidden names for this seam; they
+describe the analogy, not the model.
 
 ---
 
@@ -2376,18 +2392,18 @@ through refuses here instead of at the worker. See ref dashboard-surfaces §9.1 
 write-safety (never a transaction) and ref frontend-backend-integration (the wire and refusal codes).
 
 **D313 — the run modal is the complete omission authority (2026-09-02; declared, unbuilt).** In the
-compiled recipe path this supersedes D307's rule that a gate physically inside an omitted step may
+compiled workflow path this supersedes D307's rule that a gate physically inside an omitted step may
 still execute: whole-step omission means no entry in that tuple executes, so any mandatory check
-must be declared separately outside it. Until the recipe conversion lands, D307 above remains the
-as-built omission behavior. Every recipe step has one strict compiled value schema: the complete
+must be declared separately outside it. Until the workflow conversion lands, D307 above remains the
+as-built omission behavior. Every workflow step has one strict compiled value schema: the complete
 values available after its entries settle. A step is
-omittable only when its recipe declares how the run modal supplies every required value in that
+omittable only when its workflow definition declares how the run modal supplies every required value in that
 schema. Selecting omissions and entering those custom values is complete before start-plan
 admission; missing or invalid values refuse the plan, and no worker pauses mid-run to request them.
 The omitted step executes no entry at all. Its schema-valid replacement values are persisted as
 operator assertions with D307 provenance, never observations.
 
-An independent verification entry elsewhere in the selected recipe may still be mandatory before a
+An independent verification entry elsewhere in the selected workflow may still be mandatory before a
 write. That entry is not part of the omitted step, receives the asserted value as typed input and
 runs normally; it cannot be silently omitted when a selected transaction depends on it. Thus the
 modal decides the whole omission up front without making “well-typed” synonymous with “verified.”

@@ -3,18 +3,18 @@ _Answered positionally in chat after a stateless design grill; ratified as D312�
 
 ## 1 · What counts as simple?
 
-**Situation.** The recipe compiler fails its purpose if descriptors, modules, node fragments,
+**Situation.** The workflow compiler fails its purpose if descriptors, modules, node fragments,
 registry wiring and generic dashboard tests remain workflow-author obligations.
 
 **Options.**
 - **A.** Strict four-artifact budget for a workflow that reuses existing tasks and surfaces: one
-  recipe, one structural scenario, one dry-run manifest and one migration record.
+  `workflow.ts`, one structural scenario, one dry-run manifest and one migration record.
 - **B.** Permit extra workflow glue whenever convenient.
 - **C.** Use no enforceable boundary; judge simplicity informally.
 
 **Recommendation.** A — it makes simplicity mechanically checkable.
 
-**Notes.** Codex, Claude and developers are the recipe authors.
+**Notes.** Codex, Claude and developers are the workflow authors.
 
 ## 2 · What authority do custom values have?
 
@@ -73,7 +73,7 @@ second authority.
 
 **Options.**
 - **A.** Person Lookup and Separations must compile to equivalent public behavior, then redundant
-  declarations are deleted; grouping/run-option changes touch one recipe and a reuse-only workflow
+  declarations are deleted; grouping/run-option changes touch one `workflow.ts` and a reuse-only workflow
   satisfies item 1's artifact budget.
 - **B.** Keep both authoring paths indefinitely and evaluate future workflows case by case.
 - **C.** Convert Person Lookup only and defer the completeness proof.
@@ -89,7 +89,7 @@ second authority.
 | 1 | A | Authors are Codex, Claude and developers. |
 | 2 | B | The run modal already decides which steps are skipped and collects their custom values. |
 | 3 | A | Offer checkpoint resume or restart from start; completed writes are skipped. |
-| 4 | A | Use explicit typed recipe entries. |
+| 4 | A | Use explicit typed workflow entries. |
 | 5 | A | Enforce the hard acceptance test. |
 
 ## Ratification
@@ -98,3 +98,11 @@ D312–D316 in `docs/rebuild/reference/decisions.md` record these choices. Norma
 ref workflow-model §§1.6, 5.6 and 5.8; ref dashboard-surfaces §9.1; ref
 frontend-backend-integration §5.1.1; ref guards-and-tests §10.11; and doc 03c
 `{#workflow-authoring-model}`.
+
+## Terminology amendment (D317, 2026-09-02)
+
+The operator clarified that “pantry and recipe” is an analogy, not the codebase's domain language.
+The authored artifact is a **workflow definition** in `src/workflows/<id>/workflow.ts`, created with
+`defineWorkflow`; the compiler yields `CompiledWorkflow`, and a worker executes a `WorkflowRun`.
+`recipe`, `WorkflowRecipe`, `defineWorkflowRecipe` and `recipe.ts` are not names for this authoring
+seam. This changes terminology only, not answers 1–5.

@@ -356,7 +356,7 @@ chip: active
 doc: 03b §Phase summary · 03c §Phase summary · 03c §Recommended migration order (by risk / complexity / reuse)
 open: yes
 
-> One workflow at a time through the safety loop (doc 03c §Phase summary): record workflow-specific decisions → author the recipe → guards → **live dry run** → **controlled commit** where applicable → rebuild-ready → close-out. D311 inserts the workflow-authoring-model before the remaining migrations: the dashboard defaults and compiler are built once, then each workflow supplies its store/task deltas and evidence. A separate dashboard feature task exists only for a new interaction or wire arm. Separations went first and forced the defaults into existence; it now serves as the compiler's completeness acceptance workflow.
+> One workflow at a time through the safety loop (doc 03c §Phase summary): record workflow-specific decisions → author `workflow.ts` → guards → **live dry run** → **controlled commit** where applicable → rebuild-ready → close-out. D311/D317 insert the workflow-authoring-model before the remaining migrations: the dashboard defaults and compiler are built once, then each workflow supplies its store/task deltas and evidence. A separate dashboard feature task exists only for a new interaction or wire arm. Separations went first and forced the defaults into existence; it now serves as the compiler's completeness acceptance workflow.
 
 needs:
 - p2-2j
@@ -372,7 +372,7 @@ chip: B+C+D done · Duo + observed proof done · pool + fidelity open
 size: L
 doc: 03a §Phase summary · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §6.8 · ref:dashboard-surfaces §1.2
 
-> Built ONCE and projected from the D311 recipe compiler: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity and explorer. Track B finished the surfaces with separations as the forcing function; Track C proved the connection against a real run; Track D's D1–D5 + D11 are done, with D4/D5's budgets measured. **Track F is the fidelity bar above all three** — D272–D276 ratify all 49 choices across six bounded sheets, and their resulting implementations/proofs remain open. The Duo lease and observed-log proof are done; the worker supervisor/parallel proof remains. Existing `Dashboard · wire` nodes are historical acceptance/delta inventories; D311 implementation retires their generic rows and keeps only genuinely new capabilities.
+> Built ONCE and projected from the D311/D317 workflow compiler: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity and explorer. Track B finished the surfaces with separations as the forcing function; Track C proved the connection against a real run; Track D's D1–D5 + D11 are done, with D4/D5's budgets measured. **Track F is the fidelity bar above all three** — D272–D276 ratify all 49 choices across six bounded sheets, and their resulting implementations/proofs remain open. The Duo lease and observed-log proof are done; the worker supervisor/parallel proof remains. Existing `Dashboard · wire` nodes are historical acceptance/delta inventories; D311 implementation retires their generic rows and keeps only genuinely new capabilities.
 
 builds:
 - [ ] BE the per-run stream topics — five of six declared TopicKeys have no producer, so run detail, logs, review, people and artifact updates arrive by re-read, not by patch (ref frontend-backend-integration §3.5)
@@ -1109,29 +1109,40 @@ log:
 
 ## session: 2026-08-26 | 03a fidelity ratification | operator selected all 49 recommended A answers; D271–D276 ratify the worker-pool and fidelity decisions. No port, proof, parity re-freeze, or phase completion is claimed; all remain open.
 
-## today: 2026-08-26 · 03a decisions ratified as D271–D276; worker supervision/parallel proof and resulting fidelity ports/proofs remain · separations 8 / 9 · the live T1b `met` waits for 08-28
+## session: 2026-09-02 | 3c verified progress | merge `a40276b6` integrates the bounded transitional compiler, Person Lookup + Separations compiler-backed descriptors/modules and generic conformance; merge `b1b36349` integrates Order 1 intake only. D312–D317 final API/direct entries/omission/recovery/four-artifact/guide/T1/deletion acceptance remains before 3c-B. R1/R2 worktrees are closed; every later run and the phase exit require an exact worktree sweep.
+
+## today: 2026-09-02 · Phase 3c active · bounded compiler and Order 1 intake integrated at `b1b36349` · finish D312–D317 3c-A before Order 1 implementation · re-audit shared worktree capacity before writable dispatch
 
 ## Workflow authoring model {#workflow-authoring-model}
 phase: Phase 3 bridge
-status: planned
+status: active
 when: before orders 1–7 and 9
-chip: D311–D316 ratified · compiler open
+chip: bounded compiler integrated · D312–D317 finish open
 doc: 03c §Workflow authoring model — prerequisite to orders 1–7 and 9 · ref:workflow-model §1.6 · ref:operator-trust §5.2.3 · ref:frontend-backend-integration §6.8 · ref:guards-and-tests §10.11
 open: yes
 
-> One ordered recipe array — `[timeline group, tasks[]]` — becomes the workflow-authoring seam, with explicit task/parallel/delegate/gate/transaction entries in that task array. A compiler derives the existing descriptor, module requirements, run-modal/timeline/detail projections and Explorer view; the current executor, gates, receipts, write safety and durable bytes remain. A reuse-only workflow has exactly four authored artifacts. Person lookup proves the smallest shape, separations proves the complete one, and then the redundant manual declarations are deleted before another workflow migrates.
+> 3c-A builds one authored `WorkflowDefinition` in `src/workflows/<id>/workflow.ts`: an ordered `[timeline group, tasks[]]` array with explicit task/parallel/delegate/gate/transaction entries. “Recipe” is analogy only. `compileWorkflow` derives the existing descriptor, store/session requirements, registry/build-manifest value, run-modal/timeline/detail projections and Explorer view; workers execute the compiled workflow through the current sessions, checkpoints, logs/screenshots, gates, receipts, write safety and durable bytes. A reuse-only workflow has exactly four authored workflow-specific artifacts. Person Lookup proves the smallest shape, Separations proves the complete one, and then the redundant manual authoring path is deleted before 3c-B migrates another workflow.
 
 builds:
 - [x] DOCS D311 ratified in every owning reference and doc 03c
 - [x] DOCS D312–D316 ratified: simplicity budget, complete pre-start omissions, two recovery choices, explicit entry algebra and deletion acceptance
-- [ ] BE `defineWorkflowRecipe` + compiler to the existing descriptor/module contracts
+- [x] DOCS D317: `workflow` is the technical authoring model; `recipe` is analogy only
+- [x] PROOF compatibility fixtures for Person Lookup and Separations (`2e563240`, merged by `6d30d75a`)
+- [x] BE bounded transitional compiler derives graph/result, stores, descriptor/module and build-manifest products (`ebfde1c6`)
+- [x] BE Person Lookup and Separations route through the transitional compiler (`ebfde1c6`, `d4204106`)
+- [x] PROOF registry-derived bootstrap/start, timeline/detail and Explorer conformance for both (`246daab2`, `4555341f`)
+- [ ] BE task-store discovery by system, capability, effect, input and output
+- [ ] BE replace transitional recipe names with D317 `workflow.ts` + `defineWorkflow` + `compileWorkflow`; no compatibility alias or second authoring seam
 - [ ] PROOF exact four-artifact budget for reuse-only workflows
-- [ ] BE explicit `task | parallel | delegate | gate | transaction` entries with stable leaf ids and independent retry
-- [ ] BE person-lookup equivalence conversion
-- [ ] BOTH separations equivalence conversion, including D307 omissions and current generic surfaces
+- [ ] BE replace fragment adapters with direct `task | parallel | delegate | gate | transaction` entries, stable leaf ids, explicit join/failure policy and independent retry
+- [ ] PROOF automatic worker/session/auth/checkpoint/log/screenshot/receipt/notification/Archive inheritance for every compiled workflow
+- [ ] BOTH finish Person Lookup's final four-artifact conversion and missing canonical T1 pair
+- [ ] BOTH finish Separations' final direct-entry conversion and redundant-path deletion while preserving public behavior
 - [ ] BOTH complete run-modal omission admission and the checkpoint-resume/root-restart command pair
-- [ ] BOTH Explorer renders the same compiled timeline tuples
-- [ ] PROOF one registry-wide compiler/dashboard conformance suite; superseded declarations and duplicate generic-surface tests removed
+- [x] BOTH current tuple groups render through generic run-modal/timeline/detail/Explorer projections; reverify after final conversion
+- [ ] PROOF extend conformance to every direct entry kind; superseded declarations and duplicate generic-surface tests removed; no advanced escape hatch
+- [ ] DOCS practical workflow-authoring guide + paired root agent rules + one derived internal agent reference
+- [ ] PROOF 3c-A exit: guide-followed Person Lookup/Separations conversions, four-artifact/change-routing proof, all integrated gates green and exact worktree sweep complete before 3c-B
 
 needs:
 - phase-3
@@ -1139,6 +1150,8 @@ needs:
 log:
 - 2026-09-02 | D311 | owner-first architecture recorded; documentation only, no compiler or conversion claimed
 - 2026-09-02 | D312–D316 | measurable simplicity and recovery boundaries recorded; documentation only, no implementation claimed
+- 2026-09-02 | D317 | Phase 3c split internally into authoring-platform gate 3c-A and migration gate 3c-B; workflow-only terminology and new-session execution order recorded
+- 2026-09-02 | verified at `b1b36349` | bounded compiler/conversions/conformance and Order 1 intake integrated; final D312–D317 authoring/runtime acceptance remains; R1/R2 worktree lifecycles closed
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued
@@ -1148,7 +1161,12 @@ chip: 13 workflows · 9 order rows
 doc: 03c §Phase summary · 03c §Workflow authoring model — prerequisite to orders 1–7 and 9 · 03c §Recommended migration order (by risk / complexity / reuse) · 04 §Phase summary · ref:guards-and-tests §10 · ref:charter §Migration strategy
 open: yes
 
-> Doc 03c §Recommended migration order's risk-proof ordering, kept as-is after the separations entry (order 8 is the migration in flight, under Phase 3 above): reads populate the stores, the OCR service unblocks four consumers, write-heavy lands last. **No workflow after separations is named yet.** After D311's compiler lands, each migration records only its workflow-specific §b deltas, authors the tuple recipe, runs a live dry run and, for writes, proves a controlled commit on a target you approve. Generic dashboard surfaces compile automatically; only a new interaction or wire arm gets its own dashboard feature task. **Store reality:** only ucpath, crm, kuali, new-kronos have real drivers today; onbase, servicenow, i9, old-kronos, sharepoint are 3-line session declarations with zero tasks.
+> 3c-B begins only after 3c-A's authoring-platform exit gate. Doc 03c §Recommended migration order's risk-proof ordering remains: reads populate the task stores, the OCR service unblocks four consumers, and write-heavy lands last. **No workflow after separations is named yet.** Each migration records only its workflow-specific §b deltas, authors `workflow.ts`, runs a live dry run and, for writes, proves a controlled commit on a target you approve. Generic dashboard surfaces compile automatically; only a new interaction or wire arm gets its own dashboard feature task. **Store reality:** only ucpath, crm, kuali and new-kronos have real drivers today; onbase, servicenow, i9, old-kronos and sharepoint are declaration-only with zero tasks.
+
+builds:
+- [x] DOCS Order 1 Person Lookup/I-9 intake, reuse map and live login/search evidence (`b1b36349`); no implementation claim
+- [ ] BOTH orders 1, 2, 3, 4, 5, 6, 7 and 9 through the seven-step migration loop after 3c-A
+- [ ] PROOF every run and final phase close: integrated gate, registered/physical worktree removal, local branch deletion, exact task archival and residue record
 
 needs:
 - workflow-authoring-model
@@ -1158,7 +1176,9 @@ note: **Legacy capability register:** 47 open · 20 replaced · 7 native · 4 re
 log:
 - 2026-08-20 | docs-cohesion 03c | doc 03c written as-built: the seven-step playbook, all nine order rows, the recounted closure inventory. Chip corrected 12 → 13 workflows (15 `legacy-workflow-*` entries minus separations and person-lookup); the register recount CONFIRMS 47/20/7/4 and every open entry names `phase-3-workflow-migration`. Registry reality re-verified — only person-lookup and the six separations descriptors are registered, so orders 1-7 and 9 have no descriptor at all
 - 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
-- 2026-09-02 | D311 | remaining migrations now depend on the recipe/compiler seam; repeated per-workflow dashboard wiring retires unless a workflow introduces a new capability
+- 2026-09-02 | D311/D317 | 3c-B remaining migrations depend on the workflow/compiler seam; repeated per-workflow dashboard wiring retires unless a workflow introduces a new capability
+- 2026-09-02 | D317 execution plan | 3c-A's ten ordered units and hard exit gate recorded; no order 1–7 or 9 implementation begins before it closes
+- 2026-09-02 | order 1 intake | migration records, REUSE/CUSTOMIZE/BUILD map and live I-9 login/search evidence integrated at `b1b36349`; no Order 1 runtime implementation or rebuild-ready claim
 ### Order 0 · person-lookup {#order-0}
 status: done
 size: M
@@ -1185,7 +1205,8 @@ builds:
 - [x] WIRE queue row — the person-lookup row, status and timing (D123/D124/D126 fixes from the live run)
 - [x] WIRE run detail — timeline, receipt, Context rail; the two-pixel panel found and fixed in 2j (D187)
 - [x] WIRE archive · activity · explorer — person-lookup rows appear through the generic surfaces
-- [ ] PROOF D311 acceptance — compile the person-lookup recipe to these same projections and compare exactly
+- [x] PROOF D311 bounded acceptance — transitional compiler and generic projection equivalence (`ebfde1c6`, `246daab2`, `4555341f`)
+- [ ] PROOF D312–D317 final acceptance — final `workflow.ts`, no authored descriptor/module glue, four-artifact guard and canonical T1 pair
 - [ ] BE publish `run-failed` / `subject-mismatch` / `write-parked` — four of six trigger arms are unreachable (ref operator-trust §6.3)
 
 needs:
@@ -1197,11 +1218,13 @@ log:
 ### Order 1 · person-lookup Search + Match · i9-lookup {#order-1}
 status: planned
 size: M
+chip: intake complete · implementation blocked by 3c-A
 doc: 03c §Order 1 · person-lookup Search + Match · i9-lookup · 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §9.10 · ref:task-contract §3.1
 
 > read — HR-Tasks Search/Match; who signed I-9 §2. Two modes prove one descriptor can preserve distinct system surfaces.
 
 builds:
+- [x] DOCS workflow-specific migration decisions, reuse/provenance map and live I-9 login/search evidence (`b1b36349`)
 - [ ] BOTH Search + Match modes on person-lookup (D15)
 - [ ] BE the `i9` store: driver, login recipe, tasks (zero today)
 - [ ] BOTH i9-lookup workflow + its queue/detail surfaces
@@ -1213,16 +1236,17 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03c | doc 03c §Order 1 written: `src/stores/i9/` is a 7-line `declareDriver("i9", "unwired")` with `{}` tasks, and `person-lookup/descriptor.ts` carries no mode. The row's hazard is one descriptor with two modes (D15) plus the first login recipe written from scratch since 1d (D120)
+- 2026-09-02 | intake complete at `b1b36349` | `docs/migrations/person-lookup.md`, `docs/migrations/i9-lookup.md` and the reuse/live map are integrated; implementation, T1 and capability disposition remain open
 
 #### Dashboard capability delta · Search + Match · i9-lookup {#order-1-dash}
 status: planned
 chip: one new capability · mode chooser
 doc: 03c §Dashboard capability delta · Search + Match · i9-lookup · ref:frontend-backend-integration §5.1.1 · ref:guards-and-tests §10.11
 
-> Search and Match are two recipe-declared run-modal options of one workflow. Every ordinary surface is compiler output; this node owns only the new mode interaction.
+> Search and Match are two workflow-declared run-modal options of one workflow. Every ordinary surface is compiler output; this node owns only the new mode interaction.
 
 builds:
-- [ ] BOTH generic recipe-declared mode chooser
+- [ ] BOTH generic workflow-declared mode chooser
 - [ ] PROOF T2/T3 for the mode interaction; ordinary surfaces ride compiler conformance
 
 needs:
@@ -1256,7 +1280,7 @@ status: planned
 chip: one new capability · download viewer
 doc: 03c §Dashboard capability delta · downloads · ref:frontend-backend-integration §3.6 · ref:guards-and-tests §10.12
 
-> The recipes inherit every ordinary surface. This node owns only opening the verified downloaded artifact.
+> The workflows inherit every ordinary surface. This node owns only opening the verified downloaded artifact.
 
 builds:
 - [ ] BOTH download viewer — the artifact-bytes route + a per-run downloads tile
@@ -1294,7 +1318,7 @@ status: planned
 chip: one new capability · Review
 doc: 03c §Dashboard capability delta · OCR pipeline · ref:data-intake-and-edit-data §4.3 · ref:guards-and-tests §10.12
 
-> The OCR recipe inherits ordinary surfaces. This node owns the first real Review panel and its commands.
+> The OCR workflow inherits ordinary surfaces. This node owns the first real Review panel and its commands.
 
 builds:
 - [ ] BOTH OCR review UI — expanded page ↔ extracted-text pair, approve / reject / retry page, one atomic correction list
@@ -1338,7 +1362,7 @@ status: planned
 chip: two new capabilities · gate packet + Group People
 doc: 03c §Dashboard capability delta · oath-signature · emergency-contact · ref:write-safety §14.11 · ref:dashboard-surfaces §9.10 · ref:guards-and-tests §10.12
 
-> Ordinary projections compile from the recipes. This node owns the generalized gate packet and first real Group People surface.
+> Ordinary projections compile from the workflows. This node owns the generalized gate packet and first real Group People surface.
 
 builds:
 - [ ] BOTH generalized server-declared gate packet
@@ -1382,7 +1406,7 @@ status: planned
 chip: two new facts · retention + export
 doc: 03c §Dashboard capability delta · i9-check · ref:data-intake-and-edit-data §4.1 · ref:guards-and-tests §10.12
 
-> The recipe reuses Group People and ordinary projections. This node owns retention status and workbook export.
+> The workflow reuses Group People and ordinary projections. This node owns retention status and workbook export.
 
 builds:
 - [ ] FE member rows with retention status; the workbook export control
@@ -1466,7 +1490,7 @@ status: planned
 chip: two new receipt arms
 doc: 03c §Dashboard capability delta · oath-upload · onbase · ref:operator-trust §2.3 · ref:guards-and-tests §10.12
 
-> Ordinary projections compile from the recipes. This node owns the ServiceNow and OnBase completion-proof presentations.
+> Ordinary projections compile from the workflows. This node owns the ServiceNow and OnBase completion-proof presentations.
 
 builds:
 - [ ] WIRE ServiceNow ticket receipt + OnBase upload-verify on the run-detail receipt
@@ -1507,7 +1531,7 @@ status: planned
 chip: roster ingest + hire gate delta
 doc: 03c §Dashboard capability delta · onboarding · ref:data-intake-and-edit-data §4 · ref:write-safety §14.11 · ref:guards-and-tests §10.12
 
-> Ordinary projections compile from the recipe. This node owns roster ingest and only the hire-gate evidence shape that the generalized gate capability cannot express.
+> Ordinary projections compile from the workflow. This node owns roster ingest and only the hire-gate evidence shape that the generalized gate capability cannot express.
 
 builds:
 - [ ] BOTH roster ingest surface; the hire canary's ceremony

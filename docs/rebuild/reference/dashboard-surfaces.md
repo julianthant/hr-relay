@@ -2667,13 +2667,13 @@ marks an asserted leaf with its step, Explain lists the omitted steps and an `op
 disposition, and the receipt carries the `OPERATOR_OMITTED_STEP` warning (ref operator-trust).
 
 **D313 amendment — omission is decided completely in this modal (2026-09-02; declared, unbuilt).**
-The recipe compiler serves each step's complete value schema and its operator-suppliable form.
+The workflow compiler serves each step's complete value schema and its operator-suppliable form.
 Unchecking a step means none of its entries execute. Before Confirm can produce a start plan, every
 required replacement value must be present and schema-valid; otherwise the modal/server refuses by
 step and field key. There is no mid-run request for values. A separately declared mandatory
 verification entry may still run downstream and remains visible as selected work. Confirmation
 identifies omitted steps and assertion provenance, never the entered values. This supersedes the
-D307 same-step-gate exception for compiled recipes; D307 remains the current built behavior until
+D307 same-step-gate exception for compiled workflows; D307 remains the current built behavior until
 the conversion lands.
 
 1. **The parser sentence is derived, never authored.** `inputRunValueNoun`,
