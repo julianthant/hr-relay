@@ -1,13 +1,19 @@
 # Project profile — test-suite rationalization
 
-**Repository:** `/Users/julianhein/.codex/worktrees/f14c/hr-automation-rebuild`
-**Coordination workspace:** `/Users/julianhein/.codex/worktrees/f14c/hr-automation-rebuild/docs/coordinator/test-suite-rationalization`
-**Verified:** 2026-09-02 15:55 PDT at `12ae781b3e00e713cd09c65a038c0febe5a35561` on isolated branch `feature/test-suite-rationalization`
+**Repository:** `/Users/julianhein/Projects/hr-automation-rebuild`
+**Coordination workspace:** `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator/docs/coordinator/test-suite-rationalization`
+**Coordination UUID:** `f24df892-5171-48f4-97ff-4e91490f8622`
+**Coordination short id:** `Cf24df892`
+**Work key:** `test-suite-rationalization`
+**Coordinator title:** `Coordinate · test-suite-rationalization · Cf24df892 · remaining test-suite work`
+**Coordinator task/host:** unavailable in this task context
+**Integration checkout:** `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator` · `feature/test-suite-rationalization`
+**Verified:** 2026-09-02 18:03 PDT at `9d87f512e358280e04ab5960f8bdeb2b840aff18`
 
 ## Applicable instructions
 
-- `/Users/julianhein/.codex/worktrees/f14c/hr-automation-rebuild/AGENTS.md` and byte-identical `CLAUDE.md` — repository-wide rules, authorities, gates, fail-loud policy, and orchestration.
-- `/Users/julianhein/.codex/worktrees/f14c/hr-automation-rebuild/tests/scenario/AGENTS.md` and byte-identical `CLAUDE.md` — current scenario kinds, naming, and coverage-claim rules.
+- `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator/AGENTS.md` and byte-identical `CLAUDE.md` — repository-wide rules, authorities, gates, fail-loud policy, and orchestration.
+- `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator/tests/scenario/AGENTS.md` and byte-identical `CLAUDE.md` — current scenario kinds, naming, and coverage-claim rules.
 - Any nearer paired instruction files in a run's owned subtree; each supervisor must discover and obey them before editing.
 - Global `coordinator`, `supervise`, `review`, `tdd`, `ui`, and `worktree-sweep` skills only when their trigger applies. This coordinator owns the board and branch integration; supervisors own implementation fan-out.
 
@@ -39,7 +45,7 @@ Test output is an operator surface. Every test command must identify the project
 
 ## Git and integration policy
 
-- **Branch/current line:** coordinator integrates on local `feature/test-suite-rationalization`, created from current `feature/03b-live-close` tip `12ae781b`; the supplied `b3d75578` snapshot is one docs-only commit behind current intake.
+- **Branch/current line:** coordinator continues on the established local `feature/test-suite-rationalization` integration line. R1 and R6 are merged through `9d87f512`; before dispatching more work, merge the current stable `master` into this line without touching the active Phase 3c branches.
 - **Parallel isolation:** each run uses its own Codex worktree and `feature/test-r<n>-<theme>` branch from the latest declared base. No supervisor edits the coordinator branch or another run's branch.
 - **Integration:** coordinator verifies and merges accepted run branches `--no-ff` in run-plan order, then runs the boundary gate. No supervisor merges into the integration target.
 - **Commit and cleanup:** logical local commits; stage explicit paths only; never `git add -A` or `git add .`; preserve unrelated work. Coordinator removes integrated run worktrees/branches only after verification and finishes with `/worktree-sweep` audit.
@@ -56,5 +62,6 @@ Test output is an operator surface. Every test command must identify the project
 
 - **Run sizing:** 3–6 single-seam units, six maximum here; one test-family theme per run. Three-unit follow-on runs are permitted where dependency-safe splitting enables the four-worktree Wave 2.
 - **Parallel supervisors:** two in Wave 1; after R1 and R6 integrate cleanly, use four isolated supervisor worktrees where scopes do not overlap. Serialize CPU-heavy full coverage and parity gates.
+- **Auxiliary worktree budget:** four total, excluding the primary checkout; the unrelated active Phase 3c worktree consumes one slot.
 - **Artifact root override:** none; use `docs/coordinator/test-suite-rationalization/`.
 - **Final close:** update only declared authorities whose truth changed, retain the workspace, close the board with verified commit/gate pointers, and leave no run worktree or integrated feature branch behind.
