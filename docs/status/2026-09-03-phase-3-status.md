@@ -59,3 +59,9 @@ approved phase.
 | 1 | How should the unavailable Separations T1b canary satisfy the 3c-A exit wording? | **A:** supply a new closed Kuali document number and rerun; **B:** accept the typed `blocked/not-started` evidence and record an owed rerun; **C:** hold Phase 3 open indefinitely | A if a vetted document is already at hand; otherwise B | Final 3c-A exit claim |
 | 2 | Start the final Phase 3 closure run after item 1 and the two proof units are settled | **A:** authorize 3c-B; **B:** leave it parked | A | Canonical Phase 3 close |
 
+### Answers (2026-09-03)
+
+| # | Chosen | Note |
+|---|---|---|
+| 1 | **A** | Strict `met` evidence remains required; the replacement Kuali document number is still outstanding. |
+| 2 | **A** | 3c-B is authorized once all 3c-A exit conditions are green. |

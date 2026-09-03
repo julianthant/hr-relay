@@ -1911,3 +1911,14 @@ this same commit._
 | # | Decision | Owning doc |
 |---|---|---|
 | **D319** | **NO FUTURE WORKFLOW RECEIVES A NUMBERED PHASE OR IMPLEMENTATION RUN UNTIL ITS CURRENT BEHAVIOR AND PROPOSED WORKFLOW DEFINITION ARE VERIFIED AND THE OPERATOR APPROVES THE ADMISSION PACKET.** Phase 3 contains the reusable workflow-authoring platform and its two acceptance workflows, Person Lookup and Separations. Phase 3c-A builds and proves that shared platform; Phase 3c-B finishes only their acceptance and closes Phase 3. Every other legacy workflow label moves to an unnumbered admission backlog. A candidate packet verifies the real outcome, run inputs and omissions, ordered timeline tuples, explicit entry kinds, task-store reuse/additions, live systems/selectors, logs/screenshots/receipts, recovery behavior and proof/write target. Approval creates the next numbered phase just in time. Old order rows are evidence leads, not build authorization or phase assignments. Shared capabilities belong to the first approved workflow phase that proves it needs them. | ref workflow-model §1.6.2 (primary) · doc 03c §Workflow admission after Phase 3 · roadmap `{#workflow-admission}` |
+
+## Reconciliation round 126 (2026-09-03) — keep the strict Phase 3 exit and authorize its close
+
+_phase: 3c_
+_D320 records the operator's positional answers `A and A` to the Phase 3 close sheet. The normative
+exit and start conditions land in doc 03c in this same commit. The answer selects no canary value and
+waives no proof or gate._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D320** | **SEPARATIONS MUST RECORD A FRESH `met` T1b RESULT ON A NEWLY VETTED CLOSED KUALI DOCUMENT BEFORE 3c-A CLOSES; ONCE EVERY 3c-A EXIT CONDITION IS GREEN, 3c-B IS AUTHORIZED TO RUN AND CLOSE PHASE 3 WITHOUT ANOTHER START APPROVAL.** The existing `blocked/not-started` result remains honest evidence but is not green acceptance. D284 still forbids an inferred replacement: the operator must place the new document number in ignored configuration and the registry must record a dated `available` observation before the live preview. The 3c-B authorization is conditional on the clean-context guide proof, automatic runtime-inheritance proof, fresh Separations T1b `met`, integrated gates and lifecycle close. It authorizes no external write and no third workflow. | doc 03c §3c-A exit gate and §3c-B (primary) · `docs/decisions/2026-09-03-phase-3-close.md` |

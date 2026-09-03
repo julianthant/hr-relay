@@ -313,10 +313,17 @@ coverage, architecture, parity and both workflow T1b proofs are green. Passing u
 while retaining a second authoring path does not close 3c-A. The run closes only after its integrated
 worktree sweep proves no 3c-A worktree, local feature branch or exact task residue remains.
 
+**D320 (operator answer 2026-09-03): keep the strict T1b gate.** Separations must record a fresh
+`met` result against a newly vetted closed Kuali document; its existing typed
+`blocked/not-started` result does not satisfy this exit. The operator selected this path but did not
+identify the replacement document in the answer, so the target remains an outstanding input and no
+substitute may be inferred.
+
 ## 3c-B · Accept Person Lookup and Separations, then close Phase 3
 
-3c-B is separately operator-triggered after 3c-A; it does not start automatically and does not start
-a third workflow. It reconciles the final 3c-A proof with Person Lookup's
+3c-B does not start before 3c-A and does not start a third workflow. D320 records the operator's
+2026-09-03 authorization to start it as soon as every 3c-A exit condition is green; no second start
+approval is required. It reconciles the final 3c-A proof with Person Lookup's
 migration record and the as-built Separations authority in doc 03b, confirms that the generic
 dashboard and Explorer projections describe both compiled workflows, runs the integrated gates,
 updates the canonical Phase 3 status, performs the exact worktree/task sweep and stops. Unfinished
@@ -1202,11 +1209,12 @@ traceback that names each one's trigger.
 
 ## Decisions this phase ratified
 
-**D311-D319 are this phase's workflow-authoring, proof and boundary decisions.** D311-D318 ratify
+**D311-D320 are this phase's workflow-authoring, proof and boundary decisions.** D311-D318 ratify
 the workflow/compiler and its measurable simplicity, omission, recovery, entry-algebra and deletion
 boundaries. D319 ends Phase 3 after Person Lookup/Separations acceptance and requires a verified,
-operator-approved admission packet before another workflow receives a numbered phase. The bounded
-compiler is integrated and final acceptance remains open at `{#workflow-authoring-model}`.
+operator-approved admission packet before another workflow receives a numbered phase. D320 keeps
+the strict Separations T1b exit and conditionally authorizes 3c-B. The bounded compiler is integrated
+and final acceptance remains open at `{#workflow-authoring-model}`.
 
 | D | Where it binds in this doc |
 |---|---|
@@ -1223,6 +1231,7 @@ compiler is integrated and final acceptance remains open at `{#workflow-authorin
 | D317 (round 123, 2026-09-02) | `workflow` is the authored technical model; `recipe` is analogy only; `workflow.ts` + `defineWorkflow` compile to `CompiledWorkflow` |
 | D318 (round 124, 2026-09-02) | transaction-free workflows satisfy T1b through the explicit `live-read` arm with `dryRun=false`, zero transaction nodes and exact zero write-authority deltas; D209 preview semantics remain unchanged |
 | D319 (round 125, 2026-09-02) | Phase 3 stops after Person Lookup/Separations acceptance; every other workflow stays unnumbered until its admission packet is verified and operator-approved |
+| D320 (round 126, 2026-09-03) | Separations still needs a fresh `met` T1b result on a newly vetted closed Kuali document; once every 3c-A exit condition is green, 3c-B is already authorized to reconcile and close Phase 3 |
 | R10 (operator, 2026-08-20; amended D311) | T1 behavior per workflow, T2/T3 per new dashboard capability, the 80 % floor |
 
 A round ratified by a future migration is added here in the same commit that records it, with its
