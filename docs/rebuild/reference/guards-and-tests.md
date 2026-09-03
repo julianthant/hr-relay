@@ -2108,10 +2108,10 @@ Only genuinely long or multi-stage harnesses emit stable named phase begin/compl
 units do not chatter per assertion. Expected diagnostics are captured and asserted. Unexpected
 failures name the exact operation with actionable non-secret context and are never globally hidden.
 
-**`tests/CLAUDE.md`** is one page and states: the five tiers and what each needs; the folder map
-above; which script runs which tier and when; the rule that a dry-run scenario is never collected by
-vitest; the `blocked`-not-`failed` rule; and a pointer here for everything normative. It is a map,
-not a second spec — a second spec is a second opinion that can drift (D252).
+**`tests/scenario/AGENTS.md` and its byte-identical `CLAUDE.md` twin** map the three collected
+scenario kinds and their current paths, state why T1b is not a Vitest file, and point here for the
+normative tier/trigger contract. They are a map, not a second spec — a second spec is a second
+opinion that can drift (D252).
 
 ### 10.10 Coverage floors — 80/80/80 global
 

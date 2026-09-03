@@ -11,6 +11,15 @@ export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
 export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [] as const;
 export const REBUILD_SCENARIO_TEST_INCLUDE = ["tests/scenario/**/*.test.ts"] as const;
 export const REBUILD_SCENARIO_TEST_EXCLUDE = ["tests/scenario/combined/**"] as const;
+export const REBUILD_TEST_PROJECTS = [
+  { name: "unit", include: REBUILD_UNIT_TEST_INCLUDE, exclude: REBUILD_UNIT_TEST_EXCLUDE },
+  {
+    name: "architecture",
+    include: REBUILD_ARCHITECTURE_TEST_INCLUDE,
+    exclude: REBUILD_ARCHITECTURE_TEST_EXCLUDE,
+  },
+  { name: "scenario", include: REBUILD_SCENARIO_TEST_INCLUDE, exclude: REBUILD_SCENARIO_TEST_EXCLUDE },
+] as const;
 export const REBUILD_TEST_EXEC_ARGV = ["--no-experimental-webstorage"] as const;
 export const REBUILD_TEST_REPORTERS = ["verbose"] as const;
 export const REBUILD_COVERAGE_EXCLUSIONS = [
@@ -70,35 +79,15 @@ export default defineConfig({
     // Full coverage at the CPU-derived default starves the fixture/guard
     // checks on shared machines. Bound file concurrency, not their deadlines.
     maxWorkers: Math.min(4, availableParallelism()),
-    projects: [
-      {
-        extends: true,
-        test: {
-          name: "unit",
-          include: [...REBUILD_UNIT_TEST_INCLUDE],
-          exclude: [...REBUILD_UNIT_TEST_EXCLUDE],
-          fileParallelism: true,
-        },
+    projects: REBUILD_TEST_PROJECTS.map(({ name, include, exclude }) => ({
+      extends: true,
+      test: {
+        name,
+        include: [...include],
+        exclude: [...exclude],
+        fileParallelism: true,
       },
-      {
-        extends: true,
-        test: {
-          name: "architecture",
-          include: [...REBUILD_ARCHITECTURE_TEST_INCLUDE],
-          exclude: [...REBUILD_ARCHITECTURE_TEST_EXCLUDE],
-          fileParallelism: true,
-        },
-      },
-      {
-        extends: true,
-        test: {
-          name: "scenario",
-          include: [...REBUILD_SCENARIO_TEST_INCLUDE],
-          exclude: [...REBUILD_SCENARIO_TEST_EXCLUDE],
-          fileParallelism: true,
-        },
-      },
-    ],
+    })),
     globals: false,
     testTimeout: 30_000,
     hookTimeout: 30_000,

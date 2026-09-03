@@ -12,6 +12,7 @@ import {
   REBUILD_COVERAGE_FLOORS,
   REBUILD_SCENARIO_TEST_EXCLUDE,
   REBUILD_SCENARIO_TEST_INCLUDE,
+  REBUILD_TEST_PROJECTS,
   REBUILD_TEST_REPORTERS,
   REBUILD_UNIT_TEST_EXCLUDE,
   REBUILD_UNIT_TEST_INCLUDE,
@@ -108,15 +109,11 @@ export function architectureProjectViolations({
 
 export function testProjectTopologyViolations(root: string): string[] {
   const all = globSync(["tests/**/*.test.ts", "tests/**/*.test.tsx"], { cwd: root }).sort();
-  const excludedFromUnit = new Set(globSync([...REBUILD_UNIT_TEST_EXCLUDE], { cwd: root }));
-  const excludedFromScenario = new Set(globSync([...REBUILD_SCENARIO_TEST_EXCLUDE], { cwd: root }));
-  const projects = new Map<string, Set<string>>([
-    ["unit", new Set(globSync([...REBUILD_UNIT_TEST_INCLUDE], { cwd: root })
-      .filter((path) => !excludedFromUnit.has(path)))],
-    ["architecture", new Set(globSync([...REBUILD_ARCHITECTURE_TEST_INCLUDE], { cwd: root }))],
-    ["scenario", new Set(globSync([...REBUILD_SCENARIO_TEST_INCLUDE], { cwd: root })
-      .filter((path) => !excludedFromScenario.has(path)))],
-  ]);
+  const projects = new Map(REBUILD_TEST_PROJECTS.map(({ name, include, exclude }) => {
+    const excluded = new Set(globSync([...exclude], { cwd: root }));
+    const collected = globSync([...include], { cwd: root }).filter((path) => !excluded.has(path));
+    return [name, new Set(collected)] as const;
+  }));
   const violations: string[] = [];
   for (const path of all) {
     const owners = [...projects].filter(([, files]) => files.has(path)).map(([name]) => name);
