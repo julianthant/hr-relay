@@ -331,13 +331,20 @@ environment-supplied.
   `.tracker-rebuild/locks/server.lock.json` at `releasedAt: null`, the authority handle abandoned and
   no graceful-drain backup. `startRebuildRuntime` is now `async` and the branch awaits the
   composition, then the FIRST SIGINT/SIGTERM through an injectable `signals` seam, then `stop()` —
-  once, awaited, with that ordering still the sole shutdown authority. Keep the listeners subscribed
-  ACROSS the stop so a second Ctrl+C during a drain is absorbed instead of killing the process
-  mid-ordering, and dispose them in `finally`. A rejecting stop propagates; this library never calls
-  `process.exit`. `runCli` returns that promise and the secure bootstrap awaits it. Prove it with a
-  real child (`node --import tsx scripts/secure-env-bootstrap.ts cli dashboard`) asserting exit 0 and
-  a `releasedAt` on the lock record naming THAT pid — an injected composer cannot see whether the
-  production entrypoint registered any handler at all.
+  once, awaited, with that ordering still the sole shutdown authority. Register both signals with
+  `process.on`, NEVER `process.once`: a `once` listener removes itself as it fires, and a signal with
+  zero listeners restores Node's default terminate, so the second Ctrl+C would kill the process
+  mid-drain — the same abandoned handle and `releasedAt: null` this fix exists to prevent. Both stay
+  subscribed until `stop()` settles; only then does the disposer run, in `finally`. A rejecting stop
+  propagates; this library never calls `process.exit`. `runCli` returns that promise and the secure
+  bootstrap awaits it. Prove it with a real child (`node --import tsx
+  scripts/secure-env-bootstrap.ts cli dashboard`) asserting exit 0 and a `releasedAt` on the lock
+  record naming THAT pid — an injected composer cannot see whether the production entrypoint
+  registered any handler at all. Spawn that child in a scratch `mkdtemp` cwd holding only
+  `package.json`, `package-lock.json` and a `node_modules` symlink (Node resolves the bare
+  `--import tsx` specifier against the CWD), because the composition takes `repoRoot = process.cwd()`
+  and would otherwise run every per-commit gate over the developer's own authority; send the second
+  SIGINT inside the measured ~40ms drain, and assert the child is still draining before you send it.
 
 - **2026-09-02 — the SSE hub delivers on demand; never push into a stream controller.** A hub
   connection exposes `next()`/`pending`, and `subscriptions/sse-response.ts` drains it from a Web

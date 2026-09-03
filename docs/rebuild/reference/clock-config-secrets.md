@@ -605,10 +605,12 @@ the process loudly instead of becoming an unobserved rejection. For `dashboard` 
 only after the composed runtime stopped: the command awaits the first `SIGINT`/`SIGTERM` through an
 injectable `signals` seam and then calls `composeDashboardRuntime`'s `stop()` exactly once — that
 ordering (HTTP ingress → hub/timers → worker supervisor → graceful-drain backup → database → process
-lock) remains the sole shutdown authority, and this only awaits it. The listeners stay subscribed
-across the stop, so a second Ctrl+C during a drain is absorbed rather than falling through to Node's
-default terminate and abandoning the database handle and the process lock; the disposer runs in
-`finally`. The binding guard therefore accepts `await startRebuildRuntime({ isolation })` as the ONE
+lock) remains the sole shutdown authority, and this only awaits it. The production seam registers
+both signals with `process.on`, never `process.once`: a `once` listener removes itself the moment it
+fires, and a signal with ZERO listeners falls back to Node's default disposition. Both listeners
+therefore stay subscribed until `stop()` SETTLES, so a second Ctrl+C during the drain is absorbed
+rather than terminating the process mid-ordering and abandoning the database handle and the process
+lock; only then does the disposer run, in `finally`. The binding guard therefore accepts `await startRebuildRuntime({ isolation })` as the ONE
 direct call — every other dimension of that proof is unchanged.
 
 ### 4.1 The durable snapshot is versioned by its LEAF SET, not by the migration chain (D133)
