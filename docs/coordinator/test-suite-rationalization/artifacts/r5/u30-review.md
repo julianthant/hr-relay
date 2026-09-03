@@ -29,7 +29,8 @@ manifest and both uncollected T1b paths are unchanged.
 
 The paired scenario instruction files are byte-identical and now map the three T2 files by their
 real seams. They also record the collected-fixture rule. No canonical guards/test specification was
-changed because R7/u38 owns the final cross-family taxonomy and runner contract.
+changed: R7/u38 owns final cross-family taxonomy and runner configuration, while R7/u40 owns the
+canonical guards/test authorities and paired-rule reconciliation.
 
 ## Synthetic-data ratchet and controlled red
 
@@ -66,6 +67,10 @@ Implementation commits:
 
 - `2abf8b62` — reserved synthetic offline identities plus architecture ratchet and paired map update.
 - `74805a25` — T2 relocation/deduplication, truthful paths, and cheaper missing-answer owner.
+- `ec477b2a` — review fix covering scenario support and deriving descriptor-owned operator labels.
+- `6ec76374` — evidence wording aligned to the support-inclusive scan.
+- `215ab4d3` — review fix restoring exact identity refusal diagnostics at the unit owner.
+- `1faf891d` — review fix restoring valid-rejection answer normalization at the unit owner.
 
 Pre-review gates are green: full scenario **17/132**; focused scenario **9/44**; Explorer unit
 **20/20**; cheaper-owner unit set **59/59**; focused architecture **17/17**; typecheck; lint; and
