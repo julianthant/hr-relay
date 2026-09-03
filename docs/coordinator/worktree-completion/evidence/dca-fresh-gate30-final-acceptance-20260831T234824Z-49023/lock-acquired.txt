@@ -1,2 +1,0 @@
-acquired_utc=
-acquired_epoch=

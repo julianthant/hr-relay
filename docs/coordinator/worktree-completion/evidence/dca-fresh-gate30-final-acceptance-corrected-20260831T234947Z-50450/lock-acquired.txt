@@ -1,2 +1,0 @@
-acquired_utc=2026-08-31T23:49:48Z
-acquired_epoch=1788220188

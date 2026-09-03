@@ -1,9 +1,0 @@
-
- RUN  v4.1.10 /Users/julianhein/.codex/worktrees/a1da/hr-automation-rebuild
-
-·····························
-
- Test Files  2 passed (2)
-      Tests  29 passed (29)
-   Start at  07:42:50
-   Duration  2.00s (transform 1.03s, setup 0ms, import 1.74s, tests 91ms, environment 0ms)

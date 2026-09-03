@@ -1,5 +1,0 @@
-observed_at_utc=2026-08-31T21:35:01.3NZ
-lock_path=/tmp/hr-dashboard-full-gate.lock
-holder_pids_before_wait=state=available_immediately
-lock_acquisition=single_sequence_acquisition_follows
-lock_command_exit=1

@@ -1,8 +1,0 @@
-COMMAND: npm run test:coverage
-STARTED_UTC: 2026-08-31T21:51:19Z
-
-/bin/bash: line 20: npm: No such file or directory
-
-EXIT: 127
-FINISHED_UTC: 2026-08-31T21:51:19Z
-DURATION_SECONDS: 0

@@ -1,5 +1,0 @@
-checkout=/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
-branch=feature/dca4-archive-evidence
-head=eda17b2708286e36542e1e18e9f8ef6a06cf3187
-legacy=/Users/julianhein/Projects/hr-automation
-PARITY_UPDATE=unset

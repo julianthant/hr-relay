@@ -1,2 +1,0 @@
-command_finished_at_utc=2026-08-31T22:28:00Z
-command_exit=1

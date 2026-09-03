@@ -1,6 +1,0 @@
-
-> hr-automation-rebuild@0.1.0 typecheck
-> tsc --noEmit
-
-tests/unit/server/bff-flow.test.ts(558,16): error TS2339: Property 'then' does not exist on type 'Response | Promise<Response>'.
-  Property 'then' does not exist on type 'Response'.

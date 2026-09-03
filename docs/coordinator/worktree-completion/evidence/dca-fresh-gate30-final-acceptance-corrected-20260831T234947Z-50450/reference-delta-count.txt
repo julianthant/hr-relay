@@ -1,4 +1,0 @@
-reference_delta_count=       2
-reference_delta_paths:
-tests/parity/references/run-receipt--paper-ink--narrow-1024x768.a11y.yml
-tests/parity/references/run-receipt--paper-ink--narrow-1024x768.png

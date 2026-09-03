@@ -1,1 +1,0 @@
-Body-backed parity JSON evidence verifier: PASS (no verifier failure marker in the gate log).

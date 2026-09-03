@@ -1,7 +1,0 @@
-{
-  "stampVersion": 1,
-  "inputDigest": "e6bd902dd41aa22c76010650044ac671b952b4b955b4445db59dcb1c8492c5d3",
-  "outputDigest": "043c90f5eabde8ade223303fcecd732eed8b6af5ad496d6e461a341b28dcc95f",
-  "buildScript": "web:build",
-  "builtAt": "2026-08-30T15:08:31.146Z"
-}

@@ -1,3 +1,0 @@
-released_utc=
-released_epoch=
-lockf_exit=0

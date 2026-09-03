@@ -1,3 +1,0 @@
-reference-inventory-byte-identical=1
-untracked-feature-list-byte-identical=0
-manifest-byte-identical=0

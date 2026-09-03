@@ -1,6 +1,0 @@
-*** Begin Patch
-*** Update File: /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/helpers/fixture-run-captures.ts
-@@
--  return bytes === undefined ? undefined : new Uint8Array(bytes);
-+  return bytes === undefined ? undefined : new Uint8Array(bytes.map((byte, index) => index === 0 ? byte ^ 1 : byte));
-*** End Patch

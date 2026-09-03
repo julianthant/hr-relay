@@ -1,9 +1,0 @@
-# explorer-graph--graphite-warm--1280x720
-# adapter: fixture
-# fixture: observer-proof
-# descriptorHash: sha256:observer-proof
-# appVersion: 0.1.0
-# viewport: 1280x720  theme: graphite-warm  variant: default
-# capturedAt: 2026-08-03
-
-- heading "Reviewed observer proof"

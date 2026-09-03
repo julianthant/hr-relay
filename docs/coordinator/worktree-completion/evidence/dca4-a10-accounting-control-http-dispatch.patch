@@ -1,6 +1,0 @@
-*** Begin Patch
-*** Update File: /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/helpers/fixture-bff.ts
-@@
--      if (url.pathname.startsWith("/api/") || archiveCapture || genericCapture) {
-+      if (url.pathname.startsWith("/api/") || archiveCapture) {
-*** End Patch

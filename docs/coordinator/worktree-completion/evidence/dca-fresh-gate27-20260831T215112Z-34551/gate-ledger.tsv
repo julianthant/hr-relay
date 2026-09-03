@@ -1,2 +1,0 @@
-gate	command	exit	duration_seconds	started_utc	finished_utc
-1	npm run test:coverage	127	0	2026-08-31T21:51:19Z	2026-08-31T21:51:19Z

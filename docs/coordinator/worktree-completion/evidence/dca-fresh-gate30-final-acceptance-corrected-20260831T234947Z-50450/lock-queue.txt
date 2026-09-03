@@ -1,4 +1,0 @@
-requested_utc=2026-08-31T23:49:47Z
-requested_epoch=1788220187
-lock=/tmp/hr-dashboard-full-gate.lock
-If another holder exists, lockf waits; no second lock acquisition is attempted.

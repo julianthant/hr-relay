@@ -1,9 +1,0 @@
-### Browser `m4d` opened with pid 60215.
-### Ran Playwright code
-```js
-await page.goto('about:blank');
-```
-### Page
-- Page URL: about:blank
-### Snapshot
-- [Snapshot](.playwright-cli/page-2026-08-30T15-22-37-334Z.yml)

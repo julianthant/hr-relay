@@ -1,5 +1,0 @@
---- tests/parity/archive-evidence.spec.ts
-+++ tests/parity/archive-evidence.spec.ts
-@@
--        await route.abort("failed");
-+        await route.fulfill({ status: 404, contentType: "text/plain", body: "DCA4 HTTP-abort 404 negative control" });

@@ -1,2 +1,0 @@
-gate	start_utc	finish_utc	exit	log
-test:coverage	2026-08-31T21:35:08.3NZ	2026-08-31T21:36:33.3NZ	1	/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca-fresh-gate24-20260831T213501Z/test-coverage.log

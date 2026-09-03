@@ -1,7 +1,0 @@
-^DHEAD=6d1e3ca89714e13ea7bbb440d27957301ffc6ca6
-
-> hr-automation-rebuild@0.1.0 build:manifest
-> tsx scripts/generate-build-manifest.ts
-
-Wrote src/domain/workflow/generated-build-manifest.ts.
-EXIT=0

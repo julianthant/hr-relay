@@ -1,2 +1,0 @@
-post_observed_at_utc=2026-08-31T21:37:03Z
-lock_holders_after_release=

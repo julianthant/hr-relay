@@ -1,8 +1,0 @@
-HEAD=6851990b161830b5ad2a532bcdcfa69178a3ede4
-COMMAND=npm run roadmap:check
-
-> hr-automation-rebuild@0.1.0 roadmap:check
-> tsx scripts/generate-roadmap.ts --check
-
-docs/roadmap/index.html is fresh.
-EXIT=0

@@ -1,9 +1,0 @@
-
- RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2
-
-
- Test Files  1 passed (1)
-      Tests  3 passed | 54 skipped (57)
-   Start at  07:42:51
-   Duration  2.37s (transform 1.44s, setup 0ms, import 2.20s, tests 73ms, environment 0ms)
-

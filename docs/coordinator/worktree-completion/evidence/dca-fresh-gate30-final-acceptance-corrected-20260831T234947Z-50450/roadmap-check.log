@@ -1,5 +1,0 @@
-
-> hr-automation-rebuild@0.1.0 roadmap:check
-> tsx scripts/generate-roadmap.ts --check
-
-docs/roadmap/index.html is fresh.

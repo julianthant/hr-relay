@@ -1,3 +1,0 @@
-Body-backed parity JSON evidence verifier: PASS.
-
-Basis: npm run test:parity completed its wrapper verification phase; test-parity.log contains the child failure line only (`Playwright parity command failed first (exit 1).`) and no `Parity JSON evidence verification failed` line. The final report contains stats expected=229, skipped=0, unexpected=42, flaky=0 and the required evidence was accepted by the wrapper before the child exit was reported.

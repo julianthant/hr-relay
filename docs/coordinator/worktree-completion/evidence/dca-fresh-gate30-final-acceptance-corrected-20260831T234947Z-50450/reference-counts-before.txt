@@ -1,3 +1,0 @@
-reference_file_count=     591
-tracked_modified_reference_count=80
-untracked_feature_reference_count=      12

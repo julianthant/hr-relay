@@ -1,3 +1,0 @@
-2026-08-31T21:52:17Z	available_immediate
-lock_probe_queue=0
-lock_acquire_start_utc=2026-08-31T21:52:17Z
