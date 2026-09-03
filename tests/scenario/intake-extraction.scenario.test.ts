@@ -72,8 +72,8 @@ describe("extraction/extract-spreadsheet scenarios", () => {
       "Work-Study July Export,,",
       ",,",
       "Employee ID#,Effective Date,Dept",
-      "10456712,07/01/2026,Housing Dining Hospitality",
-      "10998801,07/01/2026,Housing Dining Hospitality",
+      "10800000,07/01/2026,Housing Dining Hospitality",
+      "10800001,07/01/2026,Housing Dining Hospitality",
     ].join("\n");
     const { output, recorded } = await runParse(Buffer.from(csv, "utf8"), CSV_MEDIA_TYPE);
 
@@ -83,10 +83,10 @@ describe("extraction/extract-spreadsheet scenarios", () => {
     assert.deepEqual(output.columns.map((column) => column.header), ["Employee ID#", "Effective Date", "Dept"]);
     assert.deepEqual(output.columns.map((column) => column.occurrence), [1, 1, 1]);
     assert.deepEqual(output.rows, [
-      ["10456712", "07/01/2026", "Housing Dining Hospitality"],
-      ["10998801", "07/01/2026", "Housing Dining Hospitality"],
+      ["10800000", "07/01/2026", "Housing Dining Hospitality"],
+      ["10800001", "07/01/2026", "Housing Dining Hospitality"],
     ]);
-    assert.deepEqual(output.columns[0].samples, ["10456712", "10998801"]);
+    assert.deepEqual(output.columns[0].samples, ["10800000", "10800001"]);
     assert.equal(recorded.some((fact) => fact.field === "rowCount" && fact.value === 2), true);
   });
 
@@ -117,16 +117,16 @@ describe("extraction/extract-spreadsheet scenarios", () => {
   it("intake/spreadsheet/duplicate-headers — two Name columns stay distinct", async () => {
     const csv = [
       "Name,Name,EID",
-      "Doe; Jane,Roe; Rick,10456712",
-      "Poe; Edgar,Coe; Joe,10998801",
+      "Example; Avery,Sample; Jordan,10800000",
+      "Fixture; Casey,Demo; Taylor,10800001",
     ].join("\n");
     const { output } = await runParse(Buffer.from(csv, "utf8"), CSV_MEDIA_TYPE);
 
     assert.equal(output.headerRowIndex, 0);
     assert.deepEqual(output.columns.map((column) => column.occurrence), [1, 2, 1]);
     assert.notEqual(output.columns[0].sourceColumnId, output.columns[1].sourceColumnId);
-    assert.deepEqual(output.columns[0].samples, ["Doe; Jane", "Poe; Edgar"]);
-    assert.deepEqual(output.columns[1].samples, ["Roe; Rick", "Coe; Joe"]);
+    assert.deepEqual(output.columns[0].samples, ["Example; Avery", "Fixture; Casey"]);
+    assert.deepEqual(output.columns[1].samples, ["Sample; Jordan", "Demo; Taylor"]);
   });
 
   it("intake/spreadsheet/unreadable — bytes that are not a spreadsheet fail loud", async () => {
@@ -153,7 +153,7 @@ describe("extraction/extract-spreadsheet scenarios", () => {
   it("reads a real .xlsx, and a date-formatted cell arrives as ISO text", async () => {
     const written = writeXlsxFile([
       [{ value: "Employee ID#" }, { value: "Effective Date" }],
-      [{ value: "10456712" }, { value: new Date(Date.UTC(2026, 6, 1)), type: Date, format: "yyyy-mm-dd" }],
+      [{ value: "10800000" }, { value: new Date(Date.UTC(2026, 6, 1)), type: Date, format: "yyyy-mm-dd" }],
     ]);
     const bytes = await written.toBuffer();
     const { output } = await runParse(bytes, XLSX_MEDIA_TYPE);
@@ -163,7 +163,7 @@ describe("extraction/extract-spreadsheet scenarios", () => {
     // The critical property: the parser knew this cell was a date, so the value
     // crosses the boundary as ISO text. A bare serial would be refused by the
     // coercer instead of silently becoming a 1900-epoch offset.
-    assert.deepEqual(output.rows, [["10456712", "2026-07-01"]]);
+    assert.deepEqual(output.rows, [["10800000", "2026-07-01"]]);
   });
 
   it("refuses an out-of-range explicit header selection instead of clamping it", async () => {

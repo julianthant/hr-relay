@@ -32,10 +32,10 @@ const SUBJECT_B = ItemIdSchema.parse("9b2f1c34-6c1d-4f8e-8a3b-2d5e7f901234");
 
 const ROSTER_CSV = [
   "Employee ID#,Employee Name",
-  '10456712,"Battistessa, Johnnie"',
-  '10998801,"Blirea, Glaundi"',
-  '10777771,"Doe, John"',
-  '10777772,"Doe, John"',
+  '10800000,"Example, Avery"',
+  '10800001,"Sample, Jordan"',
+  '10800002,"Demo, Taylor"',
+  '10800003,"Demo, Taylor"',
 ].join("\n");
 
 function rosterMapping() {
@@ -116,11 +116,11 @@ async function runMatch(subjects: readonly Record<string, unknown>[]) {
 describe("roster/match-spreadsheet scenarios", () => {
   it("roster/match/exact-eid — a claimed EID the roster confirms, names agreeing", async () => {
     const { output, recorded } = await runMatch([
-      { subjectId: SUBJECT_A, eid: "10456712", name: "Johnnie Battistessa" },
+      { subjectId: SUBJECT_A, eid: "10800000", name: "Avery Example" },
     ]);
     assert.deepEqual(output.matches, [{
       subjectId: SUBJECT_A,
-      matchedEid: "10456712",
+      matchedEid: "10800000",
       matchConfidence: 1,
       tier: "high",
       mismatch: "none",
@@ -129,10 +129,10 @@ describe("roster/match-spreadsheet scenarios", () => {
   });
 
   it("roster/match/name-only — no EID claimed, an exact name resolves one", async () => {
-    const { output } = await runMatch([{ subjectId: SUBJECT_A, name: "Glaundi Blirea" }]);
+    const { output } = await runMatch([{ subjectId: SUBJECT_A, name: "Jordan Sample" }]);
     assert.deepEqual(output.matches, [{
       subjectId: SUBJECT_A,
-      matchedEid: "10998801",
+      matchedEid: "10800001",
       matchConfidence: 1,
       tier: "high",
       mismatch: "none",
@@ -140,7 +140,7 @@ describe("roster/match-spreadsheet scenarios", () => {
   });
 
   it("roster/match/ambiguous — two people tie at the top score, nobody guesses", async () => {
-    const { output } = await runMatch([{ subjectId: SUBJECT_A, name: "John Doe" }]);
+    const { output } = await runMatch([{ subjectId: SUBJECT_A, name: "Taylor Demo" }]);
     const [match] = output.matches;
     assert.ok(match !== undefined);
     assert.equal(match.matchedEid, null);
@@ -150,7 +150,7 @@ describe("roster/match-spreadsheet scenarios", () => {
 
   it("roster/match/name-eid-conflict — a found EID with a different person's name is refused", async () => {
     const { output } = await runMatch([
-      { subjectId: SUBJECT_A, eid: "10456712", name: "Rick Roe" },
+      { subjectId: SUBJECT_A, eid: "10800000", name: "Jordan Sample" },
     ]);
     assert.deepEqual(output.matches, [{
       subjectId: SUBJECT_A,
@@ -163,8 +163,8 @@ describe("roster/match-spreadsheet scenarios", () => {
 
   it("roster/match/no-match — nothing reaches the floor; null EID, never a fabricated one", async () => {
     const { output } = await runMatch([
-      { subjectId: SUBJECT_A, name: "Zebulon Highwater" },
-      { subjectId: SUBJECT_B, name: "Nguyen, Thhi" },
+      { subjectId: SUBJECT_A, name: "Unmatched Person" },
+      { subjectId: SUBJECT_B, name: "Sample, Jordna" },
     ]);
     const [nothing, nearMiss] = output.matches;
     assert.deepEqual(nothing, {
