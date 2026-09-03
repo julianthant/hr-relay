@@ -116,7 +116,7 @@ describe("Explorer edit service", () => {
     assert.equal(result.state, "code-change-required");
     if (result.state !== "code-change-required") return;
     assert.match(result.brief.reason, /no descriptor-declared allowlist/u);
-    assert.ok(result.brief.requiredFiles.includes("src/workflows/person-lookup/descriptor.ts" as never));
+    assert.ok(result.brief.requiredFiles.includes("src/workflows/person-lookup/workflow.ts" as never));
     assert.equal(result.brief.nextDescriptor.version, descriptor.version + 1);
     assert.deepEqual(result.brief.nextDescriptor.contractFingerprint, {
       state: "must-change",
