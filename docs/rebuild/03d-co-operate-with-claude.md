@@ -1,21 +1,26 @@
-# 03d · Phase 3d — co-operate with Claude
+# Later track · co-operate with Codex and Claude
 
-This doc is the dedicated home of **Phase 3d**, tree node `{#claude-operator}` — the phase that gives
+This stable-path doc is the dedicated home of tree node `{#claude-operator}`, the separately
+triggered track that gives
 the dashboard a **second actor**. The operator's instruction (2026-08-21, plan ruling **R15**) is one
 paragraph: *"I want to duo-operate this with Claude. Claude can invoke the same things I do and
 operate the dashboard, and monitor the entire dashboard. All of this local — expose a local port for
 Claude to make API calls to both the web dashboard and the desktop app; think about what happens if
 the user has both open on their device. Claude will be running in the terminal (Claude Code) — we
-won't call Claude with an API key."* Nothing in this phase is built, and nothing in it is designed
+won't call Claude with an API key."* Nothing in this track is built, and nothing in it is designed
 past the shape below.
 
-**Why the doc exists before the code does.** This phase does not add a surface — it adds an actor to
-surfaces that already exist, and almost every hard part is a constraint some earlier phase already
+**Why the doc exists before the code does.** This track does not add a surface — it adds an actor to
+surfaces that already exist, and almost every hard part is a constraint an earlier phase already
 settled with the words *"reachable only if a second actor ever exists"*. Those sentences come due
 here, all at once. Each is named below with the file that proves it. Contracts belong to `reference/`
-as always; this doc owns the phase, not the contracts.
+as always; this doc owns the track, not the contracts.
 
-## Phase summary
+**D319 numbering note (2026-09-02).** This is not part of Phase 3 and does not reserve Phase 4 or any
+later phase number. Future workflow phases are admitted and numbered first; this track remains
+separately schedulable because it is not a cutover prerequisite.
+
+## Track summary
 <!-- roadmap: claude-operator -->
 
 <!-- roadmap-status: claude-operator -->
@@ -29,14 +34,14 @@ as always; this doc owns the phase, not the contracts.
 > 2026-08-21 | docs-cohesion R15 | phase drawn from the operator's instruction; verified UNBUILT — `grep -rn mcp package.json src` matches nothing, there is no `.mcp.json`, and `.claude/` holds only `agents/` and `skills/`; the one-actor facts read out of `src/domain/ids.ts:134-138`, `src/server/dashboard/queries/bootstrap.ts:90` and `src/server/dashboard/projectors/run-queue-projection.ts:1518`; left: all of it
 <!-- /roadmap-status -->
 
-### What Phase 3d is
+### What the cooperation track is
 
 **A second operator, not a second product.** Claude Code — running in the operator's own terminal,
 in this checkout — reaches the dashboard's command protocol and its read models over loopback, through
 a **local MCP server** that is a CLIENT of the BFF the operator is already using. It starts runs,
 plans dry runs, retries and cancels, edits data, archives, drives intake, reads the explorer, and
 answers notifications; it watches the SSE stream, the observed log and the inbox. There is **no API
-key**: the operator's terminal session is the credential, which is also why nothing in this phase is a
+key**: the operator's terminal session is the credential, which is also why nothing in this track is a
 network feature.
 
 **The local port is not the new thing.** The BFF already binds loopback and refuses anything else —
@@ -56,17 +61,17 @@ rows have no honest answer"*).
 
 **It is not a hosting phase and not a multi-user phase.** One machine, one human operator, one agent
 in that human's terminal, one loopback port. D193(a)'s cooperation / multi-user mode stays exactly
-where it is — a LATER item with no owner — and this phase does not reopen it. The distinction is
+where it is — a LATER item with no owner — and this track does not reopen it. The distinction is
 sharp: a second actor on ONE machine is an attribution problem; a second USER is an authorization and
 tenancy problem, and none of the second is designed here.
 
 ### What it inherits — six things earlier phases already decided
 
-| # | Inherited from | What it means for this phase |
+| # | Inherited from | What it means for this track |
 |---|---|---|
 | 1 | **The ONE command protocol** (`ref frontend-backend-integration` §3.4) | Nine families × 36 actions through `POST /api/v1/commands`, one journal, one kernel. Claude does not get a second route, a second envelope or a "agent mode" flag — it composes the same `CommandEnvelope` the dashboard composes, with a different `requestedBy`. Anything Claude can do that the dashboard cannot would be a second product |
 | 2 | **CAS on every arm** (`ref frontend-backend-integration` §3.4; D253) | Every arm carries a required `expectedVersion` and the kernel revalidates the row inside its own transaction. Two operators acting on one run therefore get D253's named `conflict` carrying the server's `currentVersion` — never a silent overwrite. This is the single most important inheritance: **the protocol was designed for one actor and is already correct for two**, and what changes is that the conflict arm stops being a rare race and becomes ordinary traffic |
-| 3 | **D75's one solo request-identity checkpoint** (`doc 01` §1f; `ref frontend-backend-integration` §3.4) | Every BFF request already crosses one checkpoint, and every schema-valid command claim must match its strict configured `local-operator` before effects. This phase extends that adapter with a second credential-derived actor; it does not create another admission path |
+| 3 | **D75's one solo request-identity checkpoint** (`doc 01` §1f; `ref frontend-backend-integration` §3.4) | Every BFF request already crosses one checkpoint, and every schema-valid command claim must match its strict configured `local-operator` before effects. This track extends that adapter with a second credential-derived actor; it does not create another admission path |
 | 4 | **D181's `server` role lock** (`src/server/dashboard/compose.ts:346-356`) | One BFF per machine, enforced before the authority database opens. That is what makes "both apps open" answerable at all: the web dashboard's BFF and the desktop app's BFF cannot both exist, so one of them is the host and everything else — the other app, the browser tab, Claude's MCP server — is a CLIENT of it. `{#claude-clients}` is the whole of that argument |
 | 5 | **The ALWAYS-GATE** (`ref write-safety` §14) | §14.6 risk 1 names rubber-stamping as the dominant risk of a gate that fires on every run, and risk 6 says *who approved* may never be lost. An agent that can approve a wrong-person gate is rubber-stamping with a machine — so the operator's ruling is a **two-actor rule**, and §14's human control survives it intact rather than being widened |
 | 6 | **`{#observed-logs}`** (`doc 03a` §Observed logs — the log carries what the page said) | Monitoring is only worth having if the log carries what the PAGE said rather than which step ran. An agent reading step names learns nothing it could not have predicted; an agent reading the recorded provenance points — field, value, system, observed-at — can tell the operator that UCPath returned four people. It is a `needs:`, not a nice-to-have |
@@ -79,18 +84,18 @@ there either.
 
 ### Where it sits in the order
 
-**Phase 3d, after 3a.** The generic surfaces and their commands must exist before a second client can
+**the cooperation track, after 3a.** The generic surfaces and their commands must exist before a second client can
 drive them — `{#dash-defaults}` is a hard prerequisite, and `{#observed-logs}` under it is the second.
 Both are Phase 3a nodes.
 
 **Before the migrations lean on it.** R10's end-to-end tier (T4) is defined as *"an agent-operated run
-of MANY dry-run scenarios in parallel"* — the agent in that sentence is this phase's, and the tool
+of MANY dry-run scenarios in parallel"* — the agent in that sentence is this track's, and the tool
 surface it drives is `{#claude-mcp}`'s. `{#test-tiers}`' T4 line names this node for that reason.
-There is no circularity: T4 also needs `{#parallel-runs}` and `{#duo-lease}`, and this phase needs
+There is no circularity: T4 also needs `{#parallel-runs}` and `{#duo-lease}`, and this track needs
 neither, so 3d can be built and proved on ONE dry run long before T4 is schedulable.
 
 **It is not a prerequisite of the cutover.** `05-cut-over.md` §Exit criteria names no part of it, and
-nothing here changes what production does when nobody is watching. If the phase is never built, the
+nothing here changes what production does when nobody is watching. If the track is never built, the
 operator operates the dashboard alone, exactly as today.
 
 ### The honest state at HEAD (2026-08-21)
@@ -106,7 +111,7 @@ repo publishes. Verified 2026-08-21.
    pins `id: z.literal(LOCAL_OPERATOR_ACTOR_ID)` (`src/domain/ids.ts:134-138`), and the config schema's
    `actor` leaf is that schema with that default (`src/domain/config/schema.ts:135`). **A second actor
    is refused by the config boundary today** — which is the fail-loud behaviour working, and it is
-   also the first thing this phase has to change on purpose rather than by widening a type.
+   also the first thing this track has to change on purpose rather than by widening a type.
 2. `GET /api/v1/bootstrap` serves `actor: { id: LOCAL_OPERATOR_ACTOR_ID, label: "Local operator" }`
    (`src/server/dashboard/queries/bootstrap.ts:90`), and every dashboard surface echoes that id back
    into the envelopes it composes (`src/dashboard/app/command-dispatch.ts:223,312`).
@@ -122,7 +127,7 @@ deliberately rather than discovered when a type stops complaining.
 **Nothing here blocks anything, and nothing here is a security control.** Loopback is the boundary
 (`ref clock-config-secrets`), the two-actor rule is an *attribution and ceremony* rule rather than an
 access rule, and anything running as the operator's user on the operator's machine can already reach
-port 3938. This phase makes what Claude does **legible and attributed**; it does not pretend to make
+port 3938. This track makes what Claude does **legible and attributed**; it does not pretend to make
 the local port a trust boundary it has never been.
 
 ## Actor identity and the two-actor rule
@@ -204,7 +209,7 @@ have, each of which is an existing rule rather than a new one:
    operator did not ask for it, and turning it on is a settings decision, not a schema one.
 4. **A single-actor system must still work.** With no claude actor present, every two-actor arm settles
    in one act exactly as it does today. The rule is a property of *who proposed*, not a second step
-   bolted onto the operator's path — otherwise this phase makes the product worse for the person it
+   bolted onto the operator's path — otherwise this track makes the product worse for the person it
    was built for.
 
 **What this costs in durable schema, honestly.** `gate_results` records one resolver
@@ -350,7 +355,7 @@ finding the lock already held, attaches to the one that is running. Claude's MCP
 client of the same port. **One BFF, one authority database, one journal, one projection — and three
 things looking at it.**
 
-**That topology is what makes the rest of the phase safe rather than merely convenient.** Because
+**That topology is what makes the rest of the track safe rather than merely convenient.** Because
 every client CASes against the same rows, two actors cannot silently overwrite each other; because
 every command lands in one journal, "what did Claude do" is answerable from authority rather than from
 a transcript; and because the projection is one fold over one span stream, the operator's screen and
@@ -413,12 +418,12 @@ one agent; the parallel tier needs `{#parallel-runs}` and `{#duo-lease}` and is 
 Writing the single-scenario proof as a scenario file rather than as a transcript is what makes it the
 seed rather than a story about one afternoon.
 
-## Decisions this phase ratified
+## Decisions this track ratified
 
-**None, and that is correct at HEAD.** `reference/decisions.md` carries no marker for this phase,
+**None, and that is correct at HEAD.** `reference/decisions.md` carries no marker for this track,
 because it has no code and this program ratifies a decision only when its normative text lands in an
 owning doc in the same commit. **R15** is an operator RULING recorded in
-`docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md` §0 on 2026-08-21 — it authorizes the phase, the
+`docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md` §0 on 2026-08-21 — it authorizes the track, the
 parity, and the two-actor rule on gates and controlled commits; it is not a D-number and does not
 pretend to be one.
 
@@ -434,11 +439,11 @@ pretend to be one.
 | Whether the client roster is a live-only fact or a durable one | `ref dashboard-surfaces` (the projection) or `ref clock-config-secrets` (the lock files), depending which way it goes |
 
 Each lands with a one-line pointer in `reference/decisions.md` and its normative text in the owner, in
-the same commit — the standing rule, not a Phase 3d rule.
+the same commit — the standing rule, not a cooperation-track rule.
 
 ## Exit criteria
 
-Phase 3d is done when the operator can hand a piece of dashboard work to Claude in the terminal, watch
+The cooperation track is done when the operator can hand a piece of dashboard work to Claude in the terminal, watch
 it happen on their own screen, and read afterwards exactly which of the two of them did what. The five
 criteria below are the readable form of that sentence; all five are open, because nothing is built.
 

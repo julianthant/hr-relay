@@ -1104,6 +1104,36 @@ compatibility products during conversion, but neither is an authored workflow. `
 `WorkflowRecipe`, `defineWorkflowRecipe` and `recipe.ts` are forbidden names for this seam; they
 describe the analogy, not the model.
 
+#### 1.6.2 Workflow admission before a numbered phase (D319, 2026-09-02)
+
+A legacy workflow name, old implementation folder, proposed order row, or partially verified intake
+record is a **workflow candidate**, not a rebuilt workflow and not a numbered phase. Candidates stay
+outside the active phase sequence until the operator approves one complete admission packet.
+
+The packet must establish, from current legacy code and live verification:
+
+1. the operator-visible outcome and the exact workflow boundary;
+2. run-modal inputs, optional values, whole-step omissions and every required replacement value;
+3. the proposed ordered `[(timeline group, [entries])]` definition;
+4. each entry's explicit `task | parallel | delegate | gate | transaction` kind;
+5. task-store reuse, customization and genuinely new tasks;
+6. systems, live page states, selectors and typed read/write contracts;
+7. screenshots, semantic logs, returned values, receipts and Archive evidence;
+8. checkpoint resume, restart-from-start and no-repeat-write behavior; and
+9. the structural/live proof plan, including a controlled-commit target for each real write.
+
+Missing or uncertain facts remain named in the candidate packet. They are not filled from an old
+order label or treated as implementation details. The operator approves the exact boundary and tuple
+model before promotion. Promotion then creates the next numbered phase, its phase doc, a new or
+ratified migration doc and its coordinator plan. The phase owns only that approved workflow or
+explicitly approved workflow family plus shared task-store or generic-surface work it is the first
+verified consumer to require.
+
+Admission verification and phase completion are different gates. Admission proves that the planned
+workflow is understood well enough to build. Phase completion proves that the rebuilt workflow works
+under T1, live selector verification and controlled-write evidence where applicable. Work done for
+one candidate never silently admits the next candidate.
+
 ---
 
 ## 2. Workflow-constant input + the RunEnvelope
@@ -1692,23 +1722,17 @@ cleanup resets the page”: they are separate contracts/spans but one scheduling
 
 ### 3.2 Delegation contract — one standard for every workflow
 
-<!-- roadmap: order-4 -->
-<!-- roadmap: order-5 -->
 
-<!-- roadmap-status: order-4 -->
 - [x] the delegation CONTRACT below is built and guarded end to end: `planDelegationFanOut`, `assertDelegationReplayMatches`, `joinDelegationOutcomes`, the one D102 policy vocabulary, and the `delegation-manifest` guard over edge-id uniqueness, the plan fingerprint and the complete-outcome-set join
 - [ ] **no registered workflow declares a `child-run` node**, so the first operation fan-out arrives with this migration. The executor's child-run arm is a typed seam answering `capability-unavailable` today
 - [ ] oath-signature and emergency-contact are unbuilt: no descriptor, no input schema, no store tasks. Their first non-separations controlled commits are ref write-safety §3's obligation
 > 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/workflow/delegation.ts`, `src/core/run-executor.ts` and `ls src/workflows/`; left: the workflows themselves
-<!-- /roadmap-status -->
 
-<!-- roadmap-status: order-5 -->
 - [x] the join policies i9-check needs are declared and typed: `all` applies the failure policy on a non-done child, `all-settled` hands the parent the complete typed outcome array and forces an explicit branch on partials, and a zero-child fan-out stays an explicit satisfied join rather than a vanished edge
 - [x] resume scope already excludes what a coordinator is: an operation coordinator is a display row with no daemon task and completes by member rollup through a `children-terminal` gate, never by resume (§5.7's D9 scope)
 - [ ] `i9-check` is unbuilt, and so are the three descriptor fields it is the first consumer of — `completion`, `completionConsumes`, `coordinator` (§1.1)
 - [ ] a `children-terminal` gate has never been exercised: all four gates any registered workflow declares are `resolvedBy: "operator"`
 > 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/workflow/delegation.ts`, `src/domain/workflow/completion.ts` and every gate declaration under `src/workflows/`; left: the workflow itself
-<!-- /roadmap-status -->
 
 Delegation is graph composition, distinct from importing another store task. A parent may delegate
 to one or many child **workflow runs** only through a `child-run` node. The node makes every policy

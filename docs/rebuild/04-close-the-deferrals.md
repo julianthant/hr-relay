@@ -1,12 +1,16 @@
-# 04 · Phase 4 — close the deferrals
+# Deferred shelf · close each item at its trigger
 
-This doc is the dedicated home of **Phase 4**, tree node `{#deferred}` — every "I want to do X; the
-plan said build Y; Y is deferred" answer, and the **trigger** that ends each one. Phase 4 is not a
+This doc is the dedicated home of **the deferred shelf**, tree node `{#deferred}` — every "I want to do X; the
+plan said build Y; Y is deferred" answer, and the **trigger** that ends each one. The deferred shelf is not a
 block of work with a start date: it is nine named absences, each waiting on an event somebody can
 recognize or carrying a decided stance. Nothing here blocks the cutover unless `05-cut-over.md` §Exit criteria names it — and it
 names none of them. Contracts these deferrals belong to live in `reference/`.
 
-## Phase summary
+**D319 numbering note (2026-09-02).** This stable-path file is not Phase 4. Phase 4 remains unassigned
+until the operator approves one verified workflow admission packet. The items here remain an
+unnumbered shelf and close only when their own trigger fires.
+
+## Shelf summary
 <!-- roadmap: deferred -->
 
 <!-- roadmap-status: deferred -->
@@ -23,7 +27,7 @@ names none of them. Contracts these deferrals belong to live in `reference/`.
 > 2026-08-28 | DCR receive | verified DCC1–DCC3's Settings/preflight controls, DCC4–DCC5's complete existing-workflow Explorer boundary and DCR3–DCR5 reporting; left: two trigger-gated absences, artifact bytes/screenshots, the D289 rerun comparison, the stance rows, and UCPath/ServiceNow propagation measurements
 <!-- /roadmap-status -->
 
-### What Phase 4 is
+### What the deferred shelf is
 
 **It is the answer sheet.** Every deferral in this program was created by a decision that said why,
 and every one of them names the event that ends the deferral. This doc collects them in one place so
@@ -31,7 +35,7 @@ an operator asking "why can't I do X?" gets three things in one section: what th
 decision that made it an absence, and what has to happen before it stops being one. A deferral with
 no trigger is a silent drop, and this program does not have any.
 
-**It is not a milestone.** Nothing in Phase 4 is scheduled. Six of the nine wait on a named event;
+**It is not a milestone.** Nothing in the deferred shelf is scheduled. Six of the nine wait on a named event;
 one carries D193's decided `wont-build-unless-asked` stance, and two are retired. None is a waiver:
 a waiver has no owner, and each of these has one.
 
@@ -481,11 +485,11 @@ shutdown completes. The release channel carries only signed update metadata and 
 authority rows and credentials remain local. An air-gapped machine stays on the same signed manual
 installer path.
 
-**Not built.** Both the manual upgrade proof and the controlled updater. The former is a Phase 6
-packaging acceptance criterion; the latter remains here after that phase because Phase 6 can ship
+**Not built.** Both the manual upgrade proof and the controlled updater. The former is a desktop-stage
+packaging acceptance criterion; the latter remains here after that stage because the desktop stage can ship
 without an update service.
 
-## Decisions this phase ratified
+## Decisions this shelf ratified
 
 Checked against `reference/decisions.md`'s `_phase:_` markers on 2026-08-21: **the ledger carries no
 `_phase: 4_` marker, and that is correct.** A deferral is closed by the decision that ENDS it, and
@@ -515,7 +519,7 @@ window, `ref operator-trust` §2.2 for retention), `reference/decisions.md` gets
 ## Exit criteria
 
 **There is no exit block to inherit, and that is structural rather than an omission.** A phase with
-a start and an end has exit criteria; Phase 4 is a set of standing answers, and each one ends when
+a start and an end has exit criteria; the deferred shelf is a set of standing answers, and each one ends when
 its own trigger fires. What binds instead is the line below: **every deferral is either closed by a
 build, or carried past the cutover with its trigger still standing and named.** Neither state is a
 waiver. What is forbidden is a third state — a deferral nobody can find the trigger for.

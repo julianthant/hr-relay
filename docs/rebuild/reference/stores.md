@@ -473,7 +473,7 @@ them is a decision only a graph holding ALL of the reads can make.
 
 Five of the nine browser stores are declaration-only (`unwired` driver, stub session provider, 0
 tasks, no `system-bindings.ts` entry). Building one is genuinely BUILD work, not CUSTOMIZE — see §1
-step 3. Migration order is doc 03c §Recommended migration order's table:
+step 3. Candidate evidence is cataloged in doc 03c §Unverified candidate evidence - not a phase order:
 
 | Store | Migration order that mints it | Workflow(s) | Notes |
 |---|---|---|---|

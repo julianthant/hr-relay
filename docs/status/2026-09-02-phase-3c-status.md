@@ -1,5 +1,11 @@
 # Status — Phase 3c workflow migration — 2026-09-02 (HEAD b1b36349)
 
+> **D319 scope amendment, 2026-09-02:** this snapshot predates the operator's verified-admission
+> decision. Phase 3c now finishes the authoring foundation and accepts only Person Lookup and
+> Separations. Item 7 under Next is superseded: I-9 and every other named workflow remain
+> unnumbered candidate evidence until the operator approves a complete admission packet. The
+> current executable plan is the coordinator board, not the old migration sequence in this snapshot.
+
 _Plan source: `docs/roadmap/roadmap.md` and `docs/rebuild/03c-migrate-the-remaining-workflows.md`.
 Verified against: `master..HEAD`, the Phase 3c coordinator reports, current source/test artifacts,
 `npm run cli -- phase`, the R1 full-gate record, and a read-only worktree audit._
@@ -37,7 +43,9 @@ Verified against: `master..HEAD`, the Phase 3c coordinator reports, current sour
 4. Implement D313 whole-step omission and complete pre-start replacement-value admission in the run modal.
 5. Implement D314 checkpoint resume/restart-from-start and D318's transaction-free `live-read` T1b arm while mutation tests prove completed external writes cannot execute twice and authority comparison proves zero write deltas.
 6. Finish Person Lookup and Separations final conversion/deletion, Person Lookup T1, the author guide/agent reference and all integrated gates; then run the exact worktree sweep.
-7. Start 3c-B Order 1 implementation from its completed intake, then continue orders 2, 3, 4, 5, 6, 7 and 9 with one sweep at every run close.
+7. Run 3c-B acceptance for Person Lookup and Separations, reconcile Phase 3, run the integrated
+   gates and worktree sweep, then stop. Select and verify a future candidate separately before
+   assigning Phase 4.
 
 ## 4 · Needs you
 

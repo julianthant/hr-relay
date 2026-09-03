@@ -746,7 +746,6 @@ read apply unchanged; there is no second screenshot store or duplicate byte rout
 
 <!-- roadmap: p2-2g -->
 <!-- roadmap: sep-6c -->
-<!-- roadmap: order-7-dash -->
 <!-- roadmap: observed-logs -->
 
 <!-- roadmap-status: sep-6c -->
@@ -2258,14 +2257,6 @@ catalog does not serve throws by id rather than being filed under a made-up head
 
 <!-- roadmap: track-b -->
 <!-- roadmap: sep-dash -->
-<!-- roadmap: order-1-dash -->
-<!-- roadmap: order-2-dash -->
-<!-- roadmap: order-3-dash -->
-<!-- roadmap: order-4-dash -->
-<!-- roadmap: order-5-dash -->
-<!-- roadmap: order-6-dash -->
-<!-- roadmap: order-7-dash -->
-<!-- roadmap: order-9-dash -->
 
 <!-- roadmap-status: track-b -->
 - [x] B6 — the node panel is a FIELD table whose census projects the contract's own zod shape (D227)

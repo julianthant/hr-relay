@@ -7,26 +7,29 @@ legacy repository at `/Users/julianhein/Projects/hr-automation` runs every real 
 stays the sole production authority until a single all-at-once cutover (D89/D93).
 
 Current status is owned by the plan, not by this file: `npm run cli -- phase` prints the runtime's
-`completedThrough`/`active`, and the phase docs `docs/rebuild/00`–`06` record what each phase landed,
-what it found, and what left it by explicit disposition (Phases 1–2 complete 2026-08-04/2026-08-09).
+`completedThrough`/`active`, and the admitted phase docs under `docs/rebuild/` record what each phase
+landed, what it found, and what left it by explicit disposition (Phases 1–2 complete
+2026-08-04/2026-08-09).
 
 ## Before you start
 
 **The plan is the SSOT — read it, do not re-derive it.** It has three parts: the **tree** at
 `docs/roadmap/roadmap.md` (the machine-readable plan + the site's source + the governance rules), the
-**phase docs** `docs/rebuild/00`–`06` (actionable: one per phase, the number IS the phase), and the
+admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phase), and the
 **specs** in `docs/rebuild/reference/` (not actionable; cited by slug).
 
 - `docs/roadmap/roadmap.md` — the plan as written, in the roadmap notation (headings = nodes,
   `builds:`/`needs:`/`doc:` lines); `docs/roadmap/index.html` is GENERATED from it by
   `npm run roadmap`. After `roadmap:end` its **Governance** section owns the one-plan rule, the D1
   ownership map and D263.
-- The **phase docs** under `docs/rebuild/` — tasks, what is done and what is left, exit criteria, and
-  the decisions that phase ratified. `00-design-the-foundation` · `01-build-the-spine` ·
+- The **phase docs** under `docs/rebuild/` record tasks, evidence, decisions and exit criteria.
+  Phases 0-3 are `00-design-the-foundation` · `01-build-the-spine` ·
   `02-prove-writes-build-the-tails` · `03a-finish-the-dashboard` · `03b-finish-separations` ·
-  `03c-migrate-the-remaining-workflows` · `03d-co-operate-with-Codex` · `04-close-the-deferrals` ·
-  `05-cut-over` · `06-ship-the-desktop-app`. Phase 3 is four docs (3a/3b/3c/3d); in prose
-  **`doc NN`** means one of these.
+  `03c-migrate-the-remaining-workflows`. D319 ends Phase 3 with the shared authoring platform,
+  Person Lookup and Separations. Every later workflow remains an unnumbered candidate until its
+  admission packet is live-verified and operator-approved; approval creates the next numbered phase
+  and phase doc. The stable-path `03d`/`04`/`05`/`06` files now hold unnumbered second-actor,
+  deferred, cutover and desktop stages; their filename numbers do not reserve phase numbers.
 - `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D264; **D131 is a retired gap —
   never reuse it**). A **pointer index**, not a spec: it tells you which doc owns a contract. Never
   implement from it.
@@ -43,10 +46,10 @@ what it found, and what left it by explicit disposition (Phases 1–2 complete 2
 - `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`): 60 entries of
   "X looked safe and did Y", each naming its decision. Read it before kernel / driver / dashboard /
   write-safety work; add new root-level lessons THERE (module lessons stay in the module's AGENTS.md).
-- `docs/rebuild/00`–`06` — the ACTIONABLE plan: one doc per phase, the number IS the phase
-  (`03a`/`03b`/`03c` are phase 3). Each owns its phase's tasks, its "Decisions this phase ratified"
-  and its **exit criteria**; `docs/roadmap/roadmap.md` is the summary (the tree + the governance
-  prose + the phases at a glance). The old `07-master-plan.md` was dissolved into them on
+- `docs/rebuild/00`–`06` — stable plan-document paths. `00`–`03c` are the admitted phase sequence;
+  D319 makes the later `03d`/`04`/`05`/`06` files unnumbered track/stage authorities despite their
+  preserved filenames. Each admitted phase owns its tasks, decisions and **exit criteria**;
+  `docs/roadmap/roadmap.md` is the summary. The old `07-master-plan.md` was dissolved into them on
   2026-08-20 and is preserved, with a section-by-section table of where everything went, at
   `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`.
 - `docs/rebuild/guard-inventory.json` — the reviewed guard manifest. `tests/unit/architecture/`
@@ -409,7 +412,7 @@ environment-supplied.
   §§1.6, 5.6 and 5.8 and doc 03c `{#workflow-authoring-model}`. At implementation baseline `b1b36349`, the bounded
   compiler still uses transitional `workflow-recipe.ts` names and fragment adapters; do not copy or
   extend that surface into another workflow. Finish 3c-A's D317 rename/direct-entry/deletion gate
-  before starting Order 1 implementation.
+  before admitting or implementing another workflow.
 - A workflow's T1 proof lives at
   `tests/scenario/workflows/<workflow-id>/{structural.scenario.test.ts,dry-run.scenario.ts}`: exactly
   one collected structural scenario and one sibling T1b live manifest. D318 gives that manifest two

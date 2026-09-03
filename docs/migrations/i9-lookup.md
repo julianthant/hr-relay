@@ -1,9 +1,10 @@
-# I-9 signer lookup — Order 1 migration intake
+# I-9 signer lookup - unnumbered candidate evidence
 
-**Status:** implementation open; workflow-specific intake and login/search verification completed
-2026-09-02
+**Status:** evidence only; not an admitted workflow and not authorized for implementation. The
+workflow-specific intake and login/search observation completed 2026-09-02, before D319.
 
-**Plan owner:** `docs/rebuild/03c-migrate-the-remaining-workflows.md` §Order 1
+**Admission owner:** `docs/rebuild/03c-migrate-the-remaining-workflows.md` §Workflow admission after
+Phase 3
 
 **Inherited contracts:** ref charter §1/§3/§8; ref task-contract §2.7/§2.8/§3.1;
 ref stores §1/§4; ref guards-and-tests §10.11;
@@ -12,7 +13,11 @@ ref operator-trust §3.2; ref clock-config-secrets §4
 **Post-base authority amendment:** integration commit `1273c360`, ref workflow-model
 §1.6.1/§5.6.1/§5.8 and D312–D316
 
-`i9-lookup` answers who signed Form I-9 Section 2. It is a pure read of Tracker I-9 Complete through
+This document preserves a proposed `i9-lookup` boundary and the evidence collected for it. D319
+requires the operator to select the candidate, verify the complete admission packet and approve it
+before this proposal receives a phase number or becomes implementation work.
+
+The proposal answers who signed Form I-9 Section 2. It is a pure read of Tracker I-9 Complete through
 the UCOP portal and UCSD SSO/Duo. The rebuild currently has only an unwired, zero-task `i9` store.
 This intake applies the ratified D312–D316 owner text at integration commit `1273c360` without
 implementing its compiler/runtime work.

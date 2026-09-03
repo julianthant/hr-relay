@@ -64,7 +64,6 @@ Data a **typed view of the run's checkpoints** edited through ref workflow-model
 ## 1. Canonical field registry (vocabulary lives in the rebuild repo's `src/domain/`, referenced here)
 
 <!-- roadmap: p2-2h -->
-<!-- roadmap: order-6 -->
 
 <!-- roadmap-status: p2-2h -->
 - [x] the canonical field registry is closed at 47 ids and frozen against the RECORDED D58/D68 scan, checked in both directions (§1/§1.1, D146; `src/domain/fields/registry.ts:56-110`, `config/canonical-field-inventory.json` at legacy `4deabc5a`)
@@ -77,13 +76,11 @@ Data a **typed view of the run's checkpoints** edited through ref workflow-model
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/domain/{fields,intake,ocr}/**`, `src/stores/{extraction,roster,ocr,normalization}/**`, `src/infra/sqlite/migrations.ts:863-908`; left: the two uncalled designs
 <!-- /roadmap-status -->
 
-<!-- roadmap-status: order-6 -->
 - [x] the canonical-EID audit gate this migration replays its fixtures through exists and is enforced — `/^10\d{6}$/` everywhere, with the loose legacy `/^\d{5,}$/` recorded as a validation bug rather than a second domain value (§1, §9.1)
 - [ ] `work-study` is not in the tree: no input schema, no intake projection, and §8's worked example is this migration's TARGET rather than a transcript
 - [ ] the weekly export's saved mapping — the whole point of §2.3's fingerprint — has no writer, so week two re-maps from scratch until `order-6-dash` builds one
 - [ ] `effectiveDate` as a per-run constant typed once (§8 step 2) rides the intake session's `constants`; the drawn control belongs to ref dashboard-surfaces §11
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `ls src/workflows/` (no work-study) and `src/domain/fields/registry.ts`; left: the workflow itself
-<!-- /roadmap-status -->
 
 The closed, typed field vocabulary is domain-owned (charter §11). This doc consumes it; it does not
 redefine the field schemas. **The ids shown below are an excerpt, not the Phase-1 inventory.** Before
@@ -479,16 +476,13 @@ is what any workflow without a projection still gets.
 ### 2.8 Phase-2i as-built — the first real projection, and unions resolve (D172)
 
 <!-- roadmap: p2-2i -->
-<!-- roadmap: order-6-dash -->
 
-<!-- roadmap-status: order-6-dash -->
 - [x] the intake model this square wires is workflow-GENERIC and live — the durable session (schema v12), the upload route and all six command arms (§2.7/§2.8, D170–D172); a new workflow needs only a `defineIntakeProjection` declaration on its `module.ts`
 - [ ] `work-study` has no projection because the workflow is not in the tree — `person-lookup` is the only one declared (`src/workflows/person-lookup/module.ts:43`); order 6 brings the second
 - [ ] saved-mapping reuse has no store, so a recurring weekly export is re-mapped on every upload — §2.3's as-built note; this square is where that writer belongs
 - [ ] the per-row `execution-option` constants entry and the unbind arm live in the DRAWN workspace, which this doc does not own — ref dashboard-surfaces §9.7.1 (2i-E3, D173)
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/domain/commands.ts:172-177,432`, `src/domain/intake/mapping.ts`, `src/workflows/person-lookup/module.ts:43` and `src/infra/sqlite/migrations.ts:904`; left: the second projection and the mapping store
 > 2026-08-21 | track-f | ref dashboard-surfaces §9.7.1's D173 text claimed "the grid renders `constants` read-only (today always empty)" — corrected: nothing renders `session.constants` at all; `intake.tsx:938` reads only `session.constants.length` inside the `nothingBound` blocker computation (ledger 3 IN155)
-<!-- /roadmap-status -->
 
 `person-lookup` is the first workflow to declare an intake projection, so this is the commit where
 the route and all six arms stop refusing by name. Three decisions, each of which a permissive
@@ -539,16 +533,13 @@ satisfy the very schema the workflow validates with. The descriptor's source clo
 ## 3. Extraction store tasks (service store — D4)
 
 <!-- roadmap: p2-2h -->
-<!-- roadmap: order-3 -->
 
-<!-- roadmap-status: order-3 -->
 - [x] every store this workflow composes exists and is pinned: `extraction/extract-pdf-pages` → `ocr/extract-form-page` → `roster/match-spreadsheet`, plus the classify/group scanner and `cli ocr stack` (§3.2, §4.3, §4.8)
 - [x] the durability floor is in SQL, not convention — `ocr_extractions` is UNIQUE on `(source_sha256, source_page, form_type)` and ABORTs on update (schema v11, §4.9)
 - [ ] there is no OCR workflow: `src/workflows/` holds no descriptor that composes these tasks, so the graph, its review gate and its fan-out are exactly what this node builds
 - [ ] the roster SCORING has never met a real roster — the tiering ported verbatim, the scoring is new code, and this migration's live-verify is where §7's honest residual is discharged
 - [x] D294 retires the former Capture Mode binding; this OCR workflow has no photograph-to-run obligation (§5.1)
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/stores/{extraction,ocr,roster}/tasks/`, `src/domain/ocr/stack.ts`, `src/server/ocr/compose.ts:91` and `ls src/workflows/`; left: the workflow
-<!-- /roadmap-status -->
 
 `extraction` is a service store (`sessions: []`, no browser, no `page` ctx). Contracts live in
 `src/domain/contracts/extraction/`; impls in `src/stores/extraction/tasks/` (ref task-contract §3.4).
@@ -692,15 +683,11 @@ the `.xlsx` fixture is produced by `write-excel-file`, which proves a real OOXML
 ## 4. Roster store tasks (service store — D4)
 
 <!-- roadmap: p2-2h -->
-<!-- roadmap: order-9 -->
-<!-- roadmap: order-9-dash -->
 
-<!-- roadmap-status: order-9 -->
 - [x] the matching half is built and scenario-pinned — `roster/match-spreadsheet` with `name-eid-conflict` reporting confidence 0, a claimed EID never overridden, and five executable scenarios (§4, D163)
 - [ ] roster INGEST as a workflow step does not exist; onboarding's graph is what this node builds, and it is the first consumer that makes the 24 h freshness budget bite
 - [ ] onboarding's legacy extraction is Playwright scraping labelled fields off a CRM page — NOT a fielded-PDF read (§3.2's finding at legacy `4deabc5a`), so the port target is the scrape and no AcroForm reader is owed
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/stores/roster/tasks/match-spreadsheet.ts`, `tests/scenario/roster-match.scenario.test.ts` and `ls src/workflows/`; left: the workflow
-<!-- /roadmap-status -->
 
 `roster` matches one dataset against another (a mapped spreadsheet against extracted OCR records, or
 two rosters), producing per-subject matches with confidence.
@@ -781,18 +768,14 @@ counted, logged, never an erased row and never a swallowed error. Five executabl
 
 ### 4.1 Mutable retention workbooks are serialized projections, not read-task side effects
 
-<!-- roadmap: order-5 -->
-<!-- roadmap: order-5-dash -->
 <!-- roadmap: def-search-export -->
 <!-- roadmap: cross-cutting -->
 
-<!-- roadmap-status: order-5 -->
 - [x] the retention-workbook MODEL this migration needs is built and unit-pinned — `DurableArtifactProjectionSpec`, the one-transaction checkpoint + stable-keyed outbox commit, the blocking `RunArtifactProjector`, the `xlsx-retention` sink and the fail-closed conflict park (§4.1, D164; `src/infra/artifacts/artifact-sink-projector.ts`, `xlsx-retention-sink.ts`, 13 arms in `tests/unit/artifact-projection.test.ts`)
 - [x] the i9 document model the workflow reads is built as ONE form across two loose sections, with the section-absent arms named (§4.10, D160)
 - [ ] no descriptor declares `artifactProjections:` and no composition wires the projector — deliberately: the workbook PATH and the operator-facing retention columns are i9-check's own facts, and a declaring descriptor without the seam fails loud by name
 - [ ] the sink writes a four-column DURABILITY layout (`stableKey`/`keyValues`/`record`/`projectedAt`), not the operator's retention columns — those land with this migration
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/infra/artifacts/*`, `src/core/run-executor.ts:1078` and `grep -rl "artifactProjections:" src/workflows/` (empty); left: the declaration and the real column set
-<!-- /roadmap-status -->
 
 <!-- roadmap-status: def-search-export -->
 - [x] this doc's half of the export writers exists — `write-excel-file` behind `src/infra/artifacts/xlsx-retention-sink.ts`, with an idempotent stable-keyed upsert and a temp → fsync → atomic-replace write
@@ -955,16 +938,13 @@ scenario corpus — the second asserts the withheld value appears NOWHERE in the
 ### 4.3 Phase-2h as-built — OCR extraction admits three producers identically (D151)
 
 <!-- roadmap: p2-2h -->
-<!-- roadmap: order-3-dash -->
 
-<!-- roadmap-status: order-3-dash -->
 - [x] the three producers are admitted through ONE gate that cannot branch on the source, and an operator's hand reading fingerprints identically to the provider's (§4.3, D151; `src/domain/ocr/extraction.ts`, held by `ocr-producer-parity`)
 - [x] routes 2 and 3 are usable from a terminal today — `cli ocr forms | instruction | admit`, non-zero exit on refusal (`src/server/ocr/compose.ts:73`)
 - [x] route 1's production adapter is built as transport plus provenance (§4.11, D161; `src/infra/providers/gemini-ocr-extract.ts`)
 - [ ] the review row and the approval cards this square wires are the DRAWN surface, which this doc does not own — ref dashboard-surfaces §9 (D7/D8/D10) and ref frontend-backend-integration §5.1
 - [ ] `ocr_approvals` (schema v10) has no writer in `src/` outside the storage layer — the approval ACT is what the review surface adds
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/domain/ocr/{extraction,instruction,form-registry,stack}.ts`, `src/server/ocr/compose.ts` and `grep -rl ocr_approvals src` (storage layer only); left: everything drawn
-<!-- /roadmap-status -->
 
 **Operator requirement (2026-08-05):** a page may be read by the automated provider pipeline, by an
 AI the operator runs in their own terminal, or by the operator — and *"all should result in the same
@@ -1227,7 +1207,6 @@ fan-out. A byte-identical re-read is idempotent, so replaying a submission is sa
 ### 4.10 Phase-2h as-built — the i9 is ONE form across two loose sections (D160)
 
 <!-- roadmap: p2-2h -->
-<!-- roadmap: order-5 -->
 
 The last form lands, and with it the two arms D158 deliberately left unwritten because no form
 needed them: a form whose data pages are SECTIONS, and the sectioned subject in grouping.
@@ -2242,7 +2221,6 @@ is new code and must be re-checked against real rosters, not assumed.
 
 ## 8. Worked example — a work-study spreadsheet, end to end
 
-<!-- roadmap: order-6 -->
 
 Operator uploads `WorkStudy_July.xlsx` targeting the work-study workflow. **This example is the
 order-6 TARGET state, not a transcript**: `work-study` is not in the tree, and step 4's saved

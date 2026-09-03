@@ -354,13 +354,10 @@ logical key (D9) and ref dashboard-surfaces's `(runId, attempt, spanPath)` span 
 
 ### 3.5 `unverifiableByPage` requires an allowlist + reason (D22 — closes the verify escape hatch)
 
-<!-- roadmap: order-7 -->
 
-<!-- roadmap-status: order-7 -->
 - [x] the `unverifiableByPage` escape hatch is enforced at CONTRACT SEAL time — `src/domain/contracts/base.ts:406-416` against `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY`, proved by a fixture contract (§3.5 as-built)
 - [ ] the reviewed policy table is EMPTY, so the reverse arm (a stale row whose contract dropped the flag) has nothing to find and nothing audits it — OnBase's migration is what makes it necessary
 > 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `src/domain/contracts/write-safety.ts:130` (`contracts: []`) and `tests/unit/task-contracts.test.ts:296`
-<!-- /roadmap-status -->
 
 Ref write-safety's `upload-verify.unverifiableByPage` is the one place a commit contract may declare "this page
 genuinely cannot prove landing" and fall to always-park. Left unguarded it is a silent escape from
@@ -417,18 +414,15 @@ clicks additionally require the one fenced choke point. Together they make ref w
 ### 3.7 `artifact-effect-boundary.test.ts` — downloads are immutable; mutable files are projections
 
 <!-- roadmap: p2-2h -->
-<!-- roadmap: order-2 -->
 
 <!-- roadmap-status: p2-2h -->
 - [x] `artifact-effect-boundary` is active: the path-free content-addressed ref, the temp→fsync→atomic-rename sequence, crash-boundary recovery, byte-identical idempotency, and an AST canary against direct mutable filesystem access from a task impl
 > 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory; the download-bearing workflows that will exercise it are `order-2`
 <!-- /roadmap-status -->
 
-<!-- roadmap-status: order-2 -->
 - [x] the guard the download workflows land on already exists — `artifact-effect-boundary` (§3.7), so a browser download is structurally immutable before the first of them is written
 - [ ] the T1 pair for each of `crm-doc-download` / `sharepoint-download` / `old-kronos-reports` (§10.11)
 > 2026-08-20 | docs-cohesion ref guards-and-tests | guard side verified against the inventory; the migration's own tests are §10.11's checklist, unwritten
-<!-- /roadmap-status -->
 
 Read contracts that materialize bytes must declare `artifacts:"content-addressed"`; only the kernel
 writer may be reachable from their impl import graph. Direct filesystem write/append imports in task
@@ -470,13 +464,10 @@ read while still permitting replay-safe browser downloads.
 ### 3.9 Subject binding, control commands, and delegation
 
 <!-- roadmap: p1-kernel -->
-<!-- roadmap: order-4 -->
 
-<!-- roadmap-status: order-4 -->
 - [x] `delegation-manifest` is active and carries the retired `delegate-to-usage` / `delegate-to-all-impl-callers` invariants (§2.1): stable edge/item ids, concrete schemas, explicit cardinality/join/failure/cancel/retry policies, an atomic immutable manifest
 - [ ] the T1 pair for the delegating workflow, whose structural scenario must walk the fan-out at each declared cardinality (§10.11 step 2)
 > 2026-08-20 | docs-cohesion ref guards-and-tests | guard side verified against the inventory; no landed descriptor delegates yet, so the scenario matrix has no production subject
-<!-- /roadmap-status -->
 
 - **`subject-before-fence.test.ts`.** Every prepare/commit contract has compatible subject specs;
   every write observation resolves to a driver operation. A transaction trace must order
@@ -660,7 +651,7 @@ read while still permitting replay-safe browser downloads.
 
 <!-- roadmap-status: cross-cutting -->
 - [x] `legacy-capability-disposition` audits the inventory five ways and derives the completed set by INVOKING the real `phase` command, so closing a tail arms the next sweep (§3.11 as-built, D184)
-- [ ] 50 entries remain genuinely `open`, each re-milestoned to `phase-3-workflow-migration` with the reason in the entry; `cutoverRequiresZeroOpen` is what they gate
+- [ ] 50 entries remain genuinely `open`, each now owned by `workflow-admission-backlog` with the reason in the entry; `cutoverRequiresZeroOpen` is what they gate
 > 2026-08-20 | docs-cohesion ref guards-and-tests | verified against §3.11's as-built record; the entry-by-entry state lives in `config/legacy-capabilities.json`, not here
 <!-- /roadmap-status -->
 
@@ -791,7 +782,8 @@ home for everything Phase 2 does not build: *per-workflow migration, **plus expl
 capability closure (§3.6)***, with its exit requiring every inventory entry to reach
 native/replaced/retired. Assigning 49 legacy operator surfaces to "milestone 2i" was an early guess
 made in 1a, long before 2i was sliced; the operator's actual 2i (2i-A…2i-G, D168–D180) never
-contained them. All seventeen are therefore re-milestoned to `phase-3-workflow-migration` — a
+contained them. D184 originally re-milestoned all seventeen to `phase-3-workflow-migration`; D319
+moves the still-open program obligation to `workflow-admission-backlog` — a
 re-milestoning, never a re-classification: every one keeps `status:"open"`, and nothing was
 promoted to `native`/`replaced` to make a gate green. Four groups, each with the deciding reason in
 the entry itself:

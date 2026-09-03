@@ -616,7 +616,7 @@ stamps the local operator, dashboard source and server acceptance instant for an
 claim. Exact replay reuses the journaled acceptance instant. Bulk acceptance durably binds one id to
 its exact ordered parent envelope before dispatching children. The dedicated XLSX route passes the
 independently derived actor to its service while its strict request schema remains actor-free. Direct
-internal callers remain responsible for trusted context. Phase 3d may extend the adapter with a
+internal callers remain responsible for trusted context. The unnumbered cooperation track may extend the adapter with a
 closed second credential-derived actor; it does not change this admission seam.
 
 **A command whose target is not a run is composed beside the composer, not inside it** (D249,
@@ -755,8 +755,6 @@ fold after" structural.
 
 ### 3.6 Query and artifact surface
 
-<!-- roadmap: order-2 -->
-<!-- roadmap: order-2-dash -->
 <!-- roadmap: def-search-export -->
 <!-- roadmap: cross-cutting -->
 
@@ -949,14 +947,6 @@ Track D's checklist for every row that lands on this section — D1, D4, D6, D7,
 <!-- roadmap: dash-defaults -->
 <!-- roadmap: sep-dash -->
 <!-- roadmap: order-0-dash -->
-<!-- roadmap: order-1-dash -->
-<!-- roadmap: order-2-dash -->
-<!-- roadmap: order-3-dash -->
-<!-- roadmap: order-4-dash -->
-<!-- roadmap: order-5-dash -->
-<!-- roadmap: order-6-dash -->
-<!-- roadmap: order-7-dash -->
-<!-- roadmap: order-9-dash -->
 
 This matrix is the generic surface completeness checklist. Under D311/D317 the workflow compiler fills its
 workflow-varying declarations and one registry-wide conformance suite checks every workflow definition. A
@@ -1010,14 +1000,6 @@ until every cell in its row has an implementation and a test. The **Built** colu
 <!-- roadmap: track-d -->
 <!-- roadmap: sep-dash -->
 <!-- roadmap: order-0-dash -->
-<!-- roadmap: order-1-dash -->
-<!-- roadmap: order-2-dash -->
-<!-- roadmap: order-3-dash -->
-<!-- roadmap: order-4-dash -->
-<!-- roadmap: order-5-dash -->
-<!-- roadmap: order-6-dash -->
-<!-- roadmap: order-7-dash -->
-<!-- roadmap: order-9-dash -->
 
 **A flow is a WIRE SQUARE.** Each subsection below is one square built once in `{#dash-defaults}`.
 D311/D317 make the workflow compiler its per-workflow declaration path and the registry-wide conformance
@@ -1126,14 +1108,6 @@ is a true sentence about a stale basis rather than a partial re-offer.
 <!-- roadmap: dash-defaults -->
 <!-- roadmap: sep-dash -->
 <!-- roadmap: order-0-dash -->
-<!-- roadmap: order-1-dash -->
-<!-- roadmap: order-2-dash -->
-<!-- roadmap: order-3-dash -->
-<!-- roadmap: order-4-dash -->
-<!-- roadmap: order-5-dash -->
-<!-- roadmap: order-6-dash -->
-<!-- roadmap: order-7-dash -->
-<!-- roadmap: order-9-dash -->
 
 1. The descriptor projection determines which start doors exist and serves the real timeline with each
    step's `required | selectable` start state; absence includes the reason.
@@ -1295,14 +1269,6 @@ D251's fourth premise — that the bundle already carrying a fact makes a wire a
 <!-- roadmap: track-b -->
 <!-- roadmap: sep-dash -->
 <!-- roadmap: order-0-dash -->
-<!-- roadmap: order-1-dash -->
-<!-- roadmap: order-2-dash -->
-<!-- roadmap: order-3-dash -->
-<!-- roadmap: order-4-dash -->
-<!-- roadmap: order-5-dash -->
-<!-- roadmap: order-6-dash -->
-<!-- roadmap: order-7-dash -->
-<!-- roadmap: order-9-dash -->
 
 1. The day snapshot paints counts, rows, worker cards and the notification summary from ONE cursor.
 2. A row states its ordinal, class, containment, linked runs, facts and pipeline (§3.2), and carries
@@ -1331,14 +1297,6 @@ re-parsing the whole day (row D4); and the projector's member-preview and duplic
 <!-- roadmap: track-b -->
 <!-- roadmap: sep-dash -->
 <!-- roadmap: order-0-dash -->
-<!-- roadmap: order-1-dash -->
-<!-- roadmap: order-2-dash -->
-<!-- roadmap: order-3-dash -->
-<!-- roadmap: order-4-dash -->
-<!-- roadmap: order-5-dash -->
-<!-- roadmap: order-6-dash -->
-<!-- roadmap: order-7-dash -->
-<!-- roadmap: order-9-dash -->
 
 1. Bootstrap validates hashes and renders shell vocabulary.
 2. Selecting a row fetches the detail header and the default panel section.
@@ -1425,8 +1383,6 @@ for one fact.
 
 <!-- roadmap: dash-defaults -->
 <!-- roadmap: sep-dash -->
-<!-- roadmap: order-4-dash -->
-<!-- roadmap: order-9-dash -->
 
 1. A parked run's detail advertises its ceremony section — `identity-gate` or `parked-write` — and
    the section carries the packet, the server-computed `approvalShape`, and the typed resolutions.
@@ -1467,14 +1423,6 @@ describes the built one.
 <!-- roadmap: track-b -->
 <!-- roadmap: sep-dash -->
 <!-- roadmap: order-0-dash -->
-<!-- roadmap: order-1-dash -->
-<!-- roadmap: order-2-dash -->
-<!-- roadmap: order-3-dash -->
-<!-- roadmap: order-4-dash -->
-<!-- roadmap: order-5-dash -->
-<!-- roadmap: order-6-dash -->
-<!-- roadmap: order-7-dash -->
-<!-- roadmap: order-9-dash -->
 
 1. Archive serves a paged index and a **self-contained** archived detail — frozen row, detail,
    receipt and failure plus evidence POINTERS, readable with the descriptor list empty (D179).
@@ -1504,14 +1452,6 @@ workflow-versioning half is row **D8**.
 
 <!-- roadmap: dash-defaults -->
 <!-- roadmap: sep-dash -->
-<!-- roadmap: order-1-dash -->
-<!-- roadmap: order-2-dash -->
-<!-- roadmap: order-3-dash -->
-<!-- roadmap: order-4-dash -->
-<!-- roadmap: order-5-dash -->
-<!-- roadmap: order-6-dash -->
-<!-- roadmap: order-7-dash -->
-<!-- roadmap: order-9-dash -->
 
 1. A service publishes a durable, actor-keyed notification row on a closed trigger; the row commits
    before any OS delivery is attempted (D138).
@@ -1540,9 +1480,6 @@ notification service, not this surface.
 #### 5.1.7 Intake, mobile capture and Edit Data
 
 <!-- roadmap: dash-defaults -->
-<!-- roadmap: order-3-dash -->
-<!-- roadmap: order-6-dash -->
-<!-- roadmap: order-9-dash -->
 
 1. Upload returns an artifact ref; inspect returns columns and bounded samples.
 2. Exact fingerprint reuse is visible; suggestions remain unbound until accepted.

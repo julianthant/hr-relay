@@ -1,8 +1,10 @@
-# Person lookup — Order 1 Search + Match migration intake
+# Person Lookup - Phase 3 Search + Match acceptance record
 
-**Status:** implementation open; workflow-specific intake completed 2026-09-02
+**Status:** admitted in Phase 3; workflow-specific intake completed 2026-09-02 and final acceptance
+belongs to Phase 3c-B after the authoring foundation lands
 
-**Plan owner:** `docs/rebuild/03c-migrate-the-remaining-workflows.md` §Order 1
+**Plan owner:** `docs/rebuild/03c-migrate-the-remaining-workflows.md` §Phase 3 acceptance · Person
+Lookup
 
 **Inherited contracts:** ref charter §1/§3/§8; ref workflow-model §1.6/§8; ref task-contract
 §2.7/§2.8/§3.1; ref stores §2; ref dashboard-surfaces §9; ref guards-and-tests §10.11;
@@ -11,11 +13,12 @@ ref operator-trust §3.2
 **Post-base authority amendment:** integration commit `1273c360`, ref workflow-model
 §1.6.1/§5.6.1/§5.8 and D312–D316
 
-This record covers Order 1's two faces of the existing `person-lookup` workflow. It does not
+This record covers Search and Match as two modes of the existing `person-lookup` workflow. It does not
 implement the unlanded D311–D316 compiler/runtime work; its authoring and acceptance obligations are
-pinned to the ratified owner text at integration commit `1273c360`. Order 0 remains the live-proven
-UCPath Person Organizational Summary + CRM flow; Order 1 adds the legacy HR Tasks Match question
-without minting a second workflow identity.
+pinned to the ratified owner text at integration commit `1273c360`. The live-proven UCPath Person
+Organizational Summary + CRM flow remains the base; Phase 3 adds the legacy HR Tasks Match question
+without minting a second workflow identity. D319 keeps this work inside Phase 3 acceptance and does
+not pair it with the unadmitted I-9 candidate.
 
 ## 1. Workflow-specific decisions and §b completeness
 
@@ -122,7 +125,7 @@ all-at-once cutover (D89/D93).
 
 ## 6. Evidence log
 
-- 2026-09-02 — intake reconciled against doc 03c §Order 1/§b, the current mode-less
+- 2026-09-02 — intake reconciled against the former doc 03c Order 1/§b, the current mode-less
   `src/workflows/person-lookup/descriptor.ts`, ref stores and the frozen legacy sources above.
   Implementation and live mode proof remain open for R3.
 - 2026-09-02 — amended against ratified D312–D316 owner text at integration commit `1273c360`:
