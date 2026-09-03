@@ -12,7 +12,7 @@
  * `ucpath/search-person-org` fails `tsc` here rather than at the first run.
  */
 import { z } from "zod";
-import { compileWorkflowRecipe, defineWorkflowRecipe } from "../../base/workflow-recipe.js";
+import { defineWorkflow } from "../../base/workflow-definition.js";
 import { requireFact } from "../../base/workflow.js";
 import {
   CrmReadOnboardingDates,
@@ -25,12 +25,10 @@ import {
   ReadActiveStatus,
 } from "../../domain/contracts/person-lookup/read-active-status.js";
 import { SearchPersonOrg } from "../../domain/contracts/ucpath/search-person-org.js";
-import { EidSchema, WorkflowIdSchema } from "../../domain/ids.js";
-import {
-  BUILD_MANIFEST,
-  resolveWorkflowFingerprint,
-} from "../../domain/workflow/build-manifest.js";
+import { EidSchema } from "../../domain/ids.js";
 import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
+import { defineIntakeProjection } from "../../domain/intake/projection.js";
+import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
 
 /* ── workflow-constant input ─────────────────────────────────────────────── */
@@ -105,79 +103,39 @@ export const PersonLookupResultSchema = z.strictObject({
   ]),
 });
 
-/* ── the graph ───────────────────────────────────────────────────────────── */
-
-export const personLookupRecipe = defineWorkflowRecipe(PersonLookupInput, ({ task, result }) => {
-  const searching = task({
-    id: "searching",
-    contract: SearchPersonOrg,
-    label: "Searching",
-    replay: "checkpoint",
-  }, [], ({ input }) => ("emplId" in input
-      ? { kind: "by-eid" as const, emplId: input.emplId }
-      : { kind: "by-name" as const, name: input.name, keepNonHdh: input.keepNonHdh }),
-  );
-  const crossVerify = task({
-    id: "cross-verify",
-    contract: CrmReadOnboardingRecord,
-    label: "Cross Verification",
-    replay: "checkpoint",
-  }, [searching], ({ input, outputs }) => {
-    const selected = requireFact(outputs.searching.selection.selected, "searching", "selection.selected");
-    return {
-      eid: selected.emplId,
-      name: "emplId" in input ? input.name ?? selected.name : input.name,
-    };
-  });
-  const activeStatus = task({
-    id: "active-status",
-    contract: ReadActiveStatus,
-    label: "Active Status",
-    // Pure, and cheap: re-running it on resume is strictly safer than replaying
-    // a fold whose meaning may have changed with the code that computes it.
-    replay: "always-rerun",
-  }, [searching, crossVerify], ({ input, outputs }) => ({
-    person: outputs.searching,
-    crm: outputs["cross-verify"],
-    keepNonHdh: input.keepNonHdh,
-  }));
-  const crmDates = task({
-    id: "crm-dates",
-    contract: CrmReadOnboardingDates,
-    label: "CRM Dates",
-    when: { kind: "is-true", of: { from: "input", path: "includeCrmDates" } },
-    replay: "checkpoint",
-  }, [searching], ({ outputs }) => ({
-    eid: requireFact(outputs.searching.selection.selected, "searching", "selection.selected").emplId,
-  }));
-  return {
-    steps: [
-      [{ key: "searching", label: "Searching" }, [searching]],
-      [{ key: "cross-verify", label: "Cross Verification" }, [crossVerify]],
-      [{ key: "active-status", label: "Active Status" }, [activeStatus]],
-      [{ key: "crm-dates", label: "CRM Dates" }, [crmDates]],
-    ],
-    result: result(PersonLookupResultSchema, [activeStatus, crmDates], ({ input, outputs }) => ({
-      activeStatus: outputs["active-status"],
-      crmDates: input.includeCrmDates
-        ? {
-          state: "included" as const,
-          dates: requireFact(outputs["crm-dates"], "crm-dates", "conditional output"),
-        }
-        : { state: "not-requested" as const },
-    })),
-  };
+/**
+ * The first real intake projection (ref data-intake-and-edit-data §2.7, D172) — a spreadsheet of
+ * people fanning out one lookup per row.
+ *
+ * **Two targets, and deliberately only two.** `emplId` and `name` are the whole
+ * of what a roster row says about a person; `keepNonHdh` and `includeCrmDates`
+ * are execution options, recorded as `execution-option` in
+ * `config/canonical-field-inventory.json` precisely because they describe the
+ * RUN rather than the subject. Binding a spreadsheet column to one would let a
+ * file decide whether this system reads CRM.
+ *
+ * **Neither target is `required`, and that is the union telling the truth.**
+ * `PersonLookupInput` accepts `{name}` or `{emplId, name?}`, so no single path
+ * is present in every valid input — and a projection that claimed otherwise
+ * would reject, with `unmapped-required`, rows the workflow itself accepts. The
+ * combination is still enforced: §5's pipeline parses every assembled row
+ * through this exact schema, so a row carrying neither identifier is rejected
+ * with the schema's own words rather than passed on.
+ *
+ * It is declared HERE, on the server module, rather than on the descriptor, so
+ * it stays out of `contractFingerprint` — an operator-facing mapping surface is
+ * not part of the contract a run replays against (D170).
+ */
+export const personLookupIntake = defineIntakeProjection(PersonLookupInput, {
+  emplId: CANONICAL_FIELDS.eid,
+  name: CANONICAL_FIELDS.fullName,
 });
 
-/* ── the descriptor ──────────────────────────────────────────────────────── */
+/* ── the workflow ────────────────────────────────────────────────────────── */
 
-export const personLookupDescriptor = compileWorkflowRecipe(personLookupRecipe, {
+export const personLookupWorkflow = defineWorkflow({
   id: "person-lookup",
   version: 1,
-  contractFingerprint: resolveWorkflowFingerprint(
-    BUILD_MANIFEST,
-    WorkflowIdSchema.parse("person-lookup"),
-  ),
   code: "pl",
   label: "Person Lookup",
   summary:
@@ -298,6 +256,10 @@ export const personLookupDescriptor = compileWorkflowRecipe(personLookupRecipe, 
     },
     { nodeId: "crm-dates", purpose: "Reads the CRM invited, completed and start dates for the resolved person." },
   ],
+  input: PersonLookupInput,
+  intake: personLookupIntake,
+  // An ordinary workflow that stands on its own — no composition owns it (D219).
+  role: defineWorkflowRole({ kind: "standalone" }),
   scenarios: [
     "person-lookup/happy-by-eid",
     "person-lookup/happy-by-eid-with-dates",
@@ -307,4 +269,65 @@ export const personLookupDescriptor = compileWorkflowRecipe(personLookupRecipe, 
     "person-lookup/crm-subject-mismatch",
     "person-lookup/ucpath-drill-subject-mismatch",
   ],
+  steps: ({ task, result }) => {
+    const searching = task({
+      id: "searching",
+      contract: SearchPersonOrg,
+      label: "Searching",
+      replay: "checkpoint",
+    }, [], ({ input }) => ("emplId" in input
+        ? { kind: "by-eid" as const, emplId: input.emplId }
+        : { kind: "by-name" as const, name: input.name, keepNonHdh: input.keepNonHdh }),
+    );
+    const crossVerify = task({
+      id: "cross-verify",
+      contract: CrmReadOnboardingRecord,
+      label: "Cross Verification",
+      replay: "checkpoint",
+    }, [searching], ({ input, outputs }) => {
+      const selected = requireFact(outputs.searching.selection.selected, "searching", "selection.selected");
+      return {
+        eid: selected.emplId,
+        name: "emplId" in input ? input.name ?? selected.name : input.name,
+      };
+    });
+    const activeStatus = task({
+      id: "active-status",
+      contract: ReadActiveStatus,
+      label: "Active Status",
+      // Pure, and cheap: re-running it on resume is strictly safer than replaying
+      // a fold whose meaning may have changed with the code that computes it.
+      replay: "always-rerun",
+    }, [searching, crossVerify], ({ input, outputs }) => ({
+      person: outputs.searching,
+      crm: outputs["cross-verify"],
+      keepNonHdh: input.keepNonHdh,
+    }));
+    const crmDates = task({
+      id: "crm-dates",
+      contract: CrmReadOnboardingDates,
+      label: "CRM Dates",
+      when: { kind: "is-true", of: { from: "input", path: "includeCrmDates" } },
+      replay: "checkpoint",
+    }, [searching], ({ outputs }) => ({
+      eid: requireFact(outputs.searching.selection.selected, "searching", "selection.selected").emplId,
+    }));
+    return {
+      steps: [
+        [{ key: "searching", label: "Searching" }, [searching]],
+        [{ key: "cross-verify", label: "Cross Verification" }, [crossVerify]],
+        [{ key: "active-status", label: "Active Status" }, [activeStatus]],
+        [{ key: "crm-dates", label: "CRM Dates" }, [crmDates]],
+      ],
+      result: result(PersonLookupResultSchema, [activeStatus, crmDates], ({ input, outputs }) => ({
+        activeStatus: outputs["active-status"],
+        crmDates: input.includeCrmDates
+          ? {
+            state: "included" as const,
+            dates: requireFact(outputs["crm-dates"], "crm-dates", "conditional output"),
+          }
+          : { state: "not-requested" as const },
+      })),
+    };
+  },
 });

@@ -33,6 +33,7 @@ import {
 } from "../../../base/workflow.js";
 import { descriptorRuntimeNodes, runtimeNodeLabel } from "../../../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
+import type { AnyWorkflowDefinition } from "../../../base/workflow-definition.js";
 import type { RegisteredTaskStore } from "../../../base/store.js";
 import { ContractFieldPathSchema } from "../../../domain/contracts/base.js";
 import { contractSchemaLeaves } from "../../../validation/contract-boundary.js";
@@ -71,6 +72,7 @@ import type { WorkflowModuleRole } from "../../../domain/workflow/module-role.js
 import {
   descriptorSourcePath,
   moduleSourcePath,
+  workflowSourcePath,
 } from "../../../domain/workflow/source-layout.js";
 import type { IntakeProjection } from "../../../domain/intake/projection.js";
 import type { PendingImplBindings } from "../../../control/workflow-registry.js";
@@ -82,6 +84,8 @@ export interface ExplorerModuleView {
   /** The module's declared taxonomy (ref workflow-model §1.2.1, D219) — required, like the module's own. */
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
+  /** D317 — present iff the module was compiled from a `workflow.ts` definition. */
+  readonly definition?: AnyWorkflowDefinition;
 }
 
 export interface ExplorerQueryDeps {
@@ -754,8 +758,15 @@ function workflowWire(
   // D265 §1.2.2 — the path comes from the ROLE, never from the id alone: a
   // chunk harness lives inside the step it proves, so a link built from the id
   // would point at a folder that no longer exists.
-  const descriptorPath = descriptorSourcePath(workflowId, module.role);
-  const modulePath = moduleSourcePath(workflowId, module.role);
+  // D317 — a definition-backed workflow's ONE authored file is `workflow.ts`;
+  // its descriptor and module are compiled products with no source of their own.
+  const definitionBacked = module.definition !== undefined;
+  const descriptorPath = definitionBacked
+    ? workflowSourcePath(workflowId, module.role)
+    : descriptorSourcePath(workflowId, module.role);
+  const modulePath = definitionBacked
+    ? workflowSourcePath(workflowId, module.role)
+    : moduleSourcePath(workflowId, module.role);
 
   const purposeByNode = new Map(
     descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose]),

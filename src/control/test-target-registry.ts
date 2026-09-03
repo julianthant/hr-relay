@@ -7,11 +7,12 @@ import {
   type TestTargetSecretReference,
 } from "../domain/secrets.js";
 import { parseInputRunText, toRawSubmission } from "../domain/workflow/ingress.js";
+import { compileWorkflow } from "../base/workflow-definition.js";
 import {
   SeparationsCanonicalInput,
   SeparationsInput,
-  separationsDescriptor,
-} from "../workflows/separations/descriptor.js";
+  separationsWorkflow,
+} from "../workflows/separations/workflow.js";
 import { SeparationsKualiFinalizationInput } from "../workflows/separations/kuali-finalization/descriptor.js";
 
 export const TEST_TARGET_REGISTRY_PATH = "config/test-subjects.json";
@@ -510,7 +511,7 @@ export function resolveSeparationsTestTarget(
       `blocked: needs ${label}; its Kuali document number is not configured — set ${reference.env} in the ignored local environment (D300)`,
     );
   }
-  const surface = separationsDescriptor.surfaces?.inputRun;
+  const surface = compileWorkflow(separationsWorkflow).descriptor.surfaces?.inputRun;
   if (surface === undefined) {
     registryDefect(target, "descriptor separations declares no inputRun start box to resolve through");
   }

@@ -1715,7 +1715,7 @@
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/workflows/person-lookup",
-        "src/workflows/person-lookup/descriptor.ts",
+        "src/workflows/person-lookup/workflow.ts",
         "tests/scenario/person-lookup.scenario.test.ts",
         "tests/scenario/person-lookup-runtime.scenario.test.ts"
       ],

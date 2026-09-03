@@ -12,20 +12,21 @@
  * entry here is the exact object `WORKFLOW_MODULES` composes, in the same
  * order, so the two tuples cannot drift.
  */
-import { personLookupDescriptor } from "./person-lookup/descriptor.js";
+import { compileWorkflow } from "../base/workflow-definition.js";
+import { personLookupWorkflow } from "./person-lookup/workflow.js";
 import { separationsIdentityCheckDescriptor } from "./separations/identity-check/descriptor.js";
 import { separationsKronosTimecardDescriptor } from "./separations/kronos-timecard/descriptor.js";
 import { separationsKualiFinalizationDescriptor } from "./separations/kuali-finalization/descriptor.js";
 import { separationsKualiReadDescriptor } from "./separations/kuali-extraction/descriptor.js";
 import { separationsUcpathTerminationDescriptor } from "./separations/ucpath-transaction/descriptor.js";
-import { separationsDescriptor } from "./separations/descriptor.js";
+import { separationsWorkflow } from "./separations/workflow.js";
 
 export const WORKFLOW_DESCRIPTORS = Object.freeze([
-  personLookupDescriptor,
+  compileWorkflow(personLookupWorkflow).descriptor,
   separationsKronosTimecardDescriptor,
   separationsKualiReadDescriptor,
   separationsIdentityCheckDescriptor,
   separationsUcpathTerminationDescriptor,
   separationsKualiFinalizationDescriptor,
-  separationsDescriptor,
+  compileWorkflow(separationsWorkflow).descriptor,
 ] as const);

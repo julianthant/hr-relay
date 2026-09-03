@@ -94,9 +94,8 @@ import { z } from "zod";
 import { OmittedStepResultArmSchema } from "../../domain/workflow/step-omission.js";
 import { KUALI_FINALIZATION_STEP } from "./kuali-finalization/step.js";
 import { UCPATH_TRANSACTION_STEP } from "./ucpath-transaction/step.js";
-import { compileWorkflowRecipe, defineWorkflowRecipe } from "../../base/workflow-recipe.js";
+import { defineWorkflow } from "../../base/workflow-definition.js";
 import { requireFact } from "../../base/workflow.js";
-import { WorkflowIdSchema } from "../../domain/ids.js";
 import { ResolvedIdentitySubjectSchema } from "../../domain/separations/identity-approval.js";
 import {
   buildFinalizationComments,
@@ -109,11 +108,8 @@ import {
 } from "../../domain/ui/kuali-document-identity.js";
 import { KualiSavedFinalizationProofSchema } from "../../domain/ui/kuali-separation-finalization.js";
 import { UcpathPendingSweepHistoricalOrCurrentProofSchema } from "../../domain/ui/ucpath-smart-hr-termination.js";
-import {
-  BUILD_MANIFEST,
-  resolveWorkflowFingerprint,
-} from "../../domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
+import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
 import {
   APPROVAL_NODE,
@@ -327,9 +323,343 @@ function omittedOr<T, R>(
   return widened === undefined ? Object.freeze({ state: "omitted" as const, step }) : present(widened);
 }
 
-export const separationsRecipe = defineWorkflowRecipe(
-  SeparationsInput,
-  ({ group, taskFromFragment, transactionFromFragment, gateFromFragment, result }) => {
+export const separationsWorkflow = defineWorkflow({
+  id: "separations",
+  version: 1,
+  code: "sp",
+  label: "Separations",
+  summary:
+    "The composition: ONE Kuali RRSS separation document becomes ONE terminated employee across three "
+    + "systems. It reads Kuali, UCPath and Kronos, reconciles the dates against what the timecard "
+    + "actually shows, establishes identity from supplied-EID read-back or the name-only gate, then clears any pending termination, "
+    + "files the termination, verifies the receipt, and finalizes the Kuali document.",
+  icon: "ShieldCheck",
+  category: "separation",
+  canonicalInput: SeparationsCanonicalInput,
+  inputSubject: "document",
+  surface: { shape: "single" },
+  /**
+   * `reject-active` per item — and the item is the document plus the operator's
+   * re-read ordinal. Two concurrent runs on one separation document is never
+   * intended, and ref write-safety's same-key mutex refuses the second fence anyway;
+   * **S5** is why the mutex matters more than the enqueue policy, because
+   * legacy's enqueue-supersede only cancels non-terminal prior runs, so a
+   * completed document could be re-run with nothing but two live page probes
+   * standing between it and a second termination.
+   */
+  enqueue: "reject-active",
+  actions: STANDARD_WORKFLOW_ACTIONS,
+  /**
+   * **The one-box door (D261).** D260 refused to build this surface and stated
+   * exactly what would unblock it: `inputRun` carries ONE varying value per
+   * run, and `separations` needed two. The operator ruled *"document number
+   * should work. no need action id."*, the graph's new head node resolves the
+   * action from the number, and the schema now has exactly one required field
+   * that varies — so the modal has a box and the rule D260 wrote is unchanged.
+   *
+   * `timekeeperName` rides in `constants[]`, which is only legitimate because
+   * it does not vary per RUN — §9.16 decision 6a-2 ratified it as ingress, and
+   * D260's own table records it as constant *per operator*. That is the honest
+   * scope of this constant and it is worth stating where somebody will read it:
+   * it is a fact about WHO is filing, baked into a bundle-safe descriptor, and
+   * the trigger that ends it is a SECOND timekeeper — at which point it must
+   * become a typed form field (D260 shape 1) rather than a second constant.
+   * `config.operator.timekeeperName` stays deliberately unused: a descriptor is
+   * bundle-safe and cannot read config, and a value retained in the canonical
+   * input is one `explain run` can show for the run that used it.
+   */
+  surfaces: {
+    inputRun: {
+      placeholder: "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
+      parser: {
+        split: { kind: "delimited", delimiters: [";", "\n"] },
+        /**
+         * ONE rule and NO `otherwise` arm, deliberately. A separation is filed
+         * against a Kuali document and there is no second thing this box could
+         * mean, so an entry that is not a document number refuses the whole box
+         * and starts nothing — which `inputRunParserLabel` says out loud before
+         * an operator pastes forty lines. An `otherwise` arm here would send
+         * arbitrary text into `documentNumber` for the input schema to refuse
+         * one layer later, with a worse message.
+         */
+        rules: [
+          { when: { kind: "pattern", pattern: "document-number" }, emit: "documentNumber" },
+        ],
+        constants: [
+          { field: "timekeeperName", value: { kind: "text", text: "Julian Zaw" } },
+        ],
+      },
+      /**
+       * D250. Both texts are real document numbers this migration has read live
+       * (4502 on 2026-08-12 and again on 2026-08-20; 4510 on 2026-08-12), and
+       * the factory proves each one parses AND satisfies `SeparationsInput`
+       * before this descriptor exists. The pair shows the one thing a
+       * placeholder cannot: that the SAME box starts several separations at
+       * once, one run per document.
+       */
+      examples: [
+        {
+          key: "one-document",
+          label: "One document",
+          text: "4502",
+          note: "the ordinary case — one run for one Kuali separation document",
+        },
+        {
+          key: "two-documents",
+          label: "Two documents",
+          text: "4502; 4510",
+          note: "two runs from one box: each document number starts its own separation, and the "
+            + "action id for each is resolved from the Kuali Action List at run time",
+        },
+      ],
+    },
+  },
+  /**
+   * No `capabilities` block, and here it is a SAFETY property. Every value this
+   * graph would let Edit Data patch is a value some read established: the punch
+   * date, the department, the EID, the payroll title. Correcting one of those
+   * without a live read behind it is exactly the substitution §4b removed from
+   * the timecard path, arriving through the correction rail instead. The one
+   * thing an operator may change about a run is the gate decision, and that goes
+   * through the typed gate command; the one way to get fresh reads is `reRead`,
+   * which is a NEW run over a new item rather than a patch over an old one.
+   */
+  verdicts: [
+    { key: "name-differs", label: "Name differs from UCPath", tone: "warning", tag: true },
+    { key: "eid-name-resolved", label: "EID resolved by name", tone: "warning", tag: true },
+    { key: "dates-moved", label: "Kronos moved the dates", tone: "neutral", tag: true },
+    { key: "unclassified-pay-codes", label: "Unclassified pay codes", tone: "warning", tag: true },
+  ],
+  details: [
+    {
+      key: "ucpath-name",
+      label: "UCPath shows",
+      source: { nodeId: JOB_SUMMARY_NODE, fieldPath: "displayedName" },
+      display: "text",
+    },
+    {
+      key: "template",
+      label: "Template",
+      source: { nodeId: TERMINATION_TYPE_NODE, fieldPath: "template" },
+      display: "text",
+    },
+    {
+      key: "reason-code",
+      label: "Reason code",
+      source: { nodeId: TERMINATION_TYPE_NODE, fieldPath: "reasonCode" },
+      display: "text",
+    },
+    {
+      key: "last-day-worked",
+      label: "Last day worked",
+      source: { nodeId: DATES_NODE, fieldPath: "lastDayWorked" },
+      display: "text",
+    },
+    {
+      key: "effective-date",
+      label: "Termination effective",
+      source: { nodeId: DATES_NODE, fieldPath: "terminationEffectiveDate" },
+      display: "text",
+    },
+    {
+      key: "department",
+      label: "Department",
+      source: { nodeId: DEPARTMENT_NODE, fieldPath: "option" },
+      display: "text",
+    },
+    {
+      key: "transaction-id",
+      // A transaction node's field paths are the COMMIT contract's bare output
+      // (D144) — `{ receipt }`, not the `TypedTransactionOutcome` envelope.
+      label: "Transaction",
+      source: { nodeId: TERMINATION_NODE, fieldPath: "receipt.transactionId" },
+      display: "text",
+    },
+    {
+      key: "approval-status",
+      label: "Transaction status",
+      source: { nodeId: TERMINATION_NODE, fieldPath: "receipt.approvalStatus" },
+      display: "text",
+    },
+  ],
+  /**
+   * Ref dashboard-surfaces §1.2: the queue row starts as `Separation 4502` — the only thing the
+   * start input knows — and becomes the PERSON the moment UCPath's Job Summary
+   * has answered. Three separations rows on one real day carried the same
+   * document number, so the column an operator scans distinguished nothing.
+   *
+   * `job-summary.displayedName` and not the Kuali document's own employee name:
+   * the whole point of the identity chunk is that the Kuali form's name is the
+   * CLAIM and UCPath's is the record, and the queue row must not print a name
+   * the gate has not yet compared. Before that node runs, the document number
+   * stands.
+   */
+  subjectProjection: { nodeId: JOB_SUMMARY_NODE, fieldPath: "displayedName" },
+  identity: {
+    /**
+     * The ITEM is the DOCUMENT — one separation document is one separation — and
+     * the operator's explicit re-read ordinal, which is §"the re-run wall" item
+     * 2's whole affordance: a re-read is a new logical item with fresh
+     * checkpoints and its own gate, not a replay collision against reads whose
+     * `observedAt` differs by construction. It changes no permanent key, so a
+     * re-read can never file a second termination.
+     */
+    matchKey: (input) => (input.reRead === undefined
+      ? `separations:${input.documentNumber}`
+      : `separations:${input.documentNumber}#re-read-${String(input.reRead.ordinal)}`),
+  },
+  presentation: {
+    title: (input) => `Separation ${input.documentNumber}`,
+    /**
+     * D261 removed the action id from the ingress, so the subtitle no longer
+     * has one to abbreviate — and it never should have carried it: an operator
+     * reading a queue row learns nothing from eight hex characters of a
+     * workflow-step address. The filer is the fact the row was missing.
+     */
+    subtitle: (input) => (input.reRead === undefined
+      ? `Filed by ${input.timekeeperName}`
+      : `re-read ${String(input.reRead.ordinal)} — ${input.reRead.reason}`),
+  },
+  /** D229 — the descriptor's own words about each node, projected by the explorer. */
+  nodePurposes: [
+    {
+      nodeId: "resolve-action",
+      purpose: "Turns the Kuali document number the operator typed into the action id Kuali is actually "
+        + "addressed by, by filtering the Action List's own search box and reading the matched row's link. "
+        + "It refuses a document nobody holds an action on, and refuses two actions for one number.",
+    },
+    {
+      nodeId: "document",
+      purpose: "Reads the entire Kuali RRSS separation request form in ONE page visit: the employee, the "
+        + "separation dates, the comments, and every control's own option list as this run observed it.",
+    },
+    {
+      nodeId: "termination-type",
+      purpose: "Resolves the document's termination type to the UCPath template and reason code it files under, "
+        + "refusing a type nobody has mapped. Pure: it reaches no browser.",
+    },
+    {
+      nodeId: "name-search",
+      purpose: "Searches UCPath Person Org by the document's employee name, unconditionally, so the operator "
+        + "sees every person that name matches rather than only the ones a similarity threshold selected.",
+    },
+    {
+      nodeId: "job-summary",
+      purpose: "Reads the subject's whole UCPath job summary grid verbatim — every row, every status — and "
+        + "classifies nothing; the disposition is a separate, pure fold.",
+    },
+    {
+      nodeId: "department-option",
+      purpose: "Resolves the subject's UCPath department to the exact option this document's OWN control offers, "
+        + "refusing one the control does not carry. Pure: it reaches no browser.",
+    },
+    {
+      nodeId: "comparison",
+      purpose: "Builds the identity evidence packet — DISCONFIRMING evidence first — and the digest that "
+        + "machine verification or an operator decision binds to. Pure: it reaches no browser.",
+    },
+    {
+      nodeId: "identity-approval",
+      purpose: "Requires the typed operator resolve-gate command when the packet's EID came from a name search; "
+        + "a supplied-EID packet makes this declared condition false and records no human decision.",
+    },
+    {
+      nodeId: "approval",
+      purpose: "Re-derives the evidence and produces explicit machine-verification or operator-approval "
+        + "authority. It re-runs on every attempt, so moved evidence or identity origin cannot reuse an old answer.",
+    },
+    {
+      nodeId: "pending-set",
+      purpose: "Reads and freezes the exact stable-ID set of eligible pending terminations plus every protected "
+        + "transaction before the sweep. The run admission authorizes this machine observation; it is not another gate.",
+    },
+    {
+      nodeId: "clear-pending",
+      purpose: "Sweeps any pending termination already sitting on the subject's record, so the filing below is "
+        + "not the second one. It probes before it fences, and a dry run stops after staging.",
+    },
+    {
+      nodeId: "file-termination",
+      purpose: "Files the termination through the UCPath Smart HR wizard — the real write. It probes for a "
+        + "filing that already exists, fences before the click, and a dry run stops after staging.",
+    },
+    {
+      nodeId: "finalize-kuali",
+      purpose: "Stages every finalization field in ONE pass from the reconciled variables, saves once, and "
+        + "proves the save by reloading and comparing each written field against exactly what was staged.",
+    },
+    {
+      nodeId: "plan",
+      purpose: "Derives the separation plan from the document — the employee's name, the dates to reconcile, and "
+        + "the timecard window to read — as of the instant this run READ the document, never a clock.",
+    },
+    {
+      nodeId: "subject",
+      purpose: "Reduces the name-search candidates to the ONE person this separation is about, using the "
+        + "document's own EID. A grid it cannot reduce to one row is a run that cannot compute what it is "
+        + "about to write, so it refuses before the gate opens.",
+    },
+    {
+      nodeId: "employment",
+      purpose: "Folds the job summary into the employment facts the filing needs — empl record, department, "
+        + "payroll title — and refuses a subject with no active job.",
+    },
+    {
+      nodeId: "timecard-search",
+      purpose: "Searches the New Kronos WFD panel for the employee and leaves them SELECTED — the selection is "
+        + "what enables Go To, so this node's real product is browser state and it re-runs on every "
+        + "attempt.",
+    },
+    {
+      nodeId: "timecard",
+      purpose: "Opens the selected employee's timecard and reads the whole separation window — last punch, sick "
+        + "and holiday days, and any pay code nobody has classified — refusing a range it cannot prove the "
+        + "grid was showing.",
+    },
+    {
+      nodeId: "dates",
+      purpose: "Reconciles the Kuali dates against what the timecard actually shows: the last day worked, the "
+        + "separation date, the termination effective date, and the comments that explain any move.",
+    },
+    {
+      nodeId: "receipt",
+      purpose: "Checks the receipt the filing produced against the approved subject and the effective date. It "
+        + "re-runs on every attempt rather than replaying its own previous answer.",
+    },
+    {
+      nodeId: "filing-presence",
+      purpose: "Freshly re-reads the exact UCPath transaction named by the durable receipt and requires its "
+        + "subject, effective date, termination action, and acceptable status to survive before Kuali can prepare.",
+    },
+  ],
+  input: SeparationsInput,
+  // The composed graph the five separations chunk harnesses each prove a step
+  // of — the `of` target every one of them names (D219).
+  role: defineWorkflowRole({ kind: "composition" }),
+  scenarios: [
+    "separations/action-resolved",
+    "separations/action-not-in-action-list",
+    "separations/action-ambiguous",
+    "separations/plan-refusals",
+    "separations/subject-resolution",
+    "separations/employment-refusals",
+    "separations/date-reconciliation",
+    "separations/receipt-refusals",
+    "separations/kronos-hard-fails",
+    "separations/gate-approved",
+    "separations/dry-run-preview",
+    "separations/subject-mismatch",
+    "separations/pending-sweep-committed",
+    "separations/pending-sweep-nothing-to-do",
+    "separations/termination-committed",
+    "separations/termination-already-present",
+    "separations/finalization-committed",
+    "separations/finalization-already-present",
+    "separations/finalization-parks-after-termination",
+    "separations/re-read-is-a-new-item",
+    "separations/gate-resume-shape",
+  ],
+  steps: ({ group, taskFromFragment, transactionFromFragment, gateFromFragment, result }) => {
     const action = taskFromFragment(actionNode, [], ({ input }) => ({
       documentNumber: input.documentNumber,
     }));
@@ -653,342 +983,4 @@ export const separationsRecipe = defineWorkflowRecipe(
       ),
     };
   },
-);
-
-export const separationsDescriptor = compileWorkflowRecipe(separationsRecipe, {
-  id: "separations",
-  version: 1,
-  contractFingerprint: resolveWorkflowFingerprint(
-    BUILD_MANIFEST,
-    WorkflowIdSchema.parse("separations"),
-  ),
-  code: "sp",
-  label: "Separations",
-  summary:
-    "The composition: ONE Kuali RRSS separation document becomes ONE terminated employee across three "
-    + "systems. It reads Kuali, UCPath and Kronos, reconciles the dates against what the timecard "
-    + "actually shows, establishes identity from supplied-EID read-back or the name-only gate, then clears any pending termination, "
-    + "files the termination, verifies the receipt, and finalizes the Kuali document.",
-  icon: "ShieldCheck",
-  category: "separation",
-  canonicalInput: SeparationsCanonicalInput,
-  inputSubject: "document",
-  surface: { shape: "single" },
-  /**
-   * `reject-active` per item — and the item is the document plus the operator's
-   * re-read ordinal. Two concurrent runs on one separation document is never
-   * intended, and ref write-safety's same-key mutex refuses the second fence anyway;
-   * **S5** is why the mutex matters more than the enqueue policy, because
-   * legacy's enqueue-supersede only cancels non-terminal prior runs, so a
-   * completed document could be re-run with nothing but two live page probes
-   * standing between it and a second termination.
-   */
-  enqueue: "reject-active",
-  actions: STANDARD_WORKFLOW_ACTIONS,
-  /**
-   * **The one-box door (D261).** D260 refused to build this surface and stated
-   * exactly what would unblock it: `inputRun` carries ONE varying value per
-   * run, and `separations` needed two. The operator ruled *"document number
-   * should work. no need action id."*, the graph's new head node resolves the
-   * action from the number, and the schema now has exactly one required field
-   * that varies — so the modal has a box and the rule D260 wrote is unchanged.
-   *
-   * `timekeeperName` rides in `constants[]`, which is only legitimate because
-   * it does not vary per RUN — §9.16 decision 6a-2 ratified it as ingress, and
-   * D260's own table records it as constant *per operator*. That is the honest
-   * scope of this constant and it is worth stating where somebody will read it:
-   * it is a fact about WHO is filing, baked into a bundle-safe descriptor, and
-   * the trigger that ends it is a SECOND timekeeper — at which point it must
-   * become a typed form field (D260 shape 1) rather than a second constant.
-   * `config.operator.timekeeperName` stays deliberately unused: a descriptor is
-   * bundle-safe and cannot read config, and a value retained in the canonical
-   * input is one `explain run` can show for the run that used it.
-   */
-  surfaces: {
-    inputRun: {
-      placeholder: "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
-      parser: {
-        split: { kind: "delimited", delimiters: [";", "\n"] },
-        /**
-         * ONE rule and NO `otherwise` arm, deliberately. A separation is filed
-         * against a Kuali document and there is no second thing this box could
-         * mean, so an entry that is not a document number refuses the whole box
-         * and starts nothing — which `inputRunParserLabel` says out loud before
-         * an operator pastes forty lines. An `otherwise` arm here would send
-         * arbitrary text into `documentNumber` for the input schema to refuse
-         * one layer later, with a worse message.
-         */
-        rules: [
-          { when: { kind: "pattern", pattern: "document-number" }, emit: "documentNumber" },
-        ],
-        constants: [
-          { field: "timekeeperName", value: { kind: "text", text: "Julian Zaw" } },
-        ],
-      },
-      /**
-       * D250. Both texts are real document numbers this migration has read live
-       * (4502 on 2026-08-12 and again on 2026-08-20; 4510 on 2026-08-12), and
-       * the factory proves each one parses AND satisfies `SeparationsInput`
-       * before this descriptor exists. The pair shows the one thing a
-       * placeholder cannot: that the SAME box starts several separations at
-       * once, one run per document.
-       */
-      examples: [
-        {
-          key: "one-document",
-          label: "One document",
-          text: "4502",
-          note: "the ordinary case — one run for one Kuali separation document",
-        },
-        {
-          key: "two-documents",
-          label: "Two documents",
-          text: "4502; 4510",
-          note: "two runs from one box: each document number starts its own separation, and the "
-            + "action id for each is resolved from the Kuali Action List at run time",
-        },
-      ],
-    },
-  },
-  /**
-   * No `capabilities` block, and here it is a SAFETY property. Every value this
-   * graph would let Edit Data patch is a value some read established: the punch
-   * date, the department, the EID, the payroll title. Correcting one of those
-   * without a live read behind it is exactly the substitution §4b removed from
-   * the timecard path, arriving through the correction rail instead. The one
-   * thing an operator may change about a run is the gate decision, and that goes
-   * through the typed gate command; the one way to get fresh reads is `reRead`,
-   * which is a NEW run over a new item rather than a patch over an old one.
-   */
-  verdicts: [
-    { key: "name-differs", label: "Name differs from UCPath", tone: "warning", tag: true },
-    { key: "eid-name-resolved", label: "EID resolved by name", tone: "warning", tag: true },
-    { key: "dates-moved", label: "Kronos moved the dates", tone: "neutral", tag: true },
-    { key: "unclassified-pay-codes", label: "Unclassified pay codes", tone: "warning", tag: true },
-  ],
-  details: [
-    {
-      key: "ucpath-name",
-      label: "UCPath shows",
-      source: { nodeId: JOB_SUMMARY_NODE, fieldPath: "displayedName" },
-      display: "text",
-    },
-    {
-      key: "template",
-      label: "Template",
-      source: { nodeId: TERMINATION_TYPE_NODE, fieldPath: "template" },
-      display: "text",
-    },
-    {
-      key: "reason-code",
-      label: "Reason code",
-      source: { nodeId: TERMINATION_TYPE_NODE, fieldPath: "reasonCode" },
-      display: "text",
-    },
-    {
-      key: "last-day-worked",
-      label: "Last day worked",
-      source: { nodeId: DATES_NODE, fieldPath: "lastDayWorked" },
-      display: "text",
-    },
-    {
-      key: "effective-date",
-      label: "Termination effective",
-      source: { nodeId: DATES_NODE, fieldPath: "terminationEffectiveDate" },
-      display: "text",
-    },
-    {
-      key: "department",
-      label: "Department",
-      source: { nodeId: DEPARTMENT_NODE, fieldPath: "option" },
-      display: "text",
-    },
-    {
-      key: "transaction-id",
-      // A transaction node's field paths are the COMMIT contract's bare output
-      // (D144) — `{ receipt }`, not the `TypedTransactionOutcome` envelope.
-      label: "Transaction",
-      source: { nodeId: TERMINATION_NODE, fieldPath: "receipt.transactionId" },
-      display: "text",
-    },
-    {
-      key: "approval-status",
-      label: "Transaction status",
-      source: { nodeId: TERMINATION_NODE, fieldPath: "receipt.approvalStatus" },
-      display: "text",
-    },
-  ],
-  /**
-   * Ref dashboard-surfaces §1.2: the queue row starts as `Separation 4502` — the only thing the
-   * start input knows — and becomes the PERSON the moment UCPath's Job Summary
-   * has answered. Three separations rows on one real day carried the same
-   * document number, so the column an operator scans distinguished nothing.
-   *
-   * `job-summary.displayedName` and not the Kuali document's own employee name:
-   * the whole point of the identity chunk is that the Kuali form's name is the
-   * CLAIM and UCPath's is the record, and the queue row must not print a name
-   * the gate has not yet compared. Before that node runs, the document number
-   * stands.
-   */
-  subjectProjection: { nodeId: JOB_SUMMARY_NODE, fieldPath: "displayedName" },
-  identity: {
-    /**
-     * The ITEM is the DOCUMENT — one separation document is one separation — and
-     * the operator's explicit re-read ordinal, which is §"the re-run wall" item
-     * 2's whole affordance: a re-read is a new logical item with fresh
-     * checkpoints and its own gate, not a replay collision against reads whose
-     * `observedAt` differs by construction. It changes no permanent key, so a
-     * re-read can never file a second termination.
-     */
-    matchKey: (input) => (input.reRead === undefined
-      ? `separations:${input.documentNumber}`
-      : `separations:${input.documentNumber}#re-read-${String(input.reRead.ordinal)}`),
-  },
-  presentation: {
-    title: (input) => `Separation ${input.documentNumber}`,
-    /**
-     * D261 removed the action id from the ingress, so the subtitle no longer
-     * has one to abbreviate — and it never should have carried it: an operator
-     * reading a queue row learns nothing from eight hex characters of a
-     * workflow-step address. The filer is the fact the row was missing.
-     */
-    subtitle: (input) => (input.reRead === undefined
-      ? `Filed by ${input.timekeeperName}`
-      : `re-read ${String(input.reRead.ordinal)} — ${input.reRead.reason}`),
-  },
-  /** D229 — the descriptor's own words about each node, projected by the explorer. */
-  nodePurposes: [
-    {
-      nodeId: "resolve-action",
-      purpose: "Turns the Kuali document number the operator typed into the action id Kuali is actually "
-        + "addressed by, by filtering the Action List's own search box and reading the matched row's link. "
-        + "It refuses a document nobody holds an action on, and refuses two actions for one number.",
-    },
-    {
-      nodeId: "document",
-      purpose: "Reads the entire Kuali RRSS separation request form in ONE page visit: the employee, the "
-        + "separation dates, the comments, and every control's own option list as this run observed it.",
-    },
-    {
-      nodeId: "termination-type",
-      purpose: "Resolves the document's termination type to the UCPath template and reason code it files under, "
-        + "refusing a type nobody has mapped. Pure: it reaches no browser.",
-    },
-    {
-      nodeId: "name-search",
-      purpose: "Searches UCPath Person Org by the document's employee name, unconditionally, so the operator "
-        + "sees every person that name matches rather than only the ones a similarity threshold selected.",
-    },
-    {
-      nodeId: "job-summary",
-      purpose: "Reads the subject's whole UCPath job summary grid verbatim — every row, every status — and "
-        + "classifies nothing; the disposition is a separate, pure fold.",
-    },
-    {
-      nodeId: "department-option",
-      purpose: "Resolves the subject's UCPath department to the exact option this document's OWN control offers, "
-        + "refusing one the control does not carry. Pure: it reaches no browser.",
-    },
-    {
-      nodeId: "comparison",
-      purpose: "Builds the identity evidence packet — DISCONFIRMING evidence first — and the digest that "
-        + "machine verification or an operator decision binds to. Pure: it reaches no browser.",
-    },
-    {
-      nodeId: "identity-approval",
-      purpose: "Requires the typed operator resolve-gate command when the packet's EID came from a name search; "
-        + "a supplied-EID packet makes this declared condition false and records no human decision.",
-    },
-    {
-      nodeId: "approval",
-      purpose: "Re-derives the evidence and produces explicit machine-verification or operator-approval "
-        + "authority. It re-runs on every attempt, so moved evidence or identity origin cannot reuse an old answer.",
-    },
-    {
-      nodeId: "pending-set",
-      purpose: "Reads and freezes the exact stable-ID set of eligible pending terminations plus every protected "
-        + "transaction before the sweep. The run admission authorizes this machine observation; it is not another gate.",
-    },
-    {
-      nodeId: "clear-pending",
-      purpose: "Sweeps any pending termination already sitting on the subject's record, so the filing below is "
-        + "not the second one. It probes before it fences, and a dry run stops after staging.",
-    },
-    {
-      nodeId: "file-termination",
-      purpose: "Files the termination through the UCPath Smart HR wizard — the real write. It probes for a "
-        + "filing that already exists, fences before the click, and a dry run stops after staging.",
-    },
-    {
-      nodeId: "finalize-kuali",
-      purpose: "Stages every finalization field in ONE pass from the reconciled variables, saves once, and "
-        + "proves the save by reloading and comparing each written field against exactly what was staged.",
-    },
-    {
-      nodeId: "plan",
-      purpose: "Derives the separation plan from the document — the employee's name, the dates to reconcile, and "
-        + "the timecard window to read — as of the instant this run READ the document, never a clock.",
-    },
-    {
-      nodeId: "subject",
-      purpose: "Reduces the name-search candidates to the ONE person this separation is about, using the "
-        + "document's own EID. A grid it cannot reduce to one row is a run that cannot compute what it is "
-        + "about to write, so it refuses before the gate opens.",
-    },
-    {
-      nodeId: "employment",
-      purpose: "Folds the job summary into the employment facts the filing needs — empl record, department, "
-        + "payroll title — and refuses a subject with no active job.",
-    },
-    {
-      nodeId: "timecard-search",
-      purpose: "Searches the New Kronos WFD panel for the employee and leaves them SELECTED — the selection is "
-        + "what enables Go To, so this node's real product is browser state and it re-runs on every "
-        + "attempt.",
-    },
-    {
-      nodeId: "timecard",
-      purpose: "Opens the selected employee's timecard and reads the whole separation window — last punch, sick "
-        + "and holiday days, and any pay code nobody has classified — refusing a range it cannot prove the "
-        + "grid was showing.",
-    },
-    {
-      nodeId: "dates",
-      purpose: "Reconciles the Kuali dates against what the timecard actually shows: the last day worked, the "
-        + "separation date, the termination effective date, and the comments that explain any move.",
-    },
-    {
-      nodeId: "receipt",
-      purpose: "Checks the receipt the filing produced against the approved subject and the effective date. It "
-        + "re-runs on every attempt rather than replaying its own previous answer.",
-    },
-    {
-      nodeId: "filing-presence",
-      purpose: "Freshly re-reads the exact UCPath transaction named by the durable receipt and requires its "
-        + "subject, effective date, termination action, and acceptable status to survive before Kuali can prepare.",
-    },
-  ],
-  scenarios: [
-    "separations/action-resolved",
-    "separations/action-not-in-action-list",
-    "separations/action-ambiguous",
-    "separations/plan-refusals",
-    "separations/subject-resolution",
-    "separations/employment-refusals",
-    "separations/date-reconciliation",
-    "separations/receipt-refusals",
-    "separations/kronos-hard-fails",
-    "separations/gate-approved",
-    "separations/dry-run-preview",
-    "separations/subject-mismatch",
-    "separations/pending-sweep-committed",
-    "separations/pending-sweep-nothing-to-do",
-    "separations/termination-committed",
-    "separations/termination-already-present",
-    "separations/finalization-committed",
-    "separations/finalization-already-present",
-    "separations/finalization-parks-after-termination",
-    "separations/re-read-is-a-new-item",
-    "separations/gate-resume-shape",
-  ],
 });
