@@ -1,0 +1,211 @@
+/**
+ * The BFF's static byte path for the built dashboard (ref frontend-backend-integration §6.9,
+ * D189 amended by D294): in `built-bundle` mode the operator's own machine serves
+ * `dist/dashboard` from the same loopback process that serves the API, replacing
+ * the Vite dev server that sat beside it. "Production" here is LOCAL (D193);
+ * nothing about this path is hosting.
+ *
+ * Ported with provenance from the parity lane's `serveStatic`
+ * (tests/parity/helpers/fixture-bff.ts, 2026-09-03) and hardened: the fixture
+ * refused only lexical escape from the dist directory; this handler also
+ * refuses malformed encoding, forbidden characters, dot segments, symlinks
+ * that leave the bundle, non-regular files and unlisted extensions, and it
+ * never answers `application/octet-stream` for a byte it cannot name.
+ *
+ * Decision first, I/O second: `decideStaticBundlePath` is a pure function over
+ * the request path so the whole refusal table is pinned without a socket, and
+ * the handler does exactly what the decision says.
+ */
+import { open, realpath, stat } from "node:fs/promises";
+import { extname, resolve, sep } from "node:path";
+import type { MiddlewareHandler } from "hono";
+import { wireError } from "./routes/failure-status.js";
+
+export interface StaticBundle {
+  /** The realpath of `dist/dashboard`; every served byte resolves strictly inside it. */
+  readonly distRoot: string;
+}
+
+/** Extension → media type. Closed on purpose: an unlisted extension is a 404, never a guessed type. */
+const CONTENT_TYPES: Readonly<Record<string, string>> = Object.freeze({
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".txt": "text/plain; charset=utf-8",
+});
+
+/** Vite content-hashes everything under `assets/`; only those bytes may be cached forever. */
+const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
+const NO_CACHE = "no-cache";
+
+export type StaticBundleRefusal = "malformed-encoding" | "forbidden-character" | "dot-segment" | "outside-bundle";
+
+export type StaticBundleDecision =
+  | Readonly<{ kind: "pass-through" }>
+  | Readonly<{ kind: "refused"; reason: StaticBundleRefusal }>
+  | Readonly<{ kind: "not-found" }>
+  | Readonly<{ kind: "file"; relativeSegments: readonly string[]; contentType: string; cacheControl: string }>
+  | Readonly<{ kind: "spa-fallback" }>;
+
+/**
+ * The lexical half of the decision: what this path MEANS before any filesystem
+ * read. `pass-through` hands the request to the app's own routes and 404
+ * (API, events, other methods); `spa-fallback` serves `index.html` for a
+ * route the browser app owns; `file` names the bundle-relative segments to
+ * open, which the handler then proves stay inside the bundle physically too.
+ */
+export function decideStaticBundlePath(input: Readonly<{ method: string; rawPath: string }>): StaticBundleDecision {
+  const method = input.method.toUpperCase();
+  if (method !== "GET" && method !== "HEAD") return { kind: "pass-through" };
+  if (input.rawPath === "/api" || input.rawPath.startsWith("/api/")
+    || input.rawPath === "/events" || input.rawPath.startsWith("/events/")) {
+    return { kind: "pass-through" };
+  }
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(input.rawPath);
+  } catch {
+    return { kind: "refused", reason: "malformed-encoding" };
+  }
+  if (decoded.includes("\0") || decoded.includes("\\")) return { kind: "refused", reason: "forbidden-character" };
+  if (!decoded.startsWith("/")) return { kind: "refused", reason: "outside-bundle" };
+  const trimmed = decoded.length > 1 && decoded.endsWith("/") ? decoded.slice(0, -1) : decoded;
+  if (trimmed === "/") {
+    return { kind: "file", relativeSegments: ["index.html"], contentType: CONTENT_TYPES[".html"] ?? "", cacheControl: NO_CACHE };
+  }
+  const segments = trimmed.slice(1).split("/");
+  for (const segment of segments) {
+    if (segment === "" ) return { kind: "refused", reason: "outside-bundle" };
+    if (segment === "." || segment === "..") return { kind: "refused", reason: "dot-segment" };
+  }
+  const last = segments[segments.length - 1] ?? "";
+  const extension = extname(last).toLowerCase();
+  const underAssets = segments[0] === "assets";
+  if (extension === "") {
+    // A browser-app route: the SPA owns it. An extension-less name under the
+    // content-hashed assets tree is nothing Vite ever emits.
+    return underAssets ? { kind: "not-found" } : { kind: "spa-fallback" };
+  }
+  const contentType = CONTENT_TYPES[extension];
+  if (contentType === undefined) return { kind: "not-found" };
+  return {
+    kind: "file",
+    relativeSegments: segments,
+    contentType,
+    cacheControl: underAssets ? IMMUTABLE_CACHE : NO_CACHE,
+  };
+}
+
+function insideBundle(distRoot: string, candidate: string): boolean {
+  return candidate === distRoot || candidate.startsWith(distRoot + sep);
+}
+
+/**
+ * Validate `dist/dashboard` BEFORE anything listens: a dashboard that would
+ * answer 404 for its own app must never look started (fail loud, D189).
+ */
+export async function openStaticBundle(distDir: string): Promise<StaticBundle> {
+  let distRoot: string;
+  try {
+    distRoot = await realpath(distDir);
+  } catch (error: unknown) {
+    throw new Error(`the built dashboard is not at ${distDir}; run \`npm run web:build\` first`, { cause: error });
+  }
+  const index = await stat(resolve(distRoot, "index.html")).catch((error: unknown) => {
+    throw new Error(`the built dashboard at ${distRoot} has no index.html; run \`npm run web:build\` first`, { cause: error });
+  });
+  if (!index.isFile()) throw new Error(`the built dashboard's index.html at ${distRoot} is not a regular file`);
+  return Object.freeze({ distRoot });
+}
+
+type Physical =
+  | Readonly<{ kind: "file"; path: string; size: number }>
+  | Readonly<{ kind: "not-found" }>
+  | Readonly<{ kind: "outside-bundle" }>;
+
+/** The physical half: the named bytes must exist, be a regular file, and stay inside the bundle after symlinks resolve. */
+async function locate(bundle: StaticBundle, relativeSegments: readonly string[]): Promise<Physical> {
+  const lexical = resolve(bundle.distRoot, ...relativeSegments);
+  if (!insideBundle(bundle.distRoot, lexical)) return { kind: "outside-bundle" };
+  let real: string;
+  try {
+    real = await realpath(lexical);
+  } catch (error: unknown) {
+    if (isNoEntry(error)) return { kind: "not-found" };
+    throw error;
+  }
+  if (!insideBundle(bundle.distRoot, real)) return { kind: "outside-bundle" };
+  const info = await stat(real);
+  if (!info.isFile()) return { kind: "not-found" };
+  return { kind: "file", path: real, size: info.size };
+}
+
+function isNoEntry(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error
+    && ((error as { code?: unknown }).code === "ENOENT" || (error as { code?: unknown }).code === "ENOTDIR");
+}
+
+async function readAll(path: string): Promise<Uint8Array<ArrayBuffer>> {
+  const handle = await open(path, "r");
+  try {
+    const info = await handle.stat();
+    if (!info.isFile()) throw new Error("static bundle path stopped being a regular file between resolution and read");
+    const bytes = new Uint8Array(new ArrayBuffer(info.size));
+    let offset = 0;
+    while (offset < bytes.byteLength) {
+      const { bytesRead } = await handle.read(bytes, offset, bytes.byteLength - offset, offset);
+      if (bytesRead === 0) throw new Error(`static bundle file ${path} shrank while being read`);
+      offset += bytesRead;
+    }
+    return bytes;
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * The handler, registered LAST in the app so every API/events/artifact route
+ * wins by registration order; `pass-through`, `not-found` and a missing file
+ * all fall to the app's own JSON 404. Refusals are typed wire errors with a
+ * fixed message: the offending path is never echoed.
+ */
+export function staticBundleHandler(bundle: StaticBundle): MiddlewareHandler {
+  return async (context, next) => {
+    const decision = decideStaticBundlePath({ method: context.req.method, rawPath: context.req.path });
+    if (decision.kind === "pass-through" || decision.kind === "not-found") return next();
+    if (decision.kind === "refused") {
+      return context.json(
+        wireError("STATIC_PATH_REFUSED", `the requested path is not a bundle path (${decision.reason})`, false),
+        400,
+      );
+    }
+    const target = decision.kind === "spa-fallback"
+      ? { relativeSegments: ["index.html"], contentType: CONTENT_TYPES[".html"] ?? "", cacheControl: NO_CACHE }
+      : decision;
+    const physical = await locate(bundle, target.relativeSegments);
+    if (physical.kind === "outside-bundle") {
+      return context.json(wireError("STATIC_PATH_REFUSED", "the requested path is not a bundle path (outside-bundle)", false), 400);
+    }
+    if (physical.kind === "not-found") return next();
+    const headers = {
+      "content-type": target.contentType,
+      "content-length": String(physical.size),
+      "cache-control": target.cacheControl,
+      "x-content-type-options": "nosniff",
+    };
+    if (context.req.method.toUpperCase() === "HEAD") return new Response(null, { status: 200, headers });
+    return new Response(await readAll(physical.path), { status: 200, headers });
+  };
+}

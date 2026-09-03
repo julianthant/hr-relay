@@ -56,6 +56,7 @@ import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { OperatorXlsxExportService } from "../exports/operator-xlsx-export-service.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { dashboardEventStreamBody } from "../subscriptions/sse-response.js";
+import { staticBundleHandler, type StaticBundle } from "../static-bundle.js";
 import { DiagnosticBundleBytesMissingError, SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
 import { BulkRunCommandRequestSchema, CommandRequestSchema } from "../../../domain/commands.js";
@@ -113,6 +114,12 @@ export interface DashboardAppDeps {
    * composition root wiring a producer that answers nothing.
    */
   readonly advisory?: AdvisoryQueryDeps;
+  /**
+   * The built dashboard bundle, present only in `built-bundle` mode (ref
+   * frontend-backend-integration §6.9): its handler is registered last so every route
+   * above wins, and it serves `dist/dashboard` from this same loopback process.
+   */
+  readonly staticBundle?: StaticBundle;
 }
 
 export type DashboardApp = Hono<{
@@ -696,6 +703,8 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
       },
     });
   });
+
+  if (deps.staticBundle !== undefined) app.use("*", staticBundleHandler(deps.staticBundle));
 
   app.notFound((c) => c.json(wireError("ROUTE_NOT_FOUND", `no route serves ${c.req.method} ${c.req.path}`, false), 404));
 
