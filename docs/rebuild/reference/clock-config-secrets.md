@@ -599,6 +599,18 @@ production invoker. The guard proves the binding and runner against a seeded fix
 drifted literal, a locally shadowed factory, a non-exported binding, a mention, another function, or
 the wrong argument path each fail by name. An identifier mention is not proof.
 
+**The runner returns the runtime's LIFETIME (2026-09-03).** `runCli` is `async` and awaits
+`startRebuildRuntime`, which the secure environment bootstrap awaits in turn, so a rejection crashes
+the process loudly instead of becoming an unobserved rejection. For `dashboard` that promise settles
+only after the composed runtime stopped: the command awaits the first `SIGINT`/`SIGTERM` through an
+injectable `signals` seam and then calls `composeDashboardRuntime`'s `stop()` exactly once — that
+ordering (HTTP ingress → hub/timers → worker supervisor → graceful-drain backup → database → process
+lock) remains the sole shutdown authority, and this only awaits it. The listeners stay subscribed
+across the stop, so a second Ctrl+C during a drain is absorbed rather than falling through to Node's
+default terminate and abandoning the database handle and the process lock; the disposer runs in
+`finally`. The binding guard therefore accepts `await startRebuildRuntime({ isolation })` as the ONE
+direct call — every other dimension of that proof is unchanged.
+
 ### 4.1 The durable snapshot is versioned by its LEAF SET, not by the migration chain (D133)
 
 <!-- roadmap: p2-proof -->

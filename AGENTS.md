@@ -325,6 +325,20 @@ environment-supplied.
   screenshots, run Capture tiles, receipts, and Archive evidence are separate diagnostic authority
   and remain supported. `dashboard:prod` static serving is still an independent local-dashboard gap.
 
+- **2026-09-03 — a long-lived CLI command must own its shutdown, and the process lock is the
+  proof.** The `dashboard` branch detached `compose(...).then(...)` and discarded `running.stop`, so
+  `composeDashboardRuntime`'s ordering never ran: SIGINT took Node's default terminate and left
+  `.tracker-rebuild/locks/server.lock.json` at `releasedAt: null`, the authority handle abandoned and
+  no graceful-drain backup. `startRebuildRuntime` is now `async` and the branch awaits the
+  composition, then the FIRST SIGINT/SIGTERM through an injectable `signals` seam, then `stop()` —
+  once, awaited, with that ordering still the sole shutdown authority. Keep the listeners subscribed
+  ACROSS the stop so a second Ctrl+C during a drain is absorbed instead of killing the process
+  mid-ordering, and dispose them in `finally`. A rejecting stop propagates; this library never calls
+  `process.exit`. `runCli` returns that promise and the secure bootstrap awaits it. Prove it with a
+  real child (`node --import tsx scripts/secure-env-bootstrap.ts cli dashboard`) asserting exit 0 and
+  a `releasedAt` on the lock record naming THAT pid — an injected composer cannot see whether the
+  production entrypoint registered any handler at all.
+
 - **2026-09-02 — the SSE hub delivers on demand; never push into a stream controller.** A hub
   connection exposes `next()`/`pending`, and `subscriptions/sse-response.ts` drains it from a Web
   Stream `pull()`, so socket backpressure reaches the hub's ONE bounded queue and overflow becomes
