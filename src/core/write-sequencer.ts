@@ -1282,7 +1282,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
    */
   function assertReplayMatchesFreshFacts(
     context: WriteSequencerContext,
-    commitContract: AnyCommitTaskContract,
     stored: RunCheckpointRecord,
     system: BrowserSystemId,
     key: string,
@@ -1769,7 +1768,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
        * refuses by name rather than relabelling an old write as the
        * consequence of new facts. Nothing is fenced or clicked on this path.
        */
-      assertReplayMatchesFreshFacts(context, commitContract, storedCheckpoint, system, key, keyDigest);
+      assertReplayMatchesFreshFacts(context, storedCheckpoint, system, key, keyDigest);
       return replayCheckpoint(context, commitContract, storedCheckpoint);
     }
     refuseRetiredPermanentKeys(commitContract, commitInput, system, key);
