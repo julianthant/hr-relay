@@ -1,10 +1,17 @@
 # R4 brief — dashboard model/jsdom/component tests versus parity and T2
 
+**Coordination UUID:** `f24df892-5171-48f4-97ff-4e91490f8622`
+**Parent coordinator:** task `01a064e2-c3cf-7422-90c7-1dce60d194e5` / host `local`
+**Canonical title:** `Supervisor · test-suite-rationalization · Cf24df892 · R04 · dashboard tests`
+**Profile/workspace:** `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator/docs/coordinator/test-suite-rationalization/project-profile.md` · `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator/docs/coordinator/test-suite-rationalization`
+**Board:** `docs/coordinator/test-suite-rationalization/board.md` — read only; coordinator is sole writer
+**Worktree allowance:** one slot total, consumed by the supervisor worktree; use read-only workers or sequential supervisor-owned implementation
+
 ## Assignment
 
 Invoke `/supervise` and complete units u19–u24 after R1/R6 are integrated. Own dashboard unit/jsdom tests and rationalize them against the already-audited parity lane and scenario T2 contract. This is frontend test work, so route implementation/verification through `/ui`. The board is read-only.
 
-**Run branch:** `feature/test-r4-dashboard` from the coordinator-declared base
+**Run branch:** `feature/test-r4-dashboard` from the coordinator-recorded reservation base; never merge into the coordinator branch
 **Report:** `docs/coordinator/test-suite-rationalization/reports/r4-dashboard.md`
 **Writable evidence:** `docs/coordinator/test-suite-rationalization/artifacts/r4/u19-inventory.md` through `u24-review.md`
 

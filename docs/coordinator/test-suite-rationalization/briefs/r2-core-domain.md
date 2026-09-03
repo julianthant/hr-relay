@@ -1,10 +1,17 @@
 # R2 brief — core/domain/workflow/write/storage unit tests
 
+**Coordination UUID:** `f24df892-5171-48f4-97ff-4e91490f8622`
+**Parent coordinator:** task `01a064e2-c3cf-7422-90c7-1dce60d194e5` / host `local`
+**Canonical title:** `Supervisor · test-suite-rationalization · Cf24df892 · R02 · core-domain units`
+**Profile/workspace:** `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator/docs/coordinator/test-suite-rationalization/project-profile.md` · `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator/docs/coordinator/test-suite-rationalization`
+**Board:** `docs/coordinator/test-suite-rationalization/board.md` — read only; coordinator is sole writer
+**Worktree allowance:** one slot total, consumed by the supervisor worktree; use read-only workers or sequential supervisor-owned implementation
+
 ## Assignment
 
 Invoke `/supervise` and complete units u07–u12 after R1 and R6 are integrated. Own every ordinary unit test whose primary subject is base/domain/core/workflow/write/storage/event behavior, regardless of its current filename location. The board is read-only.
 
-**Run branch:** `feature/test-r2-core-domain` from the coordinator-declared post-R1/R6 base
+**Run branch:** `feature/test-r2-core-domain` from the coordinator-recorded reservation base; never merge into the coordinator branch
 **Report:** `docs/coordinator/test-suite-rationalization/reports/r2-core-domain.md`
 **Writable evidence:** `docs/coordinator/test-suite-rationalization/artifacts/r2/u07-domain.md` through `u12-review.md`
 

@@ -35,10 +35,10 @@
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
 | u01–u06 | R1 | closed | merged `--no-ff` as `81e6f3c3`; run worktree and branch removed; exact task `01a0645c-1e13-7581-8a20-67314a86e195` archived | integrated continuation gate at `37c080bc`: type/lint/70-file architecture/manifest/roadmap/diff PASS | complete | Self-contained architecture/static work retained on the integration line |
-| u07–u12 | R2 | planned | — | — | required | Core/domain/workflow/write/storage units |
+| u07–u12 | R2 | reserved | — | — | required | Wave 2A supervisor slot reserved; core/domain/workflow/write/storage units |
 | u13, u14, u16 | R3a | planned | — | — | required | Wave 2 server/BFF/runtime and real-port hermeticity |
 | u15, u17, u18 | R3b | planned | — | — | required | Post-Wave-2 worker/consolidation/review |
-| u19–u24 | R4 | planned | — | — | required | Dashboard model/jsdom/component layer |
+| u19–u24 | R4 | reserved | — | — | required | Wave 2A supervisor slot reserved; dashboard model/jsdom/component layer |
 | u25, u26, u29 | R5a | planned | — | — | required | Wave 2 scenario inventory, T1, T1b authority |
 | u27, u28, u30 | R5b | planned | — | — | required | Post-Wave-2 walks, dashboard scenarios, layout/review |
 | u31–u36 | R6 | closed | merged `--no-ff` as `9d87f512`; run worktree and branch removed; exact task `01a0645c-1e18-7d70-9dfc-c7fb53fa0b66` archived | integrated continuation gate at `37c080bc`: parity 281/281 in 59.9s; coverage 394 files/4,886 tests in 169.38s | complete, 0 open findings | Removed one duplicate 6-case/18-reference-file parity family with durable equivalence and negative-control evidence; accepted recommendations remain R7 inputs |

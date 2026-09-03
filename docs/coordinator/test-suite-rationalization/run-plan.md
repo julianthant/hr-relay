@@ -2,15 +2,15 @@
 
 **Coordination UUID:** `f24df892-5171-48f4-97ff-4e91490f8622` (`Cf24df892`)
 **Coordinator:** task `01a064e2-c3cf-7422-90c7-1dce60d194e5` / host `local` (continued from `01a064c1-e4ef-7bc0-bcd7-0329b5dfd357`); checkout `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator`
-**Current integration base:** `0d858495` on `feature/test-suite-rationalization`
+**Current integration base:** `b80201a6` on `feature/test-suite-rationalization`
 **Current capacity:** two supervisor worktrees while the unrelated Phase 3c worktree and this coordinator checkout occupy the other two auxiliary slots
 
 | Run | Theme | Units | Worker roles | Base | Integration order | Parallel-ready | Needs first | Exit evidence |
 |---|---|---|---|---|---:|---|---|---|
 | R1 | Architecture guards and static/type/lint gates | u01–u06 | Scout/Analyst/Terra | kickoff commit | 1 | yes, Wave 1 with R6 | — | self-contained architecture gate, correct static project wiring, evidence/report |
 | R6 | Playwright parity, performance, smoke, Duo, generated checks | u31–u36 | Scout/Analyst/Terra | kickoff commit | 2 | yes, Wave 1 with R1 | — | parity/check-family inventory, retained-risk evidence, focused gates/report |
-| R2 | Core/domain/workflow/write/storage unit tests | u07–u12 | Scout/Analyst/Terra | `37c080bc` | 3 | yes, Wave 2A with R4 | R1, R6 | audited non-server/non-dashboard unit family, focused and full-family gates/report |
-| R4 | Dashboard model/jsdom/component tests versus parity/T2 | u19–u24 | Scout/Analyst/Terra | `37c080bc` | 4 | yes, Wave 2A with R2 | R1, R6 | jsdom/pure-model split, overlap evidence, focused gates/report |
+| R2 | Core/domain/workflow/write/storage unit tests | u07–u12 | Scout/Analyst/Terra | reservation commit (record exact SHA before launch) | 3 | yes, Wave 2A with R4 | R1, R6 cleared at `37c080bc` | audited non-server/non-dashboard unit family, focused and full-family gates/report |
+| R4 | Dashboard model/jsdom/component tests versus parity/T2 | u19–u24 | Scout/Analyst/Terra | reservation commit (record exact SHA before launch) | 4 | yes, Wave 2A with R2 | R1, R6 cleared at `37c080bc` | jsdom/pure-model split, overlap evidence, focused gates/report |
 | R3a | Server/BFF/runtime tests and real-port hermeticity | u13, u14, u16 | Scout/Analyst/Terra | latest integrated R2+R4 base | 5 | yes, Wave 2B with R5a | R1, R6, R2, R4 integration | active-port reproduction/repair, isolated runtime evidence, focused gates/report |
 | R5a | Scenario inventory, T1 structure, and T1b authority | u25, u26, u29 | Scout/Analyst/Terra | latest integrated R2+R4 base | 6 | yes, Wave 2B with R3a | R1, R6, R2, R4 integration | complete scenario inventory, T1/T1b truth, focused gates/report |
 | R3b | Worker/session tests plus server-family consolidation/review | u15, u17, u18 | Scout/Analyst/Terra | after R2+R4+R3a | 7 | yes, Wave 3 with R5b | R2, R4, R3a | worker/lease audit, cross-layer consolidation, active-port full gate/report |
@@ -23,8 +23,8 @@
 |---|---|---|---|---|---|---|---|---|
 | R1 | setup `client-new-thread:81effb1a-9f30-41f9-bbab-20f5426d6661` → reconciled exact task `01a0645c-1e13-7581-8a20-67314a86e195` from unique project/title/prompt/worktree/session match | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `R1 — architecture and static gates` / 2026-09-02 16:01 PDT | removed `/Users/julianhein/.codex/worktrees/eb84/hr-automation-rebuild`; deleted `feature/test-r1-architecture-static`; merged as `81e6f3c3` | `reports/r1-architecture-static.md` | closed; exact task archived | final received |
 | R6 | setup `client-new-thread:038fb57d-1f1e-48f2-a16a-fb4f27dc896a` → reconciled exact task `01a0645c-1e18-7d70-9dfc-c7fb53fa0b66` from unique project/title/prompt/worktree/session match | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `R6 — parity performance and generated checks` / 2026-09-02 16:01 PDT | removed `/Users/julianhein/.codex/worktrees/b4ef/hr-automation-rebuild`; deleted `feature/test-r6-parity-checks`; merged as `9d87f512` | `reports/r6-parity-checks.md` | closed; exact task archived | final received |
-| R2 | — | — | — | — | `feature/test-r2-core-domain` | `reports/r2-core-domain.md` | planned | none |
-| R4 | — | — | — | — | `feature/test-r4-dashboard` | `reports/r4-dashboard.md` | planned | none |
+| R2 | pending dispatch | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Supervisor · test-suite-rationalization · Cf24df892 · R02 · core-domain units` / reserved 2026-09-02 | managed path pending · `feature/test-r2-core-domain` · allowance 1 | `reports/r2-core-domain.md` · focused family + type/lint/architecture/generated/diff gates | reserved | none |
+| R4 | pending dispatch | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Supervisor · test-suite-rationalization · Cf24df892 · R04 · dashboard tests` / reserved 2026-09-02 | managed path pending · `feature/test-r4-dashboard` · allowance 1 | `reports/r4-dashboard.md` · dashboard/T2/parity + type/lint/architecture/generated/diff gates | reserved | none |
 | R3a | — | — | — | — | `feature/test-r3a-server-runtime` | `reports/r3a-server-runtime.md` | planned | none |
 | R5a | — | — | — | — | `feature/test-r5a-scenario-authority` | `reports/r5a-scenario-authority.md` | planned | none |
 | R3b | — | — | — | — | `feature/test-r3b-worker-review` | `reports/r3b-worker-review.md` | planned | none |
