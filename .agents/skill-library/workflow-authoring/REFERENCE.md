@@ -15,8 +15,8 @@
    guide §2. "Similar" is not permission to copy a task; a read task's identity is a page visit.
 3. **Know your artifacts.** A reuse-only workflow authors exactly four files (`workflow.ts`,
    `structural.scenario.test.ts`, `dry-run.scenario.ts`, `docs/migrations/<id>.md`) plus the two
-   registration lines and `npm run build:manifest` — guide §3. The T1b loader/resolver/registry-arm
-   entries are the separate documented registration surface in the same section.
+   registration edits (five lines across the two registry files) and `npm run build:manifest` — guide §3. The T1b loader/resolver/registry-arm
+   entries, the cited `GENERIC_WORKFLOW_ID_ALLOWLIST` / `ARTIFACT_EXEMPTIONS` lists and a harness's smaller budget are the separate documented surfaces in guide §3 and §6.4.
 4. **Write `workflow.ts`.** One `defineWorkflow` call: identity/presentation, typed input/result,
    and `steps` as `[group, entries[]]` tuples — guide §4 (API and refusal messages), §5 (the minimal
    reuse-only example), §6 (step identities via `defineWorkflowStep` + `defineStepEntries`,

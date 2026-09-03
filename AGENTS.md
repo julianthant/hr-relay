@@ -82,6 +82,9 @@ npm run web               # the vite dev server alone, proxying /api to a BFF yo
 npm run web:build         # production bundle into dist/dashboard (test:parity builds this itself)
 
 npm run build:manifest     # regenerate src/domain/workflow/generated-build-manifest.ts
+npm run build:manifest:check # fail if the committed manifest is stale
+npm run stores:catalog     # regenerate the generated §2 task catalog in docs/rebuild/reference/stores.md
+npm run stores:catalog:check # fail if the committed catalog is stale
 npm run roadmap            # render docs/roadmap/index.html from docs/roadmap/roadmap.md (the plan, in the roadmap notation)
 npm run roadmap:check      # fail if the committed site is stale
 ```
@@ -409,7 +412,7 @@ environment-supplied.
   `task | parallel | delegate | gate | transaction` algebra, and typed references (never tuple
   order) are the execution edges. A workflow reusing existing tasks/surfaces authors exactly
   `workflow.ts` + structural scenario + dry-run declaration + migration doc, plus the two
-  registration lines and `npm run build:manifest`. Nothing else sits beside a `workflow.ts` (no
+  registration edits in the two registry files and `npm run build:manifest`. Nothing else sits beside a `workflow.ts` (no
   `descriptor.ts`/`module.ts`/`nodes.ts`/`step.ts`/`node-ids.ts`/`omission.ts`), a step folder
   exists only when it carries a chunk harness, and there is no other authoring path and no advanced
   escape hatch (guards `workflow-layout`, `workflow-authoring-budget`). Declare an omission as
