@@ -38,7 +38,7 @@
 | u07–u12 | R2 | active | task `01a064e5-e38c-7e31-9f3c-90d108a186cd`; worktree `/Users/julianhein/.codex/worktrees/0b41/hr-automation-rebuild` | exact-base detached-start repair authorized before writes | required | Core/domain/workflow/write/storage units |
 | u13, u14, u16 | R3a | planned | — | — | required | Wave 2 server/BFF/runtime and real-port hermeticity |
 | u15, u17, u18 | R3b | planned | — | — | required | Post-Wave-2 worker/consolidation/review |
-| u19–u24 | R4 | reserved | — | — | required | Wave 2A supervisor slot reserved; dashboard model/jsdom/component layer |
+| u19–u24 | R4 | active | task `01a064e5-e38c-7e31-9f3c-90b4c4c41b6f`; worktree `/Users/julianhein/.codex/worktrees/c24a/hr-automation-rebuild` | exact base/branch binding verified | required | Dashboard model/jsdom/component layer |
 | u25, u26, u29 | R5a | planned | — | — | required | Wave 2 scenario inventory, T1, T1b authority |
 | u27, u28, u30 | R5b | planned | — | — | required | Post-Wave-2 walks, dashboard scenarios, layout/review |
 | u31–u36 | R6 | closed | merged `--no-ff` as `9d87f512`; run worktree and branch removed; exact task `01a0645c-1e18-7d70-9dfc-c7fb53fa0b66` archived | integrated continuation gate at `37c080bc`: parity 281/281 in 59.9s; coverage 394 files/4,886 tests in 169.38s | complete, 0 open findings | Removed one duplicate 6-case/18-reference-file parity family with durable equivalence and negative-control evidence; accepted recommendations remain R7 inputs |
