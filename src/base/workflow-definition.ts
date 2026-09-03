@@ -53,7 +53,7 @@ import type {
 import type { RetryPolicy } from "../domain/session.js";
 import type { RegisteredTaskStore } from "./store.js";
 import { flow } from "./flow.js";
-import type { AnyNodeEntry, BuiltFlow, OperatorGateNodeFragment } from "./flow.js";
+import type { AnyNodeEntry, BuiltFlow } from "./flow.js";
 import { defineWorkflowDescriptor } from "./workflow.js";
 import type {
   AnyWorkflowDescriptor,
@@ -209,9 +209,7 @@ export type DelegateEntryOutput<
     ? ChildRunOutcome<Target>
     : readonly ChildRunOutcome<Target>[];
 
-type GateConditional<Identity> = Identity extends OperatorGateNodeFragment<string, string, z.ZodType, infer C>
-  ? C
-  : HasWhen<Identity>;
+type GateConditional<Identity> = HasWhen<Identity>;
 
 /* ── runtime entry shapes (compiler-private) ─────────────────────────────── */
 
