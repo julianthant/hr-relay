@@ -119,6 +119,7 @@ export const START_PLAN = {
 export const WORKER_START_REQUEST = {
   workerId: WORKER_ID,
   workflow: WORKFLOW_ID,
+  browserSystems: ["crm", "ucpath"],
   processId: 4242,
   requestedBy: "local-operator",
   now: NOW,

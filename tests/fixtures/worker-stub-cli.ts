@@ -62,6 +62,8 @@ const database = AuthorityDatabase.open(
 const started = database.authority.workerLeases.start({
   workerId,
   workflow: workflowId,
+  // This supervision-only stub loads no workflow descriptor and opens no browser.
+  browserSystems: [],
   processId: process.pid,
   requestedBy: "local-operator",
   now: systemClock.now().toISOString(),

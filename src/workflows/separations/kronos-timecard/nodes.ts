@@ -17,7 +17,6 @@ import { NewKronosReadSeparationTimecard } from "../../../domain/contracts/new-k
 import { NewKronosSearchEmployee } from "../../../domain/contracts/new-kronos/search-employee.js";
 import { SeparationsReadSeparationDates } from "../../../domain/contracts/separations/read-separation-dates.js";
 import { KRONOS_TIMECARD_STEP } from "./step.js";
-import { KRONOS_TIMECARD_OMISSION } from "./omission.js";
 
 
 const nodes = defineWorkflowStepNodeFactory(KRONOS_TIMECARD_STEP);
@@ -57,10 +56,4 @@ export const datesNode = nodes.task(DATES_NODE, SeparationsReadSeparationDates, 
   replay: "checkpoint",
 });
 
-/** The step's timeline category — key and label from `step.ts`, nodes from the fragments above. */
-export const KRONOS_TIMECARD_STEP_NODES = nodes.category([
-  timecardSearchNode,
-  timecardNode,
-  datesNode,
-], { omission: KRONOS_TIMECARD_OMISSION });
 export { TIMECARD_SEARCH_NODE, TIMECARD_NODE, DATES_NODE } from "./node-ids.js";

@@ -312,6 +312,51 @@ export type WorkerSessionMembership =
   | Readonly<{ state: "absent"; reason: string }>
   | Readonly<{ state: "not-served"; runId: Extract<WorkerCardWire["currentRun"], { readonly state: "present" }>["runId"] }>;
 
+export type WorkerBrowserSlot =
+  | Readonly<{ state: "open"; browser: WorkerCardWire["browsers"][number] }>
+  | Readonly<{ state: "required"; system: WorkerCardWire["browsers"][number]["system"] }>;
+
+/**
+ * Stable browser slots for one live worker. Descriptor requirements establish
+ * the order before acquisition; observed sessions replace their matching slot
+ * without being re-labelled as merely planned. Any observed extra is retained
+ * after the requirements so the panel never hides a browser it actually saw.
+ */
+export function workerBrowserView(card: WorkerCardWire): Readonly<{
+  slots: readonly WorkerBrowserSlot[];
+  unavailableReason?: string;
+}> {
+  if (card.state === "stopped" || card.state === "failed") return { slots: [] };
+  const open = [...card.browsers];
+  const requirements = card.browserRequirements;
+  if (requirements === undefined) {
+    return {
+      slots: open.map((browser) => ({ state: "open" as const, browser })),
+      unavailableReason: "Browser requirements were not served by this dashboard snapshot",
+    };
+  }
+  if (requirements.state === "unavailable") {
+    return {
+      slots: open.map((browser) => ({ state: "open" as const, browser })),
+      unavailableReason: requirements.reason,
+    };
+  }
+
+  const consumed = new Set<number>();
+  const slots: WorkerBrowserSlot[] = requirements.systems.map((system) => {
+    const index = open.findIndex((browser, candidate) => !consumed.has(candidate) && browser.system === system);
+    if (index === -1) return { state: "required", system };
+    consumed.add(index);
+    const browser = open[index];
+    if (browser === undefined) throw new Error(`browser requirement ${system} resolved to a missing observed session`);
+    return { state: "open", browser };
+  });
+  open.forEach((browser, index) => {
+    if (!consumed.has(index)) slots.push({ state: "open", browser });
+  });
+  return { slots };
+}
+
 /**
  * A pool's desired count is an operator declaration; worker cards are the
  * authority facts about workers this snapshot actually serves. `activeWorkers`

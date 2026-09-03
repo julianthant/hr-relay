@@ -35,6 +35,7 @@ function leaseOf(overrides: Readonly<Record<string, unknown>> = {}): ReturnType<
   return WorkerLeaseRecordSchema.parse({
     workerId: "person-lookup-worker-1",
     workflow: "person-lookup",
+    browserSystems: ["ucpath"],
     processId: 1234,
     leaseGeneration: 1,
     lifecycle: { state: "idle", startedAt: STARTED, heartbeatAt: "2026-08-20T16:00:30.000Z" },
@@ -47,8 +48,29 @@ function leaseOf(overrides: Readonly<Record<string, unknown>> = {}): ReturnType<
 }
 
 const NO_TRACE = (): undefined => undefined;
-
 describe("the card the projector composes from a lease (D248)", () => {
+  it("accepts the descriptor browser systems the worker persisted at launch", () => {
+    const parsed = WorkerLeaseRecordSchema.safeParse({
+      ...leaseOf(),
+      browserSystems: ["kuali", "ucpath"],
+    });
+
+    assert.equal(parsed.success, true);
+  });
+
+  it("names launch-time requirements as unavailable for a historical lease", () => {
+    const card = workerCardOf({
+      lease: leaseOf({ browserSystems: undefined }),
+      fold: undefined,
+      resolveTrace: NO_TRACE,
+    });
+
+    assert.deepEqual(card.browserRequirements, {
+      state: "unavailable",
+      reason: "worker person-lookup-worker-1 lease predates launch-time browser requirements",
+    });
+  });
+
   it("reads identity, phase, directive and the CAS basis off the lease", () => {
     const card = workerCardOf({
       lease: leaseOf({
@@ -118,7 +140,10 @@ describe("the card the projector composes from a lease (D248)", () => {
 
   it("calls a lease that has taken its generation and reported nothing `starting`", () => {
     const card = workerCardOf({
-      lease: leaseOf({ lifecycle: { state: "starting", startedAt: STARTED } }),
+      lease: leaseOf({
+        lifecycle: { state: "starting", startedAt: STARTED },
+        browserSystems: ["ucpath", "crm"],
+      }),
       fold: undefined,
       resolveTrace: NO_TRACE,
     });
@@ -126,6 +151,11 @@ describe("the card the projector composes from a lease (D248)", () => {
     // is not idle, and calling it idle misreads capacity.
     assert.equal(card.state, "starting");
     assert.deepEqual(card.currentRun, { state: "absent", reason: "no claimed run" });
+    assert.deepEqual(Reflect.get(card, "browserRequirements"), {
+      state: "present",
+      systems: ["ucpath", "crm"],
+    });
+    assert.deepEqual(card.browsers, [], "a required browser is not reported as open before its span starts");
   });
 });
 
@@ -156,7 +186,11 @@ describe("the browser span path is read, never guessed (D248)", () => {
 });
 
 describe("the words the card carries (D249)", () => {
-  const live = workerCardOf({ lease: leaseOf(), fold: undefined, resolveTrace: NO_TRACE });
+  const live = workerCardOf({
+    lease: leaseOf(),
+    fold: undefined,
+    resolveTrace: NO_TRACE,
+  });
 
   it("states a standing directive beside the state word, never as it", () => {
     assert.equal(workerDirectiveNote(live), undefined);

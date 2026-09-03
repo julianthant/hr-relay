@@ -46,8 +46,9 @@ saw. The decisions live in `reference/decisions.md`.
 - [ ] step 5 controlled commits — all three OPEN. 4537 is gone (§9.33); operator-named 4589 reached a historical green preview with exact-run 0/0/0 (§9.34). D309 removes unsupported separate approvals from the blocker set; current execution remains blocked by permanent sweep-key reuse and the deleted-receipt contradiction (§§9.35–9.36). Resolve the protocol decision, implement at the approved test seams, then obtain fresh admission/rehearsal and explicit operational authorization for the eventual live run. No controlled write has run
 - [ ] step 6 rebuild-ready — blocked by step 5; the open exit criterion is the only one of nine
 - [ ] step 7 close-out — regression scenarios, knowledge records, capability dispositions, docs to as-built (Track A row A8)
-- [x] D311 plan reconciliation — the authoring problem, tuple recipe, compiler boundary, Explorer projection, generic-dashboard rule and test reduction are recorded in their owning docs and roadmap
-- [ ] D311 acceptance conversion — separations proves the recipe/compiler's complete shape without changing any step-5 write obligation; owned by doc 03c `{#workflow-authoring-model}` and not a claim that controlled writes are complete
+- [x] D311/D317 plan reconciliation — the authoring problem, tuple workflow definition, compiler boundary, Explorer projection, generic-dashboard rule and test reduction are recorded in their owning docs and roadmap
+- [x] D311 bounded conversion — Separations now reaches its existing descriptor/module and generic projections through the transitional compiler (`d4204106`, integrated by `a40276b6`) with equivalence green
+- [ ] D312–D317 final acceptance conversion — replace transitional recipe/fragment authoring with final `workflow.ts` and direct entries, implement D313/D314, delete redundant authoring files and prove the four-artifact/guide/T1 exit; owned by doc 03c `{#workflow-authoring-model}` and not a claim that controlled writes are complete
 > 2026-08-20 | docs-cohesion 03b | verified against src/workflows/separations/**, src/stores/{kuali,ucpath,new-kronos,separations}/**, config/pending-impl-bindings.json and the §9.x record; left: the three commits and everything only they discharge
 > 2026-08-27 | R2a u28 close | doc 4568 registered `819ff38f`, doc 03b row `6a876627`, composed dry run refused at `timecard` `1622afcf`, this close `26ee2e1a` + this commit; no controlled commit ran; step 5 stays OPEN — all three; R3 carries the WFD range-field clear fix (§9.29 item 11)
 > 2026-08-28 | R2 u1r D284 built | registry `936fabc0` (ONE subject `finalization-canary` / doc 4537, an arm per workflow, the finalization arm `pending` until ②), both T1b manifests, the both-directions guard and doc 03b `b511bdfc`, `ref guards-and-tests` §10.4/§10.5 `b0cb2593`, `docs/migrations/separations.md` §9.31 `0dd3d260`, review fixes `b1acd712`/`58665183`; 4537 re-read read-only 2026-08-28 (§9.31); no rehearsal, gate, worker or write ran; left: the three controlled commits
@@ -74,7 +75,7 @@ a claim that the proof is cheaper. Every workflow still owes doc 03c's exit crit
 separations included.
 
 **What the entry actually bought, measured against the code at HEAD.** Four stores now carry real
-tasks that later migrations reuse: `kuali` 10 tasks, `ucpath` 10, `new-kronos` 2 (the store built
+tasks that later migrations reuse: `kuali` 6 tasks, `ucpath` 12, `new-kronos` 2 (the store built
 whole here), and the pure `separations` mini-store 9 folds. The conventions those stores settled —
 D194's one-task-per-page-visit rich-extraction rule, D196's five rules for every store slice after
 `new-kronos`, D197's five more for a store being CUSTOMIZED, D201's read-reports-the-page /
@@ -937,8 +938,8 @@ harness seeds the Kuali finalization step's T1 pair (§The workflow tree, above)
 **Also settled, recorded so nobody re-opens them:** the Activity hours-saved tile is DROPPED (D239),
 archive tabs and export are closed by D223/D240, and `span.patched` is RETIRED (D254).
 
-**D311 does not reopen the workflow.** Separations is the completeness acceptance case for the new
-recipe/compiler seam because it already exercises grouped timeline steps, rich reads, computed
+**D311/D317 do not reopen the workflow.** Separations is the completeness acceptance case for the new
+workflow/compiler seam because it already exercises grouped timeline steps, rich reads, computed
 facts, a conditional identity gate, D307 omissions and three transactions. Its conversion must
 preserve the existing run modal, graph, screenshots, semantic logs, gates, receipts, write safety
 and durable bytes. The conversion belongs to doc 03c's workflow-authoring-model node and neither
@@ -963,15 +964,26 @@ D311 closes the design/plan part of that problem:
 - generic archive, activity, notifications and other existing surfaces require no per-workflow
   wiring or duplicate T2/T3 proof;
 - a new workflow authors selectors/driver operations only for genuinely new browser behavior,
-  authors or reuses typed tasks, supplies the recipe, and proves its own T1/live behavior;
-- a fix to workflow grouping or run options changes the recipe once; a selector fix changes the
+  authors or reuses typed tasks, supplies `workflow.ts`, and proves its own T1/live behavior;
+- a fix to workflow grouping or run options changes `workflow.ts` once; a selector fix changes the
   system driver once; a generic dashboard fix changes the shared surface once.
 
 This documentation reconciliation is complete and is recorded as D311 in the owner docs and
-roadmap. The implementation is intentionally not marked complete: doc 03c
-`{#workflow-authoring-model}` owns the compiler plus person-lookup/separations equivalence
-conversions. Likewise Phase 3b remains **8 of 9** until criterion 5's controlled-write evidence is
-either produced or explicitly superseded by a separate operator decision; D311 does neither.
+roadmap. The bounded compiler conversion is also integrated: `d4204106` routes Separations through
+the transitional compiler and `a40276b6` brings its equivalence/conformance proof onto the Phase 3c
+integration branch. It is intentionally not the final acceptance: doc 03c
+`{#workflow-authoring-model}` still owns D312–D317's final API/direct entries, D313 omission, D314
+recovery, four-artifact deletion, guide and T1 proof. Likewise Phase 3b remains **8 of 9** until
+criterion 5's controlled-write evidence is either produced or explicitly superseded by a separate
+operator decision; the compiler work does neither.
+
+**D312–D316 sharpen that handoff without reopening Phase 3b.** Separations must prove the exact
+four-artifact reuse-only budget and the explicit task/parallel/delegate/gate/transaction workflow
+algebra. Its run modal must collect the complete values for a whole-step omission before start, with
+no mid-run prompt, while any separate mandatory verifier remains selected. Its failed runs expose
+checkpoint resume and root restart; root restart reruns reads/computations but validates and reuses
+completed write proof without another prepare/commit. These are Phase 3c implementation obligations.
+They neither supply nor waive Phase 3b criterion 5's controlled-write evidence.
 
 ## Decisions this phase ratified
 
@@ -1005,7 +1017,7 @@ and the normative pointer stay in the ledger; this is the phase index.
 | 112 | 2026-09-01 | D300 | **the canary is ONE document number in `.env`** — a single closed reference replaces D286's three person-value secrets; the composed chain derives every person fact live; the standalone finalization harness blocks by name |
 | 113 | 2026-09-01 | D307 | **any timeline step is pickable; an omitted step's browser reads are replaced by operator-typed facts** — slice one declares omissions for Kronos timecard, UCPath transaction and Kuali finalization; gates and transactions are never substituted; identity check/Kuali extraction/Job summary stay required pending an authority design that preserves source and read-back proof |
 | 119 | 2026-09-02 | D309 | **an independently supplied EID proceeds only after exact UCPath read-back machine verification; a name-resolved EID always uses the real operator gate** — the shared authority task dominates both sinks, and the supplied arm creates no human decision |
-| 121 | 2026-09-02 | D311 | **separations is the completeness acceptance workflow for the tuple recipe/compiler** — behavior-preserving conversion only; its open controlled-write proof remains exactly where it was |
+| 121/123 | 2026-09-02 | D311/D317 | **separations is the completeness acceptance workflow for the tuple workflow/compiler** — behavior-preserving conversion only; its open controlled-write proof remains exactly where it was |
 
 **Ratified elsewhere, load-bearing here.** D77's human gate remains the name-resolved arm under
 D309–D310; D222, D223, D225 and D230–D242 (phase 3a) are the dashboard defaults the wire squares fill;
@@ -1042,10 +1054,12 @@ rides with them for the reason §9.17 item 4 established: a preview has no fence
 The second migration is entitled to assume all of the following, none of which depends on criterion
 5. This is the reuse D193 bought.
 
-1. **The store task libraries exist.** `kuali` (10 tasks), `ucpath` (12), `new-kronos` (2, built
+1. **The store task libraries exist.** `kuali` (6 tasks), `ucpath` (12), `new-kronos` (2, built
    whole), and the pure `separations` mini-store (9 folds) — with D194/D196/D197's conventions
-   settled and ref stores regenerated. A later migration adds tasks to a store that already has a
-   driver, a login recipe, a published UI registry and live-verified selectors.
+   settled. Ref stores is now a stale derived prose view; 3c-A refreshes it into the required
+   capability/effect/input/output discovery surface before another workflow authors tasks. A later
+   migration adds tasks to a store that already has a driver, a login recipe, a published UI
+   registry and live-verified selectors.
 2. **The identity-authority seam is built and proved live**: D309 adds supplied-EID machine verification; the name-only gate retains its server-computed ceremonies (D226), its
    packet binding every value the approval authorizes (D211), its durable record readable as
    dependency evidence by both the kernel and the receipt (D203/D204), and its guard auditing both
@@ -1056,7 +1070,7 @@ The second migration is entitled to assume all of the following, none of which d
 4. **The generic dashboard behavior is proved end to end.** Nine squares, filled by declarations on
    the descriptor plus one entry table for the ledger, with the connection proved against a real run
    and each UI claim paired to authority. Under D311 this becomes the completeness fixture for the
-   recipe compiler and generic projection, not a table every later workflow copies.
+   workflow compiler and generic projection, not a table every later workflow copies.
 5. **The platform corrections a composed, gated, multi-process workflow forces have all landed** —
    the cross-process projector, the item-scoped retry attempt, the claim generation in the checkpoint
    key, the probing dry run, the module roles, and the Duo counter. A second migration should not

@@ -86,7 +86,12 @@ function cardAt(poolIndex: number): WorkerCardWire {
   if (live === undefined) throw new Error("the wire fixture needs one non-terminal worker card");
   const parsed = DashboardDayWireSchema.parse({
     ...FIXTURE_DAY_WIRE,
-    workerCards: [{ ...live, workerId: `${WORKFLOW_ID}-worker-${String(poolIndex)}`, workflowId: WORKFLOW_ID }],
+    workerCards: [{
+      ...live,
+      workerId: `${WORKFLOW_ID}-worker-${String(poolIndex)}`,
+      workflowId: WORKFLOW_ID,
+      browserRequirements: { state: "present", systems: ["ucpath", "crm", "kuali"] },
+    }],
     workerPools: [],
   }).workerCards[0];
   if (parsed === undefined) throw new Error("the parsed day wire dropped its only worker card");
@@ -277,6 +282,25 @@ describe("the worker id is reachable without a mouse", () => {
     const popover = document.body.querySelector("[role='dialog']");
     assert.ok(popover, "the identity control opened no popover");
     assert.match(popover.textContent ?? "", /person-lookup-worker-1/u);
+  });
+});
+
+describe("browser requirements are visible before acquisition", () => {
+  it("shows every required system without reporting an unopened browser as open", async () => {
+    const panel = await mountPanel();
+
+    await panel.press("Close");
+    const bar = panel.buttons().find((button) => (button.textContent ?? "").startsWith("Sessions"));
+    assert.ok(bar, "the Session Panel rendered no bar toggle");
+    await act(async () => {
+      bar.click();
+    });
+
+    const card = document.body.querySelector("article[title='Worker person-lookup-worker-1']");
+    assert.ok(card, "the Session Panel rendered no card for worker 1");
+    assert.match(card.textContent ?? "", /KUALI/u, "the unopened required Kuali browser is missing");
+    assert.match(card.textContent ?? "", /Opens when needed/u);
+    assert.doesNotMatch(card.textContent ?? "", /KUALI browser session/u);
   });
 });
 

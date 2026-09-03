@@ -516,8 +516,8 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
   /**
    * D248 — five cards, chosen so the corpus photographs every arm the wire can
    * reach: a busy worker holding two sessions, an idle one holding an odd
-   * single tile (it spans both columns), a `starting` daemon that has opened
-   * nothing yet, a worker whose process DIED (`crashed`, which is what the
+   * single observed tile beside its unopened requirement, a `starting` daemon
+   * whose two required browser slots have opened nothing yet, a worker whose process DIED (`crashed`, which is what the
    * attention chip counts), and a live worker carrying a standing `pause`
    * directive beside a state word that is still `idle`.
    */
@@ -530,6 +530,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
       directive: "run",
       startedAt: at(12),
       currentRun: { state: "present", runId: uuidOf(2), traceId: traceOf(2) },
+      browserRequirements: { state: "present", systems: ["crm", "ucpath"] },
       browsers: [
         { sessionId: uuidOf(901), system: "ucpath", openedAt: at(13) },
         { sessionId: uuidOf(902), system: "crm", openedAt: at(21) },
@@ -544,6 +545,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
       directive: "run",
       startedAt: at(9),
       currentRun: { state: "absent", reason: "no claimable work at this priority" },
+      browserRequirements: { state: "present", systems: ["crm", "ucpath"] },
       browsers: [{ sessionId: uuidOf(903), system: "ucpath", openedAt: at(10) }],
       leaseVersion: 9,
       revision: 1,
@@ -555,6 +557,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
       directive: "run",
       startedAt: at(46),
       currentRun: { state: "absent", reason: "no claimed run" },
+      browserRequirements: { state: "present", systems: ["crm", "ucpath"] },
       browsers: [],
       leaseVersion: 1,
       revision: 1,
@@ -568,6 +571,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
       endedAt: at(33),
       stopReason: "crashed",
       currentRun: { state: "absent", reason: "worker stopped" },
+      browserRequirements: { state: "present", systems: ["crm", "ucpath"] },
       browsers: [],
       leaseVersion: 6,
       revision: 3,
@@ -579,6 +583,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
       directive: "pause",
       startedAt: at(2),
       currentRun: { state: "absent", reason: "no claimable work at this priority" },
+      browserRequirements: { state: "present", systems: ["crm", "ucpath"] },
       browsers: [],
       leaseVersion: 4,
       revision: 1,

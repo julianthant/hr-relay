@@ -14,26 +14,44 @@ and what is left, and its exit criteria; contracts it built live in `reference/`
 property of migrating a workflow, not of any one workflow; the tiers' own normative spec is
 `reference/guards-and-tests.md`.
 
+**Phase 3c has two internal gates, not two additional numbered phases.** **3c-A** builds and proves
+the workflow-authoring platform. **3c-B** migrates the remaining workflows through it. No order
+1–7 or 9 implementation starts until 3c-A closes. “Pantry and recipe” may explain the idea in
+conversation, but the target API and plan use the domain terms **task store**, **task**, **workflow
+definition**, **worker**, **browser session**, **compiled workflow**, and **workflow run** (D317).
+The bounded compiler increment landed before D317 and still uses transitional `recipe` identifiers;
+renaming that API and deleting the transitional files are explicit remaining 3c-A work, not a reason
+to call the model complete.
+
 ## Phase summary
 <!-- roadmap: migrations -->
 
 <!-- roadmap-status: migrations -->
 - [x] the risk-proof order is fixed and its entry point is chosen — separations (order 8) first, the table deliberately NOT re-sequenced (D84/D193)
 - [x] order 0 · person-lookup is migrated and live-proven (D74, run `4ebf7275-0158-49af-a78f-1f37948efb27`); `src/workflows/person-lookup/descriptor.ts` is registered
-- [x] D311 ratifies the workflow recipe and compiler as the new authoring seam; person lookup and separations are its acceptance workflows
-- [ ] `{#workflow-authoring-model}` — build the compiler, prove equivalence on person lookup and separations, then delete their redundant manual declarations
+- [x] D311/D317 ratify the workflow definition and compiler as the new authoring seam; person lookup and separations are its acceptance workflows; “recipe” is analogy only
+- [x] 3c-A bounded compiler increment — compatibility fixtures, the transitional compiler, compiler-backed Person Lookup and Separations descriptors/modules, registry-wide generic projection conformance and full gates landed through merge `a40276b6`
+- [x] order 1 intake — Person Lookup Search/Match and I-9 lookup migration records, reuse/provenance map and live I-9 login/search evidence landed through merge `b1b36349`; this is intake only, not an implemented order row
+- [ ] `{#workflow-authoring-model}` — finish D312–D317: final workflow naming/API, direct entry algebra, omissions, recovery, four-artifact enforcement, author documentation, T1 proof and deletion of redundant authoring declarations
+- [ ] 3c-A exit — author guide and agent rules landed, task reuse is discoverable, both acceptance conversions are green, and the old authoring path is deleted
+- [ ] 3c-B exit — orders 1 · 2 · 3 · 4 · 5 · 6 · 7 · 9 migrated through that single authoring path
 - [ ] orders 1 · 2 · 3 · 4 · 5 · 6 · 7 · 9 — **no descriptor exists for any of them**; `src/control/workflow-registry.ts` registers 7 modules and every one is person-lookup or a separations composition/harness
 - [ ] the five declaration-only stores — `i9`, `old-kronos`, `onbase`, `servicenow`, `sharepoint` are `declareDriver(…, "unwired")` with `{}` tasks (`i9` is 4 lines, the other four 9); orders 1, 2 and 7 build them
-- [ ] the legacy capability register — **47 open · 20 replaced · 7 native · 4 retired** of 78 (recounted from `config/legacy-capabilities.json`, 2026-08-20); all 47 open name milestone `phase-3-workflow-migration`, and cutover requires zero open
-- [ ] generic recipe-to-dashboard conformance for every migrated workflow; a per-workflow dashboard task remains only when that workflow introduces a new surface capability
+- [ ] the legacy capability register — **46 open · 19 replaced · 6 native · 7 retired** of 78 (recounted from `config/legacy-capabilities.json`, 2026-09-02); all 46 open name milestone `phase-3-workflow-migration`, and cutover requires zero open
+- [x] generic workflow-to-dashboard conformance for the two transitional compiler-backed workflows; the same registry-wide suite must admit each later migration
 - [ ] the T1 PROOF lines on every order node, plus T2/T3 only for the first workflow to introduce a new dashboard behavior
+- [x] R1 compiler and R2 intake worktrees/branches were removed after verified integration; no Phase 3c worker residue remains from those runs
+- [ ] every later run and final Phase 3c close performs the full worktree sweep: verify integration/gates, remove registered and physical worktrees, delete local branches and archive only exact recorded tasks
 > 2026-08-20 | docs-cohesion 03c | verified against `src/control/workflow-registry.ts:38-47`, `src/workflows/*/descriptor.ts` (8 files), `src/stores/*` and `config/legacy-capabilities.json` (recount 47/20/7/4 matches the tree's note); left: every order after 0, minus 8
 > 2026-08-25 | D266 | the test-only Kuali annotation workflow retired; the registry now holds seven modules and the Kuali finalization T1 pair carries its reusable proof shape
+> 2026-09-02 | D317 execution plan | 3c split internally into blocking 3c-A authoring-platform proof and 3c-B migrations; exact ownership, reuse paths, change routing, ten implementation units, documentation package and exit gate recorded; this decision entry itself claimed no implementation
+> 2026-09-02 | baseline `b1b36349` verification | bounded D311 compiler and Order 1 intake are integrated; D312–D317 final authoring/runtime acceptance and all Order 1–7/9 implementations remain open; R1/R2 owned worktrees are closed
+> 2026-09-02 | capability recount | 78 total = 46 open / 25 implemented / 7 retired; disposition kinds = 46 open / 19 replaced / 6 native / 7 retired; every open entry remains owned by this phase
 <!-- /roadmap-status -->
 
 **Phase 3c is the rest of the program.** Phase 3a built the dashboard every workflow inherits and
 3b takes separations — the deepest write — through the safety loop once. Before 3c authors the
-**thirteen remaining workflows**, D311 builds one recipe/compiler seam so later migrations describe
+**thirteen remaining workflows**, D311/D317 build one workflow-definition/compiler seam so later migrations describe
 their business steps without reassembling descriptor, module and dashboard projections by hand.
 The phase then migrates the remaining workflows in the order below until the legacy capability
 register has no open entry left and the cutover gate (doc 05) can be read.
@@ -43,20 +61,29 @@ row, run detail + timeline, gate ceremony, notifications, archive · activity ·
 capture — exist and answer for a workflow they were not written for (Track C proved that once
 against a real composed run). D311 makes them compiler projections; a migration builds one only when
 it introduces a new capability. From **03b**: the store
-task libraries the entry was chosen to force into existence (`ucpath` 10 tasks, `kuali` 10,
+task libraries the entry was chosen to force into existence (`ucpath` 12 tasks, `kuali` 6,
 `new-kronos` 2, `crm` 2, `separations` 9 service tasks), the ALWAYS-GATE identity approval, the
 typed start door (D250/D251/D261), and the behavior the D311 compiler must preserve.
 
-**The honest state at HEAD.** One of the nine order rows this phase owns is migrated.
-`src/control/workflow-registry.ts` registers seven modules: `person-lookup` (order 0) and the six
-separations descriptors (order 8, doc 03b). D266 retired the former D135 proof workflow into the
-Kuali finalization T1 pair rather than treating testing machinery as an order row.
-**Orders 1, 2, 3, 4, 5, 6, 7 and 9 are pure plans** — no descriptor, no module, no tuple entry.
-`config/pending-impl-bindings.json` is the checked-in EMPTY set, so nothing is half-bound either.
+**The honest state at verified implementation baseline `b1b36349`.** One of the nine order rows this phase owns is migrated.
+`src/control/workflow-registry.ts` still registers seven modules: `person-lookup` (order 0) and the
+six separations composition/harness modules (order 8, doc 03b). The new registry-derived compiled
+population contains two workflows, Person Lookup and Separations. Their descriptors/modules now
+come through `src/base/workflow-recipe.ts`, and equivalence plus generic start/timeline/Explorer
+conformance are green. That is the completed bounded D311 increment—not the D312–D317 exit state:
+the code still exposes `defineWorkflowRecipe`/`compileWorkflowRecipe`, consumes fragment adapters,
+retains authored descriptor/module files, implements neither direct `parallel`/`delegate` entries
+nor D313/D314 omission/restart behavior, and has no workflow-authoring guide.
+
+Order 1's migration documents and live I-9 intake evidence are integrated, but its runtime code is
+not. **Orders 1, 2, 3, 4, 5, 6, 7 and 9 still have no new descriptor/module/compiled workflow.**
+`config/pending-impl-bindings.json` remains the checked-in empty set, so no order is half-bound.
+D266 retired the former D135 proof workflow into the Kuali finalization T1 pair rather than treating
+testing machinery as an order row.
 
 **The rule every order below inherits.** A migration is not done when its workflow runs. It carries
 its **T1 behavior proof**: a structural fixture scenario and live dry-run manifest, plus controlled
-evidence for every write. The recipe compiler supplies already-built generic dashboard surfaces and
+evidence for every write. The workflow compiler supplies already-built generic dashboard surfaces and
 the registry-wide conformance suite proves that mapping. A workflow owns a separate dashboard
 feature task and T2/T3 proof only when it introduces a genuinely new interaction or wire arm
 (`ref guards-and-tests` §10.11/§10.12; `ref frontend-backend-integration` §6.8).
@@ -67,13 +94,29 @@ feature task and T2/T3 proof only when it introduces a genuinely new interaction
 
 <!-- roadmap-status: workflow-authoring-model -->
 - [x] DOCS D311 ratified in `ref workflow-model` §1.6, with the dashboard, Explorer and test consequences in their owning references
-- [ ] BE add `defineWorkflowRecipe` and a compiler to the current descriptor/module contracts; do not add a second runtime or durable format
-- [ ] BE convert person lookup as the smallest equivalence proof
-- [ ] BOTH convert separations as the completeness proof while preserving its run modal, graph, D307 omissions, gates, screenshots, logs, write safety and public wire
-- [ ] BOTH project the tuple groups to Explorer and the current descriptor fields to the existing run modal/timeline/detail surfaces
-- [ ] PROOF add one registry-wide recipe/compiler conformance suite, then remove superseded manual declarations and duplicate generic-dashboard tests
+- [x] DOCS D312–D316 ratify the four-artifact budget, complete pre-start omissions, two recovery choices, explicit workflow-entry algebra and deletion acceptance
+- [x] DOCS D317 reserves `workflow` for the authored model: `workflow.ts` + `defineWorkflow` + `WorkflowDefinition`; “recipe” remains analogy only
+- [x] PROOF freeze Person Lookup and Separations compatibility targets in red-capable equivalence fixtures (`2e563240`, merged by `6d30d75a`)
+- [x] BE land the bounded transitional compiler: tuple groups, typed task references, duplicate/unresolved/cycle refusals, descriptor/module/store/build-manifest derivation and no second runtime (`ebfde1c6`)
+- [x] BE route Person Lookup and Separations through that transitional compiler while preserving their existing public descriptor/module behavior (`ebfde1c6`, `d4204106`)
+- [x] PROOF derive the compiler-backed registry population and prove current bootstrap/run modal, timeline/detail and Explorer projections for both workflows (`246daab2`, `4555341f`)
+- [ ] BE make the existing task-store catalog sufficient to find a task by system, capability, effect, inputs and outputs before an author creates one
+- [ ] BE replace the transitional `workflow-recipe.ts`/`defineWorkflowRecipe`/`compileWorkflowRecipe` names with D317's `workflow.ts`/`defineWorkflow`/`compileWorkflow`/`WorkflowDefinition`/`CompiledWorkflow`; do not leave aliases or a second authoring seam
+- [ ] PROOF enforce the exact four authored artifacts for a reuse-only workflow; reject descriptor/module/registry/dashboard glue outside `workflow.ts`
+- [ ] BE replace fragment adapters with the closed direct `task | parallel | delegate | gate | transaction` entry algebra, including stable entry/leaf ids, explicit parallel join/failure policy and independent leaf retry
+- [ ] BE finish derivation of store/session requirements, graph/result, registry/build-manifest and all generic surfaces from the final workflow definition; retain the already-green transitional derivations as compatibility proof
+- [ ] PROOF pin automatic runtime inheritance—worker/session acquisition, authentication, checkpoints, semantic logs, screenshots, receipts, notifications and Archive—without workflow-specific glue
+- [ ] BOTH finish Person Lookup as the smallest four-artifact equivalence proof: final API/file, no authored descriptor/module path and its missing canonical T1 structural/live pair
+- [ ] BOTH finish Separations as the completeness proof: final API/file, direct entries, no redundant descriptor/module/node-fragment authoring path, and preserved gates, screenshots, logs, write safety and public wire
+- [ ] BOTH make the run modal the complete omission authority: whole-step skip, all custom values schema-valid before start, no mid-run value request, separate mandatory verifiers remain selected
+- [ ] BOTH expose Resume from checkpoints and Restart from start; fresh restart reruns reads/computes but never re-executes a completed write
+- [x] BOTH project the current tuple groups through the existing run modal/timeline/detail and Explorer paths; re-run this conformance after the final D317 conversion
+- [ ] PROOF extend the landed registry-wide conformance suite to every direct entry kind, then remove superseded declarations and only genuinely duplicate generic-dashboard tests
+- [ ] DOCS write `docs/guides/workflow-authoring.md`, add the concise authoring rules to the paired root `AGENTS.md`/`CLAUDE.md`, and add one internal agent reference that points to the guide rather than redefining it
+- [ ] PROOF follow the finished author guide to author both acceptance workflows; any undocumented step or required legacy escape hatch fails 3c-A
 - [x] DOCS re-scope each remaining `Dashboard · wire` row to the capability delta that order actually introduces; generic rows inherit compiler conformance
-> 2026-09-02 | D311 | owner-first design ratified; no compiler or conversion is claimed by this documentation change
+> 2026-09-02 | D311 bounded implementation | `a40276b6` integrates compatibility fixtures, a transitional compiler, two descriptor/module conversions and generic conformance; R1's report explicitly carries D312–D317 completion into the next run
+> 2026-09-02 | remaining 3c-A | task discovery, D317 rename/final API, direct entry algebra, four-artifact guard, D313 omission, D314 recovery, final acceptance deletion/T1 and author docs remain open
 <!-- /roadmap-status -->
 
 The implementation order is deliberate: pin the current public descriptor/module/wire behavior;
@@ -88,10 +131,179 @@ engine, which discards proven gates, receipts, replay and write safety to solve 
 The selected path keeps the current dashboard and worker behavior and changes where workflow authors
 express it.
 
+D312–D317 make “simpler” measurable. A reuse-only workflow authors exactly its `workflow.ts`, structural
+scenario, dry-run declaration and migration record. Workflow entries explicitly say task, parallel,
+delegate, gate or transaction; the compiler may infer data dependencies but not those control
+semantics. Every omission and all replacement values are settled in the run modal before start.
+After failure, the operator may resume from checkpoints or restart reads/computations from the root;
+neither path may execute a completed external write again. The design is accepted only when Person
+Lookup and Separations preserve their current public behavior and the superseded authoring path is
+deleted. D317 removes “recipe” as a technical layer: the authored value is a workflow definition,
+the generated value is a compiled workflow, and a worker executes one workflow run.
+
+### 3c-A authoring model — what each thing owns
+
+The authoring model is intentionally smaller than the runtime. The analogy discussed with the
+operator is useful for orientation, but these are the exact technical boundaries an implementation
+and its documentation must teach:
+
+| Concept | Owns | Does not own |
+|---|---|---|
+| **Task store** | reusable tasks for one system/service/domain; task discovery by capability and contract | workflow order, dashboard layout, or one workflow's private orchestration |
+| **Task** | one typed operation: strict input/output, effect, errors, retry/provenance policy and implementation binding | timeline placement, another task's input, worker lifecycle, or generic evidence plumbing |
+| **Workflow definition** | identity, typed input/result, ordered `[timeline group, tasks[]]` tuples, explicit control entries, run options and omission value schemas | hand-written descriptor/module/registry projections, browser login, checkpoints, screenshots or Archive |
+| **Workflow compiler** | validates the definition and derives the executable graph plus every generic runtime/dashboard projection | browser behavior or a second execution engine |
+| **Worker** | claims a run and executes its compiled workflow through authority | defining the workflow or sharing mutable data with another worker |
+| **Browser session** | one authenticated system connection acquired for a task under the worker/session policy | deciding workflow order or acting as the worker itself |
+| **Workflow run** | one admitted execution, its immutable options, lineage, checkpoints, evidence and terminal result | changing its input or omission bundle during execution |
+
+The author sees task stores and the workflow definition. The compiler and runtime own the machinery
+below that boundary. If a normal workflow author must understand or edit a generated descriptor,
+module, node fragment, registry row, dashboard adapter, checkpoint writer, screenshot hook or
+session bootstrap, 3c-A has failed even if the workflow runs.
+
+### 3c-A reuse decision — choose the smallest truthful path
+
+An author searches the task-store catalog before creating code, then classifies each needed
+operation through this table. “Similar” is not permission to copy a task: the system interaction and
+output contract determine whether reuse is honest.
+
+| Need | Author action | Additional proof |
+|---|---|---|
+| Existing operation, same contract | import the exact task into `workflow.ts` | none beyond this workflow's T1 pair |
+| Existing operation with an already-declared option | pass the typed option from the workflow definition | option behavior is already task-owned |
+| Same browser operation, legitimate new variant, same output meaning | extend the shared task with a typed option; update that task's tests once | task contract/implementation proof plus affected workflow T1 |
+| Pure workflow-specific calculation | add or reuse a pure task in the workflow mini-store | pure task tests plus workflow T1 |
+| New page operation or different output meaning | add one reusable task contract and driver operation to the owning task store | contract/driver tests and live selector verification |
+| New external write | add an explicit `transaction(...)` backed by prepare/probe/commit/verify | full controlled-write evidence; dry run alone is insufficient |
+| New dashboard interaction or wire arm | extend the generic capability once | one T2/T3 proof; later workflows inherit it |
+
+The reuse-only fast path has exactly four workflow-specific artifacts: `workflow.ts`, the structural
+scenario, the dry-run declaration and the migration record. New shared capability files are allowed
+only for a row above that genuinely requires them; they never smuggle the retired workflow assembly
+back under another name.
+
+### 3c-A change routing — one reason, one owner
+
+This table is the maintenance promise the conversion must prove. It tells the next session where a
+future fix belongs before that session opens the tree.
+
+| Change | One primary owner |
+|---|---|
+| reorder or rename timeline groups | `src/workflows/<id>/workflow.ts` |
+| add/change a run option or omission form | `src/workflows/<id>/workflow.ts` |
+| connect one task's output to another task's input | `src/workflows/<id>/workflow.ts` |
+| change a selector or page-state interpretation | the owning system driver/UI registry |
+| change one operation's input/output/effect | the owning task contract + implementation and its direct consumers |
+| add shared authentication behavior | the owning session provider/login declaration |
+| change retry/checkpoint execution mechanics | the shared executor/recovery services |
+| change logs, screenshots, receipts, Archive or generic dashboard rendering | the shared runtime/projection surface |
+| change only workflow grouping/options | **no file besides `workflow.ts`** |
+
+### 3c-A implementation run — verified progress and remaining order
+
+A fresh session does not repeat the bounded compiler work. It starts at the first unfinished part
+of unit 2, preserves the green evidence from units 1/3/4, and closes each remaining unit with its
+named proof before moving to 3c-B. These are implementation units, not invitations to redesign the
+runtime.
+
+1. **DONE — Freeze the compatibility targets.** Person Lookup and Separations' current public
+   descriptor, module requirements, run-modal wire, graph, timeline/detail, Explorer, receipt and
+   result behavior are captured by red-capable fixtures. Evidence: `2e563240`, merged in
+   `6d30d75a`.
+2. **PARTIAL — Finish the authored types and terminology.** The transitional API already validates
+   tuple/group ids, typed task references, duplicate ids/tasks, unresolved references and cycles.
+   Replace its `recipe` names with D317's final workflow names, add direct explicit `parallel`,
+   `delegate`, `gate` and `transaction` entries, and remove fragment-adapter authoring. Gate: every
+   entry kind compiles and its implicit/invalid control shapes fail by name; no old alias remains.
+3. **DONE, REVERIFY AFTER UNIT 2 — Build the compiler core.** The transitional compiler derives
+   graph nodes/edges, result dependencies,
+   required task stores/sessions, descriptor compatibility output, registry value and build-manifest
+   closure without a second runtime. Evidence: `ebfde1c6`; final gate reruns after unit 2 removes the
+   transitional seam.
+4. **DONE, REVERIFY AFTER UNIT 2 — Build generic projections.** The current tuple groups reach
+   bootstrap/start, run modal, timeline/detail and Explorer through one registry-derived conformance
+   suite. Evidence: `246daab2` and `4555341f`; extend it to every final direct entry kind.
+5. **NEXT — Finish omission admission.** A whole omitted timeline group executes no entry; its complete
+   replacement values are schema-valid before start; no worker asks for values mid-run; any
+   mandatory verifier is a separate selected entry. Gate: D313's refusal and provenance matrix.
+6. **OPEN — Finish recovery choices.** Expose Resume from checkpoints and Restart from start. Root restart
+   reruns reads/computations, reuses validated completed-write proof without prepare/commit, probes
+   unfinished writes first and refuses a fresh-fact mismatch. Gate: mutation proof that a completed
+   external write cannot execute twice.
+7. **PARTIAL — Finish Person Lookup.** Its descriptor/module are transitional compiler products and
+   public equivalence is green. Move authorship to final `workflow.ts`, delete authored
+   descriptor/module glue, add the missing canonical T1 structural/live pair and prove the
+   four-artifact budget.
+8. **PARTIAL — Finish Separations.** Its descriptor/module are transitional compiler products and
+   public equivalence is green. Express the complete timeline, D313 omissions, conditional gate, transactions,
+   screenshots/logs and result through `workflow.ts`; prove exact compatibility. Gate: its existing
+   public behavior and safety evidence remain green—this conversion does not discharge Phase 3b's
+   still-open controlled writes.
+9. **PARTIAL — Delete the old authoring path.** The bounded increment removed manual timeline/flow
+   assembly and six redundant step-category exports. Remove the remaining authored descriptors,
+   modules, fragment adapters,
+   registry wiring and duplicate generic-dashboard tests for both acceptance workflows. Gate: an
+   architecture guard fails if the retired path or an “advanced escape hatch” returns.
+10. **OPEN — Prove the author experience.** Make one grouping/options-only fixture change in `workflow.ts`,
+    compile it, and prove no other authored workflow file changes. Follow the finished author guide
+    from a clean context for both acceptance workflows; any undocumented required step is a defect.
+11. **OPEN FOR EACH FUTURE RUN — Close the worktree lifecycle.** After verified integration and the
+    integrated gate, run the worktree sweep: remove each registered and physical run/worker
+    worktree, prune, delete its local feature branch, archive only the exact recorded task, and
+    record any residue. R1 and R2 already passed this close; every later run and the final phase must
+    pass it independently.
+
+**Next runnable supervisor scope (3c-A finish).** Begin from the Phase 3c integration branch after
+this plan update (verified implementation parent `b1b36349`). In order: (1) reconcile the task-store
+catalog and D317 final names/API; (2) enforce the
+four-artifact boundary and finish the direct entry algebra; (3) implement D313 omission admission;
+(4) implement D314 recovery; (5) finish Person Lookup and Separations deletion/T1/guide acceptance;
+(6) run manifest, typecheck, lint, coverage, architecture, parity and workflow proofs; (7) integrate
+and perform the exact worktree sweep. Do not start Order 1 implementation inside this run.
+
+**Worktree-capacity preflight.** The 2026-09-02 read-only audit found the Phase 3c R1/R2 branches and
+worktrees closed, but eight registered auxiliary `feature/test-*` worktrees owned by the separate
+test-suite-rationalization program still occupy the shared repository. One currently carries an
+untracked `node_modules`. They are not Phase 3c cleanup targets and must not be removed or
+repurposed. Before dispatching writable 3c-A workers, re-audit the shared worktree budget and wait
+for that owning program to close enough slots; a coordinator may continue read-only planning while
+capacity is unavailable.
+
+### 3c-A documentation package — required before migration work
+
+The implementation is not ready for other agents merely because the compiler passes. It must leave
+one canonical practical path:
+
+| Document | Required content and authority |
+|---|---|
+| `ref workflow-model` §1.6 | normative types, compiler products, invariants and refusal behavior |
+| `docs/guides/workflow-authoring.md` | practical guide: find/reuse/build decision, complete API examples, omissions, parallel/delegate/gate/transaction examples, testing and debugging |
+| paired root `AGENTS.md` / `CLAUDE.md` | concise mandatory rules and a pointer to the practical guide; no duplicated tutorial |
+| `.agents/skill-library/workflow-authoring/REFERENCE.md` | internal agent checklist that points to the canonical guide/spec; no new operator command and no independent policy |
+| generated task-store catalog (`ref stores`) | discoverable tasks with system, capability, effect, input/output and implementation status |
+
+The guide must contain a minimal Person Lookup example, a complete Separations excerpt, a
+reuse-only example, a new-task example and a “what file do I change?” table matching the routing
+table above. It must state what the compiler/runtime generate automatically and what an author must
+never hand-maintain.
+
+### 3c-A exit gate — when 3c-B may start
+
+3c-B remains blocked until all of the following are true together: the compiler and generic
+projections are built; omission and both recovery choices are built; Person Lookup and Separations
+are equivalent; their redundant authoring declarations are deleted; the four-artifact guard is
+green; the practical guide and agent pointers are landed; and the integrated typecheck, lint,
+coverage, architecture, parity and both workflow T1/live-dry-run proofs are green. Passing unit tests
+while retaining a second authoring path does not close 3c-A. The run closes only after its integrated
+worktree sweep proves no 3c-A worktree, local feature branch or exact task residue remains.
+
+## 3c-B · Migrate the remaining workflows
+
 ## The seven-step migration playbook
 
 This is the safety loop an agent follows for one workflow after the D311 compiler exists. Separations
-ran its pre-D311 form; the business and safety obligations remain, while recipe compilation replaces
+ran its pre-D311 form; the business and safety obligations remain, while workflow compilation replaces
 the manual descriptor/module/dashboard assembly described by the older wording. Steps run in order;
 each names the artefact it produces and the gate that proves it. A red gate is not passed with a note.
 
@@ -103,19 +315,20 @@ the worked full-risk example, not the minimum prose every read workflow must rep
 **Artefact:** the migration doc's decision/delta section. **Gate:** every real unresolved choice is
 named; settled generic policy is referenced, not reopened.
 
-**2 · Author the recipe.** Reuse store tasks peer-to-peer (charter §1); add new ones as reusable bases and
+**2 · Author the workflow.** Reuse store tasks peer-to-peer (charter §1); add new ones as reusable bases and
 name the workflow-specific customization (charter §3/§8); reuse or add canonical UI ids and typed
 driver operations FIRST, then write strict contracts → scenarios → impls → pure-logic unit tests
 (`fakeCtx`) → descriptor/result/delegation policies, in `ref guards-and-tests` §6's red→green order.
 Classify every task REUSE / CUSTOMIZE / BUILD against ref stores before writing one — the store
 catalog is the reuse ledger, and a task that already exists under another name is the single
-cheapest thing to get wrong. **Layout (D265, `ref workflow-model` §1.2.2):** a rail workflow is a top-level folder
-`src/workflows/<id>/`; each declared timeline category is a sub-folder `<id>/<step>/` holding that
-step's node fragments and, when chunk-proved, its harness; there is no `src/workflows/proving/`.
-The `workflow-layout` guard pins role ↔ path. Under D311, author one ordered array of
+cheapest thing to get wrong. **Layout (D265, `ref workflow-model` §1.2.2):** a rail workflow is a
+top-level folder `src/workflows/<id>/`; child step folders remain organization/audit homes for any
+genuinely step-specific implementation or chunk harness, but D311/D312 make them neither timeline
+order nor mandatory node-fragment glue. There is no `src/workflows/proving/`. The `workflow-layout`
+guard pins any files that do exist to their declared roles. Author one ordered array of
 `[timeline group, tasks[]]` tuples; typed task input references derive execution dependencies, and
 the compiler derives the descriptor, module requirements, registry value and generic dashboard
-projections. **Artefacts:** `src/workflows/<id>/recipe.ts` plus any genuinely new
+projections. **Artefacts:** `src/workflows/<id>/workflow.ts` plus any genuinely new
 `src/stores/<system>/tasks/*.ts`; a contract
 no store implements yet goes into `config/pending-impl-bindings.json` in the SAME commit (D107,
 checked both directions). **Gate:** `npm run build:manifest` then `descriptor-coverage`.
@@ -163,7 +376,7 @@ commits cited; the affected `config/legacy-capabilities.json` entries advanced f
 `native` / `replaced` / `retired` **with evidence** (a wrong `native` is worse than an honest
 `open` — D184). **Gate:** `legacy-capability-disposition`.
 
-**7 · Prove the generic projection, add only real UI deltas, then close the loop.** The recipe must
+**7 · Prove the generic projection, add only real UI deltas, then close the loop.** The workflow must
 pass registry-wide start/run-modal, queue, timeline/detail, gate, archive/activity, notifications and
 Explorer conformance. There is no `Dashboard · wire <workflow>` implementation task for a workflow
 that uses those surfaces as already defined. If this workflow introduces a new interaction or wire
@@ -174,6 +387,10 @@ appended beside the correction); the status blocks in this doc are ticked with c
 `log:` line lands on the tree node; the dated line goes into `docs/migrations/<workflow>.md` — and
 that line, not a green suite, is what a `PROOF` tick on the tree is allowed to cite
 (`ref guards-and-tests` §10.6). Update the nearest `CLAUDE.md` and the owning reference doc.
+Finally run the exact worktree sweep for this migration: independently verify its branch/commits and
+integrated gate, remove the registered and physical worktree, prune, delete the integrated local
+feature branch, archive the exact recorded Codex task when applicable, and record any residue. A
+merge without this cleanup is not a closed order row.
 
 ## Recommended migration order (by risk / complexity / reuse)
 
@@ -290,10 +507,11 @@ Embed in **every** workflow's migration plan doc; answer with the operator BEFOR
 
 ## Non-workflow capability closure inventory (D58)
 
-**The register, recounted at HEAD (2026-08-20).** `config/legacy-capabilities.json` holds **78**
-entries: **47 open · 20 replaced · 7 native · 4 retired** (`status` projects the same split as
-`open 47 / implemented 27 / retired 4`, since `native` and `replaced` both project to
-`implemented`). **Every one of the 47 open entries names milestone `phase-3-workflow-migration`** —
+**The register, recounted at baseline `b1b36349` (2026-09-02).**
+`config/legacy-capabilities.json` holds **78** entries: **46 open · 19 replaced · 6 native · 7
+retired** (`status` projects the same split as `open 46 / implemented 25 / retired 7`, since
+`native` and `replaced` both project to `implemented`). **Every one of the 46 open entries names
+owner milestone `phase-3-workflow-migration`** —
 there is no open entry owned by a phase that has already shipped, which is what D184's sweep fixed
 and what the guard now refuses to let rot again. Cutover requires zero open
 (`cutoverRequiresZeroOpen: true` in the file's own header), so this table IS the phase's finish line.
@@ -302,7 +520,7 @@ and what the guard now refuses to let rot again. Cutover requires zero open
 |---|---|---|
 | `service` | 16 | 15 are `legacy-workflow-*` — one per order row below, closing at that row's migration — plus `legacy-service-llm` |
 | `route` | 14 | the byte/search/screenshot/settings/static families; several close together because they share the artifact-bytes route |
-| `dashboard` | 7 | OCR review (order 3), oath-upload (order 7), settings, navigation, capture, log panel, workflow modifier |
+| `dashboard` | 6 | OCR review (order 3), oath-upload (order 7), settings, navigation, log panel, workflow modifier |
 | `export` | 3 | the Excel writers — order 5's retention workbook is the first |
 | `maintenance` | 3 | `clean`, `compact`, `setup` — CLI work with behavioural fixtures required before cutover |
 | `codegen` | 2 | schema export, the workflow-design data bank |
@@ -469,7 +687,7 @@ scenarios that pretend are rewritten into the honest structural one or into a dr
 The coverage floor moves to **80 %** lines/statements/functions global. Under D311 every migration
 owes its T1 pair (the structural fixture scenario and dry-run manifest). T2/T3 are added only when
 that workflow introduces a new dashboard interaction or wire arm; reused generic projections are
-covered once by registry-wide recipe/compiler conformance. The normative spec — folder layout, file naming,
+covered once by registry-wide workflow/compiler conformance. The normative spec — folder layout, file naming,
 the vitest project per tier, the run policy, the subject registry, the durable result row — is
 `reference/guards-and-tests.md` (R10, 2026-08-20).
 
@@ -507,7 +725,8 @@ shipped. And its legacy directory does not close here: order 1 is what closes it
 - [x] queue row — the person-lookup row with status and timing, after D123/D124/D126 (§5.1.2)
 - [x] run detail — timeline, receipt, Context rail; the two-pixel panel D187 found and fixed (§5.1.3)
 - [x] archive · activity · explorer — person-lookup rows appear through the generic surfaces (§5.1.5)
-- [ ] D311 acceptance — compile the person-lookup recipe to these same four projections and compare them exactly
+- [x] D311 bounded acceptance — the transitional compiler reaches these projections and registry-wide comparison is green (`ebfde1c6`, `246daab2`, `4555341f`)
+- [ ] D312–D317 final acceptance — final `workflow.ts`, no authored descriptor/module glue, four-artifact guard and canonical T1 pair
 > 2026-09-02 | D311 | retained as historical acceptance evidence; no duplicate generic-surface T2 is required
 <!-- /roadmap-status -->
 
@@ -521,13 +740,14 @@ empty when the wire has not been run.
 <!-- roadmap: order-1 -->
 
 <!-- roadmap-status: order-1 -->
-- [ ] the §b completeness pass for person-lookup Search + Match and i9-lookup — inherited answers cited, workflow-specific deltas recorded; no migration doc exists yet
+- [x] the §b completeness pass for person-lookup Search + Match and i9-lookup — `docs/migrations/person-lookup.md` and `docs/migrations/i9-lookup.md`, plus the REUSE/CUSTOMIZE/BUILD and live I-9 map, integrated by `b1b36349`
 - [ ] Search + Match as MODES on the existing person-lookup descriptor (D15, `ref dashboard-surfaces` §9) — nothing in `src/workflows/person-lookup/descriptor.ts` carries a mode today
 - [ ] the `i9` store — `src/stores/i9/index.ts` is 4 lines: `defineBrowserStore("i9", declareDriver("i9", "unwired"), i9Session, {})`. No driver, no login recipe, **zero tasks**
 - [ ] the `i9-lookup` workflow descriptor + module + registry tuple entry
 - [ ] PROOF T1 — structural fixture scenario + dry-run manifest per workflow; T3 only for the new mode interaction
 - [ ] the capability entries `legacy-workflow-i9-lookup` and `legacy-workflow-person-lookup` both close here
 > 2026-08-20 | docs-cohesion 03c | verified against `src/stores/i9/index.ts:4` (unwired, `{}` tasks) and `src/workflows/person-lookup/descriptor.ts` (no mode); nothing is built — this row is a plan
+> 2026-09-02 | Order 1 intake | migration decisions, exact task/driver seams, provenance and current live login/search evidence integrated by `b1b36349`; runtime implementation and T1 remain open behind 3c-A
 <!-- /roadmap-status -->
 
 **What it is.** Both HR-Tasks questions in one workflow — *search* for a person and *match* an
@@ -553,7 +773,7 @@ faces.
 <!-- roadmap: order-1-dash -->
 
 <!-- roadmap-status: order-1-dash -->
-- [ ] BOTH generic recipe-declared mode chooser — Search and Match are two run-modal options of one workflow without a second workflow identity
+- [ ] BOTH generic workflow-declared mode chooser — Search and Match are two run-modal options of one workflow without a second workflow identity
 - [ ] PROOF T2/T3 only for that mode interaction; i9-lookup's ordinary start/queue/detail/archive projections ride compiler conformance
 > 2026-09-02 | D311 | re-scoped from six repeated wires to the one new mode capability
 <!-- /roadmap-status -->
@@ -977,8 +1197,10 @@ traceback that names each one's trigger.
 
 ## Decisions this phase ratified
 
-**D311 is this phase's first decision.** It ratifies the workflow recipe/compiler before another
-migration starts; the implementation remains open at `{#workflow-authoring-model}`. The rest of the
+**D311–D317 are this phase's workflow-authoring decisions.** They ratify the workflow/compiler and its
+measurable simplicity, omission, recovery, entry-algebra and deletion boundaries before another
+migration starts; the bounded compiler is integrated and the final acceptance work remains open at
+`{#workflow-authoring-model}`. The rest of the
 table is the standing set ratified elsewhere that still binds every order row.
 
 | D | Where it binds in this doc |
@@ -991,7 +1213,9 @@ table is the standing set ratified elsewhere that still binds every order row.
 | D184 (2026-08-09, 2j) | `open` carries a required reason, `status` is the disposition's projection, and a wrong `native` is worse than an honest `open` |
 | D191 (round 46, 2026-08-12) | the per-commit gate every step-3 run uses (`test:coverage`) |
 | D193 (round 47, 2026-08-12) | the entry point — separations first, the table deliberately NOT re-sequenced |
-| D311 (round 121, 2026-09-02) | one tuple recipe/compiler authoring seam; generic dashboard conformance once; T2/T3 only for new capability deltas |
+| D311 (round 121, 2026-09-02) | one tuple workflow/compiler authoring seam; generic dashboard conformance once; T2/T3 only for new capability deltas |
+| D312–D316 (round 122, 2026-09-02) | exactly four reuse-only artifacts; complete run-modal omissions; checkpoint resume or root restart; explicit entry algebra; Person Lookup/Separations equivalence followed by deletion |
+| D317 (round 123, 2026-09-02) | `workflow` is the authored technical model; `recipe` is analogy only; `workflow.ts` + `defineWorkflow` compile to `CompiledWorkflow` |
 | R10 (operator, 2026-08-20; amended D311) | T1 behavior per workflow, T2/T3 per new dashboard capability, the 80 % floor |
 
 A round ratified by a future migration is added here in the same commit that records it, with its
@@ -1005,19 +1229,20 @@ line's MET/open state at HEAD, then the per-workflow contract each order row is 
 
 ### The phase's exit — read this to decide whether 3c is done
 
-| # | Criterion | State at HEAD (2026-08-20) |
+| # | Criterion | State at verified baseline `b1b36349` (2026-09-02) |
 |---|---|---|
-| 1 | D311's recipe/compiler seam is built, equivalent on person lookup and separations, and every remaining order row has been through the resulting migration loop | **open** — D311 is ratified but unbuilt; only order 0 · person-lookup is migrated and orders 1–7 and 9 have no descriptor |
+| 1 | D311–D317's workflow/compiler seam is built, equivalent on person lookup and separations, and every remaining order row has been through the resulting migration loop | **partial** — the bounded transitional compiler, two compiler-backed descriptors/modules and equivalence are integrated; final workflow naming, direct entries, omissions, recovery, four-artifact deletion/guide/T1 acceptance and orders 1–7/9 remain open |
 | 2 | Every migrated workflow is marked **rebuild-ready** with its live dry run green and, for writes, its `ref write-safety` §3.2 controlled-commit proof recorded | **open** — order 0 is a read and predates the tiers; no other row has run |
-| 3 | Every recipe passes generic dashboard/Explorer conformance; every genuinely new surface capability has its one feature task and T2/T3 proof | **open** — the compiler and conformance suite are unbuilt; capability-delta rows are identified but remain unimplemented |
-| 4 | Every order row carries its **T1** pair (structural fixture scenario + dry-run manifest), with T2/T3 only for dashboard behavior it introduces | **open** — the tier spec exists, but the recipes and registry-wide compiler proof do not |
+| 3 | Every workflow definition passes generic dashboard/Explorer conformance; every genuinely new surface capability has its one feature task and T2/T3 proof | **partial** — registry-derived conformance is green for transitional compiler-backed Person Lookup and Separations; final entry kinds and every later workflow/capability remain |
+| 4 | Every order row carries its **T1** pair (structural fixture scenario + dry-run manifest), with T2/T3 only for dashboard behavior it introduces | **open** — Separations has its pair; Person Lookup's canonical pair was deliberately deferred, the read-only T1 live-proof contract is unresolved, and orders 1–7/9 have none |
 | 5 | The four live probes are settled: each system produces a typed completion proof or an argued `unverifiableByPage` | **open** — 2 of 4. Kuali and UCPath are RESOLVED and BUILT; ServiceNow needs a named target and OnBase has none |
-| 6 | `config/legacy-capabilities.json` has **zero open entries** — every one advanced to `native` / `replaced` / `retired` with evidence | **open** — 47 of 78 open, all owned by this phase |
+| 6 | `config/legacy-capabilities.json` has **zero open entries** — every one advanced to `native` / `replaced` / `retired` with evidence | **open** — 46 of 78 open, all owned by this phase |
 | 7 | The §Cross-cutting capabilities are built or retired with evidence | **open** — none of the five is started |
 | 8 | Nothing in the legacy repository has been deleted, and every preserved path is still runnable | **MET, and standing** — it is the D89 rollback asset for the whole phase |
+| 9 | Every Phase 3c run is integrated and closed: integrated gate green, registered/physical worktrees removed, local feature branches deleted, exact tasks archived, residue recorded | **partial** — R1 compiler and R2 intake are closed; the phase integration branch and all future runs remain. Eight unrelated `feature/test-*` worktrees are preserved for their owning program and are not Phase 3c residue |
 
-Criterion 8 is the only one that is met, and it is met by not acting. That is the honest shape of a
-phase that has run one of its nine rows.
+Criterion 8 is fully met. Criteria 1, 3 and 9 are partial; every other criterion remains open. The
+bounded compiler and Order 1 intake reduce the remaining work, but no new order row is rebuild-ready.
 
 ### What "rebuild-ready" means for ONE workflow
 
@@ -1030,7 +1255,7 @@ seven steps produce, restated as the thing to check at the end.
   the earlier `test` + `test:architecture` pair as the per-commit gate); the workflow's descriptor
   passes `descriptor-coverage`; every commit contract passes `write-safety-contract` (its completion arm +
   probe + probe-policy) and transaction pairing.
-- the workflow recipe compiles without duplicate authority and passes registry-wide descriptor,
+- the workflow definition compiles without duplicate authority and passes registry-wide descriptor,
   module, run-modal, timeline/detail and Explorer conformance.
 - Workflow/task inputs, outputs, results, commands, details, and evidence parse strict; every UI id,
   scenario id, child result/policy, and subject observation resolves. No raw Page/Locator/selector
@@ -1047,3 +1272,6 @@ seven steps produce, restated as the thing to check at the end.
   disposition; every native replacement has evidence. Under D93 the rebuild repo cannot import
   legacy source at all — the old runtime-isolation guard is retired because the property is
   structural. Preserved legacy paths are not deleted by this migration.
+- The migration's exact integration row is closed after its green integrated gate: registered and
+  physical worktree absent, local feature branch deleted, exact task archived when applicable, and
+  any cleanup failure recorded as residue rather than hidden behind the rebuild-ready label.

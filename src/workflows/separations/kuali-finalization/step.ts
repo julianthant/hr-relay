@@ -4,9 +4,9 @@
  *
  * The last write: one save over the twelve staged fields of the Kuali document, closing the separation where it was filed.
  *
- * The composition (`../descriptor.ts`) spreads this pair into its `timeline`
- * entry and adds the nodes; the harness in this folder reads `.key` for its
- * `chunk-harness.step`. Nobody re-types either string.
+ * The composition (`../descriptor.ts`) uses this exact value as a recipe
+ * group and lists the owned node fragments beside it; the harness reads `.key`
+ * for its `chunk-harness.step`. Nobody re-types either string.
  */
 import { defineWorkflowStep } from "../../../base/workflow.js";
 
