@@ -45,9 +45,11 @@ Three adaptations for a reader in THIS tree (a third was undisclosed until Track
 
     Not the legacy port-3943 command below, and not a path under
     `components/dev/rebuild-demo/` — this tree has no such directory. It is a real build entry
-    (`vite.dashboard.config.ts` names three inputs), so it is also in `dist/dashboard` and reachable
-    from `npm run web:preview`. Everything the sections below say about it is true of it: the same
-    seven sections, in the same order, drawn over `ds/ui.tsx` itself.
+    (`vite.dashboard.config.ts` names TWO inputs, `index` → `index.html` and `kit` → `kit.html`;
+    the third it used to name, the phone `capture.html` entry, went with D294 on 2026-08-31), so it
+    is also in `dist/dashboard` and reachable from `npm run web:preview`. Everything the sections
+    below say about it is true of it: the same seven sections, in the same order, drawn over
+    `ds/ui.tsx` itself.
 
     This paragraph used to say the page did not exist at all — it was a real deferral, and D274
     item 3 ("port specimen page plus parity scene") ruled it built on 2026-08-26, closing
