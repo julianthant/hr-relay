@@ -73,7 +73,7 @@
  *   (`present` means "there is nothing to sweep", so the sweep settles
  *   `already-present` and clicks nothing) and `clearPendingNode`'s
  *   `probePolicy: "always"` / `dryRun: "stop-after-prepare"`
- *   (`src/workflows/separations/ucpath-transaction/nodes.ts`). `proofSource`
+ *   (`clearPendingNode` in `src/workflows/separations/workflow.ts`). `proofSource`
  *   is `live-probe` because beat ①'s durable-intent lookup comes first (D215)
  *   and no run has ever written an intent row for this subject. The 2026-08-28
  *   read-only re-verification (§9.31) read the KUALI form — transaction number

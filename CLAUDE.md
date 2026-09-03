@@ -82,6 +82,9 @@ npm run web               # the vite dev server alone, proxying /api to a BFF yo
 npm run web:build         # production bundle into dist/dashboard (test:parity builds this itself)
 
 npm run build:manifest     # regenerate src/domain/workflow/generated-build-manifest.ts
+npm run build:manifest:check # fail if the committed manifest is stale
+npm run stores:catalog     # regenerate the generated §2 task catalog in docs/rebuild/reference/stores.md
+npm run stores:catalog:check # fail if the committed catalog is stale
 npm run roadmap            # render docs/roadmap/index.html from docs/roadmap/roadmap.md (the plan, in the roadmap notation)
 npm run roadmap:check      # fail if the committed site is stale
 ```
@@ -317,8 +320,8 @@ environment-supplied.
   omission never suppresses or manufactures either arm.
 
 - **2026-09-01 — D307 step omission.** Declare an omission BESIDE the step's own nodes
-  (`nodes.category(fragments, { omission })`), never as a separate mechanism. Its `produces` map
-  rebuilds TASK node outputs only; a transaction never runs and mints no envelope (D144). Since D313
+  (`group(step, { omission })` in the workflow author), never as a separate mechanism. Its
+  `produces` map rebuilds TASK node outputs only; a transaction never runs and mints no envelope (D144). Since D313
   (2026-09-02) whole-step omission executes NO entry of the step — a gate inside an omitted step is
   omitted with it — so a mandatory check is authored as its own entry outside the omittable step, and
   `defineWorkflow` refuses a definition where an entry outside an omittable step reads a member the
@@ -442,25 +445,25 @@ environment-supplied.
   2026-09-02 deletion acceptance every workflow folder holds exactly one file, `workflow.ts`; a step
   folder exists only when it carries a harness (`job-summary` is a declared group with no folder),
   and the `workflow-layout` guard refuses any other file beside a `workflow.ts`.
-- **2026-09-02 — D311–D317 make the workflow definition the authoring authority and simplicity
-  measurable.** Its `steps` field is an ordered array of `[timeline group, tasks[]]` tuples;
-  group keys/labels own timeline grouping while typed inputs own dependencies, and entries
-  explicitly declare `task | parallel | delegate | gate | transaction`. One compiler derives the
-  existing descriptor, module requirements and generic dashboard/Explorer projections. A workflow
-  reusing existing tasks/surfaces authors exactly `workflow.ts` + structural scenario + dry-run declaration
-  + migration doc. Whole-step omissions and every replacement value are complete/schema-valid in
-  the run modal before start; a separate mandatory verifier may still run. Recovery exposes
-  checkpoint resume or root restart; root restart reruns reads/computes but never re-executes a
-  completed transaction. D265 folders remain organization/audit structure, not semantic timeline
-  order. Convert person lookup, then separations, prove public equivalence, and delete redundant
-  declarations before migrating another workflow; there is no advanced escape hatch. T1 remains per
-  workflow; T2/T3 is added only for a genuinely new dashboard capability. “Recipe” is analogy only;
-  the API is `defineWorkflow` and its generated value is `CompiledWorkflow`. See ref workflow-model
-  §§1.6, 5.6 and 5.8 and doc 03c `{#workflow-authoring-model}`. The D317 rename, the direct entry algebra and
-  the deletion gate are done (2026-09-02): `src/base/workflow-definition.ts` is the only authoring
-  seam, the flow node-fragment API is gone, and the Separations composition's `workflow.ts` authors
-  every step's group, node ids, entry identities and omission that its harnesses import. Do not
-  reintroduce a `descriptor.ts`/`module.ts`/`nodes.ts`/`step.ts` beside a `workflow.ts`.
+- **2026-09-02 — D311–D317: the workflow definition is the authoring authority.** The ONE authoring
+  seam is `src/base/workflow-definition.ts`: `defineWorkflow` → `WorkflowDefinition`, and
+  `compileWorkflow` → `CompiledWorkflow` (the descriptor, module requirements and the generic
+  dashboard/Explorer projections). `steps` is an ordered array of `[timeline group, entries[]]`
+  tuples — group keys/labels own timeline presentation, entries are the closed explicit
+  `task | parallel | delegate | gate | transaction` algebra, and typed references (never tuple
+  order) are the execution edges. A workflow reusing existing tasks/surfaces authors exactly
+  `workflow.ts` + structural scenario + dry-run declaration + migration doc, plus the two
+  registration edits in the two registry files and `npm run build:manifest`. Nothing else sits beside a `workflow.ts` (no
+  `descriptor.ts`/`module.ts`/`nodes.ts`/`step.ts`/`node-ids.ts`/`omission.ts`), a step folder
+  exists only when it carries a chunk harness, and there is no other authoring path and no advanced
+  escape hatch (guards `workflow-layout`, `workflow-authoring-budget`). Declare an omission as
+  `group(step, { omission })` beside that step's entries; every replacement value is complete and
+  schema-valid in the run modal before start (D313). Recovery exposes checkpoint resume or root
+  restart, and a root restart reruns reads/computes but never re-executes a completed transaction
+  (D314). D265 folders stay organization/audit structure, not semantic timeline order; T1 stays per
+  workflow and T2/T3 is added only for a genuinely new dashboard capability; "recipe" is analogy
+  only. See docs/guides/workflow-authoring.md (practical), ref workflow-model §§1.6, 5.6 and 5.8
+  (normative), doc 03c `{#workflow-authoring-model}` (routing).
 - A workflow's T1 proof lives at
   `tests/scenario/workflows/<workflow-id>/{structural.scenario.test.ts,dry-run.scenario.ts}`: exactly
   one collected structural scenario and one sibling T1b live manifest. D318 gives that manifest two

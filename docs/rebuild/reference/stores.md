@@ -63,16 +63,19 @@ at call time:
   path further requires `task.driver === driver`, so a real task cannot attach to an unwired
   declaration at all).
 
-**Workflows never contain selectors.** A descriptor (`src/workflows/<id>/descriptor.ts`) references
-only task **contracts** — bundle-safe, zod-schema-only. The server composition value
-(`src/workflows/<id>/module.ts`) is what imports concrete stores, and `src/control/workflow-registry.ts`
-audits at load time that every contract a descriptor uses resolves through one of that module's own
-factory-defined stores, and that no listed store goes unused (`auditWorkflowModuleBindings`).
+**Workflows never contain selectors.** The one authored file, `src/workflows/<id>/workflow.ts`,
+imports task **contracts** by value — bundle-safe, zod-schema-only — and names them on its entries.
+Concrete stores are never imported there: `src/control/workflow-registry.ts` is the composition root
+that calls `compileWorkflow` and then `composeWorkflowModule`, which resolves each entry's contract
+to exactly one registered store by namespace and refuses a missing store, duplicate stores for a
+namespace, or a contract the store does not bind as the SAME object (ref workflow-model §1.6). The
+registry additionally audits at load time that no listed store goes unused
+(`auditWorkflowModuleBindings`).
 
 **The reuse rule.** Before adding a task:
 
-1. Find the store below. If the exact operation already exists as a task, **REUSE** it — call it from
-   the new workflow's descriptor, do not re-implement.
+1. Find the store below. If the exact operation already exists as a task, **REUSE** it — import its
+   contract into the new workflow's `workflow.ts` and name it on an entry, do not re-implement.
 2. If the store exists and is `semantic-ready` but lacks this one operation, **CUSTOMIZE**: add a
    sibling task file under `stores/<system>/tasks/`, bound to the store's existing driver declaration
    — importing it, never re-declaring it (`declareDriverFor` is called exactly once per store, at
@@ -116,7 +119,9 @@ which store you are in, this decides how wide the new read task is:
 ## 2 · Per-store catalog
 
 Generated from the live task-store registry: every registered store, its declaration status, and
-every task's contract shape — the index to search BEFORE writing a task. Run
+every task's contract shape — the index to search BEFORE writing a task. This catalog is the D312 /
+doc 03c "find before you build" surface: an author decides REUSE / CUSTOMIZE / BUILD here, and
+`docs/guides/workflow-authoring.md` §2 is the author's entry point into it. Run
 `npm run stores:catalog` after any store change; `npm run stores:catalog:check` fails on stale
 bytes. Hand-written provenance, live-verification dates and reuse guidance live in §2b below.
 
@@ -523,7 +528,7 @@ a service store.
 
 | Item | Kind | Contract id | What it does | Reuse notes |
 |---|---|---|---|---|
-| `readActiveStatusTask` | task | `workflow:person-lookup/read-active-status` (read) | Pure fold: combines the UCPath selection, the CRM cross-verify record, and the `keepNonHdh` flag into `active`/`inactive`/`undetermined` with a stated reason. | `replay:"always-rerun"` at the descriptor — re-running a pure fold on resume is strictly safer than replaying a checkpoint whose deriving code may have changed. Throws `inconsistent-inputs` if the UCPath and CRM EIDs disagree. |
+| `readActiveStatusTask` | task | `workflow:person-lookup/read-active-status` (read) | Pure fold: combines the UCPath selection, the CRM cross-verify record, and the `keepNonHdh` flag into `active`/`inactive`/`undetermined` with a stated reason. | `replay:"always-rerun"` on the entry in `workflow.ts` — re-running a pure fold on resume is strictly safer than replaying a checkpoint whose deriving code may have changed. Throws `inconsistent-inputs` if the UCPath and CRM EIDs disagree. |
 
 ---
 
@@ -577,7 +582,8 @@ Provider adapters are not registered in `src/stores/index.ts`; they are composed
 
 ### `person-lookup` (`src/workflows/person-lookup/`)
 
-Module binds exactly `[ucpathStore, crmStore, personLookupStore]`.
+`composeWorkflowModule` binds exactly `[ucpathStore, crmStore, personLookupStore]`, resolved from
+the contracts the four entries in `workflow.ts` name.
 
 | Node | Contract | Store task | System |
 |---|---|---|---|
@@ -597,10 +603,11 @@ is not a current store inventory entry.
 
 ### `separations` (`src/workflows/separations/`) — the COMPOSITION
 
-Module binds **four** stores: `[kualiStore, ucpathStore, newKronosStore, separationsStore]`. That is
-§3's "one descriptor over reused tasks" made concrete — the composed graph consumes the tasks the
-five harness descriptors made provable, and those harnesses live inside the timeline-step folders
-they prove.
+`composeWorkflowModule` binds **four** stores: `[kualiStore, ucpathStore, newKronosStore,
+separationsStore]`. That is §3's "one authored `workflow.ts` over reused tasks" made concrete — the
+composed graph consumes the tasks the five chunk harnesses made provable, and those harnesses author
+their own `workflow.ts` inside the timeline-step folders they prove, importing the composition's
+entry identities.
 
 Nineteen nodes: reads and folds, one name-resolved conditional operator gate, and three transaction
 nodes in doc 09's order.
