@@ -1,18 +1,21 @@
 # R4 u24 — review and final proof
 
-_This evidence commit contains the completed implementation and gate record. The independent Docs
-axis and Spec re-review target this immutable commit; their close annotation follows separately._
+_This record is complete through the independent review of the immutable evidence commit._
 
 ## Review targets and dispositions
 
-The first immutable candidate was `a638e8c3543199f9baa93e18113ec4eeb716bdb5...5aaa55c7`.
+The first immutable candidate was
+`a638e8c3543199f9baa93e18113ec4eeb716bdb5...5aaa55c72770e5eb3d1b63c72c7cc6bf56b2d642`.
+The resolved evidence target was
+`a638e8c3543199f9baa93e18113ec4eeb716bdb5...298ef1b98bf48c24ca7ac4a4584dadc4cabe3ab7`.
 
 | Axis | Independent result | Disposition |
 | --- | --- | --- |
 | Standards | One medium: the record called itself final while gates were pending | Fixed by replacing the draft with this completed gate record. No other finding. |
 | Tests | Two medium matcher-scope findings; one low count error | Fixed: both matchers now inspect the native `<button>` opening tag; focused total is 37. Negative controls independently fail. |
 | Performance | No finding | Accepted. One test file and six duplicate cases leave the dashboard family; jsdom count is unchanged. |
-| Spec | One medium: u19 lacked an assertion-granular ledger; one high: final proof pending | Fixed: u19 now maps all 1,056 intake assertions; this document records the completed gates. |
+| Spec | One medium: u19 lacked an assertion-granular ledger; one high: final proof pending | Fixed: u19 maps all 1,056 intake assertions and this document records the completed gates. Re-review of `298ef1b9` found zero remaining findings. |
+| Docs | Four findings: missing close annotation, one whitespace-sensitive title, abbreviated range, and two command ellipses | Fixed in this close commit: review outcomes are explicit, the ledger title is byte-exact, full SHAs identify both targets, and commands are complete. |
 | Correctness | Supervisor-owned | Exact overlap and controlled reds prove each removed geometry claim remains owned by parity. No runtime behavior changed. |
 | Silent failures | Supervisor-owned | No catch/default/retry/refusal path changed; the React diagnostic fix exposes output instead of suppressing it. |
 | Security | Supervisor-owned | No production, authentication, secret, dependency, command, or served-wire surface changed. |

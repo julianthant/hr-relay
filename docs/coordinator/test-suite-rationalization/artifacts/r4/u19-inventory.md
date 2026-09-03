@@ -311,7 +311,7 @@ VL	keep	detail-region-breakpoints.test.ts	detail-region-breakpoints.test.ts	the 
 SP	keep	diagnostic-bundle-client.test.ts	diagnostic-bundle-client.test.ts	E29 diagnostic bundle client and fixture route forwards an optional diagnostic read signal without adding one to ordinary reads
 SP	keep	diagnostic-bundle-client.test.ts	diagnostic-bundle-client.test.ts	E29 diagnostic bundle client and fixture route keeps manifest and attachment links owned by transport base http://127.0.0.1:3938
 SP	keep	diagnostic-bundle-client.test.ts	diagnostic-bundle-client.test.ts	E29 diagnostic bundle client and fixture route keeps manifest and attachment links owned by transport base https://dashboard.example/owned-base/
-SP	keep	diagnostic-bundle-client.test.ts	diagnostic-bundle-client.test.ts	E29 diagnostic bundle client and fixture route refuses unsafe resource identity before returning any URL
+SP	keep	diagnostic-bundle-client.test.ts	diagnostic-bundle-client.test.ts	E29 diagnostic bundle client and fixture route refuses unsafe resource identity  before returning any URL
 SP	keep	diagnostic-bundle-client.test.ts	diagnostic-bundle-client.test.ts	E29 diagnostic bundle client and fixture route refuses unsafe resource identity ../../latest before returning any URL
 SP	keep	diagnostic-bundle-client.test.ts	diagnostic-bundle-client.test.ts	E29 diagnostic bundle client and fixture route refuses unsafe resource identity https://foreign.example/id before returning any URL
 SP	keep	diagnostic-bundle-client.test.ts	diagnostic-bundle-client.test.ts	E29 diagnostic bundle client and fixture route refuses unsafe resource identity 00000000-0000-4000-8000-000000000001?redirect=elsewhere before returning any URL

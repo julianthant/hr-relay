@@ -48,11 +48,11 @@ affected T2 scenario remains 9/9, and full coverage remains green at 4,880 cases
 
 | Command / control | Result |
 | --- | --- |
-| `npx vitest run --project unit tests/unit/dashboard/icon-button-semantics.test.ts ...` | 4 files / 37 cases; zero React act diagnostics |
+| `npx vitest run --project unit tests/unit/dashboard/icon-button-semantics.test.ts tests/unit/dashboard/ui-catalog-surface.test.ts tests/unit/dashboard/failure-record-render.test.ts tests/unit/dashboard/run-detail-timeline-render.test.ts --reporter=verbose --passWithNoTests=false` | 4 files / 37 cases; zero React act diagnostics |
 | Deliberately omit IconButton caller class, then accessible label | Each exact native-button test failed independently; restored 2/2 |
 | Deliberately reduce Top Bar/member coarse target | Chromium reported `24 < 44` and `25 < 44`; production restored |
 | `npx vitest run --project unit tests/unit/dashboard --reporter=verbose --passWithNoTests=false` | 103 files / 1,050 cases; 29.04 s wall; actionable full titles visible |
-| `npx vitest run --project scenario tests/scenario/dashboard/separations/identity-gate.scenario.test.ts ...` | 1 file / 9 cases |
+| `npx vitest run --project scenario tests/scenario/dashboard/separations/identity-gate.scenario.test.ts --reporter=verbose --passWithNoTests=false` | 1 file / 9 cases |
 | `npm run test:parity` | 17 specs / 281 cases; 58.03 s wall; references unchanged |
 | `npm run typecheck` | PASS |
 | `npm run lint` | PASS, zero warnings |
@@ -70,9 +70,10 @@ coverage floors, and timeouts intact.
 Independent Standards, Tests, Performance, and Spec reviewers examined the immutable implementation
 candidate. Standards found one stale draft claim; Tests found two unscoped matchers and one count
 error; Spec required the assertion-level ledger and final proof; Performance found no issue. All
-findings are resolved in this evidence commit, with the Spec re-review and Docs axis recorded in the
-close annotation. Correctness, silent-failure, and security review found no changed production
-surface and no unowned removed behavior.
+findings are resolved. Spec re-review of `298ef1b9` found no remaining issue. The Docs review found
+four record-only issues—missing close status, one whitespace-sensitive title, an abbreviated range,
+and two command ellipses—which this close commit corrects. Correctness, silent-failure, and security
+review found no changed production surface and no unowned removed behavior.
 
 Coordinator integration should merge this branch after review verification, run its integration
 gate, then perform the recorded worktree/branch/task cleanup. Do not edit the R4 branch's evidence
