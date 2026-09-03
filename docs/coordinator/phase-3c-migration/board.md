@@ -21,7 +21,7 @@
 
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
-| u01–u06 | R1 | receive cleanup provenance audit | branch tip `31c3f9a56bd9ddce29d5f2a8938143665379d963`; similarly named `eb84-r1-*` worktrees are uncontained test-suite-rationalization work and were not removed | typecheck/lint, 393 files/4,853 coverage tests, parity 287/287, manifest/roadmap/diff/twins PASS | implementation review complete; exact R1 worker provenance verification required | bounded D311 compiler complete; D312–D316 successor remains R3; unrelated dirty work preserved |
+| u01–u06 | R1 | ready; verified 2026-09-02 | branch tip `31c3f9a56bd9ddce29d5f2a8938143665379d963`; base ancestry and clean branch verified; all `feature/03c-r1-u*` workers absent; unrelated `eb84-r1-*` program preserved | typecheck/lint, 393 files/4,853 coverage tests, parity 287/287, manifest/roadmap/diff/twins PASS | complete; six findings resolved | bounded D311 compiler complete; D312–D316 successor remains R3; report accepted after cleanup-provenance correction |
 | u10–u12 | R2 | ready; verified 2026-09-02 | branch tip `ed9ee5ac0479a1517d38703b2ad77e2db9d61c9d`; base ancestry/clean tree verified; merge waits for R1 | typecheck, lint, roadmap freshness, diff check PASS; three focused re-reviews Count 0 | complete | Order 1 intake/live provenance complete; read-only T1 decision and fresh I-9 canary remain explicit residue |
 | u15–u19 | R3 | briefed; blocked on integrated R1+R2 | — | — | required | D312–D316 strict artifact guard, entry algebra, whole-step admission, recovery modes and final deletion acceptance |
 | u20–u24 | R4 | blocked on R3 + decision 1 | — | — | required | Order 1 implementation and proof |
