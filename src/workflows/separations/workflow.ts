@@ -180,9 +180,9 @@ import {
 
 /* ── The timeline's step identities ─────────────────────────────────────────
  *
- * D312/D315 — this one file authors the composition's timeline: each step's
- * group, node ids, entry identities and (where the step is omittable) its D307
- * omission, in timeline order, then the `defineWorkflow` call that wires them.
+ * D312/D315 — this one file authors the composition's whole timeline — each
+ * step's group, node ids, entry identities and (where the step is omittable) its
+ * D307 omission, in timeline order — then the `defineWorkflow` call that wires them.
  * The chunk harnesses under `./<step>/workflow.ts` IMPORT the identities of the
  * step they prove from here (D265 §1.2.2 rule 3) and wire them from their own
  * ingress; nothing under a step folder authors an identity of its own.

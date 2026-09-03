@@ -45,4 +45,3 @@ export function workflowSourceFolder(id: string, role: WorkflowModuleRole): stri
 export function workflowSourcePath(id: string, role: WorkflowModuleRole): string {
   return `${workflowSourceFolder(id, role)}/workflow.ts`;
 }
-
