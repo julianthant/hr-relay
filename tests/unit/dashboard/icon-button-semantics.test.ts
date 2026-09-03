@@ -13,8 +13,9 @@ describe("IconButton semantics", () => {
       icon: null,
     }));
 
-    assert.match(html, /<button/u);
-    assert.match(html, /caller-owned-class/u);
+    const openingButton = /^<button\b[^>]*>/u.exec(html)?.[0];
+    assert.ok(openingButton);
+    assert.match(openingButton, /class="[^"]*\bcaller-owned-class\b[^"]*"/u);
   });
 
   it("uses the required label as the native button's accessible name", () => {
@@ -24,6 +25,8 @@ describe("IconButton semantics", () => {
       icon: null,
     }));
 
-    assert.match(html, /aria-label="Mark Jordan Reyes checked by you"/u);
+    const openingButton = /^<button\b[^>]*>/u.exec(html)?.[0];
+    assert.ok(openingButton);
+    assert.match(openingButton, /aria-label="Mark Jordan Reyes checked by you"/u);
   });
 });

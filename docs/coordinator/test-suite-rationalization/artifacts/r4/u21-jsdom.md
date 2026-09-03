@@ -21,7 +21,7 @@ React `act` directly but lacked the environment declaration already used by the 
 jsdom files.
 
 Each now declares `IS_REACT_ACT_ENVIRONMENT` at the file boundary. The same focused family plus the
-new `IconButton` semantics passed 4 files / 36 cases in 1.30 seconds with zero act-environment or
+new `IconButton` semantics passed 4 files / 37 cases in 1.30 seconds with zero act-environment or
 not-wrapped-in-act diagnostics. No diagnostic was globally suppressed; unexpected React output
 would still surface with project, file, suite, and full behavior title.
 
