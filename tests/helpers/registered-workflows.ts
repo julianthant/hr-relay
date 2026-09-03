@@ -10,9 +10,16 @@ import {
   personLookupModule,
   separationsKronosTimecardModule,
   separationsModule,
+  separationsUcpathTerminationModule,
 } from "../../src/control/workflow-registry.js";
 
-export { personLookupModule, separationsKronosTimecardModule, separationsModule };
+export {
+  personLookupModule,
+  separationsKronosTimecardModule,
+  separationsModule,
+  separationsUcpathTerminationModule,
+};
 export const personLookupDescriptor = personLookupModule.descriptor;
 export const separationsDescriptor = separationsModule.descriptor;
 export const separationsKronosTimecardDescriptor = separationsKronosTimecardModule.descriptor;
+export const separationsUcpathTerminationDescriptor = separationsUcpathTerminationModule.descriptor;

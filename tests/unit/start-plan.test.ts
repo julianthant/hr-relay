@@ -29,7 +29,7 @@ import {
   supportsDryRun,
 } from "../../src/services/start/plan.js";
 import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
-import { separationsUcpathTerminationDescriptor } from "../../src/workflows/separations/ucpath-transaction/descriptor.js";
+import { separationsUcpathTerminationDescriptor } from "../helpers/registered-workflows.js";
 import { PersonLookupCanonicalInput, PersonLookupInput } from "../../src/workflows/person-lookup/workflow.js";
 import { HASH_A, HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";

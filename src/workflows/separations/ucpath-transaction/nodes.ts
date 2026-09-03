@@ -1,18 +1,18 @@
 /**
- * D265 §1.2.2 rule 2 — the *UCPath transaction* step's node fragments, in ref
+ * D265 §1.2.2 rule 2 — the *UCPath transaction* step's entry identities, in ref
  * write-safety's order: the pending-termination sweep (S30/S31 — legacy's first
  * mutation, unfenced and unverified), the termination filing itself, and the
  * receipt check that binds `(transactionNumber, approvalStatus)` as a PAIR
  * (D130 proved a **Denied** transaction carries a well-formed `T…`).
  *
- * A fragment owns a node's IDENTITY — id, contracts, label and, for a
+ * An entry identity owns a node's IDENTITY — id, contracts, label and, for a
  * transaction, its whole write policy (dry-run shape, probe policy, the
- * probe-to-fence budget) — and takes its WIRING (`dependsOn` + the binds) from
- * the graph that applies it (see `src/base/flow.ts`, "node fragments"). The
+ * probe-to-fence budget) — and takes its WIRING (references + binds) from the
+ * workflow definition that uses it (`defineStepEntries`, D315). The
  * composition binds the filing from the reconciled folds; the harness in this
  * folder binds it from its own ingress (rule 3).
  */
-import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
+import { defineStepEntries } from "../../../base/workflow-definition.js";
 import { PENDING_SET_NODE, SWEEP_NODE, TERMINATION_NODE, RECEIPT_NODE } from "./node-ids.js";
 import { SeparationsVerifyTerminationReceipt } from "../../../domain/contracts/separations/verify-termination-receipt.js";
 import { UcpathCreateTermination } from "../../../domain/contracts/ucpath/create-termination.js";
@@ -23,7 +23,7 @@ import { UcpathReadPendingTerminationSet } from "../../../domain/contracts/ucpat
 import { UCPATH_TRANSACTION_STEP } from "./step.js";
 
 
-const nodes = defineWorkflowStepNodeFactory(UCPATH_TRANSACTION_STEP);
+const nodes = defineStepEntries(UCPATH_TRANSACTION_STEP);
 
 export const pendingSetNode = nodes.task(PENDING_SET_NODE, UcpathReadPendingTerminationSet, {
   label: "Read Exact Pending Set",

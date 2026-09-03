@@ -245,7 +245,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "392c34458103ef813b9781fe935284aa1a7d5f9850478c3085c9d84f67d688e7",
+      "fingerprint": "f0492f5488de3ce0f9c5b48711a06c2cdd1d702bd0f0d573a1b58d8543173070",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -717,7 +717,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/nodes.ts",
-          "sha256": "e3d14e056257e7d85ad6fd421e9d4edfa3d6debd3e9ae8d18000c7eabe22cf4a"
+          "sha256": "0c561c1eb097e597980245920427a98a57be5203469f74ad35f02a1a19761858"
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/omission.ts",
@@ -1691,55 +1691,71 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-read"
     },
     {
-      "fingerprint": "2c90845ae0b5450da718bd24ecd48063d0ee5156932e1992386e8c0cfebf94e9",
+      "fingerprint": "d62931e7b6cada0a45685bd9241314019f6693ac8df2dd90fd848d45008ea0e2",
       "sources": [
+        {
+          "path": "src/base/artifacts.ts",
+          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
+        },
+        {
+          "path": "src/base/duo-ceremony-lease.ts",
+          "sha256": "7f8cb8bb6135aada79670b7bc5e1d24ae835548d0642cc3232812937960b9901"
+        },
+        {
+          "path": "src/base/errors.ts",
+          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
+        },
         {
           "path": "src/base/flow.ts",
           "sha256": "d801b0d635450908722e0f804b5ac42114f49dd9fe3ce63a0fae448cec7fe4a8"
+        },
+        {
+          "path": "src/base/providers.ts",
+          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
+        },
+        {
+          "path": "src/base/session.ts",
+          "sha256": "ca2f88ff24960907f0beee06f41e909f9c5540f2d7440dcb8c4ad5e1948877ad"
+        },
+        {
+          "path": "src/base/store.ts",
+          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
+        },
+        {
+          "path": "src/base/task.ts",
+          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
+        },
+        {
+          "path": "src/base/workflow-definition.ts",
+          "sha256": "575ace9f7e1aafe553d93f11b015f587f46efe79f0b0dd4c8ef4584c821bcdb5"
         },
         {
           "path": "src/base/workflow.ts",
           "sha256": "3ba50424f2be84dd3c85fa80375f1efc1bd8e7e3245bbf5db903ef3bedc4d4de"
         },
         {
+          "path": "src/domain/artifacts.ts",
+          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
+        },
+        {
           "path": "src/domain/canonical-json.ts",
           "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/config/schema.ts",
+          "sha256": "d3cc30107f109138ee96f7f76c75709b42b4648712cafa2fe76ebfdad77cc8ec"
         },
         {
           "path": "src/domain/contracts/base.ts",
           "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
         },
         {
-          "path": "src/domain/contracts/kuali/read-separation-document.ts",
-          "sha256": "d909b1be2c5e1f8743f4ad5dba5192b65183b54588cd625030c7de314407f98e"
-        },
-        {
-          "path": "src/domain/contracts/kuali/search-separation-action.ts",
-          "sha256": "ddf180d3b70e34ccfea12764bf2385d2522050a9e62c91fcd36f3cbd9d22465b"
-        },
-        {
-          "path": "src/domain/contracts/separations/match-active-employment.ts",
-          "sha256": "bf8779778c4f66849aa8d5240d2f829090b853bb9594d716b6a7d87b603ff5af"
-        },
-        {
-          "path": "src/domain/contracts/separations/match-department-option.ts",
-          "sha256": "669f32766a8b55a71ebb50d6980f60ff4762d71a3c9fc1a5e5c3bc71566d6be5"
-        },
-        {
           "path": "src/domain/contracts/separations/match-identity.ts",
           "sha256": "6397ee718073f6edf0caa1c63ba32bb3fe615a7326164667ff4873d95cb66c4c"
         },
         {
-          "path": "src/domain/contracts/separations/match-separation-subject.ts",
-          "sha256": "4ee6e1f97f993c7ac4dc087d73a29091798851f63b1c349f2dd3af0a3e6e6596"
-        },
-        {
           "path": "src/domain/contracts/separations/match-termination-type.ts",
           "sha256": "db1923e232b77b505ae7b88d11c336490f719c30efb989da7e27b3cc6c8d84be"
-        },
-        {
-          "path": "src/domain/contracts/separations/read-separation-plan.ts",
-          "sha256": "57c85049f82a4f32715458d2bee0bae450deed7be68843e2a85212cf5708fb03"
         },
         {
           "path": "src/domain/contracts/separations/verify-identity-approval.ts",
@@ -1782,12 +1798,32 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "b94b24f98934e37ad7c8fc57655bb060054b87cfc5a68a09b14e51ac0da43f51"
         },
         {
+          "path": "src/domain/duo-ceremony-lease.ts",
+          "sha256": "2ad55e89212e0fa85422a6aa9fae16bc52536df0bc218b64d10825bea77a5b54"
+        },
+        {
+          "path": "src/domain/fields/cell-coercion.ts",
+          "sha256": "dc99a590fb4c0d90982b368c3abbdcbd65fcbc86a4c22911cc205191456d2b6e"
+        },
+        {
+          "path": "src/domain/fields/registry.ts",
+          "sha256": "bdd4477136f6dbc5b31fe63809ec1009983a307e78dc658f15e1303d0340ddc7"
+        },
+        {
+          "path": "src/domain/gates.ts",
+          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
+        },
+        {
           "path": "src/domain/ids.ts",
           "sha256": "a8bcc4ae53fc6af0d782b81234b4db97c80ecb8a83ccd43108b445f1f59b411f"
         },
         {
           "path": "src/domain/immutability.ts",
           "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/domain/intake/projection.ts",
+          "sha256": "a64d4cf08ebe8029084461a4a614e1c35e77c863dbedcccb091489d2c3baab67"
         },
         {
           "path": "src/domain/matching/levenshtein.ts",
@@ -1798,12 +1834,24 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "830baad1b128dcb693950a3ac3268011fd0f3c2599ca012cf22c6d92bca9b83a"
         },
         {
+          "path": "src/domain/provider-admission.ts",
+          "sha256": "4a96c13fea16706f037219d938ba9eea721e3734545ebccd1d27524ef25e2ece"
+        },
+        {
+          "path": "src/domain/providers.ts",
+          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
           "path": "src/domain/redaction-policy.ts",
           "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
         },
         {
           "path": "src/domain/redaction.ts",
           "sha256": "d0cac35017b54b2fbac9b7944d29d53dd1954997de701733f6764fca598753a5"
+        },
+        {
+          "path": "src/domain/run/envelope.ts",
+          "sha256": "efd48d3ea1edb7533bb686a38744b8d26fdae75287bf4645eb9a9329e401d35d"
         },
         {
           "path": "src/domain/run/result.ts",
@@ -1818,14 +1866,6 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "1dffa8730175ba0f0c17a41ef709a4533ea50da520ea736a5c4edcbb45d54f71"
         },
         {
-          "path": "src/domain/separations/department-option.ts",
-          "sha256": "948b77621d7d7ac4c8adbd7379c324895ce50a7d19064ae1a6f14da272b967b8"
-        },
-        {
-          "path": "src/domain/separations/employment-selection.ts",
-          "sha256": "040b045b731d729545091c66044cb5ecc5bbeecb2b3b5a043b02e381d4203f72"
-        },
-        {
           "path": "src/domain/separations/identity-approval.ts",
           "sha256": "daa28b605a59b08ba101f07569cf49b248614a4fa5d872e3bea5c7a5db802322"
         },
@@ -1836,14 +1876,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/separations/job-summary-classification.ts",
           "sha256": "2a03719bacd79f31d54d443224d4a812fd5a1be1a8b0ca25a50354ae3b9188b8"
-        },
-        {
-          "path": "src/domain/separations/separation-dates.ts",
-          "sha256": "ec90161f322b4e06801448847520c3f2c92387c9374e89a263f491994af7da01"
-        },
-        {
-          "path": "src/domain/separations/separation-subject.ts",
-          "sha256": "90c87aa616aa5d2183f0cf149a3da5494e4b485d1cb4a96a58eac65a0dde679c"
         },
         {
           "path": "src/domain/separations/termination-receipt.ts",
@@ -1866,12 +1898,12 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
         },
         {
-          "path": "src/domain/ui/driver.ts",
-          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
+          "path": "src/domain/task-provenance.ts",
+          "sha256": "d0c7ede9e932f380b08d282ae1810326cccf2956036694b5d2cc328df2017ace"
         },
         {
-          "path": "src/domain/ui/kuali-action-list.ts",
-          "sha256": "4c16a8711133cc12b29a7e7bccba089e499692124d9925a6cfca7cd9c1633ebe"
+          "path": "src/domain/ui/driver.ts",
+          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
         },
         {
           "path": "src/domain/ui/kuali-document-identity.ts",
@@ -1880,10 +1912,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/ui/kuali-separation-document.ts",
           "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
-        },
-        {
-          "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "b9a889be1d09efb8cdcdb51e8d90a1fa76a203fb64ea8c3f2873db6a1a44322c"
         },
         {
           "path": "src/domain/ui/ucpath-job-summary.ts",
@@ -1930,6 +1958,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "2d62f6af877bed5baf39aeccfca6af97813d4d9b9354c5030ea949d9ef529319"
         },
         {
+          "path": "src/domain/workflow/module-role.ts",
+          "sha256": "ba18c71fe72dfff420194ea83b047e1819f1c5843a1725266577576e056b10d6"
+        },
+        {
           "path": "src/domain/workflow/node-condition.ts",
           "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
         },
@@ -1958,44 +1990,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
         },
         {
+          "path": "src/validation/schema-path.ts",
+          "sha256": "3abe34025d4db6b41564ebae55bdfd95d2b8fc5d9cc333d38ee4352b16f56c2f"
+        },
+        {
           "path": "src/workflows/separations/identity-check/node-ids.ts",
           "sha256": "25343dc8269bcd06d460a19f0ee6cbb7d38a4d4d15bb10cf5bf249c6d9158212"
-        },
-        {
-          "path": "src/workflows/separations/identity-check/nodes.ts",
-          "sha256": "65fa2595ccef6bae4205060cd3231579544f61a2100fae4de73fe7f623c449cc"
-        },
-        {
-          "path": "src/workflows/separations/identity-check/step.ts",
-          "sha256": "c2d7870064aee20e81b463c46496c14e2a1c3a0a609d839fa8464b299926e1bb"
         },
         {
           "path": "src/workflows/separations/job-summary/node-ids.ts",
           "sha256": "a6eebfc7749666fe0506139f87f044f080f31a26606884ebabe591207ab79ec9"
         },
         {
-          "path": "src/workflows/separations/job-summary/nodes.ts",
-          "sha256": "86e08f2adbee824675e902c9b1f77c218bce378c217b5fb7aa57434e4a9881b7"
-        },
-        {
-          "path": "src/workflows/separations/job-summary/step.ts",
-          "sha256": "3dc381b2c55d9133047abb0f50d2f134dd0e704a965be358bb7efc3b4b8b58df"
-        },
-        {
           "path": "src/workflows/separations/kuali-extraction/node-ids.ts",
           "sha256": "210c6edff6fc77b1a8c5e346bce2711913d8bbfe2b98b80267eecfad7293008e"
-        },
-        {
-          "path": "src/workflows/separations/kuali-extraction/nodes.ts",
-          "sha256": "753192a3e593845138459280b449191647591caca6de033a3dbdb0da1341b839"
-        },
-        {
-          "path": "src/workflows/separations/kuali-extraction/step.ts",
-          "sha256": "1f03593ca2f01fe59b61b6a6acd6b5d19e5f0dd8a999ab2dfc45b61e096b50c5"
-        },
-        {
-          "path": "src/workflows/separations/ucpath-transaction/descriptor.ts",
-          "sha256": "6db5bb1f7f2bc7d83dd75f6b625d3d40aeb96d5eb6e06cd1ca177ece7090347c"
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/node-ids.ts",
@@ -2003,11 +2011,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/nodes.ts",
-          "sha256": "e3d14e056257e7d85ad6fd421e9d4edfa3d6debd3e9ae8d18000c7eabe22cf4a"
+          "sha256": "0c561c1eb097e597980245920427a98a57be5203469f74ad35f02a1a19761858"
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/step.ts",
           "sha256": "28f668aa97dff9cc4a53f4e68f96075f40a04270909f29a97553bec83248d8bb"
+        },
+        {
+          "path": "src/workflows/separations/ucpath-transaction/workflow.ts",
+          "sha256": "c9f58bc32cda2d539306a41051d17ac9a350aced81edf3a7e5f7db710dde4840"
         }
       ],
       "id": "separations-ucpath-termination"

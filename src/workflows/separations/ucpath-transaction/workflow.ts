@@ -55,10 +55,17 @@
  * a real, complete preparation of a real HR transaction.
  */
 import { z } from "zod";
-import { flow } from "../../../base/flow.js";
-import { defineWorkflowDescriptor } from "../../../base/workflow.js";
-import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
-import { ResolvedIdentitySubjectSchema } from "../../../domain/separations/identity-approval.js";
+import { defineWorkflow } from "../../../base/workflow-definition.js";
+import { SeparationsMatchIdentity } from "../../../domain/contracts/separations/match-identity.js";
+import { SeparationsMatchTerminationType } from "../../../domain/contracts/separations/match-termination-type.js";
+import { SeparationsVerifyIdentityApproval } from "../../../domain/contracts/separations/verify-identity-approval.js";
+import { UcpathReadJobSummary } from "../../../domain/contracts/ucpath/read-job-summary.js";
+import { SearchPersonOrg } from "../../../domain/contracts/ucpath/search-person-org.js";
+import { EidSchema } from "../../../domain/ids.js";
+import {
+  IdentityApprovalResultSchema,
+  ResolvedIdentitySubjectSchema,
+} from "../../../domain/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../domain/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../domain/separations/write-plan.js";
 import { KualiDocumentNumberSchema } from "../../../domain/ui/kuali-document-identity.js";
@@ -71,32 +78,20 @@ import {
   UcpathTerminationProofSchema,
   UcpathUsDateSchema,
 } from "../../../domain/ui/ucpath-smart-hr-termination.js";
-import {
-  BUILD_MANIFEST,
-  resolveWorkflowFingerprint,
-} from "../../../domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
+import { defineWorkflowRole } from "../../../domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
 import {
   APPROVAL_NODE,
   COMPARISON_NODE,
   GATE_NODE,
   NAME_SEARCH_NODE,
-  approvalNode,
-  comparisonNode,
-  identityApprovalGate,
-  nameSearchNode,
-} from "../identity-check/nodes.js";
-import { JOB_SUMMARY_NODE, jobSummaryNode } from "../job-summary/nodes.js";
-import { TERMINATION_TYPE_NODE, terminationTypeNode } from "../kuali-extraction/nodes.js";
-import {
-  PENDING_SET_NODE,
-  SWEEP_NODE,
-  TERMINATION_NODE,
-  clearPendingNode,
-  fileTerminationNode,
-  pendingSetNode,
-} from "./nodes.js";
+} from "../identity-check/node-ids.js";
+import { JOB_SUMMARY_NODE } from "../job-summary/node-ids.js";
+import { TERMINATION_TYPE_NODE } from "../kuali-extraction/node-ids.js";
+import { PENDING_SET_NODE, SWEEP_NODE, TERMINATION_NODE } from "./node-ids.js";
+import { clearPendingNode, fileTerminationNode, pendingSetNode } from "./nodes.js";
+import { UCPATH_TRANSACTION_STEP } from "./step.js";
 
 /**
  * The ingress. It is the identity-check ingress plus exactly the facts a
@@ -165,122 +160,9 @@ export const SeparationsUcpathTerminationResultSchema = z.strictObject({
 });
 
 
-const separationsUcpathTerminationFlow = flow(SeparationsUcpathTerminationInput)
-  // The Identity check and Job summary steps' fragments, wired straight from
-  // the harness ingress (D265 §1.2.2 rule 3 — imported, never restated), then
-  // this folder's own transaction fragments wired from the same ingress where
-  // the composition binds the reconciled folds.
-  .pipe(jobSummaryNode.wire({
-    dependsOn: [],
-    bind: ({ input }) => ({ emplId: input.emplId }),
-  }))
-  .pipe(nameSearchNode.wire({
-    dependsOn: [],
-    bind: ({ input }) => ({
-      kind: "by-name" as const,
-      name: input.employeeName,
-      keepNonHdh: true,
-    }),
-  }))
-  .pipe(terminationTypeNode.wire({
-    dependsOn: [],
-    bind: ({ input }) => ({
-      terminationType: input.terminationType,
-      observedOptions: input.observedTerminationTypeOptions,
-      documentNumber: input.documentNumber,
-    }),
-  }))
-  .pipe(comparisonNode.wire({
-    dependsOn: [JOB_SUMMARY_NODE, NAME_SEARCH_NODE],
-    bind: ({ input, outputs }) => ({
-      documentNumber: input.documentNumber,
-      documentName: input.employeeName,
-      documentEid: input.documentEid,
-      emplId: input.emplId,
-      emplIdSource: input.emplIdSource,
-      jobSummary: outputs[JOB_SUMMARY_NODE],
-      nameSelection: outputs[NAME_SEARCH_NODE].selection,
-      plan: noSeparationWritePlan(
-        "this chunk files the UCPath termination alone; the composed `separations` graph is where the whole write plan — the Kuali finalization included — exists to show",
-      ),
-    }),
-  }))
-  .pipe(identityApprovalGate.wire({ dependsOn: [COMPARISON_NODE, TERMINATION_TYPE_NODE] }))
-  .pipe(approvalNode.wire({
-    dependsOn: [COMPARISON_NODE, GATE_NODE],
-    bind: ({ outputs }) => ({
-      packet: outputs[COMPARISON_NODE].packet,
-      evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
-      approval: outputs[GATE_NODE],
-    }),
-  }))
-  .pipe(pendingSetNode.wire({
-    dependsOn: [APPROVAL_NODE],
-    bind: ({ outputs }) => ({
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-    }),
-  }))
-  .pipe(clearPendingNode.wire({
-    dependsOn: [APPROVAL_NODE, PENDING_SET_NODE],
-    prepare: { bind: ({ outputs }) => ({
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-      observedSet: outputs[PENDING_SET_NODE],
-    }) },
-    commit: { bind: ({ outputs }) => ({
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-      observedSet: outputs[PENDING_SET_NODE],
-    }) },
-  }))
-  .pipe(fileTerminationNode.wire({
-    dependsOn: [APPROVAL_NODE, TERMINATION_TYPE_NODE, SWEEP_NODE],
-    prepare: { bind: ({ input, outputs }) => ({
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-      emplRecord: input.emplRecord,
-      effectiveDate: input.effectiveDate,
-      template: outputs[TERMINATION_TYPE_NODE].template,
-      reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
-      lastDateWorked: input.lastDateWorked,
-      initiatorComments: input.initiatorComments,
-    }) },
-    commit: { bind: ({ input, outputs }) => ({
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-      emplRecord: input.emplRecord,
-      effectiveDate: input.effectiveDate,
-      template: outputs[TERMINATION_TYPE_NODE].template,
-      reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
-      lastDateWorked: input.lastDateWorked,
-      initiatorComments: input.initiatorComments,
-    }) },
-  }))
-  .build({
-    schema: SeparationsUcpathTerminationResultSchema,
-    dependsOn: [APPROVAL_NODE, SWEEP_NODE, TERMINATION_NODE],
-    derive: ({ outputs }) => ({
-      documentNumber: outputs[APPROVAL_NODE].documentNumber,
-      approved: outputs[APPROVAL_NODE].approved,
-      pendingSweep: {
-        disposition: outputs[SWEEP_NODE].disposition,
-        proof: outputs[SWEEP_NODE].output.cleared,
-      },
-      termination: {
-        disposition: outputs[TERMINATION_NODE].disposition,
-        proof: outputs[TERMINATION_NODE].output.receipt,
-      },
-    }),
-  });
-
-export const separationsUcpathTerminationDescriptor = defineWorkflowDescriptor({
+export const separationsUcpathTerminationWorkflow = defineWorkflow({
   id: "separations-ucpath-termination",
   version: 1,
-  contractFingerprint: resolveWorkflowFingerprint(
-    BUILD_MANIFEST,
-    WorkflowIdSchema.parse("separations-ucpath-termination"),
-  ),
   code: "st",
   label: "UCPath Termination",
   summary:
@@ -405,5 +287,165 @@ export const separationsUcpathTerminationDescriptor = defineWorkflowDescriptor({
     "separations-ucpath-termination/pending-sweep-nothing-to-do",
     "separations-ucpath-termination/pending-sweep-refuses-unreadable-scan",
   ],
-  flow: separationsUcpathTerminationFlow,
+  input: SeparationsUcpathTerminationInput,
+  // A proving harness for one step of `separations`, never a peer workflow (D219) —
+  // the step it proves is the folder it lives in, read from that folder's own
+  // declaration rather than re-typed here (D265 §1.2.2 rule 3).
+  role: defineWorkflowRole({ kind: "chunk-harness", of: "separations", step: UCPATH_TRANSACTION_STEP.key }),
+  steps: ({ task, gate, transaction, result }) => {
+    /**
+     * The Identity check, Job summary and Kuali extraction nodes, wired straight
+     * from the harness ingress where the composition resolves them from the
+     * Kuali reads. They are AUTHORED INLINE here rather than passed as those
+     * steps' shared identities: this harness declares one timeline group — its
+     * own step — and a group may claim only its own step's identities. Same id,
+     * same contract, same label, same replay policy, so the graph the harness
+     * proves is the graph the composition runs (D265 §1.2.2 rule 3).
+     */
+    const jobSummary = task({
+      id: JOB_SUMMARY_NODE,
+      contract: UcpathReadJobSummary,
+      label: "Job Summary",
+      replay: "checkpoint",
+    }, [], ({ input }) => ({ emplId: input.emplId }));
+    const nameSearch = task({
+      id: NAME_SEARCH_NODE,
+      contract: SearchPersonOrg,
+      label: "Name Search",
+      replay: "checkpoint",
+    }, [], ({ input }) => ({
+      kind: "by-name" as const,
+      name: input.employeeName,
+      keepNonHdh: true,
+    }));
+    const terminationType = task({
+      id: TERMINATION_TYPE_NODE,
+      contract: SeparationsMatchTerminationType,
+      label: "Termination Type",
+      replay: "checkpoint",
+    }, [], ({ input }) => ({
+      terminationType: input.terminationType,
+      observedOptions: input.observedTerminationTypeOptions,
+      documentNumber: input.documentNumber,
+    }));
+    const comparison = task({
+      id: COMPARISON_NODE,
+      contract: SeparationsMatchIdentity,
+      label: "Identity Comparison",
+      replay: "checkpoint",
+    }, [jobSummary, nameSearch], ({ input, outputs }) => ({
+      documentNumber: input.documentNumber,
+      documentName: input.employeeName,
+      documentEid: input.documentEid,
+      emplId: input.emplId,
+      emplIdSource: input.emplIdSource,
+      jobSummary: outputs[JOB_SUMMARY_NODE],
+      nameSelection: outputs[NAME_SEARCH_NODE].selection,
+      plan: noSeparationWritePlan(
+        "this chunk files the UCPath termination alone; the composed `separations` graph is where the whole write plan — the Kuali finalization included — exists to show",
+      ),
+    }));
+    /**
+     * `termination-type` is referenced by the GATE and not by the transaction:
+     * a §4a map refusal must land before the human is asked at all, and the
+     * gate's references are what put it there while still satisfying the
+     * guard's real property — data must not reach a commit the operator never
+     * saw.
+     */
+    const identityGate = gate({
+      id: GATE_NODE,
+      label: "Identity Approval",
+      statusKey: "awaitingIdentityApproval",
+      result: IdentityApprovalResultSchema,
+      when: {
+        kind: "equals",
+        of: { from: "node", nodeId: COMPARISON_NODE, path: "packet.emplIdSource" },
+        value: "name-resolved",
+      },
+    }, [comparison, terminationType]);
+    const approval = task({
+      id: APPROVAL_NODE,
+      contract: SeparationsVerifyIdentityApproval,
+      label: "Approval Check",
+      replay: "always-rerun",
+    }, [comparison, identityGate], ({ outputs }) => ({
+      packet: outputs[COMPARISON_NODE].packet,
+      evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
+      approval: outputs[GATE_NODE],
+    }));
+    // This folder's own step identities (`./nodes.ts`), wired from the same
+    // ingress where the composition binds the reconciled folds.
+    const pendingSet = task(pendingSetNode, [approval], ({ outputs }) => ({
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+    }));
+    const clearPending = transaction(clearPendingNode, [approval, pendingSet], {
+      prepareBind: ({ outputs }) => ({
+        emplId: outputs[APPROVAL_NODE].approved.emplId,
+        expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+        observedSet: outputs[PENDING_SET_NODE],
+      }),
+      commitBind: ({ outputs }) => ({
+        emplId: outputs[APPROVAL_NODE].approved.emplId,
+        expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+        observedSet: outputs[PENDING_SET_NODE],
+      }),
+    });
+    const fileTermination = transaction(
+      fileTerminationNode,
+      [approval, terminationType, clearPending],
+      {
+        prepareBind: ({ input, outputs }) => ({
+          emplId: outputs[APPROVAL_NODE].approved.emplId,
+          expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+          emplRecord: input.emplRecord,
+          effectiveDate: input.effectiveDate,
+          template: outputs[TERMINATION_TYPE_NODE].template,
+          reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
+          lastDateWorked: input.lastDateWorked,
+          initiatorComments: input.initiatorComments,
+        }),
+        commitBind: ({ input, outputs }) => ({
+          emplId: outputs[APPROVAL_NODE].approved.emplId,
+          expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+          emplRecord: input.emplRecord,
+          effectiveDate: input.effectiveDate,
+          template: outputs[TERMINATION_TYPE_NODE].template,
+          reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
+          lastDateWorked: input.lastDateWorked,
+          initiatorComments: input.initiatorComments,
+        }),
+      },
+    );
+    return {
+      // The harness IS the step it proves: one timeline group, the step's own.
+      steps: [[UCPATH_TRANSACTION_STEP, [
+        jobSummary,
+        nameSearch,
+        terminationType,
+        comparison,
+        identityGate,
+        approval,
+        pendingSet,
+        clearPending,
+        fileTermination,
+      ]]],
+      result: result(
+        SeparationsUcpathTerminationResultSchema,
+        [approval, clearPending, fileTermination],
+        ({ outputs }) => ({
+          documentNumber: outputs[APPROVAL_NODE].documentNumber,
+          approved: outputs[APPROVAL_NODE].approved,
+          pendingSweep: {
+            disposition: outputs[SWEEP_NODE].disposition,
+            proof: outputs[SWEEP_NODE].output.cleared,
+          },
+          termination: {
+            disposition: outputs[TERMINATION_NODE].disposition,
+            proof: outputs[TERMINATION_NODE].output.receipt,
+          },
+        }),
+      ),
+    };
+  },
 });

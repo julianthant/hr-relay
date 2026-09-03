@@ -35,7 +35,7 @@ import { separationsKronosTimecardWorkflow } from "../workflows/separations/kron
 import { separationsKualiFinalizationModule } from "../workflows/separations/kuali-finalization/module.js";
 import { separationsKualiReadModule } from "../workflows/separations/kuali-extraction/module.js";
 import { separationsWorkflow } from "../workflows/separations/workflow.js";
-import { separationsUcpathTerminationModule } from "../workflows/separations/ucpath-transaction/module.js";
+import { separationsUcpathTerminationWorkflow } from "../workflows/separations/ucpath-transaction/workflow.js";
 
 /**
  * D311/D317 — a definition-backed workflow's server module is DERIVED here,
@@ -52,6 +52,10 @@ export const separationsModule = composeWorkflowModule(
 );
 export const separationsKronosTimecardModule = composeWorkflowModule(
   compileWorkflow(separationsKronosTimecardWorkflow),
+  taskStoreRegistry.stores,
+);
+export const separationsUcpathTerminationModule = composeWorkflowModule(
+  compileWorkflow(separationsUcpathTerminationWorkflow),
   taskStoreRegistry.stores,
 );
 
