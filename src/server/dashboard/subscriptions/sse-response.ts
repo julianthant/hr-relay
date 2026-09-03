@@ -24,20 +24,32 @@ export function dashboardEventStreamBody(connection: DashboardStreamConnection):
   const encoder = new TextEncoder();
   const encode = (envelope: DashboardStreamEnvelope): Uint8Array => encoder.encode(sseSerialize(envelope));
   let closed = false;
-  const closeOnce = (): void => {
-    if (closed) return;
+  /** Closes the connection once; answers whether THIS call did it. */
+  const closeOnce = (): boolean => {
+    if (closed) return false;
     closed = true;
     connection.close();
+    return true;
   };
   return new ReadableStream<Uint8Array>({
     start(controller): void {
       for (const envelope of connection.initial) controller.enqueue(encode(envelope));
     },
     async pull(controller): Promise<void> {
-      const envelope = await connection.next();
-      if (envelope === undefined) {
+      let envelope: DashboardStreamEnvelope | undefined;
+      try {
+        envelope = await connection.next();
+      } catch (error: unknown) {
+        // An errored stream is never cancel()ed by the machinery, so the
+        // connection must be released here or the subscriber leaks in the hub.
         closeOnce();
-        controller.close();
+        controller.error(error);
+        return;
+      }
+      if (envelope === undefined) {
+        // A cancel() that raced this pull already closed the stream; closing
+        // the controller again would throw into the stream machinery.
+        if (closeOnce()) controller.close();
         return;
       }
       controller.enqueue(encode(envelope));
