@@ -70,14 +70,20 @@ describe("D299 — scenarios group by their first path segment", () => {
 
   it("carries each row's own source rather than the group's first", () => {
     const groups = groupScenariosByPrefix([
-      scenario("person-lookup/happy-by-eid", "tests/scenario/person-lookup.scenario.test.ts"),
-      scenario("person-lookup/crm-subject-mismatch", "tests/scenario/person-lookup-runtime.scenario.test.ts"),
+      scenario(
+        "person-lookup/happy-by-eid",
+        "tests/scenario/workflows/person-lookup/structural.scenario.test.ts",
+      ),
+      scenario(
+        "person-lookup/crm-subject-mismatch",
+        "tests/scenario/workflows/person-lookup/structural.scenario.test.ts",
+      ),
     ]);
     const paths = groups[0]?.rows.map((row) => (row.source.state === "resolved" ? String(row.source.path) : "unresolved"));
 
     assert.deepEqual(paths, [
-      "tests/scenario/person-lookup.scenario.test.ts",
-      "tests/scenario/person-lookup-runtime.scenario.test.ts",
+      "tests/scenario/workflows/person-lookup/structural.scenario.test.ts",
+      "tests/scenario/workflows/person-lookup/structural.scenario.test.ts",
     ]);
   });
 

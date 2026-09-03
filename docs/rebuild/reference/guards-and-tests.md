@@ -1671,6 +1671,7 @@ guards—one contract change, and the compiler plus ratchets force the rest.
 - [x] BE the FIRST T1 pair in the tree — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the valid proof contracts/helpers of the dismantled annotation workflow (D266; doc 03b §The workflow tree)
 > 2026-08-20 | docs-cohesion ref guards-and-tests | the spec is written against the code (`vitest.config.ts`, `src/core/run-executor.ts`, `src/core/write-sequencer.ts`, `tests/scenario/**`, `tests/parity/**`, `docs/migrations/separations.md` §9.22); left: the four code units 5.2b–5.2d. Two as-built findings recorded rather than assumed: `TransactionDryRunPreviewSchema`'s `mismatch` subject arm is unreachable, and a real subject's EID is hardcoded across seven tracked files
 > 2026-08-25 | test-tiers | registry, authority row and CLI runner built; the finalization canary now records `blocked`/`not-started` before browser composition because its honest subject is unavailable until 2026-08-28. The T1 PROOF remains open until that manifest records `met`
+> 2026-09-02 | test-suite-rationalization R5a | the T1a structural half is complete for all seven registered workflows: each owns exactly one `workflows/<workflow-id>/structural.scenario.test.ts`, the architecture lane refuses split/flat ownership, and all structural person/document identities are synthetic. The overall T1 item remains open: only `separations` and `separations-kuali-finalization` have T1b manifests, and their sole retained canary is honestly `gone`/blocked rather than `met`.
 <!-- /roadmap-status -->
 
 This section is normative and it is the one an agent writing tests reads first. **R10's rule:
@@ -1683,14 +1684,15 @@ asks for it and its result is recorded.
 
 ### 10.1 The test family, as built
 
-Nine members. Folder, runner, when it runs, what it may touch, what it proves — verified against the
-tree at 2026-08-20.
+Nine members. Folder, runner, when it runs, what it may touch, what it proves. Rows retain their
+dated 2026-08-20 census unless they name a later refresh; R5a refreshed the fixture-scenario row's
+topology and count on 2026-09-02, while R7 owns the family-wide census and taxonomy reconciliation.
 
 | family | folder | runner | when | may touch | proves |
 |---|---|---|---|---|---|
 | **unit** | `tests/unit/**` (154 files / 49,398 lines, architecture excluded) | vitest project `unit` | every commit | pure functions, fake ctx, temp dirs, its own SQLite files under a temp root — **never** a real runtime root (`test-runtime-root-isolation`) | one module's decision logic, against its own schemas |
 | **architecture guards** | `tests/unit/architecture/**` (65 files / 19,320 lines) | vitest project `unit` (its glob contains them); `npm run test:architecture` is a PATH FILTER for a targeted run, not a project — §10.9 changes that | every commit | the tree as DATA — source text, ASTs, the registries, `package.json`, `tsconfig.json`, the legacy repo read-only | that a rule holds everywhere, and — through `guard-manifest` — that each of the nine arms still fires against a violating fixture |
-| **fixture scenarios** | `tests/scenario/*.scenario.test.ts` (15) | vitest project `scenario` | every commit | `walkDescriptor` over a real descriptor with caller-supplied node outputs; fake stores; no browser | that ONE declared graph path binds, refuses and terminates as authored, and that the coverage points it claims are the ones it walked |
+| **fixture scenarios** | `tests/scenario/*.scenario.test.ts` (6 capability files) + `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts` (7 T1a files) | vitest project `scenario` | every commit | `walkDescriptor` over a real descriptor with caller-supplied node outputs; fake stores; no browser | that ONE declared graph path binds, refuses and terminates as authored, and that the coverage points it claims are the ones it walked |
 | **integration walks** | `tests/scenario/*.walk.test.ts` (1) | vitest project `scenario` | every commit | ONE real authority database and the production read models | the JOINS only composition can falsify; it claims no coverage point and carries no manifest row (D185) |
 | **dashboard unit tests** | `tests/unit/dashboard/**` (25 files) | vitest project `unit` | every commit | the extracted `*-model.ts` halves — folds, vocabularies, command composition; **no DOM by default** — a wiring-level test (press-to-dispatch payloads, focus restoration) opts into `jsdom` per file with `@vitest-environment jsdom` (D277, 2026-08-27; nine files at HEAD); anything visual stays in the parity lane | that a surface's pure half computes what the surface claims |
 | **parity** | `tests/parity/**` — 3 specs, 13 helpers, **139 reference triples** (`.png` + `.a11y.yml` + `.meta.json`) over 27 scenarios × 2 themes × 3 viewports (+ the phone surface's own viewport) | `npm run test:parity` (Playwright, OUTSIDE vitest and outside coverage) | on a dashboard change, and before a slice closes | the built bundle over an ephemeral fixture BFF and an ephemeral seeded BFF; never ports 3938/5174 | that the rendered surface has not moved: both halves of every pair are ASSERTED (D132), the pixel allowance is `maxDiffPixels: 0` (D145), and `dual-adapter.spec.ts` compares the a11y SKELETON — role and depth, every literal dropped — between the fixture adapter and the real projection over real HTTP/SSE, which is what makes a fixture-built reference worth storing |
@@ -1764,14 +1766,12 @@ the coverage points it walked. It proves three things and no others:
 **What it may NOT claim.** A structural scenario runs over fake stores, so a value it feeds a node
 is a value the author chose. It may therefore never assert anything about the WORLD — that a
 particular EID has one active job, that a document number resolves, that a page renders a field.
-Those are dry-run facts. The current corpus violates this in one specific way that R10 exists to
-fix: the identity-check scenarios hardcode a pair of employee ids, and one of them is a **real
-subject** — the same id, with a name beside it, is in `docs/migrations/separations.md` §1 — reused
-across seven tracked files. The value is not a secret in the credential sense, but it is a real
-person's identifier committed to git and reused as though it carried meaning, which is exactly the
-"fixture scenario that pretends" R10 names. The rewrite replaces it with a schema-shaped
-**synthetic** id that no live system would resolve, and the real subject moves into the registry
-(§10.5) where the dry-run scenario reads it by LABEL.
+Those are dry-run facts. Before R5a, the identity-check scenarios hardcoded a pair of employee ids,
+including a real subject reused across seven tracked files as though the identifier carried current
+meaning. R5a replaced every structural workflow identity and document key with schema-shaped
+**synthetic** values and retained only the verified data/page shapes needed to exercise the
+contracts. A real subject belongs exclusively to the registry (§10.5), where the dry-run scenario
+addresses it by LABEL and durable authority records whether it was blocked, failed, or met.
 
 **Consolidation.** Where a workflow has several `*.scenario.test.ts` files today, they fold into the
 one structural file if what they assert is graph shape, and into the workflow's dry-run scenario if

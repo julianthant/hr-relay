@@ -21,40 +21,40 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import type { Page } from "playwright";
-import { EidSchema, IsoInstantSchema } from "../../src/domain/ids.js";
-import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
+import { EidSchema, IsoInstantSchema } from "../../../../src/domain/ids.js";
+import { directIdentifierDigestReference } from "../../../../src/domain/redaction.js";
 import {
   UCPATH_SMART_HR_DISPLAYED_PERSON_NAME,
   UCPATH_SMART_HR_TERMINATION_STAGED,
   isUcpathTerminationAction,
   isUcpathTerminationInProgress,
-} from "../../src/domain/ui/ucpath-smart-hr-termination.js";
-import { WriteParkedError } from "../../src/core/write-sequencer.js";
-import { ucpathPendingTransactionSetDigest } from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
+} from "../../../../src/domain/ui/ucpath-smart-hr-termination.js";
+import { WriteParkedError } from "../../../../src/core/write-sequencer.js";
+import { ucpathPendingTransactionSetDigest } from "../../../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 import type {
   UcpathTerminationStaging,
   UcpathTransactionRow,
   UcpathTransactionScan,
-} from "../../src/domain/ui/ucpath-smart-hr-termination.js";
-import { MatchIdentityOutputSchema } from "../../src/domain/contracts/separations/match-identity.js";
-import type { MatchIdentityOutput } from "../../src/domain/contracts/separations/match-identity.js";
-import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summary.js";
-import type { UcpathJobSummary } from "../../src/domain/ui/ucpath-job-summary.js";
-import type { SearchPersonOrgOutput } from "../../src/domain/contracts/ucpath/search-person-org.js";
-import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
-import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org-operation.js";
-import { readJobSummaryTask } from "../../src/stores/ucpath/tasks/read-job-summary.js";
-import { matchIdentityTask } from "../../src/stores/separations/tasks/match-identity.js";
-import { verifyIdentityApprovalTask } from "../../src/stores/separations/tasks/verify-identity-approval.js";
-import { createDeterministicUcpathSmartHrDriver } from "../../src/stores/ucpath/driver/smart-hr-fake.js";
-import { scanTerminationTransactionsOnPage } from "../../src/stores/ucpath/driver/smart-hr-operation.js";
-import { matchExistingTerminationTask } from "../../src/stores/ucpath/tasks/match-existing-termination.js";
-import { matchPendingTerminationsTask } from "../../src/stores/ucpath/tasks/match-pending-terminations.js";
-import { stageTerminationTask } from "../../src/stores/ucpath/tasks/stage-termination.js";
-import { verifyTerminationTask } from "../../src/stores/ucpath/tasks/verify-termination.js";
-import { separationsUcpathTerminationDescriptor } from "../../src/workflows/separations/ucpath-transaction/descriptor.js";
-import { SEPARATIONS_UCPATH_TERMINATION_CLAIMS } from "./coverage-claims.js";
-import { walkDescriptor } from "./helpers/pure-walk.js";
+} from "../../../../src/domain/ui/ucpath-smart-hr-termination.js";
+import { MatchIdentityOutputSchema } from "../../../../src/domain/contracts/separations/match-identity.js";
+import type { MatchIdentityOutput } from "../../../../src/domain/contracts/separations/match-identity.js";
+import { UcpathJobSummaryReadSchema } from "../../../../src/domain/ui/ucpath-job-summary.js";
+import type { UcpathJobSummary } from "../../../../src/domain/ui/ucpath-job-summary.js";
+import type { SearchPersonOrgOutput } from "../../../../src/domain/contracts/ucpath/search-person-org.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/stores/ucpath/driver/fake.js";
+import { deriveJobRowFromCells } from "../../../../src/stores/ucpath/driver/person-org-operation.js";
+import { readJobSummaryTask } from "../../../../src/stores/ucpath/tasks/read-job-summary.js";
+import { matchIdentityTask } from "../../../../src/stores/separations/tasks/match-identity.js";
+import { verifyIdentityApprovalTask } from "../../../../src/stores/separations/tasks/verify-identity-approval.js";
+import { createDeterministicUcpathSmartHrDriver } from "../../../../src/stores/ucpath/driver/smart-hr-fake.js";
+import { scanTerminationTransactionsOnPage } from "../../../../src/stores/ucpath/driver/smart-hr-operation.js";
+import { matchExistingTerminationTask } from "../../../../src/stores/ucpath/tasks/match-existing-termination.js";
+import { matchPendingTerminationsTask } from "../../../../src/stores/ucpath/tasks/match-pending-terminations.js";
+import { stageTerminationTask } from "../../../../src/stores/ucpath/tasks/stage-termination.js";
+import { verifyTerminationTask } from "../../../../src/stores/ucpath/tasks/verify-termination.js";
+import { separationsUcpathTerminationDescriptor } from "../../../../src/workflows/separations/ucpath-transaction/descriptor.js";
+import { SEPARATIONS_UCPATH_TERMINATION_CLAIMS } from "../../coverage-claims.js";
+import { walkDescriptor } from "../../helpers/pure-walk.js";
 import {
   SWEEP_IDEMPOTENCY_KEY,
   sweepIdempotencyKey,
@@ -73,8 +73,8 @@ import {
   terminationPendingSet,
   terminationQueuedRun,
   type TerminationHarness,
-} from "../unit/fixtures/ucpath-termination-fixtures.js";
-import { noSeparationWritePlan } from "../../src/domain/separations/write-plan.js";
+} from "../../../unit/fixtures/ucpath-termination-fixtures.js";
+import { noSeparationWritePlan } from "../../../../src/domain/separations/write-plan.js";
 
 const taskCtx = Object.freeze({
   signal: new AbortController().signal,
@@ -83,8 +83,8 @@ const taskCtx = Object.freeze({
   recordData: () => undefined,
 });
 
-const EID = EidSchema.parse("10001799");
-const NAME = "Drose Clauckia";
+const EID = EidSchema.parse("10800000");
+const NAME = "Primary Fixture";
 const EFFECTIVE_DATE = "06/11/2026";
 const LAST_DATE_WORKED = "06/10/2026";
 const OBSERVED_AT = IsoInstantSchema.parse("2026-08-13T18:00:00.000Z");
@@ -97,7 +97,7 @@ const TARGET = Object.freeze({
   template: "UC_VOL_TERM" as const,
   reasonCode: "Resign - No Reason Given",
   lastDateWorked: LAST_DATE_WORKED,
-  initiatorComments: "Separation filed from Kuali RRSS document 4510.",
+  initiatorComments: "Separation filed from Kuali RRSS document 4444.",
 });
 
 const SWEEP_TARGET = Object.freeze({
@@ -152,10 +152,10 @@ const CELLS: readonly string[] = [
   "HOUSING/DINING/HOSPITALITY", "004921", "STDT 2", "", "0.500000", "Student",
 ];
 
-const DOCUMENT_NAME = "Clauckia, Drose";
+const DOCUMENT_NAME = "Fixture, Primary";
 
 const RUN_INPUT = {
-  documentNumber: "4510",
+  documentNumber: "4444",
   employeeName: DOCUMENT_NAME,
   emplId: EID,
   emplIdSource: "document-eid" as const,
@@ -253,7 +253,7 @@ function harness(options?: Parameters<typeof terminationHarness>[0]): Terminatio
   return created;
 }
 
-/** The real `T002209631` shape, re-keyed to the fixture identity. */
+/** The real `T009000010` shape, re-keyed to the fixture identity. */
 function pendingTerminationRow(
   overrides: Partial<UcpathTransactionRow> = {},
 ): UcpathTransactionRow {
@@ -353,7 +353,7 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
     // prepare both saw the right person, then Page B moved to a different one
     // before the fence. It is also the arm legacy has NO control for at all —
     // it never reads the displayed name anywhere in the termination flow, which
-    // is the structural cause of the T002173685 wrong-person termination.
+    // is the structural cause of the wrong-person wrong-person termination.
     for (const node of [TERMINATION_SWEEP_NODE, TERMINATION_FILE_NODE]) {
       // The sweep needs something to sweep, or its probe settles
       // `already-present` before the subject is ever observed — which is itself
@@ -550,7 +550,7 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
               kind: "ucpath-termination",
               emplId: EID,
               effectiveDate: EFFECTIVE_DATE,
-              transactionId: "T002209631",
+              transactionId: "T009000010",
               approvalStatus: "Pending",
               displayedName: NAME,
               source: "ss-smart-hr-detail-read",
@@ -566,7 +566,7 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
     }
     const result = walk.result as { approved: { authority: string }; termination: { proof: { transactionId: string } } };
     assert.equal(result.approved.authority, "operator-approval");
-    assert.equal(result.termination.proof.transactionId, "T002209631");
+    assert.equal(result.termination.proof.transactionId, "T009000010");
   });
 
   it("separations-ucpath-termination/emplid-not-recognized — S48: UCPath never resolved the typed EID", async () => {
@@ -650,7 +650,7 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
       String(Reflect.get(intent, "message")),
       "ucpath/create-termination threw after the fence; whether the external write landed is unknown",
     );
-    assert.doesNotMatch(String(Reflect.get(intent, "message")), /submit-refused|10812345/u);
+    assert.doesNotMatch(String(Reflect.get(intent, "message")), /submit-refused|10800009/u);
     assert.equal(footprint.checkpoint, undefined, "nothing settled over an unknown outcome");
   });
 

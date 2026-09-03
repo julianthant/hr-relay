@@ -24,12 +24,10 @@
  * **Every subject value here is SYNTHETIC** (ref guards-and-tests §10.3). The
  * EIDs are the harness's `10800000`/`10800001`, which no live system resolves;
  * a real person's identifier is a dry-run fact and lives in the registry, read
- * by LABEL. What remains from the live 2026-08-12 read-only pass (§9.3) is the
- * document-scoped material — doc 4510's action id and number, its `Department*`
- * option list, and the shape of a complete finalization — because a document
- * number identifies a document, not a person, and the option list is exactly
- * the live capture these folds have to survive. The starting state is doc
- * 4502's: blank in five controls and on Kuali's `- - -` sentinel in a sixth.
+ * by LABEL. The remaining fixture material is also rekeyed and synthetic. It
+ * preserves the page-state shapes captured by the 2026-08-12 read-only pass —
+ * including the department option list and the blank controls of an
+ * unprocessed form — without claiming any current Kuali document has them.
  *
  * The commit arms drive the task against a `commit` stub rather than through
  * the write sequencer. That is on purpose: the capability's unforgeability is
@@ -127,7 +125,7 @@ const taskCtx = Object.freeze({
 });
 
 const ACTION_ID = "6a7a33b2ac106d428b3217e0";
-const DOCUMENT_NUMBER = "4510";
+const DOCUMENT_NUMBER = "4444";
 /**
  * Synthetic, and schema-shaped so the ingress still parses it (§10.3). This
  * file used to hardcode a real subject's EID — the same id, with a name beside
@@ -139,10 +137,9 @@ const DOCUMENT_NUMBER = "4510";
 const EID = FINALIZATION_EID;
 
 /**
- * Live doc 4510's finalization, verbatim (2026-08-12) — except the two date
- * write-backs §4e's 2026-08-14 amendment added, which that read-only pass did
- * not capture for this document. They are composed CONSISTENTLY with the
- * captured effective date instead of being invented from nothing: the
+ * Synthetic finalization shape derived from the 2026-08-12 observation. The
+ * two date write-backs §4e's 2026-08-14 amendment added are composed
+ * consistently with the fixture effective date rather than invented: the
  * reconciliation's own rule is `terminationEffectiveDate = separationDate + 1`,
  * so `06/11/2026` fixes the separation date at `06/10/2026`, and this is the
  * ordinary case where no leave day moved it off the last day worked.
@@ -155,7 +152,7 @@ const VARIABLES: KualiFinalizationVariables = Object.freeze({
   lastDayWorked: "06/10/2026",
   separationDate: "06/10/2026",
   terminationEffectiveDate: "06/11/2026",
-  transactionNumber: "T002209631",
+  transactionNumber: "T009000000",
   timekeeperComments: "Termination effective date set from the reconciled separation date.",
   observedExistingComments: "",
 });

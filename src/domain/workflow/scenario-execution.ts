@@ -4,7 +4,7 @@ import type { ScenarioId } from "../ids.js";
 import { deepFreeze } from "../immutability.js";
 
 /**
- * `tests/scenario/` holds exactly TWO kinds of file, and the difference is
+ * `tests/scenario/` holds exactly THREE collected kinds of file, and the difference is
  * structural rather than editorial (D185).
  *
  * A **graph scenario** (`<name>.scenario.test.ts`) walks ONE declared path of
@@ -17,17 +17,19 @@ import { deepFreeze } from "../immutability.js";
  * crosses SLICES rather than following one graph, so it claims no coverage
  * point and appears in no manifest row. It exists for the joins that only
  * composition can falsify — the manifest row that really minted a run, the
- * receipt that really froze into an archive.
+ * receipt that really froze into an archive. A **dashboard scenario** drives a
+ * real projection/command feature but walks no workflow graph, so it shares
+ * the integration walk's no-claim obligation.
  */
 /**
- * R10 (§10.9) moves a workflow's structural scenario into its own folder —
- * `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts` — and
- * `separations-kuali-finalization` is the first pair in the tree (D266). Both
- * layouts are graph scenarios and both are accepted while the corpus migrates;
- * the folder form is exact on purpose (`structural`, one workflow folder deep),
- * so a stray `tests/scenario/workflows/<id>/dry-run.scenario.ts` sibling still
- * fails every check that names the two kinds. The walk pattern is deliberately
- * untouched: a walk crosses slices and belongs to no workflow folder.
+ * R10 (§10.9) puts every workflow's structural scenario in its own exact folder:
+ * `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts`. The flat
+ * arm remains for graph scenarios that own contract/capability evidence rather
+ * than a registered workflow. The architecture lane separately proves every
+ * registered workflow owns exactly one folder-form file. A stray
+ * `tests/scenario/workflows/<id>/dry-run.scenario.ts` sibling still fails every
+ * check that names the collected kinds, and a walk remains at the corpus root
+ * because it crosses slices rather than belonging to one workflow.
  */
 export const GRAPH_SCENARIO_FILE_PATTERN =
   /^tests\/scenario\/(?:[a-z0-9-]+|workflows\/[a-z0-9-]+\/structural)\.scenario\.test\.ts$/u;
@@ -58,11 +60,18 @@ export type ExecutableScenarioSpec = z.infer<typeof ExecutableScenarioSpecSchema
  * descriptors may reference only these ids; the architecture lane separately
  * proves each row is an actual `it("<scenario-id> …")` in the named file.
  */
-/** Chunk 3 registers eleven rows against one file; naming it once keeps them aligned. */
-const SEPARATIONS_IDENTITY_CHECK_FILE = "tests/scenario/separations-identity-check.scenario.test.ts";
+/** Every registered workflow owns exactly one structural T1a source file. */
+const PERSON_LOOKUP_FILE =
+  "tests/scenario/workflows/person-lookup/structural.scenario.test.ts";
+const SEPARATIONS_KRONOS_TIMECARD_FILE =
+  "tests/scenario/workflows/separations-kronos-timecard/structural.scenario.test.ts";
+const SEPARATIONS_KUALI_READ_FILE =
+  "tests/scenario/workflows/separations-kuali-read/structural.scenario.test.ts";
+const SEPARATIONS_IDENTITY_CHECK_FILE =
+  "tests/scenario/workflows/separations-identity-check/structural.scenario.test.ts";
 /** Chunk 4's UCPath termination write — the two transactions share one file. */
 const SEPARATIONS_UCPATH_TERMINATION_FILE =
-  "tests/scenario/separations-ucpath-termination.scenario.test.ts";
+  "tests/scenario/workflows/separations-ucpath-termination/structural.scenario.test.ts";
 /**
  * Chunk 5's Kuali finalization — one file, three kinds of arm. 5a's contract
  * walks run the real task implementations against the deterministic driver
@@ -83,15 +92,15 @@ const SEPARATIONS_FILE =
   "tests/scenario/workflows/separations/structural.scenario.test.ts";
 
 export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
-  { scenarioId: "person-lookup/happy-by-eid", file: "tests/scenario/person-lookup.scenario.test.ts" },
-  { scenarioId: "person-lookup/happy-by-eid-with-dates", file: "tests/scenario/person-lookup.scenario.test.ts" },
-  { scenarioId: "person-lookup/ambiguous-name", file: "tests/scenario/person-lookup.scenario.test.ts" },
-  { scenarioId: "person-lookup/not-found", file: "tests/scenario/person-lookup.scenario.test.ts" },
-  { scenarioId: "person-lookup/crm-failure-retry", file: "tests/scenario/person-lookup.scenario.test.ts" },
-  { scenarioId: "person-lookup/crm-subject-mismatch", file: "tests/scenario/person-lookup-runtime.scenario.test.ts" },
+  { scenarioId: "person-lookup/happy-by-eid", file: PERSON_LOOKUP_FILE },
+  { scenarioId: "person-lookup/happy-by-eid-with-dates", file: PERSON_LOOKUP_FILE },
+  { scenarioId: "person-lookup/ambiguous-name", file: PERSON_LOOKUP_FILE },
+  { scenarioId: "person-lookup/not-found", file: PERSON_LOOKUP_FILE },
+  { scenarioId: "person-lookup/crm-failure-retry", file: PERSON_LOOKUP_FILE },
+  { scenarioId: "person-lookup/crm-subject-mismatch", file: PERSON_LOOKUP_FILE },
   {
     scenarioId: "person-lookup/ucpath-drill-subject-mismatch",
-    file: "tests/scenario/person-lookup-runtime.scenario.test.ts",
+    file: PERSON_LOOKUP_FILE,
   },
   { scenarioId: "ocr/extract/complete", file: "tests/scenario/ocr-extraction.scenario.test.ts" },
   {
@@ -158,43 +167,43 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
   { scenarioId: "intake/spreadsheet/unreadable", file: "tests/scenario/intake-extraction.scenario.test.ts" },
   {
     scenarioId: "separations-kronos-timecard/reads-a-real-timecard",
-    file: "tests/scenario/separations-kronos-timecard.scenario.test.ts",
+    file: SEPARATIONS_KRONOS_TIMECARD_FILE,
   },
   {
     scenarioId: "separations-kronos-timecard/timecard-without-punches",
-    file: "tests/scenario/separations-kronos-timecard.scenario.test.ts",
+    file: SEPARATIONS_KRONOS_TIMECARD_FILE,
   },
   {
     scenarioId: "separations-kronos-timecard/employee-not-found",
-    file: "tests/scenario/separations-kronos-timecard.scenario.test.ts",
+    file: SEPARATIONS_KRONOS_TIMECARD_FILE,
   },
   {
     scenarioId: "separations-kronos-timecard/search-no-signal",
-    file: "tests/scenario/separations-kronos-timecard.scenario.test.ts",
+    file: SEPARATIONS_KRONOS_TIMECARD_FILE,
   },
   {
     scenarioId: "separations-kronos-timecard/wrong-employee-timecard",
-    file: "tests/scenario/separations-kronos-timecard.scenario.test.ts",
+    file: SEPARATIONS_KRONOS_TIMECARD_FILE,
   },
   {
     scenarioId: "separations-kuali-read/reads-a-real-separation-document",
-    file: "tests/scenario/separations-kuali-read.scenario.test.ts",
+    file: SEPARATIONS_KUALI_READ_FILE,
   },
   {
     scenarioId: "separations-kuali-read/unprocessed-document-absent-arms",
-    file: "tests/scenario/separations-kuali-read.scenario.test.ts",
+    file: SEPARATIONS_KUALI_READ_FILE,
   },
   {
     scenarioId: "separations-kuali-read/non-separation-document",
-    file: "tests/scenario/separations-kuali-read.scenario.test.ts",
+    file: SEPARATIONS_KUALI_READ_FILE,
   },
   {
     scenarioId: "separations-kuali-read/unparseable-separation-date",
-    file: "tests/scenario/separations-kuali-read.scenario.test.ts",
+    file: SEPARATIONS_KUALI_READ_FILE,
   },
   {
     scenarioId: "separations-kuali-read/unknown-termination-type",
-    file: "tests/scenario/separations-kuali-read.scenario.test.ts",
+    file: SEPARATIONS_KUALI_READ_FILE,
   },
   { scenarioId: "separations-identity-check/single-active-job", file: SEPARATIONS_IDENTITY_CHECK_FILE },
   { scenarioId: "separations-identity-check/similar-name-never-auto-proceeds", file: SEPARATIONS_IDENTITY_CHECK_FILE },

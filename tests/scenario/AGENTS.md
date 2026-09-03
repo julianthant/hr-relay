@@ -16,6 +16,13 @@ the choice below is enforced rather than conventional.
 The T2 and walk kinds share one obligation for one reason: neither walks a graph, so a coverage
 claim on either would count a path nobody executed as executed.
 
+2026-09-02 — Every registered workflow owns exactly one collected T1a source at
+`workflows/<workflow-id>/structural.scenario.test.ts`; `scenario-coverage` derives that mapping from
+the workflow registry and refuses a split or flat workflow source. Flat graph scenarios remain only
+for contract/capability evidence that belongs to no registered workflow. Structural fixtures use
+synthetic subjects and may preserve a verified page/data shape, but they never claim that shape is
+current live-world evidence; only the uncollected T1b manifest and its recorded run can do that.
+
 `workflows/<workflow-id>/dry-run.scenario.ts` (T1b) is deliberately **not** `.test.` — a checkpoint
 manifest vitest collected would start a browser inside the per-commit gate.
 

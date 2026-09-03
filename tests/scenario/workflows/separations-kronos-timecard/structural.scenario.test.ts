@@ -11,20 +11,20 @@
  * task implementation against a fake driver, which is the only way to observe
  * "it refused" rather than "it returned something plausible".
  *
- * The corresponding fixture values are the ones measured live on 2026-08-12
- * (EID 10776990, window 06/01/2026–08/12/2026): 73 days covered, 9 scroll steps
- * on the virtualized grid, last punch 06/12, one `Holiday - Hourly` day and two
- * pay codes the ported classifier does not recognise.
+ * The fixture preserves the timecard shape measured live on 2026-08-12, but
+ * rekeys identity to synthetic EID `10800000` and a fixture name. It proves
+ * the driver/task contract over 73 days and 9 virtualized-grid scroll steps;
+ * it makes no claim that a current live subject still has that data.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { EidSchema } from "../../src/domain/ids.js";
-import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
-import { createDeterministicNewKronosTimecardDriver } from "../../src/stores/new-kronos/driver/fake.js";
-import { readSeparationTimecardTask } from "../../src/stores/new-kronos/tasks/read-separation-timecard.js";
-import { searchEmployeeTask } from "../../src/stores/new-kronos/tasks/search-employee.js";
-import { separationsKronosTimecardDescriptor } from "../../src/workflows/separations/kronos-timecard/descriptor.js";
-import { walkDescriptor } from "./helpers/pure-walk.js";
+import { EidSchema } from "../../../../src/domain/ids.js";
+import { directIdentifierDigestReference } from "../../../../src/domain/redaction.js";
+import { createDeterministicNewKronosTimecardDriver } from "../../../../src/stores/new-kronos/driver/fake.js";
+import { readSeparationTimecardTask } from "../../../../src/stores/new-kronos/tasks/read-separation-timecard.js";
+import { searchEmployeeTask } from "../../../../src/stores/new-kronos/tasks/search-employee.js";
+import { separationsKronosTimecardDescriptor } from "../../../../src/workflows/separations/kronos-timecard/descriptor.js";
+import { walkDescriptor } from "../../helpers/pure-walk.js";
 
 /**
  * The minimum task context a read task needs. `fail` throws, which is what
@@ -37,8 +37,8 @@ const taskCtx = Object.freeze({
   recordData: () => undefined,
 });
 
-const EMPL_ID = EidSchema.parse("10776990");
-const MATCHED = { displayName: "Kou, Nathan", employeeId: EMPL_ID };
+const EMPL_ID = EidSchema.parse("10800000");
+const MATCHED = { displayName: "Fixture, Primary", employeeId: EMPL_ID };
 
 const SEARCH_RESOLVED = {
   query: EMPL_ID,
@@ -58,7 +58,7 @@ const SUBJECT = {
   observationId: "new-kronos.timecard.displayed-eid",
   expectedEid: EMPL_ID,
   observedEmployeeId: EMPL_ID,
-  observedDisplayName: "Kou, Nathan",
+  observedDisplayName: "Fixture, Primary",
   matches: true,
 } as const;
 
@@ -111,13 +111,13 @@ const TIMECARD_WITHOUT_PUNCHES = {
 
 const RUN_INPUT = {
   emplId: EMPL_ID,
-  expectedName: "Kou, Nathan",
+  expectedName: "Fixture, Primary",
   rangeStart: "06/01/2026",
   rangeEnd: "08/12/2026",
 };
 
 describe("separations-kronos-timecard scenarios", () => {
-  it("separations-kronos-timecard/reads-a-real-timecard — search, timecard, derived separation dates", () => {
+  it("separations-kronos-timecard/reads-a-real-timecard — real task graph over a synthetic timecard fixture", () => {
     const walk = walkDescriptor(separationsKronosTimecardDescriptor, RUN_INPUT, {
       outputs: { search: SEARCH_RESOLVED, timecard: TIMECARD_WITH_PUNCHES },
     });
@@ -129,8 +129,8 @@ describe("separations-kronos-timecard scenarios", () => {
       subject: {
         expectedEid: EMPL_ID,
         observedEmployeeId: EMPL_ID,
-        expectedName: "Kou, Nathan",
-        observedDisplayName: "Kou, Nathan",
+        expectedName: "Fixture, Primary",
+        observedDisplayName: "Fixture, Primary",
         nameSimilarity: "same",
       },
       window: {
@@ -219,7 +219,7 @@ describe("separations-kronos-timecard scenarios", () => {
         subject: {
           observationId: "new-kronos.timecard.displayed-eid",
           expectedEid: EMPL_ID,
-          observedEmployeeId: "10001946",
+          observedEmployeeId: "10800001",
           observedDisplayName: "Yang, Somebody",
           matches: false,
         },
@@ -233,7 +233,7 @@ describe("separations-kronos-timecard scenarios", () => {
         input: { emplId: EMPL_ID, rangeStart: "06/01/2026", rangeEnd: "08/12/2026" },
         ctx: { ...taskCtx, driver },
       }),
-      new RegExp(`subject-mismatch: .*${directIdentifierDigestReference("10001946")}`),
+      new RegExp(`subject-mismatch: .*${directIdentifierDigestReference("10800001")}`),
     );
   });
 });

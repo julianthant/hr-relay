@@ -302,6 +302,13 @@ environment-supplied.
 
 ## Conventions
 
+- **2026-09-02 — a workflow's T1a source path is operator-visible authority.** Every registered
+  workflow owns exactly one `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts`;
+  the executable scenario manifest serves that path through Explorer, so a move must update the
+  manifest, path-sensitive tests/evidence, and parity expectations deliberately. Structural cases
+  use synthetic identities and prove graph/task/write semantics only; current external-world truth
+  belongs to the uncollected T1b run and its durable result.
+
 - **2026-09-02 — architecture guards are a named Vitest project, not a unit-project overlap.**
   `unit` excludes `tests/unit/architecture/**`; `architecture` recursively owns every
   `tests/unit/architecture/**/*.test.ts`; and `npm run test:architecture` selects that project by
