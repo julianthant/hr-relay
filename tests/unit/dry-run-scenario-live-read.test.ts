@@ -48,7 +48,12 @@ import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
 import { DelegationEdgeIdSchema, ItemIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
-import { createProductionDryRunScenarioRuntime, liveReadGraphRefusal } from "../../src/server/dry-run-scenario/runtime.js";
+import { GraphNodeKindSchema } from "../../src/domain/workflow/graph.js";
+import {
+  createProductionDryRunScenarioRuntime,
+  LIVE_READ_ADMITTED_NODE_KINDS,
+  liveReadGraphRefusal,
+} from "../../src/server/dry-run-scenario/runtime.js";
 import { HASH_A, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
 
 // The checked-in declarations, evaluated without importing them: a collected
@@ -308,5 +313,17 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     );
     assert.equal(liveReadGraphRefusal(personLookupDescriptor, "person-lookup/live-read"), undefined);
     assert.match(liveReadGraphRefusal(separationsDescriptor, "separations/live-read") ?? "", /transaction node\(s\)/u);
+  });
+
+  it("classifies every graph node kind for the live-read arm: admitted kinds plus the two refused kinds are exactly the vocabulary", () => {
+    // Fail closed: a kind added to the graph vocabulary must be classified here
+    // before a dryRun=false live-read may carry it. This pin turns red on the
+    // addition, not on the first live run that meets the new kind.
+    const refused = ["transaction", "child-run"] as const;
+    for (const kind of refused) assert.equal(LIVE_READ_ADMITTED_NODE_KINDS.has(kind), false);
+    assert.deepEqual(
+      [...GraphNodeKindSchema.options].sort(),
+      [...LIVE_READ_ADMITTED_NODE_KINDS, ...refused].sort(),
+    );
   });
 });

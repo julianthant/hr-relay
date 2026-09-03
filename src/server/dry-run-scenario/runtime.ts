@@ -5,6 +5,7 @@ import { z } from "zod";
 import { descriptorRuntimeNodes, workflowDryRunSupport, workflowTerminalResultExecution } from "../../base/workflow.js";
 import type { WorkerBrowserSessionFactory } from "../../base/session.js";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
+import type { GraphNodeKind } from "../../domain/workflow/graph.js";
 import { DESCRIPTORS } from "../../control/workflow-registry.js";
 import {
   createCommandKernel,
@@ -162,6 +163,16 @@ function reachedNodes(
  * the parent's per-run zero-delta proof cannot see. Pure, so a fixture graph
  * can prove the refusal without a registered workflow.
  */
+/**
+ * The node kinds a `live-read` graph may hold: every one of them reads or
+ * routes and none can reach an external write. This is an ALLOWLIST so that a
+ * node kind added to the graph vocabulary later is refused by name until it is
+ * classified, never admitted by default into a `dryRun: false` run.
+ */
+export const LIVE_READ_ADMITTED_NODE_KINDS: ReadonlySet<GraphNodeKind> = new Set<GraphNodeKind>([
+  "task", "branch", "parallel", "gate",
+]);
+
 export function liveReadGraphRefusal(
   descriptor: NonNullable<ReturnType<typeof descriptorFor>>,
   scenarioId: string,
@@ -169,6 +180,9 @@ export function liveReadGraphRefusal(
   const nodes = descriptorRuntimeNodes(descriptor);
   const transactions = nodes.filter((node) => node.kind === "transaction").map((node) => String(node.id));
   const delegations = nodes.filter((node) => node.kind === "child-run").map((node) => String(node.id));
+  const unclassified = nodes
+    .filter((node) => node.kind !== "transaction" && node.kind !== "child-run" && !LIVE_READ_ADMITTED_NODE_KINDS.has(node.kind))
+    .map((node) => `${String(node.id)} (${node.kind})`);
   if (transactions.length > 0) {
     return `live-read manifest ${scenarioId} names workflow ${String(descriptor.id)}, whose compiled graph carries `
       + `transaction node(s) ${transactions.join(", ")}; a transaction-bearing graph must declare the dry-run-preview arm (D318)`;
@@ -177,6 +191,11 @@ export function liveReadGraphRefusal(
     return `live-read manifest ${scenarioId} names workflow ${String(descriptor.id)}, whose compiled graph carries `
       + `child-run node(s) ${delegations.join(", ")}; a delegating graph runs its child under its own run and write intents, `
       + "which this run's zero-delta proof cannot see — no live-read arm admits it (D318)";
+  }
+  if (unclassified.length > 0) {
+    return `live-read manifest ${scenarioId} names workflow ${String(descriptor.id)}, whose compiled graph carries `
+      + `node(s) of a kind the live-read arm has not classified: ${unclassified.join(", ")}; classify the kind before `
+      + "admitting it to a dryRun=false run (D318)";
   }
   return undefined;
 }
