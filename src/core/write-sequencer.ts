@@ -54,7 +54,7 @@ import {
   WriteBindingProofIdSchema,
   WriteIntentIdSchema,
 } from "../domain/ids.js";
-import type { ActorId, Fingerprint, TaskId } from "../domain/ids.js";
+import type { ActorId, BrowserSystemId, Fingerprint, TaskId } from "../domain/ids.js";
 import { runClaim, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
 import { sha256Hex } from "../domain/sha256.js";
@@ -1271,6 +1271,54 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     });
   }
 
+  /**
+   * D314 — bind a replayed transaction checkpoint to the permanent key the
+   * FRESH facts derive. The checkpoint carries the settlement's proof; the
+   * durable intent found by the fresh key carries the proof of the write those
+   * facts address. Equal bytes prove the replay is that write. Anything else —
+   * no intent under the fresh key, an unfinished or parked intent, or a
+   * different proof — is a fresh-fact mismatch and refuses by node name and
+   * key digest reference, never by value.
+   */
+  function assertReplayMatchesFreshFacts(
+    context: WriteSequencerContext,
+    commitContract: AnyCommitTaskContract,
+    stored: RunCheckpointRecord,
+    system: BrowserSystemId,
+    key: string,
+    keyDigest: string,
+  ): void {
+    const outcome = TransactionOutcomeSchema.parse(stored.output.value);
+    const durable = deps.authority.authority.writeIntents.findByPermanentKey(system, key);
+    const reference = idempotencyKeyDigestReference(keyDigest);
+    if (durable === undefined) {
+      throw new Error(
+        `transaction node "${context.node.id}" holds a completed settlement for item ${context.run.envelope.itemId}, `
+        + `but the fresh facts derive ${reference}, which names no permanent write intent; refusing to relabel a `
+        + "completed external write as the consequence of new facts (D314)",
+      );
+    }
+    const durableProof = durable.status === "committed"
+      ? durable.completionProof
+      : durable.status === "observed-present"
+        ? durable.observedProof
+        : undefined;
+    if (durableProof === undefined) {
+      throw new Error(
+        `transaction node "${context.node.id}" holds a completed settlement, but the fresh facts derive ${reference}, `
+        + `whose permanent intent ${durable.writeIntentId} is ${durable.status}; an unfinished write follows the `
+        + "recovery-probe path under its own run and is never reused as this node's settlement (D314)",
+      );
+    }
+    if (canonicalJsonStringify(durableProof) !== canonicalJsonStringify(outcome.proof)) {
+      throw new Error(
+        `transaction node "${context.node.id}" holds a completed settlement whose proof is not the proof of the `
+        + `write the fresh facts address (${reference}); refusing to relabel a completed external write as the `
+        + "consequence of new facts (D314)",
+      );
+    }
+  }
+
   /** Validate and replay this node's existing durable transaction checkpoint. */
   function replayCheckpoint(
     context: WriteSequencerContext,
@@ -1698,6 +1746,13 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         + "click a real external write for it, whatever the caller passed — use executeDryRun");
     }
 
+    /* stable commit input + key BEFORE any replay, probe or browser (ref workflow-model §3.1) */
+    const commitInput: unknown = commitContract.input.parse(node.commit.bind(context.scope));
+    const system = systemOf(commitContract.id);
+    const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
+    const key = IdempotencyKeySchema.parse(keyRaw);
+    const keyDigest = deriveIdempotencyKeyDigest(system, key);
+
     /* step 0 — this node's settled outcome replays byte-exact, never re-clicks */
     const storedCheckpoint = deps.authority.authority.runCheckpoints.latest(
       context.descriptor.id,
@@ -1705,15 +1760,18 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       String(node.id),
     );
     if (storedCheckpoint !== undefined) {
+      /*
+       * D314 — a replayed settlement must still be THE write the fresh facts
+       * address. A Restart-from-start attempt (and any resume whose
+       * always-rerun ancestors moved) re-derives the commit input; if its
+       * permanent key no longer names a committed / observed-present intent
+       * whose proof is byte-exactly the proof this checkpoint carries, the run
+       * refuses by name rather than relabelling an old write as the
+       * consequence of new facts. Nothing is fenced or clicked on this path.
+       */
+      assertReplayMatchesFreshFacts(context, commitContract, storedCheckpoint, system, key, keyDigest);
       return replayCheckpoint(context, commitContract, storedCheckpoint);
     }
-
-    /* stable commit input + key BEFORE any probe or browser (ref workflow-model §3.1) */
-    const commitInput: unknown = commitContract.input.parse(node.commit.bind(context.scope));
-    const system = systemOf(commitContract.id);
-    const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
-    const key = IdempotencyKeySchema.parse(keyRaw);
-    const keyDigest = deriveIdempotencyKeyDigest(system, key);
     refuseRetiredPermanentKeys(commitContract, commitInput, system, key);
 
     /* beat ① — durable permanent-key lookup, regardless of status/origin */

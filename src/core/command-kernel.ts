@@ -115,6 +115,8 @@ const PHASE1_ACTIVE = {
   ],
   run: [
     "retry",
+    // D314: Restart from start — the second ordinary recovery choice.
+    "restart",
     "cancel",
     "bump",
     "rename",
@@ -197,7 +199,9 @@ export interface WorkflowDescriptorResolver {
  * must return the updated run; a throw unwinds the whole command.
  */
 type RunCommand = Extract<CommandRequest, { family: "run" }>;
-type RunBasicCommand = Extract<RunCommand, { type: "retry" | "cancel" | "bump" }>;
+type RunBasicCommand = Extract<RunCommand, { type: "retry" | "restart" | "cancel" | "bump" }>;
+/** D314 — the two recovery verbs share the basic run command shape; `executeRetry` reads `type` to choose the mode. */
+type RunRecoveryCommand = RunBasicCommand;
 type RunEditCheckpointCommand = Extract<RunCommand, { type: "edit-checkpoint" }>;
 type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
 type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
@@ -732,10 +736,19 @@ function executeStartRun(
   );
 }
 
+/**
+ * D314 — the two ordinary recovery choices share one door. `retry` (Resume from
+ * checkpoints) mints the item's next attempt and lets the executor replay valid
+ * checkpoint ancestors; `restart` (Restart from start) mints the same next
+ * attempt with `recovery: "restart-from-start"`, so every read and computation
+ * executes again while a completed external write is reused, never repeated.
+ * Both preserve the logical item, canonical input, omission bundle, dry-run
+ * flag and trace lineage; neither is a start with different input.
+ */
 function executeRetry(
   dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
-  request: RunBasicCommand,
+  request: RunRecoveryCommand,
   now: string,
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
@@ -800,6 +813,8 @@ function executeRetry(
         : { captureBrowserScreenshots: current.envelope.captureBrowserScreenshots }),
       // D307 — a retry omits exactly what the operator omitted; a different choice is a new start.
       ...(current.envelope.stepOmissions === undefined ? {} : { stepOmissions: current.envelope.stepOmissions }),
+      // D314 — Restart from start is the same next attempt with the root marker.
+      ...(request.type === "restart" ? { recovery: "restart-from-start" as const } : {}),
       retryOf: current.envelope.runId,
       /*
        * D221 — a retry is the item's NEXT attempt, which is what ref workflow-model §5.6 #1
@@ -3234,6 +3249,7 @@ function dispatchActive(
     case "run": {
       switch (request.type) {
         case "retry":
+        case "restart":
           repositories.runtimeConfig.requireSettingsCurrent();
           return executeRetry(dependencies, repositories, request, now);
         case "cancel": return executeCancel(repositories, request, now);
