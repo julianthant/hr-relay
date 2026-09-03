@@ -1173,6 +1173,12 @@ Three things this settles, each because the alternative is a lie somewhere:
    fail-loud rule bans everywhere else. `person-lookup` therefore keeps refusing, now for the reason
    that is actually true of it.
 
+**D318 does not amend D209.** T1b's separate `live-read` proof arm starts a transaction-free
+workflow as an ordinary run with `dryRun: false`, after compiled-graph admission proves there is no
+transaction node. It exists so read-only workflows retain mandatory live evidence without calling
+that evidence a transaction preview. `ref guards-and-tests` §10.4 owns its declaration, zero-write
+authority proof and result contract.
+
 `surfaces.inputRun.supportsDryRun` survives as a **derived, un-authorable** field: the run-start
 surface composes `surfaces.inputRun` client-side off the bundled descriptor and reads the flag
 there, so the field has to keep existing where that reader looks. `defineWorkflowDescriptor` stamps

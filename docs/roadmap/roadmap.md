@@ -1109,15 +1109,17 @@ log:
 
 ## session: 2026-08-26 | 03a fidelity ratification | operator selected all 49 recommended A answers; D271–D276 ratify the worker-pool and fidelity decisions. No port, proof, parity re-freeze, or phase completion is claimed; all remain open.
 
-## session: 2026-09-02 | 3c verified progress | merge `a40276b6` integrates the bounded transitional compiler, Person Lookup + Separations compiler-backed descriptors/modules and generic conformance; merge `b1b36349` integrates Order 1 intake only. D312–D317 final API/direct entries/omission/recovery/four-artifact/guide/T1/deletion acceptance remains before 3c-B. R1/R2 worktrees are closed; every later run and the phase exit require an exact worktree sweep.
+## session: 2026-09-02 | 3c verified progress | merge `a40276b6` integrates the bounded transitional compiler, Person Lookup + Separations compiler-backed descriptors/modules and generic conformance; merge `b1b36349` integrates Order 1 intake only. D312–D318 final API/direct entries/omission/recovery/live-read/four-artifact/guide/T1/deletion acceptance remains before 3c-B. R1/R2 worktrees are closed; every later run and the phase exit require an exact worktree sweep.
 
-## today: 2026-09-02 · Phase 3c active · bounded compiler and Order 1 intake integrated at `b1b36349` · finish D312–D317 3c-A before Order 1 implementation · re-audit shared worktree capacity before writable dispatch
+## session: 2026-09-02 | D318 read-only T1 answer | operator selected A: transaction-free workflows use an explicit `live-read` T1b arm with `dryRun=false`, graph-proven zero transaction nodes and exact zero write-authority deltas; D209 transaction-preview semantics remain unchanged. Decision ratified; implementation remains 3c-A work.
+
+## today: 2026-09-02 · Phase 3c active · bounded compiler and Order 1 intake integrated at `b1b36349` · finish D312–D318 3c-A before Order 1 implementation · re-audit shared worktree capacity before writable dispatch
 
 ## Workflow authoring model {#workflow-authoring-model}
 phase: Phase 3 bridge
 status: active
 when: before orders 1–7 and 9
-chip: bounded compiler integrated · D312–D317 finish open
+chip: bounded compiler integrated · D312–D318 finish open
 doc: 03c §Workflow authoring model — prerequisite to orders 1–7 and 9 · ref:workflow-model §1.6 · ref:operator-trust §5.2.3 · ref:frontend-backend-integration §6.8 · ref:guards-and-tests §10.11
 open: yes
 
@@ -1127,6 +1129,7 @@ builds:
 - [x] DOCS D311 ratified in every owning reference and doc 03c
 - [x] DOCS D312–D316 ratified: simplicity budget, complete pre-start omissions, two recovery choices, explicit entry algebra and deletion acceptance
 - [x] DOCS D317: `workflow` is the technical authoring model; `recipe` is analogy only
+- [x] DOCS D318: transaction-free T1b uses explicit `live-read`; no fake dry run or no-op transaction
 - [x] PROOF compatibility fixtures for Person Lookup and Separations (`2e563240`, merged by `6d30d75a`)
 - [x] BE bounded transitional compiler derives graph/result, stores, descriptor/module and build-manifest products (`ebfde1c6`)
 - [x] BE Person Lookup and Separations route through the transitional compiler (`ebfde1c6`, `d4204106`)
@@ -1139,6 +1142,7 @@ builds:
 - [ ] BOTH finish Person Lookup's final four-artifact conversion and missing canonical T1 pair
 - [ ] BOTH finish Separations' final direct-entry conversion and redundant-path deletion while preserving public behavior
 - [ ] BOTH complete run-modal omission admission and the checkpoint-resume/root-restart command pair
+- [ ] BE D318 T1b admission/result arms: `dry-run-preview` for transaction graphs and `live-read` for zero-transaction graphs
 - [x] BOTH current tuple groups render through generic run-modal/timeline/detail/Explorer projections; reverify after final conversion
 - [ ] PROOF extend conformance to every direct entry kind; superseded declarations and duplicate generic-surface tests removed; no advanced escape hatch
 - [ ] DOCS practical workflow-authoring guide + paired root agent rules + one derived internal agent reference
@@ -1151,7 +1155,8 @@ log:
 - 2026-09-02 | D311 | owner-first architecture recorded; documentation only, no compiler or conversion claimed
 - 2026-09-02 | D312–D316 | measurable simplicity and recovery boundaries recorded; documentation only, no implementation claimed
 - 2026-09-02 | D317 | Phase 3c split internally into authoring-platform gate 3c-A and migration gate 3c-B; workflow-only terminology and new-session execution order recorded
-- 2026-09-02 | verified at `b1b36349` | bounded compiler/conversions/conformance and Order 1 intake integrated; final D312–D317 authoring/runtime acceptance remains; R1/R2 worktree lifecycles closed
+- 2026-09-02 | verified at `b1b36349` | bounded compiler/conversions/conformance and Order 1 intake integrated; final D312–D318 authoring/runtime acceptance remains; R1/R2 worktree lifecycles closed
+- 2026-09-02 | D318 | operator selected `live-read` for transaction-free T1b; decision blocker closed, implementation/T1 evidence still open
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued
@@ -1207,7 +1212,7 @@ builds:
 - [x] WIRE run detail — timeline, receipt, Context rail; the two-pixel panel found and fixed in 2j (D187)
 - [x] WIRE archive · activity · explorer — person-lookup rows appear through the generic surfaces
 - [x] PROOF D311 bounded acceptance — transitional compiler and generic projection equivalence (`ebfde1c6`, `246daab2`, `4555341f`)
-- [ ] PROOF D312–D317 final acceptance — final `workflow.ts`, no authored descriptor/module glue, four-artifact guard and canonical T1 pair
+- [ ] PROOF D312–D318 final acceptance — final `workflow.ts`, no authored descriptor/module glue, four-artifact guard and canonical T1 pair using the graph-valid T1b arm
 - [ ] BE publish `run-failed` / `subject-mismatch` / `write-parked` — four of six trigger arms are unreachable (ref operator-trust §6.3)
 
 needs:

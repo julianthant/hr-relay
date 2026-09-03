@@ -1888,3 +1888,14 @@ vocabulary. It changes no runtime behavior and claims no compiler implementation
 | # | Decision | Owning doc |
 |---|---|---|
 | **D317** | **THE AUTHORED TECHNICAL MODEL IS A WORKFLOW, NOT A RECIPE.** “Pantry and recipe” remains an explanatory analogy only. The authored file is `src/workflows/<id>/workflow.ts`, the public factory is `defineWorkflow`, its value is `WorkflowDefinition`, the compiler is `compileWorkflow`, its generated value is `CompiledWorkflow`, and one execution is a `WorkflowRun`. Current descriptors/modules are compatibility products during conversion, not a second authored workflow. `recipe`, `WorkflowRecipe`, `defineWorkflowRecipe` and `recipe.ts` are forbidden names for this seam. Phase 3c is internally gated: 3c-A builds/proves this authoring platform and deletes the old path; 3c-B migrates orders 1–7 and 9 only afterward. | ref workflow-model §1.6 (primary) · doc 03c §Workflow authoring model and §3c-A implementation run · roadmap `{#workflow-authoring-model}` · `docs/decisions/2026-09-02-modular-workflow-authoring.md` terminology amendment |
+
+## Reconciliation round 124 (2026-09-02) — transaction-free workflows keep live T1 proof without a fake dry run
+
+_phase: 3c_
+_D318 records the operator's answer A to Phase 3c's read-only T1 decision. Its normative text lands
+in `ref guards-and-tests` §10.4 in this same commit; `ref workflow-model` §2 retains D209's dry-run
+meaning._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D318** | **A TRANSACTION-FREE WORKFLOW SATISFIES T1b THROUGH AN EXPLICIT `live-read` ARM; IT DOES NOT PRETEND TO BE A TRANSACTION DRY RUN.** The T1b declaration and result authority distinguish `dry-run-preview` for a graph with a transaction node from `live-read` for a compiled graph with none. `live-read` admission refuses unless the graph is transaction-free, starts an ordinary read execution without setting `RunEnvelope.dryRun`, records the workflow's ordinary terminal result/receipt, and asserts exact before/after zero deltas in `write_intents`, `write_attempts` and `durable_outbox`. A transaction-bearing graph may not choose `live-read`, a transaction-free graph may not choose `dry-run-preview`, and a no-op transaction is forbidden. D209 remains unchanged: `dryRun` still means preview a real transaction and still refuses `no-transaction-node`. | `ref guards-and-tests` §10.4 (primary) · `ref workflow-model` §2 (D209 pointer) · doc 03c T1/Order 1 · `docs/migrations/person-lookup.md` §4 · `docs/migrations/i9-lookup.md` §5 |

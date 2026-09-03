@@ -412,7 +412,11 @@ environment-supplied.
   before starting Order 1 implementation.
 - A workflow's T1 proof lives at
   `tests/scenario/workflows/<workflow-id>/{structural.scenario.test.ts,dry-run.scenario.ts}`: exactly
-  one collected structural scenario and one sibling live dry-run manifest. The live half may write
+  one collected structural scenario and one sibling T1b live manifest. D318 gives that manifest two
+  exclusive graph-derived arms: `dry-run-preview` for a transaction-bearing graph and `live-read`
+  for a zero-transaction graph. `live-read` runs with `dryRun=false`, requires zero transaction
+  nodes and proves exact zero deltas in all three write-authority tables; never add a no-op
+  transaction to qualify for preview. The live half may write
   ordinary upstream `run_checkpoints`; its submit-free invariant is zero deltas in
   `write_intents`, `write_attempts`, and `durable_outbox`.
 - The dry-run declaration boundary is `src/domain/trust/dry-run-scenario.ts`; the runner/assertions

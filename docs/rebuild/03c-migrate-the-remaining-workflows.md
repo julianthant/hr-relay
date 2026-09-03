@@ -30,9 +30,10 @@ to call the model complete.
 - [x] the risk-proof order is fixed and its entry point is chosen — separations (order 8) first, the table deliberately NOT re-sequenced (D84/D193)
 - [x] order 0 · person-lookup is migrated and live-proven (D74, run `4ebf7275-0158-49af-a78f-1f37948efb27`); `src/workflows/person-lookup/descriptor.ts` is registered
 - [x] D311/D317 ratify the workflow definition and compiler as the new authoring seam; person lookup and separations are its acceptance workflows; “recipe” is analogy only
+- [x] D318 resolves read-only T1 evidence: a zero-transaction graph uses the distinct `live-read` arm, never a fake transaction or `dryRun=true`; implementation remains in 3c-A
 - [x] 3c-A bounded compiler increment — compatibility fixtures, the transitional compiler, compiler-backed Person Lookup and Separations descriptors/modules, registry-wide generic projection conformance and full gates landed through merge `a40276b6`
 - [x] order 1 intake — Person Lookup Search/Match and I-9 lookup migration records, reuse/provenance map and live I-9 login/search evidence landed through merge `b1b36349`; this is intake only, not an implemented order row
-- [ ] `{#workflow-authoring-model}` — finish D312–D317: final workflow naming/API, direct entry algebra, omissions, recovery, four-artifact enforcement, author documentation, T1 proof and deletion of redundant authoring declarations
+- [ ] `{#workflow-authoring-model}` — finish D312–D318: final workflow naming/API, direct entry algebra, omissions, recovery, `live-read`, four-artifact enforcement, author documentation, T1 proof and deletion of redundant authoring declarations
 - [ ] 3c-A exit — author guide and agent rules landed, task reuse is discoverable, both acceptance conversions are green, and the old authoring path is deleted
 - [ ] 3c-B exit — orders 1 · 2 · 3 · 4 · 5 · 6 · 7 · 9 migrated through that single authoring path
 - [ ] orders 1 · 2 · 3 · 4 · 5 · 6 · 7 · 9 — **no descriptor exists for any of them**; `src/control/workflow-registry.ts` registers 7 modules and every one is person-lookup or a separations composition/harness
@@ -45,7 +46,7 @@ to call the model complete.
 > 2026-08-20 | docs-cohesion 03c | verified against `src/control/workflow-registry.ts:38-47`, `src/workflows/*/descriptor.ts` (8 files), `src/stores/*` and `config/legacy-capabilities.json` (recount 47/20/7/4 matches the tree's note); left: every order after 0, minus 8
 > 2026-08-25 | D266 | the test-only Kuali annotation workflow retired; the registry now holds seven modules and the Kuali finalization T1 pair carries its reusable proof shape
 > 2026-09-02 | D317 execution plan | 3c split internally into blocking 3c-A authoring-platform proof and 3c-B migrations; exact ownership, reuse paths, change routing, ten implementation units, documentation package and exit gate recorded; this decision entry itself claimed no implementation
-> 2026-09-02 | baseline `b1b36349` verification | bounded D311 compiler and Order 1 intake are integrated; D312–D317 final authoring/runtime acceptance and all Order 1–7/9 implementations remain open; R1/R2 owned worktrees are closed
+> 2026-09-02 | baseline `b1b36349` verification | bounded D311 compiler and Order 1 intake are integrated; D312–D318 final authoring/runtime acceptance and all Order 1–7/9 implementations remain open; R1/R2 owned worktrees are closed
 > 2026-09-02 | capability recount | 78 total = 46 open / 25 implemented / 7 retired; disposition kinds = 46 open / 19 replaced / 6 native / 7 retired; every open entry remains owned by this phase
 <!-- /roadmap-status -->
 
@@ -70,7 +71,7 @@ typed start door (D250/D251/D261), and the behavior the D311 compiler must prese
 six separations composition/harness modules (order 8, doc 03b). The new registry-derived compiled
 population contains two workflows, Person Lookup and Separations. Their descriptors/modules now
 come through `src/base/workflow-recipe.ts`, and equivalence plus generic start/timeline/Explorer
-conformance are green. That is the completed bounded D311 increment—not the D312–D317 exit state:
+conformance are green. That is the completed bounded D311 increment—not the D312–D318 exit state:
 the code still exposes `defineWorkflowRecipe`/`compileWorkflowRecipe`, consumes fragment adapters,
 retains authored descriptor/module files, implements neither direct `parallel`/`delegate` entries
 nor D313/D314 omission/restart behavior, and has no workflow-authoring guide.
@@ -82,7 +83,7 @@ D266 retired the former D135 proof workflow into the Kuali finalization T1 pair 
 testing machinery as an order row.
 
 **The rule every order below inherits.** A migration is not done when its workflow runs. It carries
-its **T1 behavior proof**: a structural fixture scenario and live dry-run manifest, plus controlled
+its **T1 behavior proof**: a structural fixture scenario and T1b live manifest, plus controlled
 evidence for every write. The workflow compiler supplies already-built generic dashboard surfaces and
 the registry-wide conformance suite proves that mapping. A workflow owns a separate dashboard
 feature task and T2/T3 proof only when it introduces a genuinely new interaction or wire arm
@@ -114,9 +115,10 @@ feature task and T2/T3 proof only when it introduces a genuinely new interaction
 - [ ] PROOF extend the landed registry-wide conformance suite to every direct entry kind, then remove superseded declarations and only genuinely duplicate generic-dashboard tests
 - [ ] DOCS write `docs/guides/workflow-authoring.md`, add the concise authoring rules to the paired root `AGENTS.md`/`CLAUDE.md`, and add one internal agent reference that points to the guide rather than redefining it
 - [ ] PROOF follow the finished author guide to author both acceptance workflows; any undocumented step or required legacy escape hatch fails 3c-A
+- [ ] BE implement D318's exclusive T1b result/admission arms: `dry-run-preview` for transaction-bearing graphs and `live-read` for zero-transaction graphs, with graph refusal and exact zero write-authority deltas
 - [x] DOCS re-scope each remaining `Dashboard · wire` row to the capability delta that order actually introduces; generic rows inherit compiler conformance
-> 2026-09-02 | D311 bounded implementation | `a40276b6` integrates compatibility fixtures, a transitional compiler, two descriptor/module conversions and generic conformance; R1's report explicitly carries D312–D317 completion into the next run
-> 2026-09-02 | remaining 3c-A | task discovery, D317 rename/final API, direct entry algebra, four-artifact guard, D313 omission, D314 recovery, final acceptance deletion/T1 and author docs remain open
+> 2026-09-02 | D311 bounded implementation | `a40276b6` integrates compatibility fixtures, a transitional compiler, two descriptor/module conversions and generic conformance; R1's report explicitly carries D312–D318 completion into the next run
+> 2026-09-02 | remaining 3c-A | task discovery, D317 rename/final API, direct entry algebra, four-artifact guard, D313 omission, D314 recovery, D318 `live-read`, final acceptance deletion/T1 and author docs remain open
 <!-- /roadmap-status -->
 
 The implementation order is deliberate: pin the current public descriptor/module/wire behavior;
@@ -258,7 +260,7 @@ runtime.
 this plan update (verified implementation parent `b1b36349`). In order: (1) reconcile the task-store
 catalog and D317 final names/API; (2) enforce the
 four-artifact boundary and finish the direct entry algebra; (3) implement D313 omission admission;
-(4) implement D314 recovery; (5) finish Person Lookup and Separations deletion/T1/guide acceptance;
+(4) implement D314 recovery and D318 `live-read`; (5) finish Person Lookup and Separations deletion/T1/guide acceptance;
 (6) run manifest, typecheck, lint, coverage, architecture, parity and workflow proofs; (7) integrate
 and perform the exact worktree sweep. Do not start Order 1 implementation inside this run.
 
@@ -294,7 +296,7 @@ never hand-maintain.
 projections are built; omission and both recovery choices are built; Person Lookup and Separations
 are equivalent; their redundant authoring declarations are deleted; the four-artifact guard is
 green; the practical guide and agent pointers are landed; and the integrated typecheck, lint,
-coverage, architecture, parity and both workflow T1/live-dry-run proofs are green. Passing unit tests
+coverage, architecture, parity and both workflow T1b proofs are green. Passing unit tests
 while retaining a second authoring path does not close 3c-A. The run closes only after its integrated
 worktree sweep proves no 3c-A worktree, local feature branch or exact task residue remains.
 
@@ -341,25 +343,27 @@ per-commit gate; `test:coverage` is a strict superset of the old `test` + `test:
 `ref guards-and-tests` §9 is the worked example of adding one submit-bearing workflow through this
 guard set.
 
-**4 · Live selector re-verification, then the live dry run.** Live access is pre-authorized and
+**4 · Live selector re-verification, then the T1b live run.** Live access is pre-authorized and
 always available (CLAUDE.md's standing authorization) — never ask. Legacy change accounting is
 RETIRED (D150): the protection against a stale ported selector is re-verifying it against the LIVE
-page at this migration, not diffing legacy's copy. Then run the workflow with `dryRun=true` against
-every real system it touches and assert that prepare previews exist while commit spans, write
-intents and mutation helpers are ABSENT. Write the dry run down as a scenario rather than typing it
-again: `tests/scenario/workflows/<id>/dry-run.scenario.ts` is the checkpoint manifest
+page at this migration, not diffing legacy's copy. Then run the workflow against every real system
+it touches through D318's graph-derived T1b arm: a transaction-bearing graph uses
+`dry-run-preview` with `dryRun=true`; a zero-transaction graph uses `live-read` with
+`dryRun=false`. Both prove exact zero deltas in `write_intents`, `write_attempts` and
+`durable_outbox`; a no-op transaction is forbidden. Write the live proof down as a scenario rather
+than typing it again: `tests/scenario/workflows/<id>/dry-run.scenario.ts` is the T1b checkpoint manifest
 (`ref guards-and-tests` §10.4) — nodes reached and nodes excluded, the `run_checkpoints` rows keyed
 `(workflow, item, node, attempt, claimGeneration?)` (D214/D221), the `gate_results` row if it gates,
 `write_intents` / `write_attempts` / `durable_outbox` deltas of **zero**, the receipt shape, the
-preview terminal. Register its canary subjects by LABEL in `config/test-subjects.json`
+arm-specific terminal/result. Register its canary subjects by LABEL in `config/test-subjects.json`
 (`ref guards-and-tests` §10.5) — sensitive values stay in `.env` behind `src/domain/secrets.ts`, and
 a missing subject reports `blocked: needs <label>`, never `failed`, because a canary decays
 (separations §9.16: doc 4524's action was completed between two passes and the read that made it a
-candidate stopped working). **Gate:** the dry run green, its manifest committed, its result recorded.
+candidate stopped working). **Gate:** the T1b live case green, its manifest committed, its result recorded.
 
 **5 · The controlled-commit proof — write workflows only.** Exercise each new commit / probe /
 verify against a configured test instance or a deliberately harmless, operator-approved canary,
-under `ref write-safety` §3.2's contract: dry run with zero durable rows, a forced subject mismatch
+under `ref write-safety` §3.2's contract: dry-run preview with zero write-authority deltas, a forced subject mismatch
 refused with zero fence and zero click, ONE controlled commit whose proof is a reload read-back plus
 the outbox rows plus the terminal span, and an idempotent re-run answering `already-present` with no
 browser. **If no safe target exists, rebuild-ready is BLOCKED** — dry run alone cannot prove
@@ -685,7 +689,7 @@ migration node cites. The **end-to-end tier** is an agent-operated run of MANY d
 parallel, across workflows and across two runs of the same workflow (`{#parallel-runs}`). Fixture
 scenarios that pretend are rewritten into the honest structural one or into a dry-run scenario.
 The coverage floor moves to **80 %** lines/statements/functions global. Under D311 every migration
-owes its T1 pair (the structural fixture scenario and dry-run manifest). T2/T3 are added only when
+owes its T1 pair (the structural fixture scenario and T1b live manifest). T2/T3 are added only when
 that workflow introduces a new dashboard interaction or wire arm; reused generic projections are
 covered once by registry-wide workflow/compiler conformance. The normative spec — folder layout, file naming,
 the vitest project per tier, the run policy, the subject registry, the durable result row — is
@@ -698,7 +702,7 @@ the vitest project per tier, the run policy, the subject registry, the durable r
 - [x] the workflow exists and is registered — `src/workflows/person-lookup/descriptor.ts` + `module.ts`, tuple entry in `src/control/workflow-registry.ts`
 - [x] it ran LIVE against real UCPath + CRM (D74, 2026-08-04): run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, recovered a dead CRM session mid-run and terminalized `done` at attempt 2
 - [x] the store tasks it forced into existence — `ucpath/search-person-org`, `crm/read-onboarding-record`, `crm/read-onboarding-dates`, `person-lookup/read-active-status`
-- [ ] PROOF T1 — no `tests/scenario/workflows/person-lookup/` exists; the structural fixture scenario and the dry-run manifest are both unwritten (`ref guards-and-tests` §10.11)
+- [ ] PROOF T1 — no `tests/scenario/workflows/person-lookup/` exists; the structural fixture scenario and D318 `live-read` manifest are both unwritten (`ref guards-and-tests` §10.11)
 - [ ] the legacy capability entry `legacy-workflow-person-lookup` stays **open**, correctly: legacy's `crm-search.ts` / `match.ts` / `outcome.ts` have no rebuild counterpart, and those are order 1's Search + Match modes
 > 2026-08-20 | docs-cohesion 03c | verified against `src/workflows/person-lookup/descriptor.ts`, `src/control/workflow-registry.ts:39` and `config/legacy-capabilities.json`; left: the T1 pair, and the capability entry closes only at order 1
 <!-- /roadmap-status -->
@@ -726,7 +730,7 @@ shipped. And its legacy directory does not close here: order 1 is what closes it
 - [x] run detail — timeline, receipt, Context rail; the two-pixel panel D187 found and fixed (§5.1.3)
 - [x] archive · activity · explorer — person-lookup rows appear through the generic surfaces (§5.1.5)
 - [x] D311 bounded acceptance — the transitional compiler reaches these projections and registry-wide comparison is green (`ebfde1c6`, `246daab2`, `4555341f`)
-- [ ] D312–D317 final acceptance — final `workflow.ts`, no authored descriptor/module glue, four-artifact guard and canonical T1 pair
+- [ ] D312–D318 final acceptance — final `workflow.ts`, no authored descriptor/module glue, four-artifact guard and canonical T1 pair using the graph-valid T1b arm
 > 2026-09-02 | D311 | retained as historical acceptance evidence; no duplicate generic-surface T2 is required
 <!-- /roadmap-status -->
 
@@ -744,7 +748,7 @@ empty when the wire has not been run.
 - [ ] Search + Match as MODES on the existing person-lookup descriptor (D15, `ref dashboard-surfaces` §9) — nothing in `src/workflows/person-lookup/descriptor.ts` carries a mode today
 - [ ] the `i9` store — `src/stores/i9/index.ts` is 4 lines: `defineBrowserStore("i9", declareDriver("i9", "unwired"), i9Session, {})`. No driver, no login recipe, **zero tasks**
 - [ ] the `i9-lookup` workflow descriptor + module + registry tuple entry
-- [ ] PROOF T1 — structural fixture scenario + dry-run manifest per workflow; T3 only for the new mode interaction
+- [ ] PROOF T1 — structural fixture scenario + D318 `live-read` manifest per workflow; T3 only for the new mode interaction
 - [ ] the capability entries `legacy-workflow-i9-lookup` and `legacy-workflow-person-lookup` both close here
 > 2026-08-20 | docs-cohesion 03c | verified against `src/stores/i9/index.ts:4` (unwired, `{}` tasks) and `src/workflows/person-lookup/descriptor.ts` (no mode); nothing is built — this row is a plan
 > 2026-09-02 | Order 1 intake | migration decisions, exact task/driver seams, provenance and current live login/search evidence integrated by `b1b36349`; runtime implementation and T1 remain open behind 3c-A
@@ -1197,7 +1201,7 @@ traceback that names each one's trigger.
 
 ## Decisions this phase ratified
 
-**D311–D317 are this phase's workflow-authoring decisions.** They ratify the workflow/compiler and its
+**D311–D318 are this phase's workflow-authoring and proof decisions.** They ratify the workflow/compiler and its
 measurable simplicity, omission, recovery, entry-algebra and deletion boundaries before another
 migration starts; the bounded compiler is integrated and the final acceptance work remains open at
 `{#workflow-authoring-model}`. The rest of the
@@ -1216,6 +1220,7 @@ table is the standing set ratified elsewhere that still binds every order row.
 | D311 (round 121, 2026-09-02) | one tuple workflow/compiler authoring seam; generic dashboard conformance once; T2/T3 only for new capability deltas |
 | D312–D316 (round 122, 2026-09-02) | exactly four reuse-only artifacts; complete run-modal omissions; checkpoint resume or root restart; explicit entry algebra; Person Lookup/Separations equivalence followed by deletion |
 | D317 (round 123, 2026-09-02) | `workflow` is the authored technical model; `recipe` is analogy only; `workflow.ts` + `defineWorkflow` compile to `CompiledWorkflow` |
+| D318 (round 124, 2026-09-02) | transaction-free workflows satisfy T1b through the explicit `live-read` arm with `dryRun=false`, zero transaction nodes and exact zero write-authority deltas; D209 preview semantics remain unchanged |
 | R10 (operator, 2026-08-20; amended D311) | T1 behavior per workflow, T2/T3 per new dashboard capability, the 80 % floor |
 
 A round ratified by a future migration is added here in the same commit that records it, with its
@@ -1231,10 +1236,10 @@ line's MET/open state at HEAD, then the per-workflow contract each order row is 
 
 | # | Criterion | State at verified baseline `b1b36349` (2026-09-02) |
 |---|---|---|
-| 1 | D311–D317's workflow/compiler seam is built, equivalent on person lookup and separations, and every remaining order row has been through the resulting migration loop | **partial** — the bounded transitional compiler, two compiler-backed descriptors/modules and equivalence are integrated; final workflow naming, direct entries, omissions, recovery, four-artifact deletion/guide/T1 acceptance and orders 1–7/9 remain open |
+| 1 | D311–D318's workflow/compiler seam is built, equivalent on person lookup and separations, and every remaining order row has been through the resulting migration loop | **partial** — the bounded transitional compiler, two compiler-backed descriptors/modules and equivalence are integrated; final workflow naming, direct entries, omissions, recovery, `live-read`, four-artifact deletion/guide/T1 acceptance and orders 1–7/9 remain open |
 | 2 | Every migrated workflow is marked **rebuild-ready** with its live dry run green and, for writes, its `ref write-safety` §3.2 controlled-commit proof recorded | **open** — order 0 is a read and predates the tiers; no other row has run |
 | 3 | Every workflow definition passes generic dashboard/Explorer conformance; every genuinely new surface capability has its one feature task and T2/T3 proof | **partial** — registry-derived conformance is green for transitional compiler-backed Person Lookup and Separations; final entry kinds and every later workflow/capability remain |
-| 4 | Every order row carries its **T1** pair (structural fixture scenario + dry-run manifest), with T2/T3 only for dashboard behavior it introduces | **open** — Separations has its pair; Person Lookup's canonical pair was deliberately deferred, the read-only T1 live-proof contract is unresolved, and orders 1–7/9 have none |
+| 4 | Every order row carries its **T1** pair (structural fixture scenario + T1b live manifest), with T2/T3 only for dashboard behavior it introduces | **open** — Separations has its pair; D318 has resolved Person Lookup/I-9's live-proof contract but its `live-read` arm and Person Lookup pair are unbuilt, and orders 1–7/9 have none |
 | 5 | The four live probes are settled: each system produces a typed completion proof or an argued `unverifiableByPage` | **open** — 2 of 4. Kuali and UCPath are RESOLVED and BUILT; ServiceNow needs a named target and OnBase has none |
 | 6 | `config/legacy-capabilities.json` has **zero open entries** — every one advanced to `native` / `replaced` / `retired` with evidence | **open** — 46 of 78 open, all owned by this phase |
 | 7 | The §Cross-cutting capabilities are built or retired with evidence | **open** — none of the five is started |

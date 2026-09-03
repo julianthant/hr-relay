@@ -27,13 +27,13 @@ implementation facts with fail-loud answers already fixed by repository policy.
 | 1. Real commits | None. The signer lookup is a pure read. No prepare/commit pair, transaction lease, mutation capability, idempotency key, or external write is permitted. |
 | 2. Completion check per submit | Not applicable: there is no submit. A signed/unsigned/historical/not-found/unable-to-access/error result is read evidence, not a commit proof. |
 | 3. Double-submit probe and budget | Not applicable: there is no transaction node or fence. |
-| 4. Dry-run preview | **NEEDS COORDINATOR — contract conflict.** Doc 03c §4 and ref guards-and-tests §10.11 require a T1b live dry-run manifest for every workflow, while ref workflow-model §2/D209 makes this transaction-free graph refuse `dryRun` as `no-transaction-node`. This intake does not invent an exception; §5 records the options. |
+| 4. T1b live proof | **RESOLVED by D318; implementation open.** This zero-transaction workflow uses the explicit `live-read` arm with `dryRun=false`, graph admission proving no transaction node and exact zero deltas in all three write-authority tables. D209 still refuses transaction preview as `no-transaction-node`. |
 | 5. Freshness maxAges | The write-feeding freshness question is not applicable within this workflow. Every I-9 page read still records its own read time and provenance and parses a strict fixed output. |
 | 6. Workflow-specific gates/data | No operator gate, intake manifest, OCR approval, or test-vs-production instance choice. Canonical input is a strict person search shape (first and last name, with optional SSN only where needed to disambiguate); sensitive values stay outside committed artifacts. |
 | 7. Reuse map | BUILD the `i9` store driver, verified login recipe, UI/page-state catalog, and two page-visit read tasks described in §2. REUSE common SSO/Duo and browser-store/session contracts. No legacy runtime import is allowed. |
 | 8. Local artifact effects | None. The lookup neither downloads immutable bytes nor updates a mutable local file. A diagnostic screenshot is evidence, not an artifact side effect. |
 | 9. Scenario inventory | §3 enumerates the required matrix. Paper/historical, unsigned, inaccessible, and true not-found are separate states; page uncertainty is never one of them. |
-| 10. Delegation and queue | Register `i9-lookup` as a standalone, single-surface workflow with the standard `reject-active` enqueue policy and ordinary generic projections. D315 requires its own operations to be explicit stable-id `task(...)` entries; this recipe has no `parallel`, `delegate`, `gate`, or `transaction` entry. A later parent's explicit child edge belongs to that parent's recipe and does not change this workflow's role or identity. |
+| 10. Delegation and queue | Register `i9-lookup` as a standalone, single-surface workflow with the standard `reject-active` enqueue policy and ordinary generic projections. D315 requires its own operations to be explicit stable-id `task(...)` entries; this workflow has no `parallel`, `delegate`, `gate`, or `transaction` entry. A later parent's explicit child edge belongs to that parent's workflow and does not change this workflow's role or identity. |
 | 11. Trust contract | Inherit ref operator-trust §3.2 and ref guards-and-tests §10.11. The workflow-specific outcome/confidence predicates are in §3; notably a failed access/summary observation is `error` with `unknown` confidence, never not-found/unsigned. |
 | 12. Authoring boundary | Source-authored. D312's strict four-artifact cap applies to a reuse-only workflow; I-9 is not reuse-only because §2 builds new behavior. Its workflow surface is `src/workflows/i9-lookup/recipe.ts`, the structural scenario, the live declaration, and this migration record, plus only the genuinely new driver/task/login/UI files that own that behavior. They may not carry descriptor/module/registry/dashboard glue. |
 
@@ -129,20 +129,15 @@ No employee record was changed and no create/save/submit action was available to
   Signed Section 2 selectors were **not** re-verified. R3 needs a new same-day canary and must not
   treat the legacy observation as current proof.
 
-## 5. NEEDS COORDINATOR — read-only T1b contract
+## 5. D318 — read-only T1b contract resolved
 
-Authority conflict, preserved without resolution:
-
-- doc 03c §4 and ref guards-and-tests §10.11 require a live T1b dry-run manifest for every workflow;
-- ref workflow-model §2/D209 requires `dryRun` to refuse when no transaction node exists; and
-- this signer lookup must remain structurally read-only, so a transaction cannot be added merely to
-  satisfy the runner.
-
-The coordinator's operator decision sheet should compare: **A (recommended)** add an explicit
-`live-read` T1b admission/result arm for transaction-free graphs while keeping D209's `dryRun`
-contract intact; **B** record an ordinary live run outside the T1b dry-run runner, accepting a
-second evidence path; or **C** waive the live half for read-only workflows, weakening doc 03c's
-every-workflow proof. A no-op transaction is not a valid option because it misstates effect.
+The operator selected option A on 2026-09-02. I-9 Lookup's T1b declaration uses the explicit
+`live-read` arm. Admission requires its compiled graph to contain zero transaction nodes, starts the
+ordinary read execution with `dryRun=false`, records the ordinary terminal result/receipt and proves
+exact before/after zero deltas in `write_intents`, `write_attempts` and `durable_outbox`. D209 remains
+unchanged: requesting transaction preview still refuses `no-transaction-node`. Adding a no-op
+transaction, using the preview-result schema or waiving live proof are forbidden. The decision is
+ratified; the runner/result arm and this workflow's T1 pair remain implementation work.
 
 ## 6. Capability and close evidence
 

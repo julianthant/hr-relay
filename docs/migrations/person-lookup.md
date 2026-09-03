@@ -28,13 +28,13 @@ Order 1 deltas.
 | 1. Real commits | None. Search and Match are pure reads. No transaction, mutation capability, prepare/commit pair, lease, idempotency key, or external write is permitted. |
 | 2. Completion check per submit | Not applicable: there is no submit. Terminal results are read evidence, not a receipt/save/upload proof. |
 | 3. Double-submit probe and budget | Not applicable: there is no transaction node or fence. |
-| 4. Dry-run preview | **NEEDS COORDINATOR — contract conflict.** Doc 03c §4 and ref guards-and-tests §10.11 require a T1b live dry-run manifest for every workflow, but ref workflow-model §2/D209 makes a graph with no transaction node refuse `dryRun` as `no-transaction-node`. This intake does not invent an exception. The structural T1 half remains required; the live half waits for the owning contracts to resolve §4. |
+| 4. T1b live proof | **RESOLVED by D318; implementation open.** This zero-transaction workflow uses the explicit `live-read` arm with `dryRun=false`, graph admission proving no transaction node and exact zero deltas in all three write-authority tables. D209 still refuses transaction preview as `no-transaction-node`. |
 | 5. Freshness maxAges | The write-feeding freshness question is not applicable because no output feeds a write in this workflow. Each browser read still owes the normal task provenance/read-time evidence and strict output validation from ref task-contract §2.7. |
 | 6. Workflow-specific gates/data | No identity/OCR/normalization gate and no test-vs-production instance choice. Preserve the existing typed name/EID ingress and spreadsheet intake for Search. Match gets its own mode-specific typed input/parser; a file or caller cannot select a mode by smuggling data into another field. |
 | 7. Reuse map | REUSE `ucpath/search-person-org` and `ucpath/read-job-summary` unchanged. CUSTOMIZE the existing semantic-ready UCPath driver with an HR Tasks Search/Match operation, then BUILD the missing reusable `ucpath/search-hr-tasks-person` read task and its strict contract. Preserve the two distinct UCPath surfaces behind one workflow id. No copied selector or legacy function name becomes a new domain concept. See §2. |
 | 8. Local artifact effects | None. Neither mode downloads bytes nor updates a mutable local file. |
 | 9. Scenario inventory | §3 is the required structural/live matrix. Negative and impossible-world variants stay synthetic; live cases correspond only to truthful registry arms. |
-| 10. Delegation and queue | Keep the existing standalone workflow and `reject-active` enqueue policy. D315 requires every recipe operation to be an explicit stable-id `task(...)` entry; there are no `parallel`, `delegate`, `gate`, or `transaction` entries, child edges, or joins. Both modes remain rows of `person-lookup`, never child workflow identities. |
+| 10. Delegation and queue | Keep the existing standalone workflow and `reject-active` enqueue policy. D315 requires every workflow operation to be an explicit stable-id `task(...)` entry; there are no `parallel`, `delegate`, `gate`, or `transaction` entries, child edges, or joins. Both modes remain rows of `person-lookup`, never child workflow identities. |
 | 11. Trust contract | Inherit ref operator-trust §3.2 and ref guards-and-tests §10.11. The workflow-specific delta is that each mode preserves its typed result/evidence, and a Match lookup/page failure is `unknown/failed`, never no-match. |
 | 12. Authoring boundary | Source-authored. D312's strict four-artifact cap applies to a reuse-only workflow. Person Lookup's workflow surface is `src/workflows/person-lookup/recipe.ts`, the structural scenario, the live declaration, and this migration record; Match may additionally add only the genuinely new behavior-owned reusable task/driver files named in §2. No descriptor/module/registry/dashboard glue is authored elsewhere. |
 
@@ -102,22 +102,15 @@ before browser start, never converted into a fixture or a failed run.
 | Match `ambiguous` | `partial`; run refuses | More than one plausible candidate is retained with no automatic first-row selection. |
 | Either mode `unknown` / failure | `unknown` | Auth, page, selector, schema, subject, or outcome-race evidence did not support a trustworthy business result. The run fails with that evidence. |
 
-## 4. NEEDS COORDINATOR — read-only T1b contract
+## 4. D318 — read-only T1b contract resolved
 
-Authority conflict, preserved without resolution:
-
-- doc 03c §4 and ref guards-and-tests §10.11 require a live T1b dry-run manifest for every workflow;
-- ref workflow-model §2/D209 requires `dryRun` to refuse when the graph has no transaction node,
-  because it would otherwise be byte-identical to an ordinary run; and
-- Search and Match must remain structurally read-only, so a transaction node cannot be added merely
-  to satisfy the runner.
-
-The coordinator's operator decision sheet should compare: **A (recommended)** add an explicit
-`live-read` T1b admission/result arm for transaction-free graphs while leaving D209's `dryRun`
-meaning unchanged; **B** record an ordinary live run outside the T1b dry-run runner, accepting a
-second evidence path; or **C** waive the live half for read-only workflows, reducing the every-
-workflow proof promised by doc 03c. A no-op transaction is not a valid option because it would lie
-about effect and graph semantics.
+The operator selected option A on 2026-09-02. Person Lookup's T1b declaration uses the explicit
+`live-read` arm. Admission requires its compiled graph to contain zero transaction nodes, starts the
+ordinary read execution with `dryRun=false`, records the ordinary terminal result/receipt and proves
+exact before/after zero deltas in `write_intents`, `write_attempts` and `durable_outbox`. D209 remains
+unchanged: requesting transaction preview still refuses `no-transaction-node`. Adding a no-op
+transaction, using the preview-result schema or waiving live proof are forbidden. The decision is
+ratified; the runner/result arm and this workflow's T1 pair remain implementation work.
 
 ## 5. Capability and close evidence
 
