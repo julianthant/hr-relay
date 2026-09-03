@@ -1967,17 +1967,22 @@ daily local tool.
 <!-- roadmap: p1-spine -->
 <!-- roadmap: track-c -->
 
-**The corpus as built (2026-08-20): 139 reference triples — a `.png`, a `.a11y.yml` and a
-`.meta.json` each, 417 files under `tests/parity/references/`.** The matrix axis is 3 viewports
-(1280×720, 1440×900, narrow 1024×768) × 2 themes (Graphite Warm, Paper Ink), driven by
+**The corpus as built (2026-09-02): 222 reference triples — a `.png`, a `.a11y.yml` and a
+`.meta.json` each, 666 files under `tests/parity/references/` — plus the non-reference browser
+assertions, for 281 Playwright cases across 17 specs.** The principal matrix axis remains three
+viewports (1280×720, 1440×900, narrow 1024×768) × two themes (Graphite Warm, Paper Ink), driven by
 `tests/parity/dashboard-reference.spec.ts` over the routes `tests/parity/helpers/app-driver.ts`
-exposes.
+exposes. Focused specs own accessibility, evidence, touch-target, search, capture, toast and adapter
+contracts that are not honest pixel-matrix duplicates.
 
 | Block | States | Axis |
 |---|---|---|
-| Matrixed | `queue-day` · `run-open-gate` · `run-failed` · `run-running` · `run-done` · `run-queued` · `run-parked-write` · `run-group` · `run-member` · `run-receipt` · `start-run` · `intake-upload` · `intake-mapping` · `intake-review` · `explorer-graph` · `explorer-transaction` · `catalog-search` · `archive-ledger` · `archive-run` · `activity-report` | 20 × 3 viewports × 2 themes = 120 |
-| Variants (1440×900 only) | the two panel-dismissed states in both themes; `queue-day--keyboard` and `queue-day--reduced-motion` in Paper Ink; the four gate-ceremony variants and the two park resolutions in Graphite Warm; `run-receipt-populated` in both themes, over the SEEDED adapter | 14 |
-| Phone (its own block) | `capture-empty` · `capture-photos` · `capture-reorder` · `capture-sent` · `capture-failed` | 5, at 390×844, Paper Ink only |
+| Principal matrix | queue/run/gate/member/receipt; start/input/step/omission; intake; Explorer/catalog; archive/activity; Settings/storage | both themes at the viewports each state contract declares |
+| Focused variants | keyboard/reduced-motion, panel dismissal, gate ceremony and park resolution, populated/refused receipts, degraded authority, diagnostic/evidence and design-system states | one or more explicit theme/viewport/adapter variants per owning assertion |
+
+The executable capture lists and `parity-reference-authority` own exact membership. This prose names
+the contract categories deliberately; adding a manually maintained 222-row inventory here would
+recreate the parallel registry D132 removed.
 
 The stored reference includes state id, viewport, theme, adapter, fixture id, descriptor hash, app
 version, capture date and variant. A screenshot without the matching a11y snapshot is incomplete —
@@ -2313,6 +2318,18 @@ the whole reason they are in the table.
 | `sqliteStatements` (row 4) | 14 | **13** | The receipt dedupe reaching the frozen row. |
 | `corpus…Available` (row 3) | 20,800 / 5,691,200 / 4 | unchanged | **By design, and the baseline predicted it**: these are the corpus SIZE, a fixture fact, not an observation of what the reader read. They are why the two `…InScope` counters were added. |
 | `dayWireSchemaParses` (row 2) | 1 | 1 | D4's row, untouched by D5. Its millisecond movement is machine noise. |
+
+**2026-09-02 ratification — the current structural baseline is executable, and the day wire is
+5,569 by design.** D269 added the one `listWorkerPools()` authority read needed to serve worker-pool
+state, so today's repeatable day-wire count is 5,569 rather than D5's historical 5,568 above. R7
+keeps that one-statement change and makes the current bounds fail-capable in
+`tests/perf/dashboard-benchmark.ts`: day-wire statements ≤5,569; row-patch whole-day parses exactly
+0; Logs GET span-event parses exactly 0 and files in scope ≤2; archive-freeze statements ≤13; and
+member-preview delta statements ≤6. The benchmark asserts those bounds before publishing its
+report, while `dashboard-perf-fixture-shape.test.ts` increments every counter in turn and proves the
+corresponding named refusal. Elapsed milliseconds remain observational: host contention cannot turn
+a structurally unchanged read into a correctness failure. These current bounds do not rewrite the
+dated D5 table; they supersede it only as the acceptance ceiling for code running now.
 
 **The logs row is the honest disappointment, and the reason is a property of THIS fixture, not of
 the fix.** 15 % fewer lines in scope is not the order of magnitude audit P3 describes, and the cause
