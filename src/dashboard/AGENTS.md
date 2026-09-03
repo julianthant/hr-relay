@@ -106,6 +106,27 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-03 — a replayed cursor is not new state, and an ending the client cannot classify is
+  not a network blip.** `subscription.ts` applied every snapshot and patch it parsed, so a resume
+  replayed state the client already held — and the replay of a REMOVAL names a run the held day no
+  longer carries, which `applyDashboardDayPatch` calls a protocol failure and this module answers by
+  discarding the whole day and resnapshotting. So the resume contract §3.5 spells out was buying a
+  full snapshot every time it worked correctly, and nothing could see it: every envelope was valid,
+  every day on screen was right, and the only symptom was traffic. A cursor at or below the held one
+  now returns before any effect; hello's generation-change branch still clears that cursor, which is
+  the ONE thing that lets a replacement generation's lower-numbered snapshot in — pin that arm, or
+  the guard silently swallows a restarted hub's whole history. The other half was
+  `stream.done.then(f, f)`: EOF and every rejection ran the same reconnect and the rejection VALUE
+  was dropped on the floor, so an HTTP refusal or a protocol failure reconnected forever behind a
+  dashboard that still looked live. Classification is by error KIND — only the transport's `network`
+  kind reconnects — and deliberately NOT by `error.retryable`, which `httpError` copies straight off
+  the wire body: honouring the server's hint about re-issuing ONE request would let a 503 that calls
+  itself retryable rebuild the same endless loop. A value this client did not author is named as an
+  unclassified stream rejection with its cause kept, never guessed into a retry. The fake transport
+  in `subscription.test.ts` exists because both claims are about what the subscription DID with an
+  envelope or an ending — how many days reached `onDay`, whether another stream was opened at all —
+  and neither `day-state.ts` nor `transport.ts` can see that from its own side.
+
 - **2026-09-02 — an empty open-session list is not an empty browser requirement set.** The Session
   Panel used `WorkerCard.browsers[]` for both facts, so a starting worker showed no browser systems
   until each child span opened. The worker now persists its loaded descriptor's ordered systems on

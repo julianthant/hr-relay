@@ -773,6 +773,24 @@ headers and the resume contract is the bound `Last-Event-ID` + `Dashboard-Projec
 pair. The route reads those headers and falls back to `?cursor=&generation=`; generation without a
 cursor and every malformed value fail the strict request schema.
 
+**Idempotence is the CLIENT's rule too, and how a stream ends decides whether there is another one
+(2026-09-03).** `subscription.ts` ignores any snapshot or patch whose cursor is at or below the one
+it holds, checked after the cursor parses and BEFORE any effect — so a resume's replay costs
+nothing. Without it a replayed removal names a run the held day no longer carries,
+`applyDashboardDayPatch` calls that a protocol failure, and the client answers a protocol failure by
+discarding the day and resnapshotting: a correct resume would buy a full snapshot every time. The
+hello handler's generation-change branch still clears the held cursor, which is what lets a
+REPLACEMENT generation's lower-numbered snapshot through; a forward GAP and a patch for an unheld
+run still resnapshot. And the stream's own ending is classified rather than uniform: EOF and the
+transport's `network` kind report `reconnecting` and resume with `Last-Event-ID`, while an HTTP
+refusal, a protocol or schema failure, or a rejection the client cannot classify (named as such,
+cause kept) is TERMINAL — `stopped` carrying that error, no timer, and `useDashboardDay` replaces
+its day resource with `failed(error)`. The classification is by error KIND, never by
+`error.retryable`: that flag is the server's hint about re-issuing one request and `httpError`
+copies it off the wire body, so honouring it here would let a 503 declaring itself retryable
+reconnect forever behind a dashboard that still looks live. Pinned by
+`tests/unit/dashboard/subscription.test.ts` and `tests/unit/dashboard/use-dashboard-day.test.ts`.
+
 **One topic has a producer.** `TopicKeySchema` declares six (`dashboard-day`, `run-detail`,
 `run-logs`, `run-review`, `run-people`, `artifact`); the route's topic pattern admits only
 `dashboard-day:YYYY-MM-DD` and the hub emits only that topic. Every per-run subscription this
