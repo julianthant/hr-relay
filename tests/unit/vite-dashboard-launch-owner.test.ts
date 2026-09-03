@@ -128,6 +128,7 @@ describe("the dashboard dev server's launch-owner middleware", () => {
     // the config itself rather than becoming a value this path would publish.
     await assert.rejects(
       loadOwnerMiddleware({ [DASHBOARD_LAUNCH_NONCE_ENV]: "not-a-nonce" }),
+      { name: "ZodError" },
     );
   });
 

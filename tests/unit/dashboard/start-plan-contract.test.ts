@@ -8,13 +8,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expectTypeOf, it } from "vitest";
+import { createDashboardClient, DashboardClientError, type DashboardClient } from "../../../src/dashboard/client/index.js";
 import {
   StartPlanIngressSchema,
   StartPlanRequestSchema,
   StartPlanWireSchema,
   type StartPlanIngress,
   type StartPlanRequest,
-  type StartPlanWire,
 } from "../../../src/domain/dashboard/start-plan.js";
 
 const REPO_ROOT = process.cwd();
@@ -94,13 +94,47 @@ describe("start-plan wire contract (one shared owner)", () => {
     }).success, false);
     assert.equal(StartPlanWireSchema.safeParse({ ...WIRE, rawInput: REQUEST.submissions }).success, false, "rawInput never echoes");
     assert.equal(StartPlanWireSchema.safeParse({ ...WIRE, startPlanId: "plan-1" }).success, false, "ids are domain ids, not any string");
+    // The two tightenings that moved the fixtures: the server can only ever
+    // emit a closed refusal code and a real trace id, and the browser now
+    // refuses anything else instead of rendering it.
+    assert.equal(StartPlanWireSchema.safeParse({
+      ...WIRE,
+      refused: [{ entry: 1, code: "duplicate-active", message: "not a code the server can emit" }],
+    }).success, false, "refusal codes are the closed StartRefusalCode vocabulary");
+    assert.equal(StartPlanWireSchema.safeParse({
+      ...WIRE,
+      planned: [{ ...WIRE.planned[0], traceId: "fixture-plan-01" }],
+    }).success, false, "a trace id has the <code>-<HHMMSS>-<runId4> shape");
   });
 
-  it("types are inferred from the shared schemas on both sides", () => {
-    expectTypeOf<StartPlanRequest>().toEqualTypeOf<ReturnType<typeof StartPlanRequestSchema.parse>>();
-    expectTypeOf<StartPlanIngress>().toEqualTypeOf<ReturnType<typeof StartPlanIngressSchema.parse>>();
-    expectTypeOf<StartPlanWire>().toEqualTypeOf<ReturnType<typeof StartPlanWireSchema.parse>>();
+  it("the client parses the answer with the shared wire, so an impossible refusal code is a schema error, not a rendered string", async () => {
+    const answer = (body: unknown): DashboardClient => createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: () => Promise.resolve(new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })),
+    });
+    const accepted = await answer(WIRE).submitStartPlan(REQUEST);
+    assert.deepEqual(accepted, StartPlanWireSchema.parse(WIRE));
+    await assert.rejects(
+      answer({ ...WIRE, refused: [{ entry: 1, code: "duplicate-active", message: "x" }] }).submitStartPlan(REQUEST),
+      (error: unknown) => error instanceof DashboardClientError && error.kind === "schema",
+    );
+    // And the request side: the client refuses before any fetch happens.
+    let fetches = 0;
+    const counting = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: () => { fetches += 1; return Promise.reject(new Error("unreachable")); },
+    });
+    await assert.rejects(counting.submitStartPlan({ ...REQUEST, workflowId: "Not A Slug" }));
+    assert.equal(fetches, 0);
+  });
+
+  it("the ingress and the request agree on every shared leaf's type", () => {
     expectTypeOf<StartPlanIngress["submissions"]>().toEqualTypeOf<StartPlanRequest["submissions"]>();
+    expectTypeOf<StartPlanIngress["stepOmissions"]>().toEqualTypeOf<StartPlanRequest["stepOmissions"]>();
+    expectTypeOf<StartPlanIngress["browserMode"]>().toEqualTypeOf<StartPlanRequest["browserMode"]>();
   });
 
   it("neither the client nor the server declares its own start-plan schema any more", () => {

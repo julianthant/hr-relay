@@ -610,4 +610,31 @@ describe("dashboard stream hub", () => {
     sameDayA.close();
     sameDayB.close();
   });
+  it("PREMISE: one projection batch stamps its patch and its snapshot with the same cursor, in that order", async () => {
+    // The client's cursor rule (patches ≤ ignored, snapshots < ignored) rests on
+    // this: a count-neutral member change on a worker the projection knows
+    // yields `patch pc:N` followed by `snapshot pc:N` from ONE #notify batch.
+    // If the projection ever bumped the cursor per change, the client rule
+    // would silently lose its justification — so the server side pins it.
+    const { w, hub } = harness();
+    w.writer.emit({
+      t: "span.started",
+      kind: "worker",
+      ts: w.clock.now().toISOString(),
+      workflow: "person-lookup",
+      workerId: "person-lookup-worker-1",
+      spanPath: "worker/person-lookup/person-lookup-worker-1",
+      name: "person-lookup",
+    });
+    queuedEventOf(w, { seed: 1, shape: "operation" });
+    queuedEventOf(w, { seed: 2, shape: "operation-member", parentSeed: 1 });
+    const connection = await hub.connect({ day: DAY });
+    claimEventOf(w, 2);
+    const live = await drain(connection);
+    assert.deepEqual(live.map(({ type }) => type), ["patch", "snapshot"]);
+    const [patch, snapshot] = live;
+    if (patch?.type !== "patch" || snapshot?.type !== "snapshot") assert.fail("expected patch then snapshot");
+    assert.equal(patch.cursor, snapshot.cursor, "one batch, one cursor");
+    connection.close();
+  });
 });
