@@ -104,7 +104,7 @@ output at the owning seam.
 | `run-detail-timeline-collision.test.ts` | negative | D258 — a pre-D214 run with two executions at one span identity PARSES, where the whole wire used to be refused |
 | `run-detail-timeline-duration.test.ts` | negative | a timeline event's own measured duration reports a step still in flight as absent, naming the missing end |
 | `run-queue-projection.test.ts` | negative | THE run/queue projection (D81) stays loudly degraded when the JSONL itself is corrupt |
-| `run-status-derivation.test.ts` | negative | D268 — one run-status derivation agrees on cancelled for a run whose span ended discarded before authority settled |
+| `run-status-derivation.test.ts` | negative | D268 — one run-status derivation agrees on \`cancelled\` for a run whose span ended \`discarded\` before authority settled |
 | `settings-facts.test.ts` | negative | settings facts — system hosts (SE40) names no test host when the deployment provisions none |
 | `start-plan-omissions.test.ts` | negative | start plan step omissions (D307) refuses invalid facts before a plan row, a run identity or a transaction exists |
 | `verified-byte-response.test.ts` | negative | verified byte response lease failures disposes after takeBody rejects and preserves that primary failure |

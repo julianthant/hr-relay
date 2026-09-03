@@ -37,7 +37,7 @@ behavior/refusal title:
 | File | Kind | Exact full case title |
 | --- | --- | --- |
 | `bootstrap-start-surface.test.ts` | negative | bootstrap start-surface block refuses a start control arm that names a field kind the form vocabulary does not close over |
-| `compose-real-port.test.ts` | negative | composed dashboard runtime over an owned loopback socket serves bootstrap, day, and SSE through a real ephemeral listener and releases it at teardown — controlled occupied-port red before the fix |
+| `compose-real-port.test.ts` | negative | composed dashboard runtime over an owned loopback socket serves bootstrap, day, and SSE through a real ephemeral listener and releases it at teardown |
 | `dashboard-dev-proxy-origin.test.ts` | direct | dashboard development proxy origin preserves the browser Host for operator-mutation same-origin admission |
 | `dashboard-perf-fixture-shape.test.ts` | negative | the §7.4 dashboard perf fixture carries a realistic terminal mix — settled rows with and without a derived receipt |
 | `preflight-runners.test.ts` | negative | dashboard preflight runner composition returns probe-request-failed for a closed allocated loopback port |
