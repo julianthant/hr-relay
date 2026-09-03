@@ -35,7 +35,7 @@ import {
 import { deriveIdempotencyKeyDigest, WriteIntentRecordSchema } from "../../src/domain/write-safety.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { KualiSaveSeparationFinalization } from "../../src/domain/contracts/kuali/save-separation-finalization.js";
-import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
 import {
   KUALI_CONFIRMED_AT,
   KUALI_IDEMPOTENCY_KEY,

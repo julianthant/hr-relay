@@ -25,7 +25,7 @@ import {
   createUcpathSmartHrFakeWorld,
 } from "../../src/stores/ucpath/driver/smart-hr-fake.js";
 import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org-operation.js";
-import { SeparationsKualiFinalizationCanonicalInput } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
+import { SeparationsKualiFinalizationCanonicalInput } from "../../src/workflows/separations/kuali-finalization/workflow.js";
 import {
   FINALIZATION_ACTION_ID,
   FINALIZATION_DOCUMENT,

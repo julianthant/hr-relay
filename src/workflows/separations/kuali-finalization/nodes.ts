@@ -1,15 +1,15 @@
 /**
- * D265 §1.2.2 rule 2 — the *Kuali finalization* step's one node fragment: §4e's
+ * D265 §1.2.2 rule 2 — the *Kuali finalization* step's one entry identity: §4e's
  * one save over twelve staged fields, proved by a reload read-back (D128/S59).
  *
- * A fragment owns a node's IDENTITY — id, contracts, label and the whole write
- * policy — and takes its WIRING (`dependsOn` + the binds) from the graph that
- * applies it (see `src/base/flow.ts`, "node fragments"). The composition binds
+ * An entry identity owns a node's IDENTITY — id, contracts, label and the whole
+ * write policy — and takes its WIRING (references + binds) from the workflow
+ * definition that uses it (`defineStepEntries`, D315). The composition binds
  * the variables from the reconciled folds and the receipt; the harness in this
  * folder binds them from its own ingress (rule 3). `existingComments` is the
  * one pure fold only this step's binds consume, so it lives here.
  */
-import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
+import { defineStepEntries } from "../../../base/workflow-definition.js";
 import { FILING_PRESENCE_NODE, FINALIZE_NODE } from "./node-ids.js";
 import { KualiSaveSeparationFinalization } from "../../../domain/contracts/kuali/save-separation-finalization.js";
 import { KualiStageSeparationFinalization } from "../../../domain/contracts/kuali/stage-separation-finalization.js";
@@ -17,7 +17,7 @@ import { UcpathVerifyTerminationFilingPresent } from "../../../domain/contracts/
 import { KUALI_FINALIZATION_STEP } from "./step.js";
 
 
-const nodes = defineWorkflowStepNodeFactory(KUALI_FINALIZATION_STEP);
+const nodes = defineStepEntries(KUALI_FINALIZATION_STEP);
 
 /**
  * Always re-read the durable UCPath filing immediately before finalization.

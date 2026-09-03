@@ -16,7 +16,7 @@ import { compileWorkflow } from "../base/workflow-definition.js";
 import { personLookupWorkflow } from "./person-lookup/workflow.js";
 import { separationsIdentityCheckDescriptor } from "./separations/identity-check/descriptor.js";
 import { separationsKronosTimecardWorkflow } from "./separations/kronos-timecard/workflow.js";
-import { separationsKualiFinalizationDescriptor } from "./separations/kuali-finalization/descriptor.js";
+import { separationsKualiFinalizationWorkflow } from "./separations/kuali-finalization/workflow.js";
 import { separationsKualiReadDescriptor } from "./separations/kuali-extraction/descriptor.js";
 import { separationsUcpathTerminationWorkflow } from "./separations/ucpath-transaction/workflow.js";
 import { separationsWorkflow } from "./separations/workflow.js";
@@ -27,6 +27,6 @@ export const WORKFLOW_DESCRIPTORS = Object.freeze([
   separationsKualiReadDescriptor,
   separationsIdentityCheckDescriptor,
   compileWorkflow(separationsUcpathTerminationWorkflow).descriptor,
-  separationsKualiFinalizationDescriptor,
+  compileWorkflow(separationsKualiFinalizationWorkflow).descriptor,
   compileWorkflow(separationsWorkflow).descriptor,
 ] as const);

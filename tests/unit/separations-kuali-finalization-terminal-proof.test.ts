@@ -38,10 +38,8 @@ import {
 } from "../../src/domain/workflow/build-manifest.js";
 import { createReceiptService } from "../../src/server/trust/receipt-service.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
-import {
-  SeparationsKualiFinalizationResultSchema,
-  separationsKualiFinalizationDescriptor,
-} from "../../src/workflows/separations/kuali-finalization/descriptor.js";
+import { SeparationsKualiFinalizationResultSchema } from "../../src/workflows/separations/kuali-finalization/workflow.js";
+import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
 import { FINALIZE_NODE } from "../../src/workflows/separations/kuali-finalization/nodes.js";
 import {
   COMPARISON_NODE,

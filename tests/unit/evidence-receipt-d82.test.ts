@@ -21,7 +21,7 @@ import { WriteIntentRecordSchema } from "../../src/domain/write-safety.js";
 import { buildRunEvidenceReceipt } from "../../src/core/evidence-receipt.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import type { RunEvidenceReceipt } from "../../src/domain/trust/evidence.js";
-import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
 import {
   EXIT_CRM_RECORD_ID,
   EXIT_RUN_ID,

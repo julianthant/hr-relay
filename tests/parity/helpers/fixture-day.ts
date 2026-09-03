@@ -18,9 +18,9 @@ import { projectStartSteps, startStepWireControl } from "../../../src/services/s
 import { separationsIdentityCheckModule } from "../../../src/workflows/separations/identity-check/module.js";
 import {
   separationsKronosTimecardModule,
+  separationsKualiFinalizationModule,
   separationsUcpathTerminationModule,
 } from "../../helpers/registered-workflows.js";
-import { separationsKualiFinalizationModule } from "../../../src/workflows/separations/kuali-finalization/module.js";
 import { separationsKualiReadModule } from "../../../src/workflows/separations/kuali-extraction/module.js";
 import {
   FrontendBootstrapWireSchema,

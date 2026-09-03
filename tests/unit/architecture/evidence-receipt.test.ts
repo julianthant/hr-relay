@@ -50,7 +50,7 @@ import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js"
 import { SECRET_SPECS } from "../../../src/domain/secrets.js";
 import { buildRunEvidenceReceipt } from "../../../src/core/evidence-receipt.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
-import { separationsKualiFinalizationDescriptor } from "../../../src/workflows/separations/kuali-finalization/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
 import { separationsIdentityCheckDescriptor } from "../../../src/workflows/separations/identity-check/descriptor.js";
 import {
   GATE_RESOLVED_AT,

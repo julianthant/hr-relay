@@ -32,7 +32,7 @@ import { WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { RunDryRunPreviewResultSchema } from "../../src/domain/run/result.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
 import {
   FINALIZATION_FIELDS,
   finalizationClaimRunning,

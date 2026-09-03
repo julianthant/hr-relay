@@ -19,7 +19,7 @@ import {
   SeparationsInput,
   separationsWorkflow,
 } from "../workflows/separations/workflow.js";
-import { SeparationsKualiFinalizationInput } from "../workflows/separations/kuali-finalization/descriptor.js";
+import { SeparationsKualiFinalizationInput } from "../workflows/separations/kuali-finalization/workflow.js";
 
 export const TEST_TARGET_REGISTRY_PATH = "config/test-subjects.json";
 

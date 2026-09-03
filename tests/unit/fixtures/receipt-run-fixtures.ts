@@ -44,10 +44,8 @@ import {
   deriveTerminalDependencyDigest,
 } from "../../../src/domain/run/result.js";
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
-import {
-  SeparationsKualiFinalizationCanonicalInput,
-  separationsKualiFinalizationDescriptor,
-} from "../../../src/workflows/separations/kuali-finalization/descriptor.js";
+import { SeparationsKualiFinalizationCanonicalInput } from "../../../src/workflows/separations/kuali-finalization/workflow.js";
+import { separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
 import {
   SeparationsIdentityCheckCanonicalInput,
   separationsIdentityCheckDescriptor,
