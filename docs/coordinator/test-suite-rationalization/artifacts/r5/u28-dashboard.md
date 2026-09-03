@@ -19,8 +19,8 @@ Read-only analyst:
 | `declares the typed-text surface the explorer serves, dry-run support and all` | Move | `tests/unit/server/explorer-query.test.ts` → `serves separations' typed-text declaration, including dry-run support`; a projection returning an absent or altered input surface fails. |
 | `serves the four operator verdicts with their tones, keyed as the descriptor keys them` | Move | `explorer-query.test.ts` → `serves separations' four declared verdicts with their exact tones`; reordered or altered verdict projection fails. |
 | `gives every graph node the descriptor's OWN words, with none left as prose-absent` | Move | `explorer-query.test.ts` → `serves an authored purpose for every separations graph node`; an omitted purpose fails with the complete node-id set. |
-| `refuses BY NAME when the served shape and the served candidates contradict each other` | Remove exact duplicate | `tests/unit/dashboard/identity-ceremony.test.ts` → `REFUSES a packet whose shape and candidate count contradict each other`. |
-| `takes a rejection only with the operator's own words, and sends them verbatim` | Remove exact duplicate | `identity-ceremony.test.ts` → `asks for a rejection reason...` plus `composes a REJECTION with the operator's own trimmed reason and the bound digest`. |
+| `refuses BY NAME when the served shape and the served candidates contradict each other` | Remove exact duplicate | `tests/unit/dashboard/identity-ceremony.test.ts` → `REFUSES a packet whose shape and candidate count contradict each other`, including both candidate-count diagnostics, draft-problem propagation, and undefined answer. |
+| `takes a rejection only with the operator's own words, and sends them verbatim` | Remove exact duplicate | `identity-ceremony.test.ts` → `asks for a rejection reason...` pins the exact actionable prompt; `composes a REJECTION...` pins trim, digest, and command value. |
 | `refuses to compose a typed-EID decision the operator never made` | Move to cheaper owner | New focused unit case `REFUSES a typed-EID ceremony when no operator answer was supplied`; a temporary production fallback made this test fail `ready !== refused`. |
 | `declares exactly the three contracts a separation files, and no two share a proof identity` | Remove exact duplicate | `tests/unit/archive-ledger-read-through.test.ts` → `declares exactly separations' three commit contracts, keyed by PROOF SCHEMA`. |
 | `resolves a run's UCPath lines in file order, with the sweep's absence between them` | Remove exact duplicate | `archive-ledger-read-through.test.ts` → termination action/confirmation and pending-sweep declared-absence cases; the reader uses the ordered pointer vector. |
@@ -60,3 +60,5 @@ brief's explicit ban on live workflow execution for this run.
 - Controlled Explorer-owner red: **3 named failures / 17 passes**, followed by **20/20 green**.
 - Controlled missing-answer red: the new unit case failed `ready !== refused` under a temporary
   production fallback, then passed after the production source was restored byte-for-byte.
+- Controlled diagnostic red: generic contradiction and rejection messages failed both exact
+  operator-facing assertions; restored source passed the complete identity owner **16/16**.
