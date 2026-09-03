@@ -1171,7 +1171,7 @@ builds:
 needs:
 - workflow-authoring-model
 
-note: **Legacy capability register:** 47 open · 20 replaced · 7 native · 4 retired — cutover requires zero open. Every entry advances to native / replaced / retired at its order's migration.
+note: **Legacy capability register at `b1b36349`:** 46 open · 19 replaced · 6 native · 7 retired — cutover requires zero open. Every entry advances to native / replaced / retired at its order's migration.
 
 log:
 - 2026-08-20 | docs-cohesion 03c | doc 03c written as-built: the seven-step playbook, all nine order rows, the recounted closure inventory. Chip corrected 12 → 13 workflows (15 `legacy-workflow-*` entries minus separations and person-lookup); the register recount CONFIRMS 47/20/7/4 and every open entry names `phase-3-workflow-migration`. Registry reality re-verified — only person-lookup and the six separations descriptors are registered, so orders 1-7 and 9 have no descriptor at all
@@ -1179,6 +1179,7 @@ log:
 - 2026-09-02 | D311/D317 | 3c-B remaining migrations depend on the workflow/compiler seam; repeated per-workflow dashboard wiring retires unless a workflow introduces a new capability
 - 2026-09-02 | D317 execution plan | 3c-A's ten ordered units and hard exit gate recorded; no order 1–7 or 9 implementation begins before it closes
 - 2026-09-02 | order 1 intake | migration records, REUSE/CUSTOMIZE/BUILD map and live I-9 login/search evidence integrated at `b1b36349`; no Order 1 runtime implementation or rebuild-ready claim
+- 2026-09-02 | capability recount at `b1b36349` | 78 total = 46 open / 25 implemented / 7 retired; disposition kinds 46 open / 19 replaced / 6 native / 7 retired; every open entry remains phase-owned
 ### Order 0 · person-lookup {#order-0}
 status: done
 size: M
@@ -1785,7 +1786,7 @@ needs:
 - order-9
 - cross-cutting
 - track-d
-- fact: legacy capability register at zero open (47 open today, all owned by `phase-3-workflow-migration`)
+- fact: legacy capability register at zero open (46 open at `b1b36349`, all owned by `phase-3-workflow-migration`)
 - fact: doc 05 §Exit criteria — the definition of done + the program-wide integration criteria (ref frontend-backend-integration §10) green in the real built app
 
 log:

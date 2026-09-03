@@ -75,7 +75,7 @@ a claim that the proof is cheaper. Every workflow still owes doc 03c's exit crit
 separations included.
 
 **What the entry actually bought, measured against the code at HEAD.** Four stores now carry real
-tasks that later migrations reuse: `kuali` 10 tasks, `ucpath` 10, `new-kronos` 2 (the store built
+tasks that later migrations reuse: `kuali` 6 tasks, `ucpath` 12, `new-kronos` 2 (the store built
 whole here), and the pure `separations` mini-store 9 folds. The conventions those stores settled —
 D194's one-task-per-page-visit rich-extraction rule, D196's five rules for every store slice after
 `new-kronos`, D197's five more for a store being CUSTOMIZED, D201's read-reports-the-page /
@@ -1054,10 +1054,12 @@ rides with them for the reason §9.17 item 4 established: a preview has no fence
 The second migration is entitled to assume all of the following, none of which depends on criterion
 5. This is the reuse D193 bought.
 
-1. **The store task libraries exist.** `kuali` (10 tasks), `ucpath` (12), `new-kronos` (2, built
+1. **The store task libraries exist.** `kuali` (6 tasks), `ucpath` (12), `new-kronos` (2, built
    whole), and the pure `separations` mini-store (9 folds) — with D194/D196/D197's conventions
-   settled and ref stores regenerated. A later migration adds tasks to a store that already has a
-   driver, a login recipe, a published UI registry and live-verified selectors.
+   settled. Ref stores is now a stale derived prose view; 3c-A refreshes it into the required
+   capability/effect/input/output discovery surface before another workflow authors tasks. A later
+   migration adds tasks to a store that already has a driver, a login recipe, a published UI
+   registry and live-verified selectors.
 2. **The identity-authority seam is built and proved live**: D309 adds supplied-EID machine verification; the name-only gate retains its server-computed ceremonies (D226), its
    packet binding every value the approval authorizes (D211), its durable record readable as
    dependency evidence by both the kernel and the receipt (D203/D204), and its guard auditing both

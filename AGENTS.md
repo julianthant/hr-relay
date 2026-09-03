@@ -406,7 +406,7 @@ environment-supplied.
   declarations before migrating another workflow; there is no advanced escape hatch. T1 remains per
   workflow; T2/T3 is added only for a genuinely new dashboard capability. “Recipe” is analogy only;
   the API is `defineWorkflow` and its generated value is `CompiledWorkflow`. See ref workflow-model
-  §§1.6, 5.6 and 5.8 and doc 03c `{#workflow-authoring-model}`. At HEAD `b1b36349`, the bounded
+  §§1.6, 5.6 and 5.8 and doc 03c `{#workflow-authoring-model}`. At implementation baseline `b1b36349`, the bounded
   compiler still uses transitional `workflow-recipe.ts` names and fragment adapters; do not copy or
   extend that surface into another workflow. Finish 3c-A's D317 rename/direct-entry/deletion gate
   before starting Order 1 implementation.

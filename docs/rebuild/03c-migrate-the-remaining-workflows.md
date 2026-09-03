@@ -37,7 +37,7 @@ to call the model complete.
 - [ ] 3c-B exit — orders 1 · 2 · 3 · 4 · 5 · 6 · 7 · 9 migrated through that single authoring path
 - [ ] orders 1 · 2 · 3 · 4 · 5 · 6 · 7 · 9 — **no descriptor exists for any of them**; `src/control/workflow-registry.ts` registers 7 modules and every one is person-lookup or a separations composition/harness
 - [ ] the five declaration-only stores — `i9`, `old-kronos`, `onbase`, `servicenow`, `sharepoint` are `declareDriver(…, "unwired")` with `{}` tasks (`i9` is 4 lines, the other four 9); orders 1, 2 and 7 build them
-- [ ] the legacy capability register — **47 open · 20 replaced · 7 native · 4 retired** of 78 (recounted from `config/legacy-capabilities.json`, 2026-08-20); all 47 open name milestone `phase-3-workflow-migration`, and cutover requires zero open
+- [ ] the legacy capability register — **46 open · 19 replaced · 6 native · 7 retired** of 78 (recounted from `config/legacy-capabilities.json`, 2026-09-02); all 46 open name milestone `phase-3-workflow-migration`, and cutover requires zero open
 - [x] generic workflow-to-dashboard conformance for the two transitional compiler-backed workflows; the same registry-wide suite must admit each later migration
 - [ ] the T1 PROOF lines on every order node, plus T2/T3 only for the first workflow to introduce a new dashboard behavior
 - [x] R1 compiler and R2 intake worktrees/branches were removed after verified integration; no Phase 3c worker residue remains from those runs
@@ -45,7 +45,8 @@ to call the model complete.
 > 2026-08-20 | docs-cohesion 03c | verified against `src/control/workflow-registry.ts:38-47`, `src/workflows/*/descriptor.ts` (8 files), `src/stores/*` and `config/legacy-capabilities.json` (recount 47/20/7/4 matches the tree's note); left: every order after 0, minus 8
 > 2026-08-25 | D266 | the test-only Kuali annotation workflow retired; the registry now holds seven modules and the Kuali finalization T1 pair carries its reusable proof shape
 > 2026-09-02 | D317 execution plan | 3c split internally into blocking 3c-A authoring-platform proof and 3c-B migrations; exact ownership, reuse paths, change routing, ten implementation units, documentation package and exit gate recorded; this decision entry itself claimed no implementation
-> 2026-09-02 | HEAD `b1b36349` verification | bounded D311 compiler and Order 1 intake are integrated; D312–D317 final authoring/runtime acceptance and all Order 1–7/9 implementations remain open; R1/R2 owned worktrees are closed
+> 2026-09-02 | baseline `b1b36349` verification | bounded D311 compiler and Order 1 intake are integrated; D312–D317 final authoring/runtime acceptance and all Order 1–7/9 implementations remain open; R1/R2 owned worktrees are closed
+> 2026-09-02 | capability recount | 78 total = 46 open / 25 implemented / 7 retired; disposition kinds = 46 open / 19 replaced / 6 native / 7 retired; every open entry remains owned by this phase
 <!-- /roadmap-status -->
 
 **Phase 3c is the rest of the program.** Phase 3a built the dashboard every workflow inherits and
@@ -60,11 +61,11 @@ row, run detail + timeline, gate ceremony, notifications, archive · activity ·
 capture — exist and answer for a workflow they were not written for (Track C proved that once
 against a real composed run). D311 makes them compiler projections; a migration builds one only when
 it introduces a new capability. From **03b**: the store
-task libraries the entry was chosen to force into existence (`ucpath` 10 tasks, `kuali` 10,
+task libraries the entry was chosen to force into existence (`ucpath` 12 tasks, `kuali` 6,
 `new-kronos` 2, `crm` 2, `separations` 9 service tasks), the ALWAYS-GATE identity approval, the
 typed start door (D250/D251/D261), and the behavior the D311 compiler must preserve.
 
-**The honest state at HEAD `b1b36349`.** One of the nine order rows this phase owns is migrated.
+**The honest state at verified implementation baseline `b1b36349`.** One of the nine order rows this phase owns is migrated.
 `src/control/workflow-registry.ts` still registers seven modules: `person-lookup` (order 0) and the
 six separations composition/harness modules (order 8, doc 03b). The new registry-derived compiled
 population contains two workflows, Person Lookup and Separations. Their descriptors/modules now
@@ -253,8 +254,9 @@ runtime.
     record any residue. R1 and R2 already passed this close; every later run and the final phase must
     pass it independently.
 
-**Next runnable supervisor scope (3c-A finish).** Begin from integration HEAD `b1b36349` plus this
-plan update. In order: (1) reconcile the task-store catalog and D317 final names/API; (2) enforce the
+**Next runnable supervisor scope (3c-A finish).** Begin from the Phase 3c integration branch after
+this plan update (verified implementation parent `b1b36349`). In order: (1) reconcile the task-store
+catalog and D317 final names/API; (2) enforce the
 four-artifact boundary and finish the direct entry algebra; (3) implement D313 omission admission;
 (4) implement D314 recovery; (5) finish Person Lookup and Separations deletion/T1/guide acceptance;
 (6) run manifest, typecheck, lint, coverage, architecture, parity and workflow proofs; (7) integrate
@@ -505,10 +507,11 @@ Embed in **every** workflow's migration plan doc; answer with the operator BEFOR
 
 ## Non-workflow capability closure inventory (D58)
 
-**The register, recounted at HEAD (2026-08-20).** `config/legacy-capabilities.json` holds **78**
-entries: **47 open · 20 replaced · 7 native · 4 retired** (`status` projects the same split as
-`open 47 / implemented 27 / retired 4`, since `native` and `replaced` both project to
-`implemented`). **Every one of the 47 open entries names milestone `phase-3-workflow-migration`** —
+**The register, recounted at baseline `b1b36349` (2026-09-02).**
+`config/legacy-capabilities.json` holds **78** entries: **46 open · 19 replaced · 6 native · 7
+retired** (`status` projects the same split as `open 46 / implemented 25 / retired 7`, since
+`native` and `replaced` both project to `implemented`). **Every one of the 46 open entries names
+owner milestone `phase-3-workflow-migration`** —
 there is no open entry owned by a phase that has already shipped, which is what D184's sweep fixed
 and what the guard now refuses to let rot again. Cutover requires zero open
 (`cutoverRequiresZeroOpen: true` in the file's own header), so this table IS the phase's finish line.
@@ -517,7 +520,7 @@ and what the guard now refuses to let rot again. Cutover requires zero open
 |---|---|---|
 | `service` | 16 | 15 are `legacy-workflow-*` — one per order row below, closing at that row's migration — plus `legacy-service-llm` |
 | `route` | 14 | the byte/search/screenshot/settings/static families; several close together because they share the artifact-bytes route |
-| `dashboard` | 7 | OCR review (order 3), oath-upload (order 7), settings, navigation, capture, log panel, workflow modifier |
+| `dashboard` | 6 | OCR review (order 3), oath-upload (order 7), settings, navigation, log panel, workflow modifier |
 | `export` | 3 | the Excel writers — order 5's retention workbook is the first |
 | `maintenance` | 3 | `clean`, `compact`, `setup` — CLI work with behavioural fixtures required before cutover |
 | `codegen` | 2 | schema export, the workflow-design data bank |
@@ -1226,14 +1229,14 @@ line's MET/open state at HEAD, then the per-workflow contract each order row is 
 
 ### The phase's exit — read this to decide whether 3c is done
 
-| # | Criterion | State at HEAD `b1b36349` (2026-09-02) |
+| # | Criterion | State at verified baseline `b1b36349` (2026-09-02) |
 |---|---|---|
 | 1 | D311–D317's workflow/compiler seam is built, equivalent on person lookup and separations, and every remaining order row has been through the resulting migration loop | **partial** — the bounded transitional compiler, two compiler-backed descriptors/modules and equivalence are integrated; final workflow naming, direct entries, omissions, recovery, four-artifact deletion/guide/T1 acceptance and orders 1–7/9 remain open |
 | 2 | Every migrated workflow is marked **rebuild-ready** with its live dry run green and, for writes, its `ref write-safety` §3.2 controlled-commit proof recorded | **open** — order 0 is a read and predates the tiers; no other row has run |
 | 3 | Every workflow definition passes generic dashboard/Explorer conformance; every genuinely new surface capability has its one feature task and T2/T3 proof | **partial** — registry-derived conformance is green for transitional compiler-backed Person Lookup and Separations; final entry kinds and every later workflow/capability remain |
 | 4 | Every order row carries its **T1** pair (structural fixture scenario + dry-run manifest), with T2/T3 only for dashboard behavior it introduces | **open** — Separations has its pair; Person Lookup's canonical pair was deliberately deferred, the read-only T1 live-proof contract is unresolved, and orders 1–7/9 have none |
 | 5 | The four live probes are settled: each system produces a typed completion proof or an argued `unverifiableByPage` | **open** — 2 of 4. Kuali and UCPath are RESOLVED and BUILT; ServiceNow needs a named target and OnBase has none |
-| 6 | `config/legacy-capabilities.json` has **zero open entries** — every one advanced to `native` / `replaced` / `retired` with evidence | **open** — 47 of 78 open, all owned by this phase |
+| 6 | `config/legacy-capabilities.json` has **zero open entries** — every one advanced to `native` / `replaced` / `retired` with evidence | **open** — 46 of 78 open, all owned by this phase |
 | 7 | The §Cross-cutting capabilities are built or retired with evidence | **open** — none of the five is started |
 | 8 | Nothing in the legacy repository has been deleted, and every preserved path is still runnable | **MET, and standing** — it is the D89 rollback asset for the whole phase |
 | 9 | Every Phase 3c run is integrated and closed: integrated gate green, registered/physical worktrees removed, local feature branches deleted, exact tasks archived, residue recorded | **partial** — R1 compiler and R2 intake are closed; the phase integration branch and all future runs remain. Eight unrelated `feature/test-*` worktrees are preserved for their owning program and are not Phase 3c residue |
