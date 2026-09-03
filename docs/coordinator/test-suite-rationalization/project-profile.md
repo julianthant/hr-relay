@@ -8,7 +8,7 @@
 **Coordinator title:** `Coordinate · test-suite-rationalization · Cf24df892 · remaining test-suite work`
 **Coordinator task/host:** unavailable in this task context
 **Integration checkout:** `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator` · `feature/test-suite-rationalization`
-**Verified:** 2026-09-02 18:03 PDT at `9d87f512e358280e04ab5960f8bdeb2b840aff18`
+**Verified:** 2026-09-02 18:12 PDT at `37c080bcadd6efbb2d77c993d7a40b872b592152`
 
 ## Applicable instructions
 
@@ -45,7 +45,7 @@ Test output is an operator surface. Every test command must identify the project
 
 ## Git and integration policy
 
-- **Branch/current line:** coordinator continues on the established local `feature/test-suite-rationalization` integration line. R1 and R6 are merged through `9d87f512`; before dispatching more work, merge the current stable `master` into this line without touching the active Phase 3c branches.
+- **Branch/current line:** coordinator continues on the established local `feature/test-suite-rationalization` integration line. R1 and R6 are merged through `9d87f512`; stable `master` at `1867c78b` was merged as `37c080bc` without touching the active Phase 3c branches.
 - **Parallel isolation:** each run uses its own Codex worktree and `feature/test-r<n>-<theme>` branch from the latest declared base. No supervisor edits the coordinator branch or another run's branch.
 - **Integration:** coordinator verifies and merges accepted run branches `--no-ff` in run-plan order, then runs the boundary gate. No supervisor merges into the integration target.
 - **Commit and cleanup:** logical local commits; stage explicit paths only; never `git add -A` or `git add .`; preserve unrelated work. Coordinator removes integrated run worktrees/branches only after verification and finishes with `/worktree-sweep` audit.
@@ -60,8 +60,8 @@ Test output is an operator surface. Every test command must identify the project
 
 ## Coordinator defaults
 
-- **Run sizing:** 3–6 single-seam units, six maximum here; one test-family theme per run. Three-unit follow-on runs are permitted where dependency-safe splitting enables the four-worktree Wave 2.
-- **Parallel supervisors:** two in Wave 1; after R1 and R6 integrate cleanly, use four isolated supervisor worktrees where scopes do not overlap. Serialize CPU-heavy full coverage and parity gates.
-- **Auxiliary worktree budget:** four total, excluding the primary checkout; the unrelated active Phase 3c worktree consumes one slot.
+- **Run sizing:** 3–6 single-seam units, six maximum here; one test-family theme per run. Three-unit follow-on runs are permitted where dependency-safe splitting preserves the declared integration order.
+- **Parallel supervisors:** at most two while the unrelated Phase 3c worktree and this coordinator worktree consume two of the four auxiliary slots. Expand only after Phase 3c releases its slot; serialize CPU-heavy full coverage and parity gates.
+- **Auxiliary worktree budget:** four total, excluding the primary checkout; the unrelated active Phase 3c worktree and this coordinator worktree currently consume two slots, leaving two for supervisor runs.
 - **Artifact root override:** none; use `docs/coordinator/test-suite-rationalization/`.
 - **Final close:** update only declared authorities whose truth changed, retain the workspace, close the board with verified commit/gate pointers, and leave no run worktree or integrated feature branch behind.
