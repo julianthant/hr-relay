@@ -15,6 +15,14 @@
  * - a subscriber whose pending queue exceeds the bound has its queue REPLACED
  *   by `reset-required{cursor-expired}` — bounded loudly, never silently
  *   dropping state-bearing envelopes.
+ *
+ * Delivery is DEMAND-DRIVEN (2026-09-02): a connection hands out envelopes one
+ * `next()` at a time and the hub queues everything a consumer has not yet asked
+ * for. That is what makes the bound real end to end — the SSE route's Web
+ * Stream `pull()` asks only when the Node adapter has drained the socket, so a
+ * slow browser backs up HERE, in the one bounded queue, instead of in an
+ * unbounded stream buffer the hub cannot see. A push listener would have
+ * bypassed the bound the moment it was registered.
  */
 import { z } from "zod";
 import {
@@ -29,8 +37,14 @@ const CURSOR_PATTERN = /^pc:([1-9]\d*)$/;
 export interface DashboardStreamConnection {
   /** Envelopes to deliver immediately, in order, before any live envelope. */
   readonly initial: readonly DashboardStreamEnvelope[];
-  /** Registers the live listener; returns the disposer. */
-  subscribe(listener: (envelope: DashboardStreamEnvelope) => void): () => void;
+  /**
+   * The next live envelope, in publication order; `undefined` once the
+   * connection or the hub has closed. At most one `next()` may be outstanding —
+   * a second concurrent call is a consumer bug and throws.
+   */
+  next(): Promise<DashboardStreamEnvelope | undefined>;
+  /** Envelopes queued and not yet handed out — bounded by the hub's `maxPending`. */
+  readonly pending: number;
   close(): void;
 }
 
@@ -46,7 +60,8 @@ export interface DashboardStreamHubDeps {
 interface Subscriber {
   readonly day: string;
   queue: DashboardStreamEnvelope[];
-  listener?: (envelope: DashboardStreamEnvelope) => void;
+  /** The one outstanding `next()`; present only while the queue is empty. */
+  waiter?: (envelope: DashboardStreamEnvelope | undefined) => void;
   closed: boolean;
   /** After a loud overflow reset, nothing else queues until the reset is consumed. */
   resetPending: boolean;
@@ -86,8 +101,21 @@ export class DashboardStreamHub {
 
   close(): void {
     this.#disposeProjection();
-    for (const subscriber of this.#subscribers) subscriber.closed = true;
+    for (const subscriber of this.#subscribers) this.#closeSubscriber(subscriber);
     this.#subscribers.clear();
+  }
+
+  /** Live connections — a diagnostic for tests and the doctor, never a routing input. */
+  subscriberCount(): number {
+    return this.#subscribers.size;
+  }
+
+  #closeSubscriber(subscriber: Subscriber): void {
+    subscriber.closed = true;
+    subscriber.queue = [];
+    const waiter = subscriber.waiter;
+    delete subscriber.waiter;
+    waiter?.(undefined);
   }
 
   #hello(input?: Readonly<{ generation: number; cursor: string; descriptorHash: string }>): DashboardStreamEnvelope {
@@ -126,8 +154,18 @@ export class DashboardStreamHub {
       // A count-bearing change; each subscriber gets its own day's fresh
       // snapshot — the protocol allows snapshots at any point in the stream —
       // and the marker is retained so a resume across it re-snapshots too.
+      // One immutable envelope per distinct day at this cursor: N subscribers
+      // on the same day share it rather than rebuilding the day N times.
       this.#retain({ cursorNumber: cursor, generation: this.#projection.generation(), kind: "snapshot" });
-      for (const subscriber of this.#subscribers) this.#push(subscriber, this.#snapshot(subscriber.day));
+      const byDay = new Map<string, DashboardStreamEnvelope>();
+      for (const subscriber of this.#subscribers) {
+        let envelope = byDay.get(subscriber.day);
+        if (envelope === undefined) {
+          envelope = this.#snapshot(subscriber.day);
+          byDay.set(subscriber.day, envelope);
+        }
+        this.#push(subscriber, envelope);
+      }
       return;
     }
     const envelope = DashboardStreamEnvelopeSchema.parse({
@@ -155,8 +193,11 @@ export class DashboardStreamHub {
 
   #push(subscriber: Subscriber, envelope: DashboardStreamEnvelope): void {
     if (subscriber.closed) return;
-    if (subscriber.listener !== undefined) {
-      subscriber.listener(envelope);
+    const waiter = subscriber.waiter;
+    if (waiter !== undefined) {
+      // A consumer is asking right now; the queue is empty by construction.
+      delete subscriber.waiter;
+      waiter(envelope);
       return;
     }
     if (subscriber.resetPending) return; // the queued reset already supersedes everything after it
@@ -264,16 +305,36 @@ export class DashboardStreamHub {
     this.#subscribers.add(subscriber);
     return Object.freeze({
       initial: Object.freeze(initial),
-      subscribe: (listener: (envelope: DashboardStreamEnvelope) => void): (() => void) => {
-        subscriber.listener = listener;
-        subscriber.resetPending = false;
-        for (const envelope of subscriber.queue.splice(0)) listener(envelope);
-        return () => {
-          delete subscriber.listener;
-        };
+      next: (): Promise<DashboardStreamEnvelope | undefined> => {
+        if (subscriber.closed) return Promise.resolve(undefined);
+        if (subscriber.waiter !== undefined) {
+          return Promise.reject(new Error("dashboard stream connection already has an outstanding next(); one consumer, one demand at a time"));
+        }
+        const queued = subscriber.queue.shift();
+        if (queued !== undefined) {
+          if (queued.type === "reset-required" && subscriber.resetPending) {
+            // Consuming the loud reset re-opens the queue: the client will
+            // resnapshot on a fresh connection, and this one is about to end.
+            // The reset is re-minted at hand-out so its cursor names the head
+            // the client is being sent to, not the instant the bound tripped.
+            subscriber.resetPending = false;
+            return Promise.resolve(DashboardStreamEnvelopeSchema.parse({
+              type: "reset-required",
+              reason: queued.reason,
+              cursor: this.#projection.cursor(),
+            }));
+          }
+          return Promise.resolve(queued);
+        }
+        return new Promise<DashboardStreamEnvelope | undefined>((resolve) => {
+          subscriber.waiter = resolve;
+        });
+      },
+      get pending(): number {
+        return subscriber.queue.length;
       },
       close: (): void => {
-        subscriber.closed = true;
+        this.#closeSubscriber(subscriber);
         this.#subscribers.delete(subscriber);
       },
     });
