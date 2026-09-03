@@ -15,7 +15,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "33283c2b2de817fcc3cee94fe6559b80bd63678af8323e728374af5f03cb40e8",
+      "fingerprint": "7639d63351293b14ecc7495e57ad13697c29d8e94a68d8248486abb94a546616",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -239,7 +239,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/person-lookup/workflow.ts",
-          "sha256": "a80d85bcb780c114fc251f2e2b52ee33002a3c85b993b0ff4394e2afc4512ada"
+          "sha256": "db443bff1b3924a5a734d78a3c5241a798915ee9710ef174c53a39a43cdc708b"
         }
       ],
       "id": "person-lookup"

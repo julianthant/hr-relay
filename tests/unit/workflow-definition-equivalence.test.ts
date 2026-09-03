@@ -86,7 +86,8 @@ describe("workflow definition public equivalence characterization", () => {
         category: "search",
         surface: { shape: "single" },
         enqueue: "reject-active",
-        actions: { enabled: ["retry", "cancel", "bump", "rename", "delete"] },
+        // D314 — every ordinary workflow now offers both recovery choices.
+        actions: { enabled: ["retry", "restart", "cancel", "bump", "rename", "delete"] },
         capabilities: {
           review: false,
           editData: {
@@ -250,7 +251,8 @@ describe("workflow definition public equivalence characterization", () => {
         category: "separation",
         surface: { shape: "single" },
         enqueue: "reject-active",
-        actions: { enabled: ["retry", "cancel", "bump", "rename", "delete"] },
+        // D314 — every ordinary workflow now offers both recovery choices.
+        actions: { enabled: ["retry", "restart", "cancel", "bump", "rename", "delete"] },
         capabilities: undefined,
         verdicts: [
           { key: "name-differs", label: "Name differs from UCPath", tone: "warning", tag: true },

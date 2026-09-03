@@ -429,7 +429,7 @@ describe("person-lookup recovery", () => {
    * `run_checkpoints` attempt column, not the absence of a log line: a replayed
    * node writes NO row for the new attempt, and `active-status` writes one.
    */
-  it("resuming from checkpoints replays the reads and re-executes the always-rerun fold", async () => {
+  it("person-lookup/resume-from-checkpoints — resuming from checkpoints replays the reads and re-executes the always-rerun fold", async () => {
     const authority = openAuthorityHarness();
     disposers.push(authority.dispose);
 
@@ -464,7 +464,7 @@ describe("person-lookup recovery", () => {
    * can re-execute a completed write; that half of the rule is proven where a
    * transaction exists.
    */
-  it("restarting from start reruns every read and computation under the next attempt", async () => {
+  it("person-lookup/restart-from-start — restarting from start reruns every read and computation under the next attempt", async () => {
     const authority = openAuthorityHarness();
     disposers.push(authority.dispose);
 

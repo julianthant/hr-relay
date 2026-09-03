@@ -32,8 +32,6 @@ import { parseDryRunScenarioManifest } from "../../src/domain/trust/dry-run-scen
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { createProductionDryRunScenarioRuntime } from "../../src/server/dry-run-scenario/runtime.js";
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
-import { PERSON_LOOKUP_LIVE_READ } from "../scenario/workflows/person-lookup/dry-run.scenario.js";
-import { SEPARATIONS_DRY_RUN } from "../scenario/workflows/separations/dry-run.scenario.js";
 import { selectedSettingsFixture } from "./fixtures/dry-run-admission-fixtures.js";
 import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
 import {
@@ -44,6 +42,13 @@ import {
 } from "./fixtures/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor, separationsDescriptor } from "../helpers/registered-workflows.js";
+import { evaluateT1bManifest } from "../helpers/t1b-manifests.js";
+
+// The checked-in declarations, evaluated without importing them: a collected
+// file may never import a T1b manifest (the pair invariant), and the exact
+// checked-in bytes are what this proof pins.
+const PERSON_LOOKUP_LIVE_READ = evaluateT1bManifest(process.cwd(), "tests/scenario/workflows/person-lookup/dry-run.scenario.ts");
+const SEPARATIONS_DRY_RUN = evaluateT1bManifest(process.cwd(), "tests/scenario/workflows/separations/dry-run.scenario.ts");
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];

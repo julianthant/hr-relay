@@ -1,17 +1,12 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import vm from "node:vm";
-import ts from "typescript";
 import { describe, it } from "vitest";
 import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
 import { GENERATED_BUILD_MANIFEST } from "../../../src/domain/workflow/generated-build-manifest.js";
 import { TEST_TARGET_SECRET_SPECS } from "../../../src/domain/secrets.js";
-import {
-  parseDryRunScenarioManifest,
-  type DryRunScenarioManifest,
-} from "../../../src/domain/trust/dry-run-scenario.js";
+import type { DryRunScenarioManifest } from "../../../src/domain/trust/dry-run-scenario.js";
 import {
   FINALIZATION_PERSON_FACTS_DERIVED_REASON,
   SeparationsKualiFinalizationTestTargetResolutionSchema,
@@ -27,11 +22,11 @@ import {
   type TestTargetRegistryEntry,
 } from "../../../src/control/test-target-registry.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
+import { evaluateT1bManifest } from "../../helpers/t1b-manifests.js";
 
 const WORKFLOW_SCENARIO_ROOT = "tests/scenario/workflows";
 const MANIFEST_FILE = "dry-run.scenario.ts";
 const MANIFEST_REGISTRY_PATH = "src/server/dry-run-scenario/manifests.ts";
-const MANIFEST_MODULE = "domain/trust/dry-run-scenario.js";
 const PHASE_DOC_PATH = "docs/rebuild/03b-finish-separations.md";
 /** The one order-8 status line that names the mapped inventory in prose. */
 const INVENTORY_LINE_MARKER = "the subject/canary inventory mapped live and dated";
@@ -54,39 +49,8 @@ function manifestPathsByWorkflow(): ReadonlyMap<string, string> {
   return found;
 }
 
-/**
- * Evaluate a T1b declaration WITHOUT importing it.
- *
- * A vitest-collected file may not import a manifest (the sibling
- * `structural.scenario.test.ts` proves nothing does, in both static and dynamic
- * form), so this guard transpiles the declaration and runs it in an isolated
- * `node:vm` context whose only reachable module is the real manifest parser.
- * Reading the file as text and re-deriving its object literal would re-implement
- * zod; running it is what proves the checked-in declaration parses.
- */
 function evaluateManifest(path: string): DryRunScenarioManifest {
-  const transpiled = ts.transpileModule(readFileSync(join(REPO_ROOT, path), "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-    fileName: path,
-  }).outputText;
-  const moduleRecord = { exports: {} as Record<string, unknown> };
-  const context = vm.createContext({
-    module: moduleRecord,
-    exports: moduleRecord.exports,
-    require: (specifier: string): unknown => {
-      if (!specifier.endsWith(MANIFEST_MODULE)) {
-        throw new Error(`${path} may only import the manifest parser, not ${specifier}`);
-      }
-      return { parseDryRunScenarioManifest };
-    },
-  });
-  vm.runInContext(transpiled, context, { filename: path });
-  const exported = Object.values(moduleRecord.exports);
-  const only = exported[0];
-  if (exported.length !== 1 || only === undefined) {
-    throw new Error(`${path} must export exactly one manifest; it exports ${String(exported.length)}`);
-  }
-  return parseDryRunScenarioManifest(only);
+  return evaluateT1bManifest(REPO_ROOT, path);
 }
 
 function manifestView(manifest: DryRunScenarioManifest): TestTargetManifestView {

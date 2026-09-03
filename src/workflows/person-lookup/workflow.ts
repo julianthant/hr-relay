@@ -268,6 +268,8 @@ export const personLookupWorkflow = defineWorkflow({
     "person-lookup/crm-failure-retry",
     "person-lookup/crm-subject-mismatch",
     "person-lookup/ucpath-drill-subject-mismatch",
+    "person-lookup/resume-from-checkpoints",
+    "person-lookup/restart-from-start",
   ],
   steps: ({ task, result }) => {
     const searching = task({

@@ -99,6 +99,9 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
   { scenarioId: "person-lookup/crm-failure-retry", file: PERSON_LOOKUP_FILE },
   { scenarioId: "person-lookup/crm-subject-mismatch", file: PERSON_LOOKUP_FILE },
   { scenarioId: "person-lookup/ucpath-drill-subject-mismatch", file: PERSON_LOOKUP_FILE },
+  // D314 — the two ordinary recovery choices, proved over the registered descriptor.
+  { scenarioId: "person-lookup/resume-from-checkpoints", file: PERSON_LOOKUP_FILE },
+  { scenarioId: "person-lookup/restart-from-start", file: PERSON_LOOKUP_FILE },
   { scenarioId: "ocr/extract/complete", file: "tests/scenario/ocr-extraction.scenario.test.ts" },
   {
     scenarioId: "ocr/extract/illegible-mandatory",
