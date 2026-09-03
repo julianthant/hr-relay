@@ -32,7 +32,11 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
-import { createDashboardClient, type SubscriptionState } from "../../../src/dashboard/client/index.js";
+import {
+  createDashboardClient,
+  type DashboardClient,
+  type SubscriptionState,
+} from "../../../src/dashboard/client/index.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import {
@@ -82,6 +86,13 @@ function composeDashboardRuntime(input: DashboardComposeInput): Promise<Dashboar
     backendPortOverride: 0,
     frontendPortOverride: 0,
   });
+}
+
+function reportRealPortPhase(
+  phase: "startup" | "request" | "teardown",
+  state: "begin" | "complete",
+): void {
+  process.stdout.write(`[r3a:compose-real-port] ${phase}:${state}\n`);
 }
 
 function readRuntimeSettingsRevision(repoRoot: string) {
@@ -1538,6 +1549,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
 
+    reportRealPortPhase("startup", "begin");
     const runtime: DashboardRuntime = await composeDashboardRuntime({
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
@@ -1545,12 +1557,14 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       env: {},
       repoRoot,
     });
-    const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-    let subscription: ReturnType<typeof client.subscribeDay> | undefined;
+    let subscription: ReturnType<DashboardClient["subscribeDay"]> | undefined;
     try {
       assert.notEqual(runtime.port, 0);
       assert.notEqual(runtime.port, rebuildRuntimeIsolation.backendPort);
+      reportRealPortPhase("startup", "complete");
 
+      reportRealPortPhase("request", "begin");
+      const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
       const bootstrap = await client.bootstrap();
       assert.equal(bootstrap.appVersion, "0.1.0");
       // DERIVED from the composition root, never a hand-listed set: this assertion
@@ -1585,7 +1599,9 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       });
       await liveWithDay;
       assert.equal(states[0]?.state, "connecting");
+      reportRealPortPhase("request", "complete");
     } finally {
+      reportRealPortPhase("teardown", "begin");
       subscription?.close();
       await runtime.stop();
     }
@@ -1598,5 +1614,6 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       releasedPortProbe.close();
       await once(releasedPortProbe, "close");
     }
+    reportRealPortPhase("teardown", "complete");
   }, 20_000);
 });
