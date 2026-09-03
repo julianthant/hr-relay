@@ -1160,6 +1160,94 @@ export function composeWorkflowModule<
   });
 }
 
+/* ── shared step identities (D265 organization, D315 entries) ─────────────── */
+
+type WithWhen<Identity> = Identity extends { readonly when: NodeConditionSpec }
+  ? { readonly when: NodeConditionSpec }
+  : Record<never, never>;
+
+/**
+ * The entry identities a STEP FOLDER shares (D265 §1.2.2): a node's id,
+ * contract, label, replay policy and — for a transaction — its whole write
+ * policy, bound to the exact frozen step object that owns them. A composition
+ * and the harness that proved the step both pass these values straight to the
+ * author's `task` / `gate` / `transaction`, so nobody re-types an identity and
+ * the compiler refuses a group that claims another step's identity.
+ *
+ * These are plain values, not fragments: they carry no wiring and no builder
+ * hook, and the only way to execute one is through a workflow definition.
+ */
+export function defineStepEntries<const Key extends string>(step: Readonly<{ key: Key; label: string }>) {
+  const owner: WorkflowTimelineGroup = step;
+  return Object.freeze({
+    task<
+      const Id extends string,
+      Contract extends AnyReadTaskContract,
+      const Identity extends Readonly<{ label: string; replay: "checkpoint" | "always-rerun"; when?: NodeConditionSpec }>,
+    >(
+      id: Id,
+      contract: Contract,
+      identity: Identity,
+    ): Omit<TaskEntryIdentity<Id, Contract>, "when"> & WithWhen<Identity> {
+      const value = {
+        step: owner,
+        id,
+        contract,
+        label: identity.label,
+        replay: identity.replay,
+        ...(identity.when === undefined ? {} : { when: identity.when }),
+      };
+      return Object.freeze(value) as Omit<TaskEntryIdentity<Id, Contract>, "when"> & WithWhen<Identity>;
+    },
+    transaction<
+      const Id extends string,
+      Prepare extends AnyPrepareTaskContract,
+      Commit extends AnyCommitTaskContract,
+    >(
+      id: Id,
+      identity: Readonly<{
+        label: string;
+        prepare: Prepare;
+        commit: Commit;
+        dryRun: "stop-after-prepare" | "unsupported";
+        probePolicy: "always" | "retries-and-recovery-only";
+        probeToFenceMaxMs: number;
+        retryBeforeFence?: RetryPolicy;
+      }>,
+    ): TransactionEntryIdentity<Id, Prepare, Commit> {
+      return Object.freeze({
+        step: owner,
+        id,
+        label: identity.label,
+        prepare: identity.prepare,
+        commit: identity.commit,
+        dryRun: identity.dryRun,
+        probePolicy: identity.probePolicy,
+        probeToFenceMaxMs: identity.probeToFenceMaxMs,
+        ...(identity.retryBeforeFence === undefined ? {} : { retryBeforeFence: identity.retryBeforeFence }),
+      });
+    },
+    operatorGate<
+      const Id extends string,
+      Result extends z.ZodType,
+      const Identity extends Readonly<{ label: string; statusKey?: string; result: Result; when?: NodeConditionSpec }>,
+    >(
+      id: Id,
+      identity: Identity,
+    ): Omit<GateEntryIdentity<Id, Result>, "when"> & WithWhen<Identity> {
+      const value = {
+        step: owner,
+        id,
+        label: identity.label,
+        ...(identity.statusKey === undefined ? {} : { statusKey: identity.statusKey }),
+        result: identity.result,
+        ...(identity.when === undefined ? {} : { when: identity.when }),
+      };
+      return Object.freeze(value) as Omit<GateEntryIdentity<Id, Result>, "when"> & WithWhen<Identity>;
+    },
+  });
+}
+
 /** Registry/conformance seam: recover the exact definition that compiled a descriptor. */
 export function workflowDefinitionOf(descriptor: object): AnyWorkflowDefinition | undefined {
   return DESCRIPTOR_DEFINITIONS.get(descriptor);

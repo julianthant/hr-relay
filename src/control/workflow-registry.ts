@@ -31,7 +31,7 @@ import { workflowSourceFolder } from "../domain/workflow/source-layout.js";
 import { taskStoreRegistry } from "../stores/index.js";
 import { personLookupWorkflow } from "../workflows/person-lookup/workflow.js";
 import { separationsIdentityCheckModule } from "../workflows/separations/identity-check/module.js";
-import { separationsKronosTimecardModule } from "../workflows/separations/kronos-timecard/module.js";
+import { separationsKronosTimecardWorkflow } from "../workflows/separations/kronos-timecard/workflow.js";
 import { separationsKualiFinalizationModule } from "../workflows/separations/kuali-finalization/module.js";
 import { separationsKualiReadModule } from "../workflows/separations/kuali-extraction/module.js";
 import { separationsWorkflow } from "../workflows/separations/workflow.js";
@@ -48,6 +48,10 @@ export const personLookupModule = composeWorkflowModule(
 );
 export const separationsModule = composeWorkflowModule(
   compileWorkflow(separationsWorkflow),
+  taskStoreRegistry.stores,
+);
+export const separationsKronosTimecardModule = composeWorkflowModule(
+  compileWorkflow(separationsKronosTimecardWorkflow),
   taskStoreRegistry.stores,
 );
 

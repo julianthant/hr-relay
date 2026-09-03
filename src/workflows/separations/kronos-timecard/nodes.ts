@@ -3,15 +3,14 @@
  * Kronos employee search that leaves the subject SELECTED, the timecard read
  * over the separation window, and the pure date reconciliation over it.
  *
- * A fragment owns a node's IDENTITY — id, contract, label, replay — and takes
- * its WIRING (`dependsOn` + `bind`) from the graph that applies it (see
- * `src/base/flow.ts`, "node fragments"). The harness in this folder applies
+ * An entry identity owns a node's IDENTITY — id, contract, label, replay —
+ * and takes its WIRING (references + bind) from the workflow definition that
+ * uses it (`defineStepEntries`, D315). The harness in this folder uses
  * `timecard` from its own ingress; its search node is `search` / "Employee
  * Search" — a different id and label, so a different node identity — and stays
- * hand-written there rather than being passed off as this step's
- * `timecard-search`.
+ * authored there rather than being passed off as this step's `timecard-search`.
  */
-import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
+import { defineStepEntries } from "../../../base/workflow-definition.js";
 import { TIMECARD_SEARCH_NODE, TIMECARD_NODE, DATES_NODE } from "./node-ids.js";
 import { NewKronosReadSeparationTimecard } from "../../../domain/contracts/new-kronos/read-separation-timecard.js";
 import { NewKronosSearchEmployee } from "../../../domain/contracts/new-kronos/search-employee.js";
@@ -19,7 +18,7 @@ import { SeparationsReadSeparationDates } from "../../../domain/contracts/separa
 import { KRONOS_TIMECARD_STEP } from "./step.js";
 
 
-const nodes = defineWorkflowStepNodeFactory(KRONOS_TIMECARD_STEP);
+const nodes = defineStepEntries(KRONOS_TIMECARD_STEP);
 
 /**
  * `always-rerun`, and chunk 1 paid for the rule live (`sk-124132-9beb`): the
