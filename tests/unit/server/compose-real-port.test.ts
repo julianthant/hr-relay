@@ -1,12 +1,14 @@
 /**
- * The composed dashboard runtime on the REAL isolation port (3938, from the
- * config value — never a literal at the call site): composeDashboardRuntime
- * opens authority under a temp state root, folds existing JSONL, binds
- * loopback HTTP, and the ONE typed client talks to it over real sockets —
- * bootstrap query, day query, and a live SSE hello/snapshot.
+ * The composed dashboard runtime over a REAL loopback socket:
+ * composeDashboardRuntime opens authority under a temp state root, folds
+ * existing JSONL, binds an OS-owned ephemeral port, and the ONE typed client
+ * talks to it over real sockets — bootstrap query, day query, and a live SSE
+ * hello/snapshot. Production-port identity stays in runtime-composition and
+ * operational-isolation; a test must never contend with a running dashboard.
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { once } from "node:events";
 import {
   closeSync,
   copyFileSync,
@@ -22,6 +24,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -29,7 +32,11 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
-import { createDashboardClient, type SubscriptionState } from "../../../src/dashboard/client/index.js";
+import {
+  createDashboardClient,
+  type DashboardClient,
+  type SubscriptionState,
+} from "../../../src/dashboard/client/index.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import {
@@ -54,7 +61,12 @@ import {
   createExplorerOverrideStore,
   explorerEditCommandFingerprint,
 } from "../../../src/server/dashboard/commands/explorer-override-store.js";
-import { composeDashboardRuntime, productionWorkerLaunch, type DashboardRuntime } from "../../../src/server/dashboard/compose.js";
+import {
+  composeDashboardRuntime as composeProductionDashboardRuntime,
+  productionWorkerLaunch,
+  type DashboardComposeInput,
+  type DashboardRuntime,
+} from "../../../src/server/dashboard/compose.js";
 import { readJournaledSettings, requireJournaledSettings } from "../../../src/server/settings-runtime.js";
 import {
   SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,
@@ -62,6 +74,26 @@ import {
 } from "../fixtures/settings-runtime-corruption-fixtures.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
+
+/**
+ * Every composition in this suite owns both of its port roles. Production-port
+ * identity is pinned elsewhere; reaching it here would make an unrelated live
+ * dashboard decide whether these assertions execute.
+ */
+function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
+  return composeProductionDashboardRuntime({
+    ...input,
+    backendPortOverride: 0,
+    frontendPortOverride: 0,
+  });
+}
+
+function reportRealPortPhase(
+  phase: "startup" | "request" | "teardown",
+  state: "begin" | "complete",
+): void {
+  process.stdout.write(`[r3a:compose-real-port] ${phase}:${state}\n`);
+}
 
 function readRuntimeSettingsRevision(repoRoot: string) {
   const database = AuthorityDatabase.open({
@@ -311,7 +343,7 @@ function journalExplorer(
   }
 }
 
-describe("composed dashboard runtime on the isolation port", () => {
+describe("composed dashboard runtime over an owned loopback socket", () => {
   describe.each(["require", "read", "recover"] as const)("%s diagnostic precedence", (entry) => {
     it.each([
       {
@@ -1511,65 +1543,102 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     }
   }, 20_000);
 
-  it("serves bootstrap, day, and SSE through the real client on 127.0.0.1:<backendPort>", async () => {
+  it("serves bootstrap, day, and SSE through a real ephemeral listener and releases it at teardown", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-"));
     copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
     copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
 
-    let runtime: DashboardRuntime;
-    try {
-      runtime = await composeDashboardRuntime({
-        isolation: rebuildRuntimeIsolation,
-        env: {},
-        repoRoot,
-      });
-    } catch (error) {
-      // The port is a machine-wide singleton; a concurrently running rebuild
-      // dashboard legitimately owns it. That is contention, not a regression.
-      if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EADDRINUSE") return;
-      if (error instanceof Error
-        && error.message === "dashboard preflight refused startup: ports.available: reserved backend port is occupied by an unrecognized process") return;
-      throw error;
-    }
-    cleanups.push(() => runtime.stop());
-    assert.equal(runtime.port, rebuildRuntimeIsolation.backendPort);
-
-    const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-    const bootstrap = await client.bootstrap();
-    assert.equal(bootstrap.appVersion, "0.1.0");
-    // DERIVED from the composition root, never a hand-listed set: this assertion
-    // was hardcoded to `["person-lookup"]` and went red the moment a second
-    // workflow registered, asserting the fixture rather than the contract —
-    // the bootstrap serves exactly what WORKFLOW_MODULES declares.
-    assert.deepEqual(
-      (bootstrap.workflows as { id: string }[]).map(({ id }) => id).toSorted(),
-      DESCRIPTORS.map(({ id }) => id).toSorted(),
-    );
-    assert.equal(bootstrap.storage.authority, "healthy");
-
-    const today = new Date().toISOString().slice(0, 10);
-    const day = await client.dashboardDay(today);
-    assert.deepEqual(day.queueSurfaces, []);
-    assert.deepEqual(day.workflowCounts, []);
-
-    const states: SubscriptionState[] = [];
-    let sawDay = false;
-    const liveWithDay = new Promise<void>((resolve) => {
-      const subscription = client.subscribeDay({
-        day: today,
-        onDay: (received) => {
-          assert.equal(received.day, today);
-          sawDay = true;
-        },
-        onState: (state) => {
-          states.push(state);
-          if (state.state === "live" && sawDay) resolve();
-        },
-      });
-      cleanups.push(() => subscription.close());
+    reportRealPortPhase("startup", "begin");
+    const runtime: DashboardRuntime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      frontendPortOverride: 0,
+      env: {},
+      repoRoot,
     });
-    await liveWithDay;
-    assert.equal(states[0]?.state, "connecting");
+    let subscription: ReturnType<DashboardClient["subscribeDay"]> | undefined;
+    const failures: unknown[] = [];
+    try {
+      assert.notEqual(runtime.port, 0);
+      assert.notEqual(runtime.port, rebuildRuntimeIsolation.backendPort);
+      reportRealPortPhase("startup", "complete");
+
+      reportRealPortPhase("request", "begin");
+      const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+      const bootstrap = await client.bootstrap();
+      assert.equal(bootstrap.appVersion, "0.1.0");
+      // DERIVED from the composition root, never a hand-listed set: this assertion
+      // was hardcoded to `["person-lookup"]` and went red the moment a second
+      // workflow registered, asserting the fixture rather than the contract —
+      // the bootstrap serves exactly what WORKFLOW_MODULES declares.
+      assert.deepEqual(
+        (bootstrap.workflows as { id: string }[]).map(({ id }) => id).toSorted(),
+        DESCRIPTORS.map(({ id }) => id).toSorted(),
+      );
+      assert.equal(bootstrap.storage.authority, "healthy");
+
+      const today = new Date().toISOString().slice(0, 10);
+      const day = await client.dashboardDay(today);
+      assert.deepEqual(day.queueSurfaces, []);
+      assert.deepEqual(day.workflowCounts, []);
+
+      const states: SubscriptionState[] = [];
+      let sawDay = false;
+      const liveWithDay = new Promise<void>((resolve) => {
+        subscription = client.subscribeDay({
+          day: today,
+          onDay: (received) => {
+            assert.equal(received.day, today);
+            sawDay = true;
+          },
+          onState: (state) => {
+            states.push(state);
+            if (state.state === "live" && sawDay) resolve();
+          },
+        });
+      });
+      await liveWithDay;
+      assert.equal(states[0]?.state, "connecting");
+      reportRealPortPhase("request", "complete");
+    } catch (error: unknown) {
+      failures.push(error);
+    }
+
+    reportRealPortPhase("teardown", "begin");
+    try {
+      subscription?.close();
+    } catch (error: unknown) {
+      failures.push(error);
+    }
+    try {
+      await runtime.stop();
+    } catch (error: unknown) {
+      failures.push(error);
+    }
+
+    const releasedPortProbe = createServer();
+    try {
+      releasedPortProbe.listen(runtime.port, "127.0.0.1");
+      await once(releasedPortProbe, "listening");
+    } catch (error: unknown) {
+      failures.push(error);
+    } finally {
+      if (releasedPortProbe.listening) {
+        try {
+          releasedPortProbe.close();
+          await once(releasedPortProbe, "close");
+        } catch (error: unknown) {
+          failures.push(error);
+        }
+      }
+    }
+    if (failures.length === 0) reportRealPortPhase("teardown", "complete");
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "real-port lifecycle observed multiple failures", {
+        cause: failures[0],
+      });
+    }
   }, 20_000);
 });
