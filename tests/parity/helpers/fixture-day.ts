@@ -54,9 +54,8 @@ import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnos
 import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
 import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
 import {
-  StartPlanResponseSchema,
-  type StartPlanResponse,
 } from "../../../src/dashboard/client/commands.js";
+import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../src/domain/dashboard/start-plan.js";
 import {
   SETTINGS_SYSTEM_HOSTS_SECTION_ID,
   SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
@@ -1771,7 +1770,7 @@ export const FIXTURE_START_PLAN: StartPlanResponse = StartPlanResponseSchema.par
     { runId: uuidOf(911), traceId: traceOf(911), title: "Battistessa, Johnnie", subtitle: "person lookup", matchKey: "name:Battistessa, Johnnie" },
   ],
   refused: [
-    { entry: 3, code: "duplicate-active", message: "an active run already exists for eid:10873698" },
+    { entry: 3, code: "active-run-exists", message: "an active run already exists for eid:10873698" },
   ],
 });
 
@@ -1801,7 +1800,7 @@ export const FIXTURE_SEPARATIONS_START_PLAN: StartPlanResponse = StartPlanRespon
   planned: [
     {
       runId: uuidOf(932),
-      traceId: "fixture-plan-01",
+      traceId: "fp-101500-0932",
       title: "Fixture plan row",
       subtitle: "generic layout evidence",
       matchKey: "fixture:plan-row-1",

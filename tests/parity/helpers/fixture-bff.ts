@@ -21,7 +21,7 @@ import {
 import type { FrontendBootstrapWire } from "../../../src/domain/dashboard/bootstrap.js";
 import type { DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
 import type { CommandResult } from "../../../src/domain/commands.js";
-import type { StartPlanResponse } from "../../../src/dashboard/client/commands.js";
+import type { StartPlanWire as StartPlanResponse } from "../../../src/domain/dashboard/start-plan.js";
 import { WireErrorSchema } from "../../../src/domain/dashboard/primitives.js";
 import { ArchivedCaptureResourceWireSchema } from "../../../src/domain/dashboard/archive.js";
 import {

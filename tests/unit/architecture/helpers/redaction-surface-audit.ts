@@ -101,6 +101,7 @@ import { EditableSettingsWireSchema } from "../../../../src/domain/dashboard/set
 import { StorageDoctorWireSchema } from "../../../../src/domain/dashboard/storage.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../src/domain/dashboard/subscription.js";
 import { OperatorXlsxExportEvidenceSchema } from "../../../../src/domain/dashboard/xlsx-export.js";
+import { StartPlanWireSchema } from "../../../../src/domain/dashboard/start-plan.js";
 import { IntakeSessionWireSchema } from "../../../../src/domain/intake/wire.js";
 import { LedgerEntrySchema } from "../../../../src/domain/ledger.js";
 import {
@@ -609,6 +610,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "durable/notification-record", egress: "durable-authority", module: "src/domain/notifications.ts", schema: NotificationRecordSchema },
   { id: "durable/diagnostic-bundle", egress: "durable-authority", module: "src/domain/trust/diagnostic.ts", schema: DiagnosticBundleSchema },
   { id: "durable/operator-xlsx-export", egress: "durable-authority", module: "src/domain/dashboard/xlsx-export.ts", schema: OperatorXlsxExportEvidenceSchema },
+  { id: "wire/start-plan", egress: "operator-loopback", module: "src/domain/dashboard/start-plan.ts", schema: StartPlanWireSchema },
   { id: "file/ledger-entry", egress: "durable-file", module: "src/domain/ledger.ts", schema: LedgerEntrySchema },
   { id: "file/explorer-overrides", egress: "durable-file", module: "src/domain/dashboard/explorer.ts", schema: ExplorerOverrideDocumentSchema },
   { id: "egress/advisory-prompt", egress: "process-egress", module: "src/domain/trust/advisory.ts", schema: AdvisoryPromptSchema },
@@ -864,6 +866,10 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/dashboard-day", path: "queueSurfaces[].subtitle.reason", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].subtitle.value", origin: "captured-hr-value" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].title", origin: "captured-hr-value" },
+  { surface: "wire/start-plan", path: "planned[].title", origin: "captured-hr-value" },
+  { surface: "wire/start-plan", path: "planned[].subtitle", origin: "captured-hr-value" },
+  { surface: "wire/start-plan", path: "planned[].matchKey", origin: "captured-hr-value" },
+  { surface: "wire/start-plan", path: "refused[].message", origin: "captured-hr-value" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].warnings.first", origin: "external-text" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].warnings.reason", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].actions[].confirm.body", origin: "repository-authored" },
@@ -1488,6 +1494,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/storage.ts", state: "audited", reason: "the storage doctor reports on backups, files and health causes" },
     { module: "src/domain/dashboard/subscription.ts", state: "audited", reason: "the stream envelope carries every live patch of the surfaces above" },
     { module: "src/domain/dashboard/xlsx-export.ts", state: "audited", reason: "the XLSX evidence retains one exact redacted query or Activity snapshot and attachment identity" },
+    { module: "src/domain/dashboard/start-plan.ts", state: "audited", reason: "the start-plan wire answers a plan with planned-row titles, match keys and refusal messages; the request and its omission facts never echo back" },
     { module: "src/domain/intake/wire.ts", state: "audited", reason: "the mapping grid shows the operator their own uploaded file" },
     { module: "src/domain/ledger.ts", state: "audited", reason: "the ledger entry is the permanent on-disk record of a filed transaction" },
     { module: "src/domain/notification-triggers.ts", state: "audited", reason: "the trigger event and its projection become OS-delivered text" },
