@@ -26,7 +26,8 @@ import { composeWorkerRuntime } from "./server/worker/compose.js";
  * so a shutdown failure reaches the entrypoint instead of vanishing.
  */
 export async function runCli(): Promise<void> {
-  registerDashboardComposer((runtimeIsolation) => composeDashboardRuntime({ isolation: runtimeIsolation }));
+  registerDashboardComposer((runtimeIsolation, options) =>
+    composeDashboardRuntime({ isolation: runtimeIsolation, frontend: options.frontend }));
   registerActivityPersonPseudonymComposer((runtimeIsolation, args) =>
     composeActivityPersonPseudonymBackfillCommand({ isolation: runtimeIsolation, args }));
   registerDryRunScenarioComposer((runtimeIsolation, args) => composeDryRunScenarioCommand({

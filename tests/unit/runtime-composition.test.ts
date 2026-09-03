@@ -214,6 +214,63 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     await lifecycle;
   });
 
+  it("parses `--prod` into the built-bundle frontend and refuses any other dashboard argument by name", async () => {
+    const modes: string[] = [];
+    const signals = signalSeamFake();
+    const output: string[] = [];
+    const lifecycle = startRebuildRuntime({
+      isolation: rebuildRuntimeIsolation,
+      args: ["dashboard", "--prod"],
+      write: (value) => output.push(value),
+      signals: signals.seam,
+      dashboard: (isolation, options) => {
+        modes.push(options.frontend);
+        return Promise.resolve({ port: isolation.backendPort, stop: () => Promise.resolve() });
+      },
+    });
+    await settleEventLoop();
+    assert.deepEqual(modes, ["built-bundle"]);
+    assert.match(output[0] ?? "", /serving dist\/dashboard/u);
+    signals.emit("SIGINT");
+    await lifecycle;
+
+    const plain = startRebuildRuntime({
+      isolation: rebuildRuntimeIsolation,
+      args: ["dashboard"],
+      write: () => undefined,
+      signals: signals.seam,
+      dashboard: (isolation, options) => {
+        modes.push(options.frontend);
+        return Promise.resolve({ port: isolation.backendPort, stop: () => Promise.resolve() });
+      },
+    });
+    await settleEventLoop();
+    assert.deepEqual(modes, ["built-bundle", "vite-dev"]);
+    signals.emit("SIGINT");
+    await plain;
+
+    await assert.rejects(
+      startRebuildRuntime({
+        isolation: rebuildRuntimeIsolation,
+        args: ["dashboard", "--bogus"],
+        write: () => undefined,
+        signals: signals.seam,
+        dashboard: () => Promise.reject(new Error("must not compose")),
+      }),
+      /unexpected argument\(s\): --bogus/u,
+    );
+    await assert.rejects(
+      startRebuildRuntime({
+        isolation: rebuildRuntimeIsolation,
+        args: ["dashboard", "--prod", "--prod"],
+        write: () => undefined,
+        signals: signals.seam,
+        dashboard: () => Promise.reject(new Error("must not compose")),
+      }),
+      /unexpected argument\(s\): --prod --prod/u,
+    );
+  });
+
   it("stops the composed dashboard exactly once and waits for that stop before returning", async () => {
     const signals = signalSeamFake();
     let stops = 0;

@@ -12,6 +12,7 @@
  * layer map — hands them in. An invocation without its seam fails loud; it
  * never pretends a runtime started.
  */
+import { z } from "zod";
 import type { RuntimeIsolation } from "../config/define-runtime-isolation.js";
 import { DRY_RUN_SCENARIO_USAGE } from "./dry-run-scenario-runner.js";
 import type { WorkerLoopReport } from "./worker-loop.js";
@@ -54,7 +55,23 @@ export interface RebuildRuntimeStart {
   readonly signals?: RuntimeShutdownSignals;
 }
 
-type DashboardComposer = (isolation: RuntimeIsolation) => Promise<RunningDashboard>;
+export const DashboardFrontendSchema = z.enum(["vite-dev", "built-bundle"]);
+export type DashboardFrontend = z.infer<typeof DashboardFrontendSchema>;
+export const DashboardCommandOptionsSchema = z.strictObject({ frontend: DashboardFrontendSchema });
+export type DashboardCommandOptions = z.infer<typeof DashboardCommandOptionsSchema>;
+type DashboardComposer = (isolation: RuntimeIsolation, options: DashboardCommandOptions) => Promise<RunningDashboard>;
+
+/**
+ * `dashboard` takes exactly one optional flag. Anything else is refused by
+ * name: `npm run dashboard:prod` passed `--prod` for weeks while `args[1]` was
+ * never read, and a flag that is silently ignored is a mode that silently
+ * does not exist (ref frontend-backend-integration §6.9).
+ */
+export function parseDashboardCommandOptions(rest: readonly string[]): DashboardCommandOptions {
+  if (rest.length === 0) return Object.freeze(DashboardCommandOptionsSchema.parse({ frontend: "vite-dev" }));
+  if (rest.length === 1 && rest[0] === "--prod") return Object.freeze(DashboardCommandOptionsSchema.parse({ frontend: "built-bundle" }));
+  throw new Error(`dashboard accepts only \`--prod\`; unexpected argument(s): ${rest.join(" ")}`);
+}
 /**
  * Ref operator-trust §2.5's `explain` is SYNCHRONOUS on purpose: it opens authority, reads,
  * derives, closes, and returns the text. A promise here would let the process
@@ -197,7 +214,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "Commands:",
     "  help       show this contract surface",
     "  phase      print the active isolated runtime resources",
-    `  dashboard  start the in-process typed dashboard BFF (1g-spine, port ${String(isolation.backendPort)})`,
+    `  dashboard [--prod]  start the in-process typed dashboard BFF (1g-spine, port ${String(isolation.backendPort)}); --prod serves the built dist/dashboard from it`,
     // Ref execution-and-sessions names no CLI subcommand for its worker (§3 names only the
     // `runWorker` loop), so `worker` is the recorded choice here.
     "  worker <workflow-id> --pool-index <positive-int> [--drain]  run one indexed browser worker (ref execution-and-sessions §3/§11)",
@@ -314,8 +331,9 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
     // started, and the returned promise IS this command's lifetime, so the
     // entrypoint can await a real shutdown instead of the process being torn
     // down mid-drain by the default signal disposition.
-    const running = await compose(input.isolation);
-    write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}`);
+    const options = parseDashboardCommandOptions(args.slice(1));
+    const running = await compose(input.isolation, options);
+    write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}${options.frontend === "built-bundle" ? " serving dist/dashboard" : ""}`);
     await ownDashboardUntilShutdown(running, input.signals ?? processShutdownSignals());
     return;
   }

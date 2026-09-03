@@ -1106,7 +1106,7 @@ describe("composed dashboard runtime on the isolation port", () => {
       assert.match(await blocked.text(), /has uncommitted command 13131313-1313-4313-8313-131313131313/u);
       assert.equal(existsSync(`${path}.claim`), true);
       const validation = await fetch(`${baseUrl}/api/v1/explorer/validate`, {
-        method: "POST", headers: { "content-type": "application/json" },
+        method: "POST", headers: { "content-type": "application/json", origin: baseUrl },
         body: JSON.stringify({
           draftVersion: 1, workflowId: request.target.workflowId,
           baseDescriptorVersion: request.target.expectedVersion,
@@ -1572,4 +1572,76 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     await liveWithDay;
     assert.equal(states[0]?.state, "connecting");
   }, 20_000);
+  it("built-bundle mode refuses to compose without dist/dashboard/index.html, and serves the bundle beside the API when it exists", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-built-bundle-"));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+
+    // No bundle: refuse before any authority, lock or socket exists.
+    await assert.rejects(
+      composeDashboardRuntime({
+        isolation: rebuildRuntimeIsolation,
+        backendPortOverride: 0,
+        env: {},
+        clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
+        repoRoot,
+        frontend: "built-bundle",
+      }),
+      /npm run web:build/u,
+    );
+    assert.equal(existsSync(join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db")), false, "a refused built-bundle composition opens no authority");
+
+    const dist = join(repoRoot, "dist", "dashboard", "assets");
+    mkdirSync(dist, { recursive: true });
+    writeFileSync(join(repoRoot, "dist", "dashboard", "index.html"), "<!doctype html><title>built</title>");
+    writeFileSync(join(dist, "app.f00d.js"), "export const built = true;");
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
+      repoRoot,
+      frontend: "built-bundle",
+    });
+    cleanups.push(() => runtime.stop());
+    const base = `http://127.0.0.1:${String(runtime.port)}`;
+
+    const index = await fetch(`${base}/`);
+    assert.equal(index.status, 200);
+    assert.equal(index.headers.get("content-type"), "text/html; charset=utf-8");
+    assert.equal(index.headers.get("cache-control"), "no-cache");
+    assert.match(await index.text(), /<title>built<\/title>/u);
+    const asset = await fetch(`${base}/assets/app.f00d.js`);
+    assert.equal(asset.status, 200);
+    assert.equal(asset.headers.get("cache-control"), "public, max-age=31536000, immutable");
+    const spa = await fetch(`${base}/archive`);
+    assert.equal(spa.status, 200);
+    assert.match(await spa.text(), /<title>built<\/title>/u);
+    const api = await fetch(`${base}/api/v1/bootstrap`);
+    assert.equal(api.status, 200);
+    assert.match(api.headers.get("content-type") ?? "", /application\/json/u);
+    const unknownApi = await fetch(`${base}/api/v1/nope`);
+    assert.equal(unknownApi.status, 404);
+    assert.equal(((await unknownApi.json()) as { code: string }).code, "ROUTE_NOT_FOUND");
+    const refused = await fetch(`${base}/..%2fpackage.json`);
+    assert.equal(refused.status, 400);
+    assert.equal(((await refused.json()) as { code: string }).code, "STATIC_PATH_REFUSED");
+  });
+
+  it("vite-dev mode (the default) serves no bundle bytes: an unrouted path stays a JSON 404", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-vite-dev-"));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+    const index = await fetch(`http://127.0.0.1:${String(runtime.port)}/`);
+    assert.equal(index.status, 404);
+    assert.equal(((await index.json()) as { code: string }).code, "ROUTE_NOT_FOUND");
+  });
 });

@@ -43,6 +43,7 @@ import {
   readFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { openStaticBundle } from "./static-bundle.js";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import {
@@ -309,6 +310,8 @@ export interface DashboardRuntime {
   stop(): Promise<void>;
 }
 
+export type DashboardFrontendMode = "vite-dev" | "built-bundle";
+
 export interface DashboardComposeInput {
   readonly isolation: RuntimeIsolation;
   readonly env?: NodeJS.ProcessEnv;
@@ -316,6 +319,13 @@ export interface DashboardComposeInput {
   readonly ids?: IdFactory;
   /** Where package.json and the state root resolve from. */
   readonly repoRoot?: string;
+  /**
+   * Who serves the frontend bytes (ref frontend-backend-integration §6.9). `vite-dev` — the
+   * default and the development path — leaves that to the Vite dev server on the
+   * isolated frontend port; `built-bundle` serves `<repoRoot>/dist/dashboard` from
+   * this process and refuses to start without a built `index.html`.
+   */
+  readonly frontend?: DashboardFrontendMode;
   readonly startPlanTtlMs?: number;
   /**
    * Test-only ingress bind override: `0` asks the OS for an ephemeral port,
@@ -592,6 +602,11 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")),
   ).version;
+  // Before any authority, lock or socket: a `built-bundle` dashboard with no
+  // bundle must never look started (D189).
+  const staticBundle = (input.frontend ?? "vite-dev") === "built-bundle"
+    ? await openStaticBundle(join(repoRoot, "dist", "dashboard"))
+    : undefined;
 
   const env = input.env ?? configResolutionEnvironment();
   const settingsAuthority = createSettingsFileAuthority({
@@ -1275,6 +1290,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   }
 
   const app = createDashboardApp({
+    ...(staticBundle === undefined ? {} : { staticBundle }),
     requestIdentity: createSoloRequestIdentityCheckpoint(resolved.config.actor),
     preflight: preflightAuthority,
     bootstrap: {
