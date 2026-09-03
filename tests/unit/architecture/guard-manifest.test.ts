@@ -81,7 +81,9 @@ export function architectureProjectViolations({
     );
   }
   if (architectureExclude.length !== 0) {
-    violations.push("architecture project exclude must remain empty");
+    violations.push(
+      `architecture project exclude must remain empty; received ${JSON.stringify(architectureExclude)}`,
+    );
   }
   return violations;
 }
