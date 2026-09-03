@@ -13,6 +13,11 @@ import {
   DashboardClientError,
   type SubscriptionState,
 } from "../../../src/dashboard/client/index.js";
+// The stream endings themselves are produced HERE, one layer under the client
+// facade: `openStream` is the only thing that decides whether a day stream ends
+// resolved, `network`-rejected or `http`-rejected, and `subscription.ts`'s
+// whole reconnect classification is written against those three answers.
+import { createDashboardTransport } from "../../../src/dashboard/client/transport.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
 import type { DashboardDayPatch } from "../../../src/dashboard/client/day-state.js";
 
@@ -755,5 +760,105 @@ describe("resumable subscription protocol", () => {
     assert.equal(last?.state, "stopped");
     if (last?.state !== "stopped") assert.fail("expected stopped");
     assert.equal(last.error?.kind, "protocol");
+  });
+});
+
+/* ── openStream's three endings, at the transport seam ───────────────────── */
+
+/**
+ * `subscription.ts` classifies a stream ending by the error KIND the transport
+ * rejects with — `network` reconnects, everything else stops the subscription
+ * loudly — and that classification is only as true as what `openStream`
+ * actually produces. The subscription's own suite fakes the transport (it is
+ * about what the subscription DID with an ending), so these three cases are the
+ * only place the real producer of those endings is observed.
+ */
+describe("openStream endings", () => {
+  it("rejects with the NETWORK kind when the response body errors mid-read", async () => {
+    const encoder = new TextEncoder();
+    let controller: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({
+      start(c): void {
+        controller = c;
+      },
+    });
+    const transport = createDashboardTransport({
+      baseUrl: "http://bff.test",
+      fetchImpl: () => Promise.resolve(new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      })),
+    });
+    const messages: string[] = [];
+    const stream = transport.openStream("/events/v1", { onMessage: (message) => messages.push(message.data) });
+    await tick();
+    // A block arrives, and only THEN does the body fail — the drop this
+    // subscription exists to survive, not a request that never started.
+    controller!.enqueue(encoder.encode(`data: ${JSON.stringify(hello("pc:1"))}\n\n`));
+    await tick();
+    assert.equal(messages.length, 1);
+    controller!.error(new Error("connection reset by peer"));
+
+    const failure = await stream.done.then(() => undefined, (reason: unknown) => reason);
+    assert.equal(failure instanceof DashboardClientError, true);
+    if (!(failure instanceof DashboardClientError)) assert.fail("expected a DashboardClientError");
+    assert.equal(failure.kind, "network");
+    assert.match(failure.message, /stream \/events\/v1/u);
+  });
+
+  it("rejects with the HTTP kind when the server refuses the stream", async () => {
+    const transport = createDashboardTransport({
+      baseUrl: "http://bff.test",
+      fetchImpl: () => Promise.resolve(jsonResponse(503, {
+        state: "error",
+        code: "PROJECTION_DEGRADED",
+        message: "the day projection is unavailable",
+        retryable: true,
+      })),
+    });
+    const stream = transport.openStream("/events/v1", { onMessage: () => undefined });
+    const failure = await stream.done.then(() => undefined, (reason: unknown) => reason);
+    assert.equal(failure instanceof DashboardClientError, true);
+    if (!(failure instanceof DashboardClientError)) assert.fail("expected a DashboardClientError");
+    // NOT `network`: reopening the same request cannot answer a refusal, and
+    // the subscription stops rather than reconnecting forever behind a screen
+    // that still looks live — even though the server calls this retryable.
+    assert.equal(failure.kind, "http");
+    assert.equal(failure.status, 503);
+    assert.equal(failure.code, "PROJECTION_DEGRADED");
+    assert.equal(failure.message, "the day projection is unavailable");
+    assert.equal(failure.retryable, true);
+  });
+
+  it("RESOLVES done when the client closes a live stream", async () => {
+    // A live stream: the response arrived, the body is open, and nothing has
+    // been read yet. A real `fetch` errors the body when its signal aborts, so
+    // the fake does exactly that — without it the reader would simply hang and
+    // the test would prove a timeout rather than a resolution.
+    let bodyController: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({
+      start(c): void {
+        bodyController = c;
+      },
+    });
+    const transport = createDashboardTransport({
+      baseUrl: "http://bff.test",
+      fetchImpl: (_input, init) => {
+        init?.signal?.addEventListener("abort", () => {
+          bodyController.error(new DOMException("The operation was aborted.", "AbortError"));
+        });
+        return Promise.resolve(new Response(body, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }));
+      },
+    });
+    const stream = transport.openStream("/events/v1", { onMessage: () => undefined });
+    await tick();
+    stream.close();
+    // The abort arm RESOLVES rather than rejecting, which is why
+    // `subscription.ts` cannot tell a supersede from a server-side EOF by the
+    // settlement alone and binds each handler to its own handle instead.
+    assert.equal(await stream.done.then(() => "resolved", () => "rejected"), "resolved");
   });
 });
