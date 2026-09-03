@@ -8,7 +8,7 @@
 **Integration target:** `feature/test-suite-rationalization`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-02 after Wave 2B merge `9b2eca43`; current coordinator checkout/task binding, prior cleanup, and integrated R3a/R5a gates verified
+**Last verified:** 2026-09-02 after Wave 3 merge `492ac8a4`; current coordinator checkout/task binding, run cleanup, and integrated R3b/R5b gates verified
 
 ## Facts every run needs
 
@@ -40,16 +40,16 @@
 | u15, u17, u18 | R3b | closed | clean `9c9e1e26` merged `--no-ff` as `3d281405`; worktree and branch removed; exact task `01a0656c-c455-72d3-8f8f-8484c8415e0a` archived | worker family 10 files/238 cases; active-port coverage 393 files/4,887 cases; architecture 705; type/lint/generated/roadmap/diff PASS; integrated focused 24/24 plus static/architecture PASS | complete, 0 open findings | Fixed both worker active-5174 failures with test-only ephemeral frontend preflight; cleanup ENOENT did not recur in 20 repetitions or coverage; 131.80s coverage residue carried to R7 |
 | u19–u24 | R4 | closed | `e9dbf53a` merged `--no-ff` as `fce226ca`; worktree and branch removed; exact task `01a064e5-e38c-7e31-9f3c-90b4c4c41b6f` archived | owned dashboard family 103/103 files and 1,050/1,050 cases; focused 4 files/37 cases; T2 9/9; parity 281/281; coverage 4,880/4,880; integrated dashboard 1,050/1,050 plus type/lint/architecture/generated/roadmap/diff PASS | complete, 0 open findings | Removed two parity-owned geometry-only unit files; added truthful Node semantics coverage; React act warnings 36→0 |
 | u25, u26, u29 | R5a | closed | clean `d8c2cae4` merged `--no-ff` as `9b2eca43`; worktree and branch removed; exact task `01a06537-a71f-7791-ab36-b5d20dd0fb18` archived | scenario 17/17 files and 142/142 cases; architecture 70/70 and 705/705; parity 281/281; type/lint/generated/roadmap/diff/twins PASS; all repeated after integration | complete, 0 open findings | One honest structural owner per workflow; T1b runtime-node accounting; temporary product-ID experiment fully restored before commit |
-| u27, u28, u30 | R5b | active | task `01a0656c-f193-76d1-baea-e0011ee0ce69` / `/Users/julianhein/.codex/worktrees/43a5/hr-automation-rebuild` / `feature/test-r5b-scenario-review` from `18e5294de0b07f147349a2d62edcc6a5728fcf15` | running | required | Consumes R5a's complete 17-file/142-case inventory and preserves T1/T1b ownership |
+| u27, u28, u30 | R5b | closed | clean `5880f1da` merged `--no-ff` as `492ac8a4`; worktree and branch removed; exact task `01a0656c-f193-76d1-baea-e0011ee0ce69` archived | scenario 17 files/132 cases; architecture 707; type/lint/generated/roadmap/diff PASS; integrated scenario 132/132, focused units 36/36, static/architecture PASS | complete, 0 open findings | Removed six net redundant tests, kept four relocated claims at cheaper owners, preserved all seven T1a files and two T1b manifests, and added a support-inclusive synthetic-EID ratchet |
 | u31–u36 | R6 | closed | merged `--no-ff` as `9d87f512`; run worktree and branch removed; exact task `01a0645c-1e18-7d70-9dfc-c7fb53fa0b66` archived | integrated continuation gate at `37c080bc`: parity 281/281 in 59.9s; coverage 394 files/4,886 tests in 169.38s | complete, 0 open findings | Removed one duplicate 6-case/18-reference-file parity family with durable equivalence and negative-control evidence; accepted recommendations remain R7 inputs |
-| u37–u42 | R7 | planned | — | — | consequential | Cross-family integration, taxonomy, authorities, final proof |
+| u37–u42 | R7 | reserved | `feature/test-r7-integration-review` from the final reservation commit; exact task/path pending launch | pending | consequential | Cross-family integration, taxonomy, authorities, reporter/runtime profiling, and final proof |
 
 ## Residue
 
 - D91's already-documented branch-floor gap is not silently in scope as a threshold change. Runs may measure and report it; changing the ratified floor requires an explicit owning-doc decision unless existing authority already determines the exact implementation.
 - Existing unrelated Phase 3 workflow worktrees/branches are outside this project's cleanup ownership. Final evidence must distinguish pre-existing retained worktrees from this project's run worktrees; only this project's integrated branches must be removed.
 - The old coordinator worktree `/Users/julianhein/.codex/worktrees/f14c/hr-automation-rebuild` was removed after its sole untracked dependency symlink was detached; it was replaced by the registered continuation checkout recorded above. The earlier coordinator task's exact id is unavailable, so no title-based or recency-based archival was attempted.
-- R1, R2, R3a, R4, R5a, and R6 have no remaining registered worktree, physical directory, branch ref, or active sidebar task. The active Phase 3c worktree/branch remain explicitly retained and untouched.
+- R1, R2, R3a, R3b, R4, R5a, R5b, and R6 have no remaining registered worktree, physical directory, branch ref, or active sidebar task. The active Phase 3c worktree/branch remain explicitly retained and untouched.
 
 ## Questions for the operator
 
