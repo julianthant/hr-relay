@@ -56,7 +56,7 @@ npm exec vitest run -- --project unit ${u14_tests[@]} --reporter=verbose
 
 Test Files  11 passed (11)
 Tests       151 passed (151)
-Duration    13.89s (real 14.39s)
+Duration    14.25s (real 14.77s)
 ```
 
 The six-case performance fixture passed with its declared ≥20,000-note corpus; its individual

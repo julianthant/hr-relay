@@ -50,7 +50,7 @@ npm exec vitest run -- --project unit tests/unit/server/compose-real-port.test.t
 
 Test Files  1 passed (1)
 Tests       1 passed | 63 skipped (64)
-Duration    2.89s
+Duration    3.24s
 ```
 
 The verbose output included these stable, non-secret lifecycle markers:
@@ -68,7 +68,10 @@ One test-local wrapper now forces both literal-zero override seams for every com
 file, so its 64 cases cannot claim 3938 or 5174. The focused case keeps the real client path,
 encloses all post-start assertions in teardown authority, closes its SSE subscription, awaits the
 runtime stop, and then binds a fresh Node server to the exact returned ephemeral port. That bind is
-the direct teardown oracle; its own listener also closes in `finally`.
+the direct teardown oracle; its own listener also closes before the test returns. Body, subscription,
+runtime-stop, rebind, and probe-close failures are retained in primary-first order, and multiple
+failures surface as one `AggregateError` rather than allowing an earlier cleanup failure to prevent
+the remaining cleanup attempts.
 
 Before and after the focused and full owned-family gates, `lsof` reported the same legitimate
 listeners: PID 95609 on 127.0.0.1:3938 and PID 95590 on 127.0.0.1:5174. No process command referenced
