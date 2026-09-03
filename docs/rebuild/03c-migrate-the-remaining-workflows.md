@@ -107,24 +107,25 @@ feature task and T2/T3 proof only when it introduces a genuinely new interaction
 - [x] BE land the bounded transitional compiler: tuple groups, typed task references, duplicate/unresolved/cycle refusals, descriptor/module/store/build-manifest derivation and no second runtime (`ebfde1c6`)
 - [x] BE route Person Lookup and Separations through that transitional compiler while preserving their existing public descriptor/module behavior (`ebfde1c6`, `d4204106`)
 - [x] PROOF derive the compiler-backed registry population and prove current bootstrap/run modal, timeline/detail and Explorer projections for both workflows (`246daab2`, `4555341f`)
-- [ ] BE make the existing task-store catalog sufficient to find a task by system, capability, effect, inputs and outputs before an author creates one
+- [x] BE make the existing task-store catalog sufficient to find a task by system, capability, effect, inputs and outputs before an author creates one (R3 `acd7ed1b` — `npm run stores:catalog` generates `ref stores` §2 with store kind/browser system, Effect, Verb, Session, Capability, Inputs, Outputs, Freshness and Status per contract; `npm run stores:catalog:check` current)
 - [x] BE replace the transitional `workflow-recipe.ts`/`defineWorkflowRecipe`/`compileWorkflowRecipe` names with D317's `workflow.ts`/`defineWorkflow`/`compileWorkflow`/`WorkflowDefinition`/`CompiledWorkflow`; do not leave aliases or a second authoring seam (R3 `8a931cc6`; the fragment API and every per-step declaration file deleted in R3c)
-- [ ] PROOF enforce the exact four authored artifacts for a reuse-only workflow; reject descriptor/module/registry/dashboard glue outside `workflow.ts`
-- [ ] BE replace fragment adapters with the closed direct `task | parallel | delegate | gate | transaction` entry algebra, including stable entry/leaf ids, explicit parallel join/failure policy and independent leaf retry
-- [ ] BE finish derivation of store/session requirements, graph/result, registry/build-manifest and all generic surfaces from the final workflow definition; retain the already-green transitional derivations as compatibility proof
+- [x] PROOF enforce the exact four authored artifacts for a reuse-only workflow; reject descriptor/module/registry/dashboard glue outside `workflow.ts` (R3c `db7bbd5c`, `44f74d54` — the `workflow-authoring-budget` guard + inventory entry: four arms, 24 violating fixtures with positive controls, closed decision-cited allowlists)
+- [x] BE replace fragment adapters with the closed direct `task | parallel | delegate | gate | transaction` entry algebra, including stable entry/leaf ids, explicit parallel join/failure policy and independent leaf retry (R3 `51ec6253`, `2527c149` — every kind proved to compile, project and retry a failed parallel leaf alone; the fragment adapters themselves deleted in R3c `06eb7494`)
+- [x] BE finish derivation of store/session requirements, graph/result, registry/build-manifest and all generic surfaces from the final workflow definition; retain the already-green transitional derivations as compatibility proof (R3 `8a931cc6` D317 seam + `51ec6253`, `2527c149` entries→runtime nodes; R3c `ab04231c` serializes every public identifier of all seven registered workflows — node graph, timeline, projections, module role/stores/intake — byte-identical before/after except the manifest fingerprint and the one stated `separations-identity-check` timeline change; R1's `tests/unit/workflow-definition-equivalence.test.ts` unmodified and green)
 - [ ] PROOF pin automatic runtime inheritance—worker/session acquisition, authentication, checkpoints, semantic logs, screenshots, receipts, notifications and Archive—without workflow-specific glue
-- [ ] BOTH finish Person Lookup as the smallest four-artifact equivalence proof: final API/file, no authored descriptor/module path and its missing canonical T1 structural/live pair
-- [ ] BOTH finish Separations as the completeness proof: final API/file, direct entries, no redundant descriptor/module/node-fragment authoring path, and preserved gates, screenshots, logs, write safety and public wire
-- [ ] BOTH make the run modal the complete omission authority: whole-step skip, all custom values schema-valid before start, no mid-run value request, separate mandatory verifiers remain selected
-- [ ] BOTH expose Resume from checkpoints and Restart from start; fresh restart reruns reads/computes but never re-executes a completed write
+- [x] BOTH finish Person Lookup as the smallest four-artifact equivalence proof: final API/file, no authored descriptor/module path and its missing canonical T1 structural/live pair (R3c `ab04231c`; four-artifact inventory at `db7bbd5c` shows nothing beyond the four; T1b `live-read` **met** on a fresh isolated root — result `66ea3863-2951-4ad9-92b7-4e444eff4959`, run `3bf3d260…`, attempt 1, 0/0/0 write-authority deltas)
+- [x] BOTH finish Separations as the completeness proof: final API/file, direct entries, no redundant descriptor/module/node-fragment authoring path, and preserved gates, screenshots, logs, write safety and public wire (R3c `ab04231c` — every step identity folded into `src/workflows/separations/workflow.ts`, the five harnesses import them, `separations-identity-check` converted, 22 files / 657 lines deleted, public equivalence per identifier green)
+- [x] BOTH make the run modal the complete omission authority: whole-step skip, all custom values schema-valid before start, no mid-run value request, separate mandatory verifiers remain selected (D313; R3 u17 `b35572cf`, `df40ce18` — definition/plan/executor admission with the refusal + provenance matrix)
+- [x] BOTH expose Resume from checkpoints and Restart from start; fresh restart reruns reads/computes but never re-executes a completed write (D314; R3 u18 `7dd401bb`…`46606feb` — kernel/executor/sequencer mutation proofs; queued-span `recovery` projection proved red by `f3079fb1`)
 - [x] BOTH project the current tuple groups through the existing run modal/timeline/detail and Explorer paths; re-run this conformance after the final D317 conversion
-- [ ] PROOF extend the landed registry-wide conformance suite to every direct entry kind, then remove superseded declarations and only genuinely duplicate generic-dashboard tests
-- [ ] DOCS write `docs/guides/workflow-authoring.md`, add the concise authoring rules to the paired root `AGENTS.md`/`CLAUDE.md`, and add one internal agent reference that points to the guide rather than redefining it
+- [x] PROOF extend the landed registry-wide conformance suite to every direct entry kind, then remove superseded declarations and only genuinely duplicate generic-dashboard tests (R3 `51ec6253`, `2527c149`; superseded declarations removed across R3c `06eb7494`, `6db1766e`, `877894cf`, `ab04231c`, with the equivalence/grouping proofs green at `ab04231c` — 11 files / 108 tests, fixtures unmodified)
+- [x] DOCS write `docs/guides/workflow-authoring.md`, add the concise authoring rules to the paired root `AGENTS.md`/`CLAUDE.md`, and add one internal agent reference that points to the guide rather than redefining it (R3d `9ec2e269` guide, `b61d12c6` root twins, `eec628aa` agent reference)
 - [ ] PROOF follow the finished author guide to author both acceptance workflows; any undocumented step or required legacy escape hatch fails 3c-A
-- [ ] BE implement D318's exclusive T1b result/admission arms: `dry-run-preview` for transaction-bearing graphs and `live-read` for zero-transaction graphs, with graph refusal and exact zero write-authority deltas
+- [x] BE implement D318's exclusive T1b result/admission arms: `dry-run-preview` for transaction-bearing graphs and `live-read` for zero-transaction graphs, with graph refusal and exact zero write-authority deltas (R3 u18 `7dd401bb`…`46606feb`; explicit arm-switch refusals `766632db`, `1823608a`; exercised by Person Lookup's **met** `live-read` result `66ea3863…` and Separations' typed `blocked`/`not-started` arm `c36b2b6b…`)
 - [x] DOCS re-scope each remaining `Dashboard · wire` row to the capability delta that order actually introduces; generic rows inherit compiler conformance
 > 2026-09-02 | D311 bounded implementation | `a40276b6` integrates compatibility fixtures, a transitional compiler, two descriptor/module conversions and generic conformance; R1's report explicitly carries D312–D318 completion into the next run
 > 2026-09-02 | remaining 3c-A | task discovery, D317 rename/final API, direct entry algebra, four-artifact guard, D313 omission, D314 recovery, D318 `live-read`, final acceptance deletion/T1 and author docs remain open
+> 2026-09-02 | R3d docs package | R3/R3b/R3c/R3d closed every 3c-A box above except two: `PROOF pin automatic runtime inheritance` (no report names a test or commit that pins worker/session acquisition, authentication, checkpoints, logs, screenshots, receipts, notifications and Archive as inherited without per-workflow glue) and `PROOF follow the finished author guide` (the guide landed at `9ec2e269`; the clean-context follow-through is the next unit). `ref workflow-model` §1.6/§1.1/§1.2.2/§5.6.1/§5.8, `ref stores` §1/§2/§2b/§3 and `docs/migrations/person-lookup.md` reconciled to the as-built tree in this run
 <!-- /roadmap-status -->
 
 The implementation order is deliberate: pin the current public descriptor/module/wire behavior;
@@ -233,43 +234,48 @@ runtime.
 4. **DONE, REVERIFY AFTER UNIT 2 — Build generic projections.** The current tuple groups reach
    bootstrap/start, run modal, timeline/detail and Explorer through one registry-derived conformance
    suite. Evidence: `246daab2` and `4555341f`; extend it to every final direct entry kind.
-5. **NEXT — Finish omission admission.** A whole omitted timeline group executes no entry; its complete
+5. **DONE (D313; R3 u17 `b35572cf`, `df40ce18`) — Finish omission admission.** A whole omitted timeline group executes no entry; its complete
    replacement values are schema-valid before start; no worker asks for values mid-run; any
    mandatory verifier is a separate selected entry. Gate: D313's refusal and provenance matrix.
-6. **OPEN — Finish recovery choices.** Expose Resume from checkpoints and Restart from start. Root restart
+6. **DONE (D314; R3 u18 `7dd401bb`…`46606feb`, queued-span `recovery` red-proof `f3079fb1`) — Finish recovery choices.** Expose Resume from checkpoints and Restart from start. Root restart
    reruns reads/computations, reuses validated completed-write proof without prepare/commit, probes
    unfinished writes first and refuses a fresh-fact mismatch. Gate: mutation proof that a completed
    external write cannot execute twice.
-7. **PARTIAL — Finish Person Lookup.** Its descriptor/module are transitional compiler products and
-   public equivalence is green. Move authorship to final `workflow.ts`, delete authored
-   descriptor/module glue, add the missing canonical T1 structural/live pair and prove the
-   four-artifact budget.
-8. **PARTIAL — Finish Separations.** Its descriptor/module are transitional compiler products and
-   public equivalence is green. Express the complete timeline, D313 omissions, conditional gate, transactions,
-   screenshots/logs and result through `workflow.ts`; prove exact compatibility. Gate: its existing
-   public behavior and safety evidence remain green—this conversion does not discharge Phase 3b's
-   still-open controlled writes.
-9. **PARTIAL — Delete the old authoring path.** The bounded increment removed manual timeline/flow
-   assembly and six redundant step-category exports. Remove the remaining authored descriptors,
-   modules, fragment adapters,
-   registry wiring and duplicate generic-dashboard tests for both acceptance workflows. Gate: an
-   architecture guard fails if the retired path or an “advanced escape hatch” returns.
-10. **OPEN — Prove the author experience.** Make one grouping/options-only fixture change in `workflow.ts`,
-    compile it, and prove no other authored workflow file changes. Follow the finished author guide
-    from a clean context for both acceptance workflows; any undocumented required step is a defect.
+7. **DONE (R3c `ab04231c`; four-artifact inventory `db7bbd5c`; T1b `live-read` met, result
+   `66ea3863-2951-4ad9-92b7-4e444eff4959`, run `3bf3d260…`, 0/0/0) — Finish Person Lookup.**
+   Authorship is the final `src/workflows/person-lookup/workflow.ts`; no authored descriptor/module
+   glue remains; the canonical T1 structural/live pair exists and the four-artifact budget is
+   guard-enforced.
+8. **DONE (R3c `ab04231c`) — Finish Separations.** The complete timeline, D313 omissions, conditional
+   gate, transactions, screenshots/logs and result are expressed through one `workflow.ts` that also
+   authors every step identity the five harnesses import; public equivalence is stated per identifier
+   and green. This conversion does NOT discharge Phase 3b's still-open controlled writes.
+9. **DONE (R3c `06eb7494`, `6db1766e`, `877894cf`, `ab04231c`; guard `db7bbd5c`, `44f74d54`) — Delete
+   the old authoring path.** The remaining authored descriptors, modules, fragment adapters,
+   transitional registry wiring and duplicate generic-dashboard tests are gone (22 files / 657 lines),
+   and the `workflow-authoring-budget` guard fails if the retired path or an “advanced escape hatch”
+   returns.
+10. **PARTIAL — Prove the author experience.** The grouping/options-only fixture proof is DONE
+    (R3 `e2cfdc39`, re-run green at R3c `ab04231c` — `workflow-definition-mutation-proof`: one
+    grouping/options-only change in `workflow.ts` compiles and no other authored workflow file
+    changes). REMAINS: follow the finished author guide (`9ec2e269`) from a clean context for both
+    acceptance workflows; any undocumented required step is a defect.
 11. **OPEN FOR R3, R4 AND EACH LATER ADMITTED PHASE — Close the worktree lifecycle.** After verified integration and the
     integrated gate, run the worktree sweep: remove each registered and physical run/worker
     worktree, prune, delete its local feature branch, archive only the exact recorded task, and
     record any residue. R1 and R2 already passed this close; every later run and the final phase must
     pass it independently.
 
-**Next runnable supervisor scope (3c-A finish).** Begin from the Phase 3c integration branch after
-this plan update (verified implementation parent `b1b36349`). In order: (1) reconcile the task-store
-catalog and D317 final names/API; (2) enforce the
-four-artifact boundary and finish the direct entry algebra; (3) implement D313 omission admission;
-(4) implement D314 recovery and D318 `live-read`; (5) finish Person Lookup and Separations deletion/T1/guide acceptance;
-(6) run manifest, typecheck, lint, coverage, architecture, parity and workflow proofs; (7) integrate
-and perform the exact worktree sweep. Do not start a third workflow inside this run.
+**Next runnable supervisor scope (3c-A finish).** Items (1)–(6) of the previous scope are LANDED by
+R3/R3b (task-store catalog, D317 final names/API, direct entry algebra, D313 omission admission, D314
+recovery, D318 `live-read`), R3c (four-artifact boundary guard, deletion acceptance, Person Lookup and
+Separations T1/equivalence) and R3d (the author guide, the root twins, the agent reference and this
+reference reconciliation) — each with the evidence cited in the checklist above. What REMAINS to close
+3c-A is exactly two things: (a) the clean-context proof that following `docs/guides/workflow-authoring.md`
+authors both acceptance workflows with no undocumented step and no escape hatch, together with the still-open
+`PROOF pin automatic runtime inheritance` box; and (b) the integrated sweep — manifest, typecheck, lint,
+coverage, architecture, parity and the workflow proofs on the integration branch, then the exact worktree
+lifecycle close of item 11. Do not start a third workflow inside this run.
 
 **Worktree-capacity preflight.** The 2026-09-02 read-only audit found the Phase 3c R1/R2 branches and
 worktrees closed, but eight registered auxiliary `feature/test-*` worktrees owned by the separate
