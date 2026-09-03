@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { separationsIdentityCheckDescriptor } from "../../src/workflows/separations/identity-check/descriptor.js";
-import { separationsKronosTimecardDescriptor } from "../../src/workflows/separations/kronos-timecard/descriptor.js";
+import { separationsKronosTimecardDescriptor } from "../helpers/registered-workflows.js";
 import { separationsUcpathTerminationDescriptor } from "../../src/workflows/separations/ucpath-transaction/descriptor.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 

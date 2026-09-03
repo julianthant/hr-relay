@@ -16,7 +16,7 @@ import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
 import { projectStartSteps, startStepWireControl } from "../../../src/services/start/step-selection.js";
 import { separationsIdentityCheckModule } from "../../../src/workflows/separations/identity-check/module.js";
-import { separationsKronosTimecardModule } from "../../../src/workflows/separations/kronos-timecard/module.js";
+import { separationsKronosTimecardModule } from "../../helpers/registered-workflows.js";
 import { separationsKualiFinalizationModule } from "../../../src/workflows/separations/kuali-finalization/module.js";
 import { separationsKualiReadModule } from "../../../src/workflows/separations/kuali-extraction/module.js";
 import { separationsUcpathTerminationModule } from "../../../src/workflows/separations/ucpath-transaction/module.js";

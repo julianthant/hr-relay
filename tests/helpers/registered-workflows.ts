@@ -6,8 +6,13 @@
  * that need those products read them from here, so no test re-derives a
  * second descriptor object beside the registered one.
  */
-import { personLookupModule, separationsModule } from "../../src/control/workflow-registry.js";
+import {
+  personLookupModule,
+  separationsKronosTimecardModule,
+  separationsModule,
+} from "../../src/control/workflow-registry.js";
 
-export { personLookupModule, separationsModule };
+export { personLookupModule, separationsKronosTimecardModule, separationsModule };
 export const personLookupDescriptor = personLookupModule.descriptor;
 export const separationsDescriptor = separationsModule.descriptor;
+export const separationsKronosTimecardDescriptor = separationsKronosTimecardModule.descriptor;

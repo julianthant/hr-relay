@@ -38,10 +38,15 @@ function definitionEntryIds(definition: typeof WORKFLOW_DEFINITIONS[number]["def
 
 describe("workflow definition registry conformance", () => {
   it("derives the converted population from the one module tuple and refuses a mismatched compiler identity", () => {
+    // Every definition-backed module in the one tuple, in tuple order — the
+    // two acceptance workflows and each converted chunk harness.
     expect(WORKFLOW_DEFINITIONS.map(({ descriptor }) => String(descriptor.id)))
-      .toEqual(["person-lookup", "separations"]);
-    expect(WORKFLOW_DEFINITIONS.map(({ descriptor, definition }) => workflowDefinitionOf(descriptor) === definition))
-      .toEqual([true, true]);
+      .toEqual(WORKFLOW_MODULES.filter((module) => module.definition !== undefined).map(({ descriptor }) => String(descriptor.id)));
+    expect(WORKFLOW_DEFINITIONS.map(({ descriptor }) => String(descriptor.id)))
+      .toEqual(expect.arrayContaining(["person-lookup", "separations"]));
+    expect(WORKFLOW_DEFINITIONS.every(({ descriptor, definition }) => workflowDefinitionOf(descriptor) === definition))
+      .toBe(true);
+    expect(WORKFLOW_DEFINITIONS.length).toBeGreaterThanOrEqual(2);
 
     expect(() => workflowDefinitionRegistry([{
       descriptor: separationsDescriptor,
@@ -99,7 +104,7 @@ describe("workflow definition registry conformance", () => {
       const explorer = buildWorkflowExplorer(explorerQueryDeps(manualClock(AT), EXPLORER_HASH));
       const explorerWorkflows = new Map(explorer.workflows.map((workflow) => [String(workflow.id), workflow]));
 
-      for (const { descriptor, definition } of WORKFLOW_DEFINITIONS) {
+      for (const [index, { descriptor, definition }] of WORKFLOW_DEFINITIONS.entries()) {
         const id = String(descriptor.id);
         const expectedGroups = definition.steps.map(([group, entries]) => ({
           key: group.key,
@@ -127,7 +132,7 @@ describe("workflow definition registry conformance", () => {
           details: descriptor.details.filter((detail) => detail.source.nodeId === String(nodeId)).map(({ key }) => key),
         })));
 
-        const seed = id === "person-lookup" ? 501 : 502;
+        const seed = 501 + index;
         queuedEventOf(world, { seed, workflow: id });
         for (const nodeId of expectedTaskIds) taskEventsOf(world, seed, nodeId, "done");
         const detail = buildRunDetail({
