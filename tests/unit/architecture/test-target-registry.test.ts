@@ -236,6 +236,42 @@ describe("test target registry architecture", () => {
     }
   });
 
+  it("makes every T1b case account for every runtime node in its path and receipt", () => {
+    for (const [workflow, path] of manifestPathsByWorkflow()) {
+      const manifest = evaluateManifest(path);
+      const descriptor = DESCRIPTORS.find(({ id }) => id === workflow);
+      if (descriptor === undefined) throw new Error(`${path} names workflow ${workflow}, which no descriptor builds`);
+      const runtimeNodeIds = descriptorRuntimeNodes(descriptor).map(({ id }) => String(id)).sort();
+
+      for (const scenarioCase of manifest.cases) {
+        const pathNodeIds = [...scenarioCase.nodesReached, ...scenarioCase.nodesExcluded].map(String);
+        assert.equal(
+          new Set(pathNodeIds).size,
+          pathNodeIds.length,
+          `${path}/${scenarioCase.caseId} names one runtime node as both reached and excluded`,
+        );
+        assert.deepEqual(
+          [...pathNodeIds].sort(),
+          runtimeNodeIds,
+          `${path}/${scenarioCase.caseId} does not account for the exact runtime node set`,
+        );
+
+        const receiptNodeIds = scenarioCase.receipt.verification.flatMap(({ obligation }) =>
+          obligation.startsWith("node.") ? [obligation.slice("node.".length)] : []);
+        assert.equal(
+          new Set(receiptNodeIds).size,
+          receiptNodeIds.length,
+          `${path}/${scenarioCase.caseId} repeats a node receipt obligation`,
+        );
+        assert.deepEqual(
+          [...receiptNodeIds].sort(),
+          runtimeNodeIds,
+          `${path}/${scenarioCase.caseId} receipt does not account for the exact runtime node set`,
+        );
+      }
+    }
+  });
+
   it("registers every T1b manifest label in config with the same workflow and kind", () => {
     const views = [...manifestPathsByWorkflow().values()].map((path) => manifestView(evaluateManifest(path)));
     // `readTestTargetRegistry` refuses an unregistered label, a workflow
