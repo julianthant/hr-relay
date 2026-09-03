@@ -310,7 +310,8 @@ export interface DashboardRuntime {
   stop(): Promise<void>;
 }
 
-export type DashboardFrontendMode = "vite-dev" | "built-bundle";
+export const DashboardFrontendModeSchema = z.enum(["vite-dev", "built-bundle"]);
+export type DashboardFrontendMode = z.infer<typeof DashboardFrontendModeSchema>;
 
 export interface DashboardComposeInput {
   readonly isolation: RuntimeIsolation;
@@ -604,7 +605,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   ).version;
   // Before any authority, lock or socket: a `built-bundle` dashboard with no
   // bundle must never look started (D189).
-  const staticBundle = (input.frontend ?? "vite-dev") === "built-bundle"
+  // The composition boundary owns the one default: an absent mode IS the
+  // development path, declared at the schema rather than as a literal fallback.
+  const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
+  const staticBundle = frontend === "built-bundle"
     ? await openStaticBundle(join(repoRoot, "dist", "dashboard"))
     : undefined;
 

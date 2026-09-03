@@ -52,6 +52,26 @@ const NO_CACHE = "no-cache";
 
 export type StaticBundleRefusal = "malformed-encoding" | "forbidden-character" | "dot-segment" | "outside-bundle";
 
+/** The app's own route prefixes: never the bundle's, decoded or not. */
+const RESERVED_PREFIXES: readonly string[] = Object.freeze(["/api", "/events", "/artifacts"]);
+
+function reserved(path: string): boolean {
+  return RESERVED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
+
+/**
+ * A filesystem failure while serving the bundle. The message is fixed and the
+ * original error rides on `cause`: `failureStatus` puts an error's message on
+ * the wire as `INTERNAL_FAILURE`, and a raw fs message carries the absolute
+ * bundle path plus the requested name.
+ */
+export class StaticBundleReadError extends Error {
+  constructor(stage: "resolve" | "inspect" | "read", cause: unknown) {
+    super(`the static bundle could not ${stage} the requested file`, { cause });
+    this.name = "StaticBundleReadError";
+  }
+}
+
 export type StaticBundleDecision =
   | Readonly<{ kind: "pass-through" }>
   | Readonly<{ kind: "refused"; reason: StaticBundleRefusal }>
@@ -69,16 +89,15 @@ export type StaticBundleDecision =
 export function decideStaticBundlePath(input: Readonly<{ method: string; rawPath: string }>): StaticBundleDecision {
   const method = input.method.toUpperCase();
   if (method !== "GET" && method !== "HEAD") return { kind: "pass-through" };
-  if (input.rawPath === "/api" || input.rawPath.startsWith("/api/")
-    || input.rawPath === "/events" || input.rawPath.startsWith("/events/")) {
-    return { kind: "pass-through" };
-  }
+  if (reserved(input.rawPath)) return { kind: "pass-through" };
   let decoded: string;
   try {
     decoded = decodeURIComponent(input.rawPath);
   } catch {
     return { kind: "refused", reason: "malformed-encoding" };
   }
+  // Decided on the DECODED path too: `/api%2Fv1/x` is not a bundle route.
+  if (reserved(decoded)) return { kind: "pass-through" };
   if (decoded.includes("\0") || decoded.includes("\\")) return { kind: "refused", reason: "forbidden-character" };
   if (!decoded.startsWith("/")) return { kind: "refused", reason: "outside-bundle" };
   const trimmed = decoded.length > 1 && decoded.endsWith("/") ? decoded.slice(0, -1) : decoded;
@@ -121,13 +140,17 @@ export async function openStaticBundle(distDir: string): Promise<StaticBundle> {
   try {
     distRoot = await realpath(distDir);
   } catch (error: unknown) {
-    throw new Error(`the built dashboard is not at ${distDir}; run \`npm run web:build\` first`, { cause: error });
+    if (isNoEntry(error)) throw new Error(`the built dashboard is not at ${distDir}; run \`npm run web:build\` first`, { cause: error });
+    throw new Error(`the built dashboard at ${distDir} could not be resolved`, { cause: error });
   }
-  const index = await stat(resolve(distRoot, "index.html")).catch((error: unknown) => {
-    throw new Error(`the built dashboard at ${distRoot} has no index.html; run \`npm run web:build\` first`, { cause: error });
-  });
-  if (!index.isFile()) throw new Error(`the built dashboard's index.html at ${distRoot} is not a regular file`);
-  return Object.freeze({ distRoot });
+  const bundle: StaticBundle = Object.freeze({ distRoot });
+  // The same physical proof the handler applies to every request: `index.html`
+  // must be a regular file that stays inside the bundle after symlinks resolve,
+  // or the dashboard would print "listening" and then refuse its own app.
+  const index = await locate(bundle, ["index.html"]);
+  if (index.kind === "not-found") throw new Error(`the built dashboard at ${distRoot} has no index.html; run \`npm run web:build\` first`);
+  if (index.kind === "outside-bundle") throw new Error(`the built dashboard's index.html at ${distRoot} resolves outside the bundle`);
+  return bundle;
 }
 
 type Physical =
@@ -143,22 +166,38 @@ async function locate(bundle: StaticBundle, relativeSegments: readonly string[])
   try {
     real = await realpath(lexical);
   } catch (error: unknown) {
-    if (isNoEntry(error)) return { kind: "not-found" };
-    throw error;
+    // A name too long for the filesystem or a symlink cycle names nothing the
+    // bundle holds; anything else is a real fault and stays loud, but typed.
+    if (isNoEntry(error) || hasCode(error, "ENAMETOOLONG") || hasCode(error, "ELOOP")) return { kind: "not-found" };
+    throw new StaticBundleReadError("resolve", error);
   }
   if (!insideBundle(bundle.distRoot, real)) return { kind: "outside-bundle" };
-  const info = await stat(real);
+  let info;
+  try {
+    info = await stat(real);
+  } catch (error: unknown) {
+    if (isNoEntry(error)) return { kind: "not-found" };
+    throw new StaticBundleReadError("inspect", error);
+  }
   if (!info.isFile()) return { kind: "not-found" };
   return { kind: "file", path: real, size: info.size };
 }
 
+function hasCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === code;
+}
+
 function isNoEntry(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error
-    && ((error as { code?: unknown }).code === "ENOENT" || (error as { code?: unknown }).code === "ENOTDIR");
+  return hasCode(error, "ENOENT") || hasCode(error, "ENOTDIR");
 }
 
 async function readAll(path: string): Promise<Uint8Array<ArrayBuffer>> {
-  const handle = await open(path, "r");
+  let handle;
+  try {
+    handle = await open(path, "r");
+  } catch (error: unknown) {
+    throw new StaticBundleReadError("read", error);
+  }
   try {
     const info = await handle.stat();
     if (!info.isFile()) throw new Error("static bundle path stopped being a regular file between resolution and read");
@@ -166,10 +205,12 @@ async function readAll(path: string): Promise<Uint8Array<ArrayBuffer>> {
     let offset = 0;
     while (offset < bytes.byteLength) {
       const { bytesRead } = await handle.read(bytes, offset, bytes.byteLength - offset, offset);
-      if (bytesRead === 0) throw new Error(`static bundle file ${path} shrank while being read`);
+      if (bytesRead === 0) throw new Error("static bundle file shrank while being read");
       offset += bytesRead;
     }
     return bytes;
+  } catch (error: unknown) {
+    throw error instanceof StaticBundleReadError ? error : new StaticBundleReadError("read", error);
   } finally {
     await handle.close();
   }
@@ -199,13 +240,16 @@ export function staticBundleHandler(bundle: StaticBundle): MiddlewareHandler {
       return context.json(wireError("STATIC_PATH_REFUSED", "the requested path is not a bundle path (outside-bundle)", false), 400);
     }
     if (physical.kind === "not-found") return next();
-    const headers = {
+    const headers = (length: number) => ({
       "content-type": target.contentType,
-      "content-length": String(physical.size),
+      "content-length": String(length),
       "cache-control": target.cacheControl,
       "x-content-type-options": "nosniff",
-    };
-    if (context.req.method.toUpperCase() === "HEAD") return new Response(null, { status: 200, headers });
-    return new Response(await readAll(physical.path), { status: 200, headers });
+    });
+    if (context.req.method.toUpperCase() === "HEAD") return new Response(null, { status: 200, headers: headers(physical.size) });
+    // The length is the body's own, so a rebuild between inspection and read
+    // can never send a header that disagrees with the bytes.
+    const bytes = await readAll(physical.path);
+    return new Response(bytes, { status: 200, headers: headers(bytes.byteLength) });
   };
 }

@@ -5,7 +5,7 @@
  * HEAD, and the fail-loud refusal to open a bundle with no index.html.
  */
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -38,6 +38,7 @@ function scaffold(): { repoRoot: string; dist: string; outside: string } {
   writeFileSync(join(dist, "favicon.svg"), "<svg/>");
   writeFileSync(join(dist, "nested", "readme.txt"), "nested");
   writeFileSync(join(dist, "unlisted.exe"), "MZ");
+  mkdirSync(join(dist, "dir.js"));
   writeFileSync(join(repoRoot, "package.json"), '{"name":"secret-package"}');
   const outside = join(repoRoot, "secret.txt");
   writeFileSync(outside, "not for the browser");
@@ -109,7 +110,7 @@ describe("static bundle over a real temp bundle", () => {
     mkdirSync(bare, { recursive: true });
     await assert.rejects(openStaticBundle(bare), /no index\.html.*npm run web:build/u);
     mkdirSync(join(bare, "index.html"));
-    await assert.rejects(openStaticBundle(bare), /not a regular file/u);
+    await assert.rejects(openStaticBundle(bare), /has no index\.html/u);
   });
 
   it("serves bundle bytes with exact headers, falls back to the SPA, and keeps API precedence", async () => {
@@ -190,7 +191,47 @@ describe("static bundle over a real temp bundle", () => {
     const inside = await app.request("http://127.0.0.1:3938/inside.svg");
     assert.equal(inside.status, 200);
     assert.equal(await inside.text(), "<svg/>");
-    const directory = await app.request("http://127.0.0.1:3938/nested.txt");
-    assert.equal(directory.status, 404);
+    const directory = await app.request("http://127.0.0.1:3938/dir.js");
+    assert.equal(directory.status, 404, "a directory named like an asset is never served");
+    const tooLong = await app.request(`http://127.0.0.1:3938/${"a".repeat(300)}.js`);
+    assert.equal(tooLong.status, 404, "a name the filesystem cannot hold names nothing in the bundle");
+  });
+
+  it("decides pass-through on the decoded path too, so an encoded API path never falls to index.html", async () => {
+    const { dist } = scaffold();
+    const app = await appOver(await openStaticBundle(dist));
+    for (const path of ["/api%2Fv1/bootstrap", "/api%2fv1%2fnope", "/events%2Fv1", "/artifacts/v1/x/"]) {
+      const response = await app.request(`http://127.0.0.1:3938${path}`);
+      assert.equal(response.status, 404, path);
+      assert.equal(((await response.json()) as { code: string }).code, "ROUTE_NOT_FOUND", path);
+    }
+  });
+
+  it("puts a fixed message on the wire when the filesystem fails, never the bundle path", async () => {
+    const { dist } = scaffold();
+    const bundle = await openStaticBundle(dist);
+    const app = new Hono<TestDashboardEnv>();
+    app.use("*", staticBundleHandler(bundle));
+    app.onError((error, c) => c.json({ name: error.name, message: error.message }, 500));
+    chmodSync(join(dist, "favicon.svg"), 0o000);
+    try {
+      const response = await app.request("http://127.0.0.1:3938/favicon.svg");
+      if (response.status === 200) return; // running as a user that ignores mode bits (root); nothing to prove here
+      assert.equal(response.status, 500);
+      const body = (await response.json()) as { name: string; message: string };
+      assert.equal(body.name, "StaticBundleReadError");
+      assert.equal(body.message, "the static bundle could not read the requested file");
+      assert.doesNotMatch(body.message, /favicon|dist|hrauto/u);
+    } finally {
+      chmodSync(join(dist, "favicon.svg"), 0o644);
+    }
+  });
+
+  it("refuses to open a bundle whose index.html is a symlink out of it", async () => {
+    const { repoRoot, outside } = scaffold();
+    const linked = join(repoRoot, "dist", "linked");
+    mkdirSync(linked, { recursive: true });
+    symlinkSync(outside, join(linked, "index.html"));
+    await assert.rejects(openStaticBundle(linked), /resolves outside the bundle/u);
   });
 });
