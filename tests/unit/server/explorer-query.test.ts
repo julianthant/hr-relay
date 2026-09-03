@@ -38,6 +38,14 @@ function allTasks() {
     .workflows.flatMap((workflow) => workflow.nodes.flatMap((node) => node.tasks));
 }
 
+/** The registered separations entry, read through the Explorer's real registry. */
+function separationsExplorerEntry() {
+  const entry = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH))
+    .workflows.find((workflow) => String(workflow.id) === "separations");
+  assert.ok(entry, "the Explorer serves no separations workflow");
+  return entry;
+}
+
 describe("the contract field census (D227)", () => {
   it("gives every arm a field for every leaf of both its schemas", () => {
     for (const task of allTasks()) {
@@ -168,6 +176,38 @@ describe("the workflow explorer projection", () => {
     const first = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
     const second = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
     assert.equal(JSON.stringify(first), JSON.stringify(second));
+  });
+
+  it("serves separations' typed-text declaration, including dry-run support", () => {
+    const entry = separationsExplorerEntry();
+
+    assert.equal(entry.surfaces.inputRun.state, "declared");
+    if (entry.surfaces.inputRun.state !== "declared") return;
+    assert.match(entry.surfaces.inputRun.placeholder, /Kuali document numbers/u);
+    assert.equal(entry.surfaces.inputRun.supportsDryRun, true);
+  });
+
+  it("serves separations' four declared verdicts with their exact tones", () => {
+    const entry = separationsExplorerEntry();
+
+    assert.deepEqual(entry.verdicts.map(({ key, label, tone }) => ({ key, label, tone })), [
+      { key: "name-differs", label: "Name differs from UCPath", tone: "warning" },
+      { key: "eid-name-resolved", label: "EID resolved by name", tone: "warning" },
+      { key: "dates-moved", label: "Kronos moved the dates", tone: "neutral" },
+      { key: "unclassified-pay-codes", label: "Unclassified pay codes", tone: "warning" },
+    ]);
+  });
+
+  it("serves an authored purpose for every separations graph node", () => {
+    const entry = separationsExplorerEntry();
+
+    const unauthored = entry.nodes.filter((node) => node.purpose.state !== "authored");
+    assert.deepEqual(unauthored.map(({ id }) => id), []);
+    const resolveAction = entry.nodes.find((node) => node.id === "resolve-action");
+    assert.ok(resolveAction, "the D261 head node is missing from the Explorer");
+    assert.equal(resolveAction.purpose.state, "authored");
+    if (resolveAction.purpose.state !== "authored") return;
+    assert.match(resolveAction.purpose.text, /refuses two actions for one number/u);
   });
 
   /**

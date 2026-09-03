@@ -309,6 +309,17 @@ describe("composeCommandRequest — the three ceremonies reach the real command 
     assert.equal(composed.state, "ready");
   });
 
+  it("REFUSES a typed-EID ceremony when no operator answer was supplied", () => {
+    const composed = composeCommandRequest(
+      APPROVE,
+      { runId: runId(1), expectedVersion: 3 },
+      { ...CONTEXT, gate: available(gateDetail(TYPE_EID)) },
+    );
+
+    assert.equal(composed.state, "refused");
+    assert.match(composed.state === "refused" ? composed.reason : "", /no operator answer was supplied/u);
+  });
+
   it("REFUSES an EID the packet never showed, even with an answer supplied", () => {
     const composed = composeCommandRequest(
       APPROVE,

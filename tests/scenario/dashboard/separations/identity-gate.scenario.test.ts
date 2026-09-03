@@ -32,7 +32,7 @@ import {
 import { FingerprintSchema } from "../../../../src/domain/ids.js";
 import { buildRunSection } from "../../../../src/server/dashboard/queries/run-detail.js";
 import {
-  DOCUMENT_NUMBER,
+  FIXTURE_DOCUMENT_NUMBER,
   GATE_ID,
   createSeparationsWorld,
   disposeWorlds,
@@ -61,7 +61,7 @@ function parkedRun(
   packetOptions: Parameters<typeof separationsIdentityPacket>[0] = {},
 ): ParkedRun {
   const world = createSeparationsWorld();
-  const [started] = startFromTypedText(world, DOCUMENT_NUMBER);
+  const [started] = startFromTypedText(world, FIXTURE_DOCUMENT_NUMBER);
   assert.ok(started);
   parkAtIdentityGate(world, started.runId);
   seedIdentityPacketCheckpoint(world, started.runId, separationsIdentityPacket(packetOptions));
@@ -151,38 +151,6 @@ describe("separations dashboard — the ceremony the SERVER chose", () => {
     assert.match(problem ?? "", /packet never showed EID/u);
   });
 
-  it("refuses BY NAME when the served shape and the served candidates contradict each other", () => {
-    // A server upgraded ahead of this bundle (or behind it) can serve a
-    // choice shape with only one candidate. The surface cannot reinterpret
-    // that contradiction as either a typed-EID or one-click ceremony.
-    const parked = parkedRun();
-    assert.equal(parked.gate.options.length, 1);
-    const contradictory = { ...parked.gate, approvalShape: "choose-a-candidate" as const };
-
-    const ceremony = identityCeremonyFor(contradictory, "approved");
-    assert.equal(ceremony.kind, "unsupported");
-    if (ceremony.kind !== "unsupported") return;
-    assert.match(ceremony.reason, /asked for a candidate to be CHOSEN and served 1/u);
-    // The refusal is what the operator sees, and the send control is blocked:
-    // an unsupported ceremony yields no answer at all.
-    assert.equal(identityDraftProblem(ceremony, EMPTY_IDENTITY_GATE_DRAFT), ceremony.reason);
-    assert.equal(identityGateAnswer(ceremony, EMPTY_IDENTITY_GATE_DRAFT), undefined);
-  });
-
-  it("takes a rejection only with the operator's own words, and sends them verbatim", () => {
-    const parked = parkedRun();
-    const ceremony = identityCeremonyFor(parked.gate, "rejected");
-    assert.equal(ceremony.kind, "reject");
-
-    assert.match(
-      identityDraftProblem(ceremony, EMPTY_IDENTITY_GATE_DRAFT) ?? "",
-      /Say why this is not the right person/u,
-    );
-    assert.deepEqual(
-      identityGateAnswer(ceremony, { eid: "", reason: "  the middle initial is not hers  " }),
-      { decision: "rejected", reason: "the middle initial is not hers" },
-    );
-  });
 });
 
 describe("separations dashboard — the gate command the ceremony composes", () => {
@@ -264,24 +232,4 @@ describe("separations dashboard — the gate command the ceremony composes", () 
     assert.equal(parked.world.database.authority.runs.get(parked.runId)?.lifecycle.state, "parked-gate");
   });
 
-  it("refuses to compose a typed-EID decision the operator never made", () => {
-    const parked = parkedRun();
-    const [action] = parked.gate.actions;
-    assert.ok(action);
-    assert.equal(action.kind, "command");
-    if (action.kind !== "command") return;
-
-    // No `gateAnswer`: the composer has a served name-only packet, but it may
-    // not invent the EID the operator was required to type.
-    const composed = composeCommandRequest(
-      action,
-      { runId: parked.runId, expectedVersion: action.expectedVersion },
-      {
-        actorId: "local-operator",
-        source: "run-detail",
-        gate: { state: "available", value: parked.gate },
-      },
-    );
-    assert.equal(composed.state, "refused");
-  });
 });
