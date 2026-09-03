@@ -5,7 +5,7 @@ import { dirname, join, relative } from "node:path";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import inventory from "../../../docs/rebuild/guard-inventory.json" with { type: "json" };
-import {
+import vitestConfig, {
   REBUILD_ARCHITECTURE_TEST_INCLUDE,
   REBUILD_ARCHITECTURE_TEST_EXCLUDE,
   REBUILD_COVERAGE_EXCLUSIONS,
@@ -55,6 +55,50 @@ interface ArchitectureProjectInputs {
   readonly scenarioInclude: readonly string[];
   readonly scenarioExclude: readonly string[];
   readonly reporters: readonly string[];
+}
+
+interface TestProjectDefinition {
+  readonly name: string;
+  readonly include: readonly string[];
+  readonly exclude: readonly string[];
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isUnknownArray(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
+}
+
+function stringArray(value: unknown, label: string): readonly string[] {
+  if (!isUnknownArray(value) || !value.every((entry) => typeof entry === "string")) {
+    throw new Error(`${label} must be an array of strings`);
+  }
+  return value;
+}
+
+function configuredTestProjects(config: unknown): readonly TestProjectDefinition[] {
+  if (!isRecord(config) || !isRecord(config.test) || !isUnknownArray(config.test.projects)) {
+    throw new Error("vitest config must expose a static projects array");
+  }
+  return config.test.projects.map((project, index) => {
+    if (!isRecord(project) || !isRecord(project.test) || typeof project.test.name !== "string") {
+      throw new Error(`vitest project ${String(index)} must declare name, include, and exclude`);
+    }
+    return {
+      name: project.test.name,
+      include: stringArray(project.test.include, `vitest project ${String(index)} include`),
+      exclude: stringArray(project.test.exclude, `vitest project ${String(index)} exclude`),
+    };
+  });
+}
+
+function configuredTestReporters(config: unknown): readonly string[] {
+  if (!isRecord(config) || !isRecord(config.test)) {
+    throw new Error("vitest config must expose static test options");
+  }
+  return stringArray(config.test.reporters, "vitest config reporters");
 }
 
 export function architectureProjectViolations({
@@ -107,9 +151,12 @@ export function architectureProjectViolations({
   return violations;
 }
 
-export function testProjectTopologyViolations(root: string): string[] {
+export function testProjectTopologyViolations(
+  root: string,
+  definitions: readonly TestProjectDefinition[] = REBUILD_TEST_PROJECTS,
+): string[] {
   const all = globSync(["tests/**/*.test.ts", "tests/**/*.test.tsx"], { cwd: root }).sort();
-  const projects = new Map(REBUILD_TEST_PROJECTS.map(({ name, include, exclude }) => {
+  const projects = new Map(definitions.map(({ name, include, exclude }) => {
     const excluded = new Set(globSync([...exclude], { cwd: root }));
     const collected = globSync([...include], { cwd: root }).filter((path) => !excluded.has(path));
     return [name, new Set(collected)] as const;
@@ -233,6 +280,8 @@ describe("reviewed architecture guard manifest", () => {
       reporters: REBUILD_TEST_REPORTERS,
     };
     assert.deepEqual(architectureProjectViolations(actual), []);
+    assert.deepEqual(configuredTestProjects(vitestConfig), REBUILD_TEST_PROJECTS);
+    assert.deepEqual(configuredTestReporters(vitestConfig), REBUILD_TEST_REPORTERS);
     assert.deepEqual(testProjectTopologyViolations(REPO_ROOT), []);
 
     for (const bypass of [
@@ -259,6 +308,13 @@ describe("reviewed architecture guard manifest", () => {
       writeFixture(root, "tests/unit/architecture/guard.test.ts", "export {};\n");
       writeFixture(root, "tests/scenario/walk.test.ts", "export {};\n");
       assert.deepEqual(testProjectTopologyViolations(root), []);
+      assert.match(
+        testProjectTopologyViolations(root, [
+          ...REBUILD_TEST_PROJECTS,
+          { name: "duplicate-scenario", include: ["tests/scenario/**/*.test.ts"], exclude: [] },
+        ]).join("\n"),
+        /walk\.test\.ts: expected exactly one Vitest project, found scenario, duplicate-scenario/u,
+      );
       writeFixture(root, "tests/unknown/orphan.test.ts", "export {};\n");
       assert.match(testProjectTopologyViolations(root).join("\n"), /orphan\.test\.ts: expected exactly one Vitest project, found none/u);
       writeFixture(root, "tests/scenario/combined/live.combined.test.ts", "export {};\n");

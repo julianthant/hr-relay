@@ -495,19 +495,53 @@ function cancel(world: World, runId: string): void {
   if (outcome.state !== "applied") throw new Error(`run ${runId} did not cancel: ${outcome.state}`);
 }
 
+const WALK_PHASES = [
+  "01-upload",
+  "02-validate",
+  "03-fan-out",
+  "04-settle",
+  "05-receipt-refusal",
+  "06-notification",
+  "07-blocked-bump",
+  "08-archive-freeze",
+  "09-archive-render",
+  "10-relaunch",
+] as const;
+type WalkPhase = typeof WALK_PHASES[number];
+const EXPECTED_WALK_PHASE_EVENTS = WALK_PHASES.flatMap((phase) => [
+  `[scenario:operator-lifecycle] ${phase}:begin\n`,
+  `[scenario:operator-lifecycle] ${phase}:complete\n`,
+]);
+const observedWalkPhaseEvents: string[] = [];
+
+function beginWalkPhaseReporting(): void {
+  observedWalkPhaseEvents.length = 0;
+}
+
 function reportWalkPhase(
-  phase: "01-upload" | "02-validate" | "03-fan-out" | "04-settle" | "05-receipt-refusal"
-    | "06-notification" | "07-blocked-bump" | "08-archive-freeze" | "09-archive-render"
-    | "10-relaunch",
+  phase: WalkPhase,
   state: "begin" | "complete",
 ): void {
-  process.stdout.write(`[scenario:operator-lifecycle] ${phase}:${state}\n`);
+  const event = `[scenario:operator-lifecycle] ${phase}:${state}\n`;
+  const expected = EXPECTED_WALK_PHASE_EVENTS[observedWalkPhaseEvents.length];
+  if (event !== expected) {
+    throw new Error(
+      `operator lifecycle phase ${String(observedWalkPhaseEvents.length + 1)} must be ${JSON.stringify(expected)}; received ${JSON.stringify(event)}`,
+    );
+  }
+  observedWalkPhaseEvents.push(event);
+  process.stdout.write(event);
+}
+
+function assertWalkPhaseReportingComplete(): void {
+  assert.deepEqual(observedWalkPhaseEvents, EXPECTED_WALK_PHASE_EVENTS);
 }
 
 /* ── the walk ────────────────────────────────────────────────────────────── */
 
 describe("the operator lifecycle, across slices", () => {
   it("carries a spreadsheet through fan-out, settlement, archive and relaunch on ONE authority database", async () => {
+    beginWalkPhaseReporting();
     const world = createWorld([INTAKE_V1]);
     const { database } = world;
 
@@ -778,6 +812,7 @@ describe("the operator lifecycle, across slices", () => {
     assert.equal(reread?.validRows.length, 2);
     assert.deepEqual(database.authority.archivedRuns.get(settledRunId), archived, "the archived run is untouched");
     reportWalkPhase("10-relaunch", "complete");
+    assertWalkPhaseReportingComplete();
   });
 
   it("freezes into an archive the exact receipt the receipt service derived from authority", () => {
