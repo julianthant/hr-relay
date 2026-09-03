@@ -7,6 +7,7 @@ import { describe, it } from "vitest";
 import inventory from "../../../docs/rebuild/guard-inventory.json" with { type: "json" };
 import {
   REBUILD_ARCHITECTURE_TEST_INCLUDE,
+  REBUILD_ARCHITECTURE_TEST_EXCLUDE,
   REBUILD_COVERAGE_EXCLUSIONS,
   REBUILD_COVERAGE_FLOORS,
   REBUILD_UNIT_TEST_EXCLUDE,
@@ -46,6 +47,7 @@ interface ArchitectureProjectInputs {
   readonly unitInclude: readonly string[];
   readonly unitExclude: readonly string[];
   readonly architectureInclude: readonly string[];
+  readonly architectureExclude: readonly string[];
 }
 
 export function architectureProjectViolations({
@@ -53,6 +55,7 @@ export function architectureProjectViolations({
   unitInclude,
   unitExclude,
   architectureInclude,
+  architectureExclude,
 }: ArchitectureProjectInputs): string[] {
   const violations: string[] = [];
   const normalized = command.trim().replace(/\s+/g, " ");
@@ -76,6 +79,9 @@ export function architectureProjectViolations({
     violations.push(
       "architecture project must include every recursive tests/unit/architecture/**/*.test.ts file",
     );
+  }
+  if (architectureExclude.length !== 0) {
+    violations.push("architecture project exclude must remain empty");
   }
   return violations;
 }
@@ -179,6 +185,7 @@ describe("reviewed architecture guard manifest", () => {
       unitInclude: REBUILD_UNIT_TEST_INCLUDE,
       unitExclude: REBUILD_UNIT_TEST_EXCLUDE,
       architectureInclude: REBUILD_ARCHITECTURE_TEST_INCLUDE,
+      architectureExclude: REBUILD_ARCHITECTURE_TEST_EXCLUDE,
     };
     assert.deepEqual(architectureProjectViolations(actual), []);
 
@@ -192,6 +199,7 @@ describe("reviewed architecture guard manifest", () => {
       { ...actual, unitExclude: ["tests/unit/architecture/guard-manifest.test.ts"] },
       { ...actual, architectureInclude: ["tests/unit/architecture/guard-manifest.test.ts"] },
       { ...actual, architectureInclude: ["tests/unit/architecture/*.test.ts"] },
+      { ...actual, architectureExclude: ["tests/unit/architecture/runtime-isolation.test.ts"] },
     ]) {
       assert.ok(architectureProjectViolations(bypass).length > 0, JSON.stringify(bypass));
     }

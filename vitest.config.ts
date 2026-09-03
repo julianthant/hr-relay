@@ -8,6 +8,7 @@ export const REBUILD_UNIT_TEST_EXCLUDE = ["tests/unit/architecture/**"] as const
 export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
   "tests/unit/architecture/**/*.test.ts",
 ] as const;
+export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [] as const;
 export const REBUILD_SCENARIO_TEST_INCLUDE = ["tests/scenario/**/*.test.ts"] as const;
 export const REBUILD_COVERAGE_EXCLUSIONS = [
   {
@@ -73,6 +74,7 @@ export default defineConfig({
         test: {
           name: "architecture",
           include: [...REBUILD_ARCHITECTURE_TEST_INCLUDE],
+          exclude: [...REBUILD_ARCHITECTURE_TEST_EXCLUDE],
           fileParallelism: true,
         },
       },
