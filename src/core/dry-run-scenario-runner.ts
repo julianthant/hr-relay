@@ -372,7 +372,7 @@ export async function runDryRunScenario(
         subjectLabel: scenarioCase.subjectLabel,
         manifestDigest,
         verdict: "failed",
-        execution: { state: "started", runId: started.runId, traceId: started.traceId },
+        execution: { state: "started", arm: manifest.arm, runId: started.runId, traceId: started.traceId },
         assertions: [{
           assertionId: "runner-execution",
           verdict: "failed",
@@ -406,7 +406,7 @@ export async function runDryRunScenario(
     subjectLabel: scenarioCase.subjectLabel,
     manifestDigest,
     verdict,
-    execution: { state: "started", runId: started.runId, traceId: started.traceId },
+    execution: { state: "started", arm: manifest.arm, runId: started.runId, traceId: started.traceId },
     assertions,
     wallTimeMs: wallTimeMs(input.clock, startedAt),
     recordedAt: input.clock.now().toISOString(),

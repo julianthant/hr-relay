@@ -1685,7 +1685,11 @@ const INVARIANT_QUERIES = Object.freeze([
         run.record_key IS NULL
         OR result.workflow IS NOT run.workflow
         OR result.trace_id IS NOT json_extract(run.record_json, '$.envelope.traceId')
-        OR json_extract(run.record_json, '$.envelope.dryRun') IS NOT 1
+        -- D318: a live-read result cites an ordinary run (dryRun 0); a preview
+        -- result, and every pre-D318 row (no arm), cites a dry run (dryRun 1).
+        OR json_extract(run.record_json, '$.envelope.dryRun') IS NOT (
+          CASE WHEN json_extract(result.record_json, '$.execution.arm') = 'live-read' THEN 0 ELSE 1 END
+        )
       )
     `,
   },
@@ -4344,8 +4348,12 @@ export class AuthorityDatabase implements Disposable {
             }
             if (record.execution.state === "started") {
               const run = this.#readRecord("tasks", record.execution.runId, RunRecordSchema);
+              // D318 — a live-read result binds to an ORDINARY run (dryRun
+              // false); a preview result (and every pre-D318 row, which
+              // carries no arm) binds to a dry run. Neither may cite the other.
+              const expectedDryRun = record.execution.arm !== "live-read";
               if (run === undefined
-                || run.envelope.dryRun !== true
+                || run.envelope.dryRun !== expectedDryRun
                 || run.envelope.workflow !== record.workflow
                 || run.envelope.traceId !== record.execution.traceId) {
                 throw new Error(
