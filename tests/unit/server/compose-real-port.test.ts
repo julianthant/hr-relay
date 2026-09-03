@@ -1558,6 +1558,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       repoRoot,
     });
     let subscription: ReturnType<DashboardClient["subscribeDay"]> | undefined;
+    const failures: unknown[] = [];
     try {
       assert.notEqual(runtime.port, 0);
       assert.notEqual(runtime.port, rebuildRuntimeIsolation.backendPort);
@@ -1600,20 +1601,44 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       await liveWithDay;
       assert.equal(states[0]?.state, "connecting");
       reportRealPortPhase("request", "complete");
-    } finally {
-      reportRealPortPhase("teardown", "begin");
+    } catch (error: unknown) {
+      failures.push(error);
+    }
+
+    reportRealPortPhase("teardown", "begin");
+    try {
       subscription?.close();
+    } catch (error: unknown) {
+      failures.push(error);
+    }
+    try {
       await runtime.stop();
+    } catch (error: unknown) {
+      failures.push(error);
     }
 
     const releasedPortProbe = createServer();
     try {
       releasedPortProbe.listen(runtime.port, "127.0.0.1");
       await once(releasedPortProbe, "listening");
+    } catch (error: unknown) {
+      failures.push(error);
     } finally {
-      releasedPortProbe.close();
-      await once(releasedPortProbe, "close");
+      if (releasedPortProbe.listening) {
+        try {
+          releasedPortProbe.close();
+          await once(releasedPortProbe, "close");
+        } catch (error: unknown) {
+          failures.push(error);
+        }
+      }
     }
-    reportRealPortPhase("teardown", "complete");
+    if (failures.length === 0) reportRealPortPhase("teardown", "complete");
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "real-port lifecycle observed multiple failures", {
+        cause: failures[0],
+      });
+    }
   }, 20_000);
 });
