@@ -219,12 +219,30 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     );
   });
 
+  it("refuses a same-count sorted path substitution even when its hash is recomputed", () => {
+    const substituted = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as unknown as Record<string, unknown>;
+    const snapshot = snapshotAt(substituted, ["runtime", "browserSystemFiles"]);
+    snapshot.text = String(snapshot.text).replace(
+      "src/systems/CLAUDE.md\n",
+      "src/systems/AAAA.md\n",
+    );
+    snapshot.contentAddress = sha256ContentAddress(String(snapshot.text));
+
+    assert.throws(
+      () => parseFrozenLegacyArchitectureProvenance(substituted),
+      /frozen legacy runtime\.browserSystemFiles snapshot anchor mismatch for contentAddress/i,
+    );
+  });
+
   it("refuses malformed, unordered, or duplicate generated path records even with a matching content address", () => {
     const malformed = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as unknown as Record<string, unknown>;
     const malformedSnapshot = snapshotAt(malformed, ["runtime", "browserSystemFiles"]);
     malformedSnapshot.text = "src/systems/crm/selectors.ts\n\n";
     malformedSnapshot.contentAddress = sha256ContentAddress(String(malformedSnapshot.text));
-    assert.throws(() => parseFrozenLegacyArchitectureProvenance(malformed), /malformed path entry/i);
+    assert.throws(
+      () => frozenLegacyPaths(malformedSnapshot as Parameters<typeof frozenLegacyPaths>[0]),
+      /malformed path entry/i,
+    );
 
     const unordered = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as unknown as Record<string, unknown>;
     const unorderedSnapshot = snapshotAt(unordered, ["runtime", "browserSystemFiles"]);
@@ -232,7 +250,10 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     [unorderedPaths[0], unorderedPaths[1]] = [unorderedPaths[1] ?? "", unorderedPaths[0] ?? ""];
     unorderedSnapshot.text = `${unorderedPaths.join("\n")}\n`;
     unorderedSnapshot.contentAddress = sha256ContentAddress(String(unorderedSnapshot.text));
-    assert.throws(() => parseFrozenLegacyArchitectureProvenance(unordered), /must be sorted/i);
+    assert.throws(
+      () => frozenLegacyPaths(unorderedSnapshot as Parameters<typeof frozenLegacyPaths>[0]),
+      /must be sorted/i,
+    );
 
     const duplicate = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as unknown as Record<string, unknown>;
     const duplicateSnapshot = snapshotAt(duplicate, ["runtime", "browserSystemFiles"]);
@@ -240,13 +261,19 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     duplicatePaths.splice(1, 0, duplicatePaths[0] ?? "");
     duplicateSnapshot.text = `${duplicatePaths.join("\n")}\n`;
     duplicateSnapshot.contentAddress = sha256ContentAddress(String(duplicateSnapshot.text));
-    assert.throws(() => parseFrozenLegacyArchitectureProvenance(duplicate), /must not contain duplicate paths/i);
+    assert.throws(
+      () => frozenLegacyPaths(duplicateSnapshot as Parameters<typeof frozenLegacyPaths>[0]),
+      /must not contain duplicate paths/i,
+    );
 
     const missingNewline = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as unknown as Record<string, unknown>;
     const missingNewlineSnapshot = snapshotAt(missingNewline, ["runtime", "browserSystemFiles"]);
     missingNewlineSnapshot.text = String(missingNewlineSnapshot.text).trimEnd();
     missingNewlineSnapshot.contentAddress = sha256ContentAddress(String(missingNewlineSnapshot.text));
-    assert.throws(() => parseFrozenLegacyArchitectureProvenance(missingNewline), /must end with one trailing newline/i);
+    assert.throws(
+      () => frozenLegacyPaths(missingNewlineSnapshot as Parameters<typeof frozenLegacyPaths>[0]),
+      /must end with one trailing newline/i,
+    );
   });
 
   it("does not treat candidate proposals as classified semantic ids", () => {
