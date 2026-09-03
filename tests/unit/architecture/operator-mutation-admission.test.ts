@@ -1,0 +1,124 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, it } from "vitest";
+import { REPO_ROOT } from "./helpers/guard-files.js";
+
+/**
+ * Guard (ref frontend-backend-integration §3.4, D75): every browser-reachable
+ * mutating route the BFF registers is admitted by a loopback Host/Origin door
+ * BEFORE its handler runs. A hostile page can reach 127.0.0.1 with a simple
+ * no-CORS POST; the `app.use(<path>, <guard>)` line that precedes the route is
+ * the whole defence, so a new `app.post(...)` without a row in the table below
+ * is a red gate rather than a quiet exposure.
+ *
+ * The table is closed on purpose: the body policy is part of the admission
+ * (a JSON envelope door refuses `text/plain`; an opaque door owns its own
+ * media contract), and the one inline door (preflight rerun) is named as such
+ * so nobody mistakes "no app.use line" for "unguarded".
+ */
+const ROUTES_SOURCE = "src/server/dashboard/routes/api.ts";
+
+type Admission =
+  | { readonly guard: "operatorMutationIngressGuard" | "operatorOpaqueIngressGuard" }
+  | { readonly inline: string };
+
+const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
+  "/api/v1/preflight/rerun": { inline: "inspectLoopbackOrigin(c.req.header(\"origin\"))" },
+  "/api/v1/exports/xlsx": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/explorer/validate": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/runs/:runId/advisory": { guard: "operatorOpaqueIngressGuard" },
+  "/api/v1/start-plans": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/intake/files": { guard: "operatorOpaqueIngressGuard" },
+  "/api/v1/commands": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/commands/bulk": { guard: "operatorMutationIngressGuard" },
+});
+
+const MUTATION_ROUTE = /app\.(post|put|patch|delete)\(\s*"([^"]+)"/g;
+const USE_LINE = /app\.use\(\s*"([^"]+)"\s*,\s*(\w+)\s*\)/g;
+
+interface Audit {
+  readonly mutations: readonly string[];
+  readonly violations: readonly string[];
+}
+
+export function auditOperatorMutationAdmission(source: string, table: Readonly<Record<string, Admission>>): Audit {
+  const mutations: string[] = [];
+  const violations: string[] = [];
+  const uses = new Map<string, { guard: string; index: number }>();
+  for (const match of source.matchAll(USE_LINE)) {
+    const [, path, guard] = match;
+    if (path === undefined || guard === undefined || match.index === undefined) continue;
+    uses.set(path, { guard, index: match.index });
+  }
+  for (const match of source.matchAll(MUTATION_ROUTE)) {
+    const [, method, path] = match;
+    if (method === undefined || path === undefined || match.index === undefined) continue;
+    mutations.push(path);
+    const admission = table[path];
+    if (admission === undefined) {
+      violations.push(`${method.toUpperCase()} ${path} is browser-reachable but has no admission row`);
+      continue;
+    }
+    if ("inline" in admission) {
+      const handlerStart = match.index;
+      const nextRoute = source.slice(handlerStart + 1).search(/app\.(get|post|put|patch|delete|use)\(/);
+      const handler = source.slice(handlerStart, nextRoute === -1 ? undefined : handlerStart + 1 + nextRoute);
+      if (!handler.includes(admission.inline)) {
+        violations.push(`${method.toUpperCase()} ${path} declares an inline door but its handler does not contain ${admission.inline}`);
+      }
+      continue;
+    }
+    const use = uses.get(path);
+    if (use === undefined) {
+      violations.push(`${method.toUpperCase()} ${path} has no app.use("${path}", ${admission.guard}) line`);
+    } else if (use.guard !== admission.guard) {
+      violations.push(`${method.toUpperCase()} ${path} is guarded by ${use.guard}, the table says ${admission.guard}`);
+    } else if (use.index > match.index) {
+      violations.push(`${method.toUpperCase()} ${path} registers its guard AFTER the route; Hono runs middleware in registration order`);
+    }
+  }
+  for (const path of Object.keys(table)) {
+    if (!mutations.includes(path)) violations.push(`admission row ${path} names a route the source no longer registers`);
+  }
+  return Object.freeze({ mutations: Object.freeze(mutations), violations: Object.freeze(violations) });
+}
+
+describe("operator mutation admission (ref frontend-backend-integration §3.4, D75)", () => {
+  const source = readFileSync(join(REPO_ROOT, ROUTES_SOURCE), "utf8");
+
+  it("admits every browser-reachable mutating route through a loopback Host/Origin door registered before it", () => {
+    const audit = auditOperatorMutationAdmission(source, ADMITTED_MUTATIONS);
+    assert.deepEqual(audit.violations, []);
+    assert.deepEqual([...audit.mutations].sort(), Object.keys(ADMITTED_MUTATIONS).sort());
+  });
+
+  it("catches an unguarded route, a late guard, a wrong guard, a missing inline door and a stale row", () => {
+    const fixture = [
+      'app.use("/api/v1/guarded", operatorMutationIngressGuard);',
+      'app.post("/api/v1/guarded", handler);',
+      'app.post("/api/v1/naked", handler);',
+      'app.post("/api/v1/late", handler);',
+      'app.use("/api/v1/late", operatorMutationIngressGuard);',
+      'app.use("/api/v1/wrong", operatorOpaqueIngressGuard);',
+      'app.post("/api/v1/wrong", handler);',
+      'app.post("/api/v1/inline", async (c) => { return c.json({}); });',
+      'app.get("/api/v1/read", handler);',
+    ].join("\n");
+    const audit = auditOperatorMutationAdmission(fixture, {
+      "/api/v1/guarded": { guard: "operatorMutationIngressGuard" },
+      "/api/v1/late": { guard: "operatorMutationIngressGuard" },
+      "/api/v1/wrong": { guard: "operatorMutationIngressGuard" },
+      "/api/v1/inline": { inline: "inspectLoopbackOrigin(" },
+      "/api/v1/gone": { guard: "operatorOpaqueIngressGuard" },
+    });
+    assert.deepEqual(audit.mutations, ["/api/v1/guarded", "/api/v1/naked", "/api/v1/late", "/api/v1/wrong", "/api/v1/inline"]);
+    assert.deepEqual(audit.violations, [
+      "POST /api/v1/naked is browser-reachable but has no admission row",
+      "POST /api/v1/late registers its guard AFTER the route; Hono runs middleware in registration order",
+      "POST /api/v1/wrong is guarded by operatorOpaqueIngressGuard, the table says operatorMutationIngressGuard",
+      "POST /api/v1/inline declares an inline door but its handler does not contain inspectLoopbackOrigin(",
+      "admission row /api/v1/gone names a route the source no longer registers",
+    ]);
+  });
+});

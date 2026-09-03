@@ -122,6 +122,14 @@
       "replacementRequired": true
     },
     {
+      "name": "operator-mutation-admission",
+      "file": "tests/unit/architecture/operator-mutation-admission.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/frontend-backend-integration.md",
+      "invariant": "Ref frontend-backend-integration \u00a73.4 (D75, 2026-09-02): every browser-reachable mutating route the BFF registers in src/server/dashboard/routes/api.ts is admitted by a loopback Host/Origin door BEFORE its handler runs, per a closed admission table \u2014 JSON-envelope doors (commands, bulk, XLSX export, start plans, Explorer validation) also require application/json; opaque doors (intake bytes, the body-less advisory) own their media contract; the one inline door (preflight rerun) is named as such. An app.post without a row, a guard registered after its route, a wrong guard, a missing inline door, or a stale row is a violation; the arm carries a negative control fixture exhibiting all five.",
+      "replacementRequired": true
+    },
+    {
       "name": "parity-reference-authority",
       "file": "tests/unit/architecture/parity-reference-authority.test.ts",
       "status": "active",
