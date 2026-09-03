@@ -117,15 +117,20 @@ stop. Commit `1e975249` now attempts and retains every body/cleanup/rebind failu
 multiple failures without skipping later cleanup. Focused, family, type, lint, and architecture gates
 passed after that fix.
 
+Final independent code review pinned `39598d2f...c9eecaaa`; the later `dec131a8` commit changes only
+the two exact-title evidence rows that the Tests reviewer requested. Docs reviewed those corrections,
+and Performance reviewed through `dec131a8`. The final report-only provenance-heading correction is
+the direct resolution of the sole closing Standards finding.
+
 | Axis | Result |
 | --- | --- |
-| Standards | Two medium lifecycle/cleanup findings fixed; final re-review follows the closing evidence commit |
-| Spec | Three medium evidence-completion findings resolved in the final ledgers/report; final re-review follows the closing evidence commit |
-| Correctness | Post-fix Count 0 · Worst none |
-| Silent failures | One later medium cleanup-short-circuit finding fixed; final re-review follows the closing evidence commit |
-| Performance | One medium cleanup-boundary finding fixed; post-fix Count 0 · Worst none |
-| Tests | Same medium cleanup-boundary finding fixed; post-fix Count 0 · Worst none |
-| Docs | One high stale-selector and two medium wording/evidence findings resolved; final re-review follows the closing evidence commit |
+| Standards | One closing medium provenance-heading finding fixed after earlier lifecycle findings; final Count 0 · Worst none |
+| Spec | Three medium evidence-completion findings fixed; final Count 0 · Worst none |
+| Correctness | Final Count 0 · Worst none |
+| Silent failures | One medium cleanup-short-circuit finding fixed; final Count 0 · Worst none |
+| Performance | One medium cleanup-boundary finding fixed; final Count 0 · Worst none |
+| Tests | Cleanup and two exact-title evidence findings fixed; final Count 0 · Worst none |
+| Docs | One high stale-selector and two medium wording/evidence findings fixed; final Count 0 · Worst none |
 | Security | Count 0 · Worst none — supervisor review found no auth, credential, permission, untrusted-input, dependency, command-execution, or production trust-boundary change |
 | Simplify | Skipped — no user request; the one-file test delta uses the existing two-override seam and is already minimal |
 
@@ -146,11 +151,13 @@ Implementation commits:
 - `4969735a` — `test(server): label real-port lifecycle phases`
 - `1e975249` — `test(server): aggregate real-port teardown failures`
 
-Evidence commit before implementation:
+Evidence commits, in branch order with the implementation list above:
 
 - `75d16dd2` — `docs(test): record R3a pre-edit ownership ledger`
 - `6f7c02a8` — `docs(test): close R3a server runtime evidence`
 - `d2189994` — `docs(test): strengthen R3a negative and residue proof`
+- `c9eecaaa` — `docs(test): record aggregate teardown verification`
+- `dec131a8` — `docs(test): preserve exact R3a case titles`
 
 The subsequent report-closing commit contains the completed evidence ledgers and this report. The
 final response supplies its exact hash.
