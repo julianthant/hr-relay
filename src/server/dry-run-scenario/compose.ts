@@ -15,6 +15,7 @@ import {
 } from "../../core/dry-run-scenario-runner.js";
 import {
   readTestTargetRegistry,
+  resolvePersonLookupTestTarget,
   resolveSeparationsKualiFinalizationTestTarget,
   resolveSeparationsTestTarget,
   type TestTargetRegistry,
@@ -47,6 +48,8 @@ export function resolveDryRunScenarioTarget(
       return resolveSeparationsKualiFinalizationTestTarget(registry, subjectLabel);
     case "separations":
       return resolveSeparationsTestTarget(registry, subjectLabel, env);
+    case "person-lookup":
+      return resolvePersonLookupTestTarget(registry, subjectLabel, env);
     default:
       throw new Error(`dry-run target resolution does not support workflow ${manifest.workflow}`);
   }

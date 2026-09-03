@@ -4,10 +4,16 @@ import { deepFreeze } from "../domain/immutability.js";
 import {
   optionalTestTargetSecret,
   TestTargetDocumentNumberSecretReferenceSchema,
+  TestTargetEidSecretReferenceSchema,
   type TestTargetSecretReference,
 } from "../domain/secrets.js";
 import { parseInputRunText, toRawSubmission } from "../domain/workflow/ingress.js";
 import { compileWorkflow } from "../base/workflow-definition.js";
+import {
+  PersonLookupCanonicalInput,
+  PersonLookupInput,
+  personLookupWorkflow,
+} from "../workflows/person-lookup/workflow.js";
 import {
   SeparationsCanonicalInput,
   SeparationsInput,
@@ -19,6 +25,7 @@ export const TEST_TARGET_REGISTRY_PATH = "config/test-subjects.json";
 
 export const FINALIZATION_WORKFLOW = "separations-kuali-finalization";
 export const SEPARATIONS_WORKFLOW = "separations";
+export const PERSON_LOOKUP_WORKFLOW = "person-lookup";
 
 /**
  * What a live finalization subject can truthfully BE. The scenario matrix's
@@ -167,6 +174,24 @@ export const SeparationsChainArmSchema = z.strictObject({
 });
 
 /**
+ * D318 — what a person-lookup live-read subject is for: one Search by EID of
+ * a current, access-visible person. The EID is a CLOSED reference (the
+ * registered secret name and its exact env key), never a committed value;
+ * `resolvePersonLookupTestTarget` reads it from ignored `.env`.
+ */
+export const PersonLookupSubjectKindSchema = z.enum(["search-by-eid"]);
+
+export const PersonLookupSubjectEidSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("configured"), reference: TestTargetEidSecretReferenceSchema }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+
+export const PersonLookupArmSchema = z.strictObject({
+  kind: PersonLookupSubjectKindSchema,
+  publicInput: z.strictObject({ subject: PersonLookupSubjectEidSchema }),
+});
+
+/**
  * ONE subject, one arm per workflow that can address it (D284). The subject is
  * the document; an arm is what a given workflow needs of it. Both arms are
  * optional because a subject may genuinely be addressable by only one workflow
@@ -176,6 +201,7 @@ export const SeparationsChainArmSchema = z.strictObject({
 export const TestTargetWorkflowArmsSchema = z.strictObject({
   [SEPARATIONS_WORKFLOW]: SeparationsChainArmSchema.optional(),
   [FINALIZATION_WORKFLOW]: SeparationsKualiFinalizationArmSchema.optional(),
+  [PERSON_LOOKUP_WORKFLOW]: PersonLookupArmSchema.optional(),
 });
 
 /**
@@ -230,6 +256,18 @@ export const SeparationsTestTargetResolutionSchema = z.discriminatedUnion("state
 export type SeparationsTestTargetResolution =
   z.output<typeof SeparationsTestTargetResolutionSchema>;
 
+export const PersonLookupReadyTestTargetSchema = z.strictObject({
+  state: z.literal("ready"),
+  label: z.string().min(1),
+  canonicalInput: PersonLookupCanonicalInput,
+});
+export const PersonLookupTestTargetResolutionSchema = z.discriminatedUnion("state", [
+  TestTargetBlockedResolutionSchema,
+  PersonLookupReadyTestTargetSchema,
+]);
+export type PersonLookupTestTargetResolution =
+  z.output<typeof PersonLookupTestTargetResolutionSchema>;
+
 export class TestTargetRegistryDefectError extends Error {
   constructor(message: string) {
     super(message);
@@ -258,7 +296,7 @@ function declaredWorkflows(target: TestTargetRegistryEntry): readonly string[] {
 }
 
 /** Every workflow id a resolver in this module models, in one fixed order. */
-const MODELLED_WORKFLOWS = [SEPARATIONS_WORKFLOW, FINALIZATION_WORKFLOW] as const;
+const MODELLED_WORKFLOWS = [SEPARATIONS_WORKFLOW, FINALIZATION_WORKFLOW, PERSON_LOOKUP_WORKFLOW] as const;
 
 type ModelledWorkflow = (typeof MODELLED_WORKFLOWS)[number];
 
@@ -426,6 +464,23 @@ function resolveConfiguredDocumentNumber(
   }
 }
 
+/** The person-lookup twin: the EID reference, judged by the person-lookup ingress's own `EidSchema`. */
+function resolveConfiguredEid(
+  target: TestTargetRegistryEntry,
+  reference: TestTargetSecretReference,
+  env?: NodeJS.ProcessEnv,
+): string | undefined {
+  try {
+    return optionalTestTargetSecret(reference.name, env);
+  } catch (error) {
+    registryDefect(
+      target,
+      `employee-id reference ${reference.name} (${reference.env}) is invalid`,
+      secretFailureDetail(error),
+    );
+  }
+}
+
 /**
  * Resolve the first T1b workflow's label. Since D300 this resolver can only
  * answer `blocked`: the standalone finalization harness holds no person facts
@@ -537,6 +592,73 @@ export function resolveSeparationsTestTarget(
     );
   }
   return SeparationsReadyTestTargetSchema.parse({
+    state: "ready",
+    label,
+    canonicalInput: canonical.data,
+  });
+}
+
+/**
+ * Resolve a person-lookup live-read label the way the OPERATOR would start
+ * the run (D318). The ingress is the person-lookup start box: the configured
+ * EID is fed through the descriptor's OWN `inputRun` parser — the same code
+ * path the dashboard uses — and parsed through the descriptor's own ingress
+ * and canonical schemas, so `keepNonHdh` and `includeCrmDates` come from the
+ * parser's declared constants, never from this resolver.
+ *
+ * The EID itself comes from ignored local configuration through the arm's
+ * closed reference: unset is `blocked` by key; malformed is a defect by key.
+ * No person value is committed, and none is echoed in a refusal.
+ */
+export function resolvePersonLookupTestTarget(
+  registry: TestTargetRegistry,
+  label: string,
+  env?: NodeJS.ProcessEnv,
+): PersonLookupTestTargetResolution {
+  const target = registry.targets.find((candidate) => candidate.label === label);
+  if (target === undefined) return blocked(label, `blocked: needs ${label}`);
+  const arm = target.workflows[PERSON_LOOKUP_WORKFLOW];
+  if (arm === undefined) {
+    throw new TestTargetRegistryDefectError(missingArmMessage(target, PERSON_LOOKUP_WORKFLOW));
+  }
+  if (target.availability.state !== "available") return blocked(label, unavailableReason(target));
+  if (arm.publicInput.subject.state === "absent") {
+    registryDefect(target, `no person exists to search: ${arm.publicInput.subject.reason}`);
+  }
+  const { reference } = arm.publicInput.subject;
+  const emplId = resolveConfiguredEid(target, reference, env);
+  if (emplId === undefined) {
+    return blocked(
+      label,
+      `blocked: needs ${label}; its UCPath employee id is not configured — set ${reference.env} in the ignored local environment (D318)`,
+    );
+  }
+  const surface = compileWorkflow(personLookupWorkflow).descriptor.surfaces?.inputRun;
+  if (surface === undefined) {
+    registryDefect(target, "descriptor person-lookup declares no inputRun start box to resolve through");
+  }
+  const entries = parseInputRunText(surface.parser, emplId);
+  const entry = entries[0];
+  if (entries.length !== 1 || entry === undefined) {
+    registryDefect(target, `employee id parsed into ${String(entries.length)} start-box entries; exactly one is required`);
+  }
+  const submission = PersonLookupInput.safeParse(toRawSubmission(entry));
+  if (!submission.success) {
+    registryDefect(
+      target,
+      "configured employee id does not form a valid person-lookup submission",
+      z.prettifyError(submission.error),
+    );
+  }
+  const canonical = PersonLookupCanonicalInput.safeParse(submission.data);
+  if (!canonical.success) {
+    registryDefect(
+      target,
+      "configured employee id does not form the complete canonical input",
+      z.prettifyError(canonical.error),
+    );
+  }
+  return PersonLookupReadyTestTargetSchema.parse({
     state: "ready",
     label,
     canonicalInput: canonical.data,

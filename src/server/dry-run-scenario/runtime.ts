@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../base/workflow.js";
+import { descriptorRuntimeNodes, workflowDryRunSupport, workflowTerminalResultExecution } from "../../base/workflow.js";
 import type { WorkerBrowserSessionFactory } from "../../base/session.js";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import { DESCRIPTORS } from "../../control/workflow-registry.js";
@@ -23,7 +23,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../domain/ids.js";
 import { RunDryRunPreviewResultSchema } from "../../domain/run/result.js";
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../domain/separations/identity-approval.js";
-import type { DryRunScenarioCase } from "../../domain/trust/dry-run-scenario.js";
+import type { DryRunScenarioAnyCase } from "../../domain/trust/dry-run-scenario.js";
 import { SpanEventWireSchema } from "../../events/types.js";
 import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
 import { readEventStreamLines } from "../../infra/events/jsonl-streams.js";
@@ -129,10 +129,18 @@ function reachedNodes(
     }
     taskIdBySpanName.set(spanName, String(node.id));
   }
+  const events = parseRunEvents(stateRoot, workflow, runId);
+  // A task the executor SKIPPED on its declared condition (or an omitted step)
+  // still owns a span pair — started, then ended `skipped` — so the timeline
+  // can say why it did not run. Reached means executed: those spans are held
+  // out, and a manifest lists such a node under `nodesExcluded`.
+  const skippedSpanPaths = new Set(events
+    .filter((event) => event.t === "span.ended" && event.kind === "task" && event.outcome === "skipped")
+    .map((event) => event.spanPath));
   const ordered: string[] = [];
-  for (const event of parseRunEvents(stateRoot, workflow, runId)) {
+  for (const event of events) {
     const node = event.t === "span.started" && event.kind === "task"
-      ? taskIdBySpanName.get(event.name)
+      ? (skippedSpanPaths.has(event.spanPath) ? undefined : taskIdBySpanName.get(event.name))
       : event.t === "gate.opened"
         ? event.gate
         : event.t === "transaction.previewed"
@@ -163,7 +171,7 @@ export function createProductionDryRunScenarioRuntime(
     clock: input.clock,
     ...(input.processId === undefined ? {} : { pid: input.processId }),
   });
-  let scenarioCase: DryRunScenarioCase | undefined;
+  let scenarioCase: DryRunScenarioAnyCase | undefined;
   let configIdentity: Readonly<{ fingerprint: string; snapshotId: string }> | undefined;
 
   const open = (): AuthorityDatabase => AuthorityDatabase.open(
@@ -200,17 +208,47 @@ export function createProductionDryRunScenarioRuntime(
       if (descriptor === undefined) {
         throw new Error(`dry-run workflow ${request.manifest.workflow} is not registered`);
       }
+      /*
+       * D318 — the manifest's explicit arm must agree with the COMPILED graph,
+       * before any browser or effect. A transaction-bearing graph previews its
+       * first transaction under `dryRun: true` (D209/D210); a transaction-free
+       * graph runs the ordinary path under `dryRun: false` and proves zero
+       * write-authority deltas. Either mismatch refuses by name — a no-op
+       * transaction added only to enter the preview arm is false graph
+       * authority, and `dryRun: true` on a transaction-free graph would misstate
+       * D209.
+       */
       const support = workflowDryRunSupport(descriptor);
-      if (support.state !== "supported") {
-        throw new Error(
-          `dry-run workflow ${request.manifest.workflow} is unsupported: ${support.reason}`,
-        );
-      }
-      if (support.stopsAt !== request.manifest.transactionNode) {
-        throw new Error(
-          `dry-run manifest ${request.manifest.scenarioId} names transaction ${request.manifest.transactionNode}, `
-          + `but descriptor ${request.manifest.workflow} stops at ${support.stopsAt}`,
-        );
+      const transactionNodes = descriptorRuntimeNodes(descriptor)
+        .filter((node) => node.kind === "transaction")
+        .map((node) => String(node.id));
+      let dryRun: boolean;
+      if (request.manifest.arm === "live-read") {
+        if (transactionNodes.length > 0) {
+          throw new Error(
+            `live-read manifest ${request.manifest.scenarioId} names workflow ${request.manifest.workflow}, whose compiled `
+            + `graph carries transaction node(s) ${transactionNodes.join(", ")}; a transaction-bearing graph must declare `
+            + "the dry-run-preview arm (D318)",
+          );
+        }
+        dryRun = false;
+      } else {
+        if (support.state !== "supported") {
+          throw new Error(
+            support.reason === "no-transaction-node"
+              ? `dry-run-preview manifest ${request.manifest.scenarioId} names workflow ${request.manifest.workflow}, whose `
+                + "compiled graph has no transaction node; a transaction-free graph must declare the live-read arm (D318) "
+                + "— D209 still refuses dryRun for it (no-transaction-node)"
+              : `dry-run workflow ${request.manifest.workflow} is unsupported: ${support.reason}`,
+          );
+        }
+        if (support.stopsAt !== request.manifest.transactionNode) {
+          throw new Error(
+            `dry-run manifest ${request.manifest.scenarioId} names transaction ${request.manifest.transactionNode}, `
+            + `but descriptor ${request.manifest.workflow} stops at ${support.stopsAt}`,
+          );
+        }
+        dryRun = true;
       }
       const database = open();
       let admitted: Readonly<{
@@ -250,7 +288,7 @@ export function createProductionDryRunScenarioRuntime(
           const plan = plans.plan({
             workflowId: request.manifest.workflow,
             submissions: [request.canonicalInput],
-            dryRun: true,
+            dryRun,
             priority: "interactive",
           });
           if (plan.refused.length !== 0 || plan.planned.length !== 1) {
@@ -477,7 +515,24 @@ export function createProductionDryRunScenarioRuntime(
         }
         const result = database.authority.runResults.get(runId);
         if (result === undefined) throw new Error(`dry-run ${runId} is done without a run result`);
-        const expectedHash = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
+        const previewHash = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
+        if (!("preview" in expected)) {
+          // D318 — the live-read arm settled the ORDINARY workflow result: the
+          // row must be bound to the descriptor's own declared result schema,
+          // and never to the preview schema.
+          const declaredHash = workflowTerminalResultExecution(descriptor).schemaHash;
+          if (result.resultSchemaHash !== declaredHash || result.result.schemaHash !== declaredHash) {
+            throw new Error(`live-read ${runId} result is not bound to ${run.envelope.workflow}'s declared result schema`);
+          }
+          if (result.resultSchemaHash === previewHash) {
+            throw new Error(`live-read ${runId} result is bound to the preview schema; a live read previews nothing`);
+          }
+          return {
+            ...common,
+            terminal: { lifecycle: "done-live-read", resultSchema: "workflow-result", kind: "live-read" },
+          };
+        }
+        const expectedHash = previewHash;
         if (result.resultSchemaHash !== expectedHash || result.result.schemaHash !== expectedHash) {
           throw new Error(`dry-run ${runId} result is not bound to RunDryRunPreviewResultSchema`);
         }

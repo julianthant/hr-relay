@@ -25,6 +25,9 @@ const DRY_RUN_SCENARIO_MANIFEST_LOADERS: ReadonlyMap<string, () => Promise<unkno
   ["separations-kuali-finalization", async () => (await import(
     "../../../tests/scenario/workflows/separations-kuali-finalization/dry-run.scenario.js"
   )).SEPARATIONS_KUALI_FINALIZATION_DRY_RUN],
+  ["person-lookup", async () => (await import(
+    "../../../tests/scenario/workflows/person-lookup/dry-run.scenario.js"
+  )).PERSON_LOOKUP_LIVE_READ],
 ]);
 
 /** Every workflow this build can load a T1b manifest for, sorted. */

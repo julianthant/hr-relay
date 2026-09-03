@@ -13,7 +13,7 @@ import { parseEnv } from "node:util";
 import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Config } from "./config/schema.js";
-import { FingerprintSchema, type Fingerprint } from "./ids.js";
+import { EidSchema, FingerprintSchema, type Fingerprint } from "./ids.js";
 import { deepFreeze } from "./immutability.js";
 import { KualiDocumentNumberSchema } from "./ui/kuali-document-identity.js";
 import {
@@ -26,6 +26,7 @@ import {
   SecretFileNameSchema,
   SecretNameSchema,
   TestTargetDocumentNumberSecretNameSchema,
+  TestTargetEidSecretNameSchema,
 } from "./secret-names.js";
 import type {
   SecretFamilyName,
@@ -39,6 +40,7 @@ export {
   SecretFileNameSchema,
   SecretNameSchema,
   TestTargetDocumentNumberSecretNameSchema,
+  TestTargetEidSecretNameSchema,
   TestTargetSecretNameSchema,
 } from "./secret-names.js";
 export type {
@@ -47,6 +49,7 @@ export type {
   SecretFileName,
   SecretName,
   TestTargetDocumentNumberSecretName,
+  TestTargetEidSecretName,
   TestTargetSecretName,
 } from "./secret-names.js";
 const SecretSourceSchema = z.literal("environment");
@@ -87,7 +90,21 @@ export const TestTargetDocumentNumberSecretReferenceSchema = z.strictObject({
   name: TestTargetDocumentNumberSecretNameSchema,
   env: z.literal("HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER"),
 });
-export const TestTargetSecretReferenceSchema = TestTargetDocumentNumberSecretReferenceSchema;
+/**
+ * D318 — the person-lookup live-read canary: ONE UCPath employee id, bound to
+ * its exact environment key. Like the document number it is a closed reference
+ * in config and a value only in ignored `.env`; it is judged by the same
+ * `EidSchema` the person-lookup start box applies, and its refusals name the
+ * reference and key, never the value.
+ */
+export const TestTargetEidSecretReferenceSchema = z.strictObject({
+  name: TestTargetEidSecretNameSchema,
+  env: z.literal("HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID"),
+});
+export const TestTargetSecretReferenceSchema = z.union([
+  TestTargetDocumentNumberSecretReferenceSchema,
+  TestTargetEidSecretReferenceSchema,
+]);
 export type TestTargetSecretReference = z.output<typeof TestTargetSecretReferenceSchema>;
 
 export const ActivityPersonPseudonymSecretReferenceSchema = z.strictObject({
@@ -112,10 +129,16 @@ export const ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE = deepFreeze(
   }),
 );
 
-export const TestTargetSecretSpecSchema = TestTargetDocumentNumberSecretReferenceSchema.extend({
-  valueKind: z.literal("kuali-document-number"),
-  classification: z.literal("direct-identifier"),
-});
+export const TestTargetSecretSpecSchema = z.discriminatedUnion("valueKind", [
+  TestTargetDocumentNumberSecretReferenceSchema.extend({
+    valueKind: z.literal("kuali-document-number"),
+    classification: z.literal("direct-identifier"),
+  }),
+  TestTargetEidSecretReferenceSchema.extend({
+    valueKind: z.literal("ucpath-eid"),
+    classification: z.literal("direct-identifier"),
+  }),
+]);
 
 export const SECRET_SPECS = deepFreeze(SecretSpecSchema.array().parse([
   { name: "ucpathUserId", source: "environment", env: "UCPATH_USER_ID", requiredAtBoot: false, classification: "direct-identifier" },
@@ -138,6 +161,12 @@ export const TEST_TARGET_SECRET_SPECS = deepFreeze(TestTargetSecretSpecSchema.ar
     name: "separationsKualiFinalizationCanaryDocumentNumber",
     env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
     valueKind: "kuali-document-number",
+    classification: "direct-identifier",
+  },
+  {
+    name: "personLookupCanaryEid",
+    env: "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
+    valueKind: "ucpath-eid",
     classification: "direct-identifier",
   },
 ]));
@@ -429,12 +458,13 @@ function registeredTestTargetSecretSpec(name: TestTargetSecretName) {
 }
 
 /**
- * Resolve the registered canary document number (D300). The environment key is
+ * Resolve a registered test-target value (D300/D318). The environment key is
  * selected by the closed name schema; callers can never supply an arbitrary
- * key. The value is judged by the SAME `KualiDocumentNumberSchema` the
- * `separations` ingress applies to a typed start-box entry, so what this
- * returns is exactly what an operator could have typed — never a person value.
- * Refusals name only the public reference and key, never the value.
+ * key. The value is judged by the SAME schema the owning workflow's ingress
+ * applies to a typed start-box entry — `KualiDocumentNumberSchema` for the
+ * separations canary, `EidSchema` for the person-lookup canary — so what this
+ * returns is exactly what an operator could have typed. Refusals name only
+ * the public reference, its value kind and its key, never the value.
  */
 export function optionalTestTargetSecret(
   name: TestTargetSecretName,
@@ -443,10 +473,11 @@ export function optionalTestTargetSecret(
   const spec = registeredTestTargetSecretSpec(name);
   const testTargetSecretValue = env[spec.env];
   if (testTargetSecretValue === undefined || testTargetSecretValue.trim() === "") return undefined;
-  const parsed = KualiDocumentNumberSchema.safeParse(testTargetSecretValue.trim());
+  const parsed = (spec.valueKind === "kuali-document-number" ? KualiDocumentNumberSchema : EidSchema)
+    .safeParse(testTargetSecretValue.trim());
   if (!parsed.success) {
     throw new SecretSourceError(
-      `test-target Kuali document number ${name} is invalid in registered environment source ${spec.env}`,
+      `test-target ${spec.valueKind} ${name} is invalid in registered environment source ${spec.env}`,
     );
   }
   return parsed.data;

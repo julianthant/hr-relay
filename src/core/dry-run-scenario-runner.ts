@@ -19,7 +19,7 @@ import {
   deriveDryRunScenarioManifestDigest,
   DryRunWriteSafetyCountsSchema,
   parseDryRunScenarioManifest,
-  type DryRunScenarioCase,
+  type DryRunScenarioAnyCase,
   type DryRunScenarioManifest,
   type DryRunWriteSafetyCounts,
 } from "../domain/trust/dry-run-scenario.js";
@@ -82,6 +82,14 @@ const EvidencePreviewSchema = z.discriminatedUnion("outcome", [
   }),
 ]);
 
+/**
+ * D318 — the collected terminal is one of three: a transaction preview
+ * (`dry-run-preview`), an ordinary workflow result reached by the
+ * transaction-free `live-read` arm, or a node-bound failure. The runtime
+ * collects exactly the arm the manifest admitted; the evaluator compares it
+ * against the case's own terminal expectation and never projects one arm's
+ * fields onto the other.
+ */
 const EvidenceTerminalSchema = z.discriminatedUnion("lifecycle", [
   z.strictObject({
     lifecycle: z.literal("done"),
@@ -90,6 +98,11 @@ const EvidenceTerminalSchema = z.discriminatedUnion("lifecycle", [
     externalCommit: z.literal("none"),
     stoppedAtNodeId: z.string().min(1),
     preview: EvidencePreviewSchema,
+  }),
+  z.strictObject({
+    lifecycle: z.literal("done-live-read"),
+    resultSchema: z.literal("workflow-result"),
+    kind: z.literal("live-read"),
   }),
   z.strictObject({
     lifecycle: z.literal("failed"),
@@ -119,13 +132,13 @@ export type DryRunScenarioStarted = z.infer<typeof DryRunScenarioStartedSchema>;
 export interface DryRunScenarioRuntime {
   readonly start: (input: Readonly<{
     manifest: DryRunScenarioManifest;
-    scenarioCase: DryRunScenarioCase;
+    scenarioCase: DryRunScenarioAnyCase;
     canonicalInput: unknown;
   }>) => Promise<DryRunScenarioStarted>;
   readonly drain: (workflow: string) => Promise<void>;
   readonly resolveGate: (input: Readonly<{
     manifest: DryRunScenarioManifest;
-    scenarioCase: DryRunScenarioCase;
+    scenarioCase: DryRunScenarioAnyCase;
     runId: string;
   }>) => Promise<void>;
   readonly collectEvidence: (runId: string) => Promise<unknown>;
@@ -154,8 +167,10 @@ export interface DryRunScenarioCliOutcome {
 function selectScenarioCase(
   manifest: DryRunScenarioManifest,
   subjectLabel: string,
-): DryRunScenarioCase {
-  const matches = manifest.cases.filter((scenarioCase) => scenarioCase.subjectLabel === subjectLabel);
+): DryRunScenarioAnyCase {
+  const matches: readonly DryRunScenarioAnyCase[] = manifest.cases.filter(
+    (scenarioCase) => scenarioCase.subjectLabel === subjectLabel,
+  );
   if (matches.length !== 1) {
     throw new Error(
       `dry-run manifest ${manifest.workflow} has ${String(matches.length)} cases for subject ${subjectLabel}; exactly one is required`,
@@ -190,7 +205,7 @@ function same(left: unknown, right: unknown): boolean {
 }
 
 export function evaluateDryRunScenarioEvidence(
-  scenarioCase: DryRunScenarioCase,
+  scenarioCase: DryRunScenarioAnyCase,
   before: DryRunWriteSafetyCounts,
   inputEvidence: unknown,
 ): readonly AssertionOutcome[] {
@@ -210,11 +225,39 @@ export function evaluateDryRunScenarioEvidence(
     writeAttempts: evidence.writeSafetyAfter.writeAttempts - before.writeAttempts,
     durableOutbox: evidence.writeSafetyAfter.durableOutbox - before.durableOutbox,
   };
+  const failedTerminalMatches = scenarioCase.terminal.lifecycle === "failed"
+    && evidence.terminal.lifecycle === "failed"
+    && evidence.terminal.code === scenarioCase.terminal.code
+    && evidence.terminal.node === scenarioCase.terminal.node
+    && evidence.terminal.fingerprint === scenarioCase.terminal.fingerprint;
+  // D318 — the live-read case has no preview expectation at all; its terminal
+  // is the ordinary workflow result, and its assertion list omits `preview`.
+  if (!("preview" in scenarioCase)) {
+    const terminalMatches = scenarioCase.terminal.lifecycle === "failed"
+      ? failedTerminalMatches
+      : evidence.terminal.lifecycle === "done-live-read"
+        && evidence.terminal.resultSchema === scenarioCase.terminal.resultSchema
+        && evidence.terminal.kind === scenarioCase.terminal.kind;
+    return Object.freeze([
+      assertion("nodes-reached", same(evidence.reachedNodeIds, scenarioCase.nodesReached),
+        "nodes-reached-match", "nodes-reached-mismatch"),
+      assertion("nodes-excluded", scenarioCase.nodesExcluded.every((node) => !evidence.reachedNodeIds.includes(node)),
+        "nodes-excluded-match", "nodes-excluded-reached"),
+      assertion("checkpoints", same(evidence.checkpoints, expectedCheckpoints),
+        "checkpoints-match", "checkpoints-mismatch"),
+      assertion("gate-results", same(evidence.gateResults, expectedGates),
+        "gate-results-match", "gate-results-mismatch"),
+      assertion("write-safety-deltas", same(deltas, scenarioCase.durableDeltas),
+        "write-safety-deltas-zero", "write-safety-deltas-nonzero"),
+      assertion("receipt", evidence.receipt.result === scenarioCase.receipt.result
+        && evidence.receipt.confidence === scenarioCase.receipt.confidence
+        && same(evidence.receipt.verification, scenarioCase.receipt.verification),
+      "receipt-match", "receipt-mismatch"),
+      assertion("terminal", terminalMatches, "terminal-match", "terminal-mismatch"),
+    ]);
+  }
   const terminalMatches = scenarioCase.terminal.lifecycle === "failed"
-    ? evidence.terminal.lifecycle === "failed"
-      && evidence.terminal.code === scenarioCase.terminal.code
-      && evidence.terminal.node === scenarioCase.terminal.node
-      && evidence.terminal.fingerprint === scenarioCase.terminal.fingerprint
+    ? failedTerminalMatches
     : evidence.terminal.lifecycle === "done"
       && evidence.terminal.resultSchema === scenarioCase.terminal.resultSchema
       && evidence.terminal.kind === scenarioCase.terminal.kind
