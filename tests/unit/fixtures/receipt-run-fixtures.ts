@@ -43,18 +43,10 @@ import {
   RunResultRecordSchema,
   deriveTerminalDependencyDigest,
 } from "../../../src/domain/run/result.js";
-import {
-  PersonLookupCanonicalInput,
-  personLookupDescriptor,
-} from "../../../src/workflows/person-lookup/descriptor.js";
-import {
-  SeparationsKualiFinalizationCanonicalInput,
-  separationsKualiFinalizationDescriptor,
-} from "../../../src/workflows/separations/kuali-finalization/descriptor.js";
-import {
-  SeparationsIdentityCheckCanonicalInput,
-  separationsIdentityCheckDescriptor,
-} from "../../../src/workflows/separations/identity-check/descriptor.js";
+import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
+import { SeparationsKualiFinalizationCanonicalInput } from "../../../src/workflows/separations/kuali-finalization/workflow.js";
+import { separationsIdentityCheckDescriptor, separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
+import { SeparationsIdentityCheckCanonicalInput } from "../../../src/workflows/separations/identity-check/workflow.js";
 import { SeparationsVerifyIdentityApproval } from "../../../src/domain/contracts/separations/verify-identity-approval.js";
 import { SeparationsMatchDepartmentOption } from "../../../src/domain/contracts/separations/match-department-option.js";
 import { IdentityApprovalResultSchema } from "../../../src/domain/separations/identity-approval.js";
@@ -68,6 +60,7 @@ import {
   FINALIZATION_SCOPE_OUTPUTS,
   FINALIZATION_VARIABLES,
 } from "./kuali-finalization-fixtures.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 /* ── person-lookup: the live Phase-1 exit run ────────────────────────────── */
 

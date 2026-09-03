@@ -1,7 +1,7 @@
 # storage-queue--graphite-warm--1280x720
 # adapter: fixture
 # fixture: storage-queue
-# descriptorHash: cfeb71e88c7a52f091176c266c375bcdd02b878b332b038ec5fa2931afe22d50
+# descriptorHash: ff8c5fd78912e40100770dae22be908d41bef31f284b28e1520f6b145cb85aa2
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -129,14 +129,14 @@
       - text: EID 10555001
       - button "What is this row? — Run Panel"
       - text: "Failed 9:33 AM #1 pl-090404-0004 6m 0s"
-      - button "Run again"
+      - button "Resume from checkpoints"
       - button "Delete run"
       - text: Right-click or press m for every command on EID 10555001
     - button "EID 10333015 — done with warnings":
       - text: EID 10333015
       - button "What is this row? — Run Panel"
       - text: "3 Done 9:24 AM #1 pl-090808-0008 5m 0s"
-      - button "Run again"
+      - button "Resume from checkpoints"
       - button "Delete run"
       - text: Right-click or press m for every command on EID 10333015
     - button "Separation audit — August — done with warnings":
@@ -184,14 +184,14 @@
       - text: person lookup
       - button "Expand"
       - text: "9:10 AM #1 pl-091010-0070 2m 0s"
-      - button "Run again"
+      - button "Resume from checkpoints"
       - button "Delete group"
       - text: Right-click or press m for every command on Separation audit — August
     - button "EID 10001573 — done":
       - text: EID 10001573
       - button "What is this row? — Run Panel"
       - text: "Done 9:35 AM #1 pl-090303-0003 5m 0s"
-      - button "Run again"
+      - button "Resume from checkpoints"
       - button "Delete run"
       - text: Right-click or press m for every command on EID 10001573
     - button "Onboarding cohort — July stragglers — done":
@@ -236,14 +236,14 @@
       - text: person lookup
       - button "Expand"
       - text: "9:05 AM #1 pl-095050-0050 2m 0s"
-      - button "Run again"
+      - button "Resume from checkpoints"
       - button "Delete group"
       - text: Right-click or press m for every command on Onboarding cohort — July stragglers
     - button "EID 10222009 — cancelled":
       - text: EID 10222009
       - button "What is this row? — Run Panel"
       - text: "Cancelled 9:26 AM #1 pl-090707-0007 4m 0s"
-      - button "Run again"
+      - button "Resume from checkpoints"
       - button "Delete run"
       - text: Right-click or press m for every command on EID 10222009
   - text: No run open Pick a run from the Person Lookup queue and its logs, decisions, data and receipt open here. The run you had open belongs to a different workflow, so it closed when you switched.

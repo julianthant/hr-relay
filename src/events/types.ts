@@ -39,6 +39,7 @@ import {
   DiagnosticSafetyVersionSchema,
 } from "../domain/trust/failure.js";
 import { DataClassificationSchema, refineEvidenceTransformPair } from "../domain/redaction-policy.js";
+import { RunRecoveryModeSchema } from "../domain/run/envelope.js";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -147,6 +148,8 @@ const RunQueuedSchema = z.strictObject({
   /** D307 — the step keys this run omits; the typed facts stay in run authority, never in a span. */
   omittedSteps: z.array(SlugSchema).min(1).optional(),
   retryOf: UuidSchema.optional(),
+  /** D314 — present only on a Restart-from-start attempt; a Resume carries `retryOf` alone. */
+  recovery: RunRecoveryModeSchema.optional(),
   actorId: SlugSchema,
   /** The exact title/subtitle the confirmation surface showed (start-plan D109). */
   title: z.string().min(1),

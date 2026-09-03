@@ -729,11 +729,8 @@ CRM **history** page is a second visit and stays its own task under this convent
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/new-kronos/{index.ts,declaration.ts,tasks/,driver/grid-scroll.ts} and src/domain/ui/new-kronos-timecard.ts; left: nothing in this section — the write family is `{#order-6}`'s
 <!-- /roadmap-status -->
 
-<!-- roadmap: order-6 -->
-<!-- roadmap-status: order-6 -->
 - [ ] BE the `new-kronos` store gains its pay-rule write family: a `commit` contract with `writeSafety`, a `CommitCapableSystemDriver` operation, and the `external-commit` element the registry audit refuses today — the capability is added deliberately by that slice and cannot be inherited (§2.9)
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified: `src/stores/new-kronos/` has read tasks only and its driver declares no commit operation; the rest of order 6 (the canonical-EID audit gate, work-study) is owned by 03c and ref data-intake-and-edit-data §1
-<!-- /roadmap-status -->
 Separations chunk 1 (`docs/migrations/separations.md` §3) is the first slice authored under the
 rich-extraction convention and the first new browser store since the platform was built, so what it
 settled is normative for every store slice after it.
@@ -988,18 +985,12 @@ fall through rather than be widened into.
 
 ### 3.1 Layout in the rebuild repo's `src/`
 
-<!-- roadmap: order-1 -->
-<!-- roadmap-status: order-1 -->
 - [ ] BE the `i9` store is a declaration only — `defineBrowserStore("i9", declareDriver("i9", "unwired"), i9Session, {})`, zero tasks, no `driver/`, no `BROWSER_SYSTEM_BINDINGS` entry; order 1 builds its driver, login recipe and tasks into exactly the layout below
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/i9/{index.ts,session.ts} and src/infra/browser/system-bindings.ts; the rest of order 1 (person-lookup's Search + Match modes) is owned by 03c and ref dashboard-surfaces §9
-<!-- /roadmap-status -->
 
-<!-- roadmap: order-2 -->
-<!-- roadmap-status: order-2 -->
 - [ ] BE the `sharepoint` and `old-kronos` stores are declarations only, same shape as `i9`; order 2 gives them drivers, login recipes and download tasks
 - [ ] BE the first content-addressed download task — `artifacts: "content-addressed"` plus `acceptDownloads: true`, which §2.1's session type admits only together; `stores/common/spreadsheet-grid.ts` is the shared leaf already waiting for the roster half
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/{sharepoint,old-kronos}/, src/stores/common/spreadsheet-grid.ts and src/base/artifacts.ts; no task in the tree declares `artifacts` today
-<!-- /roadmap-status -->
 
 ```
 src/                            # the rebuild repo's code root (D93)
@@ -1626,13 +1617,10 @@ freshness policies differ deliberately: the record is one hour `forbidden`, the 
 
 ### 9.2 OnBase import — separate prepare/commit contracts, one transaction lease
 
-<!-- roadmap: order-7 -->
-<!-- roadmap-status: order-7 -->
 - [-] **DESIGN, not as-built.** The `onbase` store is a declaration only — `declareDriver("onbase", "unwired")`, zero tasks, no `driver/`, no `BROWSER_SYSTEM_BINDINGS` entry — and it is the one store that must declare `exclusive: true` on both its session provider and every task session (§2.1, D15)
 - [ ] BE the two contracts below, their driver and their login recipe, at order 7
 - [ ] BE OQ2 — whether the upload is verifiable by page at all. If it is not, `unverifiableByPage` requires an entry in `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` (empty today), `policy: "always-park"` and an `operator-attestation` proof arm (§2.2)
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/onbase/{index.ts,session.ts} and src/domain/contracts/write-safety.ts; the ServiceNow half of order 7 and the propagation windows are 03c's
-<!-- /roadmap-status -->
 
 The shape a prepare/commit pair takes, written before the store exists so the store is built into
 it rather than around it:
@@ -1690,12 +1678,9 @@ against a live system.
 
 ### 9.3 Decorating (oath-signature's transaction audit shots)
 
-<!-- roadmap: order-4 -->
-<!-- roadmap-status: order-4 -->
 - [-] **DESIGN.** `decorateTask` does not exist (§4), and neither does any screenshot capture — so the audit-shot example below cannot be written today
 - [ ] BE order 4 is the first workflow that WANTS it (oath-signature's pre/post-submit form shots). Whoever builds it lands `src/base/decorate.ts`, the builder's `.decorate(...)`, `TaskError.decoratedBy`/`hookErrors` (§2.4) and a capture port in one change — or decides the shots belong in the driver operation and retires §4
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified by absence in src/; order 4's other rows (the operation fan-out, the approval gates, the UCPath enter/fill commits) are 03c's and ref dashboard-surfaces §4's
-<!-- /roadmap-status -->
 
 ```ts
 const auditedSave = decorateTask(ucpathStore.tasks.saveOathSignature, {

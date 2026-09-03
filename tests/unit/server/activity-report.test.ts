@@ -20,8 +20,7 @@ import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js"
 import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
 import { ledgerDirectory, ledgerFilePath } from "../../../src/infra/ledger/ledger-projector.js";
 import { IDEMPOTENCY_KEY, LEDGER_PAYLOAD } from "../fixtures/phase1c-contract-fixtures.js";
-import { separationsKualiFinalizationDescriptor } from "../../../src/workflows/separations/kuali-finalization/descriptor.js";
-import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
 import {
   atDayOffset,
@@ -38,6 +37,7 @@ import {
   uuidOf,
   type DashboardWorld,
 } from "./helpers/dashboard-harness.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const worlds: DashboardWorld[] = [];
 

@@ -37,12 +37,11 @@ export function workflowSourceFolder(id: string, role: WorkflowModuleRole): stri
   }
 }
 
-/** The descriptor module every registered workflow authors by hand. */
-export function descriptorSourcePath(id: string, role: WorkflowModuleRole): string {
-  return `${workflowSourceFolder(id, role)}/descriptor.ts`;
-}
-
-/** The server composition module that pairs with it. */
-export function moduleSourcePath(id: string, role: WorkflowModuleRole): string {
-  return `${workflowSourceFolder(id, role)}/module.ts`;
+/**
+ * D317 — the ONE authored workflow file: `<folder>/workflow.ts`, holding one
+ * `defineWorkflow(...)` call. Descriptors, module requirements and registry
+ * values are compiled from it and never authored beside it.
+ */
+export function workflowSourcePath(id: string, role: WorkflowModuleRole): string {
+  return `${workflowSourceFolder(id, role)}/workflow.ts`;
 }

@@ -33,6 +33,7 @@ import {
 } from "../../../base/workflow.js";
 import { descriptorRuntimeNodes, runtimeNodeLabel } from "../../../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
+import type { AnyWorkflowDefinition } from "../../../base/workflow-definition.js";
 import type { RegisteredTaskStore } from "../../../base/store.js";
 import { ContractFieldPathSchema } from "../../../domain/contracts/base.js";
 import { contractSchemaLeaves } from "../../../validation/contract-boundary.js";
@@ -69,8 +70,7 @@ import { GENERATED_BUILD_MANIFEST } from "../../../domain/workflow/generated-bui
 import type { RuntimeFlowNode } from "../../../domain/workflow/graph.js";
 import type { WorkflowModuleRole } from "../../../domain/workflow/module-role.js";
 import {
-  descriptorSourcePath,
-  moduleSourcePath,
+  workflowSourcePath,
 } from "../../../domain/workflow/source-layout.js";
 import type { IntakeProjection } from "../../../domain/intake/projection.js";
 import type { PendingImplBindings } from "../../../control/workflow-registry.js";
@@ -82,6 +82,8 @@ export interface ExplorerModuleView {
   /** The module's declared taxonomy (ref workflow-model §1.2.1, D219) — required, like the module's own. */
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
+  /** D317 — present iff the module was compiled from a `workflow.ts` definition. */
+  readonly definition?: AnyWorkflowDefinition;
 }
 
 export interface ExplorerQueryDeps {
@@ -93,6 +95,12 @@ export interface ExplorerQueryDeps {
   readonly pendingImplBindings: PendingImplBindings;
   /** The in-memory semantic UI catalog the drivers themselves compose. */
   readonly uiCatalog: UiCatalog;
+  /**
+   * The build manifest whose source closures the Explorer links. Defaults to
+   * the checked-in generated manifest; a conformance fixture that is not a
+   * registered workflow supplies a manifest naming itself.
+   */
+  readonly buildManifest?: BuildManifestSource;
   /**
    * Lists the executable scenario corpus, relative to the repo root. Injected
    * so the resolution is testable and so a packaging without `tests/` reports
@@ -167,13 +175,19 @@ function unresolved(attemptedPath: string, reason: string): SourceLinkWire {
   return { state: "unresolved", attemptedPath: SourcePathSchema.parse(attemptedPath), reason };
 }
 
+/** The two manifest tables this query reads; the checked-in manifest and a fixture manifest both satisfy it. */
+type BuildManifestSource = Readonly<{
+  workflows: readonly Readonly<{ id: string; sources: readonly Readonly<{ path: string }>[] }>[];
+  tasks: readonly Readonly<{ id: string; sources: readonly Readonly<{ path: string }>[] }>[];
+}>;
+
 /** Every path the build manifest fingerprinted, across workflows and tasks. */
-function manifestSourceIndex(): ReadonlyMap<string, ReadonlySet<string>> {
+function manifestSourceIndex(manifest: BuildManifestSource): ReadonlyMap<string, ReadonlySet<string>> {
   const index = new Map<string, ReadonlySet<string>>();
-  for (const entry of GENERATED_BUILD_MANIFEST.workflows) {
+  for (const entry of manifest.workflows) {
     index.set(`workflow:${entry.id}`, new Set(entry.sources.map(({ path }) => path)));
   }
-  for (const entry of GENERATED_BUILD_MANIFEST.tasks) {
+  for (const entry of manifest.tasks) {
     index.set(`task:${entry.id}`, new Set(entry.sources.map(({ path }) => path)));
   }
   return index;
@@ -754,8 +768,11 @@ function workflowWire(
   // D265 §1.2.2 — the path comes from the ROLE, never from the id alone: a
   // chunk harness lives inside the step it proves, so a link built from the id
   // would point at a folder that no longer exists.
-  const descriptorPath = descriptorSourcePath(workflowId, module.role);
-  const modulePath = moduleSourcePath(workflowId, module.role);
+  // D317 — a workflow's ONE authored file is `workflow.ts`; its descriptor and
+  // module are compiled products with no source of their own, so both source
+  // links resolve to that file.
+  const descriptorPath = workflowSourcePath(workflowId, module.role);
+  const modulePath = descriptorPath;
 
   const purposeByNode = new Map(
     descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose]),
@@ -895,7 +912,7 @@ function workflowWire(
 
 export function buildWorkflowExplorer(deps: ExplorerQueryDeps): WorkflowExplorerWire {
   const overrides = deps.overrides?.readAll();
-  const manifest = manifestSourceIndex();
+  const manifest = manifestSourceIndex(deps.buildManifest ?? GENERATED_BUILD_MANIFEST);
   const ui = uiLinkIndex(deps.uiCatalog);
   const scenarioSources = deps.listScenarioSources();
   return WorkflowExplorerWireSchema.parse({

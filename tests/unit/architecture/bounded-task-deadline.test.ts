@@ -20,7 +20,6 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun } from "../../../src/core/run-executor.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
-import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 import {
   healthyCrmDriver,
@@ -33,6 +32,7 @@ import {
   sessionManagerFor,
 } from "../fixtures/phase1f-executor-harness.js";
 import { sequentialIdFactory, RUN_ID, WORKER_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

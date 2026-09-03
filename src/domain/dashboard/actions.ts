@@ -55,7 +55,7 @@ export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "delete", 
  * carries a confirm.
  */
 export const ActionCommandKeySchema = z.enum([
-  "retry", "cancel", "bump", "rename", "delete", "resolve-gate",
+  "retry", "restart", "cancel", "bump", "rename", "delete", "resolve-gate",
   "resolve-write-present", "resolve-write-absent",
 ]);
 

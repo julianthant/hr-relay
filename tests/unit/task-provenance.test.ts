@@ -34,8 +34,7 @@ import {
   buildIdentityEvidencePacket,
   deriveIdentityEvidenceDigest,
 } from "../../src/domain/separations/identity-evidence.js";
-import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
-import { separationsIdentityCheckDescriptor } from "../../src/workflows/separations/identity-check/descriptor.js";
+import { separationsIdentityCheckDescriptor } from "../helpers/registered-workflows.js";
 import {
   FixtureStage,
   fixtureDescriptor,
@@ -43,6 +42,7 @@ import {
 import { noSeparationWritePlan } from "../../src/domain/separations/write-plan.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const NOW = "2026-08-02T18:00:00.000Z";
 const EARLIER = "2026-08-02T16:00:00.000Z";

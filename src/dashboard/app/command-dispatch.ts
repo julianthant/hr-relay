@@ -226,6 +226,7 @@ export function composeCommandRequest(
   };
   switch (action.command) {
     case "retry":
+    case "restart":
     case "cancel":
     case "bump":
     case "delete":

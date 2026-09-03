@@ -1,19 +1,22 @@
-# 06 · Phase 6 — ship the desktop app
+# Desktop stage · ship the application
 
-This doc is the dedicated home of **Phase 6**, tree node `{#desktop-app}` — the phase that turns the
+This stable-path doc is the dedicated home of tree node `{#desktop-app}`, the later stage that turns the
 rebuild from *a repository you run* into *an application you install*. The operator's instruction
 (2026-08-21, plan ruling **R14**) is one sentence: at the end of the program the rebuild is delivered
 as a **Mac and Windows desktop app**. D297 (2026-09-01) keeps Electron as that app's shell and fixes
 the initial update policy: signed, in-place manual installers first; a controlled updater only after
-the app can prove it is safe to stop. Nothing in this phase is built.
+the app can prove it is safe to stop. Nothing in this stage is built.
 
-**Why the doc exists before the code does.** Every other phase doc records what was decided and what
-is left; this one records what the phase INHERITS, so the first agent to open it does not rediscover
-five constraints Phases 1–5 already settled. Four of them are load-bearing enough that a naive
+**D319 numbering note (2026-09-02).** This stage does not reserve Phase 6 or any other number while
+workflow phases are admitted one at a time.
+
+**Why the doc exists before the code does.** Every admitted phase doc records what was decided and what
+is left; this one records what the stage INHERITS, so the first agent to open it does not rediscover
+five constraints earlier work already settled. Four of them are load-bearing enough that a naive
 Electron port would fail on them in the first hour, and each is named with the file that proves it.
-Contracts belong to `reference/` as always; this doc owns the phase, not the contracts.
+Contracts belong to `reference/` as always; this doc owns the stage, not the contracts.
 
-## Phase summary
+## Stage summary
 <!-- roadmap: desktop-app -->
 
 <!-- roadmap-status: desktop-app -->
@@ -28,7 +31,7 @@ Contracts belong to `reference/` as always; this doc owns the phase, not the con
 > 2026-08-21 | docs-cohesion R14 | phase drawn from the operator's instruction; verified UNBUILT against `package.json` (the only `electron` string in `package-lock.json` is `electron-to-chromium`, browserslist data) and against `src/server/dashboard/compose.ts:322-331`, `src/domain/config/schema.ts:8`, `src/dashboard/app/main.tsx:21`; left: all of it
 <!-- /roadmap-status -->
 
-### What Phase 6 is
+### What the desktop stage is
 
 **A delivery phase, not a feature phase.** Every capability the app will expose already exists or is
 already owned by another node: the BFF serves the wire, the dashboard bundle renders it, the worker
@@ -64,7 +67,7 @@ Electron boundary; being offline changes the release channel, not the shell.
 | 1 | **D181's runtime role lock** (`src/server/dashboard/compose.ts:346-356`) | The dashboard takes a `server` role lock, one holder, before it opens the authority database. The app's own single-instance lock (`app.requestSingleInstanceLock()`) is the second, coarser half — and the two must not fight: a second app launch focuses the open window, and a BFF that finds the role lock held refuses BY NAME rather than starting a second one. The lock files are also what `cli storage restore` composes its stopped-system proof from, so the app may not route around them |
 | 2 | **`config/runtime-isolation.json`'s roots** | `stateRoot` `.tracker-rebuild`, `artifactRoot` `.tracker-rebuild/artifacts`, `processLockRoot` `.tracker-rebuild/locks`, `browserProfileRoot` `.auth` — all resolved **repo-relative** today (`repoRoot = process.cwd()`, `compose.ts:336-337`). A packaged app has no repo and no meaningful cwd, so every one of them resolves under `app.getPath("userData")`. The NAMES stay: `operational-isolation.test.ts` pins them, and what changes is how a root is resolved, not what it is called |
 | 3 | **D189's byte path** (`ref frontend-backend-integration` §6.9) | The BFF serves **no** frontend bytes and the desktop does not need it to — the renderer loads `dist/dashboard` from app resources. The remaining `{#def-byte-path}` task is ordinary local static serving for non-desktop operation; D294 retires its former phone/tunnel scope. |
-| 4 | **`{#parallel-runs}`' worker pool** | `createDashboardWorkerSupervisor` refuses to spawn a worker today and its refusal literally says *"start worker `<id>` with: npm run cli worker `<workflowId>`"* (`compose.ts:322-331`). In a packaged app there is no npm and no terminal, so that refusal is not survivable — the app MUST supply a real `WorkerProcessSupervisor`, which is the same build `{#parallel-runs}` already owns. Phase 6 consumes it; it does not fork it |
+| 4 | **`{#parallel-runs}`' worker pool** | `createDashboardWorkerSupervisor` refuses to spawn a worker today and its refusal literally says *"start worker `<id>` with: npm run cli worker `<workflowId>`"* (`compose.ts:322-331`). In a packaged app there is no npm and no terminal, so that refusal is not survivable — the app MUST supply a real `WorkerProcessSupervisor`, which is the same build `{#parallel-runs}` already owns. The desktop stage consumes it; it does not fork it |
 | 5 | **`{#duo-lease}`** | The desktop is where several workers finally run on one machine as the ordinary case, so D243's shared per-credential Duo counter stops being a hazard two cold-starting workflows can hit and becomes one the product's default shape hits. The lease is a prerequisite, not an optimization |
 
 ### Where it sits in the order
@@ -76,7 +79,7 @@ things at once if either failed.
 
 **The operator may pull it earlier, and the trigger is one question:** *should the cutover itself run
 on the packaged app?* If the answer is yes — because the D89 day is the day the operator stops using
-a terminal at all — then Phase 6 moves in front of `{#cutover}` and the cutover's smoke gates run
+a terminal at all — then the desktop stage moves in front of `{#cutover}` and the cutover's smoke gates run
 against the installed app rather than against `npm run dashboard`. That is a decision for the
 operator, and nothing in this doc presumes it. Until they take it, the tree's `needs: cutover` stands.
 
@@ -117,7 +120,7 @@ two of them:
 4. **The worker supervisor's refusal names npm** (inheritance item 4). A packaged app that shows an
    operator that sentence has told them to do something they cannot do.
 
-**Nothing here blocks anything.** No other phase's exit criteria name Phase 6, and Phase 6 names no
+**Nothing here blocks anything.** No other phase's exit criteria name the desktop stage, and the desktop stage names no
 gate of its own until the operator schedules it.
 
 ## Electron shell — the main process, the window, the single instance
@@ -246,7 +249,7 @@ down, which is the fail-loud rule applied to setup.
 - [ ] Windows: an installer (nsis or msix), signed
 - [ ] the release version = the app version stamp `RunRecord` already carries (D179), so an archived run names the build that produced it
 - [ ] both installers upgrade an existing installation IN PLACE without an uninstall and preserve app data, authority rows, artifacts, profiles, settings and keychain credentials
-- [x] the v1 update policy is manual download/install and the controlled updater is a named Phase 4 deferral with a trigger and a no-active-work install invariant (D297)
+- [x] the v1 update policy is manual download/install and the controlled updater is a named the deferred shelf deferral with a trigger and a no-active-work install invariant (D297)
 - [ ] the build is reproducible from a clean checkout by one command, and the gate family still runs against the source tree unchanged
 > 2026-08-21 | docs-cohesion R14 | nothing built; no builder config and no `electron` dependency at HEAD
 > 2026-09-01 | D297 | Electron retained; v1 update policy and later controlled-updater boundary ratified; implementation remains unbuilt
@@ -261,7 +264,7 @@ build is how a run record starts naming something nobody can find.
 second browser and loads an unpacked extension into it. An unsigned or un-notarized macOS build makes
 that path fight Gatekeeper at exactly the moment a live run needs it, and an unsigned Windows
 installer makes the operator click through a warning every update. The cost is a developer identity on
-each platform, and it belongs in this phase's estimate rather than in a surprise.
+each platform, and it belongs in this stage's estimate rather than in a surprise.
 
 **V1 updates are signed, manual and in place (D297).** One update is installed per installed machine:
 the operator downloads the newer signed installer and runs it over the existing app, without first
@@ -310,7 +313,7 @@ photographed the wrong theme while every gate stayed green. The Electron rendere
 browser with a different default surface, and the operator's eye is the acceptance bar — so the corpus
 runs there before the app is called done.
 
-## Decisions this phase ratified
+## Decisions this stage ratified
 
 **One: D297.** Electron remains the desktop shell. V1 updates use signed, in-place manual installers;
 the future controlled updater may discover and download a release while the app is open but may
@@ -328,11 +331,11 @@ doc 04. R14 remains the earlier operator RULING that authorized the phase and it
 | How the OS keychain reaches `src/domain/secrets.ts` — env block vs source seam | `ref clock-config-secrets` §Secrets, with the guard unchanged |
 
 Each lands with a one-line pointer in `reference/decisions.md` and its normative text in the owner, in
-the same commit — the standing rule, not a Phase 6 rule.
+the same commit — the standing rule, not a desktop-stage rule.
 
 ## Exit criteria
 
-Phase 6 is done when an operator who has never seen this repository can install the app on either
+The desktop stage is done when an operator who has never seen this repository can install the app on either
 operating system and run a real workflow from it. The five criteria below are the readable form of
 that sentence; all five are open, because nothing is built.
 
@@ -347,5 +350,5 @@ that sentence; all five are open, because nothing is built.
 **What is NOT on this list, deliberately.** Controlled in-app update (D297 gives it a safety invariant
 and doc 04 gives it a trigger, but v1 deliberately ships with manual in-place updates);
 any form of hosting, remote access or multi-user (D193(a), unchanged by R14); and a Linux build, which
-nobody has asked for. Adding any of them to Phase 6 would be the tree inventing scope, which the plan's
+nobody has asked for. Adding any of them to the desktop stage would be the tree inventing scope, which the plan's
 own rules forbid — they would be findings first.

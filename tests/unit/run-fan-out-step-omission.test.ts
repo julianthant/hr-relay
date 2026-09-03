@@ -17,12 +17,9 @@ import { ActorIdSchema, StartPlanIdSchema } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import type { StepOmissions } from "../../src/domain/workflow/step-omission.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import {
-  PersonLookupCanonicalInput,
-  PersonLookupInput,
-  personLookupDescriptor,
-} from "../../src/workflows/person-lookup/descriptor.js";
+import { PersonLookupCanonicalInput, PersonLookupInput } from "../../src/workflows/person-lookup/workflow.js";
 import { HASH_A, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];

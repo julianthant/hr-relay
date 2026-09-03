@@ -826,6 +826,12 @@ on every surface instead. **The layout now says it, and the role and the layout 
    at the gate naming the offender — the same failure mode D225 guarded one level down, a step
    nobody can see. A workflow that declares no timeline (D225's honest default, one category per
    node — `person-lookup`) has no step folders; the rule bites exactly when a timeline is declared.
+   > 2026-09-02 | D312 deletion acceptance (3c-A) | The composition's ONE `workflow.ts` now
+   > authors every step's group, node ids, entry identities and omission (§1.6.1); a step folder
+   > holds nothing but the harness `workflow.ts` that proves the step, which imports those
+   > identities (rule 3). So a step folder exists **iff** the step carries a harness — `job-summary`
+   > is a declared group with no folder — and the guard's arm (b) below reads: every step folder
+   > is a declared group AND a registered harness address; a declared group needs no folder.
 3. **A harness lives inside the step it proves.** D219's sentence — *a chunk harness is a step of
    its composition* — becomes a path: the harness's `descriptor.ts` + `module.ts` sit in the step
    folder, and its role gains the folder, `{ kind: "chunk-harness", of, step }`. The registry
@@ -872,9 +878,11 @@ ruled.
 **The guard — `workflow-layout` (`tests/unit/architecture/workflow-layout.test.ts`, active in
 `docs/rebuild/guard-inventory.json`, owned here).** Four arms, all decided against the real registry
 and the real tree, each with a violating fixture: (a) every registered module's path matches its
-role's arm above, and nothing else lives under `src/workflows/` — a stray folder is refused; (b) for
-every workflow that declares a timeline, the declared categories and the step folders are the same
-set, both directions; (c) every `chunk-harness.step` names one of `of`'s declared categories; (d)
+role's arm above and holds exactly its one `workflow.ts` (D312/D317), and nothing else lives under
+`src/workflows/` — a stray folder is refused; (b) for every workflow that declares a timeline, every
+step folder is one of its declared groups and the address of a registered `chunk-harness`, and a
+workflow with no declared timeline has no step folders (a declared group with no harness has no
+folder — D312 §1.6.1 item 5, 2026-09-02); (c) every `chunk-harness.step` names one of `of`'s declared categories; (d)
 `descriptor-coverage` §1.4 and `workflow-editor-compile-integrity` derive a descriptor's path from
 its ROLE (`src/workflows/<id>/` or `src/workflows/<of>/<step>/`), never from its id alone.
 
@@ -1005,13 +1013,18 @@ resolves to nothing.
 
 <!-- roadmap: workflow-authoring-model -->
 
-**Implementation status at `b1b36349` (2026-09-02).** The bounded D311 transition is built:
-`src/base/workflow-recipe.ts` compiles tuple groups for Person Lookup and Separations into their
-existing descriptor/module/runtime projections, and the equivalence/conformance gates are green.
-The names and adapter shape predate D317. `defineWorkflowRecipe`, fragment-backed gate/transaction
-entries, retained descriptor/module files, D307 omission behavior and ordinary checkpoint replay are
-transitional, not this section's completed contract. Doc 03c 3c-A owns the final rename/direct entry
-algebra, D313/D314 behavior, four-artifact deletion, guide and T1 acceptance.
+**Implementation status (2026-09-02, 3c-A deletion acceptance).** `src/base/workflow-definition.ts`
+is the one seam: `defineWorkflow` / `compileWorkflow` / `WorkflowDefinition` / `CompiledWorkflow`
+(D317 names, R3), the closed `task | parallel | delegate | gate | transaction` entry algebra, D313
+omission admission and D314 recovery are built and gated. Every registered workflow — Person Lookup,
+the Separations composition and its five chunk harnesses — authors exactly one `workflow.ts`; the
+Separations composition's file also authors every step's group, node ids, entry identities and D307
+omission, and each harness imports the identities of the step it proves. The former
+`workflow-recipe.ts` names, the flow node-fragment API (`defineWorkflowStepNodeFactory`, `.wire()`,
+`.pipe()`), the per-step `node-ids.ts`/`nodes.ts`/`step.ts`/`omission.ts` files and the last
+hand-authored `descriptor.ts`/`module.ts` pair (`separations-identity-check`) are deleted, and the
+transitional "not yet converted" arm is gone from the registry, the Explorer's source links and the
+`workflow-layout` guard. Doc 03c 3c-A owns the remaining guide and reference reconciliation.
 
 The runtime model above remains authoritative, but workflow authors no longer hand-maintain each of
 its projections independently. A **workflow definition** is the reviewed source form for every new
@@ -1104,6 +1117,36 @@ compatibility products during conversion, but neither is an authored workflow. `
 `WorkflowRecipe`, `defineWorkflowRecipe` and `recipe.ts` are forbidden names for this seam; they
 describe the analogy, not the model.
 
+#### 1.6.2 Workflow admission before a numbered phase (D319, 2026-09-02)
+
+A legacy workflow name, old implementation folder, proposed order row, or partially verified intake
+record is a **workflow candidate**, not a rebuilt workflow and not a numbered phase. Candidates stay
+outside the active phase sequence until the operator approves one complete admission packet.
+
+The packet must establish, from current legacy code and live verification:
+
+1. the operator-visible outcome and the exact workflow boundary;
+2. run-modal inputs, optional values, whole-step omissions and every required replacement value;
+3. the proposed ordered `[(timeline group, [entries])]` definition;
+4. each entry's explicit `task | parallel | delegate | gate | transaction` kind;
+5. task-store reuse, customization and genuinely new tasks;
+6. systems, live page states, selectors and typed read/write contracts;
+7. screenshots, semantic logs, returned values, receipts and Archive evidence;
+8. checkpoint resume, restart-from-start and no-repeat-write behavior; and
+9. the structural/live proof plan, including a controlled-commit target for each real write.
+
+Missing or uncertain facts remain named in the candidate packet. They are not filled from an old
+order label or treated as implementation details. The operator approves the exact boundary and tuple
+model before promotion. Promotion then creates the next numbered phase, its phase doc, a new or
+ratified migration doc and its coordinator plan. The phase owns only that approved workflow or
+explicitly approved workflow family plus shared task-store or generic-surface work it is the first
+verified consumer to require.
+
+Admission verification and phase completion are different gates. Admission proves that the planned
+workflow is understood well enough to build. Phase completion proves that the rebuilt workflow works
+under T1, live selector verification and controlled-write evidence where applicable. Work done for
+one candidate never silently admits the next candidate.
+
 ---
 
 ## 2. Workflow-constant input + the RunEnvelope
@@ -1172,6 +1215,12 @@ Three things this settles, each because the alternative is a lie somewhere:
    would silently redefine what the operator asked for — the same substitution the charter's
    fail-loud rule bans everywhere else. `person-lookup` therefore keeps refusing, now for the reason
    that is actually true of it.
+
+**D318 does not amend D209.** T1b's separate `live-read` proof arm starts a transaction-free
+workflow as an ordinary run with `dryRun: false`, after compiled-graph admission proves there is no
+transaction node. It exists so read-only workflows retain mandatory live evidence without calling
+that evidence a transaction preview. `ref guards-and-tests` §10.4 owns its declaration, zero-write
+authority proof and result contract.
 
 `surfaces.inputRun.supportsDryRun` survives as a **derived, un-authorable** field: the run-start
 surface composes `surfaces.inputRun` client-side off the bundled descriptor and reads the flag
@@ -1686,23 +1735,17 @@ cleanup resets the page”: they are separate contracts/spans but one scheduling
 
 ### 3.2 Delegation contract — one standard for every workflow
 
-<!-- roadmap: order-4 -->
-<!-- roadmap: order-5 -->
 
-<!-- roadmap-status: order-4 -->
 - [x] the delegation CONTRACT below is built and guarded end to end: `planDelegationFanOut`, `assertDelegationReplayMatches`, `joinDelegationOutcomes`, the one D102 policy vocabulary, and the `delegation-manifest` guard over edge-id uniqueness, the plan fingerprint and the complete-outcome-set join
 - [ ] **no registered workflow declares a `child-run` node**, so the first operation fan-out arrives with this migration. The executor's child-run arm is a typed seam answering `capability-unavailable` today
 - [ ] oath-signature and emergency-contact are unbuilt: no descriptor, no input schema, no store tasks. Their first non-separations controlled commits are ref write-safety §3's obligation
 > 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/workflow/delegation.ts`, `src/core/run-executor.ts` and `ls src/workflows/`; left: the workflows themselves
-<!-- /roadmap-status -->
 
-<!-- roadmap-status: order-5 -->
 - [x] the join policies i9-check needs are declared and typed: `all` applies the failure policy on a non-done child, `all-settled` hands the parent the complete typed outcome array and forces an explicit branch on partials, and a zero-child fan-out stays an explicit satisfied join rather than a vanished edge
 - [x] resume scope already excludes what a coordinator is: an operation coordinator is a display row with no daemon task and completes by member rollup through a `children-terminal` gate, never by resume (§5.7's D9 scope)
 - [ ] `i9-check` is unbuilt, and so are the three descriptor fields it is the first consumer of — `completion`, `completionConsumes`, `coordinator` (§1.1)
 - [ ] a `children-terminal` gate has never been exercised: all four gates any registered workflow declares are `resolvedBy: "operator"`
 > 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/workflow/delegation.ts`, `src/domain/workflow/completion.ts` and every gate declaration under `src/workflows/`; left: the workflow itself
-<!-- /roadmap-status -->
 
 Delegation is graph composition, distinct from importing another store task. A parent may delegate
 to one or many child **workflow runs** only through a `child-run` node. The node makes every policy
@@ -2391,11 +2434,13 @@ row exists, through the same `planStepOmissions` the executor runs, so a cascade
 through refuses here instead of at the worker. See ref dashboard-surfaces §9.1 (the Steps screen), ref
 write-safety (never a transaction) and ref frontend-backend-integration (the wire and refusal codes).
 
-**D313 — the run modal is the complete omission authority (2026-09-02; declared, unbuilt).** In the
-compiled workflow path this supersedes D307's rule that a gate physically inside an omitted step may
-still execute: whole-step omission means no entry in that tuple executes, so any mandatory check
-must be declared separately outside it. Until the workflow conversion lands, D307 above remains the
-as-built omission behavior. Every workflow step has one strict compiled value schema: the complete
+**D313 — the run modal is the complete omission authority (2026-09-02; built by R3 the same day).**
+This supersedes D307's rule that a gate physically inside an omitted step may still execute: whole-step
+omission means no entry in that tuple executes, so any mandatory check must be declared separately
+outside it. As built, `planStepOmissions` classifies a gate of an omitted step `omitted` for every
+workflow, and `defineWorkflow` refuses at definition time any entry outside an omittable step that
+reads a member the step's omission does not rebuild (gates, transactions, parallel and delegate
+entries are never rebuilt; the terminal result is the one reader allowed to see an omitted member). Every workflow step has one strict compiled value schema: the complete
 values available after its entries settle. A step is
 omittable only when its workflow definition declares how the run modal supplies every required value in that
 schema. Selecting omissions and entering those custom values is complete before start-plan

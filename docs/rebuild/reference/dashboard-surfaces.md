@@ -1978,8 +1978,6 @@ step-label switches, the stub map) becomes a projection of the descriptor set wi
 
 ## 4. Unified completion contract (replaces approveTo / approveDocumentTo / completeDelegatedRun)
 
-<!-- roadmap: order-4 -->
-<!-- roadmap: order-7 -->
 
 **Re-derived from `tracker/dashboard/ocr/approve.ts` + `prepare.ts` as-built (D11), not the OCR
 happy path.** The as-built route is a *staged program with durable state*, and the contract must
@@ -2261,14 +2259,12 @@ by the first workflow that declares it. There is also no `oath-upload` workflow,
 `subscribeToApproval`, and no born-at-upload prepare seam: `src/workflows/` holds the two rail
 folders (`person-lookup`, `separations`) and separations' six timeline-step children.
 
-<!-- roadmap-status: order-7 -->
 - [x] the shape is DECIDED and recorded here rather than mis-modelled as a CompletionProgram (D11) — oath-upload is a fan-out target with no form spec, and its ticket is a real `single` task
 - [x] the gate declaration surface exists: `resolvedBy: "children-terminal" | "external"` each carry a typed `subscribes` source, and `build()` refuses a non-operator gate without one (`src/base/flow.ts:207-234, 674-678`)
 - [ ] nothing CONSUMES a subscription — the executor's one gate arm parks for an operator command whatever the gate declared (`run-executor.ts:1363-1377`); a `children-terminal` gate parks forever today
 - [ ] no `oath-upload` workflow, no `subscribeToApproval`, no born-at-upload prepare seam, and no OnBase store
 - [ ] §4.4's approval durability — `ocr_approvals` is an opaque table with no writer, so the sibling subscriber has nothing to subscribe TO
 > 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/base/flow.ts, src/core/run-executor.ts, src/workflows/, `grep -rn 'subscribeToApproval\|subscribes' src/`; left: every consumer — this node's whole build
-<!-- /roadmap-status -->
 
 ### 4.6 verify — in-run enrichment, not completion
 
@@ -2443,7 +2439,6 @@ a rot table that cites imaginary machinery is itself the rot it warns about.
 
 ## 7. Worked example — operation coordinator flow, end to end in spans
 
-<!-- roadmap: order-5 -->
 
 **Read this as the contract §4's completion program is written against, not as a trace anybody can
 produce today.** Every enqueue path in `src/` stamps `shape: "single"` and every registered
@@ -4656,7 +4651,6 @@ the parity references.
 ### 9.7 Intake and Edit Data (mobile Capture Mode retired by D294)
 
 <!-- roadmap: p2-2i -->
-<!-- roadmap: order-6-dash -->
 
 The `p2-2i` checklist lives at §9.5. The remaining byte-path deferral is `{#def-byte-path}`.
 
@@ -5352,7 +5346,6 @@ D264's moved declaration fields) and §7 the parity lane.
 
 ### 9.10 The delegation and row model (row-model D5–D24)
 
-<!-- roadmap: order-4 -->
 
 **What this is.** The operator-ratified presentation series that decided what a ROW is, before any
 of it was built. It is a dashboard-only square with no wire counterpart, because it is a vocabulary
@@ -5521,7 +5514,6 @@ dropped, and this table is how a citation to the old flat list resolves.
   it does not owe a defence of the design. The full deletion criteria live in
   `src/dashboard/DESIGN.md`, which is binding on every surface built against this contract.
 
-<!-- roadmap-status: order-4 -->
 - [x] the three row types, the `containment` vocabulary and the group anatomy are decided, drawn and pinned by parity references
 - [x] D6 — oath-upload is one Run Row with `linked` signers; shape S4 deleted, so the presentation matches §4.5's completion contract
 - [x] D11 — one member presentation at every count; the ladder's types are deleted rather than neutered
@@ -5532,4 +5524,3 @@ dropped, and this table is how a citation to the old flat list resolves.
 - [ ] D13's `Re-upload` verb, and the OCR/packet surfaces D7/D8/D10/D17 describe (§9.3)
 - [!] D16's "no confirmation dialog" against the built confirm-first dialog — an operator call (`{#operator-calls}`)
 > 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/tokens.css; left: the producer for every group-shaped fact in this section
-<!-- /roadmap-status -->

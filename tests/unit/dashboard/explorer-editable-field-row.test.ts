@@ -12,7 +12,7 @@
  * re-parsed onto it, so each case states the allowlist it is about instead of
  * depending on which workflow the registry happens to serve first. Some
  * descriptors DO allowlist fields — `person-lookup` names three on `crm-dates`
- * (`src/workflows/person-lookup/descriptor.ts`), and the pencil draws for them
+ * (`src/workflows/person-lookup/workflow.ts`), and the pencil draws for them
  * today — so a negative control that assumes an empty allowlist is one node
  * ordering away from passing for the wrong reason. `nodeWithNoEditableFields`
  * asserts the emptiness it needs instead.

@@ -76,7 +76,7 @@ One Kuali RRSS separation document → one terminated employee, across three sys
 
 ### 1.2 The motivating incident, and the gate that answers it
 
-Doc 03c §Recommended migration order puts separations at order 8 because of the **wrong-person termination `T002173685`**. A
+Doc 03c §Unverified candidate evidence - not a phase order puts separations at order 8 because of the **wrong-person termination `T002173685`**. A
 graduating student's Kuali doc carried EID `10833507` ("Hernandez, Jose Santos"); UCPath rendered the
 name as "Santos Hernandez", the similarity classifier returned `different`, a name search on the
 common name resolved a **career** maintenance worker (`10401814`, employed since 2016), and the
@@ -4449,7 +4449,7 @@ cause and was not this one.
 
 Three inventory entries in `config/legacy-capabilities.json` are touched by this workflow, and all
 three are correctly dispositioned at the milestone the runtime is actually in
-(`phase-3-workflow-migration`), so the guard's D188 arm is satisfied and nothing here is stale:
+(`workflow-admission-backlog`), so the guard's D188 arm is satisfied and nothing here is stale:
 
 - **`legacy-workflow-separations`** — `open`. Correct and must stay so: the legacy workflow is
   production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this
@@ -7400,3 +7400,15 @@ No live workflow, gate approval, deletion, registry/environment mutation or HR w
 read-only browser session was closed. D310 supplies mechanics, not criterion-5 evidence: the exact
 disposable target, independent deletion proof, restoration/retention disposition, fresh rehearsal,
 explicit live-run authorization and all three controlled commits remain open for R4.
+
+### 9.34 R3 T1b pair re-run — 2026-09-02
+
+R3 re-ran the exact command `npm run cli -- dry-run-scenario separations --subject finalization-canary`
+from its own isolated authority after converting Separations to `workflow.ts` (D317) and adding the
+D318 `arm: "dry-run-preview"` declaration to this manifest. The registry still says `gone` (last
+observed 2026-09-01, §9.33), so the runner recorded durable result
+**`6c2f8301-07cf-4607-b326-9b8d41af5b49`** — verdict **`blocked`**, execution `not-started`,
+assertion `subject-availability: subject-unavailable` — before reading the environment or starting a
+browser. No run, span, gate, intent, attempt or outbox row was created. D284's rule stands: the label
+and its history are retained and no replacement canary is chosen here; naming one remains an operator
+decision.

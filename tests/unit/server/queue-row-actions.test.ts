@@ -129,10 +129,12 @@ describe("queue-row action descriptors — the per-status set", () => {
     // Terminal: nothing to cancel, nothing to bump, a re-run is possible — and
     // since D308, the run can be DELETED. `delete` is last in `SERVED_ORDER`
     // so its 🗑 sits at the right end of the footer, after the ✕.
-    done: ["retry", "rename", "delete"],
-    failed: ["retry", "rename", "delete"],
-    cancelled: ["retry", "rename", "delete"],
-    partial: ["retry", "rename", "delete"],
+    // D314: both ordinary recovery choices — Resume from checkpoints (`retry`)
+    // and Restart from start (`restart`) — are served on every terminal row.
+    done: ["retry", "restart", "rename", "delete"],
+    failed: ["retry", "restart", "rename", "delete"],
+    cancelled: ["retry", "restart", "rename", "delete"],
+    partial: ["retry", "restart", "rename", "delete"],
   };
 
   it("serves exactly the declared set for every queue status", () => {
@@ -167,6 +169,9 @@ describe("queue-row action descriptors — the per-status set", () => {
     });
     assert.deepEqual(placements("done"), {
       retry: ["footer", "menu"],
+      // D314: the deliberate, less frequent recovery choice is menu-only; the
+      // footer keeps Resume as the one-click recovery.
+      restart: ["menu"],
       rename: ["menu"],
       // D308's 🗑, back in the footer slot D234 emptied.
       delete: ["footer", "menu"],
@@ -188,7 +193,7 @@ describe("queue-row action descriptors — the per-status set", () => {
    */
   it("drops retry for a delegated child, and keeps rename", () => {
     assert.deepEqual(keysFor("failed", { isChild: true }), ["rename"]);
-    assert.deepEqual(keysFor("failed"), ["retry", "rename", "delete"]);
+    assert.deepEqual(keysFor("failed"), ["retry", "restart", "rename", "delete"]);
   });
 
   /**

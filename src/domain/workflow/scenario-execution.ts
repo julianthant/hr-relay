@@ -82,17 +82,26 @@ const SEPARATIONS_KUALI_FINALIZATION_FILE =
 const SEPARATIONS_FILE =
   "tests/scenario/workflows/separations/structural.scenario.test.ts";
 
+/**
+ * Order 0's workflow — ONE structural scenario beside its `live-read` manifest
+ * (D318). Its pure graph walks and its runtime task walks merged into that one
+ * file on 2026-09-02, retiring the two root-level files that used to split
+ * them; §10.3 admits exactly one collected structural scenario per workflow.
+ */
+const PERSON_LOOKUP_FILE =
+  "tests/scenario/workflows/person-lookup/structural.scenario.test.ts";
+
 export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
-  { scenarioId: "person-lookup/happy-by-eid", file: "tests/scenario/person-lookup.scenario.test.ts" },
-  { scenarioId: "person-lookup/happy-by-eid-with-dates", file: "tests/scenario/person-lookup.scenario.test.ts" },
-  { scenarioId: "person-lookup/ambiguous-name", file: "tests/scenario/person-lookup.scenario.test.ts" },
-  { scenarioId: "person-lookup/not-found", file: "tests/scenario/person-lookup.scenario.test.ts" },
-  { scenarioId: "person-lookup/crm-failure-retry", file: "tests/scenario/person-lookup.scenario.test.ts" },
-  { scenarioId: "person-lookup/crm-subject-mismatch", file: "tests/scenario/person-lookup-runtime.scenario.test.ts" },
-  {
-    scenarioId: "person-lookup/ucpath-drill-subject-mismatch",
-    file: "tests/scenario/person-lookup-runtime.scenario.test.ts",
-  },
+  { scenarioId: "person-lookup/happy-by-eid", file: PERSON_LOOKUP_FILE },
+  { scenarioId: "person-lookup/happy-by-eid-with-dates", file: PERSON_LOOKUP_FILE },
+  { scenarioId: "person-lookup/ambiguous-name", file: PERSON_LOOKUP_FILE },
+  { scenarioId: "person-lookup/not-found", file: PERSON_LOOKUP_FILE },
+  { scenarioId: "person-lookup/crm-failure-retry", file: PERSON_LOOKUP_FILE },
+  { scenarioId: "person-lookup/crm-subject-mismatch", file: PERSON_LOOKUP_FILE },
+  { scenarioId: "person-lookup/ucpath-drill-subject-mismatch", file: PERSON_LOOKUP_FILE },
+  // D314 — the two ordinary recovery choices, proved over the registered descriptor.
+  { scenarioId: "person-lookup/resume-from-checkpoints", file: PERSON_LOOKUP_FILE },
+  { scenarioId: "person-lookup/restart-from-start", file: PERSON_LOOKUP_FILE },
   { scenarioId: "ocr/extract/complete", file: "tests/scenario/ocr-extraction.scenario.test.ts" },
   {
     scenarioId: "ocr/extract/illegible-mandatory",

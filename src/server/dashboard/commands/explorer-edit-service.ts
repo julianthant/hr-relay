@@ -309,7 +309,7 @@ function codeChangeBrief(
         : "Edit Data changes runtime correction authority and remains a reviewed descriptor source change",
     requiredFiles: [descriptorSource.path],
     failedObligations: [
-      "rebuild through defineWorkflowDescriptor with the exact source patch",
+      "rebuild through defineWorkflow and compileWorkflow with the exact source patch",
       "re-derive every input, canonical-input, result and task schema hash",
       "re-derive the graph, edges and coverage points",
       "run workflow-editor-compile-integrity and the full architecture gate",

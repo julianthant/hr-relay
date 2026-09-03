@@ -14,7 +14,7 @@ import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/acti
 import { createActivityPersonPseudonymBackfillService } from "../../src/server/activity-person-pseudonym-backfill/service.js";
 import { composeActivityPersonPseudonymBackfillCommand } from "../../src/server/activity-person-pseudonym-backfill/compose.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { SeparationsResultSchema, separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
+import { SeparationsResultSchema } from "../../src/workflows/separations/workflow.js";
 import {
   COMPOSITION_ACTION_ID,
   COMPOSITION_DEPARTMENT_OPTION,
@@ -36,6 +36,7 @@ import {
   seedSeparationsRunAuthority,
   seedTerminalSeparationsResult,
 } from "./fixtures/activity-person-pseudonym-fixtures.js";
+import { separationsDescriptor } from "../helpers/registered-workflows.js";
 
 const KEY_HEX = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 const TEST_PSEUDONYM_DOMAIN = createActivityPersonPseudonymDomain({

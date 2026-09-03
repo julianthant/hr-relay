@@ -1,21 +1,17 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import vm from "node:vm";
-import ts from "typescript";
 import { describe, it } from "vitest";
 import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
 import { GENERATED_BUILD_MANIFEST } from "../../../src/domain/workflow/generated-build-manifest.js";
 import { TEST_TARGET_SECRET_SPECS } from "../../../src/domain/secrets.js";
-import {
-  parseDryRunScenarioManifest,
-  type DryRunScenarioManifest,
-} from "../../../src/domain/trust/dry-run-scenario.js";
+import type { DryRunScenarioManifest } from "../../../src/domain/trust/dry-run-scenario.js";
 import {
   FINALIZATION_PERSON_FACTS_DERIVED_REASON,
   SeparationsKualiFinalizationTestTargetResolutionSchema,
   FINALIZATION_WORKFLOW,
+  PERSON_LOOKUP_WORKFLOW,
   readTestTargetRegistry,
   resolveSeparationsKualiFinalizationTestTarget,
   resolveSeparationsTestTarget,
@@ -26,11 +22,11 @@ import {
   type TestTargetRegistryEntry,
 } from "../../../src/control/test-target-registry.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
+import { evaluateT1bManifest } from "../../helpers/t1b-manifests.js";
 
 const WORKFLOW_SCENARIO_ROOT = "tests/scenario/workflows";
 const MANIFEST_FILE = "dry-run.scenario.ts";
 const MANIFEST_REGISTRY_PATH = "src/server/dry-run-scenario/manifests.ts";
-const MANIFEST_MODULE = "domain/trust/dry-run-scenario.js";
 const PHASE_DOC_PATH = "docs/rebuild/03b-finish-separations.md";
 /** The one order-8 status line that names the mapped inventory in prose. */
 const INVENTORY_LINE_MARKER = "the subject/canary inventory mapped live and dated";
@@ -53,39 +49,8 @@ function manifestPathsByWorkflow(): ReadonlyMap<string, string> {
   return found;
 }
 
-/**
- * Evaluate a T1b declaration WITHOUT importing it.
- *
- * A vitest-collected file may not import a manifest (the sibling
- * `structural.scenario.test.ts` proves nothing does, in both static and dynamic
- * form), so this guard transpiles the declaration and runs it in an isolated
- * `node:vm` context whose only reachable module is the real manifest parser.
- * Reading the file as text and re-deriving its object literal would re-implement
- * zod; running it is what proves the checked-in declaration parses.
- */
 function evaluateManifest(path: string): DryRunScenarioManifest {
-  const transpiled = ts.transpileModule(readFileSync(join(REPO_ROOT, path), "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-    fileName: path,
-  }).outputText;
-  const moduleRecord = { exports: {} as Record<string, unknown> };
-  const context = vm.createContext({
-    module: moduleRecord,
-    exports: moduleRecord.exports,
-    require: (specifier: string): unknown => {
-      if (!specifier.endsWith(MANIFEST_MODULE)) {
-        throw new Error(`${path} may only import the manifest parser, not ${specifier}`);
-      }
-      return { parseDryRunScenarioManifest };
-    },
-  });
-  vm.runInContext(transpiled, context, { filename: path });
-  const exported = Object.values(moduleRecord.exports);
-  const only = exported[0];
-  if (exported.length !== 1 || only === undefined) {
-    throw new Error(`${path} must export exactly one manifest; it exports ${String(exported.length)}`);
-  }
-  return parseDryRunScenarioManifest(only);
+  return evaluateT1bManifest(REPO_ROOT, path);
 }
 
 function manifestView(manifest: DryRunScenarioManifest): TestTargetManifestView {
@@ -100,7 +65,9 @@ const RECEIPT_NODE_OBLIGATION_PREFIX = "node.";
 /** Every node id a manifest case names, in one flat list. */
 function nodeIdsNamedBy(manifest: DryRunScenarioManifest): readonly string[] {
   return [
-    manifest.transactionNode,
+    // D318 — only the preview arm names a transaction node; a live-read
+    // manifest has none by construction.
+    ...(manifest.arm === "dry-run-preview" ? [manifest.transactionNode] : []),
     ...manifest.cases.flatMap((scenarioCase) => [
       ...scenarioCase.nodesReached,
       ...scenarioCase.nodesExcluded,
@@ -108,7 +75,9 @@ function nodeIdsNamedBy(manifest: DryRunScenarioManifest): readonly string[] {
       ...scenarioCase.gateResults.map(({ gate }) => gate),
       ...(scenarioCase.terminal.lifecycle === "failed"
         ? [scenarioCase.terminal.node]
-        : [scenarioCase.terminal.stoppedAtNodeId]),
+        : "stoppedAtNodeId" in scenarioCase.terminal
+          ? [scenarioCase.terminal.stoppedAtNodeId]
+          : []),
       // A receipt obligation `node.<id>` names the same graph node — its
       // verification is a `node-output` obligation source (ref evidence
       // obligations), not a free-text label — so it names a real node
@@ -171,7 +140,14 @@ const DOCUMENT_NUMBER_REFERENCE = {
  * assertion goes red and the growth becomes a visible, deliberate change here.
  */
 const ARM_WORKFLOW_KEYS = Object.keys(TestTargetWorkflowArmsSchema.shape) as readonly (keyof typeof TestTargetWorkflowArmsSchema.shape)[];
-assert.deepEqual([...ARM_WORKFLOW_KEYS].sort(), [FINALIZATION_WORKFLOW, SEPARATIONS_WORKFLOW].sort());
+assert.deepEqual([...ARM_WORKFLOW_KEYS].sort(), [FINALIZATION_WORKFLOW, PERSON_LOOKUP_WORKFLOW, SEPARATIONS_WORKFLOW].sort());
+
+/** D318 — the second committed subject: the person-lookup live-read canary, ONE EID selected in ignored `.env`. */
+const PERSON_LOOKUP_SUBJECT_LABEL = "person-lookup-canary";
+const EID_REFERENCE = {
+  name: "personLookupCanaryEid",
+  env: "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
+} as const;
 
 /**
  * Every `(workflow, kind)` arm a registry entry declares, in the schema's own
@@ -269,10 +245,14 @@ describe("test target registry architecture", () => {
     }
   });
 
-  it("commits exactly one subject, addressable by both workflows on the same Kuali document", () => {
+  it("commits exactly two subjects: the Kuali document addressable by both separations workflows, and the person-lookup live-read canary", () => {
     // D284: one label, one availability, one document — an arm per workflow,
-    // never a second entry and never an alias.
-    assert.deepEqual(TEST_TARGET_REGISTRY.targets.map(({ label }) => label), [SOLE_SUBJECT_LABEL]);
+    // never a second entry and never an alias. D318 adds the ONE other subject
+    // kind the tree has: a person, for the transaction-free live-read arm.
+    assert.deepEqual(TEST_TARGET_REGISTRY.targets.map(({ label }) => label), [SOLE_SUBJECT_LABEL, PERSON_LOOKUP_SUBJECT_LABEL]);
+    const person = TEST_TARGET_REGISTRY.targets.find(({ label }) => label === PERSON_LOOKUP_SUBJECT_LABEL);
+    assert.deepEqual(person === undefined ? undefined : armsDeclaredBy(person), [{ workflow: PERSON_LOOKUP_WORKFLOW, kind: "search-by-eid" }]);
+    assert.deepEqual(person?.workflows[PERSON_LOOKUP_WORKFLOW]?.publicInput.subject, { state: "configured", reference: EID_REFERENCE });
     const [subject] = TEST_TARGET_REGISTRY.targets;
     if (subject === undefined) throw new Error("the committed registry holds no subject");
     assert.deepEqual(armsDeclaredBy(subject), [
@@ -382,8 +362,10 @@ describe("test target registry architecture", () => {
     // The retired person block may not come back under any spelling: the
     // finalization arm is an observation record and carries no secret input.
     assert.equal(Object.hasOwn(subject?.workflows[FINALIZATION_WORKFLOW] ?? {}, "secretInput"), false);
-    // ONE registered test-target secret, and it is a document number — not a
-    // person value with a document-shaped name.
+    // Exactly TWO registered test-target secrets: the separations canary's
+    // document number (D300) and the person-lookup live-read canary's EID
+    // (D318) — each a closed reference to one workflow's own ingress value,
+    // never a person value with a document-shaped name or the reverse.
     assert.deepEqual(
       TEST_TARGET_SECRET_SPECS.map(({ name, env, valueKind, classification }) => ({
         name,
@@ -396,6 +378,12 @@ describe("test target registry architecture", () => {
           name: DOCUMENT_NUMBER_REFERENCE.name,
           env: DOCUMENT_NUMBER_REFERENCE.env,
           valueKind: "kuali-document-number",
+          classification: "direct-identifier",
+        },
+        {
+          name: EID_REFERENCE.name,
+          env: EID_REFERENCE.env,
+          valueKind: "ucpath-eid",
           classification: "direct-identifier",
         },
       ],

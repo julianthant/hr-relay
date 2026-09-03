@@ -3,17 +3,17 @@
 asOf: 2026-08-26
 head: 1af961c3
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
-source: Stems from the phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, `03c`'s migration order, `00`'s size model)
+source: Stems from admitted phase docs `docs/rebuild/00`–`03c` plus stable-path later-track docs `03d`/`04`/`05`/`06` (§Phases at a glance below, D319 admission, `00`'s size model)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
 source: `docs/plans/2026-08-20-dashboard-architecture-audit.md` (Track D) · the phase docs win on any disagreement
 footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; plan, site and owning docs move together — notation: `docs/roadmap/notation.md`.
-> The ground-up rebuild of UCSD's UCPath HR automation, as a tree. **Phases 0–2 are complete** — the platform is built and proven; **Phase 3** migrates the 13 remaining legacy workflows one at a time and entered at **separations**; legacy stays the sole production authority until one all-at-once cutover. Every box shows what it **builds** (by layer, filled when built) and what it **needs** — select one for detail, hover to light up what it unlocks.
+> The ground-up rebuild of UCSD's UCPath HR automation, as a tree. **Phases 0–2 are complete**. **Phase 3** proves the shared dashboard/workflow platform with **Person Lookup and Separations only**. Every other legacy workflow is an unnumbered candidate until its behavior and proposed workflow are verified with the operator; only then is the next phase created. Legacy stays the sole production authority until one all-at-once cutover. Every box shows either admitted work or clearly labeled candidate evidence.
 
 tiles:
 - Phases complete | 0 · 1 · 2 | runtime marker `completedThrough: 2j`
-- Active | Phase 3 | per-workflow migration · entered at separations
-- Workflows migrated | 2 of 15 | + separations at 8 of 9 exit criteria
-- Decisions | D1–D309 | D309 makes Separations identity authority source-conditioned: supplied/read-back EID is machine-verified; name-only requires the real gate · D131 retired, never reused
+- Active | Phase 3c-A | authoring/runtime foundation; operator-triggered 3c-B accepts Person Lookup + Separations and closes Phase 3
+- Admitted workflows | 2 | Person Lookup + Separations; all others unnumbered and verify-first
+- Decisions | D1–D319 | D319 requires operator-approved workflow admission before a new phase · D131 retired, never reused
 - Gates | 69 active guards | integrated D191 2,729/2,729 · parity last frozen 157/157 on 08-25 · schema v18
 - !Critical-path blocker | Separations controlled proof | 2026-09-02: D310 implements exact-set deletion authority and requires the real filing to survive through finalization. Historical 4589 remains inspection-only; select the independent disposable target and restoration/retention disposition, then rehearse and obtain explicit live-run authorization
 
@@ -25,7 +25,7 @@ status: done
 when: 2026-07-31 | seeded from legacy @5879004
 size: M
 chip: complete
-doc: 00 §Phase summary · 05 §Phase summary · ref:charter · ref:decisions
+doc: 00 §Phase summary · 05 §Stage summary · ref:charter · ref:decisions
 open: no
 
 > Every reference spec reconciled through Round 12 (D1–D94); testing policy ratified; the all-at-once cutover (D89/D93) and the two-repo model ratified; the separations identity gate designed here, not at order 8 (D77).
@@ -77,7 +77,7 @@ needs:
 - phase-0
 
 log:
-- 2026-08-29 | D75 authority close | the former unowned `requestedBy` residual is closed by one BFF admission checkpoint, strict configured solo derivation and pre-effect command-claim matching; Phase 3d still owns only the future second actor and credential extension
+- 2026-08-29 | D75 authority close | the former unowned `requestedBy` residual is closed by one BFF admission checkpoint, strict configured solo derivation and pre-effect command-claim matching; the cooperation track still owns only the future second actor and credential extension
 - 2026-08-21 | docs-cohesion 01 | doc 01 rewritten as-built and all six status blocks filled; every `[x]` in this subtree re-verified against the code and NONE had to be corrected — the phase is DONE and stayed done. What the rewrite adds is a residuals table: five findings that trace back to a spine contract and are owned in LATER nodes (`track-c`, `observed-logs`, Track D rows D6 and D11, `def-byte-path`, `test-tiers`) plus ONE with no owner — `requestedBy` is stamped on every command envelope and never checked, with no D-number and no `pending-wire-bindings` entry, reported rather than assigned
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §0
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
@@ -278,7 +278,7 @@ needs:
 - p2-proof
 
 log:
-- 2026-08-21 | docs-cohesion 02 | doc 02 §2h separates unwired-BY-DESIGN (the retention projection, D164) from unwired-by-omission (the saved-mapping store, an artifact-projection-declaring descriptor — both unowned and reported) and from waiting-on-a-declaring-workflow (the start-method kinds, the Review surface → `{#order-2}` / `{#order-3}`)
+- 2026-08-21 | docs-cohesion 02 | doc 02 §2h separates unwired-BY-DESIGN (the retention projection, D164) from unwired-by-omission (the saved-mapping store, an artifact-projection-declaring descriptor — both unowned and reported) and from waiting-on-an-admitted-workflow (the start-method kinds and Review surface → `{#migrations}`)
 - 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
 
 
@@ -347,16 +347,16 @@ log:
 
 ## flag: 2026-08-12 | **D193 — scope and entry.** Solo, local, never hosted. Phase 3 enters at **separations (order 8)**, chosen to force the store task libraries into existence; the §3.3 ordering is NOT re-sequenced. Separations questionnaire fully answered → READY TO BUILD. `test:coverage` becomes the per-commit gate (D191).
 
-## Per-workflow migration — separations first {#phase-3}
+## Phase 3 - workflow platform, Person Lookup and Separations {#phase-3}
 phase: Phase 3
 status: active
 when: 08-12 → today | nine days so far
 size: XL
 chip: active
-doc: 03b §Phase summary · 03c §Phase summary · 03c §Recommended migration order (by risk / complexity / reuse)
+doc: 03b §Phase summary · 03c §Phase summary · 03c §Unverified candidate evidence - not a phase order
 open: yes
 
-> One workflow at a time through the safety loop (doc 03c §Phase summary): record workflow-specific decisions → author `workflow.ts` → guards → **live dry run** → **controlled commit** where applicable → rebuild-ready → close-out. D311/D317 insert the workflow-authoring-model before the remaining migrations: the dashboard defaults and compiler are built once, then each workflow supplies its store/task deltas and evidence. A separate dashboard feature task exists only for a new interaction or wire arm. Separations went first and forced the defaults into existence; it now serves as the compiler's completeness acceptance workflow.
+> Phase 3 builds the shared dashboard and workflow-authoring platform, then proves them with Person Lookup and Separations. It adds no third workflow. Phase 3c-A finishes the compiler/runtime authoring seam; Phase 3c-B reconciles those two acceptance workflows and closes Phase 3. D319 requires every later legacy candidate to be verified with the operator before it receives the next numbered phase.
 
 needs:
 - p2-2j
@@ -665,9 +665,9 @@ log:
 status: active
 date: R15 · 2026-08-21
 size: L
-doc: 03d §Phase summary · ref:frontend-backend-integration §3.4 · ref:write-safety §14
+doc: 03d §Track summary · ref:frontend-backend-integration §3.4 · ref:write-safety §14
 
-> R15, the operator 2026-08-21. Claude Code, in the operator's own terminal and with NO api key — the terminal session IS the credential — becomes a SECOND ACTOR on the one local BFF: it reaches the same command protocol and the same read models over loopback through a local MCP server, and it monitors the whole dashboard through the SSE stream, the observed log and the notification inbox. Full parity — start runs, dry runs, retry/cancel, edit data, archive, settings, intake, explorer reads, notifications — with ONE exception, the **two-actor rule**: an identity gate or a controlled commit resolved by the `claude` actor is recorded `pending-confirmation`, has no effect, and lands only on a second approval by a DIFFERENT actor. What it INHERITS: the ONE command protocol and its CAS `expectedVersion`, so two operators racing get D253's named conflict rather than a silent overwrite; D181's `server` role lock, so there is ONE BFF even with the web dashboard AND the desktop app open, and each of them — Claude included — is a client of the one local port; D75's one solo request-identity checkpoint, which this phase extends rather than replaces; ref write-safety §14's human control, which becomes the two-actor rule rather than being widened; and `{#observed-logs}`, which is what makes monitoring legible at all. R10's agent-operated T4 tier IS this capability. The Phase 3d capability is not built: `grep -rn mcp package.json src` matches nothing, and the BFF actor model remains one literal.
+> R15, the operator 2026-08-21. Claude Code, in the operator's own terminal and with NO api key — the terminal session IS the credential — becomes a SECOND ACTOR on the one local BFF: it reaches the same command protocol and the same read models over loopback through a local MCP server, and it monitors the whole dashboard through the SSE stream, the observed log and the notification inbox. Full parity — start runs, dry runs, retry/cancel, edit data, archive, settings, intake, explorer reads, notifications — with ONE exception, the **two-actor rule**: an identity gate or a controlled commit resolved by the `claude` actor is recorded `pending-confirmation`, has no effect, and lands only on a second approval by a DIFFERENT actor. What it INHERITS: the ONE command protocol and its CAS `expectedVersion`, so two operators racing get D253's named conflict rather than a silent overwrite; D181's `server` role lock, so there is ONE BFF even with the web dashboard AND the desktop app open, and each of them — Claude included — is a client of the one local port; D75's one solo request-identity checkpoint, which this phase extends rather than replaces; ref write-safety §14's human control, which becomes the two-actor rule rather than being widened; and `{#observed-logs}`, which is what makes monitoring legible at all. R10's agent-operated T4 tier IS this capability. The the cooperation track capability is not built: `grep -rn mcp package.json src` matches nothing, and the BFF actor model remains one literal.
 
 needs:
 - dash-defaults
@@ -792,7 +792,7 @@ log:
 status: planned
 size: XL
 chip: historical preview available — controlled protocol blocked
-doc: 03b §Separations — order 8, the first migration · 03b §Exit criteria · 03c §Phase summary · 03c §Exit criteria · 03c §Recommended migration order (by risk / complexity / reuse) · ref:write-safety §12 · ref:write-safety §14.7
+doc: 03b §Separations — order 8, the first migration · 03b §Exit criteria · 03c §Phase summary · 03c §Exit criteria · 03c §Unverified candidate evidence - not a phase order · ref:write-safety §12 · ref:write-safety §14.7
 
 > Write-heavy — UCPath termination + Kuali finalization, entered first by operator choice (D193). The workflow is built and 4589’s historical green preview is available for inspection (§9.34). The sole registered canary 4537 is gone (§9.33). D309 supersedes D287’s extra in-workflow approvals. D310 resolves §§9.35–9.36 in code with exact-set sweep authority and a fresh surviving-filing precondition. Controlled execution remains blocked on the independent disposable target and restoration/retention disposition, then current-source rehearsal and explicit live-run authorization; criterion 5 remains open.
 
@@ -1109,24 +1109,27 @@ log:
 
 ## session: 2026-08-26 | 03a fidelity ratification | operator selected all 49 recommended A answers; D271–D276 ratify the worker-pool and fidelity decisions. No port, proof, parity re-freeze, or phase completion is claimed; all remain open.
 
-## session: 2026-09-02 | 3c verified progress | merge `a40276b6` integrates the bounded transitional compiler, Person Lookup + Separations compiler-backed descriptors/modules and generic conformance; merge `b1b36349` integrates Order 1 intake only. D312–D317 final API/direct entries/omission/recovery/four-artifact/guide/T1/deletion acceptance remains before 3c-B. R1/R2 worktrees are closed; every later run and the phase exit require an exact worktree sweep.
+## session: 2026-09-02 | 3c verified progress | merge `a40276b6` integrates the bounded transitional compiler, Person Lookup + Separations compiler-backed descriptors/modules and generic conformance; merge `b1b36349` integrates Order 1 intake only. D312–D318 final API/direct entries/omission/recovery/live-read/four-artifact/guide/T1/deletion acceptance remains before 3c-B. R1/R2 worktrees are closed; every later run and the phase exit require an exact worktree sweep.
 
-## today: 2026-09-02 · Phase 3c active · bounded compiler and Order 1 intake integrated at `b1b36349` · finish D312–D317 3c-A before Order 1 implementation · re-audit shared worktree capacity before writable dispatch
+## session: 2026-09-02 | D318 read-only T1 answer | operator selected A: transaction-free workflows use an explicit `live-read` T1b arm with `dryRun=false`, graph-proven zero transaction nodes and exact zero write-authority deltas; D209 transaction-preview semantics remain unchanged. Decision ratified; implementation remains 3c-A work.
+
+## today: 2026-09-02 · Phase 3c-A active · bounded compiler and candidate intake integrated at `b1b36349` · finish D312-D318 authoring acceptance · D319 withdraws every future workflow implementation from Phase 3
 
 ## Workflow authoring model {#workflow-authoring-model}
-phase: Phase 3 bridge
+phase: Phase 3c-A
 status: active
-when: before orders 1–7 and 9
-chip: bounded compiler integrated · D312–D317 finish open
-doc: 03c §Workflow authoring model — prerequisite to orders 1–7 and 9 · ref:workflow-model §1.6 · ref:operator-trust §5.2.3 · ref:frontend-backend-integration §6.8 · ref:guards-and-tests §10.11
+when: now | before Phase 3c-B acceptance
+chip: bounded compiler integrated · D312–D318 finish open
+doc: 03c §Workflow authoring model - Phase 3 acceptance foundation · ref:workflow-model §1.6 · ref:operator-trust §5.2.3 · ref:frontend-backend-integration §6.8 · ref:guards-and-tests §10.11
 open: yes
 
-> 3c-A builds one authored `WorkflowDefinition` in `src/workflows/<id>/workflow.ts`: an ordered `[timeline group, tasks[]]` array with explicit task/parallel/delegate/gate/transaction entries. “Recipe” is analogy only. `compileWorkflow` derives the existing descriptor, store/session requirements, registry/build-manifest value, run-modal/timeline/detail projections and Explorer view; workers execute the compiled workflow through the current sessions, checkpoints, logs/screenshots, gates, receipts, write safety and durable bytes. A reuse-only workflow has exactly four authored workflow-specific artifacts. Person Lookup proves the smallest shape, Separations proves the complete one, and then the redundant manual authoring path is deleted before 3c-B migrates another workflow.
+> 3c-A builds one authored `WorkflowDefinition` in `src/workflows/<id>/workflow.ts`: an ordered `[timeline group, tasks[]]` array with explicit task/parallel/delegate/gate/transaction entries. “Recipe” is analogy only. `compileWorkflow` derives the existing descriptor, store/session requirements, registry/build-manifest value, run-modal/timeline/detail projections and Explorer view; workers execute the compiled workflow through the current sessions, checkpoints, logs/screenshots, gates, receipts, write safety and durable bytes. A reuse-only workflow has exactly four authored workflow-specific artifacts. Person Lookup proves the smallest shape, Separations proves the complete one, and then the redundant manual authoring path is deleted before 3c-B accepts those two workflows and closes Phase 3.
 
 builds:
 - [x] DOCS D311 ratified in every owning reference and doc 03c
 - [x] DOCS D312–D316 ratified: simplicity budget, complete pre-start omissions, two recovery choices, explicit entry algebra and deletion acceptance
 - [x] DOCS D317: `workflow` is the technical authoring model; `recipe` is analogy only
+- [x] DOCS D318: transaction-free T1b uses explicit `live-read`; no fake dry run or no-op transaction
 - [x] PROOF compatibility fixtures for Person Lookup and Separations (`2e563240`, merged by `6d30d75a`)
 - [x] BE bounded transitional compiler derives graph/result, stores, descriptor/module and build-manifest products (`ebfde1c6`)
 - [x] BE Person Lookup and Separations route through the transitional compiler (`ebfde1c6`, `d4204106`)
@@ -1139,10 +1142,11 @@ builds:
 - [ ] BOTH finish Person Lookup's final four-artifact conversion and missing canonical T1 pair
 - [ ] BOTH finish Separations' final direct-entry conversion and redundant-path deletion while preserving public behavior
 - [ ] BOTH complete run-modal omission admission and the checkpoint-resume/root-restart command pair
+- [ ] BE D318 T1b admission/result arms: `dry-run-preview` for transaction graphs and `live-read` for zero-transaction graphs
 - [x] BOTH current tuple groups render through generic run-modal/timeline/detail/Explorer projections; reverify after final conversion
 - [ ] PROOF extend conformance to every direct entry kind; superseded declarations and duplicate generic-surface tests removed; no advanced escape hatch
 - [ ] DOCS practical workflow-authoring guide + paired root agent rules + one derived internal agent reference
-- [ ] PROOF 3c-A exit: guide-followed Person Lookup/Separations conversions, four-artifact/change-routing proof, all integrated gates green and exact worktree sweep complete before 3c-B
+- [ ] PROOF 3c-A exit: guide-followed Person Lookup/Separations conversions, four-artifact/change-routing proof, all integrated gates green and exact worktree sweep complete before 3c-B acceptance
 
 needs:
 - phase-3
@@ -1150,45 +1154,20 @@ needs:
 log:
 - 2026-09-02 | D311 | owner-first architecture recorded; documentation only, no compiler or conversion claimed
 - 2026-09-02 | D312–D316 | measurable simplicity and recovery boundaries recorded; documentation only, no implementation claimed
-- 2026-09-02 | D317 | Phase 3c split internally into authoring-platform gate 3c-A and migration gate 3c-B; workflow-only terminology and new-session execution order recorded
-- 2026-09-02 | verified at `b1b36349` | bounded compiler/conversions/conformance and Order 1 intake integrated; final D312–D317 authoring/runtime acceptance remains; R1/R2 worktree lifecycles closed
+- 2026-09-02 | D317 | Phase 3c originally split into authoring-platform 3c-A and a later migration batch; D319 narrows 3c-B to Person Lookup/Separations acceptance and Phase 3 close
+- 2026-09-02 | verified at `b1b36349` | bounded compiler/conversions/conformance and Order 1 intake integrated; final D312–D318 authoring/runtime acceptance remains; R1/R2 worktree lifecycles closed
+- 2026-09-02 | D318 | operator selected `live-read` for transaction-free T1b; decision blocker closed, implementation/T1 evidence still open
 
-## The remaining migrations {#migrations}
-phase: Phase 3 · continued
-status: planned
-when: next | undated — order, not calendar
-chip: 13 workflows · 9 order rows
-doc: 03c §Phase summary · 03c §Workflow authoring model — prerequisite to orders 1–7 and 9 · 03c §Recommended migration order (by risk / complexity / reuse) · 04 §Phase summary · ref:guards-and-tests §10 · ref:charter §Migration strategy
-open: yes
-
-> 3c-B begins only after 3c-A's authoring-platform exit gate. Doc 03c §Recommended migration order's risk-proof ordering remains: reads populate the task stores, the OCR service unblocks four consumers, and write-heavy lands last. **No workflow after separations is named yet.** Each migration records only its workflow-specific §b deltas, authors `workflow.ts`, runs a live dry run and, for writes, proves a controlled commit on a target you approve. Generic dashboard surfaces compile automatically; only a new interaction or wire arm gets its own dashboard feature task. **Store reality:** only ucpath, crm, kuali and new-kronos have real drivers today; onbase, servicenow, i9, old-kronos and sharepoint are declaration-only with zero tasks.
-
-builds:
-- [x] DOCS Order 1 Person Lookup/I-9 intake, reuse map and live login/search evidence (`b1b36349`); no implementation claim
-- [ ] BOTH orders 1, 2, 3, 4, 5, 6, 7 and 9 through the seven-step migration loop after 3c-A
-- [ ] PROOF every run and final phase close: integrated gate, registered/physical worktree removal, local branch deletion, exact task archival and residue record
-
-needs:
-- workflow-authoring-model
-
-note: **Legacy capability register at `b1b36349`:** 46 open · 19 replaced · 6 native · 7 retired — cutover requires zero open. Every entry advances to native / replaced / retired at its order's migration.
-
-log:
-- 2026-08-20 | docs-cohesion 03c | doc 03c written as-built: the seven-step playbook, all nine order rows, the recounted closure inventory. Chip corrected 12 → 13 workflows (15 `legacy-workflow-*` entries minus separations and person-lookup); the register recount CONFIRMS 47/20/7/4 and every open entry names `phase-3-workflow-migration`. Registry reality re-verified — only person-lookup and the six separations descriptors are registered, so orders 1-7 and 9 have no descriptor at all
-- 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
-- 2026-09-02 | D311/D317 | 3c-B remaining migrations depend on the workflow/compiler seam; repeated per-workflow dashboard wiring retires unless a workflow introduces a new capability
-- 2026-09-02 | D317 execution plan | 3c-A's ten ordered units and hard exit gate recorded; no order 1–7 or 9 implementation begins before it closes
-- 2026-09-02 | order 1 intake | migration records, REUSE/CUSTOMIZE/BUILD map and live I-9 login/search evidence integrated at `b1b36349`; no Order 1 runtime implementation or rebuild-ready claim
-- 2026-09-02 | capability recount at `b1b36349` | 78 total = 46 open / 25 implemented / 7 retired; disposition kinds 46 open / 19 replaced / 6 native / 7 retired; every open entry remains phase-owned
-### Order 0 · person-lookup {#order-0}
-status: done
+### Phase 3 acceptance · Person Lookup {#order-0}
+status: active
 size: M
 chip: live-proven (Phase 1)
-doc: 03c §Order 0 · person-lookup · 03c §Recommended migration order (by risk / complexity / reuse) · ref:workflow-model §8 · ref:workflow-model §8.1 · ref:task-contract §9.1 · ref:task-contract §9.1.1
+doc: 03c §Phase 3 acceptance · Person Lookup · 03c §Unverified candidate evidence - not a phase order · ref:workflow-model §8 · ref:workflow-model §8.1 · ref:task-contract §9.1 · ref:task-contract §9.1.1
 
 builds:
 - [x] BOTH resolve a person by name / EID against real UCPath + CRM
-- [ ] PROOF T1 scenario tests for person-lookup (structural fixture + dry-run scenario) and its T3 pair (R10)
+- [ ] BOTH Search + Match modes on the existing Person Lookup workflow
+- [ ] PROOF canonical Person Lookup structural + D318 `live-read` T1 pair; T2/T3 only for the mode interaction
 
 log:
 - 2026-08-20 | docs-cohesion 03c | verified as-built: `src/workflows/person-lookup/descriptor.ts` + `module.ts` registered at `src/control/workflow-registry.ts:39`, live-proven by D74. Its `legacy-workflow-person-lookup` capability entry stays OPEN correctly — legacy's crm-search/match/outcome are order 1. No T1 pair exists
@@ -1207,7 +1186,7 @@ builds:
 - [x] WIRE run detail — timeline, receipt, Context rail; the two-pixel panel found and fixed in 2j (D187)
 - [x] WIRE archive · activity · explorer — person-lookup rows appear through the generic surfaces
 - [x] PROOF D311 bounded acceptance — transitional compiler and generic projection equivalence (`ebfde1c6`, `246daab2`, `4555341f`)
-- [ ] PROOF D312–D317 final acceptance — final `workflow.ts`, no authored descriptor/module glue, four-artifact guard and canonical T1 pair
+- [ ] PROOF D312–D318 final acceptance — final `workflow.ts`, no authored descriptor/module glue, four-artifact guard and canonical T1 pair using the graph-valid T1b arm
 - [ ] BE publish `run-failed` / `subject-mismatch` / `write-parked` — four of six trigger arms are unreachable (ref operator-trust §6.3)
 
 needs:
@@ -1216,338 +1195,49 @@ needs:
 log:
 - 2026-08-20 | docs-cohesion 03c | verified: four squares, and four is right — person-lookup does not gate, raises no park notification and consumes no intake, so §5.1.4/§5.1.6/§5.1.7 have nothing to declare. Left: the T2 scenario
 
-### Order 1 · person-lookup Search + Match · i9-lookup {#order-1}
-status: planned
-size: M
-chip: intake complete · implementation blocked by 3c-A
-doc: 03c §Order 1 · person-lookup Search + Match · i9-lookup · 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §9.10 · ref:task-contract §3.1
+## Workflow admission backlog {#migrations}
+phase: unnumbered admission
+status: you
+when: after Phase 3 closes | one candidate at a time
+chip: verify first · no phase assigned
+doc: 03c §Phase summary · 03c §Workflow admission after Phase 3 · ref:workflow-model §1.6.2 · ref:charter §Migration strategy
+open: yes
 
-> read — HR-Tasks Search/Match; who signed I-9 §2. Two modes prove one descriptor can preserve distinct system surfaces.
-
-builds:
-- [x] DOCS workflow-specific migration decisions, reuse/provenance map and live I-9 login/search evidence (`b1b36349`)
-- [ ] BOTH Search + Match modes on person-lookup (D15)
-- [ ] BE the `i9` store: driver, login recipe, tasks (zero today)
-- [ ] BOTH i9-lookup workflow + its queue/detail surfaces
-- [ ] PROOF T1 scenario tests for person-lookup Search + Match · i9-lookup; T3 only for the mode interaction
-
-needs:
-- phase-2
-- fact: record workflow-specific §b deltas; ask the operator only if a real unresolved choice appears
-
-log:
-- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 1 written: `src/stores/i9/` is a 7-line `declareDriver("i9", "unwired")` with `{}` tasks, and `person-lookup/descriptor.ts` carries no mode. The row's hazard is one descriptor with two modes (D15) plus the first login recipe written from scratch since 1d (D120)
-- 2026-09-02 | intake complete at `b1b36349` | `docs/migrations/person-lookup.md`, `docs/migrations/i9-lookup.md` and the reuse/live map are integrated; implementation, T1 and capability disposition remain open
-
-#### Dashboard capability delta · Search + Match · i9-lookup {#order-1-dash}
-status: planned
-chip: one new capability · mode chooser
-doc: 03c §Dashboard capability delta · Search + Match · i9-lookup · ref:frontend-backend-integration §5.1.1 · ref:guards-and-tests §10.11
-
-> Search and Match are two workflow-declared run-modal options of one workflow. Every ordinary surface is compiler output; this node owns only the new mode interaction.
+> No workflow after Person Lookup and Separations is scheduled. Legacy names and old order rows are candidate evidence only. You select one candidate; its current legacy and live behavior, run inputs and omissions, timeline tuples, task-store reuse, systems/selectors, evidence, recovery and proof/write target are verified; you approve that packet; only then does the candidate receive Phase 4 or the next available phase number.
 
 builds:
-- [ ] BOTH generic workflow-declared mode chooser
-- [ ] PROOF T2/T3 for the mode interaction; ordinary surfaces ride compiler conformance
+- [x] DOCS D319 admission rule ratified; Phase 3 stops after Person Lookup/Separations acceptance
+- [ ] DOCS record the operator's selected candidate after Phase 3 closes
+- [ ] DOCS verify its complete admission packet with no guessed workflow boundary or hidden open choice
+- [ ] DOCS record the operator's approval of the exact workflow definition and scope
+- [ ] DOCS create the next numbered phase, phase doc, new or ratified migration doc and coordinator plan
 
 needs:
-- dash-defaults
+- workflow-authoring-model
+
+note: **Legacy capability register at `b1b36349`:** 46 open · 19 replaced · 6 native · 7 retired. Those are real cutover obligations, but they do not make any candidate a Phase 3 task or pre-assign a future phase.
 
 log:
-- 2026-09-02 | D311 | re-scoped from six repeated wires to one capability
+- 2026-09-02 | D319 | retired the assumed remaining-migration sequence as build authority; old rows remain evidence leads until Phase 3 close extracts or deletes them
+- 2026-09-02 | prior candidate intake | Person Lookup/I-9 evidence at `b1b36349` is preserved, but only Person Lookup is already admitted; I-9 remains an unnumbered candidate
 
-### Order 2 · crm-doc-download · sharepoint-download · old-kronos-reports {#order-2}
-status: planned
-size: M
-doc: 03c §Order 2 · crm-doc-download · sharepoint-download · old-kronos-reports · 03c §Recommended migration order (by risk / complexity / reuse) · 04 §Phase summary · ref:task-contract §3.1 · ref:guards-and-tests §3.7 · ref:frontend-backend-integration §3.6
+### Verify and approve the next workflow {#workflow-admission}
+status: you
+chip: one candidate only · operator approval required
+doc: 03c §Workflow admission after Phase 3 · ref:workflow-model §1.6.2
 
-> read / download — iDocs PDFs; rosters; Time Detail PDFs. Single-system reads and downloads at low risk.
+> This is the only next-workflow step shown in the plan. It expands into a numbered phase only after the current behavior and proposed workflow packet are verified and approved.
 
 builds:
-- [ ] BE the `sharepoint` and `old-kronos` stores (declaration-only today)
-- [ ] BE crm document download on the existing crm driver
-- [ ] BOTH downloads land as content-addressed artifacts; the artifact-bytes route
-- [ ] PROOF T1 scenario tests for crm-doc-download · sharepoint-download · old-kronos-reports; T3 only for the download viewer
+- [ ] DOCS record one selected candidate and its complete verified admission packet
+- [ ] DOCS record operator approval and create the next numbered phase
 
 needs:
-- phase-2
-- fact: record workflow-specific §b deltas; ask the operator only if a real unresolved choice appears
+- migrations
 
-log:
-- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 2 written: `sharepoint` and `old-kronos` are 12-line unwired declarations with zero tasks; `crm` has two read tasks and no download. This row also owns the artifact-bytes ROUTE, which does not exist (`legacy-route-files`) and which orders 3, 5 and 7 also need
-
-#### Dashboard capability delta · downloads {#order-2-dash}
+### Unassigned shared-capability backlog {#cross-cutting}
 status: planned
-chip: one new capability · download viewer
-doc: 03c §Dashboard capability delta · downloads · ref:frontend-backend-integration §3.6 · ref:guards-and-tests §10.12
-
-> The workflows inherit every ordinary surface. This node owns only opening the verified downloaded artifact.
-
-builds:
-- [ ] BOTH download viewer — the artifact-bytes route + a per-run downloads tile
-- [ ] PROOF T2/T3 for verified bytes and refusal; ordinary surfaces ride compiler conformance
-
-needs:
-- dash-defaults
-
-log:
-- 2026-09-02 | D311 | re-scoped to the download viewer capability alone
-
-### Order 3 · the OCR pipeline workflow {#order-3}
-status: planned
-size: M
-doc: 03c §Order 3 · the OCR pipeline workflow · ref:data-intake-and-edit-data §3 · ref:data-intake-and-edit-data §4 · ref:data-intake-and-edit-data §5 · ref:data-intake-and-edit-data §5.1 · ref:frontend-backend-integration §6.9 · ref:dashboard-surfaces §9.7.2 · ref:data-intake-and-edit-data §4.3 · ref:data-intake-and-edit-data §4.8
-
-> service — PDF → extraction → review → fan-out. No browser, no submit; the 2h service stores are already built.
-
-builds:
-- [ ] BE the OCR pipeline workflow over the 2h extraction / normalization / ocr / roster stores
-- [ ] BE the ordinary local-dashboard byte path: BFF static handler plus parsed `--prod`, so `npm run dashboard:prod` serves the built dashboard (D189, amended D294)
-- [ ] PROOF T1 scenario tests for the OCR pipeline workflow; T3 only for Review
-- [ ] PROOF re-verify the roster SCORING against a real roster — the tiering ported verbatim, the scoring is new (ref data-intake-and-edit-data §7)
-
-needs:
-- p2-2h
-- fact: record workflow-specific §b deltas; ask the operator only if a real unresolved choice appears
-
-log:
-- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 3 written: the four 2h service stores are REAL (`extraction` 2 tasks, `ocr` 1, `normalization` 1, `roster` 1) and the pipeline workflow is not. Three hazards recorded — D189's byte path as a HARD cutover blocker, `CAPTURE_INTAKE_BINDINGS` empty because no module declares one (`workflow-registry.ts:194`), and `RunShapeSchema`'s `operation` arm that nothing mints
-- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
-
-#### Dashboard capability delta · OCR pipeline {#order-3-dash}
-status: planned
-chip: one new capability · Review
-doc: 03c §Dashboard capability delta · OCR pipeline · ref:data-intake-and-edit-data §4.3 · ref:guards-and-tests §10.12
-
-> The OCR workflow inherits ordinary surfaces. This node owns the first real Review panel and its commands.
-
-builds:
-- [ ] BOTH OCR review UI — expanded page ↔ extracted-text pair, approve / reject / retry page, one atomic correction list
-- [ ] WIRE review/approve commands + progressive record patches over the SSE stream
-- [ ] BOTH the OCR Review panel body — `review` is declared in TAB_ORDER but `availableSections` can never return it (03a finding)
-- [ ] PROOF T2/T3 for Review; ordinary surfaces ride compiler conformance
-
-needs:
-- dash-defaults
-
-log:
-- 2026-09-02 | D311 | re-scoped to Review and its commands
-- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
-
-### Order 4 · oath-signature · emergency-contact {#order-4}
-status: planned
-size: L
-doc: 03c §Order 4 · oath-signature · emergency-contact · 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §4 · ref:dashboard-surfaces §4.3 · ref:write-safety §3 · ref:write-safety §14 · ref:workflow-model §3.2 · ref:write-safety §3.2
-
-> OCR fan-out + light write — oath date rows; emergency-contact fill. Exercises the completion union (D11), approval gates (D5) and operation-member fan-out; the write is a bounded UCPath enter/fill.
-
-builds:
-- [ ] BOTH first operation fan-out + approval gates through the real review UI
-- [ ] BE oath-signature and emergency-contact workflows
-- [ ] PROOF the first non-separations controlled commits on UCPath enter/fill
-- [ ] PROOF T1 scenario tests for oath-signature · emergency-contact; T3 only for the gate/Group People capability
-- [ ] DOCS the delegation / row-model vocabulary (ref dashboard-surfaces §9.10)
-
-needs:
-- order-3
-- fact: record workflow-specific §b deltas
-- you: controlled-commit target approval
-
-log:
-- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 4 written: two independent firsts in one row — the first operation fan-out and the first non-separations controlled commit. The doc says not to collapse them: prove the fan-out with the write still dry, then prove the write on one member under ref write-safety §3.2's full contract
-- 2026-08-21 | docs-dash-surfaces 5.1c | §9.1–§9.4, §9.9, §9.10 written as-built (`bbdf59b3`)
-- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
-
-#### Dashboard capability delta · oath-signature · emergency-contact {#order-4-dash}
-status: planned
-chip: two new capabilities · gate packet + Group People
-doc: 03c §Dashboard capability delta · oath-signature · emergency-contact · ref:write-safety §14.11 · ref:dashboard-surfaces §9.10 · ref:guards-and-tests §10.12
-
-> Ordinary projections compile from the workflows. This node owns the generalized gate packet and first real Group People surface.
-
-builds:
-- [ ] BOTH generalized server-declared gate packet
-- [ ] FE Group People — paged members + rollup + containment over real operation members
-- [ ] BOTH the group People panel body — declared, never servable (03a finding)
-- [ ] PROOF T2/T3 for the gate shape and Group People; ordinary surfaces ride compiler conformance
-
-needs:
-- dash-defaults
-
-log:
-- 2026-09-02 | D311 | re-scoped to generalized gate packet and Group People
-
-### Order 5 · i9-check {#order-5}
-status: planned
-size: L
-doc: 03c §Order 5 · i9-check · 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §4 · ref:dashboard-surfaces §7 · ref:execution-and-sessions §8 · ref:data-intake-and-edit-data §4.1 · ref:data-intake-and-edit-data §4.10 · ref:workflow-model §3.2
-
-> UCPath read + durable roster projection — verify I-9 packet, the master retention workbook. Operation coordinator + member enqueue + display-only rows, no external submit.
-
-builds:
-- [ ] BE the operation coordinator at scale
-- [ ] BE stable-keyed SQLite outbox + serialized workbook projector
-- [ ] BE the first Excel export writer (the master I-9 retention workbook)
-- [ ] PROOF T1 scenario tests for i9-check; T3 only for retention/export behavior
-- [ ] BE the artifact-projection path has no first consumer — no descriptor declares `artifactProjections:`, `RunArtifactProjector` is composed nowhere (ref dashboard-surfaces §3.2 · ref data-intake-and-edit-data §4.1)
-
-needs:
-- order-1
-- order-4
-- fact: record workflow-specific §b deltas; ask the operator only if a real unresolved choice appears
-
-log:
-- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 5 written: `src/infra/artifacts/xlsx-retention-sink.ts` already proves ref data-intake-and-edit-data §4.1's contract, D164 leaves it uncomposed, and its own header names THIS migration as the owner of the operator-facing column layout. A scale proof with no external submit
-- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
-- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
-- 2026-08-21 | docs-cohesion execution-and-sessions | §10 (the lease) and §11 (sessions) are the owning contracts (`fed795e1`)
-
-#### Dashboard capability delta · i9-check {#order-5-dash}
-status: planned
-chip: two new facts · retention + export
-doc: 03c §Dashboard capability delta · i9-check · ref:data-intake-and-edit-data §4.1 · ref:guards-and-tests §10.12
-
-> The workflow reuses Group People and ordinary projections. This node owns retention status and workbook export.
-
-builds:
-- [ ] FE member rows with retention status; the workbook export control
-- [ ] PROOF T2/T3 for retention and export; ordinary surfaces ride compiler conformance
-
-needs:
-- dash-defaults
-
-log:
-- 2026-09-02 | D311 | re-scoped to retention status and workbook export
-
-### Order 6 · work-study · kronos-pay-rule {#order-6}
-status: planned
-size: L
-doc: 03c §Order 6 · work-study · kronos-pay-rule · 03c §Recommended migration order (by risk / complexity / reuse) · ref:write-safety §2.2 · ref:write-safety §5 · ref:task-contract §2.9 · ref:data-intake-and-edit-data §1 · ref:write-safety §3.2
-
-> **first real writes** — PayPath pool/comp; UKG pay rules. Small, isolated workflow-specific production commits on the proven transaction kernel.
-
-builds:
-- [ ] BE work-study and kronos-pay-rule commit contracts
-- [ ] PROOF the canonical-EID audit gate: replay real stored inputs through `Eid` `/^10\d{6}$/`, surface every rejection
-- [ ] BE the new-kronos store gains its pay-rule write family
-- [ ] PROOF T1 scenario tests for work-study · kronos-pay-rule; T3 only for the run-constant interaction
-
-needs:
-- sep-1
-- p2-proof
-- fact: record workflow-specific §b deltas
-- you: controlled-commit target approval
-
-log:
-- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 6 written: `new-kronos` has a driver, a session provider and two READ tasks from separations chunk 1 (D196) and no write path. The canonical-EID gate is EVIDENCE — `EidSchema` is `/^10\d{6}$/` at `src/domain/ids.ts:184` and widening it is a wrong person who looks right
-- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
-- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
-
-#### Dashboard capability delta · work-study · kronos-pay-rule {#order-6-dash}
-status: planned
-chip: one new interaction · run constant
-doc: 03c §Dashboard capability delta · work-study · kronos-pay-rule · ref:data-intake-and-edit-data §2.8 · ref:guards-and-tests §10.12
-
-> Intake and ordinary projections are reused. This node owns binding and unbinding one run-level constant.
-
-builds:
-- [ ] BOTH intake grid constants entry + unbind arm (`effectiveDate`, D172/D173)
-- [ ] PROOF T2/T3 for bind/unbind; ordinary surfaces ride compiler conformance
-- [ ] BE the saved-mapping store — a writer and loader for the `ColumnMapping` `resolveSavedMapping` already resolves; today every upload is a fingerprint miss (ref data-intake-and-edit-data §2.3)
-
-needs:
-- dash-defaults
-
-log:
-- 2026-09-02 | D311 | re-scoped to the run-constant interaction
-- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
-
-### Order 7 · oath-upload · onbase {#order-7}
-status: planned
-size: L
-doc: 03c §Order 7 · oath-upload · onbase · 03c §Recommended migration order (by risk / complexity / reuse) · 03c §Live probe status (the design assumptions still unproven) · ref:write-safety §2.2 · ref:write-safety §4.2 · ref:dashboard-surfaces §4.5 · ref:guards-and-tests §3.5 · ref:task-contract §9.2 · ref:write-safety §3.2
-
-> write-heavy — ServiceNow ticket + PDF; OnBase document import. Prove ServiceNow `receipt`; resolve OnBase OQ2 (`upload-verify` vs `unverifiableByPage`); oath-upload ports the born-at-upload fence.
-
-builds:
-- [ ] BE the `servicenow` and `onbase` stores (declaration-only today)
-- [ ] BE ServiceNow receipt probe; OnBase upload-verify
-- [ ] BE oath-upload's born-at-upload fence
-- [ ] PROOF rebuild-verified propagation windows for ServiceNow
-- [ ] PROOF T1 scenario tests for oath-upload · onbase; T3 only for the receipt capability delta
-
-needs:
-- order-6
-- you: name a ServiceNow live-probe target
-- you: name an OnBase probe target (none exists today)
-
-log:
-- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 7 written: `servicenow` and `onbase` are 12-line unwired declarations with zero tasks, and TWO of this row's blockers need the operator, not an agent. `unverifiableByPage` would change the WORKFLOW (the operator confirms every upload), not just the assertion
-- 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
-- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
-
-#### Dashboard capability delta · oath-upload · onbase {#order-7-dash}
-status: planned
-chip: two new receipt arms
-doc: 03c §Dashboard capability delta · oath-upload · onbase · ref:operator-trust §2.3 · ref:guards-and-tests §10.12
-
-> Ordinary projections compile from the workflows. This node owns the ServiceNow and OnBase completion-proof presentations.
-
-builds:
-- [ ] WIRE ServiceNow ticket receipt + OnBase upload-verify on the run-detail receipt
-- [ ] PROOF T2/T3 for the new receipt or always-park arms; ordinary surfaces ride compiler conformance
-
-needs:
-- dash-defaults
-
-log:
-- 2026-09-02 | D311 | re-scoped to the two completion-proof presentations
-
-### Order 9 · onboarding {#order-9}
-status: planned
-size: XL
-doc: 03c §Order 9 · onboarding · 03c §Recommended migration order (by risk / complexity / reuse) · ref:workflow-model §3 · ref:data-intake-and-edit-data §4 · ref:write-safety §5 · ref:write-safety §14 · ref:write-safety §3.2
-
-> write-heavy — the real hire transaction. The duplicate-person incident; last, highest-stakes, most reuse of everything below it.
-
-builds:
-- [ ] BE the hire probe with the no-EID key (`ProbeVerdict`-widened)
-- [ ] BE roster ingest
-- [ ] BE the onboarding composition over the ucpath / crm / kuali / kronos stores
-- [ ] PROOF T1 scenario tests for onboarding; T3 only for roster ingest or a new hire-gate arm
-
-needs:
-- order-8
-- order-5
-- fact: record workflow-specific §b deltas
-- you: approve a hire canary
-
-log:
-- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 9 written: `probeVerdictSchema` has four arms at `src/domain/write-safety-primitives.ts:50` and every permanent key in the tree is EID-derived — a hire CREATES the identity, so the widening is a real schema question, not a naming one. Its canary is the hardest target in the program
-- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
-- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
-
-#### Dashboard capability delta · onboarding {#order-9-dash}
-status: planned
-chip: roster ingest + hire gate delta
-doc: 03c §Dashboard capability delta · onboarding · ref:data-intake-and-edit-data §4 · ref:write-safety §14.11 · ref:guards-and-tests §10.12
-
-> Ordinary projections compile from the workflow. This node owns roster ingest and only the hire-gate evidence shape that the generalized gate capability cannot express.
-
-builds:
-- [ ] BOTH roster ingest surface; the hire canary's ceremony
-- [ ] BOTH server-declared hire gate packet only where it differs from the generalized gate capability
-- [ ] PROOF T2/T3 for roster ingest and any new gate arm; ordinary surfaces ride compiler conformance
-
-needs:
-- dash-defaults
-
-log:
-- 2026-09-02 | D311 | re-scoped to roster ingest and the hire-gate delta
-
-### Cross-cutting Phase 3 capabilities (no single order) {#cross-cutting}
-status: planned
-doc: 03c §Cross-cutting Phase 3 capabilities (no single order) · 03c §Non-workflow capability closure inventory (D58) · ref:clock-config-secrets §3 · ref:clock-config-secrets §6.2 · ref:frontend-backend-integration §3.4 · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §8
+doc: 03c §Unassigned shared-capability backlog · 03c §Non-workflow capability closure inventory (D58) · ref:clock-config-secrets §3 · ref:clock-config-secrets §6.2 · ref:frontend-backend-integration §3.4 · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §8
 
 > Where legacy is still ahead — the honest list, each shaped against a real run corpus rather than invented in planning.
 
@@ -1579,13 +1269,13 @@ status: planned
 when: comes due | at a named trigger
 chip: every deferral names its trigger
 chip-tone: never
-doc: 04 §Phase summary · 00 §Size model + delivery tiers · 03c §Live probe status (the design assumptions still unproven) · 05 §Risk register (top sequencing risks)
+doc: 04 §Shelf summary · 00 §Size model + delivery tiers · 03c §Live probe status (the design assumptions still unproven) · 05 §Risk register (top sequencing risks)
 open: no
 
 > "I want to do X; the plan said build Y; Y is deferred." None is silently dropped and each names its trigger, stance or retirement. D297 adds the ninth: controlled desktop update waits behind the signed manual-upgrade proof and one fail-loud quiescence/ordered-shutdown authority.
 
 log:
-- 2026-09-01 | D297 | controlled desktop update added as the ninth named deferral; v1 manual in-place updates remain a Phase 6 packaging acceptance criterion
+- 2026-09-01 | D297 | controlled desktop update added as the ninth named deferral; v1 manual in-place updates remain a the desktop stage packaging acceptance criterion
 - 2026-08-20 | docs-cohesion 04 | doc 04 rewritten as-built — eight deferrals, each with its trigger; the sanity check is RETIRED, not deferred, and `def-retention`'s title corrected (no 14/8/5 constant exists)
 
 note: **Never, by design:** unverified silent fallbacks · selector `.or()` chains · per-daemon logs / bespoke polling hooks / secondary count caches · per-action mutation routes · generic retry on a parked write · DSL/codegen workflow authoring (D79a) · LAN/remote operator mode · hosting (D193) · mobile/phone document Capture Mode (D294) · legacy change accounting (D150).
@@ -1601,7 +1291,7 @@ builds:
 - [ ] BE `--prod` parsed by `startRebuildRuntime` — `package.json:12` passes the flag and `src/core/runtime-composition.ts:162` dispatches on `args[0]` alone, so `npm run dashboard:prod` is byte-identical to `npm run cli -- dashboard`
 
 needs:
-- order-3
+- migrations
 
 log:
 - 2026-08-20 | docs-cohesion 04 | six build items re-verified unlanded at HEAD; two read as done and are not — `--prod` reaches nothing, and the Host gate has never evaluated a request
@@ -1681,7 +1371,7 @@ builds:
 - [ ] PROOF the separations finalization's own controlled commit, which turns D207's provisional mechanism transfer into a measurement
 
 needs:
-- order-7
+- migrations
 
 log:
 - 2026-08-20 | docs-cohesion 04 | per system, not global: Kuali is closed, UCPath and ServiceNow are open; the direction-of-error argument is why the transfer stops at Kuali
@@ -1758,7 +1448,7 @@ status: planned
 when: after Phase 3
 size: L
 chip: not started
-doc: 05 §Phase summary · 05 §Exit criteria · 05 §Legacy vs rebuild (as of 2026-08-21) · ref:dashboard-surfaces §5 · ref:frontend-backend-integration §7.4 · ref:frontend-backend-integration §10 · ref:charter §Migration strategy
+doc: 05 §Stage summary · 05 §Exit criteria · 05 §Legacy vs rebuild (as of 2026-08-21) · ref:dashboard-surfaces §5 · ref:frontend-backend-integration §7.4 · ref:frontend-backend-integration §10 · ref:charter §Migration strategy
 open: no
 
 > D89 / D93. No workflow flips individually, no mixed-engine production, ever. The entire legacy repo is preserved as the rollback asset; nothing in it is deleted until rollback-window closure with separate explicit authorization.
@@ -1775,18 +1465,11 @@ builds:
 - [ ] PROOF rollback bridge verified before the switch
 
 needs:
-- order-1
-- order-2
-- order-3
-- order-4
-- order-5
-- order-6
-- order-7
 - order-8
-- order-9
+- migrations
 - cross-cutting
 - track-d
-- fact: legacy capability register at zero open (46 open at `b1b36349`, all owned by `phase-3-workflow-migration`)
+- fact: legacy capability register at zero open (46 open at `b1b36349`, all owned by `workflow-admission-backlog`)
 - fact: doc 05 §Exit criteria — the definition of done + the program-wide integration criteria (ref frontend-backend-integration §10) green in the real built app
 
 log:
@@ -1796,7 +1479,7 @@ log:
 
 ### Rollback window, then closure {#rollback-window}
 status: planned
-doc: 05 §Rollback window, then closure · 05 §Phase summary · 05 §Exit criteria · ref:dashboard-surfaces §5
+doc: 05 §Rollback window, then closure · 05 §Stage summary · 05 §Exit criteria · ref:dashboard-surfaces §5
 
 > Legacy code, tests and state intact; closure is its own later authorization. Nothing flips yet, so no window is open — and re-crossing is asymmetric: a launcher repoint before any native write, intent/ledger reconciliation and dedupe proof after one.
 
@@ -1812,7 +1495,7 @@ status: never
 chip: ideas, not a hosted future
 doc: 05 §Later, unplanned · ref:operator-trust §7 · ref:clock-config-secrets §6.1
 
-> A cooperation / multi-user mode built on top of solo (D193) — the tier's one remaining item; the PACKAGING half ("web app → real app") LEFT this tier on 2026-08-21, when the operator made it Phase 6 (`{#desktop-app}`, R14). The LATER tier of D76's MUST / SHOULD / LATER sizing — what the stop-loss cuts FIRST — and it never blocks the cutover: doc 05 §Exit criteria names none of it.
+> A cooperation / multi-user mode built on top of solo (D193) — the tier's one remaining item; the PACKAGING half ("web app → real app") LEFT this tier on 2026-08-21, when the operator made it the desktop stage (`{#desktop-app}`, R14). The LATER tier of D76's MUST / SHOULD / LATER sizing — what the stop-loss cuts FIRST — and it never blocks the cutover: doc 05 §Exit criteria names none of it.
 
 log:
 - 2026-08-21 | docs-cohesion 05 | filled as-built — the two D193(a) items carry no owner and no design (which is what separates them from a doc 04 deferral), the four D75 seams that keep them possible are built, and hosting is a decided refusal rather than a LATER item
@@ -1821,12 +1504,12 @@ log:
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
 ## Ship the desktop app {#desktop-app}
-phase: Phase 6
+phase: Unnumbered desktop stage
 status: planned
 when: after the cutover | the operator may pull it earlier
 size: L
 chip: not started
-doc: 06 §Phase summary · ref:frontend-backend-integration §6.9 · ref:execution-and-sessions
+doc: 06 §Stage summary · ref:frontend-backend-integration §6.9 · ref:execution-and-sessions
 open: no
 
 > R14/D297. The rebuild is DELIVERED as a Mac and Windows desktop app: Electron remains the shell because the installed product must own the BFF, workers, full Playwright Chromium, Duo extension, keychain boundary and ordered shutdown. V1 updates are signed, manual and in place; a controlled updater is deferred behind `{#def-desktop-update}`. What it INHERITS: D181's `server` role lock → single instance; `runtime-isolation.json`'s roots → app-data dirs (they are repo-relative off `process.cwd()` today); D189's byte path → the desktop loads the bundle from app RESOURCES; `{#parallel-runs}`' worker pool → the app's worker lifecycle; `{#duo-lease}`, because the desktop is where several workers on one machine become the ordinary case. Nothing is built: there is no Electron dependency at HEAD.
@@ -1836,7 +1519,7 @@ needs:
 - parallel-runs
 - duo-lease
 
-note: The order is "at the end" — but the operator may pull this phase IN FRONT of `{#cutover}` if the cutover should run on the packaged app. Until they do, `needs: cutover` stands.
+note: The order is "at the end" — but the operator may pull this stage IN FRONT of `{#cutover}` if the cutover should run on the packaged app. Until they do, `needs: cutover` stands.
 
 log:
 - 2026-09-01 | D297 | Electron retained; v1 signed manual in-place update and later controlled-updater boundary ratified
@@ -1966,9 +1649,10 @@ log:
 ## Governance (the plan's own rules)
 
 _Lifted from the master plan's §0 on 2026-08-20 (cohesion step 3a) — verbatim except
-where a name moved: the design docs are now cited by slug under `docs/rebuild/reference/`, and the
-plan's own numbers are the phase docs `docs/rebuild/00`–`06` (the number IS the phase; phase 3 is
-four docs, `03a`/`03b`/`03c`/`03d`). The master plan itself was dissolved into those docs on the same day
+where a name moved: the design docs are now cited by slug under `docs/rebuild/reference/`. D319
+supersedes the fixed `00`-`06` shelf after Phase 3: future workflow phases are numbered only after
+admission, while the existing `03d`/`04`/`05`/`06` filenames remain stable paths for unnumbered later
+tracks until those phases are allocated. The master plan itself was dissolved into those docs on the same day
 (step 3b); its as-written record, with a section-by-section table of where everything went, is
 `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`._
 
@@ -1978,11 +1662,11 @@ Per charter §"One master plan": the owning design docs (now `reference/task-con
 `reference/workflow-model`, `reference/dashboard-surfaces`, `reference/decisions`,
 `reference/execution-and-sessions`, `reference/data-intake-and-edit-data`, and
 `reference/write-safety` through `reference/frontend-backend-integration`) are the binding detail;
-THE PLAN — this file, the tree, plus the phase docs `docs/rebuild/00`–`06` — is the authoritative
+THE PLAN - this file, the tree, plus the admitted phase docs under `docs/rebuild/` - is the authoritative
 build order. No second plan, no per-workflow "alt plan," no execution doc that re-sequences
-phases. Per-workflow *migration plan docs* (Phase 3+) are **children** of this plan — they answer the §b questionnaire
-(`doc 03c` §The §b migration questionnaire) and record what a workflow reuses/adds; they never re-order the
-program.
+phases. A candidate has no phase or migration plan. After D319 admission, its numbered phase doc and
+workflow migration doc become children of this plan; they answer the §b questionnaire (`doc 03c`
+§The §b migration questionnaire) and record what the workflow reuses/adds.
 
 **D263 (2026-08-20) — the plan has a machine-readable form, and it is bound to the docs both ways.**
 `docs/roadmap/roadmap.md`, written in the roadmap notation
@@ -2045,28 +1729,28 @@ re-verifies it, and its four internal §-refs are repointed to the phase docs th
 sections. Each phase's detail — its work items, what is done, its exit criteria — is its own doc
 under `docs/rebuild/`; the tree above is the same set of phases as nodes._
 
-_**Three rows were ADDED and one renumbered on 2026-08-21** — `3d` (R15), `4` and `6` (R14), with the
-cutover row renumbered `5` to match the shelf. The master plan's table stopped at the cutover and the
-shelf did not, so the sentence above — the same set of phases as nodes — was false for three of them.
-A glance table that omits a phase is worse than no glance table: it reads as a complete list._
+_D319 (2026-09-02) ends the fixed numbering at Phase 3. The prior `3d`, `4`, `5` and `6` labels remain
+in filenames only so links do not break; they are later tracks/stages, not reserved phase numbers.
+Phase 4 is assigned only after one workflow candidate passes admission and the operator approves it._
 
 | Phase | Headline deliverable | Gate to exit | Size |
 |---|---|---|---|
 | **0** | Corrected foundation design approved; empty rebuild repo | **COMPLETE 2026-07-31:** decisions reconciled through Round 12; testing policy ratified; executable feasibility + honest gate baseline recorded; write-proof probes carry explicit later milestone gates (`doc 03c` §Live probe status) | **M** |
 | **1** | **The SPINE** — the minimum base that can carry one workflow end to end (1a–1f + the span/projection slice + the queue-surface slice) | **COMPLETE 2026-08-04.** 1a + 1b COMPLETE 2026-07-31; 1c + 1d + 1e COMPLETE 2026-08-01; **1f + 1g-spine + 1i-spine COMPLETE 2026-08-04**. The phase exit — **person-lookup ran LIVE on the spine** (D74) against real UCPath + CRM, run `4ebf7275-0158-49af-a78f-1f37948efb27` / trace `pl-000619-4ebf` — is **MET**; full gates green; strict/subject/control/delegation/recovery/scenario fixtures pinned. Evidence and the carried-forward presentation defects are recorded under §Phase 1's exit criteria | **XL** |
 | **2** | **Transaction proof, then the deferred base tails** — controlled real commit + crash/recovery, *then* trust tails, data services/intake/capture, explorer | subject-bound dry-run and controlled commit/crash/outbox/ledger proof green; then evidence/notification/knowledge, intake/capture/Edit-Data, and read-only explorer land against a proven spine | **XL** |
-| **3+** | Per-workflow rebuild migration, one at a time (order: `doc 03c` §Recommended migration order), plus explicit non-workflow capability closure (`doc 03c` §Non-workflow capability closure inventory) | each: §b questionnaire answered; isolated live dry-run + controlled write evidence where applicable; every capability inventory entry advances to native/replaced/retired; docs updated; legacy production remains authoritative until the final gate | **XL** |
-| **3d** | **Co-operate with Claude** — a second actor on the one local BFF: Claude Code in the terminal, a local MCP server, full parity except the two-actor rule on identity gates and controlled commits (`doc 03d`, R15) | MCP server registered and usable from the terminal; the parity table ENFORCED rather than documented; the two-actor rule proved on one identity gate; both apps open on one BFF; monitoring legible (`doc 03d` §Exit criteria) | **L** |
-| **4** · Deferred | Every "I want X; the plan said Y; Y is deferred" answer, each with the **trigger** that ends it (`doc 04`) | not a dated block of work: a deferral closes with the decision that ends it, and `doc 05` §Exit criteria names none of them, so none blocks the cutover | **—** |
-| **5** · Cutover | One all-at-once production authority switch (D89) | every workflow/shared capability ready; legacy enqueues stopped; active/uncertain work reconciled; both states backed up; imports versioned/idempotent; launcher switches atomically; rollback bridge verified; legacy code/tests preserved | **L** |
-| **6** | **Ship the desktop app** — the rebuild delivered as a Mac and Windows application: Electron owns the local process tree, keychain boundary and signed installers; v1 upgrades are manual and in place (R14/D297) | installable on both operating systems with no checkout and no npm; a signed older→newer upgrade preserves mutable state; a real workflow dry run from the INSTALLED app on both; credentials never ship in a file; the worker survives sleep or refuses loud (`doc 06` §Exit criteria) | **L** |
+| **3** | Shared dashboard and workflow-authoring platform, accepted by **Person Lookup and Separations only** | D311-D318 implementation/equivalence green; Person Lookup T1 complete; Separations compiler acceptance preserves every safety contract; 3c-B reconciles and closes Phase 3 | **XL** |
+| **4 · unassigned** | The first workflow or explicitly approved workflow family admitted after Phase 3 | candidate behavior and proposed tuple workflow verified; operator approves the D319 packet; only then create and name Phase 4 | **not sized** |
+| **Later track** | Co-operate with Codex/Claude as a second actor on the one local BFF (`doc 03d`, R15) | separately triggered and proved; it is not Phase 3 workflow scope | **L** |
+| **Deferred shelf** | Every "I want X; the plan said Y; Y is deferred" answer and its trigger (`doc 04`) | not a numbered phase or scheduled block; each item closes when its trigger fires | **not sized** |
+| **Cutover stage** | One all-at-once production authority switch (D89) | every admitted workflow/shared capability ready; legacy enqueues stopped; active/uncertain work reconciled; both states backed up; launcher switches atomically; rollback verified | **L** |
+| **Desktop stage** | Ship the rebuild as a Mac and Windows desktop application (`doc 06`) | installable on both systems; signed upgrade preserves state; installed-app live proof; credentials remain protected | **L** |
 
 **Reading the Size column.** These are relative build sizes, not calendar — the calendar depends
 on session cadence, which the plan does not own. The unit is *work sessions of the kind this
 program actually runs in*: **S** ≈ 1, **M** ≈ 2–4, **L** ≈ 5–10, **XL** ≈ 10+. They expose
 delivery risk and help keep a long coexistence program tractable. Per-item sizes are in `doc 00` §Size model + delivery tiers; they are estimates
-offered for correction, not commitments. **Phase 4 carries no size on purpose** — it is not a block of
-work but nine named absences, each sized by the decision that ends it.
+offered for correction, not commitments. An unassigned phase carries no size because its workflow
+boundary has not passed admission. The deferred shelf is not a phase and is sized item by item.
 
 ---
 

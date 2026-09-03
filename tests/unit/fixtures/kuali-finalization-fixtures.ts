@@ -62,8 +62,8 @@ import { taskStoreRegistry } from "../../../src/stores/index.js";
 import {
   SeparationsKualiFinalizationCanonicalInput,
   SeparationsKualiFinalizationInput,
-  separationsKualiFinalizationDescriptor,
-} from "../../../src/workflows/separations/kuali-finalization/descriptor.js";
+} from "../../../src/workflows/separations/kuali-finalization/workflow.js";
+import { separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
 import { UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,

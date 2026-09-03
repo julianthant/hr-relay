@@ -1,28 +1,51 @@
-# Run plan — Phase 3c workflow migration — 2026-09-02
+# Run plan - Phase 3c authoring and acceptance - 2026-09-02
+
+**Coordination UUID:** `57c2dec9-138e-4578-b5da-389ad9b4007a` · `C57c2dec9`
+**Coordinator owner/channel:** Claude Code session `1c78d186-91c1-4728-9da4-29102181632d` (successor of `571dd99a-cd47-4529-adfe-a4bc7569c29a` since 2026-09-02 21:11 PDT)
+**Integration checkout:** `/Users/julianhein/Projects/hr-automation-rebuild` · `feature/03c-workflow-migration`
 
 | Run | Theme | Units | Worker roles | Base | Integration order | Parallel-ready | Needs first | Exit evidence |
 |---|---|---|---|---|---|---|---|---|
 | R1 | D311 workflow recipe/compiler | u01–u06 | supervisor + native Luna/Terra tree | `414d77b8` | 1 | yes, with R2 only | — | equivalence/conformance green, obsolete path deleted, full gates, report |
 | R2 | Order 1 workflow-specific intake | u10–u12 | supervisor + read-only Scout/Analyst as needed | `414d77b8` | 2 | yes, with R1 only | — | two migration docs, verified reuse/provenance/live map, no compiler-dependent code |
-| R3 | D312–D316 authoring/runtime foundation | u15–u19 | supervisor + native Luna/Terra tree | integrated R1+R2 | 3 | no | R1, R2 | four-artifact guard, closed entry algebra, whole-step admission, two recovery modes, final equivalence/deletion proof |
-| R4 | Order 1 Search/Match modes + I-9 lookup | u20–u24 | supervisor + native Luna/Terra tree | integrated R3 | 4 | no | R3 | recipes/store/tasks, mode capability, T1/T2/T3, live dry runs, capability closure |
-| R5 | Order 2 download workflows | u30–u35 | supervisor + native Luna/Terra tree | integrated R4 | 5 | no | R4 | three workflows, stores, immutable bytes route/viewer, T1/T2/T3/live proof |
-| R6 | Order 3 OCR pipeline | u40–u44 | supervisor + native Luna/Terra tree | integrated R5 | 6 | no | R5 | OCR recipe, Review capability, T1/T2/T3/live proof |
-| R7 | Order 4 oath signature + emergency contact | u50–u54 | supervisor + native Luna/Terra tree | integrated R6 | 7 | no | R6 + exact write targets | fan-out/gates, controlled proof, T1/T2/T3, closure |
-| R8 | Order 5 I-9 check | u60–u64 | supervisor + native Luna/Terra tree | integrated R7 | 8 | no | R7 | coordinator/join, workbook projector/export, T1/T2/T3/live proof |
-| R9 | Order 6 work-study + Kronos pay rule | u70–u74 | supervisor + native Luna/Terra tree | integrated R8 | 9 | no | R8 + exact write targets | write tasks/recipes, EID audit, controlled proofs, T1/T2/T3 |
-| R10 | Order 7 oath upload + OnBase | u80–u84 | supervisor + native Luna/Terra tree | integrated R9 | 10 | no | R9 + completion probe targets | stores, receipt/proof arms, controlled proofs, T1/T2/T3 |
-| R11 | Order 9 onboarding | u90–u94 | supervisor + native Luna/Terra tree | integrated R10 | 11 | no | R10 + exact hire canary | no-EID probe, roster ingest, controlled proof, T1/T2/T3 |
-| R12 | cross-cutting closure + phase proof | u100–u105 | supervisor + native Luna/Terra tree | integrated R11 | 12 | no | R11 | cross-cutting capabilities disposed, zero-open capability audit, full integrated gates |
+| R3 | D312–D318 authoring/runtime foundation (3c-A finish) — `Supervisor · phase-3c-migration · C57c2dec9 · R03 · authoring runtime foundation` | u15–u19 | Claude supervisor + `sup-opus` default / `sup-sonnet` trivial-only / `sup-scout` / `sup-analyst` | `cb9a1476` (integrated R1+R2+D317+D318+session panel) | 3 | no | — | workflow-only API, discoverable task catalog, four-artifact guard, closed entry algebra, whole-step admission, two recovery modes, D318 `live-read` arm + Person Lookup T1 pair, guide and final equivalence/deletion proof |
+| R3b | stabilize the R3 branch (re-size, 2026-09-02 20:20 PDT) — `Supervisor · phase-3c-migration · C57c2dec9 · R3b · stabilize` | u25–u28 | Claude supervisor + `sup-opus` / `sup-sonnet` | `0566b181` | 3 (with R3) | no | — | typecheck/lint/coverage/parity green, report `reports/r3-authoring-runtime.md` — CLOSED via merge `c258677b` |
+| R3c | deletion acceptance + retired-path guard + T1b states — `Supervisor · phase-3c-migration · C57c2dec9 · R3c · deletion acceptance` | u29–u32 | Claude supervisor (u29/u31/u32) + one `sup-opus` (u30) | `c258677b` | 3.1 | no | — | old authoring path deleted, four-artifact/retired-path guard red-capable, equivalence + Person Lookup `live-read` green, Separations blocked arm recorded, integrated gate green, report |
+| R3d | 3c-A documentation package — `Supervisor · phase-3c-migration · C57c2dec9 · R3d · author docs` | u33–u36 | Claude supervisor (u33) + `sup-opus` (u34, u35) + `sup-analyst` (u36 proof) | integrated R3c | 3.2 | no | R3c integrated (root paragraph and guide depend on the final file set) | guide + root rules + agent reference + reference reconciliation landed; guide-following proof zero gaps; integrated gate green; report `reports/r3d-author-docs.md` |
+| R4 | 3c-B Person Lookup + Separations acceptance and Phase 3 close | u110–u113 | supervisor + native Luna/Terra tree | integrated R3 | 4 | no | R3 + explicit operator start | both acceptance workflows verified through generic surfaces and canonical T1; Phase 3 authorities reconciled; integrated gates and worktree sweep green |
+
+**Active scope (operator, D319, 2026-09-02; re-sized 20:20 PDT to ≤350k per run):** finish 3c-A through R3c (deletion/guard/T1b) then R3d (docs package); each is one hard seam plus small units. R4 (3c-B) remains held until the operator explicitly starts it. No third
+workflow is admitted. The old migration sequence is withdrawn before dispatch.
+
+## Superseded pre-D319 run sequence
+
+These rows preserve the earlier planning record; they are not runnable work and have no phase
+assignment. A candidate returns only after the operator approves its complete D319 admission packet.
+
+| Former run | Candidate evidence | Former units | Disposition |
+|---|---|---|---|
+| R4 | Search/Match + I-9 Lookup | u20-u24 | withdrawn before dispatch; Search/Match moved to Phase 3 acceptance, I-9 remains unnumbered |
+| R5 | downloads | u30-u35 | withdrawn before dispatch |
+| R6 | OCR pipeline | u40-u44 | withdrawn before dispatch |
+| R7 | oath signature + emergency contact | u50-u54 | withdrawn before dispatch |
+| R8 | I-9 check | u60-u64 | withdrawn before dispatch |
+| R9 | work-study + Kronos pay rule | u70-u74 | withdrawn before dispatch |
+| R10 | oath upload + OnBase | u80-u84 | withdrawn before dispatch |
+| R11 | onboarding | u90-u94 | withdrawn before dispatch |
+| R12 | cross-cutting closure | u100-u105 | withdrawn before dispatch; open capabilities remain a program backlog |
 
 ## Supervisor wave ledger
 
 | Run | Task id / corrections | Host id | Project id | Launch title/time | Worktree/branch | Report | Status | Last cursor |
 |---|---|---|---|---|---|---|---|---|
-| R1 | setup client `client-new-thread:c1cc491a-c7e5-4dea-a20d-d8ad03a19528` → canonical `01a0644f-936c-7d72-8fbc-12a04b527b3e` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Phase 3c R1 — Workflow Recipe Compiler` / 2026-09-02 15:48 PDT | `/Users/julianhein/.codex/worktrees/359c/hr-automation-rebuild`; `feature/03c-r1-workflow-recipe` | `reports/r1-workflow-recipe.md` | COMPLETE/verified at `31c3f9a56bd9ddce29d5f2a8938143665379d963`; clean; own worker cleanup proved; unrelated worktrees preserved; ready to merge | `ad4befac-fbcb-4e31-be1a-0a893e4558b7:124` |
-| R2 | setup client `client-new-thread:cde8bb1e-1a7b-498f-b36a-a3fefe4457b1` → canonical `01a0644f-936c-7d72-8fbc-128e5f1b1a47` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Phase 3c R2 — Order 1 Migration Intake` / 2026-09-02 15:48 PDT | `/Users/julianhein/.codex/worktrees/28d9/hr-automation-rebuild`; `feature/03c-r2-order1-intake` | `reports/r2-order1-intake.md` | COMPLETE/verified at `ed9ee5ac0479a1517d38703b2ad77e2db9d61c9d`; clean; ready after R1; T1 decision preserved | `c6ef543f-98f6-45fa-83a2-844ba655e479:78` |
-| R3 | not dispatched | — | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Phase 3c R3 — Authoring Runtime Foundation` / pending | fresh worktree; `feature/03c-r3-authoring-runtime` | `reports/r3-authoring-runtime.md` | briefed; blocked on verified integration of R1+R2 | none |
-| R4–R12 | not briefed | — | — | — | fresh worktree per run | unique report per run | blocked/planned | none |
+| R1 | setup client `client-new-thread:c1cc491a-c7e5-4dea-a20d-d8ad03a19528` → canonical `01a0644f-936c-7d72-8fbc-12a04b527b3e` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Phase 3c R1 — Workflow Recipe Compiler` / 2026-09-02 15:48 PDT | removed; branch removed | `reports/r1-workflow-recipe.md` | CLOSED: verified tip `31c3f9a5`, merge `a40276b6`/master containment `29186a31`, worktree/path/ref absent, reservation released, exact task archived | `ad4befac-fbcb-4e31-be1a-0a893e4558b7:124` |
+| R2 | setup client `client-new-thread:cde8bb1e-1a7b-498f-b36a-a3fefe4457b1` → canonical `01a0644f-936c-7d72-8fbc-128e5f1b1a47` | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `Phase 3c R2 — Order 1 Migration Intake` / 2026-09-02 15:48 PDT | removed; branch removed | `reports/r2-order1-intake.md` | CLOSED: verified tip `ed9ee5ac`, merge `b1b36349`/master containment `29186a31`, worktree/path/ref absent, reservation released, exact task archived; T1 decision preserved | `c6ef543f-98f6-45fa-83a2-844ba655e479:78` |
+| R3 (closed via R3b merge `c258677b`; branch ref deleted 21:05 PDT) | Claude Code local session `e266c808-2757-4057-838e-f540b7be6756` (short `e266c808`; `claude --bg` return value) | `local` (Claude Code `claude --bg`) | coordination `57c2dec9-138e-4578-b5da-389ad9b4007a` | `Supervisor · phase-3c-migration · C57c2dec9 · R03 · authoring runtime foundation` / 2026-09-02 17:43 PDT | `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/phase-3c-migration-c57c2dec9-r03-authoring-runtime`; `feature/phase-3c-migration-c57c2dec9-r03-authoring-runtime` | not written (session died first) | RETURNED PARTIAL / OVER CAP: 26 supervisor commits `8a931cc6..c1bdcf68` (u15–u18 + Person Lookup T1 pair + four harness `workflow.ts` conversions + grouping proof); session hit its context limit at 20:16 PDT mid review-fix with no report/handoff; coordinator safety-committed the ten in-flight files as `0566b181` (lint green, typecheck red on 5 test call sites) and ran `claude stop e266c808` at 20:21 PDT. Worktree/branch RETAINED for R3b; reservation still consumed. Not integrated. | none |
+| R3b | Claude Code local session `7dee2c47-6aa6-45d2-924a-055be7523e30` (short `7dee2c47`) | `local` (Claude Code `claude --bg`) | coordination `57c2dec9-138e-4578-b5da-389ad9b4007a` | `Supervisor · phase-3c-migration · C57c2dec9 · R3b · stabilize` / 2026-09-02 20:23 PDT | same worktree/branch as R3, base `0566b181` | `reports/r3-authoring-runtime.md` | CLOSED ~21:00 PDT: returned done 20:55 PDT at `915d9702` (12 commits), coordinator verified ancestry/clean tree, merged `c258677b`, re-ran every gate green, deleted branch ref (`refs/heads/…r03-authoring-runtime` no longer resolves), stopped session `7dee2c47`; worktree retained by plan and re-pointed to the R3c branch | none |
+| R3c | Claude Code local session `8dacde07-63a1-4e27-9829-ee2e6c0408cd` (short `8dacde07`) | `local` (Claude Code `claude --bg`) | coordination `57c2dec9-138e-4578-b5da-389ad9b4007a` | `Supervisor · phase-3c-migration · C57c2dec9 · R3c · deletion acceptance` / 2026-09-02 21:02 PDT | worktree `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/phase-3c-migration-c57c2dec9-r03-authoring-runtime` (path name is the R3 leaf; alias for this run); branch `feature/phase-3c-migration-c57c2dec9-r3c-deletion-acceptance` from `c258677b` | `reports/r3c-deletion-acceptance.md` | LOST ~21:10 PDT: session absent from `claude agents --json` when the successor coordinator (`1c78d186`) took over at 21:11; branch still at base `c258677b` with zero commits, clean tree, no report/handoff. Worktree/reservation retained for the relaunch row below. | none |
+| R3c (relaunch) | Claude Code local session `133425d0-b9a4-4b3c-ba1d-4f2dfd11d103` (short `133425d0`; `claude --bg` return value, confirmed by `claude agents --json`) | `local` (Claude Code `claude --bg` from the run worktree, `--permission-mode auto`) | coordination `57c2dec9-138e-4578-b5da-389ad9b4007a` | `Supervisor · phase-3c-migration · C57c2dec9 · R3c · deletion acceptance` / 2026-09-02 21:12 PDT | same worktree; same branch at `c258677b` | `reports/r3c-deletion-acceptance.md` | CLOSED 23:19 PDT: returned done 23:12 PDT at `c3b432ee` (10 commits), coordinator verified ancestry/clean tree/twins/diff-check, merged `16e7e63b`, re-ran every gate green, stopped session `133425d0` (`claude stop`), deleted branch ref (`show-ref` no longer resolves); worktree retained by plan and re-pointed to the R3d branch | none |
+| R3d | Claude Code local session `40fc084f-0960-4d82-b14a-d42aaa81c675` (short `40fc084f`; `claude --bg` return value, confirmed by `claude agents --json`) | `local` (Claude Code `claude --bg` from the run worktree, `--permission-mode auto`) | coordination `57c2dec9-138e-4578-b5da-389ad9b4007a` | `Supervisor · phase-3c-migration · C57c2dec9 · R3d · author docs` / 2026-09-02 23:21 PDT | same retained worktree; branch `feature/phase-3c-migration-c57c2dec9-r3d-author-docs` from `16e7e63b` | `reports/r3d-author-docs.md` | ACTIVE (reservation carried over; budget 4/4); parent channel = coordinator `1c78d186`; prompt at `$CLAUDE_JOB_DIR/tmp/r3d-prompt.txt` (job `1c78d186`) | none |
+| R4 | not briefed | — | — | — | the retained worktree after R3d closes and operator starts 3c-B | `reports/r4-phase-3-acceptance.md` | held for operator after R3 | none |
 
 ## Units
 
@@ -107,16 +130,16 @@
 - Artifact: `reports/r2-order1-intake.md`.
 - Review: completeness.
 
-### u15 — strict four-artifact authoring guard
-- Scope: enforce D312's exact workflow-specific artifact budget for reuse-only workflows, with generated descriptor/module/registry/projection outputs and no escape hatch.
-- Acceptance: a conforming fixture stays at recipe + structural scenario + live/dry-run declaration + migration record; forbidden manual glue and workflow-keyed generic dashboard adapters fail red-capable guards.
+### u15 — workflow-only API, discoverable task catalog and strict four-artifact guard
+- Scope: replace the transitional recipe vocabulary with D317's `workflow.ts` / `defineWorkflow` / `WorkflowDefinition` / `compileWorkflow` API without aliases; make the task-store catalog searchable by system, capability, effect, inputs and outputs; enforce D312's exact workflow-specific artifact budget for reuse-only workflows.
+- Acceptance: no recipe-named compatibility API remains; a conforming fixture stays at workflow definition + structural scenario + live/dry-run declaration + migration record; forbidden manual glue and workflow-keyed generic dashboard adapters fail red-capable guards.
 - Dependency: integrated R1 compiler and R2 intake.
 - Role: supervisor-owned architecture judgment with Terra guard/test seam.
 - Mode: R3 only.
 - Artifact: R3 branch and `reports/r3-authoring-runtime.md`.
 - Review: architecture, correctness, test quality.
 
-### u16 — closed recipe entry algebra
+### u16 — closed workflow entry algebra
 - Scope: compile stable-id `task | parallel | delegate | gate | transaction` entries into existing runtime nodes; explicit join/failure, child-run and authority policies.
 - Acceptance: registry-wide conformance covers every entry kind; compiler never infers consequential control semantics; failed parallel leaves retry independently.
 - Dependency: u15 and integrated R1.
@@ -126,7 +149,7 @@
 - Review: correctness, concurrency/recovery, write safety.
 
 ### u17 — whole-step omission admission
-- Scope: implement D313 at the recipe, start-plan, run-modal wire/UI and executor seams; all replacement values are complete and schema-valid before start; omitted tuple runs no entries; mandatory verification is a separate selected entry.
+- Scope: implement D313 at the workflow definition, start-plan, run-modal wire/UI and executor seams; all replacement values are complete and schema-valid before start; omitted tuple runs no entries; mandatory verification is a separate selected entry.
 - Acceptance: missing/invalid values refuse before plan/effects, no worker mid-run prompt exists, operator-asserted provenance survives retry/fan-out, and D307 remains only as historical pre-conversion evidence.
 - Dependency: u16.
 - Role: supervisor cross-layer judgment plus Terra backend/UI seams; `/ui` required for visible work.
@@ -134,34 +157,101 @@
 - Artifact: R3 branch.
 - Review: correctness, security/write safety, UI/a11y, silent failures.
 
-### u18 — two recovery modes without repeat writes
-- Scope: implement D314 Resume from checkpoints and Restart from start as next attempts of the same logical item, preserving canonical input/omissions and durable transaction proof.
-- Acceptance: restart reruns reads/computes, never re-enters prepare/commit for completed writes, probes unfinished intents first, rejects fresh-fact/write-proof mismatch, and keeps unknown writes on evidence-resolution paths only.
+### u18 — two recovery modes without repeat writes, plus the D318 `live-read` T1b arm
+- Scope: implement D314 Resume from checkpoints and Restart from start as next attempts of the same logical item, preserving canonical input/omissions and durable transaction proof; implement D318's `live-read` T1b declaration/runner arm (`ref guards-and-tests` §10.4) for transaction-free graphs with exact zero-delta write-authority assertions.
+- Acceptance: restart reruns reads/computes, never re-enters prepare/commit for completed writes, probes unfinished intents first, rejects fresh-fact/write-proof mismatch, and keeps unknown writes on evidence-resolution paths only; `live-read` refuses a transaction-bearing graph, `dry-run-preview` refuses a transaction-free graph, and D209's `no-transaction-node` refusal is unchanged.
 - Dependency: u16.
 - Role: supervisor main hard seam with Terra recovery tests/UI support; `/ui` required for visible work.
 - Mode: R3 only; avoid the external session-panel seam.
 - Artifact: R3 branch.
 - Review: recovery correctness, idempotency, write safety, UI/a11y.
 
-### u19 — D316 final equivalence and deletion acceptance
-- Scope: reconcile Person Lookup and Separations to D312–D315, expose tuple groups in generic surfaces, delete superseded authoring machinery, regenerate manifests/docs.
-- Acceptance: public descriptor/module/wire equivalence; one-recipe grouping/options mutation proof; exact four-artifact reuse fixture; full profile gates green; clean branch/report and no worker/worktree residue.
+### u19 — D316/D317 final equivalence, guide and deletion acceptance
+- Scope: reconcile Person Lookup and Separations to D312–D317, expose tuple groups in generic surfaces, delete superseded authoring machinery, write `docs/guides/workflow-authoring.md` plus the concise paired root rules and one internal agent reference, and regenerate manifests/docs.
+- Acceptance: public descriptor/module/wire equivalence; one-workflow grouping/options mutation proof; exact four-artifact reuse fixture; Person Lookup's canonical T1 pair at `tests/scenario/workflows/person-lookup/` with its `live-read` T1b executed live and recorded; the finished guide authors both acceptance workflows without an undocumented escape hatch; full profile gates green; clean branch/report and no worker/worktree residue.
 - Dependency: u15–u18.
 - Role: supervisor integration and consequential review.
 - Mode: R3 only.
 - Artifact: `reports/r3-authoring-runtime.md`.
 - Review: deletion test, architecture, correctness, write safety, docs.
 
+### u25 — finish the in-flight review-fix set (R3b)
+- Scope: the seven `0566b181` fix intents and the five `TS2554` call sites. Acceptance: each intent kept with a red-capable test or explicitly reverted; typecheck green. Role: supervisor. Artifact: R3 branch. Review: correctness, silent failures.
+
+### u26 — re-verify R3's committed seams (R3b)
+- Scope: focused suites for every R3 seam plus `build:manifest:check`. Acceptance: counts reported, every red dispositioned. Role: `sup-opus`. Artifact: report table.
+
+### u27 — integrated gate on the R3 branch (R3b)
+- Scope: the profile's integrated gate on a frozen tree. Acceptance: every line green, parity refreeze only with a stated visible reason. Role: supervisor.
+
+### u28 — R3 verification report (R3b)
+- Scope: `reports/r3-authoring-runtime.md`. Acceptance: per-unit SHAs, gate lines, worker ledger, exact R3c/R3d residue. Role: supervisor.
+
+### u29 — remaining old-authoring-path deletion (R3c)
+- Scope: convert `separations/identity-check` and `separations/job-summary` to the compiled path; delete every fragment factory, `node-ids`, `step`, `omission`, hand-authored `descriptor`/`module` and registry wiring the compiled path supersedes; the `run-executor.ts:800,818` no-op re-parse; stale doc references the deletion makes false; root twins `defineWorkflowStepNodeFactory` paragraph.
+- Acceptance: R1 equivalence fixtures green (identifier changes stated); before/after authored-artifact inventory with every extra file justified as behavior-owned or deleted; manifest and store catalog regenerated; twins identical.
+- Dependency: integrated R3/R3b (`c258677b`). Role: supervisor hard seam. Artifact: R3c branch. Review: deletion test, correctness, write safety.
+
+### u30 — retired-path and escape-hatch architecture guard (R3c)
+- Scope: one guard under `tests/unit/architecture/` plus its `guard-inventory.json` entry. Acceptance: red-capable against fixtures that reintroduce recipe names, a hand descriptor/module/fragment beside `workflow.ts`, a workflow-keyed generic dashboard adapter, or a fifth authored artifact; `guard-manifest.test.ts` green. Dependency: u29. Role: `sup-opus`, one dispatch. Review: test quality.
+
+### u31 — equivalence, grouping proof and T1b states (R3c)
+- Scope: Person Lookup + Separations public equivalence and the grouping/options-only proof; Person Lookup `live-read` T1b executed live with run id and durable result row; Separations typed blocked arm recorded (canary `gone`, no replacement chosen — D284). Dependency: u29. Role: supervisor. Review: proof quality.
+
+### u32 — R3c gates and report (R3c)
+- Scope: the profile's integrated gate on the run branch plus `reports/r3c-deletion-acceptance.md`. Acceptance: every gate line green by count; report carries SHAs, deletion inventory, guard red lines, T1b evidence, review record, worker ledger, residue for R3d, clean status. Dependency: u29–u31. Role: supervisor.
+
+### u33 — practical author guide (R3d)
+- Scope: `docs/guides/workflow-authoring.md` per doc 03c §3c-A documentation package: find/reuse/build decision, complete `defineWorkflow` API examples, omissions, parallel/delegate/gate/transaction examples, testing and debugging, a minimal Person Lookup example, a complete Separations excerpt, a reuse-only example, a new-task example, the "what file do I change?" table matching doc 03c's routing table, and what the compiler/runtime generate versus what an author never hand-maintains.
+- Acceptance: every example compiles against the integrated tree (excerpts are copied from the real `workflow.ts` files at their SHA); no undocumented step for either acceptance workflow. Dependency: integrated R3c. Role: supervisor hard seam. Review: docs, spec fidelity.
+
+### u34 — root rules and internal agent reference (R3d)
+- Scope: rewrite the root `AGENTS.md`/`CLAUDE.md` D311–D317 convention paragraph (the `b1b36349` transitional sentence is false after R3c) into concise mandatory rules plus a pointer to the guide, byte-identical twins; write `.agents/skill-library/workflow-authoring/REFERENCE.md` as a checklist pointing at guide/spec with no new operator command and no independent policy; `.claude/skills/` helper only with `user-invocable: false` if one is added.
+- Acceptance: `cmp AGENTS.md CLAUDE.md` identical; no duplicated tutorial; `roadmap-doc-binding` and `guard-manifest` green. Dependency: u33. Role: `sup-opus`. Review: docs.
+
+### u35 — reference reconciliation (R3d)
+- Scope: `ref workflow-model` §1.6 (normative types, compiler products, invariants, refusals as built), §5.6 and §5.8 (D313/D318 text the root paragraph cites); `ref stores` reconciled with the generated task-store catalog (system, capability, effect, inputs/outputs, implementation status); doc 03c 3c-A checklist boxes that the R3c/R3d evidence now proves, with the evidence SHA.
+- Acceptance: no stale `workflow-recipe`/fragment wording outside the forbidden-names clause; `npm run roadmap && npm run roadmap:check` current. Dependency: u33. Role: `sup-opus` (may run beside u34; disjoint files). Review: spec cohesion.
+
+### u36 — guide-following proof, gates and report (R3d)
+- Scope: a read-only `sup-analyst` follows ONLY the finished guide and agent reference to reconstruct the authored artifacts for Person Lookup and Separations and reports every step the docs did not cover (doc 03c L116: an undocumented step or a required escape hatch fails 3c-A); then the integrated gate and `reports/r3d-author-docs.md`.
+- Acceptance: zero undocumented steps, or each fixed in u33–u35 within the run; every gate line green by count. Dependency: u33–u35. Role: `sup-analyst` proof + supervisor gate/report.
+
+### u110 - accept Person Lookup
+- Scope: verify the final compiled workflow, Search + Match run-modal behavior, grouped timeline/Explorer projection and canonical structural plus D318 live-read T1 pair.
+- Acceptance: no workflow-specific dashboard glue and no unresolved acceptance failure.
+- Dependency: integrated R3.
+- Review: correctness, UI/accessibility and proof quality.
+
+### u111 - accept Separations
+- Scope: verify final compiled workflow options, omission admission, grouped timeline/Explorer projection, screenshots/logs/receipts and recovery behavior.
+- Acceptance: Phase 3c acceptance passes without claiming Phase 3b's still-open controlled-live write proof.
+- Dependency: integrated R3.
+- Review: correctness, write safety, UI/accessibility and proof quality.
+
+### u112 - reconcile Phase 3 authorities
+- Scope: reconcile doc 03c, roadmap, D319, capability ownership and author guidance to the verified R3/R4 result.
+- Acceptance: every non-admitted workflow is visibly unnumbered and no old R4-R12 execution promise remains active.
+- Dependency: u110-u111.
+- Review: plan/spec cohesion.
+
+### u113 - integrated close and sweep
+- Scope: run the profile's integrated gates, merge verified work, sweep owned worktrees/branches/tasks and close the board.
+- Acceptance: green gates, clean integration tree and no owned residue; no remote push.
+- Dependency: u112.
+- Review: final proof.
+
 ## Decisions gating runs
 
-- `decisions/2026-09-02-read-only-t1-live-proof.md` item 1 → R4.
-- Actual external writes in R7/R9/R10/R11 require exact target, reversibility/disposition and stop condition; prepare a decision sheet only when the preceding intake returns concrete options.
-- OnBase completion arm remains blocked without a real probe target; do not infer `unverifiableByPage`.
+- `decisions/2026-09-02-read-only-t1-live-proof.md` item 1 → answered A, ratified as D318 at `cb9a1476`; implementation is u18/u19 (R3) and the Order 1 live halves are R4.
+- D319 admits no workflow after Person Lookup and Separations. Candidate-specific writes, selectors,
+  probes and UI capabilities are not run gates until their candidate is selected, verified and
+  approved as a new numbered phase.
 
 ## Date or external gates
 
 - Live canary availability is rechecked on the day of each dry run; gone/unknown/consumed blocks before browser start.
-- The external session-panel branch must be received before any Phase 3c UI run touches the same files or parity states.
+- Session-panel behavior is already integrated at `49dc1529`; any R3 UI work preserves it and uses `/ui` plus the parity lane.
 
 ## Residue carried in
 

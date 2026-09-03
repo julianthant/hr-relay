@@ -12,20 +12,21 @@
  * entry here is the exact object `WORKFLOW_MODULES` composes, in the same
  * order, so the two tuples cannot drift.
  */
-import { personLookupDescriptor } from "./person-lookup/descriptor.js";
-import { separationsIdentityCheckDescriptor } from "./separations/identity-check/descriptor.js";
-import { separationsKronosTimecardDescriptor } from "./separations/kronos-timecard/descriptor.js";
-import { separationsKualiFinalizationDescriptor } from "./separations/kuali-finalization/descriptor.js";
-import { separationsKualiReadDescriptor } from "./separations/kuali-extraction/descriptor.js";
-import { separationsUcpathTerminationDescriptor } from "./separations/ucpath-transaction/descriptor.js";
-import { separationsDescriptor } from "./separations/descriptor.js";
+import { compileWorkflow } from "../base/workflow-definition.js";
+import { personLookupWorkflow } from "./person-lookup/workflow.js";
+import { separationsIdentityCheckWorkflow } from "./separations/identity-check/workflow.js";
+import { separationsKronosTimecardWorkflow } from "./separations/kronos-timecard/workflow.js";
+import { separationsKualiFinalizationWorkflow } from "./separations/kuali-finalization/workflow.js";
+import { separationsKualiReadWorkflow } from "./separations/kuali-extraction/workflow.js";
+import { separationsUcpathTerminationWorkflow } from "./separations/ucpath-transaction/workflow.js";
+import { separationsWorkflow } from "./separations/workflow.js";
 
 export const WORKFLOW_DESCRIPTORS = Object.freeze([
-  personLookupDescriptor,
-  separationsKronosTimecardDescriptor,
-  separationsKualiReadDescriptor,
-  separationsIdentityCheckDescriptor,
-  separationsUcpathTerminationDescriptor,
-  separationsKualiFinalizationDescriptor,
-  separationsDescriptor,
+  compileWorkflow(personLookupWorkflow).descriptor,
+  compileWorkflow(separationsKronosTimecardWorkflow).descriptor,
+  compileWorkflow(separationsKualiReadWorkflow).descriptor,
+  compileWorkflow(separationsIdentityCheckWorkflow).descriptor,
+  compileWorkflow(separationsUcpathTerminationWorkflow).descriptor,
+  compileWorkflow(separationsKualiFinalizationWorkflow).descriptor,
+  compileWorkflow(separationsWorkflow).descriptor,
 ] as const);

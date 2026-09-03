@@ -1,14 +1,16 @@
 # 03a · Phase 3a — finish the dashboard
 
-Phase 3 migrates the legacy workflows one at a time, and nothing could be wired into a dashboard
-that did not exist yet. **Phase 3a is that dashboard**: the generic surfaces EVERY workflow
-inherits, built once, plus the hardening the first real connection to a running workflow exposed.
-Phase 3 is four docs — **3a** is this one (tree node `{#dash-defaults}` and everything under it),
-**3b** finishes separations (`03b-finish-separations.md`, which also carries phase 3's own node
-`{#phase-3}`), **3c** migrates the remaining workflows
-(`03c-migrate-the-remaining-workflows.md`), and **3d** puts Claude on the same dashboard as a second
-actor (`03d-co-operate-with-claude.md`, `{#claude-operator}`). Contracts this phase built or amended live in
-`reference/`; this doc holds the work, its state, and its exit.
+Phase 3 proves the reusable dashboard/workflow platform with Person Lookup and Separations, and
+nothing could be wired into a dashboard that did not exist yet. **Phase 3a is that dashboard**: the
+generic surfaces every admitted workflow inherits, built once, plus the hardening the first real
+connection to a running workflow exposed. Phase 3 has three admitted docs: **3a** is this one (tree
+node `{#dash-defaults}` and everything under it), **3b** finishes Separations
+(`03b-finish-separations.md`, which also carries Phase 3's own node `{#phase-3}`), and **3c** finishes
+the authoring foundation and accepts Person Lookup plus Separations
+(`03c-migrate-the-remaining-workflows.md`). D319 leaves every other workflow unnumbered until the
+operator verifies and approves its admission packet. `03d-co-operate-with-claude.md` is a stable-path
+later track, not a Phase 3 subdivision. Contracts this phase built or amended live in `reference/`;
+this doc holds the work, its state, and its exit.
 
 ## Phase summary
 <!-- roadmap: dash-defaults -->

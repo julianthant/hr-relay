@@ -1,17 +1,20 @@
-# 05 · Phase 5 — cut over
+# Cutover stage · switch production authority once
 
-This doc is the dedicated home of **Phase 5**, tree node `{#cutover}` — the one all-at-once authority
+This stable-path doc is the dedicated home of tree node `{#cutover}`, the one all-at-once authority
 switch, its rollback window, the risks that decide whether the switch is safe, and **the program's
 definition of done**. If you open one list to decide whether this rebuild is finished, open
 §Exit criteria below: nothing else in `docs/rebuild/` claims to be that list. Contracts the cutover
 reads live in `reference/`.
 
-**Nothing here has been built.** Phase 5 is the only phase with zero landed work at HEAD, and that is
+**D319 numbering note (2026-09-02).** Cutover remains the final authority-switch stage but does not
+reserve a phase number while workflow phases are admitted one at a time.
+
+**Nothing here has been built.** The cutover stage has zero landed work at HEAD, and that is
 by design — every item is an act performed once, on a day the operator chooses, after Phase 3 closes.
 What exists today is the *design* of the switch (ratified in Phase 0, D88–D94) and the *conditions*
 that must hold before it happens. This doc's job is to keep those conditions honest.
 
-## Phase summary
+## Stage summary
 <!-- roadmap: cutover -->
 
 <!-- roadmap-status: cutover -->
@@ -20,7 +23,7 @@ that must hold before it happens. This doc's job is to keep those conditions hon
 - [x] operational isolation is built and gated — roots, ports, process locks and browser session namespace pinned by `config/runtime-isolation.json` and proven by `operational-isolation` (D88, narrowed by D247)
 - [x] the capability register that the cutover gate reads exists and is enforced — `config/legacy-capabilities.json`, `cutoverRequiresZeroOpen: true`, `proxyDispositionAllowed: false` (D58/D184/D188)
 - [ ] **the switch itself** — no step of the five-step procedure has been rehearsed or run; `one-time-import-offline` is still a `planned` guard with no subject
-- [ ] **zero open capabilities** — 47 of 78 entries are `open` at HEAD, every one owned by `phase-3-workflow-migration`
+- [ ] **zero open capabilities** — 47 of 78 entries are `open` at HEAD, every one owned by `workflow-admission-backlog`
 - [ ] **every migration order done** — order 0 done, order 8 (separations) in flight at 8 of 9 criteria, eight orders unstarted
 - [ ] **the §7.4 budgets measured** — `ref frontend-backend-integration` §7.4 has been normative and unenforced since it was written; Track D's D4/D5 take the first numbers
 - [ ] **T4, the parallel end-to-end tier** — unbuilt, and blocked behind `{#parallel-runs}` and `{#duo-lease}` (`ref guards-and-tests` §10.8)
@@ -29,7 +32,7 @@ that must hold before it happens. This doc's job is to keep those conditions hon
 > 2026-08-21 | docs-cohesion 05 | verified against `config/legacy-capabilities.json` (78 entries: 47 open · 20 replaced · 7 native · 4 retired), `config/runtime-isolation.json`, `src/control/workflow-registry.ts`, `docs/rebuild/guard-inventory.json` (`one-time-import-offline`, `activationMilestone: cutover-gate`), `ref frontend-backend-integration` §7.4 + §10, `ref guards-and-tests` §10.1 + §10.8; left: the entire phase — every line above with an open box
 <!-- /roadmap-status -->
 
-### What Phase 5 is
+### What the cutover stage is
 
 **One switch, one direction, one day.** D89 is the whole phase in a sentence: *workflow migrations
 prove capabilities but never flip production individually.* There is no interval in which both
@@ -216,9 +219,9 @@ rollback asset*, not *old code*.
 - [x] the seams that keep them possible are already built and may never be trimmed as ceremony — actor attribution, one identity checkpoint, credential-set-keyed sessions, per-actor notification state (D75, reaffirmed by D193)
 - [-] hosting — never, by design (D193(a)); "production" in these plans means the D89 day this repo becomes the operator's daily LOCAL tool
 - [-] designing for multi-user now — refused; no slice may claim scope, ceremony or abstraction in its name (D193(a))
-- [x] the PACKAGING half is no longer LATER — the operator promoted it to Phase 6 on 2026-08-21 (R14, `06-ship-the-desktop-app.md`, tree node `{#desktop-app}`), which gives it the owner and the design a LATER item by definition lacks
+- [x] the PACKAGING half is no longer LATER — the operator promoted it to the desktop stage on 2026-08-21 (R14, `06-ship-the-desktop-app.md`, tree node `{#desktop-app}`), which gives it the owner and the design a LATER item by definition lacks
 > 2026-08-21 | docs-cohesion 05 | verified against `ref operator-trust` §7 (the four seams, built and load-bearing) and `reference/decisions.md` D193(a); this node proposes no work and blocks no gate — nothing is left because nothing is owed
-> 2026-08-21 | docs-cohesion R14 | one of the two items left this tier: packaging is Phase 6 now; the cooperation / multi-user item and the hosting refusal are untouched
+> 2026-08-21 | docs-cohesion R14 | one of the two items left this tier: packaging is the desktop stage now; the cooperation / multi-user item and the hosting refusal are untouched
 
 <!-- /roadmap-status -->
 
@@ -230,12 +233,12 @@ and `05-cut-over.md` §Exit criteria names none of them.
 
 **Two items were recorded by D193(a) with no owner and no design, and one of them now has both.**
 *Packaging the local system as a locally-run app* — the "web app → real app" idea — **left this tier
-on 2026-08-21**, when the operator made it **Phase 6** (`06-ship-the-desktop-app.md`, tree node
+on 2026-08-21**, when the operator made it **the desktop stage** (`06-ship-the-desktop-app.md`, tree node
 `{#desktop-app}`, plan ruling R14): a Mac and Windows desktop app, delivered at the end of the
 program. What remains here is *a cooperation / multi-user mode built on top of the solo system*, if
 ever. It is not scheduled, it has no trigger, and it is not a deferral in the
 `04-close-the-deferrals.md` sense: a deferral names the event that ends it, and this one names
-nothing because nobody has decided it will happen. Phase 6 changes none of that — packaging is a
+nothing because nobody has decided it will happen. The desktop stage changes none of that — packaging is a
 delivery mechanism, not a step toward multi-user.
 
 **They are cheap to keep possible and expensive to design for now, which is why the answer is
@@ -276,7 +279,7 @@ that ordering was an artifact of the round it was added in, and it is corrected 
 | 7 | **Authority backup exists but has never been restored** | **REALIZED 2026-08-09 — in a form worse than the one written down** | corruption is discovered during a real run and the "backup" is unusable | The written mitigation — an automated corruption/restore drill plus a doctor/backup-health surface, with degraded mode blocking mutations rather than creating an empty DB — was built and green. **2j found the restore path was structurally unreachable anyway** (D181): the offline restore service had demanded a one-time stopped-system proof since Phase 1c, and nothing in production had ever recorded the runtime-lock snapshot it derives from, so `cli storage restore` could not have worked on its first day. Fixed by one lock file per role, written before the database opens. Residual is precondition **P7**: the automated drill runs every commit against a real-shaped copy, and an operational rehearsal against the real `.tracker-rebuild` is unrecorded |
 | 8 | **Evidence volume recreates an unreadable log pile** | **standing — and deliberately under-invested (D193(b))** | screenshots, notes and bundles consume disk and hide decisive facts | Structured indexes, on-demand bundles, 30-day notes and spans, content-addressed dedupe, disk warnings and redaction — all built. D193(b) then decided the REST of it is not worth buying at this scope: the retention sweep's scheduling and the content-store refcount are `wont-build-unless-asked`, because this database stores records of COMPLETIONS and the primary record lives in UCPath or Kuali. The risk is accepted, not closed (`04-close-the-deferrals.md` §Auto-purge diagnostics) |
 | 9 | **The closed editor regrows DSL/codegen** | **standing — and untested, because there is nothing to edit yet** | a UI edit changes graph, bind, selector or proof semantics without code review | DSL/codegen remains absent (D79a). The Workflow Explorer shipped **read-only** in 2i, and its EDIT half was REASSIGNED out of Phase 2 by **D186** on D79a's own argument: an editor exists to avoid a code change per tweak across many workflows, and a closed policy union shaped by a sample of one would be shaped wrong. The trigger is a SECOND production workflow whose policy somebody wants to change — so this risk cannot be evaluated until the thing that creates it exists |
-| 10 | **All workflows migrate but a shared capability is forgotten** | **REALIZED 2026-08-09 as REGISTER ROT, then fixed** | capture, AI assist, exports, settings, maintenance or a special route blocks or degrades the final cutover | The D58 inventory covers old services/routes/UI/CLI/tools exactly once, `cutoverRequiresZeroOpen` is `true` and `proxyDispositionAllowed` is `false`. **The inventory itself rotted first**: D184/D188 found 73 of 78 entries `open`, 53 of them owned by milestones that had already shipped — a claim nobody could act on, invisible because the guard only checked path coverage. Re-dispositioning closed 27 with real targets; the guard now refuses an entry that is `open` at or before the runtime's own `completedThrough`, a `native`/`replaced` target that does not resolve, and evidence that only says "the legacy file still exists". The register reads 47 open / 20 replaced / 7 native / 4 retired at HEAD, all 47 owned by `phase-3-workflow-migration` |
+| 10 | **All workflows migrate but a shared capability is forgotten** | **REALIZED 2026-08-09 as REGISTER ROT, then fixed** | capture, AI assist, exports, settings, maintenance or a special route blocks or degrades the final cutover | The D58 inventory covers old services/routes/UI/CLI/tools exactly once, `cutoverRequiresZeroOpen` is `true` and `proxyDispositionAllowed` is `false`. **The inventory itself rotted first**: D184/D188 found 73 of 78 entries `open`, 53 of them owned by milestones that had already shipped — a claim nobody could act on, invisible because the guard only checked path coverage. Re-dispositioning closed 27 with real targets; the guard now refuses an entry that is `open` at or before the runtime's own `completedThrough`, a `native`/`replaced` target that does not resolve, and evidence that only says "the legacy file still exists". The register reads 47 open / 20 replaced / 7 native / 4 retired at HEAD, all 47 owned by `workflow-admission-backlog` |
 | 11 | **Decisions drift ahead of the docs that own them** | **REALIZED 2026-07-26 — the standing rule dates from it** | *observed*: the 07-23/24 operator ratifications sat in a review file for four days while the charter, the master plan and the write-safety doc still specified the world they replaced — the plan would have had Phase 1 build a lift adapter, a parity harness and a generation-authority stamp the operator had already deleted | Charter standing rule, now in `CLAUDE.md`: **a decision is not ratified until it lands in its owning doc, in the same commit that records the answer.** `reference/decisions.md` is a changelog with pointers, never a second spec; history files are history. The rule has held since, and the failure mode it leaves open is the inverse one this docs pass exists to fix — a doc whose prose outlived the code, which D252's "done is verified against the code, never against the earlier prose" answers |
 
 ## Program stop-loss / abort gate
@@ -332,7 +335,7 @@ stale.
 ### Where legacy is still ahead (the honest list — this IS the Phase 3 surface)
 
 **This list is derived from the register, not from memory.** `config/legacy-capabilities.json` holds
-78 entries and **47 are open** at HEAD — every one owned by `phase-3-workflow-migration`, and the
+78 entries and **47 are open** at HEAD — every one owned by `workflow-admission-backlog`, and the
 cutover requires zero (`cutoverRequiresZeroOpen: true`, `proxyDispositionAllowed: false`). The 47
 split 15 / 32:
 
@@ -394,10 +397,10 @@ session declaration with **zero tasks** (`src/stores/`).
 - **Hosting** (D193) — never deployed to a platform; it runs on your machine. A locally-run app package and a cooperation mode over solo are *later, unplanned* ideas, not a hosted future
 - **Legacy change accounting (D150)** — replaced by mandatory live re-verification at each migration
 
-## Decisions this phase ratified
+## Decisions this stage ratified
 
 **Checked against `reference/decisions.md`'s `_phase:_` markers on 2026-08-21: the ledger carries no
-`_phase: 5_` marker, and that is correct.** Phase 5 is one act performed once; a decision belonging to
+`_phase: 5_` marker, and that is correct.** The cutover stage is one act performed once; a decision belonging to
 it would be taken ON the cutover day or in the commit that builds a piece of the procedure, and
 neither has happened. The ledger's phase markers today read `0` (11) · `1` (11) · `2` (23) · `3a` (19) ·
 `3b` (20) · `platform` (4) — no `5`, and nothing mis-filed into another phase that belongs here.
@@ -434,7 +437,8 @@ the decision cited. The two most likely subjects are the offline one-time import
 
 ## Exit criteria
 
-**This is the program's definition of done.** Not Phase 5's — the whole rebuild's. Every other phase
+**This is the program's definition of done.** It belongs to the whole rebuild, not only the cutover
+stage. Every admitted phase
 doc's exit block asks whether that phase is finished; this one asks whether the rebuild is, and it is
 the list to open when the question is *can we switch yet*. Two halves: the eleven program criteria
 below, then the program-wide integration criteria that gate criterion 2 specifically.

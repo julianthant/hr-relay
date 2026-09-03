@@ -52,10 +52,7 @@ import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboa
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
-import {
-  PersonLookupCanonicalInput,
-  personLookupDescriptor,
-} from "../../../src/workflows/person-lookup/descriptor.js";
+import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
@@ -65,6 +62,7 @@ import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
 import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 

@@ -35,7 +35,6 @@ import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { buildRunSection, type RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail.js";
 import { planStart } from "../../src/services/start/plan.js";
 import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org-operation.js";
-import { separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
 import { HASH_A, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
 import {
@@ -45,6 +44,7 @@ import {
   uuidOf,
   type DashboardWorld,
 } from "./server/helpers/dashboard-harness.js";
+import { separationsDescriptor } from "../helpers/registered-workflows.js";
 
 const CLOCK = manualClock(new Date(NOW));
 const EID = "10873698";

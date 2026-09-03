@@ -292,10 +292,13 @@ describe("closed secret access", () => {
       new Set(TEST_TARGET_SECRET_SPECS.map(({ env }) => env)).size,
       TEST_TARGET_SECRET_SPECS.length,
     );
-    // D300: exactly ONE test-target value crosses the closed boundary, and it
-    // is the canary's Kuali document number. The three person references D286
-    // registered are retired, not re-pointed.
-    assert.equal(TEST_TARGET_SECRET_SPECS.length, 1);
+    // D300: the canary's Kuali document number crosses the closed boundary; the
+    // three person references D286 registered are retired, not re-pointed.
+    // D318 adds exactly one more: the person-lookup live-read canary's EID.
+    assert.deepEqual(TEST_TARGET_SECRET_SPECS.map(({ name, valueKind }) => `${name}:${valueKind}`), [
+      "separationsKualiFinalizationCanaryDocumentNumber:kuali-document-number",
+      "personLookupCanaryEid:ucpath-eid",
+    ]);
   });
 
   it("reads the ONE registered test-target document number through its closed name", () => {

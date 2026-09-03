@@ -31,6 +31,7 @@ export function runQueuedSpanEvent(input: Readonly<{
       ? {}
       : { omittedSteps: run.envelope.stepOmissions.map((entry) => entry.step) }),
     ...(run.envelope.retryOf === undefined ? {} : { retryOf: run.envelope.retryOf }),
+    ...(run.envelope.recovery === undefined ? {} : { recovery: run.envelope.recovery }),
     actorId: input.actorId,
     title: input.title,
     ...(input.subtitle === undefined ? {} : { subtitle: input.subtitle }),

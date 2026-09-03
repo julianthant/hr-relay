@@ -1,13 +1,15 @@
 # 03b · Phase 3b — finish separations
 
-Phase 3 migrates the legacy workflows one at a time. **Phase 3b is the FIRST of them** — separations,
-order 8 — chosen deliberately as the hard entry because a big multi-system workflow forces the store
-task libraries into existence for every migration after it (D193). This doc carries phase 3's own
-tree node `{#phase-3}` and the whole separations subtree; Phase 3 is four docs — **3a** finished the
-dashboard (`03a-finish-the-dashboard.md`, `{#dash-defaults}`), **3b** is this one, **3c** migrates
-the remaining thirteen workflows (`03c-migrate-the-remaining-workflows.md`, `{#migrations}`), and
-**3d** puts Claude on the same dashboard as a second actor (`03d-co-operate-with-claude.md`,
-`{#claude-operator}`).
+Phase 3 proves the reusable dashboard/workflow platform with Person Lookup and Separations.
+**Phase 3b is the first write workflow**: Separations, former order 8, chosen deliberately as the
+hard entry because a large multi-system workflow forces the store task libraries into existence
+for later admitted workflows (D193). This doc carries Phase 3's own tree node `{#phase-3}` and the
+whole Separations subtree. Phase 3 has three admitted docs: **3a** finished the dashboard
+(`03a-finish-the-dashboard.md`, `{#dash-defaults}`), **3b** is this one, and **3c** finishes the
+authoring foundation and accepts Person Lookup plus Separations
+(`03c-migrate-the-remaining-workflows.md`). D319 leaves every other workflow unnumbered until the
+operator verifies and approves its admission packet. The stable-path `03d` file is a later track,
+not part of Phase 3.
 
 **What lives where.** This doc holds the work, its state at HEAD and its exit. The contracts it
 built or amended live in `reference/`. The as-built record of the migration itself — every live

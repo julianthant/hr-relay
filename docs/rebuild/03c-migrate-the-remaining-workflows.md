@@ -1,22 +1,21 @@
-# 03c · Phase 3c — migrate the remaining workflows
+# 03c · Phase 3c - finish workflow authoring and acceptance
 
-This doc is the dedicated home of **Phase 3c**, tree node `{#migrations}` — the **thirteen**
-workflow migrations remaining after separations, spread over **nine order rows** (0–9, minus 8,
-which is doc 03b's). The count is recounted here rather than inherited: `config/legacy-capabilities.json`
-holds 15 `legacy-workflow-*` entries, and removing separations (order 8) and person-lookup (order 0,
-migrated — though its directory stays open until order 1) leaves 13 workflow directories this phase
-has to close. Order 1 also puts two MODES on the already-migrated person-lookup, which is a change to
-an existing workflow rather than a fourteenth. Phase 3 is four docs: **3a** finishes the dashboard
-(`03a`), **3b** finishes separations (`03b`), **3c** is this one, **3d** puts Claude on the same
-dashboard as a second actor (`03d`). It holds those tasks, what is done
-and what is left, and its exit criteria; contracts it built live in `reference/`. It also hosts
-**§Testing tiers** — the shape every migration below adds its tests to — because the tiers are a
-property of migrating a workflow, not of any one workflow; the tiers' own normative spec is
+This doc is the dedicated home of **Phase 3c**, tree node `{#migrations}`. It finishes the shared
+workflow-authoring platform and proves it with the two workflows already admitted to Phase 3:
+**Person Lookup** and **Separations**. It does not authorize or schedule another legacy workflow.
+The old order 1-7 and 9 material later in this file is retained only as unverified candidate evidence
+until it is extracted or deleted during Phase 3 close; it is not Phase 3 scope.
+
+Phase 3 has three delivery parts: **3a** finished the shared dashboard, **3b** finishes Separations,
+and **3c** finishes workflow authoring plus Person Lookup/Separations acceptance. The file named
+`03d` is a separately triggered second-actor track, not another Phase 3 workflow. Contracts live in
+`reference/`. This doc also hosts **§Testing tiers**, whose normative spec is
 `reference/guards-and-tests.md`.
 
 **Phase 3c has two internal gates, not two additional numbered phases.** **3c-A** builds and proves
-the workflow-authoring platform. **3c-B** migrates the remaining workflows through it. No order
-1–7 or 9 implementation starts until 3c-A closes. “Pantry and recipe” may explain the idea in
+the workflow-authoring platform. **3c-B** finishes Person Lookup/Separations acceptance, reconciles
+their evidence, and closes Phase 3. It then stops. No other workflow implementation starts from this
+doc. “Pantry and recipe” may explain the idea in
 conversation, but the target API and plan use the domain terms **task store**, **task**, **workflow
 definition**, **worker**, **browser session**, **compiled workflow**, and **workflow run** (D317).
 The bounded compiler increment landed before D317 and still uses transitional `recipe` identifiers;
@@ -27,34 +26,33 @@ to call the model complete.
 <!-- roadmap: migrations -->
 
 <!-- roadmap-status: migrations -->
-- [x] the risk-proof order is fixed and its entry point is chosen — separations (order 8) first, the table deliberately NOT re-sequenced (D84/D193)
-- [x] order 0 · person-lookup is migrated and live-proven (D74, run `4ebf7275-0158-49af-a78f-1f37948efb27`); `src/workflows/person-lookup/descriptor.ts` is registered
+- [x] D84/D193 explain why Separations entered first; D319 supersedes their old promise of an already-scheduled remainder
+- [x] Person Lookup is migrated and live-proven (D74, run `4ebf7275-0158-49af-a78f-1f37948efb27`); final compiled-workflow acceptance remains in 3c-B
 - [x] D311/D317 ratify the workflow definition and compiler as the new authoring seam; person lookup and separations are its acceptance workflows; “recipe” is analogy only
+- [x] D318 resolves read-only T1 evidence: a zero-transaction graph uses the distinct `live-read` arm, never a fake transaction or `dryRun=true`; implementation remains in 3c-A
 - [x] 3c-A bounded compiler increment — compatibility fixtures, the transitional compiler, compiler-backed Person Lookup and Separations descriptors/modules, registry-wide generic projection conformance and full gates landed through merge `a40276b6`
-- [x] order 1 intake — Person Lookup Search/Match and I-9 lookup migration records, reuse/provenance map and live I-9 login/search evidence landed through merge `b1b36349`; this is intake only, not an implemented order row
-- [ ] `{#workflow-authoring-model}` — finish D312–D317: final workflow naming/API, direct entry algebra, omissions, recovery, four-artifact enforcement, author documentation, T1 proof and deletion of redundant authoring declarations
+- [x] pre-D319 intake — Person Lookup Search/Match and I-9 lookup evidence landed through merge `b1b36349`; Search/Match moved into Phase 3 acceptance and I-9 remains an unnumbered candidate
+- [ ] `{#workflow-authoring-model}` — finish D312–D318: final workflow naming/API, direct entry algebra, omissions, recovery, `live-read`, four-artifact enforcement, author documentation, T1 proof and deletion of redundant authoring declarations
 - [ ] 3c-A exit — author guide and agent rules landed, task reuse is discoverable, both acceptance conversions are green, and the old authoring path is deleted
-- [ ] 3c-B exit — orders 1 · 2 · 3 · 4 · 5 · 6 · 7 · 9 migrated through that single authoring path
-- [ ] orders 1 · 2 · 3 · 4 · 5 · 6 · 7 · 9 — **no descriptor exists for any of them**; `src/control/workflow-registry.ts` registers 7 modules and every one is person-lookup or a separations composition/harness
-- [ ] the five declaration-only stores — `i9`, `old-kronos`, `onbase`, `servicenow`, `sharepoint` are `declareDriver(…, "unwired")` with `{}` tasks (`i9` is 4 lines, the other four 9); orders 1, 2 and 7 build them
-- [ ] the legacy capability register — **46 open · 19 replaced · 6 native · 7 retired** of 78 (recounted from `config/legacy-capabilities.json`, 2026-09-02); all 46 open name milestone `phase-3-workflow-migration`, and cutover requires zero open
+- [ ] 3c-B exit — Person Lookup and Separations acceptance reconciled, Phase 3 authorities current, integrated gates green and Phase 3 worktree/task residue closed
+- [x] D319 removes every not-yet-admitted workflow from Phase 3 implementation scope; old order labels are candidate evidence only
+- [ ] `{#workflow-admission}` — after Phase 3, verify one candidate's complete admission packet with the operator before creating Phase 4
+- [ ] the legacy capability register — **46 open · 19 replaced · 6 native · 7 retired** of 78 (recounted from `config/legacy-capabilities.json`, 2026-09-02); open entries remain backlog obligations, not Phase 3 completion criteria
 - [x] generic workflow-to-dashboard conformance for the two transitional compiler-backed workflows; the same registry-wide suite must admit each later migration
-- [ ] the T1 PROOF lines on every order node, plus T2/T3 only for the first workflow to introduce a new dashboard behavior
+- [ ] the T1 proof for each admitted workflow, plus T2/T3 only when that admitted phase introduces a new dashboard behavior
 - [x] R1 compiler and R2 intake worktrees/branches were removed after verified integration; no Phase 3c worker residue remains from those runs
-- [ ] every later run and final Phase 3c close performs the full worktree sweep: verify integration/gates, remove registered and physical worktrees, delete local branches and archive only exact recorded tasks
+- [ ] R3 and R4 close with the full worktree sweep: verify integration/gates, remove registered and physical worktrees, delete local branches and archive only exact recorded tasks
 > 2026-08-20 | docs-cohesion 03c | verified against `src/control/workflow-registry.ts:38-47`, `src/workflows/*/descriptor.ts` (8 files), `src/stores/*` and `config/legacy-capabilities.json` (recount 47/20/7/4 matches the tree's note); left: every order after 0, minus 8
 > 2026-08-25 | D266 | the test-only Kuali annotation workflow retired; the registry now holds seven modules and the Kuali finalization T1 pair carries its reusable proof shape
-> 2026-09-02 | D317 execution plan | 3c split internally into blocking 3c-A authoring-platform proof and 3c-B migrations; exact ownership, reuse paths, change routing, ten implementation units, documentation package and exit gate recorded; this decision entry itself claimed no implementation
-> 2026-09-02 | baseline `b1b36349` verification | bounded D311 compiler and Order 1 intake are integrated; D312–D317 final authoring/runtime acceptance and all Order 1–7/9 implementations remain open; R1/R2 owned worktrees are closed
-> 2026-09-02 | capability recount | 78 total = 46 open / 25 implemented / 7 retired; disposition kinds = 46 open / 19 replaced / 6 native / 7 retired; every open entry remains owned by this phase
+> 2026-09-02 | D317 execution plan | 3c split internally into blocking 3c-A authoring-platform proof and a later migration batch; D319 supersedes only that later-batch assignment
+> 2026-09-02 | baseline `b1b36349` verification | bounded D311 compiler and candidate intake are integrated; D312–D318 final authoring/runtime acceptance remains; R1/R2 owned worktrees are closed
+> 2026-09-02 | D319 | Phase 3 now stops after Person Lookup/Separations acceptance; every other workflow requires admission verification and operator approval before receiving the next phase number
 <!-- /roadmap-status -->
 
-**Phase 3c is the rest of the program.** Phase 3a built the dashboard every workflow inherits and
-3b takes separations — the deepest write — through the safety loop once. Before 3c authors the
-**thirteen remaining workflows**, D311/D317 build one workflow-definition/compiler seam so later migrations describe
-their business steps without reassembling descriptor, module and dashboard projections by hand.
-The phase then migrates the remaining workflows in the order below until the legacy capability
-register has no open entry left and the cutover gate (doc 05) can be read.
+**Phase 3c is the end of Phase 3, not the rest of the migration program.** Phase 3a built the
+dashboard every workflow inherits, 3b takes Separations through the safety loop, and 3c builds one
+workflow-definition/compiler seam so Person Lookup and Separations can prove the complete authoring
+model. Phase 3 then closes. Later workflow phases are created one at a time through D319 admission.
 
 **What it reads as met before it starts.** From **03a**: the generic surfaces — run modal, queue
 row, run detail + timeline, gate ceremony, notifications, archive · activity · explorer, intake and
@@ -65,30 +63,39 @@ task libraries the entry was chosen to force into existence (`ucpath` 12 tasks, 
 `new-kronos` 2, `crm` 2, `separations` 9 service tasks), the ALWAYS-GATE identity approval, the
 typed start door (D250/D251/D261), and the behavior the D311 compiler must preserve.
 
-**The honest state at verified implementation baseline `b1b36349`.** One of the nine order rows this phase owns is migrated.
+**The honest state at verified implementation baseline `b1b36349`.** The two Phase 3 acceptance
+workflows exist, but neither has completed the final D312-D318 conversion and acceptance.
 `src/control/workflow-registry.ts` still registers seven modules: `person-lookup` (order 0) and the
 six separations composition/harness modules (order 8, doc 03b). The new registry-derived compiled
 population contains two workflows, Person Lookup and Separations. Their descriptors/modules now
 come through `src/base/workflow-recipe.ts`, and equivalence plus generic start/timeline/Explorer
-conformance are green. That is the completed bounded D311 increment—not the D312–D317 exit state:
+conformance are green. That is the completed bounded D311 increment—not the D312–D318 exit state:
 the code still exposes `defineWorkflowRecipe`/`compileWorkflowRecipe`, consumes fragment adapters,
 retains authored descriptor/module files, implements neither direct `parallel`/`delegate` entries
 nor D313/D314 omission/restart behavior, and has no workflow-authoring guide.
 
-Order 1's migration documents and live I-9 intake evidence are integrated, but its runtime code is
-not. **Orders 1, 2, 3, 4, 5, 6, 7 and 9 still have no new descriptor/module/compiled workflow.**
-`config/pending-impl-bindings.json` remains the checked-in empty set, so no order is half-bound.
+> 2026-09-02 | 3c-A R3/R3c | Superseded as a description of the tree: `src/base/workflow-definition.ts`
+> carries the D317 names and the direct entry algebra (R3); every registered workflow authors exactly
+> one `workflow.ts`, the per-step `node-ids`/`nodes`/`step`/`omission` files, the last hand-authored
+> `descriptor.ts`/`module.ts` pair (`separations-identity-check`) and the flow node-fragment API are
+> deleted, and the registry/Explorer/`workflow-layout` "not yet converted" arm is retired (R3c). The
+> paragraph stays as the recorded baseline; the guide is still unwritten (R3d).
+
+The earlier Order 1 intake and live I-9 evidence are integrated, but they do not admit I-9 Lookup or
+authorize runtime work. **The old order 1, 2, 3, 4, 5, 6, 7 and 9 labels remain unverified candidate
+leads.**
+`config/pending-impl-bindings.json` remains the checked-in empty set, so no candidate is half-bound.
 D266 retired the former D135 proof workflow into the Kuali finalization T1 pair rather than treating
 testing machinery as an order row.
 
-**The rule every order below inherits.** A migration is not done when its workflow runs. It carries
-its **T1 behavior proof**: a structural fixture scenario and live dry-run manifest, plus controlled
+**The rule every future admitted phase inherits.** A migration is not done when its workflow runs. It carries
+its **T1 behavior proof**: a structural fixture scenario and T1b live manifest, plus controlled
 evidence for every write. The workflow compiler supplies already-built generic dashboard surfaces and
 the registry-wide conformance suite proves that mapping. A workflow owns a separate dashboard
 feature task and T2/T3 proof only when it introduces a genuinely new interaction or wire arm
 (`ref guards-and-tests` §10.11/§10.12; `ref frontend-backend-integration` §6.8).
 
-## Workflow authoring model — prerequisite to orders 1–7 and 9
+## Workflow authoring model - Phase 3 acceptance foundation
 
 <!-- roadmap: workflow-authoring-model -->
 
@@ -101,7 +108,7 @@ feature task and T2/T3 proof only when it introduces a genuinely new interaction
 - [x] BE route Person Lookup and Separations through that transitional compiler while preserving their existing public descriptor/module behavior (`ebfde1c6`, `d4204106`)
 - [x] PROOF derive the compiler-backed registry population and prove current bootstrap/run modal, timeline/detail and Explorer projections for both workflows (`246daab2`, `4555341f`)
 - [ ] BE make the existing task-store catalog sufficient to find a task by system, capability, effect, inputs and outputs before an author creates one
-- [ ] BE replace the transitional `workflow-recipe.ts`/`defineWorkflowRecipe`/`compileWorkflowRecipe` names with D317's `workflow.ts`/`defineWorkflow`/`compileWorkflow`/`WorkflowDefinition`/`CompiledWorkflow`; do not leave aliases or a second authoring seam
+- [x] BE replace the transitional `workflow-recipe.ts`/`defineWorkflowRecipe`/`compileWorkflowRecipe` names with D317's `workflow.ts`/`defineWorkflow`/`compileWorkflow`/`WorkflowDefinition`/`CompiledWorkflow`; do not leave aliases or a second authoring seam (R3 `8a931cc6`; the fragment API and every per-step declaration file deleted in R3c)
 - [ ] PROOF enforce the exact four authored artifacts for a reuse-only workflow; reject descriptor/module/registry/dashboard glue outside `workflow.ts`
 - [ ] BE replace fragment adapters with the closed direct `task | parallel | delegate | gate | transaction` entry algebra, including stable entry/leaf ids, explicit parallel join/failure policy and independent leaf retry
 - [ ] BE finish derivation of store/session requirements, graph/result, registry/build-manifest and all generic surfaces from the final workflow definition; retain the already-green transitional derivations as compatibility proof
@@ -114,9 +121,10 @@ feature task and T2/T3 proof only when it introduces a genuinely new interaction
 - [ ] PROOF extend the landed registry-wide conformance suite to every direct entry kind, then remove superseded declarations and only genuinely duplicate generic-dashboard tests
 - [ ] DOCS write `docs/guides/workflow-authoring.md`, add the concise authoring rules to the paired root `AGENTS.md`/`CLAUDE.md`, and add one internal agent reference that points to the guide rather than redefining it
 - [ ] PROOF follow the finished author guide to author both acceptance workflows; any undocumented step or required legacy escape hatch fails 3c-A
+- [ ] BE implement D318's exclusive T1b result/admission arms: `dry-run-preview` for transaction-bearing graphs and `live-read` for zero-transaction graphs, with graph refusal and exact zero write-authority deltas
 - [x] DOCS re-scope each remaining `Dashboard · wire` row to the capability delta that order actually introduces; generic rows inherit compiler conformance
-> 2026-09-02 | D311 bounded implementation | `a40276b6` integrates compatibility fixtures, a transitional compiler, two descriptor/module conversions and generic conformance; R1's report explicitly carries D312–D317 completion into the next run
-> 2026-09-02 | remaining 3c-A | task discovery, D317 rename/final API, direct entry algebra, four-artifact guard, D313 omission, D314 recovery, final acceptance deletion/T1 and author docs remain open
+> 2026-09-02 | D311 bounded implementation | `a40276b6` integrates compatibility fixtures, a transitional compiler, two descriptor/module conversions and generic conformance; R1's report explicitly carries D312–D318 completion into the next run
+> 2026-09-02 | remaining 3c-A | task discovery, D317 rename/final API, direct entry algebra, four-artifact guard, D313 omission, D314 recovery, D318 `live-read`, final acceptance deletion/T1 and author docs remain open
 <!-- /roadmap-status -->
 
 The implementation order is deliberate: pin the current public descriptor/module/wire behavior;
@@ -211,11 +219,12 @@ runtime.
    descriptor, module requirements, run-modal wire, graph, timeline/detail, Explorer, receipt and
    result behavior are captured by red-capable fixtures. Evidence: `2e563240`, merged in
    `6d30d75a`.
-2. **PARTIAL — Finish the authored types and terminology.** The transitional API already validates
-   tuple/group ids, typed task references, duplicate ids/tasks, unresolved references and cycles.
-   Replace its `recipe` names with D317's final workflow names, add direct explicit `parallel`,
-   `delegate`, `gate` and `transaction` entries, and remove fragment-adapter authoring. Gate: every
-   entry kind compiles and its implicit/invalid control shapes fail by name; no old alias remains.
+2. **DONE — Finish the authored types and terminology.** The D317 names, the direct explicit
+   `parallel`, `delegate`, `gate` and `transaction` entries and their by-name refusals landed in R3
+   (`8a931cc6`, `51ec6253`, `2527c149`); R3c removed fragment-adapter authoring entirely — the flow
+   node-fragment API, every per-step `node-ids`/`nodes`/`step`/`omission` file and the last
+   hand-authored descriptor/module pair are deleted, and every registered workflow authors one
+   `workflow.ts`. No old alias remains.
 3. **DONE, REVERIFY AFTER UNIT 2 — Build the compiler core.** The transitional compiler derives
    graph nodes/edges, result dependencies,
    required task stores/sessions, descriptor compatibility output, registry value and build-manifest
@@ -248,7 +257,7 @@ runtime.
 10. **OPEN — Prove the author experience.** Make one grouping/options-only fixture change in `workflow.ts`,
     compile it, and prove no other authored workflow file changes. Follow the finished author guide
     from a clean context for both acceptance workflows; any undocumented required step is a defect.
-11. **OPEN FOR EACH FUTURE RUN — Close the worktree lifecycle.** After verified integration and the
+11. **OPEN FOR R3, R4 AND EACH LATER ADMITTED PHASE — Close the worktree lifecycle.** After verified integration and the
     integrated gate, run the worktree sweep: remove each registered and physical run/worker
     worktree, prune, delete its local feature branch, archive only the exact recorded task, and
     record any residue. R1 and R2 already passed this close; every later run and the final phase must
@@ -258,9 +267,9 @@ runtime.
 this plan update (verified implementation parent `b1b36349`). In order: (1) reconcile the task-store
 catalog and D317 final names/API; (2) enforce the
 four-artifact boundary and finish the direct entry algebra; (3) implement D313 omission admission;
-(4) implement D314 recovery; (5) finish Person Lookup and Separations deletion/T1/guide acceptance;
+(4) implement D314 recovery and D318 `live-read`; (5) finish Person Lookup and Separations deletion/T1/guide acceptance;
 (6) run manifest, typecheck, lint, coverage, architecture, parity and workflow proofs; (7) integrate
-and perform the exact worktree sweep. Do not start Order 1 implementation inside this run.
+and perform the exact worktree sweep. Do not start a third workflow inside this run.
 
 **Worktree-capacity preflight.** The 2026-09-02 read-only audit found the Phase 3c R1/R2 branches and
 worktrees closed, but eight registered auxiliary `feature/test-*` worktrees owned by the separate
@@ -270,7 +279,7 @@ repurposed. Before dispatching writable 3c-A workers, re-audit the shared worktr
 for that owning program to close enough slots; a coordinator may continue read-only planning while
 capacity is unavailable.
 
-### 3c-A documentation package — required before migration work
+### 3c-A documentation package — required before future admitted workflow work
 
 The implementation is not ready for other agents merely because the compiler passes. It must leave
 one canonical practical path:
@@ -288,21 +297,57 @@ reuse-only example, a new-task example and a “what file do I change?” table 
 table above. It must state what the compiler/runtime generate automatically and what an author must
 never hand-maintain.
 
-### 3c-A exit gate — when 3c-B may start
+### 3c-A exit gate - when acceptance may close
 
 3c-B remains blocked until all of the following are true together: the compiler and generic
 projections are built; omission and both recovery choices are built; Person Lookup and Separations
 are equivalent; their redundant authoring declarations are deleted; the four-artifact guard is
 green; the practical guide and agent pointers are landed; and the integrated typecheck, lint,
-coverage, architecture, parity and both workflow T1/live-dry-run proofs are green. Passing unit tests
+coverage, architecture, parity and both workflow T1b proofs are green. Passing unit tests
 while retaining a second authoring path does not close 3c-A. The run closes only after its integrated
 worktree sweep proves no 3c-A worktree, local feature branch or exact task residue remains.
 
-## 3c-B · Migrate the remaining workflows
+## 3c-B · Accept Person Lookup and Separations, then close Phase 3
+
+3c-B is separately operator-triggered after 3c-A; it does not start automatically and does not start
+a third workflow. It reconciles the final 3c-A proof with Person Lookup's
+migration record and the as-built Separations authority in doc 03b, confirms that the generic
+dashboard and Explorer projections describe both compiled workflows, runs the integrated gates,
+updates the canonical Phase 3 status, performs the exact worktree/task sweep and stops. Unfinished
+controlled-live Separations proof remains owned by doc 03b; 3c-A uses Separations as a compiler
+acceptance case and does not convert that structural proof into a completed external-write claim.
+
+The earlier coordinator's R4-R12 workflow implementation rows are withdrawn by D319. They were
+never dispatched and confer no implementation authority. The Order 1 intake remains useful evidence:
+its Person Lookup facts may support 3c-B, while its I-9 material returns to the admission backlog.
+
+## Workflow admission after Phase 3
+
+<!-- roadmap: workflow-admission -->
+
+After Phase 3 closes, the operator selects one candidate for admission verification. No candidate
+has a reserved position, assumed boundary or phase number. Its admission packet must verify the
+current legacy and live behavior, then propose the exact workflow definition required by
+`ref workflow-model` §1.6.2:
+
+- operator-visible outcome and workflow boundary;
+- run-modal inputs, omissions and required replacement values;
+- ordered `[(timeline group, [entries])]` structure and explicit entry kinds;
+- task-store reuse, customization and new tasks;
+- systems, page states, selectors, reads, writes and gates;
+- screenshots, semantic logs, returned values, receipts and Archive evidence;
+- checkpoint/restart behavior and no-repeat-write obligations; and
+- structural/live proof plus an approved controlled-commit target for each write.
+
+The operator reviews that packet. Approval creates the next numbered phase and its phase doc,
+migration doc and coordinator plan. Rejection or missing evidence leaves the candidate unnumbered.
+Only the approved workflow or explicitly approved workflow family enters that phase. Shared task-store
+or dashboard work belongs there only when it is the first verified consumer.
 
 ## The seven-step migration playbook
 
-This is the safety loop an agent follows for one workflow after the D311 compiler exists. Separations
+This is the safety loop an agent follows only after D319 admission creates a numbered workflow phase.
+Separations
 ran its pre-D311 form; the business and safety obligations remain, while workflow compilation replaces
 the manual descriptor/module/dashboard assembly described by the older wording. Steps run in order;
 each names the artefact it produces and the gate that proves it. A red gate is not passed with a note.
@@ -341,25 +386,27 @@ per-commit gate; `test:coverage` is a strict superset of the old `test` + `test:
 `ref guards-and-tests` §9 is the worked example of adding one submit-bearing workflow through this
 guard set.
 
-**4 · Live selector re-verification, then the live dry run.** Live access is pre-authorized and
+**4 · Live selector re-verification, then the T1b live run.** Live access is pre-authorized and
 always available (CLAUDE.md's standing authorization) — never ask. Legacy change accounting is
 RETIRED (D150): the protection against a stale ported selector is re-verifying it against the LIVE
-page at this migration, not diffing legacy's copy. Then run the workflow with `dryRun=true` against
-every real system it touches and assert that prepare previews exist while commit spans, write
-intents and mutation helpers are ABSENT. Write the dry run down as a scenario rather than typing it
-again: `tests/scenario/workflows/<id>/dry-run.scenario.ts` is the checkpoint manifest
+page at this migration, not diffing legacy's copy. Then run the workflow against every real system
+it touches through D318's graph-derived T1b arm: a transaction-bearing graph uses
+`dry-run-preview` with `dryRun=true`; a zero-transaction graph uses `live-read` with
+`dryRun=false`. Both prove exact zero deltas in `write_intents`, `write_attempts` and
+`durable_outbox`; a no-op transaction is forbidden. Write the live proof down as a scenario rather
+than typing it again: `tests/scenario/workflows/<id>/dry-run.scenario.ts` is the T1b checkpoint manifest
 (`ref guards-and-tests` §10.4) — nodes reached and nodes excluded, the `run_checkpoints` rows keyed
 `(workflow, item, node, attempt, claimGeneration?)` (D214/D221), the `gate_results` row if it gates,
 `write_intents` / `write_attempts` / `durable_outbox` deltas of **zero**, the receipt shape, the
-preview terminal. Register its canary subjects by LABEL in `config/test-subjects.json`
+arm-specific terminal/result. Register its canary subjects by LABEL in `config/test-subjects.json`
 (`ref guards-and-tests` §10.5) — sensitive values stay in `.env` behind `src/domain/secrets.ts`, and
 a missing subject reports `blocked: needs <label>`, never `failed`, because a canary decays
 (separations §9.16: doc 4524's action was completed between two passes and the read that made it a
-candidate stopped working). **Gate:** the dry run green, its manifest committed, its result recorded.
+candidate stopped working). **Gate:** the T1b live case green, its manifest committed, its result recorded.
 
 **5 · The controlled-commit proof — write workflows only.** Exercise each new commit / probe /
 verify against a configured test instance or a deliberately harmless, operator-approved canary,
-under `ref write-safety` §3.2's contract: dry run with zero durable rows, a forced subject mismatch
+under `ref write-safety` §3.2's contract: dry-run preview with zero write-authority deltas, a forced subject mismatch
 refused with zero fence and zero click, ONE controlled commit whose proof is a reload read-back plus
 the outbox rows plus the terminal span, and an idempotent re-run answering `already-present` with no
 browser. **If no safe target exists, rebuild-ready is BLOCKED** — dry run alone cannot prove
@@ -392,21 +439,22 @@ integrated gate, remove the registered and physical worktree, prune, delete the 
 feature branch, archive the exact recorded Codex task when applicable, and record any residue. A
 merge without this cleanup is not a closed order row.
 
-## Recommended migration order (by risk / complexity / reuse)
+## Unverified candidate evidence - not a phase order
 
-_Origin: the dissolved master plan's §3.3; its order-8 prerequisite block lives in
+_Historical design input from the dissolved master plan's §3.3. D319 retires this table as build
+order. Its labels and dependency theories are leads to verify, not approved workflow boundaries,
+phase assignments or authorization to implement. Its order-8 prerequisite block lives in
 `00-design-the-foundation.md` §ALWAYS-GATE identity approval, because D77 pulled that design into
-Phase 0. Re-verified against the code on 2026-08-20 — the ordering and its argument stand, and the
-per-row detail is in the §Order N sections below._
+Phase 0. Each future admission may reuse, correct, split or reject this evidence._
 
-**The ordering objective, made explicit (D84, amended by D88/D89).** Production availability does
+**The former ordering objective, made explicit (D84, amended by D88/D89).** Production availability does
 not vary by migration order because legacy automation remains authoritative until one final
 cutover. The order optimizes **total rebuild delivery time** by maximizing reuse leverage—each
 migration must make the next cheaper — which is what the risk-ordered sequence below already does
 (reads populate the stores every later workflow draws from; the OCR service pipeline unblocks four
 consumers; the write-heavy workflows land last on top of everything).
 
-**The trade this makes, stated plainly.** Onboarding and separations migrate last (orders 8–9).
+**The trade the historical proposal made.** Onboarding and Separations migrated last (orders 8-9).
 That is deliberate: they are the highest-stakes writes, they reuse the most, and doing
 them early would mean proving the write-safety contract on the two workflows least able to absorb
 a contract flaw. The existing workflows continue serving production while this sequence runs, and
@@ -415,19 +463,19 @@ ref write-safety §14) is designed in Phase 0 rather than at order 8, so nothing
 discovered late. If a dependency or evidence target becomes the binding constraint, this order is
 the thing to revisit.
 
-**Read this table beside the entry choice (D193, 2026-08-12).** The operator entered Phase 3 at
+**Read this table only as candidate evidence.** The operator entered Phase 3 at
 **order 8, separations** — see §3.1's entry block for the store-population reasoning. The table is
 deliberately **not** re-sequenced: it is the risk-proof ordering and its argument above still holds,
 so the entry buys the deepest proof first rather than making it cheaper. Nothing here is waived —
-separations owes every §3.2 criterion, and the remaining orders keep their relative sequence for
-whatever is taken up next.
+Separations owes every §3.2 criterion. D319 supersedes the claim that remaining candidates keep this
+relative sequence. The next candidate is chosen by the operator and verified before promotion.
 
 Read-only and simple first (populate the read stores, low blast radius); OCR/approval flows next
 (exercise the completion union + gates); write-heavy last (the write-safety contract's real test),
 with the two **incident** workflows (onboarding duplicate-person, separations wrong-person) dead
 last as the highest-stakes proofs.
 
-| Order | Workflow(s) | Class | One-line justification |
+| Historical order | Candidate label(s) | Suspected class | Evidence lead to verify |
 |---|---|---|---|
 | 0 | **person-lookup** | read | Phase 1 spine proof; runs live before any later migration |
 | 1 | **person-lookup** (Search + Match modes), **i9-lookup** | read | Both Person Lookup questions and the signer lookup are pure UCPath reads; the two modes prove one workflow descriptor can preserve distinct system surfaces without a second workflow identity |
@@ -511,7 +559,7 @@ Embed in **every** workflow's migration plan doc; answer with the operator BEFOR
 `config/legacy-capabilities.json` holds **78** entries: **46 open · 19 replaced · 6 native · 7
 retired** (`status` projects the same split as `open 46 / implemented 25 / retired 7`, since
 `native` and `replaced` both project to `implemented`). **Every one of the 46 open entries names
-owner milestone `phase-3-workflow-migration`** —
+owner milestone `workflow-admission-backlog`** —
 there is no open entry owned by a phase that has already shipped, which is what D184's sweep fixed
 and what the guard now refuses to let rot again. Cutover requires zero open
 (`cutoverRequiresZeroOpen: true` in the file's own header), so this table IS the phase's finish line.
@@ -685,21 +733,22 @@ migration node cites. The **end-to-end tier** is an agent-operated run of MANY d
 parallel, across workflows and across two runs of the same workflow (`{#parallel-runs}`). Fixture
 scenarios that pretend are rewritten into the honest structural one or into a dry-run scenario.
 The coverage floor moves to **80 %** lines/statements/functions global. Under D311 every migration
-owes its T1 pair (the structural fixture scenario and dry-run manifest). T2/T3 are added only when
+owes its T1 pair (the structural fixture scenario and T1b live manifest). T2/T3 are added only when
 that workflow introduces a new dashboard interaction or wire arm; reused generic projections are
 covered once by registry-wide workflow/compiler conformance. The normative spec — folder layout, file naming,
 the vitest project per tier, the run policy, the subject registry, the durable result row — is
 `reference/guards-and-tests.md` (R10, 2026-08-20).
 
-## Order 0 · person-lookup
+## Phase 3 acceptance · Person Lookup
 <!-- roadmap: order-0 -->
 
 <!-- roadmap-status: order-0 -->
 - [x] the workflow exists and is registered — `src/workflows/person-lookup/descriptor.ts` + `module.ts`, tuple entry in `src/control/workflow-registry.ts`
 - [x] it ran LIVE against real UCPath + CRM (D74, 2026-08-04): run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, recovered a dead CRM session mid-run and terminalized `done` at attempt 2
 - [x] the store tasks it forced into existence — `ucpath/search-person-org`, `crm/read-onboarding-record`, `crm/read-onboarding-dates`, `person-lookup/read-active-status`
-- [ ] PROOF T1 — no `tests/scenario/workflows/person-lookup/` exists; the structural fixture scenario and the dry-run manifest are both unwritten (`ref guards-and-tests` §10.11)
-- [ ] the legacy capability entry `legacy-workflow-person-lookup` stays **open**, correctly: legacy's `crm-search.ts` / `match.ts` / `outcome.ts` have no rebuild counterpart, and those are order 1's Search + Match modes
+- [ ] Search + Match as modes on this existing workflow, preserving one workflow identity and two run-modal choices
+- [ ] PROOF T1 — no `tests/scenario/workflows/person-lookup/` exists; the structural fixture scenario and D318 `live-read` manifest are both unwritten (`ref guards-and-tests` §10.11)
+- [ ] the legacy capability entry `legacy-workflow-person-lookup` stays **open** until Search + Match and the canonical T1 pair close in Phase 3c-B
 > 2026-08-20 | docs-cohesion 03c | verified against `src/workflows/person-lookup/descriptor.ts`, `src/control/workflow-registry.ts:39` and `config/legacy-capabilities.json`; left: the T1 pair, and the capability entry closes only at order 1
 <!-- /roadmap-status -->
 
@@ -714,8 +763,8 @@ defect (D124), the accessible-name collision (D126), the `(runId, attempt, spanP
 `timeouts.sessionAcquireMs` (D125 — the dead CRM session cost 262.9 s of a ~14.5-minute run). Every
 order below budgets for the failure path on that evidence, not the happy path.
 
-**What it still owes.** Its T1 pair, like every other workflow — the tiers were specified after it
-shipped. And its legacy directory does not close here: order 1 is what closes it.
+**What it still owes.** Its T1 pair, like every other workflow, plus the already-verified Search +
+Match mode boundary. Both now close in Phase 3c-B; they are not bundled with I-9 Lookup.
 
 ### Dashboard · wire person-lookup
 <!-- roadmap: order-0-dash -->
@@ -726,7 +775,7 @@ shipped. And its legacy directory does not close here: order 1 is what closes it
 - [x] run detail — timeline, receipt, Context rail; the two-pixel panel D187 found and fixed (§5.1.3)
 - [x] archive · activity · explorer — person-lookup rows appear through the generic surfaces (§5.1.5)
 - [x] D311 bounded acceptance — the transitional compiler reaches these projections and registry-wide comparison is green (`ebfde1c6`, `246daab2`, `4555341f`)
-- [ ] D312–D317 final acceptance — final `workflow.ts`, no authored descriptor/module glue, four-artifact guard and canonical T1 pair
+- [ ] D312–D318 final acceptance — final `workflow.ts`, no authored descriptor/module glue, four-artifact guard and canonical T1 pair using the graph-valid T1b arm
 > 2026-09-02 | D311 | retained as historical acceptance evidence; no duplicate generic-surface T2 is required
 <!-- /roadmap-status -->
 
@@ -736,19 +785,14 @@ consumes no intake, so §5.1.4, §5.1.6 and §5.1.7 have nothing to declare. Tha
 working, not a gap: a square is absent when the workflow has nothing to put in it, and present-but-
 empty when the wire has not been run.
 
-## Order 1 · person-lookup Search + Match · i9-lookup
-<!-- roadmap: order-1 -->
+## Unverified candidate evidence · former order 1 · I-9 Lookup
 
-<!-- roadmap-status: order-1 -->
-- [x] the §b completeness pass for person-lookup Search + Match and i9-lookup — `docs/migrations/person-lookup.md` and `docs/migrations/i9-lookup.md`, plus the REUSE/CUSTOMIZE/BUILD and live I-9 map, integrated by `b1b36349`
-- [ ] Search + Match as MODES on the existing person-lookup descriptor (D15, `ref dashboard-surfaces` §9) — nothing in `src/workflows/person-lookup/descriptor.ts` carries a mode today
+- [x] draft I-9 Lookup intake evidence — `docs/migrations/i9-lookup.md`, plus the REUSE/CUSTOMIZE/BUILD and live I-9 map, integrated by `b1b36349`; D319 does not treat this as admission
 - [ ] the `i9` store — `src/stores/i9/index.ts` is 4 lines: `defineBrowserStore("i9", declareDriver("i9", "unwired"), i9Session, {})`. No driver, no login recipe, **zero tasks**
-- [ ] the `i9-lookup` workflow descriptor + module + registry tuple entry
-- [ ] PROOF T1 — structural fixture scenario + dry-run manifest per workflow; T3 only for the new mode interaction
-- [ ] the capability entries `legacy-workflow-i9-lookup` and `legacy-workflow-person-lookup` both close here
+- [ ] D319 admission packet and operator approval before any `i9-lookup` implementation or phase assignment
+- [ ] the capability entry `legacy-workflow-i9-lookup` remains open until an approved future phase closes it
 > 2026-08-20 | docs-cohesion 03c | verified against `src/stores/i9/index.ts:4` (unwired, `{}` tasks) and `src/workflows/person-lookup/descriptor.ts` (no mode); nothing is built — this row is a plan
-> 2026-09-02 | Order 1 intake | migration decisions, exact task/driver seams, provenance and current live login/search evidence integrated by `b1b36349`; runtime implementation and T1 remain open behind 3c-A
-<!-- /roadmap-status -->
+> 2026-09-02 | former Order 1 intake | exact task/driver leads, provenance and current live login/search evidence integrated by `b1b36349`; D319 returns I-9 Lookup to the unnumbered admission backlog
 
 **What it is.** Both HR-Tasks questions in one workflow — *search* for a person and *match* an
 existing record — plus `i9-lookup`, which answers who signed a Form I-9 section 2. All three are
@@ -770,22 +814,17 @@ store, and Search + Match is the mode mechanism orders 3-9 reuse whenever one wo
 faces.
 
 ### Dashboard capability delta · Search + Match · i9-lookup
-<!-- roadmap: order-1-dash -->
 
-<!-- roadmap-status: order-1-dash -->
 - [ ] BOTH generic workflow-declared mode chooser — Search and Match are two run-modal options of one workflow without a second workflow identity
 - [ ] PROOF T2/T3 only for that mode interaction; i9-lookup's ordinary start/queue/detail/archive projections ride compiler conformance
 > 2026-09-02 | D311 | re-scoped from six repeated wires to the one new mode capability
-<!-- /roadmap-status -->
 
 The surfaces exist. The one capability delta must get the **mode** right: the
 run modal has to offer Search and Match as two rows of one workflow, and the queue row has to name
 the subject differently per mode without minting a second workflow class.
 
-## Order 2 · crm-doc-download · sharepoint-download · old-kronos-reports
-<!-- roadmap: order-2 -->
+## Unverified candidate evidence · former order 2 · downloads
 
-<!-- roadmap-status: order-2 -->
 - [ ] the §b completeness pass for all three workflows — inherited answers cited and workflow-specific deltas recorded
 - [ ] the `sharepoint` and `old-kronos` stores — 9 lines each, `declareDriver(…, "unwired")`, zero tasks
 - [ ] CRM document download on the EXISTING crm driver — `src/stores/crm/tasks/` holds two read tasks and no download
@@ -793,7 +832,6 @@ the subject differently per mode without minting a second workflow class.
 - [ ] the artifact-bytes route — there is **no** endpoint serving artifact bytes today; the only byte-serving route in the tree is the phone's own `GET /api/v1/capture/phone/photos/:photoId/bytes` (`legacy-route-files`, still open)
 - [ ] PROOF T1 per workflow; T3 only for the download viewer capability
 > 2026-08-20 | docs-cohesion 03c | verified against `src/stores/sharepoint/index.ts`, `src/stores/old-kronos/index.ts` (both unwired, `{}` tasks), `src/stores/crm/tasks/` (2 read tasks) and `config/legacy-capabilities.json`'s `legacy-route-files` reason; nothing built
-<!-- /roadmap-status -->
 
 **What it is.** Three single-system reads that end in a FILE: CRM iDocs PDFs, SharePoint rosters,
 and Old Kronos Time Detail PDFs. **Systems:** CRM (driven), SharePoint (undriven), Old Kronos
@@ -815,13 +853,10 @@ stores at zero write risk is the cheapest way to learn each system's login and p
 later order has to write to it.
 
 ### Dashboard capability delta · downloads
-<!-- roadmap: order-2-dash -->
 
-<!-- roadmap-status: order-2-dash -->
 - [ ] the download viewer — the artifact-bytes route plus a per-run downloads tile (`ref frontend-backend-integration` §3.6)
 - [ ] PROOF T2/T3 for download availability, verified bytes and refusal; ordinary projections ride compiler conformance
 > 2026-09-02 | D311 | re-scoped from six repeated wires plus viewer to the viewer capability alone
-<!-- /roadmap-status -->
 
 The extra square here is a real build, not a wire: the run-detail `captures` section is schema'd
 and DECLARED-UNSERVED today — `config/pending-wire-bindings.json` carries
@@ -829,17 +864,14 @@ and DECLARED-UNSERVED today — `config/pending-wire-bindings.json` carries
 return it, and the bytes behind it are unrouted (03a's finding). This capability is where a downloaded
 document becomes something the operator can open.
 
-## Order 3 · the OCR pipeline workflow
-<!-- roadmap: order-3 -->
+## Unverified candidate evidence · former order 3 · OCR pipeline
 
-<!-- roadmap-status: order-3 -->
 - [ ] the §b completeness pass for the OCR pipeline — inherited answers cited and workflow-specific deltas recorded
 - [x] the four service stores it consumes are BUILT (2h) — `extraction` (`extract-pdf-pages`, `extract-spreadsheet`), `ocr` (`extract-form-page`), `normalization` (`read-contact-advice`), `roster` (`match-spreadsheet`)
 - [ ] the OCR pipeline WORKFLOW over them — no descriptor exists; this order migrates the pipeline on top of stores that already work
 - [ ] D189/D294's byte path — the production BFF serves **no frontend bytes**: `src/server/dashboard/http-server.ts` has no static handler and `dashboard:prod` names a mode the runtime never parsed
 - [ ] PROOF T1; T3 only for the Review capability
 > 2026-08-20 | docs-cohesion 03c | verified against `src/stores/{extraction,ocr,normalization,roster}/tasks/`, `src/control/workflow-registry.ts:194` and `config/legacy-capabilities.json`'s `legacy-route-static` reason; the stores are real, the workflow is not
-<!-- /roadmap-status -->
 
 **What it is.** PDF → extraction → review → fan-out, with no browser and no submit. It is the only
 row whose STORES already exist: 2h built them and 2j closed over them, so this order migrates the
@@ -872,15 +904,12 @@ reuse leverage the ordering exists to protect.
 the capture binding.
 
 ### Dashboard capability delta · OCR pipeline
-<!-- roadmap: order-3-dash -->
 
-<!-- roadmap-status: order-3-dash -->
 - [ ] the OCR review UI — the expanded page ↔ extracted-text pair, approve / reject / retry page, ONE atomic correction list (never a collapsed table; the 2026-07-24 layout ratification)
 - [ ] the review/approve commands + progressive record patches over the SSE stream
 - [ ] the run-detail **Review** panel BODY — `review` is in `TAB_ORDER` but `availableSections` can never return it, so the tab is structurally unreachable and `UnservedTab` is dead code (03a's finding)
 - [ ] PROOF T2/T3 for Review; start/queue/timeline/intake/archive projections ride compiler conformance
 > 2026-09-02 | D311 | re-scoped to the first real Review capability and its commands
-<!-- /roadmap-status -->
 
 The largest dashboard capability delta in the doc is mostly a build. The OCR review
 surface is not a generic surface a migration inherits: `ref data-intake-and-edit-data` §4.3's three
@@ -889,17 +918,14 @@ producers admit identically, and `ref dashboard-surfaces` §9's D7/D8/D10 shape 
 visible only from the review row). It lands WITH this workflow, by the ordering's own argument —
 building it earlier would shape a review UI against no corpus.
 
-## Order 4 · oath-signature · emergency-contact
-<!-- roadmap: order-4 -->
+## Unverified candidate evidence · former order 4 · oath signature · emergency contact
 
-<!-- roadmap-status: order-4 -->
 - [ ] the §b completeness pass for oath-signature and emergency-contact — inherited answers cited and workflow-specific deltas recorded; both still need an operator-approved controlled-commit target
 - [ ] the first operation FAN-OUT and its approval gates, exercised through the real OCR review UI
 - [ ] the `oath-signature` and `emergency-contact` descriptors + modules + tuple entries
 - [ ] the first non-separations controlled commits — a bounded UCPath enter/fill, under `ref write-safety` §3.2
 - [ ] PROOF T1 per workflow; T3 only for the new gate/Group People capability
 > 2026-08-20 | docs-cohesion 03c | nothing built; `RunShapeSchema`'s `operation` / `operation-member` arms still have no producer, so every group surface below is drawn against a shape no run has had
-<!-- /roadmap-status -->
 
 **What it is.** Oath date rows and emergency-contact fills — OCR fan-out with a light write at the
 end. **Systems:** UCPath (driven), consuming order 3's extraction output.
@@ -931,15 +957,12 @@ contract over it rather than an abbreviated version — the contract is being pr
 row after it.
 
 ### Dashboard capability delta · oath-signature · emergency-contact
-<!-- roadmap: order-4-dash -->
 
-<!-- roadmap-status: order-4-dash -->
 - [ ] the generalized server-declared gate packet this workflow's approval requires (`ref write-safety` §14.11)
 - [ ] Group People — paged members, rollup and containment over REAL operation members
 - [ ] the group People panel BODY — declared in `TAB_ORDER`, never servable (03a's finding, same shape as order 3's Review tab)
 - [ ] PROOF T2/T3 for the new gate shape and Group People; ordinary projections ride compiler conformance
 > 2026-09-02 | D311 | re-scoped to two new capabilities: generalized gate packet and Group People
-<!-- /roadmap-status -->
 
 The gate square is not optional here and it is not separations' gate: `ref write-safety` §14.11's
 rule is that the approval SHAPE is computed by the server, never chosen by the frontend, because a
@@ -948,10 +971,8 @@ rubber-stamping risk manufactured by accident. Group People is the other real bu
 member presentation at every count, D14 says a group of one still renders as a group row, D9 says
 rejected members never count toward done, and D16 says cancelling a group is tree-scoped and final.
 
-## Order 5 · i9-check
-<!-- roadmap: order-5 -->
+## Unverified candidate evidence · former order 5 · I-9 check
 
-<!-- roadmap-status: order-5 -->
 - [ ] the §b completeness pass for i9-check — inherited answers cited and workflow-specific deltas recorded
 - [ ] the operation coordinator AT SCALE — member enqueue, display-only rows, the join; `ref dashboard-surfaces` §7 and `ref execution-and-sessions` §8 are the same worked example from two sides
 - [x] the stable-keyed idempotent workbook SINK exists — `src/infra/artifacts/xlsx-retention-sink.ts` proves `ref data-intake-and-edit-data` §4.1's contract (duplicate key is a verified no-op, changed record is an in-place update, rows sorted by stable key, atomic replace)
@@ -960,7 +981,6 @@ rejected members never count toward done, and D16 says cancelling a group is tre
 - [ ] the first Excel EXPORT writer (`legacy-export-i9-check-tracker`, open)
 - [ ] PROOF T1; T3 only for retention/export behavior
 > 2026-08-20 | docs-cohesion 03c | verified against `src/infra/artifacts/xlsx-retention-sink.ts`'s own header (it names this migration as the owner of the display layout) and `config/legacy-capabilities.json`; the durability half is built, the workflow and the display half are not
-<!-- /roadmap-status -->
 
 **What it is.** Verify an I-9 packet across a group of people and maintain the master retention
 workbook. A UCPath read plus a durable roster projection — operation coordinator, member enqueue,
@@ -987,23 +1007,18 @@ column set is a redaction decision as much as a layout one, and it should be ans
 questionnaire's item 11 (trust contract) before a column exists.
 
 ### Dashboard capability delta · i9-check
-<!-- roadmap: order-5-dash -->
 
-<!-- roadmap-status: order-5-dash -->
 - [ ] member rows carrying retention status, and the workbook export control
 - [ ] PROOF T2/T3 for retention status and export; Group People and ordinary projections are reused
 > 2026-09-02 | D311 | re-scoped to retention status and workbook export
-<!-- /roadmap-status -->
 
 This capability delta reuses order 4's group surfaces and adds two things: a member row that
 shows RETENTION status (which is a fact about a document's lifecycle, not about the run), and the
 export control. D17 — per-member confirmation numbers inline on the packet receipt — is the receipt
 detail this row is the first to need.
 
-## Order 6 · work-study · kronos-pay-rule
-<!-- roadmap: order-6 -->
+## Unverified candidate evidence · former order 6 · work-study · Kronos pay rule
 
-<!-- roadmap-status: order-6 -->
 - [ ] the §b completeness pass for work-study and kronos-pay-rule — inherited answers cited and workflow-specific deltas recorded; both still need an approved controlled-commit target
 - [x] the `new-kronos` store exists with a driver, a session provider and two READ tasks — `read-separation-timecard`, `search-employee` (D196, `ref task-contract` §2.9); separations chunk 1 built it
 - [ ] the new-kronos WRITE family — the pay-rule commit contracts; the store has no write path today
@@ -1011,7 +1026,6 @@ detail this row is the first to need.
 - [ ] the canonical-EID audit gate — replay real stored / fixture inputs through `EidSchema` (`src/domain/ids.ts:184`, `/^10\d{6}$/`) and surface every rejection
 - [ ] PROOF T1 per workflow; T3 only for the run-constant interaction
 > 2026-08-20 | docs-cohesion 03c | verified against `src/stores/new-kronos/tasks/` (two read tasks, no write) and `src/domain/ids.ts:184`; the store is half-built by separations and the write half is this order
-<!-- /roadmap-status -->
 
 **What it is.** PayPath pool / comp entries and UKG pay rules — the first workflow-specific
 production commits that are not separations. Small, isolated, on a transaction kernel that has
@@ -1038,23 +1052,18 @@ meets a WRITE for the first time. The column mapping, the validation and the imm
 manifest all already exist from 2h; what is new is that a mapping mistake now reaches UCPath.
 
 ### Dashboard capability delta · work-study · kronos-pay-rule
-<!-- roadmap: order-6-dash -->
 
-<!-- roadmap-status: order-6-dash -->
 - [ ] the intake grid's constants entry + its unbind arm (`effectiveDate`, D172/D173)
 - [ ] PROOF T2/T3 for bind/unbind of the run constant; intake and ordinary projections are reused
 > 2026-09-02 | D311 | re-scoped to the constants interaction alone
-<!-- /roadmap-status -->
 
 The intake workspace exists (2i-E3, `ref dashboard-surfaces` §9.7.1) and this sub-task adds the one
 thing a write workflow needs from it: a CONSTANT the operator supplies once for a whole sheet — an
 effective date — rather than per row, and an unbind arm that takes it back off. `ref
 data-intake-and-edit-data` §2.8 is D172/D173's as-built union resolution behind it.
 
-## Order 7 · oath-upload · onbase
-<!-- roadmap: order-7 -->
+## Unverified candidate evidence · former order 7 · oath upload · OnBase
 
-<!-- roadmap-status: order-7 -->
 - [ ] the §b completeness pass for oath-upload and onbase — inherited answers cited and workflow-specific deltas recorded
 - [ ] the `servicenow` and `onbase` stores — 9 lines each, `declareDriver(…, "unwired")`, zero tasks, no login recipe
 - [!] the ServiceNow `receipt` probe — **the operator must name a live probe target**; §Live probe status has carried this as ⏳ since D92
@@ -1063,7 +1072,6 @@ data-intake-and-edit-data` §2.8 is D172/D173's as-built union resolution behind
 - [ ] PROOF rebuild-verified propagation windows for ServiceNow (`ref write-safety` §4.2; doc 04 `{#def-propagation}` carries the deferral)
 - [ ] PROOF T1 per workflow; T3 only for the receipt capability delta
 > 2026-08-20 | docs-cohesion 03c | verified against `src/stores/servicenow/index.ts`, `src/stores/onbase/index.ts` (both unwired, `{}` tasks) and §Live probe status; TWO of this row's blockers need the operator, not an agent
-<!-- /roadmap-status -->
 
 **What it is.** A ServiceNow ticket with a PDF attached, and an OnBase document import. The two
 write-heavy rows that are not incidents. **Systems:** ServiceNow (undriven), OnBase (undriven).
@@ -1095,30 +1103,24 @@ consumes through a sibling task born at the upload, which is how the fence gets 
 a document that did not exist when the run started.
 
 ### Dashboard capability delta · oath-upload · onbase
-<!-- roadmap: order-7-dash -->
 
-<!-- roadmap-status: order-7-dash -->
 - [ ] the ServiceNow ticket receipt and the OnBase upload-verify on the run-detail receipt (`ref operator-trust` §2.3)
 - [ ] PROOF T2/T3 for those receipt arms or the explicit always-park arm; ordinary projections are reused
 > 2026-09-02 | D311 | re-scoped to the two new completion-proof presentations
-<!-- /roadmap-status -->
 
 The receipt square is the one that carries this row's risk onto the screen. `ref operator-trust`
 §2.3 is the receipt contract: a `HRC0…` ticket number is a real completion proof and an unverified
 upload is not, and the panel has to say which of the two it is holding. D237/D238's rule applies
 directly — a label and a derived verdict describing the same run must not be derived twice.
 
-## Order 9 · onboarding
-<!-- roadmap: order-9 -->
+## Unverified candidate evidence · former order 9 · onboarding
 
-<!-- roadmap-status: order-9 -->
 - [ ] the §b completeness pass for onboarding — inherited answers cited and workflow-specific deltas recorded; it still needs an operator-approved HIRE canary
 - [ ] the hire probe with the **no-EID key** — `probeVerdictSchema` today has four arms (`present` · `absent` · `ambiguous` · `unknown`, `src/domain/write-safety-primitives.ts:50`) and every permanent key in the tree is EID-derived; a hire has no EID until it lands
 - [ ] roster ingest (`ref data-intake-and-edit-data` §4; the `roster` store's `match-spreadsheet` exists, the ingest workflow does not)
 - [ ] the onboarding composition over the `ucpath` / `crm` / `kuali` / `new-kronos` stores
 - [ ] PROOF T1; T3 only for roster ingest or a new hire-gate arm
 > 2026-08-20 | docs-cohesion 03c | verified against `src/domain/write-safety-primitives.ts:50-63` and `src/stores/roster/tasks/`; nothing built, and this row's canary is a `you:` line that has no cheap answer
-<!-- /roadmap-status -->
 
 **What it is.** The real hire transaction — the duplicate-person incident's workflow. Last by
 design: highest stakes, and it reuses more of everything below it than any other row.
@@ -1151,21 +1153,18 @@ no harmless real hire. Expect the controlled-commit proof here to need a configu
 it to be the long pole.
 
 ### Dashboard capability delta · onboarding
-<!-- roadmap: order-9-dash -->
 
-<!-- roadmap-status: order-9-dash -->
 - [ ] 5.1.7 the roster-ingest surface, and the hire canary's ceremony
 - [ ] the server-declared hire gate packet where it differs from the generalized gate capability
 - [ ] PROOF T2/T3 for roster ingest and any new gate arm; ordinary projections are reused
 > 2026-09-02 | D311 | re-scoped to roster ingest and the genuinely new hire-gate evidence shape
-<!-- /roadmap-status -->
 
 Onboarding reuses every ordinary compiled projection. Its real deltas are roster ingest and, only if
 the generalized gate cannot express it, the hire evidence shape: *this person may already exist*
 rather than Separations' *this may be the wrong person*. The shape remains the server's to compute,
 not the panel's to choose.
 
-## Cross-cutting Phase 3 capabilities (no single order)
+## Unassigned shared-capability backlog
 <!-- roadmap: cross-cutting -->
 
 <!-- roadmap-status: cross-cutting -->
@@ -1197,11 +1196,11 @@ traceback that names each one's trigger.
 
 ## Decisions this phase ratified
 
-**D311–D317 are this phase's workflow-authoring decisions.** They ratify the workflow/compiler and its
-measurable simplicity, omission, recovery, entry-algebra and deletion boundaries before another
-migration starts; the bounded compiler is integrated and the final acceptance work remains open at
-`{#workflow-authoring-model}`. The rest of the
-table is the standing set ratified elsewhere that still binds every order row.
+**D311-D319 are this phase's workflow-authoring, proof and boundary decisions.** D311-D318 ratify
+the workflow/compiler and its measurable simplicity, omission, recovery, entry-algebra and deletion
+boundaries. D319 ends Phase 3 after Person Lookup/Separations acceptance and requires a verified,
+operator-approved admission packet before another workflow receives a numbered phase. The bounded
+compiler is integrated and final acceptance remains open at `{#workflow-authoring-model}`.
 
 | D | Where it binds in this doc |
 |---|---|
@@ -1216,6 +1215,8 @@ table is the standing set ratified elsewhere that still binds every order row.
 | D311 (round 121, 2026-09-02) | one tuple workflow/compiler authoring seam; generic dashboard conformance once; T2/T3 only for new capability deltas |
 | D312–D316 (round 122, 2026-09-02) | exactly four reuse-only artifacts; complete run-modal omissions; checkpoint resume or root restart; explicit entry algebra; Person Lookup/Separations equivalence followed by deletion |
 | D317 (round 123, 2026-09-02) | `workflow` is the authored technical model; `recipe` is analogy only; `workflow.ts` + `defineWorkflow` compile to `CompiledWorkflow` |
+| D318 (round 124, 2026-09-02) | transaction-free workflows satisfy T1b through the explicit `live-read` arm with `dryRun=false`, zero transaction nodes and exact zero write-authority deltas; D209 preview semantics remain unchanged |
+| D319 (round 125, 2026-09-02) | Phase 3 stops after Person Lookup/Separations acceptance; every other workflow stays unnumbered until its admission packet is verified and operator-approved |
 | R10 (operator, 2026-08-20; amended D311) | T1 behavior per workflow, T2/T3 per new dashboard capability, the 80 % floor |
 
 A round ratified by a future migration is added here in the same commit that records it, with its
@@ -1223,31 +1224,31 @@ A round ratified by a future migration is added here in the same commit that rec
 
 ## Exit criteria
 
-_Origin: the dissolved master plan's §3.2 — the per-workflow criteria every migration answers,
-separations included. Re-verified and re-stated below as the PHASE's own checklist first, with each
-line's MET/open state at HEAD, then the per-workflow contract each order row is held to._
+_Origin: the dissolved master plan's §3.2. D319 narrows this phase's checklist to the shared
+authoring platform, Person Lookup and Separations. The reusable per-workflow completion contract
+remains below for phases created after admission._
 
 ### The phase's exit — read this to decide whether 3c is done
 
 | # | Criterion | State at verified baseline `b1b36349` (2026-09-02) |
 |---|---|---|
-| 1 | D311–D317's workflow/compiler seam is built, equivalent on person lookup and separations, and every remaining order row has been through the resulting migration loop | **partial** — the bounded transitional compiler, two compiler-backed descriptors/modules and equivalence are integrated; final workflow naming, direct entries, omissions, recovery, four-artifact deletion/guide/T1 acceptance and orders 1–7/9 remain open |
-| 2 | Every migrated workflow is marked **rebuild-ready** with its live dry run green and, for writes, its `ref write-safety` §3.2 controlled-commit proof recorded | **open** — order 0 is a read and predates the tiers; no other row has run |
-| 3 | Every workflow definition passes generic dashboard/Explorer conformance; every genuinely new surface capability has its one feature task and T2/T3 proof | **partial** — registry-derived conformance is green for transitional compiler-backed Person Lookup and Separations; final entry kinds and every later workflow/capability remain |
-| 4 | Every order row carries its **T1** pair (structural fixture scenario + dry-run manifest), with T2/T3 only for dashboard behavior it introduces | **open** — Separations has its pair; Person Lookup's canonical pair was deliberately deferred, the read-only T1 live-proof contract is unresolved, and orders 1–7/9 have none |
-| 5 | The four live probes are settled: each system produces a typed completion proof or an argued `unverifiableByPage` | **open** — 2 of 4. Kuali and UCPath are RESOLVED and BUILT; ServiceNow needs a named target and OnBase has none |
-| 6 | `config/legacy-capabilities.json` has **zero open entries** — every one advanced to `native` / `replaced` / `retired` with evidence | **open** — 46 of 78 open, all owned by this phase |
-| 7 | The §Cross-cutting capabilities are built or retired with evidence | **open** — none of the five is started |
-| 8 | Nothing in the legacy repository has been deleted, and every preserved path is still runnable | **MET, and standing** — it is the D89 rollback asset for the whole phase |
-| 9 | Every Phase 3c run is integrated and closed: integrated gate green, registered/physical worktrees removed, local feature branches deleted, exact tasks archived, residue recorded | **partial** — R1 compiler and R2 intake are closed; the phase integration branch and all future runs remain. Eight unrelated `feature/test-*` worktrees are preserved for their owning program and are not Phase 3c residue |
+| 1 | D311-D318's workflow/compiler seam is built and equivalent on Person Lookup and Separations | **partial** - the bounded transitional compiler and conformance are integrated; final naming, direct entries, omissions, recovery, `live-read`, four-artifact deletion, guide and T1 acceptance remain |
+| 2 | Person Lookup carries its canonical structural and `live-read` T1 pair and its migration record matches the compiled workflow | **open** - D318 resolves the proof contract; R3 owns implementation and evidence |
+| 3 | Separations compiles through the same authoring seam without weakening its existing gates, transactions, receipts or recovery contracts | **partial** - transitional equivalence is green; R3 owns final conversion. Unfinished controlled-live proof remains doc 03b work |
+| 4 | Generic dashboard and Explorer conformance is green for both acceptance workflows; T2/T3 is added only for a genuinely new behavior | **partial** - transitional conformance is green; final entry kinds and omission/recovery surfaces remain |
+| 5 | The author guide, paired root instructions and internal agent pointer all describe the one final authoring path | **open** - R3 work |
+| 6 | D319 admission is visible in the roadmap: no unverified workflow is a numbered phase or authorized implementation run | **MET in docs when this change lands** - the former rows remain evidence-only until Phase 3 close removes or extracts them |
+| 7 | Nothing in the legacy repository has been deleted, and Person Lookup/Separations legacy paths remain runnable | **MET, and standing** - the legacy repository remains the D89 rollback asset |
+| 8 | Every Phase 3c run is integrated and closed: gates green, worktrees removed, local branches deleted, exact tasks archived and residue recorded | **partial** - R1/R2 are closed; R3 and final reconciliation/close remain |
 
-Criterion 8 is fully met. Criteria 1, 3 and 9 are partial; every other criterion remains open. The
-bounded compiler and Order 1 intake reduce the remaining work, but no new order row is rebuild-ready.
+No capability-register zero-open claim, ServiceNow/OnBase probe or unadmitted workflow blocks Phase
+3c. Those obligations remain real and move with the first approved phase that requires them or the
+final cutover gate. Phase 3c closes only the platform and its two acceptance workflows.
 
 ### What "rebuild-ready" means for ONE workflow
 
-Every order row answers all of these before its node goes `[x]`. This is the contract the playbook's
-seven steps produce, restated as the thing to check at the end.
+Every admitted workflow phase answers all of these before its node goes `[x]`. This is the contract
+the playbook's seven steps produce after D319 admission.
 
 - §b completeness checklist applied, with inherited answers cited and only workflow-specific facts,
   deltas and real operator decisions recorded in the migration doc.

@@ -29,7 +29,6 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { BUILD_MANIFEST } from "../../../src/domain/workflow/build-manifest.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
-import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { seedPersonLookupExitRun } from "../fixtures/receipt-run-fixtures.js";
 import {
   workflowProjections,
@@ -51,8 +50,8 @@ import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js"
 import { SECRET_SPECS } from "../../../src/domain/secrets.js";
 import { buildRunEvidenceReceipt } from "../../../src/core/evidence-receipt.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
-import { separationsKualiFinalizationDescriptor } from "../../../src/workflows/separations/kuali-finalization/descriptor.js";
-import { separationsIdentityCheckDescriptor } from "../../../src/workflows/separations/identity-check/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
+import { separationsIdentityCheckDescriptor } from "../../helpers/registered-workflows.js";
 import {
   GATE_RESOLVED_AT,
   GATE_RESOLVED_BY,
@@ -69,6 +68,7 @@ import {
   WriteFixtureCommit,
   WriteFixtureSaveCommit,
 } from "../fixtures/write-sequencer-fixtures.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 function kualiReceipt() {
   const evidence = kualiReceiptEvidence();

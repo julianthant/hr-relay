@@ -36,8 +36,8 @@ import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js"
 import type { RunEvidenceReceipt } from "../../src/domain/trust/evidence.js";
 import { evidenceEntryRef } from "../../src/domain/trust/evidence-identity.js";
 import { buildExplainRunView, renderExplainRun } from "../../src/server/explain/explain-run.js";
-import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
 import { EXIT_RUN_ID, seedPersonLookupExitRun } from "./fixtures/receipt-run-fixtures.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];

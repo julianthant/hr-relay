@@ -79,7 +79,7 @@ const MilestoneSchema = z.enum([
   "2h",
   "2i",
   "2j",
-  "phase-3-workflow-migration",
+  "workflow-admission-backlog",
 ]);
 type Milestone = z.infer<typeof MilestoneSchema>;
 const MILESTONE_ORDER: readonly Milestone[] = MilestoneSchema.options;

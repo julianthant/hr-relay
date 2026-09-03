@@ -13,21 +13,27 @@
  * The four arms, in the order they run:
  *
  *   (a) role ↔ path. Every registered module's derived folder
- *       (`workflowSourceFolder`, the ONE rule) exists and holds `descriptor.ts`
- *       + `module.ts`, and the descriptor file at that path DECLARES that
- *       module's id — read with the build manifest's own `declaredWorkflowId`,
- *       because the manifest keys every fingerprint by that answer and two
- *       readers of one syntax are two opinions. Nothing else lives directly
- *       under `src/workflows/`: only `descriptor-registry.ts` and the folders
+ *       (`workflowSourceFolder`, the ONE rule) exists and holds exactly ONE
+ *       authored file, `workflow.ts` (D312/D317 — descriptors, modules, step
+ *       identities and omissions are compiled from it or declared inside it,
+ *       never authored beside it), and that file DECLARES the module's id —
+ *       read with the build manifest's own `declaredWorkflowId`, because the
+ *       manifest keys every fingerprint by that answer and two readers of one
+ *       syntax are two opinions. Nothing else lives directly under
+ *       `src/workflows/`: only `descriptor-registry.ts` and the folders
  *       registered workflows are addressed to. A stray folder is refused BY
  *       NAME, and so is anything nested below a step folder — the tree is
  *       exactly two levels deep.
- *   (b) folders ↔ categories, both ways. For a workflow that DECLARED a D225
- *       timeline, the declared category keys and the sub-folder names are the
- *       same set, and each sub-folder's `step.ts` declares a key equal to its
- *       folder name — the folder IS the key. A workflow that declared none
- *       (D225's honest per-node default: `person-lookup`) has no sub-folders at
- *       all; the rule bites exactly when a timeline is declared.
+ *   (b) folders ⊆ declared groups, and a folder holds a harness. Since D312
+ *       (ref workflow-model §1.6.1 item 5) the composition's `steps` tuples
+ *       own timeline membership and order; a step folder is organization and
+ *       audit structure that exists for exactly one reason — to hold the
+ *       chunk harness that proves the step (§1.2.2 rule 3). So every
+ *       sub-folder of a workflow that DECLARED a timeline must be one of its
+ *       declared group keys AND the address of a registered `chunk-harness`;
+ *       a declared group with no harness (`job-summary`) has no folder. A
+ *       workflow that declared none (D225's honest per-node default:
+ *       `person-lookup`) has no sub-folders at all.
  *   (c) the registry audit is WIRED. `auditWorkflowModuleRoles` is the one
  *       implementation of the role rules, and it now also refuses two harnesses
  *       claiming one `(of, step)` — that pair is an ADDRESS, so a collision is
@@ -54,17 +60,12 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import ts from "typescript";
 import { describe, it } from "vitest";
 
 import { WORKFLOW_MODULES, auditWorkflowModuleRoles } from "../../../src/control/workflow-registry.js";
 import type { WorkflowRoleView } from "../../../src/control/workflow-registry.js";
 import { defineWorkflowRole, type WorkflowModuleRole } from "../../../src/domain/workflow/module-role.js";
-import {
-  descriptorSourcePath,
-  moduleSourcePath,
-  workflowSourceFolder,
-} from "../../../src/domain/workflow/source-layout.js";
+import { workflowSourceFolder, workflowSourcePath } from "../../../src/domain/workflow/source-layout.js";
 import { declaredWorkflowId } from "../../../src/infra/build/workflow-build-manifest.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 
@@ -89,8 +90,8 @@ export interface WorkflowLayoutModule {
  *
  * The reason travels as a VALUE rather than a throw so the audit can name the
  * file in a violation instead of exploding mid-walk; it is never silently
- * treated as "no declaration", which would let an unreadable `step.ts` pass as
- * a folder with nothing to say.
+ * treated as "no declaration", which would let an unreadable `workflow.ts` pass
+ * as a folder with nothing to say.
  */
 type SourceDeclaration = { readonly value: string } | { readonly unreadable: string };
 
@@ -99,51 +100,8 @@ export interface WorkflowLayoutTree {
   readonly directories: readonly string[];
   /** Every file under `src/workflows/`, repo-relative, at any depth. */
   readonly files: readonly string[];
-  /** `<folder>/descriptor.ts` → the workflow id that file declares. */
+  /** `<folder>/workflow.ts` → the workflow id that file declares. */
   readonly declaredIds: ReadonlyMap<string, SourceDeclaration>;
-  /** `<folder>/step.ts` → the step key that file declares. */
-  readonly stepKeys: ReadonlyMap<string, SourceDeclaration>;
-}
-
-/**
- * The step key a `step.ts` declares, read from its own source.
- *
- * The same shape of question as `declaredWorkflowId` one file over, and the
- * same fail-loud rule: exactly one string-literal `key` in exactly one
- * `defineWorkflowStep` call, or the file is UNREADABLE and says so. A regex
- * over the literal would have matched the word inside the file's own doc
- * comment.
- */
-export function declaredStepKey(entry: string): string {
-  const source = ts.createSourceFile(
-    entry, readFileSync(entry, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const keys: string[] = [];
-  function visit(node: ts.Node): void {
-    if (ts.isCallExpression(node)
-      && ts.isIdentifier(node.expression)
-      && node.expression.text === "defineWorkflowStep") {
-      const spec = node.arguments[0];
-      if (spec !== undefined && ts.isObjectLiteralExpression(spec)) {
-        for (const property of spec.properties) {
-          if (ts.isPropertyAssignment(property)
-            && ts.isIdentifier(property.name)
-            && property.name.text === "key"
-            && ts.isStringLiteral(property.initializer)) {
-            keys.push(property.initializer.text);
-          }
-        }
-      }
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(source);
-  const [only] = keys;
-  if (keys.length !== 1 || only === undefined) {
-    throw new Error(
-      `a step folder's step.ts must declare exactly one string-literal defineWorkflowStep key; found ${String(keys.length)}`,
-    );
-  }
-  return only;
 }
 
 function readDeclaration(read: () => string): SourceDeclaration {
@@ -162,7 +120,6 @@ export function collectWorkflowLayoutTree(root: string): WorkflowLayoutTree {
   const directories: string[] = [];
   const files: string[] = [];
   const declaredIds = new Map<string, SourceDeclaration>();
-  const stepKeys = new Map<string, SourceDeclaration>();
 
   function walk(relative: string): void {
     for (const name of readdirSync(join(root, relative)).sort()) {
@@ -173,17 +130,14 @@ export function collectWorkflowLayoutTree(root: string): WorkflowLayoutTree {
         continue;
       }
       files.push(child);
-      if (name === "descriptor.ts") {
+      if (name === "workflow.ts") {
         declaredIds.set(child, readDeclaration(() => declaredWorkflowId(join(root, child))));
-      }
-      if (name === "step.ts") {
-        stepKeys.set(child, readDeclaration(() => declaredStepKey(join(root, child))));
       }
     }
   }
 
   if (existsSync(join(root, WORKFLOWS_ROOT))) walk(WORKFLOWS_ROOT);
-  return { directories, files, declaredIds, stepKeys };
+  return { directories, files, declaredIds };
 }
 
 function depth(path: string): number {
@@ -218,17 +172,26 @@ export function auditWorkflowLayout(
       );
       continue;
     }
-    for (const path of [descriptorSourcePath(module.id, module.role), moduleSourcePath(module.id, module.role)]) {
-      if (!files.has(path)) violations.push(`workflow ${module.id} must author ${path}, which is missing`);
+    // D312/D317 — a workflow authors exactly `workflow.ts`; a descriptor,
+    // module, step, node-id, entry or omission file beside it is the retired
+    // multi-file authoring path returning under another name.
+    const entryPath = workflowSourcePath(module.id, module.role);
+    if (!files.has(entryPath)) violations.push(`workflow ${module.id} must author ${entryPath}, which is missing`);
+    for (const name of childrenOf(tree.files, folder)) {
+      if (name === "workflow.ts") continue;
+      violations.push(
+        `workflow ${module.id} authors ${folder}/${name} beside ${entryPath}; a workflow folder holds exactly its `
+        + "one workflow.ts (D312/D317)",
+      );
     }
-    const declared = tree.declaredIds.get(descriptorSourcePath(module.id, module.role));
+    const declared = tree.declaredIds.get(entryPath);
     if (declared === undefined) continue;
     if ("unreadable" in declared) {
-      violations.push(`${descriptorSourcePath(module.id, module.role)}: ${declared.unreadable}`);
+      violations.push(`${entryPath}: ${declared.unreadable}`);
     } else if (declared.value !== module.id) {
       violations.push(
-        `${descriptorSourcePath(module.id, module.role)} declares workflow id ${declared.value}, but the module `
-        + `addressed there is ${module.id}; a folder holds the descriptor its role names (§1.2.2)`,
+        `${entryPath} declares workflow id ${declared.value}, but the module `
+        + `addressed there is ${module.id}; a folder holds the workflow its role names (§1.2.2)`,
       );
     }
   }
@@ -255,7 +218,7 @@ export function auditWorkflowLayout(
     );
   }
 
-  // ---- arm (b): folders ↔ declared categories, both ways ---------------------
+  // ---- arm (b): step folders ⊆ declared groups, and each holds a harness -----
   for (const module of modules) {
     if (module.role.kind === "chunk-harness") continue;
     const folder = workflowSourceFolder(module.id, module.role);
@@ -271,33 +234,22 @@ export function auditWorkflowLayout(
       continue;
     }
     const declaredKeys = new Set(module.timelineKeys);
-    for (const key of module.timelineKeys) {
-      if (!subFolders.includes(key)) {
-        violations.push(
-          `workflow ${module.id} declares timeline step ${key}, which has no folder at ${folder}/${key}/`,
-        );
-      }
-    }
     for (const name of subFolders) {
       if (!declaredKeys.has(name)) {
         violations.push(
-          `${folder}/${name}/ is a step folder ${module.id} does not declare as a timeline category — `
+          `${folder}/${name}/ is a step folder ${module.id} does not declare as a timeline group — `
           + `it declares: ${module.timelineKeys.join(", ")}`,
         );
         continue;
       }
-      const stepPath = `${folder}/${name}/step.ts`;
-      if (!files.has(stepPath)) {
-        violations.push(`step folder ${folder}/${name}/ must author step.ts, where the step's key is written once`);
-        continue;
-      }
-      const key = tree.stepKeys.get(stepPath);
-      if (key === undefined || "unreadable" in key) {
-        violations.push(`${stepPath}: ${key === undefined ? "was not read" : key.unreadable}`);
-      } else if (key.value !== name) {
+      // D312 §1.6.1 item 5 — the composition's `workflow.ts` owns the step's
+      // identities; a folder exists only to hold the harness that proves the
+      // step, so a folder nobody is addressed to is authored glue with no owner.
+      const harness = addressed.get(`${folder}/${name}`);
+      if (harness === undefined) {
         violations.push(
-          `${stepPath} declares step key ${key.value}, but its folder is named ${name}; the folder IS the key `
-          + "(§1.2.2 rule 2)",
+          `${folder}/${name}/ holds no registered chunk-harness; a step folder exists only to hold the harness `
+          + "that proves the step (D312, §1.2.2 rule 3)",
         );
       }
     }
@@ -345,24 +297,22 @@ export function auditPathRuleSingleSource(sources: ReadonlyMap<string, string>):
 function fixtureDescriptor(id: string): string {
   return `export const descriptor = defineWorkflowDescriptor({ id: "${id}", version: 1 });\n`;
 }
-function fixtureStep(key: string): string {
-  return `export const STEP = defineWorkflowStep({ key: "${key}", label: "${key}" });\n`;
+function fixtureWorkflow(id: string): string {
+  return `export const workflow = defineWorkflow({ id: "${id}", version: 1 });\n`;
 }
 const FIXTURE_MODULE = "export const module = { role: \"fixture\" };\n";
 
+/**
+ * The clean tree: a standalone workflow, a composition declaring two groups of
+ * which only `step-one` carries a harness (so only `step-one/` exists — the
+ * `job-summary` shape), and nothing authored beside any `workflow.ts`.
+ */
 function cleanFixtureFiles(): Record<string, string> {
   return {
     "src/workflows/descriptor-registry.ts": "export const REGISTRY = [];\n",
-    "src/workflows/solo/descriptor.ts": fixtureDescriptor("solo"),
-    "src/workflows/solo/module.ts": FIXTURE_MODULE,
-    "src/workflows/combo/descriptor.ts": fixtureDescriptor("combo"),
-    "src/workflows/combo/module.ts": FIXTURE_MODULE,
-    "src/workflows/combo/step-one/step.ts": fixtureStep("step-one"),
-    "src/workflows/combo/step-one/nodes.ts": "export const NODES = [];\n",
-    "src/workflows/combo/step-one/descriptor.ts": fixtureDescriptor("combo-harness"),
-    "src/workflows/combo/step-one/module.ts": FIXTURE_MODULE,
-    "src/workflows/combo/step-two/step.ts": fixtureStep("step-two"),
-    "src/workflows/combo/step-two/nodes.ts": "export const NODES = [];\n",
+    "src/workflows/solo/workflow.ts": fixtureWorkflow("solo"),
+    "src/workflows/combo/workflow.ts": fixtureWorkflow("combo"),
+    "src/workflows/combo/step-one/workflow.ts": fixtureWorkflow("combo-harness"),
   };
 }
 
@@ -422,36 +372,63 @@ const FIXTURES: readonly LayoutFixture[] = [
     name: "missing-workflow-folder",
     arm: "a",
     files: withFiles((files) => {
-      delete files["src/workflows/solo/descriptor.ts"];
-      delete files["src/workflows/solo/module.ts"];
+      delete files["src/workflows/solo/workflow.ts"];
     }),
     modules: cleanFixtureModules(),
     expected: /workflow solo \(role standalone\) is addressed to src\/workflows\/solo\/, which does not exist/,
   },
   {
-    name: "missing-module-file",
+    name: "folder-also-authors-descriptor",
     arm: "a",
-    files: withFiles((files) => { delete files["src/workflows/combo/step-one/module.ts"]; }),
+    files: withFiles((files) => { files["src/workflows/solo/descriptor.ts"] = fixtureDescriptor("solo"); }),
     modules: cleanFixtureModules(),
-    expected: /workflow combo-harness must author src\/workflows\/combo\/step-one\/module\.ts, which is missing/,
+    expected: /workflow solo authors src\/workflows\/solo\/descriptor\.ts beside src\/workflows\/solo\/workflow\.ts; a workflow folder holds exactly its one workflow\.ts \(D312\/D317\)/,
   },
   {
-    name: "descriptor-declares-another-id",
+    name: "folder-missing-workflow-ts",
     arm: "a",
     files: withFiles((files) => {
-      files["src/workflows/combo/step-one/descriptor.ts"] = fixtureDescriptor("somebody-else");
+      delete files["src/workflows/solo/workflow.ts"];
+      files["src/workflows/solo/descriptor.ts"] = fixtureDescriptor("solo");
+      files["src/workflows/solo/module.ts"] = FIXTURE_MODULE;
+    }),
+    modules: cleanFixtureModules(),
+    expected: /workflow solo must author src\/workflows\/solo\/workflow\.ts, which is missing/,
+  },
+  {
+    name: "harness-folder-authors-module-ts",
+    arm: "a",
+    files: withFiles((files) => { files["src/workflows/combo/step-one/module.ts"] = FIXTURE_MODULE; }),
+    modules: cleanFixtureModules(),
+    expected: /workflow combo-harness authors src\/workflows\/combo\/step-one\/module\.ts beside src\/workflows\/combo\/step-one\/workflow\.ts/,
+  },
+  {
+    name: "step-identities-authored-beside-workflow-ts",
+    arm: "a",
+    files: withFiles((files) => {
+      files["src/workflows/combo/step-one/nodes.ts"] = "export const NODES = [];\n";
+      files["src/workflows/combo/step-one/step.ts"] = "export const STEP = { key: \"step-one\" };\n";
+    }),
+    modules: cleanFixtureModules(),
+    expected: /workflow combo-harness authors src\/workflows\/combo\/step-one\/nodes\.ts beside .*\n.*authors src\/workflows\/combo\/step-one\/step\.ts beside/,
+  },
+  {
+    name: "workflow-ts-declares-another-id",
+    arm: "a",
+    files: withFiles((files) => {
+      files["src/workflows/combo/step-one/workflow.ts"] = fixtureWorkflow("somebody-else");
     }),
     modules: cleanFixtureModules(),
     expected: /declares workflow id somebody-else, but the module addressed there is combo-harness/,
   },
   {
-    name: "unreadable-descriptor",
+    name: "unreadable-workflow-ts",
     arm: "a",
     files: withFiles((files) => {
-      files["src/workflows/combo/descriptor.ts"] = "export const descriptor = buildIt({ id: someId });\n";
+      files["src/workflows/combo/workflow.ts"] = "export const workflow = buildIt({ id: someId });\n";
     }),
     modules: cleanFixtureModules(),
-    expected: /descriptor\.ts: build manifest needs exactly one string-literal descriptor id/,
+    expected: /workflow\.ts: build manifest needs exactly one string-literal descriptor id/,
   },
   {
     name: "nested-below-a-step-folder",
@@ -463,50 +440,33 @@ const FIXTURES: readonly LayoutFixture[] = [
     expected: /src\/workflows\/combo\/step-one\/deeper\/ is nested below a step folder/,
   },
   {
-    name: "declared-category-without-a-folder",
-    arm: "b",
-    files: cleanFixtureFiles(),
-    modules: cleanFixtureModules().map((module) => module.id === "combo"
-      ? { ...module, timelineKeys: [...module.timelineKeys, "step-three"] }
-      : module),
-    expected: /workflow combo declares timeline step step-three, which has no folder at src\/workflows\/combo\/step-three\//,
-  },
-  {
-    name: "step-folder-without-a-category",
+    name: "step-folder-without-a-group",
     arm: "b",
     files: withFiles((files) => {
-      files["src/workflows/combo/step-three/step.ts"] = fixtureStep("step-three");
+      files["src/workflows/combo/step-three/workflow.ts"] = fixtureWorkflow("combo-harness-three");
     }),
-    modules: cleanFixtureModules(),
-    expected: /src\/workflows\/combo\/step-three\/ is a step folder combo does not declare as a timeline category — it declares: step-one, step-two/,
+    modules: [
+      ...cleanFixtureModules(),
+      {
+        id: "combo-harness-three",
+        role: defineWorkflowRole({ kind: "chunk-harness", of: "combo", step: "step-three" }),
+        timelineDeclared: false,
+        timelineKeys: [],
+      },
+    ],
+    expected: /src\/workflows\/combo\/step-three\/ is a step folder combo does not declare as a timeline group — it declares: step-one, step-two/,
   },
   {
-    name: "step-key-disagrees-with-its-folder",
+    name: "step-folder-without-a-harness",
     arm: "b",
-    files: withFiles((files) => { files["src/workflows/combo/step-two/step.ts"] = fixtureStep("step-2"); }),
+    files: withFiles((files) => { files["src/workflows/combo/step-two/nodes.ts"] = "export const NODES = [];\n"; }),
     modules: cleanFixtureModules(),
-    expected: /step-two\/step\.ts declares step key step-2, but its folder is named step-two/,
-  },
-  {
-    name: "step-folder-without-step-ts",
-    arm: "b",
-    files: withFiles((files) => { delete files["src/workflows/combo/step-two/step.ts"]; }),
-    modules: cleanFixtureModules(),
-    expected: /step folder src\/workflows\/combo\/step-two\/ must author step\.ts/,
-  },
-  {
-    name: "unreadable-step-key",
-    arm: "b",
-    files: withFiles((files) => {
-      files["src/workflows/combo/step-two/step.ts"] = "export const STEP = { key: \"step-two\" };\n";
-    }),
-    modules: cleanFixtureModules(),
-    expected: /step-two\/step\.ts: a step folder's step\.ts must declare exactly one string-literal defineWorkflowStep key/,
+    expected: /src\/workflows\/combo\/step-two\/ holds no registered chunk-harness; a step folder exists only to hold the harness that proves the step/,
   },
   {
     name: "undeclared-timeline-with-a-step-folder",
     arm: "b",
-    files: withFiles((files) => { files["src/workflows/solo/only-step/step.ts"] = fixtureStep("only-step"); }),
+    files: withFiles((files) => { files["src/workflows/solo/only-step/workflow.ts"] = fixtureWorkflow("solo-step"); }),
     modules: cleanFixtureModules(),
     expected: /workflow solo declares no timeline .* holds step folder\(s\) only-step/,
   },
@@ -539,21 +499,39 @@ describe("workflow-layout — the src/workflows/ tree IS the rail and the timeli
     // is asserted non-empty first — the same negative control every fixture-fed
     // guard in this suite carries.
     assert.ok(repositoryTree.directories.length > 0, "collector resolved no workflow folders");
-    assert.ok(repositoryTree.declaredIds.size > 0, "collector read no descriptor ids");
-    assert.ok(repositoryTree.stepKeys.size > 0, "collector read no step keys");
+    assert.ok(repositoryTree.declaredIds.size > 0, "collector read no workflow ids");
     assert.deepEqual(auditWorkflowLayout(registeredLayoutModules(), repositoryTree), []);
   });
 
-  it("arm (b): the composition's declared steps are exactly its step folders, by name", () => {
+  it("arm (b): the composition's step folders are exactly its harness-carrying declared groups, by name", () => {
     // Belt-and-braces over the arm above: if `auditWorkflowLayout` ever stopped
-    // deriving sub-folders, the set comparison here would still notice.
-    const separations = registeredLayoutModules().find(({ id }) => id === "separations");
+    // deriving sub-folders, the set comparison here would still notice. The
+    // one declared group without a folder is the one with no harness.
+    const modules = registeredLayoutModules();
+    const separations = modules.find(({ id }) => id === "separations");
     assert.ok(separations !== undefined, "separations must stay registered");
     assert.equal(separations.timelineDeclared, true);
+    const harnessSteps = modules
+      .flatMap(({ role }) => (role.kind === "chunk-harness" && role.of === "separations" ? [role.step] : []))
+      .toSorted();
+    assert.deepEqual(childrenOf(repositoryTree.directories, "src/workflows/separations").toSorted(), harnessSteps);
+    assert.ok(harnessSteps.every((step) => separations.timelineKeys.includes(step)));
     assert.deepEqual(
-      [...separations.timelineKeys].sort(),
-      childrenOf(repositoryTree.directories, "src/workflows/separations").toSorted(),
+      separations.timelineKeys.filter((key) => !harnessSteps.includes(key)),
+      ["job-summary"],
+      "job-summary is the declared group proved inside identity-check's harness and has no folder (D265 mapping)",
     );
+  });
+
+  it("arm (b): a declared group with no harness needs no folder (D312 §1.6.1 item 5)", () => {
+    // The clean fixture declares `step-two` and holds no `step-two/` folder;
+    // if that ever became a violation, the tuples would no longer own membership.
+    const root = writeFixtureTree(cleanFixtureFiles());
+    try {
+      assert.deepEqual(auditWorkflowLayout(cleanFixtureModules(), collectWorkflowLayoutTree(root)), []);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   for (const fixture of FIXTURES) {

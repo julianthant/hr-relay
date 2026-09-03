@@ -354,13 +354,10 @@ logical key (D9) and ref dashboard-surfaces's `(runId, attempt, spanPath)` span 
 
 ### 3.5 `unverifiableByPage` requires an allowlist + reason (D22 — closes the verify escape hatch)
 
-<!-- roadmap: order-7 -->
 
-<!-- roadmap-status: order-7 -->
 - [x] the `unverifiableByPage` escape hatch is enforced at CONTRACT SEAL time — `src/domain/contracts/base.ts:406-416` against `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY`, proved by a fixture contract (§3.5 as-built)
 - [ ] the reviewed policy table is EMPTY, so the reverse arm (a stale row whose contract dropped the flag) has nothing to find and nothing audits it — OnBase's migration is what makes it necessary
 > 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `src/domain/contracts/write-safety.ts:130` (`contracts: []`) and `tests/unit/task-contracts.test.ts:296`
-<!-- /roadmap-status -->
 
 Ref write-safety's `upload-verify.unverifiableByPage` is the one place a commit contract may declare "this page
 genuinely cannot prove landing" and fall to always-park. Left unguarded it is a silent escape from
@@ -417,18 +414,15 @@ clicks additionally require the one fenced choke point. Together they make ref w
 ### 3.7 `artifact-effect-boundary.test.ts` — downloads are immutable; mutable files are projections
 
 <!-- roadmap: p2-2h -->
-<!-- roadmap: order-2 -->
 
 <!-- roadmap-status: p2-2h -->
 - [x] `artifact-effect-boundary` is active: the path-free content-addressed ref, the temp→fsync→atomic-rename sequence, crash-boundary recovery, byte-identical idempotency, and an AST canary against direct mutable filesystem access from a task impl
 > 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory; the download-bearing workflows that will exercise it are `order-2`
 <!-- /roadmap-status -->
 
-<!-- roadmap-status: order-2 -->
 - [x] the guard the download workflows land on already exists — `artifact-effect-boundary` (§3.7), so a browser download is structurally immutable before the first of them is written
 - [ ] the T1 pair for each of `crm-doc-download` / `sharepoint-download` / `old-kronos-reports` (§10.11)
 > 2026-08-20 | docs-cohesion ref guards-and-tests | guard side verified against the inventory; the migration's own tests are §10.11's checklist, unwritten
-<!-- /roadmap-status -->
 
 Read contracts that materialize bytes must declare `artifacts:"content-addressed"`; only the kernel
 writer may be reachable from their impl import graph. Direct filesystem write/append imports in task
@@ -470,13 +464,10 @@ read while still permitting replay-safe browser downloads.
 ### 3.9 Subject binding, control commands, and delegation
 
 <!-- roadmap: p1-kernel -->
-<!-- roadmap: order-4 -->
 
-<!-- roadmap-status: order-4 -->
 - [x] `delegation-manifest` is active and carries the retired `delegate-to-usage` / `delegate-to-all-impl-callers` invariants (§2.1): stable edge/item ids, concrete schemas, explicit cardinality/join/failure/cancel/retry policies, an atomic immutable manifest
 - [ ] the T1 pair for the delegating workflow, whose structural scenario must walk the fan-out at each declared cardinality (§10.11 step 2)
 > 2026-08-20 | docs-cohesion ref guards-and-tests | guard side verified against the inventory; no landed descriptor delegates yet, so the scenario matrix has no production subject
-<!-- /roadmap-status -->
 
 - **`subject-before-fence.test.ts`.** Every prepare/commit contract has compatible subject specs;
   every write observation resolves to a driver operation. A transaction trace must order
@@ -660,7 +651,7 @@ read while still permitting replay-safe browser downloads.
 
 <!-- roadmap-status: cross-cutting -->
 - [x] `legacy-capability-disposition` audits the inventory five ways and derives the completed set by INVOKING the real `phase` command, so closing a tail arms the next sweep (§3.11 as-built, D184)
-- [ ] 50 entries remain genuinely `open`, each re-milestoned to `phase-3-workflow-migration` with the reason in the entry; `cutoverRequiresZeroOpen` is what they gate
+- [ ] 50 entries remain genuinely `open`, each now owned by `workflow-admission-backlog` with the reason in the entry; `cutoverRequiresZeroOpen` is what they gate
 > 2026-08-20 | docs-cohesion ref guards-and-tests | verified against §3.11's as-built record; the entry-by-entry state lives in `config/legacy-capabilities.json`, not here
 <!-- /roadmap-status -->
 
@@ -791,7 +782,8 @@ home for everything Phase 2 does not build: *per-workflow migration, **plus expl
 capability closure (§3.6)***, with its exit requiring every inventory entry to reach
 native/replaced/retired. Assigning 49 legacy operator surfaces to "milestone 2i" was an early guess
 made in 1a, long before 2i was sliced; the operator's actual 2i (2i-A…2i-G, D168–D180) never
-contained them. All seventeen are therefore re-milestoned to `phase-3-workflow-migration` — a
+contained them. D184 originally re-milestoned all seventeen to `phase-3-workflow-migration`; D319
+moves the still-open program obligation to `workflow-admission-backlog` — a
 re-milestoning, never a re-classification: every one keeps `status:"open"`, and nothing was
 promoted to `native`/`replaced` to make a gate green. Four groups, each with the deciding reason in
 the entry itself:
@@ -1292,7 +1284,7 @@ project any surface fails the build:
 | `verdicts` | `queue-row-status-index` + `statusExtensions` | closed tuple keys unique; emitted verdict must belong to descriptor (ref dashboard-surfaces) |
 | `completion` targets | OCR approve branching | targets typecheck vs target descriptors' strict `input` and terminal `result` (#5) |
 | graph branch/fork/child/gate subscriptions | handler-side delegation and wait registries | all edges/joins/targets/results/policies typed and validated; target input/result generics may not erase to unknown |
-| scenario corpus | e2e stub map | descriptor references every branch/delegation/gate/control scenario in the checked manifest corpus. **As-built:** the "examples seed the minimal happy execution" half never shipped — no runtime reads a contract's `example` (§7), and what replaced it is the structural scenario over `walkDescriptor` plus the live dry-run scenario (§10.3, §10.4) |
+| scenario corpus | e2e stub map | descriptor references every branch/delegation/gate/control scenario in the checked manifest corpus. **As-built:** the "examples seed the minimal happy execution" half never shipped — no runtime reads a contract's `example` (§7), and what replaced it is the structural scenario over `walkDescriptor` plus the T1b live scenario (§10.3, §10.4) |
 | runtimePolicy actions | `runtime-policy-coverage` | actions/gates read off descriptor (retires parity) |
 | `details`, capabilities, coordinator, completion-consumption, artifact projections | detail/runtime-policy special cases and i9 retention append | every emitted detail/action/member/coordinator projection validates; Edit Data paths exist in producing schemas and exclude identity/idempotency/proof/provenance; artifact source/key paths exist in exact node outputs and every sink kind resolves |
 | `enqueue`, actions, delegation policies | workflow-specific route/control handlers | only closed ref dashboard-surfaces policies/actions; every action projects the standard versioned command target, CAS is enforced only for ref dashboard-surfaces's real-race arms, and no custom row mutation callback exists |
@@ -1501,8 +1493,9 @@ paragraph).
    roots §2.1 names with **no allowlist at all**, and each is proved against a violating fixture by
    `guard-manifest`.
 4. **The scenario tiers** — §10. A workflow gets ONE structural scenario over the pure graph walk
-   (no browser) and ONE live dry-run scenario (`dryRun=true`, real systems, durable-absence
-   assertions); a dashboard feature gets a feature scenario plus its parity references. §7 explains
+   (no browser) and ONE T1b live scenario against real systems: `dry-run-preview` for a transaction
+   graph or D318 `live-read` for a zero-transaction graph, each with exact zero write-authority
+   deltas. A dashboard feature gets a feature scenario plus its parity references. §7 explains
    why there is no stub lane between tiers 3 and 4.
 
 Write order for a new task (red→green): write the contract (`example` fails to parse → red) → write
@@ -1773,12 +1766,22 @@ one structural file if what they assert is graph shape, and into the workflow's 
 what they assert is world shape. A path that is neither — an assertion about a store's parsing, say
 — was never a scenario and belongs in `tests/unit/`.
 
-### 10.4 T1b — the dry-run scenario, and its checkpoint manifest
+### 10.4 T1b — one live scenario, with transaction-preview and transaction-free arms
 
-**A dry-run scenario is a declarative manifest plus a runner, not a test file.**
-`tests/scenario/workflows/<workflow-id>/dry-run.scenario.ts` exports a manifest; nothing in the
+**D318 — T1b is live proof, not a demand that every workflow contain a transaction.** A T1b
+declaration chooses exactly one arm from the compiled graph: `dry-run-preview` when the graph has a
+transaction node, or `live-read` when it has none. The runner refuses either mismatch before a
+browser or effect. A no-op transaction added only to enter the preview arm is false graph authority
+and forbidden.
+
+The existing workflow artifact remains
+`tests/scenario/workflows/<workflow-id>/dry-run.scenario.ts`; it exports a manifest, and nothing in the
 vitest projects imports it, because running it starts a browser. It is executed by
-`npm run cli -- dry-run-scenario <workflow> --subject <label>`.
+`npm run cli -- dry-run-scenario <workflow> --subject <label>`. The filename and command are the
+established T1b entrypoint; the manifest's explicit arm, not the filename, determines whether the
+run is a transaction preview or a transaction-free live read.
+
+#### Transaction-preview arm
 
 **What the manifest declares.** This is `docs/migrations/separations.md` §9.22's hand-run
 double-entry, as a file — the pass that proved Track C, written down so it can be re-run instead of
@@ -1824,7 +1827,7 @@ worse than none** (verified in `src/core/write-sequencer.ts` and `src/core/run-e
    approved; and a real terminal settlement through `terminalizeSuccess` — `run_results`,
    `run_terminal_outbox`, `run_terminal_authorizations`, and the D110/D114 seal. What it never
    writes is the write-safety family. A manifest that asserts "a dry run writes nothing" would be
-   false and would fail on its first run.
+false and would fail on its first run.
 3. **`executeDryRun` mirrors the real beat order deliberately** (D215): the durable-intent lookup,
    then the live probe, and only then the staged rehearsal — the real `prepare` task and the real
    subject observation against a live driver, with no fence minted and no `commit` invoked. A
@@ -1842,6 +1845,24 @@ document with someone else's EID on it", so it is not a manifest case and the fi
 no longer carries one. The defect is recorded — here, and restated in the manifest's header — and
 the negative branch is owned by structural/unit coverage on synthetic subjects, until the arm is
 either reached or removed.
+
+#### Transaction-free `live-read` arm (D318)
+
+A `live-read` case is admitted only when the compiled graph contains **zero transaction nodes**.
+It starts the ordinary workflow path with `RunEnvelope.dryRun: false`; setting `dryRun: true` would
+misstate D209 and must still refuse `no-transaction-node`. Its manifest/result authority records
+`kind: "live-read"`, the nodes reached/excluded, ordinary task checkpoints, any genuine gate result,
+the ordinary terminal workflow result and the evidence receipt. It has no preview terminal,
+`stoppedAtNodeId`, staged page or `transaction.previewed` span because there is no transaction to
+preview.
+
+The positive no-write proof has two independent halves: graph admission proves no transaction node
+exists, and authority comparison proves exact before/after deltas of zero for `write_intents`,
+`write_attempts` and `durable_outbox`. Any new transaction in the compiled graph invalidates the
+`live-read` manifest before execution and requires conversion to `dry-run-preview`. Conversely, a
+transaction-free graph cannot select `dry-run-preview`. The ordinary read result may be `verified`
+when its task evidence supports that verdict; it is not forced to the preview arm's
+`partial|unknown` confidence because no external write is being previewed.
 
 ### 10.5 The subject registry — labels in the repo, values outside it
 
@@ -2117,7 +2138,7 @@ shape and separations proves reads, computed facts, a conditional gate, transact
 all current generic surfaces. Once equivalence is green, superseded manual projection tests and
 declarations are deleted; keeping both is not extra assurance because it creates two authorities.
 
-Each workflow still owns the T1 structural scenario, live dry-run manifest and every safety proof
+Each workflow still owns the T1 structural scenario, T1b live manifest and every safety proof
 below that its behavior requires. It adds T2/T3 dashboard coverage only when it is the first workflow
 to introduce a new interaction or wire arm; reusing an already-proved generic surface is covered by
 the registry-wide compiler conformance test. Coverage floors, architecture guards, live selector
@@ -2149,12 +2170,14 @@ can execute a second time.
    is RED until each is claimed AND walked, and RED again if you claim one you did not walk. Assert
    graph shape, refusals and idempotency; assert **nothing about the world**, and use synthetic
    subject values that no live system would resolve (§10.3).
-3. **`dry-run.scenario.ts`** — the checkpoint manifest of §10.4: nodes reached and nodes excluded,
-   the `run_checkpoints` rows, the `gate_results` row if it gates, `write_intents`/`write_attempts`/
-   `durable_outbox` deltas of ZERO, the receipt shape, the preview terminal, and the transaction
-   arm with its `proofSource`. Declare one case per registry ARM this workflow addresses — a case is
-   a state a REAL subject can truthfully be in, never a state invented for coverage (D284); the
-   negative branches belong to the structural file on synthetic subjects.
+3. **`dry-run.scenario.ts`** — the T1b checkpoint manifest of §10.4 chooses exactly one graph-valid
+   arm. `dry-run-preview` declares nodes reached/excluded, checkpoints, gate results, zero
+   write-authority deltas, receipt, preview terminal and transaction `proofSource`. `live-read`
+   declares the same node/checkpoint/gate/zero-delta evidence plus the ordinary terminal result and
+   receipt, and is admitted only for a zero-transaction graph. Declare one case per registry ARM
+   this workflow addresses — a case is a state a REAL subject can truthfully be in, never a state
+   invented for coverage (D284); the negative branches belong to the structural file on synthetic
+   subjects.
 4. **Register the subject** in `config/test-subjects.json` — a label per SUBJECT, an arm per
    workflow, a case per arm: the arm's kind, the subject's ONE availability with today's date, the
    doc section that records what it is, and any canonical leaf a live read cannot yet supply declared
@@ -2162,6 +2185,8 @@ can execute a second time.
    `src/domain/secrets.ts`. A label the registry cannot resolve, or a declared-pending leaf, makes
    the case `blocked`, never `failed`.
 5. **Run it live:** `npm run cli -- dry-run-scenario <workflow> --subject <label>`, once per case.
+   The manifest arm determines transaction preview versus transaction-free read; the command name
+   does not authorize `dryRun` on a zero-transaction graph.
    Record the result — the `dry_run_scenario_results` row is automatic; the dated line in
    `docs/migrations/<workflow>.md` is yours to write, and it is what the tree's `PROOF` tick cites.
 6. **Which T3 pairs it must add.** One per dashboard surface this workflow is the FIRST to exercise

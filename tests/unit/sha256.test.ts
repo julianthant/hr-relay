@@ -9,7 +9,7 @@ import { sha256Hex } from "../../src/domain/sha256.js";
 import {
   PersonLookupCanonicalInput,
   PersonLookupResultSchema,
-} from "../../src/workflows/person-lookup/descriptor.js";
+} from "../../src/workflows/person-lookup/workflow.js";
 
 function nodeSha256(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");

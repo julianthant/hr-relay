@@ -7,26 +7,29 @@ legacy repository at `/Users/julianhein/Projects/hr-automation` runs every real 
 stays the sole production authority until a single all-at-once cutover (D89/D93).
 
 Current status is owned by the plan, not by this file: `npm run cli -- phase` prints the runtime's
-`completedThrough`/`active`, and the phase docs `docs/rebuild/00`–`06` record what each phase landed,
-what it found, and what left it by explicit disposition (Phases 1–2 complete 2026-08-04/2026-08-09).
+`completedThrough`/`active`, and the admitted phase docs under `docs/rebuild/` record what each phase
+landed, what it found, and what left it by explicit disposition (Phases 1–2 complete
+2026-08-04/2026-08-09).
 
 ## Before you start
 
 **The plan is the SSOT — read it, do not re-derive it.** It has three parts: the **tree** at
 `docs/roadmap/roadmap.md` (the machine-readable plan + the site's source + the governance rules), the
-**phase docs** `docs/rebuild/00`–`06` (actionable: one per phase, the number IS the phase), and the
+admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phase), and the
 **specs** in `docs/rebuild/reference/` (not actionable; cited by slug).
 
 - `docs/roadmap/roadmap.md` — the plan as written, in the roadmap notation (headings = nodes,
   `builds:`/`needs:`/`doc:` lines); `docs/roadmap/index.html` is GENERATED from it by
   `npm run roadmap`. After `roadmap:end` its **Governance** section owns the one-plan rule, the D1
   ownership map and D263.
-- The **phase docs** under `docs/rebuild/` — tasks, what is done and what is left, exit criteria, and
-  the decisions that phase ratified. `00-design-the-foundation` · `01-build-the-spine` ·
+- The **phase docs** under `docs/rebuild/` record tasks, evidence, decisions and exit criteria.
+  Phases 0-3 are `00-design-the-foundation` · `01-build-the-spine` ·
   `02-prove-writes-build-the-tails` · `03a-finish-the-dashboard` · `03b-finish-separations` ·
-  `03c-migrate-the-remaining-workflows` · `03d-co-operate-with-Codex` · `04-close-the-deferrals` ·
-  `05-cut-over` · `06-ship-the-desktop-app`. Phase 3 is four docs (3a/3b/3c/3d); in prose
-  **`doc NN`** means one of these.
+  `03c-migrate-the-remaining-workflows`. D319 ends Phase 3 with the shared authoring platform,
+  Person Lookup and Separations. Every later workflow remains an unnumbered candidate until its
+  admission packet is live-verified and operator-approved; approval creates the next numbered phase
+  and phase doc. The stable-path `03d`/`04`/`05`/`06` files now hold unnumbered second-actor,
+  deferred, cutover and desktop stages; their filename numbers do not reserve phase numbers.
 - `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D264; **D131 is a retired gap —
   never reuse it**). A **pointer index**, not a spec: it tells you which doc owns a contract. Never
   implement from it.
@@ -43,10 +46,10 @@ what it found, and what left it by explicit disposition (Phases 1–2 complete 2
 - `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`): 60 entries of
   "X looked safe and did Y", each naming its decision. Read it before kernel / driver / dashboard /
   write-safety work; add new root-level lessons THERE (module lessons stay in the module's AGENTS.md).
-- `docs/rebuild/00`–`06` — the ACTIONABLE plan: one doc per phase, the number IS the phase
-  (`03a`/`03b`/`03c` are phase 3). Each owns its phase's tasks, its "Decisions this phase ratified"
-  and its **exit criteria**; `docs/roadmap/roadmap.md` is the summary (the tree + the governance
-  prose + the phases at a glance). The old `07-master-plan.md` was dissolved into them on
+- `docs/rebuild/00`–`06` — stable plan-document paths. `00`–`03c` are the admitted phase sequence;
+  D319 makes the later `03d`/`04`/`05`/`06` files unnumbered track/stage authorities despite their
+  preserved filenames. Each admitted phase owns its tasks, decisions and **exit criteria**;
+  `docs/roadmap/roadmap.md` is the summary. The old `07-master-plan.md` was dissolved into them on
   2026-08-20 and is preserved, with a section-by-section table of where everything went, at
   `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`.
 - `docs/rebuild/guard-inventory.json` — the reviewed guard manifest. `tests/unit/architecture/`
@@ -315,8 +318,11 @@ environment-supplied.
 
 - **2026-09-01 — D307 step omission.** Declare an omission BESIDE the step's own nodes
   (`nodes.category(fragments, { omission })`), never as a separate mechanism. Its `produces` map
-  rebuilds TASK node outputs only — a gate always runs (ALWAYS-GATE) and a transaction never runs and
-  mints no envelope (D144). A typed fact an omission consumes never crosses a served wire or a span;
+  rebuilds TASK node outputs only; a transaction never runs and mints no envelope (D144). Since D313
+  (2026-09-02) whole-step omission executes NO entry of the step — a gate inside an omitted step is
+  omitted with it — so a mandatory check is authored as its own entry outside the omittable step, and
+  `defineWorkflow` refuses a definition where an entry outside an omittable step reads a member the
+  omission does not rebuild. A typed fact an omission consumes never crosses a served wire or a span;
   the receipt and result name the assertion (`disposition: "operator-asserted"`, an `{ state:
   "omitted", step }` arm) instead of replaying the value.
 
@@ -432,7 +438,10 @@ environment-supplied.
   and a child folder is one declared timeline step. A chunk harness lives in the matching step
   folder with role `{ kind: "chunk-harness", of, step }`; it remains independently startable,
   nests under its composition in the picker/Explorer, and never appears in the rail. There is no
-  `src/workflows/proving/` and no registered workflow whose purpose is test equipment.
+  `src/workflows/proving/` and no registered workflow whose purpose is test equipment. Since the
+  2026-09-02 deletion acceptance every workflow folder holds exactly one file, `workflow.ts`; a step
+  folder exists only when it carries a harness (`job-summary` is a declared group with no folder),
+  and the `workflow-layout` guard refuses any other file beside a `workflow.ts`.
 - **2026-09-02 — D311–D317 make the workflow definition the authoring authority and simplicity
   measurable.** Its `steps` field is an ordered array of `[timeline group, tasks[]]` tuples;
   group keys/labels own timeline grouping while typed inputs own dependencies, and entries
@@ -447,13 +456,18 @@ environment-supplied.
   declarations before migrating another workflow; there is no advanced escape hatch. T1 remains per
   workflow; T2/T3 is added only for a genuinely new dashboard capability. “Recipe” is analogy only;
   the API is `defineWorkflow` and its generated value is `CompiledWorkflow`. See ref workflow-model
-  §§1.6, 5.6 and 5.8 and doc 03c `{#workflow-authoring-model}`. At implementation baseline `b1b36349`, the bounded
-  compiler still uses transitional `workflow-recipe.ts` names and fragment adapters; do not copy or
-  extend that surface into another workflow. Finish 3c-A's D317 rename/direct-entry/deletion gate
-  before starting Order 1 implementation.
+  §§1.6, 5.6 and 5.8 and doc 03c `{#workflow-authoring-model}`. The D317 rename, the direct entry algebra and
+  the deletion gate are done (2026-09-02): `src/base/workflow-definition.ts` is the only authoring
+  seam, the flow node-fragment API is gone, and the Separations composition's `workflow.ts` authors
+  every step's group, node ids, entry identities and omission that its harnesses import. Do not
+  reintroduce a `descriptor.ts`/`module.ts`/`nodes.ts`/`step.ts` beside a `workflow.ts`.
 - A workflow's T1 proof lives at
   `tests/scenario/workflows/<workflow-id>/{structural.scenario.test.ts,dry-run.scenario.ts}`: exactly
-  one collected structural scenario and one sibling live dry-run manifest. The live half may write
+  one collected structural scenario and one sibling T1b live manifest. D318 gives that manifest two
+  exclusive graph-derived arms: `dry-run-preview` for a transaction-bearing graph and `live-read`
+  for a zero-transaction graph. `live-read` runs with `dryRun=false`, requires zero transaction
+  nodes and proves exact zero deltas in all three write-authority tables; never add a no-op
+  transaction to qualify for preview. The live half may write
   ordinary upstream `run_checkpoints`; its submit-free invariant is zero deltas in
   `write_intents`, `write_attempts`, and `durable_outbox`.
 - The dry-run declaration boundary is `src/domain/trust/dry-run-scenario.ts`; the runner/assertions
@@ -586,11 +600,13 @@ environment-supplied.
   builders; `module.ts` is where anything server-side attaches (D106). Branch cases and parallel
   branches name nodes DOWNSTREAM of their controller — forward references, checked at `build()`
   (D104).
-- 2026-08-25 (D265 review): a workflow-step key's literal type never replaces its category-key
-  schema, and a node fragment belongs to the exact frozen step object that created it — equal keys
-  are not equal ownership at runtime. Bind that object once per `nodes.ts` with
-  `defineWorkflowStepNodeFactory`; define task/transaction/gate fragments and the final category
-  through the returned factory rather than repeating the step on every node.
+- 2026-08-25 (D265 review; re-homed 2026-09-02 by the D312 deletion): a workflow-step key's literal
+  type never replaces its category-key schema, and an entry identity belongs to the exact frozen
+  step object that created it — equal keys are not equal ownership at runtime. Declare each step
+  group once in the composition's `workflow.ts` with `defineWorkflowStep`, bind it once with
+  `defineStepEntries`, define the step's task/transaction/gate identities through the returned
+  factory, and let the harness import them; the compiler refuses a tuple that claims another step's
+  identity.
 - A contract a descriptor uses but no store implements yet must be listed in
   `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
 - **Lesson 2026-08-25 — fenced-write instrumentation:** a commit task may call `ctx.recordData`

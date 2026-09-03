@@ -15,6 +15,7 @@ import {
 const MANIFEST = {
   scenarioId: "fixture-workflow/dry-run",
   workflow: "fixture-workflow",
+  arm: "dry-run-preview",
   transactionNode: "write",
   recordedBy: "fixture contract",
   cases: [{
@@ -123,7 +124,7 @@ describe("dry-run scenario manifest boundary", () => {
 
     assert.equal(
       deriveDryRunScenarioManifestDigest(parsed),
-      "0f150541beb3edf4844380b02efc65f85b3c41668fa89cb09ec1204ee1a8d5c6",
+      "0aaccc8fbfc9c0083a8248104d800f74f073ad6d0736e0913a2685e118c7e297",
     );
   });
 
@@ -219,7 +220,7 @@ describe("dry-run scenario execution", () => {
       scenarioId: "fixture-workflow/dry-run",
       workflow: "fixture-workflow",
       subjectLabel: "fixture-canary",
-      manifestDigest: "0f150541beb3edf4844380b02efc65f85b3c41668fa89cb09ec1204ee1a8d5c6",
+      manifestDigest: "0aaccc8fbfc9c0083a8248104d800f74f073ad6d0736e0913a2685e118c7e297",
       verdict: "blocked",
       execution: { state: "not-started", reason: "subject-unavailable" },
       assertions: [{
@@ -421,6 +422,16 @@ describe("dry-run scenario evidence assertions", () => {
   if (scenarioCase === undefined) throw new Error("fixture manifest has no case");
   const before = { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 } as const;
 
+  it("refuses an evaluation whose declared arm disagrees with the case shape; the manifest arm, not the case, selects the assertion set (D318)", () => {
+    assert.ok(scenarioCase && "preview" in scenarioCase, "the fixture case is a preview-arm case");
+    assert.throws(
+      () => evaluateDryRunScenarioEvidence("live-read", scenarioCase, before, READY_EVIDENCE),
+      /dry-run case ordinary does not belong to the live-read arm/u,
+    );
+    const evaluated = evaluateDryRunScenarioEvidence("dry-run-preview", scenarioCase, before, READY_EVIDENCE);
+    assert.ok(evaluated.length > 0);
+  });
+
   it("rejects an authority verdict mutation instead of collapsing its meaning", () => {
     const absentCase = parseDryRunScenarioManifest({
       ...GATED_MANIFEST,
@@ -443,7 +454,7 @@ describe("dry-run scenario evidence assertions", () => {
       },
     };
 
-    const outcomes = evaluateDryRunScenarioEvidence(absentCase, before, mutatedEvidence);
+    const outcomes = evaluateDryRunScenarioEvidence("dry-run-preview", absentCase, before, mutatedEvidence);
 
     assert.deepEqual(
       outcomes.filter(({ verdict }) => verdict === "failed").map(({ assertionId }) => assertionId),
@@ -513,7 +524,7 @@ describe("dry-run scenario evidence assertions", () => {
   ] as const;
 
   it.each(mutations)("turns $0 red when only its evidence is mutated", (assertionIds, evidence) => {
-    const outcomes = evaluateDryRunScenarioEvidence(scenarioCase, before, evidence);
+    const outcomes = evaluateDryRunScenarioEvidence("dry-run-preview", scenarioCase, before, evidence);
 
     assert.deepEqual(
       outcomes.filter(({ verdict }) => verdict === "failed").map(({ assertionId: id }) => id),
@@ -537,7 +548,7 @@ describe("dry-run scenario evidence assertions", () => {
     }).cases[0];
     assert.ok(failedCase);
 
-    const outcomes = evaluateDryRunScenarioEvidence(failedCase, before, {
+    const outcomes = evaluateDryRunScenarioEvidence("dry-run-preview", failedCase, before, {
       ...READY_EVIDENCE,
       terminal: {
         lifecycle: "failed",
@@ -570,7 +581,7 @@ describe("dry-run scenario evidence assertions", () => {
     }).cases[0];
     assert.ok(failedCase);
 
-    const outcomes = evaluateDryRunScenarioEvidence(failedCase, before, {
+    const outcomes = evaluateDryRunScenarioEvidence("dry-run-preview", failedCase, before, {
       ...READY_EVIDENCE,
       terminal,
     });

@@ -33,7 +33,7 @@ import { searchPersonOrgTask } from "../../src/stores/ucpath/tasks/search-person
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import { createDeterministicCrmOnboardingDriver } from "../../src/stores/crm/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
-import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const signal = new AbortController().signal;
 const NOW = "2026-08-02T18:00:00.000Z";

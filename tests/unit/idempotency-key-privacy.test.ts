@@ -23,7 +23,7 @@ import {
   KUALI_EID,
   kualiReceiptEvidence,
 } from "./fixtures/receipt-run-fixtures.js";
-import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
 import {
   makeWorld,
   queuedEventOf,

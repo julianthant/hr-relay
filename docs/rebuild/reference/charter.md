@@ -431,7 +431,7 @@ content) + ref operator-trust (receipt surface).
   headers and XLSX metadata cannot supply actor identity. Existing
   command-envelope claims must match before handler effects. New operator XLSX evidence is v2 with
   that derived actor id, while v1 stays explicitly unattributed and is never backfilled. Credential
-  issuance and the second actor remain Phase 3d work.
+  issuance and the second actor remain work for the unnumbered cooperation track.
 
   **Reaffirmed and sharpened by the operator 2026-08-12 (D193) — SOLO, LOCAL, NEVER HOSTED.** The
   system is and stays **fully local to the one person using it**, solo-operator only. It is
@@ -510,7 +510,7 @@ content) + ref operator-trust (receipt surface).
   preserved as rollback code at initial cutover, which is strictly stronger than the in-tree
   preservation this decision originally assumed. Neither source nor tests are deleted without a
   later, separate operator authorization plus capability proof. After the new runtime has performed
-  native writes, rollback requires the reconciliation/dedupe bridge named in doc 05 §Phase summary; the two engines
+  native writes, rollback requires the reconciliation/dedupe bridge named in doc 05 §Stage summary; the two engines
   never run concurrently as production authority.
 
 ## One master plan (operator directive 2026-07-17)
@@ -546,8 +546,8 @@ The foundation's documentation is part of the foundation.
 - [x] order 0 (person-lookup) is live-proven from Phase 1; **separations (order 8) is the migration in flight** — **D193(c)** moved the phase ENTRY here to force the store task libraries into existence, explicitly WITHOUT re-sequencing D84's risk-proof order
 - [ ] thirteen workflows across nine order rows remain, and **no workflow after separations is named yet**; only person-lookup and the six separations descriptors are registered, so orders 1–7 and 9 have no descriptor at all
 - [ ] store reality behind the order: only `ucpath`, `crm`, `kuali` and `new-kronos` have real drivers; `onbase`, `servicenow`, `i9`, `old-kronos` and `sharepoint` are three-line session declarations with zero tasks
-- [ ] the legacy capability register stands at **47 open** · 20 replaced · 7 native · 4 retired; every open entry names `phase-3-workflow-migration` and cutover requires zero
-> 2026-08-21 | docs-cohesion charter | verified against `{#migrations}` and doc 03c §Recommended migration order; left: every order row after separations, and the 47 open register entries that close with them
+- [ ] the legacy capability register stands at **47 open** · 20 replaced · 7 native · 4 retired; every open entry names `workflow-admission-backlog` and cutover requires zero
+> 2026-08-21 | docs-cohesion charter | verified against `{#migrations}` and the former doc 03c order. D319 now leaves every workflow after Phase 3 unnumbered; the open register entries remain cutover obligations under `workflow-admission-backlog`
 
 <!-- /roadmap-status -->
 
@@ -555,7 +555,7 @@ The foundation's documentation is part of the foundation.
 - [x] the SHAPE is ratified and unchanged — one all-at-once authority switch, no per-workflow flip, no live proxy, no mixed-engine production period (**D89**, mechanics amended by **D93**), and the entire legacy repo preserved as the rollback asset
 - [ ] **nothing has started.** `{#cutover}` is `not started` and every one of its nine build items is open, including the rehearsal that has never run (doc 05 §Exit criteria)
 - [ ] closure — deletion or retirement of the legacy repo — is OUTSIDE this cutover and has no trigger, no elapsed-time rule and no automatic expiry; it needs a separate explicit operator authorization (`{#rollback-window}`)
-> 2026-08-21 | docs-cohesion charter | verified against `{#cutover}` and doc 05 §Phase summary + §Exit criteria; left: the whole of it — this section states the rule, doc 05 owns the execution
+> 2026-08-21 | docs-cohesion charter | verified against `{#cutover}` and doc 05 §Stage summary + §Exit criteria; left: the whole of it — this section states the rule, doc 05 owns the execution
 <!-- /roadmap-status -->
 
 
