@@ -1,12 +1,18 @@
 # R3b report — worker/session tests and server-family review
 
-**Status:** complete on the run branch; ready for coordinator verification/integration  
-**Coordination:** `f24df892-5171-48f4-97ff-4e91490f8622` (`Cf24df892`) · R03b  
-**Parent coordinator:** task `01a064e2-c3cf-7422-90c7-1dce60d194e5` / host `local`  
-**Supervisor task:** `01a0656c-c455-72d3-8f8f-8484c8415e0a`  
+**Status:** complete on the run branch; ready for coordinator verification/integration
+
+**Coordination:** `f24df892-5171-48f4-97ff-4e91490f8622` (`Cf24df892`) · R03b
+
+**Parent coordinator:** task `01a064e2-c3cf-7422-90c7-1dce60d194e5` / host `local`
+
+**Supervisor task:** `01a0656c-c455-72d3-8f8f-8484c8415e0a`
+
 **Bound worktree/branch:** `/Users/julianhein/.codex/worktrees/667d/hr-automation-rebuild` ·
-`feature/test-r3b-worker-review`  
-**Base:** `18e5294de0b07f147349a2d62edcc6a5728fcf15`  
+`feature/test-r3b-worker-review`
+
+**Base:** `18e5294de0b07f147349a2d62edcc6a5728fcf15`
+
 **Board mode:** coordinated read-only · `docs/coordinator/test-suite-rationalization/board.md`
 
 ## Outcome
