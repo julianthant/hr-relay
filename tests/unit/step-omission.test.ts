@@ -158,8 +158,9 @@ describe("stepOmissionCascade", () => {
         WRITING,
       ],
     }));
-    // Omitting `reading` forces `deciding` out, but `deciding`'s GATE still reads `fold`,
-    // which nothing rebuilds — so the choice is blocked by the very step it forced.
-    assert.deepEqual(chained.get("reading"), { state: "blocked", by: "deciding", forces: ["deciding"] });
+    // Omitting `reading` forces `deciding` out. D313: whole-step omission
+    // takes `deciding`'s GATE with the step — nothing outside still reads an
+    // unread member — so the chained choice is omittable, forcing `deciding`.
+    assert.deepEqual(chained.get("reading"), { state: "omittable", forces: ["deciding"] });
   });
 });
