@@ -60,7 +60,7 @@ export function architectureProjectViolations({
   const violations: string[] = [];
   const normalized = command.trim().replace(/\s+/g, " ");
   const exactCommand =
-    "vitest run --project architecture --reporter=dot --passWithNoTests=false";
+    "vitest run --project architecture --reporter=verbose --passWithNoTests=false";
   if (normalized !== exactCommand) {
     violations.push(
       `test:architecture must select only the named architecture project; expected '${exactCommand}'`,

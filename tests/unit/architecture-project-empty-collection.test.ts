@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { describe, it } from "vitest";
 import vitestConfig, { REBUILD_TEST_EXEC_ARGV } from "../../vitest.config.js";
 import { REPO_ROOT } from "./architecture/helpers/guard-files.js";
@@ -33,16 +31,11 @@ function namedArchitectureProject(config: unknown): {
 }
 
 function runArchitectureProjectWithNoMatchingFile() {
-  const vitest = join(REPO_ROOT, "node_modules", ".bin", "vitest");
-  assert.ok(existsSync(vitest), `Vitest executable is missing: ${vitest}`);
   return spawnSync(
-    vitest,
+    "npm",
     [
-      "run",
-      "--project",
-      "architecture",
+      "run", "test:architecture", "--",
       "tests/unit/architecture/fixtures/does-not-exist.test.ts",
-      "--reporter=verbose",
     ],
     { cwd: REPO_ROOT, encoding: "utf8" },
   );
@@ -79,7 +72,7 @@ describe("architecture project empty collection", () => {
     );
   });
 
-  it("exits nonzero when the named architecture project collects no tests", () => {
+  it("makes the public architecture command exit nonzero when its project collects no tests", () => {
     const result = runArchitectureProjectWithNoMatchingFile();
     const output = `${result.stdout}\n${result.stderr}`;
     assert.equal(result.status, 1, output);
