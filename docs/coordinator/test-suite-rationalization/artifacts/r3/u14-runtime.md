@@ -32,6 +32,22 @@ No file or case was deleted, moved, or merged. Each table row names the retained
 direct failure oracle. The verbose gate printed the `unit` project, every file, and every complete
 behavior/refusal title:
 
+### Per-file negative-control or equivalent map
+
+| File | Kind | Exact full case title |
+| --- | --- | --- |
+| `bootstrap-start-surface.test.ts` | negative | bootstrap start-surface block refuses a start control arm that names a field kind the form vocabulary does not close over |
+| `compose-real-port.test.ts` | negative | composed dashboard runtime over an owned loopback socket serves bootstrap, day, and SSE through a real ephemeral listener and releases it at teardown — controlled occupied-port red before the fix |
+| `dashboard-dev-proxy-origin.test.ts` | direct | dashboard development proxy origin preserves the browser Host for operator-mutation same-origin admission |
+| `dashboard-perf-fixture-shape.test.ts` | negative | the §7.4 dashboard perf fixture carries a realistic terminal mix — settled rows with and without a derived receipt |
+| `preflight-runners.test.ts` | negative | dashboard preflight runner composition returns probe-request-failed for a closed allocated loopback port |
+| `settings-runtime-reader.test.ts` | negative | verified Settings reader snapshot pairs the new record and restart-required status without caching a prior read |
+| `preflight-dashboard-runners.test.ts` | negative | dashboard preflight runners maps a concrete occupied-port transport refusal to unhealthy ownership |
+| `preflight-runtime-dependencies.test.ts` | negative | runtime dependency registry audits ConfigSchema routes in both directions and rejects typo routes |
+| `runtime-composition.test.ts` | negative | isolated rebuild runtime composition after the Phase-1 exit executes only the currently owned CLI surface and fails loud for future runtime work |
+| `runtime-process-orphans.test.ts` | negative | streamed optional process-orphan inspection inspects every unreleased owner without materializing or sorting worker history |
+| `vite-dashboard-proxy.test.ts` | direct | the dashboard development proxy forwards every browser-reachable BFF surface, including artifact bytes |
+
 ```text
 u14_tests=(${(f)"$(sed -n '/| Retained test file |/,/^$/p' \
   docs/coordinator/test-suite-rationalization/artifacts/r3/u14-runtime.md \
@@ -40,7 +56,7 @@ npm exec vitest run -- --project unit ${u14_tests[@]} --reporter=verbose
 
 Test Files  11 passed (11)
 Tests       151 passed (151)
-Duration    13.17s (real 13.64s)
+Duration    13.89s (real 14.39s)
 ```
 
 The six-case performance fixture passed with its declared ≥20,000-note corpus; its individual
@@ -49,9 +65,10 @@ HTTP/SSE, process-launch injection, and shutdown, also passed. Together with u13
 49-file/868-case owned family.
 
 The earlier 30-second Archive and performance failures are classified as historical full-suite
-contention, not deterministic retained defects: both focused files, the owned family, and the later
-uncontended R2 coverage run pass at the supported four-fork cap. R3a changed no timeout, retry,
-skip, fixture size, or production runner setting.
+contention, not deterministic retained defects: both focused files and the owned family pass at the
+supported four-fork cap, and the later uncontended R2 coverage run completed those timeout files
+before returning red only for this run's then-unfixed reserved-port case. R3a changed no timeout,
+retry, skip, fixture size, or production runner setting.
 
 After the final family run, no process command referenced this worktree, no
 `/tmp/hrauto-{compose,dashboard,perf}-*` directory remained, and `.tracker-rebuild/locks` contained

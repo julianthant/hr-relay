@@ -18,7 +18,7 @@ A legitimate `npm run dashboard` from the primary rebuild checkout owned both li
 | 3938 | 95609 | dashboard BFF |
 | 5174 | 95590 | Vite dashboard |
 
-With those listeners active, this exact red-capable command failed:
+With those listeners active, this exact base-revision command failed under the test's former title:
 
 ```text
 npm exec vitest run -- --project unit tests/unit/server/compose-real-port.test.ts \
@@ -37,7 +37,11 @@ gate. No production port or isolation contract will change.
 
 ## Verification record
 
-The red was reversed with the legitimate dashboard still active:
+After the title changed, a controlled negative mutation removed the test-local wrapper overrides
+and the final case's redundant overrides. The current exact selector then failed with exit 1 while
+printing only `startup:begin` and the same actionable `ports.available` refusal at
+`src/server/dashboard/compose.ts:1272`. The mutation was restored before commit. The restored test
+then passed with the legitimate dashboard still active:
 
 ```text
 npm exec vitest run -- --project unit tests/unit/server/compose-real-port.test.ts \
@@ -46,7 +50,18 @@ npm exec vitest run -- --project unit tests/unit/server/compose-real-port.test.t
 
 Test Files  1 passed (1)
 Tests       1 passed | 63 skipped (64)
-Duration    2.71s
+Duration    2.89s
+```
+
+The verbose output included these stable, non-secret lifecycle markers:
+
+```text
+[r3a:compose-real-port] startup:begin
+[r3a:compose-real-port] startup:complete
+[r3a:compose-real-port] request:begin
+[r3a:compose-real-port] request:complete
+[r3a:compose-real-port] teardown:begin
+[r3a:compose-real-port] teardown:complete
 ```
 
 One test-local wrapper now forces both literal-zero override seams for every composition in the
@@ -59,6 +74,25 @@ Before and after the focused and full owned-family gates, `lsof` reported the sa
 listeners: PID 95609 on 127.0.0.1:3938 and PID 95590 on 127.0.0.1:5174. No process command referenced
 this worktree afterward, no matching temp-authority directory remained, and the rebuild lock root
 contained no entry.
+
+The exact residue commands and results were:
+
+```text
+ps -Ao pid=,ppid=,command= \
+  | rg '/Users/julianhein/.codex/worktrees/cf5e/hr-automation-rebuild' \
+  | rg -v 'rg /Users|ps -Ao'
+# no output
+
+find /tmp -maxdepth 1 -type d \
+  \( -name 'hrauto-compose-*' -o -name 'hrauto-dashboard-*' -o -name 'hrauto-perf-*' \) -print
+# no output
+
+find .tracker-rebuild/locks -mindepth 1 -print
+# no output
+
+lsof -nP -iTCP:3938 -sTCP:LISTEN  # node PID 95609, 127.0.0.1:3938
+lsof -nP -iTCP:5174 -sTCP:LISTEN  # node PID 95590, 127.0.0.1:5174
+```
 
 A deliberately broader diagnostic that crossed the brief's ownership boundary still found active-
 port failures in `worker-pool-composition.test.ts` and `worker-pool-parallel-proof.test.ts`, plus a

@@ -6,14 +6,14 @@
 
 **Base:** `39598d2fb9c0964e3ac819c5b3de3538724a8380`
 
-**Implementation head before this report:** `322ac84e5bfda24314b93fcc54248fcf6de6c5bc`
+**Implementation head before the final evidence update:** `4969735a4308b07a50bebf414aaca07500ffb3e0`
 
 ## Outcome
 
 | Surface | Result | Proof |
 | --- | --- | --- |
 | u13 BFF/server | retained 38 files / 717 cases | verbose owned-family pass in 8.55s |
-| u14 runtime/process | retained 11 files / 151 cases | verbose owned-family pass in 13.17s |
+| u14 runtime/process | retained 11 files / 151 cases | verbose owned-family pass in 13.89s |
 | u16 real-port seam | 1 test harness repaired; no production code changed | occupied-port red, focused green, exact-port rebind |
 | deletions/moves/merges | 0 files / 0 cases | no same-seam, same-risk, same-oracle equivalence found |
 
@@ -21,7 +21,8 @@ The only implementation change is in `tests/unit/server/compose-real-port.test.t
 wrapper supplies both literal-zero overrides to the existing composition seam, so all 64 cases own
 OS-assigned backend and frontend ports. The end-to-end bootstrap/day/SSE case no longer converts
 port collisions into success; it propagates startup/request failures, awaits subscription/runtime
-teardown, and proves release by rebinding the exact ephemeral backend port.
+teardown, proves release by rebinding the exact ephemeral backend port, and emits stable non-secret
+`startup`, `request`, and `teardown` begin/complete markers.
 
 Production isolation remains unchanged at 3938/5174. The legitimate dashboard stayed active with
 PID 95609 on 3938 and PID 95590 on 5174 through the focused and owned-family gates.
@@ -37,7 +38,8 @@ PID 95609 on 3938 and PID 95590 on 5174 through the focused and owned-family gat
 - `worker-pool-composition.test.ts`, `worker-pool-parallel-proof.test.ts`, and
   `worker-supervisor.test.ts` remain exclusively R3b-owned and were not edited.
 
-Each retained-file ledger names one unique boundary risk and direct failure oracle. The exact
+Each retained-file ledger names one unique boundary risk and maps every file to one exact passing
+negative-input case or direct discriminating equivalent oracle from the final JSON result. The exact
 verbose family commands emit the `unit` project, file, and complete behavior/refusal title. No
 deletion or consolidation needed a survivor/equivalence record because none occurred.
 
@@ -62,14 +64,14 @@ full active-port coverage gate.
 
 | Gate | Result |
 | --- | --- |
-| controlled red | FAIL as intended — real client test refused occupied 3938/5174 at `compose.ts:1272` |
-| focused green | PASS — 1 file; 1 passed / 63 skipped; 2.71s |
+| controlled red | FAIL as intended — current exact title, exit 1, `startup:begin`, then occupied 3938/5174 refusal at `compose.ts:1272` |
+| focused green | PASS — 1 file; 1 passed / 63 skipped; six lifecycle markers; 2.89s |
 | u13 final family | PASS — 38 files / 717 cases; 8.55s |
-| u14 final family | PASS — 11 files / 151 cases; 13.17s |
+| u14 final family | PASS — 11 files / 151 cases; 13.89s |
 | exact owned union | PASS — 49 distinct files / 868 cases across the two final commands |
-| `npm run typecheck` | PASS — 16.13s |
-| `npm run lint` | PASS — zero warnings; 30.53s |
-| `npm run test:architecture` | PASS — 70 files / 703 cases; 37.31s |
+| `npm run typecheck` | PASS — 19.69s |
+| `npm run lint` | PASS — zero warnings; 34.12s |
+| `npm run test:architecture` | PASS — 70 files / 703 cases; 31.29s |
 | `npm run build:manifest:check` | PASS — generated manifest current |
 | `npm run roadmap:check` | PASS — generated roadmap fresh |
 | `git diff --check` | PASS |
@@ -88,25 +90,35 @@ After final owned-family verification:
 - the same legitimate dashboard PIDs still owned 3938/5174; and
 - the focused test rebound its exact ephemeral backend port after `runtime.stop()`.
 
+The durable u16 record contains the exact `ps`, `find`, and `lsof` commands plus their empty or
+same-PID results; these are not conclusions inferred from the backend rebind alone.
+
 The temporary ignored `node_modules` symlink used to access the already-installed workspace
 dependencies is removed before the final clean-tree proof. No unrelated process is killed.
 
 ## Review
 
-The implementation target was `39598d2f...322ac84e`. Independent preliminary Performance and Tests
+The first implementation target was `39598d2f...322ac84e`. Independent preliminary Performance and Tests
 reviews found the same medium resource-lifetime defect: the first two post-compose assertions were
 outside the teardown `finally`. Commit `322ac84e` moved them inside the cleanup boundary. Focused
 Vitest and ESLint passed afterward, and the required post-fix reviews found no remaining issue.
 
+A later completed-evidence review found the missing lifecycle markers and that client construction
+still preceded the cleanup boundary; `4969735a` fixed both. It also rejected risk prose as insufficient
+retained-test evidence, requested reproducible residue commands, found the old pre-fix test selector
+stale as a present-day command, and corrected an overbroad sentence about the R2 coverage result.
+The final ledgers now contain the 49-file case mapping, current-title controlled red, lifecycle output,
+exact residue commands, and precise R2 disposition.
+
 | Axis | Result |
 | --- | --- |
-| Standards | Count 0 · Worst none |
-| Spec | Three medium evidence-completion findings resolved in the final ledgers/report; no implementation-shape or scope finding |
+| Standards | Two medium lifecycle/cleanup findings fixed; final re-review follows the closing evidence commit |
+| Spec | Three medium evidence-completion findings resolved in the final ledgers/report; final re-review follows the closing evidence commit |
 | Correctness | Post-fix Count 0 · Worst none |
 | Silent failures | Post-fix Count 0 · Worst none |
 | Performance | One medium cleanup-boundary finding fixed; post-fix Count 0 · Worst none |
 | Tests | Same medium cleanup-boundary finding fixed; post-fix Count 0 · Worst none |
-| Docs | Count 0 · Worst none; final evidence re-review follows this report commit |
+| Docs | One high stale-selector and two medium wording/evidence findings resolved; final re-review follows the closing evidence commit |
 | Security | Count 0 · Worst none — supervisor review found no auth, credential, permission, untrusted-input, dependency, command-execution, or production trust-boundary change |
 | Simplify | Skipped — no user request; the one-file test delta uses the existing two-override seam and is already minimal |
 
@@ -124,10 +136,12 @@ Implementation commits:
 
 - `37b01aaf` — `test(server): isolate composed runtime ports`
 - `322ac84e` — `test(server): guarantee teardown after startup assertions`
+- `4969735a` — `test(server): label real-port lifecycle phases`
 
 Evidence commit before implementation:
 
 - `75d16dd2` — `docs(test): record R3a pre-edit ownership ledger`
+- `6f7c02a8` — `docs(test): close R3a server runtime evidence`
 
 The subsequent report-closing commit contains the completed evidence ledgers and this report. The
 final response supplies its exact hash.
