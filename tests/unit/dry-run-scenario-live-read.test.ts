@@ -126,6 +126,37 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     assert.equal(result.result.value !== null && typeof result.result.value === "object" && "activeStatus" in result.result.value, true);
     assert.equal(sessions.opens("ucpath"), 1);
     assert.equal(sessions.opens("crm"), 1);
+
+    // A persisted live-read result binds to THIS ordinary run — at insert and
+    // again at every database open (the invariant sweep) — while a preview
+    // result may never cite a run that was not a dry run.
+    const persisted = {
+      resultId: "aaaaaaaa-0001-4000-8000-000000000001",
+      scenarioId: PERSON_LOOKUP_LIVE_READ.scenarioId,
+      workflow: PERSON_LOOKUP_LIVE_READ.workflow,
+      subjectLabel: scenarioCase.subjectLabel,
+      manifestDigest: "a".repeat(64),
+      verdict: "met",
+      execution: { state: "started", arm: "live-read", runId: started.runId, traceId: started.traceId },
+      assertions,
+      wallTimeMs: 1,
+      recordedAt: clock.now().toISOString(),
+    };
+    assert.equal(database.authority.dryRunScenarioResults.insert(persisted).state, "inserted");
+    assert.throws(
+      () => database.authority.dryRunScenarioResults.insert({
+        ...persisted,
+        resultId: "aaaaaaaa-0002-4000-8000-000000000002",
+        execution: { state: "started", arm: "dry-run-preview", runId: started.runId, traceId: started.traceId },
+      }),
+      /does not match its dry-run execution/u,
+    );
+    database.close();
+    const reopened = AuthorityDatabase.open(
+      { path: join(root, rebuildRuntimeIsolation.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "live-read-reopen" },
+      clock,
+    );
+    reopened.close();
   });
 
   it("refuses a live-read manifest on a transaction-bearing graph, and a preview manifest on a transaction-free graph, before any effect", async () => {
