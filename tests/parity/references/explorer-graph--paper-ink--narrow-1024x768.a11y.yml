@@ -83,27 +83,27 @@
             - columnheader "Scenario"
             - columnheader "Walked by"
         - rowgroup:
-          - row "ambiguous-name person-lookup.scenario.test.ts":
+          - row "ambiguous-name structural.scenario.test.ts":
             - cell "ambiguous-name"
-            - cell "person-lookup.scenario.test.ts"
-          - row "crm-failure-retry person-lookup.scenario.test.ts":
+            - cell "structural.scenario.test.ts"
+          - row "crm-failure-retry structural.scenario.test.ts":
             - cell "crm-failure-retry"
-            - cell "person-lookup.scenario.test.ts"
-          - row "crm-subject-mismatch person-lookup-runtime.scenario.test.ts":
+            - cell "structural.scenario.test.ts"
+          - row "crm-subject-mismatch structural.scenario.test.ts":
             - cell "crm-subject-mismatch"
-            - cell "person-lookup-runtime.scenario.test.ts"
-          - row "happy-by-eid person-lookup.scenario.test.ts":
+            - cell "structural.scenario.test.ts"
+          - row "happy-by-eid structural.scenario.test.ts":
             - cell "happy-by-eid"
-            - cell "person-lookup.scenario.test.ts"
-          - row "happy-by-eid-with-dates person-lookup.scenario.test.ts":
+            - cell "structural.scenario.test.ts"
+          - row "happy-by-eid-with-dates structural.scenario.test.ts":
             - cell "happy-by-eid-with-dates"
-            - cell "person-lookup.scenario.test.ts"
-          - row "not-found person-lookup.scenario.test.ts":
+            - cell "structural.scenario.test.ts"
+          - row "not-found structural.scenario.test.ts":
             - cell "not-found"
-            - cell "person-lookup.scenario.test.ts"
-          - row "ucpath-drill-subject-mismatch person-lookup-runtime.scenario.test.ts":
+            - cell "structural.scenario.test.ts"
+          - row "ucpath-drill-subject-mismatch structural.scenario.test.ts":
             - cell "ucpath-drill-subject-mismatch"
-            - cell "person-lookup-runtime.scenario.test.ts"
+            - cell "structural.scenario.test.ts"
     - heading "searching" [level=2]
     - button "What is this node? — searching"
     - text: Task system ucpath Depends on Nothing — this node may start immediately. Replay checkpoint checkpoint condition always runs Detail projections Selection selection.status

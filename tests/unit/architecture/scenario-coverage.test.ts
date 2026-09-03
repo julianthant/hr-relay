@@ -217,16 +217,33 @@ describe("scenario coverage", () => {
   });
 
   it("keeps each workflow's executable scenarios in its one structural T1a file", () => {
+    const corpus = scenarioCorpusFiles();
     for (const descriptor of DESCRIPTORS) {
       const workflow = String(descriptor.id);
       const expectedFile = `${SCENARIO_ROOT}/workflows/${workflow}/structural.scenario.test.ts`;
-      const ownedFiles = new Set(
+      const manifestedFiles = new Set(
         EXECUTABLE_SCENARIO_MANIFEST
           .filter(({ scenarioId }) => String(scenarioId).startsWith(`${workflow}/`))
           .map(({ file }) => file),
       );
+      const corpusFiles = new Set(
+        corpus
+          .filter(({ file, itTitles }) =>
+            GRAPH_SCENARIO_FILE_PATTERN.test(file)
+            && itTitles.some((title) => title.startsWith(`${workflow}/`)))
+          .map(({ file }) => file),
+      );
 
-      assert.deepEqual([...ownedFiles], [expectedFile], `${workflow} must own one structural T1a file`);
+      assert.deepEqual(
+        [...manifestedFiles],
+        [expectedFile],
+        `${workflow} must manifest one structural T1a file`,
+      );
+      assert.deepEqual(
+        [...corpusFiles],
+        [expectedFile],
+        `${workflow} must execute every T1a scenario in its one structural file`,
+      );
     }
   });
 

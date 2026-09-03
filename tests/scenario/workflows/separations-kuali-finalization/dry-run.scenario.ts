@@ -78,36 +78,47 @@ import {
   type DryRunScenarioManifest,
 } from "../../../../src/domain/trust/dry-run-scenario.js";
 
-/** The supplied-EID path, in execution order. Five reads, authority, one write. */
-const READ_NODES = [
+/** The supplied-EID path, in execution order: four reads, authority, one verifier, one write. */
+const PRE_APPROVAL_READ_NODES = [
   "job-summary",
   "name-search",
   "department-option",
   "comparison",
-  "filing-presence",
 ] as const;
 const GATE_NODE = "identity-approval";
 const APPROVAL_NODE = "approval";
+const FILING_PRESENCE_NODE = "filing-presence";
 const TRANSACTION_NODE = "finalize-kuali";
 
-const FULL_PATH = [...READ_NODES, APPROVAL_NODE, TRANSACTION_NODE] as const;
+const FULL_PATH = [
+  ...PRE_APPROVAL_READ_NODES,
+  APPROVAL_NODE,
+  FILING_PRESENCE_NODE,
+  TRANSACTION_NODE,
+] as const;
 
 /**
- * The five read/fold nodes checkpoint (`replay: "checkpoint"`); `approval` is
- * `replay: "always-rerun"` and still records this claim generation's output,
- * though no later claim may reuse it. The
+ * The four pre-approval read/fold nodes and the post-approval filing verifier
+ * checkpoint (`replay: "checkpoint"`); `approval` is `replay: "always-rerun"`
+ * and still records this claim generation's output, though no later claim may
+ * reuse it. The
  * transaction node writes none on a rehearsal — which is the `durableDeltas`
  * assertion from the other side.
  */
-const READ_CHECKPOINTS = READ_NODES.map((node) => ({
+const PRE_APPROVAL_READ_CHECKPOINTS = PRE_APPROVAL_READ_NODES.map((node) => ({
   node,
   attempt: 1,
   keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"] as const,
 }));
 const EXPECTED_CHECKPOINTS = [
-  ...READ_CHECKPOINTS,
+  ...PRE_APPROVAL_READ_CHECKPOINTS,
   {
     node: APPROVAL_NODE,
+    attempt: 1,
+    keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"] as const,
+  },
+  {
+    node: FILING_PRESENCE_NODE,
     attempt: 1,
     keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"] as const,
   },
