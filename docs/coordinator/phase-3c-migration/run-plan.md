@@ -19,6 +19,8 @@
 | R11 | Order 9 onboarding | u90–u94 | supervisor + native Luna/Terra tree | integrated R10 | 11 | no | R10 + exact hire canary | no-EID probe, roster ingest, controlled proof, T1/T2/T3 |
 | R12 | cross-cutting closure + phase proof | u100–u105 | supervisor + native Luna/Terra tree | integrated R11 | 12 | no | R11 | cross-cutting capabilities disposed, zero-open capability audit, full integrated gates |
 
+**Active scope (operator, 2026-09-02):** finish 3c-A (R3), integrate, sweep, reconcile the 3c-A authorities. R4–R12 are held until the operator asks for 3c-B.
+
 ## Supervisor wave ledger
 
 | Run | Task id / corrections | Host id | Project id | Launch title/time | Worktree/branch | Report | Status | Last cursor |

@@ -25,6 +25,8 @@
 
 ## Decisions ratified
 
+- 2026-09-02 18:1x PDT · operator instruction in coordinator session `571dd99a` ("okay just do phase 3c A here") → this coordination's active scope is the **3c-A exit gate only** (R3). R4–R12 stay planned and briefable but are NOT dispatched under this instruction; the final `master --no-ff` merge and Phase 3c close wait for a later operator instruction. Owner: this board + `run-plan.md`.
+
 - 2026-09-02 · sheet `decisions/2026-09-02-read-only-t1-live-proof.md` item 1 → **A** (live execution manifest with `dry-run-preview` / `live-read` arms) → D318 in `docs/rebuild/reference/decisions.md`, normative text in `ref guards-and-tests` §10.4, at `cb9a1476`.
 
 ## Unit ledger
@@ -57,7 +59,7 @@
 
 ## Progress
 
-Steps — 2/14 complete
+Steps — 2/14 complete (active scope ends after R3 + RECONCILE-3cA; later runs held by operator instruction)
 - [x] R1 — D311 workflow recipe/compiler
 - [x] R2 — Order 1 workflow-specific intake
 - [>] R3 — D312–D317 authoring/runtime foundation
