@@ -4,10 +4,19 @@
  * Every envelope schema-parses before entering state — a malformed payload is
  * a visible protocol failure that stops the subscription with an error, never
  * a `console.warn` + ignore. Cursor rules: hello pins the generation; a
- * duplicate cursor is idempotent; a GAP (an envelope more than one cursor
- * ahead) or a patch for an unheld run forces a fresh snapshot by reconnecting
- * WITHOUT `Last-Event-ID`; `reset-required` clears state the same way. A
- * transport drop reports `reconnecting` and resumes WITH `Last-Event-ID`.
+ * duplicate or older cursor is IGNORED before it can have any effect (which is
+ * what makes a resume's replay free rather than a full resnapshot); a GAP (an
+ * envelope more than one cursor ahead) or a patch for an unheld run forces a
+ * fresh snapshot by reconnecting WITHOUT `Last-Event-ID`; `reset-required`
+ * clears state the same way.
+ *
+ * How a stream ENDS decides whether there is a next one. EOF and a transport
+ * drop (a `network` error) report `reconnecting` and resume WITH
+ * `Last-Event-ID`. Every other rejection — an HTTP refusal, a protocol or
+ * schema failure, or a value this client cannot classify — is terminal: the
+ * subscription stops carrying that error, so the hook can replace the day it
+ * can no longer keep current instead of reconnecting forever behind a screen
+ * that still looks live.
  */
 import { z } from "zod";
 import type { DashboardDayWire } from "../../domain/dashboard/projection.js";
@@ -41,6 +50,41 @@ export interface DashboardDaySubscription {
 }
 
 const CURSOR_PATTERN = /^pc:([1-9]\d*)$/;
+
+/**
+ * Which stream endings a RECONNECT can answer, and which are terminal.
+ *
+ * `openStream` rejects with exactly two kinds: `network` when the fetch itself
+ * failed or the body errored mid-read — the transport DROP this subscription
+ * exists to survive — and `http` when the server refused the stream outright.
+ * Everything else that can reach here (a `protocol`/`schema` error, or a value
+ * this client did not author at all) is a failure whose cause reopening the
+ * same request cannot touch.
+ *
+ * This is deliberately NOT `error.retryable`. That flag is the SERVER's hint
+ * about re-issuing one request, and `httpError` copies it straight off the wire
+ * body — so a 503 declaring itself retryable would put this subscription into a
+ * reconnect loop that never reports anything, which is the exact failure the
+ * §3.5 rule against a silently stale dashboard forbids. The kind is what says
+ * whether the connection or the CONTRACT failed.
+ */
+function reconnectableStreamFailure(reason: unknown): boolean {
+  return reason instanceof DashboardClientError && reason.kind === "network";
+}
+
+/**
+ * A rejection this client cannot classify is not a network blip. Naming it
+ * (and keeping the value as the cause) is what stops an unknown from being
+ * guessed into a retry loop.
+ */
+function streamFailure(reason: unknown): DashboardClientError {
+  if (reason instanceof DashboardClientError) return reason;
+  return new DashboardClientError({
+    kind: "protocol",
+    message: `the day stream ended in an unclassified stream rejection: ${reason instanceof Error ? reason.message : String(reason)}`,
+    cause: reason,
+  });
+}
 
 export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): DashboardDaySubscription {
   const day = z.iso.date().parse(deps.day);
@@ -101,6 +145,19 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       throw protocolError(`envelope carries malformed cursor ${envelope.cursor}`);
     }
     const cursorNumber = Number(cursorMatch[1]);
+
+    // Idempotence, BEFORE any effect (ref frontend-backend-integration §3.5:
+    // "duplicate/current cursors are idempotent"). A resume replays from the
+    // held cursor, so the envelope that cursor names arrives again — and every
+    // replayed envelope is state this client already holds. Re-applying is not
+    // merely wasted work: a replayed REMOVAL names a run the day no longer
+    // holds, `applyDashboardDayPatch` calls that a protocol failure, and the
+    // subscription answers a protocol failure by throwing the whole day away
+    // and resnapshotting. So a correct resume would cost a full snapshot every
+    // time. `lastCursorNumber` is undefined only before the first snapshot of a
+    // generation — hello clears it when the generation changes, which is what
+    // lets a REPLACEMENT generation's lower-numbered cursors through.
+    if (lastCursorNumber !== undefined && cursorNumber <= lastCursorNumber) return;
 
     if (envelope.type === "snapshot") {
       if (envelope.topic !== "dashboard-day") {
@@ -165,8 +222,16 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       },
     });
     stream.done.then(
+      // EOF: the server closed a healthy stream (or this client aborted one).
+      // Resuming from the held cursor is exactly what that ending calls for.
       () => reconnect(true, "reconnecting"),
-      () => reconnect(true, "reconnecting"),
+      (reason: unknown) => {
+        if (reconnectableStreamFailure(reason)) {
+          reconnect(true, "reconnecting");
+          return;
+        }
+        stop(streamFailure(reason));
+      },
     );
   }
 
