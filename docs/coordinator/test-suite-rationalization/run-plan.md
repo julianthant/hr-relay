@@ -4,11 +4,13 @@
 |---|---|---|---|---|---:|---|---|---|
 | R1 | Architecture guards and static/type/lint gates | u01–u06 | Scout/Analyst/Terra | kickoff commit | 1 | yes, Wave 1 with R6 | — | self-contained architecture gate, correct static project wiring, evidence/report |
 | R6 | Playwright parity, performance, smoke, Duo, generated checks | u31–u36 | Scout/Analyst/Terra | kickoff commit | 2 | yes, Wave 1 with R1 | — | parity/check-family inventory, retained-risk evidence, focused gates/report |
-| R2 | Core/domain/workflow/write/storage unit tests | u07–u12 | Scout/Analyst/Terra | after R1+R6 | 3 | yes, Wave 2 with R4 | R1, R6 | audited non-server/non-dashboard unit family, focused and full-family gates/report |
-| R4 | Dashboard model/jsdom/component tests versus parity/T2 | u19–u24 | Scout/Analyst/Terra | after R1+R6 | 4 | yes, Wave 2 with R2 | R1, R6 | jsdom/pure-model split, overlap evidence, focused gates/report |
-| R3 | Server/BFF/runtime/worker tests and real-port hermeticity | u13–u18 | Scout/Analyst/Terra | after R2+R4 | 5 | yes, Wave 3 with R5 | R1, R2, R4 | active-port full gate, isolated runtime evidence, focused gates/report |
-| R5 | Entire scenario corpus and proof provenance | u25–u30 | Scout/Analyst/Terra | after R2+R4 | 6 | yes, Wave 3 with R3 | R1, R2, R4 | T1/T2/T3/walk/T1b matrix, useful branches, coverage/layout gates/report |
-| R7 | Cross-family reorganization, consequential review, authorities, close proof | u37–u42 | Analyst/Terra | after R1–R6 | 7 | no, serial final run | R1–R6 | canonical taxonomy, all authorities reconciled, every final gate + delta/runtime evidence |
+| R2 | Core/domain/workflow/write/storage unit tests | u07–u12 | Scout/Analyst/Terra | after R1+R6 | 3 | yes, Wave 2 | R1, R6 | audited non-server/non-dashboard unit family, focused and full-family gates/report |
+| R4 | Dashboard model/jsdom/component tests versus parity/T2 | u19–u24 | Scout/Analyst/Terra | after R1+R6 | 4 | yes, Wave 2 | R1, R6 | jsdom/pure-model split, overlap evidence, focused gates/report |
+| R3a | Server/BFF/runtime tests and real-port hermeticity | u13, u14, u16 | Scout/Analyst/Terra | after R1+R6 | 5 | yes, Wave 2 | R1, R6 | active-port reproduction/repair, isolated runtime evidence, focused gates/report |
+| R5a | Scenario inventory, T1 structure, and T1b authority | u25, u26, u29 | Scout/Analyst/Terra | after R1+R6 | 6 | yes, Wave 2 | R1, R6 | complete scenario inventory, T1/T1b truth, focused gates/report |
+| R3b | Worker/session tests plus server-family consolidation/review | u15, u17, u18 | Scout/Analyst/Terra | after R2+R4+R3a | 7 | yes, Wave 3 with R5b | R2, R4, R3a | worker/lease audit, cross-layer consolidation, active-port full gate/report |
+| R5b | Scenario walks, dashboard scenarios, layout/review | u27, u28, u30 | Scout/Analyst/Terra | after R2+R4+R5a | 8 | yes, Wave 3 with R3b | R2, R4, R5a | T2/T3/walk evidence, final scenario layout, gates/report |
+| R7 | Cross-family reorganization, consequential review, authorities, close proof | u37–u42 | Analyst/Terra | after R1–R6 | 9 | no, serial final run | R1–R6 | canonical taxonomy, all authorities reconciled, every final gate + delta/runtime evidence |
 
 ## Supervisor wave ledger
 
@@ -18,8 +20,10 @@
 | R6 | setup `client-new-thread:038fb57d-1f1e-48f2-a16a-fb4f27dc896a` → reconciled exact task `01a0645c-1e18-7d70-9dfc-c7fb53fa0b66` from unique project/title/prompt/worktree/session match | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | `R6 — parity performance and generated checks` / 2026-09-02 16:01 PDT | `/Users/julianhein/.codex/worktrees/b4ef/hr-automation-rebuild` · `feature/test-r6-parity-checks` | `reports/r6-parity-checks.md` | running; policy answer relayed | `914b4829-f1ad-4972-a2cc-a737811ff44e:1` |
 | R2 | — | — | — | — | `feature/test-r2-core-domain` | `reports/r2-core-domain.md` | planned | none |
 | R4 | — | — | — | — | `feature/test-r4-dashboard` | `reports/r4-dashboard.md` | planned | none |
-| R3 | — | — | — | — | `feature/test-r3-server-runtime` | `reports/r3-server-runtime.md` | planned | none |
-| R5 | — | — | — | — | `feature/test-r5-scenarios` | `reports/r5-scenarios.md` | planned | none |
+| R3a | — | — | — | — | `feature/test-r3a-server-runtime` | `reports/r3a-server-runtime.md` | planned | none |
+| R5a | — | — | — | — | `feature/test-r5a-scenario-authority` | `reports/r5a-scenario-authority.md` | planned | none |
+| R3b | — | — | — | — | `feature/test-r3b-worker-review` | `reports/r3b-worker-review.md` | planned | none |
+| R5b | — | — | — | — | `feature/test-r5b-scenario-review` | `reports/r5b-scenario-review.md` | planned | none |
 | R7 | — | — | — | — | `feature/test-r7-integration-review` | `reports/r7-integration-review.md` | planned | none |
 
 ## Units

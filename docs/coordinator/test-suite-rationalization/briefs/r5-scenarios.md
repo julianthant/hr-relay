@@ -2,7 +2,7 @@
 
 ## Assignment
 
-Invoke `/supervise` and complete units u25–u30 after R2/R4 are integrated. Audit all scenario kinds, coverage claims, and both T1b live manifests. No live workflow run is required or authorized by this brief. The board is read-only.
+This is the umbrella scope for R5. Dispatch it through `r5a-scenario-authority.md` (u25, u26, u29 in Wave 2) and `r5b-scenario-review.md` (u27, u28, u30 after R2/R4/R5a). Do not dispatch this umbrella brief directly. No live workflow run is required or authorized; both supervisors treat the board as read-only.
 
 **Run branch:** `feature/test-r5-scenarios` from the coordinator-declared base
 **Report:** `docs/coordinator/test-suite-rationalization/reports/r5-scenarios.md`

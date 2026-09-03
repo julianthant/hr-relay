@@ -29,9 +29,11 @@
 |---|---|---|---|---|---|---|
 | u01–u06 | R1 | running, policy cleared | isolated `feature/test-r1-architecture-static` from `7982650c`; exact task `01a0645c-1e13-7581-8a20-67314a86e195` | pending | required | Operator answer relayed; u02 worker branch remains supervisor-owned |
 | u07–u12 | R2 | planned | — | — | required | Core/domain/workflow/write/storage units |
-| u13–u18 | R3 | planned | — | — | required | Server/BFF/runtime/worker and ports |
+| u13, u14, u16 | R3a | planned | — | — | required | Wave 2 server/BFF/runtime and real-port hermeticity |
+| u15, u17, u18 | R3b | planned | — | — | required | Post-Wave-2 worker/consolidation/review |
 | u19–u24 | R4 | planned | — | — | required | Dashboard model/jsdom/component layer |
-| u25–u30 | R5 | planned | — | — | required | Scenario corpus and evidence provenance |
+| u25, u26, u29 | R5a | planned | — | — | required | Wave 2 scenario inventory, T1, T1b authority |
+| u27, u28, u30 | R5b | planned | — | — | required | Post-Wave-2 walks, dashboard scenarios, layout/review |
 | u31–u36 | R6 | running, policy cleared | isolated `feature/test-r6-parity-checks` from `7982650c`; exact task `01a0645c-1e18-7d70-9dfc-c7fb53fa0b66` | pending | required | Operator answer relayed; parity refresh still requires independently proved expectation change |
 | u37–u42 | R7 | planned | — | — | consequential | Cross-family integration, taxonomy, authorities, final proof |
 

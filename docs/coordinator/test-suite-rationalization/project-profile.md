@@ -54,7 +54,7 @@ Test output is an operator surface. Every test command must identify the project
 
 ## Coordinator defaults
 
-- **Run sizing:** 4–6 single-seam units, six maximum here; one test-family theme per run.
+- **Run sizing:** 3–6 single-seam units, six maximum here; one test-family theme per run. Three-unit follow-on runs are permitted where dependency-safe splitting enables the four-worktree Wave 2.
 - **Parallel supervisors:** two in Wave 1; after R1 and R6 integrate cleanly, use four isolated supervisor worktrees where scopes do not overlap. Serialize CPU-heavy full coverage and parity gates.
 - **Artifact root override:** none; use `docs/coordinator/test-suite-rationalization/`.
 - **Final close:** update only declared authorities whose truth changed, retain the workspace, close the board with verified commit/gate pointers, and leave no run worktree or integrated feature branch behind.

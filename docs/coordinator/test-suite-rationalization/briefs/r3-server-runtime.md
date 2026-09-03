@@ -2,7 +2,7 @@
 
 ## Assignment
 
-Invoke `/supervise` and complete units u13–u18 after R2 and R4 are integrated. This run owns server/BFF/runtime/process/worker tests and must close the reserved-port hermeticity defect while a legitimate dashboard remains active. The board is read-only.
+This is the umbrella scope for R3. Dispatch it through `r3a-server-runtime.md` (u13, u14, u16 in Wave 2) and `r3b-worker-review.md` (u15, u17, u18 after R2/R4/R3a). Do not dispatch this umbrella brief directly. Both supervisors treat the board as read-only.
 
 **Run branch:** `feature/test-r3-server-runtime` from the coordinator-declared base
 **Report:** `docs/coordinator/test-suite-rationalization/reports/r3-server-runtime.md`
