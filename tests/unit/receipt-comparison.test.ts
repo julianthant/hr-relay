@@ -6,8 +6,8 @@ import {
   defineReceiptComparisonRegistry,
 } from "../../src/domain/trust/receipt-comparison.js";
 import { defineSeparationsReceiptComparisonRegistry } from "../../src/domain/trust/separations-receipt-comparison.js";
-import { separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
 import { cleanReceiptOf, uuidOf } from "./server/helpers/dashboard-harness.js";
+import { separationsDescriptor } from "../helpers/registered-workflows.js";
 
 const DOCUMENT_NUMBER_FACT = {
   id: "separations.action.document-number",

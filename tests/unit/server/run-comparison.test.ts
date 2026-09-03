@@ -5,12 +5,12 @@ import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../src/
 import { defineReceiptComparisonRegistry } from "../../../src/domain/trust/receipt-comparison.js";
 import { buildRunReceiptComparison } from "../../../src/server/dashboard/queries/run-comparison.js";
 import { failureStatus } from "../../../src/server/dashboard/routes/failure-status.js";
-import { separationsDescriptor } from "../../../src/workflows/separations/descriptor.js";
 import {
   cleanReceiptOf,
   runRecordOf,
   uuidOf,
 } from "./helpers/dashboard-harness.js";
+import { separationsDescriptor } from "../../helpers/registered-workflows.js";
 
 const REGISTRY = defineReceiptComparisonRegistry(separationsDescriptor, {
   workflowId: "separations",

@@ -195,6 +195,8 @@ const PREVIEW_RECEIPT_VERIFICATION = [
 const MANIFEST = {
   scenarioId: "separations/dry-run",
   workflow: "separations",
+  // D318 — the transaction-bearing graph declares the preview arm explicitly.
+  arm: "dry-run-preview",
   transactionNode: TRANSACTION_NODE,
   recordedBy: "the 2026-09-02 supplied-EID policy correction and current separations graph; "
     + "docs/migrations/separations.md §9.27 addendum 7 remains the historical dryRun=true subject "

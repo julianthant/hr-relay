@@ -65,6 +65,7 @@ export const CommandActionSchema = z.enum([
   "relaunch-archived-run",
   "delete-archived-run",
   "retry",
+  "restart",
   "cancel",
   "bump",
   "rename",
@@ -267,7 +268,8 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
 ]);
 
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "cancel", "bump"]), target: RunVersionTargetSchema }),
+  /** D314 — `retry` is Resume from checkpoints and `restart` is Restart from start: both mint the item's next attempt. */
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "restart", "cancel", "bump"]), target: RunVersionTargetSchema }),
   /** D308 — delete means delete: a terminal queue run and every row it owns leave authority. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("delete"), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
@@ -540,7 +542,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"],
   settings: ["apply-settings"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run", "delete-archived-run"],
-  run: ["retry", "cancel", "bump", "rename", "delete", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"],
+  run: ["retry", "restart", "cancel", "bump", "rename", "delete", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze"],
   explorer: ["apply-explorer-edit"],
@@ -570,7 +572,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"] },
   { family: "settings", actions: ["apply-settings"] },
   { family: "version-archive", actions: ["plan-version-bump", "apply-version-bump", "relaunch-archived-run", "delete-archived-run"] },
-  { family: "run", actions: ["retry", "cancel", "bump", "rename", "delete", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"] },
+  { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze"] },
   { family: "explorer", actions: ["apply-explorer-edit"] },

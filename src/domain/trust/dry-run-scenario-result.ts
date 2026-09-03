@@ -59,11 +59,21 @@ const DryRunScenarioResultFields = {
   recordedAt: IsoInstantSchema,
 } as const;
 
+/**
+ * D318 — which T1b arm the started execution took. A `dry-run-preview` run is
+ * enqueued with `dryRun: true`; a `live-read` run is the ordinary path with
+ * `dryRun: false`. Authority binds the persisted result to a run whose
+ * envelope agrees. Optional only so rows persisted before D318 — every one of
+ * them a preview — remain readable; every new row carries it.
+ */
+export const DryRunScenarioArmSchema = z.enum(["dry-run-preview", "live-read"]);
+
 const StartedDryRunScenarioResultSchema = z.strictObject({
   ...DryRunScenarioResultFields,
   verdict: DryRunScenarioVerdictSchema,
   execution: z.strictObject({
     state: z.literal("started"),
+    arm: DryRunScenarioArmSchema.optional(),
     runId: RunIdSchema,
     traceId: TraceIdSchema,
   }),

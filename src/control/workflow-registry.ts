@@ -15,8 +15,12 @@
  */
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { workflowRecipeFor } from "../base/workflow-recipe.js";
-import type { WorkflowRecipe } from "../base/workflow-recipe.js";
+import {
+  compileWorkflow,
+  composeWorkflowModule,
+  workflowDefinitionOf,
+} from "../base/workflow-definition.js";
+import type { AnyWorkflowDefinition, WorkflowModule } from "../base/workflow-definition.js";
 import { workflowProjections } from "../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { RegisteredTaskStore } from "../base/store.js";
@@ -25,13 +29,43 @@ import type { IntakeProjection } from "../domain/intake/projection.js";
 import type { WorkflowModuleRole } from "../domain/workflow/module-role.js";
 import { workflowSourceFolder } from "../domain/workflow/source-layout.js";
 import { taskStoreRegistry } from "../stores/index.js";
-import { personLookupModule } from "../workflows/person-lookup/module.js";
+import { personLookupWorkflow } from "../workflows/person-lookup/workflow.js";
 import { separationsIdentityCheckModule } from "../workflows/separations/identity-check/module.js";
-import { separationsKronosTimecardModule } from "../workflows/separations/kronos-timecard/module.js";
-import { separationsKualiFinalizationModule } from "../workflows/separations/kuali-finalization/module.js";
-import { separationsKualiReadModule } from "../workflows/separations/kuali-extraction/module.js";
-import { separationsModule } from "../workflows/separations/module.js";
-import { separationsUcpathTerminationModule } from "../workflows/separations/ucpath-transaction/module.js";
+import { separationsKronosTimecardWorkflow } from "../workflows/separations/kronos-timecard/workflow.js";
+import { separationsKualiFinalizationWorkflow } from "../workflows/separations/kuali-finalization/workflow.js";
+import { separationsKualiReadWorkflow } from "../workflows/separations/kuali-extraction/workflow.js";
+import { separationsWorkflow } from "../workflows/separations/workflow.js";
+import { separationsUcpathTerminationWorkflow } from "../workflows/separations/ucpath-transaction/workflow.js";
+
+/**
+ * D311/D317 — a definition-backed workflow's server module is DERIVED here,
+ * at the composition root, from its one authored `workflow.ts` value and the
+ * task-store inventory. Nothing under `src/workflows/` composes stores.
+ */
+export const personLookupModule = composeWorkflowModule(
+  compileWorkflow(personLookupWorkflow),
+  taskStoreRegistry.stores,
+);
+export const separationsModule = composeWorkflowModule(
+  compileWorkflow(separationsWorkflow),
+  taskStoreRegistry.stores,
+);
+export const separationsKronosTimecardModule = composeWorkflowModule(
+  compileWorkflow(separationsKronosTimecardWorkflow),
+  taskStoreRegistry.stores,
+);
+export const separationsUcpathTerminationModule = composeWorkflowModule(
+  compileWorkflow(separationsUcpathTerminationWorkflow),
+  taskStoreRegistry.stores,
+);
+export const separationsKualiFinalizationModule = composeWorkflowModule(
+  compileWorkflow(separationsKualiFinalizationWorkflow),
+  taskStoreRegistry.stores,
+);
+export const separationsKualiReadModule = composeWorkflowModule(
+  compileWorkflow(separationsKualiReadWorkflow),
+  taskStoreRegistry.stores,
+);
 
 export const WORKFLOW_MODULES = Object.freeze([
   personLookupModule,
@@ -42,6 +76,17 @@ export const WORKFLOW_MODULES = Object.freeze([
   separationsKualiFinalizationModule,
   separationsModule,
 ]);
+
+/** The registered module for one workflow id, or a loud refusal naming the registry. */
+export function workflowModuleOf(workflowId: string): (typeof WORKFLOW_MODULES)[number] {
+  const module = WORKFLOW_MODULES.find((candidate) => String(candidate.descriptor.id) === workflowId);
+  if (module === undefined) {
+    throw new Error(
+      `workflow ${workflowId} is not registered; registered: ${WORKFLOW_MODULES.map((candidate) => String(candidate.descriptor.id)).join(", ")}`,
+    );
+  }
+  return module;
+}
 
 export const DESCRIPTORS: readonly AnyWorkflowDescriptor[] = Object.freeze(
   WORKFLOW_MODULES.map((module) => module.descriptor),
@@ -92,46 +137,51 @@ export interface WorkflowModuleBindingView {
   readonly stores: readonly RegisteredTaskStore[];
 }
 
-/** A recipe-bearing module as the recipe compiler's registry audit sees it. */
-export interface WorkflowRecipeModuleView extends WorkflowModuleBindingView {
-  /** Ordinary pre-D311 modules intentionally omit this field. */
-  readonly recipe?: WorkflowRecipe;
+/** A definition-backed module as the compiler's registry audit sees it. */
+export interface WorkflowDefinitionModuleView extends WorkflowModuleBindingView {
+  /** Legacy hand-authored harness modules intentionally omit this field until converted. */
+  readonly definition?: AnyWorkflowDefinition;
 }
 
-/** One recipe and the exact descriptor it compiled, as registered at the composition root. */
-export interface WorkflowRecipeRegistration {
+/** One definition and the exact descriptor it compiled, as registered at the composition root. */
+export interface WorkflowDefinitionRegistration {
   readonly descriptor: AnyWorkflowDescriptor;
-  readonly recipe: WorkflowRecipe;
+  readonly definition: AnyWorkflowDefinition;
 }
 
 /**
- * D311's registry-facing recipe population.
+ * D311/D317's registry-facing definition population.
  *
- * A module may expose a recipe only when that exact object compiled its own
- * descriptor. The compiler's identity ledger is deliberately checked again at
- * the composition boundary: otherwise a module could be registered with a
- * recipe that describes a different workflow while each value looks valid in
- * isolation. Modules not yet converted to recipes are not silently assigned a
+ * A module may expose a definition only when that exact object compiled its
+ * own descriptor. The compiler's identity ledger is deliberately checked again
+ * at the composition boundary: otherwise a module could be registered with a
+ * definition that describes a different workflow while each value looks valid
+ * in isolation. Modules not yet converted are not silently assigned a
  * synthetic declaration; they remain outside this population until converted.
  */
-export function workflowRecipeRegistry(
-  modules: readonly WorkflowRecipeModuleView[],
-): readonly WorkflowRecipeRegistration[] {
-  const registrations: WorkflowRecipeRegistration[] = [];
+export function workflowDefinitionRegistry(
+  modules: readonly WorkflowDefinitionModuleView[],
+): readonly WorkflowDefinitionRegistration[] {
+  const registrations: WorkflowDefinitionRegistration[] = [];
   for (const module of modules) {
-    if (module.recipe === undefined) continue;
-    if (workflowRecipeFor(module.descriptor) !== module.recipe) {
+    if (module.definition === undefined) continue;
+    if (workflowDefinitionOf(module.descriptor) !== module.definition) {
       throw new Error(
-        `workflow ${String(module.descriptor.id)} registers a recipe that did not compile its own descriptor`,
+        `workflow ${String(module.descriptor.id)} registers a definition that did not compile its own descriptor`,
       );
     }
-    registrations.push(Object.freeze({ descriptor: module.descriptor, recipe: module.recipe }));
+    registrations.push(Object.freeze({ descriptor: module.descriptor, definition: module.definition }));
   }
   return Object.freeze(registrations);
 }
 
-/** Every converted workflow, derived only from the one module tuple. */
-export const WORKFLOW_RECIPES = workflowRecipeRegistry(WORKFLOW_MODULES);
+/** Every definition-backed workflow, derived only from the one module tuple. */
+export const WORKFLOW_DEFINITIONS = workflowDefinitionRegistry(WORKFLOW_MODULES);
+
+/** Whether a registered module was derived from a `workflow.ts` definition. */
+export function isDefinitionBackedModule(module: WorkflowDefinitionModuleView): module is WorkflowModule {
+  return module.definition !== undefined;
+}
 
 /**
  * Ref data-intake-and-edit-data §1's spreadsheet-capable declaration, read off the workflow's own

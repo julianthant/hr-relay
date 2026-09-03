@@ -2421,11 +2421,13 @@ row exists, through the same `planStepOmissions` the executor runs, so a cascade
 through refuses here instead of at the worker. See ref dashboard-surfaces §9.1 (the Steps screen), ref
 write-safety (never a transaction) and ref frontend-backend-integration (the wire and refusal codes).
 
-**D313 — the run modal is the complete omission authority (2026-09-02; declared, unbuilt).** In the
-compiled workflow path this supersedes D307's rule that a gate physically inside an omitted step may
-still execute: whole-step omission means no entry in that tuple executes, so any mandatory check
-must be declared separately outside it. Until the workflow conversion lands, D307 above remains the
-as-built omission behavior. Every workflow step has one strict compiled value schema: the complete
+**D313 — the run modal is the complete omission authority (2026-09-02; built by R3 the same day).**
+This supersedes D307's rule that a gate physically inside an omitted step may still execute: whole-step
+omission means no entry in that tuple executes, so any mandatory check must be declared separately
+outside it. As built, `planStepOmissions` classifies a gate of an omitted step `omitted` for every
+workflow, and `defineWorkflow` refuses at definition time any entry outside an omittable step that
+reads a member the step's omission does not rebuild (gates, transactions, parallel and delegate
+entries are never rebuilt; the terminal result is the one reader allowed to see an omitted member). Every workflow step has one strict compiled value schema: the complete
 values available after its entries settle. A step is
 omittable only when its workflow definition declares how the run modal supplies every required value in that
 schema. Selecting omissions and entering those custom values is complete before start-plan

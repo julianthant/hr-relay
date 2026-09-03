@@ -46,8 +46,8 @@ import {
   sessionFactoryHarness,
   sessionManagerFor,
 } from "./fixtures/phase1f-executor-harness.js";
-import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

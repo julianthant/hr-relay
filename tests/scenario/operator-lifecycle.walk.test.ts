@@ -82,7 +82,6 @@ import { buildRunDetail } from "../../src/server/dashboard/queries/run-detail.js
 import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail.js";
 import { createIntakeParser } from "../../src/server/intake/intake-parser.js";
 import { createReceiptService } from "../../src/server/trust/receipt-service.js";
-import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
 import { archiveQueryDeps, archiveSnapshots } from "../fixtures/archive-seams.js";
 import {
   INTAKE_FIXTURE_WORKFLOW_ID,
@@ -98,6 +97,7 @@ import {
   seedPersonLookupExitRun,
 } from "../unit/fixtures/receipt-run-fixtures.js";
 import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 /* ── the source file, as an operator would upload it ─────────────────────── */
 

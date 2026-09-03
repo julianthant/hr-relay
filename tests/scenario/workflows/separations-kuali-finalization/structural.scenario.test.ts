@@ -92,7 +92,7 @@ import { matchSeparationFinalizationTask } from "../../../../src/stores/kuali/ta
 import { saveSeparationFinalizationTask } from "../../../../src/stores/kuali/tasks/save-separation-finalization.js";
 import { stageSeparationFinalizationTask } from "../../../../src/stores/kuali/tasks/stage-separation-finalization.js";
 import { verifySeparationFinalizationTask } from "../../../../src/stores/kuali/tasks/verify-separation-finalization.js";
-import { separationsKualiFinalizationDescriptor } from "../../../../src/workflows/separations/kuali-finalization/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../../../helpers/registered-workflows.js";
 import { SEPARATIONS_KUALI_FINALIZATION_CLAIMS } from "../../coverage-claims.js";
 import { walkDescriptor } from "../../helpers/pure-walk.js";
 import {

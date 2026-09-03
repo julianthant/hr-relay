@@ -112,8 +112,33 @@ The operator selected option A on 2026-09-02. Person Lookup's T1b declaration us
 ordinary read execution with `dryRun=false`, records the ordinary terminal result/receipt and proves
 exact before/after zero deltas in `write_intents`, `write_attempts` and `durable_outbox`. D209 remains
 unchanged: requesting transaction preview still refuses `no-transaction-node`. Adding a no-op
-transaction, using the preview-result schema or waiving live proof are forbidden. The decision is
-ratified; the runner/result arm and this workflow's T1 pair remain implementation work.
+transaction, using the preview-result schema or waiving live proof are forbidden.
+
+**Built and proved live (R3, 2026-09-02).** The manifest is
+`tests/scenario/workflows/person-lookup/dry-run.scenario.ts` (`arm: "live-read"`, one case
+`search-by-eid` on the registered label `person-lookup-canary`, whose EID is the closed reference
+`personLookupCanaryEid` / `HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID` in ignored `.env`). The
+runtime refuses a `live-read` manifest whose compiled graph carries a transaction node and a
+`dry-run-preview` manifest whose graph carries none, before any browser; both refusals and the
+whole arm are pinned deterministically by `tests/unit/dry-run-scenario-live-read.test.ts`.
+
+The exact command `npm run cli -- dry-run-scenario person-lookup --subject person-lookup-canary`,
+run from the R3 worktree's own isolated authority (`.tracker-rebuild/state.db`, activated once by a
+dashboard boot), produced durable result **`ece2c933-d4d5-48cd-b76a-8270646a30f0`** — verdict
+**`met`**, arm `live-read` — for run **`c1f4ad74-4108-4aae-a5a1-9f84e2758ced`** / trace
+**`pl-195040-c1f4`**, attempt 1, `dryRun: false`, terminal `done` after 41,418 ms. All seven
+assertions met: `nodes-reached` (`searching`, `cross-verify`, `active-status`), `nodes-excluded`
+(`crm-dates` skipped on its declared condition), `checkpoints` (three attempt-1 rows keyed with
+`claimGeneration`), `gate-results` (none), `write-safety-deltas` (exact 0 / 0 / 0 over
+`write_intents`, `write_attempts`, `durable_outbox` for this run's intent set; the whole authority
+database also held 0 / 0 / 0 rows), `receipt` (`verified-done` / `verified`, receipt
+`d03df065-1aaf-5d6f-a31e-22fff735af48`, the seven pinned obligations), and `terminal` (the
+workflow's OWN result, bound to its declared result schema, `activeStatus.state = active`,
+`crmDates.state = not-requested`). Two earlier same-day attempts of the same item are recorded in
+the superseded state root only: the first completed `done` but its result row was refused by the
+pre-fix binding that required `dryRun: true`; the second was attempt 2 and correctly replayed its
+reads, which a first-attempt manifest cannot match. The availability claim in
+`config/test-subjects.json` cites this run.
 
 ## 5. Capability and close evidence
 
@@ -131,3 +156,7 @@ all-at-once cutover (D89/D93).
 - 2026-09-02 — amended against ratified D312–D316 owner text at integration commit `1273c360`:
   exact workflow artifacts, task-only recipe entries, no omissions, both recovery choices, and
   equivalence-then-deletion acceptance are now explicit. D209/T1b remains unresolved.
+- 2026-09-02 — R3 built D318's `live-read` arm and ran it live: result
+  `ece2c933-d4d5-48cd-b76a-8270646a30f0` `met` for run `c1f4ad74-4108-4aae-a5a1-9f84e2758ced` /
+  trace `pl-195040-c1f4` (§4). The canonical T1 pair now lives under
+  `tests/scenario/workflows/person-lookup/`. Match mode, T2/T3 and the capability close remain R4.

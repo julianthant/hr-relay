@@ -34,16 +34,21 @@
  *     off an already-parsed `spec.form`) parses through `StepOmissionFormSchema`
  *     with the exact pinned field keys and no duplicate key, declares exactly
  *     the pinned `produces` node ids, and reaches the descriptor unchanged.
- * (d) `planStepOmissions` never classifies ANY gate node as `asserted` or
- *     `omitted` — an omission cannot suppress or manufacture a gate decision —
- *     for three plan shapes per declaration: the step
- *     alone, the step together with its cascade `forces` set, and every
- *     omittable step of the descriptor at once. Separations' `identity-approval`
- *     gate is required to remain present (classified neither way) in all three;
- *     its own evidence condition still decides whether it opens. Each plan's asserted/omitted
- *     node ids are pinned: `dates` and `receipt` are the only asserted nodes,
- *     while `clear-pending`, `file-termination` and `finalize-kuali` are only
- *     ever omitted.
+ * (d) `planStepOmissions` never classifies a gate node as `asserted`, and
+ *     classifies it `omitted` exactly when its OWN step is omitted (D313 —
+ *     whole-step omission executes no entry of the step, a gate included; a
+ *     mandatory check lives outside the step as its own entry). A gate outside
+ *     every omitted step stays present (classified neither way) for three plan
+ *     shapes per declaration: the step alone, the step together with its
+ *     cascade `forces` set, and every omittable step of the descriptor at once.
+ *     Separations' `identity-approval` gate sits in the omission-free
+ *     `identity-check` step and is required to remain present in all three;
+ *     its own evidence condition still decides whether it opens. The fixture's
+ *     `identity-approval` gate sits INSIDE its omittable `identity-check` step
+ *     and is required to be omitted with it. Each plan's asserted/omitted node
+ *     ids are pinned: `dates` and `receipt` are the only asserted nodes, while
+ *     `clear-pending`, `file-termination` and `finalize-kuali` are only ever
+ *     omitted.
  *
  * There is no separate "no separations omission produces identity-approval"
  * arm: a declaration naming the gate throws at import, so that test could not
@@ -425,7 +430,7 @@ describe("step-omission invariants (D307)", () => {
     assertSweptEveryDeclaration(carried, "registry-carried declaration sweep");
   });
 
-  it("never classifies a gate node as asserted or omitted — alone, with its cascade forces, or with every omittable step of its descriptor", () => {
+  it("classifies a gate omitted exactly when its own step is omitted, never asserted — alone, with its cascade forces, or with every omittable step of its descriptor (D313)", () => {
     const audited: string[] = [];
     const wholeDescriptorsAudited: string[] = [];
     for (const descriptor of SWEPT_DESCRIPTORS) {
@@ -439,10 +444,18 @@ describe("step-omission invariants (D307)", () => {
       }
       const cascade = stepOmissionCascade(view);
 
-      const assertGatesExecute = (plan: StepOmissionPlan, shape: string): void => {
+      const stepOfNode = new Map<string, string>();
+      for (const category of view.timeline) for (const { id: nodeId } of category.nodes) stepOfNode.set(nodeId, category.key);
+      const assertGatesExecute = (plan: StepOmissionPlan, shape: string, omittedSteps: readonly string[]): void => {
         for (const gateId of gateIds) {
           assert.ok(!plan.asserted.has(gateId), `${id} (${shape}): asserts gate "${gateId}"`);
-          assert.ok(!plan.omitted.has(gateId), `${id} (${shape}): omits gate "${gateId}"`);
+          const ownStep = stepOfNode.get(gateId);
+          if (ownStep !== undefined && omittedSteps.includes(ownStep)) {
+            // D313 — the whole step is omitted, its gate with it.
+            assert.equal(plan.omitted.get(gateId), ownStep, `${id} (${shape}): gate "${gateId}" must be omitted with its own step "${ownStep}"`);
+          } else {
+            assert.ok(!plan.omitted.has(gateId), `${id} (${shape}): omits gate "${gateId}" whose step "${String(ownStep)}" is not omitted`);
+          }
         }
       };
 
@@ -453,12 +466,12 @@ describe("step-omission invariants (D307)", () => {
         assert.ok(row !== undefined, `${key}: no cascade row`);
 
         const alone = planSteps(descriptor, [spec.step]);
-        assertGatesExecute(alone, `step "${spec.step}" alone`);
+        assertGatesExecute(alone, `step "${spec.step}" alone`, [spec.step]);
         // The step TOGETHER with everything its cascade forces out with it —
         // the set the Steps screen would actually lock, which a single-step
         // plan never exercises.
         const withForces = planSteps(descriptor, [spec.step, ...(row?.forces ?? [])]);
-        assertGatesExecute(withForces, `step "${spec.step}" + forces`);
+        assertGatesExecute(withForces, `step "${spec.step}" + forces`, [spec.step, ...(row?.forces ?? [])]);
         if (row?.state === "omittable") {
           assert.deepEqual(alone.refusals, [], `${key}: an omittable step refuses on its own`);
           assert.deepEqual(withForces.refusals, [], `${key}: an omittable step refuses with its own forced set`);
@@ -474,7 +487,7 @@ describe("step-omission invariants (D307)", () => {
       const everyStep = view.stepOmissions.map(({ step }) => step);
       const whole = planSteps(descriptor, everyStep);
       wholeDescriptorsAudited.push(id);
-      assertGatesExecute(whole, "every omittable step at once");
+      assertGatesExecute(whole, "every omittable step at once", everyStep);
       if (isFixture(descriptor)) continue;
       assert.deepEqual(whole.refusals, [], `${id}: omitting every omittable step at once refuses`);
       const expectedWhole = PRODUCTION_WHOLE_DESCRIPTOR_PLANS[id];

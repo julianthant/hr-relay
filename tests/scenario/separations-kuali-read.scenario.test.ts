@@ -25,7 +25,7 @@ import type { KualiFakeSeparationForm } from "../../src/stores/kuali/driver/fake
 import { readSeparationDocumentTask } from "../../src/stores/kuali/tasks/read-separation-document.js";
 import { matchTerminationTypeTask } from "../../src/stores/separations/tasks/match-termination-type.js";
 import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../src/domain/separations/termination-type.js";
-import { separationsKualiReadDescriptor } from "../../src/workflows/separations/kuali-extraction/descriptor.js";
+import { separationsKualiReadDescriptor } from "../helpers/registered-workflows.js";
 import { walkDescriptor } from "./helpers/pure-walk.js";
 
 const taskCtx = Object.freeze({

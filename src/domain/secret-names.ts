@@ -25,11 +25,17 @@ export const SecretFileNameSchema = z.enum(["duoWebauthnCredential"]);
 export const TestTargetDocumentNumberSecretNameSchema = z.literal(
   "separationsKualiFinalizationCanaryDocumentNumber",
 );
-export const TestTargetSecretNameSchema = TestTargetDocumentNumberSecretNameSchema;
+/** D318 — the person-lookup live-read canary: ONE UCPath EID selected in ignored local configuration. */
+export const TestTargetEidSecretNameSchema = z.literal("personLookupCanaryEid");
+export const TestTargetSecretNameSchema = z.union([
+  TestTargetDocumentNumberSecretNameSchema,
+  TestTargetEidSecretNameSchema,
+]);
 
 export type SecretName = z.infer<typeof SecretNameSchema>;
 export type EnvironmentSecretName = z.infer<typeof EnvironmentSecretNameSchema>;
 export type SecretFamilyName = z.infer<typeof SecretFamilyNameSchema>;
 export type SecretFileName = z.infer<typeof SecretFileNameSchema>;
 export type TestTargetDocumentNumberSecretName = z.infer<typeof TestTargetDocumentNumberSecretNameSchema>;
+export type TestTargetEidSecretName = z.infer<typeof TestTargetEidSecretNameSchema>;
 export type TestTargetSecretName = z.infer<typeof TestTargetSecretNameSchema>;

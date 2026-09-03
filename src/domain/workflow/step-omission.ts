@@ -16,12 +16,16 @@
  *    cannot honestly rebuild), and which executing node would read an omitted
  *    one and therefore refuses BY NAME before anything starts.
  *
- * An omission never removes a gate node. A conditional gate still evaluates
- * its own descriptor evidence; omission is not another way to suppress it.
- * Transactions in an omitted step never run and mint no envelope:
- * the write sequencer's row is the only thing that may say a write happened
- * (D144), so a typed transaction number is a typed FACT a fold consumes, not
- * a substitute outcome.
+ * Whole-step omission means the WHOLE step (D313): no entry of an omitted
+ * step executes — not its reads, not its transactions, and not a gate that
+ * happens to sit inside it. A mandatory check therefore lives OUTSIDE the
+ * step it verifies, as its own selected entry; the compiler refuses a
+ * definition in which an entry outside an omittable step reads a member the
+ * omission does not rebuild, and this planner refuses the same shape per run
+ * (`dependency-omitted`). Transactions in an omitted step never run and mint
+ * no envelope: the write sequencer's row is the only thing that may say a
+ * write happened (D144), so a typed transaction number is a typed FACT a fold
+ * consumes, not a substitute outcome. Only TASK nodes are ever rebuilt.
  */
 import { z } from "zod";
 import type { JsonObject, JsonValue } from "../canonical-json.js";
@@ -204,7 +208,10 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
     for (const { id } of category.nodes) {
       const node = nodeById.get(id);
       if (node === undefined) throw new Error(`timeline step "${entry.step}" names node "${id}", which the graph does not declare`);
-      if (node.kind === "gate") continue;
+      // D313 — a gate inside an omitted step is omitted with the step: it runs
+      // nothing and records no decision. A downstream node that needs that
+      // decision refuses below by name, exactly as it would for any other
+      // unread member.
       const produce = node.kind === "task" ? spec.produces[id] : undefined;
       if (produce === undefined) omitted.set(id, entry.step);
       else asserted.set(id, { step: entry.step, facts: JsonFactsSchema.parse(facts.data), produce });

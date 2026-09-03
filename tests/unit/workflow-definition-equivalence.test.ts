@@ -2,10 +2,7 @@ import { describe, expect, it } from "vitest";
 import { workflowPlanning, workflowProjections } from "../../src/base/workflow.js";
 import { WORKFLOW_MODULES } from "../../src/control/workflow-registry.js";
 import { StepOmissionsSchema, planStepOmissions } from "../../src/domain/workflow/step-omission.js";
-import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
-import { personLookupModule } from "../../src/workflows/person-lookup/module.js";
-import { separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
-import { separationsModule } from "../../src/workflows/separations/module.js";
+import { personLookupDescriptor, personLookupModule, separationsDescriptor, separationsModule } from "../helpers/registered-workflows.js";
 
 const nodeGraph = (descriptor: typeof personLookupDescriptor | typeof separationsDescriptor) =>
   descriptor.nodes.map((node) => {
@@ -26,6 +23,12 @@ const timeline = (descriptor: typeof personLookupDescriptor | typeof separations
     nodes: group.nodes.map((node) => ({ id: String(node.id), label: node.label })),
   }));
 
+function personLookupIntakeTargets() {
+  const intake = personLookupModule.intake;
+  if (intake === undefined) throw new Error("person-lookup registers no intake projection");
+  return intake.targets;
+}
+
 const steps = (descriptor: typeof personLookupDescriptor | typeof separationsDescriptor) =>
   workflowProjections(descriptor).steps.map(({ key, nodeId, label, kind, taskId, conditional }) => ({
     key,
@@ -36,7 +39,7 @@ const steps = (descriptor: typeof personLookupDescriptor | typeof separationsDes
     conditional,
   }));
 
-describe("workflow recipe public equivalence characterization", () => {
+describe("workflow definition public equivalence characterization", () => {
   it("keeps person lookup's public descriptor, module stores, normalized timeline, and registry value", () => {
     expect({
       descriptor: {
@@ -62,7 +65,7 @@ describe("workflow recipe public equivalence characterization", () => {
       module: {
         role: personLookupModule.role,
         stores: personLookupModule.stores.map((store) => ({ kind: store.kind, namespace: store.namespace })),
-        intakeTargets: personLookupModule.intake.targets.map((target) => ({
+        intakeTargets: personLookupIntakeTargets().map((target) => ({
           targetFieldId: target.targetFieldId,
           canonicalFieldId: target.canonicalFieldId,
           label: target.label,
@@ -83,7 +86,8 @@ describe("workflow recipe public equivalence characterization", () => {
         category: "search",
         surface: { shape: "single" },
         enqueue: "reject-active",
-        actions: { enabled: ["retry", "cancel", "bump", "rename", "delete"] },
+        // D314 — every ordinary workflow now offers both recovery choices.
+        actions: { enabled: ["retry", "restart", "cancel", "bump", "rename", "delete"] },
         capabilities: {
           review: false,
           editData: {
@@ -247,7 +251,8 @@ describe("workflow recipe public equivalence characterization", () => {
         category: "separation",
         surface: { shape: "single" },
         enqueue: "reject-active",
-        actions: { enabled: ["retry", "cancel", "bump", "rename", "delete"] },
+        // D314 — every ordinary workflow now offers both recovery choices.
+        actions: { enabled: ["retry", "restart", "cancel", "bump", "rename", "delete"] },
         capabilities: undefined,
         verdicts: [
           { key: "name-differs", label: "Name differs from UCPath", tone: "warning", tag: true },

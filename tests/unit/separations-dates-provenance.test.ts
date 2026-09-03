@@ -12,7 +12,7 @@ import { SeparationsReadSeparationPlan } from "../../src/domain/contracts/separa
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { readSeparationDatesTask } from "../../src/stores/separations/tasks/read-separation-dates.js";
-import { separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
+import { separationsDescriptor } from "../helpers/registered-workflows.js";
 
 const NOW = "2026-08-14T19:00:00.000Z";
 const RUN_ID = "aaaaaaaa-0001-4000-8000-000100000000";

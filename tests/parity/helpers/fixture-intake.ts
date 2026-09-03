@@ -29,8 +29,8 @@ import { suggestBindings } from "../../../src/domain/intake/suggestions.js";
 import { validateIntakeRows } from "../../../src/domain/intake/validate.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../src/domain/intake/wire.js";
 import { workflowPlanning } from "../../../src/base/workflow.js";
-import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
-import { personLookupIntake } from "../../../src/workflows/person-lookup/module.js";
+import { personLookupIntake } from "../../../src/workflows/person-lookup/workflow.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 /**
  * Two sessions, because the two states worth photographing are two POINTS IN

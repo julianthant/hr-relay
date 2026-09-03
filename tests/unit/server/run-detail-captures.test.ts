@@ -10,7 +10,6 @@ import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { ArtifactRefSchema, type ArtifactRef } from "../../../src/domain/artifacts.js";
 import { CaptureListSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
-import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
 import { DiagnosticBundleIdSchema, FailureIdSchema, RunIdSchema } from "../../../src/domain/ids.js";
@@ -25,6 +24,7 @@ import {
 import { HASH_A, HASH_B, NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import { RGBA_PNG_BASE64 } from "../../fixtures/diagnostic-image-fixtures.js";
 import { makeWorld, queuedEventOf, uuidOf } from "./helpers/dashboard-harness.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });

@@ -4,12 +4,14 @@ import {
   FINALIZATION_PERSON_FACTS_DERIVED_REASON,
   parseTestTargetRegistry,
   SeparationsKualiFinalizationPendingSchema,
+  resolvePersonLookupTestTarget,
   resolveSeparationsKualiFinalizationTestTarget,
   resolveSeparationsTestTarget,
   TEST_TARGET_REGISTRY,
   TestTargetWorkflowArmsSchema,
   SEPARATIONS_WORKFLOW,
   FINALIZATION_WORKFLOW,
+  PERSON_LOOKUP_WORKFLOW,
   type TestTargetRegistryInput,
 } from "../../src/control/test-target-registry.js";
 
@@ -155,8 +157,8 @@ function recordingEnv(values: Record<string, string>): {
 }
 
 describe("the committed test target registry", () => {
-  it("carries exactly one subject, doc 4537 under the label finalization-canary", () => {
-    assert.deepEqual(TEST_TARGET_REGISTRY.targets.map(({ label }) => label), ["finalization-canary"]);
+  it("carries exactly two subjects: doc 4537 under finalization-canary, and D318's person-lookup-canary", () => {
+    assert.deepEqual(TEST_TARGET_REGISTRY.targets.map(({ label }) => label), ["finalization-canary", "person-lookup-canary"]);
     assert.equal(TEST_TARGET_REGISTRY.schemaVersion, 2);
   });
 
@@ -180,6 +182,7 @@ describe("the committed test target registry", () => {
     assert.deepEqual(Object.keys(TestTargetWorkflowArmsSchema.shape), [
       SEPARATIONS_WORKFLOW,
       FINALIZATION_WORKFLOW,
+      PERSON_LOOKUP_WORKFLOW,
     ]);
     const [target] = TEST_TARGET_REGISTRY.targets;
     assert.deepEqual(Object.keys(target?.workflows ?? {}), [
@@ -513,10 +516,10 @@ describe("test target registry parsing", () => {
     // for a workflow that has no resolver at all.
     assert.throws(
       () => parseTestTargetRegistry(registry([finalizationSubject()]), [{
-        workflow: "person-lookup",
+        workflow: "i9-lookup",
         cases: [{ subjectLabel: "fixture-target", subjectKind: "ordinary" }],
       }]),
-      /no resolver models workflow person-lookup; modelled: separations, separations-kuali-finalization/,
+      /no resolver models workflow i9-lookup; modelled: separations, separations-kuali-finalization, person-lookup/,
     );
   });
 
@@ -807,6 +810,63 @@ describe("separations chain test target resolution", () => {
     assert.throws(
       () => resolveSeparationsTestTarget(parsed, "fixture-target", FIXTURE_CONFIGURED_ENV),
       /fixture-target marked available, last observed 2026-08-25: no Kuali document exists to run: The only mapped subject lost its row\./,
+    );
+  });
+});
+
+describe("the person-lookup live-read resolver (D318)", () => {
+  const PERSON_LOOKUP_LABEL = "person-lookup-canary";
+  const EID_ENV = "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID";
+
+  it("commits the canary's EID as a closed reference, never as a value", () => {
+    const canary = TEST_TARGET_REGISTRY.targets.find(({ label }) => label === PERSON_LOOKUP_LABEL);
+    assert.deepEqual(canary?.workflows[PERSON_LOOKUP_WORKFLOW]?.publicInput.subject, {
+      state: "configured",
+      reference: { name: "personLookupCanaryEid", env: EID_ENV },
+    });
+    assert.equal(canary?.availability.state, "available");
+  });
+
+  it("blocks by key when the EID is not configured, and never reads another key", () => {
+    const read: string[] = [];
+    const env = new Proxy<NodeJS.ProcessEnv>({}, {
+      get: (target, property): string | undefined => {
+        if (typeof property === "string") read.push(property);
+        const value: unknown = Reflect.get(target, property);
+        return typeof value === "string" ? value : undefined;
+      },
+    });
+    const resolution = resolvePersonLookupTestTarget(TEST_TARGET_REGISTRY, PERSON_LOOKUP_LABEL, env);
+    assert.deepEqual(resolution, {
+      state: "blocked",
+      label: PERSON_LOOKUP_LABEL,
+      reason: `blocked: needs ${PERSON_LOOKUP_LABEL}; its UCPath employee id is not configured — set ${EID_ENV} in the ignored local environment (D318)`,
+    });
+    assert.deepEqual(read, [EID_ENV]);
+  });
+
+  it("resolves the configured EID through the person-lookup start box into the exact canonical input", () => {
+    const resolution = resolvePersonLookupTestTarget(TEST_TARGET_REGISTRY, PERSON_LOOKUP_LABEL, { [EID_ENV]: " 10800000 " });
+    assert.deepEqual(resolution, {
+      state: "ready",
+      label: PERSON_LOOKUP_LABEL,
+      canonicalInput: { emplId: "10800000", keepNonHdh: false, includeCrmDates: false },
+    });
+  });
+
+  it("names the reference and key, never the value, for a malformed EID", () => {
+    assert.throws(
+      () => resolvePersonLookupTestTarget(TEST_TARGET_REGISTRY, PERSON_LOOKUP_LABEL, { [EID_ENV]: "not-an-eid-99" }),
+      (error: unknown) => error instanceof Error
+        && /employee-id reference personLookupCanaryEid \(HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID\) is invalid/u.test(error.message)
+        && !error.message.includes("not-an-eid-99"),
+    );
+  });
+
+  it("refuses a label that declares no person-lookup arm by name", () => {
+    assert.throws(
+      () => resolvePersonLookupTestTarget(TEST_TARGET_REGISTRY, "finalization-canary", {}),
+      /test target finalization-canary declares no person-lookup arm; it declares separations, separations-kuali-finalization/u,
     );
   });
 });

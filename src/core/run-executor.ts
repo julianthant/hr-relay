@@ -770,6 +770,27 @@ export async function executeClaimedRun(
           envelope.itemId,
           String(node.id),
         );
+        // D314 — Restart from start: a read/compute checkpoint ANOTHER run of
+        // this item produced is not replayed; every read and computation
+        // executes again. This run's own rows (a gate resume re-claiming the
+        // same attempt) still replay, and an operator assertion for an omitted
+        // step is classified above, never here.
+        // `stored` is already the repository's strict parse of the durable row
+        // (`runCheckpoints.latest` fails loud on a malformed row before this
+        // point), so its run id is read directly: a lenient re-parse here would
+        // classify an unparseable row as "another run's" instead of refusing.
+        if (envelope.recovery === "restart-from-start" && stored !== undefined && stored.runId !== runId) {
+          if (explicit) {
+            problems.push(
+              `node "${node.id}" (${labelOf(node)}) cannot be replayed on a restart-from-start attempt; `
+              + "a restart owns no explicit start node",
+            );
+            continue;
+          }
+          ancestorRegionOpen = false;
+          plan.set(String(node.id), { mode: "execute" });
+          continue;
+        }
         const load = loadCheckpoint(
           stored,
           checkpointExpectation(node),

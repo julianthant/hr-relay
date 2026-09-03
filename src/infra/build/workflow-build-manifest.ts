@@ -142,11 +142,11 @@ export function fingerprintSourceSet(
  * descriptor actually declares rather than infer one from where it sits.
  *
  * Fail loud on anything but exactly one string-literal `id` in exactly one
- * descriptor-authoring call: the legacy/harness form passes the spec first to
- * `defineWorkflowDescriptor`, while D311's recipe form passes it second to
- * `compileWorkflowRecipe`. A guessed id would key a fingerprint to a workflow
- * that does not exist, and `resolveWorkflowFingerprint`'s throw would then fire
- * at load time for the descriptor that does.
+ * workflow-authoring call: the not-yet-converted harness form passes the spec
+ * first to `defineWorkflowDescriptor`, and D317's authored form passes it
+ * first to `defineWorkflow`. A guessed id would key a fingerprint to a
+ * workflow that does not exist, and `resolveWorkflowFingerprint`'s throw would
+ * then fire at load time for the workflow that does.
  *
  * Exported because `workflow-layout` (D265 arm (a)) asks the same question of
  * the same files — "which workflow does the descriptor at this path declare?" —
@@ -160,10 +160,9 @@ export function declaredWorkflowId(entry: string): string {
   function visit(node: ts.Node): void {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       const specIndex = node.expression.text === "defineWorkflowDescriptor"
+        || node.expression.text === "defineWorkflow"
         ? 0
-        : node.expression.text === "compileWorkflowRecipe"
-          ? 1
-          : undefined;
+        : undefined;
       const spec = specIndex === undefined ? undefined : node.arguments[specIndex];
       if (spec !== undefined && ts.isObjectLiteralExpression(spec)) {
         for (const property of spec.properties) {
@@ -188,10 +187,22 @@ export function declaredWorkflowId(entry: string): string {
   return only;
 }
 
+/** The two authored entry spellings a workflow folder may hold (D317 / transitional harness). */
+const WORKFLOW_ENTRY_FILES = ["workflow.ts", "descriptor.ts"] as const;
+
+function workflowEntryIn(folder: string): string | undefined {
+  const present = WORKFLOW_ENTRY_FILES.map((name) => join(folder, name)).filter((entry) => existsSync(entry));
+  if (present.length > 1) {
+    throw new Error(`${folder} authors both workflow.ts and descriptor.ts; a folder holds exactly one workflow entry`);
+  }
+  return present[0];
+}
+
 /**
- * Every `descriptor.ts` under `src/workflows/`, at either depth D265 §1.2.2
+ * Every workflow entry under `src/workflows/`, at either depth D265 §1.2.2
  * allows: `<workflow>/` for a rail workflow, `<workflow>/<step>/` for the
- * harness that proves one of its timeline steps.
+ * harness that proves one of its timeline steps. D317's authored entry is
+ * `workflow.ts`; a not-yet-converted harness still authors `descriptor.ts`.
  */
 function descriptorFiles(root: string): readonly string[] {
   if (!existsSync(root)) return [];
@@ -199,13 +210,13 @@ function descriptorFiles(root: string): readonly string[] {
   for (const name of readdirSync(root)) {
     const child = join(root, name);
     if (!statSync(child).isDirectory()) continue;
-    const entry = join(child, "descriptor.ts");
-    if (existsSync(entry)) found.push(entry);
+    const entry = workflowEntryIn(child);
+    if (entry !== undefined) found.push(entry);
     for (const nested of readdirSync(child)) {
       const grandchild = join(child, nested);
       if (!statSync(grandchild).isDirectory()) continue;
-      const nestedEntry = join(grandchild, "descriptor.ts");
-      if (existsSync(nestedEntry)) found.push(nestedEntry);
+      const nestedEntry = workflowEntryIn(grandchild);
+      if (nestedEntry !== undefined) found.push(nestedEntry);
     }
   }
   return found;

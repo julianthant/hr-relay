@@ -176,8 +176,8 @@ const CANONICAL_SANITIZER_EXPORTS = new Set([
 ]);
 const CANONICAL_WORKFLOW_MODULE = "src/base/workflow.ts";
 const CANONICAL_DESCRIPTOR_FACTORY_EXPORTS = new Set(["defineWorkflowDescriptor"]);
-const CANONICAL_WORKFLOW_RECIPE_MODULE = "src/base/workflow-recipe.ts";
-const CANONICAL_RECIPE_COMPILER_EXPORTS = new Set(["compileWorkflowRecipe"]);
+const CANONICAL_WORKFLOW_DEFINITION_MODULE = "src/base/workflow-definition.ts";
+const CANONICAL_WORKFLOW_DEFINITION_EXPORTS = new Set(["defineWorkflow"]);
 
 function importedCanonicalBindings(
   path: string,
@@ -919,8 +919,8 @@ export function findSecretInterpolations(path: string, content: string): readonl
     ...importedCanonicalBindings(
       path,
       source,
-      CANONICAL_WORKFLOW_RECIPE_MODULE,
-      CANONICAL_RECIPE_COMPILER_EXPORTS,
+      CANONICAL_WORKFLOW_DEFINITION_MODULE,
+      CANONICAL_WORKFLOW_DEFINITION_EXPORTS,
     ),
   ]);
   const bindings = aliasBindings(source);
@@ -1288,10 +1288,9 @@ describe("no secret values in logs", () => {
       "});",
     ].join("\n")), []);
 
-    assert.deepEqual(findSecretInterpolations("src/workflows/example/descriptor.ts", [
-      'import { compileWorkflowRecipe } from "../../base/workflow-recipe.js";',
-      "declare const recipe: unknown;",
-      "export const descriptor = compileWorkflowRecipe(recipe, {",
+    assert.deepEqual(findSecretInterpolations("src/workflows/example/workflow.ts", [
+      'import { defineWorkflow } from "../../base/workflow-definition.js";',
+      "export const workflow = defineWorkflow({",
       "  presentation: {",
       "    title: (input: { emplId: string }) => `EID ${input.emplId}` ,",
       "    subtitle: (input: { eid: string }) => `EID ${input.eid}` ,",

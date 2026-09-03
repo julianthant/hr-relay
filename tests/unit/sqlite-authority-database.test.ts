@@ -69,10 +69,8 @@ import {
 } from "./fixtures/activity-person-pseudonym-fixtures.js";
 import { compositionQueuedRun } from "./fixtures/separations-composition-fixtures.js";
 import { DCC4_SUPERSEDED_V19_MIGRATION } from "./fixtures/dcc4-superseded-migration.js";
-import {
-  PersonLookupCanonicalInput,
-  personLookupDescriptor,
-} from "../../src/workflows/person-lookup/descriptor.js";
+import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];

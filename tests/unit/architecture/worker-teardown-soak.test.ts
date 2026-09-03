@@ -43,7 +43,6 @@ import type { RunRecord } from "../../../src/domain/run/record.js";
 import { createLedgerProjector } from "../../../src/infra/ledger/index.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
-import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { sequentialIdFactory, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
@@ -57,6 +56,7 @@ import {
   type AuthorityHarness,
   type SessionFactoryHarness,
 } from "../fixtures/phase1f-executor-harness.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const ACTIVE_STATES = new Set(["claimed", "validating", "running"]);
 const HEARTBEAT_INTERVAL_MS = 500;

@@ -33,8 +33,8 @@
  * the audited `src/base` builders.
  */
 import { z } from "zod";
-import { flow } from "../../../base/flow.js";
-import { defineWorkflowDescriptor, requireFact } from "../../../base/workflow.js";
+import { defineWorkflow } from "../../../base/workflow-definition.js";
+import { requireFact } from "../../../base/workflow.js";
 import {
   ReadSeparationTimecardOutputSchema,
   TimecardRangeBoundSchema,
@@ -44,16 +44,14 @@ import {
   SearchEmployeeOutputSchema,
 } from "../../../domain/contracts/new-kronos/search-employee.js";
 import { CANONICAL_FIELDS } from "../../../domain/fields/registry.js";
-import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
+import { EidSchema } from "../../../domain/ids.js";
 import { TimecardDateSchema } from "../../../domain/kronos/separation-timecard.js";
 import { classifyNameSimilarity, NameSimilarityTierSchema } from "../../../domain/matching/name-match.js";
-import {
-  BUILD_MANIFEST,
-  resolveWorkflowFingerprint,
-} from "../../../domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
+import { defineWorkflowRole } from "../../../domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
 import { timecardNode } from "./nodes.js";
+import { KRONOS_TIMECARD_STEP } from "./step.js";
 
 /**
  * The employee's name as the run expects it — the SAME canonical schema object
@@ -180,105 +178,9 @@ function latestDate(dates: readonly string[]): string | null {
   return ordered.at(-1) ?? null;
 }
 
-const separationsKronosTimecardFlow = flow(SeparationsKronosTimecardInput)
-  .step("search", NewKronosSearchEmployee, {
-    label: "Employee Search",
-    dependsOn: [],
-    /**
-     * `always-rerun`, and this is the load-bearing choice in the graph.
-     *
-     * The search's OUTPUT is durable, but its POINT is a side effect that is
-     * not: it leaves the employee selected in the WFD search panel, which is
-     * the only thing that enables Go To. Replaying the checkpoint restores the
-     * output into a FRESH browser that has never opened the panel, so the
-     * timecard node then refuses — observed live on run `sk-124132-9beb`
-     * (2026-08-12), which replayed the previous attempt's search checkpoint and
-     * failed at Go To with an empty panel.
-     *
-     * The general rule this settles: **a node whose real product is BROWSER
-     * state may not be `replay: "checkpoint"`.** Ref workflow-model §5.3 replay restores
-     * values, never page state, so a downstream task whose precondition is a
-     * live page must be preceded by a node that actually runs. The search is a
-     * ~2s read; re-running it is strictly cheaper than the failure mode.
-     */
-    replay: "always-rerun",
-    bind: ({ input }) => ({ emplId: input.emplId, searchTimeoutMs: input.searchTimeoutMs }),
-  })
-  // The step's own `timecard` fragment (`./nodes.ts`), wired from this
-  // harness's `search` node and its ingress window. `search` itself stays a
-  // hand-written node: its id and label ("search" / "Employee Search") are not
-  // the composition's `timecard-search`, and a node's id is its identity.
-  .pipe(timecardNode.wire({
-    // The timecard visit begins from the selection the search node left in the
-    // panel, so it depends on it structurally as well as semantically: Go To is
-    // disabled without it, and a disabled Go To is a loud failure, never an
-    // empty card.
-    dependsOn: ["search"],
-    bind: ({ input, outputs }) => {
-      // The EID comes from the RUN INPUT, not from the row text: the search
-      // task already refused unless `matched.employeeId` equalled it, so
-      // re-deriving it from the page would add a parse without adding a proof.
-      // Reading the fact here is what makes the dependency load-bearing rather
-      // than decorative — a search that produced no match never reaches this
-      // node at all.
-      requireFact(outputs.search.matched, "search", "matched");
-      return { emplId: input.emplId, rangeStart: input.rangeStart, rangeEnd: input.rangeEnd };
-    },
-  }))
-  .build({
-    schema: SeparationsKronosTimecardResultSchema,
-    dependsOn: ["search", "timecard"],
-    derive: ({ input, outputs }) => {
-      const { subject, range, grid } = outputs.timecard;
-      const latestLeaveDate = latestDate([...grid.sickDates, ...grid.holidayDates]);
-      const candidates = [grid.lastPunchDate, latestLeaveDate]
-        .filter((value): value is string => value !== null);
-      return {
-        subject: {
-          expectedEid: input.emplId,
-          observedEmployeeId: subject.observedEmployeeId,
-          expectedName: input.expectedName,
-          observedDisplayName: subject.observedDisplayName,
-          nameSimilarity: classifyNameSimilarity(input.expectedName, subject.observedDisplayName),
-        },
-        window: {
-          requestedStart: range.requestedStart,
-          requestedEnd: range.requestedEnd,
-          observedStart: range.observedStart,
-          observedEnd: range.observedEnd,
-          observedLabel: range.observedLabel,
-          daysCovered: grid.daysCovered,
-        },
-        timecard: {
-          lastPunchDate: grid.lastPunchDate,
-          punchDates: grid.punchDates,
-          sickDates: grid.sickDates,
-          holidayDates: grid.holidayDates,
-          payCodeDays: grid.payCodeDays,
-          unclassifiedPayCodes: grid.unclassifiedPayCodes,
-        },
-        derived: {
-          lastPunchDate: grid.lastPunchDate,
-          latestLeaveDate,
-          separationDateCandidate: latestDate(candidates),
-          hasPunches: grid.punchDates.length > 0,
-        },
-        search: {
-          totalCount: outputs.search.totalCount,
-          candidates: outputs.search.candidates,
-          panelContext: outputs.search.panelContext,
-        },
-      };
-    },
-  });
-
-export const separationsKronosTimecardDescriptor = defineWorkflowDescriptor({
+export const separationsKronosTimecardWorkflow = defineWorkflow({
   id: "separations-kronos-timecard",
   version: 1,
-  contractFingerprint: resolveWorkflowFingerprint(
-    BUILD_MANIFEST,
-    WorkflowIdSchema.parse("separations-kronos-timecard"),
-  ),
   code: "sk",
   label: "Separation Timecard",
   summary:
@@ -373,5 +275,94 @@ export const separationsKronosTimecardDescriptor = defineWorkflowDescriptor({
     "separations-kronos-timecard/search-no-signal",
     "separations-kronos-timecard/wrong-employee-timecard",
   ],
-  flow: separationsKronosTimecardFlow,
+  input: SeparationsKronosTimecardInput,
+  // A proving harness for one step of `separations`, never a peer workflow (D219) —
+  // the step it proves is the folder it lives in, read from that folder's own
+  // declaration rather than re-typed here (D265 §1.2.2 rule 3).
+  role: defineWorkflowRole({ kind: "chunk-harness", of: "separations", step: KRONOS_TIMECARD_STEP.key }),
+  steps: ({ task, result }) => {
+    /**
+     * `always-rerun`, and this is the load-bearing choice in the graph.
+     *
+     * The search's OUTPUT is durable, but its POINT is a side effect that is
+     * not: it leaves the employee selected in the WFD search panel, which is
+     * the only thing that enables Go To. Replaying the checkpoint restores the
+     * output into a FRESH browser that has never opened the panel, so the
+     * timecard node then refuses — observed live on run `sk-124132-9beb`
+     * (2026-08-12), which replayed the previous attempt's search checkpoint and
+     * failed at Go To with an empty panel.
+     *
+     * The general rule this settles: **a node whose real product is BROWSER
+     * state may not be `replay: "checkpoint"`.** Ref workflow-model §5.3 replay restores
+     * values, never page state, so a downstream task whose precondition is a
+     * live page must be preceded by a node that actually runs. The search is a
+     * ~2s read; re-running it is strictly cheaper than the failure mode.
+     */
+    const search = task({
+      id: "search",
+      contract: NewKronosSearchEmployee,
+      label: "Employee Search",
+      replay: "always-rerun",
+    }, [], ({ input }) => ({ emplId: input.emplId, searchTimeoutMs: input.searchTimeoutMs }));
+    // The step's own `timecard` identity (`./nodes.ts`), wired from this
+    // harness's `search` node and its ingress window. `search` itself stays a
+    // harness-authored entry: its id and label ("search" / "Employee Search")
+    // are not the composition's `timecard-search`, and a node's id is its identity.
+    const timecard = task(timecardNode, [search], ({ input, outputs }) => {
+      // The EID comes from the RUN INPUT, not from the row text: the search
+      // task already refused unless `matched.employeeId` equalled it, so
+      // re-deriving it from the page would add a parse without adding a proof.
+      // Reading the fact here is what makes the dependency load-bearing rather
+      // than decorative — a search that produced no match never reaches this
+      // node at all.
+      requireFact(outputs.search.matched, "search", "matched");
+      return { emplId: input.emplId, rangeStart: input.rangeStart, rangeEnd: input.rangeEnd };
+    });
+    return {
+      // The harness IS the step it proves: one timeline group, the step's own.
+      steps: [[KRONOS_TIMECARD_STEP, [search, timecard]]],
+      result: result(SeparationsKronosTimecardResultSchema, [search, timecard], ({ input, outputs }) => {
+        const { subject, range, grid } = outputs.timecard;
+        const latestLeaveDate = latestDate([...grid.sickDates, ...grid.holidayDates]);
+        const candidates = [grid.lastPunchDate, latestLeaveDate]
+          .filter((value): value is string => value !== null);
+        return {
+          subject: {
+            expectedEid: input.emplId,
+            observedEmployeeId: subject.observedEmployeeId,
+            expectedName: input.expectedName,
+            observedDisplayName: subject.observedDisplayName,
+            nameSimilarity: classifyNameSimilarity(input.expectedName, subject.observedDisplayName),
+          },
+          window: {
+            requestedStart: range.requestedStart,
+            requestedEnd: range.requestedEnd,
+            observedStart: range.observedStart,
+            observedEnd: range.observedEnd,
+            observedLabel: range.observedLabel,
+            daysCovered: grid.daysCovered,
+          },
+          timecard: {
+            lastPunchDate: grid.lastPunchDate,
+            punchDates: grid.punchDates,
+            sickDates: grid.sickDates,
+            holidayDates: grid.holidayDates,
+            payCodeDays: grid.payCodeDays,
+            unclassifiedPayCodes: grid.unclassifiedPayCodes,
+          },
+          derived: {
+            lastPunchDate: grid.lastPunchDate,
+            latestLeaveDate,
+            separationDateCandidate: latestDate(candidates),
+            hasPunches: grid.punchDates.length > 0,
+          },
+          search: {
+            totalCount: outputs.search.totalCount,
+            candidates: outputs.search.candidates,
+            panelContext: outputs.search.panelContext,
+          },
+        };
+      }),
+    };
+  },
 });

@@ -88,11 +88,9 @@ import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
 } from "../../../src/infra/sqlite/migrations.js";
-import {
-  PersonLookupCanonicalInput,
-  personLookupDescriptor,
-} from "../../../src/workflows/person-lookup/descriptor.js";
+import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];

@@ -51,8 +51,8 @@ import { taskStoreRegistry } from "../../../src/stores/index.js";
 import {
   SeparationsUcpathTerminationCanonicalInput,
   SeparationsUcpathTerminationInput,
-  separationsUcpathTerminationDescriptor,
-} from "../../../src/workflows/separations/ucpath-transaction/descriptor.js";
+} from "../../../src/workflows/separations/ucpath-transaction/workflow.js";
+import { separationsUcpathTerminationDescriptor } from "../../helpers/registered-workflows.js";
 import { UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,

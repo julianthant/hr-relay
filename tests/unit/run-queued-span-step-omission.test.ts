@@ -22,7 +22,7 @@ function runWithOmissions(stepOmissions: readonly Readonly<{ step: string; facts
   });
 }
 
-describe("runQueuedSpanEvent (D307)", () => {
+describe("runQueuedSpanEvent (D307, D314)", () => {
   it("emits omittedSteps as the step keys only, never the operator's typed facts", () => {
     const run = runWithOmissions([
       { step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: SENSITIVE_FACT_VALUE } },
@@ -41,5 +41,27 @@ describe("runQueuedSpanEvent (D307)", () => {
     const run = RunRecordSchema.parse(QUEUED_RUN);
     const event = runQueuedSpanEvent({ run, actorId: ACTOR, title: "Fixture run" });
     assert.equal(Object.hasOwn(event, "omittedSteps"), false);
+  });
+
+  it("projects a D314 restart-from-start recovery choice onto the queue root, and omits the key for a resume or ordinary start", () => {
+    const priorRunId = "aaaaaaaa-0007-4000-8000-000000000007";
+    const restarted = RunRecordSchema.parse({
+      ...QUEUED_RUN,
+      envelope: { ...QUEUED_RUN.envelope, retryOf: priorRunId, recovery: "restart-from-start" },
+    });
+    const restartEvent = runQueuedSpanEvent({ run: restarted, actorId: ACTOR, title: "Fixture run" });
+    assert.equal(restartEvent.recovery, "restart-from-start");
+    assert.equal(restartEvent.retryOf, priorRunId);
+
+    const resumed = RunRecordSchema.parse({
+      ...QUEUED_RUN,
+      envelope: { ...QUEUED_RUN.envelope, retryOf: priorRunId },
+    });
+    const resumeEvent = runQueuedSpanEvent({ run: resumed, actorId: ACTOR, title: "Fixture run" });
+    assert.equal(resumeEvent.retryOf, priorRunId);
+    assert.equal(Object.hasOwn(resumeEvent, "recovery"), false, "a resume carries retryOf alone");
+
+    const ordinary = runQueuedSpanEvent({ run: RunRecordSchema.parse(QUEUED_RUN), actorId: ACTOR, title: "Fixture run" });
+    assert.equal(Object.hasOwn(ordinary, "recovery"), false);
   });
 });

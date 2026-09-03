@@ -318,8 +318,11 @@ environment-supplied.
 
 - **2026-09-01 — D307 step omission.** Declare an omission BESIDE the step's own nodes
   (`nodes.category(fragments, { omission })`), never as a separate mechanism. Its `produces` map
-  rebuilds TASK node outputs only — a gate always runs (ALWAYS-GATE) and a transaction never runs and
-  mints no envelope (D144). A typed fact an omission consumes never crosses a served wire or a span;
+  rebuilds TASK node outputs only; a transaction never runs and mints no envelope (D144). Since D313
+  (2026-09-02) whole-step omission executes NO entry of the step — a gate inside an omitted step is
+  omitted with it — so a mandatory check is authored as its own entry outside the omittable step, and
+  `defineWorkflow` refuses a definition where an entry outside an omittable step reads a member the
+  omission does not rebuild. A typed fact an omission consumes never crosses a served wire or a span;
   the receipt and result name the assertion (`disposition: "operator-asserted"`, an `{ state:
   "omitted", step }` arm) instead of replaying the value.
 

@@ -19,6 +19,8 @@
     "build:manifest:check": "tsx scripts/generate-build-manifest.ts --check",
     "roadmap": "tsx scripts/generate-roadmap.ts",
     "roadmap:check": "tsx scripts/generate-roadmap.ts --check",
+    "stores:catalog": "tsx scripts/generate-store-catalog.ts",
+    "stores:catalog:check": "tsx scripts/generate-store-catalog.ts --check",
     "smoke:test-target-document-number": "tsx scripts/secure-env-bootstrap.ts test-target-document-number",
     "ui:catalog": "tsx scripts/generate-ui-catalog.ts",
     "selector:search": "tsx scripts/search-ui.ts",

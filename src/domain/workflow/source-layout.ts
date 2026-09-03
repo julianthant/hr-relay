@@ -37,12 +37,24 @@ export function workflowSourceFolder(id: string, role: WorkflowModuleRole): stri
   }
 }
 
-/** The descriptor module every registered workflow authors by hand. */
+/**
+ * D317 — the ONE authored workflow file: `<folder>/workflow.ts`, holding one
+ * `defineWorkflow(...)` call. Descriptors, module requirements and registry
+ * values are compiled from it and never authored beside it.
+ */
+export function workflowSourcePath(id: string, role: WorkflowModuleRole): string {
+  return `${workflowSourceFolder(id, role)}/workflow.ts`;
+}
+
+/**
+ * The hand-authored descriptor module of a NOT YET CONVERTED chunk harness —
+ * a transitional path that 3c-A's deletion acceptance retires.
+ */
 export function descriptorSourcePath(id: string, role: WorkflowModuleRole): string {
   return `${workflowSourceFolder(id, role)}/descriptor.ts`;
 }
 
-/** The server composition module that pairs with it. */
+/** The server composition module that pairs with a not-yet-converted descriptor. */
 export function moduleSourcePath(id: string, role: WorkflowModuleRole): string {
   return `${workflowSourceFolder(id, role)}/module.ts`;
 }

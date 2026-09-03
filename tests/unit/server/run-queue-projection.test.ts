@@ -14,7 +14,6 @@ import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../src/dom
 import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { ProjectionDegradedError } from "../../../src/server/failures.js";
-import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
 import { HASH_A, HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
@@ -41,6 +40,7 @@ import {
   type DashboardWorld,
 } from "./helpers/dashboard-harness.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const worlds: DashboardWorld[] = [];
 
@@ -199,8 +199,8 @@ describe("THE run/queue projection (D81)", () => {
     assert.deepEqual(actionKeys(2), ["cancel", "rename"], "the running row");
     // D308's 🗑 is last, so the footer's most destructive control is furthest
     // from the click an operator makes by reflex.
-    assert.deepEqual(actionKeys(3), ["retry", "rename", "delete"], "the done row");
-    assert.deepEqual(actionKeys(4), ["retry", "rename", "delete"], "the failed row");
+    assert.deepEqual(actionKeys(3), ["retry", "restart", "rename", "delete"], "the done row");
+    assert.deepEqual(actionKeys(4), ["retry", "restart", "rename", "delete"], "the failed row");
     assert.deepEqual(actionKeys(9), ["cancel", "rename"], "the awaiting-approval row");
     // A settled delegated member carries no re-run: the kernel refuses generic
     // retry for a child ("child retries route through their delegation edge

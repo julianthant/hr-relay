@@ -72,7 +72,6 @@ import {
 } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
 import { buildArchivedCaptureResource } from "../../../src/server/dashboard/queries/archive.js";
 import { ArtifactBytesCorruptError, IndexedArtifactBytesMissingError } from "../../../src/server/dashboard/queries/artifact-bytes.js";
-import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { ARCHIVED_RUN_WITH_SECTIONS, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "../fixtures/archive-fixtures.js";
 import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
 import {
@@ -105,6 +104,7 @@ import {
   type RedactionSurface,
   type SurfaceLeafOrigin,
 } from "./helpers/redaction-surface-audit.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 /* ── the modules whose exported wire schemas must be covered ─────────────── */
 

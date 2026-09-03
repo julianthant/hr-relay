@@ -1715,9 +1715,9 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/workflows/person-lookup",
-        "src/workflows/person-lookup/descriptor.ts",
-        "tests/scenario/person-lookup.scenario.test.ts",
-        "tests/scenario/person-lookup-runtime.scenario.test.ts"
+        "src/workflows/person-lookup/workflow.ts",
+        "tests/scenario/workflows/person-lookup/structural.scenario.test.ts",
+        "tests/scenario/workflows/person-lookup/dry-run.scenario.ts"
       ],
       "status": "open"
     },

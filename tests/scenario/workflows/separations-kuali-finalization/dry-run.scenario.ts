@@ -135,6 +135,8 @@ const PREVIEW_RECEIPT_VERIFICATION = [
 const MANIFEST = {
   scenarioId: "separations-kuali-finalization/dry-run",
   workflow: "separations-kuali-finalization",
+  // D318 — the transaction-bearing graph declares the preview arm explicitly.
+  arm: "dry-run-preview",
   transactionNode: TRANSACTION_NODE,
   recordedBy: "docs/migrations/separations.md §9.22 (the hand-run double-entry this file replaces)",
   cases: [

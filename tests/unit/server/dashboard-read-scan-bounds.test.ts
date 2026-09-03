@@ -33,7 +33,6 @@ import {
   type RunDetailQueryDeps,
   type RunNoteScanEntry,
 } from "../../../src/server/dashboard/queries/run-detail.js";
-import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
 import { dataOriginViewsOf } from "../../../src/server/dashboard/compose.js";
 import {
@@ -50,6 +49,7 @@ import {
   uuidOf,
   type DashboardWorld,
 } from "./helpers/dashboard-harness.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const worlds: DashboardWorld[] = [];
 function world(): DashboardWorld {

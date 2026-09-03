@@ -44,11 +44,9 @@ import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { createDeterministicCrmOnboardingDriver } from "../../../src/stores/crm/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/stores/ucpath/driver/fake.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
-import {
-  PersonLookupCanonicalInput,
-  personLookupDescriptor,
-} from "../../../src/workflows/person-lookup/descriptor.js";
+import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { QUEUED_RUN } from "./phase1f-run-fixtures.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 export const EXECUTOR_EID = EidSchema.parse("10873698");
 export const EXECUTOR_WORKER_ID = WorkerIdSchema.parse("person-lookup-worker-1");

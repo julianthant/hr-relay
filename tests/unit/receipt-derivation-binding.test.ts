@@ -35,9 +35,9 @@ import {
 import { diffReceipts } from "../../src/core/receipt-derivation-binding.js";
 import { failureStatus } from "../../src/server/dashboard/routes/failure-status.js";
 import { createReceiptService } from "../../src/server/trust/receipt-service.js";
-import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
-import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
 import { kualiReceiptEvidence, seedPersonLookupExitRun } from "./fixtures/receipt-run-fixtures.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 /**
  * A closure hash this build does not have. It stands for "the tree moved after

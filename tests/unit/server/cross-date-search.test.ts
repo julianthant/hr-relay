@@ -15,10 +15,10 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
-import { separationsDescriptor } from "../../../src/workflows/separations/descriptor.js";
 import { runRecordOf } from "./helpers/dashboard-harness.js";
 import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { SANITIZED_CROSS_DATE_SEARCH_CORPUS } from "../fixtures/cross-date-search-corpus.js";
+import { separationsDescriptor } from "../../helpers/registered-workflows.js";
 
 const TEST_CURSOR_SIGNING_KEY = new Uint8Array(32).fill(0x53);
 const MEASURED_SEARCH_DESCRIPTOR = Object.freeze({

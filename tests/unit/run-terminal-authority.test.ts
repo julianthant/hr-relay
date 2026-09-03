@@ -22,10 +22,7 @@ import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import type {
   AuthorityTerminalizationHooks,
 } from "../../src/infra/sqlite/index.js";
-import {
-  PersonLookupCanonicalInput,
-  personLookupDescriptor,
-} from "../../src/workflows/person-lookup/descriptor.js";
+import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
 import {
   HASH_B,
   HASH_A,
@@ -41,6 +38,7 @@ import {
   WORKER_ID,
   WORKFLOW_ID,
 } from "./fixtures/phase1f-run-fixtures.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const CLOCK = manualClock(new Date(LATER));
 const roots: string[] = [];

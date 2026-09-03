@@ -94,9 +94,8 @@ import { z } from "zod";
 import { OmittedStepResultArmSchema } from "../../domain/workflow/step-omission.js";
 import { KUALI_FINALIZATION_STEP } from "./kuali-finalization/step.js";
 import { UCPATH_TRANSACTION_STEP } from "./ucpath-transaction/step.js";
-import { compileWorkflowRecipe, defineWorkflowRecipe } from "../../base/workflow-recipe.js";
+import { defineWorkflow } from "../../base/workflow-definition.js";
 import { requireFact } from "../../base/workflow.js";
-import { WorkflowIdSchema } from "../../domain/ids.js";
 import { ResolvedIdentitySubjectSchema } from "../../domain/separations/identity-approval.js";
 import {
   buildFinalizationComments,
@@ -109,11 +108,8 @@ import {
 } from "../../domain/ui/kuali-document-identity.js";
 import { KualiSavedFinalizationProofSchema } from "../../domain/ui/kuali-separation-finalization.js";
 import { UcpathPendingSweepHistoricalOrCurrentProofSchema } from "../../domain/ui/ucpath-smart-hr-termination.js";
-import {
-  BUILD_MANIFEST,
-  resolveWorkflowFingerprint,
-} from "../../domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
+import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
 import {
   APPROVAL_NODE,
@@ -327,341 +323,9 @@ function omittedOr<T, R>(
   return widened === undefined ? Object.freeze({ state: "omitted" as const, step }) : present(widened);
 }
 
-export const separationsRecipe = defineWorkflowRecipe(
-  SeparationsInput,
-  ({ group, taskFromFragment, transactionFromFragment, gateFromFragment, result }) => {
-    const action = taskFromFragment(actionNode, [], ({ input }) => ({
-      documentNumber: input.documentNumber,
-    }));
-    const document = taskFromFragment(documentNode, [action], ({ input, outputs }) => ({
-      actionId: outputs[ACTION_NODE].actionId,
-      documentNumber: input.documentNumber,
-    }));
-    const plan = taskFromFragment(planNode, [document], ({ input, outputs }) => ({
-      documentNumber: input.documentNumber,
-      employeeName: outputs[DOCUMENT_NODE].employee.name,
-      lastDayWorked: outputs[DOCUMENT_NODE].separation.lastDayWorked,
-      separationDate: outputs[DOCUMENT_NODE].separation.separationDate,
-      // S7's reference is the READ's own instant, not a clock: the refusal then
-      // says what is true — *as of the moment this run read the document*.
-      observedAt: outputs[DOCUMENT_NODE].observedAt,
-    }));
-    const terminationType = taskFromFragment(
-      terminationTypeNode,
-      [document],
-      ({ input, outputs }) => ({
-      terminationType: outputs[DOCUMENT_NODE].separation.terminationType,
-      // The complete option list this run ACTUALLY observed, so a republished
-      // control refuses on the first run that sees it (§4a's accepted cost).
-      observedOptions: outputs[DOCUMENT_NODE].options.terminationType,
-      documentNumber: input.documentNumber,
-      }),
-    );
-    const nameSearch = taskFromFragment(nameSearchNode, [plan], ({ outputs }) => ({
-    // `keepNonHdh: true`, always, and UNCONDITIONALLY run — the fragment's own
-    // doc says why; the composition feeds it the plan's employee name.
-      kind: "by-name" as const,
-      name: outputs[PLAN_NODE].employeeName,
-      keepNonHdh: true,
-    }));
-    const subject = taskFromFragment(subjectNode, [document, plan, nameSearch], ({ input, outputs }) => ({
-      documentNumber: input.documentNumber,
-      employeeName: outputs[PLAN_NODE].employeeName,
-      documentEid: outputs[DOCUMENT_NODE].employee.eid,
-      nameSelection: outputs[NAME_SEARCH_NODE].selection,
-    }));
-    const jobSummary = taskFromFragment(jobSummaryNode, [subject], ({ outputs }) => ({
-      emplId: outputs[SUBJECT_NODE].emplId,
-    }));
-    const employment = taskFromFragment(employmentNode, [document, jobSummary], ({ input, outputs }) => ({
-      documentNumber: input.documentNumber,
-      jobSummary: outputs[JOB_SUMMARY_NODE],
-    }));
-    const departmentOption = taskFromFragment(
-      departmentOptionNode,
-      [document, employment],
-      ({ input, outputs }) => ({
-      deptId: outputs[EMPLOYMENT_NODE].deptId,
-      department: outputs[EMPLOYMENT_NODE].department,
-      // This document's OWN control, read this run — never a captured constant,
-      // because a new campus department is a legitimate option nobody has to
-      // teach this repository about before somebody can be separated.
-      observedOptions: outputs[DOCUMENT_NODE].options.department,
-      documentNumber: input.documentNumber,
-      }),
-    );
-    const timecardSearch = taskFromFragment(timecardSearchNode, [subject], ({ input, outputs }) => ({
-      emplId: outputs[SUBJECT_NODE].emplId,
-      searchTimeoutMs: input.searchTimeoutMs,
-    }));
-    const timecard = taskFromFragment(timecardNode, [subject, plan, timecardSearch], ({ outputs }) => {
-      // Reading the search's own match is what makes the dependency load-bearing
-      // rather than decorative: Go To is disabled without the selection, and a
-      // disabled Go To is a loud failure, never an empty card.
-      requireFact(outputs[TIMECARD_SEARCH_NODE].matched, TIMECARD_SEARCH_NODE, "matched");
-      return {
-        emplId: outputs[SUBJECT_NODE].emplId,
-        rangeStart: outputs[PLAN_NODE].timecardWindow.start,
-        rangeEnd: outputs[PLAN_NODE].timecardWindow.end,
-      };
-    });
-    const dates = taskFromFragment(datesNode, [plan, timecard], ({ input, outputs }) => ({
-      plan: outputs[PLAN_NODE],
-      timekeeperName: input.timekeeperName,
-      lastPunchDate: outputs[TIMECARD_NODE].grid.lastPunchDate,
-      sickDates: outputs[TIMECARD_NODE].grid.sickDates,
-      holidayDates: outputs[TIMECARD_NODE].grid.holidayDates,
-      unclassifiedPayCodes: outputs[TIMECARD_NODE].grid.unclassifiedPayCodes,
-      // The window the grid was PROVED to be showing, not the one asked for
-      // (S40) — a leave day outside it is a year-stamp defect, not a leave day.
-      observedWindow: {
-        start: outputs[TIMECARD_NODE].range.observedStart,
-        end: outputs[TIMECARD_NODE].range.observedEnd,
-      },
-    }));
-    const comparison = taskFromFragment(
-      comparisonNode,
-      [document, plan, subject, jobSummary, nameSearch, terminationType, departmentOption, employment, dates],
-      ({ input, outputs }) => ({
-    /**
-     * Everything identity authority consumes depends INTO this node. That is
-     * what makes `identity-gate-before-commit` pass on a graph with three
-     * transaction nodes: no write can consume a value outside the packet that
-     * machine verification or the operator decision was bound to.
-     */
-      documentNumber: input.documentNumber,
-      documentName: outputs[PLAN_NODE].employeeName,
-      documentEid: outputs[DOCUMENT_NODE].employee.eid,
-      emplId: outputs[SUBJECT_NODE].emplId,
-      emplIdSource: outputs[SUBJECT_NODE].emplIdSource,
-      jobSummary: outputs[JOB_SUMMARY_NODE],
-      nameSelection: outputs[NAME_SEARCH_NODE].selection,
-      /**
-       * **What the writes will consume.** Chunks 4 and 5 both recorded this as
-       * the composition's job in the same words, and §14.5's digest is why it
-       * matters: the approval binds to these values, so a date that moves after
-       * approval re-opens the gate instead of being filed on a click that never
-       * saw it.
-       */
-      plan: {
-        state: "planned" as const,
-        termination: {
-          terminationType: outputs[TERMINATION_TYPE_NODE].terminationType,
-          classification: outputs[TERMINATION_TYPE_NODE].classification,
-          template: outputs[TERMINATION_TYPE_NODE].template,
-          reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
-          emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
-          effectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-          lastDateWorked: outputs[DATES_NODE].lastDayWorked,
-          initiatorComments: outputs[DATES_NODE].terminationComments,
-        },
-        document: {
-          documentNumber: input.documentNumber,
-          department: outputs[DEPARTMENT_NODE].option,
-          departmentCode: outputs[DEPARTMENT_NODE].departmentCode,
-          ucpathDepartment: outputs[DEPARTMENT_NODE].ucpathDepartment,
-          payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
-          payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
-          terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-          timekeeperName: input.timekeeperName,
-        },
-        dates: {
-          kualiLastDayWorked: outputs[DATES_NODE].kualiLastDayWorked,
-          lastDayWorked: outputs[DATES_NODE].lastDayWorked,
-          lastDayWorkedChanged: outputs[DATES_NODE].lastDayWorkedChanged,
-          kualiSeparationDate: outputs[DATES_NODE].kualiSeparationDate,
-          separationDate: outputs[DATES_NODE].separationDate,
-          separationDateChanged: outputs[DATES_NODE].separationDateChanged,
-          separationDeterminingLeave: outputs[DATES_NODE].separationDeterminingLeave,
-          unclassifiedPayCodes: outputs[DATES_NODE].unclassifiedPayCodes,
-          source: outputs[DATES_NODE].source,
-        },
-      },
-      }),
-    );
-    const identityGate = gateFromFragment(identityApprovalGate, [comparison]);
-    const approval = taskFromFragment(approvalNode, [comparison, identityGate], ({ outputs }) => ({
-      packet: outputs[COMPARISON_NODE].packet,
-      evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
-      approval: outputs[GATE_NODE],
-    }));
-    const pendingSet = taskFromFragment(pendingSetNode, [approval], ({ outputs }) => ({
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-    }));
-    const clearPending = transactionFromFragment(clearPendingNode, [approval, pendingSet], {
-    prepareBind: ({ outputs }) => ({
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-      observedSet: outputs[PENDING_SET_NODE],
-    }),
-    commitBind: ({ outputs }) => ({
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-      observedSet: outputs[PENDING_SET_NODE],
-    }),
-    });
-    const fileTermination = transactionFromFragment(
-      fileTerminationNode,
-      [approval, terminationType, employment, dates, clearPending],
-      {
-    prepareBind: ({ outputs }) => ({
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-      emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
-      effectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-      template: outputs[TERMINATION_TYPE_NODE].template,
-      reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
-      lastDateWorked: outputs[DATES_NODE].lastDayWorked,
-      initiatorComments: outputs[DATES_NODE].terminationComments,
-    }),
-    commitBind: ({ outputs }) => ({
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-      emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
-      effectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-      template: outputs[TERMINATION_TYPE_NODE].template,
-      reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
-      lastDateWorked: outputs[DATES_NODE].lastDayWorked,
-      initiatorComments: outputs[DATES_NODE].terminationComments,
-    }),
-      },
-    );
-    const receipt = taskFromFragment(receiptNode, [approval, dates, fileTermination], ({ outputs }) => ({
-      // A transaction node's scope value is the typed outcome envelope (D144);
-      // `output` is the COMMIT contract's own bare output.
-      proof: outputs[TERMINATION_NODE].output.receipt,
-      disposition: outputs[TERMINATION_NODE].disposition,
-      approvedEmplId: outputs[APPROVAL_NODE].approved.emplId,
-      expectedEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-    }));
-    const filingPresence = taskFromFragment(filingPresenceNode, [receipt], ({ outputs }) =>
-      outputs[RECEIPT_NODE]);
-    const finalizeKuali = transactionFromFragment(
-      finalizeKualiNode,
-      [approval, action, document, plan, employment, departmentOption, dates, receipt, filingPresence],
-      {
-    prepareBind: ({ input, outputs }) => ({
-      actionId: outputs[ACTION_NODE].actionId,
-      documentNumber: input.documentNumber,
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      variables: {
-        department: outputs[DEPARTMENT_NODE].option,
-        payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
-        payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
-        timekeeperName: input.timekeeperName,
-        // §4e's 2026-08-14 amendment — legacy's step-13 write-backs, staged
-        // from the RECONCILED variables and UNCONDITIONALLY. When nothing
-        // moved these equal what the document already carries, so the save
-        // writes the same string back and the read-back proves it either way;
-        // a conditional stage would need an expectation composed from the
-        // page's own prior value, which is the re-read §4e forbids.
-        lastDayWorked: outputs[DATES_NODE].lastDayWorked,
-        separationDate: outputs[DATES_NODE].separationDate,
-        terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-        transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
-        timekeeperComments: buildFinalizationComments({
-          existingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
-          dateChangeComments: outputs[DATES_NODE].dateChangeComments,
-          documentNumber: input.documentNumber,
-          transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
-          initials: separationInitials(input.timekeeperName),
-          asOfDate: outputs[PLAN_NODE].asOfDate,
-        }),
-        observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
-      },
-    }),
-    /**
-     * The SAME target the prepare staged, bound from workflow input plus the
-     * gate-approved identity and the folds — never from the prepare's own
-     * output. That is what makes the permanent key stable before any page
-     * mutation (ref workflow-model §3.1), and what the beat-⑥ read-back compares against.
-     */
-    commitBind: ({ input, outputs }) => ({
-      actionId: outputs[ACTION_NODE].actionId,
-      documentNumber: input.documentNumber,
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      variables: {
-        department: outputs[DEPARTMENT_NODE].option,
-        payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
-        payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
-        timekeeperName: input.timekeeperName,
-        // §4e's 2026-08-14 amendment, bound identically to the prepare's.
-        lastDayWorked: outputs[DATES_NODE].lastDayWorked,
-        separationDate: outputs[DATES_NODE].separationDate,
-        terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-        transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
-        timekeeperComments: buildFinalizationComments({
-          existingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
-          dateChangeComments: outputs[DATES_NODE].dateChangeComments,
-          documentNumber: input.documentNumber,
-          transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
-          initials: separationInitials(input.timekeeperName),
-          asOfDate: outputs[PLAN_NODE].asOfDate,
-        }),
-        observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
-      },
-    }),
-      },
-    );
-
-    return {
-      steps: [
-        [KUALI_EXTRACTION_STEP, [action, document, plan, terminationType]],
-        [IDENTITY_CHECK_STEP, [nameSearch, subject, comparison, identityGate, approval]],
-        [JOB_SUMMARY_STEP, [jobSummary, employment, departmentOption]],
-        [group(KRONOS_TIMECARD_STEP, { omission: KRONOS_TIMECARD_OMISSION }), [timecardSearch, timecard, dates]],
-        [group(UCPATH_TRANSACTION_STEP, { omission: UCPATH_TRANSACTION_OMISSION }), [pendingSet, clearPending, fileTermination, receipt]],
-        [group(KUALI_FINALIZATION_STEP, { omission: KUALI_FINALIZATION_OMISSION }), [filingPresence, finalizeKuali]],
-      ],
-      result: result(
-        SeparationsResultSchema,
-        [approval, employment, departmentOption, dates, receipt, clearPending, fileTermination, finalizeKuali],
-        ({ outputs }) => ({
-      documentNumber: outputs[APPROVAL_NODE].documentNumber,
-      approved: outputs[APPROVAL_NODE].approved,
-      employment: {
-        emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
-        payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
-        payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
-      },
-      department: {
-        option: outputs[DEPARTMENT_NODE].option,
-        departmentCode: outputs[DEPARTMENT_NODE].departmentCode,
-      },
-      dates: {
-        kualiLastDayWorked: outputs[DATES_NODE].kualiLastDayWorked,
-        lastDayWorked: outputs[DATES_NODE].lastDayWorked,
-        kualiSeparationDate: outputs[DATES_NODE].kualiSeparationDate,
-        separationDate: outputs[DATES_NODE].separationDate,
-        terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-        lastDayWorkedChanged: outputs[DATES_NODE].lastDayWorkedChanged,
-        separationDateChanged: outputs[DATES_NODE].separationDateChanged,
-      },
-      // D307 — an omitted write step's node is absent from the scope (the
-      // factory admits it as `step-omitted`); the result names the step.
-      pendingSweep: omittedOr(outputs[SWEEP_NODE], UCPATH_TRANSACTION_STEP.key, (sweep) => ({
-        disposition: sweep.disposition,
-        proof: sweep.output.cleared,
-      })),
-      termination: outputs[RECEIPT_NODE],
-      finalization: omittedOr(outputs[FINALIZE_NODE], KUALI_FINALIZATION_STEP.key, (finalize) => ({
-        disposition: finalize.disposition,
-        proof: finalize.output.savedState,
-      })),
-        }),
-      ),
-    };
-  },
-);
-
-export const separationsDescriptor = compileWorkflowRecipe(separationsRecipe, {
+export const separationsWorkflow = defineWorkflow({
   id: "separations",
   version: 1,
-  contractFingerprint: resolveWorkflowFingerprint(
-    BUILD_MANIFEST,
-    WorkflowIdSchema.parse("separations"),
-  ),
   code: "sp",
   label: "Separations",
   summary:
@@ -968,6 +632,10 @@ export const separationsDescriptor = compileWorkflowRecipe(separationsRecipe, {
         + "subject, effective date, termination action, and acceptable status to survive before Kuali can prepare.",
     },
   ],
+  input: SeparationsInput,
+  // The composed graph the five separations chunk harnesses each prove a step
+  // of — the `of` target every one of them names (D219).
+  role: defineWorkflowRole({ kind: "composition" }),
   scenarios: [
     "separations/action-resolved",
     "separations/action-not-in-action-list",
@@ -991,4 +659,328 @@ export const separationsDescriptor = compileWorkflowRecipe(separationsRecipe, {
     "separations/re-read-is-a-new-item",
     "separations/gate-resume-shape",
   ],
+  steps: ({ group, task, transaction, gate, result }) => {
+    const action = task(actionNode, [], ({ input }) => ({
+      documentNumber: input.documentNumber,
+    }));
+    const document = task(documentNode, [action], ({ input, outputs }) => ({
+      actionId: outputs[ACTION_NODE].actionId,
+      documentNumber: input.documentNumber,
+    }));
+    const plan = task(planNode, [document], ({ input, outputs }) => ({
+      documentNumber: input.documentNumber,
+      employeeName: outputs[DOCUMENT_NODE].employee.name,
+      lastDayWorked: outputs[DOCUMENT_NODE].separation.lastDayWorked,
+      separationDate: outputs[DOCUMENT_NODE].separation.separationDate,
+      // S7's reference is the READ's own instant, not a clock: the refusal then
+      // says what is true — *as of the moment this run read the document*.
+      observedAt: outputs[DOCUMENT_NODE].observedAt,
+    }));
+    const terminationType = task(
+      terminationTypeNode,
+      [document],
+      ({ input, outputs }) => ({
+      terminationType: outputs[DOCUMENT_NODE].separation.terminationType,
+      // The complete option list this run ACTUALLY observed, so a republished
+      // control refuses on the first run that sees it (§4a's accepted cost).
+      observedOptions: outputs[DOCUMENT_NODE].options.terminationType,
+      documentNumber: input.documentNumber,
+      }),
+    );
+    const nameSearch = task(nameSearchNode, [plan], ({ outputs }) => ({
+    // `keepNonHdh: true`, always, and UNCONDITIONALLY run — the fragment's own
+    // doc says why; the composition feeds it the plan's employee name.
+      kind: "by-name" as const,
+      name: outputs[PLAN_NODE].employeeName,
+      keepNonHdh: true,
+    }));
+    const subject = task(subjectNode, [document, plan, nameSearch], ({ input, outputs }) => ({
+      documentNumber: input.documentNumber,
+      employeeName: outputs[PLAN_NODE].employeeName,
+      documentEid: outputs[DOCUMENT_NODE].employee.eid,
+      nameSelection: outputs[NAME_SEARCH_NODE].selection,
+    }));
+    const jobSummary = task(jobSummaryNode, [subject], ({ outputs }) => ({
+      emplId: outputs[SUBJECT_NODE].emplId,
+    }));
+    const employment = task(employmentNode, [document, jobSummary], ({ input, outputs }) => ({
+      documentNumber: input.documentNumber,
+      jobSummary: outputs[JOB_SUMMARY_NODE],
+    }));
+    const departmentOption = task(
+      departmentOptionNode,
+      [document, employment],
+      ({ input, outputs }) => ({
+      deptId: outputs[EMPLOYMENT_NODE].deptId,
+      department: outputs[EMPLOYMENT_NODE].department,
+      // This document's OWN control, read this run — never a captured constant,
+      // because a new campus department is a legitimate option nobody has to
+      // teach this repository about before somebody can be separated.
+      observedOptions: outputs[DOCUMENT_NODE].options.department,
+      documentNumber: input.documentNumber,
+      }),
+    );
+    const timecardSearch = task(timecardSearchNode, [subject], ({ input, outputs }) => ({
+      emplId: outputs[SUBJECT_NODE].emplId,
+      searchTimeoutMs: input.searchTimeoutMs,
+    }));
+    const timecard = task(timecardNode, [subject, plan, timecardSearch], ({ outputs }) => {
+      // Reading the search's own match is what makes the dependency load-bearing
+      // rather than decorative: Go To is disabled without the selection, and a
+      // disabled Go To is a loud failure, never an empty card.
+      requireFact(outputs[TIMECARD_SEARCH_NODE].matched, TIMECARD_SEARCH_NODE, "matched");
+      return {
+        emplId: outputs[SUBJECT_NODE].emplId,
+        rangeStart: outputs[PLAN_NODE].timecardWindow.start,
+        rangeEnd: outputs[PLAN_NODE].timecardWindow.end,
+      };
+    });
+    const dates = task(datesNode, [plan, timecard], ({ input, outputs }) => ({
+      plan: outputs[PLAN_NODE],
+      timekeeperName: input.timekeeperName,
+      lastPunchDate: outputs[TIMECARD_NODE].grid.lastPunchDate,
+      sickDates: outputs[TIMECARD_NODE].grid.sickDates,
+      holidayDates: outputs[TIMECARD_NODE].grid.holidayDates,
+      unclassifiedPayCodes: outputs[TIMECARD_NODE].grid.unclassifiedPayCodes,
+      // The window the grid was PROVED to be showing, not the one asked for
+      // (S40) — a leave day outside it is a year-stamp defect, not a leave day.
+      observedWindow: {
+        start: outputs[TIMECARD_NODE].range.observedStart,
+        end: outputs[TIMECARD_NODE].range.observedEnd,
+      },
+    }));
+    const comparison = task(
+      comparisonNode,
+      [document, plan, subject, jobSummary, nameSearch, terminationType, departmentOption, employment, dates],
+      ({ input, outputs }) => ({
+    /**
+     * Everything identity authority consumes depends INTO this node. That is
+     * what makes `identity-gate-before-commit` pass on a graph with three
+     * transaction nodes: no write can consume a value outside the packet that
+     * machine verification or the operator decision was bound to.
+     */
+      documentNumber: input.documentNumber,
+      documentName: outputs[PLAN_NODE].employeeName,
+      documentEid: outputs[DOCUMENT_NODE].employee.eid,
+      emplId: outputs[SUBJECT_NODE].emplId,
+      emplIdSource: outputs[SUBJECT_NODE].emplIdSource,
+      jobSummary: outputs[JOB_SUMMARY_NODE],
+      nameSelection: outputs[NAME_SEARCH_NODE].selection,
+      /**
+       * **What the writes will consume.** Chunks 4 and 5 both recorded this as
+       * the composition's job in the same words, and §14.5's digest is why it
+       * matters: the approval binds to these values, so a date that moves after
+       * approval re-opens the gate instead of being filed on a click that never
+       * saw it.
+       */
+      plan: {
+        state: "planned" as const,
+        termination: {
+          terminationType: outputs[TERMINATION_TYPE_NODE].terminationType,
+          classification: outputs[TERMINATION_TYPE_NODE].classification,
+          template: outputs[TERMINATION_TYPE_NODE].template,
+          reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
+          emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
+          effectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+          lastDateWorked: outputs[DATES_NODE].lastDayWorked,
+          initiatorComments: outputs[DATES_NODE].terminationComments,
+        },
+        document: {
+          documentNumber: input.documentNumber,
+          department: outputs[DEPARTMENT_NODE].option,
+          departmentCode: outputs[DEPARTMENT_NODE].departmentCode,
+          ucpathDepartment: outputs[DEPARTMENT_NODE].ucpathDepartment,
+          payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
+          payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
+          terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+          timekeeperName: input.timekeeperName,
+        },
+        dates: {
+          kualiLastDayWorked: outputs[DATES_NODE].kualiLastDayWorked,
+          lastDayWorked: outputs[DATES_NODE].lastDayWorked,
+          lastDayWorkedChanged: outputs[DATES_NODE].lastDayWorkedChanged,
+          kualiSeparationDate: outputs[DATES_NODE].kualiSeparationDate,
+          separationDate: outputs[DATES_NODE].separationDate,
+          separationDateChanged: outputs[DATES_NODE].separationDateChanged,
+          separationDeterminingLeave: outputs[DATES_NODE].separationDeterminingLeave,
+          unclassifiedPayCodes: outputs[DATES_NODE].unclassifiedPayCodes,
+          source: outputs[DATES_NODE].source,
+        },
+      },
+      }),
+    );
+    const identityGate = gate(identityApprovalGate, [comparison]);
+    const approval = task(approvalNode, [comparison, identityGate], ({ outputs }) => ({
+      packet: outputs[COMPARISON_NODE].packet,
+      evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
+      approval: outputs[GATE_NODE],
+    }));
+    const pendingSet = task(pendingSetNode, [approval], ({ outputs }) => ({
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+    }));
+    const clearPending = transaction(clearPendingNode, [approval, pendingSet], {
+    prepareBind: ({ outputs }) => ({
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+      observedSet: outputs[PENDING_SET_NODE],
+    }),
+    commitBind: ({ outputs }) => ({
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+      observedSet: outputs[PENDING_SET_NODE],
+    }),
+    });
+    const fileTermination = transaction(
+      fileTerminationNode,
+      [approval, terminationType, employment, dates, clearPending],
+      {
+    prepareBind: ({ outputs }) => ({
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+      emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
+      effectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+      template: outputs[TERMINATION_TYPE_NODE].template,
+      reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
+      lastDateWorked: outputs[DATES_NODE].lastDayWorked,
+      initiatorComments: outputs[DATES_NODE].terminationComments,
+    }),
+    commitBind: ({ outputs }) => ({
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+      emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
+      effectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+      template: outputs[TERMINATION_TYPE_NODE].template,
+      reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
+      lastDateWorked: outputs[DATES_NODE].lastDayWorked,
+      initiatorComments: outputs[DATES_NODE].terminationComments,
+    }),
+      },
+    );
+    const receipt = task(receiptNode, [approval, dates, fileTermination], ({ outputs }) => ({
+      // A transaction node's scope value is the typed outcome envelope (D144);
+      // `output` is the COMMIT contract's own bare output.
+      proof: outputs[TERMINATION_NODE].output.receipt,
+      disposition: outputs[TERMINATION_NODE].disposition,
+      approvedEmplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+    }));
+    const filingPresence = task(filingPresenceNode, [receipt], ({ outputs }) =>
+      outputs[RECEIPT_NODE]);
+    const finalizeKuali = transaction(
+      finalizeKualiNode,
+      [approval, action, document, plan, employment, departmentOption, dates, receipt, filingPresence],
+      {
+    prepareBind: ({ input, outputs }) => ({
+      actionId: outputs[ACTION_NODE].actionId,
+      documentNumber: input.documentNumber,
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      variables: {
+        department: outputs[DEPARTMENT_NODE].option,
+        payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
+        payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
+        timekeeperName: input.timekeeperName,
+        // §4e's 2026-08-14 amendment — legacy's step-13 write-backs, staged
+        // from the RECONCILED variables and UNCONDITIONALLY. When nothing
+        // moved these equal what the document already carries, so the save
+        // writes the same string back and the read-back proves it either way;
+        // a conditional stage would need an expectation composed from the
+        // page's own prior value, which is the re-read §4e forbids.
+        lastDayWorked: outputs[DATES_NODE].lastDayWorked,
+        separationDate: outputs[DATES_NODE].separationDate,
+        terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+        transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
+        timekeeperComments: buildFinalizationComments({
+          existingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
+          dateChangeComments: outputs[DATES_NODE].dateChangeComments,
+          documentNumber: input.documentNumber,
+          transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
+          initials: separationInitials(input.timekeeperName),
+          asOfDate: outputs[PLAN_NODE].asOfDate,
+        }),
+        observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
+      },
+    }),
+    /**
+     * The SAME target the prepare staged, bound from workflow input plus the
+     * gate-approved identity and the folds — never from the prepare's own
+     * output. That is what makes the permanent key stable before any page
+     * mutation (ref workflow-model §3.1), and what the beat-⑥ read-back compares against.
+     */
+    commitBind: ({ input, outputs }) => ({
+      actionId: outputs[ACTION_NODE].actionId,
+      documentNumber: input.documentNumber,
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      variables: {
+        department: outputs[DEPARTMENT_NODE].option,
+        payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
+        payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
+        timekeeperName: input.timekeeperName,
+        // §4e's 2026-08-14 amendment, bound identically to the prepare's.
+        lastDayWorked: outputs[DATES_NODE].lastDayWorked,
+        separationDate: outputs[DATES_NODE].separationDate,
+        terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+        transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
+        timekeeperComments: buildFinalizationComments({
+          existingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
+          dateChangeComments: outputs[DATES_NODE].dateChangeComments,
+          documentNumber: input.documentNumber,
+          transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
+          initials: separationInitials(input.timekeeperName),
+          asOfDate: outputs[PLAN_NODE].asOfDate,
+        }),
+        observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
+      },
+    }),
+      },
+    );
+
+    return {
+      steps: [
+        [KUALI_EXTRACTION_STEP, [action, document, plan, terminationType]],
+        [IDENTITY_CHECK_STEP, [nameSearch, subject, comparison, identityGate, approval]],
+        [JOB_SUMMARY_STEP, [jobSummary, employment, departmentOption]],
+        [group(KRONOS_TIMECARD_STEP, { omission: KRONOS_TIMECARD_OMISSION }), [timecardSearch, timecard, dates]],
+        [group(UCPATH_TRANSACTION_STEP, { omission: UCPATH_TRANSACTION_OMISSION }), [pendingSet, clearPending, fileTermination, receipt]],
+        [group(KUALI_FINALIZATION_STEP, { omission: KUALI_FINALIZATION_OMISSION }), [filingPresence, finalizeKuali]],
+      ],
+      result: result(
+        SeparationsResultSchema,
+        [approval, employment, departmentOption, dates, receipt, clearPending, fileTermination, finalizeKuali],
+        ({ outputs }) => ({
+      documentNumber: outputs[APPROVAL_NODE].documentNumber,
+      approved: outputs[APPROVAL_NODE].approved,
+      employment: {
+        emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
+        payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
+        payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
+      },
+      department: {
+        option: outputs[DEPARTMENT_NODE].option,
+        departmentCode: outputs[DEPARTMENT_NODE].departmentCode,
+      },
+      dates: {
+        kualiLastDayWorked: outputs[DATES_NODE].kualiLastDayWorked,
+        lastDayWorked: outputs[DATES_NODE].lastDayWorked,
+        kualiSeparationDate: outputs[DATES_NODE].kualiSeparationDate,
+        separationDate: outputs[DATES_NODE].separationDate,
+        terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+        lastDayWorkedChanged: outputs[DATES_NODE].lastDayWorkedChanged,
+        separationDateChanged: outputs[DATES_NODE].separationDateChanged,
+      },
+      // D307 — an omitted write step's node is absent from the scope (the
+      // factory admits it as `step-omitted`); the result names the step.
+      pendingSweep: omittedOr(outputs[SWEEP_NODE], UCPATH_TRANSACTION_STEP.key, (sweep) => ({
+        disposition: sweep.disposition,
+        proof: sweep.output.cleared,
+      })),
+      termination: outputs[RECEIPT_NODE],
+      finalization: omittedOr(outputs[FINALIZE_NODE], KUALI_FINALIZATION_STEP.key, (finalize) => ({
+        disposition: finalize.disposition,
+        proof: finalize.output.savedState,
+      })),
+        }),
+      ),
+    };
+  },
 });

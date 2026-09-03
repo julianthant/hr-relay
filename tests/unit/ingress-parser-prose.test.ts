@@ -23,8 +23,8 @@ import {
   inputRunSeparatorLabel,
   inputRunValueNoun,
 } from "../../src/domain/workflow/ingress.js";
-import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
 import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const parser = (spec: unknown) => InputParserSpecSchema.parse(spec);
 

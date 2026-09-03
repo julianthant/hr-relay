@@ -57,6 +57,19 @@ export type BrowserPresentationMode = z.infer<typeof BrowserPresentationModeSche
 export const InstanceSelectionSchema = z.partialRecord(BrowserSystemIdSchema, SystemInstanceSchema);
 export type InstanceSelection = z.infer<typeof InstanceSelectionSchema>;
 
+/**
+ * D314 — the operator's recovery choice for a NEW attempt of the same logical
+ * item. Absent (the ordinary start, and "Resume from checkpoints") replays
+ * valid checkpoint ancestors; `restart-from-start` ignores every read/compute
+ * checkpoint another run produced so every read and computation executes
+ * again. Neither choice lets a completed external write execute twice: a
+ * transaction whose permanent intent is already committed or observed-present
+ * reuses its durable proof, and the write sequencer refuses by name when the
+ * fresh facts no longer match that proof's permanent key.
+ */
+export const RunRecoveryModeSchema = z.enum(["restart-from-start"]);
+export type RunRecoveryMode = z.infer<typeof RunRecoveryModeSchema>;
+
 export const RunParentSchema = z.strictObject({
   runId: RunIdSchema,
   tracePrefix: TraceIdSchema,
@@ -88,6 +101,8 @@ export const RunEnvelopeSchema = z.strictObject({
   captureBrowserScreenshots: z.boolean().optional(),
   /** D307 — the steps this run omits, with the operator's typed facts; absent means every step runs. */
   stepOmissions: StepOmissionsSchema.optional(),
+  /** D314 — present only on a Restart-from-start attempt; carried unchanged through a requeue. */
+  recovery: RunRecoveryModeSchema.optional(),
   /** A resumable graph-node id, never an internal transaction arm (ref workflow-model §5.7). */
   startAt: NodeIdSchema.optional(),
   injected: z.array(CheckpointPatchSchema).min(1).optional(),
