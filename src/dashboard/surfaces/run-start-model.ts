@@ -279,7 +279,7 @@ export type StepOmissionFieldRead =
   | Readonly<{ state: "unreadable"; message: string }>;
 
 /**
- * What a fact IS on the wire — the closed leaf `StartPlanSubmissionSchema`
+ * What a fact IS on the wire — the closed leaf `StartPlanRequestSchema`
  * declares, and exactly the four shapes the seven declared kinds produce. It is
  * narrower than `JsonValue` on purpose: an open value here is a value the wire
  * would drop without saying so.

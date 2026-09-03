@@ -10,100 +10,17 @@
  * confirms against the served titles/refusals plus the fingerprints that
  * bind the plan.
  */
-import { z } from "zod";
+import { StartPlanIngressSchema, StartPlanWireSchema, type StartPlanWire } from "../../../domain/dashboard/start-plan.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
-import { JsonValueSchema } from "../../../domain/canonical-json.js";
 import type { Clock } from "../../../domain/clock.js";
 import type { IdFactory } from "../../../domain/identifiers.js";
-import {
-  ActorIdSchema,
-  ConfigSnapshotIdSchema,
-  FingerprintSchema,
-  IsoInstantSchema,
-  RunIdSchema,
-  StartPlanIdSchema,
-  TraceIdSchema,
-  WorkflowIdSchema,
-} from "../../../domain/ids.js";
-import { BrowserPresentationModeSchema, InstanceSelectionSchema, RunPrioritySchema } from "../../../domain/run/envelope.js";
-import { StartRefusalCodeSchema } from "../../../domain/run/start-plan.js";
-import { TimelineCategoryKeySchema } from "../../../domain/workflow/presentation.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { planStart } from "../../../services/start/plan.js";
 import { StartStepOmissionRefusedError, applyStartStepSelection, resolveStartStepOmissions } from "../../../services/start/step-selection.js";
-import { StepOmissionsSchema } from "../../../domain/workflow/step-omission.js";
 import type { StartPlannerDeps } from "../../../services/start/plan.js";
 import { TargetNotFoundError } from "../../failures.js";
 
-const StartPlanIngressSchema = z.strictObject({
-  workflowId: WorkflowIdSchema,
-  submissions: z.array(JsonValueSchema).min(1),
-  dryRun: z.boolean(),
-  // Historical/programmatic request callers retain the established headless
-  // default; every dashboard submission sends an explicit value.
-  browserMode: BrowserPresentationModeSchema.default("headless"),
-  captureBrowserScreenshots: z.boolean().default(false),
-  /** Trusted server stamp; the surface may request `bulk` explicitly. */
-  priority: RunPrioritySchema.default("interactive"),
-  requestedInstance: InstanceSelectionSchema.optional(),
-  selectedStepKeys: z.array(z.string().min(1)).min(1).optional(),
-  /**
-   * D307 — typed facts for each omitted step. The schema proves the SHAPE; the
-   * descriptor's own forms and cascade prove the content, in
-   * `resolveStartStepOmissions`, before a plan row exists. A request carrying
-   * omissions without an explicit `selectedStepKeys` is refused there: which
-   * steps run is the operator's statement, and facts without it would be
-   * omissions for steps nobody said were omitted.
-   */
-  stepOmissions: StepOmissionsSchema.optional(),
-});
-
-const StartPlanWireSchema = z.strictObject({
-  wireVersion: z.literal(1),
-  startPlanId: StartPlanIdSchema,
-  workflowId: WorkflowIdSchema,
-  /** The CAS token the `start-run` command target carries. */
-  expectedVersion: z.number().int().positive(),
-  expiresAt: IsoInstantSchema,
-  dryRun: z.boolean(),
-  browserMode: BrowserPresentationModeSchema.optional(),
-  captureBrowserScreenshots: z.boolean().optional(),
-  /**
-   * D307 — the omitted step KEYS, in timeline order, and never the facts.
-   *
-   * The response wire already refuses to echo `rawInput` back (see the module
-   * note): reflecting submitted values through an HTTP response bypasses the
-   * schema-owned redaction lane. Typed omission facts are the same kind of
-   * value — a step form can ask for an employee id or a date about a real
-   * person — so the plan retains them durably for audit and the wire carries
-   * only which steps were left out. The browser already holds what it typed.
-   */
-  omittedSteps: z.array(TimelineCategoryKeySchema).min(1).optional(),
-  priority: RunPrioritySchema,
-  plannedBy: ActorIdSchema,
-  configSnapshotId: ConfigSnapshotIdSchema,
-  /** Everything the `start-run` command payload must echo back, verbatim. */
-  fingerprints: z.strictObject({
-    descriptorFingerprint: FingerprintSchema,
-    configFingerprint: FingerprintSchema,
-    ingressSchemaHash: FingerprintSchema,
-    canonicalInputSchemaHash: FingerprintSchema,
-    inputFingerprint: FingerprintSchema,
-  }),
-  planned: z.array(z.strictObject({
-    runId: RunIdSchema,
-    traceId: TraceIdSchema,
-    title: z.string().min(1),
-    subtitle: z.string().min(1).optional(),
-    matchKey: z.string().min(1),
-  })),
-  refused: z.array(z.strictObject({
-    entry: z.number().int().positive(),
-    code: StartRefusalCodeSchema,
-    message: z.string().min(1),
-  })),
-});
-export type StartPlanWire = z.infer<typeof StartPlanWireSchema>;
+export type { StartPlanWire } from "../../../domain/dashboard/start-plan.js";
 
 export interface StartPlanServiceDeps {
   readonly authority: {
