@@ -12,10 +12,16 @@
  *    the world sees no second stage, fence or click;
  * 3. a restart whose fresh facts derive a DIFFERENT permanent key (another
  *    approved EID) refuses by node name and key digest reference, still with
- *    no stage, fence or click.
+ *    no stage, fence or click;
+ * 4. a restart that BOTH drifted (the descriptor moved under the stored
+ *    settlement) and moved its fresh facts is refused as DRIFT — the drift
+ *    check runs before the fresh-fact lookup, so the operator is told the one
+ *    thing that has to be resolved first rather than a mismatch derived from a
+ *    checkpoint this build may no longer read.
  */
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
+import { FingerprintSchema } from "../../src/domain/ids.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
 import { UUID_5, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
 import {
@@ -136,6 +142,48 @@ describe("write sequencer — no repeat writes across recovery (D314)", () => {
         && /key digest [0-9a-f]{12}…/u.test(error.message)
         && !error.message.includes(String(COMPOSITION_OTHER_EID))
         && !error.message.includes(String(COMPOSITION_EID)),
+    );
+    assert.deepEqual(worldCounts(h), { stages: 1, clicks: 1, rows: 1 }, "the refused restart touched nothing");
+    assert.equal(h.database.authority.writeIntents.countDryRunEvidenceByRun(UUID_7).writeIntents, 0);
+    assert.equal(h.database.authority.writeIntents.countDryRunEvidenceByRun(UUID_7).writeAttempts, 0);
+  });
+
+  it("a drifted stored settlement refuses as contract drift, not as a fresh-fact mismatch", async () => {
+    const h = harness();
+    const first = await fileTermination(h);
+
+    const { run, claim } = compositionClaimRunning(
+      h.database, h.clock, restartRun(UUID_7, 2, first.envelope.runId), TERMINATION_NODE,
+    );
+    const moved = compositionContext(run, claim, TERMINATION_NODE);
+    // The descriptor MOVED under the stored settlement: this build no longer
+    // reads the checkpoint attempt 1 wrote.
+    const drifted = FingerprintSchema.parse("d".repeat(64));
+    assert.notEqual(drifted, moved.descriptor.contractFingerprint);
+    const approval = COMPOSITION_SCOPE_OUTPUTS.approval;
+    const context = {
+      ...moved,
+      descriptor: { ...moved.descriptor, contractFingerprint: drifted },
+      scope: {
+        input: { ...COMPOSITION_RUN_INPUT },
+        outputs: {
+          ...COMPOSITION_SCOPE_OUTPUTS,
+          "pending-set": compositionPendingSet([]),
+          // …AND the fresh identity fold names another person, so the fresh
+          // key names no permanent intent either. Both refusals are available;
+          // only drift is correct, because it is the one that has to be
+          // resolved before the other question can even be asked.
+          approval: { ...approval, approved: { ...approval.approved, emplId: COMPOSITION_OTHER_EID } },
+        },
+      },
+    };
+    await assert.rejects(
+      h.bound(() => h.sequencer.executeTransaction(context)),
+      (error: unknown) => error instanceof Error
+        && new RegExp(`transaction node "${TERMINATION_NODE}" has a stored outcome from a drifted descriptor/impl`, "u")
+          .test(error.message)
+        && /a transaction checkpoint never replays across contract drift and never re-clicks/u.test(error.message)
+        && !/names no permanent write intent/u.test(error.message),
     );
     assert.deepEqual(worldCounts(h), { stages: 1, clicks: 1, rows: 1 }, "the refused restart touched nothing");
     assert.equal(h.database.authority.writeIntents.countDryRunEvidenceByRun(UUID_7).writeIntents, 0);
