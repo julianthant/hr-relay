@@ -26,6 +26,7 @@
 
 ## Decisions ratified
 
+- 2026-09-02 20:20 PDT · operator correction ("you put too much into the supervisor. they should be handling workloads capped at 350k tokens") → every remaining run is re-sized to one hard seam + small units under ~350k; R3's residue becomes R3b/R3c/R3d. Owner: `run-plan.md` §Re-size; memory `supervisor-run-cap-350k`.
 - 2026-09-02 18:1x PDT · operator instruction in coordinator session `571dd99a` ("okay just do phase 3c A here") → R3 is the **3c-A exit gate**. D319 later supersedes the old statement that R4-R12 remain Phase 3 work: after R3, only the 3c-B acceptance/closure run remains.
 
 - 2026-09-02 · sheet `decisions/2026-09-02-read-only-t1-live-proof.md` item 1 → **A** (live execution manifest with `dry-run-preview` / `live-read` arms) → D318 in `docs/rebuild/reference/decisions.md`, normative text in `ref guards-and-tests` §10.4, at `cb9a1476`.
@@ -38,7 +39,10 @@
 |---|---|---|---|---|---|---|
 | u01–u06 | R1 | closed 2026-09-02 | branch tip `31c3f9a5`; merge `a40276b6`, contained by master merge `29186a31`; supervisor worktree/branch removed; exact task `01a0644f-936c-7d72-8fbc-12a04b527b3e` archived | typecheck/lint, 393 files/4,853 coverage tests, parity 287/287, manifest/roadmap/diff/twins PASS | complete; six findings resolved | bounded D311 compiler complete; D312–D317 successor remains R3 |
 | u10–u12 | R2 | closed 2026-09-02 | branch tip `ed9ee5ac`; merge `b1b36349`, contained by master merge `29186a31`; supervisor worktree/branch removed; exact task `01a0644f-936c-7d72-8fbc-128e5f1b1a47` archived | typecheck, lint, roadmap freshness, diff check PASS; three focused re-reviews Count 0 | complete | Order 1 intake/live provenance complete; read-only T1 decision and fresh I-9 canary remain explicit residue |
-| u15–u19 | R3 | dispatched 2026-09-02 (see run plan wave ledger) | base `cb9a1476`; worktree `.hr-rebuild-worktrees/phase-3c-migration-c57c2dec9-r03-authoring-runtime`, branch `feature/phase-3c-migration-c57c2dec9-r03-authoring-runtime`; allowance 1 (one auxiliary slot free beside three unrelated `feature/test-*` worktrees) | pending | required | D312–D318 terminology/API, discoverable tasks, strict artifact guard, entry algebra, whole-step admission, recovery modes, `live-read` + Person Lookup T1, guide and final deletion acceptance |
+| u25–u28 | R3b | briefed; dispatching on the retained R3 worktree/branch | base `0566b181` | pending | required | stabilize: finish review-fix set, re-verify R3 seams, integrated gate, R3 report |
+| u29–u32 | R3c | planned | — | — | required | deletion acceptance + retired-path guard + T1b states |
+| u33–u36 | R3d | planned | — | — | required | author documentation package |
+| u15–u19 | R3 | returned partial, over cap, session stopped 2026-09-02 20:21 PDT | branch tip `0566b181` (26 supervisor commits + coordinator safety commit), NOT merged; worktree/branch retained for R3b | typecheck RED (5 test call sites), lint green at `0566b181`; no full gate ran | pending (R3b) | u15–u18 landed by commit evidence only; u19 superseded by u25–u36; session `e266c808` exhausted context (auto-compact off) before any report |
 | u110–u113 | R4 | held for operator after R3 | — | — | required | 3c-B: accept Person Lookup and Separations, reconcile Phase 3 authorities, run integrated gates and sweep; do not dispatch without operator instruction |
 
 ### Superseded pre-D319 unit rows
