@@ -1991,9 +1991,10 @@ version, capture date and variant. A screenshot without the matching a11y snapsh
 **What the matrix still owes.** These are contract, not description: each is a state the product has
 and the corpus does not photograph.
 
-- **Settings, healthy and degraded**, and the **Session Panel**'s worker/browser states: neither is
-  reachable from `AppRoute`, so the harness structurally cannot drive them. This is the largest gap
-  and it is a harness gap before it is a corpus gap.
+- The **Session Panel**'s worker/browser states are not reachable from `AppRoute`, so the harness
+  structurally cannot drive them. Settings healthy/degraded and the storage-doctor routes are now
+  served by the target parity corpus; the remaining Session Panel absence is a harness gap before
+  it is a corpus gap.
 - **Per-status queue rows and the three row types.** One `queue-day` frame carries whatever the
   fixture holds; the eight statuses are not separately frozen.
 - **Group member counts at 1, 3, 4, 12 and 13.** The smaller groups exist in the day fixture to
@@ -2147,12 +2148,12 @@ backend here is this repo's own, never the legacy one.
 | projector | event fold, count conservation, group collapse, action policy, panel capability and archive self-containment invariants | yes — `one-projection-counts`, `archive-invariants`, `tests/unit/dashboard/**` |
 | subscription | duplicate/gap/reconnect/reset/generation/hash cases; snapshot + patches = fresh snapshot | yes — `tests/unit/dashboard/client-transport.test.ts` |
 | command | idempotency, conflict, rejection, actor/source audit, bulk result vectors and fail-closed authority lookup | yes — `command-kernel`, `commands-authority`, `control-command-single-path`, `command-result-exhaustive` |
-| component | closed enum exhaustiveness, draft preservation, no hidden load-bearing info, keyboard/focus/reduced-motion behavior | **not as a layer** — this tree renders no React in the unit lane (no jsdom, no testing-library) and `vitest.config.ts` excludes every `*.tsx` from coverage with that reason stated. Enum exhaustiveness is held by `command-result-exhaustive`; keyboard and reduced-motion by exactly two parity references; draft preservation and "no hidden load-bearing info" by nothing named |
+| component | closed enum exhaustiveness, draft preservation, no hidden load-bearing info, keyboard/focus/reduced-motion behavior | **not as a full render layer** — this tree has per-file `jsdom` wiring tests, but no React-render/testing-library component layer; `vitest.config.ts` excludes every `*.tsx` from coverage with that reason stated. Enum exhaustiveness is held by `command-result-exhaustive`; keyboard and reduced-motion by exactly two parity references; draft preservation and "no hidden load-bearing info" by nothing named |
 | end-to-end | seeded Hono + built React + Playwright a11y assertions and screenshots | yes — the parity lane — but it is **not** a vitest project and **not** part of `test:coverage`, the per-commit gate (D191). It runs only on `npm run test:parity` |
 | live | Person Lookup in Phase 1; controlled write/recovery in Phase 2; each workflow migration thereafter | yes as evidence (D74, D135), no as a runnable layer |
 
-**The component row is the honest gap of this table, and R10 is the plan for it.** Because nothing
-renders a component under `vitest`, an operator-facing sentence is only as pinned as the parity
+**The component row is the honest gap of this table, and R10 is the plan for it.** Because no full
+component renders under `vitest`, an operator-facing sentence is only as pinned as the parity
 corpus unless it is EXTRACTED — which is why the surface/model pairing rule (§8 #14) is a testability
 rule as much as a Fast Refresh one, and why `terminalOutcomeText`, `deriveServedNow`,
 `planRunDetailFollow` and `classifyRunShape` are exported pure functions. The tiers that close the

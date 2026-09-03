@@ -1698,7 +1698,7 @@ asks for it and its result is recorded.
 
 ### 10.1 The test family, as built
 
-Nine members. Folder, runner, when it runs, what it may touch, what it proves. R7 refreshed the
+Ten members. Folder, runner, when it runs, what it may touch, what it proves. R7 refreshed the
 family-wide census and taxonomy on 2026-09-02.
 
 | family | folder | runner | when | may touch | proves |
