@@ -15,8 +15,8 @@ import { z } from "zod";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
 import { projectStartSteps, startStepWireControl } from "../../../src/services/start/step-selection.js";
-import { separationsIdentityCheckModule } from "../../../src/workflows/separations/identity-check/module.js";
 import {
+  separationsIdentityCheckModule,
   separationsKronosTimecardModule,
   separationsKualiFinalizationModule,
   separationsKualiReadModule,

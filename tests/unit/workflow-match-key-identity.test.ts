@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { separationsIdentityCheckDescriptor } from "../../src/workflows/separations/identity-check/descriptor.js";
+import { separationsIdentityCheckDescriptor } from "../helpers/registered-workflows.js";
 import {
   separationsKronosTimecardDescriptor,
   separationsUcpathTerminationDescriptor,

@@ -40,16 +40,14 @@ import { createReceiptService } from "../../src/server/trust/receipt-service.js"
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import { SeparationsKualiFinalizationResultSchema } from "../../src/workflows/separations/kuali-finalization/workflow.js";
 import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
-import { FINALIZE_NODE } from "../../src/workflows/separations/kuali-finalization/nodes.js";
 import {
   COMPARISON_NODE,
-  GATE_NODE,
-  NAME_SEARCH_NODE,
-} from "../../src/workflows/separations/identity-check/nodes.js";
-import {
   DEPARTMENT_NODE,
+  FINALIZE_NODE,
+  GATE_NODE,
   JOB_SUMMARY_NODE,
-} from "../../src/workflows/separations/job-summary/nodes.js";
+  NAME_SEARCH_NODE,
+} from "../../src/workflows/separations/workflow.js";
 import { ManualScheduler, recordingLogger } from "./fixtures/phase1f-executor-harness.js";
 import { UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
 import {

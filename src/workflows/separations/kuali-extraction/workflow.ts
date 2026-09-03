@@ -52,10 +52,13 @@ import { KualiSeparationDocumentSchema } from "../../../domain/ui/kuali-separati
 import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
 import { defineWorkflowRole } from "../../../domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
-import { DOCUMENT_NODE, TERMINATION_TYPE_NODE } from "./node-ids.js";
-import { documentNode, terminationTypeNode } from "./nodes.js";
-import { KUALI_EXTRACTION_STEP } from "./step.js";
-
+import {
+  DOCUMENT_NODE,
+  TERMINATION_TYPE_NODE,
+  documentNode,
+  terminationTypeNode,
+  KUALI_EXTRACTION_STEP,
+} from "../workflow.js";
 /**
  * The ingress schema. Both identifiers are required and neither is derivable
  * from the other: an `actionId` names a workflow STEP and can silently redirect
@@ -197,7 +200,7 @@ export const separationsKualiReadWorkflow = defineWorkflow({
   // declaration rather than re-typed here (D265 §1.2.2 rule 3).
   role: defineWorkflowRole({ kind: "chunk-harness", of: "separations", step: KUALI_EXTRACTION_STEP.key }),
   steps: ({ task, result }) => {
-    // This folder's own step identities (`./nodes.ts`), wired from the harness
+    // The composition's identities for this step (`../workflow.ts`), wired from the harness
     // input instead of from a `resolve-action` node: the harness takes the
     // action id as ingress because the head node it proves is the document
     // read itself.

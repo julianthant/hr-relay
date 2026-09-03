@@ -117,12 +117,14 @@ import {
   COMPARISON_NODE,
   GATE_NODE,
   NAME_SEARCH_NODE,
-} from "../identity-check/node-ids.js";
-import { DEPARTMENT_NODE, JOB_SUMMARY_NODE } from "../job-summary/node-ids.js";
-import { FILING_PRESENCE_NODE, FINALIZE_NODE } from "./node-ids.js";
-import { filingPresenceNode, finalizeKualiNode } from "./nodes.js";
-import { KUALI_FINALIZATION_STEP } from "./step.js";
-
+  DEPARTMENT_NODE,
+  JOB_SUMMARY_NODE,
+  FILING_PRESENCE_NODE,
+  FINALIZE_NODE,
+  filingPresenceNode,
+  finalizeKualiNode,
+  KUALI_FINALIZATION_STEP,
+} from "../workflow.js";
 /**
  * The ingress: the identity-check ingress, plus exactly the staged variables no
  * read on THIS graph produces.
@@ -426,7 +428,7 @@ export const separationsKualiFinalizationWorkflow = defineWorkflow({
       evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
       approval: outputs[GATE_NODE],
     }));
-    // This folder's own step identities (`./nodes.ts`), wired from the same
+    // The composition's identities for this step (`../workflow.ts`), wired from the same
     // ingress where the composition binds the reconciled folds and the receipt.
     const filingPresence = task(filingPresenceNode, [approval], ({ input, outputs }) => assertTerminationReceipt({
       transactionNumber: input.transactionNumber,

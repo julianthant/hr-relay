@@ -45,11 +45,8 @@ import {
 } from "../../../src/domain/run/result.js";
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { SeparationsKualiFinalizationCanonicalInput } from "../../../src/workflows/separations/kuali-finalization/workflow.js";
-import { separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
-import {
-  SeparationsIdentityCheckCanonicalInput,
-  separationsIdentityCheckDescriptor,
-} from "../../../src/workflows/separations/identity-check/descriptor.js";
+import { separationsIdentityCheckDescriptor, separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
+import { SeparationsIdentityCheckCanonicalInput } from "../../../src/workflows/separations/identity-check/workflow.js";
 import { SeparationsVerifyIdentityApproval } from "../../../src/domain/contracts/separations/verify-identity-approval.js";
 import { SeparationsMatchDepartmentOption } from "../../../src/domain/contracts/separations/match-department-option.js";
 import { IdentityApprovalResultSchema } from "../../../src/domain/separations/identity-approval.js";

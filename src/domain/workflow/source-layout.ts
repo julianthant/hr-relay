@@ -46,15 +46,3 @@ export function workflowSourcePath(id: string, role: WorkflowModuleRole): string
   return `${workflowSourceFolder(id, role)}/workflow.ts`;
 }
 
-/**
- * The hand-authored descriptor module of a NOT YET CONVERTED chunk harness —
- * a transitional path that 3c-A's deletion acceptance retires.
- */
-export function descriptorSourcePath(id: string, role: WorkflowModuleRole): string {
-  return `${workflowSourceFolder(id, role)}/descriptor.ts`;
-}
-
-/** The server composition module that pairs with a not-yet-converted descriptor. */
-export function moduleSourcePath(id: string, role: WorkflowModuleRole): string {
-  return `${workflowSourceFolder(id, role)}/module.ts`;
-}

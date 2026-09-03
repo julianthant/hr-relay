@@ -58,32 +58,31 @@
  * the audited `src/base` builders.
  */
 import { z } from "zod";
-import { flow } from "../../../base/flow.js";
-import { defineWorkflowDescriptor } from "../../../base/workflow.js";
-import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
+import { defineWorkflow } from "../../../base/workflow-definition.js";
+import { EidSchema } from "../../../domain/ids.js";
 import { ResolvedIdentitySubjectSchema } from "../../../domain/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../domain/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../domain/separations/write-plan.js";
 import { JobSummaryClassificationSchema } from "../../../domain/separations/job-summary-classification.js";
 import { KualiDocumentNumberSchema } from "../../../domain/ui/kuali-document-identity.js";
 import { KualiEidFieldSchema } from "../../../domain/ui/kuali-separation-document.js";
-import {
-  BUILD_MANIFEST,
-  resolveWorkflowFingerprint,
-} from "../../../domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
+import { defineWorkflowRole } from "../../../domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
-import { JOB_SUMMARY_NODE, jobSummaryNode } from "../job-summary/nodes.js";
 import {
   APPROVAL_NODE,
   COMPARISON_NODE,
   GATE_NODE,
+  IDENTITY_CHECK_STEP,
+  JOB_SUMMARY_NODE,
+  JOB_SUMMARY_STEP,
   NAME_SEARCH_NODE,
   approvalNode,
   comparisonNode,
   identityApprovalGate,
+  jobSummaryNode,
   nameSearchNode,
-} from "./nodes.js";
+} from "../workflow.js";
 
 /**
  * The ingress.
@@ -170,65 +169,9 @@ export const SeparationsIdentityCheckResultSchema = z.strictObject({
   jobs: JobSummaryClassificationSchema,
 });
 
-const separationsIdentityCheckFlow = flow(SeparationsIdentityCheckInput)
-  // The step's own fragments (`./nodes.ts`) and the Job summary step's read,
-  // wired straight from the harness ingress: the EID and the name are the run's
-  // input here, where the composition resolves them from the Kuali reads.
-  .pipe(jobSummaryNode.wire({
-    dependsOn: [],
-    bind: ({ input }) => ({ emplId: input.emplId }),
-  }))
-  .pipe(nameSearchNode.wire({
-    dependsOn: [],
-    bind: ({ input }) => ({
-      kind: "by-name" as const,
-      name: input.employeeName,
-      keepNonHdh: true,
-    }),
-  }))
-  .pipe(comparisonNode.wire({
-    dependsOn: [JOB_SUMMARY_NODE, NAME_SEARCH_NODE],
-    bind: ({ input, outputs }) => ({
-      documentNumber: input.documentNumber,
-      documentName: input.employeeName,
-      documentEid: input.documentEid,
-      emplId: input.emplId,
-      emplIdSource: input.emplIdSource,
-      jobSummary: outputs[JOB_SUMMARY_NODE],
-      nameSelection: outputs[NAME_SEARCH_NODE].selection,
-      plan: noSeparationWritePlan(
-        "this chunk resolves an identity and files nothing; the composed `separations` graph is where a write plan exists to show",
-      ),
-    }),
-  }))
-  .pipe(identityApprovalGate.wire({ dependsOn: [COMPARISON_NODE] }))
-  .pipe(approvalNode.wire({
-    dependsOn: [COMPARISON_NODE, GATE_NODE],
-    bind: ({ outputs }) => ({
-      packet: outputs[COMPARISON_NODE].packet,
-      evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
-      approval: outputs[GATE_NODE],
-    }),
-  }))
-  /**
-   * `dependsOn: ["approval"]` and NOTHING else — the guard caught the first
-   * draft, which read the document number and employment picture straight off
-   * the comparison node. The authority node carries those facts forward, so
-   * both the machine and human arms dominate the run's whole product.
-   */
-  .build({
-    schema: SeparationsIdentityCheckResultSchema,
-    dependsOn: [APPROVAL_NODE],
-    derive: ({ outputs }) => outputs[APPROVAL_NODE],
-  });
-
-export const separationsIdentityCheckDescriptor = defineWorkflowDescriptor({
+export const separationsIdentityCheckWorkflow = defineWorkflow({
   id: "separations-identity-check",
   version: 1,
-  contractFingerprint: resolveWorkflowFingerprint(
-    BUILD_MANIFEST,
-    WorkflowIdSchema.parse("separations-identity-check"),
-  ),
   code: "si",
   label: "Identity Check",
   summary:
@@ -346,5 +289,57 @@ export const separationsIdentityCheckDescriptor = defineWorkflowDescriptor({
     "separations-identity-check/gate-rejected",
     "separations-identity-check/gate-evidence-moved",
   ],
-  flow: separationsIdentityCheckFlow,
+  input: SeparationsIdentityCheckInput,
+  // A proving harness for one step of `separations`, never a peer workflow (D219) —
+  // the step it proves is the folder it lives in, read from the composition's own
+  // declaration rather than re-typed here (D265 §1.2.2 rule 3).
+  role: defineWorkflowRole({ kind: "chunk-harness", of: "separations", step: IDENTITY_CHECK_STEP.key }),
+  steps: ({ task, gate, result }) => {
+    // The composition's own step identities (`../workflow.ts`) and the Job
+    // summary step's read, wired straight from the harness ingress: the EID and
+    // the name are the run's input here, where the composition resolves them
+    // from the Kuali reads.
+    const jobSummary = task(jobSummaryNode, [], ({ input }) => ({ emplId: input.emplId }));
+    const nameSearch = task(nameSearchNode, [], ({ input }) => ({
+      kind: "by-name" as const,
+      name: input.employeeName,
+      keepNonHdh: true,
+    }));
+    const comparison = task(comparisonNode, [jobSummary, nameSearch], ({ input, outputs }) => ({
+      documentNumber: input.documentNumber,
+      documentName: input.employeeName,
+      documentEid: input.documentEid,
+      emplId: input.emplId,
+      emplIdSource: input.emplIdSource,
+      jobSummary: outputs[JOB_SUMMARY_NODE],
+      nameSelection: outputs[NAME_SEARCH_NODE].selection,
+      plan: noSeparationWritePlan(
+        "this chunk resolves an identity and files nothing; the composed `separations` graph is where a write plan exists to show",
+      ),
+    }));
+    const identityGate = gate(identityApprovalGate, [comparison]);
+    const approval = task(approvalNode, [comparison, identityGate], ({ outputs }) => ({
+      packet: outputs[COMPARISON_NODE].packet,
+      evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
+      approval: outputs[GATE_NODE],
+    }));
+    return {
+      // Two groups, both the composition's: the Job summary read this harness
+      // proves for the step that has no harness of its own (D265 mapping), then
+      // the identity step itself. Job summary first keeps the graph in the
+      // order the hand-authored descriptor listed its nodes.
+      steps: [
+        [JOB_SUMMARY_STEP, [jobSummary]],
+        [IDENTITY_CHECK_STEP, [nameSearch, comparison, identityGate, approval]],
+      ],
+      /**
+       * Depends on `approval` and NOTHING else — the guard caught the first
+       * draft, which read the document number and employment picture straight
+       * off the comparison node. The authority node carries those facts
+       * forward, so both the machine and human arms dominate the run's whole
+       * product.
+       */
+      result: result(SeparationsIdentityCheckResultSchema, [approval], ({ outputs }) => outputs[APPROVAL_NODE]),
+    };
+  },
 });

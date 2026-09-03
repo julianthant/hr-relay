@@ -50,9 +50,7 @@ import { classifyNameSimilarity, NameSimilarityTierSchema } from "../../../domai
 import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
 import { defineWorkflowRole } from "../../../domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
-import { timecardNode } from "./nodes.js";
-import { KRONOS_TIMECARD_STEP } from "./step.js";
-
+import { timecardNode, KRONOS_TIMECARD_STEP } from "../workflow.js";
 /**
  * The employee's name as the run expects it — the SAME canonical schema object
  * a spreadsheet column binds through (D172), not a structurally identical copy.
@@ -304,7 +302,7 @@ export const separationsKronosTimecardWorkflow = defineWorkflow({
       label: "Employee Search",
       replay: "always-rerun",
     }, [], ({ input }) => ({ emplId: input.emplId, searchTimeoutMs: input.searchTimeoutMs }));
-    // The step's own `timecard` identity (`./nodes.ts`), wired from this
+    // The composition's `timecard` identity (`../workflow.ts`), wired from this
     // harness's `search` node and its ingress window. `search` itself stays a
     // harness-authored entry: its id and label ("search" / "Employee Search")
     // are not the composition's `timecard-search`, and a node's id is its identity.

@@ -1238,12 +1238,11 @@ export function defineStepEntries<const Key extends string>(step: Readonly<{ key
     },
     operatorGate<
       const Id extends string,
-      Result extends z.ZodType,
-      const Identity extends Readonly<{ label: string; statusKey?: string; result: Result; when?: NodeConditionSpec }>,
+      const Identity extends Readonly<{ label: string; statusKey?: string; result: z.ZodType; when?: NodeConditionSpec }>,
     >(
       id: Id,
       identity: Identity,
-    ): Omit<GateEntryIdentity<Id, Result>, "when"> & WithWhen<Identity> {
+    ): Omit<GateEntryIdentity<Id, Identity["result"]>, "when"> & WithWhen<Identity> {
       const value = {
         step: owner,
         id,
@@ -1252,7 +1251,7 @@ export function defineStepEntries<const Key extends string>(step: Readonly<{ key
         result: identity.result,
         ...(identity.when === undefined ? {} : { when: identity.when }),
       };
-      return Object.freeze(value) as Omit<GateEntryIdentity<Id, Result>, "when"> & WithWhen<Identity>;
+      return Object.freeze(value) as Omit<GateEntryIdentity<Id, Identity["result"]>, "when"> & WithWhen<Identity>;
     },
   });
 }
