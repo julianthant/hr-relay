@@ -1545,12 +1545,12 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       env: {},
       repoRoot,
     });
-    assert.notEqual(runtime.port, 0);
-    assert.notEqual(runtime.port, rebuildRuntimeIsolation.backendPort);
-
     const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
     let subscription: ReturnType<typeof client.subscribeDay> | undefined;
     try {
+      assert.notEqual(runtime.port, 0);
+      assert.notEqual(runtime.port, rebuildRuntimeIsolation.backendPort);
+
       const bootstrap = await client.bootstrap();
       assert.equal(bootstrap.appVersion, "0.1.0");
       // DERIVED from the composition root, never a hand-listed set: this assertion
