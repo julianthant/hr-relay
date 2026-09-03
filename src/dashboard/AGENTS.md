@@ -106,6 +106,21 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-02 — an empty open-session list is not an empty browser requirement set.** The Session
+  Panel used `WorkerCard.browsers[]` for both facts, so a starting worker showed no browser systems
+  until each child span opened. The worker now persists its loaded descriptor's ordered systems on
+  the lease at launch—never re-derived from a potentially newer dashboard process—and
+  `browserRequirements` carries that fact separately. `workerBrowserView` overlays exact observed
+  sessions onto those stable slots, keeps unexpected observed sessions visible, and suppresses all
+  slots on terminal cards. An unopened requirement says `Opens when needed` and never carries a
+  session id, age or health word; only an observed open span may say `Not checked` and expose its
+  exact session identity. Historical leases without the field say authority is unavailable.
+  Because cards are lease authority and the projection's change triggers were spans, the BFF's
+  span-tail tick now also reconciles the lease set and pool declarations and publishes a snapshot
+  on any served move; heartbeats alone publish nothing. The same live check found pool spawns
+  launching the inert `src/cli.ts` module (exit 0 before lease birth); the production launch now
+  goes through `scripts/secure-env-bootstrap.ts cli`.
+
 - **2026-09-02 — machine identity is not an approval card (D309).** The Separations identity-gate
   section is reachable only for a `name-resolved` packet, and its current ceremony requires the
   operator to type the EID. A supplied/read-back EID proceeds with machine-verification authority and

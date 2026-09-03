@@ -18,6 +18,7 @@ import {
   poolFactsForWorkflow,
   sessionMembershipForWorker,
   sessionPoolGroupFor,
+  workerBrowserView,
 } from "../../../src/dashboard/surfaces/shell-model.js";
 import { FIXTURE_DAY_WIRE, uuidOf } from "../../parity/helpers/fixture-day.js";
 
@@ -120,6 +121,63 @@ describe("Session Panel authority joins", () => {
       ["ucpath"],
       "the browser tile retains only the served system fact; no health state is invented",
     );
+  });
+
+  it("keeps descriptor browser order, upgrades observed sessions, and retains observed extras", () => {
+    const day = sessionDay();
+    const idle = day.workerCards.find((card) => card.state === "idle");
+    if (idle === undefined) throw new Error("the real wire fixture needs an idle worker");
+    const ucpath = idle.browsers[0];
+    if (ucpath === undefined) throw new Error("the real wire fixture needs an observed UCPath browser");
+    const card = DashboardDayWireSchema.parse({
+      ...day,
+      workerCards: [{
+        ...idle,
+        browserRequirements: { state: "present", systems: ["kuali", "ucpath", "crm"] },
+        browsers: [
+          ucpath,
+          { sessionId: uuidOf(901), system: "servicenow", openedAt: "2026-08-03T16:59:00.000Z" },
+        ],
+      }],
+    }).workerCards[0];
+    if (card === undefined) throw new Error("the parsed day wire dropped its worker card");
+
+    assert.deepEqual(workerBrowserView(card), {
+      slots: [
+        { state: "required", system: "kuali" },
+        { state: "open", browser: ucpath },
+        { state: "required", system: "crm" },
+        {
+          state: "open",
+          browser: { sessionId: uuidOf(901), system: "servicenow", openedAt: "2026-08-03T16:59:00.000Z" },
+        },
+      ],
+    });
+  });
+
+  it("serves requirement authority failures explicitly without hiding observed browsers", () => {
+    const day = sessionDay();
+    const idle = day.workerCards.find((card) => card.state === "idle");
+    if (idle === undefined) throw new Error("the real wire fixture needs an idle worker");
+
+    assert.deepEqual(workerBrowserView({
+      ...idle,
+      browserRequirements: { state: "unavailable", reason: "workflow descriptor is not registered" },
+    }), {
+      slots: idle.browsers.map((browser) => ({ state: "open", browser })),
+      unavailableReason: "workflow descriptor is not registered",
+    });
+  });
+
+  it("shows no browser slots on a retained terminal worker card", () => {
+    const day = sessionDay();
+    const terminal = day.workerCards.find((card) => card.state === "stopped");
+    if (terminal === undefined) throw new Error("the real wire fixture needs a stopped retained worker card");
+
+    assert.deepEqual(workerBrowserView({
+      ...terminal,
+      browserRequirements: { state: "present", systems: ["ucpath", "crm"] },
+    }), { slots: [] });
   });
 
   it("folds one membership per served card, in wire order, for the strip to read by worker id", () => {

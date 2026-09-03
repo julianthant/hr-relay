@@ -735,6 +735,7 @@ describe("composed worker runtime", () => {
     assert.equal(database.authority.workerLeases.start({
       workerId,
       workflow: WORKFLOW_ID,
+      browserSystems: ["crm", "ucpath"],
       processId: 999,
       requestedBy: "local-operator",
       now: NOW,
@@ -758,7 +759,8 @@ describe("composed worker runtime", () => {
     // heartbeat then ages out. Only a RUNNING worker sweeps, so without a
     // reclaim-before-acquire pass no worker could ever start again.
     assert.equal(seed.authority.workerLeases.start({
-      workerId, workflow: WORKFLOW_ID, processId: 999, requestedBy: "local-operator", now: NOW,
+      workerId, workflow: WORKFLOW_ID, browserSystems: ["crm", "ucpath"], processId: 999,
+      requestedBy: "local-operator", now: NOW,
     }).state, "started");
     assert.equal(seed.authority.workerLeases.reportLifecycle({
       workerId,
@@ -959,7 +961,8 @@ describe("composed worker runtime", () => {
     const workerId = phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID));
     const seed = reopen(stateRoot, clock);
     assert.equal(seed.authority.workerLeases.start({
-      workerId, workflow: WORKFLOW_ID, processId: 7, requestedBy: "local-operator", now: NOW,
+      workerId, workflow: WORKFLOW_ID, browserSystems: ["crm", "ucpath"], processId: 7,
+      requestedBy: "local-operator", now: NOW,
     }).state, "started");
     assert.equal(seed.authority.workerLeases.reportLifecycle({
       workerId,
@@ -1096,7 +1099,8 @@ describe("dashboard-composed worker-browser command arms", () => {
     assert.equal(harness.database.authority.workerPools.get(WORKFLOW_ID)?.desiredWorkers, 1);
 
     assert.equal(harness.database.authority.workerLeases.start({
-      workerId, workflow: WORKFLOW_ID, processId: 11, requestedBy: "local-operator", now: NOW,
+      workerId, workflow: WORKFLOW_ID, browserSystems: ["crm", "ucpath"], processId: 11,
+      requestedBy: "local-operator", now: NOW,
     }).state, "started");
     const paused = harness.kernel.execute({
       ...envelope(),
@@ -1154,7 +1158,8 @@ describe("dashboard-composed worker-browser command arms", () => {
     const harness = kernelHarness();
     const workerId = phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID));
     assert.equal(harness.database.authority.workerLeases.start({
-      workerId, workflow: WORKFLOW_ID, processId: 12, requestedBy: "local-operator", now: NOW,
+      workerId, workflow: WORKFLOW_ID, browserSystems: ["crm", "ucpath"], processId: 12,
+      requestedBy: "local-operator", now: NOW,
     }).state, "started");
 
     for (const type of ["refresh-browser", "reopen-browser"] as const) {

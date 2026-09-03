@@ -1,7 +1,7 @@
 # run-open-gate--graphite-warm--1440x900--gate-refused
 # adapter: fixture
 # fixture: run-open-gate
-# descriptorHash: ec683d932e1b6b4794e2c3de2382aa0cb6b1bfd4e2acf067178bd9bda218accb
+# descriptorHash: cfeb71e88c7a52f091176c266c375bcdd02b878b332b038ec5fa2931afe22d50
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: gate-refused
 # capturedAt: 2026-08-03

@@ -377,19 +377,39 @@ environment-supplied.
   pointers. The workspace is retained unless the operator explicitly requests archival or removal;
   successful close never auto-handoffs. A coordinator enters stateless discussion or grilling only
   when explicitly asked and writes none of it until the operator says to record it.
+- **Parallel work has one recorded lifecycle.** Follow the active platform's
+  `skill-library/parallel-agent-work/REFERENCE.md`: supervisors own worker rows and coordinators own
+  supervisor-task/session rows. Before dispatch, every writable row records the exact task/agent id,
+  base SHA, `feature/<unit>` branch, absolute worktree, non-overlapping scope/artifact, gate,
+  integration order and state; read-only agents need no worktree. A row is not closed by merging.
+  After verified integration and a green gate, remove it with `git worktree remove`, verify both its
+  Git registration and physical worktree directory are absent, delete/prune its branch, and record
+  residue for any failure. For a separate Codex task, the coordinator then archives that exact
+  recorded task from the active sidebar; nested agents have no sidebar step. Never associate or
+  archive a task by title or recency.
 - `src/workflows/` has exactly two folder kinds (D265/D266): a top-level folder is a rail workflow,
   and a child folder is one declared timeline step. A chunk harness lives in the matching step
   folder with role `{ kind: "chunk-harness", of, step }`; it remains independently startable,
   nests under its composition in the picker/Explorer, and never appears in the rail. There is no
   `src/workflows/proving/` and no registered workflow whose purpose is test equipment.
-- **2026-09-02 — D311 makes the workflow recipe the authoring authority.** Its `steps` field is an
-  ordered array of `[timeline group, tasks[]]` tuples; group keys/labels own timeline grouping while
-  typed task input references own execution dependencies. One compiler derives the existing
-  descriptor, module requirements and generic dashboard/Explorer projections. D265 folders remain
-  organization/audit structure, not semantic timeline order. Convert person lookup, then
-  separations, prove public equivalence, and delete redundant manual declarations before migrating
-  another workflow. T1 remains per workflow; T2/T3 is added only for a genuinely new dashboard
-  capability. See ref workflow-model §1.6 and doc 03c `{#workflow-authoring-model}`.
+- **2026-09-02 — D311–D317 make the workflow definition the authoring authority and simplicity
+  measurable.** Its `steps` field is an ordered array of `[timeline group, tasks[]]` tuples;
+  group keys/labels own timeline grouping while typed inputs own dependencies, and entries
+  explicitly declare `task | parallel | delegate | gate | transaction`. One compiler derives the
+  existing descriptor, module requirements and generic dashboard/Explorer projections. A workflow
+  reusing existing tasks/surfaces authors exactly `workflow.ts` + structural scenario + dry-run declaration
+  + migration doc. Whole-step omissions and every replacement value are complete/schema-valid in
+  the run modal before start; a separate mandatory verifier may still run. Recovery exposes
+  checkpoint resume or root restart; root restart reruns reads/computes but never re-executes a
+  completed transaction. D265 folders remain organization/audit structure, not semantic timeline
+  order. Convert person lookup, then separations, prove public equivalence, and delete redundant
+  declarations before migrating another workflow; there is no advanced escape hatch. T1 remains per
+  workflow; T2/T3 is added only for a genuinely new dashboard capability. “Recipe” is analogy only;
+  the API is `defineWorkflow` and its generated value is `CompiledWorkflow`. See ref workflow-model
+  §§1.6, 5.6 and 5.8 and doc 03c `{#workflow-authoring-model}`. At HEAD `b1b36349`, the bounded
+  compiler still uses transitional `workflow-recipe.ts` names and fragment adapters; do not copy or
+  extend that surface into another workflow. Finish 3c-A's D317 rename/direct-entry/deletion gate
+  before starting Order 1 implementation.
 - A workflow's T1 proof lives at
   `tests/scenario/workflows/<workflow-id>/{structural.scenario.test.ts,dry-run.scenario.ts}`: exactly
   one collected structural scenario and one sibling live dry-run manifest. The live half may write

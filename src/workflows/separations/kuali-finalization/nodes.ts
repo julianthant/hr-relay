@@ -15,7 +15,6 @@ import { KualiSaveSeparationFinalization } from "../../../domain/contracts/kuali
 import { KualiStageSeparationFinalization } from "../../../domain/contracts/kuali/stage-separation-finalization.js";
 import { UcpathVerifyTerminationFilingPresent } from "../../../domain/contracts/ucpath/verify-termination-filing-present.js";
 import { KUALI_FINALIZATION_STEP } from "./step.js";
-import { KUALI_FINALIZATION_OMISSION } from "./omission.js";
 
 
 const nodes = defineWorkflowStepNodeFactory(KUALI_FINALIZATION_STEP);
@@ -54,9 +53,4 @@ export const finalizeKualiNode = nodes.transaction(FINALIZE_NODE, {
   probeToFenceMaxMs: 45_000,
 });
 
-/** The step's timeline category — key and label from `step.ts`, nodes from the fragment above. */
-export const KUALI_FINALIZATION_STEP_NODES = nodes.category(
-  [filingPresenceNode, finalizeKualiNode],
-  { omission: KUALI_FINALIZATION_OMISSION },
-);
 export { FILING_PRESENCE_NODE, FINALIZE_NODE } from "./node-ids.js";

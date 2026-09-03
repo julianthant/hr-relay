@@ -12,10 +12,15 @@
 import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
 import { defineIntakeProjection } from "../../domain/intake/projection.js";
 import { CANONICAL_FIELDS } from "../../domain/fields/registry.js";
+import { compileWorkflowRecipeModule } from "../../base/workflow-recipe.js";
 import { crmStore } from "../../stores/crm/index.js";
 import { personLookupStore } from "../../stores/person-lookup/index.js";
 import { ucpathStore } from "../../stores/ucpath/index.js";
-import { personLookupDescriptor, PersonLookupInput } from "./descriptor.js";
+import {
+  personLookupDescriptor,
+  personLookupRecipe,
+  PersonLookupInput,
+} from "./descriptor.js";
 
 /**
  * The first real intake projection (ref data-intake-and-edit-data §2.7, D172) — a spreadsheet of
@@ -45,10 +50,13 @@ export const personLookupIntake = defineIntakeProjection(PersonLookupInput, {
   name: CANONICAL_FIELDS.fullName,
 });
 
-export const personLookupModule = Object.freeze({
-  descriptor: personLookupDescriptor,
-  stores: Object.freeze([ucpathStore, crmStore, personLookupStore]),
+export const personLookupModule = compileWorkflowRecipeModule(
+  personLookupRecipe,
+  personLookupDescriptor,
+  [ucpathStore, crmStore, personLookupStore],
+  {
   intake: personLookupIntake,
   // An ordinary workflow that stands on its own — no composition owns it (D219).
   role: defineWorkflowRole({ kind: "standalone" }),
-});
+  },
+);

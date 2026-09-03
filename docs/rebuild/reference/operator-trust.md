@@ -1915,15 +1915,15 @@ its space on them. Each removes a repetition; none removes a fact.
 
 <!-- roadmap: workflow-authoring-model -->
 
-For a D311 workflow, the Explorer's primary graph list is grouped by the compiled workflow recipe:
+For a D311/D317 workflow, the Explorer's primary graph list is grouped by the compiled workflow definition:
 one group per timeline tuple, in outer-array order, headed by the tuple's stable key, label and task
 count. Tasks appear in tuple order. Opening one still shows the complete descriptor-derived contract,
 inputs, outputs, dependencies, replay policy, evidence and source links specified by §§5.2 and 5.9;
 the recipe view groups those facts and does not create a second description of them.
 
-The server projects this view from the compiled recipe supplied by the registry. The client never
+The server projects this view from the compiled workflow supplied by the registry. The client never
 infers groups from folders, workflow ids, labels or span prose, and a workflow adds no
-Explorer-specific wiring when it uses this generic projection. Until the recipe compiler ships,
+Explorer-specific wiring when it uses this generic projection. Until the workflow compiler ships,
 the existing descriptor graph remains the truthful view. During conversion, recipe and descriptor
 projections must compare equal before the recipe becomes authoritative; Explorer never chooses
 between disagreeing sources at runtime.

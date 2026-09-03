@@ -77,12 +77,4 @@ export const approvalNode = nodes.task(APPROVAL_NODE, SeparationsVerifyIdentityA
   replay: "always-rerun",
 });
 
-/** The step's timeline category — key and label from `step.ts`, nodes from the fragments above. */
-export const IDENTITY_CHECK_STEP_NODES = nodes.category([
-  nameSearchNode,
-  subjectNode,
-  comparisonNode,
-  identityApprovalGate,
-  approvalNode,
-]);
 export { NAME_SEARCH_NODE, SUBJECT_NODE, COMPARISON_NODE, GATE_NODE, APPROVAL_NODE } from "./node-ids.js";

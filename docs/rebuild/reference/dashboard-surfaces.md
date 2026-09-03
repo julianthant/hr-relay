@@ -1294,6 +1294,15 @@ Command semantics are binding:
 | Purge | Not a row action. `cli purge-run <exact-run-id> --backup <path>` is an offline maintenance command requiring a fresh verified backup and refusing any active/dependency/write-authority reference. It writes a purge receipt. |
 | Edit checkpoint | Uses `ref data-intake-and-edit-data`'s field-level patch/provenance model (D166), creates a new run/attempt as specified there, and never mutates original input or a completed proof. |
 
+**D314 amendment — recovery has two named choices (2026-09-02; declared, unbuilt).** The current
+Retry control becomes **Resume from checkpoints**: it starts at the failed node, reuses valid
+ancestors and retries failed parallel leaves independently. Its sibling, **Restart from start**,
+mints the same logical item's next attempt and reruns every read/computation from the graph root,
+while a completed transaction reconstructs from validated durable proof and never prepares or
+commits again. Confirmation names what will rerun and which completed writes will be reused. A
+fresh-fact mismatch against a completed write refuses/parks, and an unknown write exposes only its
+evidence-resolution actions. Neither choice changes business input or the admitted omission bundle.
+
 **`supersede-active` says two different things in three places, and the doc says so rather than
 picking one.** The kernel implements the row above exactly. The PLANNER does not anticipate it:
 `src/services/start/plan.ts` checks for an active run only under `reject-active`, so a plan composed
@@ -2656,6 +2665,16 @@ run's `omittedSteps` and each timeline member's closed not-run reason (`operator
 asserted, never as an observation; a done run with an omitted step folds to `partial`), the Data rail
 marks an asserted leaf with its step, Explain lists the omitted steps and an `operator-asserted`
 disposition, and the receipt carries the `OPERATOR_OMITTED_STEP` warning (ref operator-trust).
+
+**D313 amendment — omission is decided completely in this modal (2026-09-02; declared, unbuilt).**
+The workflow compiler serves each step's complete value schema and its operator-suppliable form.
+Unchecking a step means none of its entries execute. Before Confirm can produce a start plan, every
+required replacement value must be present and schema-valid; otherwise the modal/server refuses by
+step and field key. There is no mid-run request for values. A separately declared mandatory
+verification entry may still run downstream and remains visible as selected work. Confirmation
+identifies omitted steps and assertion provenance, never the entered values. This supersedes the
+D307 same-step-gate exception for compiled workflows; D307 remains the current built behavior until
+the conversion lands.
 
 1. **The parser sentence is derived, never authored.** `inputRunValueNoun`,
    `inputRunSeparatorLabel` and `inputRunParserLabel` (`src/domain/workflow/ingress.ts`) read a
@@ -5209,6 +5228,19 @@ reason underneath, kept on screen so the failure is learned. The worker id, the 
 the run's session membership are the card's identity-popover facts, on the subline's `AuthorityDetails`
 route — never a `title` alone.
 
+The two-column browser area overlays two authorities instead of treating either as the other.
+`browserRequirements` is the exact workflow descriptor's ordered system set persisted on the worker
+lease when that process starts; the dashboard never substitutes its own potentially newer descriptor.
+`browsers[]` is only the worker's currently open child spans. A required system with no open span is
+a dashed `Opens when needed` slot and carries no session id, age or health. Its matching observed
+span upgrades that same slot to the ordinary open tile with exact identity; observed sessions outside
+the requirement set remain appended and visible. A historical lease without the launch-time field is
+an explicit unavailable reason, never an empty set. A terminal worker draws neither kind because its
+process owns no browser resources. Freshness is the projection's, not the client's: a lease-only
+transition (birth, phase, directive, settlement) or a pool declaration change publishes a snapshot
+from the same tick that tails the span files, so neither a card nor the Add-workers roster waits for
+a span to move (ref execution-and-sessions §3).
+
 **The pool controls are the demo's `+ Add workers` dialog**, which is the shape ref
 execution-and-sessions names (*"`+ Add workers` chooses a workflow and a count"*): a workflow
 `Select` over the bootstrap's own list, a two-button count stepper capped at three (D271), and
@@ -5233,10 +5265,10 @@ basis, and the dialog is where the demo puts them. No fact left the panel: every
 version, excess member and unmet index the band printed is in the dialog or on the bar chip.
 
 **What is still not drawn, and where that is booked.** The demo card's STEP (`UCPath transaction`),
-its `steps[]` pipeline dots and each tile's health word (`Ready` / `Refreshing`) have no producer:
+its `steps[]` pipeline dots and each OPEN tile's health word (`Ready` / `Refreshing`) have no producer:
 the card is folded from the worker lease plus browser child spans, which carry no node, no step
 vector and no health observation. The slots are reserved (the pipeline row keeps its height, the
-step slot is `flex-1`, the tile prints the demo's `unknown` tone word `Not checked`) and the gap is
+step slot is `flex-1`, an open tile prints the demo's `unknown` tone word `Not checked`) and the gap is
 recorded in `docs/findings/dashboard-projection.md` ("The worker card's step, pipeline and browser
 health have no producer") with the fold that would serve it. The tally vocabulary is the served
 lease state (`starting`, not the demo's `authenticating` — R7's ruling).

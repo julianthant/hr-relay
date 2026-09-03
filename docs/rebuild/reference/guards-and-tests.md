@@ -2109,9 +2109,9 @@ uncalibrated allowance.
 For the agent doing a migration. The 7-step loop in doc 03c cites this list; every item is a gate
 that goes RED before it goes green.
 
-**D311 amendment — test the recipe/compiler boundary once, and workflow behavior where it differs.**
-The recipe implementation adds one registry-wide conformance suite that compiles every registered
-recipe and refuses duplicate tasks, unresolved references, cycles, unstable group keys, descriptor /
+**D311/D317 amendment — test the workflow/compiler boundary once, and workflow behavior where it differs.**
+The workflow-definition implementation adds one registry-wide conformance suite that compiles every registered
+workflow and refuses duplicate tasks, unresolved references, cycles, unstable group keys, descriptor /
 module mismatches and incomplete generic dashboard projections. Person lookup proves the smallest
 shape and separations proves reads, computed facts, a conditional gate, transactions, omissions and
 all current generic surfaces. Once equivalence is green, superseded manual projection tests and
@@ -2122,6 +2122,26 @@ below that its behavior requires. It adds T2/T3 dashboard coverage only when it 
 to introduce a new interaction or wire arm; reusing an already-proved generic surface is covered by
 the registry-wide compiler conformance test. Coverage floors, architecture guards, live selector
 verification and controlled-write evidence are unchanged.
+
+**D312/D315/D316 acceptance additions.** The architecture lane enforces the exact four authored
+artifacts for a workflow classified as reusing existing tasks/surfaces and refuses a hand-authored
+descriptor, module/node assembly, registry wire or workflow-specific generic-dashboard adapter. The
+compiler conformance matrix covers the closed `task | parallel | delegate | gate | transaction`
+algebra, stable entry/leaf ids, explicit parallel join/failure policy, independent failed-leaf retry
+and typed child-run delegation. Person Lookup must prove the minimum form and Separations the
+complete form with public descriptor/module/wire equivalence; a deletion guard then refuses their
+superseded declarations. A fixture changing only grouping, labels, run options or omission forms
+must have exactly one authored workflow file changed: `workflow.ts`. There is no legacy-authoring
+escape hatch.
+
+**D313/D314 omission and recovery matrix.** Tests prove a complete schema-valid omission bundle is
+admitted before start, while missing/invalid values refuse and no worker can request replacement
+values mid-run; a separately declared verifier still executes. Recovery tests distinguish
+checkpoint resume from restart-from-start: the former retries the failed node/parallel leaf, while
+the latter reruns all reads/computations, reuses completed transaction proof without another
+prepare/commit, probes unfinished intents first and refuses fresh-fact/write-proof mismatch.
+Mutation tests must demonstrate that either recovery path goes red if a completed external write
+can execute a second time.
 
 1. **Create `tests/scenario/workflows/<workflow-id>/`.** Two files, no more.
 2. **`structural.scenario.test.ts`** — walk every declared path through `walkDescriptor` and claim
@@ -2172,7 +2192,7 @@ verification and controlled-write evidence are unchanged.
 4. **If the feature changes what an operator does to a RUN**, it needs a T3 pair (§10.7), not just a
    T2: a control that looks right against a fixture and 422s against a real run is the exact defect
    `wire-connectivity` and D253 were each written after.
-5. **Tick the tree.** The generic recipe/compiler conformance proof is ticked once at
+5. **Tick the tree.** The generic workflow/compiler conformance proof is ticked once at
    `{#workflow-authoring-model}`. A migration carries a `PROOF T2/T3` line only for a new dashboard
    capability it introduces; the line names that capability rather than repeating every inherited
    surface.

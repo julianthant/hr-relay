@@ -20,6 +20,7 @@
 import { z } from "zod";
 import {
   ActorIdSchema,
+  BrowserSystemIdSchema,
   IsoInstantSchema,
   PositiveIntSchema,
   RunIdSchema,
@@ -42,6 +43,13 @@ export type WorkerControl = z.infer<typeof WorkerControlSchema>;
 /** Why a worker lease ended. `crashed` and `lease-expired` are written by the recovery sweep. */
 export const WorkerStopReasonSchema = z.enum(["operator", "shutdown", "lease-expired", "crashed"]);
 export type WorkerStopReason = z.infer<typeof WorkerStopReasonSchema>;
+
+/** The descriptor's ordered browser-system set, frozen when this worker lease starts. */
+export const WorkerBrowserSystemsSchema = z.array(BrowserSystemIdSchema).superRefine((systems, context) => {
+  if (new Set(systems).size !== systems.length) {
+    context.addIssue({ code: "custom", message: "worker browser systems must be unique" });
+  }
+});
 
 const LiveFields = {
   startedAt: IsoInstantSchema,
@@ -69,6 +77,11 @@ export const WorkerLeaseRecordSchema = z.strictObject({
   workerId: WorkerIdSchema,
   /** A worker claims only its own workflow's rows (ref execution-and-sessions §3.1). */
   workflow: WorkflowIdSchema,
+  /**
+   * Browser requirements from the exact descriptor this process loaded.
+   * Optional only for durable leases written before this field existed.
+   */
+  browserSystems: WorkerBrowserSystemsSchema.optional(),
   processId: PositiveIntSchema,
   /** Bumped every time this worker id is (re)started; fences a zombie process. */
   leaseGeneration: PositiveIntSchema,

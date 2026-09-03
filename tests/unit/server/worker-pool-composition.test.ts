@@ -55,6 +55,7 @@ import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 
 const NOW = "2026-08-26T09:00:00.000Z";
 const WORKFLOW = WorkflowIdSchema.parse("person-lookup");
+const BROWSER_SYSTEMS = ["crm", "ucpath"] as const;
 const POOL_INDEX_1 = PositiveIntSchema.parse(1);
 const WORKER_1 = poolWorkerId(WORKFLOW, POOL_INDEX_1);
 const MEMBER_1 = { workflowId: WORKFLOW, poolIndex: POOL_INDEX_1, workerId: WORKER_1 } as const;
@@ -293,6 +294,7 @@ async function spawnPoolWorker(
   assert.equal(harness.database.authority.workerLeases.start({
     workerId: member.workerId,
     workflow: member.workflowId,
+    browserSystems: BROWSER_SYSTEMS,
     processId: child.pid,
     requestedBy: "local-operator",
     now: harness.clock.now().toISOString(),
@@ -375,7 +377,8 @@ describe("the composed worker process control through the kernel pool door", () 
     const child = harness.children[0];
     if (child?.pid === undefined) throw new Error("the fake spawner produced no child");
     assert.equal(harness.database.authority.workerLeases.start({
-      workerId: WORKER_1, workflow: WORKFLOW, processId: child.pid, requestedBy: "local-operator", now: NOW,
+      workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
+      processId: child.pid, requestedBy: "local-operator", now: NOW,
     }).state, "started");
     fireBirthPoll(harness);
 
@@ -415,7 +418,8 @@ describe("the composed worker process control through the kernel pool door", () 
     // An operator started this worker by hand: the lease is live under a pid
     // this supervisor never spawned.
     assert.equal(harness.database.authority.workerLeases.start({
-      workerId: WORKER_1, workflow: WORKFLOW, processId: 999, requestedBy: "local-operator", now: NOW,
+      workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
+      processId: 999, requestedBy: "local-operator", now: NOW,
     }).state, "started");
 
     const spawnId = nextCommandId();
@@ -610,7 +614,8 @@ describe("the composed worker process control through the kernel pool door", () 
     // directive), no journal row was written, and the restarted supervisor
     // never spawned the child.
     assert.equal(harness.database.authority.workerLeases.start({
-      workerId: WORKER_1, workflow: WORKFLOW, processId: 4242, requestedBy: "local-operator", now: NOW,
+      workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
+      processId: 4242, requestedBy: "local-operator", now: NOW,
     }).state, "started");
     const crashedNow = harness.clock.now().toISOString();
     assert.equal(harness.database.authority.workerLeases.control({
@@ -671,7 +676,8 @@ describe("the composed worker process control through the kernel pool door", () 
     // A COMPLETED stop, all the way through the worker's own death: the lease
     // carries the stop directive that stopped it and the lifecycle is stopped.
     assert.equal(harness.database.authority.workerLeases.start({
-      workerId: WORKER_1, workflow: WORKFLOW, processId: 4242, requestedBy: "local-operator", now: NOW,
+      workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
+      processId: 4242, requestedBy: "local-operator", now: NOW,
     }).state, "started");
     const stoppedNow = harness.clock.now().toISOString();
     assert.equal(harness.database.authority.workerLeases.control({
@@ -714,7 +720,8 @@ describe("the composed worker process control through the kernel pool door", () 
     // that evidence in exactly one field. Every drift must refuse TYPED,
     // naming the field, never surface as an unrelated supervisor refusal.
     assert.equal(harness.database.authority.workerLeases.start({
-      workerId: WORKER_1, workflow: WORKFLOW, processId: 4242, requestedBy: "local-operator", now: NOW,
+      workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
+      processId: 4242, requestedBy: "local-operator", now: NOW,
     }).state, "started");
     const crashedNow = harness.clock.now().toISOString();
     assert.equal(harness.database.authority.workerLeases.control({
@@ -994,7 +1001,8 @@ describe("dashboard shutdown closes the worker supervisor between ingress and th
     );
     try {
       assert.equal(sideDoor.authority.workerLeases.start({
-        workerId: WORKER_1, workflow: WORKFLOW, processId: 7001, requestedBy: "local-operator", now: NOW,
+        workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
+        processId: 7001, requestedBy: "local-operator", now: NOW,
       }).state, "started");
     } finally {
       sideDoor.close();
