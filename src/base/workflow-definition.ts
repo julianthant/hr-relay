@@ -1019,7 +1019,7 @@ export interface CompiledWorkflow<
 
 export type AnyCompiledWorkflow = CompiledWorkflow<z.ZodType, z.ZodType, CompletionProgram | undefined>;
 
-const COMPILED = new WeakMap<object, AnyCompiledWorkflow>();
+const COMPILED = new WeakMap<object, Readonly<{ compiled: AnyCompiledWorkflow; manifest: BuildManifest }>>();
 const DESCRIPTOR_DEFINITIONS = new WeakMap<object, AnyWorkflowDefinition>();
 
 function storeNamespace(contract: AnyReadTaskContract | AnyPrepareTaskContract | AnyCommitTaskContract): string {
@@ -1060,8 +1060,17 @@ export function compileWorkflow<
   definition: WorkflowDefinition<InputSchema, ResultSchema, Completion>,
   options: CompileWorkflowOptions = {},
 ): CompiledWorkflow<InputSchema, ResultSchema, Completion> {
+  const manifest = options.manifest ?? BUILD_MANIFEST;
   const existing = COMPILED.get(definition);
-  if (existing !== undefined) return existing as CompiledWorkflow<InputSchema, ResultSchema, Completion>;
+  if (existing !== undefined) {
+    if (existing.manifest !== manifest) {
+      throw new Error(
+        `workflow ${String(definition.id)} was already compiled under a different build manifest; one definition `
+        + "compiles under exactly one manifest",
+      );
+    }
+    return existing.compiled as CompiledWorkflow<InputSchema, ResultSchema, Completion>;
+  }
   if (definition.kind !== "workflow-definition") {
     throw new Error("compileWorkflow requires a value produced by defineWorkflow");
   }
@@ -1085,7 +1094,7 @@ export function compileWorkflow<
   });
   const descriptor = defineWorkflowDescriptor({
     ...presentation,
-    contractFingerprint: resolveWorkflowFingerprint(options.manifest ?? BUILD_MANIFEST, WorkflowIdSchema.parse(definition.id)),
+    contractFingerprint: resolveWorkflowFingerprint(manifest, WorkflowIdSchema.parse(definition.id)),
     flow: compileFlow(definition),
     ...(usesDefaultTimeline ? {} : { timeline }),
   });
@@ -1097,7 +1106,7 @@ export function compileWorkflow<
     contracts,
     storeNamespaces: Object.freeze([...new Set(contracts.map(storeNamespace))]),
   });
-  COMPILED.set(definition, compiled);
+  COMPILED.set(definition, Object.freeze({ compiled, manifest }));
   DESCRIPTOR_DEFINITIONS.set(descriptor, definition);
   return compiled;
 }
@@ -1127,7 +1136,7 @@ export function composeWorkflowModule<
   availableStores: readonly RegisteredTaskStore[],
 ): WorkflowModule<CompiledWorkflowDescriptor<InputSchema, ResultSchema, Completion>> {
   const workflowId = String(compiled.descriptor.id);
-  if (COMPILED.get(compiled.definition) !== compiled) {
+  if (COMPILED.get(compiled.definition)?.compiled !== compiled) {
     throw new Error(`workflow ${workflowId} module does not use the compiled workflow of its own definition`);
   }
   const stores = compiled.storeNamespaces.map((namespace) => {

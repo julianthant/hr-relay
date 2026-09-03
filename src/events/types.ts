@@ -147,6 +147,8 @@ const RunQueuedSchema = z.strictObject({
   /** D307 — the step keys this run omits; the typed facts stay in run authority, never in a span. */
   omittedSteps: z.array(SlugSchema).min(1).optional(),
   retryOf: UuidSchema.optional(),
+  /** D314 — present only on a Restart-from-start attempt; a Resume carries `retryOf` alone. */
+  recovery: z.enum(["restart-from-start"]).optional(),
   actorId: SlugSchema,
   /** The exact title/subtitle the confirmation surface showed (start-plan D109). */
   title: z.string().min(1),

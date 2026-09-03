@@ -154,6 +154,33 @@ function reachedNodes(
   return Object.freeze(ordered);
 }
 
+/**
+ * D318 — the graph facts that decide which T1b arm a descriptor may declare.
+ * A `live-read` runs the ORDINARY path with `dryRun: false`, so the graph may
+ * hold neither a transaction node nor a `child-run` node: a delegated child
+ * inherits the parent's `dryRun` and its writes live under its own run, which
+ * the parent's per-run zero-delta proof cannot see. Pure, so a fixture graph
+ * can prove the refusal without a registered workflow.
+ */
+export function liveReadGraphRefusal(
+  descriptor: NonNullable<ReturnType<typeof descriptorFor>>,
+  scenarioId: string,
+): string | undefined {
+  const nodes = descriptorRuntimeNodes(descriptor);
+  const transactions = nodes.filter((node) => node.kind === "transaction").map((node) => String(node.id));
+  const delegations = nodes.filter((node) => node.kind === "child-run").map((node) => String(node.id));
+  if (transactions.length > 0) {
+    return `live-read manifest ${scenarioId} names workflow ${String(descriptor.id)}, whose compiled graph carries `
+      + `transaction node(s) ${transactions.join(", ")}; a transaction-bearing graph must declare the dry-run-preview arm (D318)`;
+  }
+  if (delegations.length > 0) {
+    return `live-read manifest ${scenarioId} names workflow ${String(descriptor.id)}, whose compiled graph carries `
+      + `child-run node(s) ${delegations.join(", ")}; a delegating graph runs its child under its own run and write intents, `
+      + "which this run's zero-delta proof cannot see — no live-read arm admits it (D318)";
+  }
+  return undefined;
+}
+
 export function createProductionDryRunScenarioRuntime(
   input: ProductionDryRunScenarioRuntimeInput,
 ): DryRunScenarioRuntime {
@@ -172,6 +199,7 @@ export function createProductionDryRunScenarioRuntime(
     ...(input.processId === undefined ? {} : { pid: input.processId }),
   });
   let scenarioCase: DryRunScenarioAnyCase | undefined;
+  let scenarioArm: "dry-run-preview" | "live-read" | undefined;
   let configIdentity: Readonly<{ fingerprint: string; snapshotId: string }> | undefined;
 
   const open = (): AuthorityDatabase => AuthorityDatabase.open(
@@ -203,6 +231,7 @@ export function createProductionDryRunScenarioRuntime(
   const runtime: DryRunScenarioRuntime = {
     start: async (request): Promise<DryRunScenarioStarted> => {
       scenarioCase = undefined;
+      scenarioArm = undefined;
       configIdentity = undefined;
       const descriptor = descriptorFor(request.manifest.workflow);
       if (descriptor === undefined) {
@@ -219,20 +248,18 @@ export function createProductionDryRunScenarioRuntime(
        * D209.
        */
       const support = workflowDryRunSupport(descriptor);
-      const transactionNodes = descriptorRuntimeNodes(descriptor)
-        .filter((node) => node.kind === "transaction")
-        .map((node) => String(node.id));
       let dryRun: boolean;
       if (request.manifest.arm === "live-read") {
-        if (transactionNodes.length > 0) {
-          throw new Error(
-            `live-read manifest ${request.manifest.scenarioId} names workflow ${request.manifest.workflow}, whose compiled `
-            + `graph carries transaction node(s) ${transactionNodes.join(", ")}; a transaction-bearing graph must declare `
-            + "the dry-run-preview arm (D318)",
-          );
+        if ("preview" in request.scenarioCase) {
+          throw new Error(`live-read manifest ${request.manifest.scenarioId} carries a preview-arm case; the arms are exclusive`);
         }
+        const refusal = liveReadGraphRefusal(descriptor, request.manifest.scenarioId);
+        if (refusal !== undefined) throw new Error(refusal);
         dryRun = false;
       } else {
+        if (!("preview" in request.scenarioCase)) {
+          throw new Error(`dry-run-preview manifest ${request.manifest.scenarioId} carries a live-read case; the arms are exclusive`);
+        }
         if (support.state !== "supported") {
           throw new Error(
             support.reason === "no-transaction-node"
@@ -351,6 +378,7 @@ export function createProductionDryRunScenarioRuntime(
       spans.emit(admitted.queuedSpan);
       configIdentity = admitted.identity;
       scenarioCase = request.scenarioCase;
+      scenarioArm = request.manifest.arm;
       return admitted.started;
     },
 
@@ -516,7 +544,11 @@ export function createProductionDryRunScenarioRuntime(
         const result = database.authority.runResults.get(runId);
         if (result === undefined) throw new Error(`dry-run ${runId} is done without a run result`);
         const previewHash = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
-        if (!("preview" in expected)) {
+        if (scenarioArm === undefined) throw new Error("dry-run evidence collection lost the admitted arm");
+        if ((scenarioArm === "live-read") === ("preview" in expected)) {
+          throw new Error(`dry-run ${runId} evidence arm ${scenarioArm} disagrees with its case shape`);
+        }
+        if (scenarioArm === "live-read") {
           // D318 — the live-read arm settled the ORDINARY workflow result: the
           // row must be bound to the descriptor's own declared result schema,
           // and never to the preview schema.

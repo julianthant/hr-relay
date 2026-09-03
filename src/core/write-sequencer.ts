@@ -1282,19 +1282,23 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
    */
   function assertReplayMatchesFreshFacts(
     context: WriteSequencerContext,
+    commitContract: AnyCommitTaskContract,
     stored: RunCheckpointRecord,
     system: BrowserSystemId,
     key: string,
     keyDigest: string,
   ): void {
+    // Drift first: a checkpoint from another descriptor/impl is reported as
+    // drift, never dressed up as a fresh-fact mismatch.
+    assertNoCheckpointDrift(context, commitContract, stored);
     const outcome = TransactionOutcomeSchema.parse(stored.output.value);
     const durable = deps.authority.authority.writeIntents.findByPermanentKey(system, key);
     const reference = idempotencyKeyDigestReference(keyDigest);
     if (durable === undefined) {
       throw new Error(
-        `transaction node "${context.node.id}" holds a completed settlement for item ${context.run.envelope.itemId}, `
-        + `but the fresh facts derive ${reference}, which names no permanent write intent; refusing to relabel a `
-        + "completed external write as the consequence of new facts (D314)",
+        `transaction node "${context.node.id}" holds a completed settlement, but the fresh facts derive ${reference}, `
+        + "which names no permanent write intent; refusing to relabel a completed external write as the consequence "
+        + "of new facts (D314)",
       );
     }
     const durableProof = durable.status === "committed"
@@ -1318,12 +1322,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
   }
 
-  /** Validate and replay this node's existing durable transaction checkpoint. */
-  function replayCheckpoint(
+  /** A transaction checkpoint never replays across descriptor/impl/schema drift and never re-clicks. */
+  function assertNoCheckpointDrift(
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
     stored: RunCheckpointRecord,
-  ): unknown {
+  ): void {
     if (stored.descriptorVersion !== context.descriptor.version
       || stored.contractFingerprint !== context.descriptor.contractFingerprint
       || stored.implFingerprint !== resolveImplFingerprint(commitContract.id)
@@ -1333,6 +1337,15 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         + "a transaction checkpoint never replays across contract drift and never re-clicks — resolve the drift first",
       );
     }
+  }
+
+  /** Validate and replay this node's existing durable transaction checkpoint. */
+  function replayCheckpoint(
+    context: WriteSequencerContext,
+    commitContract: AnyCommitTaskContract,
+    stored: RunCheckpointRecord,
+  ): unknown {
+    assertNoCheckpointDrift(context, commitContract, stored);
     const outcome = TransactionOutcomeSchema.parse(stored.output.value);
     const completion = commitContract.writeSafety.completion;
     const proofSchemaHash = deriveSchemaHash(completion.proofSchema, "output");
@@ -1768,7 +1781,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
        * refuses by name rather than relabelling an old write as the
        * consequence of new facts. Nothing is fenced or clicked on this path.
        */
-      assertReplayMatchesFreshFacts(context, storedCheckpoint, system, key, keyDigest);
+      assertReplayMatchesFreshFacts(context, commitContract, storedCheckpoint, system, key, keyDigest);
       return replayCheckpoint(context, commitContract, storedCheckpoint);
     }
     refuseRetiredPermanentKeys(commitContract, commitInput, system, key);

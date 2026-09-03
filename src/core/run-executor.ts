@@ -775,8 +775,11 @@ export async function executeClaimedRun(
         // executes again. This run's own rows (a gate resume re-claiming the
         // same attempt) still replay, and an operator assertion for an omitted
         // step is classified above, never here.
-        if (envelope.recovery === "restart-from-start" && stored !== undefined
-          && RunCheckpointRecordSchema.parse(stored).runId !== runId) {
+        const storedRunId = stored === undefined ? undefined : RunCheckpointRecordSchema.safeParse(stored).data?.runId;
+        if (envelope.recovery === "restart-from-start" && stored !== undefined && storedRunId !== runId) {
+          // An unparseable foreign row is not this run's either; the ordinary
+          // `loadCheckpoint` path below would name its reason, and a restart
+          // executes regardless.
           if (explicit) {
             problems.push(
               `node "${node.id}" (${labelOf(node)}) cannot be replayed on a restart-from-start attempt; `

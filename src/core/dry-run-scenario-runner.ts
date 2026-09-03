@@ -205,10 +205,16 @@ function same(left: unknown, right: unknown): boolean {
 }
 
 export function evaluateDryRunScenarioEvidence(
+  arm: DryRunScenarioManifest["arm"],
   scenarioCase: DryRunScenarioAnyCase,
   before: DryRunWriteSafetyCounts,
   inputEvidence: unknown,
 ): readonly AssertionOutcome[] {
+  // The manifest's declared arm is the authority; the case shape must agree
+  // with it rather than select the assertion set on its own.
+  if ((arm === "live-read") === ("preview" in scenarioCase)) {
+    throw new Error(`dry-run case ${scenarioCase.caseId} does not belong to the ${arm} arm`);
+  }
   const evidence = DryRunScenarioEvidenceSchema.parse(inputEvidence);
   const expectedCheckpoints = scenarioCase.checkpoints.map(({ node, attempt, keyedBy }) => ({
     node,
@@ -359,6 +365,7 @@ export async function runDryRunScenario(
     }
     const evidence = await runtime.collectEvidence(started.runId);
     assertions = evaluateDryRunScenarioEvidence(
+      manifest.arm,
       scenarioCase,
       started.writeSafetyBefore,
       evidence,
