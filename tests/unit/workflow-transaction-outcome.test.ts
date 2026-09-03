@@ -45,13 +45,16 @@ describe("transaction outcome graph projection", () => {
   it("projects a schema-bound committed outcome without defaulting or re-deriving its fields", () => {
     expect(projectTransactionOutcome(
       WriteFixtureCommit,
-      storedOutcome(),
+      storedOutcome({
+        output: { transactionId: "T654321" },
+        proof: { transactionId: "T456789" },
+      }),
       "fixture transaction",
     )).toEqual({
       disposition: "committed",
       proofSource: "normal-output",
-      output: { transactionId: "T123456" },
-      proof: { transactionId: "T123456" },
+      output: { transactionId: "T654321" },
+      proof: { transactionId: "T456789" },
     });
   });
 
