@@ -659,15 +659,15 @@ export const separationsWorkflow = defineWorkflow({
     "separations/re-read-is-a-new-item",
     "separations/gate-resume-shape",
   ],
-  steps: ({ group, taskFromFragment, transactionFromFragment, gateFromFragment, result }) => {
-    const action = taskFromFragment(actionNode, [], ({ input }) => ({
+  steps: ({ group, task, transaction, gate, result }) => {
+    const action = task(actionNode, [], ({ input }) => ({
       documentNumber: input.documentNumber,
     }));
-    const document = taskFromFragment(documentNode, [action], ({ input, outputs }) => ({
+    const document = task(documentNode, [action], ({ input, outputs }) => ({
       actionId: outputs[ACTION_NODE].actionId,
       documentNumber: input.documentNumber,
     }));
-    const plan = taskFromFragment(planNode, [document], ({ input, outputs }) => ({
+    const plan = task(planNode, [document], ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       employeeName: outputs[DOCUMENT_NODE].employee.name,
       lastDayWorked: outputs[DOCUMENT_NODE].separation.lastDayWorked,
@@ -676,7 +676,7 @@ export const separationsWorkflow = defineWorkflow({
       // says what is true — *as of the moment this run read the document*.
       observedAt: outputs[DOCUMENT_NODE].observedAt,
     }));
-    const terminationType = taskFromFragment(
+    const terminationType = task(
       terminationTypeNode,
       [document],
       ({ input, outputs }) => ({
@@ -687,27 +687,27 @@ export const separationsWorkflow = defineWorkflow({
       documentNumber: input.documentNumber,
       }),
     );
-    const nameSearch = taskFromFragment(nameSearchNode, [plan], ({ outputs }) => ({
+    const nameSearch = task(nameSearchNode, [plan], ({ outputs }) => ({
     // `keepNonHdh: true`, always, and UNCONDITIONALLY run — the fragment's own
     // doc says why; the composition feeds it the plan's employee name.
       kind: "by-name" as const,
       name: outputs[PLAN_NODE].employeeName,
       keepNonHdh: true,
     }));
-    const subject = taskFromFragment(subjectNode, [document, plan, nameSearch], ({ input, outputs }) => ({
+    const subject = task(subjectNode, [document, plan, nameSearch], ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       employeeName: outputs[PLAN_NODE].employeeName,
       documentEid: outputs[DOCUMENT_NODE].employee.eid,
       nameSelection: outputs[NAME_SEARCH_NODE].selection,
     }));
-    const jobSummary = taskFromFragment(jobSummaryNode, [subject], ({ outputs }) => ({
+    const jobSummary = task(jobSummaryNode, [subject], ({ outputs }) => ({
       emplId: outputs[SUBJECT_NODE].emplId,
     }));
-    const employment = taskFromFragment(employmentNode, [document, jobSummary], ({ input, outputs }) => ({
+    const employment = task(employmentNode, [document, jobSummary], ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       jobSummary: outputs[JOB_SUMMARY_NODE],
     }));
-    const departmentOption = taskFromFragment(
+    const departmentOption = task(
       departmentOptionNode,
       [document, employment],
       ({ input, outputs }) => ({
@@ -720,11 +720,11 @@ export const separationsWorkflow = defineWorkflow({
       documentNumber: input.documentNumber,
       }),
     );
-    const timecardSearch = taskFromFragment(timecardSearchNode, [subject], ({ input, outputs }) => ({
+    const timecardSearch = task(timecardSearchNode, [subject], ({ input, outputs }) => ({
       emplId: outputs[SUBJECT_NODE].emplId,
       searchTimeoutMs: input.searchTimeoutMs,
     }));
-    const timecard = taskFromFragment(timecardNode, [subject, plan, timecardSearch], ({ outputs }) => {
+    const timecard = task(timecardNode, [subject, plan, timecardSearch], ({ outputs }) => {
       // Reading the search's own match is what makes the dependency load-bearing
       // rather than decorative: Go To is disabled without the selection, and a
       // disabled Go To is a loud failure, never an empty card.
@@ -735,7 +735,7 @@ export const separationsWorkflow = defineWorkflow({
         rangeEnd: outputs[PLAN_NODE].timecardWindow.end,
       };
     });
-    const dates = taskFromFragment(datesNode, [plan, timecard], ({ input, outputs }) => ({
+    const dates = task(datesNode, [plan, timecard], ({ input, outputs }) => ({
       plan: outputs[PLAN_NODE],
       timekeeperName: input.timekeeperName,
       lastPunchDate: outputs[TIMECARD_NODE].grid.lastPunchDate,
@@ -749,7 +749,7 @@ export const separationsWorkflow = defineWorkflow({
         end: outputs[TIMECARD_NODE].range.observedEnd,
       },
     }));
-    const comparison = taskFromFragment(
+    const comparison = task(
       comparisonNode,
       [document, plan, subject, jobSummary, nameSearch, terminationType, departmentOption, employment, dates],
       ({ input, outputs }) => ({
@@ -809,17 +809,17 @@ export const separationsWorkflow = defineWorkflow({
       },
       }),
     );
-    const identityGate = gateFromFragment(identityApprovalGate, [comparison]);
-    const approval = taskFromFragment(approvalNode, [comparison, identityGate], ({ outputs }) => ({
+    const identityGate = gate(identityApprovalGate, [comparison]);
+    const approval = task(approvalNode, [comparison, identityGate], ({ outputs }) => ({
       packet: outputs[COMPARISON_NODE].packet,
       evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
       approval: outputs[GATE_NODE],
     }));
-    const pendingSet = taskFromFragment(pendingSetNode, [approval], ({ outputs }) => ({
+    const pendingSet = task(pendingSetNode, [approval], ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
     }));
-    const clearPending = transactionFromFragment(clearPendingNode, [approval, pendingSet], {
+    const clearPending = transaction(clearPendingNode, [approval, pendingSet], {
     prepareBind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
@@ -831,7 +831,7 @@ export const separationsWorkflow = defineWorkflow({
       observedSet: outputs[PENDING_SET_NODE],
     }),
     });
-    const fileTermination = transactionFromFragment(
+    const fileTermination = transaction(
       fileTerminationNode,
       [approval, terminationType, employment, dates, clearPending],
       {
@@ -857,7 +857,7 @@ export const separationsWorkflow = defineWorkflow({
     }),
       },
     );
-    const receipt = taskFromFragment(receiptNode, [approval, dates, fileTermination], ({ outputs }) => ({
+    const receipt = task(receiptNode, [approval, dates, fileTermination], ({ outputs }) => ({
       // A transaction node's scope value is the typed outcome envelope (D144);
       // `output` is the COMMIT contract's own bare output.
       proof: outputs[TERMINATION_NODE].output.receipt,
@@ -865,9 +865,9 @@ export const separationsWorkflow = defineWorkflow({
       approvedEmplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
     }));
-    const filingPresence = taskFromFragment(filingPresenceNode, [receipt], ({ outputs }) =>
+    const filingPresence = task(filingPresenceNode, [receipt], ({ outputs }) =>
       outputs[RECEIPT_NODE]);
-    const finalizeKuali = transactionFromFragment(
+    const finalizeKuali = transaction(
       finalizeKualiNode,
       [approval, action, document, plan, employment, departmentOption, dates, receipt, filingPresence],
       {

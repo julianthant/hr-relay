@@ -98,6 +98,12 @@ export interface ExplorerQueryDeps {
   /** The in-memory semantic UI catalog the drivers themselves compose. */
   readonly uiCatalog: UiCatalog;
   /**
+   * The build manifest whose source closures the Explorer links. Defaults to
+   * the checked-in generated manifest; a conformance fixture that is not a
+   * registered workflow supplies a manifest naming itself.
+   */
+  readonly buildManifest?: BuildManifestSource;
+  /**
    * Lists the executable scenario corpus, relative to the repo root. Injected
    * so the resolution is testable and so a packaging without `tests/` reports
    * every scenario `unresolved` BY NAME instead of throwing the surface away.
@@ -171,13 +177,19 @@ function unresolved(attemptedPath: string, reason: string): SourceLinkWire {
   return { state: "unresolved", attemptedPath: SourcePathSchema.parse(attemptedPath), reason };
 }
 
+/** The two manifest tables this query reads; the checked-in manifest and a fixture manifest both satisfy it. */
+type BuildManifestSource = Readonly<{
+  workflows: readonly Readonly<{ id: string; sources: readonly Readonly<{ path: string }>[] }>[];
+  tasks: readonly Readonly<{ id: string; sources: readonly Readonly<{ path: string }>[] }>[];
+}>;
+
 /** Every path the build manifest fingerprinted, across workflows and tasks. */
-function manifestSourceIndex(): ReadonlyMap<string, ReadonlySet<string>> {
+function manifestSourceIndex(manifest: BuildManifestSource): ReadonlyMap<string, ReadonlySet<string>> {
   const index = new Map<string, ReadonlySet<string>>();
-  for (const entry of GENERATED_BUILD_MANIFEST.workflows) {
+  for (const entry of manifest.workflows) {
     index.set(`workflow:${entry.id}`, new Set(entry.sources.map(({ path }) => path)));
   }
-  for (const entry of GENERATED_BUILD_MANIFEST.tasks) {
+  for (const entry of manifest.tasks) {
     index.set(`task:${entry.id}`, new Set(entry.sources.map(({ path }) => path)));
   }
   return index;
@@ -906,7 +918,7 @@ function workflowWire(
 
 export function buildWorkflowExplorer(deps: ExplorerQueryDeps): WorkflowExplorerWire {
   const overrides = deps.overrides?.readAll();
-  const manifest = manifestSourceIndex();
+  const manifest = manifestSourceIndex(deps.buildManifest ?? GENERATED_BUILD_MANIFEST);
   const ui = uiLinkIndex(deps.uiCatalog);
   const scenarioSources = deps.listScenarioSources();
   return WorkflowExplorerWireSchema.parse({

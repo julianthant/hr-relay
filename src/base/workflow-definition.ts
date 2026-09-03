@@ -1,5 +1,5 @@
 /**
- * D311/D317 — the ONE workflow-authoring seam.
+ * D311/D315/D317 — the ONE workflow-authoring seam.
  *
  * A `WorkflowDefinition` is the reviewed source form of a workflow: identity
  * and presentation, typed input/result, and one ordered array of timeline
@@ -8,6 +8,13 @@
  * compiler is the only place those references become the runtime builder's
  * string node ids, so tuple order can never accidentally become execution
  * authority.
+ *
+ * The tuple's entries come from one CLOSED, EXPLICIT algebra (D315):
+ * `task | parallel | delegate | gate | transaction`. The compiler may derive
+ * edges from typed references, but it never infers whether an operation is
+ * parallel, delegated, gated or transactional — each is an explicit entry
+ * whose control policy the author writes down, and each entry and each
+ * parallel leaf has a stable id.
  *
  * Vocabulary (D317): the authored value is a `WorkflowDefinition`, its
  * generated executable representation is a `CompiledWorkflow`, and one
@@ -21,10 +28,14 @@ import type {
   AnyReadTaskContract,
 } from "../domain/contracts/base.js";
 import type { IntakeProjection } from "../domain/intake/projection.js";
-import { WorkflowIdSchema } from "../domain/ids.js";
+import { DelegationEdgeIdSchema, WorkflowIdSchema } from "../domain/ids.js";
+import type { ItemId } from "../domain/ids.js";
 import type { NodeConditionSpec } from "../domain/workflow/node-condition.js";
 import type { CompletionProgram } from "../domain/workflow/completion.js";
 import { BUILD_MANIFEST, resolveWorkflowFingerprint } from "../domain/workflow/build-manifest.js";
+import type { BuildManifest } from "../domain/workflow/build-manifest.js";
+import { DelegationPolicySchema } from "../domain/workflow/delegation-policy.js";
+import type { DelegationPolicy } from "../domain/workflow/delegation-policy.js";
 import type { WorkflowModuleRole } from "../domain/workflow/module-role.js";
 import { WorkflowModuleRoleSchema } from "../domain/workflow/module-role.js";
 import {
@@ -32,17 +43,17 @@ import {
   WorkflowStepSchema,
 } from "../domain/workflow/presentation.js";
 import type { StepOmissionDeclaration } from "../domain/workflow/step-omission.js";
-import type { RuntimeFlowNode, TypedTransactionOutcome } from "../domain/workflow/graph.js";
+import type {
+  AnyWorkflowRef,
+  ChildRunOutcome,
+  DelegationManifestRef,
+  RuntimeFlowNode,
+  TypedTransactionOutcome,
+} from "../domain/workflow/graph.js";
 import type { RetryPolicy } from "../domain/session.js";
 import type { RegisteredTaskStore } from "./store.js";
 import { flow } from "./flow.js";
-import type {
-  AnyNodeEntry,
-  BuiltFlow,
-  OperatorGateNodeFragment,
-  TaskNodeFragment,
-  TransactionNodeFragment,
-} from "./flow.js";
+import type { AnyNodeEntry, BuiltFlow, OperatorGateNodeFragment } from "./flow.js";
 import { defineWorkflowDescriptor } from "./workflow.js";
 import type {
   AnyWorkflowDescriptor,
@@ -50,7 +61,8 @@ import type {
   WorkflowDescriptorSpec,
 } from "./workflow.js";
 
-type EntryKind = "task" | "transaction" | "gate";
+/** The closed entry algebra (D315). */
+export type WorkflowEntryKind = "task" | "parallel" | "delegate" | "gate" | "transaction";
 const GROUP_OWNER = Symbol("workflow-group-owner");
 
 export interface WorkflowTimelineGroup {
@@ -62,7 +74,8 @@ export interface WorkflowTimelineGroup {
 
 /**
  * One entry of a timeline tuple: a typed reusable value over an existing task
- * contract (or gate/transaction declaration) that appears in exactly one tuple.
+ * contract (or gate/transaction/parallel/delegate declaration) that appears in
+ * exactly one tuple.
  */
 export interface WorkflowEntry<
   Id extends string = string,
@@ -70,9 +83,9 @@ export interface WorkflowEntry<
   Conditional extends boolean = boolean,
 > {
   readonly entryKind: "workflow-entry";
-  readonly kind: EntryKind;
+  readonly kind: WorkflowEntryKind;
   readonly id: Id;
-  /** Exact D265 step object that owns a reusable fragment, when one exists. */
+  /** Exact D265 step object that owns a reusable identity, when one exists. */
   readonly step?: WorkflowTimelineGroup;
   readonly references: readonly AnyWorkflowEntry[];
   readonly contracts: readonly (AnyReadTaskContract | AnyPrepareTaskContract | AnyCommitTaskContract)[];
@@ -99,11 +112,111 @@ export interface WorkflowEntryScope<
   readonly outputs: EntryOutputs<References>;
 }
 
-interface TaskEntry<
-  Id extends string,
-  Output,
-  Conditional extends boolean,
-> extends WorkflowEntry<Id, Output, Conditional> {
+/* ── entry identities — what an author (or a shared step identity value) writes ── */
+
+type HasWhen<Identity> = "when" extends keyof Identity ? true : false;
+
+/** A step-owned identity carries the exact D265 step object; an inline identity carries none. */
+interface StepOwned {
+  readonly step?: WorkflowTimelineGroup;
+}
+
+export interface TaskEntryIdentity<
+  Id extends string = string,
+  Contract extends AnyReadTaskContract = AnyReadTaskContract,
+> extends StepOwned {
+  readonly id: Id;
+  readonly contract: Contract;
+  readonly label?: string;
+  readonly replay: "checkpoint" | "always-rerun";
+  readonly when?: NodeConditionSpec;
+}
+
+export interface GateEntryIdentity<
+  Id extends string = string,
+  Result extends z.ZodType = z.ZodType,
+> extends StepOwned {
+  readonly id: Id;
+  readonly label: string;
+  readonly statusKey?: string;
+  readonly result: Result;
+  readonly when?: NodeConditionSpec;
+}
+
+export interface TransactionEntryIdentity<
+  Id extends string = string,
+  Prepare extends AnyPrepareTaskContract = AnyPrepareTaskContract,
+  Commit extends AnyCommitTaskContract = AnyCommitTaskContract,
+> extends StepOwned {
+  readonly id: Id;
+  readonly label?: string;
+  readonly prepare: Prepare;
+  readonly commit: Commit;
+  readonly dryRun: "stop-after-prepare" | "unsupported";
+  readonly probePolicy: "always" | "retries-and-recovery-only";
+  readonly probeToFenceMaxMs: number;
+  readonly retryBeforeFence?: RetryPolicy;
+}
+
+/**
+ * D315 — a parallel entry declares its join and failure policy explicitly.
+ * The runtime interprets `join: "all"` with `failure: "fail-fast"`: every leaf
+ * checkpoints independently, so one failed leaf retries on the next attempt
+ * while its successful siblings replay; `all-settled` remains a capability the
+ * executor refuses by name, so the compiler refuses it before a run exists.
+ */
+export interface ParallelEntryIdentity<Id extends string = string> extends StepOwned {
+  readonly id: Id;
+  readonly label?: string;
+  readonly join: "all" | "all-settled";
+  readonly failure: "fail-fast";
+}
+
+export interface ParallelBranchDeclaration<
+  Id extends string = string,
+  Leaves extends readonly AnyWorkflowEntry[] = readonly AnyWorkflowEntry[],
+> {
+  readonly id: Id;
+  readonly leaves: Leaves;
+}
+
+export type ParallelEntryOutput<Branches extends readonly ParallelBranchDeclaration[]> = Readonly<{
+  join: "all";
+  branches: Readonly<{ [Branch in Branches[number] as Branch["id"]]: readonly string[] }>;
+}>;
+
+/** D315 — a delegate entry names the existing typed child-run edge and its whole policy. */
+export interface DelegateEntryIdentity<
+  Id extends string = string,
+  Target extends AnyWorkflowRef = AnyWorkflowRef,
+> extends StepOwned {
+  readonly id: Id;
+  readonly label?: string;
+  readonly target: Target;
+  readonly edgeId: string;
+  readonly cardinality: "one" | "many";
+  readonly await: "none" | "terminal";
+  readonly join: "one" | "all" | "all-settled" | "none";
+  readonly policy: DelegationPolicy;
+}
+
+export type DelegateEntryOutput<
+  Target extends AnyWorkflowRef,
+  Identity extends { readonly await: "none" | "terminal"; readonly cardinality: "one" | "many" },
+> = Identity["await"] extends "none"
+  ? DelegationManifestRef
+  : Identity["cardinality"] extends "one"
+    ? ChildRunOutcome<Target>
+    : readonly ChildRunOutcome<Target>[];
+
+type GateConditional<Identity> = Identity extends OperatorGateNodeFragment<string, string, z.ZodType, infer C>
+  ? C
+  : HasWhen<Identity>;
+
+/* ── runtime entry shapes (compiler-private) ─────────────────────────────── */
+
+interface TaskEntry<Id extends string, Output, Conditional extends boolean>
+  extends WorkflowEntry<Id, Output, Conditional> {
   readonly kind: "task";
   readonly contract: AnyReadTaskContract;
   readonly label?: string;
@@ -112,8 +225,7 @@ interface TaskEntry<
   readonly bind: (scope: unknown) => unknown;
 }
 
-interface TransactionEntry<Id extends string, Output>
-  extends WorkflowEntry<Id, Output, false> {
+interface TransactionEntry<Id extends string, Output> extends WorkflowEntry<Id, Output, false> {
   readonly kind: "transaction";
   readonly prepareContract: AnyPrepareTaskContract;
   readonly commitContract: AnyCommitTaskContract;
@@ -135,10 +247,33 @@ interface GateEntry<Id extends string, Output, Conditional extends boolean>
   readonly when?: NodeConditionSpec;
 }
 
+interface ParallelEntry<Id extends string, Output> extends WorkflowEntry<Id, Output, false> {
+  readonly kind: "parallel";
+  readonly label?: string;
+  readonly join: "all";
+  readonly failure: "fail-fast";
+  readonly branches: readonly Readonly<{ id: string; leaves: readonly TaskEntry<string, unknown, boolean>[] }>[];
+}
+
+interface DelegateEntry<Id extends string, Output> extends WorkflowEntry<Id, Output, false> {
+  readonly kind: "delegate";
+  readonly label?: string;
+  readonly target: AnyWorkflowRef;
+  readonly edgeId: string;
+  readonly cardinality: "one" | "many";
+  readonly await: "none" | "terminal";
+  readonly join: "one" | "all" | "all-settled" | "none";
+  readonly policy: DelegationPolicy;
+  readonly bind: (scope: unknown) => unknown;
+  readonly deriveChildItemId: (input: unknown) => ItemId;
+}
+
 type RuntimeEntry =
   | TaskEntry<string, unknown, boolean>
   | TransactionEntry<string, unknown>
-  | GateEntry<string, unknown, boolean>;
+  | GateEntry<string, unknown, boolean>
+  | ParallelEntry<string, unknown>
+  | DelegateEntry<string, unknown>;
 
 export type WorkflowTimelineTuple = readonly [WorkflowTimelineGroup, readonly AnyWorkflowEntry[]];
 
@@ -153,7 +288,10 @@ export interface WorkflowResultDeclaration<
   readonly _input?: InputSchema;
 }
 
+/* ── the author ──────────────────────────────────────────────────────────── */
+
 export interface WorkflowAuthor<InputSchema extends z.ZodType> {
+  /** D307/D313 — declare a group omittable, beside its own entries. */
   group(
     this: void,
     step: WorkflowTimelineGroup,
@@ -161,78 +299,61 @@ export interface WorkflowAuthor<InputSchema extends z.ZodType> {
   ): WorkflowTimelineGroup;
 
   task<
-    const Id extends string,
-    Contract extends AnyReadTaskContract,
+    const Identity extends TaskEntryIdentity,
     const References extends readonly AnyWorkflowEntry[],
   >(
     this: void,
-    identity: Readonly<{
-      id: Id;
-      contract: Contract;
-      label?: string;
-      replay: "checkpoint" | "always-rerun";
-      when: NodeConditionSpec;
-    }>,
+    identity: Identity,
     references: References,
-    bind: (scope: WorkflowEntryScope<InputSchema, References>) => z.input<Contract["input"]>,
-  ): WorkflowEntry<Id, z.output<Contract["output"]>, true>;
+    bind: (scope: WorkflowEntryScope<InputSchema, References>) => z.input<Identity["contract"]["input"]>,
+  ): WorkflowEntry<Identity["id"], z.output<Identity["contract"]["output"]>, HasWhen<Identity>>;
 
-  task<
-    const Id extends string,
-    Contract extends AnyReadTaskContract,
+  gate<
+    const Identity extends GateEntryIdentity,
     const References extends readonly AnyWorkflowEntry[],
   >(
     this: void,
-    identity: Readonly<{
-      id: Id;
-      contract: Contract;
-      label?: string;
-      replay: "checkpoint" | "always-rerun";
-      when?: undefined;
-    }>,
+    identity: Identity,
     references: References,
-    bind: (scope: WorkflowEntryScope<InputSchema, References>) => z.input<Contract["input"]>,
-  ): WorkflowEntry<Id, z.output<Contract["output"]>, false>;
+  ): WorkflowEntry<Identity["id"], z.output<Identity["result"]>, GateConditional<Identity>>;
 
-  taskFromFragment<
-    const StepKey extends string,
-    const Id extends string,
-    Contract extends AnyReadTaskContract,
+  transaction<
+    const Identity extends TransactionEntryIdentity,
     const References extends readonly AnyWorkflowEntry[],
   >(
     this: void,
-    fragment: TaskNodeFragment<StepKey, Id, Contract>,
-    references: References,
-    bind: (scope: WorkflowEntryScope<InputSchema, References>) => z.input<Contract["input"]>,
-  ): WorkflowEntry<Id, z.output<Contract["output"]>, false>;
-
-  transactionFromFragment<
-    const StepKey extends string,
-    const Id extends string,
-    Prepare extends AnyPrepareTaskContract,
-    Commit extends AnyCommitTaskContract,
-    const References extends readonly AnyWorkflowEntry[],
-  >(
-    this: void,
-    fragment: TransactionNodeFragment<StepKey, Id, Prepare, Commit>,
+    identity: Identity,
     references: References,
     binds: Readonly<{
-      prepareBind: (scope: WorkflowEntryScope<InputSchema, References>) => z.input<Prepare["input"]>;
-      commitBind: (scope: WorkflowEntryScope<InputSchema, References>) => z.input<Commit["input"]>;
+      prepareBind: (scope: WorkflowEntryScope<InputSchema, References>) => z.input<Identity["prepare"]["input"]>;
+      commitBind: (scope: WorkflowEntryScope<InputSchema, References>) => z.input<Identity["commit"]["input"]>;
     }>,
-  ): WorkflowEntry<Id, TypedTransactionOutcome<Commit>, false>;
+  ): WorkflowEntry<Identity["id"], TypedTransactionOutcome<Identity["commit"]>, false>;
 
-  gateFromFragment<
-    const StepKey extends string,
-    const Id extends string,
-    Result extends z.ZodType,
-    const Conditional extends boolean,
+  parallel<
+    const Identity extends ParallelEntryIdentity,
+    const Branches extends readonly ParallelBranchDeclaration[],
+  >(
+    this: void,
+    identity: Identity,
+    branches: Branches,
+  ): WorkflowEntry<Identity["id"], ParallelEntryOutput<Branches>, false>;
+
+  delegate<
+    const Identity extends DelegateEntryIdentity,
     const References extends readonly AnyWorkflowEntry[],
   >(
     this: void,
-    fragment: OperatorGateNodeFragment<StepKey, Id, Result, Conditional>,
+    identity: Identity,
     references: References,
-  ): WorkflowEntry<Id, z.output<Result>, Conditional>;
+    binds: Readonly<{
+      bind: (scope: WorkflowEntryScope<InputSchema, References>) =>
+        Identity["cardinality"] extends "one"
+          ? z.input<Identity["target"]["input"]>
+          : readonly z.input<Identity["target"]["input"]>[];
+      deriveChildItemId: (input: z.output<Identity["target"]["input"]>) => ItemId;
+    }>,
+  ): WorkflowEntry<Identity["id"], DelegateEntryOutput<Identity["target"], Identity>, false>;
 
   result<
     ResultSchema extends z.ZodType,
@@ -243,6 +364,12 @@ export interface WorkflowAuthor<InputSchema extends z.ZodType> {
     references: References,
     derive: (scope: WorkflowEntryScope<InputSchema, References>) => z.input<ResultSchema>,
   ): WorkflowResultDeclaration<InputSchema, ResultSchema>;
+}
+
+const PARALLEL_JOINS = new Set(["all", "all-settled"]);
+
+function withStep(identity: StepOwned): { step?: WorkflowTimelineGroup } {
+  return identity.step === undefined ? {} : { step: identity.step };
 }
 
 function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSchema> {
@@ -259,13 +386,7 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
       });
     },
     task(
-      identity: Readonly<{
-        id: string;
-        contract: AnyReadTaskContract;
-        label?: string;
-        replay: "checkpoint" | "always-rerun";
-        when?: NodeConditionSpec;
-      }>,
+      identity: TaskEntryIdentity,
       references: readonly AnyWorkflowEntry[],
       bind: (scope: never) => unknown,
     ) {
@@ -273,6 +394,7 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
         entryKind: "workflow-entry",
         kind: "task",
         id: identity.id,
+        ...withStep(identity),
         references,
         contracts: Object.freeze([identity.contract]),
         contract: identity.contract,
@@ -283,72 +405,153 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
       };
       return Object.freeze(entry);
     },
-    taskFromFragment(
-      fragment: TaskNodeFragment<string, string, AnyReadTaskContract>,
+    gate(
+      identity: GateEntryIdentity,
       references: readonly AnyWorkflowEntry[],
-      bind: (scope: never) => unknown,
     ) {
-      const entry: TaskEntry<string, unknown, false> = {
+      const entry: GateEntry<string, unknown, boolean> = {
         entryKind: "workflow-entry",
-        kind: "task",
-        id: fragment.id,
-        step: fragment.step,
+        kind: "gate",
+        id: identity.id,
+        ...withStep(identity),
         references,
-        contracts: Object.freeze([fragment.contract]),
-        contract: fragment.contract,
-        label: fragment.label,
-        replay: fragment.replay,
-        bind: (scope) => bind(scope as never),
+        contracts: Object.freeze([]),
+        label: identity.label,
+        ...(identity.statusKey === undefined ? {} : { statusKey: identity.statusKey }),
+        result: identity.result,
+        ...(identity.when === undefined ? {} : { when: identity.when }),
       };
       return Object.freeze(entry);
     },
-    transactionFromFragment(
-      fragment: TransactionNodeFragment<
-        string,
-        string,
-        AnyPrepareTaskContract,
-        AnyCommitTaskContract
-      >,
+    transaction(
+      identity: TransactionEntryIdentity,
       references: readonly AnyWorkflowEntry[],
       binds: Readonly<{
         prepareBind: (scope: never) => unknown;
         commitBind: (scope: never) => unknown;
       }>,
     ) {
+      if (!Number.isInteger(identity.probeToFenceMaxMs) || identity.probeToFenceMaxMs <= 0) {
+        throw new Error(`transaction entry "${identity.id}" requires a positive integer probeToFenceMaxMs budget`);
+      }
       const entry: TransactionEntry<string, unknown> = {
         entryKind: "workflow-entry",
         kind: "transaction",
-        id: fragment.id,
-        step: fragment.step,
+        id: identity.id,
+        ...withStep(identity),
         references,
-        contracts: Object.freeze([fragment.prepare, fragment.commit]),
-        prepareContract: fragment.prepare,
-        commitContract: fragment.commit,
-        label: fragment.label,
-        dryRun: fragment.dryRun,
-        probePolicy: fragment.probePolicy,
-        probeToFenceMaxMs: fragment.probeToFenceMaxMs,
-        ...(fragment.retryBeforeFence === undefined ? {} : { retryBeforeFence: fragment.retryBeforeFence }),
+        contracts: Object.freeze([identity.prepare, identity.commit]),
+        prepareContract: identity.prepare,
+        commitContract: identity.commit,
+        ...(identity.label === undefined ? {} : { label: identity.label }),
+        dryRun: identity.dryRun,
+        probePolicy: identity.probePolicy,
+        probeToFenceMaxMs: identity.probeToFenceMaxMs,
+        ...(identity.retryBeforeFence === undefined ? {} : { retryBeforeFence: identity.retryBeforeFence }),
         prepareBind: (scope) => binds.prepareBind(scope as never),
         commitBind: (scope) => binds.commitBind(scope as never),
       };
       return Object.freeze(entry);
     },
-    gateFromFragment(
-      fragment: OperatorGateNodeFragment<string, string, z.ZodType, boolean>,
-      references: readonly AnyWorkflowEntry[],
+    parallel(
+      identity: ParallelEntryIdentity,
+      branches: readonly ParallelBranchDeclaration[],
     ) {
-      const entry: GateEntry<string, unknown, boolean> = {
+      if (!PARALLEL_JOINS.has(identity.join)) {
+        throw new Error(`parallel entry "${identity.id}" declares unknown join "${String(identity.join)}"`);
+      }
+      if (identity.join !== "all") {
+        throw new Error(
+          `parallel entry "${identity.id}" declares join "${identity.join}", which the run executor does not `
+          + "interpret (capability-unavailable); declare join \"all\" or wait for the owning milestone",
+        );
+      }
+      if (identity.failure !== "fail-fast") {
+        throw new Error(
+          `parallel entry "${identity.id}" declares failure policy "${String(identity.failure)}"; `
+          + "the executor implements exactly \"fail-fast\" (each leaf checkpoints independently and retries alone)",
+        );
+      }
+      if (branches.length < 2) {
+        throw new Error(`parallel entry "${identity.id}" requires at least two branches`);
+      }
+      const branchIds = new Set<string>();
+      const leafObjects = new Set<AnyWorkflowEntry>();
+      const compiledBranches = branches.map((branch) => {
+        if (branchIds.has(branch.id)) {
+          throw new Error(`parallel entry "${identity.id}" repeats branch id "${branch.id}"`);
+        }
+        branchIds.add(branch.id);
+        if (branch.leaves.length === 0) {
+          throw new Error(`parallel entry "${identity.id}" branch "${branch.id}" runs no leaf`);
+        }
+        const leaves = branch.leaves.map((leaf) => {
+          if (leaf.kind !== "task") {
+            throw new Error(
+              `parallel entry "${identity.id}" branch "${branch.id}" leaf "${leaf.id}" is a ${leaf.kind} entry; `
+              + "a parallel leaf is a task entry with its own checkpoint",
+            );
+          }
+          if (leafObjects.has(leaf)) {
+            throw new Error(`parallel entry "${identity.id}" lists leaf "${leaf.id}" in more than one branch`);
+          }
+          leafObjects.add(leaf);
+          return leaf as TaskEntry<string, unknown, boolean>;
+        });
+        return Object.freeze({ id: branch.id, leaves: Object.freeze(leaves) });
+      });
+      const entry: ParallelEntry<string, unknown> = {
         entryKind: "workflow-entry",
-        kind: "gate",
-        id: fragment.id,
-        step: fragment.step,
+        kind: "parallel",
+        id: identity.id,
+        ...withStep(identity),
+        references: Object.freeze([]),
+        contracts: Object.freeze(compiledBranches.flatMap((branch) => branch.leaves.flatMap(({ contracts }) => contracts))),
+        ...(identity.label === undefined ? {} : { label: identity.label }),
+        join: "all",
+        failure: "fail-fast",
+        branches: Object.freeze(compiledBranches),
+      };
+      return Object.freeze(entry);
+    },
+    delegate(
+      identity: DelegateEntryIdentity,
+      references: readonly AnyWorkflowEntry[],
+      binds: Readonly<{
+        bind: (scope: never) => unknown;
+        deriveChildItemId: (input: never) => ItemId;
+      }>,
+    ) {
+      DelegationEdgeIdSchema.parse(identity.edgeId);
+      DelegationPolicySchema.parse(identity.policy);
+      const shape = `${identity.cardinality}/${identity.await}/${identity.join}`;
+      const admitted = identity.await === "none"
+        ? identity.join === "none"
+        : identity.cardinality === "one"
+          ? identity.join === "one"
+          : identity.join === "all" || identity.join === "all-settled";
+      if (!admitted) {
+        throw new Error(
+          `delegate entry "${identity.id}" declares cardinality/await/join ${shape}, which is not one of the `
+          + "typed child-run shapes: one/terminal/one, many/terminal/all, many/terminal/all-settled, or */none/none",
+        );
+      }
+      const entry: DelegateEntry<string, unknown> = {
+        entryKind: "workflow-entry",
+        kind: "delegate",
+        id: identity.id,
+        ...withStep(identity),
         references,
         contracts: Object.freeze([]),
-        label: fragment.label,
-        ...(fragment.statusKey === undefined ? {} : { statusKey: fragment.statusKey }),
-        result: fragment.result,
-        ...("when" in fragment && fragment.when !== undefined ? { when: fragment.when } : {}),
+        ...(identity.label === undefined ? {} : { label: identity.label }),
+        target: identity.target,
+        edgeId: identity.edgeId,
+        cardinality: identity.cardinality,
+        await: identity.await,
+        join: identity.join,
+        policy: identity.policy,
+        bind: (scope) => binds.bind(scope as never),
+        deriveChildItemId: (input) => binds.deriveChildItemId(input as never),
       };
       return Object.freeze(entry);
     },
@@ -367,8 +570,20 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
   return Object.freeze(author) as unknown as WorkflowAuthor<InputSchema>;
 }
 
+/* ── validation ──────────────────────────────────────────────────────────── */
+
 function entryName(entry: AnyWorkflowEntry): string {
   return `workflow entry "${entry.id}"`;
+}
+
+function isParallel(entry: AnyWorkflowEntry): entry is ParallelEntry<string, unknown> {
+  return entry.kind === "parallel";
+}
+
+/** Every entry the tuples own, with a parallel's leaves beside their parent. */
+function flattenEntries(steps: readonly WorkflowTimelineTuple[]): readonly AnyWorkflowEntry[] {
+  return steps.flatMap(([, members]) => members.flatMap((entry) =>
+    isParallel(entry) ? [entry, ...entry.branches.flatMap((branch) => branch.leaves)] : [entry]));
 }
 
 function validateSteps(
@@ -377,13 +592,14 @@ function validateSteps(
   resultReferences: readonly AnyWorkflowEntry[],
 ): void {
   if (steps.length === 0) throw new Error(`workflow ${id} requires at least one timeline group`);
-  const entries = steps.flatMap(([, members]) => members);
+  const entries = flattenEntries(steps);
   if (entries.length === 0) throw new Error(`workflow ${id} requires at least one entry`);
 
   const groupKeys = new Set<string>();
   const groupLabels = new Set<string>();
   const entryObjects = new Set<AnyWorkflowEntry>();
   const entryIds = new Set<string>();
+  const leafParents = new Map<AnyWorkflowEntry, string>();
   for (const [group, members] of steps) {
     const parsed = WorkflowStepSchema.parse({ key: group.key, label: group.label });
     TimelineCategoryKeySchema.parse(parsed.key);
@@ -392,8 +608,8 @@ function validateSteps(
     groupKeys.add(parsed.key);
     groupLabels.add(parsed.label);
     if (members.length === 0) throw new Error(`workflow ${id} timeline group "${parsed.key}" has no entries`);
-    for (const entry of members) {
-      const groupOwner = group[GROUP_OWNER] ?? group;
+    const groupOwner = group[GROUP_OWNER] ?? group;
+    const admit = (entry: AnyWorkflowEntry): void => {
       if (entry.step !== undefined && entry.step !== groupOwner) {
         const sameKeyDifferentObject = entry.step.key === parsed.key
           ? `; same key but distinct step objects: "${parsed.label}" and "${entry.step.label}"`
@@ -402,10 +618,28 @@ function validateSteps(
           `timeline group "${parsed.key}" claims ${entryName(entry)}, which belongs to step "${entry.step.key}"${sameKeyDifferentObject}`,
         );
       }
-      if (entryObjects.has(entry)) throw new Error(`${entryName(entry)} appears in more than one timeline tuple`);
+      if (entryObjects.has(entry)) {
+        const parent = leafParents.get(entry);
+        throw new Error(parent === undefined
+          ? `${entryName(entry)} appears in more than one timeline tuple`
+          : `${entryName(entry)} is a leaf of parallel entry "${parent}" and may not also appear in a timeline tuple`);
+      }
       if (entryIds.has(entry.id)) throw new Error(`workflow ${id} declares entry id "${entry.id}" more than once`);
       entryObjects.add(entry);
       entryIds.add(entry.id);
+    };
+    for (const entry of members) {
+      if (isParallel(entry)) {
+        for (const branch of entry.branches) {
+          for (const leaf of branch.leaves) leafParents.set(leaf, entry.id);
+        }
+      }
+    }
+    for (const entry of members) {
+      admit(entry);
+      if (isParallel(entry)) {
+        for (const branch of entry.branches) for (const leaf of branch.leaves) admit(leaf);
+      }
     }
   }
 
@@ -520,9 +754,7 @@ export function defineWorkflow<
   const { steps: authorSteps, input, role, intake, ...presentation } = spec;
   const authored = authorSteps(workflowAuthor<InputSchema>());
   validateSteps(id, authored.steps, authored.result.references);
-  for (const [, entries] of authored.steps) {
-    for (const entry of entries) Object.freeze(entry.references);
-  }
+  for (const entry of flattenEntries(authored.steps)) Object.freeze(entry.references);
   Object.freeze(authored.result.references);
   return Object.freeze({
     ...presentation,
@@ -538,8 +770,17 @@ export function defineWorkflow<
   });
 }
 
+/* ── compilation ─────────────────────────────────────────────────────────── */
+
+/** Every runtime node an entry compiles to, in the order the timeline names them. */
+function entryNodeIds(entry: AnyWorkflowEntry): readonly string[] {
+  return isParallel(entry)
+    ? [entry.id, ...entry.branches.flatMap((branch) => branch.leaves.map((leaf) => leaf.id))]
+    : [entry.id];
+}
+
 function topologicalEntries(definition: AnyWorkflowDefinition): readonly RuntimeEntry[] {
-  const entries = definition.steps.flatMap(([, members]) => members) as unknown as readonly RuntimeEntry[];
+  const entries = flattenEntries(definition.steps) as unknown as readonly RuntimeEntry[];
   const ordered: RuntimeEntry[] = [];
   const remaining = new Set(entries);
   while (remaining.size > 0) {
@@ -581,6 +822,22 @@ interface RuntimeFlowBuilder {
     when?: NodeConditionSpec;
     result: z.ZodType;
   }>): RuntimeFlowBuilder;
+  parallel(
+    id: string,
+    branches: readonly Readonly<{ id: string; nodes: readonly string[] }>[],
+    opts: Readonly<{ join: "all" | "all-settled" }>,
+  ): RuntimeFlowBuilder;
+  childRun(id: string, target: AnyWorkflowRef, opts: Readonly<{
+    label?: string;
+    dependsOn: readonly string[];
+    edgeId: string;
+    cardinality: "one" | "many";
+    bind: (scope: unknown) => unknown;
+    deriveChildItemId: (input: unknown) => ItemId;
+    await: "none" | "terminal";
+    join: "one" | "all" | "all-settled" | "none";
+    policy: DelegationPolicy;
+  }>): RuntimeFlowBuilder;
   build(result: Readonly<{
     schema: z.ZodType;
     dependsOn: readonly string[];
@@ -592,8 +849,29 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
   definition: WorkflowDefinition<InputSchema, ResultSchema, CompletionProgram | undefined>,
 ): CompiledFlow<InputSchema, ResultSchema> {
   const builder = flow(definition.input) as unknown as RuntimeFlowBuilder;
+  // A leaf's parallel node must be declared before the leaf (the builder's
+  // downstream check); the parallel entry itself has no references, so it is
+  // emitted lazily — immediately before its first leaf in dependency order.
+  const parallelOf = new Map<AnyWorkflowEntry, ParallelEntry<string, unknown>>();
+  for (const entry of flattenEntries(definition.steps)) {
+    if (!isParallel(entry)) continue;
+    for (const branch of entry.branches) for (const leaf of branch.leaves) parallelOf.set(leaf, entry);
+  }
+  const emittedParallels = new Set<ParallelEntry<string, unknown>>();
+  const emitParallel = (entry: ParallelEntry<string, unknown>): void => {
+    if (emittedParallels.has(entry)) return;
+    emittedParallels.add(entry);
+    builder.parallel(
+      entry.id,
+      entry.branches.map((branch) => ({ id: branch.id, nodes: branch.leaves.map((leaf) => leaf.id) })),
+      { join: entry.join },
+    );
+  };
   for (const entry of topologicalEntries(definition)) {
     const dependsOn = Object.freeze(entry.references.map(({ id }) => id));
+    if (entry.kind === "parallel") continue;
+    const parent = parallelOf.get(entry);
+    if (parent !== undefined) emitParallel(parent);
     if (entry.kind === "task") {
       builder.step(entry.id, entry.contract, {
         ...(entry.label === undefined ? {} : { label: entry.label }),
@@ -614,6 +892,20 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
         probePolicy: entry.probePolicy,
         probeToFenceMaxMs: entry.probeToFenceMaxMs,
         ...(entry.retryBeforeFence === undefined ? {} : { retryBeforeFence: entry.retryBeforeFence }),
+      });
+      continue;
+    }
+    if (entry.kind === "delegate") {
+      builder.childRun(entry.id, entry.target, {
+        ...(entry.label === undefined ? {} : { label: entry.label }),
+        dependsOn,
+        edgeId: entry.edgeId,
+        cardinality: entry.cardinality,
+        bind: entry.bind,
+        deriveChildItemId: entry.deriveChildItemId,
+        await: entry.await,
+        join: entry.join,
+        policy: entry.policy,
       });
       continue;
     }
@@ -673,18 +965,39 @@ function storeNamespace(contract: AnyReadTaskContract | AnyPrepareTaskContract |
   return String(contract.id).slice(0, String(contract.id).lastIndexOf("/"));
 }
 
+function defaultEntryLabel(entry: RuntimeEntry): string | undefined {
+  switch (entry.kind) {
+    case "task": return entry.label ?? entry.contract.title;
+    case "transaction": return entry.label ?? entry.commitContract.title;
+    case "gate": return entry.label;
+    case "parallel":
+    case "delegate":
+      return undefined;
+  }
+}
+
 /**
  * Compile a definition through the existing descriptor factory and runtime.
  * Compilation is memoized per definition object, so the descriptor's identity
  * is stable across every consumer — the composition root, the bundle-safe
  * descriptor tuple and every test read the same object.
  */
+export interface CompileWorkflowOptions {
+  /**
+   * The build manifest that owns this workflow's contract fingerprint. Defaults
+   * to the checked-in manifest; a test fixture that is not a registered
+   * workflow supplies a manifest naming itself. It is never an authoring input.
+   */
+  readonly manifest?: BuildManifest;
+}
+
 export function compileWorkflow<
   InputSchema extends z.ZodType,
   ResultSchema extends z.ZodType,
   Completion extends CompletionProgram | undefined,
 >(
   definition: WorkflowDefinition<InputSchema, ResultSchema, Completion>,
+  options: CompileWorkflowOptions = {},
 ): CompiledWorkflow<InputSchema, ResultSchema, Completion> {
   const existing = COMPILED.get(definition);
   if (existing !== undefined) return existing as CompiledWorkflow<InputSchema, ResultSchema, Completion>;
@@ -696,29 +1009,26 @@ export function compileWorkflow<
   void input;
   void role;
   void intake;
+  void result;
   const timeline = steps.map(([group, entries]) => ({
     key: group.key,
     label: group.label,
-    nodes: entries.map(({ id }) => id),
+    nodes: entries.flatMap(entryNodeIds),
     ...(group.omission === undefined ? {} : { omission: group.omission }),
   }));
   const usesDefaultTimeline = steps.every(([group, entries]) => {
     const [entry] = entries as readonly RuntimeEntry[];
     if (entry === undefined || entries.length !== 1 || group.omission !== undefined) return false;
-    const label = entry.kind === "task"
-      ? entry.label ?? entry.contract.title
-      : entry.kind === "transaction"
-        ? entry.label ?? entry.commitContract.title
-        : entry.label;
-    return group.key === entry.id && group.label === label;
+    const label = defaultEntryLabel(entry);
+    return label !== undefined && group.key === entry.id && group.label === label;
   });
   const descriptor = defineWorkflowDescriptor({
     ...presentation,
-    contractFingerprint: resolveWorkflowFingerprint(BUILD_MANIFEST, WorkflowIdSchema.parse(definition.id)),
+    contractFingerprint: resolveWorkflowFingerprint(options.manifest ?? BUILD_MANIFEST, WorkflowIdSchema.parse(definition.id)),
     flow: compileFlow(definition),
     ...(usesDefaultTimeline ? {} : { timeline }),
   });
-  const contracts = Object.freeze(steps.flatMap(([, entries]) => entries.flatMap(({ contracts: owned }) => owned)));
+  const contracts = Object.freeze(flattenEntries(steps).flatMap(({ contracts: owned }) => owned));
   const compiled: CompiledWorkflow<InputSchema, ResultSchema, Completion> = Object.freeze({
     kind: "compiled-workflow",
     definition,
@@ -726,7 +1036,6 @@ export function compileWorkflow<
     contracts,
     storeNamespaces: Object.freeze([...new Set(contracts.map(storeNamespace))]),
   });
-  void result;
   COMPILED.set(definition, compiled);
   DESCRIPTOR_DEFINITIONS.set(descriptor, definition);
   return compiled;
@@ -793,4 +1102,9 @@ export function composeWorkflowModule<
 /** Registry/conformance seam: recover the exact definition that compiled a descriptor. */
 export function workflowDefinitionOf(descriptor: object): AnyWorkflowDefinition | undefined {
   return DESCRIPTOR_DEFINITIONS.get(descriptor);
+}
+
+/** Registry-wide conformance seam: the entry kinds a definition uses, closed and explicit. */
+export function workflowEntryKinds(definition: AnyWorkflowDefinition): readonly WorkflowEntryKind[] {
+  return Object.freeze([...new Set(flattenEntries(definition.steps).map(({ kind }) => kind))]);
 }
