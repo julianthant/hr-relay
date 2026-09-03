@@ -640,6 +640,19 @@ Node and fake transports exercise the same door a browser supplies for free; the
 on that header being client-authored. Every other `GET` remains unguarded by design: it reads served
 projections and never changes state.
 
+**The start-plan wire has one owner (2026-09-03).** `src/domain/dashboard/start-plan.ts` declares
+`StartPlanRequestSchema` (what a browser authors — every leaf explicit, no defaults),
+`StartPlanIngressSchema` (what `POST /api/v1/start-plans` admits — the same leaves plus the
+server-owned `headless` / no-capture / `interactive` defaults for programmatic callers) and
+`StartPlanWireSchema` (the answer — domain ids, fingerprints and instants; omitted step KEYS only,
+never omission facts or `rawInput`). `client/commands.ts` and `commands/start-plan-service.ts` import
+those three and declare none of their own; the client's former "mirror" with generic strings and
+`unknown[]` submissions is deleted, and `start-plan-contract.test.ts` refuses either file
+redeclaring a start-plan schema. The refusal-code enum moved to the browser-safe
+`domain/run/start-refusal.ts` because `domain/run/start-plan.ts` hashes with `node:crypto` and a
+bundle entry may reach no Node built-in (§8). The wire is registered as `wire/start-plan` in the
+redaction audit: planned titles, subtitles, match keys and refusal messages are captured HR values.
+
 **A command whose target is not a run is composed beside the composer, not inside it** (D249,
 2026-08-20). `composeCommandRequest` is exhaustive over the SERVED row-action vocabulary and every
 one of its arms targets a `runId`; the Session Panel's `Stop` targets a worker lease, so widening

@@ -106,6 +106,13 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-03 — a wire the client "mirrors" is a wire the client can drift from.** The start-plan
+  request/response schemas live ONLY in `src/domain/dashboard/start-plan.ts`; `client/commands.ts`
+  imports them and exports `StartPlanResponse` as a type alias of `StartPlanWire`. Never redeclare a
+  wire schema under `src/dashboard/` (the contract test refuses it). A domain leaf a browser bundle
+  needs must not sit beside `node:crypto` — split it out (`domain/run/start-refusal.ts`). Correcting
+  a fixture to the real closed vocabulary can move rendered parity references; that is a deliberate
+  `test:parity:update`, never a widened schema.
 - **2026-09-03 — a replayed cursor is not new state, and an ending the client cannot classify is
   not a network blip.** `subscription.ts` applied every snapshot and patch it parsed, so a resume
   replayed state the client already held — and the replay of a REMOVAL names a run the held day no
