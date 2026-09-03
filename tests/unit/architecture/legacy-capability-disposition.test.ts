@@ -1,5 +1,3 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -7,12 +5,16 @@ import inventory from "../../../config/legacy-capabilities.json" with { type: "j
 import packageJson from "../../../package.json" with { type: "json" };
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { startRebuildRuntime } from "../../../src/core/runtime-composition.js";
-import { LEGACY_REPO_ROOT, gitVisibleFiles, gitVisibleFilesIn } from "./helpers/guard-files.js";
+import { gitVisibleFiles } from "./helpers/guard-files.js";
+import {
+  FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
+  frozenLegacyPaths,
+} from "./helpers/frozen-legacy-architecture-provenance.js";
 
 /**
  * D58 inventories LEGACY capability surfaces — the things the rebuild must
- * replace. Post-D93 those surfaces live in the other repository, so every
- * `sourcePaths` entry resolves against `LEGACY_REPO_ROOT`, while every
+ * replace. Post-D93 those surfaces are preserved as a fixed in-repo provenance
+ * snapshot, while every
  * DISPOSITION target names a path in THIS repo. Single-rooted per field by
  * construction, so paths stay unprefixed (see `helpers/guard-files.ts` for the
  * `legacy:` scheme used by the inventories that mix both repos).
@@ -23,38 +25,8 @@ import { LEGACY_REPO_ROOT, gitVisibleFiles, gitVisibleFilesIn } from "./helpers/
  * entry may not stay `open` while the milestone that owns it has already been
  * reported complete by the runtime.
  */
-function legacyGitVisibleFiles(paths: readonly string[]): string[] {
-  return gitVisibleFilesIn(LEGACY_REPO_ROOT, paths);
-}
-
-function childDirectories(path: string): string[] {
-  const prefix = `${path}/`;
-  return [...new Set(legacyGitVisibleFiles([path]).flatMap((file) => {
-    const relativePath = file.slice(prefix.length);
-    return relativePath.includes("/") ? [`${path}/${relativePath.split("/")[0]}`] : [];
-  }))].sort();
-}
-
-function directTsFiles(path: string): string[] {
-  const prefix = `${path}/`;
-  return legacyGitVisibleFiles([path]).filter((file) => {
-    const name = file.slice(prefix.length);
-    return !name.includes("/") && name.endsWith(".ts") && name !== "index.ts";
-  });
-}
-
 function discoveredCapabilityPaths(): string[] {
-  return [
-    ...childDirectories("src/workflows"),
-    ...childDirectories("src/services"),
-    ...directTsFiles("src/tracker/dashboard/hono/routes"),
-    ...childDirectories("src/dashboard/components"),
-    "src/cli.ts",
-    "src/cli-daemon.ts",
-    ...legacyGitVisibleFiles(["src/scripts"]).filter((file) => file.endsWith(".ts")),
-    ...directTsFiles("src/tracker/exports"),
-    "tests/unit/architecture",
-  ].sort();
+  return [...frozenLegacyPaths(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.capabilities.discoveredPaths)];
 }
 
 /**
@@ -309,7 +281,7 @@ const closureFacts: CapabilityClosureFacts = {
   completedThrough: runtimeCompletedThrough(),
   repoPaths: repoPathIndex(),
   npmScripts: new Set(Object.keys(packageJson.scripts)),
-  legacyPathExists: (path) => existsSync(join(LEGACY_REPO_ROOT, path)),
+  legacyPathExists: (path) => frozenLegacyPaths(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.capabilities.legacyPaths).includes(path),
 };
 
 function entryOf(draft: CapabilityInventory, id: string): CapabilityEntry {

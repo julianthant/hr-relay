@@ -146,11 +146,12 @@ enforcement.
 
 ## Cross-repo rules (D93/D94)
 
-**The legacy repo is a frozen production reference, not a dependency.**s
+**The legacy repo is a frozen production reference, not a dependency.**
 
 - **Never import, invoke, proxy, or read the legacy repo's live state from `src/`.** Two
-  repositories share no module graph — this is now structural, not merely banned. The only code
-  permitted to reach across is the **guard lane**, which audits legacy as data.
+  repositories share no module graph — this is now structural, not merely banned. Finished lint,
+  type, test, architecture, and generated gates are self-contained too: read-only porting work may
+  consult legacy, but a committed gate may not resolve its checkout.
 - **Porting = copy with provenance.** When you bring verified knowledge across (a selector, a
   parsing rule, a page-state fact), copy it and record **the legacy commit hash and source path** in
   the ported code. Never link it at runtime — which is impossible anyway.
@@ -161,13 +162,17 @@ enforcement.
   ported selector or page-state fact going stale after legacy fixed it, and that is now covered by
   **live re-verification at each workflow's migration**, which the charter already makes mandatory
   and pre-authorized. A selector checked against the live system beats one diffed against legacy's
-  copy of it. `legacy-selector-port-provenance` is unaffected: it pins all 406 keys to a FIXED
-  legacy commit's blobs, so legacy moving on cannot invalidate it.
+  copy of it. `legacy-selector-port-provenance` is unaffected: the checked-in architecture
+  provenance snapshot pins all 406 keys to a FIXED legacy commit's source blobs and authenticated,
+  identifier-redacted source snapshots, so legacy moving on cannot invalidate it.
 - **Nothing in the legacy repo may be deleted** during the rebuild or the initial cutover. The whole
   repository is the D89 rollback asset.
-- The guard lane finds the legacy repo at `../hr-automation`, overridable with
-  `HRAUTO_LEGACY_REPO`. It **fails loud** when the repo is missing — a skipped legacy audit is
-  exactly the drift D93 warns about.
+- Architecture guards read `config/ports/legacy-architecture-provenance.json`, whose strict parser
+  authenticates every identifier-redacted frozen source and path-inventory snapshot before exposing
+  it. The external payload anchor prevents a changed snapshot from authenticating a recomputed
+  digest; SSN- and UCSD EID-shaped values must never enter this evidence. Missing, malformed,
+  duplicate, reordered, or content-address-mismatched evidence fails loud. Never restore a
+  `../hr-automation` or `HRAUTO_LEGACY_REPO` execution dependency to a finished gate.
 - Inventories that span both repos (`src/domain/runtime-environment.ts`) mark legacy paths with an
   explicit **`legacy:` scheme**. Both repos have a `src/` — `src/cli.ts` exists in both — so a bare
   path is ambiguous. Unprefixed always means this repo.
@@ -296,6 +301,12 @@ environment-supplied.
 > every ordinary validator; unmarked late roots remain malformed and an exact repeat writes nothing.
 
 ## Conventions
+
+- **2026-09-02 — architecture guards are a named Vitest project, not a unit-project overlap.**
+  `unit` excludes `tests/unit/architecture/**`; `architecture` recursively owns every
+  `tests/unit/architecture/**/*.test.ts`; and `npm run test:architecture` selects that project by
+  name. Keep the project include, the unit exclusion, and the script mechanically pinned together
+  so a path rename cannot orphan the lane or make coverage execute the guards twice.
 
 - **2026-09-02 — a workflow mini-store output is not complete until its implementation records every leaf.**
   Adding a schema leaf without the matching `ctx.recordData` point leaves the task valid in direct

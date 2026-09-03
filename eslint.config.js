@@ -79,6 +79,16 @@ export default ts.config(
     rules: { ...unusedImportsRules, ...typeAwareTuning },
   },
 
+  // These authored root configs are included by tsconfig and must not become a
+  // typecheck-only island. Keep the list exact; arbitrary repository roots are
+  // not a lint target.
+  {
+    files: ["vitest.config.ts", "vite.dashboard.config.ts", "playwright.parity.config.ts"],
+    plugins: { "unused-imports": unusedImports },
+    languageOptions: { globals: { ...globals.node } },
+    rules: { ...unusedImportsRules, ...typeAwareTuning },
+  },
+
   // Rebuild browser sources (the dashboard landed in 1i-spine): the same
   // strict tier plus the React hooks rules that guard hook ordering/deps.
   {

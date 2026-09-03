@@ -17,6 +17,7 @@
  * stopped checking would itself fail.
  */
 import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import rawInventory from "../../../config/canonical-field-inventory.json" with { type: "json" };
@@ -28,7 +29,8 @@ import {
   auditCanonicalFieldRegistry,
   type CanonicalFieldInventory,
 } from "./helpers/canonical-field-inventory-audit.js";
-import { resolveScopedPath } from "./helpers/guard-files.js";
+import { REPO_ROOT } from "./helpers/guard-files.js";
+import { FROZEN_LEGACY_ARCHITECTURE_PROVENANCE } from "./helpers/frozen-legacy-architecture-provenance.js";
 
 const inventory = CanonicalFieldInventorySchema.parse(rawInventory);
 
@@ -37,7 +39,11 @@ const registry: ReadonlyMap<string, CanonicalField> = new Map(
 );
 
 function readSource(ref: string): string | null {
-  const path = ref.startsWith("doc:") ? resolveScopedPath(ref.slice("doc:".length)) : resolveScopedPath(ref);
+  if (ref.startsWith("legacy:")) {
+    return FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.canonicalFields.files
+      .find(({ path }) => path === ref.slice("legacy:".length))?.text ?? null;
+  }
+  const path = resolve(REPO_ROOT, ref.startsWith("doc:") ? ref.slice("doc:".length) : ref);
   return existsSync(path) ? readFileSync(path, "utf8") : null;
 }
 
@@ -58,6 +64,7 @@ describe("ref data-intake-and-edit-data §1 canonical field registry", () => {
 
   it("names the legacy commit the scan was taken at", () => {
     assert.equal(inventory.legacyCommit.length >= 7, true);
+    assert.equal(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.canonicalFields.commit.startsWith(inventory.legacyCommit), true);
     assert.equal(inventory.sources.some((source) => source.kind === "roster-header-rule"), true);
     assert.equal(inventory.sources.some((source) => source.kind === "ocr-form-field"), true);
     assert.equal(inventory.sources.some((source) => source.kind === "edit-data-field"), true);

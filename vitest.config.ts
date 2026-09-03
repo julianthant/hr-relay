@@ -3,6 +3,14 @@ import { resolve } from "node:path";
 import { availableParallelism } from "node:os";
 
 export const REBUILD_COVERAGE_INCLUDE = ["src/**/*.ts", "src/**/*.tsx"] as const;
+export const REBUILD_UNIT_TEST_INCLUDE = ["tests/unit/**/*.test.ts"] as const;
+export const REBUILD_UNIT_TEST_EXCLUDE = ["tests/unit/architecture/**"] as const;
+export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
+  "tests/unit/architecture/**/*.test.ts",
+] as const;
+export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [] as const;
+export const REBUILD_SCENARIO_TEST_INCLUDE = ["tests/scenario/**/*.test.ts"] as const;
+export const REBUILD_TEST_EXEC_ARGV = ["--no-experimental-webstorage"] as const;
 export const REBUILD_COVERAGE_EXCLUSIONS = [
   {
     pattern: "src/generated/**/*.ts",
@@ -42,6 +50,13 @@ export default defineConfig({
     },
   },
   test: {
+    // Every named project, including architecture, must fail if its include or
+    // exclude leaves it empty; an empty lane proves no invariant.
+    passWithNoTests: false,
+    // Node's process-global experimental localStorage is neither browser parity
+    // nor isolated test state. Disable it in workers instead of suppressing its
+    // warning; browser tests exercise real window.localStorage in Playwright.
+    execArgv: [...REBUILD_TEST_EXEC_ARGV],
     // Each test file runs in its own isolated fork, so process.env mutations
     // and module-level caches are per-file no matter the scheduling.
     pool: "forks",
@@ -54,7 +69,17 @@ export default defineConfig({
         extends: true,
         test: {
           name: "unit",
-          include: ["tests/unit/**/*.test.ts"],
+          include: [...REBUILD_UNIT_TEST_INCLUDE],
+          exclude: [...REBUILD_UNIT_TEST_EXCLUDE],
+          fileParallelism: true,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "architecture",
+          include: [...REBUILD_ARCHITECTURE_TEST_INCLUDE],
+          exclude: [...REBUILD_ARCHITECTURE_TEST_EXCLUDE],
           fileParallelism: true,
         },
       },
@@ -62,7 +87,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: "scenario",
-          include: ["tests/scenario/**/*.test.ts"],
+          include: [...REBUILD_SCENARIO_TEST_INCLUDE],
           fileParallelism: true,
         },
       },

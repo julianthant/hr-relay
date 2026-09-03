@@ -1327,17 +1327,22 @@ set. The test asserts:
 1. every inventory name maps to a real file recursively under `tests/unit/architecture/`;
 2. every recursively discovered `*.test.ts` file is in the inventory (no unregistered guard — forces a
    conscious add, and forces this doc's inventory to stay honest);
-3. `test:architecture` in `package.json` selects the complete directory exactly, with no narrower
-   file/glob/project/config/exclude escape hatch (a rename or nested guard cannot orphan the suite);
+3. the named `architecture` Vitest project includes the complete recursive directory exactly,
+   `unit` excludes that directory exactly, the architecture project excludes nothing, and
+   `test:architecture` selects only that project while forcing empty collection to fail; an
+   independently collected unit test exercises that refusal so
+   the architecture lane cannot be its sole witness (a rename or nested guard cannot orphan or
+   double-run it);
 4. every active rebuild-`src/` scan resolves at least one file; a family is activated in the same
    commit as its first file, and `ENOENT`/an unmatched glob is never converted to green;
 5. the rebuild-scoped ratchets (the port-set in §2) each have a registered executable scanner;
    every scanner is run against a violating fixture so a comment or dead declaration cannot stand in
    for enforcement, and active scanner results are non-empty;
-6. `gate-coverage`'s assertions are kept inline, re-derived against the rebuild repo's plain script
-   family (`typecheck`, `lint --max-warnings 0`);
-7. ESLint's CLI target and the matching `eslint.config.js` typed rule block both include the rebuild
-   `src/` and `tests/`;
+6. `gate-coverage`'s assertions are kept inline and pin the exact per-commit command family
+   (`typecheck`, `lint --max-warnings 0`, `test`, `test:coverage`) so an inert wrapper cannot satisfy
+   the gate by merely containing the expected words;
+7. ESLint's CLI target and the matching `eslint.config.js` typed rule blocks both include the three
+   authored roots and the exact root TypeScript configs admitted by `tsconfig.json`;
 8. D70's scope split survives the repo split, and **as-built the rebuild half is enforced as a
    BAN**: `gate-coverage.test.ts` asserts that no script in this `package.json` matches
    `legacy-tests-ratchet` or `:rebuild`, and that `lint` carries `--max-warnings 0` over each of the

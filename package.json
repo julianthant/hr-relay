@@ -23,9 +23,9 @@
     "ui:catalog": "tsx scripts/generate-ui-catalog.ts",
     "selector:search": "tsx scripts/search-ui.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src tests scripts --max-warnings 0",
+    "lint": "eslint src tests scripts vitest.config.ts vite.dashboard.config.ts playwright.parity.config.ts --max-warnings 0",
     "test": "vitest run --reporter=dot",
-    "test:architecture": "vitest run tests/unit/architecture --reporter=dot",
+    "test:architecture": "vitest run --project architecture --reporter=verbose --passWithNoTests=false",
     "test:coverage": "vitest run --coverage --reporter=dot && tsx scripts/suite-size.ts",
     "test:watch": "vitest",
     "perf:dashboard": "TZ=UTC tsx tests/perf/dashboard-benchmark.ts"
