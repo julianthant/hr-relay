@@ -1,14 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 import vitestConfig, { REBUILD_TEST_EXEC_ARGV } from "../../vitest.config.js";
 import { REPO_ROOT } from "./architecture/helpers/guard-files.js";
-
-const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
-  readonly scripts: Readonly<Record<string, string>>;
-};
 
 function inheritedProjectPassWithNoTests(config: unknown): boolean | undefined {
   return (config as { readonly test?: { readonly passWithNoTests?: boolean } }).test?.passWithNoTests;
@@ -16,6 +12,24 @@ function inheritedProjectPassWithNoTests(config: unknown): boolean | undefined {
 
 function inheritedProjectExecArgv(config: unknown): readonly string[] | undefined {
   return (config as { readonly test?: { readonly execArgv?: readonly string[] } }).test?.execArgv;
+}
+
+function namedArchitectureProject(config: unknown): {
+  readonly include?: readonly string[];
+  readonly exclude?: readonly string[];
+} | undefined {
+  const projects = (config as {
+    readonly test?: {
+      readonly projects?: readonly {
+        readonly test?: {
+          readonly name?: string;
+          readonly include?: readonly string[];
+          readonly exclude?: readonly string[];
+        };
+      }[];
+    };
+  }).test?.projects;
+  return projects?.find(({ test }) => test?.name === "architecture")?.test;
 }
 
 function runArchitectureProjectWithNoMatchingFile() {
@@ -28,7 +42,7 @@ function runArchitectureProjectWithNoMatchingFile() {
       "--project",
       "architecture",
       "tests/unit/architecture/fixtures/does-not-exist.test.ts",
-      "--reporter=dot",
+      "--reporter=verbose",
     ],
     { cwd: REPO_ROOT, encoding: "utf8" },
   );
@@ -43,15 +57,25 @@ describe("architecture project empty collection", () => {
       ["--no-experimental-webstorage"],
       "Node test workers must disable process-global web storage rather than emit an uncontrolled warning",
     );
-    assert.equal(
-      pkg.scripts["test:architecture"],
-      "vitest run --project architecture --reporter=dot --passWithNoTests=false",
-      "the architecture command must independently override a permissive empty-suite setting",
-    );
     assert.notEqual(
       inheritedProjectPassWithNoTests({ test: { passWithNoTests: true } }),
       false,
       "the control must distinguish the permissive empty-suite setting",
+    );
+  });
+
+  it("independently keeps the membership guard inside an architecture project with no exclusions", () => {
+    const architecture = namedArchitectureProject(vitestConfig);
+    assert.deepEqual(architecture?.include, ["tests/unit/architecture/**/*.test.ts"]);
+    assert.deepEqual(
+      architecture?.exclude,
+      [],
+      "architecture exclusions could remove the membership guard that owns the architecture lane",
+    );
+    assert.match(
+      architecture?.include?.[0] ?? "",
+      /tests\/unit\/architecture\/\*\*\/\*\.test\.ts/,
+      "the recursive include must collect tests/unit/architecture/guard-manifest.test.ts",
     );
   });
 

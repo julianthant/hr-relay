@@ -19,6 +19,17 @@ unit exclusion, and script together; its synthetic refusals cover the old path f
 project, file/glob narrowing, `--exclude`, an alternate config, a missing/narrow unit exclusion,
 and a non-recursive/narrow architecture include.
 
+The final u06 membership rereview added the missing project-config negative control. With
+`architectureExclude: ["tests/unit/architecture/runtime-isolation.test.ts"]`, the owner returns:
+
+```text
+architecture project exclude must remain empty; received ["tests/unit/architecture/runtime-isolation.test.ts"]
+```
+
+The independently collected unit witness also reads the resolved named project and requires the
+recursive include plus an empty exclusion list, so the architecture membership guard is not its
+sole witness.
+
 ## Red → green evidence
 
 Red before configuration:

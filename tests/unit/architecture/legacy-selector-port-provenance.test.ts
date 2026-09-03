@@ -191,6 +191,15 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     const files = tamperedSelector.files as Record<string, unknown>[];
     files[0] = { ...files[0], text: `${String(files[0]?.text)}tampered` };
     assert.throws(() => parseFrozenLegacyArchitectureProvenance(tamperedText), /frozen legacy blob mismatch/i);
+
+    const reordered = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
+    const reorderedSelector = reordered.selector as Record<string, unknown>;
+    const reorderedFiles = reorderedSelector.files as unknown[];
+    [reorderedFiles[0], reorderedFiles[1]] = [reorderedFiles[1], reorderedFiles[0]];
+    assert.throws(
+      () => parseFrozenLegacyArchitectureProvenance(reordered),
+      /selector file anchor mismatch for path\[0\]/i,
+    );
   });
 
   it("authenticates every named generated legacy path snapshot before exposing paths", () => {

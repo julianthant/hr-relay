@@ -191,13 +191,15 @@ function assertFrozenFileAnchors(
       `frozen legacy ${scope} file-anchor count mismatch: expected ${String(expected.length)}; actual ${String(files.length)}`,
     );
   }
-  const expectedByPath = new Map(expected);
-  for (const file of files) {
-    const expectedBlob = expectedByPath.get(file.path);
-    if (expectedBlob === undefined) {
-      throw new Error(`frozen legacy ${scope} file-anchor has unexpected path ${file.path}`);
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index];
+    const expectedRecord = expected[index];
+    if (file === undefined || expectedRecord === undefined) {
+      throw new Error(`frozen legacy ${scope} file-anchor is missing record ${String(index)}`);
     }
-    assertAnchorValue(`${scope} file`, file.path, file.blob, expectedBlob);
+    const [expectedPath, expectedBlob] = expectedRecord;
+    assertAnchorValue(`${scope} file`, `path[${String(index)}]`, file.path, expectedPath);
+    assertAnchorValue(`${scope} file`, expectedPath, file.blob, expectedBlob);
   }
 }
 
