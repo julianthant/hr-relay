@@ -27,7 +27,7 @@ import assert from "node:assert/strict";
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import type { Readable } from "node:stream";
-import { cpSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -187,12 +187,39 @@ function delay(ms: number): Promise<void> {
   });
 }
 
+/**
+ * The negative half of "the gate stops writing developer state": this
+ * checkout's authority database and server lock, byte-for-byte and by mtime,
+ * before and after the child ran. `absent` is a legitimate reading on a
+ * checkout that has never started a dashboard.
+ */
+function checkoutStateFingerprint(): Readonly<{ authority: string; lock: string }> {
+  const describe_ = (path: string): string => {
+    if (!existsSync(path)) return "absent";
+    const stat = statSync(path);
+    return `${String(stat.size)}:${String(stat.mtimeMs)}`;
+  };
+  const lockPath = join(REPO_ROOT, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
+  return Object.freeze({
+    authority: describe_(join(REPO_ROOT, rebuildRuntimeIsolation.stateRoot, "state.db")),
+    lock: existsSync(lockPath) ? `${describe_(lockPath)}:${readFileSync(lockPath, "utf8")}` : "absent",
+  });
+}
+
+function readScratchLock(lockPath: string): { name?: unknown; pid?: unknown; releasedAt?: unknown } {
+  const record: unknown = JSON.parse(readFileSync(lockPath, "utf8"));
+  assert.ok(record !== null && typeof record === "object", `${lockPath} must hold one lock record`);
+  return record;
+}
+
 describe("the `dashboard` CLI command's shutdown lifecycle", () => {
   it("drains through a second Ctrl+C, exits 0, and releases its process lock", async () => {
     requirePrivateEnvironmentFile();
     await requireIsolatedPortFree();
 
     const scratchRoot = createScratchRepoRoot();
+    const lockPath = join(scratchRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
+    const checkoutBefore = checkoutStateFingerprint();
     try {
       // The production launch shape: `node --import tsx scripts/secure-env-bootstrap.ts cli dashboard`,
       // exactly what `productionWorkerLaunch` uses for a worker child. Spawning
@@ -209,6 +236,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
       try {
         await waitForStdout(child, LISTENING_MARKER, BOOT_TIMEOUT_MS);
         assert.equal(child.kill("SIGINT"), true, "SIGINT must be delivered to the running dashboard");
+        const firstSignalAt = performance.now();
         await delay(SECOND_SIGNAL_DELAY_MS);
         // The premise of the second signal, asserted rather than assumed: a
         // dashboard that already left its drain proves nothing about absorbing
@@ -221,13 +249,22 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
           + "inside stop(); this proof needs a signal that arrives while the shutdown ordering is still running",
         );
         assert.equal(child.kill("SIGINT"), true, "the second Ctrl+C must reach the draining dashboard");
+        const secondSignalAfterMs = performance.now() - firstSignalAt;
         const exit = await waitForExit(child, SHUTDOWN_TIMEOUT_MS);
-        assert.deepEqual(
-          { code: exit.code, signal: exit.signal },
-          { code: 0, signal: null },
-          "a drained dashboard exits 0 of its own accord; code 130 / signal SIGINT means a later Ctrl+C "
-          + "fell through to Node's default terminate and killed the process mid-ordering",
-        );
+        if (exit.signal !== null) {
+          // A signal-terminated exit has two readings, and only the lock tells
+          // them apart: a released record means the second Ctrl+C landed in the
+          // window after stop() settled and its listeners were disposed but
+          // before the process exited — a timing miss of THIS test, not the
+          // regression — while `releasedAt: null` is the mid-drain kill the
+          // listener rule exists to prevent.
+          const lock = existsSync(lockPath) ? readScratchLock(lockPath) : undefined;
+          const reading = typeof lock?.releasedAt === "string"
+            ? `TIMING MISS: the second Ctrl+C was sent ${secondSignalAfterMs.toFixed(1)}ms after the first and landed after the drain had released the lock (${lock.releasedAt}); rerun on a quieter machine`
+            : `REGRESSION: the second Ctrl+C killed the dashboard mid-drain (lock releasedAt=${String(lock?.releasedAt)})`;
+          assert.fail(`dashboard exited by ${exit.signal} — ${reading}`);
+        }
+        assert.equal(exit.code, 0, "a drained dashboard exits 0 of its own accord");
       } finally {
         if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
       }
@@ -238,10 +275,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
         statSync(join(scratchRoot, rebuildRuntimeIsolation.stateRoot, "state.db")).size > 0,
         "the child must have opened its authority under the scratch root it was given",
       );
-      const lockPath = join(scratchRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
-      const record: unknown = JSON.parse(readFileSync(lockPath, "utf8"));
-      assert.ok(record !== null && typeof record === "object", `${lockPath} must hold one lock record`);
-      const lock = record as { name?: unknown; pid?: unknown; releasedAt?: unknown };
+      const lock = readScratchLock(lockPath);
       // The pid binds this assertion to THIS run: an earlier run's released record
       // must never stand in for a shutdown that did not happen.
       assert.equal(lock.pid, pid, "the surviving lock record must belong to the dashboard just stopped");
@@ -250,6 +284,11 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
         typeof lock.releasedAt,
         "string",
         "stop() releases the process lock after the database handle closed; `null` means the process was killed mid-drain",
+      );
+      assert.deepEqual(
+        checkoutStateFingerprint(),
+        checkoutBefore,
+        "the smoke must leave this checkout's authority database and server lock byte-for-byte untouched",
       );
     } finally {
       removeScratchRepoRoot(scratchRoot);
