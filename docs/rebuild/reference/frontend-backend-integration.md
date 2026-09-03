@@ -2057,7 +2057,7 @@ daily local tool.
 <!-- roadmap-status: phase2-dispositions -->
 - [x] D189 — the BFF serves no frontend bytes: DECIDED, with an owner and a named trigger, not waived
 - [x] D186 — D283 completes the existing-workflow boundary: label/icon/category hot apply; timeline/grouping and notification named unavailable without owners; policy/Edit Data strict source briefs. New-workflow authoring and broader design remain reassigned on D79a's argument with their trigger in ref operator-trust §5.3
-- [x] both dispositions still hold at HEAD: no static handler exists in `src/server/**`, and the Explorer graph remains read-only outside its complete existing-workflow boundary
+- [x] both dispositions were honoured until their triggers fired: the static handler landed as `src/server/dashboard/static-bundle.ts` on 2026-09-03 (`def-byte-path` below), and the Explorer graph remains read-only outside its complete existing-workflow boundary
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/{http-server.ts,routes/api.ts,compose.ts} (no static/dist/serveStatic reference) and src/core/runtime-composition.ts (`--prod` unparsed); left: nothing — a disposition is closed by being stated with its trigger
 <!-- /roadmap-status -->
 
@@ -2086,7 +2086,7 @@ exposes.
 |---|---|---|
 | Matrixed | `queue-day` · `run-open-gate` · `run-failed` · `run-running` · `run-done` · `run-queued` · `run-parked-write` · `run-group` · `run-member` · `run-receipt` · `start-run` · `intake-upload` · `intake-mapping` · `intake-review` · `explorer-graph` · `explorer-transaction` · `catalog-search` · `archive-ledger` · `archive-run` · `activity-report` | 20 × 3 viewports × 2 themes = 120 |
 | Variants (1440×900 only) | the two panel-dismissed states in both themes; `queue-day--keyboard` and `queue-day--reduced-motion` in Paper Ink; the four gate-ceremony variants and the two park resolutions in Graphite Warm; `run-receipt-populated` in both themes, over the SEEDED adapter | 14 |
-| Phone (its own block) | `capture-empty` · `capture-photos` · `capture-reorder` · `capture-sent` · `capture-failed` | 5, at 390×844, Paper Ink only |
+| Phone (its own block) — RETIRED D294 (2026-08-31) | was `capture-empty` · `capture-photos` · `capture-reorder` · `capture-sent` · `capture-failed` | the 5 references and their spec are deleted; see the paragraph below |
 
 The stored reference includes state id, viewport, theme, adapter, fixture id, descriptor hash, app
 version, capture date and variant. A screenshot without the matching a11y snapshot is incomplete —
@@ -2112,8 +2112,9 @@ and the corpus does not photograph.
 
 **The phone viewport had its own block, and D294 (2026-08-31) removed both it and its surface.**
 `tests/parity/capture-phone-reference.spec.ts` and the phone entry it photographed are gone; no
-reference in the corpus renders at 390×844 today. **The rule it recorded is kept because it is
-general**, and it is why the phone was never a fourth entry in the shared matrix: the matrix
+*capture* reference survives, and the one 390×844 reference left is Archive evidence's
+touch-geometry check in its own spec (`archive-evidence.spec.ts`, `archive-evidence--paper-ink--phone-390x844`),
+outside the matrix. **The rule it recorded is kept because it is general**, and it is why the phone was never a fourth entry in the shared matrix: the matrix
 photographs every operator state at every viewport in both themes, and adding 390×844 would have
 minted twenty-six references of a dense console squeezed into a phone width, a rung the operator
 dashboard does not support and nobody would ever review. A viewport belongs in the shared matrix
