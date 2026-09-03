@@ -1,7 +1,7 @@
 # Run plan — test-suite rationalization — 2026-09-02
 
 **Coordination UUID:** `f24df892-5171-48f4-97ff-4e91490f8622` (`Cf24df892`)
-**Coordinator:** current task id/host unavailable; continuation checkout `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator`
+**Coordinator:** task `01a064c1-e4ef-7bc0-bcd7-0329b5dfd357` / host `local`; continuation checkout `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator`
 **Current integration base:** `37c080bc` on `feature/test-suite-rationalization`
 **Current capacity:** two supervisor worktrees while the unrelated Phase 3c worktree and this coordinator checkout occupy the other two auxiliary slots
 
