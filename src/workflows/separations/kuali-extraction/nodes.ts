@@ -1,15 +1,15 @@
 /**
- * D265 §1.2.2 rule 2 — the *Kuali extraction* step's node fragments: what the
- * composition (`../descriptor.ts`) and this folder's harness each apply to
+ * D265 §1.2.2 rule 2 — the *Kuali extraction* step's entry identities: what the
+ * composition (`../workflow.ts`) and this folder's harness each apply to
  * their own graph, wired from their own upstreams.
  *
- * A fragment owns a node's IDENTITY — id, contract, label, replay — and takes
- * its WIRING (`dependsOn` + `bind`) from the graph that applies it (see
- * `src/base/flow.ts`, "node fragments"). The rationale for each node's replay
+ * An entry identity owns a node's IDENTITY — id, contract, label, replay — and
+ * takes its WIRING (references + bind) from the workflow definition that uses
+ * it (`defineStepEntries`, D315). The rationale for each node's replay
  * policy lives here, beside the policy; the rationale for what feeds a node
  * lives beside the bind that feeds it.
  */
-import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
+import { defineStepEntries } from "../../../base/workflow-definition.js";
 import { ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, TERMINATION_TYPE_NODE } from "./node-ids.js";
 import { KualiReadSeparationDocument } from "../../../domain/contracts/kuali/read-separation-document.js";
 import { KualiSearchSeparationAction } from "../../../domain/contracts/kuali/search-separation-action.js";
@@ -18,7 +18,7 @@ import { SeparationsReadSeparationPlan } from "../../../domain/contracts/separat
 import { KUALI_EXTRACTION_STEP } from "./step.js";
 
 
-const nodes = defineWorkflowStepNodeFactory(KUALI_EXTRACTION_STEP);
+const nodes = defineStepEntries(KUALI_EXTRACTION_STEP);
 
 /**
  * D261's head node. It turns the one number a human knows into the address

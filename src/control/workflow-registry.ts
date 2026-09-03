@@ -33,7 +33,7 @@ import { personLookupWorkflow } from "../workflows/person-lookup/workflow.js";
 import { separationsIdentityCheckModule } from "../workflows/separations/identity-check/module.js";
 import { separationsKronosTimecardWorkflow } from "../workflows/separations/kronos-timecard/workflow.js";
 import { separationsKualiFinalizationWorkflow } from "../workflows/separations/kuali-finalization/workflow.js";
-import { separationsKualiReadModule } from "../workflows/separations/kuali-extraction/module.js";
+import { separationsKualiReadWorkflow } from "../workflows/separations/kuali-extraction/workflow.js";
 import { separationsWorkflow } from "../workflows/separations/workflow.js";
 import { separationsUcpathTerminationWorkflow } from "../workflows/separations/ucpath-transaction/workflow.js";
 
@@ -60,6 +60,10 @@ export const separationsUcpathTerminationModule = composeWorkflowModule(
 );
 export const separationsKualiFinalizationModule = composeWorkflowModule(
   compileWorkflow(separationsKualiFinalizationWorkflow),
+  taskStoreRegistry.stores,
+);
+export const separationsKualiReadModule = composeWorkflowModule(
+  compileWorkflow(separationsKualiReadWorkflow),
   taskStoreRegistry.stores,
 );
 

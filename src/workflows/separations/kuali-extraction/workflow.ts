@@ -41,22 +41,20 @@
  * the audited `src/base` builders.
  */
 import { z } from "zod";
-import { flow } from "../../../base/flow.js";
-import { defineWorkflowDescriptor, requireFact } from "../../../base/workflow.js";
+import { requireFact } from "../../../base/workflow.js";
+import { defineWorkflow } from "../../../base/workflow-definition.js";
 import { MatchTerminationTypeOutputSchema } from "../../../domain/contracts/separations/match-termination-type.js";
-import { WorkflowIdSchema } from "../../../domain/ids.js";
 import {
   KualiActionIdSchema,
   KualiDocumentNumberSchema,
 } from "../../../domain/ui/kuali-document-identity.js";
 import { KualiSeparationDocumentSchema } from "../../../domain/ui/kuali-separation-document.js";
-import {
-  BUILD_MANIFEST,
-  resolveWorkflowFingerprint,
-} from "../../../domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
+import { defineWorkflowRole } from "../../../domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
-import { DOCUMENT_NODE, documentNode, terminationTypeNode } from "./nodes.js";
+import { DOCUMENT_NODE, TERMINATION_TYPE_NODE } from "./node-ids.js";
+import { documentNode, terminationTypeNode } from "./nodes.js";
+import { KUALI_EXTRACTION_STEP } from "./step.js";
 
 /**
  * The ingress schema. Both identifiers are required and neither is derivable
@@ -90,47 +88,9 @@ export const SeparationsKualiReadResultSchema = z.strictObject({
   termination: MatchTerminationTypeOutputSchema,
 });
 
-const separationsKualiReadFlow = flow(SeparationsKualiReadInput)
-  // This folder's own fragments (`./nodes.ts`), wired from the harness input
-  // instead of from a `resolve-action` node: the harness takes the action id
-  // as ingress because the head node it proves is the document read itself.
-  .pipe(documentNode.wire({
-    dependsOn: [],
-    bind: ({ input }) => ({ actionId: input.actionId, documentNumber: input.documentNumber }),
-  }))
-  .pipe(terminationTypeNode.wire({
-    dependsOn: [DOCUMENT_NODE],
-    bind: ({ input, outputs }) => ({
-      terminationType: outputs.document.separation.terminationType,
-      // The complete option list the run ACTUALLY observed, so a republished
-      // control refuses on the first run that sees it rather than on the first
-      // run that happens to select a new option (§4a's accepted cost).
-      observedOptions: outputs.document.options.terminationType,
-      documentNumber: input.documentNumber,
-    }),
-  }))
-  .build({
-    schema: SeparationsKualiReadResultSchema,
-    dependsOn: ["document", "termination-type"],
-    derive: ({ outputs }) => ({
-      // `requireFact` on the form-type proof is not ceremony: it is the fact
-      // that makes every other field on this result a SEPARATION's field
-      // rather than some other form's (S2).
-      document: {
-        ...outputs.document,
-        formType: requireFact(outputs.document.formType, "document", "formType"),
-      },
-      termination: outputs["termination-type"],
-    }),
-  });
-
-export const separationsKualiReadDescriptor = defineWorkflowDescriptor({
+export const separationsKualiReadWorkflow = defineWorkflow({
   id: "separations-kuali-read",
   version: 1,
-  contractFingerprint: resolveWorkflowFingerprint(
-    BUILD_MANIFEST,
-    WorkflowIdSchema.parse("separations-kuali-read"),
-  ),
   code: "sd",
   label: "Separation Document",
   summary:
@@ -231,5 +191,45 @@ export const separationsKualiReadDescriptor = defineWorkflowDescriptor({
     "separations-kuali-read/unknown-termination-type",
     "separations-kuali-read/unparseable-separation-date",
   ],
-  flow: separationsKualiReadFlow,
+  input: SeparationsKualiReadInput,
+  // A proving harness for one step of `separations`, never a peer workflow (D219) —
+  // the step it proves is the folder it lives in, read from that folder's own
+  // declaration rather than re-typed here (D265 §1.2.2 rule 3).
+  role: defineWorkflowRole({ kind: "chunk-harness", of: "separations", step: KUALI_EXTRACTION_STEP.key }),
+  steps: ({ task, result }) => {
+    // This folder's own step identities (`./nodes.ts`), wired from the harness
+    // input instead of from a `resolve-action` node: the harness takes the
+    // action id as ingress because the head node it proves is the document
+    // read itself.
+    const document = task(documentNode, [], ({ input }) => ({
+      actionId: input.actionId,
+      documentNumber: input.documentNumber,
+    }));
+    const terminationType = task(terminationTypeNode, [document], ({ input, outputs }) => ({
+      terminationType: outputs[DOCUMENT_NODE].separation.terminationType,
+      // The complete option list the run ACTUALLY observed, so a republished
+      // control refuses on the first run that sees it rather than on the first
+      // run that happens to select a new option (§4a's accepted cost).
+      observedOptions: outputs[DOCUMENT_NODE].options.terminationType,
+      documentNumber: input.documentNumber,
+    }));
+    return {
+      // The harness IS the step it proves: one timeline group, the step's own.
+      steps: [[KUALI_EXTRACTION_STEP, [document, terminationType]]],
+      result: result(
+        SeparationsKualiReadResultSchema,
+        [document, terminationType],
+        ({ outputs }) => ({
+          // `requireFact` on the form-type proof is not ceremony: it is the fact
+          // that makes every other field on this result a SEPARATION's field
+          // rather than some other form's (S2).
+          document: {
+            ...outputs[DOCUMENT_NODE],
+            formType: requireFact(outputs[DOCUMENT_NODE].formType, DOCUMENT_NODE, "formType"),
+          },
+          termination: outputs[TERMINATION_TYPE_NODE],
+        }),
+      ),
+    };
+  },
 });

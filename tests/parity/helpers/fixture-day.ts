@@ -19,9 +19,9 @@ import { separationsIdentityCheckModule } from "../../../src/workflows/separatio
 import {
   separationsKronosTimecardModule,
   separationsKualiFinalizationModule,
+  separationsKualiReadModule,
   separationsUcpathTerminationModule,
 } from "../../helpers/registered-workflows.js";
-import { separationsKualiReadModule } from "../../../src/workflows/separations/kuali-extraction/module.js";
 import {
   FrontendBootstrapWireSchema,
   type FrontendBootstrapWire,

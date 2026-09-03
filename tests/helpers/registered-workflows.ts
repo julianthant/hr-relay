@@ -10,6 +10,7 @@ import {
   personLookupModule,
   separationsKronosTimecardModule,
   separationsKualiFinalizationModule,
+  separationsKualiReadModule,
   separationsModule,
   separationsUcpathTerminationModule,
 } from "../../src/control/workflow-registry.js";
@@ -18,6 +19,7 @@ export {
   personLookupModule,
   separationsKronosTimecardModule,
   separationsKualiFinalizationModule,
+  separationsKualiReadModule,
   separationsModule,
   separationsUcpathTerminationModule,
 };
@@ -26,3 +28,4 @@ export const separationsDescriptor = separationsModule.descriptor;
 export const separationsKronosTimecardDescriptor = separationsKronosTimecardModule.descriptor;
 export const separationsUcpathTerminationDescriptor = separationsUcpathTerminationModule.descriptor;
 export const separationsKualiFinalizationDescriptor = separationsKualiFinalizationModule.descriptor;
+export const separationsKualiReadDescriptor = separationsKualiReadModule.descriptor;
