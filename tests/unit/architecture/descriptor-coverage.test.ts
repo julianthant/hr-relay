@@ -34,7 +34,6 @@ import {
   readPendingImplBindings,
   workflowCodeRegistry,
   workflowRoleRegistry,
-  isDefinitionBackedModule,
 } from "../../../src/control/workflow-registry.js";
 import { flow } from "../../../src/base/flow.js";
 import { defineWorkflowDescriptor, workflowProjections } from "../../../src/base/workflow.js";
@@ -73,7 +72,7 @@ import {
   intakeFixtureProjection,
 } from "../../fixtures/intake-workflow-fixture.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
-import { descriptorSourcePath, workflowSourcePath } from "../../../src/domain/workflow/source-layout.js";
+import { workflowSourcePath } from "../../../src/domain/workflow/source-layout.js";
 
 const ALL: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, fixtureDescriptor];
 
@@ -387,10 +386,8 @@ describe("descriptor coverage", () => {
   it("keeps every descriptor module's value-import closure bundle-safe", () => {
     for (const module of WORKFLOW_MODULES) {
       // D265 §1.2.2: the path comes from the ROLE, never from the id alone;
-      // D317: a definition-backed workflow's one authored entry is `workflow.ts`.
-      const entry = isDefinitionBackedModule(module)
-        ? workflowSourcePath(String(module.descriptor.id), module.role)
-        : descriptorSourcePath(String(module.descriptor.id), module.role);
+      // D317: a workflow's one authored entry is `workflow.ts`.
+      const entry = workflowSourcePath(String(module.descriptor.id), module.role);
       assert.deepEqual(bundleViolations(entry), [], entry);
     }
     // The rule is only meaningful because the executable arm catches a breach.

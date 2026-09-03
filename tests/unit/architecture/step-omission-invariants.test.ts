@@ -75,9 +75,11 @@ import {
 } from "../../../src/domain/workflow/step-omission.js";
 import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
-import { KRONOS_TIMECARD_OMISSION } from "../../../src/workflows/separations/kronos-timecard/omission.js";
-import { KUALI_FINALIZATION_OMISSION } from "../../../src/workflows/separations/kuali-finalization/omission.js";
-import { UCPATH_TRANSACTION_OMISSION } from "../../../src/workflows/separations/ucpath-transaction/omission.js";
+import {
+  KRONOS_TIMECARD_OMISSION,
+  KUALI_FINALIZATION_OMISSION,
+  UCPATH_TRANSACTION_OMISSION,
+} from "../../../src/workflows/separations/workflow.js";
 import { FixtureCommit, FixtureStage } from "./helpers/descriptor-fixtures.js";
 
 const FixtureInput = z.strictObject({ eid: EidSchema });

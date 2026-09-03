@@ -362,6 +362,19 @@ const RunnableTaskSchema = z.custom<(args: {
   ctx: Readonly<Record<string, unknown>>;
 }) => Promise<unknown>>((value) => typeof value === "function", "task implementation requires run");
 
+/**
+ * A `found` checkpoint load has a stored row by construction (`loadCheckpoint`
+ * answers `found: false` for an absent row); the narrowing is stated here once
+ * so the executor never re-parses a record the repository already parsed
+ * strictly, and an impossible found-without-row state fails loud by node.
+ */
+function requireStoredCheckpoint(stored: RunCheckpointRecord | undefined, nodeId: string): RunCheckpointRecord {
+  if (stored === undefined) {
+    throw new Error(`node "${nodeId}" checkpoint load reported found, but the repository returned no stored row`);
+  }
+  return stored;
+}
+
 function labelOf(node: TaskRuntimeNode): string {
   return node.label ?? node.uses.title;
 }
@@ -797,7 +810,9 @@ export async function executeClaimedRun(
           node.uses.output,
           deps.checkpointMigrations ?? [],
         );
-        const storedAssertion = load.found ? RunCheckpointRecordSchema.parse(stored).assertion : undefined;
+        // `stored` is the repository's strict parse already; a found load has a row.
+        const storedRecord = load.found ? requireStoredCheckpoint(stored, String(node.id)) : undefined;
+        const storedAssertion = storedRecord?.assertion;
         if (storedAssertion !== undefined) {
           // D307 — the latest row is an operator ASSERTION from a run that
           // omitted this node's step; this run executes the node, so that row
@@ -815,7 +830,7 @@ export async function executeClaimedRun(
           continue;
         }
         if (load.found) {
-          const record = RunCheckpointRecordSchema.parse(stored);
+          const record = requireStoredCheckpoint(stored, String(node.id));
           const nodePatches = injectedByNode.get(String(node.id));
           let effective = record;
           if (nodePatches !== undefined) {
@@ -1732,7 +1747,7 @@ export async function executeClaimedRun(
                 + "beat ⑦ writes one in the same authority transaction as the settlement",
               );
             }
-            const record = RunCheckpointRecordSchema.parse(stored);
+            const record = stored;
             const storedOutcome = TransactionOutcomeSchema.parse(record.output.value);
             const projected = JsonValueSchema.parse(OutcomeSchema.parse({
               disposition: storedOutcome.disposition,

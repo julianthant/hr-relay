@@ -86,13 +86,16 @@ import {
   COMPARISON_NODE,
   GATE_NODE,
   NAME_SEARCH_NODE,
-} from "../identity-check/node-ids.js";
-import { JOB_SUMMARY_NODE } from "../job-summary/node-ids.js";
-import { TERMINATION_TYPE_NODE } from "../kuali-extraction/node-ids.js";
-import { PENDING_SET_NODE, SWEEP_NODE, TERMINATION_NODE } from "./node-ids.js";
-import { clearPendingNode, fileTerminationNode, pendingSetNode } from "./nodes.js";
-import { UCPATH_TRANSACTION_STEP } from "./step.js";
-
+  JOB_SUMMARY_NODE,
+  TERMINATION_TYPE_NODE,
+  PENDING_SET_NODE,
+  SWEEP_NODE,
+  TERMINATION_NODE,
+  clearPendingNode,
+  fileTerminationNode,
+  pendingSetNode,
+  UCPATH_TRANSACTION_STEP,
+} from "../workflow.js";
 /**
  * The ingress. It is the identity-check ingress plus exactly the facts a
  * termination needs that no read on this graph produces: the empl record, the
@@ -373,7 +376,7 @@ export const separationsUcpathTerminationWorkflow = defineWorkflow({
       evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
       approval: outputs[GATE_NODE],
     }));
-    // This folder's own step identities (`./nodes.ts`), wired from the same
+    // The composition's identities for this step (`../workflow.ts`), wired from the same
     // ingress where the composition binds the reconciled folds.
     const pendingSet = task(pendingSetNode, [approval], ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,

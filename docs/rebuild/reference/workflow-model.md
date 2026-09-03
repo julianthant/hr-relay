@@ -826,6 +826,12 @@ on every surface instead. **The layout now says it, and the role and the layout 
    at the gate naming the offender — the same failure mode D225 guarded one level down, a step
    nobody can see. A workflow that declares no timeline (D225's honest default, one category per
    node — `person-lookup`) has no step folders; the rule bites exactly when a timeline is declared.
+   > 2026-09-02 | D312 deletion acceptance (3c-A) | The composition's ONE `workflow.ts` now
+   > authors every step's group, node ids, entry identities and omission (§1.6.1); a step folder
+   > holds nothing but the harness `workflow.ts` that proves the step, which imports those
+   > identities (rule 3). So a step folder exists **iff** the step carries a harness — `job-summary`
+   > is a declared group with no folder — and the guard's arm (b) below reads: every step folder
+   > is a declared group AND a registered harness address; a declared group needs no folder.
 3. **A harness lives inside the step it proves.** D219's sentence — *a chunk harness is a step of
    its composition* — becomes a path: the harness's `descriptor.ts` + `module.ts` sit in the step
    folder, and its role gains the folder, `{ kind: "chunk-harness", of, step }`. The registry
@@ -872,9 +878,11 @@ ruled.
 **The guard — `workflow-layout` (`tests/unit/architecture/workflow-layout.test.ts`, active in
 `docs/rebuild/guard-inventory.json`, owned here).** Four arms, all decided against the real registry
 and the real tree, each with a violating fixture: (a) every registered module's path matches its
-role's arm above, and nothing else lives under `src/workflows/` — a stray folder is refused; (b) for
-every workflow that declares a timeline, the declared categories and the step folders are the same
-set, both directions; (c) every `chunk-harness.step` names one of `of`'s declared categories; (d)
+role's arm above and holds exactly its one `workflow.ts` (D312/D317), and nothing else lives under
+`src/workflows/` — a stray folder is refused; (b) for every workflow that declares a timeline, every
+step folder is one of its declared groups and the address of a registered `chunk-harness`, and a
+workflow with no declared timeline has no step folders (a declared group with no harness has no
+folder — D312 §1.6.1 item 5, 2026-09-02); (c) every `chunk-harness.step` names one of `of`'s declared categories; (d)
 `descriptor-coverage` §1.4 and `workflow-editor-compile-integrity` derive a descriptor's path from
 its ROLE (`src/workflows/<id>/` or `src/workflows/<of>/<step>/`), never from its id alone.
 
@@ -1005,13 +1013,18 @@ resolves to nothing.
 
 <!-- roadmap: workflow-authoring-model -->
 
-**Implementation status at `b1b36349` (2026-09-02).** The bounded D311 transition is built:
-`src/base/workflow-recipe.ts` compiles tuple groups for Person Lookup and Separations into their
-existing descriptor/module/runtime projections, and the equivalence/conformance gates are green.
-The names and adapter shape predate D317. `defineWorkflowRecipe`, fragment-backed gate/transaction
-entries, retained descriptor/module files, D307 omission behavior and ordinary checkpoint replay are
-transitional, not this section's completed contract. Doc 03c 3c-A owns the final rename/direct entry
-algebra, D313/D314 behavior, four-artifact deletion, guide and T1 acceptance.
+**Implementation status (2026-09-02, 3c-A deletion acceptance).** `src/base/workflow-definition.ts`
+is the one seam: `defineWorkflow` / `compileWorkflow` / `WorkflowDefinition` / `CompiledWorkflow`
+(D317 names, R3), the closed `task | parallel | delegate | gate | transaction` entry algebra, D313
+omission admission and D314 recovery are built and gated. Every registered workflow — Person Lookup,
+the Separations composition and its five chunk harnesses — authors exactly one `workflow.ts`; the
+Separations composition's file also authors every step's group, node ids, entry identities and D307
+omission, and each harness imports the identities of the step it proves. The former
+`workflow-recipe.ts` names, the flow node-fragment API (`defineWorkflowStepNodeFactory`, `.wire()`,
+`.pipe()`), the per-step `node-ids.ts`/`nodes.ts`/`step.ts`/`omission.ts` files and the last
+hand-authored `descriptor.ts`/`module.ts` pair (`separations-identity-check`) are deleted, and the
+transitional "not yet converted" arm is gone from the registry, the Explorer's source links and the
+`workflow-layout` guard. Doc 03c 3c-A owns the remaining guide and reference reconciliation.
 
 The runtime model above remains authoritative, but workflow authors no longer hand-maintain each of
 its projections independently. A **workflow definition** is the reviewed source form for every new

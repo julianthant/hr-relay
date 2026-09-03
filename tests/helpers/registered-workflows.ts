@@ -8,6 +8,7 @@
  */
 import {
   personLookupModule,
+  separationsIdentityCheckModule,
   separationsKronosTimecardModule,
   separationsKualiFinalizationModule,
   separationsKualiReadModule,
@@ -17,6 +18,7 @@ import {
 
 export {
   personLookupModule,
+  separationsIdentityCheckModule,
   separationsKronosTimecardModule,
   separationsKualiFinalizationModule,
   separationsKualiReadModule,
@@ -29,3 +31,4 @@ export const separationsKronosTimecardDescriptor = separationsKronosTimecardModu
 export const separationsUcpathTerminationDescriptor = separationsUcpathTerminationModule.descriptor;
 export const separationsKualiFinalizationDescriptor = separationsKualiFinalizationModule.descriptor;
 export const separationsKualiReadDescriptor = separationsKualiReadModule.descriptor;
+export const separationsIdentityCheckDescriptor = separationsIdentityCheckModule.descriptor;

@@ -20,7 +20,7 @@ import {
   composeWorkflowModule,
   workflowDefinitionOf,
 } from "../base/workflow-definition.js";
-import type { AnyWorkflowDefinition, WorkflowModule } from "../base/workflow-definition.js";
+import type { AnyWorkflowDefinition } from "../base/workflow-definition.js";
 import { workflowProjections } from "../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { RegisteredTaskStore } from "../base/store.js";
@@ -30,7 +30,7 @@ import type { WorkflowModuleRole } from "../domain/workflow/module-role.js";
 import { workflowSourceFolder } from "../domain/workflow/source-layout.js";
 import { taskStoreRegistry } from "../stores/index.js";
 import { personLookupWorkflow } from "../workflows/person-lookup/workflow.js";
-import { separationsIdentityCheckModule } from "../workflows/separations/identity-check/module.js";
+import { separationsIdentityCheckWorkflow } from "../workflows/separations/identity-check/workflow.js";
 import { separationsKronosTimecardWorkflow } from "../workflows/separations/kronos-timecard/workflow.js";
 import { separationsKualiFinalizationWorkflow } from "../workflows/separations/kuali-finalization/workflow.js";
 import { separationsKualiReadWorkflow } from "../workflows/separations/kuali-extraction/workflow.js";
@@ -64,6 +64,10 @@ export const separationsKualiFinalizationModule = composeWorkflowModule(
 );
 export const separationsKualiReadModule = composeWorkflowModule(
   compileWorkflow(separationsKualiReadWorkflow),
+  taskStoreRegistry.stores,
+);
+export const separationsIdentityCheckModule = composeWorkflowModule(
+  compileWorkflow(separationsIdentityCheckWorkflow),
   taskStoreRegistry.stores,
 );
 
@@ -139,8 +143,8 @@ export interface WorkflowModuleBindingView {
 
 /** A definition-backed module as the compiler's registry audit sees it. */
 export interface WorkflowDefinitionModuleView extends WorkflowModuleBindingView {
-  /** Legacy hand-authored harness modules intentionally omit this field until converted. */
-  readonly definition?: AnyWorkflowDefinition;
+  /** D317 — every registered module is compiled from its one authored `workflow.ts` definition. */
+  readonly definition: AnyWorkflowDefinition;
 }
 
 /** One definition and the exact descriptor it compiled, as registered at the composition root. */
@@ -156,15 +160,14 @@ export interface WorkflowDefinitionRegistration {
  * own descriptor. The compiler's identity ledger is deliberately checked again
  * at the composition boundary: otherwise a module could be registered with a
  * definition that describes a different workflow while each value looks valid
- * in isolation. Modules not yet converted are not silently assigned a
- * synthetic declaration; they remain outside this population until converted.
+ * in isolation. Since 3c-A's deletion acceptance every registered module is
+ * definition-backed; there is no unconverted arm to skip.
  */
 export function workflowDefinitionRegistry(
   modules: readonly WorkflowDefinitionModuleView[],
 ): readonly WorkflowDefinitionRegistration[] {
   const registrations: WorkflowDefinitionRegistration[] = [];
   for (const module of modules) {
-    if (module.definition === undefined) continue;
     if (workflowDefinitionOf(module.descriptor) !== module.definition) {
       throw new Error(
         `workflow ${String(module.descriptor.id)} registers a definition that did not compile its own descriptor`,
@@ -178,10 +181,6 @@ export function workflowDefinitionRegistry(
 /** Every definition-backed workflow, derived only from the one module tuple. */
 export const WORKFLOW_DEFINITIONS = workflowDefinitionRegistry(WORKFLOW_MODULES);
 
-/** Whether a registered module was derived from a `workflow.ts` definition. */
-export function isDefinitionBackedModule(module: WorkflowDefinitionModuleView): module is WorkflowModule {
-  return module.definition !== undefined;
-}
 
 /**
  * Ref data-intake-and-edit-data §1's spreadsheet-capable declaration, read off the workflow's own

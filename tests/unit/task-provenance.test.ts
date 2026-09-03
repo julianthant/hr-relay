@@ -34,7 +34,7 @@ import {
   buildIdentityEvidencePacket,
   deriveIdentityEvidenceDigest,
 } from "../../src/domain/separations/identity-evidence.js";
-import { separationsIdentityCheckDescriptor } from "../../src/workflows/separations/identity-check/descriptor.js";
+import { separationsIdentityCheckDescriptor } from "../helpers/registered-workflows.js";
 import {
   FixtureStage,
   fixtureDescriptor,

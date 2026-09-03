@@ -92,87 +92,610 @@
  */
 import { z } from "zod";
 import { OmittedStepResultArmSchema } from "../../domain/workflow/step-omission.js";
-import { KUALI_FINALIZATION_STEP } from "./kuali-finalization/step.js";
-import { UCPATH_TRANSACTION_STEP } from "./ucpath-transaction/step.js";
-import { defineWorkflow } from "../../base/workflow-definition.js";
-import { requireFact } from "../../base/workflow.js";
-import { ResolvedIdentitySubjectSchema } from "../../domain/separations/identity-approval.js";
+import { defineWorkflow, defineStepEntries } from "../../base/workflow-definition.js";
+import { requireFact, defineWorkflowStep } from "../../base/workflow.js";
+import {
+  ResolvedIdentitySubjectSchema,
+  IdentityApprovalResultSchema,
+} from "../../domain/separations/identity-approval.js";
 import {
   buildFinalizationComments,
   separationInitials,
+  assertSeparationDates,
 } from "../../domain/separations/separation-dates.js";
-import { TerminationReceiptSchema } from "../../domain/separations/termination-receipt.js";
+import {
+  TerminationReceiptSchema,
+  TERMINATION_RECEIPT_ACCEPTED_STATUSES,
+  assertTerminationReceipt,
+} from "../../domain/separations/termination-receipt.js";
 import {
   KualiDocumentNumberSchema,
   KualiTimekeeperNameSchema,
 } from "../../domain/ui/kuali-document-identity.js";
 import { KualiSavedFinalizationProofSchema } from "../../domain/ui/kuali-separation-finalization.js";
-import { UcpathPendingSweepHistoricalOrCurrentProofSchema } from "../../domain/ui/ucpath-smart-hr-termination.js";
+import {
+  UcpathPendingSweepHistoricalOrCurrentProofSchema,
+} from "../../domain/ui/ucpath-smart-hr-termination.js";
 import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
 import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
+import { KualiReadSeparationDocument } from "../../domain/contracts/kuali/read-separation-document.js";
+import { KualiSearchSeparationAction } from "../../domain/contracts/kuali/search-separation-action.js";
 import {
-  APPROVAL_NODE,
-  COMPARISON_NODE,
-  GATE_NODE,
-  NAME_SEARCH_NODE,
-  SUBJECT_NODE,
-  approvalNode,
-  comparisonNode,
-  identityApprovalGate,
-  nameSearchNode,
-  subjectNode,
-} from "./identity-check/nodes.js";
-import { IDENTITY_CHECK_STEP } from "./identity-check/step.js";
+  SeparationsMatchTerminationType,
+} from "../../domain/contracts/separations/match-termination-type.js";
 import {
-  DEPARTMENT_NODE,
-  EMPLOYMENT_NODE,
-  JOB_SUMMARY_NODE,
-  departmentOptionNode,
-  employmentNode,
-  jobSummaryNode,
-} from "./job-summary/nodes.js";
-import { JOB_SUMMARY_STEP } from "./job-summary/step.js";
+  SeparationsReadSeparationPlan,
+  ReadSeparationPlanOutputSchema,
+} from "../../domain/contracts/separations/read-separation-plan.js";
+import { SeparationsMatchIdentity } from "../../domain/contracts/separations/match-identity.js";
 import {
-  DATES_NODE,
-  TIMECARD_NODE,
-  TIMECARD_SEARCH_NODE,
-  datesNode,
-  timecardNode,
-  timecardSearchNode,
-} from "./kronos-timecard/nodes.js";
-import { KRONOS_TIMECARD_OMISSION } from "./kronos-timecard/omission.js";
-import { KRONOS_TIMECARD_STEP } from "./kronos-timecard/step.js";
+  SeparationsMatchSeparationSubject,
+} from "../../domain/contracts/separations/match-separation-subject.js";
 import {
-  ACTION_NODE,
-  DOCUMENT_NODE,
-  PLAN_NODE,
-  TERMINATION_TYPE_NODE,
-  actionNode,
-  documentNode,
-  planNode,
-  terminationTypeNode,
-} from "./kuali-extraction/nodes.js";
-import { KUALI_EXTRACTION_STEP } from "./kuali-extraction/step.js";
+  SeparationsVerifyIdentityApproval,
+  VerifyIdentityApprovalOutputSchema,
+} from "../../domain/contracts/separations/verify-identity-approval.js";
+import { SearchPersonOrg } from "../../domain/contracts/ucpath/search-person-org.js";
 import {
+  SeparationsMatchActiveEmployment,
+} from "../../domain/contracts/separations/match-active-employment.js";
+import {
+  SeparationsMatchDepartmentOption,
+} from "../../domain/contracts/separations/match-department-option.js";
+import { UcpathReadJobSummary } from "../../domain/contracts/ucpath/read-job-summary.js";
+import {
+  NewKronosReadSeparationTimecard,
+} from "../../domain/contracts/new-kronos/read-separation-timecard.js";
+import { NewKronosSearchEmployee } from "../../domain/contracts/new-kronos/search-employee.js";
+import {
+  SeparationsReadSeparationDates,
+  ReadSeparationDatesOutputSchema,
+} from "../../domain/contracts/separations/read-separation-dates.js";
+import type { JsonObject, JsonValue } from "../../domain/canonical-json.js";
+import type { StepOmissionDeclaration } from "../../domain/workflow/step-omission.js";
+import {
+  SeparationsVerifyTerminationReceipt,
+} from "../../domain/contracts/separations/verify-termination-receipt.js";
+import { UcpathCreateTermination } from "../../domain/contracts/ucpath/create-termination.js";
+import {
+  UcpathDeletePendingTerminations,
+} from "../../domain/contracts/ucpath/delete-pending-terminations.js";
+import {
+  UcpathStagePendingTerminationSweep,
+} from "../../domain/contracts/ucpath/stage-pending-termination-sweep.js";
+import { UcpathStageTermination } from "../../domain/contracts/ucpath/stage-termination.js";
+import {
+  UcpathReadPendingTerminationSet,
+} from "../../domain/contracts/ucpath/read-pending-termination-set.js";
+import {
+  KualiSaveSeparationFinalization,
+} from "../../domain/contracts/kuali/save-separation-finalization.js";
+import {
+  KualiStageSeparationFinalization,
+} from "../../domain/contracts/kuali/stage-separation-finalization.js";
+import {
+  UcpathVerifyTerminationFilingPresent,
+} from "../../domain/contracts/ucpath/verify-termination-filing-present.js";
+
+/* ── The timeline's step identities ─────────────────────────────────────────
+ *
+ * D312/D315 — this one file authors the composition's whole timeline — each
+ * step's group, node ids, entry identities and (where the step is omittable) its
+ * D307 omission, in timeline order — then the `defineWorkflow` call that wires them.
+ * The chunk harnesses under `./<step>/workflow.ts` IMPORT the identities of the
+ * step they prove from here (D265 §1.2.2 rule 3) and wire them from their own
+ * ingress; nothing under a step folder authors an identity of its own.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* ── step `kuali-extraction` — group, node ids, entry identities ── */
+
+export const KUALI_EXTRACTION_STEP = defineWorkflowStep({
+  key: "kuali-extraction",
+  label: "Kuali extraction",
+});
+
+/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them (D307). */
+export const ACTION_NODE = "resolve-action";
+export const DOCUMENT_NODE = "document";
+export const PLAN_NODE = "plan";
+export const TERMINATION_TYPE_NODE = "termination-type";
+
+/**
+ * D265 §1.2.2 rule 2 — the *Kuali extraction* step's entry identities: what the
+ * composition (this file) and the step's harness (`./<step>/workflow.ts`) each apply to
+ * their own graph, wired from their own upstreams.
+ *
+ * An entry identity owns a node's IDENTITY — id, contract, label, replay — and
+ * takes its WIRING (references + bind) from the workflow definition that uses
+ * it (`defineStepEntries`, D315). The rationale for each node's replay
+ * policy lives here, beside the policy; the rationale for what feeds a node
+ * lives beside the bind that feeds it.
+ */
+const kualiExtractionEntries = defineStepEntries(KUALI_EXTRACTION_STEP);
+
+/**
+ * D261's head node. It turns the one number a human knows into the address
+ * Kuali actually answers to, by filtering the Action List's own search box
+ * and reading the matched row's `href` — no click into a document, nothing
+ * staged, nothing written.
+ *
+ * `replay: "checkpoint"` for `document`'s reason, one node later: the node's
+ * product is a VALUE, so restoring it into a fresh browser leaves nothing
+ * broken, and the gate releases every session on the way in. The value CAN go
+ * stale between the checkpoint and a post-gate finalization — an action id
+ * names a workflow step — and that is exactly the case `openDocument` refuses
+ * loudly on, by proving the document number off the page's own heading. A
+ * freshness bound here would replace a precise refusal with a timer, and §5A
+ * already ruled that out for this graph.
+ */
+export const actionNode = kualiExtractionEntries.task(ACTION_NODE, KualiSearchSeparationAction, {
+  label: "Kuali Action",
+  replay: "checkpoint",
+});
+
+/**
+ * Chunk 2's argument verbatim: this node's product is its VALUE, not browser
+ * state, so restoring the checkpoint into a fresh browser leaves nothing
+ * broken. Nothing downstream stands on the page it opened — the consumers are
+ * pure folds — and in the composition every read upstream of the gate is
+ * replayed into a browser that has never seen these pages, because the gate
+ * parks and the executor releases every session on the way in. Chunk 1's rule
+ * ("a node whose real product is BROWSER state may not be `replay:
+ * "checkpoint"`") is the same rule read the other way.
+ */
+export const documentNode = kualiExtractionEntries.task(DOCUMENT_NODE, KualiReadSeparationDocument, {
+  label: "Separation Document",
+  replay: "checkpoint",
+});
+
+export const planNode = kualiExtractionEntries.task(PLAN_NODE, SeparationsReadSeparationPlan, {
+  label: "Separation Plan",
+  replay: "checkpoint",
+});
+
+export const terminationTypeNode = kualiExtractionEntries.task(TERMINATION_TYPE_NODE, SeparationsMatchTerminationType, {
+  label: "Termination Type",
+  replay: "checkpoint",
+});
+
+/* ── step `identity-check` — group, node ids, entry identities ── */
+
+export const IDENTITY_CHECK_STEP = defineWorkflowStep({
+  key: "identity-check",
+  label: "Identity check",
+});
+
+/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them (D307). */
+export const NAME_SEARCH_NODE = "name-search";
+export const SUBJECT_NODE = "subject";
+export const COMPARISON_NODE = "comparison";
+export const GATE_NODE = "identity-approval";
+export const APPROVAL_NODE = "approval";
+
+/**
+ * D265 §1.2.2 rule 2 — the *Identity check* step's entry identities: UCPath's
+ * own search for the name the Kuali form claims, the reduction to ONE subject,
+ * the evidence packet, the conditional name-only gate and the shared identity
+ * authority check.
+ *
+ * An entry identity owns a node's IDENTITY — id, contract, label, replay, or
+ * the gate's status key and result schema — and takes its WIRING (references
+ * + bind) from the workflow definition that uses it (`defineStepEntries`,
+ * D315). The composition wires these from the Kuali reads upstream; the
+ * identity-check harness (`./identity-check/workflow.ts`) wires them from its
+ * own ingress and binds the comparison to `noSeparationWritePlan` because it
+ * files nothing and has no whole plan to show (rule 3: a harness IMPORTS these
+ * identities rather than restating them).
+ */
+const identityCheckEntries = defineStepEntries(IDENTITY_CHECK_STEP);
+
+/**
+ * Every graph that applies this node binds `keepNonHdh: true` and runs it
+ * UNCONDITIONALLY — chunk 3's two sharpest choices. Legacy searches only when
+ * its name tier came back `different`, so the alternative candidate
+ * `T002173685` turned on exists only on the runs a Levenshtein threshold
+ * happened to select; and an HDH filter would hide exactly the career
+ * employee a common name matched. The HDH filter exists so person-lookup can
+ * pick a preferred candidate; here the point is to SHOW the operator every
+ * person this name resolves to.
+ */
+export const nameSearchNode = identityCheckEntries.task(NAME_SEARCH_NODE, SearchPersonOrg, {
+  label: "Name Search",
+  replay: "checkpoint",
+});
+
+export const subjectNode = identityCheckEntries.task(SUBJECT_NODE, SeparationsMatchSeparationSubject, {
+  label: "Separation Subject",
+  replay: "checkpoint",
+});
+
+export const comparisonNode = identityCheckEntries.task(COMPARISON_NODE, SeparationsMatchIdentity, {
+  label: "Identity Comparison",
+  replay: "checkpoint",
+});
+
+/**
+ * When the declared source is `name-resolved`, `resolvedBy: "operator"` and
+ * nothing else can resolve it (ref write-safety §14.4). Not a retry, not a bump,
+ * not a cascade from a parent, not AI (charter
+ * §23 / D60), and not a generic "Done" — the kernel's ONLY path into
+ * `gate_results` is the typed `resolve-gate` command, which parses this exact
+ * schema and CASes the run version. A supplied-EID packet makes the condition
+ * false; the executor records no gate result or operator decision.
+ */
+export const identityApprovalGate = identityCheckEntries.operatorGate(GATE_NODE, {
+  label: "Identity Approval",
+  statusKey: "awaitingIdentityApproval",
+  result: IdentityApprovalResultSchema,
+  when: { kind: "equals", of: { from: "node", nodeId: COMPARISON_NODE, path: "packet.emplIdSource" }, value: "name-resolved" },
+});
+
+/**
+ * `always-rerun`, deliberately: this node's whole job is to compare a stored
+ * gate result against re-derived evidence, and a replayed checkpoint would be
+ * the previous comparison's ANSWER standing in for the comparison.
+ */
+export const approvalNode = identityCheckEntries.task(APPROVAL_NODE, SeparationsVerifyIdentityApproval, {
+  label: "Approval Check",
+  replay: "always-rerun",
+});
+
+/* ── step `job-summary` — group, node ids, entry identities ── */
+
+export const JOB_SUMMARY_STEP = defineWorkflowStep({
+  key: "job-summary",
+  label: "Job summary",
+});
+
+/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them (D307). */
+export const JOB_SUMMARY_NODE = "job-summary";
+export const EMPLOYMENT_NODE = "employment";
+export const DEPARTMENT_NODE = "department-option";
+
+/**
+ * D265 §1.2.2 rule 2 — the *Job summary* step's entry identities: UCPath's Job
+ * Summary grid read verbatim, and the two pure folds over it — the one active
+ * employment the filing is against and the Kuali department option it maps to.
+ *
+ * An entry identity owns a node's IDENTITY — id, contract, label, replay — and
+ * takes its WIRING (references + bind) from the workflow definition that uses
+ * it (`defineStepEntries`, D315). This step has no harness of its own: the
+ * composition wires `job-summary` from the resolved subject, and the
+ * identity-check harness wires it straight from its ingress EID (rule 3 — it
+ * IMPORTS the identity rather than restating it).
+ */
+const jobSummaryEntries = defineStepEntries(JOB_SUMMARY_STEP);
+
+/**
+ * `replay: "checkpoint"` is safe here for chunk 2's reason read the same way:
+ * this node's product is its VALUE, not browser state. Nothing downstream
+ * stands on the page it opened — the consumers are pure folds and one operator
+ * gate — and a gate resume ALWAYS lands in a fresh browser, because the
+ * executor releases every session on the way into a park. A node whose
+ * product were browser state could not be replayed across a park at all.
+ */
+export const jobSummaryNode = jobSummaryEntries.task(JOB_SUMMARY_NODE, UcpathReadJobSummary, {
+  label: "Job Summary",
+  replay: "checkpoint",
+});
+
+export const employmentNode = jobSummaryEntries.task(EMPLOYMENT_NODE, SeparationsMatchActiveEmployment, {
+  label: "Employment",
+  replay: "checkpoint",
+});
+
+export const departmentOptionNode = jobSummaryEntries.task(DEPARTMENT_NODE, SeparationsMatchDepartmentOption, {
+  label: "Department Option",
+  replay: "checkpoint",
+});
+
+/* ── step `kronos-timecard` — group, node ids, entry identities, omission ── */
+
+export const KRONOS_TIMECARD_STEP = defineWorkflowStep({
+  key: "kronos-timecard",
+  label: "Kronos timecard",
+});
+
+/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them (D307). */
+export const TIMECARD_SEARCH_NODE = "timecard-search";
+export const TIMECARD_NODE = "timecard";
+export const DATES_NODE = "dates";
+
+/**
+ * D265 §1.2.2 rule 2 — the *Kronos timecard* step's entry identities: the New
+ * Kronos employee search that leaves the subject SELECTED, the timecard read
+ * over the separation window, and the pure date reconciliation over it.
+ *
+ * An entry identity owns a node's IDENTITY — id, contract, label, replay —
+ * and takes its WIRING (references + bind) from the workflow definition that
+ * uses it (`defineStepEntries`, D315). The harness in this folder uses
+ * `timecard` from its own ingress; its search node is `search` / "Employee
+ * Search" — a different id and label, so a different node identity — and stays
+ * authored there rather than being passed off as this step's `timecard-search`.
+ */
+const kronosTimecardEntries = defineStepEntries(KRONOS_TIMECARD_STEP);
+
+/**
+ * `always-rerun`, and chunk 1 paid for the rule live (`sk-124132-9beb`): the
+ * search's OUTPUT is durable but its POINT is a side effect that is not — it
+ * leaves the employee selected in the WFD panel, which is the only thing that
+ * enables Go To. **A node whose real product is BROWSER state may not be
+ * `replay: "checkpoint"`.**
+ *
+ * The composition pays a real cost for that: a gate resume re-runs this node
+ * (the timecard replays from its checkpoint, so nothing consumes the panel),
+ * which is one New Kronos session per gated run. The alternative is a
+ * checkpoint that restores a selection into a browser that never made one, and
+ * that is the failure chunk 1 already recorded.
+ */
+export const timecardSearchNode = kronosTimecardEntries.task(TIMECARD_SEARCH_NODE, NewKronosSearchEmployee, {
+  label: "Timecard Search",
+  replay: "always-rerun",
+});
+
+/**
+ * The timecard visit begins from the selection the search node left in the
+ * panel, so every graph that applies it depends on that search structurally as
+ * well as semantically, and its bind reads the search's own `matched` fact
+ * through `requireFact` — Go To is disabled without the selection, and a
+ * disabled Go To is a loud failure, never an empty card.
+ */
+export const timecardNode = kronosTimecardEntries.task(TIMECARD_NODE, NewKronosReadSeparationTimecard, {
+  label: "Timecard",
+  replay: "checkpoint",
+});
+
+export const datesNode = kronosTimecardEntries.task(DATES_NODE, SeparationsReadSeparationDates, {
+  label: "Reconciled Dates",
+  replay: "checkpoint",
+});
+
+/**
+ * D307 — omitting the Kronos timecard step.
+ *
+ * The operator types the last day worked and the separation date; the step's
+ * one pure fold (`dates`) is rebuilt from them over the plan the Kuali read
+ * produced. The two browser reads (`timecard-search`, `timecard`) are simply
+ * not run — nothing downstream reads them except this fold — and the
+ * rebuilt dates say so in their own leaves (no leave, no pay codes, a comment
+ * that cites operator entry, never a timesheet).
+ */
+function isJsonObject(value: JsonValue): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const KronosTimecardFactsSchema = z.strictObject({
+  lastDayWorked: z.string().min(1),
+  separationDate: z.string().min(1),
+});
+
+export const KRONOS_TIMECARD_OMISSION: StepOmissionDeclaration = {
+  form: {
+    fields: [
+      {
+        key: "lastDayWorked", label: "Last day worked", kind: "us-date",
+        help: "The employee's last physical day of work, MM/DD/YYYY. Kronos is not read; this stands in for the card's last punch.",
+      },
+      {
+        key: "separationDate", label: "Separation date", kind: "us-date",
+        help: "The last day on pay status, MM/DD/YYYY — the same day as the last day worked unless paid leave follows it. The termination is effective the next day.",
+      },
+    ],
+  },
+  produces: {
+    [DATES_NODE]: ({ facts, scope }) => {
+      const typed = KronosTimecardFactsSchema.parse(facts);
+      const plan = ReadSeparationPlanOutputSchema.parse(scope.outputs[PLAN_NODE]);
+      if (!isJsonObject(scope.input)) {
+        throw new Error("kronos-timecard omission requires the run's canonical input object to read the timekeeper name");
+      }
+      const timekeeperName = scope.input.timekeeperName;
+      if (typeof timekeeperName !== "string" || timekeeperName.length === 0) {
+        throw new Error("kronos-timecard omission requires input.timekeeperName to be a non-empty string");
+      }
+      return assertSeparationDates({
+        plan,
+        timekeeperName,
+        lastDayWorked: typed.lastDayWorked,
+        separationDate: typed.separationDate,
+      });
+    },
+  },
+};
+
+/* ── step `ucpath-transaction` — group, node ids, entry identities, omission ── */
+
+export const UCPATH_TRANSACTION_STEP = defineWorkflowStep({
+  key: "ucpath-transaction",
+  label: "UCPath transaction",
+});
+
+/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them (D307). */
+export const PENDING_SET_NODE = "pending-set";
+export const SWEEP_NODE = "clear-pending";
+export const TERMINATION_NODE = "file-termination";
+export const RECEIPT_NODE = "receipt";
+
+/**
+ * D265 §1.2.2 rule 2 — the *UCPath transaction* step's entry identities, in ref
+ * write-safety's order: the pending-termination sweep (S30/S31 — legacy's first
+ * mutation, unfenced and unverified), the termination filing itself, and the
+ * receipt check that binds `(transactionNumber, approvalStatus)` as a PAIR
+ * (D130 proved a **Denied** transaction carries a well-formed `T…`).
+ *
+ * An entry identity owns a node's IDENTITY — id, contracts, label and, for a
+ * transaction, its whole write policy (dry-run shape, probe policy, the
+ * probe-to-fence budget) — and takes its WIRING (references + binds) from the
+ * workflow definition that uses it (`defineStepEntries`, D315). The
+ * composition binds the filing from the reconciled folds; the harness in this
+ * folder binds it from its own ingress (rule 3).
+ */
+const ucpathTransactionEntries = defineStepEntries(UCPATH_TRANSACTION_STEP);
+
+export const pendingSetNode = ucpathTransactionEntries.task(PENDING_SET_NODE, UcpathReadPendingTerminationSet, {
+  label: "Read Exact Pending Set",
+  replay: "checkpoint",
+});
+
+/**
+ * `probePolicy: "always"`: the sweep's probe is one page read that the
+ * termination's probe needs anyway, and paying it on the first attempt too is
+ * what closes the crash window before the first fence.
+ *
+ * Budget measured live 2026-08-13 (§9.7): probe search open 4.6 s + search run
+ * 7.4 s + detail 4.9 s ≈ 17 s to read the grid, then the selection itself is
+ * checkbox clicks. 90 s is ~5x that, and short enough that a stalled page
+ * loses its selection rather than deleting on a stale probe.
+ */
+export const clearPendingNode = ucpathTransactionEntries.transaction(SWEEP_NODE, {
+  label: "Clear Pending Terminations",
+  prepare: UcpathStagePendingTerminationSweep,
+  commit: UcpathDeletePendingTerminations,
+  dryRun: "stop-after-prepare",
+  probePolicy: "always",
+  probeToFenceMaxMs: 90_000,
+});
+
+/**
+ * The real HR write. Budget measured live 2026-08-13 (§9.7): ≈32.4 s of live
+ * wizard staging on top of ≈17 s of probe, and 120 s is ~3.7x that.
+ */
+export const fileTerminationNode = ucpathTransactionEntries.transaction(TERMINATION_NODE, {
+  label: "File Termination",
+  prepare: UcpathStageTermination,
+  commit: UcpathCreateTermination,
+  dryRun: "stop-after-prepare",
+  probePolicy: "always",
+  probeToFenceMaxMs: 120_000,
+});
+
+/**
+ * `always-rerun`, for `approval`'s reason: this node's job is to CHECK a proof,
+ * and a replayed checkpoint would be the previous check's answer standing in
+ * for the check. It is a pure fold over a durable proof, so re-running it costs
+ * nothing and reaches no browser.
+ */
+export const receiptNode = ucpathTransactionEntries.task(RECEIPT_NODE, SeparationsVerifyTerminationReceipt, {
+  label: "Termination Receipt",
+  replay: "always-rerun",
+});
+
+/**
+ * D307 — omitting the UCPath transaction step.
+ *
+ * Neither transaction runs and neither mints an outcome (D144: only the write
+ * sequencer's row may say a write happened). The operator types the
+ * transaction number and its approval status, and the step's pure receipt
+ * fold is rebuilt from them over the identity approval and the reconciled
+ * dates this run still holds — the same two facts a live receipt is checked
+ * against. The receipt's `disposition` names the assertion.
+ */
+const UcpathTransactionFactsSchema = z.strictObject({
+  transactionNumber: z.string().min(1),
+  approvalStatus: z.string().min(1),
+});
+
+export const UCPATH_TRANSACTION_OMISSION: StepOmissionDeclaration = {
+  form: {
+    fields: [
+      {
+        key: "transactionNumber", label: "UCPath transaction number", kind: "text",
+        help: "The T-number of the termination already filed in UCPath (T followed by 6–12 digits). This run files nothing in UCPath.",
+      },
+      {
+        key: "approvalStatus", label: "Approval status", kind: "enum",
+        values: [...TERMINATION_RECEIPT_ACCEPTED_STATUSES],
+        help: "The transaction's approval status as UCPath shows it now. Only a status that means the termination took effect can be asserted.",
+      },
+    ],
+  },
+  produces: {
+    [RECEIPT_NODE]: ({ facts, scope }) => {
+      const typed = UcpathTransactionFactsSchema.parse(facts);
+      const approval = VerifyIdentityApprovalOutputSchema.parse(scope.outputs[APPROVAL_NODE]);
+      const dates = ReadSeparationDatesOutputSchema.parse(scope.outputs[DATES_NODE]);
+      return assertTerminationReceipt({
+        transactionNumber: typed.transactionNumber,
+        approvalStatus: typed.approvalStatus,
+        approvedEmplId: approval.approved.emplId,
+        approvedName: approval.approved.ucpathName,
+        expectedEffectiveDate: dates.terminationEffectiveDate,
+      });
+    },
+  },
+};
+
+/* ── step `kuali-finalization` — group, node ids, entry identities, omission ── */
+
+export const KUALI_FINALIZATION_STEP = defineWorkflowStep({
+  key: "kuali-finalization",
+  label: "Kuali finalization",
+});
+
+/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them (D307). */
+export const FILING_PRESENCE_NODE = "filing-presence";
+export const FINALIZE_NODE = "finalize-kuali";
+
+/**
+ * D265 §1.2.2 rule 2 — the *Kuali finalization* step's one entry identity: §4e's
+ * one save over twelve staged fields, proved by a reload read-back (D128/S59).
+ *
+ * An entry identity owns a node's IDENTITY — id, contracts, label and the whole
+ * write policy — and takes its WIRING (references + binds) from the workflow
+ * definition that uses it (`defineStepEntries`, D315). The composition binds
+ * the variables from the reconciled folds and the receipt; the harness in this
+ * folder binds them from its own ingress (rule 3). `existingComments` is the
+ * one pure fold only this step's binds consume, so it lives here.
+ */
+const kualiFinalizationEntries = defineStepEntries(KUALI_FINALIZATION_STEP);
+
+/**
+ * Always re-read the durable UCPath filing immediately before finalization.
+ * Replaying a checkpoint would make an old observation authorize a new Kuali
+ * write after the filing had moved, disappeared, or become denied.
+ */
+export const filingPresenceNode = kualiFinalizationEntries.task(
   FILING_PRESENCE_NODE,
-  FINALIZE_NODE,
-  existingComments,
-  filingPresenceNode,
-  finalizeKualiNode,
-} from "./kuali-finalization/nodes.js";
-import { KUALI_FINALIZATION_OMISSION } from "./kuali-finalization/omission.js";
-import {
-  PENDING_SET_NODE,
-  RECEIPT_NODE,
-  SWEEP_NODE,
-  TERMINATION_NODE,
-  clearPendingNode,
-  fileTerminationNode,
-  pendingSetNode,
-  receiptNode,
-} from "./ucpath-transaction/nodes.js";
-import { UCPATH_TRANSACTION_OMISSION } from "./ucpath-transaction/omission.js";
+  UcpathVerifyTerminationFilingPresent,
+  { label: "Verify Current UCPath Filing", replay: "always-rerun" },
+);
+
+/** `""` when the control was empty — S56's baseline, which is a real value. */
+export function existingComments(comments: { state: "present"; value: string } | { state: "absent" }): string {
+  return comments.state === "present" ? comments.value : "";
+}
+
+/**
+ * `probePolicy: "always"` (§5 item 3's recorded answer): separations files a
+ * real, hard-to-reverse termination and this write is what records its
+ * transaction number on the source document; a probe is one document read
+ * against a page the run is already on.
+ *
+ * Budget CONFIRMED live 2026-08-14 (§9.12 item 6): probe 3.30 s + prepare
+ * 8.06 s = 11.4 s worst legs against 45 000 ms, ~4x headroom.
+ */
+export const finalizeKualiNode = kualiFinalizationEntries.transaction(FINALIZE_NODE, {
+  label: "Finalize Kuali Document",
+  prepare: KualiStageSeparationFinalization,
+  commit: KualiSaveSeparationFinalization,
+  dryRun: "stop-after-prepare",
+  probePolicy: "always",
+  probeToFenceMaxMs: 45_000,
+});
+
+/**
+ * D307 — omitting the Kuali finalization step.
+ *
+ * Nothing downstream reads the finalization but the terminal result, so the
+ * step needs no typed fact: the transaction is simply not run, and the result
+ * carries an `omitted` arm where the saved-state proof would be. The operator
+ * finalizes the document by hand.
+ */
+export const KUALI_FINALIZATION_OMISSION: StepOmissionDeclaration = {
+  form: { fields: [] },
+  produces: {},
+};
 
 /**
  * How long a New Kronos search may go without answering EITHER WAY. Chunk 1's
@@ -688,7 +1211,7 @@ export const separationsWorkflow = defineWorkflow({
       }),
     );
     const nameSearch = task(nameSearchNode, [plan], ({ outputs }) => ({
-    // `keepNonHdh: true`, always, and UNCONDITIONALLY run — the fragment's own
+    // `keepNonHdh: true`, always, and UNCONDITIONALLY run — the identity's own
     // doc says why; the composition feeds it the plan's employee name.
       kind: "by-name" as const,
       name: outputs[PLAN_NODE].employeeName,

@@ -28,7 +28,7 @@ import {
   PersonLookupInput,
   personLookupWorkflow,
 } from "../../src/workflows/person-lookup/workflow.js";
-import { actionNode } from "../../src/workflows/separations/kuali-extraction/nodes.js";
+import { actionNode } from "../../src/workflows/separations/workflow.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const lookupInput = ({ input }: { input: { emplId?: string; name?: string; keepNonHdh: boolean } }) =>

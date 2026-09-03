@@ -53,7 +53,7 @@ import type {
 import type { RetryPolicy } from "../domain/session.js";
 import type { RegisteredTaskStore } from "./store.js";
 import { flow } from "./flow.js";
-import type { AnyNodeEntry, BuiltFlow, OperatorGateNodeFragment } from "./flow.js";
+import type { AnyNodeEntry, BuiltFlow } from "./flow.js";
 import { defineWorkflowDescriptor } from "./workflow.js";
 import type {
   AnyWorkflowDescriptor,
@@ -209,9 +209,7 @@ export type DelegateEntryOutput<
     ? ChildRunOutcome<Target>
     : readonly ChildRunOutcome<Target>[];
 
-type GateConditional<Identity> = Identity extends OperatorGateNodeFragment<string, string, z.ZodType, infer C>
-  ? C
-  : HasWhen<Identity>;
+type GateConditional<Identity> = HasWhen<Identity>;
 
 /* ── runtime entry shapes (compiler-private) ─────────────────────────────── */
 
@@ -1238,12 +1236,11 @@ export function defineStepEntries<const Key extends string>(step: Readonly<{ key
     },
     operatorGate<
       const Id extends string,
-      Result extends z.ZodType,
-      const Identity extends Readonly<{ label: string; statusKey?: string; result: Result; when?: NodeConditionSpec }>,
+      const Identity extends Readonly<{ label: string; statusKey?: string; result: z.ZodType; when?: NodeConditionSpec }>,
     >(
       id: Id,
       identity: Identity,
-    ): Omit<GateEntryIdentity<Id, Result>, "when"> & WithWhen<Identity> {
+    ): Omit<GateEntryIdentity<Id, Identity["result"]>, "when"> & WithWhen<Identity> {
       const value = {
         step: owner,
         id,
@@ -1252,7 +1249,7 @@ export function defineStepEntries<const Key extends string>(step: Readonly<{ key
         result: identity.result,
         ...(identity.when === undefined ? {} : { when: identity.when }),
       };
-      return Object.freeze(value) as Omit<GateEntryIdentity<Id, Result>, "when"> & WithWhen<Identity>;
+      return Object.freeze(value) as Omit<GateEntryIdentity<Id, Identity["result"]>, "when"> & WithWhen<Identity>;
     },
   });
 }

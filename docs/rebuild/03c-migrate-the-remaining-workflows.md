@@ -74,6 +74,13 @@ the code still exposes `defineWorkflowRecipe`/`compileWorkflowRecipe`, consumes 
 retains authored descriptor/module files, implements neither direct `parallel`/`delegate` entries
 nor D313/D314 omission/restart behavior, and has no workflow-authoring guide.
 
+> 2026-09-02 | 3c-A R3/R3c | Superseded as a description of the tree: `src/base/workflow-definition.ts`
+> carries the D317 names and the direct entry algebra (R3); every registered workflow authors exactly
+> one `workflow.ts`, the per-step `node-ids`/`nodes`/`step`/`omission` files, the last hand-authored
+> `descriptor.ts`/`module.ts` pair (`separations-identity-check`) and the flow node-fragment API are
+> deleted, and the registry/Explorer/`workflow-layout` "not yet converted" arm is retired (R3c). The
+> paragraph stays as the recorded baseline; the guide is still unwritten (R3d).
+
 The earlier Order 1 intake and live I-9 evidence are integrated, but they do not admit I-9 Lookup or
 authorize runtime work. **The old order 1, 2, 3, 4, 5, 6, 7 and 9 labels remain unverified candidate
 leads.**
@@ -101,7 +108,7 @@ feature task and T2/T3 proof only when it introduces a genuinely new interaction
 - [x] BE route Person Lookup and Separations through that transitional compiler while preserving their existing public descriptor/module behavior (`ebfde1c6`, `d4204106`)
 - [x] PROOF derive the compiler-backed registry population and prove current bootstrap/run modal, timeline/detail and Explorer projections for both workflows (`246daab2`, `4555341f`)
 - [ ] BE make the existing task-store catalog sufficient to find a task by system, capability, effect, inputs and outputs before an author creates one
-- [ ] BE replace the transitional `workflow-recipe.ts`/`defineWorkflowRecipe`/`compileWorkflowRecipe` names with D317's `workflow.ts`/`defineWorkflow`/`compileWorkflow`/`WorkflowDefinition`/`CompiledWorkflow`; do not leave aliases or a second authoring seam
+- [x] BE replace the transitional `workflow-recipe.ts`/`defineWorkflowRecipe`/`compileWorkflowRecipe` names with D317's `workflow.ts`/`defineWorkflow`/`compileWorkflow`/`WorkflowDefinition`/`CompiledWorkflow`; do not leave aliases or a second authoring seam (R3 `8a931cc6`; the fragment API and every per-step declaration file deleted in R3c)
 - [ ] PROOF enforce the exact four authored artifacts for a reuse-only workflow; reject descriptor/module/registry/dashboard glue outside `workflow.ts`
 - [ ] BE replace fragment adapters with the closed direct `task | parallel | delegate | gate | transaction` entry algebra, including stable entry/leaf ids, explicit parallel join/failure policy and independent leaf retry
 - [ ] BE finish derivation of store/session requirements, graph/result, registry/build-manifest and all generic surfaces from the final workflow definition; retain the already-green transitional derivations as compatibility proof
@@ -212,11 +219,12 @@ runtime.
    descriptor, module requirements, run-modal wire, graph, timeline/detail, Explorer, receipt and
    result behavior are captured by red-capable fixtures. Evidence: `2e563240`, merged in
    `6d30d75a`.
-2. **PARTIAL — Finish the authored types and terminology.** The transitional API already validates
-   tuple/group ids, typed task references, duplicate ids/tasks, unresolved references and cycles.
-   Replace its `recipe` names with D317's final workflow names, add direct explicit `parallel`,
-   `delegate`, `gate` and `transaction` entries, and remove fragment-adapter authoring. Gate: every
-   entry kind compiles and its implicit/invalid control shapes fail by name; no old alias remains.
+2. **DONE — Finish the authored types and terminology.** The D317 names, the direct explicit
+   `parallel`, `delegate`, `gate` and `transaction` entries and their by-name refusals landed in R3
+   (`8a931cc6`, `51ec6253`, `2527c149`); R3c removed fragment-adapter authoring entirely — the flow
+   node-fragment API, every per-step `node-ids`/`nodes`/`step`/`omission` file and the last
+   hand-authored descriptor/module pair are deleted, and every registered workflow authors one
+   `workflow.ts`. No old alias remains.
 3. **DONE, REVERIFY AFTER UNIT 2 — Build the compiler core.** The transitional compiler derives
    graph nodes/edges, result dependencies,
    required task stores/sessions, descriptor compatibility output, registry value and build-manifest

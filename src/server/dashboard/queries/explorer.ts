@@ -70,8 +70,6 @@ import { GENERATED_BUILD_MANIFEST } from "../../../domain/workflow/generated-bui
 import type { RuntimeFlowNode } from "../../../domain/workflow/graph.js";
 import type { WorkflowModuleRole } from "../../../domain/workflow/module-role.js";
 import {
-  descriptorSourcePath,
-  moduleSourcePath,
   workflowSourcePath,
 } from "../../../domain/workflow/source-layout.js";
 import type { IntakeProjection } from "../../../domain/intake/projection.js";
@@ -770,15 +768,11 @@ function workflowWire(
   // D265 §1.2.2 — the path comes from the ROLE, never from the id alone: a
   // chunk harness lives inside the step it proves, so a link built from the id
   // would point at a folder that no longer exists.
-  // D317 — a definition-backed workflow's ONE authored file is `workflow.ts`;
-  // its descriptor and module are compiled products with no source of their own.
-  const definitionBacked = module.definition !== undefined;
-  const descriptorPath = definitionBacked
-    ? workflowSourcePath(workflowId, module.role)
-    : descriptorSourcePath(workflowId, module.role);
-  const modulePath = definitionBacked
-    ? workflowSourcePath(workflowId, module.role)
-    : moduleSourcePath(workflowId, module.role);
+  // D317 — a workflow's ONE authored file is `workflow.ts`; its descriptor and
+  // module are compiled products with no source of their own, so both source
+  // links resolve to that file.
+  const descriptorPath = workflowSourcePath(workflowId, module.role);
+  const modulePath = descriptorPath;
 
   const purposeByNode = new Map(
     descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose]),

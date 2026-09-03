@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { z } from "zod";
 import { describe, it } from "vitest";
-import { defineWorkflowStepNodeFactory, flow } from "../../src/base/flow.js";
+import { flow } from "../../src/base/flow.js";
 import { defineWorkflowStep } from "../../src/base/workflow.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../src/domain/contracts/base.js";
 import {
@@ -439,7 +439,7 @@ describe("workflow flow builder", () => {
     assert.deepEqual(node.branches.map((branch) => branch.id), ["org", "contact"]);
     assert.equal(Object.isFrozen(node.branches), true);
   });
-  describe("node fragments (D265 §1.2.2 rule 2)", () => {
+  describe("workflow steps (D265 §1.2.2 rule 2)", () => {
     it("refuses a step whose folder key is not a kebab-case slug", () => {
       assert.throws(
         () => defineWorkflowStep({ key: "Not Kebab", label: "Invalid folder" }),
@@ -447,117 +447,5 @@ describe("workflow flow builder", () => {
       );
     });
 
-    const fragmentStep = defineWorkflowStep({ key: "identity-check", label: "Identity check" });
-    const fragmentNodes = defineWorkflowStepNodeFactory(fragmentStep);
-    const contactFragment = fragmentNodes.task("contact", readTwo, { label: "Contact", replay: "always-rerun" });
-    const approvalFragment = fragmentNodes.operatorGate("approval", {
-      label: "Approve",
-      statusKey: "awaitingApproval",
-      result: z.object({ approved: z.boolean() }),
-    });
-    const terminateFragment = fragmentNodes.transaction("terminate", {
-      label: "Terminate",
-      prepare: preparePair,
-      commit: commitPair,
-      dryRun: "stop-after-prepare",
-      probePolicy: "retries-and-recovery-only",
-      probeToFenceMaxMs: 30_000,
-    });
-
-    it("applies a wired fragment through pipe exactly as the hand-written call would", () => {
-      const byHand = base()
-        .step("contact", readTwo, {
-          label: "Contact",
-          dependsOn: ["search"],
-          bind: ({ outputs }) => ({ eid: outputs.search.eid }),
-          replay: "always-rerun",
-        })
-        .gate("approval", {
-          label: "Approve",
-          statusKey: "awaitingApproval",
-          dependsOn: ["contact"],
-          resolvedBy: "operator",
-          result: approvalFragment.result,
-        })
-        .transaction("terminate", {
-          label: "Terminate",
-          dependsOn: ["approval", "search"],
-          prepare: { uses: preparePair, bind: ({ outputs }) => ({ eid: outputs.search.eid }) },
-          commit: { uses: commitPair, bind: ({ outputs }) => ({ eid: outputs.search.eid }) },
-          dryRun: "stop-after-prepare",
-          probePolicy: "retries-and-recovery-only",
-          probeToFenceMaxMs: 30_000,
-        })
-        .build({ schema: z.object({ eid: EidSchema }), dependsOn: ["search"], derive: ({ outputs }) => ({ eid: outputs.search.eid }) });
-      const byFragment = base()
-        .pipe(contactFragment.wire({ dependsOn: ["search"], bind: ({ outputs }) => ({ eid: outputs.search.eid }) }))
-        .pipe(approvalFragment.wire({ dependsOn: ["contact"] }))
-        .pipe(terminateFragment.wire({
-          dependsOn: ["approval", "search"],
-          prepare: { bind: ({ outputs }) => ({ eid: outputs.search.eid }) },
-          commit: { bind: ({ outputs }) => ({ eid: outputs.search.eid }) },
-        }))
-        .build({ schema: z.object({ eid: EidSchema }), dependsOn: ["search"], derive: ({ outputs }) => ({ eid: outputs.search.eid }) });
-      const stripBinds = (nodes: readonly GraphNodeBase[]): unknown =>
-        JSON.parse(JSON.stringify(nodes, (key, value: unknown) => (
-          typeof value === "function" ? "<fn>" : key === "result" ? "<schema>" : key === "uses" ? (value as { id: string }).id : value
-        )));
-      assert.deepEqual(stripBinds(byFragment.nodes), stripBinds(byHand.nodes));
-      assert.equal(byFragment.nodes.length, 4);
-      assert.equal(Object.isFrozen(contactFragment), true);
-      assert.equal(Object.isFrozen(fragmentNodes), true);
-      assert.equal(contactFragment.id, "contact");
-      assert.equal(terminateFragment.prepare.id, "ucpath/fill-termination");
-    });
-
-    it("refuses a fragment that hands back a different builder", () => {
-      const other = base();
-      assert.throws(
-        // The cast is the point: a fragment that ignores its argument is exactly what pipe refuses.
-        () => base().pipe(() => other as never),
-        /must return the builder it was given/,
-      );
-    });
-
-    it("refuses a transaction fragment without a positive probe-to-fence budget, and a bad node id", () => {
-      assert.throws(
-        () => fragmentNodes.transaction("terminate", {
-          label: "Terminate", prepare: preparePair, commit: commitPair,
-          dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 0,
-        }),
-        /positive integer probeToFenceMaxMs budget/,
-      );
-      assert.throws(() => fragmentNodes.task("Not Kebab", readTwo, { label: "x", replay: "checkpoint" }));
-    });
-
-    it("derives a step's timeline category from its fragments and refuses a repeated one", () => {
-      const category = fragmentNodes.category([contactFragment, approvalFragment, terminateFragment]);
-      assert.deepEqual(category, { key: "identity-check", label: "Identity check", nodes: ["contact", "approval", "terminate"] });
-      assert.equal(Object.isFrozen(category), true);
-      assert.throws(
-        () => fragmentNodes.category([contactFragment, contactFragment]),
-        /lists node fragment contact twice/,
-      );
-    });
-
-    it("refuses a node fragment owned by another workflow step", () => {
-      const otherStep = defineWorkflowStep({ key: "job-summary", label: "Job summary" });
-      const otherNodes = defineWorkflowStepNodeFactory(otherStep);
-
-      assert.throws(
-        () => otherNodes.category([contactFragment as never]),
-        /step "job-summary" claims node fragment contact, which belongs to step "identity-check"/,
-      );
-    });
-
-    it("refuses a node fragment claimed by a different step object with the same key", () => {
-      const separatelyDeclaredStep = defineWorkflowStep({ key: "identity-check", label: "Secondary identity check" });
-      const separatelyDeclaredNodes = defineWorkflowStepNodeFactory(separatelyDeclaredStep);
-
-      assert.throws(
-        () => separatelyDeclaredNodes.category([contactFragment]),
-        /same key but distinct step objects: "Secondary identity check" and "Identity check"/,
-      );
-    });
   });
 });
