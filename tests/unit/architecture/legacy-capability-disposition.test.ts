@@ -163,9 +163,9 @@ const PhaseStatusSchema = z.object({ completedThrough: MilestoneSchema, active: 
  * `phase` command an operator runs — never from a list typed into this file. A
  * hand-typed list is a second answer that can disagree with the product.
  */
-function runtimeCompletedThrough(): Milestone {
+async function runtimeCompletedThrough(): Promise<Milestone> {
   const written: string[] = [];
-  startRebuildRuntime({
+  await startRebuildRuntime({
     isolation: rebuildRuntimeIsolation,
     args: ["phase"],
     write: (value: string): void => {
@@ -306,7 +306,7 @@ function fixtureInventory(mutate: (draft: CapabilityInventory) => void): Capabil
 }
 
 const closureFacts: CapabilityClosureFacts = {
-  completedThrough: runtimeCompletedThrough(),
+  completedThrough: await runtimeCompletedThrough(),
   repoPaths: repoPathIndex(),
   npmScripts: new Set(Object.keys(packageJson.scripts)),
   legacyPathExists: (path) => existsSync(join(LEGACY_REPO_ROOT, path)),

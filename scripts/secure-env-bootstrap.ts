@@ -5,7 +5,7 @@ export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
 export interface SecureEnvironmentBootstrapDependencies {
   readonly admitEnvironmentFile?: (path: string) => void;
-  readonly runCli?: () => void;
+  readonly runCli?: () => Promise<void>;
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
 }
 
@@ -42,7 +42,10 @@ export async function runSecureEnvironmentBootstrap(
       ...entrypointArgs,
     );
     const runCli = dependencies.runCli ?? (await import("../src/cli.js")).runCli;
-    runCli();
+    // Awaited: for `dashboard` this promise is the runtime's lifetime, and a
+    // rejection must crash the process loudly rather than becoming an
+    // unobserved rejection while the shell reports success.
+    await runCli();
     return;
   }
 

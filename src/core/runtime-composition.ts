@@ -21,6 +21,17 @@ export interface RunningDashboard {
   stop(): Promise<void>;
 }
 
+/**
+ * The shutdown seam. The `dashboard` command owns a process that lives until
+ * the operator stops it, so "when does it stop" is an injectable dependency
+ * rather than a `process.once` buried in the branch — a test drives the exact
+ * signal ordering, and production registers the real handlers.
+ */
+export interface RuntimeShutdownSignals {
+  /** Register a handler for the shutdown signals; the returned disposer removes it. */
+  subscribe(handler: (signal: "SIGINT" | "SIGTERM") => void): () => void;
+}
+
 export interface RebuildRuntimeStart {
   readonly isolation: RuntimeIsolation;
   readonly args?: readonly string[];
@@ -39,6 +50,8 @@ export interface RebuildRuntimeStart {
   readonly dryRunScenario?: DryRunScenarioComposer;
   /** Explicit seam override for tests; production registers the reviewed D288 command. */
   readonly activityPersonPseudonyms?: ActivityPersonPseudonymComposer;
+  /** Explicit seam override for tests; production subscribes to the real process signals. */
+  readonly signals?: RuntimeShutdownSignals;
 }
 
 type DashboardComposer = (isolation: RuntimeIsolation) => Promise<RunningDashboard>;
@@ -197,7 +210,71 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
   ].join("\n");
 }
 
-export function startRebuildRuntime(input: RebuildRuntimeStart): void {
+/**
+ * The production shutdown seam: `SIGINT` (Ctrl+C) and `SIGTERM` (a supervisor
+ * stopping the process). `once` per signal, and the disposer removes BOTH, so
+ * a returning `startRebuildRuntime` leaves no listener behind for the next
+ * command or the next test in the same process.
+ */
+function processShutdownSignals(): RuntimeShutdownSignals {
+  return {
+    subscribe(handler): () => void {
+      const onInterrupt = (): void => {
+        handler("SIGINT");
+      };
+      const onTerminate = (): void => {
+        handler("SIGTERM");
+      };
+      process.once("SIGINT", onInterrupt);
+      process.once("SIGTERM", onTerminate);
+      return (): void => {
+        process.removeListener("SIGINT", onInterrupt);
+        process.removeListener("SIGTERM", onTerminate);
+      };
+    },
+  };
+}
+
+/**
+ * Own the running dashboard until the first shutdown signal, then stop it ONCE
+ * and wait for that stop to finish.
+ *
+ * `composeDashboardRuntime`'s `stop()` is the whole shutdown ordering (ingress
+ * → hub/timers → worker supervisor → graceful-drain backup → database → process
+ * lock), so this awaits it rather than duplicating any part of it. Two things
+ * are deliberate:
+ *
+ *  - the listeners stay subscribed ACROSS the stop, so a second Ctrl+C during a
+ *    long drain is absorbed here instead of falling through to Node's default
+ *    terminate, which would abandon the database handle and the process lock;
+ *  - a rejecting `stop()` propagates. A dashboard that failed to drain must
+ *    never look like it exited cleanly, and this library never calls
+ *    `process.exit` — the entrypoint decides what a rejection costs.
+ */
+async function ownDashboardUntilShutdown(
+  running: RunningDashboard,
+  signals: RuntimeShutdownSignals,
+): Promise<void> {
+  let requestShutdown: (() => void) | undefined;
+  const shutdownRequested = new Promise<void>((resolve) => {
+    requestShutdown = resolve;
+  });
+  const dispose = signals.subscribe(() => {
+    if (requestShutdown === undefined) {
+      throw new Error("a shutdown signal arrived before the dashboard registered its handler");
+    }
+    // Resolving twice is a no-op, so the second signal cannot start a second stop.
+    requestShutdown();
+  });
+  try {
+    await shutdownRequested;
+    await running.stop();
+  } finally {
+    dispose();
+  }
+}
+
+export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<void> {
   const args = input.args ?? process.argv.slice(2);
   const write = input.write ?? ((message: string): void => {
     process.stdout.write(`${message}\n`);
@@ -226,15 +303,13 @@ export function startRebuildRuntime(input: RebuildRuntimeStart): void {
         "the dashboard command needs its composition seam; start it through src/cli.ts, which registers composeDashboardRuntime",
       );
     }
-    compose(input.isolation)
-      .then((running) => {
-        write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}`);
-      })
-      .catch((error: unknown) => {
-        // Re-throwing out of the promise chain crashes the process loudly —
-        // a dashboard that failed to bind must never look started.
-        throw error instanceof Error ? error : new Error(String(error));
-      });
+    // Awaited, not detached: a dashboard that failed to bind must never look
+    // started, and the returned promise IS this command's lifetime, so the
+    // entrypoint can await a real shutdown instead of the process being torn
+    // down mid-drain by the default signal disposition.
+    const running = await compose(input.isolation);
+    write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}`);
+    await ownDashboardUntilShutdown(running, input.signals ?? processShutdownSignals());
     return;
   }
   if (command === "explain") {

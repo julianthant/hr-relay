@@ -24,9 +24,10 @@ import ts from "typescript";
  * proof stays exactly as strict as it was: an exported direct-`const`
  * `defineRuntimeIsolation` call with the exact isolated literal values, and a
  * composition root that consumes it through unshadowed named imports in one
- * direct call inside the declared exported runner. Secure environment
- * admission owns invocation of that runner; a mention or another function is
- * not proof.
+ * direct call inside the declared exported runner — awaited or not, because
+ * the runner owns the `dashboard` command's whole lifetime and must return its
+ * promise. Secure environment admission owns invocation of that runner; a
+ * mention or another function is not proof.
  */
 
 export const SUPPORTED_MODULE_FAMILIES = [
@@ -191,10 +192,17 @@ function hasExactExportedRunnerCompositionCall(
   const runner = runners[0];
   if (runner === undefined || runner.parameters.length !== 0 || runner.body === undefined) return false;
   const matchingCalls = runner.body.statements.filter((statement) => {
-    if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression)) return false;
-    const call = statement.expression;
-    return ts.isIdentifier(call.expression) && call.expression.text === factory
-      && exactBindingArgument(call, bindingPath, bindingName);
+    if (!ts.isExpressionStatement(statement)) return false;
+    // `await startRebuildRuntime(...)` is the same one direct call: the runner
+    // returns the runtime's lifetime promise, so awaiting it is required, not a
+    // second indirection. Everything else about the call stays exactly as
+    // strict — same identifier, same unshadowed binding argument.
+    const expression = ts.isAwaitExpression(statement.expression)
+      ? statement.expression.expression
+      : statement.expression;
+    if (!ts.isCallExpression(expression)) return false;
+    return ts.isIdentifier(expression.expression) && expression.expression.text === factory
+      && exactBindingArgument(expression, bindingPath, bindingName);
   });
   return matchingCalls.length === 1;
 }

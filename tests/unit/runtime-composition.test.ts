@@ -4,6 +4,46 @@ import { describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { runtimeHelp, startRebuildRuntime } from "../../src/core/runtime-composition.js";
 
+/** Let every queued microtask and immediate callback run before observing state. */
+async function settleEventLoop(): Promise<void> {
+  for (let turn = 0; turn < 4; turn += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+interface SignalSeamFake {
+  readonly seam: {
+    subscribe(handler: (signal: "SIGINT" | "SIGTERM") => void): () => void;
+  };
+  emit(signal: "SIGINT" | "SIGTERM"): void;
+  readonly counts: { subscriptions: number; disposals: number };
+}
+
+/**
+ * The injected shutdown seam. It records subscription and disposal counts so a
+ * test can prove the listeners outlive `stop()` (a second signal DURING a stop
+ * must be absorbed, not fall through to Node's default terminate).
+ */
+function signalSeamFake(): SignalSeamFake {
+  const handlers: ((signal: "SIGINT" | "SIGTERM") => void)[] = [];
+  const counts = { subscriptions: 0, disposals: 0 };
+  return {
+    seam: {
+      subscribe(handler): () => void {
+        counts.subscriptions += 1;
+        handlers.push(handler);
+        return (): void => {
+          counts.disposals += 1;
+        };
+      },
+    },
+    emit(signal): void {
+      for (const handler of handlers) handler(signal);
+    },
+    counts,
+  };
+}
+
 describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
   it("binds the exact rebuild-only resources", () => {
     assert.deepEqual(rebuildRuntimeIsolation, {
@@ -28,9 +68,9 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     );
   });
 
-  it("executes only the currently owned CLI surface and fails loud for future runtime work", () => {
+  it("executes only the currently owned CLI surface and fails loud for future runtime work", async () => {
     const output: string[] = [];
-    startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["phase"], write: (value) => output.push(value) });
+    await startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["phase"], write: (value) => output.push(value) });
     assert.deepEqual(JSON.parse(output[0] ?? ""), {
       completedThrough: "2j",
       active: "3-workflow-migration",
@@ -40,22 +80,22 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
       frontendPort: 5174,
       browserSessionNamespace: "hrauto-rebuild",
     });
-    startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["--help"], write: (value) => output.push(value) });
+    await startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["--help"], write: (value) => output.push(value) });
     assert.match(output[1] ?? "", /Commands/);
-    assert.throws(
-      () => startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["dashboard"], write: () => undefined }),
+    await assert.rejects(
+      startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["dashboard"], write: () => undefined }),
       /needs its composition seam/,
     );
-    assert.throws(
-      () => startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["unknown"], write: () => undefined }),
+    await assert.rejects(
+      startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["unknown"], write: () => undefined }),
       /unknown rebuild command/,
     );
   });
 
-  it("routes `explain` through its injected seam and refuses without one", () => {
+  it("routes `explain` through its injected seam and refuses without one", async () => {
     const output: string[] = [];
     const seen: string[][] = [];
-    startRebuildRuntime({
+    await startRebuildRuntime({
       isolation: rebuildRuntimeIsolation,
       args: ["explain", "run", "pl-000619-4ebf", "--json"],
       write: (value) => output.push(value),
@@ -67,8 +107,8 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     });
     assert.deepEqual(seen, [["run", "pl-000619-4ebf", "--json"]]);
     assert.deepEqual(output, ["the explanation"]);
-    assert.throws(
-      () => startRebuildRuntime({
+    await assert.rejects(
+      startRebuildRuntime({
         isolation: rebuildRuntimeIsolation,
         args: ["explain", "run", "pl-000619-4ebf"],
         write: () => undefined,
@@ -80,7 +120,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
   it("routes `storage doctor` through its injected seam and refuses without one", async () => {
     const output: string[] = [];
     const seen: string[][] = [];
-    startRebuildRuntime({
+    await startRebuildRuntime({
       isolation: rebuildRuntimeIsolation,
       args: ["storage", "doctor", "--json"],
       write: (value) => output.push(value),
@@ -93,8 +133,8 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(seen, [["doctor", "--json"]]);
     assert.deepEqual(output, ["the doctor report"]);
-    assert.throws(
-      () => startRebuildRuntime({
+    await assert.rejects(
+      startRebuildRuntime({
         isolation: rebuildRuntimeIsolation,
         args: ["storage", "doctor"],
         write: () => undefined,
@@ -103,7 +143,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     );
   });
 
-  it("advertises and invokes the reviewed activity-person-pseudonyms command", () => {
+  it("advertises and invokes the reviewed activity-person-pseudonyms command", async () => {
     const output: string[] = [];
     const seen: string[][] = [];
     const previousExitCode = process.exitCode;
@@ -117,7 +157,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
         readFileSync(new URL("../../src/cli.ts", import.meta.url), "utf8"),
         /registerActivityPersonPseudonymComposer\([\s\S]*composeActivityPersonPseudonymBackfillCommand/u,
       );
-      startRebuildRuntime({
+      await startRebuildRuntime({
         isolation: rebuildRuntimeIsolation,
         args: ["activity-person-pseudonyms", "backfill", "--json"],
         write: (value) => output.push(value),
@@ -138,28 +178,87 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
   it("starts the dashboard through the injected 1g-spine composition seam", async () => {
     const output: string[] = [];
     const seen: number[] = [];
-    let resolveStarted: () => void = () => undefined;
-    const started = new Promise<void>((resolve) => {
-      resolveStarted = resolve;
-    });
-    startRebuildRuntime({
+    const signals = signalSeamFake();
+    const lifecycle = startRebuildRuntime({
       isolation: rebuildRuntimeIsolation,
       args: ["dashboard"],
-      write: (value) => {
-        output.push(value);
-        resolveStarted();
-      },
+      write: (value) => output.push(value),
+      signals: signals.seam,
       dashboard: (isolation) => {
         seen.push(isolation.backendPort);
         return Promise.resolve({ port: isolation.backendPort, stop: () => Promise.resolve() });
       },
     });
-    await started;
+    await settleEventLoop();
     assert.deepEqual(seen, [3938]);
     assert.match(output[0] ?? "", /127\.0\.0\.1:3938/);
+    signals.emit("SIGINT");
+    await lifecycle;
   });
 
-  it("falls back to the real process argv and stdout writer the entrypoint relies on", () => {
+  it("stops the composed dashboard exactly once and waits for that stop before returning", async () => {
+    const signals = signalSeamFake();
+    let stops = 0;
+    let finishStop: (() => void) | undefined;
+    const stopFinished = new Promise<void>((resolve) => {
+      finishStop = resolve;
+    });
+    let lifecycleSettled = false;
+    const lifecycle = startRebuildRuntime({
+      isolation: rebuildRuntimeIsolation,
+      args: ["dashboard"],
+      write: () => undefined,
+      signals: signals.seam,
+      dashboard: (isolation) => Promise.resolve({
+        port: isolation.backendPort,
+        stop: () => {
+          stops += 1;
+          return stopFinished;
+        },
+      }),
+    });
+    const observed = lifecycle.then(() => {
+      lifecycleSettled = true;
+    });
+    await settleEventLoop();
+    assert.equal(signals.counts.subscriptions, 1);
+
+    // Two signals, one stop: SIGTERM arriving mid-shutdown must be absorbed by
+    // the still-subscribed seam, never fall through to a second stop.
+    signals.emit("SIGINT");
+    signals.emit("SIGTERM");
+    await settleEventLoop();
+    assert.equal(stops, 1);
+    assert.equal(lifecycleSettled, false, "the lifecycle must stay pending until stop() settles");
+    assert.equal(signals.counts.disposals, 0, "listeners must outlive the in-flight stop");
+
+    assert.ok(finishStop);
+    finishStop();
+    await observed;
+    assert.equal(lifecycleSettled, true);
+    assert.equal(stops, 1);
+    assert.equal(signals.counts.disposals, 1);
+  });
+
+  it("propagates a failing dashboard stop instead of returning as if it drained", async () => {
+    const signals = signalSeamFake();
+    const lifecycle = startRebuildRuntime({
+      isolation: rebuildRuntimeIsolation,
+      args: ["dashboard"],
+      write: () => undefined,
+      signals: signals.seam,
+      dashboard: (isolation) => Promise.resolve({
+        port: isolation.backendPort,
+        stop: () => Promise.reject(new Error("graceful-drain authority backup failed")),
+      }),
+    });
+    await settleEventLoop();
+    signals.emit("SIGTERM");
+    await assert.rejects(lifecycle, /graceful-drain authority backup failed/);
+    assert.equal(signals.counts.disposals, 1, "a failed stop still removes its signal listeners");
+  });
+
+  it("falls back to the real process argv and stdout writer the entrypoint relies on", async () => {
     // `src/cli.ts` calls `startRebuildRuntime` with neither `args` nor
     // `write`, so both defaults ARE the production path — they must be
     // exercised here or the only executed CLI surface would be the injected one.
@@ -172,7 +271,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     };
     process.argv = [originalArgv[0] ?? "node", "src/cli.ts", "phase"];
     try {
-      startRebuildRuntime({ isolation: rebuildRuntimeIsolation });
+      await startRebuildRuntime({ isolation: rebuildRuntimeIsolation });
     } finally {
       process.stdout.write = originalWrite;
       process.argv = originalArgv;
@@ -190,9 +289,9 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     });
   });
 
-  it("defaults an empty argv to the help contract surface", () => {
+  it("defaults an empty argv to the help contract surface", async () => {
     const output: string[] = [];
-    startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: [], write: (value) => output.push(value) });
+    await startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: [], write: (value) => output.push(value) });
     assert.equal(output[0], runtimeHelp(rebuildRuntimeIsolation));
   });
 
@@ -202,7 +301,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     const previousExitCode = process.exitCode;
     process.exitCode = undefined;
     try {
-      startRebuildRuntime({
+      await startRebuildRuntime({
         isolation: rebuildRuntimeIsolation,
         args: ["dry-run-scenario", "separations-kuali-finalization", "--subject", "finalization-canary"],
         write: (value) => output.push(value),
@@ -225,10 +324,10 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     }
   });
 
-  it("serves dry-run scenario help without constructing its composition", () => {
+  it("serves dry-run scenario help without constructing its composition", async () => {
     let composed = false;
     const output: string[] = [];
-    startRebuildRuntime({
+    await startRebuildRuntime({
       isolation: rebuildRuntimeIsolation,
       args: ["dry-run-scenario", "--help"],
       write: (value) => output.push(value),
