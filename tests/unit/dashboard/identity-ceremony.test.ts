@@ -237,6 +237,10 @@ describe("identityDraftProblem — the bounds, stated where the value is typed",
       identityDraftProblem(ceremony, { eid: "", reason: "   " }) ?? "",
       /Say why this is not the right person/u,
     );
+    assert.deepEqual(
+      identityGateAnswer(ceremony, { eid: "", reason: "  wrong person  " }),
+      { decision: "rejected", reason: "wrong person" },
+    );
     assert.equal(identityDraftProblem(ceremony, { eid: "", reason: " wrong person " }), undefined);
   });
 

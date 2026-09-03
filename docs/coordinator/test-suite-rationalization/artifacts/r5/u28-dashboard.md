@@ -60,5 +60,6 @@ brief's explicit ban on live workflow execution for this run.
 - Controlled Explorer-owner red: **3 named failures / 17 passes**, followed by **20/20 green**.
 - Controlled missing-answer red: the new unit case failed `ready !== refused` under a temporary
   production fallback, then passed after the production source was restored byte-for-byte.
-- Controlled diagnostic red: generic contradiction and rejection messages failed both exact
-  operator-facing assertions; restored source passed the complete identity owner **16/16**.
+- Controlled diagnostic red: generic contradiction/rejection messages and an untrimmed rejection
+  answer failed the exact operator-facing assertions; restored source passed the complete identity
+  owner **16/16**.
