@@ -279,10 +279,11 @@ export type StepOmissionFieldRead =
   | Readonly<{ state: "unreadable"; message: string }>;
 
 /**
- * What a fact IS on the wire — the closed leaf `StartPlanRequestSchema`
- * declares, and exactly the four shapes the seven declared kinds produce. It is
- * narrower than `JsonValue` on purpose: an open value here is a value the wire
- * would drop without saying so.
+ * What a fact IS before it reaches the wire — exactly the four shapes the seven
+ * declared kinds produce. The shared `StartPlanRequestSchema` admits any
+ * `JsonValue` fact (the descriptor's forms prove content server-side); the
+ * narrowing lives HERE and in `asFactValue`, on purpose: an open value at this
+ * seam is a value the form would submit without saying so.
  */
 export type StepOmissionFactValue = string | number | boolean | readonly string[];
 
