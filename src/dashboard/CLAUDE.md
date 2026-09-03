@@ -112,10 +112,20 @@ binding would contradict them.
   longer carries, which `applyDashboardDayPatch` calls a protocol failure and this module answers by
   discarding the whole day and resnapshotting. So the resume contract §3.5 spells out was buying a
   full snapshot every time it worked correctly, and nothing could see it: every envelope was valid,
-  every day on screen was right, and the only symptom was traffic. A cursor at or below the held one
-  now returns before any effect; hello's generation-change branch still clears that cursor, which is
-  the ONE thing that lets a replacement generation's lower-numbered snapshot in — pin that arm, or
-  the guard silently swallows a restarted hub's whole history. The other half was
+  every day on screen was right, and the only symptom was traffic. A PATCH at or below the held
+  cursor now returns before any effect; hello's generation-change branch still clears that cursor,
+  which is the ONE thing that lets a replacement generation's lower-numbered snapshot in — pin that
+  arm, or the guard silently swallows a restarted hub's whole history. **And the guard's threshold
+  is not the same for both kinds, because the first build applied it to snapshots too and that was
+  its own defect (fixed 2026-09-03, same day).** `#notify` stamps every change of ONE projection
+  batch with the same cursor, so a count-neutral member change beside a count-bearing one is served
+  as `patch pc:N` then `snapshot pc:N`: the client applied the patch, held N, and dropped the
+  snapshot — the half that carries the worker cards, the pools and the count rollups — leaving them
+  stale behind a green Live dot with no later envelope able to correct them. A snapshot REPLACES the
+  day rather than editing it, so re-applying one at the held cursor is idempotent by construction
+  and only a snapshot from STRICTLY BEHIND is stale; a patch is an EDIT and keeps `<=`. **Before
+  reusing an idempotence rule across two envelope kinds, ask whether they COMPOSE the same way** —
+  and check what one producer batch can emit under one cursor. The other half was
   `stream.done.then(f, f)`: EOF and every rejection ran the same reconnect and the rejection VALUE
   was dropped on the floor, so an HTTP refusal or a protocol failure reconnected forever behind a
   dashboard that still looked live. Classification is by error KIND — only the transport's `network`
@@ -125,7 +135,16 @@ binding would contradict them.
   unclassified stream rejection with its cause kept, never guessed into a retry. The fake transport
   in `subscription.test.ts` exists because both claims are about what the subscription DID with an
   envelope or an ending — how many days reached `onDay`, whether another stream was opened at all —
-  and neither `day-state.ts` nor `transport.ts` can see that from its own side.
+  and neither `day-state.ts` nor `transport.ts` can see that from its own side. That fake is also
+  why the ENDINGS themselves needed their own proof one layer down: `client-transport.test.ts` now
+  drives the real `openStream` for all three (a body erroring mid-read rejects `network`, a non-2xx
+  stream response rejects `http`, `close()` RESOLVES), because a classification is only as true as
+  what its producer actually produces. **The last of those three is why a handler may not be bound
+  to a mutable `stream`**: an aborted stream resolves `done` indistinguishably from a server EOF, so
+  every deliberate supersede — a gap resnapshot, a reset, a reconnect — scheduled a SECOND reconnect
+  one microtask later, flapping `connecting -> reconnecting` and turning the fresh snapshot a gap
+  demands into a resume. Each handler is bound to its own handle, and `reconnect`/`stop` release
+  `stream` before closing it, so a superseded settlement is inert rather than merely late.
 
 - **2026-09-02 — an empty open-session list is not an empty browser requirement set.** The Session
   Panel used `WorkerCard.browsers[]` for both facts, so a starting worker showed no browser systems
