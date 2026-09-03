@@ -25,7 +25,9 @@ current live-world evidence; only the uncollected T1b manifest and its recorded 
 
 2026-09-02 — Every collected offline scenario keeps EID-shaped fixture values in the reserved
 synthetic range `10800000`–`10800099`; `19999999` is the sole invalid-EID sentinel. Names and
-document numbers in the same fixtures must be visibly synthetic too. Real observed identifiers
+document numbers authored by the same fixtures must be visibly synthetic too. A collected scenario
+may derive a declared operator label from the real registered descriptor, but it must not copy that
+label into fixture input or treat it as external-world evidence. Real observed subject identifiers
 belong only to ignored environment input and durable T1b run evidence, never collected source.
 
 `workflows/<workflow-id>/dry-run.scenario.ts` (T1b) is deliberately **not** `.test.` — a checkpoint

@@ -42,7 +42,8 @@ a collected scenario while emitting only file/line locations.
 
 - Focused nine-file scenario gate: **9 files / 44 cases passed**.
 - Full scenario gate: **17 files / 132 cases passed** after u28 consolidation.
-- Controlled guard red: the new synthetic-EID check failed on the pre-change corpus with only
-  actionable file/line diagnostics; the corrected architecture file passed **16/16**.
+- Controlled guard red: the synthetic-EID check failed on the pre-change corpus and again under an
+  unsafe helper-module mutation with only actionable file/line diagnostics; the corrected
+  architecture file passed **17/17**.
 - Existing expected diagnostic: corrupt-PDF coverage emits pdfjs's `Indexing all PDF objects`
   warning. It is scoped to the named unreadable-PDF case; R7 owns repository-wide diagnostic policy.

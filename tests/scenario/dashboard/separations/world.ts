@@ -72,6 +72,7 @@ export const APP_VERSION = "0.1.0";
 export const FIXTURE_DOCUMENT_NUMBER = "4444";
 export const FIXTURE_EID = "10800000";
 export const FIXTURE_DISPLAY_NAME = "Example, Avery";
+export const FIXTURE_TIMEKEEPER_NAME = "Fixture Timekeeper";
 export const WORKER_ID = "separations-worker-1";
 export const GATE_ID = "identity-approval";
 /** The node the identity gate waits on — read off the graph, never spelled here. */
@@ -539,7 +540,7 @@ export function separationsIdentityPacket(
         payrollTitleCode: "004920",
         payrollTitle: "STDT 3",
         terminationEffectiveDate: "04/01/2026",
-        timekeeperName: "Julian Zaw",
+        timekeeperName: FIXTURE_TIMEKEEPER_NAME,
       },
       dates: {
         kualiLastDayWorked: "03/31/2026",

@@ -17,6 +17,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { localDatePart } from "../../../../src/domain/clock.js";
 import { buildRunDetail } from "../../../../src/server/dashboard/queries/run-detail.js";
+import { SeparationsCanonicalInput } from "../../../../src/workflows/separations/descriptor.js";
 import {
   FIXTURE_DOCUMENT_NUMBER,
   createSeparationsWorld,
@@ -26,6 +27,13 @@ import {
 } from "./world.js";
 
 afterEach(disposeWorlds);
+
+function filedBySubtitle(world: ReturnType<typeof createSeparationsWorld>, runId: string) {
+  const run = world.database.authority.runs.get(runId);
+  if (run === undefined) throw new Error(`run ${runId} is not in authority`);
+  const input = SeparationsCanonicalInput.parse(run.input.parsed.value);
+  return { state: "present", value: `Filed by ${input.timekeeperName}` } as const;
+}
 
 describe("separations dashboard — the start door the operator types into", () => {
   it("turns ONE typed box into one run per document, through the descriptor's own parser", () => {
@@ -57,7 +65,7 @@ describe("separations dashboard — what the queue row calls a run", () => {
     // `presentation.title` / `presentation.subtitle`, composed at PLAN time and
     // carried onto the row through the run.queued span.
     assert.equal(row.title, `Separation ${FIXTURE_DOCUMENT_NUMBER}`);
-    assert.deepEqual({ ...row.subtitle }, { state: "present", value: "Filed by Julian Zaw" });
+    assert.deepEqual({ ...row.subtitle }, filedBySubtitle(world, started.runId));
   });
 
   it("replaces the document title with the PERSON once UCPath's Job Summary has answered", () => {
@@ -76,7 +84,7 @@ describe("separations dashboard — what the queue row calls a run", () => {
     const after = world.projection.queueSurface(started.runId);
     assert.equal(after?.title, displayedName);
     // The subtitle is NOT a second subject line: it still says who filed.
-    assert.deepEqual({ ...after?.subtitle }, { state: "present", value: "Filed by Julian Zaw" });
+    assert.deepEqual({ ...after?.subtitle }, filedBySubtitle(world, started.runId));
   });
 
   it("keeps the document title when the declared subject node has not run", () => {

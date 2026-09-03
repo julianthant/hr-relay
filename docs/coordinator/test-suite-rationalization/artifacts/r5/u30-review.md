@@ -6,7 +6,7 @@
 | --- | ---: | ---: | --- |
 | Ordinary capability scenarios | 6 files / 33 cases | 6 / 33 | Retained; fixture data syntheticized. |
 | Workflow T1a | 7 files / 81 cases | 7 / 81 | Byte-untouched; one structural owner per workflow preserved. |
-| Dashboard T2 | 3 files / 26 cases | 3 / 16 | 3 query claims moved; 7 exact duplicates removed. |
+| Dashboard T2 | 3 files / 26 cases | 3 / 16 | 4 claims moved to unit owners; 6 exact duplicates removed. |
 | Integration walk | 1 file / 2 cases | 1 / 2 | Retained; fixture data syntheticized. |
 | **Collected scenario project** | **17 / 142** | **17 / 132** | Every file remains classified and collected once. |
 | Uncollected T1b | 2 manifests / 2 cases | 2 / 2 | Untouched and still excluded from Vitest by the `.scenario.ts` suffix. |
@@ -34,14 +34,18 @@ changed because R7/u38 owns the final cross-family taxonomy and runner contract.
 ## Synthetic-data ratchet and controlled red
 
 `tests/unit/architecture/scenario-coverage.test.ts` scans only collected `*.test.ts` sources for
-standalone eight-digit EID shapes. It accepts only `10800000`–`10800099` and the explicit invalid
-sentinel `19999999`; a failure prints file/line, never the matched value.
+standalone eight-digit EID shapes in collected roots and local scenario support. It accepts only
+`10800000`–`10800099` and the explicit invalid sentinel `19999999`; a failure prints file/line,
+never the matched value. The two uncollected `dry-run.scenario.ts` T1b declarations are the sole
+source exclusion.
 
 The first controlled red failed with five actionable source locations (dashboard ledger,
 intake-extraction, OCR, operator walk, and roster matching). After fixture replacement and removal
-of the duplicate dashboard ledger harness, the same architecture file passed **16/16**. Synthetic
-names, document numbers, and the normalization address were also made visually explicit by review,
-even though they are not safe to diagnose mechanically by a numeric guard.
+of the duplicate dashboard ledger harness, the guard was then mutation-checked against an unsafe
+value placed in `dashboard/separations/world.ts`; it failed on that helper's exact line without
+echoing the value. The restored architecture file passed **17/17**. Synthetic names, document
+numbers, and the normalization address were also made visually explicit by review, even though they
+are not safe to diagnose mechanically by a numeric guard.
 
 ## Execution-output review
 
@@ -64,6 +68,6 @@ Implementation commits:
 - `74805a25` — T2 relocation/deduplication, truthful paths, and cheaper missing-answer owner.
 
 Pre-review gates are green: full scenario **17/132**; focused scenario **9/44**; Explorer unit
-**20/20**; cheaper-owner unit set **59/59**; focused architecture **16/16**; typecheck; lint; and
+**20/20**; cheaper-owner unit set **59/59**; focused architecture **17/17**; typecheck; lint; and
 `git diff --check`. Independent axis reviews and final integrated gates are recorded in the R5b
 report rather than pre-claimed here.
