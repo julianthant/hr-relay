@@ -7400,3 +7400,15 @@ No live workflow, gate approval, deletion, registry/environment mutation or HR w
 read-only browser session was closed. D310 supplies mechanics, not criterion-5 evidence: the exact
 disposable target, independent deletion proof, restoration/retention disposition, fresh rehearsal,
 explicit live-run authorization and all three controlled commits remain open for R4.
+
+### 9.34 R3 T1b pair re-run — 2026-09-02
+
+R3 re-ran the exact command `npm run cli -- dry-run-scenario separations --subject finalization-canary`
+from its own isolated authority after converting Separations to `workflow.ts` (D317) and adding the
+D318 `arm: "dry-run-preview"` declaration to this manifest. The registry still says `gone` (last
+observed 2026-09-01, §9.33), so the runner recorded durable result
+**`6c2f8301-07cf-4607-b326-9b8d41af5b49`** — verdict **`blocked`**, execution `not-started`,
+assertion `subject-availability: subject-unavailable` — before reading the environment or starting a
+browser. No run, span, gate, intent, attempt or outbox row was created. D284's rule stands: the label
+and its history are retained and no replacement canary is chosen here; naming one remains an operator
+decision.
