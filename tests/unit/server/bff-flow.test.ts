@@ -77,8 +77,9 @@ import {
   deriveBulkChildCommandId,
 } from "../../../src/server/dashboard/commands/command-service.js";
 import type { IntakeService } from "../../../src/server/dashboard/commands/intake-service.js";
+import type { AdvisoryQueryDeps } from "../../../src/server/dashboard/queries/advisory.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
-import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
+import { createStartPlanService, type StartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import {
   startDashboardHttpServer,
@@ -232,6 +233,10 @@ function harness(options: {
   readonly receiptComparison?: RunReceiptComparisonQueryDeps;
   readonly requestIdentity?: RequestIdentityCheckpoint;
   readonly intake?: IntakeService;
+  /** Wrap the real start-plan service (e.g. to observe whether admission reached it). */
+  readonly startPlans?: (real: StartPlanService) => StartPlanService;
+  /** An advisory seam; absent by default (D178: no provider is composed here). */
+  readonly advisory?: AdvisoryQueryDeps;
   readonly preflightBeforeRun?: () => Promise<void>;
   readonly preflightScheduler?: PreflightDeadlineScheduler;
   readonly omitDiagnosticBundles?: boolean;
@@ -392,7 +397,7 @@ function harness(options: {
       getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
     },
   });
-  const startPlans = createStartPlanService({
+  const startPlans = (options.startPlans ?? ((real: StartPlanService) => real))(createStartPlanService({
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: database,
     descriptors,
@@ -402,7 +407,7 @@ function harness(options: {
     configFingerprint: HASH_B,
     configSnapshotId: UUID_4,
     plannedBy: "local-operator",
-  });
+  }));
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
   cleanups.push(() => hub.close());
   const preflight = createPreflightHarness(clock, HASH_B, options.preflightBeforeRun, options.preflightScheduler);
@@ -478,6 +483,7 @@ function harness(options: {
     archive: archiveQueryDeps({ database, clock, appVersion: "0.1.0", descriptors: [fixtureDescriptor] }),
     commands,
     startPlans,
+    ...(options.advisory === undefined ? {} : { advisory: options.advisory }),
     hub,
     // D274 item 6 — the read-only Settings status sections read the SAME
     // resolved config and descriptor tuple this harness composes everything else
@@ -3804,4 +3810,193 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       assert.deepEqual(snapshot(), before, `${divergent.label} has byte-exact zero child effects`);
     }
   });
+  /**
+   * The remaining browser-reachable POSTs (ref frontend-backend-integration §3.4 admission table):
+   * a start plan persists durable authority, an intake upload creates or joins a
+   * session with bytes, Explorer validation reconciles authority claims, and the
+   * advisory spends a constrained provider. A hostile page can reach loopback
+   * with a simple no-CORS POST and a JSON-shaped `text/plain` body that
+   * `c.req.json()` parses anyway, so the Host/Origin pair must refuse BEFORE a
+   * byte of body, query, authority or provider is touched.
+   */
+  const FOREIGN_ORIGIN_CASES = [
+    ["missing Origin", { host: "localhost" }],
+    ["foreign Origin", { host: "localhost", origin: "https://hostile.example" }],
+    ["malformed Origin", { host: "localhost", origin: "not an origin" }],
+    ["Host-mismatched Origin", { host: "localhost:3938", origin: "http://127.0.0.1:3938" }],
+    ["non-loopback Host", { host: "attacker.example", origin: "http://attacker.example" }],
+  ] as const;
+
+  it.each(FOREIGN_ORIGIN_CASES)(
+    "refuses a start plan with %s before the planner or the body is touched",
+    async (_label, headers) => {
+      let plans = 0;
+      const h = harness({
+        startPlans: (real) => ({ plan: (input) => { plans += 1; return real.plan(input); } }),
+      });
+      const request = new Request("http://localhost/api/v1/start-plans", {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid: "10873698", mode: "read-only" }] }),
+      });
+      const reads = (["json", "text", "arrayBuffer", "blob", "formData"] as const)
+        .map((method) => vi.spyOn(request, method));
+
+      const response = await h.app.request(request);
+
+      assert.equal(response.status, 403);
+      assert.equal((await json(response)).code, "OPERATOR_MUTATION_ORIGIN_REFUSED");
+      for (const read of reads) expect(read).not.toHaveBeenCalled();
+      assert.equal(request.bodyUsed, false);
+      assert.equal(plans, 0);
+    },
+  );
+
+  it("refuses a start plan whose JSON body rides text/plain, and admits the same body as JSON", async () => {
+    let plans = 0;
+    const h = harness({
+      startPlans: (real) => ({ plan: (input) => { plans += 1; return real.plan(input); } }),
+    });
+    const body = JSON.stringify({
+      workflowId: "fixture-graph",
+      submissions: [{ eid: "10873698", mode: "read-only" }],
+      dryRun: false,
+      browserMode: "headed",
+    });
+    const refused = await h.app.request("http://localhost/api/v1/start-plans", {
+      method: "POST",
+      headers: { ...OPERATOR_JSON_HEADERS, "content-type": "text/plain" },
+      body,
+    });
+    assert.equal(refused.status, 415);
+    assert.equal((await json(refused)).code, "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED");
+    assert.equal(plans, 0);
+
+    const admitted = await h.app.request("http://localhost/api/v1/start-plans", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body,
+    });
+    assert.equal(admitted.status, 200);
+    assert.equal(plans, 1);
+  });
+
+  it.each(FOREIGN_ORIGIN_CASES)(
+    "refuses an intake upload with %s before the query, the bytes or the intake service are read",
+    async (_label, headers) => {
+      let uploads = 0;
+      const h = harness({
+        intake: {
+          ...UNWIRED_INTAKE_SERVICE,
+          upload: () => {
+            uploads += 1;
+            return Promise.resolve({ state: "refused" as const, code: "unreadable-file" as const, message: "unreachable" });
+          },
+        },
+      });
+      const request = new Request("http://localhost/api/v1/intake/files?workflow=fixture-graph&filename=roster.csv", {
+        method: "POST",
+        headers: { ...headers, "content-type": "text/csv" },
+        body: "eid\n10873698\n",
+      });
+      const reads = (["json", "text", "arrayBuffer", "blob", "formData"] as const)
+        .map((method) => vi.spyOn(request, method));
+
+      const response = await h.app.request(request);
+
+      assert.equal(response.status, 403);
+      assert.equal((await json(response)).code, "OPERATOR_MUTATION_ORIGIN_REFUSED");
+      for (const read of reads) expect(read).not.toHaveBeenCalled();
+      assert.equal(request.bodyUsed, false);
+      assert.equal(uploads, 0);
+    },
+  );
+
+  it("admits a same-origin intake upload under the file's own media type and keeps the route's media contract", async () => {
+    const seen: string[] = [];
+    const h = harness({
+      intake: {
+        ...UNWIRED_INTAKE_SERVICE,
+        upload: (input) => {
+          seen.push(`${input.workflow}|${input.fileName}|${input.mediaType}|${String(input.bytes.byteLength)}`);
+          return Promise.resolve({ state: "refused" as const, code: "unreadable-file" as const, message: "the fixture intake accepts nothing" });
+        },
+      },
+    });
+    const response = await h.app.request("http://localhost/api/v1/intake/files?workflow=fixture-graph&filename=roster.csv", {
+      method: "POST",
+      headers: { host: "localhost", origin: "http://localhost", "content-type": "text/csv" },
+      body: "eid\n10873698\n",
+    });
+    // Admitted (not 403/415): the intake service's own refusal answers, under
+    // the route's typed intake code — the loopback door never requires JSON here.
+    assert.equal(response.status, 422);
+    assert.equal((await json(response)).code, "INTAKE_UNREADABLE_FILE");
+    assert.deepEqual(seen, ["fixture-graph|roster.csv|text/csv|13"]);
+  });
+
+  it.each(FOREIGN_ORIGIN_CASES)(
+    "refuses a failure advisory with %s before authority or the provider is consulted",
+    async (_label, headers) => {
+      let reads = 0;
+      let advised = 0;
+      const h = harness({
+        advisory: {
+          authority: {
+            getRun: () => { reads += 1; return undefined; },
+            getFailureForRun: () => { reads += 1; return undefined; },
+          },
+          advise: () => { advised += 1; throw new Error("unreachable"); },
+        },
+      });
+      const response = await h.app.request(`http://localhost/api/v1/runs/${RUN_ID}/advisory`, {
+        method: "POST",
+        headers,
+      });
+      assert.equal(response.status, 403);
+      assert.equal((await json(response)).code, "OPERATOR_MUTATION_ORIGIN_REFUSED");
+      assert.equal(reads, 0);
+      assert.equal(advised, 0);
+    },
+  );
+
+  it("admits a same-origin body-less advisory request without demanding a JSON media type", async () => {
+    let reads = 0;
+    const h = harness({
+      advisory: {
+        authority: {
+          getRun: () => { reads += 1; return undefined; },
+          getFailureForRun: () => undefined,
+        },
+        advise: () => { throw new Error("unreachable: the run does not exist"); },
+      },
+    });
+    const response = await h.app.request(`http://localhost/api/v1/runs/${RUN_ID}/advisory`, {
+      method: "POST",
+      headers: { host: "localhost", origin: "http://localhost" },
+    });
+    assert.equal(response.status, 404);
+    assert.equal(reads, 1);
+  });
+
+  it.each(FOREIGN_ORIGIN_CASES)(
+    "refuses Explorer validation with %s before its authority is consulted",
+    async (_label, headers) => {
+      const h = harness();
+      const request = new Request("http://localhost/api/v1/explorer/validate", {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ workflowId: "fixture-graph" }),
+      });
+      const reads = (["json", "text", "arrayBuffer", "blob", "formData"] as const)
+        .map((method) => vi.spyOn(request, method));
+      const response = await h.app.request(request);
+      // 403 rather than the harness's "Explorer authority is not composed"
+      // unavailability: admission wins before the handler runs at all.
+      assert.equal(response.status, 403);
+      assert.equal((await json(response)).code, "OPERATOR_MUTATION_ORIGIN_REFUSED");
+      for (const read of reads) expect(read).not.toHaveBeenCalled();
+      assert.equal(request.bodyUsed, false);
+    },
+  );
 });

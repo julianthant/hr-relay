@@ -60,7 +60,7 @@ import { DiagnosticBundleBytesMissingError, SectionUnavailableError } from "../.
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
 import { BulkRunCommandRequestSchema, CommandRequestSchema } from "../../../domain/commands.js";
 import { PreflightRerunCommandRequestSchema } from "../../../domain/preflight-contract.js";
-import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
+import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "./operator-mutation-ingress.js";
 import type { createPreflightAuthority } from "../../../domain/preflight.js";
 import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
 import {
@@ -257,9 +257,20 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     return next();
   });
 
+  // Every browser-reachable POST that can touch durable authority, spend a
+  // constrained provider, or create a session is admitted HERE, before its
+  // handler reads a byte (ref frontend-backend-integration §3.4, D75). The
+  // architecture guard `operator-mutation-admission` pins this table: a new
+  // POST route without a row below is a red gate, not a quiet exposure.
   app.use("/api/v1/commands", operatorMutationIngressGuard);
   app.use("/api/v1/commands/bulk", operatorMutationIngressGuard);
   app.use("/api/v1/exports/xlsx", operatorMutationIngressGuard);
+  app.use("/api/v1/start-plans", operatorMutationIngressGuard);
+  app.use("/api/v1/explorer/validate", operatorMutationIngressGuard);
+  // Intake bytes travel under the file's own media type (D170) and the advisory
+  // carries no body: Host/Origin gate both; the body contract stays the route's.
+  app.use("/api/v1/intake/files", operatorOpaqueIngressGuard);
+  app.use("/api/v1/runs/:runId/advisory", operatorOpaqueIngressGuard);
 
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
 
