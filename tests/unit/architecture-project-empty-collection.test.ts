@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 import vitestConfig from "../../vitest.config.js";
 import { REPO_ROOT } from "./architecture/helpers/guard-files.js";
+
+const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
+  readonly scripts: Readonly<Record<string, string>>;
+};
 
 function inheritedProjectPassWithNoTests(config: unknown): boolean | undefined {
   return (config as { readonly test?: { readonly passWithNoTests?: boolean } }).test?.passWithNoTests;
@@ -29,6 +33,11 @@ function runArchitectureProjectWithNoMatchingFile() {
 describe("architecture project empty collection", () => {
   it("explicitly refuses an empty architecture project instead of inheriting a permissive default", () => {
     assert.equal(inheritedProjectPassWithNoTests(vitestConfig), false);
+    assert.equal(
+      pkg.scripts["test:architecture"],
+      "vitest run --project architecture --reporter=dot --passWithNoTests=false",
+      "the architecture command must independently override a permissive empty-suite setting",
+    );
     assert.notEqual(
       inheritedProjectPassWithNoTests({ test: { passWithNoTests: true } }),
       false,

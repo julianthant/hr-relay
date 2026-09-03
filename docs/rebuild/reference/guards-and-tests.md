@@ -1328,8 +1328,10 @@ set. The test asserts:
 2. every recursively discovered `*.test.ts` file is in the inventory (no unregistered guard — forces a
    conscious add, and forces this doc's inventory to stay honest);
 3. the named `architecture` Vitest project includes the complete recursive directory exactly,
-   `unit` excludes that directory exactly, and `test:architecture` selects only that project with no
-   file/glob/config/exclude escape hatch (a rename or nested guard cannot orphan or double-run it);
+   `unit` excludes that directory exactly, and `test:architecture` selects only that project while
+   forcing empty collection to fail; an independently collected unit test exercises that refusal so
+   the architecture lane cannot be its sole witness (a rename or nested guard cannot orphan or
+   double-run it);
 4. every active rebuild-`src/` scan resolves at least one file; a family is activated in the same
    commit as its first file, and `ENOENT`/an unmatched glob is never converted to green;
 5. the rebuild-scoped ratchets (the port-set in §2) each have a registered executable scanner;
