@@ -655,6 +655,7 @@ function validateSteps(
   };
   for (const entry of entries) assertResolved(entryName(entry), entry.references);
   assertResolved(`workflow ${id} result`, resultReferences);
+  validateOmissions(id, steps);
 
   const visiting = new Set<AnyWorkflowEntry>();
   const visited = new Set<AnyWorkflowEntry>();
@@ -669,6 +670,66 @@ function validateSteps(
     visited.add(entry);
   };
   for (const entry of entries) visit(entry, []);
+}
+
+/**
+ * D313 — an omittable group must say, at definition time, how every value the
+ * rest of the workflow reads from it is supplied. Whole-step omission executes
+ * NO entry of the group, so an entry outside the group may read a member only
+ * when the group's omission rebuilds that member; gates, transactions, parallel
+ * and delegate entries are never rebuilt. The terminal result is the one
+ * reader allowed to see an omitted member, because it declares the omitted
+ * arm itself. A mandatory verifier therefore lives outside the step it
+ * verifies, as its own selected entry.
+ */
+function validateOmissions(id: string, steps: readonly WorkflowTimelineTuple[]): void {
+  const memberGroup = new Map<AnyWorkflowEntry, WorkflowTimelineGroup>();
+  for (const [group, members] of steps) {
+    for (const entry of members) {
+      memberGroup.set(entry, group);
+      if (isParallel(entry)) {
+        for (const branch of entry.branches) for (const leaf of branch.leaves) memberGroup.set(leaf, group);
+      }
+    }
+  }
+  for (const [group, members] of steps) {
+    const omission = group.omission;
+    if (omission === undefined) continue;
+    const memberById = new Map<string, AnyWorkflowEntry>();
+    for (const entry of members) {
+      memberById.set(entry.id, entry);
+      if (isParallel(entry)) {
+        for (const branch of entry.branches) for (const leaf of branch.leaves) memberById.set(leaf.id, leaf);
+      }
+    }
+    for (const producedId of Object.keys(omission.produces)) {
+      const produced = memberById.get(producedId);
+      if (produced === undefined) {
+        throw new Error(
+          `workflow ${id} step "${group.key}" omission produces "${producedId}", which is not an entry of that step`,
+        );
+      }
+      if (produced.kind !== "task") {
+        throw new Error(
+          `workflow ${id} step "${group.key}" omission produces "${producedId}", which is a ${produced.kind} entry; `
+          + "only task entries are ever rebuilt from operator facts (D313)",
+        );
+      }
+    }
+    for (const [reader, readerGroup] of memberGroup) {
+      if (readerGroup === group) continue;
+      for (const reference of reader.references) {
+        if (memberGroup.get(reference) !== group) continue;
+        if (reference.kind === "task" && Object.hasOwn(omission.produces, reference.id)) continue;
+        throw new Error(
+          `workflow ${id} step "${group.key}" is omittable, but ${entryName(reader)} in step "${readerGroup.key}" reads its `
+          + `${reference.kind} entry "${reference.id}", which omitting the step leaves unread; rebuild "${reference.id}" `
+          + "from the step's omission form, move the reader into the step, or declare the check as its own entry "
+          + "outside the omitted step (D313)",
+        );
+      }
+    }
+  }
 }
 
 type CompiledState = Readonly<Record<string, AnyNodeEntry>>;
