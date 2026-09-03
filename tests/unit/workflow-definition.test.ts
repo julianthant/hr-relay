@@ -12,6 +12,7 @@ import {
 import type { AnyWorkflowEntry, WorkflowAuthor, WorkflowDefinitionSpec } from "../../src/base/workflow-definition.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import { declaredWorkflowId } from "../../src/infra/build/workflow-build-manifest.js";
+import { BUILD_MANIFEST } from "../../src/domain/workflow/build-manifest.js";
 import { SearchPersonOrg } from "../../src/domain/contracts/ucpath/search-person-org.js";
 import { UcpathDeletePendingTerminations } from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 import { UcpathReadPendingTerminationSet } from "../../src/domain/contracts/ucpath/read-pending-termination-set.js";
@@ -83,6 +84,17 @@ describe("workflow definition compiler", () => {
     expect(compileWorkflow(personLookupWorkflow).descriptor).toBe(personLookupDescriptor);
     expect(personLookupWorkflow.kind).toBe("workflow-definition");
     expect(compileWorkflow(personLookupWorkflow).kind).toBe("compiled-workflow");
+  });
+
+  it("memoizes one compiled workflow per definition AND build manifest; a second manifest refuses instead of returning the first compile", () => {
+    const compiled = compileWorkflow(personLookupWorkflow);
+    expect(compileWorkflow(personLookupWorkflow, { manifest: BUILD_MANIFEST })).toBe(compiled);
+    // A structurally equal manifest is a DIFFERENT manifest: the fingerprint
+    // baked into the memoized descriptor was resolved against the first one.
+    expect(() => compileWorkflow(personLookupWorkflow, { manifest: { ...BUILD_MANIFEST } })).toThrow(
+      /workflow person-lookup was already compiled under a different build manifest; one definition compiles under exactly one manifest/u,
+    );
+    expect(compileWorkflow(personLookupWorkflow)).toBe(compiled);
   });
 
   it("refuses duplicate entry membership and duplicate entry ids by name", () => {
