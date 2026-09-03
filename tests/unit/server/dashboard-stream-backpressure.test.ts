@@ -53,12 +53,18 @@ function harness(): { w: DashboardWorld; hub: DashboardStreamHub } {
   return { w, hub };
 }
 
+/** Parse every COMPLETE event block; a trailing partial block is not an event yet. */
 function parseSse(text: string): DashboardStreamEnvelope[] {
-  return text.split("\n\n").filter((block) => block.includes("data: ")).map((block) => {
+  const blocks = text.split("\n\n");
+  if (!text.endsWith("\n\n")) blocks.pop();
+  return blocks.filter((block) => block.includes("data: ")).map((block) => {
     const data = block.split("\n").filter((line) => line.startsWith("data: ")).map((line) => line.slice(6)).join("\n");
     return DashboardStreamEnvelopeSchema.parse(JSON.parse(data));
   });
 }
+
+/** A node name wide enough that a few hundred patches fill the loopback buffers. */
+const WIDE_NODE = "n".repeat(4096);
 
 describe("dashboard stream backpressure (bridge + Node adapter)", () => {
   it("bridge: a reader that stops pulling leaves the hub bounded and reads exactly one reset-required on resume", async () => {
@@ -79,7 +85,8 @@ describe("dashboard stream backpressure (bridge + Node adapter)", () => {
     // highWaterMark) plus one outstanding pull; everything else waits in the
     // hub, whose bound collapses it into one reset.
     for (let step = 0; step < 10 * MAX_PENDING; step += 1) taskEventsOf(w, 1, `node-${String(step)}`);
-    assert.ok(connection.pending <= 1, `hub pending must be bounded, saw ${String(connection.pending)}`);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(connection.pending, 1, "the bridge holds at most its own highWaterMark; the hub holds exactly the one reset");
 
     const seen: DashboardStreamEnvelope[] = [];
     while (seen.filter(({ type }) => type === "reset-required").length === 0) {
@@ -109,7 +116,7 @@ describe("dashboard stream backpressure (bridge + Node adapter)", () => {
     assert.equal(hub.subscriberCount(), 0);
   });
 
-  it("Node adapter: a client that stops reading backs the hub up to its bound, resumes to one reset, and disconnect closes the connection", async () => {
+  it("Node adapter: a client that stops reading backs the hub up to its bound, resumes to one reset, and disconnect closes the connection", { timeout: 60_000 }, async () => {
     const { w, hub } = harness();
     const captured = Promise.withResolvers<DashboardStreamConnection>();
     const app = new Hono<TestDashboardEnv>();
@@ -121,7 +128,11 @@ describe("dashboard stream backpressure (bridge + Node adapter)", () => {
         headers: { "content-type": "text/event-stream", "cache-control": "no-cache" },
       });
     });
-    const server = await startDashboardHttpServer({ app, port: 0 });
+    // The adapter reports a client that vanished mid-transfer to its local
+    // observer and refuses to close silently without one — this test's ending
+    // IS that disconnect, so the observer is part of the proof.
+    const transferErrors: Error[] = [];
+    const server = await startDashboardHttpServer({ app, port: 0, onTransferError: (error) => transferErrors.push(error) });
     servers.add(server);
 
     const response = await new Promise<IncomingMessage>((resolve, reject) => {
@@ -136,14 +147,26 @@ describe("dashboard stream backpressure (bridge + Node adapter)", () => {
     // Publish until the socket stops draining — the kernel and Node absorb a
     // bounded number of bytes first — then well past the bound. Bounded loudly:
     // if the socket never fills, the test says so rather than passing vacuously.
+    // A publish can land before the bridge's pull() microtask asks for it, so
+    // "pending > 0" right after a publish proves nothing. Yield a macrotask
+    // after EVERY publish: only a socket that has genuinely stopped draining
+    // leaves an envelope pending across that yield.
+    const yieldMacrotask = (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
     let published = 0;
-    while (connection.pending === 0 && published < 20_000) {
-      taskEventsOf(w, 1, `fill-${String(published)}`);
-      published += 1;
-      if (published % 64 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
+    let stalled = false;
+    while (!stalled && published < 20_000) {
+      for (let step = 0; step < 32; step += 1) {
+        taskEventsOf(w, 1, `${WIDE_NODE}-${String(published)}`);
+        published += 1;
+      }
+      await yieldMacrotask();
+      stalled = connection.pending > 0;
     }
-    assert.ok(connection.pending > 0, `the paused socket never filled after ${String(published)} publishes`);
+    assert.ok(stalled, `the paused socket never stalled after ${String(published)} publishes`);
+    await yieldMacrotask();
+    assert.ok(connection.pending > 0, "a real stall survives a further macrotask yield");
     for (let step = 0; step < 5 * MAX_PENDING; step += 1) taskEventsOf(w, 1, `over-${String(step)}`);
+    await yieldMacrotask();
     assert.equal(connection.pending, 1, "one reset-required supersedes everything the socket could not take");
 
     const chunks: Buffer[] = [];
@@ -166,5 +189,10 @@ describe("dashboard stream backpressure (bridge + Node adapter)", () => {
     }
     assert.equal(hub.subscriberCount(), 0, "client disconnect closes the hub connection");
     assert.equal(await connection.next(), undefined);
+    for (let attempt = 0; attempt < 50 && transferErrors.length === 0; attempt += 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(transferErrors.length, 1, "the disconnect is observed exactly once, never swallowed");
+    assert.match(transferErrors[0]?.message ?? "", /closed while waiting for drain|disconnected/u);
   });
 });

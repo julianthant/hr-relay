@@ -86,7 +86,8 @@ import {
   type DashboardHttpServer,
 } from "../../../src/server/dashboard/http-server.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
-import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { createDashboardApp, type DashboardAppDeps } from "../../../src/server/dashboard/routes/api.js";
+import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../src/domain/dashboard/subscription.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
 import type { RunReceiptComparisonQueryDeps } from "../../../src/server/dashboard/queries/run-comparison.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
@@ -237,6 +238,10 @@ function harness(options: {
   readonly startPlans?: (real: StartPlanService) => StartPlanService;
   /** An advisory seam; absent by default (D178: no provider is composed here). */
   readonly advisory?: AdvisoryQueryDeps;
+  /** An Explorer safe-edit validation seam; absent by default. */
+  readonly explorerEdits?: DashboardAppDeps["explorerEdits"];
+  /** The hub's per-subscriber pending bound; the hub default when absent. */
+  readonly maxPending?: number;
   readonly preflightBeforeRun?: () => Promise<void>;
   readonly preflightScheduler?: PreflightDeadlineScheduler;
   readonly omitDiagnosticBundles?: boolean;
@@ -408,7 +413,11 @@ function harness(options: {
     configSnapshotId: UUID_4,
     plannedBy: "local-operator",
   }));
-  const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
+  const hub = createDashboardStreamHub({
+    projection,
+    backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER,
+    ...(options.maxPending === undefined ? {} : { maxPending: options.maxPending }),
+  });
   cleanups.push(() => hub.close());
   const preflight = createPreflightHarness(clock, HASH_B, options.preflightBeforeRun, options.preflightScheduler);
 
@@ -484,6 +493,7 @@ function harness(options: {
     commands,
     startPlans,
     ...(options.advisory === undefined ? {} : { advisory: options.advisory }),
+    ...(options.explorerEdits === undefined ? {} : { explorerEdits: options.explorerEdits }),
     hub,
     // D274 item 6 — the read-only Settings status sections read the SAME
     // resolved config and descriptor tuple this harness composes everything else
@@ -3999,4 +4009,86 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       assert.equal(request.bodyUsed, false);
     },
   );
+  it("keeps Explorer validation on the JSON door: text/plain refuses, same-origin JSON reaches the seam", async () => {
+    const seen: unknown[] = [];
+    const h = harness({
+      explorerEdits: {
+        validate: (input) => {
+          seen.push(input);
+          return { state: "conflict", code: "revision-stale", message: "fixture conflict" } as never;
+        },
+      },
+    });
+    const body = JSON.stringify({ workflowId: "fixture-graph" });
+    const refused = await h.app.request("http://localhost/api/v1/explorer/validate", {
+      method: "POST",
+      headers: { ...OPERATOR_JSON_HEADERS, "content-type": "text/plain" },
+      body,
+    });
+    assert.equal(refused.status, 415);
+    assert.equal((await json(refused)).code, "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED");
+    assert.deepEqual(seen, []);
+
+    const admitted = await h.app.request("http://localhost/api/v1/explorer/validate", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body,
+    });
+    assert.equal(admitted.status, 409);
+    assert.deepEqual(seen, [{ workflowId: "fixture-graph" }]);
+  });
+
+  it("serves /events/v1 through the demand-driven bridge: an unread client is bounded to one reset-required and cancel closes the hub connection", async () => {
+    const h = harness({ maxPending: 2 });
+    const response = await h.app.request(`http://localhost/events/v1?topics=dashboard-day:${DAY}`, {
+      headers: { host: "localhost" },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "text/event-stream");
+    assert.ok(response.body);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const parse = (text: string): DashboardStreamEnvelope[] => text.split("\n\n")
+      .filter((block) => block.includes("data: "))
+      .map((block) => DashboardStreamEnvelopeSchema.parse(JSON.parse(
+        block.split("\n").filter((line) => line.startsWith("data: ")).map((line) => line.slice(6)).join("\n"),
+      )));
+    const initial: DashboardStreamEnvelope[] = [];
+    while (initial.length < 3) {
+      const chunk = await reader.read();
+      assert.equal(chunk.done, false);
+      initial.push(...parse(decoder.decode(chunk.value, { stream: true })));
+    }
+    assert.deepEqual(initial.map(({ type }) => type), ["hello", "snapshot", "health"]);
+    assert.equal(h.hub.subscriberCount(), 1);
+
+    // Six count-bearing changes while nobody reads: an eager push loop would
+    // deliver six snapshots; the bounded bridge delivers at most what its
+    // highWaterMark already pulled, then exactly one reset-required.
+    const runs = Array.from({ length: 6 }, (_, index) => {
+      const runId = `9e8d7c6b-5a49-4382-9170-2f3e4d5c6c0${String(index)}`;
+      h.database.authority.runs.enqueue(personLookupQueuedRun({
+        runId,
+        itemId: `3333333${String(index)}-3333-4333-8333-333333333333`,
+      }));
+      const record = h.database.authority.runs.get(runId);
+      if (record === undefined) assert.fail(`run ${runId} did not enqueue`);
+      return record;
+    });
+    projectCurrentSeparationsRuns(h, runs);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    const live: DashboardStreamEnvelope[] = [];
+    while (!live.some(({ type }) => type === "reset-required")) {
+      const chunk = await reader.read();
+      assert.equal(chunk.done, false);
+      live.push(...parse(decoder.decode(chunk.value, { stream: true })));
+    }
+    assert.equal(live.filter(({ type }) => type === "reset-required").length, 1);
+    assert.equal(live.at(-1)?.type, "reset-required");
+    assert.ok(live.filter(({ type }) => type === "snapshot").length < runs.length, "the bound must have collapsed most snapshots");
+
+    await reader.cancel();
+    assert.equal(h.hub.subscriberCount(), 0);
+  });
 });
