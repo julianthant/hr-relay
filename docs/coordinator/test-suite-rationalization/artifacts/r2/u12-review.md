@@ -71,6 +71,8 @@ round-trips distinct valid output/proof transaction ids; the focused file passes
 | transaction-outcome focused recheck | PASS — 1/1 file, 5/5 cases, 1.28s |
 | ordinary unit baseline | RED outside R2 — 305/306 files and 4,040/4,041 cases passed; Archive disconnect timed out |
 | ordinary unit final | RED outside R2 — 305/307 files and 4,039/4,046 cases passed, six skipped after a setup timeout; Archive disconnect test and dashboard perf fixture setup timed out |
+| coverage, first attempt | INVALID contention diagnostic — another worktree's compiler overlapped; 382/394 files and 4,871/4,888 cases passed, 11 tests timed out, six skipped, one fork-start error; 2,072.35s |
+| coverage, uncontended | RED outside R2 — 394/395 files and 4,890/4,891 cases passed in 144.60s; sole failure was the reserved-port-3938 refusal in `compose-real-port.test.ts` |
 | architecture | PASS — 70/70 files, 703/703 cases, 39.24s |
 | typecheck / lint | PASS / PASS |
 | build manifest / roadmap | current / fresh |
@@ -78,13 +80,19 @@ round-trips distinct valid output/proof transaction ids; the focused file passes
 
 The same R3-owned Archive timeout before and after R2 isolates it from this diff. The final full run's
 R3-owned dashboard performance fixture also exhausted its 30-second `beforeAll`; R2 does not weaken,
-skip, or lengthen either check. The coordinator was notified to carry both exact failures into R3a.
+skip, or lengthen either check. The first coverage attempt overlapped a compiler in another worktree,
+so it is retained only as diagnostic evidence. After that compiler exited, the uncontended rerun's
+sole red was the run plan's carried-in active-port hermeticity defect. The coordinator assigned the
+ordinary-unit failures to R3a/u13–u14 and the coverage failure to R3a/u16, and accepted R2's green
+owned lane as return evidence.
 
 ## Review disposition
 
 The preliminary independent review of `a638e8c3...b6dedad2` passed repository standards, found the
 missing final artifact/report expected at that interim target, and found one test-quality defect:
 the positive projection case could not disprove hard-coded default values. Commit `f7b9fd95` fixed
-that defect. The final pinned-target review and re-review results are recorded in the R2 report.
-Server-projection relocation and the final D317 recipe deletion/rename remain R3/R7 and active Phase
-3c residue respectively.
+that defect. On the complete target, Standards required the repository-level coverage invocation;
+the uncontended result above resolved that omission, with its sole failure assigned to R3a/u16.
+Spec and Tests re-review passed with no remaining R2-local finding. The final pinned-target axes are
+recorded in the R2 report. Server-projection relocation and the final D317 recipe deletion/rename
+remain R3/R7 and active Phase 3c residue respectively.

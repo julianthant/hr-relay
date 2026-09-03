@@ -52,6 +52,8 @@ edit them opportunistically. D317's final recipe deletion/rename remains active 
 | focused changed seam | PASS — 1 file / 5 cases in 1.28s after review fix |
 | full ordinary unit, before | RED outside R2 — 305/306 files; 4,040/4,041 cases; Archive disconnect timeout; 126.45s |
 | full ordinary unit, after | RED outside R2 — 305/307 files; 4,039 passed, 1 failed, 6 skipped / 4,046 total; Archive disconnect + dashboard perf setup timeouts; 122.71s |
+| `test:coverage`, first attempt | INVALID contention diagnostic — another worktree's compiler overlapped; 382/394 files, 4,871/4,888 cases, 11 test timeouts, 6 skipped, 1 fork-start error; 2,072.35s |
+| `test:coverage`, uncontended | RED outside R2 — 394/395 files and 4,890/4,891 cases passed in 144.60s; sole red was reserved-port 3938 in `compose-real-port.test.ts` |
 | architecture | PASS — 70 files / 703 cases in 39.24s |
 | typecheck / lint | PASS / PASS, zero lint warnings |
 | manifest / roadmap | current / fresh |
@@ -64,13 +66,20 @@ suppresses them. The coordinator assigned the Archive route timeout to R3a/u13's
 ownership and the server performance-fixture setup timeout to R3a/u14's runtime/composition
 ownership.
 
+The repository-level coverage command was run after an independent standards review surfaced it.
+The first attempt was not accepted as a gate because another worktree's `tsc --noEmit` overlapped it.
+Once that compiler exited, the uncontended rerun reduced the result to the one pre-existing active-
+port refusal above. The coordinator ruled that result authoritative and assigned it directly to
+R3a/u16; `suite-size.ts` did not run because Vitest correctly returned non-zero first.
+
 ## Review
 
-The preliminary independent target was `a638e8c3...b6dedad2`. Repository standards passed. The test
-review found one P2 positive-oracle weakness, fixed in `f7b9fd95`. The spec review correctly noted
-that the final u12/report were not yet present at that interim target and requested a more explicit
-retained-case mapping; u12 now records the exhaustive mapping protocol and expanded family totals.
-Final pinned-target review results follow in the report-closing commit.
+The preliminary independent target was `a638e8c3...b6dedad2`. The test review found one P2 positive-
+oracle weakness, fixed in `f7b9fd95`. The spec review correctly noted that the final u12/report were
+not yet present and requested a more explicit retained-case mapping; u12 now records the exhaustive
+mapping protocol and expanded family totals. On the complete target, Standards required the missing
+coverage invocation; the uncontended run above resolved the omission. Standards, Spec, and Tests
+re-review report no remaining R2-local action.
 
 Performance diff review is inapplicable because R2 changes no production hot path, runner,
 parallelism, fixture topology, or timeout. Security remains supervisor-owned: no auth, credential,
