@@ -54,7 +54,7 @@ import {
   createExplorerOverrideStore,
   explorerEditCommandFingerprint,
 } from "../../../src/server/dashboard/commands/explorer-override-store.js";
-import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/server/dashboard/compose.js";
+import { composeDashboardRuntime, productionWorkerLaunch, type DashboardRuntime } from "../../../src/server/dashboard/compose.js";
 import { readJournaledSettings, requireJournaledSettings } from "../../../src/server/settings-runtime.js";
 import {
   SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,
@@ -735,6 +735,18 @@ describe("composed dashboard runtime on the isolation port", () => {
     const bootstrap = await client.bootstrap();
 
     assert.equal(bootstrap.settingsSchemaHash, SETTINGS_SCHEMA_HASH);
+  });
+
+  it("launches pool workers through the secure bootstrap's cli arm, never the inert src/cli.ts module", () => {
+    // A direct `src/cli.ts` entry exits 0 without writing a lease
+    // (secure-env-bootstrap.test.ts proves the module is inert), and the
+    // supervisor then reports "exited with code 0 before proving its lease
+    // birth" for every spawn — which is how the 2026-09-02 live check found it.
+    const launch = productionWorkerLaunch("/repo");
+    assert.equal(launch.command, process.execPath);
+    assert.deepEqual([...launch.prefixArgs], ["--import", "tsx", "/repo/scripts/secure-env-bootstrap.ts", "cli"]);
+    assert.equal(launch.cwd, "/repo");
+    assert.ok(!launch.prefixArgs.some((arg) => arg.endsWith(join("src", "cli.ts"))));
   });
 
   it("publishes a lease-only worker card from the real tail tick, before any span exists (D248 freshness)", async () => {

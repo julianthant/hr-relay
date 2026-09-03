@@ -528,12 +528,13 @@ export class RunQueueProjection {
    */
   #spanCursors: ReadonlyMap<string, EventStreamFileCursor> = new Map();
   /**
-   * The card-relevant lease facts as of the last authority reconcile, so a
-   * lease-only transition (a lease born before its first span, `starting` →
-   * `idle` from the maintenance ticker, an operator directive, a crash or
-   * expiry settled by another process) reaches subscribers without a span.
+   * The Session Panel's authority facts as of the last reconcile — the
+   * card-relevant lease facts plus the pool declarations — so a transition no
+   * span carries (a lease born before its first span, `starting` → `idle`
+   * from the maintenance ticker, an operator directive, a crash or expiry
+   * settled by another process, a `plan-worker-count`) reaches subscribers.
    */
-  #workerLeaseFingerprint: string;
+  #workerAuthorityFingerprint: string;
   #cursorValue = 0;
   #generationValue: number;
   #health: RunQueueProjectionHealth = { state: "live" };
@@ -542,7 +543,7 @@ export class RunQueueProjection {
     this.#deps = deps;
     this.#generationValue = Math.max(1, Math.trunc(deps.clock.nowMs()));
     this.#foldSchemaHash = deriveSchemaHash(RunFoldRecordSchema, "output");
-    this.#workerLeaseFingerprint = workerLeaseFingerprintOf(this.#cardLeases());
+    this.#workerAuthorityFingerprint = this.#workerAuthorityFingerprintOf();
   }
 
   onChange(listener: (change: RunQueueProjectionChange) => void): () => void {
@@ -635,22 +636,24 @@ export class RunQueueProjection {
   }
 
   /**
-   * The Session Panel's card set is AUTHORITY's (D248), but every change
-   * trigger above is a span. A lease moves without a span when a worker
-   * process writes `starting`, when its maintenance ticker settles `idle`,
-   * when an operator directive lands, and when a crash or expiry is settled
-   * by whichever process observed it — so the same tick that tails the span
-   * files re-reads the exact leases the card set renders and publishes a
-   * snapshot when a card-relevant fact moved. Heartbeat instants and the
-   * versions they bump are not card facts and are excluded on purpose:
-   * counting them would republish every live card every beat.
+   * The Session Panel's card set and pool declarations are AUTHORITY's
+   * (D248/D269), but every change trigger above is a span. A lease moves
+   * without a span when a worker process writes `starting`, when its
+   * maintenance ticker settles `idle`, when an operator directive lands, and
+   * when a crash or expiry is settled by whichever process observed it; a
+   * pool row moves on `plan-worker-count`, which emits no span either. So the
+   * same tick that tails the span files re-reads exactly what the day wire
+   * renders from those two tables and publishes a snapshot when a served fact
+   * moved. Heartbeat instants and the versions they bump are not card facts
+   * and are excluded on purpose: counting them would republish every live
+   * card every beat.
    */
-  reconcileWorkerLeases(): void {
+  reconcileWorkerAuthority(): void {
     if (this.#health.state === "degraded") return;
     try {
-      const fingerprint = workerLeaseFingerprintOf(this.#cardLeases());
-      if (fingerprint === this.#workerLeaseFingerprint) return;
-      this.#workerLeaseFingerprint = fingerprint;
+      const fingerprint = this.#workerAuthorityFingerprintOf();
+      if (fingerprint === this.#workerAuthorityFingerprint) return;
+      this.#workerAuthorityFingerprint = fingerprint;
       this.#cursorValue += 1;
       this.#notify({ runIds: [], workerChanged: true });
     } catch (error) {
@@ -722,7 +725,7 @@ export class RunQueueProjection {
       this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
       this.#cursorValue = Math.max(1, this.#cursorValue);
       this.#health = { state: "live" };
-      this.#workerLeaseFingerprint = workerLeaseFingerprintOf(this.#cardLeases());
+      this.#workerAuthorityFingerprint = this.#workerAuthorityFingerprintOf();
       const change: RunQueueProjectionChange = { kind: "generation", cursor: this.cursor() };
       for (const listener of this.#listeners) listener(change);
     } catch (error) {
@@ -1080,7 +1083,7 @@ export class RunQueueProjection {
    * pruned-authority stream would be the panel inventing a daemon.
    *
    * `buildDashboardDayWire` renders exactly this map and
-   * `reconcileWorkerLeases` fingerprints exactly this map, so a card can never
+   * `reconcileWorkerAuthority` fingerprints exactly this map (with the pools), so a card can never
    * be drawn from one lease set and watched from another.
    */
   #cardLeases(): ReadonlyMap<string, WorkerLeaseRecord> {
@@ -1092,6 +1095,18 @@ export class RunQueueProjection {
       if (settled !== undefined) leases.set(workerId, settled);
     }
     return leases;
+  }
+
+  /** Leases as the cards render them, plus pool declarations as the wire serves them. */
+  #workerAuthorityFingerprintOf(): string {
+    const pools = this.#deps.authority.listWorkerPools().map((pool) => ({
+      workflowId: pool.workflow,
+      desiredWorkers: pool.desiredWorkers,
+      version: pool.version,
+      plannedBy: pool.plannedBy,
+      plannedAt: pool.plannedAt,
+    }));
+    return JSON.stringify({ leases: workerLeaseFingerprintOf(this.#cardLeases()), pools });
   }
 
   /* ── the authority join ────────────────────────────────────────────────── */

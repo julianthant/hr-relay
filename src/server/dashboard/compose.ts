@@ -423,6 +423,27 @@ export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint 
  * killed and the spawn command rejects loudly rather than waiting forever.
  */
 const WORKER_BIRTH_POLL_MS = 250;
+
+/**
+ * The worker CLI exactly as `npm run cli -- worker …` runs it, as an argv
+ * array: this node binary, tsx's loader, the secure environment bootstrap,
+ * and its `cli` arm. The bootstrap is the CLI's SOLE production invoker —
+ * `src/cli.ts` only exports `runCli` and running the module directly is
+ * inert by design (2026-08-28) — so a launch that names `src/cli.ts` as the
+ * entry spawns a child that exits 0 before ever writing a lease, which the
+ * birth proof reports as "exited with code 0 before proving its lease birth".
+ */
+export function productionWorkerLaunch(repoRoot: string): Readonly<{
+  command: string;
+  prefixArgs: readonly string[];
+  cwd: string;
+}> {
+  return Object.freeze({
+    command: process.execPath,
+    prefixArgs: Object.freeze(["--import", "tsx", join(repoRoot, "scripts", "secure-env-bootstrap.ts"), "cli"]),
+    cwd: repoRoot,
+  });
+}
 const WORKER_BIRTH_TIMEOUT_MS = 60_000;
 
 export interface WorkerProcessControlInput {
@@ -930,10 +951,11 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
    */
   const spanTailTimer = setInterval(() => {
     projection.ingestFromDisk();
-    // The Session Panel's cards are lease authority (D248); a lease moves
-    // without a span at birth, on the ticker's `starting` → `idle`, on an
-    // operator directive, and on a crash/expiry settled elsewhere.
-    projection.reconcileWorkerLeases();
+    // The Session Panel's cards and pool declarations are authority
+    // (D248/D269); a lease moves without a span at birth, on the ticker's
+    // `starting` → `idle`, on an operator directive, and on a crash/expiry
+    // settled elsewhere, and a pool row moves on `plan-worker-count`.
+    projection.reconcileWorkerAuthority();
   }, SPAN_TAIL_POLL_MS);
   spanTailTimer.unref();
 
@@ -966,13 +988,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     database,
     clock,
     scheduler: input.workerProcess?.scheduler ?? createTimeoutDeadlineScheduler(clock),
-    launch: input.workerProcess?.launch ?? {
-      // The exact worker CLI as `npm run cli -- worker …` runs it, spawned as
-      // an argv array: this node binary, tsx's loader, this repo's entry.
-      command: process.execPath,
-      prefixArgs: Object.freeze(["--import", "tsx", join(repoRoot, "src", "cli.ts")]),
-      cwd: repoRoot,
-    },
+    launch: input.workerProcess?.launch ?? productionWorkerLaunch(repoRoot),
     spawn: input.workerProcess?.spawn ?? realWorkerProcessSpawner(),
     birth: input.workerProcess?.birth ?? { pollMs: WORKER_BIRTH_POLL_MS, timeoutMs: WORKER_BIRTH_TIMEOUT_MS },
     onFault: reportSupervisorFault,
