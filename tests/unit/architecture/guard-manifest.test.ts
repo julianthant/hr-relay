@@ -10,6 +10,7 @@ import {
   REBUILD_ARCHITECTURE_TEST_EXCLUDE,
   REBUILD_COVERAGE_EXCLUSIONS,
   REBUILD_COVERAGE_FLOORS,
+  REBUILD_SCENARIO_TEST_EXCLUDE,
   REBUILD_SCENARIO_TEST_INCLUDE,
   REBUILD_TEST_REPORTERS,
   REBUILD_UNIT_TEST_EXCLUDE,
@@ -50,6 +51,8 @@ interface ArchitectureProjectInputs {
   readonly unitExclude: readonly string[];
   readonly architectureInclude: readonly string[];
   readonly architectureExclude: readonly string[];
+  readonly scenarioInclude: readonly string[];
+  readonly scenarioExclude: readonly string[];
   readonly reporters: readonly string[];
 }
 
@@ -59,6 +62,8 @@ export function architectureProjectViolations({
   unitExclude,
   architectureInclude,
   architectureExclude,
+  scenarioInclude,
+  scenarioExclude,
   reporters,
 }: ArchitectureProjectInputs): string[] {
   const violations: string[] = [];
@@ -89,6 +94,12 @@ export function architectureProjectViolations({
       `architecture project exclude must remain empty; received ${JSON.stringify(architectureExclude)}`,
     );
   }
+  if (JSON.stringify(scenarioInclude) !== JSON.stringify(["tests/scenario/**/*.test.ts"])) {
+    violations.push("scenario project include must remain tests/scenario/**/*.test.ts");
+  }
+  if (JSON.stringify(scenarioExclude) !== JSON.stringify(["tests/scenario/combined/**"])) {
+    violations.push("scenario project must exclude uncollected live-dependent combined tests");
+  }
   if (JSON.stringify(reporters) !== JSON.stringify(["verbose"])) {
     violations.push("every Vitest entry point must use the single verbose streaming reporter from config");
   }
@@ -98,11 +109,13 @@ export function architectureProjectViolations({
 export function testProjectTopologyViolations(root: string): string[] {
   const all = globSync(["tests/**/*.test.ts", "tests/**/*.test.tsx"], { cwd: root }).sort();
   const excludedFromUnit = new Set(globSync([...REBUILD_UNIT_TEST_EXCLUDE], { cwd: root }));
+  const excludedFromScenario = new Set(globSync([...REBUILD_SCENARIO_TEST_EXCLUDE], { cwd: root }));
   const projects = new Map<string, Set<string>>([
     ["unit", new Set(globSync([...REBUILD_UNIT_TEST_INCLUDE], { cwd: root })
       .filter((path) => !excludedFromUnit.has(path)))],
     ["architecture", new Set(globSync([...REBUILD_ARCHITECTURE_TEST_INCLUDE], { cwd: root }))],
-    ["scenario", new Set(globSync([...REBUILD_SCENARIO_TEST_INCLUDE], { cwd: root }))],
+    ["scenario", new Set(globSync([...REBUILD_SCENARIO_TEST_INCLUDE], { cwd: root })
+      .filter((path) => !excludedFromScenario.has(path)))],
   ]);
   const violations: string[] = [];
   for (const path of all) {
@@ -218,6 +231,8 @@ describe("reviewed architecture guard manifest", () => {
       unitExclude: REBUILD_UNIT_TEST_EXCLUDE,
       architectureInclude: REBUILD_ARCHITECTURE_TEST_INCLUDE,
       architectureExclude: REBUILD_ARCHITECTURE_TEST_EXCLUDE,
+      scenarioInclude: REBUILD_SCENARIO_TEST_INCLUDE,
+      scenarioExclude: REBUILD_SCENARIO_TEST_EXCLUDE,
       reporters: REBUILD_TEST_REPORTERS,
     };
     assert.deepEqual(architectureProjectViolations(actual), []);
@@ -234,6 +249,8 @@ describe("reviewed architecture guard manifest", () => {
       { ...actual, architectureInclude: ["tests/unit/architecture/guard-manifest.test.ts"] },
       { ...actual, architectureInclude: ["tests/unit/architecture/*.test.ts"] },
       { ...actual, architectureExclude: ["tests/unit/architecture/runtime-isolation.test.ts"] },
+      { ...actual, scenarioInclude: ["tests/scenario/*.test.ts"] },
+      { ...actual, scenarioExclude: [] },
       { ...actual, reporters: ["dot"] },
     ]) {
       assert.ok(architectureProjectViolations(bypass).length > 0, JSON.stringify(bypass));
@@ -247,6 +264,11 @@ describe("reviewed architecture guard manifest", () => {
       assert.deepEqual(testProjectTopologyViolations(root), []);
       writeFixture(root, "tests/unknown/orphan.test.ts", "export {};\n");
       assert.match(testProjectTopologyViolations(root).join("\n"), /orphan\.test\.ts: expected exactly one Vitest project, found none/u);
+      writeFixture(root, "tests/scenario/combined/live.combined.test.ts", "export {};\n");
+      assert.match(
+        testProjectTopologyViolations(root).join("\n"),
+        /live\.combined\.test\.ts: expected exactly one Vitest project, found none/u,
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

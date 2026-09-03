@@ -10,6 +10,7 @@ export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
 ] as const;
 export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [] as const;
 export const REBUILD_SCENARIO_TEST_INCLUDE = ["tests/scenario/**/*.test.ts"] as const;
+export const REBUILD_SCENARIO_TEST_EXCLUDE = ["tests/scenario/combined/**"] as const;
 export const REBUILD_TEST_EXEC_ARGV = ["--no-experimental-webstorage"] as const;
 export const REBUILD_TEST_REPORTERS = ["verbose"] as const;
 export const REBUILD_COVERAGE_EXCLUSIONS = [
@@ -93,6 +94,7 @@ export default defineConfig({
         test: {
           name: "scenario",
           include: [...REBUILD_SCENARIO_TEST_INCLUDE],
+          exclude: [...REBUILD_SCENARIO_TEST_EXCLUDE],
           fileParallelism: true,
         },
       },

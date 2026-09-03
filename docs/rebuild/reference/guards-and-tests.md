@@ -2056,7 +2056,7 @@ an executor and a deliberate script.
 |---|---|---|
 | `unit` | `tests/unit/**/*.test.ts`, **excluding** `tests/unit/architecture/**` | yes |
 | `architecture` | `tests/unit/architecture/**/*.test.ts` | yes |
-| `scenario` | `tests/scenario/**/*.test.ts` | yes |
+| `scenario` | `tests/scenario/**/*.test.ts`, excluding future live-dependent `tests/scenario/combined/**` | yes |
 
 **jsdom, per file (D277, 2026-08-27).** `jsdom` is a devDependency and is never a project default: a test that needs a real DOM to pin wiring — what a press dispatches, where focus returns — declares `@vitest-environment jsdom` at the top of its own file inside `unit`. The environment is opted into by the file, so a pure `*-model.ts` test never pays for a DOM, and a DOM test can never be mistaken for a visual claim — visual claims belong to `tests/parity/**`.
 

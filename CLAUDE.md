@@ -319,7 +319,8 @@ environment-supplied.
   every unique risk/contract; call two tests duplicates only when failure mode, seam, and oracle all
   match, and delete or consolidate only with a mapped survivor plus red-capable evidence (or proof
   the removed test could not fail meaningfully). `unit`, `architecture`, and `scenario` collect
-  every Vitest file exactly once. One configured verbose stream names project, file, suite, and full
+  every offline Vitest file exactly once; the future live-dependent `combined` tier stays excluded
+  until it owns a deliberate runner. One configured verbose stream names project, file, suite, and full
   behavior/refusal title; only genuinely multi-stage harnesses add stable phase markers. The
   affected ≤30 s, coverage ≤90 s, and parity ≤75 s goals are measurements, never authority to lower
   a floor, widen an allowance, add an exclusion, or weaken isolation/parallelism. Structural
