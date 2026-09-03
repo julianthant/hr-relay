@@ -1996,15 +1996,31 @@ today; existing generic behavior stays byte- and interaction-compatible through 
 > 2026-09-02 | D311 | owner-first design ratified; implementation remains open in doc 03c §Workflow authoring model
 <!-- /roadmap-status -->
 
-### 6.9 NOT BUILT — the BFF does not yet serve the ordinary built dashboard (D189, amended D294)
+### 6.9 BUILT 2026-09-03 — the BFF serves the ordinary built dashboard in `--prod` mode (D189, amended D294)
 
 <!-- roadmap: phase2-dispositions -->
 <!-- roadmap: def-byte-path -->
 
-**A named gap, recorded so it cannot read as met-by-silence.** The production BFF
-(`src/server/dashboard/http-server.ts` + `routes/api.ts`) has **no static handler**: every unrouted
-path 404s, and the only servers in this tree that deliver `dist/dashboard` are the parity lane's
-test fixtures. Four consequences, all real:
+**Landed 2026-09-03.** `startRebuildRuntime` parses `dashboard [--prod]` and refuses any other
+argument by name; `composeDashboardRuntime({ frontend: "built-bundle" })` realpaths
+`<repoRoot>/dist/dashboard`, requires a regular `index.html` BEFORE any authority, lock or socket
+(otherwise "run `npm run web:build` first"), and `routes/api.ts` registers
+`static-bundle.ts`'s handler LAST so every API/events/artifact route wins by order and `/api/**` and
+`/events/**` explicitly pass through to the JSON 404. The handler decides lexically first
+(`decideStaticBundlePath`, a pure decision table: GET/HEAD only; percent-decode once or 400;
+refuse NUL, backslash, dot and empty segments; a closed extension → media-type allowlist where an
+unlisted extension is a 404, never `application/octet-stream`; `/assets/*` is
+`public, max-age=31536000, immutable` because Vite content-hashes it, everything else `no-cache`;
+an extension-less route is the SPA's `index.html`), then physically (lexical containment, `realpath`
+containment so a symlink cannot leave the bundle, regular-file only), always `nosniff`, refusals as
+`STATIC_PATH_REFUSED` 400 with a fixed message that never echoes the path. The WHATWG URL layer
+resolves literal and `%2e`-encoded dot segments before any handler runs, so those forms can only
+name bundle-relative paths; the `..%2f` and backslash forms are what the handler refuses itself.
+Ported with provenance from the parity fixture's `serveStatic` and hardened. Proof:
+`tests/unit/server/static-bundle.test.ts` (decision table, real temp bundle with an escaping and an
+inside symlink, HEAD, POST pass-through) and `compose-real-port.test.ts` (refusal without a build
+opens no authority; the composed runtime serves `/`, `/assets/*`, an SPA route, and keeps
+`/api/v1/bootstrap` and the JSON 404). The history below is preserved as written:
 
 1. **`npm run dashboard:prod` claims a mode the runtime does not implement.** The script
    passes `--prod`; `startRebuildRuntime` reads `args[0]` as the command and never looks at
@@ -2037,9 +2053,10 @@ daily local tool.
 <!-- /roadmap-status -->
 
 <!-- roadmap-status: def-byte-path -->
-- [ ] the static handler on the BFF — port the parity fixture's traversal-checked `serveStatic`; every unrouted path 404s today
-- [ ] `--prod` parsed, so `npm run dashboard:prod` means what its name says
+- [x] the static handler on the BFF — ported from the parity fixture's traversal-checked `serveStatic` and hardened (`src/server/dashboard/static-bundle.ts`, registered last in `routes/api.ts`)
+- [x] `--prod` parsed, so `npm run dashboard:prod` means what its name says (`parseDashboardCommandOptions`; any other argument refuses by name)
 > 2026-08-31 | D294 | Mobile Capture Mode and its public delivery scope are retired. The two ordinary local-dashboard items above remain open.
+> 2026-09-03 | dashboard-wiring remediation | both items landed; `config/legacy-capabilities.json` `legacy-route-static` is `native` → `static-bundle.ts`, status implemented
 <!-- /roadmap-status -->
 
 ---

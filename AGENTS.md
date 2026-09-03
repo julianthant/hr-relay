@@ -74,7 +74,7 @@ npm run test:parity:update # the ONE deliberate way to re-freeze a reference (PA
 npm run cli               # the runtime CLI (help | phase | dashboard | worker | dry-run-scenario | explain | storage | ocr)
 npm run cli -- dry-run-scenario <workflow> --subject <label> # execute exactly one T1b manifest case
 npm run dashboard         # the dev dashboard in ONE terminal: BFF (3938) + vite (5174); Ctrl+C stops both
-npm run cli -- dashboard  # the BFF alone (dashboard:prod — see D189, the prod mode is unbuilt)
+npm run cli -- dashboard  # the BFF alone; `dashboard:prod` passes --prod and serves dist/dashboard from it (run web:build first)
 npm run web               # the vite dev server alone, proxying /api to a BFF you started yourself
 npm run web:build         # production bundle into dist/dashboard (test:parity builds this itself)
 
@@ -323,7 +323,7 @@ environment-supplied.
 - **2026-08-31 — D294 retires mobile/phone document Capture Mode.** Do not reintroduce its QR start,
   page, ingress/tunnel, session/bundle/handoff authority, routes, configuration, or tests. Diagnostic
   screenshots, run Capture tiles, receipts, and Archive evidence are separate diagnostic authority
-  and remain supported. `dashboard:prod` static serving is still an independent local-dashboard gap.
+  and remain supported. `dashboard:prod` static serving landed 2026-09-03 (ref frontend-backend-integration §6.9).
 
 - **2026-09-03 — a long-lived CLI command must own its shutdown, and the process lock is the
   proof.** The `dashboard` branch detached `compose(...).then(...)` and discarded `running.stop`, so
@@ -346,6 +346,14 @@ environment-supplied.
   and would otherwise run every per-commit gate over the developer's own authority; send the second
   SIGINT inside the measured ~40ms drain, and assert the child is still draining before you send it.
 
+- **2026-09-03 — `dashboard --prod` serves `dist/dashboard` from the BFF; a flag the runtime ignores
+  is a mode that does not exist.** `parseDashboardCommandOptions` refuses any unexpected argument by
+  name; `built-bundle` composition realpaths the bundle and requires `index.html` before any
+  authority, lock or socket. The static handler (`static-bundle.ts`) is registered LAST, decides
+  lexically then physically (realpath containment; a symlink out of the bundle is refused), serves a
+  closed extension allowlist (unlisted = 404, never octet-stream), caches only `/assets/*` immutably,
+  and never echoes a refused path. Remember the WHATWG URL layer resolves `/../` and `%2e%2e` before
+  any handler: test the encoded `..%2f` and backslash forms for the handler's own refusals.
 - **2026-09-02 — the SSE hub delivers on demand; never push into a stream controller.** A hub
   connection exposes `next()`/`pending`, and `subscriptions/sse-response.ts` drains it from a Web
   Stream `pull()`, so socket backpressure reaches the hub's ONE bounded queue and overflow becomes

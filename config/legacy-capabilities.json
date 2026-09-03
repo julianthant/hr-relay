@@ -887,18 +887,21 @@
         "dashboard-route:static"
       ],
       "disposition": {
-        "kind": "open",
+        "kind": "native",
         "milestone": "phase-3-workflow-migration",
-        "reason": "The production BFF serves NO frontend bytes: src/server/dashboard/http-server.ts has no static handler, api.ts 404s everything unrouted through app.notFound, and the only dist/dashboard static servers in the tree are test-only (tests/parity/helpers/). Serving the built bundle is base-integration work, which was 2j's own scope; 2j closed (D181-D186) without it, so it moves to roadmap §Phases at a glance row 3's explicit non-workflow capability closure. It is a HARD cutover blocker, not a nicety: cutover flips the operator onto this runtime, and a runtime that cannot deliver its own frontend has no operator surface at all."
+        "targetIds": [
+          "src/server/dashboard/static-bundle.ts"
+        ]
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/static.ts",
-        "src/server/dashboard/http-server.ts",
-        "src/server/dashboard/routes/api.ts",
-        "vite.dashboard.config.ts"
+        "src/server/dashboard/static-bundle.ts",
+        "src/server/dashboard/compose.ts",
+        "npm run dashboard:prod",
+        "tests/unit/server/static-bundle.test.ts"
       ],
-      "status": "open"
+      "status": "implemented"
     },
     {
       "id": "legacy-route-tasks",
