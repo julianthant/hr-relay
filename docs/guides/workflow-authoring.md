@@ -15,7 +15,7 @@ of that file at that commit (leading indentation aside). Nothing in this guide i
 
 1. What you author, what is generated, what you never hand-maintain
 2. Before you write code: find, reuse, or build
-3. The four authored artifacts of a reuse-only workflow — and the two registration lines
+3. The four authored artifacts of a reuse-only workflow — and the registration edits
 4. `defineWorkflow` — the API, entry by entry
 5. The minimal example — Person Lookup (reuse-only, four artifacts)
 6. The complete example — Separations (steps, a conditional gate, transactions, omissions, harnesses)
@@ -77,14 +77,14 @@ a `bind` or a pure fold, never a second scrape.
 
 ---
 
-## 3 · The four authored artifacts — and the two registration lines
+## 3 · The four authored artifacts — and the registration edits
 
 A workflow that reuses existing tasks and generic surfaces authors exactly (D312, `ref
 workflow-model` §1.6.1):
 
 | # | Path | What it is |
 |---|---|---|
-| 1 | `src/workflows/<id>/workflow.ts` | one `defineWorkflow(...)` call (§4) |
+| 1 | `src/workflows/<id>/workflow.ts` — for a chunk harness, `src/workflows/<composition-id>/<step-key>/workflow.ts` (`src/domain/workflow/source-layout.ts`) | one `defineWorkflow(...)` call (§4) |
 | 2 | `tests/scenario/workflows/<id>/structural.scenario.test.ts` | the ONE collected structural scenario (§10) |
 | 3 | `tests/scenario/workflows/<id>/dry-run.scenario.ts` | the T1b live manifest — NOT a vitest file (§10) |
 | 4 | `docs/migrations/<id>.md` | the dated migration record (§10) |
@@ -92,13 +92,15 @@ workflow-model` §1.6.1):
 A workflow folder holds **only** `workflow.ts`. A step sub-folder exists only when the step carries
 a chunk harness (its own `workflow.ts`, §6.4); a declared timeline group needs no folder.
 
-**Registration is two one-line imports, not authoring.** The composition root is the ONE static
-module tuple, and its own header says so ("adding a workflow is one import plus one tuple entry rather than ten synchronized lists"):
+**Registration is five one-line edits across two files, not authoring.** The composition root is
+the ONE static module tuple, and its own header says so ("adding a workflow is one import plus one
+tuple entry rather than ten synchronized lists"):
 
-- `src/control/workflow-registry.ts` — an exported `composeWorkflowModule(compileWorkflow(<yourWorkflow>), taskStoreRegistry.stores)` module listed in
-  `WORKFLOW_MODULES` (server side; resolves stores);
-- `src/workflows/descriptor-registry.ts` — `compileWorkflow(<yourWorkflow>).descriptor` in
-  `WORKFLOW_DESCRIPTORS` (bundle-safe; the dashboard's view), in the SAME order —
+- `src/control/workflow-registry.ts` — an import of your `workflow.ts`, an exported
+  `<id>Module = composeWorkflowModule(compileWorkflow(<yourWorkflow>), taskStoreRegistry.stores)`
+  const, and that const listed in `WORKFLOW_MODULES` (server side; resolves stores);
+- `src/workflows/descriptor-registry.ts` — an import and `compileWorkflow(<yourWorkflow>).descriptor`
+  in `WORKFLOW_DESCRIPTORS` (bundle-safe; the dashboard's view), in the SAME order —
   `tests/unit/workflows/descriptor-registry.test.ts` pins the two tuples equal.
 
 Then run `npm run build:manifest`. `compileWorkflow` resolves the workflow's `contractFingerprint`
@@ -110,12 +112,24 @@ src/domain/workflow/generated-build-manifest.ts before registering it` until you
 `dry-run.scenario.ts` through `src/server/dry-run-scenario/manifests.ts` (the workflow-id → loader
 `Map`), resolves its subject through `src/server/dry-run-scenario/compose.ts`
 (`resolveDryRunScenarioTarget`), and models the workflow's registry arm in
-`src/control/test-target-registry.ts` (`MODELLED_WORKFLOWS` + an arm schema + a resolver). Each is a
-closed, decision-cited allowlist entry in `workflow-authoring-budget` (D318 / `ref guards-and-tests`
-§10.9), so a new workflow with a T1b manifest edits these files and extends the allowlist with the
-same citation. Whether this loader should be derived from the registry instead is an open operator
+`src/control/test-target-registry.ts`. That last file needs, per workflow: a workflow-id const and its
+`MODELLED_WORKFLOWS` entry, a subject-kind enum, the subject's secret-reference schema, an arm schema
+and its key in `TestTargetWorkflowArmsSchema`, a ready-target schema, a resolution schema and the
+resolver — Person Lookup's `PersonLookup*` exports are the template. The `manifests.ts` and
+`compose.ts` sites are closed, decision-cited `GENERIC_WORKFLOW_ID_ALLOWLIST` entries in
+`workflow-authoring-budget` (D318 / `ref guards-and-tests` §10.9), so a new workflow with a T1b
+manifest edits these files and extends the allowlist with the same citation. Whether this loader should be derived from the registry instead is an open operator
 item (coordinator sheet `docs/coordinator/phase-3c-migration/decisions/2026-09-02-3c-a-close-questions.md`
 item 4); until it is decided, this is the documented registration step.
+
+**The two closed lists beside the budget.** A legitimately extra file — a migration-doc supplement
+(`docs/migrations/separations-legacy-behavior.md`) or a T2/T3 `tests/scenario/dashboard/<id>/`
+folder — is admitted only through a cited `ARTIFACT_EXEMPTIONS` entry in the same guard. A generic
+server/dashboard file that must branch on a workflow id under a ratified decision (today D288's
+person-pseudonym fold and backfill and D289's receipt comparison, all `separations`) is admitted only
+through a cited `GENERIC_WORKFLOW_ID_ALLOWLIST` entry. Both lists are closed: each entry names its
+decision, and a stale or uncited entry is itself red. Neither is a way around §2's last row — a new
+dashboard capability is still built generically once.
 
 ---
 
@@ -504,7 +518,7 @@ once end to end; every comment in it explains a choice you will face again.
 
 1. Find every operation in the catalog (§2). If all are REUSE, you are on the four-artifact path.
 2. Write `src/workflows/<id>/workflow.ts`: schemas, presentation, `role`, `scenarios`, `steps`.
-3. Add the two registration lines and run `npm run build:manifest` (§3).
+3. Make the registration edits (five lines across the two registry files) and run `npm run build:manifest` (§3).
 4. Write the T1 pair and the migration record (§10); register the live subject label; run it live.
 5. Gate: `npm run typecheck && npm run lint && npm run test:coverage`, then
    `npm run build:manifest:check`, `npm run stores:catalog:check` (unchanged — proves you added no
@@ -654,10 +668,22 @@ node is read through a declared `omitted` arm (§7.3).
 **Chunk harnesses.** Each of the five step folders (`kuali-extraction`, `identity-check`,
 `kronos-timecard`, `ucpath-transaction`, `kuali-finalization`) holds one `workflow.ts` whose
 `role` is `defineWorkflowRole({ kind: "chunk-harness", of: "separations", step:
-KUALI_FINALIZATION_STEP.key })` (the folder name IS the step key), which IMPORTS the step's
+KUALI_FINALIZATION_STEP.key })` (the folder name IS the step key; the harness's own workflow id is
+free of it — `separations-kuali-read` lives in `kuali-extraction/`), which IMPORTS the step's
 identities from `../workflow.js` and wires them from its own ingress. A harness is independently
 startable, nests under its composition in the picker and Explorer, and never appears in the rail.
 `job-summary` is a declared group with no harness, so it has no folder.
+
+**A harness's artifact budget** is smaller than a rail workflow's: its `workflow.ts` and ONE
+structural scenario at `tests/scenario/workflows/<harness-id>/structural.scenario.test.ts`. It
+carries a `dry-run.scenario.ts` only when it proves a transaction (`separations-kuali-finalization`
+does; the four read/identity harnesses do not) and it shares its composition's migration doc. The
+four older harness scenarios predate the canonical layout and sit at
+`tests/scenario/<harness-id>.scenario.test.ts` under the cited `PRE_CANONICAL_SCENARIOS` list of
+`workflow-authoring-budget`; a new harness uses the canonical path. Note the guard's direction: arm
+(d) refuses a FIFTH artifact, it never requires the four — the T1 pair and the record are required
+by `ref guards-and-tests` §10.11 and doc 03c's exit gate, and the `test-target-registry` and
+`scenario-coverage` guards are what go red when a pair is missing.
 
 ---
 
@@ -914,11 +940,14 @@ operation and its live selector verification (`ref stores` §1, §2b).
 `ref guards-and-tests` §10.11 is the normative checklist; this is the same loop with the real files.
 
 **T1a — `tests/scenario/workflows/<id>/structural.scenario.test.ts`.** One collected file. Reach the
-descriptor through `tests/helpers/registered-workflows.ts` (`personLookupDescriptor`, …), walk
+descriptor through `tests/helpers/registered-workflows.ts` (add your `<id>Descriptor` export there;
+it re-exports the registry's modules), walk
 declared paths with `walkDescriptor` (`tests/scenario/helpers/pure-walk.ts`) against caller-supplied
 node outputs re-parsed through their owning schemas, and title each `it` with the scenario id it
-claims (`"person-lookup/happy-by-eid — …"`). Every id in the workflow's `scenarios` must be claimed
-AND walked, and every coverage point the graph derives (branch arms, gate resolutions, delegation
+claims (`"person-lookup/happy-by-eid — …"`). Register every scenario id with its file in
+`src/domain/workflow/scenario-execution.ts` (`EXECUTABLE_SCENARIO_MANIFEST`, one `{ scenarioId, file }`
+row each). Every id in the workflow's `scenarios` must be registered there, claimed AND walked, and
+every coverage point the graph derives (branch arms, gate resolutions, delegation
 cardinalities, transaction dispositions) must be claimed — `scenario-coverage` is red in both
 directions. Runtime walks may run the REAL task implementations and REAL driver interpreters against
 deterministic fakes; recovery walks (D314) drive the real executor over a real authority database
@@ -941,6 +970,9 @@ Lookup's manifest is the template.
 **The subject registry — `config/test-subjects.json`.** Labels only. Register a label per subject
 with today's dated availability, an arm per workflow (kind = the manifest's `subjectKind`), and any
 sensitive value as a closed reference into ignored `.env`, read only through `src/domain/secrets.ts`.
+A new secret reference is two edits: its literal name in `src/domain/secret-names.ts` and its
+reference schema plus registry row in `src/domain/secrets.ts` (`personLookupCanaryEid` is the
+template); the registry's `reference: { name, env }` pair then cites it.
 A `gone` / `unknown` / `consumed` label resolves `blocked` (`not-started`) before any browser; that is
 a valid recorded outcome, never `failed`. Then register the workflow's T1b loader and resolver (§3).
 
@@ -966,7 +998,7 @@ capability close. It is what a `PROOF` tick in doc 03c cites.
 |---|---|
 | `descriptor-coverage` / `npm run build:manifest:check` | regenerate the build manifest (`npm run build:manifest`) |
 | `tests/unit/workflows/descriptor-registry.test.ts` | the two registration tuples differ (§3) |
-| `scenario-coverage` | a `scenarios` id is unclaimed, a claim is unwalked, or a derived graph point is unclaimed |
+| `scenario-coverage` | a `scenarios` id is unregistered in `EXECUTABLE_SCENARIO_MANIFEST` or unclaimed, a claim is unwalked or names an absent file, or a derived graph point is unclaimed |
 | `test-target-registry` | the manifest's workflow is not modelled, its label is unregistered, or an arm kind mismatches |
 | `workflow-layout` | a file beside `workflow.ts`, a folder that is not a declared step with a harness |
 | `workflow-authoring-budget` | a fifth artifact, a retired name, a hand-authored path, or an unallowlisted workflow-id branch |
