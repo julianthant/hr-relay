@@ -77,8 +77,15 @@ export function createDashboardTransport(input: Readonly<{
   const baseOrigin = new URL(baseUrl).origin;
   const fetchImpl: FetchLike = input.fetchImpl ?? ((url, init) => fetch(url, init));
 
-  /** The two mutation doors whose refusals are typed BODIES, not wire errors. */
-  const COMMAND_PATHS: ReadonlySet<string> = new Set(["/api/v1/commands", "/api/v1/commands/bulk"]);
+  /**
+   * Every non-GET request carries the transport's own Origin. A browser sets
+   * (and refuses to let a page override) this header itself, so in the real
+   * dashboard the line is inert; in Node and in test fakes it is what makes the
+   * BFF's loopback admission (ref frontend-backend-integration §3.4) observable
+   * rather than assumed. The server enforces regardless of this line.
+   */
+  const isMutation = (init?: RequestInit): boolean =>
+    init?.method !== undefined && init.method.toUpperCase() !== "GET" && init.method.toUpperCase() !== "HEAD";
 
   const isTypedCommandResultStatus = (path: string, status: number): boolean =>
     (path === "/api/v1/commands" && (status === 409 || status === 422))
@@ -92,7 +99,7 @@ export function createDashboardTransport(input: Readonly<{
         headers: {
           accept: "application/json",
           ...(init?.body === undefined ? {} : { "content-type": "application/json" }),
-          ...(COMMAND_PATHS.has(path) ? { origin: baseOrigin } : {}),
+          ...(isMutation(init) ? { origin: baseOrigin } : {}),
           ...init?.headers,
         },
       });
@@ -128,6 +135,7 @@ export function createDashboardTransport(input: Readonly<{
           headers: {
             accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             ...(init?.body === undefined ? {} : { "content-type": "application/json" }),
+            ...(isMutation(init) ? { origin: baseOrigin } : {}),
             ...init?.headers,
           },
         });

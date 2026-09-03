@@ -399,6 +399,39 @@ describe("typed queries and error normalization", () => {
     assert.equal(sentHeaders?.get("content-type"), "application/json");
   });
 
+  it("attaches the transport Origin to every guarded mutation door and to no GET", async () => {
+    const sent: { path: string; method: string; origin: string | null; contentType: string | null }[] = [];
+    const client = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: (url, init) => {
+        const headers = new Headers(init?.headers);
+        sent.push({
+          path: new URL(url).pathname,
+          method: init?.method ?? "GET",
+          origin: headers.get("origin"),
+          contentType: headers.get("content-type"),
+        });
+        // Every door answers a body the caller rejects at parse time; the
+        // request headers are the subject here, so the refusal is expected.
+        return Promise.resolve(jsonResponse(500, { state: "error", code: "FIXTURE", message: "fixture", retryable: false }));
+      },
+    });
+
+    await assert.rejects(client.submitStartPlan({ workflowId: "x", submissions: [{}], dryRun: true, browserMode: "headless", captureBrowserScreenshots: false }));
+    await assert.rejects(client.uploadIntakeFile({
+      workflowId: "x", fileName: "roster.csv", mediaType: "text/csv", bytes: new Uint8Array([1, 2, 3]).buffer,
+    }));
+    await assert.rejects(client.requestFailureAdvisory(RUN_ID));
+    await assert.rejects(client.bootstrap());
+
+    assert.deepEqual(sent, [
+      { path: "/api/v1/start-plans", method: "POST", origin: "http://127.0.0.1:3938", contentType: "application/json" },
+      { path: "/api/v1/intake/files", method: "POST", origin: "http://127.0.0.1:3938", contentType: "text/csv" },
+      { path: `/api/v1/runs/${RUN_ID}/advisory`, method: "POST", origin: "http://127.0.0.1:3938", contentType: null },
+      { path: "/api/v1/bootstrap", method: "GET", origin: null, contentType: null },
+    ]);
+  });
+
   it.each([
     [403, "OPERATOR_MUTATION_ORIGIN_REFUSED"],
     [415, "OPERATOR_MUTATION_JSON_REQUIRED"],
