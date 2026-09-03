@@ -19,6 +19,8 @@ import { DashboardClientProvider } from "../../../src/dashboard/state/client-con
 import { UiCatalogSection } from "../../../src/dashboard/surfaces/ui-catalog.js";
 import { foldCatalogRail } from "../../../src/dashboard/surfaces/ui-catalog-model.js";
 
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+
 const ENTRIES: readonly UiCatalogEntry[] = buildSafeUiCatalog().entries.map((entry) => UiCatalogEntrySchema.parse(entry));
 const WIRE = UiCatalogWireSchema.parse({
   wireVersion: 1,

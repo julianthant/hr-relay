@@ -27,6 +27,8 @@ import { afterEach, describe, it } from "vitest";
 import { RunDetailWireSchema, type RunDetailWire } from "../../../src/domain/dashboard/run-detail.js";
 import { Timeline } from "../../../src/dashboard/surfaces/log-panel.js";
 
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+
 const RUN_ID = "e1b8ae3e-0000-4000-8000-000000000001";
 const NOTE_ID = "e1b8ae3e-0000-4000-8000-000000000101";
 const GATE_ID = "e1b8ae3e-0000-4000-8000-0000000000a1";
