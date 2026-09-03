@@ -82,8 +82,8 @@ fixtures rather than delete it.
 
 ## Close proof
 
-- `git log --oneline 18e5294d..HEAD` contains only the two test commits, the evidence commit, and
-  this report commit.
+- `git log --oneline 18e5294d..HEAD` contains only R3b's two test commits and its run-scoped
+  evidence/report commits.
 - `git rev-parse --abbrev-ref HEAD` resolves `feature/test-r3b-worker-review`.
 - `git status --short` is empty after the report commit and removal of the ignored local
   `node_modules` tooling link.
