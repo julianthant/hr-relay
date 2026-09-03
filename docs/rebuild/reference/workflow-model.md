@@ -91,7 +91,10 @@ context** (typed data flow between tasks). Time lives in ref dashboard-surfaces'
 
 <!-- roadmap: p1-authority -->
 
-One module per workflow: `src/workflows/<id>/descriptor.ts`. It imports **only** zod,
+One authored module per workflow: `src/workflows/<id>/workflow.ts` — one `defineWorkflow(...)` call
+(§1.6); the `WorkflowDescriptor` this section describes is its compiled product
+(`compileWorkflow(definition).descriptor`), never a hand-authored file. That authored module imports
+**only** zod,
 `src/domain/**` (which includes the task **contracts** at `src/domain/contracts/<system>/`
 — D3's client-safe half), and type-only imports — never a store, never Playwright. Enforced
 mechanically (§1.4). "Plain data" means: serializable fields plus pure functions (zod schemas,
@@ -675,11 +678,13 @@ would be a descriptor read on the archived path, which is exactly what charter �
 
 ```
 src/workflows/person-lookup/       # rebuild repo (hr-automation-rebuild) — D93
-├── descriptor.ts     # bundle-safe: zod + domain (incl. contracts) only
-└── module.ts         # server composition value: descriptor + lazy store loaders
+└── workflow.ts       # the ONE authored file: defineWorkflow(...), bundle-safe
+                      # (zod + domain, incl. contracts). compileWorkflow derives the
+                      # descriptor; composeWorkflowModule derives the server module
+                      # value at the registry root — neither is a file here (§1.6).
 ```
 
-There is no per-workflow `handler.ts`: step impls live in the **stores** (ref task-contract §3; D3 —
+There is no per-workflow `handler.ts`, `descriptor.ts` or `module.ts`: step impls live in the **stores** (ref task-contract §3; D3 —
 `defineTask(contract, impl)` in `src/stores/<system>/tasks/` is the only impl registry). The
 descriptor references contract *objects*, so descriptor↔contract renames fail to compile at the
 import site. Descriptor↔impl pairing is runtime: the engine resolves each step's contract id in
@@ -688,18 +693,21 @@ coverage guard pins it at CI.
 
 ```ts
 // src/control/workflow-registry.ts — composition root; lower layers never import workflows
-import { personLookupModule } from "../workflows/person-lookup/module.js";
-import { verifyModule } from "../workflows/verify/module.js";
+import { personLookupWorkflow } from "../workflows/person-lookup/workflow.js";
+import { separationsWorkflow } from "../workflows/separations/workflow.js";
+
+// Each module is COMPOSED here from the authored definition — the only place stores are bound.
+export const personLookupModule = composeWorkflowModule(compileWorkflow(personLookupWorkflow), STORES);
 
 // The one unavoidable static module tuple. A workflow appears ONCE; every registry/projection below
 // derives from it, so adding a workflow is one import+tuple entry rather than synchronized lists.
-export const WORKFLOW_MODULES = [personLookupModule, verifyModule /* … */] as const;
+export const WORKFLOW_MODULES = [personLookupModule, separationsModule /* … */] as const;
 export const DESCRIPTORS = WORKFLOW_MODULES.map((m) => m.descriptor);
 export const SERVER_REGISTRY = indexModulesByDescriptorId(WORKFLOW_MODULES);
 ```
 
-**The dashboard never imports a workflow MODULE**, and that half is structural: `module.ts` carries
-the store loaders, so importing one would drag Playwright and `node:*` into the bundle —
+**The dashboard never imports a workflow MODULE**, and that half is structural: the composed module
+carries the stores, so importing one would drag Playwright and `node:*` into the bundle —
 `dashboard-wire-boundary` (ref frontend-backend-integration §8.13) walks the entry's reachable
 closure and fails on any Node built-in, printing the whole import chain. `control/workflow-registry.ts`
 validates every descriptor at boot. This removes the previous `domain → workflows → domain` cycle.
@@ -807,7 +815,7 @@ on every surface instead. **The layout now says it, and the role and the layout 
 
 | Path | What it is | Role (§1.2.1) | Where it shows |
 |---|---|---|---|
-| `src/workflows/<workflow>/descriptor.ts` + `module.ts` | a workflow the RAIL lists | `standalone` · `composition` | the rail, the picker, the Explorer |
+| `src/workflows/<workflow>/workflow.ts` (its compiled descriptor + module) | a workflow the RAIL lists | `standalone` · `composition` | the rail, the picker, the Explorer |
 | `src/workflows/<workflow>/<step>/` | one TIMELINE STEP of that workflow — the folder name is the step's key | (a folder, not a module) unless it carries a harness: `{ kind: "chunk-harness", of: "<workflow>", step: "<step>" }` | one segment of that workflow's timeline; the harness nests under its composition in the picker and the Explorer (D219), never the rail (D220) |
 | ~~`src/workflows/proving/<workflow>/`~~ | **RETIRED the same day (D266)** — there is no test equipment: a proof of machinery is a dry-run scenario on the real workflow (ref guards-and-tests §10), never a workflow of its own | — | — |
 
@@ -833,11 +841,11 @@ on every surface instead. **The layout now says it, and the role and the layout 
    > is a declared group with no folder — and the guard's arm (b) below reads: every step folder
    > is a declared group AND a registered harness address; a declared group needs no folder.
 3. **A harness lives inside the step it proves.** D219's sentence — *a chunk harness is a step of
-   its composition* — becomes a path: the harness's `descriptor.ts` + `module.ts` sit in the step
+   its composition* — becomes a path: the harness's `workflow.ts` sits in the step
    folder, and its role gains the folder, `{ kind: "chunk-harness", of, step }`. The registry
    refuses a `step` that `of` does not declare as a timeline category, exactly as it already refuses
    an `of` that is not a registered composition. A harness that needs other steps' nodes IMPORTS
-   their fragments rather than restating them — today the three write harnesses each carry a second
+   their entry identities rather than restating them — today the three write harnesses each carry a second
    copy of `job-summary` / `name-search` / `comparison` / the gate / `approval` so that each can
    re-establish identity authority before its write; after the move they import `identity-check/`'s, and
    the four copies become one.
@@ -1032,27 +1040,48 @@ or converted workflow. “Recipe” is only a teaching analogy and is not a type
 domain concept. Its central field is one ordered array of **timeline tuples**:
 
 ```ts
-steps: [
-  [
-    { key: "kuali-extraction", label: "Kuali extraction" },
-    [findKualiAction, readKualiDocument, buildSeparationPlan],
-  ],
-  [
-    { key: "ucpath-identity", label: "UCPath identity" },
-    [findEmployee, readEmployeeDetails, verifyIdentity],
-  ],
-]
+// src/workflows/person-lookup/workflow.ts, abridged — the as-built form
+steps: ({ task, result }) => {
+  const searching = task(
+    { id: "searching", contract: SearchPersonOrg, label: "Searching", replay: "checkpoint" },
+    [],
+    ({ input }) => ("emplId" in input ? { kind: "by-eid" as const, emplId: input.emplId } : /* … */),
+  );
+  const crossVerify = task(
+    { id: "cross-verify", contract: CrmReadOnboardingRecord, label: "Cross Verification", replay: "checkpoint" },
+    [searching],
+    ({ outputs }) => ({ eid: requireFact(outputs.searching.selection.selected, /* … */).emplId /* … */ }),
+  );
+  // … `active-status` (always-rerun), `crm-dates` (conditional)
+  return {
+    steps: [
+      [{ key: "searching", label: "Searching" }, [searching]],
+      [{ key: "cross-verify", label: "Cross Verification" }, [crossVerify]],
+      // … one tuple per remaining group
+    ],
+    result: result(PersonLookupResultSchema, [activeStatus, crmDates], ({ input, outputs }) => (/* … */)),
+  };
+},
 ```
+
+An omittable step wraps its group with the author's `group(...)` instead of writing the group object
+inline — `[group(KRONOS_TIMECARD_STEP, { omission: KRONOS_TIMECARD_OMISSION }), [timecardSearch,
+timecard, dates]]` (`src/workflows/separations/workflow.ts`, §5.8).
 
 The tuple contract is exact:
 
-1. `steps` is a readonly ordered array of two-tuples
-   `[WorkflowTimelineGroup, readonly WorkflowTaskEntry[]]`. The group has a stable `key` and an
-   operator-facing `label`; the outer array is the timeline's order and grouping authority.
-2. Each task is a typed reusable value over an existing task contract and appears in exactly one
-   tuple. Tuple order is presentation order, **not** hidden execution authority. Input references
-   derive the execution edges; an unresolved reference, duplicate task, cycle, or cross-group
-   dependency the compiler cannot represent refuses the build by name.
+1. `steps` is authored inside the definition's `steps(author)` callback, which returns a readonly
+   ordered array of two-tuples `[WorkflowTimelineGroup, readonly AnyWorkflowEntry[]]` and the
+   terminal `result` declaration. The group has a stable `key`, an operator-facing `label` and — when
+   the step is omittable — its D307 `omission`; the outer array is the timeline's order and grouping
+   authority.
+2. The second member holds **entries of the closed algebra** (`task | parallel | delegate | gate |
+   transaction`), not tasks alone. Each entry VALUE appears in exactly one tuple; a parallel entry's
+   leaves belong to that parallel and may not also be listed in a tuple; and a step-owned identity
+   minted by `defineStepEntries` (§1.6.1) may sit only under its own step object — two structurally
+   equal but distinct step objects are different owners. Tuple order is presentation order, **not**
+   hidden execution authority: an entry's typed input references derive the execution edges, and
+   every refusal below is by name.
 3. Read, compute, gate and transaction tasks retain the existing task, checkpoint, provenance,
    replay, write-safety and receipt contracts. A workflow does not turn selectors into workflow code:
    selectors and page-state interpretation remain in the system driver, while a browser task names
@@ -1068,6 +1097,70 @@ The tuple contract is exact:
    proof; separations is the completeness proof. After both match their existing public descriptor,
    module and dashboard behavior, the redundant hand-authored declarations and tests are deleted.
    Permanent dual authoring is refused.
+
+**Types** (`src/base/workflow-definition.ts`, the one seam):
+
+- `WorkflowDefinitionSpec` — what `defineWorkflow` takes: every descriptor presentation field MINUS
+  the compiler's products (`flow`, `timeline`, `contractFingerprint`), plus `input`, `role` (D219),
+  an optional `intake` projection, and the `steps` author callback.
+- `WorkflowAuthor` — the typed factory that callback receives (`task`, `parallel`, `delegate`,
+  `gate`, `transaction`, `group`, `result`), bound to THIS workflow's input schema.
+- The entry identities `TaskEntryIdentity`, `GateEntryIdentity`, `TransactionEntryIdentity`,
+  `ParallelEntryIdentity` and `DelegateEntryIdentity` — plain frozen values naming an entry's id,
+  contracts, label and policy. They carry no wiring and no builder hook; the only way to execute one
+  is through a workflow definition.
+- `WorkflowEntryScope` = `{ input, outputs }`, where `outputs` is typed FROM the entry's own declared
+  references — an entry can read only what it names.
+- `WorkflowResultDeclaration` = `{ schema, references, derive }` — the terminal result over that same
+  scope.
+- `WorkflowDefinition` — the frozen value `defineWorkflow` returns: `kind: "workflow-definition"`,
+  the presentation fields, `input`, `role`, `intake?`, the resolved `steps` tuples and `result`.
+- `CompiledWorkflow` — `{ kind: "compiled-workflow", definition, descriptor, contracts,
+  storeNamespaces }`.
+- `WorkflowModule` — `{ descriptor, stores, role, intake?, definition }`, the server composition
+  value the registry derives.
+
+**Compiler products.** `compileWorkflow(definition)` derives, and an author never hand-maintains:
+
+- the `WorkflowDescriptor` — `flow` compiled from the entries' typed references; `timeline` from the
+  tuples (`key`, `label`, `nodes`, `omission`), OMITTED entirely when every group holds exactly its
+  one same-named entry and declares no omission (D225's honest default, which is why `person-lookup`
+  declares no timeline); and `contractFingerprint` resolved from the build manifest.
+- one compile per definition OBJECT, memoized, so the registry, the bundle-safe descriptor tuple and
+  every test read one descriptor identity.
+- `workflowDefinitionOf(descriptor)` and `workflowEntryKinds(definition)` — the registry-wide
+  conformance seams that recover the definition behind a descriptor and the entry kinds it uses.
+- `composeWorkflowModule(compiled, availableStores)` — resolves stores from the entries' contract
+  namespaces in first-use order, browser stores first, dropping unused stores. `availableStores` is
+  an inventory, not a second authoring list.
+
+**Invariants and refusals.** Definition time (`validateSteps` / `validateOmissions`, at module load,
+so a bad definition fails on the first import rather than the first run):
+
+- `workflow <id> requires at least one timeline group` / `requires at least one entry` /
+  `timeline group "<key>" has no entries`;
+- `workflow <id> repeats timeline group key "<key>"` / `repeats timeline group label "<label>"`;
+- `timeline group "<key>" claims workflow entry "<id>", which belongs to step "<other>"`, with
+  `; same key but distinct step objects: "<a>" and "<b>"` appended when the keys match but the step
+  objects do not;
+- `workflow entry "<id>" appears in more than one timeline tuple` and `… is a leaf of parallel entry
+  "<p>" and may not also appear in a timeline tuple`;
+- `workflow <id> declares entry id "<id>" more than once`;
+- `<owner> repeats reference "<r>"` / `<owner> references unresolved entry "<r>"` — for every entry
+  and for `workflow <id> result`;
+- `workflow <id> dependency cycle: a -> b -> a`;
+- `workflow <id> step "<key>" omission produces "<n>", which is not an entry of that step` and
+  `… which is a <kind> entry; only task entries are ever rebuilt from operator facts (D313)`;
+- `workflow <id> step "<key>" is omittable, but <reader> in step "<other>" reads its <kind> entry
+  "<m>", which omitting the step leaves unread; rebuild "<m>" from the step's omission form, move the
+  reader into the step, or declare the check as its own entry outside the omitted step (D313)`.
+
+Compile time: `compileWorkflow requires a value produced by defineWorkflow`; `workflow <id> was
+already compiled under a different build manifest; one definition compiles under exactly one
+manifest`; and the build manifest's own "no entry" refusal when the workflow is not in it. Module
+composition: `workflow <id> module does not use the compiled workflow of its own definition`,
+`requires missing store <ns>`, `found duplicate stores for <ns>` and `cannot resolve exact contract
+<contract-id>` — the store must bind the SAME contract object the entry imported, never a copy.
 
 The first implementation deliberately preserves the current run modal, D307 step-omission
 semantics, diagnostic screenshot policy, `data.observed` logging, gates and transaction sequencer.
@@ -1404,7 +1497,7 @@ schema hash separately; Edit Data cannot patch any of them. The envelope carries
 fingerprints, not a second mutable copy of input.
 
 ```ts
-// src/workflows/person-lookup/descriptor.ts (input half — note: NO dryRun field)
+// src/workflows/person-lookup/workflow.ts (input half — note: NO dryRun field)
 export const PersonLookupInput = z.union([
   z.object({ name: z.string().min(1), keepNonHdh: z.boolean().default(false),
              includeCrmDates: z.boolean().default(false) }).strict(),
@@ -2180,6 +2273,11 @@ trace lineage and D221 attempt allocation. Neither is “rerun with different in
 permits a successful external write to execute twice. A parked unknown write continues to expose
 only its evidence-resolution actions; these two choices do not bypass write recovery.
 
+> 2026-09-02 | D314 as built (3c-A) | Both choices are pinned by the two named recovery scenarios
+> `person-lookup/resume-from-checkpoints` and `person-lookup/restart-from-start`, exercised through the
+> real executor over real run authority in `tests/scenario/workflows/person-lookup/structural.scenario.test.ts`
+> (T1a); D318's `live-read` T1b arm (ref guards-and-tests §10.4) is the live half of that same T1 pair.
+
 ### 5.7 The checkpoint store — and resume scope (D9)
 
 <!-- roadmap: p1-authority -->
@@ -2393,8 +2491,9 @@ has a typed terminal outcome but no fabricated successful result record.
 
 ### 5.8 Step omission (D307)
 
-A step folder may declare an `omission` beside its nodes, passed to `nodes.category(fragments, {
-omission })` (`src/domain/workflow/step-omission.ts`): a closed `form` (field kinds `text`,
+A step may declare an `omission` beside its own entries, passed to the workflow author's
+`group(step, { omission })` in the step's timeline tuple (`src/base/workflow-definition.ts`; the
+declaration's own schema is `src/domain/workflow/step-omission.ts`): a closed `form` (field kinds `text`,
 `us-date`, `eid`, `integer`, `boolean`, `enum`, `text-list`) the Steps screen draws, and a `produces`
 map keyed by the step's TASK node ids — each a pure function that rebuilds one complete, schema-valid
 node output from the typed facts and the run's scope. Producers rebuild TASK nodes only: an omission
@@ -2683,8 +2782,9 @@ shipped as written.
 **The exit run (D74, 2026-08-04).** Run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace
 `pl-000619-4ebf`, executed person-lookup against the real UCPath and the real CRM on the new
 executor, recovered a dead CRM session mid-run, terminalized `done` at attempt 2 with a correct
-result, and rendered all four parity surfaces from the ONE projection. The descriptor is
-`src/workflows/person-lookup/descriptor.ts`; the four steps, their contracts, the `always-rerun`
+result, and rendered all four parity surfaces from the ONE projection. The descriptor was
+hand-authored then at `src/workflows/person-lookup/descriptor.ts` and has been compiled from
+`workflow.ts` since D317; the four steps, their contracts, the `always-rerun`
 `active-status`, and the `when`-gated `crm-dates` are all as §8 describes.
 
 **Five deltas the live run forced, each with its owning decision.**
