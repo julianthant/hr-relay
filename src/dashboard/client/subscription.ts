@@ -4,8 +4,11 @@
  * Every envelope schema-parses before entering state — a malformed payload is
  * a visible protocol failure that stops the subscription with an error, never
  * a `console.warn` + ignore. Cursor rules: hello pins the generation; a
- * duplicate or older cursor is IGNORED before it can have any effect (which is
- * what makes a resume's replay free rather than a full resnapshot); a GAP (an
+ * duplicate or older PATCH is IGNORED before it can have any effect (which is
+ * what makes a resume's replay free rather than a full resnapshot), while a
+ * snapshot is ignored only from strictly BEHIND the held cursor — one batch
+ * stamps its patch and its snapshot with the same cursor, and the snapshot is
+ * the half that carries the worker cards, the pools and the counts; a GAP (an
  * envelope more than one cursor ahead) or a patch for an unheld run forces a
  * fresh snapshot by reconnecting WITHOUT `Last-Event-ID`; `reset-required`
  * clears state the same way.
@@ -147,19 +150,33 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     const cursorNumber = Number(cursorMatch[1]);
 
     // Idempotence, BEFORE any effect (ref frontend-backend-integration §3.5:
-    // "duplicate/current cursors are idempotent"). A resume replays from the
-    // held cursor, so the envelope that cursor names arrives again — and every
-    // replayed envelope is state this client already holds. Re-applying is not
-    // merely wasted work: a replayed REMOVAL names a run the day no longer
-    // holds, `applyDashboardDayPatch` calls that a protocol failure, and the
-    // subscription answers a protocol failure by throwing the whole day away
-    // and resnapshotting. So a correct resume would cost a full snapshot every
-    // time. `lastCursorNumber` is undefined only before the first snapshot of a
+    // "duplicate/current cursors are idempotent") — and the rule is NOT the
+    // same on both sides of that sentence, because the two envelope kinds do
+    // not compose the same way.
+    //
+    // A SNAPSHOT is the whole day for its cursor, so applying it is
+    // idempotent by construction: it REPLACES state rather than editing it.
+    // Only a snapshot from BEHIND the held cursor is stale. And one at the
+    // held cursor is not merely harmless, it is required: the projection
+    // stamps every change of ONE batch with the same cursor, so a
+    // count-neutral member change followed by a count-bearing one is served as
+    // `patch pc:N` then `snapshot pc:N`. Only the snapshot carries the worker
+    // cards, the pools and the count rollups — dropping it as a duplicate
+    // leaves them stale behind a Live dot, with no later envelope that could
+    // correct them.
+    //
+    // A PATCH is an EDIT of held state, so re-applying one is not free: a
+    // replayed REMOVAL names a run the day no longer holds,
+    // `applyDashboardDayPatch` calls that a protocol failure, and this module
+    // answers a protocol failure by throwing the whole day away and
+    // resnapshotting. A resume replays from the held cursor, so that envelope
+    // arrives again on every correct resume. Hence `<=` here, `<` above.
+    //
+    // `lastCursorNumber` is undefined only before the first snapshot of a
     // generation — hello clears it when the generation changes, which is what
     // lets a REPLACEMENT generation's lower-numbered cursors through.
-    if (lastCursorNumber !== undefined && cursorNumber <= lastCursorNumber) return;
-
     if (envelope.type === "snapshot") {
+      if (lastCursorNumber !== undefined && cursorNumber < lastCursorNumber) return;
       if (envelope.topic !== "dashboard-day") {
         throw protocolError(`unexpected snapshot topic ${envelope.topic}; this subscription serves dashboard-day`);
       }
@@ -171,6 +188,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     }
 
     // patch
+    if (lastCursorNumber !== undefined && cursorNumber <= lastCursorNumber) return;
     if (envelope.topic !== "dashboard-day") {
       throw protocolError(`unexpected patch topic ${envelope.topic}; this subscription serves dashboard-day`);
     }
@@ -200,7 +218,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     if (closed) return;
     const lastEventId = withResume ? lastCursorId : undefined;
     const lastProjectionGeneration = lastEventId === undefined ? undefined : generation;
-    stream = deps.transport.openStream(`/events/v1?topics=dashboard-day:${day}`, {
+    const handle = deps.transport.openStream(`/events/v1?topics=dashboard-day:${day}`, {
       ...(lastEventId === undefined ? {} : { lastEventId }),
       ...(lastProjectionGeneration === undefined ? {} : { lastProjectionGeneration }),
       onMessage: (message) => {
@@ -221,11 +239,26 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
         }
       },
     });
-    stream.done.then(
-      // EOF: the server closed a healthy stream (or this client aborted one).
-      // Resuming from the held cursor is exactly what that ending calls for.
-      () => reconnect(true, "reconnecting"),
+    stream = handle;
+    // The handlers below belong to THIS handle. `close()` aborts the fetch and
+    // the transport RESOLVES an aborted stream's `done`, indistinguishably
+    // from a server-side EOF — so a stream this subscription deliberately
+    // superseded (a gap resnapshot, a reset, a reconnect) settles one
+    // microtask later and would otherwise schedule a SECOND reconnect over the
+    // one already pending, flapping `connecting → reconnecting` and turning
+    // the fresh snapshot a gap demands into a resume. `reconnect` and `stop`
+    // release `stream` before closing it, so a superseded handle's settlement
+    // is inert here rather than merely late.
+    const superseded = (): boolean => closed || stream !== handle;
+    handle.done.then(
+      // EOF: the server closed a healthy stream. Resuming from the held cursor
+      // is exactly what that ending calls for.
+      () => {
+        if (superseded()) return;
+        reconnect(true, "reconnecting");
+      },
       (reason: unknown) => {
+        if (superseded()) return;
         if (reconnectableStreamFailure(reason)) {
           reconnect(true, "reconnecting");
           return;
@@ -237,7 +270,9 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
 
   function reconnect(withResume: boolean, nextState: "connecting" | "reconnecting"): void {
     if (closed) return;
-    stream?.close();
+    const previous = stream;
+    stream = undefined;
+    previous?.close();
     deps.onState({ state: nextState });
     cancelTimer?.();
     cancelTimer = schedule(nextState === "connecting" ? 0 : reconnectDelayMs, () => connect(withResume));

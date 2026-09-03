@@ -265,11 +265,21 @@ describe("dashboard day subscription — cursor idempotence", () => {
     h.close();
   });
 
-  it("ignores a duplicate snapshot", () => {
+  it("applies a snapshot at the HELD cursor, because one projection batch stamps both", () => {
+    // `#notify` stamps EVERY change of one batch with the SAME cursor, and a
+    // count-neutral member change followed by a count-bearing one yields
+    // `patch pc:N` then `snapshot pc:N`. The snapshot is the authoritative
+    // whole-day payload for that cursor: worker cards, pools and the count
+    // rollups only move on the snapshot, so dropping it as a "duplicate"
+    // leaves them stale behind a Live dot with no envelope left to correct
+    // them. Re-applying an equal-cursor snapshot is idempotent by
+    // construction — it REPLACES the day rather than editing it.
     const h = liveAtCursorTwo();
     h.streams[0].push(snapshotEnvelope("pc:2", [surfaceOf(9)]));
-    assert.equal(h.days.length, 2);
-    assert.equal(h.days[1].queueSurfaces[0].rowRevision, 2);
+    assert.equal(h.days.length, 3);
+    assert.equal(h.days[2].queueSurfaces[0].rowRevision, 9);
+    assert.equal(h.streams.length, 1);
+    assert.equal(h.scheduled.length, 0);
     h.close();
   });
 
@@ -294,6 +304,28 @@ describe("dashboard day subscription — cursor idempotence", () => {
     h.streams[0].push(replacePatch("pc:4", 4));
     assert.equal(h.days.length, 2);
     assert.deepEqual(h.scheduled, [0]);
+    h.runScheduled();
+    assert.equal(h.streams.length, 2);
+    assert.equal(h.streams[1].lastEventId, undefined);
+    h.close();
+  });
+
+  it("schedules exactly ONE reconnect for a gap: a superseded stream's ending is inert", async () => {
+    const h = liveAtCursorTwo();
+    h.streams[0].push(replacePatch("pc:4", 4));
+    assert.deepEqual(h.scheduled, [0]);
+
+    // `resnapshot` CLOSED that stream, and the transport resolves an aborted
+    // stream's `done` with exactly the value a server-side EOF settles it with
+    // (`transport.ts`: the abort arm returns rather than throwing). So the old
+    // stream's settlement arrives one microtask later, and it belongs to a
+    // stream this subscription has already replaced: it must schedule nothing
+    // and must report nothing, or the state flaps `connecting → reconnecting`
+    // and the resnapshot the gap demanded is replaced by a resume.
+    await tick();
+    assert.deepEqual(h.scheduled, [0]);
+    assert.deepEqual(h.states.map(({ state }) => state), ["connecting", "connecting"]);
+
     h.runScheduled();
     assert.equal(h.streams.length, 2);
     assert.equal(h.streams[1].lastEventId, undefined);
