@@ -8,13 +8,13 @@
 **Integration target:** `feature/test-suite-rationalization`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-02 at Wave 2A reservation commit `a638e8c3`; current coordinator checkout/task binding and prior R1/R6 cleanup verified
+**Last verified:** 2026-09-02 after Wave 2A merge `fce226ca`; current coordinator checkout/task binding, R1/R6 cleanup, and integrated R2/R4 gates verified
 
 ## Facts every run needs
 
 - Test contract and gates: `project-profile.md`; normative topology in `docs/rebuild/reference/guards-and-tests.md` §§6–10.12.
 - Intake evidence: `evidence/intake-2026-09-02.md`.
-- Current integrated baseline: 394 Vitest files / 4,886 cases; 306 ordinary unit files / 111,579 lines, 70 architecture files / 27,336 lines, 18 offline scenario files / 7,296 lines; two non-collected live manifests; parity passes 281/281 after R6's evidence-backed duplicate-family removal.
+- Current integrated baseline after R2/R4: 394 Vitest files / 4,885 cases; R2's audited core family is 82 files / 1,156 cases, R4's dashboard family is 103 files / 1,050 cases, architecture remains 70 files / 703 cases, and parity remains 281/281 after R6's evidence-backed duplicate-family removal.
 - Port intake baseline: an unrelated legitimate dashboard occupied 127.0.0.1:3938 and 127.0.0.1:5174 and exposed 16 reserved-port failures. Both ports were free for the 2026-09-02 continuation gate; R3a still owns proving the full gate while a legitimate dashboard remains active.
 - Continuation gates at `37c080bc`: typecheck PASS; lint PASS; architecture PASS 70/70 files and 703/703 cases; manifest/roadmap/diff checks PASS; parity PASS 281/281 in 59.9s; coverage PASS 394 files/4,886 cases in 169.38s at 85.41% statements, 76.42% branches, 89.49% functions, and 87.35% lines. Active-port hermeticity remains R3a work.
 - Dated trap: a Vitest list imports architecture modules; at intake those modules fail unless the legacy repository is available. The operator has explicitly ruled that finished checks must be self-contained in this repo. R1 owns removing that gate dependency without erasing provenance.
@@ -35,10 +35,10 @@
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
 | u01–u06 | R1 | closed | merged `--no-ff` as `81e6f3c3`; run worktree and branch removed; exact task `01a0645c-1e13-7581-8a20-67314a86e195` archived | integrated continuation gate at `37c080bc`: type/lint/70-file architecture/manifest/roadmap/diff PASS | complete | Self-contained architecture/static work retained on the integration line |
-| u07–u12 | R2 | active | task `01a064e5-e38c-7e31-9f3c-90d108a186cd`; worktree `/Users/julianhein/.codex/worktrees/0b41/hr-automation-rebuild` | exact-base detached-start repair authorized before writes | required | Core/domain/workflow/write/storage units |
+| u07–u12 | R2 | integrated; cleanup pending | `4459949c` merged `--no-ff` as `3525acc3`; exact task `01a064e5-e38c-7e31-9f3c-90d108a186cd` | owned family 82/82 files and 1,156/1,156 cases; focused 5/5; type/lint/architecture/generated/diff PASS; integrated type/lint/architecture/generated/roadmap/diff PASS | complete, 0 open findings | Added five direct transaction-outcome projection tests; carried legitimate active-port and R3-owned timeout residue to R3a |
 | u13, u14, u16 | R3a | planned | — | — | required | Wave 2 server/BFF/runtime and real-port hermeticity |
 | u15, u17, u18 | R3b | planned | — | — | required | Post-Wave-2 worker/consolidation/review |
-| u19–u24 | R4 | active | task `01a064e5-e38c-7e31-9f3c-90b4c4c41b6f`; worktree `/Users/julianhein/.codex/worktrees/c24a/hr-automation-rebuild` | exact base/branch binding verified | required | Dashboard model/jsdom/component layer |
+| u19–u24 | R4 | integrated; cleanup pending | `e9dbf53a` merged `--no-ff` as `fce226ca`; exact task `01a064e5-e38c-7e31-9f3c-90b4c4c41b6f` | owned dashboard family 103/103 files and 1,050/1,050 cases; focused 4 files/37 cases; T2 9/9; parity 281/281; coverage 4,880/4,880; integrated dashboard 1,050/1,050 plus type/lint/architecture/generated/roadmap/diff PASS | complete, 0 open findings | Removed two parity-owned geometry-only unit files; added truthful Node semantics coverage; React act warnings 36→0 |
 | u25, u26, u29 | R5a | planned | — | — | required | Wave 2 scenario inventory, T1, T1b authority |
 | u27, u28, u30 | R5b | planned | — | — | required | Post-Wave-2 walks, dashboard scenarios, layout/review |
 | u31–u36 | R6 | closed | merged `--no-ff` as `9d87f512`; run worktree and branch removed; exact task `01a0645c-1e18-7d70-9dfc-c7fb53fa0b66` archived | integrated continuation gate at `37c080bc`: parity 281/281 in 59.9s; coverage 394 files/4,886 tests in 169.38s | complete, 0 open findings | Removed one duplicate 6-case/18-reference-file parity family with durable equivalence and negative-control evidence; accepted recommendations remain R7 inputs |
