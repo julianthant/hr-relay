@@ -9,7 +9,7 @@
 **Integration target:** `feature/03c-workflow-migration`, recreated from local `master` at `1867c78b6ff9f2ffc891e94aa1394bd7ff3bb642`; D319 scope reset follows the R3 launch record at `956c77b8`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-02 21:11 PDT at `c1ecf074` by the successor coordinator
+**Last verified:** 2026-09-02 23:20 PDT at merge `16e7e63b` (R3c integrated; full gate re-run green by the coordinator)
 
 ## Facts every run needs
 
@@ -40,8 +40,8 @@
 | u01–u06 | R1 | closed 2026-09-02 | branch tip `31c3f9a5`; merge `a40276b6`, contained by master merge `29186a31`; supervisor worktree/branch removed; exact task `01a0644f-936c-7d72-8fbc-12a04b527b3e` archived | typecheck/lint, 393 files/4,853 coverage tests, parity 287/287, manifest/roadmap/diff/twins PASS | complete; six findings resolved | bounded D311 compiler complete; D312–D317 successor remains R3 |
 | u10–u12 | R2 | closed 2026-09-02 | branch tip `ed9ee5ac`; merge `b1b36349`, contained by master merge `29186a31`; supervisor worktree/branch removed; exact task `01a0644f-936c-7d72-8fbc-128e5f1b1a47` archived | typecheck, lint, roadmap freshness, diff check PASS; three focused re-reviews Count 0 | complete | Order 1 intake/live provenance complete; read-only T1 decision and fresh I-9 canary remain explicit residue |
 | u25–u28 | R3b | closed 2026-09-02 ~21:00 PDT | branch tip `915d9702`; merge `c258677b` into `feature/03c-workflow-migration`; branch ref deleted; worktree retained by plan for R3c (re-pointed to `feature/phase-3c-migration-c57c2dec9-r3c-deletion-acceptance` at `c258677b`); session `7dee2c47` stopped | coordinator re-ran on `c258677b`: typecheck 0 errors, lint clean, coverage 401 files / 4,921 tests (85.48/76.54/89.43/87.41), parity 287/287, manifest/roadmap/catalog current, diff --check clean, twins identical | Correctness 5 (worst low, 2 fixed), Silent failures 2 (1 fixed allowlist; 1 ruled judgement → D314 wording question), Tests 1 | report `reports/r3-authoring-runtime.md`; residue → R3c/R3d |
-| u29–u32 | R3c | session `8dacde07` LOST 2026-09-02 ~21:10 PDT (absent from `claude agents --json`, zero commits on its branch, no report/handoff); relaunched 21:12 PDT as session `133425d0` by the successor coordinator (run-plan wave ledger) | base `c258677b` | pending | required | deletion acceptance + retired-path guard + T1b states |
-| u33–u36 | R3d | briefed (draft `briefs/r3d-author-docs.md`); Needs first: R3c integrated | — | — | required | author documentation package |
+| u29–u32 | R3c | closed 2026-09-02 23:19 PDT | branch tip `c3b432ee` (10 commits `06eb7494..c3b432ee`); merge `16e7e63b` into `feature/03c-workflow-migration`; branch ref deleted (`show-ref` no longer resolves); worktree retained by plan and re-pointed to `feature/phase-3c-migration-c57c2dec9-r3d-author-docs` at `16e7e63b`; session `133425d0` stopped (lost predecessor `8dacde07` recorded) | coordinator re-ran on `16e7e63b`: typecheck 0 errors, lint clean, coverage 402 files / 4,941 tests (85.47/76.54/89.42/87.42), parity 287/287, manifest/catalog/roadmap current, `git diff --check` clean, twins identical | u30: sup-opus Correctness 4 (worst medium) + Tests 3, all 7 fixed `44f74d54`, fixtures mutation-verified; u29 supervisor-owned, proved by before/after public-shape probe + unmodified R1 equivalence fixtures | report `reports/r3c-deletion-acceptance.md`; `src/workflows/` = registry + eight `workflow.ts`; `workflow-authoring-budget` guard live; Person Lookup `live-read` T1b met (result `66ea3863…`, run `3bf3d260…`, 0/0/0); Separations typed blocked arm `c36b2b6b…` |
+| u33–u36 | R3d | dispatched 2026-09-02 23:2x PDT — see run-plan wave ledger | base `16e7e63b` | pending | required | author documentation package |
 | u15–u19 | R3 | closed 2026-09-02 ~21:00 PDT via R3b | commits `8a931cc6..c1bdcf68` + safety `0566b181`, stabilized by R3b and integrated in merge `c258677b`; branch ref deleted; session `e266c808` stopped 20:21 PDT (context exhausted, over cap) | as R3b row | as R3b row | u15–u18 complete; u19 slice (Person Lookup T1 pair + live-read met, four harness conversions, grouping proof) complete; u19 remainder superseded by u29–u36 |
 | u110–u113 | R4 | held for operator after R3 | — | — | required | 3c-B: accept Person Lookup and Separations, reconcile Phase 3 authorities, run integrated gates and sweep; do not dispatch without operator instruction |
 
@@ -53,9 +53,14 @@ D319 admission process and receives fresh units after operator approval.
 
 ## Residue
 
-- D314 wording (ref workflow-model): the restart guard forbids replaying checkpoints ANOTHER RUN produced; R3b review asked whether the reference should say "another run" or "another attempt" (a requeued restart run legitimately replays its own earlier-attempt reads). → RECONCILE; operator wording question batched at close.
-- `src/core/run-executor.ts:800,818` re-parse an already strict-parsed record (no-op, not a silent-failure path) → u29 cleanup candidate.
-- Separations T1b re-run: `finalization-canary` is `gone` (2026-09-01); re-run blocked by D284 until the operator supplies a replacement → recorded by R3c, decided by operator.
+- D265 §1.2.2 rule 2 ("declared category with no folder fails") is annotated as superseded by D312 §1.6.1 item 5 (a step folder exists iff it carries a harness; `job-summary` has no folder) in `ab04231c`. Body rewrite vs annotation → operator sheet `decisions/2026-09-02-3c-a-close-questions.md` item 3.
+- `src/server/dry-run-scenario/{compose,manifests}.ts` map each workflow id to its `dry-run.scenario.ts` (D318 T1b loader) — per-workflow glue outside the four-artifact budget, allowlisted in the u30 guard citing D318/§10.9. Derive-from-registry vs keep explicit map → sheet item 4.
+- A first-attempt T1b manifest cannot match a re-run of an already-completed item in the same authority root (R3 and R3c both used a fresh root; row `0c8b2425…` failed `checkpoints` only). Whether §10.4 should pin/relax the attempt → sheet item 5.
+- Foreign dev dashboard on 3938/5174 (a Codex session's) was stopped by `pkill -INT -f scripts/dev-dashboard.ts` before the R3c and coordinator coverage gates per the brief; that session restarts it. Recorded, not owned.
+- Foreign commit `fc3de16d` (`docs/handoff: dashboard wiring remediation`, another session) sits on the integration branch beneath merge `16e7e63b`; docs-only, not this coordination's file, not read for task context.
+
+- D314 wording (ref workflow-model): "another run" vs "another attempt" → sheet item 2; R3d u35 applies the answer if it arrives in time, else RECONCILE.
+- Separations T1b: `finalization-canary` is `gone` (2026-09-01); R3c recorded the typed blocked arm (`c36b2b6b…`, `not-started` / `subject-unavailable`); the 3c-A exit gate names "both workflow T1b proofs green" → sheet item 1 (replacement canary or ruling).
 - Separations R4e/R4f controlled-live proof → `docs/coordinator/separations-completion/`; preserved, not absorbed into this board.
 - Repository worktree capacity → unrelated test-suite R1/R6/coordinator worktrees remain externally owned; Phase 3c reserves only one R3 supervisor slot and creates no worker worktree while capacity is full.
 - ServiceNow, OnBase and other future probes remain candidate-admission evidence; they are not Phase 3 residue.
@@ -63,16 +68,16 @@ D319 admission process and receives fresh units after operator approval.
 
 ## Questions for the operator
 
-- None open. The read-only T1 sheet is answered (A → D318).
+- Sheet `decisions/2026-09-02-3c-a-close-questions.md` (5 items: Separations canary/exit-gate ruling, D314 wording, D265 body text, T1b loader glue, T1b attempt pin). None blocks R3d; item 1 blocks the 3c-A exit claim.
 
 ## Progress
 
-Steps - 3/8 complete
+Steps - 4/8 complete
 - [x] R1 — D311 workflow recipe/compiler
 - [x] R2 — Order 1 workflow-specific intake
 - [x] R3 — D312–D317 authoring/runtime foundation (closed via R3b merge `c258677b`; its u19 remainder continues as R3c/R3d, added 2026-09-02 21:20 PDT by the 350k re-size)
-- [>] R3c — old-authoring-path deletion, retired-path guard, T1b states (session `133425d0`)
-- [ ] R3d — 3c-A documentation package (brief drafted; needs R3c integrated)
+- [x] R3c — old-authoring-path deletion, retired-path guard, T1b states (merge `16e7e63b`; row closed 23:19 PDT)
+- [>] R3d — 3c-A documentation package (dispatched on the retained worktree)
 - [ ] R4 — 3c-B Person Lookup + Separations acceptance (operator-triggered)
 - [ ] RECONCILE — canonical Phase 3 and D319 authorities
 - [ ] CLOSE — integrated gates, worktree sweep and final board

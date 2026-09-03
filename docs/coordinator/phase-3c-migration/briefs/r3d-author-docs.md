@@ -1,9 +1,9 @@
-# R3d brief — 3c-A documentation package (DRAFT — do not dispatch until R3c is integrated)
+# R3d brief — 3c-A documentation package
 
 **Coordination UUID:** `57c2dec9-138e-4578-b5da-389ad9b4007a` · `C57c2dec9`
 **Canonical title:** `Supervisor · phase-3c-migration · C57c2dec9 · R3d · author docs`
 **Parent coordinator:** Claude Code session `1c78d186-91c1-4728-9da4-29102181632d` (only allowed agent-to-agent channel)
-**Worktree / branch:** `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/phase-3c-migration-c57c2dec9-r3d-author-docs` · `feature/phase-3c-migration-c57c2dec9-r3d-author-docs` from the integrated R3c merge tip (SHA filled in at dispatch)
+**Worktree / branch:** `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/phase-3c-migration-c57c2dec9-r03-authoring-runtime` (retained path, name inherited from R3) · `feature/phase-3c-migration-c57c2dec9-r3d-author-docs` at `16e7e63b` (= integrated `feature/03c-workflow-migration` tip, R3c merged)
 **Worktree allowance:** 1 (this worktree). No worker worktrees; u34 and u35 run sequentially or as two `sup-opus` dispatches in this checkout on disjoint files.
 **Units:** u33, u34, u35, u36 (run plan §Units). **Out of scope:** u110–u113 (R4/3c-B), any code change beyond a doc-driven example fix, any new workflow, the Separations canary decision.
 **Report:** `docs/coordinator/phase-3c-migration/reports/r3d-author-docs.md`
@@ -11,7 +11,7 @@
 
 ## Situation
 
-After R3c the tree has exactly one authoring path (`workflow.ts` + `defineWorkflow`), the retired-path guard, and both acceptance workflows proven equivalent. Doc 03c §"3c-A documentation package" (lines ~274–290) names five documents; only the generated task-store catalog exists. The root `AGENTS.md`/`CLAUDE.md` D311–D317 paragraph still carries the transitional `b1b36349` sentence that R3c made false. `ref workflow-model` §1.6 is titled for D311/D317 but §5.6/§5.8 lack the D313/D318 text the root paragraph cites; `ref stores` has no catalog mention. Read `reports/r3c-deletion-acceptance.md` §Residue for R3d for the exact list R3c left.
+After R3c the tree has exactly one authoring path (`workflow.ts` + `defineWorkflow`), the retired-path guard, and both acceptance workflows proven equivalent. Doc 03c §"3c-A documentation package" (lines ~274–290) names five documents; only the generated task-store catalog exists. The root `AGENTS.md`/`CLAUDE.md` D311–D317 paragraph still carries the transitional `b1b36349` sentence that R3c made false. `ref workflow-model` §1.6 is titled for D311/D317 but §5.6/§5.8 lack the D313/D318 text the root paragraph cites; `ref stores` has no catalog mention. Read `reports/r3c-deletion-acceptance.md` §Residue for R3d for the exact list R3c left. R3c also annotated D265 §1.2.2 rule 2 as superseded by D312 §1.6.1 item 5 (`ab04231c`) — keep it an annotation; the body rewrite is an open operator item, not yours. Five operator questions are batched in `decisions/2026-09-02-3c-a-close-questions.md`; none blocks this run — do not resolve them, and if the D314 wording answer (item 2) is relayed to you mid-run, apply it in u35.
 
 ## Do
 
