@@ -1,10 +1,10 @@
 # R5b report — scenario walks, dashboard scenarios, layout, and review
 
-**Coordination UUID:** `f24df892-5171-48f4-97ff-4e91490f8622`  
-**Task:** `01a0656c-f193-76d1-baea-e0011ee0ce69`  
+**Coordination UUID:** `f24df892-5171-48f4-97ff-4e91490f8622`
+**Task:** `01a0656c-f193-76d1-baea-e0011ee0ce69`
 **Branch/base:** `feature/test-r5b-scenario-review` from
-`18e5294de0b07f147349a2d62edcc6a5728fcf15`  
-**Scope:** u27, u28, u30 only  
+`18e5294de0b07f147349a2d62edcc6a5728fcf15`
+**Scope:** u27, u28, u30 only
 **Result:** complete; no live workflow run, push, merge, or coordinator-board write
 
 ## Outcome
@@ -93,7 +93,7 @@ R5b brief requires the full scenario and applicable architecture projects, both 
 | Tests | standards Luna, separate test-quality turns | Three equivalence gaps fixed; PASS at `1faf891d` with scenario 17/132 and identity/Explorer 36/36. |
 | Docs | `sup_luna_test_suite_rationalization_cf24df892_r05b_review_docs` | Commit provenance and R7 u38/u40 ownership corrected; PASS at `258375e0`. |
 | Security/privacy | Supervisor-owned review at `258375e0` | PASS: no live/network/credential path, no production mutation, reserved subject IDs, file/line-only red output, no raw identifier diagnostics. |
-| Originating spec/brief | `sup_terra_test_suite_rationalization_cf24df892_r05b_review_spec` | T1/T2/T3 method passed; its sole finding was this then-absent report, now supplied for final rerun. |
+| Originating spec/brief | `sup_terra_test_suite_rationalization_cf24df892_r05b_review_spec` | T1/T2/T3 method passed. The first report rerun found only trailing whitespace and prospective cleanliness wording in this file; both were corrected before the final range check. |
 
 Review fixes landed as separate logical commits; every reviewer was read-only and received no extra
 worktree. No open correctness, silent-failure, performance, test, docs, security, or standards
@@ -118,6 +118,8 @@ is `8ed17a8ba219dc5f3aa10b16a9e8078502bc5fbe` and its board blob is
 `df93ac32d203920227b9b99108e363610d619560`; the coordinator's active R5b row records this exact task,
 worktree, branch, and base. The board changed under its sole owner as expected; R5b did not edit it.
 
-The final branch/worktree cleanliness proof is appended after this report commit and the spec
-rerun; no node_modules borrow, temporary production mutation, untracked evidence, or staged file is
-left at handoff.
+The post-report correction checks used the exact base-to-candidate range. `git diff --check` passed;
+the paired scenario instructions compared byte-identically; and the temporary ignored
+`node_modules` dependency link was removed. After the correction commit, the supervisor repeats the
+range check and requires `git status --short` to emit nothing before handoff. No temporary
+production mutation, untracked evidence, or staged file remains part of the reviewed result.
