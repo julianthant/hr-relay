@@ -44,6 +44,24 @@ function signalSeamFake(): SignalSeamFake {
   };
 }
 
+/**
+ * The real-`process` signal tests observe exact listener counts, so a handler
+ * the runner itself registered would make those counts unreadable. Fail loud
+ * rather than measure against a moving baseline.
+ */
+function assertNoProcessSignalListeners(): void {
+  assert.equal(
+    process.listenerCount("SIGINT"),
+    0,
+    "this test observes the dashboard's own SIGINT registration; the test process must hold none of its own",
+  );
+  assert.equal(
+    process.listenerCount("SIGTERM"),
+    0,
+    "this test observes the dashboard's own SIGTERM registration; the test process must hold none of its own",
+  );
+}
+
 describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
   it("binds the exact rebuild-only resources", () => {
     assert.deepEqual(rebuildRuntimeIsolation, {
@@ -256,6 +274,122 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     signals.emit("SIGTERM");
     await assert.rejects(lifecycle, /graceful-drain authority backup failed/);
     assert.equal(signals.counts.disposals, 1, "a failed stop still removes its signal listeners");
+  });
+
+  /**
+   * The PRODUCTION signal seam, exercised with no injected `signals`. An
+   * injected fake proves the branch's ordering but cannot see which `process`
+   * registration `processShutdownSignals` actually makes: with
+   * `process.once`, the first signal removes its own listener, and a signal
+   * with ZERO listeners falls back to Node's default disposition — so a second
+   * Ctrl+C during a long drain kills the process mid-`stop()`, abandoning the
+   * authority handle and leaving the lock at `releasedAt: null`.
+   *
+   * Both tests assert a clean listener baseline first, and both clear the
+   * signal listeners in `finally`, so a failing assertion cannot leak a handler
+   * into another test in this process.
+   */
+  it("keeps the real SIGINT listener subscribed across the drain and absorbs a second Ctrl+C", async () => {
+    assertNoProcessSignalListeners();
+    let stops = 0;
+    let finishStop: (() => void) | undefined;
+    const stopFinished = new Promise<void>((resolve) => {
+      finishStop = resolve;
+    });
+    let lifecycleSettled = false;
+    try {
+      const lifecycle = startRebuildRuntime({
+        isolation: rebuildRuntimeIsolation,
+        args: ["dashboard"],
+        write: () => undefined,
+        dashboard: (isolation) => Promise.resolve({
+          port: isolation.backendPort,
+          stop: () => {
+            stops += 1;
+            return stopFinished;
+          },
+        }),
+      });
+      const observed = lifecycle.then(() => {
+        lifecycleSettled = true;
+      });
+      await settleEventLoop();
+      assert.equal(process.listenerCount("SIGINT"), 1, "the running dashboard owns exactly one SIGINT listener");
+      assert.equal(process.listenerCount("SIGTERM"), 1, "the running dashboard owns exactly one SIGTERM listener");
+
+      process.emit("SIGINT");
+      await settleEventLoop();
+      assert.equal(stops, 1);
+      assert.equal(lifecycleSettled, false, "the lifecycle must stay pending until stop() settles");
+      assert.equal(
+        process.listenerCount("SIGINT"),
+        1,
+        "SIGINT must stay subscribed across the drain; zero listeners restores Node's default terminate mid-stop()",
+      );
+
+      process.emit("SIGINT");
+      await settleEventLoop();
+      assert.equal(stops, 1, "the second Ctrl+C is absorbed by the still-subscribed listener, never a second stop");
+      assert.equal(lifecycleSettled, false);
+
+      assert.ok(finishStop);
+      finishStop();
+      await observed;
+      assert.equal(stops, 1);
+      assert.equal(process.listenerCount("SIGINT"), 0, "the disposer removes both listeners once the stop settled");
+      assert.equal(process.listenerCount("SIGTERM"), 0);
+    } finally {
+      process.removeAllListeners("SIGINT");
+      process.removeAllListeners("SIGTERM");
+    }
+  });
+
+  it("keeps the real SIGTERM listener subscribed across the drain and disposes both afterwards", async () => {
+    assertNoProcessSignalListeners();
+    let stops = 0;
+    let finishStop: (() => void) | undefined;
+    const stopFinished = new Promise<void>((resolve) => {
+      finishStop = resolve;
+    });
+    let lifecycleSettled = false;
+    try {
+      const lifecycle = startRebuildRuntime({
+        isolation: rebuildRuntimeIsolation,
+        args: ["dashboard"],
+        write: () => undefined,
+        dashboard: (isolation) => Promise.resolve({
+          port: isolation.backendPort,
+          stop: () => {
+            stops += 1;
+            return stopFinished;
+          },
+        }),
+      });
+      const observed = lifecycle.then(() => {
+        lifecycleSettled = true;
+      });
+      await settleEventLoop();
+
+      process.emit("SIGTERM");
+      await settleEventLoop();
+      assert.equal(stops, 1, "a supervisor's SIGTERM stops the composed runtime exactly like Ctrl+C");
+      assert.equal(lifecycleSettled, false);
+      assert.equal(
+        process.listenerCount("SIGTERM"),
+        1,
+        "SIGTERM must stay subscribed across the drain; zero listeners restores Node's default terminate mid-stop()",
+      );
+
+      assert.ok(finishStop);
+      finishStop();
+      await observed;
+      assert.equal(lifecycleSettled, true);
+      assert.equal(process.listenerCount("SIGINT"), 0);
+      assert.equal(process.listenerCount("SIGTERM"), 0);
+    } finally {
+      process.removeAllListeners("SIGINT");
+      process.removeAllListeners("SIGTERM");
+    }
   });
 
   it("falls back to the real process argv and stdout writer the entrypoint relies on", async () => {

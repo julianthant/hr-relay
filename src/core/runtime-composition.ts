@@ -212,9 +212,16 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
 
 /**
  * The production shutdown seam: `SIGINT` (Ctrl+C) and `SIGTERM` (a supervisor
- * stopping the process). `once` per signal, and the disposer removes BOTH, so
- * a returning `startRebuildRuntime` leaves no listener behind for the next
- * command or the next test in the same process.
+ * stopping the process).
+ *
+ * `on`, never `once`: a `once` listener removes itself the moment it fires, and
+ * a signal with ZERO listeners falls back to Node's default disposition — so a
+ * second Ctrl+C during the drain would terminate the process mid-`stop()`,
+ * abandoning the authority handle and leaving the process lock at
+ * `releasedAt: null`. Both listeners therefore stay subscribed until the stop
+ * settles, and the disposer removes BOTH, so a returning `startRebuildRuntime`
+ * leaves no listener behind for the next command or the next test in the same
+ * process.
  */
 function processShutdownSignals(): RuntimeShutdownSignals {
   return {
@@ -225,8 +232,8 @@ function processShutdownSignals(): RuntimeShutdownSignals {
       const onTerminate = (): void => {
         handler("SIGTERM");
       };
-      process.once("SIGINT", onInterrupt);
-      process.once("SIGTERM", onTerminate);
+      process.on("SIGINT", onInterrupt);
+      process.on("SIGTERM", onTerminate);
       return (): void => {
         process.removeListener("SIGINT", onInterrupt);
         process.removeListener("SIGTERM", onTerminate);
