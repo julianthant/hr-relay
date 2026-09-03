@@ -16,6 +16,7 @@ import {
   FINALIZATION_PERSON_FACTS_DERIVED_REASON,
   SeparationsKualiFinalizationTestTargetResolutionSchema,
   FINALIZATION_WORKFLOW,
+  PERSON_LOOKUP_WORKFLOW,
   readTestTargetRegistry,
   resolveSeparationsKualiFinalizationTestTarget,
   resolveSeparationsTestTarget,
@@ -100,7 +101,9 @@ const RECEIPT_NODE_OBLIGATION_PREFIX = "node.";
 /** Every node id a manifest case names, in one flat list. */
 function nodeIdsNamedBy(manifest: DryRunScenarioManifest): readonly string[] {
   return [
-    manifest.transactionNode,
+    // D318 — only the preview arm names a transaction node; a live-read
+    // manifest has none by construction.
+    ...(manifest.arm === "dry-run-preview" ? [manifest.transactionNode] : []),
     ...manifest.cases.flatMap((scenarioCase) => [
       ...scenarioCase.nodesReached,
       ...scenarioCase.nodesExcluded,
@@ -108,7 +111,9 @@ function nodeIdsNamedBy(manifest: DryRunScenarioManifest): readonly string[] {
       ...scenarioCase.gateResults.map(({ gate }) => gate),
       ...(scenarioCase.terminal.lifecycle === "failed"
         ? [scenarioCase.terminal.node]
-        : [scenarioCase.terminal.stoppedAtNodeId]),
+        : "stoppedAtNodeId" in scenarioCase.terminal
+          ? [scenarioCase.terminal.stoppedAtNodeId]
+          : []),
       // A receipt obligation `node.<id>` names the same graph node — its
       // verification is a `node-output` obligation source (ref evidence
       // obligations), not a free-text label — so it names a real node
@@ -171,7 +176,14 @@ const DOCUMENT_NUMBER_REFERENCE = {
  * assertion goes red and the growth becomes a visible, deliberate change here.
  */
 const ARM_WORKFLOW_KEYS = Object.keys(TestTargetWorkflowArmsSchema.shape) as readonly (keyof typeof TestTargetWorkflowArmsSchema.shape)[];
-assert.deepEqual([...ARM_WORKFLOW_KEYS].sort(), [FINALIZATION_WORKFLOW, SEPARATIONS_WORKFLOW].sort());
+assert.deepEqual([...ARM_WORKFLOW_KEYS].sort(), [FINALIZATION_WORKFLOW, PERSON_LOOKUP_WORKFLOW, SEPARATIONS_WORKFLOW].sort());
+
+/** D318 — the second committed subject: the person-lookup live-read canary, ONE EID selected in ignored `.env`. */
+const PERSON_LOOKUP_SUBJECT_LABEL = "person-lookup-canary";
+const EID_REFERENCE = {
+  name: "personLookupCanaryEid",
+  env: "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
+} as const;
 
 /**
  * Every `(workflow, kind)` arm a registry entry declares, in the schema's own
@@ -269,10 +281,14 @@ describe("test target registry architecture", () => {
     }
   });
 
-  it("commits exactly one subject, addressable by both workflows on the same Kuali document", () => {
+  it("commits exactly two subjects: the Kuali document addressable by both separations workflows, and the person-lookup live-read canary", () => {
     // D284: one label, one availability, one document — an arm per workflow,
-    // never a second entry and never an alias.
-    assert.deepEqual(TEST_TARGET_REGISTRY.targets.map(({ label }) => label), [SOLE_SUBJECT_LABEL]);
+    // never a second entry and never an alias. D318 adds the ONE other subject
+    // kind the tree has: a person, for the transaction-free live-read arm.
+    assert.deepEqual(TEST_TARGET_REGISTRY.targets.map(({ label }) => label), [SOLE_SUBJECT_LABEL, PERSON_LOOKUP_SUBJECT_LABEL]);
+    const person = TEST_TARGET_REGISTRY.targets.find(({ label }) => label === PERSON_LOOKUP_SUBJECT_LABEL);
+    assert.deepEqual(person === undefined ? undefined : armsDeclaredBy(person), [{ workflow: PERSON_LOOKUP_WORKFLOW, kind: "search-by-eid" }]);
+    assert.deepEqual(person?.workflows[PERSON_LOOKUP_WORKFLOW]?.publicInput.subject, { state: "configured", reference: EID_REFERENCE });
     const [subject] = TEST_TARGET_REGISTRY.targets;
     if (subject === undefined) throw new Error("the committed registry holds no subject");
     assert.deepEqual(armsDeclaredBy(subject), [
@@ -382,8 +398,10 @@ describe("test target registry architecture", () => {
     // The retired person block may not come back under any spelling: the
     // finalization arm is an observation record and carries no secret input.
     assert.equal(Object.hasOwn(subject?.workflows[FINALIZATION_WORKFLOW] ?? {}, "secretInput"), false);
-    // ONE registered test-target secret, and it is a document number — not a
-    // person value with a document-shaped name.
+    // Exactly TWO registered test-target secrets: the separations canary's
+    // document number (D300) and the person-lookup live-read canary's EID
+    // (D318) — each a closed reference to one workflow's own ingress value,
+    // never a person value with a document-shaped name or the reverse.
     assert.deepEqual(
       TEST_TARGET_SECRET_SPECS.map(({ name, env, valueKind, classification }) => ({
         name,
@@ -396,6 +414,12 @@ describe("test target registry architecture", () => {
           name: DOCUMENT_NUMBER_REFERENCE.name,
           env: DOCUMENT_NUMBER_REFERENCE.env,
           valueKind: "kuali-document-number",
+          classification: "direct-identifier",
+        },
+        {
+          name: EID_REFERENCE.name,
+          env: EID_REFERENCE.env,
+          valueKind: "ucpath-eid",
           classification: "direct-identifier",
         },
       ],

@@ -6,12 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
-import { createCommandKernel } from "../../src/core/command-kernel.js";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
-import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../src/domain/config/settings.js";
-import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
-import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
-import { readJournaledSettings } from "../../src/server/settings-runtime.js";
+import { selectedSettingsFixture as sharedSettingsFixture, startEffects } from "./fixtures/dry-run-admission-fixtures.js";
 import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summary.js";
 import { parseDryRunScenarioManifest } from "../../src/domain/trust/dry-run-scenario.js";
 import { WorkflowIdSchema } from "../../src/domain/ids.js";
@@ -41,79 +36,12 @@ import {
 import { sessionFactoryHarness } from "./fixtures/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
 import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
-import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 
 function selectedSettingsFixture(root: string, clock: TestClock, env: NodeJS.ProcessEnv = {}) {
-  const path = join(root, rebuildRuntimeIsolation.stateRoot, "state.db");
-  const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "dry-run-admission-test" }, clock);
-  databases.push(database);
-  const file = createSettingsFileAuthority({
-    path: join(root, "config", "settings.json"),
-    validateCandidate: (settings) => { resolveConfigWithProvenance(env, settings, clock); },
-  });
-  const ids = sequentialIdFactory("b");
-  const unused = (): never => { throw new Error("Settings setup reached an unrelated kernel arm"); };
-  const kernel = createCommandKernel({
-    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
-    clock, ids, appVersion: "0.1.0",
-    configIdentity: UNSTORED_CONFIG_IDENTITY,
-    descriptors: { resolve: unused },
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
-    intakeParser: UNWIRED_INTAKE_PARSER,
-    intakeProjections: NO_INTAKE_PROJECTIONS,
-    writeResolution: { resolvePresent: unused, resolveAbsent: unused },
-    workerRuntime: { planWorkerCount: unused, spawnWorker: unused, refreshBrowser: unused, reopenBrowser: unused },
-    settings: createSettingsApplicationExecutor(file),
-  });
-  return {
-    database, file, path,
-    apply: (patch: unknown) => {
-      const commandId = ids.uuid();
-      const result = kernel.execute({
-        commandId, requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
-        family: "settings", type: "apply-settings", target: { expectedRevision: file.read().revision },
-        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
-      });
-      assert.equal(result.state, "applied");
-      assert.equal(database.authority.commands.get(commandId)?.family, "settings");
-      assert.equal(database.authority.commandAudits.findByCommand(commandId)?.result.state, "applied");
-      assert.equal(database.authority.settingsCurrent.get()?.commandId, commandId);
-      return database.withAuthorityTransaction((repositories) => readJournaledSettings(file, repositories));
-    },
-    activate: () => database.withAuthorityTransaction((repositories) => {
-      const record = readJournaledSettings(file, repositories);
-      const resolved = resolveConfigWithProvenance(env, record.settings, clock);
-      const configSnapshotId = ids.uuid();
-      // The existing dashboard activation contract, not an alternate runtime writer.
-      const snapshot = repositories.configSnapshots.insert({
-        configSnapshotId, revision: 1, fingerprint: resolved.fingerprint,
-        capturedAt: clock.now().toISOString(), capturedBy: "local-operator",
-        config: resolved.config, provenance: resolved.provenance,
-      });
-      assert.equal(snapshot.state, "inserted");
-      const active = repositories.runtimeConfig.activate({
-        settingsRevision: record.revision, settingsFingerprint: record.settingsFingerprint,
-        configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: clock.now().toISOString(),
-      });
-      return { active, snapshot: repositories.configSnapshots.get(configSnapshotId) };
-    }),
-  };
-}
-
-function startEffects(path: string) {
-  const raw = new DatabaseSync(path, { readOnly: true });
-  try {
-    // These repositories deliberately have no general list API. Compare complete
-    // rows on a read-only test connection, in addition to public exact-id reads.
-    return ["start_plans", "tasks", "run_sessions", "commands", "command_audits", "config_snapshots"]
-      .map((table) => ({ table, rows: raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all() }));
-  } finally {
-    raw.close();
-  }
+  return sharedSettingsFixture(root, clock, env, databases);
 }
 
 function composedSessions(clock: TestClock, displayedEidAfterStage?: string) {
@@ -209,6 +137,7 @@ const NAME_ONLY_FINALIZATION_INPUT = SeparationsKualiFinalizationCanonicalInput.
 const TEST_MANIFEST = parseDryRunScenarioManifest({
   scenarioId: "separations-kuali-finalization/dry-run",
   workflow: "separations-kuali-finalization",
+  arm: "dry-run-preview",
   transactionNode: "finalize-kuali",
   recordedBy: "unit composition fixture",
   cases: [{
@@ -306,6 +235,7 @@ function admissionFixture(env: NodeJS.ProcessEnv = {}) {
 const CHAIN_READY_MANIFEST = parseDryRunScenarioManifest({
   scenarioId: "separations/dry-run",
   workflow: "separations",
+  arm: "dry-run-preview",
   transactionNode: "clear-pending",
   recordedBy: "unit composition fixture",
   cases: [{
@@ -986,7 +916,7 @@ describe("dry-run scenario production composition boundary", () => {
 
     await assert.rejects(
       runtime.start({ manifest: unsupported, scenarioCase, canonicalInput: {} }),
-      /dry-run workflow person-lookup is unsupported: no-transaction-node/,
+      /dry-run-preview manifest person-lookup\/dry-run names workflow person-lookup, whose compiled graph has no transaction node; a transaction-free graph must declare the live-read arm \(D318\) — D209 still refuses dryRun for it \(no-transaction-node\)/,
     );
   });
 });
@@ -996,11 +926,11 @@ describe("dry-run scenario target dispatch", () => {
     assert.throws(
       () => resolveDryRunScenarioTarget(
         TEST_TARGET_REGISTRY,
-        { ...TEST_MANIFEST, workflow: WorkflowIdSchema.parse("person-lookup") },
+        { ...TEST_MANIFEST, workflow: WorkflowIdSchema.parse("i9-lookup") },
         "finalization-canary",
         {},
       ),
-      /dry-run target resolution does not support workflow person-lookup/,
+      /dry-run target resolution does not support workflow i9-lookup/,
     );
   });
 
@@ -1132,7 +1062,7 @@ describe("dry-run scenario manifest registry", () => {
       await assert.rejects(
         async () => loadDryRunScenarioManifest(workflow),
         new RegExp(
-          `unknown dry-run scenario workflow ${workflow}; registered: separations, separations-kuali-finalization`,
+          `unknown dry-run scenario workflow ${workflow}; registered: person-lookup, separations, separations-kuali-finalization`,
         ),
       );
     }

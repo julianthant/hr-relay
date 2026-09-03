@@ -15,6 +15,7 @@ import {
 const MANIFEST = {
   scenarioId: "fixture-workflow/dry-run",
   workflow: "fixture-workflow",
+  arm: "dry-run-preview",
   transactionNode: "write",
   recordedBy: "fixture contract",
   cases: [{
@@ -123,7 +124,7 @@ describe("dry-run scenario manifest boundary", () => {
 
     assert.equal(
       deriveDryRunScenarioManifestDigest(parsed),
-      "0f150541beb3edf4844380b02efc65f85b3c41668fa89cb09ec1204ee1a8d5c6",
+      "0aaccc8fbfc9c0083a8248104d800f74f073ad6d0736e0913a2685e118c7e297",
     );
   });
 
@@ -219,7 +220,7 @@ describe("dry-run scenario execution", () => {
       scenarioId: "fixture-workflow/dry-run",
       workflow: "fixture-workflow",
       subjectLabel: "fixture-canary",
-      manifestDigest: "0f150541beb3edf4844380b02efc65f85b3c41668fa89cb09ec1204ee1a8d5c6",
+      manifestDigest: "0aaccc8fbfc9c0083a8248104d800f74f073ad6d0736e0913a2685e118c7e297",
       verdict: "blocked",
       execution: { state: "not-started", reason: "subject-unavailable" },
       assertions: [{
