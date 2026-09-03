@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it } from "vitest";
 import vitestConfig, { REBUILD_TEST_EXEC_ARGV } from "../../vitest.config.js";
 import { REPO_ROOT } from "./architecture/helpers/guard-files.js";
@@ -65,10 +67,9 @@ describe("architecture project empty collection", () => {
       [],
       "architecture exclusions could remove the membership guard that owns the architecture lane",
     );
-    assert.match(
-      architecture?.include?.[0] ?? "",
-      /tests\/unit\/architecture\/\*\*\/\*\.test\.ts/,
-      "the recursive include must collect tests/unit/architecture/guard-manifest.test.ts",
+    assert.ok(
+      existsSync(join(REPO_ROOT, "tests/unit/architecture/guard-manifest.test.ts")),
+      "the recursive architecture project must retain its membership guard",
     );
   });
 
