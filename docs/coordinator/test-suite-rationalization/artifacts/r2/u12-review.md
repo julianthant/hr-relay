@@ -93,6 +93,8 @@ missing final artifact/report expected at that interim target, and found one tes
 the positive projection case could not disprove hard-coded default values. Commit `f7b9fd95` fixed
 that defect. On the complete target, Standards required the repository-level coverage invocation;
 the uncontended result above resolved that omission, with its sole failure assigned to R3a/u16.
-Spec and Tests re-review passed with no remaining R2-local finding. The final pinned-target axes are
-recorded in the R2 report. Server-projection relocation and the final D317 recipe deletion/rename
-remain R3/R7 and active Phase 3c residue respectively.
+Spec, Correctness, Silent Failures, and Tests re-review passed with no remaining R2-local finding.
+Docs found one incomplete commit inventory in the report; the report-closing change fixes it and
+receives the final Docs re-review. Performance was inapplicable because no hot path/runner changed;
+supervisor-owned Security found no trust-boundary change. Server-projection relocation and the final
+D317 recipe deletion/rename remain R3/R7 and active Phase 3c residue respectively.

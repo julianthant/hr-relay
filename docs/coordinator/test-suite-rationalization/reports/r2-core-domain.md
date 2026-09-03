@@ -74,24 +74,47 @@ R3a/u16; `suite-size.ts` did not run because Vitest correctly returned non-zero 
 
 ## Review
 
-The preliminary independent target was `a638e8c3...b6dedad2`. The test review found one P2 positive-
-oracle weakness, fixed in `f7b9fd95`. The spec review correctly noted that the final u12/report were
-not yet present and requested a more explicit retained-case mapping; u12 now records the exhaustive
-mapping protocol and expanded family totals. On the complete target, Standards required the missing
-coverage invocation; the uncontended run above resolved the omission. Standards, Spec, and Tests
-re-review report no remaining R2-local action.
+The final independent review target was `a638e8c3...26cac2bf`. The preliminary Tests review found one
+P2 positive-oracle weakness, fixed in `f7b9fd95`. The preliminary Spec review requested the missing
+final evidence and a more explicit retained-case mapping; u12 now records the exhaustive mapping
+protocol and expanded family totals. Standards then required the repository-level coverage
+invocation; the uncontended result above resolved that omission. Docs found an incomplete commit
+inventory in this report; the change-provenance section below now separates and lists every
+implementation and pre-review evidence commit.
+
+| Axis | Result |
+| --- | --- |
+| Standards | One P1 missing coverage invocation found and resolved; re-review Count 0 · Worst none |
+| Spec | Interim evidence/completion findings resolved by u12/report plus explicit coordinator disposition; re-review Count 0 · Worst none |
+| Correctness | Count 0 · Worst none |
+| Silent failures | Count 0 · Worst none |
+| Performance | Diff review skipped: no production hot path, runner, fixture topology, timeout, isolation, or parallelism changed |
+| Tests | One P2 hard-coded-default blind spot found and fixed; re-review Count 0 · Worst none |
+| Docs | One medium incomplete commit inventory found and fixed; final re-review follows the report-closing commit |
+| Security | Count 0 · Worst none; supervisor-owned review found no auth, credential, permission, dependency, browser, command-execution, or production authority mutation |
+| Simplify | Skipped: no production code changed; the test addition and truthful-label edits are already the minimum accepted delta |
 
 Performance diff review is inapplicable because R2 changes no production hot path, runner,
 parallelism, fixture topology, or timeout. Security remains supervisor-owned: no auth, credential,
 permission, dependency, browser, command-execution, or authority-writing production behavior changed;
 the new cases exercise existing strict write-outcome parsing with redacted fixture ids only.
 
-## Commits
+## Change provenance
+
+Implementation commits:
 
 - `72883fac` — `test(workflow): pin transaction outcome projection`
 - `6fd3971e` — `test: make core suite labels truthful`
-- `b6dedad2` — `docs(test): record R2 family inventories`
 - `f7b9fd95` — `test(workflow): prove stored outcome preservation`
+
+Evidence commits before the final review record:
+
+- `b6dedad2` — `docs(test): record R2 family inventories`
+- `70d85fd5` — `docs(test): close R2 audit evidence`
+- `26cac2bf` — `docs(test): record R2 coverage disposition`
+
+The final review is pinned through `26cac2bf`; the subsequent report-closing commit records reviewer
+returns only and is intentionally outside the target it describes.
 
 ## Coordinator action
 
