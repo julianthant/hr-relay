@@ -11,6 +11,7 @@ export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
 export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [] as const;
 export const REBUILD_SCENARIO_TEST_INCLUDE = ["tests/scenario/**/*.test.ts"] as const;
 export const REBUILD_TEST_EXEC_ARGV = ["--no-experimental-webstorage"] as const;
+export const REBUILD_TEST_REPORTERS = ["verbose"] as const;
 export const REBUILD_COVERAGE_EXCLUSIONS = [
   {
     pattern: "src/generated/**/*.ts",
@@ -53,6 +54,10 @@ export default defineConfig({
     // Every named project, including architecture, must fail if its include or
     // exclude leaves it empty; an empty lane proves no invariant.
     passWithNoTests: false,
+    // One human stream for every Vitest entry point: project, file, suite and
+    // full behavior/refusal title. Commands do not layer a second reporter on
+    // top, and focused callers may still deliberately override it.
+    reporters: [...REBUILD_TEST_REPORTERS],
     // Node's process-global experimental localStorage is neither browser parity
     // nor isolated test state. Disable it in workers instead of suppressing its
     // warning; browser tests exercise real window.localStorage in Playwright.

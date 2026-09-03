@@ -495,6 +495,15 @@ function cancel(world: World, runId: string): void {
   if (outcome.state !== "applied") throw new Error(`run ${runId} did not cancel: ${outcome.state}`);
 }
 
+function reportWalkPhase(
+  phase: "01-upload" | "02-validate" | "03-fan-out" | "04-settle" | "05-receipt-refusal"
+    | "06-notification" | "07-blocked-bump" | "08-archive-freeze" | "09-archive-render"
+    | "10-relaunch",
+  state: "begin" | "complete",
+): void {
+  process.stdout.write(`[scenario:operator-lifecycle] ${phase}:${state}\n`);
+}
+
 /* ── the walk ────────────────────────────────────────────────────────────── */
 
 describe("the operator lifecycle, across slices", () => {
@@ -503,6 +512,7 @@ describe("the operator lifecycle, across slices", () => {
     const { database } = world;
 
     /* ① the route creates the session from real bytes ---------------------- */
+    reportWalkPhase("01-upload", "begin");
     const upload = await world.intake.upload({
       workflow: INTAKE_FIXTURE_WORKFLOW_ID,
       mediaType: "text/csv; charset=utf-8",
@@ -514,8 +524,10 @@ describe("the operator lifecycle, across slices", () => {
     const sourceSha256 = String(upload.session.artifact.sha256);
     assert.equal(upload.session.state, "mapping");
     assert.equal(upload.session.rowCount, 3);
+    reportWalkPhase("01-upload", "complete");
 
     /* ② mapping → validated, through the real command kernel --------------- */
+    reportWalkPhase("02-validate", "begin");
     const layout = String(upload.session.headerFingerprint);
     const column = (header: string): string => {
       const found = upload.session.columns.find((entry) => entry.header === header);
@@ -541,8 +553,10 @@ describe("the operator lifecycle, across slices", () => {
     }
     assert.equal((await send(world, sessionId, "validate-intake")).state, "applied");
     assert.equal(database.authority.intakeSessions.get(sessionId)?.state, "validated");
+    reportWalkPhase("02-validate", "complete");
 
     /* ③ the fan-out, and the JOIN the manifest makes ------------------------ */
+    reportWalkPhase("03-fan-out", "begin");
     assert.equal((await send(world, sessionId, "enqueue-intake-manifest", { dryRun: false })).state, "applied");
     const manifestId = String(database.authority.intakeSessions.get(sessionId)?.intakeManifestId);
     const manifest = database.authority.intakeManifests.get(manifestId);
@@ -564,14 +578,18 @@ describe("the operator lifecycle, across slices", () => {
       mintedByItem.set(String(row.itemId), String(runs[0].envelope.runId));
     }
     const mintedRunIds = [...mintedByItem.values()];
+    reportWalkPhase("03-fan-out", "complete");
 
     /* ④ one run settles `done` through the real terminal composite ---------- */
+    reportWalkPhase("04-settle", "begin");
     const settledRunId = settleOneQueuedRunDone(world, INTAKE_V1);
     assert.ok(mintedRunIds.includes(settledRunId), "the settled run is one the manifest minted");
     assert.equal(database.authority.runs.get(settledRunId)?.lifecycle.state, "terminal");
     assert.notEqual(database.authority.runResults.get(settledRunId), undefined);
+    reportWalkPhase("04-settle", "complete");
 
     /* ⑤ the receipt REFUSES, by name, and settlement minted none ------------ */
+    reportWalkPhase("05-receipt-refusal", "begin");
     assert.equal(
       database.authority.evidenceReceipts.findByRun(settledRunId),
       undefined,
@@ -587,8 +605,10 @@ describe("the operator lifecycle, across slices", () => {
       undefined,
       "a refused derivation writes nothing",
     );
+    reportWalkPhase("05-receipt-refusal", "complete");
 
     /* ⑥ the notification is durable, and nothing produced it automatically -- */
+    reportWalkPhase("06-notification", "begin");
     assert.deepEqual(
       database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID),
       [],
@@ -610,8 +630,10 @@ describe("the operator lifecycle, across slices", () => {
       [{ kind: "run", runId: settledRunId }],
       "the inbox row links the run the manifest minted",
     );
+    reportWalkPhase("06-notification", "complete");
 
     /* ⑦ the un-run row BLOCKS the bump ------------------------------------- */
+    reportWalkPhase("07-blocked-bump", "begin");
     const blockedRunId = mintedRunIds.find((runId) => runId !== settledRunId);
     if (blockedRunId === undefined) throw new Error("the fan-out minted only one run");
     world.registry = [INTAKE_V2];
@@ -636,8 +658,10 @@ describe("the operator lifecycle, across slices", () => {
     assert.equal(refusedApply.state, "rejected");
     assert.equal(refusedApply.state === "rejected" ? refusedApply.code : "", "active-version-blockers");
     assert.equal(database.authority.archivedRuns.list().length, 0, "a refused bump archives nothing");
+    reportWalkPhase("07-blocked-bump", "complete");
 
     /* ⑧ the archive freezes the LAST LIVE projection, byte for byte --------- */
+    reportWalkPhase("08-archive-freeze", "begin");
     cancel(world, blockedRunId);
     const reviewed = versionCommand(world, "plan-version-bump", {
       scope: { kind: "workflows", workflowIds: [INTAKE_FIXTURE_WORKFLOW_ID] },
@@ -676,8 +700,10 @@ describe("the operator lifecycle, across slices", () => {
       /settled without a derived evidence receipt/,
     );
     assert.deepEqual([...archived.evidence.checkpointNodeIds], ["probe"]);
+    reportWalkPhase("08-archive-freeze", "complete");
 
     /* ⑨ the archived record renders with no live descriptor at all ---------- */
+    reportWalkPhase("09-archive-render", "begin");
     const emptyRegistryDeps = archiveQueryDeps({
       database,
       clock: world.clock,
@@ -705,8 +731,10 @@ describe("the operator lifecycle, across slices", () => {
       [...mintedRunIds].sort(),
       "the archive index lists exactly the runs the fan-out minted",
     );
+    reportWalkPhase("09-archive-render", "complete");
 
     /* ⑩ relaunch: the same ITEM, and nothing else ---------------------------- */
+    reportWalkPhase("10-relaunch", "begin");
     const relaunched = versionCommand(world, "relaunch-archived-run", {
       archivedRunId: settledRunId,
       archiveFingerprint: archived.contentDigest,
@@ -749,6 +777,7 @@ describe("the operator lifecycle, across slices", () => {
     const reread = database.authority.intakeManifests.get(manifestId);
     assert.equal(reread?.validRows.length, 2);
     assert.deepEqual(database.authority.archivedRuns.get(settledRunId), archived, "the archived run is untouched");
+    reportWalkPhase("10-relaunch", "complete");
   });
 
   it("freezes into an archive the exact receipt the receipt service derived from authority", () => {
