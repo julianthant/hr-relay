@@ -358,6 +358,46 @@ describe("dashboard day subscription — stream failure classification", () => {
     h.close();
   });
 
+  it("resumes and absorbs the REPLAYED envelope for free — the whole point of the cursor guard", async () => {
+    // The motivating case, end to end. The held state came from a REMOVAL, so
+    // its replay is the envelope `applyDashboardDayPatch` refuses by name: a
+    // run the day no longer holds. If anything let it through — the guard, or a
+    // hello that cleared cursor authority on a SAME-generation handshake — the
+    // protocol failure would resnapshot, and a correct resume would cost a full
+    // day payload every single time.
+    const h = subscribe();
+    h.streams[0].push(hello("pc:1"));
+    h.streams[0].push(snapshotEnvelope("pc:1", [surfaceOf(1)]));
+    h.streams[0].push(removePatch("pc:2", 2));
+    assert.equal(h.days.length, 2);
+    assert.equal(h.days[1].queueSurfaces.length, 0);
+
+    h.streams[0].eof();
+    await tick();
+    assert.deepEqual(h.scheduled, [1000]);
+    h.runScheduled();
+    assert.equal(h.streams.length, 2);
+    assert.equal(h.streams[1].lastEventId, "pc:2");
+    assert.equal(h.streams[1].lastProjectionGeneration, 7);
+
+    // The resumed stream's handshake, at the held cursor and the SAME
+    // generation, then the replay of the removal it resumed from.
+    h.streams[1].push(hello("pc:2"));
+    h.streams[1].push(removePatch("pc:2", 2));
+    assert.equal(h.days.length, 2);
+    assert.equal(h.streams.length, 2);
+    assert.deepEqual(h.scheduled, [1000]);
+    assert.deepEqual(h.states.at(-1), { state: "reconnecting" });
+
+    // And the stream is live: the NEXT cursor still applies. (A snapshot, not
+    // a replace patch — the run this day held was REMOVED, so a replace naming
+    // it is the protocol failure the removal case above is about.)
+    h.streams[1].push(snapshotEnvelope("pc:3", [surfaceOf(3)]));
+    assert.equal(h.days.length, 3);
+    assert.equal(h.days[2].queueSurfaces[0].rowRevision, 3);
+    h.close();
+  });
+
   it("reconnects when the stream fails with the transport's NETWORK error", async () => {
     const h = liveAtCursorTwo();
     h.streams[0].fail(new DashboardClientError({
