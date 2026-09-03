@@ -62,10 +62,17 @@
  *       `tests/scenario/workflows/<id>/dry-run.scenario.ts`, and at most one
  *       `docs/migrations/<id>.md`. Any other repository-visible file under
  *       `src/workflows/`, `tests/scenario/` or `docs/migrations/` ATTRIBUTED to
- *       a registered workflow is refused by path. Attribution takes the LONGEST
- *       matching id — `separations` is a prefix of five harness ids, so
+ *       a registered workflow is refused by path. Attribution has two rules,
+ *       because a harness id is never a path segment (D265 rule 3): UNDER
+ *       `src/workflows/` a file belongs to the registered FOLDER it sits in
+ *       (`workflowSourceFolder`, longest folder prefix), so
+ *       `separations/identity-check/module.ts` is the harness's budget and not
+ *       the composition's; everywhere else a whole directory segment or the
+ *       basename stem that equals a registered id, or begins with one followed
+ *       by `-`, `_` or `.`, attributes to the LONGEST such id — so
  *       `tests/scenario/separations-kuali-read.scenario.test.ts` belongs to the
- *       harness and is never counted against the composition. Two closed
+ *       harness, and `separations-extra/` and `separations_extra.md` stay
+ *       `separations`'s budget instead of escaping it. Two closed
  *       exemptions, each citing its authority, and one closed pre-canonical
  *       structural-scenario allowlist; both are staleness-checked the same way.
  *
@@ -89,7 +96,7 @@ import ts from "typescript";
 import { describe, it } from "vitest";
 
 import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
-import { workflowSourcePath } from "../../../src/domain/workflow/source-layout.js";
+import { workflowSourceFolder, workflowSourcePath } from "../../../src/domain/workflow/source-layout.js";
 import { gitVisibleFilesIn, REPO_ROOT } from "./helpers/guard-files.js";
 
 // ---------------------------------------------------------------------------
@@ -146,6 +153,13 @@ const COMPARISON_OPERATORS: ReadonlySet<ts.SyntaxKind> = new Set([
 /** A reason is only a citation when it names the authority it rests on. */
 const CITATION = /D\d{2,4}|§\d/;
 
+/**
+ * Arm (d): the characters that end a registered id inside a longer directory
+ * segment or basename stem. `separations-extra/` and `separations_extra.md`
+ * are the composition's budget, not a way out of it.
+ */
+const ID_SEPARATORS = ["-", "_", "."] as const;
+
 // ---------------------------------------------------------------------------
 // Inputs
 // ---------------------------------------------------------------------------
@@ -159,6 +173,8 @@ export interface WorkflowAuthoringBudgetTree {
 
 export interface RegisteredWorkflowSource {
   readonly id: string;
+  /** From `workflowSourceFolder` — the ONE folder-from-role derivation (D265 arm d). */
+  readonly sourceFolder: string;
   /** From `workflowSourcePath` — the ONE path-from-role derivation (D265 arm d). */
   readonly sourcePath: string;
 }
@@ -265,6 +281,16 @@ function moduleSpecifierOf(node: ts.Node): string | undefined {
   return undefined;
 }
 
+/**
+ * Arm (c)'s `(file, workflow id)` key. The separator is written as the
+ * `\u001f` ESCAPE and never as a raw control byte: a source file carrying a
+ * literal NUL is "binary" to `grep -r`, to `git diff` and to a reviewer's
+ * editor, which is a poor place to hide an authority key's construction.
+ */
+function pairKey(file: string, workflowId: string): string {
+  return `${file}\u001f${workflowId}`;
+}
+
 function isSeamFile(path: string): boolean {
   return SEAM_FILES.some((seam) => seam === path) || SEAM_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
@@ -293,19 +319,46 @@ function literalContext(literal: ts.StringLiteralLike): string {
 }
 
 /**
- * Arm (d) attribution: the LONGEST registered id this path names, as a whole
- * directory segment or as its basename stem (`<id>` or `<id>-…`). Longest wins
- * because `separations` is a prefix of every harness id, and a harness's files
- * are the harness's budget, never the composition's.
+ * Arm (d) attribution, in two rules, because a path under `src/workflows/`
+ * does not carry its owner's id at all.
+ *
+ *   - UNDER `src/workflows/`: the owner is the registered FOLDER the file sits
+ *     in, taken from `workflowSourceFolder` — the ONE folder-from-role
+ *     derivation (D265 arm d), never rebuilt here by interpolation. The
+ *     LONGEST folder prefix wins, so `separations/identity-check/module.ts` is
+ *     the harness's budget and not the composition's, even though the
+ *     composition's folder contains it. D265 rule 3 puts a harness INSIDE the
+ *     step it proves and leaves its id out of the path entirely, so the name
+ *     rule below would charge every harness file to `separations`.
+ *   - EVERYWHERE ELSE: a whole directory segment, or the basename stem, that
+ *     equals a registered id or begins with one followed by `-`, `_` or `.`.
+ *     The LONGEST such id wins — `separations` is a prefix of five harness ids,
+ *     so `tests/scenario/separations-kuali-read.scenario.test.ts` belongs to
+ *     the harness, while `tests/scenario/separations-extra/foo.ts` and
+ *     `docs/migrations/separations_extra.md` belong to `separations` instead of
+ *     leaving the budget by suffixing an unregistered word.
  */
-export function attributeWorkflowArtifact(file: string, ids: readonly string[]): string | undefined {
+export function attributeWorkflowArtifact(
+  file: string,
+  workflows: readonly RegisteredWorkflowSource[],
+): string | undefined {
+  if (file.startsWith(WORKFLOWS_ROOT)) {
+    let owner: RegisteredWorkflowSource | undefined;
+    for (const workflow of workflows) {
+      if (!file.startsWith(`${workflow.sourceFolder}/`)) continue;
+      if (owner === undefined || workflow.sourceFolder.length > owner.sourceFolder.length) owner = workflow;
+    }
+    return owner?.id;
+  }
   const segments = file.split("/");
   const basename = segments[segments.length - 1] ?? "";
   const stem = basename.split(".")[0] ?? "";
-  const parents = segments.slice(0, -1);
+  const names = [...segments.slice(0, -1), stem];
+  const namesId = (id: string): boolean =>
+    names.some((name) => name === id || ID_SEPARATORS.some((separator) => name.startsWith(`${id}${separator}`)));
   let best: string | undefined;
-  for (const id of ids) {
-    if (!parents.includes(id) && stem !== id && !stem.startsWith(`${id}-`)) continue;
+  for (const { id } of workflows) {
+    if (!namesId(id)) continue;
     if (best === undefined || id.length > best.length) best = id;
   }
   return best;
@@ -390,7 +443,9 @@ export function auditWorkflowAuthoringBudget(
   }
 
   // ---- arm (c): no generic surface branches on a workflow id (D316) --------
-  const allowedPairs = new Set(inputs.genericIdAllowlist.map(({ file, workflowId }) => `${file} ${workflowId}`));
+  const allowedPairs = new Set(
+    inputs.genericIdAllowlist.map(({ file, workflowId }) => pairKey(file, workflowId)),
+  );
   const usedPairs = new Set<string>();
   for (const [path, text] of inputs.tree.sources) {
     if (!GENERIC_ROOTS.some((prefix) => path.startsWith(prefix))) continue;
@@ -399,7 +454,7 @@ export function auditWorkflowAuthoringBudget(
     const source = sourceOf(path, text);
     eachNode(source, (node) => {
       if (!ts.isStringLiteralLike(node) || !ids.includes(node.text)) return;
-      const pair = `${path} ${node.text}`;
+      const pair = pairKey(path, node.text);
       if (allowedPairs.has(pair)) {
         usedPairs.add(pair);
         return;
@@ -418,7 +473,7 @@ export function auditWorkflowAuthoringBudget(
         + "comments name",
       );
     }
-    if (!usedPairs.has(`${entry.file} ${entry.workflowId}`)) {
+    if (!usedPairs.has(pairKey(entry.file, entry.workflowId))) {
       violations.push(
         `${entry.file} / "${entry.workflowId}": stale D316 allowlist entry — the scan found no such workflow-id `
         + "literal there; remove the entry with the branch",
@@ -465,12 +520,18 @@ export function auditWorkflowAuthoringBudget(
     if (allowedArtifacts.has(file)) continue;
     if (inputs.artifactExemptions.some((entry) =>
       entry.path.endsWith("/") ? file.startsWith(entry.path) : file === entry.path)) continue;
-    const owner = attributeWorkflowArtifact(file, ids);
+    const owner = attributeWorkflowArtifact(file, inputs.workflows);
     if (owner === undefined) continue;
-    const sourcePath = inputs.workflows.find(({ id }) => id === owner)?.sourcePath ?? "its workflow.ts";
+    const workflow = inputs.workflows.find(({ id }) => id === owner);
+    if (workflow === undefined) {
+      // Attribution answers only with an id it was given, so this cannot
+      // happen — and if it ever does, the refusal must not quietly print a
+      // plausible `its workflow.ts` in place of the budget it failed to find.
+      throw new Error(`attributeWorkflowArtifact attributed ${file} to unregistered workflow "${owner}"`);
+    }
     violations.push(
-      `${file} is a fifth authored artifact for workflow ${owner}; D312 §1.6.1's budget is exactly ${sourcePath}, `
-      + `tests/scenario/workflows/${owner}/structural.scenario.test.ts, `
+      `${file} is a fifth authored artifact for workflow ${owner}; D312 §1.6.1's budget is exactly `
+      + `${workflow.sourcePath}, tests/scenario/workflows/${owner}/structural.scenario.test.ts, `
       + `tests/scenario/workflows/${owner}/dry-run.scenario.ts and docs/migrations/${owner}.md`,
     );
   }
@@ -560,10 +621,14 @@ const ARTIFACT_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [
 ] as const;
 
 function registeredWorkflowSources(): readonly RegisteredWorkflowSource[] {
-  return WORKFLOW_MODULES.map((module) => ({
-    id: String(module.descriptor.id),
-    sourcePath: workflowSourcePath(String(module.descriptor.id), module.role),
-  }));
+  return WORKFLOW_MODULES.map((module) => {
+    const id = String(module.descriptor.id);
+    return {
+      id,
+      sourceFolder: workflowSourceFolder(id, module.role),
+      sourcePath: workflowSourcePath(id, module.role),
+    };
+  });
 }
 
 function repositoryInputs(tree: WorkflowAuthoringBudgetTree): WorkflowAuthoringBudgetInputs {
@@ -582,9 +647,13 @@ function repositoryInputs(tree: WorkflowAuthoringBudgetTree): WorkflowAuthoringB
 // ---------------------------------------------------------------------------
 
 const CLEAN_WORKFLOWS: readonly RegisteredWorkflowSource[] = [
-  { id: "solo", sourcePath: "src/workflows/solo/workflow.ts" },
-  { id: "combo", sourcePath: "src/workflows/combo/workflow.ts" },
-  { id: "combo-harness", sourcePath: "src/workflows/combo/step-one/workflow.ts" },
+  { id: "solo", sourceFolder: "src/workflows/solo", sourcePath: "src/workflows/solo/workflow.ts" },
+  { id: "combo", sourceFolder: "src/workflows/combo", sourcePath: "src/workflows/combo/workflow.ts" },
+  {
+    id: "combo-harness",
+    sourceFolder: "src/workflows/combo/step-one",
+    sourcePath: "src/workflows/combo/step-one/workflow.ts",
+  },
 ] as const;
 
 function fixtureWorkflowFile(id: string, extra = ""): string {
@@ -646,13 +715,17 @@ const CLEAN_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [
   { path: "tests/scenario/dashboard/combo/", reason: "ref guards-and-tests §10.12 — a T2/T3 dashboard proof." },
 ] as const;
 
-interface BudgetFixture {
-  readonly name: string;
-  readonly arm: "a" | "b" | "c" | "d";
+/** One miniature repository plus the three allowlists it is judged under. */
+interface BudgetFixtureTree {
   readonly files: Record<string, string>;
   readonly genericIdAllowlist?: readonly GenericWorkflowIdAllowlistEntry[];
   readonly preCanonicalScenarios?: readonly PreCanonicalScenarioEntry[];
   readonly artifactExemptions?: readonly ArtifactExemptionEntry[];
+}
+
+interface BudgetFixture extends BudgetFixtureTree {
+  readonly name: string;
+  readonly arm: "a" | "b" | "c" | "d";
   readonly expected: RegExp;
 }
 
@@ -661,6 +734,20 @@ function withFiles(mutate: (files: Record<string, string>) => void): Record<stri
   mutate(files);
   return files;
 }
+
+/**
+ * Arm (c)'s allowlist is keyed by the PAIR. One reviewed entry, held constant
+ * across three trees, is what separates that from a file-keyed or an id-keyed
+ * check: the same entry must admit `(compose.ts, "solo")`, refuse `"combo"` in
+ * that same file, and refuse `"solo"` in a different file.
+ */
+const PAIR_EXACT_ENTRY: GenericWorkflowIdAllowlistEntry = {
+  file: "src/server/dashboard/compose.ts",
+  workflowId: "solo",
+  reason: "D316 — the one reviewed pair these three fixtures hold constant.",
+};
+const SOLO_BRANCH = "export const isSolo = (id) => id === \"solo\";\n";
+const COMBO_BRANCH = "export const isCombo = (id) => id === \"combo\";\n";
 
 const FIXTURES: readonly BudgetFixture[] = [
   {
@@ -714,6 +801,19 @@ const FIXTURES: readonly BudgetFixture[] = [
     expected: /src\/workflows\/solo\/workflow\.ts:1 imports "\.\.\/\.\.\/base\/flow\.js"[\s\S]*calls flow\(\): the flow builder is compiler-internal/,
   },
   {
+    // The step folder is three levels below `src/`, so a relative specifier
+    // that reaches the flow builder is `../../../base/flow.js` there. A
+    // two-dot-only pattern would have missed every harness.
+    name: "flow-builder-imported-three-levels-up-from-a-step-folder",
+    arm: "b",
+    files: withFiles((files) => {
+      files["src/workflows/combo/step-one/workflow.ts"] =
+        "import { flow } from \"../../../base/flow.js\";\n"
+        + fixtureWorkflowFile("combo-harness");
+    }),
+    expected: /src\/workflows\/combo\/step-one\/workflow\.ts:1 imports "\.\.\/\.\.\/\.\.\/base\/flow\.js"; the flow builder is compiler-internal/,
+  },
+  {
     name: "descriptor-hand-authored-under-src-workflows",
     arm: "b",
     files: withFiles((files) => {
@@ -764,6 +864,27 @@ const FIXTURES: readonly BudgetFixture[] = [
     expected: /picker-model\.ts:2 names workflow "combo-harness" as a dispatch-table key in a generic surface/,
   },
   {
+    // Pair-exactness, half one: the allowlisted FILE, a different workflow id.
+    // A file-keyed allowlist passes this fixture.
+    name: "allowlisted-file-branching-on-a-DIFFERENT-workflow-id",
+    arm: "c",
+    files: withFiles((files) => { files[PAIR_EXACT_ENTRY.file] = SOLO_BRANCH + COMBO_BRANCH; }),
+    genericIdAllowlist: [PAIR_EXACT_ENTRY],
+    expected: /src\/server\/dashboard\/compose\.ts:2 names workflow "combo" as an equality comparison in a generic surface/,
+  },
+  {
+    // Pair-exactness, half two: the allowlisted workflow id, a different file.
+    // An id-keyed allowlist passes this fixture.
+    name: "another-file-branching-on-an-allowlisted-workflow-id",
+    arm: "c",
+    files: withFiles((files) => {
+      files[PAIR_EXACT_ENTRY.file] = SOLO_BRANCH;
+      files["src/services/workflow-labels.ts"] = SOLO_BRANCH;
+    }),
+    genericIdAllowlist: [PAIR_EXACT_ENTRY],
+    expected: /src\/services\/workflow-labels\.ts:1 names workflow "solo" as an equality comparison in a generic surface/,
+  },
+  {
     name: "stale-D316-allowlist-entry",
     arm: "c",
     files: cleanFixtureFiles(),
@@ -801,6 +922,27 @@ const FIXTURES: readonly BudgetFixture[] = [
       files["tests/scenario/workflows/solo/edge-cases.scenario.test.ts"] = "export const EDGE = 1;\n";
     }),
     expected: /tests\/scenario\/workflows\/solo\/edge-cases\.scenario\.test\.ts is a fifth authored artifact for workflow solo/,
+  },
+  {
+    // The folder rule: a harness id is never a path segment, so only
+    // `workflowSourceFolder` can charge this file to the harness that owns it.
+    name: "fifth-artifact-inside-a-harness-folder-belongs-to-the-harness",
+    arm: "d",
+    files: withFiles((files) => { files["src/workflows/combo/step-one/nodes.ts"] = "export const NODES = 1;\n"; }),
+    expected: /src\/workflows\/combo\/step-one\/nodes\.ts is a fifth authored artifact for workflow combo-harness; D312 .* budget is exactly src\/workflows\/combo\/step-one\/workflow\.ts/,
+  },
+  {
+    // The two ways out of the budget by suffixing an unregistered word.
+    name: "fifth-artifact-in-a-folder-suffixing-a-registered-id",
+    arm: "d",
+    files: withFiles((files) => { files["tests/scenario/combo-extra/world.ts"] = "export const WORLD = 1;\n"; }),
+    expected: /tests\/scenario\/combo-extra\/world\.ts is a fifth authored artifact for workflow combo;/,
+  },
+  {
+    name: "fifth-artifact-whose-stem-suffixes-a-registered-id-with-an-underscore",
+    arm: "d",
+    files: withFiles((files) => { files["docs/migrations/combo_extra.md"] = "# one more file\n"; }),
+    expected: /docs\/migrations\/combo_extra\.md is a fifth authored artifact for workflow combo;/,
   },
   {
     name: "two-structural-scenarios-for-one-workflow",
@@ -846,7 +988,7 @@ function writeFixtureTree(files: Record<string, string>): string {
   return root;
 }
 
-function fixtureInputs(fixture: BudgetFixture, root: string): WorkflowAuthoringBudgetInputs {
+function fixtureInputs(fixture: BudgetFixtureTree, root: string): WorkflowAuthoringBudgetInputs {
   return {
     workflows: CLEAN_WORKFLOWS,
     tree: collectWorkflowAuthoringBudgetTree(root),
@@ -856,24 +998,22 @@ function fixtureInputs(fixture: BudgetFixture, root: string): WorkflowAuthoringB
   };
 }
 
-const CLEAN_FIXTURE: BudgetFixture = {
-  name: "clean",
-  arm: "a",
-  files: cleanFixtureFiles(),
-  expected: /never matched/,
-};
-
-function assertCleanFixturePasses(): void {
-  const root = writeFixtureTree(cleanFixtureFiles());
+/** Write one miniature repository, audit it through the real collector, remove it. */
+function auditFixture(fixture: BudgetFixtureTree): readonly string[] {
+  const root = writeFixtureTree(fixture.files);
   try {
-    assert.deepEqual(
-      auditWorkflowAuthoringBudget(fixtureInputs(CLEAN_FIXTURE, root)),
-      [],
-      "the clean fixture must pass, or the violating fixtures prove nothing",
-    );
+    return auditWorkflowAuthoringBudget(fixtureInputs(fixture, root));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+}
+
+function assertCleanFixturePasses(): void {
+  assert.deepEqual(
+    auditFixture({ files: cleanFixtureFiles() }),
+    [],
+    "the clean fixture must pass, or the violating fixtures prove nothing",
+  );
 }
 
 describe("workflow-authoring-budget — the retired path stays dead and D312's budget has no escape hatch", () => {
@@ -886,7 +1026,20 @@ describe("workflow-authoring-budget — the retired path stays dead and D312's b
     // scanner actually reached those exact literals, files and folders.
     assert.ok(tree.sources.size > 500, `source scan resolved only ${tree.sources.size} files`);
     assert.ok(tree.artifactFiles.length > 10, `artifact scan resolved only ${tree.artifactFiles.length} files`);
-    assert.ok(registeredWorkflowSources().length >= 7, "the registered workflows must stay in the scan");
+    const registered = registeredWorkflowSources();
+    assert.ok(registered.length >= 7, "the registered workflows must stay in the scan");
+    // Arm (b)'s own negative control: the authored workflow files it reads are
+    // EXACTLY the registered ones. A scan that entered no `workflow.ts` — a
+    // moved root, a lister that stopped listing `src/workflows/` — would report
+    // this arm green over nothing at all.
+    const scannedWorkflowFiles = [...tree.sources.keys()]
+      .filter((path) => path.startsWith(WORKFLOWS_ROOT) && path.endsWith("/workflow.ts"))
+      .sort();
+    assert.ok(
+      scannedWorkflowFiles.length >= 2,
+      `arm (b) entered only ${scannedWorkflowFiles.length} workflow.ts file(s)`,
+    );
+    assert.deepEqual(scannedWorkflowFiles, [...registered].map(({ sourcePath }) => sourcePath).sort());
     assert.deepEqual(auditWorkflowAuthoringBudget(repositoryInputs(tree)), []);
   });
 
@@ -902,31 +1055,53 @@ describe("workflow-authoring-budget — the retired path stays dead and D312's b
   });
 
   it("arm (d): a harness's own files are never counted against the composition that owns its folder", () => {
-    const ids = registeredWorkflowSources().map(({ id }) => id);
+    const workflows = registeredWorkflowSources();
     assert.equal(
-      attributeWorkflowArtifact("tests/scenario/separations-kuali-read.scenario.test.ts", ids),
+      attributeWorkflowArtifact("tests/scenario/separations-kuali-read.scenario.test.ts", workflows),
       "separations-kuali-read",
     );
     assert.equal(
-      attributeWorkflowArtifact("tests/scenario/workflows/separations-kuali-finalization/dry-run.scenario.ts", ids),
+      attributeWorkflowArtifact(
+        "tests/scenario/workflows/separations-kuali-finalization/dry-run.scenario.ts",
+        workflows,
+      ),
       "separations-kuali-finalization",
     );
-    assert.equal(attributeWorkflowArtifact("docs/migrations/separations-legacy-behavior.md", ids), "separations");
-    assert.equal(attributeWorkflowArtifact("docs/migrations/i9-lookup.md", ids), undefined);
-    assert.equal(attributeWorkflowArtifact("src/workflows/descriptor-registry.ts", ids), undefined);
+    assert.equal(
+      attributeWorkflowArtifact("docs/migrations/separations-legacy-behavior.md", workflows),
+      "separations",
+    );
+    assert.equal(attributeWorkflowArtifact("docs/migrations/i9-lookup.md", workflows), undefined);
+    assert.equal(attributeWorkflowArtifact("src/workflows/descriptor-registry.ts", workflows), undefined);
+    // Inside `src/workflows/` the harness id is NOT in the path: only the
+    // registered FOLDER can say whose budget a file beside its workflow.ts is.
+    assert.equal(
+      attributeWorkflowArtifact("src/workflows/separations/identity-check/module.ts", workflows),
+      "separations-identity-check",
+    );
+    assert.equal(attributeWorkflowArtifact("src/workflows/separations/module.ts", workflows), "separations");
+    // Outside it, a longer word built on a registered id stays that workflow's
+    // budget rather than attributing to nothing and escaping the arm.
+    assert.equal(attributeWorkflowArtifact("tests/scenario/separations-extra/foo.ts", workflows), "separations");
+    assert.equal(attributeWorkflowArtifact("docs/migrations/separations_extra.md", workflows), "separations");
+  });
+
+  it("arm (c): the reviewed (file, workflow id) pair itself passes, so the allowlist is pair-EXACT", () => {
+    // The two halves that would make a file-keyed or an id-keyed allowlist
+    // indistinguishable from this one are the fixtures
+    // `allowlisted-file-branching-on-a-DIFFERENT-workflow-id` and
+    // `another-file-branching-on-an-allowlisted-workflow-id`. This is the
+    // third leg: the exact pair, and nothing else, is admitted.
+    const files = withFiles((tree) => { tree[PAIR_EXACT_ENTRY.file] = SOLO_BRANCH; });
+    assert.deepEqual(auditFixture({ files, genericIdAllowlist: [PAIR_EXACT_ENTRY] }), []);
   });
 
   for (const fixture of FIXTURES) {
     it(`arm (${fixture.arm}): refuses ${fixture.name}`, () => {
       assertCleanFixturePasses();
-      const root = writeFixtureTree(fixture.files);
-      try {
-        const violations = auditWorkflowAuthoringBudget(fixtureInputs(fixture, root));
-        assert.ok(violations.length > 0, `${fixture.name} produced no violation`);
-        assert.match(violations.join("\n"), fixture.expected);
-      } finally {
-        rmSync(root, { recursive: true, force: true });
-      }
+      const violations = auditFixture(fixture);
+      assert.ok(violations.length > 0, `${fixture.name} produced no violation`);
+      assert.match(violations.join("\n"), fixture.expected);
     });
   }
 });
