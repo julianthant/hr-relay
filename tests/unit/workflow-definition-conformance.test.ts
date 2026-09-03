@@ -1,12 +1,12 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
-import { workflowRecipeFor } from "../../src/base/workflow-recipe.js";
+import { workflowDefinitionOf } from "../../src/base/workflow-definition.js";
 import { workflowProjections } from "../../src/base/workflow.js";
 import {
   WORKFLOW_MODULES,
-  WORKFLOW_RECIPES,
-  workflowRecipeRegistry,
+  WORKFLOW_DEFINITIONS,
+  workflowDefinitionRegistry,
 } from "../../src/control/workflow-registry.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
@@ -25,37 +25,37 @@ import {
   taskEventsOf,
   uuidOf,
 } from "./server/helpers/dashboard-harness.js";
-import { separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
-import { personLookupRecipe } from "../../src/workflows/person-lookup/descriptor.js";
+import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
+import { separationsDescriptor } from "../helpers/registered-workflows.js";
 
 const EXPLORER_HASH = FingerprintSchema.parse("c".repeat(64));
 
-function recipeTaskIds(recipe: typeof WORKFLOW_RECIPES[number]["recipe"]): readonly string[] {
-  return recipe.steps.flatMap(([, tasks]) => tasks.map((task) => task.id));
+function definitionEntryIds(definition: typeof WORKFLOW_DEFINITIONS[number]["definition"]): readonly string[] {
+  return definition.steps.flatMap(([, entries]) => entries.map((entry) => entry.id));
 }
 
-describe("workflow recipe registry conformance", () => {
+describe("workflow definition registry conformance", () => {
   it("derives the converted population from the one module tuple and refuses a mismatched compiler identity", () => {
-    expect(WORKFLOW_RECIPES.map(({ descriptor }) => String(descriptor.id)))
+    expect(WORKFLOW_DEFINITIONS.map(({ descriptor }) => String(descriptor.id)))
       .toEqual(["person-lookup", "separations"]);
-    expect(WORKFLOW_RECIPES.map(({ descriptor, recipe }) => workflowRecipeFor(descriptor) === recipe))
+    expect(WORKFLOW_DEFINITIONS.map(({ descriptor, definition }) => workflowDefinitionOf(descriptor) === definition))
       .toEqual([true, true]);
 
-    expect(() => workflowRecipeRegistry([{
+    expect(() => workflowDefinitionRegistry([{
       descriptor: separationsDescriptor,
       stores: [],
-      recipe: personLookupRecipe,
-    }])).toThrow("workflow separations registers a recipe that did not compile its own descriptor");
+      definition: personLookupWorkflow,
+    }])).toThrow("workflow separations registers a definition that did not compile its own descriptor");
   });
 
-  it("keeps every registered recipe's tuple groups and tasks equal to its compiled descriptor and generic projections", () => {
-    for (const { descriptor, recipe } of WORKFLOW_RECIPES) {
-      const expectedGroups = recipe.steps.map(([group, tasks]) => ({
+  it("keeps every registered definition's tuple groups and entries equal to its compiled descriptor and generic projections", () => {
+    for (const { descriptor, definition } of WORKFLOW_DEFINITIONS) {
+      const expectedGroups = definition.steps.map(([group, entries]) => ({
         key: group.key,
         label: group.label,
-        nodes: tasks.map(({ id }) => id),
+        nodes: entries.map(({ id }) => id),
       }));
-      const expectedTaskIds = recipeTaskIds(recipe);
+      const expectedTaskIds = definitionEntryIds(definition);
 
       expect(descriptor.timeline.map((group) => ({
         key: group.key,
@@ -67,13 +67,13 @@ describe("workflow recipe registry conformance", () => {
       expect(descriptor.nodes.map(({ id }) => String(id)).toSorted(), String(descriptor.id))
         .toEqual(expectedTaskIds.toSorted());
       // Transaction nodes deliberately project a beat for each task contract;
-      // membership stays one recipe task per graph node.
+      // membership stays one workflow entry per graph node.
       expect([...new Set(workflowProjections(descriptor).steps.map(({ nodeId }) => String(nodeId)))]
         .toSorted(), String(descriptor.id)).toEqual(expectedTaskIds.toSorted());
     }
   });
 
-  it("serves every converted recipe through the existing bootstrap/start, detail timeline, and Explorer projections", () => {
+  it("serves every definition-backed workflow through the existing bootstrap/start, detail timeline, and Explorer projections", () => {
     const world = makeWorld();
     try {
       const bootstrap = buildBootstrap({
@@ -97,14 +97,14 @@ describe("workflow recipe registry conformance", () => {
       const explorer = buildWorkflowExplorer(explorerQueryDeps(manualClock(AT), EXPLORER_HASH));
       const explorerWorkflows = new Map(explorer.workflows.map((workflow) => [String(workflow.id), workflow]));
 
-      for (const { descriptor, recipe } of WORKFLOW_RECIPES) {
+      for (const { descriptor, definition } of WORKFLOW_DEFINITIONS) {
         const id = String(descriptor.id);
-        const expectedGroups = recipe.steps.map(([group, tasks]) => ({
+        const expectedGroups = definition.steps.map(([group, entries]) => ({
           key: group.key,
           label: group.label,
-          nodes: tasks.map(({ id: nodeId }) => nodeId),
+          nodes: entries.map(({ id: nodeId }) => nodeId),
         }));
-        const expectedTaskIds = recipeTaskIds(recipe);
+        const expectedTaskIds = definitionEntryIds(definition);
 
         const start = starts.get(id);
         assert.ok(start !== undefined, `${id} is absent from the bootstrap start surface`);
@@ -149,17 +149,27 @@ describe("workflow recipe registry conformance", () => {
     }
   });
 
-  it("leaves person lookup and separations recipe-backed, with no descriptor-local timeline or flow declaration", () => {
+  it("leaves person lookup and separations definition-backed, with no authored descriptor, module, timeline or flow declaration", () => {
     const sources = [
-      "../../src/workflows/person-lookup/descriptor.ts",
-      "../../src/workflows/separations/descriptor.ts",
+      "../../src/workflows/person-lookup/workflow.ts",
+      "../../src/workflows/separations/workflow.ts",
     ];
     for (const sourcePath of sources) {
       const source = readFileSync(new URL(sourcePath, import.meta.url), "utf8");
-      expect(source, sourcePath).toMatch(/compileWorkflowRecipe\([^,]+Recipe,/u);
+      expect(source, sourcePath).toMatch(/= defineWorkflow\(\{/u);
       expect(source, sourcePath).not.toMatch(/defineWorkflowDescriptor\(/u);
+      expect(source, sourcePath).not.toMatch(/compileWorkflow\(/u);
       expect(source, sourcePath).not.toMatch(/\bflow\(/u);
       expect(source, sourcePath).not.toMatch(/\btimeline\s*:/u);
+      expect(source, sourcePath).not.toMatch(/recipe/iu);
+    }
+    for (const retired of [
+      "../../src/workflows/person-lookup/descriptor.ts",
+      "../../src/workflows/person-lookup/module.ts",
+      "../../src/workflows/separations/descriptor.ts",
+      "../../src/workflows/separations/module.ts",
+    ]) {
+      expect(existsSync(new URL(retired, import.meta.url)), retired).toBe(false);
     }
   });
 });

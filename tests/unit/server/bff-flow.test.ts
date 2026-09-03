@@ -100,7 +100,6 @@ import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
-import { separationsDescriptor } from "../../../src/workflows/separations/descriptor.js";
 import {
   ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
   activityPersonPseudonymResultRecord,
@@ -125,6 +124,7 @@ import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
 import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
+import { separationsDescriptor } from "../../helpers/registered-workflows.js";
 
 interface Harness {
   readonly app: ReturnType<typeof createDashboardApp>;

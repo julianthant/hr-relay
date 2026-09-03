@@ -21,7 +21,6 @@ import { WriteIntentRecordSchema } from "../../src/domain/write-safety.js";
 import { buildRunEvidenceReceipt } from "../../src/core/evidence-receipt.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import type { RunEvidenceReceipt } from "../../src/domain/trust/evidence.js";
-import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
 import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
 import {
   EXIT_CRM_RECORD_ID,
@@ -36,6 +35,7 @@ import {
   kualiReceiptEvidence,
   seedPersonLookupExitRun,
 } from "./fixtures/receipt-run-fixtures.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];

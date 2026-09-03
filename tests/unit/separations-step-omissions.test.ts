@@ -18,11 +18,12 @@ import {
   stepOmissionCascade,
   type StepOmissionGraphView,
 } from "../../src/domain/workflow/step-omission.js";
-import { SeparationsResultSchema, separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
+import { SeparationsResultSchema } from "../../src/workflows/separations/workflow.js";
 import { KRONOS_TIMECARD_OMISSION } from "../../src/workflows/separations/kronos-timecard/omission.js";
 import { UCPATH_TRANSACTION_OMISSION } from "../../src/workflows/separations/ucpath-transaction/omission.js";
 import { COMPOSITION_SCOPE_OUTPUTS } from "./fixtures/separations-composition-fixtures.js";
 import { CURRENT_SEPARATIONS_RESULT } from "./fixtures/activity-person-pseudonym-fixtures.js";
+import { separationsDescriptor } from "../helpers/registered-workflows.js";
 
 const PLAN = SeparationPlanSchema.parse({
   documentNumber: "4444",

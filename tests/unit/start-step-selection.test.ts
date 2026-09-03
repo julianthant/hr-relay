@@ -12,8 +12,7 @@ import {
   omissionCascadingDescriptor,
   READING_FORM,
 } from "./fixtures/start-step-omission-fixtures.js";
-import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
-import { separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
+import { personLookupDescriptor, separationsDescriptor } from "../helpers/registered-workflows.js";
 
 describe("start step selection", () => {
   it("projects the current conditional person-lookup step as selectable", () => {

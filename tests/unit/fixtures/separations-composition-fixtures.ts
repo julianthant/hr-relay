@@ -67,11 +67,7 @@ import {
   type UcpathSmartHrFakeWorld,
 } from "../../../src/stores/ucpath/driver/smart-hr-fake.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
-import {
-  SeparationsCanonicalInput,
-  SeparationsInput,
-  separationsDescriptor,
-} from "../../../src/workflows/separations/descriptor.js";
+import { SeparationsCanonicalInput, SeparationsInput } from "../../../src/workflows/separations/workflow.js";
 import { UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
@@ -81,6 +77,7 @@ import {
   sessionFactoryHarness,
 } from "./phase1f-executor-harness.js";
 import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
+import { separationsDescriptor } from "../../helpers/registered-workflows.js";
 
 export const COMPOSITION_WORKFLOW_ID = "separations";
 export const COMPOSITION_ACTION_ID = "0123456789abcdef01234567";

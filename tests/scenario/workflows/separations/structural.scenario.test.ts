@@ -72,10 +72,7 @@ import { readSeparationDatesTask } from "../../../../src/stores/separations/task
 import { readSeparationPlanTask } from "../../../../src/stores/separations/tasks/read-separation-plan.js";
 import { verifyIdentityApprovalTask } from "../../../../src/stores/separations/tasks/verify-identity-approval.js";
 import { verifyTerminationReceiptTask } from "../../../../src/stores/separations/tasks/verify-termination-receipt.js";
-import {
-  SeparationsCanonicalInput,
-  separationsDescriptor,
-} from "../../../../src/workflows/separations/descriptor.js";
+import { SeparationsCanonicalInput } from "../../../../src/workflows/separations/workflow.js";
 import { KUALI_FAKE_UNFINALIZED_FIELDS } from "../../../../src/stores/kuali/driver/fake.js";
 import { SEPARATIONS_CLAIMS } from "../../coverage-claims.js";
 import { walkDescriptor } from "../../helpers/pure-walk.js";
@@ -117,6 +114,7 @@ import {
   compositionSweepIdempotencyKey,
   type CompositionHarness,
 } from "../../../unit/fixtures/separations-composition-fixtures.js";
+import { separationsDescriptor } from "../../../helpers/registered-workflows.js";
 
 const FAILURES: string[] = [];
 const taskCtx = Object.freeze({

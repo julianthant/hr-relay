@@ -30,12 +30,7 @@ import {
 } from "../../src/services/start/plan.js";
 import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
 import { separationsUcpathTerminationDescriptor } from "../../src/workflows/separations/ucpath-transaction/descriptor.js";
-import { separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
-import {
-  PersonLookupCanonicalInput,
-  PersonLookupInput,
-  personLookupDescriptor,
-} from "../../src/workflows/person-lookup/descriptor.js";
+import { PersonLookupCanonicalInput, PersonLookupInput } from "../../src/workflows/person-lookup/workflow.js";
 import { HASH_A, HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
 import {
@@ -43,6 +38,7 @@ import {
   WRITE_FIXTURE_NODE_ID,
   writeFixtureDescriptorWithoutDryRunArm,
 } from "./fixtures/write-sequencer-fixtures.js";
+import { separationsDescriptor, personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const CLOCK = manualClock(new Date(NOW));
 const PLAN_TTL_MS = 10 * 60 * 1000;

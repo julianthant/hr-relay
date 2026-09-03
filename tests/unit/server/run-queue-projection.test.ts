@@ -14,7 +14,6 @@ import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../src/dom
 import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { ProjectionDegradedError } from "../../../src/server/failures.js";
-import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
 import { HASH_A, HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
@@ -41,6 +40,7 @@ import {
   type DashboardWorld,
 } from "./helpers/dashboard-harness.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const worlds: DashboardWorld[] = [];
 

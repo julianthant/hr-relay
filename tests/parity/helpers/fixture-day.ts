@@ -14,16 +14,12 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
-import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { projectStartSteps, startStepWireControl } from "../../../src/services/start/step-selection.js";
-import { personLookupModule } from "../../../src/workflows/person-lookup/module.js";
 import { separationsIdentityCheckModule } from "../../../src/workflows/separations/identity-check/module.js";
 import { separationsKronosTimecardModule } from "../../../src/workflows/separations/kronos-timecard/module.js";
 import { separationsKualiFinalizationModule } from "../../../src/workflows/separations/kuali-finalization/module.js";
 import { separationsKualiReadModule } from "../../../src/workflows/separations/kuali-extraction/module.js";
 import { separationsUcpathTerminationModule } from "../../../src/workflows/separations/ucpath-transaction/module.js";
-import { separationsDescriptor } from "../../../src/workflows/separations/descriptor.js";
-import { separationsModule } from "../../../src/workflows/separations/module.js";
 import {
   FrontendBootstrapWireSchema,
   type FrontendBootstrapWire,
@@ -70,6 +66,7 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { idempotencyKeyDigestReference } from "../../../src/domain/redaction.js";
 import { buildFixtureIdentityGate } from "./fixture-gate.js";
 import { syntheticDashboardPngBytes } from "../../fixtures/diagnostic-image-fixtures.js";
+import { personLookupDescriptor, personLookupModule, separationsDescriptor, separationsModule } from "../../helpers/registered-workflows.js";
 
 /* ── identity helpers (aligned with tests/unit/server/helpers/dashboard-harness.ts) ── */
 

@@ -10,7 +10,7 @@ import {
   resolveUploadFields,
   toRawSubmission,
 } from "../../src/domain/workflow/ingress.js";
-import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const PARSER = InputParserSpecSchema.parse({
   split: { kind: "delimited", delimiters: [";", "\n"] },

@@ -19,7 +19,6 @@ import type { WorkerRuntimeExecutor } from "../../src/core/command-kernel.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
-import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
 import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
 import { UUID_5, UUID_7, NOW } from "./fixtures/phase1c-contract-fixtures.js";
 import {
@@ -35,6 +34,7 @@ import {
   sessionFactoryHarness,
   type SessionFactoryHarness,
 } from "./fixtures/phase1f-executor-harness.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

@@ -9,8 +9,8 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
 import { walkDescriptor } from "./helpers/pure-walk.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const RESOLVED_CANDIDATE = {
   emplId: "10873698",

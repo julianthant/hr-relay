@@ -24,10 +24,7 @@ import { crmSession } from "../../src/stores/crm/session-provider.js";
 import { crmDriver } from "../../src/stores/crm/declaration.js";
 import { readOnboardingDatesTask } from "../../src/stores/crm/tasks/read-onboarding-dates.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
-import {
-  personLookupDescriptor,
-  PersonLookupResultSchema,
-} from "../../src/workflows/person-lookup/descriptor.js";
+import { PersonLookupResultSchema } from "../../src/workflows/person-lookup/workflow.js";
 import { sequentialIdFactory, RUN_ID, WORKER_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
 import { UUID_5, UUID_6 } from "./fixtures/phase1c-contract-fixtures.js";
 import {
@@ -44,6 +41,7 @@ import {
   type AuthorityHarness,
   type SessionFactoryHarness,
 } from "./fixtures/phase1f-executor-harness.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const disposers: (() => void)[] = [];
 afterEach(async () => {

@@ -57,13 +57,18 @@ import { dirname, join } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
 
-import { WORKFLOW_MODULES, auditWorkflowModuleRoles } from "../../../src/control/workflow-registry.js";
+import {
+  WORKFLOW_MODULES,
+  auditWorkflowModuleRoles,
+  isDefinitionBackedModule,
+} from "../../../src/control/workflow-registry.js";
 import type { WorkflowRoleView } from "../../../src/control/workflow-registry.js";
 import { defineWorkflowRole, type WorkflowModuleRole } from "../../../src/domain/workflow/module-role.js";
 import {
   descriptorSourcePath,
   moduleSourcePath,
   workflowSourceFolder,
+  workflowSourcePath,
 } from "../../../src/domain/workflow/source-layout.js";
 import { declaredWorkflowId } from "../../../src/infra/build/workflow-build-manifest.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
@@ -80,6 +85,8 @@ const TOP_LEVEL_FILES = new Set(["descriptor-registry.ts"]);
 export interface WorkflowLayoutModule {
   readonly id: string;
   readonly role: WorkflowModuleRole;
+  /** D317 — authored as one `workflow.ts` definition (true) or a not-yet-converted descriptor/module pair. */
+  readonly definitionBacked: boolean;
   readonly timelineDeclared: boolean;
   readonly timelineKeys: readonly string[];
 }
@@ -99,7 +106,7 @@ export interface WorkflowLayoutTree {
   readonly directories: readonly string[];
   /** Every file under `src/workflows/`, repo-relative, at any depth. */
   readonly files: readonly string[];
-  /** `<folder>/descriptor.ts` → the workflow id that file declares. */
+  /** `<folder>/workflow.ts` or `<folder>/descriptor.ts` → the workflow id that file declares. */
   readonly declaredIds: ReadonlyMap<string, SourceDeclaration>;
   /** `<folder>/step.ts` → the step key that file declares. */
   readonly stepKeys: ReadonlyMap<string, SourceDeclaration>;
@@ -173,7 +180,7 @@ export function collectWorkflowLayoutTree(root: string): WorkflowLayoutTree {
         continue;
       }
       files.push(child);
-      if (name === "descriptor.ts") {
+      if (name === "descriptor.ts" || name === "workflow.ts") {
         declaredIds.set(child, readDeclaration(() => declaredWorkflowId(join(root, child))));
       }
       if (name === "step.ts") {
@@ -218,17 +225,36 @@ export function auditWorkflowLayout(
       );
       continue;
     }
-    for (const path of [descriptorSourcePath(module.id, module.role), moduleSourcePath(module.id, module.role)]) {
+    // D317 — a definition-backed workflow authors exactly `workflow.ts` and no
+    // descriptor/module pair beside it; a not-yet-converted harness still
+    // authors the pair and no `workflow.ts`. Either way a folder holds ONE entry.
+    const entryPath = module.definitionBacked
+      ? workflowSourcePath(module.id, module.role)
+      : descriptorSourcePath(module.id, module.role);
+    const required = module.definitionBacked
+      ? [entryPath]
+      : [entryPath, moduleSourcePath(module.id, module.role)];
+    const forbidden = module.definitionBacked
+      ? [descriptorSourcePath(module.id, module.role), moduleSourcePath(module.id, module.role)]
+      : [workflowSourcePath(module.id, module.role)];
+    for (const path of required) {
       if (!files.has(path)) violations.push(`workflow ${module.id} must author ${path}, which is missing`);
     }
-    const declared = tree.declaredIds.get(descriptorSourcePath(module.id, module.role));
+    for (const path of forbidden) {
+      if (files.has(path)) {
+        violations.push(
+          `workflow ${module.id} authors ${path} beside ${entryPath}; a workflow folder holds ONE authored entry (D317)`,
+        );
+      }
+    }
+    const declared = tree.declaredIds.get(entryPath);
     if (declared === undefined) continue;
     if ("unreadable" in declared) {
-      violations.push(`${descriptorSourcePath(module.id, module.role)}: ${declared.unreadable}`);
+      violations.push(`${entryPath}: ${declared.unreadable}`);
     } else if (declared.value !== module.id) {
       violations.push(
-        `${descriptorSourcePath(module.id, module.role)} declares workflow id ${declared.value}, but the module `
-        + `addressed there is ${module.id}; a folder holds the descriptor its role names (§1.2.2)`,
+        `${entryPath} declares workflow id ${declared.value}, but the module `
+        + `addressed there is ${module.id}; a folder holds the workflow its role names (§1.2.2)`,
       );
     }
   }
@@ -345,6 +371,9 @@ export function auditPathRuleSingleSource(sources: ReadonlyMap<string, string>):
 function fixtureDescriptor(id: string): string {
   return `export const descriptor = defineWorkflowDescriptor({ id: "${id}", version: 1 });\n`;
 }
+function fixtureWorkflow(id: string): string {
+  return `export const workflow = defineWorkflow({ id: "${id}", version: 1 });\n`;
+}
 function fixtureStep(key: string): string {
   return `export const STEP = defineWorkflowStep({ key: "${key}", label: "${key}" });\n`;
 }
@@ -353,8 +382,7 @@ const FIXTURE_MODULE = "export const module = { role: \"fixture\" };\n";
 function cleanFixtureFiles(): Record<string, string> {
   return {
     "src/workflows/descriptor-registry.ts": "export const REGISTRY = [];\n",
-    "src/workflows/solo/descriptor.ts": fixtureDescriptor("solo"),
-    "src/workflows/solo/module.ts": FIXTURE_MODULE,
+    "src/workflows/solo/workflow.ts": fixtureWorkflow("solo"),
     "src/workflows/combo/descriptor.ts": fixtureDescriptor("combo"),
     "src/workflows/combo/module.ts": FIXTURE_MODULE,
     "src/workflows/combo/step-one/step.ts": fixtureStep("step-one"),
@@ -371,18 +399,21 @@ function cleanFixtureModules(): WorkflowLayoutModule[] {
     {
       id: "solo",
       role: defineWorkflowRole({ kind: "standalone" }),
+      definitionBacked: true,
       timelineDeclared: false,
       timelineKeys: [],
     },
     {
       id: "combo",
       role: defineWorkflowRole({ kind: "composition" }),
+      definitionBacked: false,
       timelineDeclared: true,
       timelineKeys: ["step-one", "step-two"],
     },
     {
       id: "combo-harness",
       role: defineWorkflowRole({ kind: "chunk-harness", of: "combo", step: "step-one" }),
+      definitionBacked: false,
       timelineDeclared: false,
       timelineKeys: [],
     },
@@ -422,11 +453,35 @@ const FIXTURES: readonly LayoutFixture[] = [
     name: "missing-workflow-folder",
     arm: "a",
     files: withFiles((files) => {
-      delete files["src/workflows/solo/descriptor.ts"];
-      delete files["src/workflows/solo/module.ts"];
+      delete files["src/workflows/solo/workflow.ts"];
     }),
     modules: cleanFixtureModules(),
     expected: /workflow solo \(role standalone\) is addressed to src\/workflows\/solo\/, which does not exist/,
+  },
+  {
+    name: "definition-backed-folder-also-authors-descriptor",
+    arm: "a",
+    files: withFiles((files) => { files["src/workflows/solo/descriptor.ts"] = fixtureDescriptor("solo"); }),
+    modules: cleanFixtureModules(),
+    expected: /workflow solo authors src\/workflows\/solo\/descriptor\.ts beside src\/workflows\/solo\/workflow\.ts; a workflow folder holds ONE authored entry \(D317\)/,
+  },
+  {
+    name: "definition-backed-folder-missing-workflow-ts",
+    arm: "a",
+    files: withFiles((files) => {
+      delete files["src/workflows/solo/workflow.ts"];
+      files["src/workflows/solo/descriptor.ts"] = fixtureDescriptor("solo");
+      files["src/workflows/solo/module.ts"] = FIXTURE_MODULE;
+    }),
+    modules: cleanFixtureModules(),
+    expected: /workflow solo must author src\/workflows\/solo\/workflow\.ts, which is missing/,
+  },
+  {
+    name: "unconverted-folder-authors-workflow-ts",
+    arm: "a",
+    files: withFiles((files) => { files["src/workflows/combo/workflow.ts"] = fixtureWorkflow("combo"); }),
+    modules: cleanFixtureModules(),
+    expected: /workflow combo authors src\/workflows\/combo\/workflow\.ts beside src\/workflows\/combo\/descriptor\.ts; a workflow folder holds ONE authored entry \(D317\)/,
   },
   {
     name: "missing-module-file",
@@ -526,6 +581,7 @@ function registeredLayoutModules(): readonly WorkflowLayoutModule[] {
   return WORKFLOW_MODULES.map((module) => ({
     id: String(module.descriptor.id),
     role: module.role,
+    definitionBacked: isDefinitionBackedModule(module),
     timelineDeclared: module.descriptor.timelineDeclared,
     timelineKeys: module.descriptor.timeline.map((category) => category.key),
   }));

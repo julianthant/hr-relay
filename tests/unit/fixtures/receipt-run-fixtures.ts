@@ -43,10 +43,7 @@ import {
   RunResultRecordSchema,
   deriveTerminalDependencyDigest,
 } from "../../../src/domain/run/result.js";
-import {
-  PersonLookupCanonicalInput,
-  personLookupDescriptor,
-} from "../../../src/workflows/person-lookup/descriptor.js";
+import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import {
   SeparationsKualiFinalizationCanonicalInput,
   separationsKualiFinalizationDescriptor,
@@ -68,6 +65,7 @@ import {
   FINALIZATION_SCOPE_OUTPUTS,
   FINALIZATION_VARIABLES,
 } from "./kuali-finalization-fixtures.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 /* ── person-lookup: the live Phase-1 exit run ────────────────────────────── */
 

@@ -43,10 +43,8 @@ import type { ArchiveQueryDeps } from "../../src/server/dashboard/queries/archiv
 import { createArchiveSnapshotSource } from "../../src/server/dashboard/queries/archive.js";
 import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail.js";
 import { createReceiptService } from "../../src/server/trust/receipt-service.js";
-import {
-  PersonLookupCanonicalInput,
-  personLookupDescriptor,
-} from "../../src/workflows/person-lookup/descriptor.js";
+import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 /* ── the declared shape ──────────────────────────────────────────────────── */
 

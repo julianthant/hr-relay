@@ -9,10 +9,7 @@ import {
 } from "../../../src/domain/run/result.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import type { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
-import {
-  SeparationsResultSchema,
-  separationsDescriptor,
-} from "../../../src/workflows/separations/descriptor.js";
+import { SeparationsResultSchema } from "../../../src/workflows/separations/workflow.js";
 import {
   COMPOSITION_ACTION_ID,
   COMPOSITION_DEPARTMENT_OPTION,
@@ -29,6 +26,7 @@ import {
   COMPOSITION_UCPATH_NAME,
   compositionQueuedRun,
 } from "./separations-composition-fixtures.js";
+import { separationsDescriptor } from "../../helpers/registered-workflows.js";
 
 export const ACTIVITY_PERSON_PSEUDONYM_KEY_HEX =
   "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";

@@ -62,11 +62,11 @@ import { createRunQueueProjection } from "../../../../src/server/dashboard/proje
 import type { RunDetailQueryDeps } from "../../../../src/server/dashboard/queries/run-detail.js";
 import { createReceiptService } from "../../../../src/server/trust/receipt-service.js";
 import { createNotificationInbox } from "../../../../src/services/notifications/inbox.js";
-import { separationsDescriptor } from "../../../../src/workflows/separations/descriptor.js";
 import { archiveSnapshots } from "../../../fixtures/archive-seams.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../fixtures/intake-kernel-seams.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../../../unit/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../unit/fixtures/phase1f-run-fixtures.js";
+import { separationsDescriptor } from "../../../helpers/registered-workflows.js";
 
 export const APP_VERSION = "0.1.0";
 /** The document §9.22 ran all three of its live runs against. */

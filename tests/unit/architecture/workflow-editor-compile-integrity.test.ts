@@ -27,7 +27,7 @@ import {
   descriptorRuntimeNodes,
   workflowProjections,
 } from "../../../src/base/workflow.js";
-import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
+import { WORKFLOW_MODULES, isDefinitionBackedModule } from "../../../src/control/workflow-registry.js";
 import { buildSafeUiCatalog } from "../../../src/stores/ucpath/driver/catalog.js";
 import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
@@ -40,7 +40,7 @@ import {
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { buildExplorerCompileAttestation } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
 import { REPO_ROOT, gitVisibleFiles, repoRelative, walkFiles } from "./helpers/guard-files.js";
-import { descriptorSourcePath, moduleSourcePath } from "../../../src/domain/workflow/source-layout.js";
+import { descriptorSourcePath, moduleSourcePath, workflowSourcePath } from "../../../src/domain/workflow/source-layout.js";
 
 const PROJECTION_FILE = "src/server/dashboard/queries/explorer.ts";
 const WIRE_FILE = "src/domain/dashboard/explorer.ts";
@@ -388,6 +388,11 @@ describe("no DSL or generated-descriptor authoring artifact exists (D79a)", () =
       // D265 §1.2.2: a descriptor's path is derived from its ROLE — a harness
       // lives inside the step it proves — through the same helper
       // `descriptor-coverage` reads, so the two guards hold one rule.
+      if (isDefinitionBackedModule(module)) {
+        const workflowPath = workflowSourcePath(id, module.role);
+        assert.ok(tracked.has(workflowPath), `${id} has no source-authored workflow definition at ${workflowPath}`);
+        continue;
+      }
       const descriptorPath = descriptorSourcePath(id, module.role);
       const modulePath = moduleSourcePath(id, module.role);
       assert.ok(tracked.has(descriptorPath), `${id} has no source-authored descriptor at ${descriptorPath}`);

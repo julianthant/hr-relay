@@ -14,13 +14,11 @@ import {
 } from "../../src/domain/run/result.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
-import {
-  PersonLookupCanonicalInput,
-  personLookupDescriptor,
-} from "../../src/workflows/person-lookup/descriptor.js";
+import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
 import { HASH_A, HASH_B, LATER, NOW } from "./fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
 import { fixtureDescriptor } from "./architecture/helpers/descriptor-fixtures.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const CLOCK = manualClock(new Date(LATER));
 const ACTIVE = {

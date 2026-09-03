@@ -18,7 +18,6 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
-import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { separationsKualiFinalizationDescriptor } from "../../../src/workflows/separations/kuali-finalization/descriptor.js";
 import { resolveSubjectTitle } from "../../../src/server/dashboard/projectors/run-subject-title.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
@@ -31,6 +30,7 @@ import {
   uuidOf,
   type DashboardWorld,
 } from "./helpers/dashboard-harness.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const worlds: DashboardWorld[] = [];
 
