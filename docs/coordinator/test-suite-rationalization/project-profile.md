@@ -6,9 +6,9 @@
 **Coordination short id:** `Cf24df892`
 **Work key:** `test-suite-rationalization`
 **Coordinator title:** `Coordinate · test-suite-rationalization · Cf24df892 · remaining test-suite work`
-**Coordinator task/host:** `01a064c1-e4ef-7bc0-bcd7-0329b5dfd357` / `local`
+**Coordinator task/host:** `01a064e2-c3cf-7422-90c7-1dce60d194e5` / `local` (continued from `01a064c1-e4ef-7bc0-bcd7-0329b5dfd357`)
 **Integration checkout:** `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator` · `feature/test-suite-rationalization`
-**Verified:** 2026-09-02 18:12 PDT at `37c080bcadd6efbb2d77c993d7a40b872b592152`
+**Verified:** 2026-09-02 at `0d85849528ae96495c4bc4f9377b6c0f03259f35`
 
 ## Applicable instructions
 

@@ -3,12 +3,12 @@
 **Project profile:** `docs/coordinator/test-suite-rationalization/project-profile.md`
 **Coordination UUID:** `f24df892-5171-48f4-97ff-4e91490f8622` (`Cf24df892`)
 **Coordinator title:** `Coordinate · test-suite-rationalization · Cf24df892 · remaining test-suite work`
-**Coordinator task/host:** `01a064c1-e4ef-7bc0-bcd7-0329b5dfd357` / `local`
+**Coordinator task/host:** `01a064e2-c3cf-7422-90c7-1dce60d194e5` / `local` (continued from `01a064c1-e4ef-7bc0-bcd7-0329b5dfd357`)
 **Coordinator checkout:** `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator`
 **Integration target:** `feature/test-suite-rationalization`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-02 18:12 PDT at integration commit `37c080bc`; R1/R6 cleanup and exact task archival verified
+**Last verified:** 2026-09-02 at `0d858495`; current coordinator checkout/task binding and prior R1/R6 cleanup verified
 
 ## Facts every run needs
 
