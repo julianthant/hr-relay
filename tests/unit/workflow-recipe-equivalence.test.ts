@@ -36,7 +36,7 @@ const steps = (descriptor: typeof personLookupDescriptor | typeof separationsDes
     conditional,
   }));
 
-describe("workflow recipe public equivalence characterization", () => {
+describe("transitional workflow recipe public equivalence characterization", () => {
   it("keeps person lookup's public descriptor, module stores, normalized timeline, and registry value", () => {
     expect({
       descriptor: {

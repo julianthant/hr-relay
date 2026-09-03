@@ -272,7 +272,7 @@ describe("D170 intake arms — confirm-intake-mapping", () => {
     assert.equal(current().version, 1, "a refused confirmation moves no authority row");
   });
 
-  it("refuses a target the projection does not declare, and a column not in the file", () => {
+  it("rejects mapping confirmation before mutation when the target or source column is unknown", () => {
     const { send } = harness();
     const unknownTarget = send("confirm-intake-mapping", {
       targetFieldId: "notAField",
