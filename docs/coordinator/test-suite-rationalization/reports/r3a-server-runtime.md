@@ -98,6 +98,13 @@ same-PID results; these are not conclusions inferred from the backend rebind alo
 The temporary ignored `node_modules` symlink used to access the already-installed workspace
 dependencies is removed before the final clean-tree proof. No unrelated process is killed.
 
+After the closing review, the verified symlink target was removed with `unlink node_modules`, and
+the dashboard was stopped through the exact launcher session that R3a started. Final commands then
+reported `port-3938: no listener`, `port-5174: no listener`, `run-processes: none`,
+`temp-authority-roots: none`, `run-locks: none`, `board-diff: none`, and `diff-check: pass`.
+`git status --short` emitted no row. The final response supplies the report-closing HEAD created
+after recording this proof.
+
 ## Review
 
 The first implementation target was `39598d2f...322ac84e`. Independent preliminary Performance and Tests
