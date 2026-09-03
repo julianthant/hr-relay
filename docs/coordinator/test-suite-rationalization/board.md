@@ -22,6 +22,8 @@
 - 2026-09-02 · operator answered `all recommended`, decoded before action as `1 C · 2 B · 3 C · 4 C · 5 B · 6 B · 7 B · 8 B` → preserve unique failure protection first; duplicates require the same failure mode, seam, and oracle; deletion/consolidation requires a mapped survivor plus red-capable evidence or proof the old test could not fail meaningfully; use runner/type-first hybrid layout; reserve scenarios for distinct graph/boundary paths; allow targeted local iteration but require full type/lint/coverage at supervisor integration and before merge; target affected ≤30 s, full coverage ≤90 s, parity ≤75 s without sacrificing unique protection; organize files by coherent risk family with truthful behavior/refusal names. The operator required the question sheet to remain chat-only; R7/u40 owns normative `guards-and-tests`, D191, paired-rule, and decision-index ratification.
 - 2026-09-02 · direct operator instruction → test output must show what is running at each legible step: project/suite, file, full behavior/refusal title, and stable named phases for long or genuinely multi-stage harnesses; failures must identify the exact operation with actionable non-secret context. Preserve speed with one streaming reporter, unchanged parallelism/isolation, no per-assertion chatter in short units, and measured reporter overhead. R7/u38 owns the durable runner/reporter contract and u42 proves representative green progress, actionable red output, and runtime impact.
 - 2026-09-02 · direct operator instruction → after clean Wave 1 integration, expand to four non-overlapping supervisor worktrees and serialize only CPU-heavy full-suite coverage/parity gates.
+- 2026-09-02 · R6 recommendation accepted under the operator's standing `all recommended` instruction → ratify the reproducible 5,569 day-wire statement baseline tied to D269's intentional worker-pool query; R7 adds a failure-capable non-duration performance check with the agreed structural bounds and reconciles the owning authority.
+- 2026-09-02 · R6 recommendation accepted under the operator's standing `all recommended` instruction → preserve the complete unique-risk suite and the ≤90-second full-coverage target; measure the self-contained post-R1/R6 composition, then let R7 profile scheduling/fixtures if it remains over budget. Do not delete unique protection to hit the target.
 
 ## Unit ledger
 
@@ -34,13 +36,14 @@
 | u19–u24 | R4 | planned | — | — | required | Dashboard model/jsdom/component layer |
 | u25, u26, u29 | R5a | planned | — | — | required | Wave 2 scenario inventory, T1, T1b authority |
 | u27, u28, u30 | R5b | planned | — | — | required | Post-Wave-2 walks, dashboard scenarios, layout/review |
-| u31–u36 | R6 | running, policy cleared | isolated `feature/test-r6-parity-checks` from `7982650c`; exact task `01a0645c-1e18-7d70-9dfc-c7fb53fa0b66` | pending | required | Operator answer relayed; parity refresh still requires independently proved expectation change |
+| u31–u36 | R6 | reported; held for R1-first integration | clean `feature/test-r6-parity-checks` at `090d3acd` from `7982650c`; exact task `01a0645c-1e18-7d70-9dfc-c7fb53fa0b66` | 281/281 parity in 68.20s; 43/43 Duo; pre-R1 coverage 390 files/4,838 tests in 152.53s with legacy override | 0 open findings | Removed one duplicate 6-case/18-reference-file parity family; operator accepted both R6 recommendations; final self-contained coverage follows R1 then R6 merge |
 | u37–u42 | R7 | planned | — | — | consequential | Cross-family integration, taxonomy, authorities, final proof |
 
 ## Residue
 
 - D91's already-documented branch-floor gap is not silently in scope as a threshold change. Runs may measure and report it; changing the ratified floor requires an explicit owning-doc decision unless existing authority already determines the exact implementation.
 - Existing unrelated Phase 3 workflow worktrees/branches are outside this project's cleanup ownership. Final evidence must distinguish pre-existing retained worktrees from this project's run worktrees; only this project's integrated branches must be removed.
+- During Wave 1 close, the registered and physical coordinator worktree `/Users/julianhein/.codex/worktrees/f14c/hr-automation-rebuild` disappeared while its branch and commits remained intact. The coordinator verified `feature/test-suite-rationalization` at `d107d647`, recreated that exact worktree path from the branch, and reverified it clean before continuing. Cleanup messages now explicitly exclude the coordinator, R6, and unrelated worktrees.
 
 ## Questions for the operator
 
