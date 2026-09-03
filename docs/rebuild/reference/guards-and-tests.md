@@ -1072,7 +1072,7 @@ global or per-glob. So branches are still report-only past the exit that was sup
 them, and nothing fails when they fall. The 2026-09-02 measurement at HEAD is **76.39 % global**
 (15,367 / 20,115), comfortably over D91's 50 % global floor, so adopting the global half costs nothing today;
 the 70 % safety-critical half needs a per-glob measurement first. The suite-size report at HEAD:
-**unit 306 files / 111,789 lines · scenario 17 files / 7,060 lines · architecture 70 files / 27,512
+**unit 306 files / 111,789 lines · scenario 17 files / 7,105 lines · architecture 70 files / 27,587
 lines**, printed by `scripts/suite-size.ts`, which `test:coverage` chains and `gate-coverage` pins as
 still chained (never as still passing — see D190 below for why that distinction is the whole
 lesson).
@@ -1145,11 +1145,11 @@ slipped in behind a coverage fix.
 > 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `package.json` and `CLAUDE.md`'s After-changes section
 <!-- /roadmap-status -->
 
-**The measurement above is now the rule.** The operator adopted the D190 recommendation as written:
+**Historical adoption record (2026-08-12).** The operator adopted the D190 recommendation as written:
 the per-commit gate family is `npm run typecheck && npm run lint && npm run test:coverage`,
 REPLACING the separate `npm run test && npm run test:architecture` pair. `test:coverage` runs every
-Vitest project `test` runs (`tests/unit/architecture` is inside the `unit` project's glob) plus the
-lines/statements/functions floors, and it measured faster — **28.2 s against `test` 21.5 s +
+Vitest project `test` ran at adoption (`tests/unit/architecture` was then inside the `unit` project's
+glob) plus the lines/statements/functions floors, and it measured faster — **28.2 s against `test` 21.5 s +
 `test:architecture` 17.4 s ≈ 39 s** — so the floors are a saving, not a cost. `test` and
 `test:architecture` stay available as scripts for a targeted run; `test:parity` and
 `build:manifest --check` are unchanged obligations, unaffected by this decision. Root `CLAUDE.md`'s
@@ -1704,7 +1704,7 @@ family-wide census and taxonomy on 2026-09-02.
 | family | folder | runner | when | may touch | proves |
 |---|---|---|---|---|---|
 | **unit** | `tests/unit/**` (306 files / 111,789 lines, architecture excluded) | vitest project `unit` | every commit | pure functions, fake ctx, temp dirs, its own SQLite files under a temp root — **never** a real runtime root (`test-runtime-root-isolation`) | one module's decision logic, against its own schemas |
-| **architecture guards** | `tests/unit/architecture/**` (70 files / 27,512 lines) | vitest project `architecture`; `npm run test:architecture` selects that project by name | every commit | this repository as DATA — source text, ASTs, registries, `package.json`, and TypeScript configs; authenticated frozen provenance may describe legacy facts, but no finished gate reads the legacy checkout | that a rule holds everywhere, and — through `guard-manifest` — that each of the nine arms still fires against a violating fixture |
+| **architecture guards** | `tests/unit/architecture/**` (70 files / 27,587 lines) | vitest project `architecture`; `npm run test:architecture` selects that project by name | every commit | this repository as DATA — source text, ASTs, registries, `package.json`, and TypeScript configs; authenticated frozen provenance may describe legacy facts, but no finished gate reads the legacy checkout | that a rule holds everywhere, and — through `guard-manifest` — that each of the nine arms still fires against a violating fixture |
 | **fixture scenarios** | `tests/scenario/*.scenario.test.ts` (6 capability files) + `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts` (7 T1a files) + `tests/scenario/dashboard/**` (3 T2 files) | vitest project `scenario` | every commit | `walkDescriptor` over a real descriptor with caller-supplied node outputs; fake stores or one isolated authority database; no browser | that one declared graph or dashboard command/projection path binds, refuses and terminates as authored, and that graph coverage points claimed are the ones walked |
 | **integration walks** | `tests/scenario/*.walk.test.ts` (1) | vitest project `scenario` | every commit | ONE real authority database and the production read models | the JOINS only composition can falsify; it claims no coverage point and carries no manifest row (D185) |
 | **dashboard unit tests** | `tests/unit/dashboard/**` (102 files) | vitest project `unit` | every commit | extracted `*-model.ts` decisions plus wiring-level `jsdom` tests that opt in per file; anything visual stays in parity | that a surface's pure half computes what it claims and its wiring dispatches/focuses as contracted |
