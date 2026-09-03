@@ -1499,6 +1499,11 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // The dashboard composition seam handed to the CLI (1g): a process-lifetime
   // handle (port + stop), operational like RebuildRuntimeStart, not wire data.
   "src/core/runtime-composition.ts:RunningDashboard",
+  // The dashboard's shutdown seam: one `subscribe` FUNCTION returning its
+  // disposer, so like the clock it is an injected in-process dependency and no
+  // schema can describe it. Nothing here is stored or served — the values that
+  // cross are the OS signal names, already a closed literal union.
+  "src/core/runtime-composition.ts:RuntimeShutdownSignals",
   "src/domain/canonical-json.ts:JsonObject",
   "src/domain/clock.ts:Clock",
   "src/domain/clock.ts:TestClock",

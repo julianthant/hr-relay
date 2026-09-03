@@ -81,9 +81,10 @@ The following are settled:
 2. **One strict client owns all transport per bundle.** Components do not call `fetch` or open a
    stream directly. Query, subscription, command, upload, error normalization, schema parsing,
    reconnect, and cancellation live behind one client boundary — `src/dashboard/client/**` for the
-   operator bundle, and `src/dashboard/phone/capture-client.ts` for the phone bundle, which is a
-   SECOND browser entry (`capture.html`) that may not reach the operator client at all. One owner
-   per bundle, enforced (§8 guard #1).
+   operator bundle. Exactly one browser bundle has a transport: D294 (2026-08-31) retired the phone
+   capture bundle (`dashboard/phone/capture-client.ts`, `capture.html`), and the one other build
+   entry that remains, `kit.html`, serves no fact and calls no endpoint. One owner per bundle,
+   enforced (§8 guard #1).
 3. **REST snapshots + one resumable SSE stream + one command route.** This fits the local,
    single-operator product and the current append/project architecture better than GraphQL,
    WebSockets, or a client database. The bulk arm rides its own POST (`/api/v1/commands/bulk`)
@@ -116,7 +117,7 @@ The following are settled:
 
 <!-- roadmap-status: phase-1 -->
 - [x] 0.1 the frontend renders finished read models — every count, status, action and containment fact is projected (`src/server/dashboard/projectors/run-queue-projection.ts`). The ONE standing exception, the run modal reading `WORKFLOW_DESCRIPTORS` from the bundle, CLOSED 2026-08-21 with D264 row D11 (§4): the three fields are served on `WorkflowStartWireSchema` and `dashboard-wire-boundary` arm (15) keeps the registry out of every dashboard bundle
-- [x] 0.2 one transport owner per bundle — `src/dashboard/client/transport.ts` and `src/dashboard/phone/capture-client.ts`, enforced by `isNetworkOwner` in `provider-capability-boundary.test.ts`
+- [x] 0.2 one transport owner per bundle — `src/dashboard/client/transport.ts`, enforced by `isNetworkOwner` in `provider-capability-boundary.test.ts`; the second owner it used to name, `src/dashboard/phone/capture-client.ts`, went with D294 and the guard no longer carves it out
 - [x] 0.3 REST snapshots + ONE resumable stream + ONE command route — `routes/api.ts`, `GET /events/v1`, `POST /api/v1/commands` (+ the bulk vector arm)
 - [x] 0.5 no optimistic authority — every surface settles through the served result and the next projection (D253, `app/command-result.ts`)
 - [x] 0.9 two repos, one cutover — structural since D93; `config/runtime-isolation.json` + `operational-isolation.test.ts` pin the one-machine half
@@ -208,7 +209,7 @@ src/
 │       ├── routes/api.ts         # the ONE thin parse/host-gate/dispatch boundary
 │       ├── queries/              # bootstrap · run-detail · archive · explorer · activity-export · storage · advisory · ui-catalog
 │       ├── projectors/           # run-queue-projection · worker-cards · queue-row-actions · run-subject-title
-│       ├── commands/             # command-service · start-plan-service · intake-service · capture-service
+│       ├── commands/             # command-service · start-plan-service · intake-service · settings-service · explorer-edit-service · operator-command-ingress
 │       ├── subscriptions/        # dashboard-stream: cursor/ring → SSE envelopes
 │       ├── compose.ts            # the composition root
 │       └── http-server.ts        # the loopback Node→Hono bridge
@@ -219,8 +220,12 @@ src/
     ├── ds/                       # the design system: tokens, primitives, the ONE barrel
     ├── surfaces/                 # every operator surface, each paired with a `<surface>-model.ts`
     ├── lib/                      # framework-free helpers
-    └── phone/                    # the phone capture bundle: its own entry, its own transport
+    └── kit/                      # the DS specimen page's own entry (`kit.html`); `ds/**` + `lib/**` only
 ```
+
+D294 (2026-08-31) retired the `dashboard/phone/**` capture bundle, its `capture.html` entry and the
+whole capture route/command family; nothing below may reintroduce them. Diagnostic screenshots, run
+Capture tiles, receipts, Archive evidence and spreadsheet intake are separate and unaffected.
 
 Rules:
 
@@ -231,10 +236,10 @@ Rules:
 - Projectors never import React. React never imports workflow modules, stores, SQLite, tracker
   readers, or server registries — with the one named exception in §4 (`WORKFLOW_DESCRIPTORS`, D264
   row D11).
-- **One transport owner per bundle**: `dashboard/client/**` for the operator app,
-  `dashboard/phone/capture-client.ts` for the phone. The phone bundle may not reach the operator
-  client, so it needs its own; the principle is unchanged and the guard names ONE file rather than
-  the whole `phone/` subtree, so a component reaching for `fetch` still fails (§8 #1).
+- **One transport owner per bundle**: `dashboard/client/**` for the operator app, and nothing else
+  in this tree. The phone carve-out (`dashboard/phone/capture-client.ts`) went with D294, so
+  `isNetworkOwner` now names the operator client alone and any other dashboard module reaching for
+  `fetch` fails (§8 #1).
 - Product surfaces may import only strict wire types, the client facade, design-system primitives,
   and pure presentation helpers.
 - A `surfaces/*.tsx` or `app/*.tsx` module exports components only; its pure half lives in
@@ -584,9 +589,9 @@ The second route exists because the RESULT shape differs: a vector is not a `Com
 widening the single-result union to sometimes be a list would make every caller check.
 
 **Multipart bytes are the exception to the JSON route.** Uploads enter through
-`POST /api/v1/intake/files` (which also creates or joins the intake session) and the phone's own
-photo routes; the command then references the stored artifact. There is no generic
-`POST /api/v1/uploads`.
+`POST /api/v1/intake/files` (which also creates or joins the intake session) — the one multipart
+door, now that D294 retired the phone's photo routes. The command then references the stored
+artifact. There is no generic `POST /api/v1/uploads`.
 
 **Server action descriptors are the only source** for command availability, labels, placement,
 confirmation copy, required forms, and revision tokens.
@@ -639,6 +644,19 @@ its route, or a stale row. The client transport attaches its own Origin to every
 Node and fake transports exercise the same door a browser supplies for free; the server never relies
 on that header being client-authored. Every other `GET` remains unguarded by design: it reads served
 projections and never changes state.
+
+**The start-plan wire has one owner (2026-09-03).** `src/domain/dashboard/start-plan.ts` declares
+`StartPlanRequestSchema` (what a browser authors — every leaf explicit, no defaults),
+`StartPlanIngressSchema` (what `POST /api/v1/start-plans` admits — the same leaves plus the
+server-owned `headless` / no-capture / `interactive` defaults for programmatic callers) and
+`StartPlanWireSchema` (the answer — domain ids, fingerprints and instants; omitted step KEYS only,
+never omission facts or `rawInput`). `client/commands.ts` and `commands/start-plan-service.ts` import
+those three and declare none of their own; the client's former "mirror" with generic strings and
+`unknown[]` submissions is deleted, and `start-plan-contract.test.ts` refuses either file
+redeclaring a start-plan schema. The refusal-code enum moved to the browser-safe
+`domain/run/start-refusal.ts` because `domain/run/start-plan.ts` hashes with `node:crypto` and a
+bundle entry may reach no Node built-in (§8). The wire is registered as `wire/start-plan` in the
+redaction audit: planned titles, subtitles, match keys and refusal messages are captured HR values.
 
 **A command whose target is not a run is composed beside the composer, not inside it** (D249,
 2026-08-20). `composeCommandRequest` is exhaustive over the SERVED row-action vocabulary and every
@@ -742,6 +760,21 @@ publish. A disconnect, timeout, malformed cursor, current or future cursor, cros
 cursor, missing generation, ordinary reconnect and subscriber-buffer overflow do not; overflow is
 the separate `reset-required` arm.
 
+**Delivery is demand-driven, so the pending bound holds end to end (2026-09-02).** A hub
+connection hands out live envelopes one `next()` at a time and queues everything a consumer has not
+yet asked for; `subscriptions/sse-response.ts` is the ONE bridge from that connection to an SSE
+body, a Web Stream `pull()` source that asks only when the Node adapter has drained the socket. A
+browser that stops reading therefore backs up in the hub's single bounded queue — never in an
+unbounded stream buffer the hub cannot see — and when the bound trips the queue collapses to exactly
+one `reset-required{cursor-expired}`, re-minted at hand-out so its cursor names the head the client
+resnapshots from; nothing after it queues until it is consumed, and nothing before it is dropped or
+reordered. Stream cancellation (client disconnect, adapter cancellation, server shutdown) closes the
+connection exactly once; a hub close resolves the outstanding pull with `undefined` and ends the body
+cleanly. A count-bearing change builds one immutable snapshot envelope per distinct day and shares it
+across that day's subscribers. Proof: `dashboard-stream.test.ts` (bound, hand-out, close, one
+snapshot per day) and `dashboard-stream-backpressure.test.ts` (the bridge with a reader that stops
+pulling, and the real Node adapter with a paused client that resumes to exactly one reset).
+
 The hub captures one complete `DashboardDayWire` and derives hello's generation/cursor/hash and the
 snapshot envelope from that same object. It awaits the durable publication before exposing the
 replacement. If publication itself moves the projection generation or cursor, the captured pair is
@@ -757,6 +790,40 @@ speaks the SSE wire format over `fetch` + `ReadableStream`, because `EventSource
 headers and the resume contract is the bound `Last-Event-ID` + `Dashboard-Projection-Generation`
 pair. The route reads those headers and falls back to `?cursor=&generation=`; generation without a
 cursor and every malformed value fail the strict request schema.
+
+**Idempotence is the CLIENT's rule too, and how a stream ends decides whether there is another one
+(2026-09-03).** `subscription.ts` ignores a replayed envelope after the cursor parses and
+BEFORE any effect — so a resume's replay costs nothing — and the threshold differs by envelope kind
+because the two do not compose the same way. A **patch** is an EDIT of held state, so any patch at
+or below the held cursor is ignored: without that, a replayed removal names a run the held day no
+longer carries, `applyDashboardDayPatch` calls it a protocol failure, and the client answers a
+protocol failure by discarding the day and resnapshotting — a correct resume would buy a full
+snapshot every time. A **snapshot** is the whole day for its cursor, so it is ignored only from
+STRICTLY BEHIND the held cursor; one at the held cursor is re-applied. That is not a relaxation, it
+is required: the projection stamps every change of ONE batch with the same cursor, so a
+count-neutral member change followed by a count-bearing one is served as `patch pc:N` then
+`snapshot pc:N`, and only the snapshot carries the worker cards, the pools and the count rollups.
+Dropping it as a duplicate leaves them stale behind a Live dot with no later envelope able to
+correct them; re-applying it is idempotent by construction, because a snapshot REPLACES the day
+rather than editing it. The hello handler's generation-change branch still clears the held cursor,
+which is what lets a REPLACEMENT generation's lower-numbered snapshot through; a forward GAP and a
+patch for an unheld run still resnapshot. And the stream's own ending is classified rather than uniform: EOF and the
+transport's `network` kind report `reconnecting` and resume with `Last-Event-ID`, while an HTTP
+refusal, a protocol or schema failure, or a rejection the client cannot classify (named as such,
+cause kept) is TERMINAL — `stopped` carrying that error, no timer, and `useDashboardDay` replaces
+its day resource with `failed(error)`. The classification is by error KIND, never by
+`error.retryable`: that flag is the server's hint about re-issuing one request and `httpError`
+copies it off the wire body, so honouring it here would let a 503 declaring itself retryable
+reconnect forever behind a dashboard that still looks live. Each ending is a
+`StreamHandle` fact, so the handlers are bound to the handle that produced it: `close()` aborts the
+fetch and the transport RESOLVES an aborted stream's `done` indistinguishably from a server EOF, so
+a stream this client deliberately superseded (a gap resnapshot, a reset, a reconnect) would
+otherwise schedule a SECOND reconnect one microtask later, flapping `connecting -> reconnecting` and
+replacing the fresh snapshot a gap demands with a resume. Pinned by
+`tests/unit/dashboard/subscription.test.ts` (the client's rules, over a fake transport) and
+`tests/unit/dashboard/client-transport.test.ts` (`openStream`'s three real endings: a body that
+errors mid-read rejects `network`, a non-2xx stream response rejects `http`, and `close()` resolves),
+with `tests/unit/dashboard/use-dashboard-day.test.ts` for the hook's half.
 
 **One topic has a producer.** `TopicKeySchema` declares six (`dashboard-day`, `run-detail`,
 `run-logs`, `run-review`, `run-people`, `artifact`); the route's topic pattern admits only
@@ -802,8 +869,6 @@ GET  /api/v1/ui-catalog
 POST /api/v1/preflight/rerun                 # strict loopback, bounded, retained-id replay
 POST /api/v1/start-plans
 POST /api/v1/intake/files      ·  GET /api/v1/intake/:sessionId
-POST /api/v1/capture/sessions  ·  GET /api/v1/capture/sessions/:sessionId
-     /api/v1/capture/phone/…                   # nine token-scoped phone routes behind the Host gate
 POST /api/v1/commands          ·  POST /api/v1/commands/bulk
 GET  /events/v1?topics=…                       # the one stream; cursor via Last-Event-ID
 ```
@@ -998,7 +1063,7 @@ until every cell in its row has an implementation and a test. The **Built** colu
 | Receipt/Failure/Captures | immutable receipt/failure/capture refs | pending receipt becomes finalized; capture availability/purge state | remediation actions only when served | ref operator-trust evidence/failure store + ref write-safety ledger/proof | receipt and failure yes (D140/D142); D292 captures are served through verified async diagnostic authority, the mounted Receipt consumer and exact byte URLs. The generic `ArtifactResourceWireSchema` status/gallery family remains open (§3.6) |
 | Start Run | descriptor start capability + server start plan + preflight | descriptor/config/preflight invalidation | start command referencing plan token/artifact ids | descriptor parser, config resolver, enqueue authority | typed method yes (D250/D251); D306 defaults new/reset dashboard starts to Headed with screenshot capture on and persists both explicit options in the plan/envelope; upload/capture/spreadsheet/bare methods are not built; preflight is served from the retained report |
 | Spreadsheet Intake | artifact inspection, detected headers/samples, saved exact-fingerprint mapping, validation/manifest draft | parse/validation/finalize progress | confirm mapping, correct/exclude, validate, enqueue manifest | ref data-intake-and-edit-data artifact/mapping/intake authority | yes, end to end |
-| Mobile Capture | capture session + ordered immutable photo refs | session/photo/finalize/handoff patches | upload/replace/reorder/delete/finalize/retry/discard | ref data-intake-and-edit-data capture authority + artifact/finalize outbox | yes — but over **nine bespoke REST routes**, not the one command route; the phone-host gate is inert (D189) |
+| Mobile Capture | — | — | — | — | **RETIRED (D294, 2026-08-31)** — the capture session, its nine bespoke REST routes, the phone bundle and the phone-host gate are gone and may not be reintroduced. Run Capture tiles, diagnostic screenshots, receipts and Archive evidence are separate authority and stay served |
 | Session Panel | worker cards, browser health, current run, queue/wait reasons | worker/browser/run patches | plan/spawn/stop/refresh/reopen/pause/resume | worker/session authority and browser health services | cards yes (D248); of seven commands only `stop-worker` has a control — the other six have kernel arms and no button |
 | Settings + doctor/storage | schema-driven sections, effective/default/override provenance, revision, health/backups | config/storage/preflight patches | resolver-owned atomic settings update; recovery actions when explicitly served | ref clock-config-secrets config/preflight + ref dashboard-surfaces authority recovery | bounded edit/readback plus preflight; the storage doctor is served and remains read-only |
 | Archive + version bump | paged archive index, self-contained archived detail, integrity, version plan | version/archive job progress | plan/apply bump, relaunch as new run | ref dashboard-surfaces archive snapshots + descriptor/version service | yes (D179/D223) |
@@ -1014,7 +1079,7 @@ until every cell in its row has an implementation and a test. The **Built** colu
 - [x] gate ceremony — three server-declared shapes plus rejection, and the parked-write resolution beside it (D226/D245, §5.1.4)
 - [x] archive · activity · explorer — frozen archived detail, the aggregate + ledger block + CSV, the read-only graph (D179/D223/D236/D240/D227–D229, §5.1.5)
 - [x] notifications — the bell, its filters, and read/unread/snooze CASed on the row's own revision (D222/D253, §5.1.6)
-- [x] intake and capture — upload → mapping → validate → manifest → fan-out, and the phone session (2h/2i-E/2i-F, §5.1.7)
+- [x] intake — upload → mapping → validate → manifest → fan-out (2h/2i-E, §5.1.7); the phone session it used to name was retired by D294
 - [~] Edit Data — the checkpoint-edit command is wired and only `person-lookup` declares the capability (§5.1.7)
 - [ ] Group People and OCR Review — both matrix rows have NO surface; `people` and `review` are declared-unserved (D184)
 - [ ] the live half of every square except the queue row — five of six stream topics have no producer, so a panel follows the day cursor and re-reads (§3.5)
@@ -1022,6 +1087,7 @@ until every cell in its row has an implementation and a test. The **Built** colu
 - [x] preflight bootstrap + strict doctor-rerun route, consumed by DCC3's typed caller (§3.1)
 - [x] Settings resolver-owned atomic write/readback subset (§3.4); credentials, AI assist, delete/recover and resolver-unowned values remain later capability scope
 > 2026-08-28 | DCC6 closure | verified DCC1–DCC3's typed Settings/preflight control plane; left: the two unserved panel kinds, per-run stream topics, remaining controls and broader legacy settings scope
+> 2026-09-03 | dashboard-wiring U7 | verified against src/server/dashboard/routes/api.ts (no `/api/v1/capture/**` route survives), src/server/dashboard/commands/ (no `capture-service.ts`), src/dashboard/** (no `phone/`, no `capture.html`, no `capture-start.tsx`), tests/parity/ (no `capture-phone-reference.spec.ts`) and provider-capability-boundary's `isNetworkOwner` (operator client + http-server only): every Mobile Capture claim in §§0, 2, 3.4, 5, 5.1.7, 7.1, 8 and 9 now reads as D294-retired rather than implemented. Left: the two unserved panel kinds, per-run stream topics, remaining Session Panel controls and broader legacy settings scope — unchanged by this pass
 <!-- /roadmap-status -->
 
 ### 5.1 Critical user flows
@@ -1558,7 +1624,7 @@ remains reachable.
 snooze has no inverse because the kernel serves none; and the OS-delivery half belongs to the
 notification service, not this surface.
 
-#### 5.1.7 Intake, mobile capture and Edit Data
+#### 5.1.7 Intake and Edit Data
 
 <!-- roadmap: dash-defaults -->
 <!-- roadmap: order-3-dash -->
@@ -1574,18 +1640,22 @@ notification service, not this surface.
 
 **Implemented:** all six. `surfaces/intake.tsx` over `POST /api/v1/intake/files` +
 `GET /api/v1/intake/:sessionId` and the six `intake` command verbs; the fan-out emits a `run.queued`
-span per member, so the rows arrive through §5.1.2's ordinary path. Mobile capture is
-`surfaces/capture-start.tsx` plus the SECOND browser bundle under `src/dashboard/phone/**`
-(`capture.html`), over nine bespoke REST routes and the `capture` command family. Edit Data is the
-Context rail's `run.edit-checkpoint`, gated on `capabilities.editData` — declared today by
-`person-lookup` alone — and held by the `edit-data-field-policy` guard.
+span per member, so the rows arrive through §5.1.2's ordinary path. Edit Data is the Context rail's
+`run.edit-checkpoint`, gated on `capabilities.editData` — declared today by `person-lookup` alone —
+and held by the `edit-data-field-policy` guard.
 
-**Generic:** the intake pipeline and the capture session. **Per-workflow:** the intake projection
-each workflow declares, and the Edit Data field list on its descriptor.
+**Mobile capture is retired, not deferred (D294, 2026-08-31).** `surfaces/capture-start.tsx`, the
+second browser bundle under `src/dashboard/phone/**` (`capture.html`), the nine bespoke REST routes,
+the `capture` command family and its inert phone-host gate are all gone from this tree, and none of
+them may be reintroduced. What this section still describes is the spreadsheet pipeline alone.
 
-**Left:** the operator-side capture-session poll (declared `served-unconsumed`, D175); a model file for `intake.tsx`, whose folds are untested by
-construction (row **D8**); the triple envelope parse in `intake.prepare` and the capture service
-throwing its refusals instead of returning the result union (row **D10**).
+**Generic:** the intake pipeline. **Per-workflow:** the intake projection each workflow declares,
+and the Edit Data field list on its descriptor.
+
+**Left:** the `intake.prepare` envelope parse that repeats the kernel's own (row **D10**). The two
+capture items this list used to carry — the operator-side capture-session poll (D175) and the
+capture service's thrown refusals — went with D294, and row **D8**'s intake half is closed:
+`surfaces/intake-model.ts` exists and `tests/unit/dashboard/intake-model.test.ts` pins its folds.
 
 ---
 ## 6. Delivery sequence mapped to the phase docs
@@ -1703,12 +1773,13 @@ placement and the Context data ledger are part of this slice, not optional polis
 <!-- roadmap: p2-2h -->
 
 Wired the mapping/validation/manifest flow, operator correction evidence, Edit Data checkpoint
-commands, and mobile capture authority/outbox recovery.
+commands, and mobile capture authority/outbox recovery — the capture half of which D294 retired on
+2026-08-31.
 
 <!-- roadmap-status: p2-2h -->
 - [x] spreadsheet intake end to end — upload, header choice, explicit mapping, validation, immutable manifest, fan-out (§5.1.7)
 - [x] Edit Data over checkpoints — `run.edit-checkpoint`, declaration-gated by `capabilities.editData`
-- [x] mobile capture authority and its outbox — the phone bundle, the session, the ordered photo refs (2i-F)
+- [x] mobile capture authority and its outbox — the phone bundle, the session, the ordered photo refs (2i-F). **RETIRED by D294 (2026-08-31)**: none of it survives in this tree
 - [ ] descriptor-driven upload / capture / spreadsheet / bare START methods — no registered workflow declares one, so the run modal has one method kind (D251, §5.1.1)
 - [ ] progressive OCR Review records — the store exists; the `review` panel kind and its section are declared-unserved (D184)
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/{intake,capture-start,context-rail}.tsx and src/server/dashboard/commands/{intake,capture}-service.ts; left: the start-method kinds and the Review surface, both waiting on a declaring workflow
@@ -1728,7 +1799,7 @@ fixture-only.
 - [x] the Activity report, its write-ledger block and its CSV export (D180/D236/D240, below)
 - [x] Explorer Phase A — the read-only graph, field census, declared `when`, descriptor prose (D227–D229), plus DCC's complete existing-workflow boundary: label/icon/category hot apply, named unavailable timeline/grouping and notification, strict policy/Edit Data source briefs
 - [x] the storage doctor and the backup summary the Settings surface renders
-- [x] the phone capture surface at its own viewport, in one theme (2i-F, §7.1)
+- [x] the phone capture surface at its own viewport, in one theme (2i-F, §7.1). **RETIRED by D294 (2026-08-31)**: the surface and its parity spec are gone
 - [x] Settings — server-listed resolver-owned edit/readback plus preflight rerun and read-only doctor; broader legacy settings remain open (§3.4)
 - [ ] worker/session controls — six of seven have kernel arms and no control (§5)
 - [ ] the Explorer's live-run overlay and new-workflow authoring (D186); D283 closes no new-workflow or arbitrary descriptor authority
@@ -1934,15 +2005,31 @@ today; existing generic behavior stays byte- and interaction-compatible through 
 > 2026-09-02 | D311 | owner-first design ratified; implementation remains open in doc 03c §Workflow authoring model
 <!-- /roadmap-status -->
 
-### 6.9 NOT BUILT — the BFF does not yet serve the ordinary built dashboard (D189, amended D294)
+### 6.9 BUILT 2026-09-03 — the BFF serves the ordinary built dashboard in `--prod` mode (D189, amended D294)
 
 <!-- roadmap: phase2-dispositions -->
 <!-- roadmap: def-byte-path -->
 
-**A named gap, recorded so it cannot read as met-by-silence.** The production BFF
-(`src/server/dashboard/http-server.ts` + `routes/api.ts`) has **no static handler**: every unrouted
-path 404s, and the only servers in this tree that deliver `dist/dashboard` are the parity lane's
-test fixtures. Four consequences, all real:
+**Landed 2026-09-03.** `startRebuildRuntime` parses `dashboard [--prod]` and refuses any other
+argument by name; `composeDashboardRuntime({ frontend: "built-bundle" })` realpaths
+`<repoRoot>/dist/dashboard`, requires a regular `index.html` BEFORE any authority, lock or socket
+(otherwise "run `npm run web:build` first"), and `routes/api.ts` registers
+`static-bundle.ts`'s handler LAST so every API/events/artifact route wins by order and `/api/**` and
+`/events/**` explicitly pass through to the JSON 404. The handler decides lexically first
+(`decideStaticBundlePath`, a pure decision table: GET/HEAD only; percent-decode once or 400;
+refuse NUL, backslash, dot and empty segments; a closed extension → media-type allowlist where an
+unlisted extension is a 404, never `application/octet-stream`; `/assets/*` is
+`public, max-age=31536000, immutable` because Vite content-hashes it, everything else `no-cache`;
+an extension-less route is the SPA's `index.html`), then physically (lexical containment, `realpath`
+containment so a symlink cannot leave the bundle, regular-file only), always `nosniff`, refusals as
+`STATIC_PATH_REFUSED` 400 with a fixed message that never echoes the path. The WHATWG URL layer
+resolves literal and `%2e`-encoded dot segments before any handler runs, so those forms can only
+name bundle-relative paths; the `..%2f` and backslash forms are what the handler refuses itself.
+Ported with provenance from the parity fixture's `serveStatic` and hardened. Proof:
+`tests/unit/server/static-bundle.test.ts` (decision table, real temp bundle with an escaping and an
+inside symlink, HEAD, POST pass-through) and `compose-real-port.test.ts` (refusal without a build
+opens no authority; the composed runtime serves `/`, `/assets/*`, an SPA route, and keeps
+`/api/v1/bootstrap` and the JSON 404). The history below is preserved as written:
 
 1. **`npm run dashboard:prod` claims a mode the runtime does not implement.** The script
    passes `--prod`; `startRebuildRuntime` reads `args[0]` as the command and never looks at
@@ -1970,14 +2057,15 @@ daily local tool.
 <!-- roadmap-status: phase2-dispositions -->
 - [x] D189 — the BFF serves no frontend bytes: DECIDED, with an owner and a named trigger, not waived
 - [x] D186 — D283 completes the existing-workflow boundary: label/icon/category hot apply; timeline/grouping and notification named unavailable without owners; policy/Edit Data strict source briefs. New-workflow authoring and broader design remain reassigned on D79a's argument with their trigger in ref operator-trust §5.3
-- [x] both dispositions still hold at HEAD: no static handler exists in `src/server/**`, and the Explorer graph remains read-only outside its complete existing-workflow boundary
+- [x] both dispositions were honoured until their triggers fired: the static handler landed as `src/server/dashboard/static-bundle.ts` on 2026-09-03 (`def-byte-path` below), and the Explorer graph remains read-only outside its complete existing-workflow boundary
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/{http-server.ts,routes/api.ts,compose.ts} (no static/dist/serveStatic reference) and src/core/runtime-composition.ts (`--prod` unparsed); left: nothing — a disposition is closed by being stated with its trigger
 <!-- /roadmap-status -->
 
 <!-- roadmap-status: def-byte-path -->
-- [ ] the static handler on the BFF — port the parity fixture's traversal-checked `serveStatic`; every unrouted path 404s today
-- [ ] `--prod` parsed, so `npm run dashboard:prod` means what its name says
+- [x] the static handler on the BFF — ported from the parity fixture's traversal-checked `serveStatic` and hardened (`src/server/dashboard/static-bundle.ts`, registered last in `routes/api.ts`)
+- [x] `--prod` parsed, so `npm run dashboard:prod` means what its name says (`parseDashboardCommandOptions`; any other argument refuses by name)
 > 2026-08-31 | D294 | Mobile Capture Mode and its public delivery scope are retired. The two ordinary local-dashboard items above remain open.
+> 2026-09-03 | dashboard-wiring remediation | both items landed; `config/legacy-capabilities.json` `legacy-route-static` is `native` → `static-bundle.ts`, status implemented
 <!-- /roadmap-status -->
 
 ---
@@ -1998,7 +2086,7 @@ exposes.
 |---|---|---|
 | Matrixed | `queue-day` · `run-open-gate` · `run-failed` · `run-running` · `run-done` · `run-queued` · `run-parked-write` · `run-group` · `run-member` · `run-receipt` · `start-run` · `intake-upload` · `intake-mapping` · `intake-review` · `explorer-graph` · `explorer-transaction` · `catalog-search` · `archive-ledger` · `archive-run` · `activity-report` | 20 × 3 viewports × 2 themes = 120 |
 | Variants (1440×900 only) | the two panel-dismissed states in both themes; `queue-day--keyboard` and `queue-day--reduced-motion` in Paper Ink; the four gate-ceremony variants and the two park resolutions in Graphite Warm; `run-receipt-populated` in both themes, over the SEEDED adapter | 14 |
-| Phone (its own block) | `capture-empty` · `capture-photos` · `capture-reorder` · `capture-sent` · `capture-failed` | 5, at 390×844, Paper Ink only |
+| Phone (its own block) — RETIRED D294 (2026-08-31) | was `capture-empty` · `capture-photos` · `capture-reorder` · `capture-sent` · `capture-failed` | the 5 references and their spec are deleted; see the paragraph below |
 
 The stored reference includes state id, viewport, theme, adapter, fixture id, descriptor hash, app
 version, capture date and variant. A screenshot without the matching a11y snapshot is incomplete —
@@ -2022,18 +2110,15 @@ and the corpus does not photograph.
   be *visibly* proven and no reference shows one.
 - **The Explorer's live-run overlay**, which is unserved (§3.6).
 
-**The phone viewport is its own block, not a fourth entry in the shared matrix (2i-F).** The matrix
-photographs every operator state at every viewport in both themes; adding 390×844 to it would have
+**The phone viewport had its own block, and D294 (2026-08-31) removed both it and its surface.**
+`tests/parity/capture-phone-reference.spec.ts` and the phone entry it photographed are gone; no
+*capture* reference survives, and the one 390×844 reference left is Archive evidence's
+touch-geometry check in its own spec (`archive-evidence.spec.ts`, `archive-evidence--paper-ink--phone-390x844`),
+outside the matrix. **The rule it recorded is kept because it is general**, and it is why the phone was never a fourth entry in the shared matrix: the matrix
+photographs every operator state at every viewport in both themes, and adding 390×844 would have
 minted twenty-six references of a dense console squeezed into a phone width, a rung the operator
-dashboard does not support and nobody will ever review. The phone capture surface is the opposite
-case: it is the ONE surface that renders at that width, it ships a single theme (`capture.html`
-stamps Paper Ink and carries no `dark` class, because the page is read at arm's length in daylight
-rather than at a desk), so it has nothing to photograph twice. Its five states live in
-`tests/parity/capture-phone-reference.spec.ts` under their own `test.describe`, sharing the same
-`captureParityPair` contract, the same flat `references/` namespace, the same PARITY_UPDATE gate and
-the same zero-moved-pixel comparison as everything above. The rule this records is general: a
-viewport belongs in the shared matrix when every state is meant to be seen at it, and in its own
-block when exactly one surface is.
+dashboard does not support and nobody would ever review. A viewport belongs in the shared matrix
+when every state is meant to be seen at it, and in its own block when exactly one surface is.
 
 **The reference set is an expectation, not a log (D132).** Both halves of every pair are
 **compared** on a normal `npm run test:parity`: the pixels through Playwright's baseline, the
@@ -2467,10 +2552,11 @@ The guard for each rule, as built. `ref:guards-and-tests` owns the inventory;
 ways. A rule with no guard is listed as such rather than implied.
 
 1. **Transport boundary:** `fetch`, stream construction, and upload streams appear only in this
-   repo's `src/dashboard/client/**` (operator bundle) and `src/dashboard/phone/capture-client.ts`
-   (phone bundle). **HELD by `provider-capability-boundary`'s `isNetworkOwner`** — the same
-   single-owner principle it enforces for provider adapters, applied to the frontend transport, and
-   the reason the phone carve-out is ONE named file rather than the whole subtree. Nothing in the
+   repo's `src/dashboard/client/**` (the operator bundle). **HELD by
+   `provider-capability-boundary`'s `isNetworkOwner`** — the same single-owner principle it enforces
+   for provider adapters, applied to the frontend transport. The phone carve-out that used to sit
+   beside it (ONE named file, never the whole subtree) went with D294, so the guard now names the
+   operator client and `src/server/dashboard/http-server.ts` alone. Nothing in the
    tree constructs an `EventSource`; the client speaks SSE over `fetch` + `ReadableStream` so it can
    send `Last-Event-ID` as a header (§3.5).
 2. **No duplicate wire types:** dashboard code imports schema-inferred types; handwritten mirrors
@@ -2578,8 +2664,10 @@ ways. A rule with no guard is listed as such rather than implied.
     that is not the working tree's. **LANDED as `parity-reference-authority` (D132/D145, §7.1)**,
     executing the lane's own entry points against violating fixtures.
 
-**The byte-path guard §6.9 owes** is the seventeenth and is not built: a phone-origin request may be
-served nothing outside the capture allow-list. It lands with the static handler.
+**The seventeenth guard §6.9 once owed is retired with its subject.** It was to hold that a
+phone-origin request may be served nothing outside the capture allow-list; D294 removed the phone
+origin entirely, and §6.9's static handler landed as `src/server/dashboard/static-bundle.ts` with no
+public origin to gate. `docs/rebuild/guard-inventory.json` carries no row for it.
 
 ---
 
@@ -2610,7 +2698,7 @@ Frontend/backend integration is complete only when — with the 2026-08-20 state
 
 | # | Criterion | State |
 |---|---|---|
-| 1 | every production product surface in §1.1 is served by the matrix in §5 | **partial** — Group People and OCR Review have no surface; Settings serves only its resolver-owned editable inventory; the phone surface has no production delivery path (§6.9) |
+| 1 | every production product surface in §1.1 is served by the matrix in §5 | **partial** — Group People and OCR Review have no surface; Settings serves only its resolver-owned editable inventory. The phone surface is no longer owed at all: D294 retired it (§5.1.7) |
 | 2 | the production app contains no workflow-specific registry, route switch, raw tracker model, direct component transport, or client-authored command policy | **MET** 2026-08-21 — the last clause closed with D264 row D11: the registry import is gone and `dashboard-wire-boundary` arm (15) refuses any dashboard entry whose closure reaches `src/workflows/**` or `src/control/**`. No served route names a workflow and no `TrackerEntry` type exists |
 | 3 | bootstrap, snapshots, detail sections, stream envelopes, commands, and artifacts all parse strict runtime schemas | **met** — `strict-boundary-schemas`, recursively strict, unknown keys refused |
 | 4 | reconnect/gap/reset and command conflict/idempotency paths are visibly and mechanically proven | **partial** — mechanically yes (`client-transport`, `command-kernel`, `commands-authority`, `command-result-exhaustive`); **visibly no** — no reference photographs a disconnected, degraded, read-only or conflicted state (§7.1) |

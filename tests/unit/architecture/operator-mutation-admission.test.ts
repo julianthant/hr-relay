@@ -36,6 +36,13 @@ const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
 
 const MUTATION_ROUTE = /app\.(post|put|patch|delete)\(\s*"([^"]+)"/g;
 const USE_LINE = /app\.use\(\s*"([^"]+)"\s*,\s*(\w+)\s*\)/g;
+/**
+ * Registration shapes this guard does not classify — a method-agnostic
+ * `all`, a method-list `on`, a mounted sub-app `route`, or a non-literal path.
+ * Any of them could carry a mutation the table never sees, so their presence
+ * is itself a violation: classify the shape here before using it.
+ */
+const UNCLASSIFIED_REGISTRATION = /app\.(all|on|route)\(|app\.(post|put|patch|delete)\(\s*[^"\s]/g;
 
 interface Audit {
   readonly mutations: readonly string[];
@@ -81,6 +88,10 @@ export function auditOperatorMutationAdmission(source: string, table: Readonly<R
   for (const path of Object.keys(table)) {
     if (!mutations.includes(path)) violations.push(`admission row ${path} names a route the source no longer registers`);
   }
+  for (const match of source.matchAll(UNCLASSIFIED_REGISTRATION)) {
+    const line = source.slice(0, match.index).split("\n").length;
+    violations.push(`line ${String(line)} registers a route with a shape this guard does not classify (${match[0].trim()}); use app.<method>("<literal path>") and add its admission row`);
+  }
   return Object.freeze({ mutations: Object.freeze(mutations), violations: Object.freeze(violations) });
 }
 
@@ -93,7 +104,7 @@ describe("operator mutation admission (ref frontend-backend-integration §3.4, D
     assert.deepEqual([...audit.mutations].sort(), Object.keys(ADMITTED_MUTATIONS).sort());
   });
 
-  it("catches an unguarded route, a late guard, a wrong guard, a missing inline door and a stale row", () => {
+  it("catches an unguarded route, a late guard, a wrong guard, a missing inline door, a stale row and every unclassified registration shape", () => {
     const fixture = [
       'app.use("/api/v1/guarded", operatorMutationIngressGuard);',
       'app.post("/api/v1/guarded", handler);',
@@ -104,6 +115,10 @@ describe("operator mutation admission (ref frontend-backend-integration §3.4, D
       'app.post("/api/v1/wrong", handler);',
       'app.post("/api/v1/inline", async (c) => { return c.json({}); });',
       'app.get("/api/v1/read", handler);',
+      'app.on("POST", "/api/v1/listed", handler);',
+      'app.route("/api/v1/mounted", subApp);',
+      'app.all("/api/v1/any", handler);',
+      'app.post(`/api/v1/${prefix}/templated`, handler);',
     ].join("\n");
     const audit = auditOperatorMutationAdmission(fixture, {
       "/api/v1/guarded": { guard: "operatorMutationIngressGuard" },
@@ -119,6 +134,10 @@ describe("operator mutation admission (ref frontend-backend-integration §3.4, D
       "POST /api/v1/wrong is guarded by operatorOpaqueIngressGuard, the table says operatorMutationIngressGuard",
       "POST /api/v1/inline declares an inline door but its handler does not contain inspectLoopbackOrigin(",
       "admission row /api/v1/gone names a route the source no longer registers",
+      'line 10 registers a route with a shape this guard does not classify (app.on(); use app.<method>("<literal path>") and add its admission row',
+      'line 11 registers a route with a shape this guard does not classify (app.route(); use app.<method>("<literal path>") and add its admission row',
+      'line 12 registers a route with a shape this guard does not classify (app.all(); use app.<method>("<literal path>") and add its admission row',
+      'line 13 registers a route with a shape this guard does not classify (app.post(`); use app.<method>("<literal path>") and add its admission row',
     ]);
   });
 });

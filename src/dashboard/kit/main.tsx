@@ -4,7 +4,7 @@
  *
  * The specimen page's own entry (D274 item 3, ledger 3 UK157).
  *
- * A THIRD entry in the same Vite build, for the same reason the phone is a
+ * A SECOND entry in the same Vite build (the phone entry was retired by D294), for the same reason it was a
  * second one: an entry is the only thing a bundler can state an exact closure
  * for, and this page's closure is `ds/**` plus `lib/**` and nothing else. That
  * is the whole point of a specimen page — what it renders is the design system
@@ -19,7 +19,7 @@
  * ONE DELIBERATE DIVERGENCE from the legacy file. Legacy reads
  * `if (root) createRoot(root).render(…)` — a missing container silently paints
  * nothing, which is indistinguishable from a page whose CSS failed. This tree
- * throws, the way `app/main.tsx` and `phone/main.tsx` already do.
+ * throws, the way `app/main.tsx` already does.
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

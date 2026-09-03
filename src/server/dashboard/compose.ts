@@ -43,6 +43,7 @@ import {
   readFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { openStaticBundle } from "./static-bundle.js";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import {
@@ -309,6 +310,9 @@ export interface DashboardRuntime {
   stop(): Promise<void>;
 }
 
+export const DashboardFrontendModeSchema = z.enum(["vite-dev", "built-bundle"]);
+export type DashboardFrontendMode = z.infer<typeof DashboardFrontendModeSchema>;
+
 export interface DashboardComposeInput {
   readonly isolation: RuntimeIsolation;
   readonly env?: NodeJS.ProcessEnv;
@@ -316,6 +320,13 @@ export interface DashboardComposeInput {
   readonly ids?: IdFactory;
   /** Where package.json and the state root resolve from. */
   readonly repoRoot?: string;
+  /**
+   * Who serves the frontend bytes (ref frontend-backend-integration §6.9). `vite-dev` — the
+   * default and the development path — leaves that to the Vite dev server on the
+   * isolated frontend port; `built-bundle` serves `<repoRoot>/dist/dashboard` from
+   * this process and refuses to start without a built `index.html`.
+   */
+  readonly frontend?: DashboardFrontendMode;
   readonly startPlanTtlMs?: number;
   /**
    * Test-only ingress bind override: `0` asks the OS for an ephemeral port,
@@ -592,6 +603,14 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")),
   ).version;
+  // Before any authority, lock or socket: a `built-bundle` dashboard with no
+  // bundle must never look started (D189).
+  // The composition boundary owns the one default: an absent mode IS the
+  // development path, declared at the schema rather than as a literal fallback.
+  const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
+  const staticBundle = frontend === "built-bundle"
+    ? await openStaticBundle(join(repoRoot, "dist", "dashboard"))
+    : undefined;
 
   const env = input.env ?? configResolutionEnvironment();
   const settingsAuthority = createSettingsFileAuthority({
@@ -1275,6 +1294,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   }
 
   const app = createDashboardApp({
+    ...(staticBundle === undefined ? {} : { staticBundle }),
     requestIdentity: createSoloRequestIdentityCheckpoint(resolved.config.actor),
     preflight: preflightAuthority,
     bootstrap: {

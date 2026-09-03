@@ -19,9 +19,15 @@ import { composeOcrCommand } from "./server/ocr/compose.js";
 import { composeStorageCommand } from "./server/storage/compose.js";
 import { composeWorkerRuntime } from "./server/worker/compose.js";
 
-/** Compose and start one admitted CLI invocation. Secure bootstrap is the sole caller. */
-export function runCli(): void {
-  registerDashboardComposer((runtimeIsolation) => composeDashboardRuntime({ isolation: runtimeIsolation }));
+/**
+ * Compose and start one admitted CLI invocation. Secure bootstrap is the sole
+ * caller, and it AWAITS this promise: for `dashboard` the promise is the
+ * runtime's whole lifetime (it settles only after the composed runtime stopped),
+ * so a shutdown failure reaches the entrypoint instead of vanishing.
+ */
+export async function runCli(): Promise<void> {
+  registerDashboardComposer((runtimeIsolation, options) =>
+    composeDashboardRuntime({ isolation: runtimeIsolation, frontend: options.frontend }));
   registerActivityPersonPseudonymComposer((runtimeIsolation, args) =>
     composeActivityPersonPseudonymBackfillCommand({ isolation: runtimeIsolation, args }));
   registerDryRunScenarioComposer((runtimeIsolation, args) => composeDryRunScenarioCommand({
@@ -39,5 +45,5 @@ export function runCli(): void {
   registerExplainComposer((runtimeIsolation, args) => composeExplainRuntime({ isolation: runtimeIsolation, args }));
   registerOcrComposer((args) => composeOcrCommand({ args }));
   registerStorageComposer((runtimeIsolation, args) => composeStorageCommand(runtimeIsolation, args));
-  startRebuildRuntime({ isolation: rebuildRuntimeIsolation });
+  await startRebuildRuntime({ isolation: rebuildRuntimeIsolation });
 }

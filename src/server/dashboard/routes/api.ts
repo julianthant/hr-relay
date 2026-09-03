@@ -11,7 +11,6 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import type { DashboardStreamEnvelope } from "../../../domain/dashboard/subscription.js";
 import type { DashboardCommandService } from "../commands/command-service.js";
 import {
   createOperatorCommandIngress,
@@ -56,6 +55,8 @@ import type { CrossDateSearchQueryService } from "../queries/search.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { OperatorXlsxExportService } from "../exports/operator-xlsx-export-service.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
+import { dashboardEventStreamBody } from "../subscriptions/sse-response.js";
+import { staticBundleHandler, type StaticBundle } from "../static-bundle.js";
 import { DiagnosticBundleBytesMissingError, SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
 import { BulkRunCommandRequestSchema, CommandRequestSchema } from "../../../domain/commands.js";
@@ -113,6 +114,12 @@ export interface DashboardAppDeps {
    * composition root wiring a producer that answers nothing.
    */
   readonly advisory?: AdvisoryQueryDeps;
+  /**
+   * The built dashboard bundle, present only in `built-bundle` mode (ref
+   * frontend-backend-integration §6.9): its handler is registered last so every route
+   * above wins, and it serves `dist/dashboard` from this same loopback process.
+   */
+  readonly staticBundle?: StaticBundle;
 }
 
 export type DashboardApp = Hono<{
@@ -133,11 +140,6 @@ const StreamResumeSchema = z.strictObject({
     });
   }
 });
-
-function sseSerialize(envelope: DashboardStreamEnvelope): string {
-  const id = "cursor" in envelope ? `id: ${envelope.cursor}\n` : "";
-  return `${id}data: ${JSON.stringify(envelope)}\n\n`;
-}
 
 function isLoopbackHost(value: string | undefined): boolean {
   if (value === undefined) return false;
@@ -691,20 +693,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
       day: match[1],
       ...resume,
     });
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller): void {
-        for (const envelope of connection.initial) {
-          controller.enqueue(encoder.encode(sseSerialize(envelope)));
-        }
-        connection.subscribe((envelope) => {
-          controller.enqueue(encoder.encode(sseSerialize(envelope)));
-        });
-      },
-      cancel(): void {
-        connection.close();
-      },
-    });
+    const stream = dashboardEventStreamBody(connection);
     return new Response(stream, {
       status: 200,
       headers: {
@@ -714,6 +703,8 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
       },
     });
   });
+
+  if (deps.staticBundle !== undefined) app.use("*", staticBundleHandler(deps.staticBundle));
 
   app.notFound((c) => c.json(wireError("ROUTE_NOT_FOUND", `no route serves ${c.req.method} ${c.req.path}`, false), 404));
 

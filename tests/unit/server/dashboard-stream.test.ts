@@ -51,6 +51,17 @@ afterEach(() => {
   for (const w of worlds.splice(0)) w.dispose();
 });
 
+/** Pull every envelope the hub has queued for this connection, in order. */
+async function drain(connection: { readonly pending: number; next(): Promise<DashboardStreamEnvelope | undefined> }): Promise<DashboardStreamEnvelope[]> {
+  const out: DashboardStreamEnvelope[] = [];
+  while (connection.pending > 0) {
+    const envelope = await connection.next();
+    if (envelope === undefined) break;
+    out.push(envelope);
+  }
+  return out;
+}
+
 function applyEnvelope(day: DashboardDayWire | undefined, envelope: DashboardStreamEnvelope): DashboardDayWire | undefined {
   if (envelope.type === "snapshot" && envelope.topic === "dashboard-day") return envelope.payload;
   if (envelope.type === "patch" && envelope.topic === "dashboard-day") {
@@ -80,14 +91,18 @@ describe("dashboard stream hub", () => {
     const connection = await hub.connect({ day: DAY });
     let local: DashboardDayWire | undefined;
     for (const envelope of connection.initial) local = applyEnvelope(local, envelope);
-    connection.subscribe((envelope) => {
-      local = applyEnvelope(local, envelope);
-    });
+    // A live consumer drains as it goes; draining only at the end would trip
+    // the harness's 4-envelope bound, which is the separate overflow test.
+    const take = async (): Promise<void> => {
+      for (const envelope of await drain(connection)) local = applyEnvelope(local, envelope);
+    };
 
     // A count-bearing change (new run), a status transition, count-neutral
     // task progress, and a mid-stream member update.
     queuedEventOf(w, { seed: 2 });
+    await take();
     claimEventOf(w, 2);
+    await take();
     w.authority.put(runRecordOf({
       seed: 2,
       lifecycle: { state: "running", workerId: "person-lookup-worker-1", claimedAt: "2026-08-03T17:00:05.000Z", heartbeatAt: "2026-08-03T17:00:05.000Z" },
@@ -95,7 +110,9 @@ describe("dashboard stream hub", () => {
       version: 2,
     }));
     taskEventsOf(w, 2, "searching");
+    await take();
     taskEventsOf(w, 2, "selecting", "done");
+    await take();
 
     const fresh = w.projection.buildDashboardDayWire(DAY);
     assert.notEqual(local, undefined);
@@ -108,7 +125,6 @@ describe("dashboard stream hub", () => {
     w.authority.putWorkerLease(workerLeaseOf());
     const connection = await hub.connect({ day: DAY });
     const observed: DashboardStreamEnvelope[] = [];
-    connection.subscribe((envelope) => observed.push(envelope));
     const workerPath = "worker/person-lookup/person-lookup-worker-1";
 
     w.writer.emit({
@@ -132,6 +148,7 @@ describe("dashboard stream hub", () => {
       system: "ucpath",
     });
 
+    observed.push(...await drain(connection));
     const latest = observed.filter((envelope) => envelope.type === "snapshot").at(-1);
     assert.ok(latest);
     assert.equal(latest.topic, "dashboard-day");
@@ -146,7 +163,6 @@ describe("dashboard stream hub", () => {
     const { w, hub } = harness();
     const connection = await hub.connect({ day: DAY });
     const observed: DashboardStreamEnvelope[] = [];
-    connection.subscribe((envelope) => observed.push(envelope));
     const [initial] = connection.initial.filter((envelope) => envelope.type === "snapshot");
     if (initial?.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
     assert.deepEqual(initial.payload.workerCards, []);
@@ -157,6 +173,7 @@ describe("dashboard stream hub", () => {
     }));
     w.projection.reconcileWorkerAuthority();
 
+    observed.push(...await drain(connection));
     const latest = observed.filter((envelope) => envelope.type === "snapshot").at(-1);
     assert.ok(latest);
     if (latest.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
@@ -444,9 +461,8 @@ describe("dashboard stream hub", () => {
     const { w, hub } = harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({ day: DAY });
-    const live: DashboardStreamEnvelope[] = [];
-    connection.subscribe((envelope) => live.push(envelope));
     w.projection.rebuildFromJsonl();
+    const live = await drain(connection);
     assert.deepEqual(live.map(({ type }) => type), ["reset-required"]);
     if (live[0].type !== "reset-required") assert.fail("expected reset-required");
     assert.equal(live[0].reason, "generation-changed");
@@ -458,11 +474,14 @@ describe("dashboard stream hub", () => {
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     const connection = await hub.connect({ day: DAY });
-    // No subscribe(): the pending queue absorbs patches until the bound.
+    // No next() in flight: the pending queue absorbs patches until the bound.
     for (let step = 0; step < 8; step += 1) taskEventsOf(w, 1, `node-${String(step)}`);
-    const delivered: DashboardStreamEnvelope[] = [];
-    connection.subscribe((envelope) => delivered.push(envelope));
+    assert.equal(connection.pending, 1, "the overflow collapses to exactly one queued envelope");
+    const delivered = await drain(connection);
     assert.deepEqual(delivered.map(({ type }) => type), ["reset-required"]);
+    if (delivered[0]?.type !== "reset-required") assert.fail("expected reset-required");
+    assert.equal(delivered[0].reason, "cursor-expired");
+    assert.equal(delivered[0].cursor, w.projection.cursor(), "the reset names the CURRENT cursor so the client resnapshots from head");
     connection.close();
   });
 
@@ -493,6 +512,129 @@ describe("dashboard stream hub", () => {
     const health = connection.initial[1];
     if (health.type !== "health") assert.fail("expected health");
     assert.equal(health.state, "degraded");
+    connection.close();
+  });
+  it("hands a live envelope straight to an outstanding next() and never queues past it", async () => {
+    const { w, hub } = harness();
+    queuedEventOf(w, { seed: 1 });
+    claimEventOf(w, 1);
+    const connection = await hub.connect({ day: DAY });
+    const waiting = connection.next();
+    taskEventsOf(w, 1, "searching");
+    const envelope = await waiting;
+    assert.equal(envelope?.type, "patch");
+    assert.equal(connection.pending, 0);
+    connection.close();
+  });
+
+  it("keeps a consumer that stops asking bounded: N > maxPending publishes leave one reset-required, then nothing", async () => {
+    const { w, hub } = harness();
+    queuedEventOf(w, { seed: 1 });
+    claimEventOf(w, 1);
+    const connection = await hub.connect({ day: DAY });
+    // Take two, then stop asking — exactly what a socket that stopped draining does.
+    taskEventsOf(w, 1, "a");
+    taskEventsOf(w, 1, "b");
+    assert.equal((await connection.next())?.type, "patch");
+    assert.equal((await connection.next())?.type, "patch");
+    for (let step = 0; step < 50; step += 1) taskEventsOf(w, 1, `node-${String(step)}`);
+    assert.equal(connection.pending, 1);
+    const reset = await connection.next();
+    assert.equal(reset?.type, "reset-required");
+    // Everything published while the reset was pending is superseded by it;
+    // a resume after the reset is a fresh snapshot from the current cursor.
+    assert.equal(connection.pending, 0);
+    const resumed = await hub.connect({ day: DAY });
+    assert.deepEqual(resumed.initial.map(({ type }) => type), ["hello", "snapshot", "health"]);
+    if (resumed.initial[1]?.type !== "snapshot") assert.fail("expected snapshot");
+    assert.equal(resumed.initial[1].cursor, w.projection.cursor());
+    resumed.close();
+    connection.close();
+  });
+
+  it("resolves an outstanding next() with undefined when the connection or the hub closes", async () => {
+    const { w, hub } = harness();
+    queuedEventOf(w, { seed: 1 });
+    const byConnection = await hub.connect({ day: DAY });
+    const byHub = await hub.connect({ day: DAY });
+    const first = byConnection.next();
+    const second = byHub.next();
+    byConnection.close();
+    assert.equal(await first, undefined);
+    assert.equal(hub.subscriberCount(), 1);
+    hub.close();
+    assert.equal(await second, undefined);
+    assert.equal(hub.subscriberCount(), 0);
+    assert.equal(await byHub.next(), undefined, "a closed connection answers undefined forever");
+  });
+
+  it("refuses a second concurrent next() instead of racing two consumers over one queue", async () => {
+    const { w, hub } = harness();
+    queuedEventOf(w, { seed: 1 });
+    const connection = await hub.connect({ day: DAY });
+    const outstanding = connection.next();
+    await assert.rejects(connection.next(), /outstanding next\(\)/u);
+    connection.close();
+    assert.equal(await outstanding, undefined);
+  });
+
+  it("builds one snapshot per distinct day for a count-bearing change, however many subscribers share it", async () => {
+    const w = makeWorld();
+    worlds.push(w);
+    const builds: string[] = [];
+    // A bound Proxy rather than a patched method: the projection keeps private
+    // fields, so every call must reach the real instance as its receiver.
+    const counting = new Proxy(w.projection, {
+      get(target, property, receiver) {
+        if (property === "buildDashboardDayWire") {
+          return (day: string) => {
+            builds.push(day);
+            return target.buildDashboardDayWire(day);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+    const hub = createDashboardStreamHub({ projection: counting, maxPending: 4, backfillGaps: VALIDATING_BACKFILL_GAPS });
+    hubs.push(hub);
+    queuedEventOf(w, { seed: 1 });
+    const sameDayA = await hub.connect({ day: DAY });
+    const sameDayB = await hub.connect({ day: DAY });
+    builds.length = 0;
+    queuedEventOf(w, { seed: 2 }); // count-bearing → snapshot for every subscriber
+    assert.deepEqual(builds, [DAY]);
+    const [a, b] = await Promise.all([drain(sameDayA), drain(sameDayB)]);
+    assert.equal(a[0]?.type, "snapshot");
+    assert.equal(a[0], b[0], "the shared day is ONE immutable envelope, not two equal ones");
+    sameDayA.close();
+    sameDayB.close();
+  });
+  it("PREMISE: one projection batch stamps its patch and its snapshot with the same cursor, in that order", async () => {
+    // The client's cursor rule (patches ≤ ignored, snapshots < ignored) rests on
+    // this: a count-neutral member change on a worker the projection knows
+    // yields `patch pc:N` followed by `snapshot pc:N` from ONE #notify batch.
+    // If the projection ever bumped the cursor per change, the client rule
+    // would silently lose its justification — so the server side pins it.
+    const { w, hub } = harness();
+    w.writer.emit({
+      t: "span.started",
+      kind: "worker",
+      ts: w.clock.now().toISOString(),
+      workflow: "person-lookup",
+      workerId: "person-lookup-worker-1",
+      spanPath: "worker/person-lookup/person-lookup-worker-1",
+      name: "person-lookup",
+    });
+    queuedEventOf(w, { seed: 1, shape: "operation" });
+    queuedEventOf(w, { seed: 2, shape: "operation-member", parentSeed: 1 });
+    const connection = await hub.connect({ day: DAY });
+    claimEventOf(w, 2);
+    const live = await drain(connection);
+    assert.deepEqual(live.map(({ type }) => type), ["patch", "snapshot"]);
+    const [patch, snapshot] = live;
+    if (patch?.type !== "patch" || snapshot?.type !== "snapshot") assert.fail("expected patch then snapshot");
+    assert.equal(patch.cursor, snapshot.cursor, "one batch, one cursor");
     connection.close();
   });
 });

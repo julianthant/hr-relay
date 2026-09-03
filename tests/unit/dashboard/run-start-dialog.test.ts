@@ -42,10 +42,10 @@ import {
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import {
-  StartPlanResponseSchema,
-  StartPlanSubmissionSchema,
-  type StartPlanResponse,
-} from "../../../src/dashboard/client/commands.js";
+  StartPlanRequestSchema as StartPlanSubmissionSchema,
+  StartPlanWireSchema as StartPlanResponseSchema,
+  type StartPlanWire as StartPlanResponse,
+} from "../../../src/domain/dashboard/start-plan.js";
 import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell-model.js";
 import { RunStartDialog, type RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start.js";
@@ -142,7 +142,7 @@ function planResponse(startPlanId: string): StartPlanResponse {
     dryRun: false,
     priority: "interactive",
     plannedBy: ACTOR_ID,
-    configSnapshotId: "cfg-1",
+    configSnapshotId: "c0000000-0000-4000-8000-000000000001",
     fingerprints: {
       descriptorFingerprint: HASH,
       configFingerprint: HASH,
@@ -152,7 +152,7 @@ function planResponse(startPlanId: string): StartPlanResponse {
     },
     planned: [{
       runId: "1a000000-0000-4000-8000-000000000001",
-      traceId: "tr-000000000001",
+      traceId: "tr-000000-0001",
       title: "Ada Lovelace",
       subtitle: "E1234567",
       matchKey: "eid:E1234567",
@@ -918,7 +918,7 @@ function separationsPlan(omittedSteps?: readonly string[]): StartPlanResponse {
     dryRun: false,
     priority: "interactive",
     plannedBy: ACTOR_ID,
-    configSnapshotId: "cfg-1",
+    configSnapshotId: "c0000000-0000-4000-8000-000000000001",
     ...(omittedSteps === undefined || omittedSteps.length === 0 ? {} : { omittedSteps: [...omittedSteps] }),
     fingerprints: {
       descriptorFingerprint: HASH,
@@ -929,7 +929,7 @@ function separationsPlan(omittedSteps?: readonly string[]): StartPlanResponse {
     },
     planned: [{
       runId: "1a000000-0000-4000-8000-000000000009",
-      traceId: "tr-000000000009",
+      traceId: "tr-000000-0009",
       title: "Fixture plan row",
       subtitle: DOCUMENT,
       matchKey: `kuali-document:${DOCUMENT}`,

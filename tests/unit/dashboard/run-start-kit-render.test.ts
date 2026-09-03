@@ -31,7 +31,7 @@ import {
 import { ENQUEUE_POLICY_REASON } from "../../../src/dashboard/surfaces/run-start-model.js";
 import { fmtClock } from "../../../src/dashboard/surfaces/format.js";
 import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
-import { StartPlanResponseSchema, type StartPlanResponse } from "../../../src/dashboard/client/commands.js";
+import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../src/domain/dashboard/start-plan.js";
 
 /** what a sighted operator can read with no pointer: the markup minus its tooltips */
 function withoutTooltips(markup: string): string {
@@ -66,8 +66,8 @@ const PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
   expiresAt: EXPIRES_AT,
   dryRun: false,
   priority: "interactive",
-  plannedBy: "person@example.edu",
-  configSnapshotId: "cfg-1",
+  plannedBy: "local-operator",
+  configSnapshotId: "c0000000-0000-4000-8000-000000000001",
   fingerprints: {
     descriptorFingerprint: HASH,
     configFingerprint: HASH,
@@ -78,7 +78,7 @@ const PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
   planned: [
     {
       runId: "1a000000-0000-4000-8000-000000000001",
-      traceId: "tr-000000000001",
+      traceId: "tr-000000-0001",
       title: "Ada Lovelace",
       subtitle: "E1234567",
       matchKey: "eid:E1234567",
@@ -151,7 +151,7 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
     );
     assert.doesNotMatch(markup, /<table/u, "the plan is still a table");
     const text = textOf(markup);
-    for (const served of ["Ada Lovelace", "E1234567", "eid:E1234567", "tr-000000000001"]) {
+    for (const served of ["Ada Lovelace", "E1234567", "eid:E1234567", "tr-000000-0001"]) {
       assert.ok(text.includes(served), `the card drops the served ${served}`);
     }
   });
@@ -179,7 +179,7 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
     // Both assertions are red against the chips this replaced: `Chip` emits
     // `title="eid:E1234567"` and carries `dsClip.token`'s `whitespace-nowrap`.
     const markup = renderToStaticMarkup(createElement(PlanPreview, { plan: PLAN }));
-    for (const identity of ["eid:E1234567", "tr-000000000001"]) {
+    for (const identity of ["eid:E1234567", "tr-000000-0001"]) {
       assert.ok(textOf(markup).includes(identity), `the card drops the served ${identity}`);
       // Neither identity carries a regex metacharacter, so the literal is the
       // pattern; a helper that escaped one would be untested machinery here.
@@ -191,7 +191,7 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
     }
     assert.doesNotMatch(markup, /whitespace-nowrap/u, "a served identity is back inside a single-line token");
     assert.ok(textOf(markup).includes("match key eid:E1234567"));
-    assert.ok(textOf(markup).includes("trace tr-000000000001"));
+    assert.ok(textOf(markup).includes("trace tr-000000-0001"));
   });
 
   it("prints the plan's expiry as a clock reading, never a raw ISO instant (C61)", () => {

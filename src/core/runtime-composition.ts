@@ -12,6 +12,7 @@
  * layer map — hands them in. An invocation without its seam fails loud; it
  * never pretends a runtime started.
  */
+import { z } from "zod";
 import type { RuntimeIsolation } from "../config/define-runtime-isolation.js";
 import { DRY_RUN_SCENARIO_USAGE } from "./dry-run-scenario-runner.js";
 import type { WorkerLoopReport } from "./worker-loop.js";
@@ -19,6 +20,17 @@ import type { WorkerLoopReport } from "./worker-loop.js";
 export interface RunningDashboard {
   readonly port: number;
   stop(): Promise<void>;
+}
+
+/**
+ * The shutdown seam. The `dashboard` command owns a process that lives until
+ * the operator stops it, so "when does it stop" is an injectable dependency
+ * rather than a `process.once` buried in the branch — a test drives the exact
+ * signal ordering, and production registers the real handlers.
+ */
+export interface RuntimeShutdownSignals {
+  /** Register a handler for the shutdown signals; the returned disposer removes it. */
+  subscribe(handler: (signal: "SIGINT" | "SIGTERM") => void): () => void;
 }
 
 export interface RebuildRuntimeStart {
@@ -39,9 +51,27 @@ export interface RebuildRuntimeStart {
   readonly dryRunScenario?: DryRunScenarioComposer;
   /** Explicit seam override for tests; production registers the reviewed D288 command. */
   readonly activityPersonPseudonyms?: ActivityPersonPseudonymComposer;
+  /** Explicit seam override for tests; production subscribes to the real process signals. */
+  readonly signals?: RuntimeShutdownSignals;
 }
 
-type DashboardComposer = (isolation: RuntimeIsolation) => Promise<RunningDashboard>;
+export const DashboardFrontendSchema = z.enum(["vite-dev", "built-bundle"]);
+export type DashboardFrontend = z.infer<typeof DashboardFrontendSchema>;
+export const DashboardCommandOptionsSchema = z.strictObject({ frontend: DashboardFrontendSchema });
+export type DashboardCommandOptions = z.infer<typeof DashboardCommandOptionsSchema>;
+type DashboardComposer = (isolation: RuntimeIsolation, options: DashboardCommandOptions) => Promise<RunningDashboard>;
+
+/**
+ * `dashboard` takes exactly one optional flag. Anything else is refused by
+ * name: `npm run dashboard:prod` passed `--prod` for weeks while `args[1]` was
+ * never read, and a flag that is silently ignored is a mode that silently
+ * does not exist (ref frontend-backend-integration §6.9).
+ */
+export function parseDashboardCommandOptions(rest: readonly string[]): DashboardCommandOptions {
+  if (rest.length === 0) return Object.freeze(DashboardCommandOptionsSchema.parse({ frontend: "vite-dev" }));
+  if (rest.length === 1 && rest[0] === "--prod") return Object.freeze(DashboardCommandOptionsSchema.parse({ frontend: "built-bundle" }));
+  throw new Error(`dashboard accepts only \`--prod\`; unexpected argument(s): ${rest.join(" ")}`);
+}
 /**
  * Ref operator-trust §2.5's `explain` is SYNCHRONOUS on purpose: it opens authority, reads,
  * derives, closes, and returns the text. A promise here would let the process
@@ -184,7 +214,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "Commands:",
     "  help       show this contract surface",
     "  phase      print the active isolated runtime resources",
-    `  dashboard  start the in-process typed dashboard BFF (1g-spine, port ${String(isolation.backendPort)})`,
+    `  dashboard [--prod]  start the in-process typed dashboard BFF (1g-spine, port ${String(isolation.backendPort)}); --prod serves the built dist/dashboard from it`,
     // Ref execution-and-sessions names no CLI subcommand for its worker (§3 names only the
     // `runWorker` loop), so `worker` is the recorded choice here.
     "  worker <workflow-id> --pool-index <positive-int> [--drain]  run one indexed browser worker (ref execution-and-sessions §3/§11)",
@@ -197,7 +227,78 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
   ].join("\n");
 }
 
-export function startRebuildRuntime(input: RebuildRuntimeStart): void {
+/**
+ * The production shutdown seam: `SIGINT` (Ctrl+C) and `SIGTERM` (a supervisor
+ * stopping the process).
+ *
+ * `on`, never `once`: a `once` listener removes itself the moment it fires, and
+ * a signal with ZERO listeners falls back to Node's default disposition — so a
+ * second Ctrl+C during the drain would terminate the process mid-`stop()`,
+ * abandoning the authority handle and leaving the process lock at
+ * `releasedAt: null`. Both listeners therefore stay subscribed until the stop
+ * settles, and the disposer removes BOTH, so a returning `startRebuildRuntime`
+ * leaves no listener behind for the next command or the next test in the same
+ * process.
+ */
+function processShutdownSignals(): RuntimeShutdownSignals {
+  return {
+    subscribe(handler): () => void {
+      const onInterrupt = (): void => {
+        handler("SIGINT");
+      };
+      const onTerminate = (): void => {
+        handler("SIGTERM");
+      };
+      process.on("SIGINT", onInterrupt);
+      process.on("SIGTERM", onTerminate);
+      return (): void => {
+        process.removeListener("SIGINT", onInterrupt);
+        process.removeListener("SIGTERM", onTerminate);
+      };
+    },
+  };
+}
+
+/**
+ * Own the running dashboard until the first shutdown signal, then stop it ONCE
+ * and wait for that stop to finish.
+ *
+ * `composeDashboardRuntime`'s `stop()` is the whole shutdown ordering (ingress
+ * → hub/timers → worker supervisor → graceful-drain backup → database → process
+ * lock), so this awaits it rather than duplicating any part of it. Two things
+ * are deliberate:
+ *
+ *  - the listeners stay subscribed ACROSS the stop, so a second Ctrl+C during a
+ *    long drain is absorbed here instead of falling through to Node's default
+ *    terminate, which would abandon the database handle and the process lock;
+ *  - a rejecting `stop()` propagates. A dashboard that failed to drain must
+ *    never look like it exited cleanly, and this library never calls
+ *    `process.exit` — the entrypoint decides what a rejection costs.
+ */
+async function ownDashboardUntilShutdown(
+  running: RunningDashboard,
+  signals: RuntimeShutdownSignals,
+): Promise<void> {
+  let requestShutdown: (() => void) | undefined;
+  const shutdownRequested = new Promise<void>((resolve) => {
+    requestShutdown = resolve;
+  });
+  const dispose = signals.subscribe(() => {
+    if (requestShutdown === undefined) {
+      throw new Error("a shutdown signal arrived before the dashboard registered its handler");
+    }
+    // Resolving twice is a no-op, so the second signal cannot start a second stop.
+    requestShutdown();
+  });
+  try {
+    await shutdownRequested;
+    await running.stop();
+  } finally {
+    dispose();
+  }
+}
+
+export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<void> {
   const args = input.args ?? process.argv.slice(2);
   const write = input.write ?? ((message: string): void => {
     process.stdout.write(`${message}\n`);
@@ -226,15 +327,14 @@ export function startRebuildRuntime(input: RebuildRuntimeStart): void {
         "the dashboard command needs its composition seam; start it through src/cli.ts, which registers composeDashboardRuntime",
       );
     }
-    compose(input.isolation)
-      .then((running) => {
-        write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}`);
-      })
-      .catch((error: unknown) => {
-        // Re-throwing out of the promise chain crashes the process loudly —
-        // a dashboard that failed to bind must never look started.
-        throw error instanceof Error ? error : new Error(String(error));
-      });
+    // Awaited, not detached: a dashboard that failed to bind must never look
+    // started, and the returned promise IS this command's lifetime, so the
+    // entrypoint can await a real shutdown instead of the process being torn
+    // down mid-drain by the default signal disposition.
+    const options = parseDashboardCommandOptions(args.slice(1));
+    const running = await compose(input.isolation, options);
+    write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}${options.frontend === "built-bundle" ? " serving dist/dashboard" : ""}`);
+    await ownDashboardUntilShutdown(running, input.signals ?? processShutdownSignals());
     return;
   }
   if (command === "explain") {

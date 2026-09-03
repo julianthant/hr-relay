@@ -15,6 +15,7 @@
  */
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { StartRefusalCodeSchema } from "./start-refusal.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../canonical-json.js";
 import {
   ActorIdSchema,
@@ -38,14 +39,7 @@ import {
 } from "./envelope.js";
 
 /** Why a submission cannot become a run. Every arm is a state the operator can act on. */
-export const StartRefusalCodeSchema = z.enum([
-  "input-invalid",
-  "active-run-exists",
-  "dry-run-unsupported",
-  "preflight-failed",
-  "capability-unavailable",
-]);
-export type StartRefusalCode = z.infer<typeof StartRefusalCodeSchema>;
+export { StartRefusalCodeSchema, type StartRefusalCode } from "./start-refusal.js";
 
 export const PlannedRunSchema = z.strictObject({
   runId: RunIdSchema,
