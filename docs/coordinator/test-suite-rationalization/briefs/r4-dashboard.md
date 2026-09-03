@@ -25,8 +25,9 @@ Invoke `/supervise` and complete units u19–u24 after R1/R6 are integrated. Own
 - Every removed component assertion needs duplicate-equivalence or proof it cannot fail under a relevant production mutation. Do not replace behavior with snapshots of markup.
 - Measure jsdom file count and runtime before/after. A faster test that loses focus/refusal/lifecycle risk is not a gain.
 - Organize by owning capability and make filenames/titles state behavior and failure condition; update imports/config/path-sensitive references.
+- Audit output while running the owned family: every case must surface project/suite, file, and full behavior/refusal title; multi-stage browser/DOM harnesses need stable named phases whose failures include actionable non-secret context. Capture expected diagnostics in assertions; do not globally suppress output.
 - Independent review plus rendered/browser verification for any changed presentation-facing test seam.
 
 ## Exit gate
 
-Focused red/green, dashboard unit project, affected T2/parity gates, typecheck, lint, architecture/generated/diff checks as applicable; before/after inventory and exact report; clean worktree. Do not edit the board or merge the coordinator branch.
+Focused red/green, dashboard unit project, affected T2/parity gates, typecheck, lint, architecture/generated/diff checks as applicable; representative labeled green progress and controlled actionable-red output; before/after inventory and exact report; clean worktree. Do not edit the board or merge the coordinator branch.

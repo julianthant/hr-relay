@@ -81,11 +81,11 @@
 ### R7 — cross-family integration, reorganization, authorities, close proof
 
 - **u37 — Reconcile every family inventory.** One before/after table with retain/delete/move/merge and unique purpose; no unowned deletion. Artifact `artifacts/r7/u37-reconciliation.md`.
-- **u38 — Land final taxonomy/config/scripts.** Resolve cross-family duplicates and wrong-layer files; make paths, Vitest/Playwright projects, package scripts, lint/type/generated checks, and names truthful. Artifact `artifacts/r7/u38-taxonomy.md`.
+- **u38 — Land final taxonomy/config/scripts.** Resolve cross-family duplicates and wrong-layer files; inventory every test added since kickoff; make paths, Vitest/Playwright projects, package scripts, lint/type/generated checks, and names truthful. Add executable topology enforcement so a future test is collected exactly once at its declared layer. Make default test reporters show project/suite, file, and full behavior/refusal title while work runs; give long/multi-stage harnesses stable named phases. Artifact `artifacts/r7/u38-taxonomy.md`.
 - **u39 — Consequential cross-family review.** Repository standards, originating objective, correctness, silent failures, performance, tests, docs, security, plus mutation/equivalence spot checks. Artifact `artifacts/r7/u39-review.md`.
 - **u40 — Reconcile canonical test authorities.** Update paired root instructions, paired scenario instructions, guards-and-tests, guard inventory, and decision pointer/owning cross-repo contract for self-contained gates. Preserve byte-identical twins. Artifact `artifacts/r7/u40-authorities.md`.
 - **u41 — Reconcile roadmap and generated authorities.** Update only truth that changed, regenerate roadmap/manifest as required, prove no stale docs/config. Artifact `artifacts/r7/u41-generated.md`.
-- **u42 — Final proof and deltas.** From clean isolated state and no legacy override: typecheck, lint, coverage, architecture, parity, manifest, roadmap, diff; active-port hermeticity; coverage/suite/runtime deltas; report exact run-worker cleanup. Artifact `artifacts/r7/u42-final-gates.md`.
+- **u42 — Final proof and deltas.** From clean isolated state and no legacy override: typecheck, lint, coverage, architecture, parity, manifest, roadmap, diff; active-port hermeticity; coverage/suite/runtime deltas; report exact run-worker cleanup. Capture representative green output proving labels remain visible during execution and an intentional controlled red proving the exact failing project/file/test/phase is actionable without secret or unrelated noise. Artifact `artifacts/r7/u42-final-gates.md`.
 
 ## Decisions gating runs
 

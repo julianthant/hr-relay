@@ -26,7 +26,8 @@ Invoke `/supervise` and complete units u25–u30 after R2/R4 are integrated. Aud
 4. T2 must use real projection/command authority and both refusal arms. T3 exists only for unique live-run UI behavior; do not create it to satisfy a count.
 5. T1b manifests must remain uncollected, bind exact durable checkpoints/no-write rows, distinguish blocked from failed, and make no stale availability claim. Inspect existing durable/document pointers only; do not run live.
 6. Path moves update coverage manifests, architecture guards, imports/config, and scenario instruction maps. Prove each refusal with a negative fixture/mutation.
+7. Audit output while running the owned family: every case must surface project/suite, file, and full behavior/refusal title; graph, command/projection, and other multi-stage scenarios need stable named phases whose failures include actionable non-secret context. Capture expected diagnostics in assertions; do not globally suppress output.
 
 ## Exit gate
 
-Focused red/green; full scenario and applicable architecture projects; typecheck, lint, manifest/roadmap/diff checks; exact before/after/provenance report and clean worktree. Do not edit the shared board or merge the coordinator branch. Escalate product-truth/live-evidence choices as `NEEDS COORDINATOR`.
+Focused red/green; full scenario and applicable architecture projects; typecheck, lint, manifest/roadmap/diff checks; representative labeled green progress and controlled actionable-red output; exact before/after/provenance report and clean worktree. Do not edit the shared board or merge the coordinator branch. Escalate product-truth/live-evidence choices as `NEEDS COORDINATOR`.

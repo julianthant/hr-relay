@@ -25,8 +25,9 @@ Invoke `/supervise` and complete units u13–u18 after R2 and R4 are integrated.
 3. Audit server/runtime tests for duplicate lower-layer logic and duplicate scenario coverage. Retain HTTP/process boundaries only where a cheaper pure test cannot prove the risk.
 4. Prove teardown: no leaked listeners, child processes, workers, locks, browser profiles, or temp authority.
 5. Run the full coverage command with the legitimate dashboard still listening on both reserved ports. Record listener identity before and after and the full case/coverage/runtime result.
-6. Independent review across correctness, silent failures, performance, tests, docs, security, and repository standards.
+6. Audit output while running the owned family: every case must surface project/suite, file, and full behavior/refusal title; startup, request, worker, teardown, and other multi-stage harnesses need stable named phases whose failures include actionable non-secret context. Capture expected diagnostics in assertions; do not globally suppress output.
+7. Independent review across correctness, silent failures, performance, tests, docs, security, and repository standards.
 
 ## Exit gate
 
-Focused red/green, server/runtime family pass, active-port `npm run test:coverage`, typecheck, lint, applicable architecture/generated checks, diff check; clean worktree/report. Do not edit the board or merge the coordinator branch. If production isolation would need to change, return `NEEDS COORDINATOR` instead.
+Focused red/green, server/runtime family pass, active-port `npm run test:coverage`, typecheck, lint, applicable architecture/generated checks, diff check; representative labeled green progress and controlled actionable-red output; clean worktree/report. Do not edit the board or merge the coordinator branch. If production isolation would need to change, return `NEEDS COORDINATOR` instead.

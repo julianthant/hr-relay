@@ -27,9 +27,11 @@ A retained test must name one unique risk or contract, prove a failure mode that
 
 The objective is not fewer files or fewer cases. Preserve safety, write-authority, fail-loud, architecture, coverage, live-proof, UI parity, and path-sensitive scenario guarantees. Lowering a threshold, widening an exclusion, deleting a unique guard, regenerating parity baselines to hide a mismatch, or converting a real refusal into a mock-only assertion is an operator decision, not a supervisor convenience.
 
+Test output is an operator surface. Every test command must identify the project/suite, file, and full behavior/refusal title as work runs; long or multi-stage harnesses must expose stable, named phases so a failure identifies the exact operation rather than only a dot, file, or generic timeout. Failure output must include actionable non-secret context and one unambiguous cause. Expected diagnostics belong in captured assertions, while unexpected warnings, duplicate progress, raw unscoped stacks, leaked-process noise, and secret values are defects—not output to suppress globally.
+
 ## Gates
 
-- **Per-run:** exact focused tests for every changed seam; `npm run typecheck`; `npm run lint`; applicable targeted Vitest/Playwright/generated checks; `git diff --check`.
+- **Per-run:** exact focused tests for every changed seam; `npm run typecheck`; `npm run lint`; applicable targeted Vitest/Playwright/generated checks; `git diff --check`. Test invocations must use the most explicit available progress reporter until the repository scripts themselves enforce labeled output.
 - **Integrated:** `npm run typecheck`; `npm run lint`; `npm run test:coverage`; `npm run test:architecture`; `npm run test:parity`; `npm run build:manifest:check`; `npm run roadmap:check`; `git diff --check`.
 - **Self-containment close gate:** all integrated commands above must run from a clean isolated worktree with no legacy checkout environment override. The legacy repository may be read only during porting/reference research, never required by the finished lint/type/test/architecture gates.
 - **Hermeticity close gate:** the full Vitest/coverage gate must pass while another legitimate rebuild dashboard continues to own reserved ports 3938/5174. Tests must use isolated state and ephemeral/owned ports rather than require the operator runtime to stop.
@@ -53,6 +55,6 @@ The objective is not fewer files or fewer cases. Preserve safety, write-authorit
 ## Coordinator defaults
 
 - **Run sizing:** 4–6 single-seam units, six maximum here; one test-family theme per run.
-- **Parallel supervisors:** two initially. Increase only after the first wave proves clean worktree/report/integration behavior.
+- **Parallel supervisors:** two in Wave 1; after R1 and R6 integrate cleanly, use four isolated supervisor worktrees where scopes do not overlap. Serialize CPU-heavy full coverage and parity gates.
 - **Artifact root override:** none; use `docs/coordinator/test-suite-rationalization/`.
 - **Final close:** update only declared authorities whose truth changed, retain the workspace, close the board with verified commit/gate pointers, and leave no run worktree or integrated feature branch behind.

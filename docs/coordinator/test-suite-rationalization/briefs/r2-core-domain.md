@@ -25,8 +25,9 @@ Invoke `/supervise` and complete units u07–u12 after R1 and R6 are integrated.
 - For every delete/merge/move: retained owner, exact equivalence, red-capable mutation or cannot-fail proof, imports/config/path updates, and before/after runtime.
 - Prefer production contract examples and shared fixture data over assertion-mirroring fixtures. A mock interaction is not behavior unless the interaction itself is the contract.
 - Preserve write authority, fail-loud, provenance, receipt, recovery, ordering/idempotency, and concurrency risks.
+- Audit output while running the owned family: every case must surface project/suite, file, and full behavior/refusal title; long or multi-stage harnesses need stable named phases whose failures include actionable non-secret context. Capture expected diagnostics in assertions; do not globally suppress output.
 - Independent final review across correctness, silent failures, performance, tests, docs, security, and repository standards.
 
 ## Exit gate
 
-Focused changed-family tests, the full ordinary-unit project, `npm run typecheck`, `npm run lint`, applicable architecture guards, manifest/roadmap checks, `git diff --check`; clean worktree and exact report. Do not merge the coordinator branch or edit the board. Surface `NEEDS COORDINATOR` for any unique-risk deletion or guarantee tradeoff.
+Focused changed-family tests, the full ordinary-unit project, `npm run typecheck`, `npm run lint`, applicable architecture guards, manifest/roadmap checks, `git diff --check`; representative labeled green progress and controlled actionable-red output; clean worktree and exact report. Do not merge the coordinator branch or edit the board. Surface `NEEDS COORDINATOR` for any unique-risk deletion or guarantee tradeoff.
