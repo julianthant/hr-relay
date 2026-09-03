@@ -19,14 +19,14 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { manualClock } from "../../src/domain/clock.js";
-import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../src/stores/kuali/driver/fake.js";
-import type { KualiFakeSeparationForm } from "../../src/stores/kuali/driver/fake.js";
-import { readSeparationDocumentTask } from "../../src/stores/kuali/tasks/read-separation-document.js";
-import { matchTerminationTypeTask } from "../../src/stores/separations/tasks/match-termination-type.js";
-import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../src/domain/separations/termination-type.js";
-import { separationsKualiReadDescriptor } from "../helpers/registered-workflows.js";
-import { walkDescriptor } from "./helpers/pure-walk.js";
+import { manualClock } from "../../../../src/domain/clock.js";
+import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../../../src/stores/kuali/driver/fake.js";
+import type { KualiFakeSeparationForm } from "../../../../src/stores/kuali/driver/fake.js";
+import { readSeparationDocumentTask } from "../../../../src/stores/kuali/tasks/read-separation-document.js";
+import { matchTerminationTypeTask } from "../../../../src/stores/separations/tasks/match-termination-type.js";
+import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../../src/domain/separations/termination-type.js";
+import { separationsKualiReadDescriptor } from "../../../helpers/registered-workflows.js";
+import { walkDescriptor } from "../../helpers/pure-walk.js";
 
 const taskCtx = Object.freeze({
   signal: new AbortController().signal,
@@ -43,7 +43,7 @@ const RUN_INPUT = { actionId: ACTION_ID, documentNumber: DOCUMENT_NUMBER };
 const PROCESSED_FORM: KualiFakeSeparationForm = {
   formType: "RRSS Separation Request Form",
   employeeName: "Clauckia, Drose",
-  eid: "10001799",
+  eid: "10800000",
   employeeType: "Student",
   studentTitleCode: "4921 - STDT 2",
   division: "Campus Dining and Retail",
@@ -68,7 +68,7 @@ const PROCESSED_FORM: KualiFakeSeparationForm = {
 const UNPROCESSED_FORM: KualiFakeSeparationForm = {
   ...PROCESSED_FORM,
   employeeName: "Cramia, Dreitho",
-  eid: "10001754",
+  eid: "10800001",
   studentTitleCode: "4920 - STDT 3",
   location: "64 Degrees",
   terminationType: "Appointment Expired",
@@ -90,7 +90,7 @@ function driverFor(form: KualiFakeSeparationForm, documentNumber = DOCUMENT_NUMB
   const world = createKualiFakeWorld({
     actionId: ACTION_ID,
     documentNumber,
-    displayedEid: "10001799",
+    displayedEid: "10800000",
   });
   world.separationForm = form;
   return { world, driver: createDeterministicKualiDriver(world, manualClock(new Date("2026-08-12T20:29:08.000Z"))) };

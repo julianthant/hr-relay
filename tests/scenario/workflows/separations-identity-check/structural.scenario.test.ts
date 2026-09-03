@@ -20,24 +20,24 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { EidSchema, FingerprintSchema, IsoInstantSchema } from "../../src/domain/ids.js";
-import { classifyNameSimilarity } from "../../src/domain/matching/name-match.js";
-import { deriveIdentityEvidenceDigest } from "../../src/domain/separations/identity-evidence.js";
-import { MatchIdentityOutputSchema } from "../../src/domain/contracts/separations/match-identity.js";
-import type { MatchIdentityOutput } from "../../src/domain/contracts/separations/match-identity.js";
-import { classifyJobSummary } from "../../src/domain/separations/job-summary-classification.js";
-import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summary.js";
-import type { UcpathJobSummary } from "../../src/domain/ui/ucpath-job-summary.js";
-import type { SearchPersonOrgOutput } from "../../src/domain/contracts/ucpath/search-person-org.js";
-import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
-import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org-operation.js";
-import { readJobSummaryTask } from "../../src/stores/ucpath/tasks/read-job-summary.js";
-import { matchIdentityTask } from "../../src/stores/separations/tasks/match-identity.js";
-import { verifyIdentityApprovalTask } from "../../src/stores/separations/tasks/verify-identity-approval.js";
-import { separationsIdentityCheckDescriptor } from "../helpers/registered-workflows.js";
-import { SEPARATIONS_IDENTITY_CHECK_CLAIMS } from "./coverage-claims.js";
-import { walkDescriptor } from "./helpers/pure-walk.js";
-import { noSeparationWritePlan } from "../../src/domain/separations/write-plan.js";
+import { EidSchema, FingerprintSchema, IsoInstantSchema } from "../../../../src/domain/ids.js";
+import { classifyNameSimilarity } from "../../../../src/domain/matching/name-match.js";
+import { deriveIdentityEvidenceDigest } from "../../../../src/domain/separations/identity-evidence.js";
+import { MatchIdentityOutputSchema } from "../../../../src/domain/contracts/separations/match-identity.js";
+import type { MatchIdentityOutput } from "../../../../src/domain/contracts/separations/match-identity.js";
+import { classifyJobSummary } from "../../../../src/domain/separations/job-summary-classification.js";
+import { UcpathJobSummaryReadSchema } from "../../../../src/domain/ui/ucpath-job-summary.js";
+import type { UcpathJobSummary } from "../../../../src/domain/ui/ucpath-job-summary.js";
+import type { SearchPersonOrgOutput } from "../../../../src/domain/contracts/ucpath/search-person-org.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/stores/ucpath/driver/fake.js";
+import { deriveJobRowFromCells } from "../../../../src/stores/ucpath/driver/person-org-operation.js";
+import { readJobSummaryTask } from "../../../../src/stores/ucpath/tasks/read-job-summary.js";
+import { matchIdentityTask } from "../../../../src/stores/separations/tasks/match-identity.js";
+import { verifyIdentityApprovalTask } from "../../../../src/stores/separations/tasks/verify-identity-approval.js";
+import { separationsIdentityCheckDescriptor } from "../../../helpers/registered-workflows.js";
+import { SEPARATIONS_IDENTITY_CHECK_CLAIMS } from "../../coverage-claims.js";
+import { walkDescriptor } from "../../helpers/pure-walk.js";
+import { noSeparationWritePlan } from "../../../../src/domain/separations/write-plan.js";
 
 const taskCtx = Object.freeze({
   signal: new AbortController().signal,
@@ -46,8 +46,8 @@ const taskCtx = Object.freeze({
   recordData: () => undefined,
 });
 
-const EID = EidSchema.parse("10833507");
-const OTHER_EID = EidSchema.parse("10401814");
+const EID = EidSchema.parse("10800001");
+const OTHER_EID = EidSchema.parse("10800000");
 const DOCUMENT = "4510";
 const OBSERVED_AT = IsoInstantSchema.parse("2026-08-12T18:00:00.000Z");
 

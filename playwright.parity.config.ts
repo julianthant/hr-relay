@@ -20,12 +20,12 @@
  * isolation ports, so it can run beside a live rebuild runtime, and it is why
  * the files can run in parallel.
  *
- * Parallelism, measured 2026-09-01: serial, the lane was 4.2 min (289 tests,
- * ~0.8s each, 198 of them in one file). Five workers, fully parallel: 57–60s
- * across two independent runs, 289/289, zero counted pixel diffs under the
- * `maxDiffPixels: 0` allowance below. `fullyParallel` matters more than the
- * worker count — without it one file stays on one worker and the big file
- * alone is 158s.
+ * The current matrix lists 281 cases (2026-09-02). The 2026-09-01 289-case
+ * timings no longer predict this matrix: the current audit recorded an
+ * ordinary baseline of 287 passed in 83.58s and a deliberate update of 281
+ * passed in 113.95s. Both figures retain zero counted pixel diffs under the
+ * `maxDiffPixels: 0` allowance below. `fullyParallel` remains material —
+ * without it one file stays on one worker and the big file alone was 158s.
  */
 import { defineConfig } from "@playwright/test";
 import { parityUpdateRequested } from "./tests/parity/helpers/reference-store.js";

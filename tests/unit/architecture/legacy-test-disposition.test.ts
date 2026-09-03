@@ -1,8 +1,10 @@
-import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import inventory from "../../../config/legacy-test-disposition.json" with { type: "json" };
-import { LEGACY_REPO_ROOT } from "./helpers/guard-files.js";
+import {
+  FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
+  frozenLegacyPaths,
+} from "./helpers/frozen-legacy-architecture-provenance.js";
 
 /**
  * Every path in this guard and its inventory is a LEGACY-repo path (D93): the
@@ -12,19 +14,11 @@ import { LEGACY_REPO_ROOT } from "./helpers/guard-files.js";
  */
 
 function baselineDirectories(): string[] {
-  return requiredLegacyDirectories(execFileSync(
-    "git",
-    ["ls-tree", "-r", "--name-only", inventory.baselineCommit, "--", "tests"],
-    { cwd: LEGACY_REPO_ROOT, encoding: "utf8" },
-  ).trim().split("\n").filter(Boolean), currentTestFiles());
-}
-
-function currentTestFiles(): string[] {
-  return execFileSync(
-    "git",
-    ["ls-files", "--cached", "--others", "--exclude-standard", "--", "tests"],
-    { cwd: LEGACY_REPO_ROOT, encoding: "utf8" },
-  ).trim().split("\n").filter(Boolean);
+  const frozen = FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.testDisposition;
+  if (frozen.baselineCommit !== inventory.baselineCommit) {
+    throw new Error("frozen legacy test provenance baseline commit disagrees with the disposition inventory");
+  }
+  return requiredLegacyDirectories(frozenLegacyPaths(frozen.baselineFiles), frozenLegacyPaths(frozen.currentFiles));
 }
 
 export function requiredLegacyDirectories(
@@ -77,4 +71,5 @@ describe("legacy test disposition inventory", () => {
       }
     }
   });
+
 });

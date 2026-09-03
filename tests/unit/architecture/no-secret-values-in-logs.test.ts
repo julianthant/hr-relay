@@ -1123,13 +1123,18 @@ export function findSecretInterpolations(path: string, content: string): readonl
   return violations;
 }
 
+let currentRebuildSources: readonly string[] | undefined;
+let currentRebuildViolations: readonly string[] | undefined;
+
 function rebuildSources(): readonly string[] {
-  return gitVisibleFiles(["src"]).filter((path) => /\.[cm]?[jt]sx?$/.test(path));
+  currentRebuildSources ??= gitVisibleFiles(["src"]).filter((path) => /\.[cm]?[jt]sx?$/.test(path));
+  return currentRebuildSources;
 }
 
 function rebuildViolations(): readonly string[] {
-  return rebuildSources().flatMap((path) =>
+  currentRebuildViolations ??= rebuildSources().flatMap((path) =>
     findSecretInterpolations(path, readFileSync(join(REPO_ROOT, path), "utf8")));
+  return currentRebuildViolations;
 }
 
 /** file (relative to repo root) -> { count, reason }; empty = no reviewed exception. */

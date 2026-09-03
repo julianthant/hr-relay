@@ -193,10 +193,18 @@ describe("identityCeremonyFor — the server names the ceremony (ref write-safet
     // The server states both facts. When they disagree only the server can say
     // which it meant, so this reports the contradiction rather than guessing.
     const oneClickTwoOptions = { ...gateDetail(CHOOSE), approvalShape: "one-click" } as IdentityGateDetail;
-    assert.equal(identityCeremonyFor(oneClickTwoOptions, "approved").kind, "unsupported");
-
     const chooseOneOption = { ...gateDetail(ONE_CLICK), approvalShape: "choose-a-candidate" } as IdentityGateDetail;
-    assert.equal(identityCeremonyFor(chooseOneOption, "approved").kind, "unsupported");
+    for (const [gate, diagnostic] of [
+      [oneClickTwoOptions, /called this a one-click approval and served 2/u],
+      [chooseOneOption, /asked for a candidate to be CHOSEN and served 1/u],
+    ] as const) {
+      const ceremony = identityCeremonyFor(gate, "approved");
+      assert.equal(ceremony.kind, "unsupported");
+      if (ceremony.kind !== "unsupported") continue;
+      assert.match(ceremony.reason, diagnostic);
+      assert.equal(identityDraftProblem(ceremony, EMPTY_IDENTITY_GATE_DRAFT), ceremony.reason);
+      assert.equal(identityGateAnswer(ceremony, EMPTY_IDENTITY_GATE_DRAFT), undefined);
+    }
   });
 });
 
@@ -221,8 +229,18 @@ describe("identityDraftProblem — the bounds, stated where the value is typed",
 
   it("asks for a rejection reason, and accepts one that is only whitespace-padded", () => {
     const ceremony = identityCeremonyFor(gateDetail(ONE_CLICK), "rejected");
-    assert.notEqual(identityDraftProblem(ceremony, EMPTY_IDENTITY_GATE_DRAFT), undefined);
-    assert.notEqual(identityDraftProblem(ceremony, { eid: "", reason: "   " }), undefined);
+    assert.match(
+      identityDraftProblem(ceremony, EMPTY_IDENTITY_GATE_DRAFT) ?? "",
+      /Say why this is not the right person/u,
+    );
+    assert.match(
+      identityDraftProblem(ceremony, { eid: "", reason: "   " }) ?? "",
+      /Say why this is not the right person/u,
+    );
+    assert.deepEqual(
+      identityGateAnswer(ceremony, { eid: "", reason: "  wrong person  " }),
+      { decision: "rejected", reason: "wrong person" },
+    );
     assert.equal(identityDraftProblem(ceremony, { eid: "", reason: " wrong person " }), undefined);
   });
 
@@ -307,6 +325,17 @@ describe("composeCommandRequest — the three ceremonies reach the real command 
       { ...CONTEXT, gate: available(gateDetail(ONE_CLICK)) },
     );
     assert.equal(composed.state, "ready");
+  });
+
+  it("REFUSES a typed-EID ceremony when no operator answer was supplied", () => {
+    const composed = composeCommandRequest(
+      APPROVE,
+      { runId: runId(1), expectedVersion: 3 },
+      { ...CONTEXT, gate: available(gateDetail(TYPE_EID)) },
+    );
+
+    assert.equal(composed.state, "refused");
+    assert.match(composed.state === "refused" ? composed.reason : "", /no operator answer was supplied/u);
   });
 
   it("REFUSES an EID the packet never showed, even with an answer supplied", () => {

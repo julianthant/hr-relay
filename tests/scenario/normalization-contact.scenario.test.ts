@@ -37,11 +37,11 @@ const RESOLVED_CENSUS = {
     schemaHash: "ab".repeat(32),
     value: {
       state: "resolved",
-      street: "Gilman Drive",
-      city: "La Jolla",
+      street: "Fixture Road",
+      city: "Exampletown",
       stateCode: "CA",
-      zip: "92093",
-      matchedAddress: "9500 GILMAN DR, LA JOLLA, CA, 92093",
+      zip: "90000",
+      matchedAddress: "123 FIXTURE RD, EXAMPLETOWN, CA, 90000",
       confidence: "exact",
     },
   },
@@ -137,23 +137,23 @@ describe("normalization/read-contact-advice scenarios", () => {
 
   it("normalization/contact/census-advice — US-shaped address takes census advice", async () => {
     const { output, calls } = await runAdvice({
-      address1: "9500 Gilman Dr",
-      city: "la jolla shores",
+      address1: "123 Fixture Rd",
+      city: "example town",
       state: "CA",
-      postalCode: "92037",
+      postalCode: "90001",
     }, true, { census: [RESOLVED_CENSUS] });
     assert.deepEqual(calls, ["geocode.census"]);
     const cityChange = output.changes.find((change) => change.field === "city");
     assert.ok(cityChange !== undefined);
-    assert.equal(cityChange.after, "La Jolla");
+    assert.equal(cityChange.after, "Exampletown");
     assert.deepEqual(cityChange.source, { kind: "census", observedAt: READ_AT, confidence: "exact" });
-    assert.equal(output.normalized.postalCode, "92093");
+    assert.equal(output.normalized.postalCode, "90000");
     assert.deepEqual(output.disposition, { kind: "complete" });
   });
 
   it("normalization/contact/nominatim-fallback — census miss falls to nominatim by declared policy", async () => {
     const { output, calls } = await runAdvice({
-      address1: "9500 Gilman Dr",
+      address1: "123 Fixture Rd",
       state: "CA",
     }, true, { census: [UNAVAILABLE], nominatim: [RESOLVED_CENSUS] });
     assert.deepEqual(calls, ["geocode.census", "geocode.nominatim"]);
@@ -164,7 +164,7 @@ describe("normalization/read-contact-advice scenarios", () => {
 
   it("normalization/contact/advisory-unavailable — exhaustion is a disposition, never silence", async () => {
     const { output, calls } = await runAdvice({
-      address1: "9500 Gilman Dr",
+      address1: "123 Fixture Rd",
       state: "CA",
     }, true, { census: [UNAVAILABLE], nominatim: [UNAVAILABLE] });
     assert.deepEqual(calls, ["geocode.census", "geocode.nominatim"]);

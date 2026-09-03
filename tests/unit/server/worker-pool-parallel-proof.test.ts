@@ -800,6 +800,14 @@ function workerLockRecords(lockRoot: string): Map<string, { releasedAt: string |
   return records;
 }
 
+function reportW5Phase(
+  proof: "two-child-door" | "runtime-shutdown",
+  phase: "startup" | "spawn-and-birth" | "graceful-stop" | "shutdown" | "teardown",
+  state: "begin" | "complete",
+): void {
+  process.stdout.write(`[r3b:w5:${proof}] ${phase}:${state}\n`);
+}
+
 describe("W5 real processes: two children supervised concurrently through the composed kernel door", () => {
   interface RealHarness {
     readonly database: AuthorityDatabase;
@@ -852,10 +860,13 @@ describe("W5 real processes: two children supervised concurrently through the co
   it(
     "spawns worker 1 and worker 2 as real children, proves both births via durable leases, and stops both — exact identities, no cross-talk",
     async () => {
+      reportW5Phase("two-child-door", "startup", "begin");
       const harness = openRealHarness();
       const childOutput = (): string => harness.records.map((record) =>
         `${record.member.workerId}: ${record.output.join("")}`).join("\n");
+      reportW5Phase("two-child-door", "startup", "complete");
 
+      reportW5Phase("two-child-door", "spawn-and-birth", "begin");
       const planId = nextCommandId();
       assert.equal((await harness.kernel.executeWorkerPool({
         ...envelope(systemClock, planId),
@@ -933,9 +944,11 @@ describe("W5 real processes: two children supervised concurrently through the co
       const handoffGapMs = spawn2Enter.atMonotonicMs - spawn1Exit.atMonotonicMs;
       const birth1Ms = spawn1Exit.atMonotonicMs - eventOf(harness.events, spawn1Id, "enter").atMonotonicMs;
       const birth2Ms = eventOf(harness.events, spawn2Id, "exit").atMonotonicMs - spawn2Enter.atMonotonicMs;
+      reportW5Phase("two-child-door", "spawn-and-birth", "complete");
 
       // Concurrent stops: both settle applied; the durable directive instant
       // IS the observed graceful stage instant for each member.
+      reportW5Phase("two-child-door", "graceful-stop", "begin");
       const stop1Id = nextCommandId();
       const stop2Id = nextCommandId();
       const stopSubmitMs = systemClock.monotonicMs();
@@ -986,11 +999,14 @@ describe("W5 real processes: two children supervised concurrently through the co
       const locks = workerLockRecords(harness.lockRoot);
       assert.notEqual(required(locks.get(PL_1.workerId), "PL-1 worker lock").releasedAt, null);
       assert.notEqual(required(locks.get(PL_2.workerId), "PL-2 worker lock").releasedAt, null);
+      reportW5Phase("two-child-door", "graceful-stop", "complete");
+      reportW5Phase("two-child-door", "teardown", "begin");
       assert.deepEqual(harness.control.supervisor.close(), []);
       assert.deepEqual(harness.faults, []);
       for (const commandId of [planId, spawn1Id, spawn2Id, stop1Id, stop2Id]) {
         assertJournaled(harness.database, commandId);
       }
+      reportW5Phase("two-child-door", "teardown", "complete");
 
       process.stdout.write(`W5-MEASURED two-child kernel door: ${JSON.stringify({
         spawn1AckMs: Math.round(result1.ackMs),
@@ -1037,6 +1053,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
   it(
     "two real children over the real ingress; graceful stop, shutdown with one live child, then PID-proved teardown",
     async () => {
+      reportW5Phase("runtime-shutdown", "startup", "begin");
       const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-w5-runtime-"));
       roots.push(repoRoot);
       copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
@@ -1053,6 +1070,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
       const runtime: DashboardRuntime = await composeDashboardRuntime({
         isolation: rebuildRuntimeIsolation,
         backendPortOverride: 0,
+        frontendPortOverride: 0,
         env: {},
         repoRoot,
         workerProcess: {
@@ -1072,6 +1090,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
       cleanups.push(async () => {
         for (const stop of stops.splice(0)) await stop();
       });
+      reportW5Phase("runtime-shutdown", "startup", "complete");
 
       const post = async (body: Record<string, unknown>): Promise<{ status: number; state: string }> => {
         const origin = `http://127.0.0.1:${String(runtime.port)}`;
@@ -1085,6 +1104,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
 
       // Two REAL children, two workflows, spawned concurrently over the real
       // ingress; each proves its own birth by writing its durable lease.
+      reportW5Phase("runtime-shutdown", "spawn-and-birth", "begin");
       const [spawnPl, spawnSep] = await Promise.all([
         post({
           ...envelope(systemClock),
@@ -1108,9 +1128,11 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
       const plPid = required(plRecord.pid, "PL pid");
       const sepPid = required(sepRecord.pid, "SEP pid");
       assert.equal(pidAlive(plPid) && pidAlive(sepPid), true, childOutput());
+      reportW5Phase("runtime-shutdown", "spawn-and-birth", "complete");
 
       // Graceful stop of PL-1 through the same ingress: the real child
       // observes the durable directive, releases its lock, and dies.
+      reportW5Phase("runtime-shutdown", "graceful-stop", "begin");
       const sideDoor = AuthorityDatabase.open(
         { path: dbPath, busyTimeoutMs: 5_000, migrationOwner: "unit-test" },
         systemClock,
@@ -1135,10 +1157,12 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
         required(workerLockRecords(lockRoot).get(PL_1.workerId), "PL-1 worker lock").releasedAt,
         null,
       );
+      reportW5Phase("runtime-shutdown", "graceful-stop", "complete");
 
       // Shutdown while SEP-1 is STILL LIVE: the supervisor's close() evidence
       // reaches the structured sink, the server process lock records its
       // release, and the live child is never pretended stopped.
+      reportW5Phase("runtime-shutdown", "shutdown", "begin");
       assert.equal(
         (JSON.parse(readFileSync(serverLockFile, "utf8")) as { releasedAt: string | null }).releasedAt,
         null,
@@ -1160,8 +1184,10 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
       assert.match(parsed.message, /"state":"running"/);
       assert.match(parsed.message, new RegExp(`"pid":${String(sepPid)}`));
       assert.equal(pidAlive(sepPid), true, "the supervisor must never kill a live child at close");
+      reportW5Phase("runtime-shutdown", "shutdown", "complete");
 
       // Reap the survivor and prove NO orphan child outlives the proof.
+      reportW5Phase("runtime-shutdown", "teardown", "begin");
       sepRecord.child.kill("SIGTERM");
       await waitFor(() => !pidAlive(sepPid), "the reaped child's pid to die", childOutput);
       assert.notEqual(
@@ -1175,6 +1201,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
           { workerId: SEP_1.workerId, alive: false },
         ],
       );
+      reportW5Phase("runtime-shutdown", "teardown", "complete");
     },
     120_000,
   );

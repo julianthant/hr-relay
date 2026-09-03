@@ -10,7 +10,7 @@
  */
 import { Readable } from "node:stream";
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import { extractPdfPagesTask } from "../../src/stores/extraction/index.js";
 import { ArtifactRefSchema } from "../../src/domain/artifacts.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
@@ -127,7 +127,17 @@ describe("extraction/extract-pdf-pages scenarios", () => {
     const empty = await runTask(Buffer.alloc(0));
     assert.equal(empty.failure?.code, "unreadable-pdf");
 
-    const notAPdf = await runTask(Buffer.from("Employee ID#,Effective Date\n10456712,07/01/2026\n", "utf8"));
+    const warnings: string[] = [];
+    const warning = vi.spyOn(console, "warn").mockImplementation((...parts: unknown[]) => {
+      warnings.push(parts.map(String).join(" "));
+    });
+    let notAPdf;
+    try {
+      notAPdf = await runTask(Buffer.from("Employee ID#,Effective Date\n10800000,07/01/2026\n", "utf8"));
+    } finally {
+      warning.mockRestore();
+    }
+    assert.deepEqual(warnings, ["Warning: Indexing all PDF objects"]);
     assert.equal(notAPdf.failure?.code, "unreadable-pdf");
     assert.equal(notAPdf.written.length, 0);
   });

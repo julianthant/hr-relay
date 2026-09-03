@@ -591,19 +591,12 @@ const GENERIC_WORKFLOW_ID_ALLOWLIST: readonly GenericWorkflowIdAllowlistEntry[] 
   },
 ] as const;
 
-const PRE_CANONICAL_SCENARIOS: readonly PreCanonicalScenarioEntry[] = [
-  "separations-identity-check",
-  "separations-kronos-timecard",
-  "separations-kuali-read",
-  "separations-ucpath-termination",
-].map((workflowId) => ({
-  workflowId,
-  file: `tests/scenario/${workflowId}.scenario.test.ts`,
-  reason:
-    "D318 / ref guards-and-tests §10.4 — the four chunk harnesses' structural scenarios predate the canonical "
-    + "tests/scenario/workflows/<id>/ layout and still sit at the flat path; each is ONE structural scenario, "
-    + "which is the budget item, and moving them is a separate unit.",
-}));
+/**
+ * Every registered workflow's structural scenario now sits at the canonical
+ * `tests/scenario/workflows/<id>/` path (the four chunk harnesses moved there
+ * 2026-09-03 in the test-suite rationalization); nothing is pre-canonical.
+ */
+const PRE_CANONICAL_SCENARIOS: readonly PreCanonicalScenarioEntry[] = [];
 
 const ARTIFACT_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [
   {

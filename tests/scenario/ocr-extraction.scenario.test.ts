@@ -45,8 +45,8 @@ function completeAnswers(overrides: Record<string, unknown> = {}) {
     pageKind: "oath",
     record: {
       answers: {
-        printedName: { state: "read", raw: "Battistessa, Johnnie", confidence: 0.97 },
-        employeeId: { state: "read", raw: "10873698", confidence: 0.93 },
+        printedName: { state: "read", raw: "Example, Avery", confidence: 0.97 },
+        employeeId: { state: "read", raw: "10800000", confidence: 0.93 },
         signatureDate: { state: "read", raw: "07/21/2026", confidence: 0.95 },
         employeeSigned: { state: "read", raw: "yes", confidence: 0.99 },
         officerSigned: { state: "read", raw: "yes", confidence: 0.98 },

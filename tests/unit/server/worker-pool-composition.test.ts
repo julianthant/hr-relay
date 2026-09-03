@@ -947,6 +947,7 @@ describe("dashboard shutdown closes the worker supervisor between ingress and th
     const runtime: DashboardRuntime = await composeDashboardRuntime({
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
+      frontendPortOverride: 0,
       env: {},
       clock,
       repoRoot,

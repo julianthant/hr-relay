@@ -35,7 +35,7 @@
  * coverage rule itself is proven against `fixtureDescriptor`.
  *
  * **Every subject value here is SYNTHETIC** (ref guards-and-tests §10.3): the
- * `10873698` / `10001573` EIDs, which no live system resolves from this file. A
+ * `10800000` / `10800001` EIDs, which no live system resolves from this file. A
  * real person's identifier is a dry-run fact, lives in the target registry, and
  * is reached by LABEL through the sibling manifest.
  */
@@ -88,7 +88,7 @@ import { personLookupDescriptor } from "../../../helpers/registered-workflows.js
 import { walkDescriptor } from "../../helpers/pure-walk.js";
 
 const RESOLVED_CANDIDATE = {
-  emplId: "10873698",
+  emplId: "10800000",
   name: "Battistessa, Johnnie",
   department: "Housing Dining Hospitality",
   jobTitle: "Dining Assistant",
@@ -98,14 +98,14 @@ const RESOLVED_CANDIDATE = {
 
 const SEARCH_RESOLVED = {
   results: [RESOLVED_CANDIDATE],
-  selection: { status: "resolved", selected: RESOLVED_CANDIDATE, candidateEids: ["10873698"] },
+  selection: { status: "resolved", selected: RESOLVED_CANDIDATE, candidateEids: ["10800000"] },
 };
 
 const CRM_FOUND = {
   state: "found",
   record: {
     recordId: "ONB-40213",
-    emplId: "10873698",
+    emplId: "10800000",
     fullName: "Battistessa, Johnnie",
     rawStage: "Completed",
   },
@@ -118,7 +118,7 @@ const ACTIVE = {
 };
 
 const CRM_DATES = {
-  emplId: "10873698",
+  emplId: "10800000",
   invitedOn: { state: "present", value: "2026-06-01" },
   startsOn: { state: "present", value: "2026-07-15" },
   completedOn: { state: "absent", reason: "CRM history has no Completed transition" },
@@ -126,7 +126,7 @@ const CRM_DATES = {
 
 describe("person-lookup scenarios", () => {
   it("person-lookup/happy-by-eid — resolves, cross-verifies, and skips the optional dates step", () => {
-    const walk = walkDescriptor(personLookupDescriptor, { emplId: "10873698" }, {
+    const walk = walkDescriptor(personLookupDescriptor, { emplId: "10800000" }, {
       outputs: {
         searching: SEARCH_RESOLVED,
         "cross-verify": CRM_FOUND,
@@ -140,7 +140,7 @@ describe("person-lookup scenarios", () => {
   });
 
   it("person-lookup/happy-by-eid-with-dates — the conditional node runs and reaches the result", () => {
-    const walk = walkDescriptor(personLookupDescriptor, { emplId: "10873698", includeCrmDates: true }, {
+    const walk = walkDescriptor(personLookupDescriptor, { emplId: "10800000", includeCrmDates: true }, {
       outputs: {
         searching: SEARCH_RESOLVED,
         "cross-verify": CRM_FOUND,
@@ -160,11 +160,11 @@ describe("person-lookup scenarios", () => {
       () => walkDescriptor(personLookupDescriptor, { name: "Battistessa" }, {
         outputs: {
           searching: {
-            results: [RESOLVED_CANDIDATE, { ...RESOLVED_CANDIDATE, emplId: "10001573" }],
+            results: [RESOLVED_CANDIDATE, { ...RESOLVED_CANDIDATE, emplId: "10800001" }],
             selection: {
               status: "ambiguous",
               selected: null,
-              candidateEids: ["10873698", "10001573"],
+              candidateEids: ["10800000", "10800001"],
               searchName: "Battistessa",
             },
           },
@@ -196,10 +196,10 @@ describe("person-lookup scenarios", () => {
   it("person-lookup/crm-failure-retry — a replayed search feeds a fresh cross-verification", () => {
     // The retry shape from ref workflow-model §8: `searching` replays from its checkpoint,
     // `cross-verify` runs again, and `active-status` (always-rerun) folds both.
-    const walk = walkDescriptor(personLookupDescriptor, { emplId: "10873698" }, {
+    const walk = walkDescriptor(personLookupDescriptor, { emplId: "10800000" }, {
       outputs: {
         searching: SEARCH_RESOLVED,
-        "cross-verify": { state: "absent", queriedEid: "10873698", reason: "no onboarding record for this EID" },
+        "cross-verify": { state: "absent", queriedEid: "10800000", reason: "no onboarding record for this EID" },
         "active-status": { state: "undetermined", reason: "CRM has no onboarding record to cross-verify" },
       },
     });
@@ -212,13 +212,13 @@ describe("person-lookup scenarios", () => {
 
   it("rejects a supplied output the producing contract's own schema refuses", () => {
     assert.throws(
-      () => walkDescriptor(personLookupDescriptor, { emplId: "10873698" }, {
+      () => walkDescriptor(personLookupDescriptor, { emplId: "10800000" }, {
         outputs: {
           searching: {
             results: [],
             // `resolved` with nobody selected is unspellable — that is the point
             // of the three-arm union.
-            selection: { status: "resolved", selected: null, candidateEids: ["10873698"] },
+            selection: { status: "resolved", selected: null, candidateEids: ["10800000"] },
           },
         },
       }),
@@ -244,7 +244,7 @@ const recordData = (input: DataPoint | readonly DataPoint[]): void => {
     dataPoints.push(DataPointSchema.parse(point));
   }
 };
-const EID = EidSchema.parse("10873698");
+const EID = EidSchema.parse("10800000");
 const record = ReadOnboardingRecordOutputSchema.parse({
   state: "found",
   record: {
@@ -266,22 +266,22 @@ describe("person-lookup runtime scenarios", () => {
     const driver = createDeterministicCrmOnboardingDriver({
       record,
       dates,
-      recordObservedEid: "10001573",
-      datesObservedEid: "10001573",
+      recordObservedEid: "10800001",
+      datesObservedEid: "10800001",
     });
     await assert.rejects(
       readOnboardingRecordTask.impl.run({
         input: { eid: EID, name: "Battistessa, Johnnie" },
         ctx: { signal, log, driver, fail, recordData },
       }),
-      new RegExp(`expected EID ${directIdentifierDigestReference(EID)} but bound ${directIdentifierDigestReference("10001573")}`),
+      new RegExp(`expected EID ${directIdentifierDigestReference(EID)} but bound ${directIdentifierDigestReference("10800001")}`),
     );
     await assert.rejects(
       readOnboardingDatesTask.impl.run({
         input: { eid: EID },
         ctx: { signal, log, driver, fail, recordData },
       }),
-      new RegExp(`expected EID ${directIdentifierDigestReference(EID)} but bound ${directIdentifierDigestReference("10001573")}`),
+      new RegExp(`expected EID ${directIdentifierDigestReference(EID)} but bound ${directIdentifierDigestReference("10800001")}`),
     );
 
     const exact = {
@@ -301,7 +301,7 @@ describe("person-lookup runtime scenarios", () => {
   });
 
   it("person-lookup/ucpath-drill-subject-mismatch — a stale detail never becomes a candidate", async () => {
-    const wrongEid = EidSchema.parse("10001573");
+    const wrongEid = EidSchema.parse("10800001");
     const rows = parsePersonOrgGridRows([
       [EID, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Battistessa", "Johnnie Battistessa"],
     ]);

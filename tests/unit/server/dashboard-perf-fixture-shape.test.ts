@@ -16,6 +16,11 @@ import assert from "node:assert/strict";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
 import {
+  assertDashboardPerformanceStructuralBounds,
+  DASHBOARD_PERFORMANCE_STRUCTURAL_BOUNDS,
+  type DashboardPerformanceStructuralCounters,
+} from "../../perf/dashboard-benchmark.js";
+import {
   PERF_FIXTURE_PROFILE,
   seedDashboardPerfFixture,
   type PerfFixture,
@@ -42,6 +47,34 @@ afterAll(() => {
 });
 
 describe("the §7.4 dashboard perf fixture", () => {
+  it("accepts the ratified non-duration structural performance bounds", () => {
+    assert.doesNotThrow(() => assertDashboardPerformanceStructuralBounds({
+      ...DASHBOARD_PERFORMANCE_STRUCTURAL_BOUNDS,
+    }));
+  });
+
+  it("refuses every structural performance regression by its exact counter", () => {
+    const keys: readonly (keyof DashboardPerformanceStructuralCounters)[] = [
+      "dayWireStatements",
+      "rowPatchDayWireParses",
+      "logsSpanEventParses",
+      "logsFilesInScope",
+      "archiveFreezeStatements",
+      "memberPreviewDeltaStatements",
+    ];
+    for (const key of keys) {
+      const broken = {
+        ...DASHBOARD_PERFORMANCE_STRUCTURAL_BOUNDS,
+        [key]: DASHBOARD_PERFORMANCE_STRUCTURAL_BOUNDS[key] + 1,
+      };
+      assert.throws(
+        () => assertDashboardPerformanceStructuralBounds(broken),
+        new RegExp(`dashboard performance ${key} must`),
+        key,
+      );
+    }
+  });
+
   it("serves exactly the declared row count for the measured day", () => {
     const wire = fixture.projection.buildDashboardDayWire(PERF_FIXTURE_PROFILE.day);
     assert.equal(wire.queueSurfaces.length, PERF_FIXTURE_PROFILE.dayRunCount);

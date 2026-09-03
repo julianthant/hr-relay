@@ -21,40 +21,40 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import type { Page } from "playwright";
-import { EidSchema, IsoInstantSchema } from "../../src/domain/ids.js";
-import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
+import { EidSchema, IsoInstantSchema } from "../../../../src/domain/ids.js";
+import { directIdentifierDigestReference } from "../../../../src/domain/redaction.js";
 import {
   UCPATH_SMART_HR_DISPLAYED_PERSON_NAME,
   UCPATH_SMART_HR_TERMINATION_STAGED,
   isUcpathTerminationAction,
   isUcpathTerminationInProgress,
-} from "../../src/domain/ui/ucpath-smart-hr-termination.js";
-import { WriteParkedError } from "../../src/core/write-sequencer.js";
-import { ucpathPendingTransactionSetDigest } from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
+} from "../../../../src/domain/ui/ucpath-smart-hr-termination.js";
+import { WriteParkedError } from "../../../../src/core/write-sequencer.js";
+import { ucpathPendingTransactionSetDigest } from "../../../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 import type {
   UcpathTerminationStaging,
   UcpathTransactionRow,
   UcpathTransactionScan,
-} from "../../src/domain/ui/ucpath-smart-hr-termination.js";
-import { MatchIdentityOutputSchema } from "../../src/domain/contracts/separations/match-identity.js";
-import type { MatchIdentityOutput } from "../../src/domain/contracts/separations/match-identity.js";
-import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summary.js";
-import type { UcpathJobSummary } from "../../src/domain/ui/ucpath-job-summary.js";
-import type { SearchPersonOrgOutput } from "../../src/domain/contracts/ucpath/search-person-org.js";
-import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
-import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org-operation.js";
-import { readJobSummaryTask } from "../../src/stores/ucpath/tasks/read-job-summary.js";
-import { matchIdentityTask } from "../../src/stores/separations/tasks/match-identity.js";
-import { verifyIdentityApprovalTask } from "../../src/stores/separations/tasks/verify-identity-approval.js";
-import { createDeterministicUcpathSmartHrDriver } from "../../src/stores/ucpath/driver/smart-hr-fake.js";
-import { scanTerminationTransactionsOnPage } from "../../src/stores/ucpath/driver/smart-hr-operation.js";
-import { matchExistingTerminationTask } from "../../src/stores/ucpath/tasks/match-existing-termination.js";
-import { matchPendingTerminationsTask } from "../../src/stores/ucpath/tasks/match-pending-terminations.js";
-import { stageTerminationTask } from "../../src/stores/ucpath/tasks/stage-termination.js";
-import { verifyTerminationTask } from "../../src/stores/ucpath/tasks/verify-termination.js";
-import { separationsUcpathTerminationDescriptor } from "../helpers/registered-workflows.js";
-import { SEPARATIONS_UCPATH_TERMINATION_CLAIMS } from "./coverage-claims.js";
-import { walkDescriptor } from "./helpers/pure-walk.js";
+} from "../../../../src/domain/ui/ucpath-smart-hr-termination.js";
+import { MatchIdentityOutputSchema } from "../../../../src/domain/contracts/separations/match-identity.js";
+import type { MatchIdentityOutput } from "../../../../src/domain/contracts/separations/match-identity.js";
+import { UcpathJobSummaryReadSchema } from "../../../../src/domain/ui/ucpath-job-summary.js";
+import type { UcpathJobSummary } from "../../../../src/domain/ui/ucpath-job-summary.js";
+import type { SearchPersonOrgOutput } from "../../../../src/domain/contracts/ucpath/search-person-org.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/stores/ucpath/driver/fake.js";
+import { deriveJobRowFromCells } from "../../../../src/stores/ucpath/driver/person-org-operation.js";
+import { readJobSummaryTask } from "../../../../src/stores/ucpath/tasks/read-job-summary.js";
+import { matchIdentityTask } from "../../../../src/stores/separations/tasks/match-identity.js";
+import { verifyIdentityApprovalTask } from "../../../../src/stores/separations/tasks/verify-identity-approval.js";
+import { createDeterministicUcpathSmartHrDriver } from "../../../../src/stores/ucpath/driver/smart-hr-fake.js";
+import { scanTerminationTransactionsOnPage } from "../../../../src/stores/ucpath/driver/smart-hr-operation.js";
+import { matchExistingTerminationTask } from "../../../../src/stores/ucpath/tasks/match-existing-termination.js";
+import { matchPendingTerminationsTask } from "../../../../src/stores/ucpath/tasks/match-pending-terminations.js";
+import { stageTerminationTask } from "../../../../src/stores/ucpath/tasks/stage-termination.js";
+import { verifyTerminationTask } from "../../../../src/stores/ucpath/tasks/verify-termination.js";
+import { separationsUcpathTerminationDescriptor } from "../../../helpers/registered-workflows.js";
+import { SEPARATIONS_UCPATH_TERMINATION_CLAIMS } from "../../coverage-claims.js";
+import { walkDescriptor } from "../../helpers/pure-walk.js";
 import {
   SWEEP_IDEMPOTENCY_KEY,
   sweepIdempotencyKey,
@@ -73,8 +73,8 @@ import {
   terminationPendingSet,
   terminationQueuedRun,
   type TerminationHarness,
-} from "../unit/fixtures/ucpath-termination-fixtures.js";
-import { noSeparationWritePlan } from "../../src/domain/separations/write-plan.js";
+} from "../../../unit/fixtures/ucpath-termination-fixtures.js";
+import { noSeparationWritePlan } from "../../../../src/domain/separations/write-plan.js";
 
 const taskCtx = Object.freeze({
   signal: new AbortController().signal,
@@ -83,7 +83,7 @@ const taskCtx = Object.freeze({
   recordData: () => undefined,
 });
 
-const EID = EidSchema.parse("10001799");
+const EID = EidSchema.parse("10800000");
 const NAME = "Drose Clauckia";
 const EFFECTIVE_DATE = "06/11/2026";
 const LAST_DATE_WORKED = "06/10/2026";
@@ -650,7 +650,7 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
       String(Reflect.get(intent, "message")),
       "ucpath/create-termination threw after the fence; whether the external write landed is unknown",
     );
-    assert.doesNotMatch(String(Reflect.get(intent, "message")), /submit-refused|10812345/u);
+    assert.doesNotMatch(String(Reflect.get(intent, "message")), /submit-refused|10800009/u);
     assert.equal(footprint.checkpoint, undefined, "nothing settled over an unknown outcome");
   });
 

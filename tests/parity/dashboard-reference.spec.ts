@@ -73,7 +73,6 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   // smaller groups exist to exercise the QUEUE's well sizing, not the panel.
   { id: "run-group", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.groupOf13 } },
   { id: "run-member", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.memberRun } },
-  { id: "run-receipt", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.doneRun, section: "receipt" } },
   { id: "run-receipt-comparison", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.comparisonRun, section: "receipt" } },
   { id: "run-receipt-comparison-refused", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.comparisonRefusedRun, section: "receipt" } },
   { id: "start-run", route: { day: FIXTURE_DAY, start: true } },
@@ -149,7 +148,7 @@ let storageServer: FixtureServer;
  * otherwise the deterministic fixture adapter, and the whole reason this one
  * server exists here is that a RECEIPT cannot be authored: it is DERIVED from
  * authority rows (D141), and adapter #1 truthfully holds none. Until now the
- * `run-receipt` reference therefore photographed only the receipt's `missing`
+ * `run-done` reference therefore photographs the receipt's `missing`
  * arm, so the panel that carries D82's whole acceptance bar — "the operator
  * completes the double-check without opening UCPath" — had never been
  * photographed with anything in it.
@@ -617,6 +616,16 @@ const SCENE_ANCHORS: Record<string, (page: import("@playwright/test").Page) => P
   },
   "run-receipt-comparison-refused": async (page) => {
     await expect(page.getByRole("alert").filter({ hasText: "Earlier run comparison was refused" })).toBeVisible();
+  },
+  "intake-rerun": async (page) => {
+    const rerunTab = page.getByRole("tab", { name: "Rerun diff" });
+    await rerunTab.click();
+    await expect(rerunTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByText(
+      "This file has run before, and the plan has changed since. The exact changed axes and membership are below.",
+      { exact: true },
+    )).toBeVisible();
+    await expect(page.getByRole("table", { name: "Changed input hashes" })).toBeVisible();
   },
   "settings": async (page) => {
     // DCC3's server-listed editor resolves the blank route to General. Waiting
@@ -1288,6 +1297,30 @@ test.describe("access variants", () => {
     await installTheme(page, PARITY_THEMES[1]);
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
     await assertThemeApplied(page, PARITY_THEMES[1]);
+    const reducedMotion = await page.evaluate(() => {
+      const styles = getComputedStyle(document.documentElement);
+      return {
+        matches: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+        durations: [
+          "--ds-dur-1",
+          "--ds-dur-2",
+          "--ds-dur-3",
+          "--ds-dur-4",
+          "--ds-dur-enter",
+          "--ds-dur-exit",
+          "--ds-dur-move",
+        ].map((token) => styles.getPropertyValue(token).trim()),
+        travel: ["--ds-travel-sm", "--ds-travel-md"]
+          .map((token) => styles.getPropertyValue(token).trim()),
+        scale: styles.getPropertyValue("--ds-scale-enter").trim(),
+      };
+    });
+    expect(reducedMotion).toEqual({
+      matches: true,
+      durations: ["0s", "0s", "0s", "0s", "0s", "0s", "0s"],
+      travel: ["0px", "0px"],
+      scale: "1",
+    });
     expect(errors).toEqual([]);
 
     await captureParityPair(page, REFERENCES, {

@@ -123,26 +123,32 @@ export function auditSecretsSingleSource(
   return violations;
 }
 
+let currentRebuildOccurrences: readonly EnvironmentAccessOccurrence[] | undefined;
+let currentRunnerInvocationSources: readonly { readonly path: string; readonly content: string }[] | undefined;
+
 function rebuildOccurrences(): readonly EnvironmentAccessOccurrence[] {
-  return gitVisibleFiles(["src"])
+  currentRebuildOccurrences ??= gitVisibleFiles(["src"])
     .filter((path) => ENVIRONMENT_SOURCE_EXTENSIONS.some((extension) => path.endsWith(extension)))
     .flatMap((path) => inventoryEnvironmentAccesses(path, readFileSync(join(REPO_ROOT, path), "utf8")));
+  return currentRebuildOccurrences;
 }
 
 function runnerInvocationProductionSources(): readonly { readonly path: string; readonly content: string }[] {
+  if (currentRunnerInvocationSources !== undefined) return currentRunnerInvocationSources;
   const rooted = gitVisibleFiles(["src", "scripts"])
     .filter((path) => ENVIRONMENT_SOURCE_EXTENSIONS.some((extension) => path.endsWith(extension)));
   const packageJson = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
     readonly scripts?: Record<string, string>;
   };
   if (packageJson.scripts === undefined) throw new Error("package.json has no scripts map");
-  return [
+  currentRunnerInvocationSources = [
     ...rooted.map((path) => ({ path, content: readFileSync(join(REPO_ROOT, path), "utf8") })),
     ...packageDeclaredExternalProductionSources(
       packageJson.scripts,
       (path) => readFileSync(join(REPO_ROOT, path), "utf8"),
     ),
   ];
+  return currentRunnerInvocationSources;
 }
 
 describe("secrets single source", () => {

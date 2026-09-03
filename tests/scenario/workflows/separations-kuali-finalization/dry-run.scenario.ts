@@ -44,7 +44,7 @@
  * scenario matrix's negative branches are owned by the structural T1a file
  * beside this one — `already-present` (structural.scenario.test.ts:787) and
  * `subject-mismatch` (structural.scenario.test.ts:715) — and by
- * `tests/scenario/separations-identity-check.scenario.test.ts:341`, which owns
+ * `tests/scenario/workflows/separations-identity-check/structural.scenario.test.ts`, which owns
  * `no-active-job`, all on synthetic subjects. One of them carried a recorded
  * as-built defect worth keeping in view, so it is restated here rather than
  * lost with the case: `TransactionDryRunPreviewSchema`'s
@@ -57,7 +57,7 @@
  *
  * **What a dry run of THIS workflow actually does**, so the expectations below
  * are not guesses (`src/core/write-sequencer.ts`, `src/core/run-executor.ts`):
- * the four read/fold nodes execute and checkpoint normally, the canonical
+ * the five read/fold nodes execute and checkpoint normally, the canonical
  * document-EID path verifies the UCPath read-back without opening a gate, and
  * only `finalize-kuali` branches on `envelope.dryRun` — its declared
  * `dryRun: "stop-after-prepare"` runs beat ①'s durable-intent lookup, then the
@@ -78,30 +78,47 @@ import {
   type DryRunScenarioManifest,
 } from "../../../../src/domain/trust/dry-run-scenario.js";
 
-/** The supplied-EID path, in execution order. Four reads, authority, one write. */
-const READ_NODES = ["job-summary", "name-search", "department-option", "comparison"] as const;
+/** The supplied-EID path, in execution order: four reads, authority, one verifier, one write. */
+const PRE_APPROVAL_READ_NODES = [
+  "job-summary",
+  "name-search",
+  "department-option",
+  "comparison",
+] as const;
 const GATE_NODE = "identity-approval";
 const APPROVAL_NODE = "approval";
+const FILING_PRESENCE_NODE = "filing-presence";
 const TRANSACTION_NODE = "finalize-kuali";
 
-const FULL_PATH = [...READ_NODES, APPROVAL_NODE, TRANSACTION_NODE] as const;
+const FULL_PATH = [
+  ...PRE_APPROVAL_READ_NODES,
+  APPROVAL_NODE,
+  FILING_PRESENCE_NODE,
+  TRANSACTION_NODE,
+] as const;
 
 /**
- * The four read/fold nodes checkpoint (`replay: "checkpoint"`); `approval` is
- * `replay: "always-rerun"` and still records this claim generation's output,
- * though no later claim may reuse it. The
+ * The four pre-approval read/fold nodes and the post-approval filing verifier
+ * checkpoint (`replay: "checkpoint"`); `approval` is `replay: "always-rerun"`
+ * and still records this claim generation's output, though no later claim may
+ * reuse it. The
  * transaction node writes none on a rehearsal — which is the `durableDeltas`
  * assertion from the other side.
  */
-const READ_CHECKPOINTS = READ_NODES.map((node) => ({
+const PRE_APPROVAL_READ_CHECKPOINTS = PRE_APPROVAL_READ_NODES.map((node) => ({
   node,
   attempt: 1,
   keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"] as const,
 }));
 const EXPECTED_CHECKPOINTS = [
-  ...READ_CHECKPOINTS,
+  ...PRE_APPROVAL_READ_CHECKPOINTS,
   {
     node: APPROVAL_NODE,
+    attempt: 1,
+    keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"] as const,
+  },
+  {
+    node: FILING_PRESENCE_NODE,
     attempt: 1,
     keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"] as const,
   },
@@ -112,7 +129,7 @@ const EXPECTED_CHECKPOINTS = [
 const NO_WRITES = { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 } as const;
 
 /** The receipt service's complete ordered authority vocabulary for a preview.
- * Every graph node is present: the five checkpointed nodes are verified, the
+ * Every graph node is present: the six checkpointed nodes are verified, the
  * inapplicable name-only gate is absent/non-mandatory, and the transaction has no checkpoint. The terminal result
  * and four cross-source comparisons are unknown; literal reload read-back is
  * absent. These are authority verdicts, not a lossy met/unmet projection. */
@@ -123,6 +140,7 @@ const PREVIEW_RECEIPT_VERIFICATION = [
   { obligation: "node.comparison", verdict: "verified", mandatory: false },
   { obligation: "node.identity-approval", verdict: "absent", mandatory: false },
   { obligation: "node.approval", verdict: "verified", mandatory: true },
+  { obligation: "node.filing-presence", verdict: "verified", mandatory: false },
   { obligation: "node.finalize-kuali", verdict: "unknown", mandatory: true },
   { obligation: "completion.terminal-result", verdict: "unknown", mandatory: true },
   { obligation: "write.timekeeper-matches-request", verdict: "unknown", mandatory: true },
@@ -146,10 +164,11 @@ const MANIFEST = {
       // person: since D300 this arm carries no secret input at all.
       subjectLabel: "finalization-canary",
       subjectKind: "ordinary",
-      why: "The common case and the one §4f2's named canary exists for: an unfinalized RRSS document "
-        + "for a subject with one active UCPath job, rehearsed once its termination has been filed by "
-        + "the UCPath filing ② so that the transaction number the finalization stages actually exists. "
-        + "Until then the registry declares that number `pending` and this case is `blocked` by name.",
+      why: "The retained §4f2 canary is now gone from the Kuali Action List, so this case records "
+        + "`blocked` before browser composition. Its declared rehearsal remains the ordinary path: "
+        + "an unfinalized RRSS document whose UCPath filing ② is re-read by `filing-presence` before "
+        + "the finalization can stage the exact transaction number. The retained arm also has pending "
+        + "canonical leaves, but current gone availability is the earlier blocking authority.",
       nodesReached: [...FULL_PATH],
       // Nothing sits downstream of the transaction node in this graph, so the
       // "it did more than expected" half is carried by the zero deltas and by

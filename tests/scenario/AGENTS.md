@@ -16,6 +16,20 @@ the choice below is enforced rather than conventional.
 The T2 and walk kinds share one obligation for one reason: neither walks a graph, so a coverage
 claim on either would count a path nobody executed as executed.
 
+2026-09-02 — Every registered workflow owns exactly one collected T1a source at
+`workflows/<workflow-id>/structural.scenario.test.ts`; `scenario-coverage` derives that mapping from
+the workflow registry and refuses a split or flat workflow source. Flat graph scenarios remain only
+for contract/capability evidence that belongs to no registered workflow. Structural fixtures use
+synthetic subjects and may preserve a verified page/data shape, but they never claim that shape is
+current live-world evidence; only the uncollected T1b manifest and its recorded run can do that.
+
+2026-09-02 — Every collected offline scenario keeps EID-shaped fixture values in the reserved
+synthetic range `10800000`–`10800099`; `19999999` is the sole invalid-EID sentinel. Names and
+document numbers authored by the same fixtures must be visibly synthetic too. A collected scenario
+may derive a declared operator label from the real registered descriptor, but it must not copy that
+label into fixture input or treat it as external-world evidence. Real observed subject identifiers
+belong only to ignored environment input and durable T1b run evidence, never collected source.
+
 `workflows/<workflow-id>/dry-run.scenario.ts` (T1b) is deliberately **not** `.test.` — a checkpoint
 manifest vitest collected would start a browser inside the per-commit gate.
 
@@ -46,9 +60,10 @@ RUN needs a T3 pair as well, not just a T2.
 - `dashboard/separations/` — the first feature (2026-08-27). `world.ts` is its shared composition:
   `src/server/dashboard/compose.ts` minus the clock, the id factory and the process edges (worker
   supervisor, write sequencer, intake parser), each of those wired to **throw** rather than no-op.
-  Three files split by what they observe — the descriptor's declaration squares
-  (`wired-surfaces`), the gate chain and both refusal arms (`identity-gate`), and the two squares
-  outside the descriptor (`needs-you-and-ledger`).
+  Three files split by what they observe — the start/queue/timeline composition
+  (`run-projection`), the gate chain and both refusal arms (`identity-gate`), and the parked-gate
+  notification composition (`needs-you`). Pure Explorer declarations and write-ledger folds stay
+  with their unit owners.
 
 ## Fixtures a scenario may import
 

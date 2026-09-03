@@ -40,6 +40,8 @@ import { ArchivedFailureCard } from "../../../src/dashboard/surfaces/archive.js"
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+
 const SUMMARY = "The CRM record named a different person than the one this run was started for.";
 
 /** The run-detail `failure` section's own arm, composed from the wire's own combinator. */

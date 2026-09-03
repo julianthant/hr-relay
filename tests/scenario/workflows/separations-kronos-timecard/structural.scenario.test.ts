@@ -12,19 +12,19 @@
  * "it refused" rather than "it returned something plausible".
  *
  * The corresponding fixture values are the ones measured live on 2026-08-12
- * (EID 10776990, window 06/01/2026–08/12/2026): 73 days covered, 9 scroll steps
+ * (EID 10800000, window 06/01/2026–08/12/2026): 73 days covered, 9 scroll steps
  * on the virtualized grid, last punch 06/12, one `Holiday - Hourly` day and two
  * pay codes the ported classifier does not recognise.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { EidSchema } from "../../src/domain/ids.js";
-import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
-import { createDeterministicNewKronosTimecardDriver } from "../../src/stores/new-kronos/driver/fake.js";
-import { readSeparationTimecardTask } from "../../src/stores/new-kronos/tasks/read-separation-timecard.js";
-import { searchEmployeeTask } from "../../src/stores/new-kronos/tasks/search-employee.js";
-import { separationsKronosTimecardDescriptor } from "../helpers/registered-workflows.js";
-import { walkDescriptor } from "./helpers/pure-walk.js";
+import { EidSchema } from "../../../../src/domain/ids.js";
+import { directIdentifierDigestReference } from "../../../../src/domain/redaction.js";
+import { createDeterministicNewKronosTimecardDriver } from "../../../../src/stores/new-kronos/driver/fake.js";
+import { readSeparationTimecardTask } from "../../../../src/stores/new-kronos/tasks/read-separation-timecard.js";
+import { searchEmployeeTask } from "../../../../src/stores/new-kronos/tasks/search-employee.js";
+import { separationsKronosTimecardDescriptor } from "../../../helpers/registered-workflows.js";
+import { walkDescriptor } from "../../helpers/pure-walk.js";
 
 /**
  * The minimum task context a read task needs. `fail` throws, which is what
@@ -37,7 +37,7 @@ const taskCtx = Object.freeze({
   recordData: () => undefined,
 });
 
-const EMPL_ID = EidSchema.parse("10776990");
+const EMPL_ID = EidSchema.parse("10800000");
 const MATCHED = { displayName: "Kou, Nathan", employeeId: EMPL_ID };
 
 const SEARCH_RESOLVED = {
@@ -219,7 +219,7 @@ describe("separations-kronos-timecard scenarios", () => {
         subject: {
           observationId: "new-kronos.timecard.displayed-eid",
           expectedEid: EMPL_ID,
-          observedEmployeeId: "10001946",
+          observedEmployeeId: "10800001",
           observedDisplayName: "Yang, Somebody",
           matches: false,
         },
@@ -233,7 +233,7 @@ describe("separations-kronos-timecard scenarios", () => {
         input: { emplId: EMPL_ID, rangeStart: "06/01/2026", rangeEnd: "08/12/2026" },
         ctx: { ...taskCtx, driver },
       }),
-      new RegExp(`subject-mismatch: .*${directIdentifierDigestReference("10001946")}`),
+      new RegExp(`subject-mismatch: .*${directIdentifierDigestReference("10800001")}`),
     );
   });
 });

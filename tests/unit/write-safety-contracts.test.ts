@@ -46,7 +46,7 @@ const evaluation = (verdicts: readonly unknown[], policy: unknown = POLICY) => (
   verdicts,
 });
 
-describe("write-safety type shell", () => {
+describe("write-safety schema and negative-settlement rules", () => {
   it("requires evidence-qualified probe verdicts and closed binding proofs", () => {
     assert.equal(RecoveryProbeVerdictSchema.safeParse({ state: "absent", evidence: ABSENCE_1 }).success, true);
     assert.equal(RecoveryProbeVerdictSchema.safeParse({ state: "absent" }).success, false);

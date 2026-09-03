@@ -40,51 +40,28 @@
       - paragraph: Chosen by ranking, and changeable — every column below is read relative to it.
     - tablist "Intake stage":
       - tab "Mapping 2"
-      - tab "Review 4" [selected]
+      - tab "Review 4"
       - tab "Manifest"
-      - tab "Rerun diff"
-    - tabpanel "Review 4":
-      - text: validated 10:02 AMvalues read as of 10:02 AM
-      - table "Rejected rows":
+      - tab "Rerun diff" [selected]
+    - tabpanel "Rerun diff":
+      - status: Compared with 7b92095b…, made 10:04 AM This file has run before, and the plan has changed since. The exact changed axes and membership are below.
+      - text: prior manifest 7b92095b…1 changed axes
+      - button "Show full prior manifest and changed-axis hashes"
+      - text: the mapping aaaaaaaa… → bbbbbbbb… unchanged 1 added 1 removed 1 mapping changed contract identical changed inputs 1 In this plan, not in 7b92095b… 1c4ed0da-8e1b-523d-98ec-0318ee767b64 · input 63825050…
+      - button "Show full membership evidence for item 1c4ed0da-8e1b-523d-98ec-0318ee767b64"
+      - text: In 7b92095b…, not here 65c6c72b-d36b-508c-9d5c-f193969ff61d · input 19a67504…
+      - button "Show full membership evidence for item 65c6c72b-d36b-508c-9d5c-f193969ff61d"
+      - table "Changed input hashes":
         - rowgroup:
-          - row "Row Kind Field / column Why Resolve":
-            - columnheader "Row"
-            - columnheader "Kind"
-            - columnheader "Field / column"
-            - columnheader "Why"
-            - columnheader "Resolve"
+          - row "Item Previous input hash Current input hash":
+            - columnheader "Item"
+            - columnheader "Previous input hash"
+            - columnheader "Current input hash"
         - rowgroup:
-          - row "1 duplicate person — source rows 1, 5 describe the same item code duplicate-identity Exclude…":
-            - cell "1"
-            - cell "duplicate person"
-            - cell "—"
-            - cell "source rows 1, 5 describe the same item code duplicate-identity"
-            - cell "Exclude…":
-              - button "Exclude…"
-          - 'row "3 cell could not be read emplId “UCPath ID” raw: 4567 (last4) is not a UCPath EID (must be 10xxxxxx, 8 digits) (Employee ID (EID)) code cell-coercion Fix cell Exclude…"':
-            - cell "3"
-            - cell "cell could not be read"
-            - 'cell "emplId “UCPath ID” raw: 4567 (last4)"'
-            - cell "is not a UCPath EID (must be 10xxxxxx, 8 digits) (Employee ID (EID)) code cell-coercion"
-            - cell "Fix cell Exclude…":
-              - button "Fix cell"
-              - button "Exclude…"
-          - row "5 duplicate person — source rows 1, 5 describe the same item code duplicate-identity Exclude…":
-            - cell "5"
-            - cell "duplicate person"
-            - cell "—"
-            - cell "source rows 1, 5 describe the same item code duplicate-identity"
-            - cell "Exclude…":
-              - button "Exclude…"
-          - row "6 fields disagree — Invalid input code cross-field Exclude…":
-            - cell "6"
-            - cell "fields disagree"
-            - cell "—"
-            - cell "Invalid input code cross-field"
-            - cell "Exclude…":
-              - button "Exclude…"
-      - checkbox "I have read all 4 rejected rows"
-      - text: "I have read all 4 rejected rows Nothing half-launches: the plan stays closed until every non-valid row has been corrected, excluded, or seen."
+          - row "e8b68575-86b3-55a5-bd97-a48142caee29 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd":
+            - cell "e8b68575-86b3-55a5-bd97-a48142caee29"
+            - cell "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            - cell "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
     - text: "3 of 7 rows would run 4 rejected0 excluded Run is blocked: unresolved rejected rows have not been reviewed. header row 3fingerprint 55f5fb4b"
     - button "Show full layout fingerprint"
     - button "Re-validate" [disabled]

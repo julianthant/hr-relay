@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it } from "vitest";
 import {
   auditRuntimeEnvironmentInventory,
@@ -19,7 +20,7 @@ import {
 import {
   gitVisibleFiles,
   isLegacyPath,
-  resolveScopedPath,
+  REPO_ROOT,
 } from "./helpers/guard-files.js";
 
 interface ExampleEnvironmentInventory {
@@ -47,7 +48,7 @@ function repositoryOccurrences(): readonly EnvironmentAccessOccurrence[] {
     ENVIRONMENT_SOURCE_EXTENSIONS.some((extension) => path.endsWith(extension));
   return gitVisibleFiles(["."])
     .filter(scannable)
-    .flatMap((path) => inventoryEnvironmentAccesses(path, readFileSync(resolveScopedPath(path), "utf8")));
+    .flatMap((path) => inventoryEnvironmentAccesses(path, readFileSync(resolve(REPO_ROOT, path), "utf8")));
 }
 
 function parseExampleEnvironment(content: string): ExampleEnvironmentInventory {
@@ -181,7 +182,7 @@ describe("runtime environment inventory coverage", () => {
   });
 
   it("parses .env.example grammar without ever retaining values and pins documented exactness", () => {
-    const actual = parseExampleEnvironment(readFileSync(resolveScopedPath(".env.example"), "utf8"));
+    const actual = parseExampleEnvironment(readFileSync(resolve(REPO_ROOT, ".env.example"), "utf8"));
     assert.deepEqual(actual.violations, []);
     assert.deepEqual(
       [...actual.keys].sort(),
