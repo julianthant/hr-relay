@@ -509,6 +509,14 @@
       "replacementRequired": true
     },
     {
+      "name": "store-catalog-current",
+      "file": "tests/unit/architecture/store-catalog-current.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/stores.md",
+      "invariant": "D312 (doc 03c 3c-A unit 2): ref stores \u00a72 is GENERATED from `taskStoreRegistry` by `npm run stores:catalog`, never hand-written. Stale checked-in bytes between the `store-catalog:start`/`store-catalog:end` markers fail this guard, every registered store appears as its own `###` block in registry order and every registered task appears in exactly one row, and the renderer derives every input/output cell through zod's public shape API \u2014 an underivable shape, a non-object union arm, a read contract with no freshness policy, or a contract that is both registered and listed in config/pending-impl-bindings.json throws rather than rendering a placeholder, because a reuse index that silently guesses is what mints the duplicate task D194 exists to prevent.",
+      "replacementRequired": true
+    },
+    {
       "name": "subject-before-fence",
       "file": "tests/unit/architecture/subject-before-fence.test.ts",
       "status": "active",
