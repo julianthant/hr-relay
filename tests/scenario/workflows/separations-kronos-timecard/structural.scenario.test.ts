@@ -117,7 +117,7 @@ const RUN_INPUT = {
 };
 
 describe("separations-kronos-timecard scenarios", () => {
-  it("separations-kronos-timecard/reads-a-real-timecard — search, timecard, derived separation dates", () => {
+  it("separations-kronos-timecard/reads-a-real-timecard — real task graph over a synthetic timecard fixture", () => {
     const walk = walkDescriptor(separationsKronosTimecardDescriptor, RUN_INPUT, {
       outputs: { search: SEARCH_RESOLVED, timecard: TIMECARD_WITH_PUNCHES },
     });

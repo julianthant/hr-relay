@@ -105,7 +105,7 @@ async function readDocument(form: KualiFakeSeparationForm): Promise<Record<strin
 }
 
 describe("separations-kuali-read scenarios", () => {
-  it("separations-kuali-read/reads-a-real-separation-document — the whole form, then §4a's resolution", async () => {
+  it("separations-kuali-read/reads-a-real-separation-document — real task graph over a synthetic form fixture", async () => {
     const document = await readDocument(PROCESSED_FORM);
     // The read touched no write path at all: S61's defect is that legacy's own
     // dry run fills the draft, so "it read nothing else" is the assertion.

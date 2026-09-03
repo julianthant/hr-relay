@@ -1684,8 +1684,9 @@ asks for it and its result is recorded.
 
 ### 10.1 The test family, as built
 
-Nine members. Folder, runner, when it runs, what it may touch, what it proves — verified against the
-tree at 2026-08-20.
+Nine members. Folder, runner, when it runs, what it may touch, what it proves. Rows retain their
+dated 2026-08-20 census unless they name a later refresh; R5a refreshed the fixture-scenario row's
+topology and count on 2026-09-02, while R7 owns the family-wide census and taxonomy reconciliation.
 
 | family | folder | runner | when | may touch | proves |
 |---|---|---|---|---|---|
