@@ -444,7 +444,7 @@ describe("dry-run scenario evidence assertions", () => {
       },
     };
 
-    const outcomes = evaluateDryRunScenarioEvidence(absentCase, before, mutatedEvidence);
+    const outcomes = evaluateDryRunScenarioEvidence("dry-run-preview", absentCase, before, mutatedEvidence);
 
     assert.deepEqual(
       outcomes.filter(({ verdict }) => verdict === "failed").map(({ assertionId }) => assertionId),
@@ -514,7 +514,7 @@ describe("dry-run scenario evidence assertions", () => {
   ] as const;
 
   it.each(mutations)("turns $0 red when only its evidence is mutated", (assertionIds, evidence) => {
-    const outcomes = evaluateDryRunScenarioEvidence(scenarioCase, before, evidence);
+    const outcomes = evaluateDryRunScenarioEvidence("dry-run-preview", scenarioCase, before, evidence);
 
     assert.deepEqual(
       outcomes.filter(({ verdict }) => verdict === "failed").map(({ assertionId: id }) => id),
@@ -538,7 +538,7 @@ describe("dry-run scenario evidence assertions", () => {
     }).cases[0];
     assert.ok(failedCase);
 
-    const outcomes = evaluateDryRunScenarioEvidence(failedCase, before, {
+    const outcomes = evaluateDryRunScenarioEvidence("dry-run-preview", failedCase, before, {
       ...READY_EVIDENCE,
       terminal: {
         lifecycle: "failed",
@@ -571,7 +571,7 @@ describe("dry-run scenario evidence assertions", () => {
     }).cases[0];
     assert.ok(failedCase);
 
-    const outcomes = evaluateDryRunScenarioEvidence(failedCase, before, {
+    const outcomes = evaluateDryRunScenarioEvidence("dry-run-preview", failedCase, before, {
       ...READY_EVIDENCE,
       terminal,
     });

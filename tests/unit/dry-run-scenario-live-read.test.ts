@@ -111,7 +111,7 @@ describe("D318 live-read T1b arm — person-lookup", () => {
 
     await runtime.drain(PERSON_LOOKUP_LIVE_READ.workflow);
     const evidence = await runtime.collectEvidence(started.runId);
-    const assertions = evaluateDryRunScenarioEvidence(scenarioCase, started.writeSafetyBefore, evidence);
+    const assertions = evaluateDryRunScenarioEvidence("live-read", scenarioCase, started.writeSafetyBefore, evidence);
     assert.deepEqual(
       assertions.map(({ assertionId, verdict, reason }) => `${assertionId}:${verdict}:${reason}`),
       [
