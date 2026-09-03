@@ -217,9 +217,9 @@ export function buildLegacySelectorPortMap(
       system,
       expectedKeyCount,
       sourcePath,
-      sourceBlob: GitBlobSchema.parse(frozenLegacyFile(frozen.files, sourcePath).blob),
+      sourceBlob: GitBlobSchema.parse(frozenLegacyFile(frozen.files, sourcePath).sourceBlob),
       catalogPath,
-      catalogBlob: GitBlobSchema.parse(frozenLegacyFile(frozen.files, catalogPath).blob),
+      catalogBlob: GitBlobSchema.parse(frozenLegacyFile(frozen.files, catalogPath).sourceBlob),
     };
   });
   const entries = systems.flatMap((snapshot) => {

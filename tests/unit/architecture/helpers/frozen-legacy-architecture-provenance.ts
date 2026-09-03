@@ -6,9 +6,17 @@ import rawProvenance from "../../../../config/ports/legacy-architecture-provenan
  * These facts intentionally live outside the mutable JSON payload. A payload
  * that carries both an inventory and its digest is self-authenticating: an
  * edit can replace both values. This anchor binds every legacy source revision,
- * generated-snapshot identity, and frozen path/blob pair to this guard's code.
+ * generated-snapshot identity, frozen source-blob provenance, redaction policy,
+ * and the complete sanitized payload to this guard's code.
  */
 const FROZEN_PROVENANCE_ANCHORS = {
+  schemaVersion: 2,
+  payloadContentAddress: "sha256:99bf648dd1691edd132ec8e0d3105e7b8b3d71f4d1c847d0a57676104a5017d0",
+  sourceRedaction: {
+    policy: "zero-direct-identifiers-v1",
+    ssnReplacement: "000000000",
+    ucsdEidReplacement: "00000000",
+  },
   selector: {
     commit: "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc",
     files: [
@@ -110,9 +118,14 @@ const FROZEN_PROVENANCE_ANCHORS = {
 
 const CommitSchema = z.string().regex(/^[0-9a-f]{40}$/u, "legacy commit must be an exact SHA-1 commit id");
 const BlobSchema = z.string().regex(/^[0-9a-f]{40}$/u, "legacy blob must be an exact SHA-1 object id");
+const ContentAddressSchema = z.string().regex(
+  /^sha256:[0-9a-f]{64}$/u,
+  "frozen snapshot needs a SHA-256 content address",
+);
 const FrozenFileSchema = z.strictObject({
   path: z.string().min(1),
-  blob: BlobSchema,
+  sourceBlob: BlobSchema,
+  contentAddress: ContentAddressSchema,
   text: z.string(),
 });
 
@@ -131,12 +144,12 @@ const FrozenFilesSchema = z.array(FrozenFileSchema).min(1).superRefine((files, c
 const FrozenPathSnapshotSchema = z.strictObject({
   name: z.string().regex(/^[a-z0-9-]+$/u, "frozen path snapshot name must be kebab-case"),
   sourceCommand: z.string().min(1),
-  contentAddress: z.string().regex(/^sha256:[0-9a-f]{64}$/u, "frozen path snapshot needs a SHA-256 content address"),
+  contentAddress: ContentAddressSchema,
   text: z.string(),
 });
 
 export const FrozenLegacyArchitectureProvenanceSchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   selector: z.strictObject({
     commit: CommitSchema,
     objectFormat: z.literal("sha1"),
@@ -169,6 +182,11 @@ export const FrozenLegacyArchitectureProvenanceSchema = z.strictObject({
       path: z.literal("package.json"),
     }),
   }),
+  sourceRedaction: z.strictObject({
+    policy: z.literal("zero-direct-identifiers-v1"),
+    ssnReplacement: z.literal("000000000"),
+    ucsdEidReplacement: z.literal("00000000"),
+  }),
 });
 
 export type FrozenLegacyFile = z.infer<typeof FrozenFileSchema>;
@@ -199,7 +217,7 @@ function assertFrozenFileAnchors(
     }
     const [expectedPath, expectedBlob] = expectedRecord;
     assertAnchorValue(`${scope} file`, `path[${String(index)}]`, file.path, expectedPath);
-    assertAnchorValue(`${scope} file`, expectedPath, file.blob, expectedBlob);
+    assertAnchorValue(`${scope} file`, expectedPath, file.sourceBlob, expectedBlob);
   }
 }
 
@@ -214,6 +232,30 @@ function assertFrozenPathSnapshotAnchor(
 }
 
 function assertFrozenProvenanceAnchors(provenance: FrozenLegacyArchitectureProvenance): void {
+  assertAnchorValue(
+    "payload",
+    "schemaVersion",
+    String(provenance.schemaVersion),
+    String(FROZEN_PROVENANCE_ANCHORS.schemaVersion),
+  );
+  assertAnchorValue(
+    "source redaction",
+    "policy",
+    provenance.sourceRedaction.policy,
+    FROZEN_PROVENANCE_ANCHORS.sourceRedaction.policy,
+  );
+  assertAnchorValue(
+    "source redaction",
+    "ssnReplacement",
+    provenance.sourceRedaction.ssnReplacement,
+    FROZEN_PROVENANCE_ANCHORS.sourceRedaction.ssnReplacement,
+  );
+  assertAnchorValue(
+    "source redaction",
+    "ucsdEidReplacement",
+    provenance.sourceRedaction.ucsdEidReplacement,
+    FROZEN_PROVENANCE_ANCHORS.sourceRedaction.ucsdEidReplacement,
+  );
   assertAnchorValue("selector", "commit", provenance.selector.commit, FROZEN_PROVENANCE_ANCHORS.selector.commit);
   assertFrozenFileAnchors("selector", provenance.selector.files, FROZEN_PROVENANCE_ANCHORS.selector.files);
 
@@ -288,25 +330,25 @@ function assertFrozenProvenanceAnchors(provenance: FrozenLegacyArchitectureProve
     [provenance.operationalIsolation.package],
     FROZEN_PROVENANCE_ANCHORS.operationalIsolation.files,
   );
-}
-
-function gitBlobSha1(text: string): string {
-  const bytes = Buffer.from(text, "utf8");
-  return createHash("sha1")
-    .update(`blob ${String(bytes.byteLength)}\0`, "utf8")
-    .update(bytes)
-    .digest("hex");
-}
-
-function assertFrozenBlob(file: FrozenLegacyFile): void {
-  const actual = gitBlobSha1(file.text);
-  if (actual !== file.blob) {
-    throw new Error(`frozen legacy blob mismatch for ${file.path}: expected ${file.blob}; actual ${actual}`);
-  }
+  assertAnchorValue(
+    "payload",
+    "contentAddress",
+    pathSnapshotSha256(JSON.stringify(provenance)),
+    FROZEN_PROVENANCE_ANCHORS.payloadContentAddress,
+  );
 }
 
 function pathSnapshotSha256(text: string): string {
   return `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
+}
+
+function assertFrozenFileContentAddress(file: FrozenLegacyFile): void {
+  const actual = pathSnapshotSha256(file.text);
+  if (actual !== file.contentAddress) {
+    throw new Error(
+      `frozen legacy file content-address mismatch for ${file.path}: expected ${file.contentAddress}; actual ${actual}`,
+    );
+  }
 }
 
 /** Authenticate and parse a generated legacy path snapshot before exposing it. */
@@ -347,7 +389,7 @@ function assertFrozenProvenanceIntegrity(provenance: FrozenLegacyArchitecturePro
     ...provenance.canonicalFields.files,
     provenance.operationalIsolation.package,
   ]) {
-    assertFrozenBlob(file);
+    assertFrozenFileContentAddress(file);
   }
   for (const snapshot of [
     provenance.runtime.browserSystemFiles,
@@ -371,8 +413,8 @@ function deepFreeze<T>(value: T): T {
 
 export function parseFrozenLegacyArchitectureProvenance(input: unknown): FrozenLegacyArchitectureProvenance {
   const provenance = FrozenLegacyArchitectureProvenanceSchema.parse(input);
-  assertFrozenProvenanceAnchors(provenance);
   assertFrozenProvenanceIntegrity(provenance);
+  assertFrozenProvenanceAnchors(provenance);
   return deepFreeze(provenance);
 }
 

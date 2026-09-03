@@ -18,6 +18,10 @@ import {
 } from "./helpers/frozen-legacy-architecture-provenance.js";
 
 const PORT_MAP_PATH = new URL("../../../config/ports/legacy-selector-port-map.json", import.meta.url);
+const ARCHITECTURE_PROVENANCE_PATH = new URL(
+  "../../../config/ports/legacy-architecture-provenance.json",
+  import.meta.url,
+);
 
 function readPortMap(): unknown {
   return JSON.parse(readFileSync(PORT_MAP_PATH, "utf8"));
@@ -43,6 +47,12 @@ function sha256ContentAddress(text: string): string {
 }
 
 describe("legacy selector port provenance", { timeout: 180_000 }, () => {
+  it("commits no SSN- or UCSD EID-shaped values in frozen legacy evidence", () => {
+    const serialized = readFileSync(ARCHITECTURE_PROVENANCE_PATH, "utf8");
+    assert.doesNotMatch(serialized, /\b\d{3}-\d{2}-\d{4}\b/u);
+    assert.doesNotMatch(serialized, /\b10\d{6}\b/u);
+  });
+
   it("pins all 406 keys exactly once to the clean legacy snapshot", () => {
     const portMap = LegacySelectorPortMapSchema.parse(readPortMap());
     assert.equal(portMap.legacyCommit, PINNED_LEGACY_SELECTOR_COMMIT);
@@ -190,7 +200,21 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     const tamperedSelector = tamperedText.selector as Record<string, unknown>;
     const files = tamperedSelector.files as Record<string, unknown>[];
     files[0] = { ...files[0], text: `${String(files[0]?.text)}tampered` };
-    assert.throws(() => parseFrozenLegacyArchitectureProvenance(tamperedText), /frozen legacy blob mismatch/i);
+    assert.throws(
+      () => parseFrozenLegacyArchitectureProvenance(tamperedText),
+      /frozen legacy file content-address mismatch/i,
+    );
+
+    const recomputed = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
+    const recomputedSelector = recomputed.selector as Record<string, unknown>;
+    const [recomputedFile] = recomputedSelector.files as Record<string, unknown>[];
+    assert.ok(recomputedFile);
+    recomputedFile.text = `${String(recomputedFile.text)}tampered`;
+    recomputedFile.contentAddress = sha256ContentAddress(String(recomputedFile.text));
+    assert.throws(
+      () => parseFrozenLegacyArchitectureProvenance(recomputed),
+      /frozen legacy payload anchor mismatch for contentAddress/i,
+    );
 
     const reordered = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
     const reorderedSelector = reordered.selector as Record<string, unknown>;

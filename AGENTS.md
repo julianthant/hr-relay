@@ -163,14 +163,16 @@ enforcement.
   **live re-verification at each workflow's migration**, which the charter already makes mandatory
   and pre-authorized. A selector checked against the live system beats one diffed against legacy's
   copy of it. `legacy-selector-port-provenance` is unaffected: the checked-in architecture
-  provenance snapshot pins all 406 keys to a FIXED legacy commit's authenticated blobs, so legacy
-  moving on cannot invalidate it.
+  provenance snapshot pins all 406 keys to a FIXED legacy commit's source blobs and authenticated,
+  identifier-redacted source snapshots, so legacy moving on cannot invalidate it.
 - **Nothing in the legacy repo may be deleted** during the rebuild or the initial cutover. The whole
   repository is the D89 rollback asset.
 - Architecture guards read `config/ports/legacy-architecture-provenance.json`, whose strict parser
-  authenticates every frozen source and path-inventory snapshot before exposing it. Missing,
-  malformed, duplicate, reordered, or content-address-mismatched evidence fails loud. Never restore
-  a `../hr-automation` or `HRAUTO_LEGACY_REPO` execution dependency to a finished gate.
+  authenticates every identifier-redacted frozen source and path-inventory snapshot before exposing
+  it. The external payload anchor prevents a changed snapshot from authenticating a recomputed
+  digest; SSN- and UCSD EID-shaped values must never enter this evidence. Missing, malformed,
+  duplicate, reordered, or content-address-mismatched evidence fails loud. Never restore a
+  `../hr-automation` or `HRAUTO_LEGACY_REPO` execution dependency to a finished gate.
 - Inventories that span both repos (`src/domain/runtime-environment.ts`) mark legacy paths with an
   explicit **`legacy:` scheme**. Both repos have a `src/` — `src/cli.ts` exists in both — so a bare
   path is ambiguous. Unprefixed always means this repo.

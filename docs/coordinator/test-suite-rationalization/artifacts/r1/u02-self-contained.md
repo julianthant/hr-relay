@@ -19,16 +19,18 @@ The eager `LEGACY_REPO_ROOT` module initializer made every architecture import d
 
 ## Frozen provenance
 
-`config/ports/legacy-architecture-provenance.json` is an exact in-repo, schema-validated source snapshot. It contains:
+`config/ports/legacy-architecture-provenance.json` is an in-repo, schema-validated provenance
+snapshot. It preserves the exact legacy source-blob identities while authenticating redacted source
+text separately. It contains:
 
 | Invariant | Frozen source |
 | --- | --- |
-| Selector ports | 18 selector/catalog text blobs at `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc`; every recorded SHA-1 and source line is re-derived. |
-| Runtime dependencies | 87 `src/systems` source paths and the `provider-limits.ts` text/blob at `9d19e4141d57617e2bf895e21e34a5bd8f15047c`. |
+| Selector ports | 18 selector/catalog source-blob records at `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc`; selector source lines are re-derived from authenticated redacted text. |
+| Runtime dependencies | 87 `src/systems` source paths and the `provider-limits.ts` source-blob record at `9d19e4141d57617e2bf895e21e34a5bd8f15047c`. |
 | Capability disposition | 78 discovered capability paths and 79 exact source/evidence paths at `9d19e4141d57617e2bf895e21e34a5bd8f15047c`. |
 | Legacy tests | 518 baseline files at `353739ac9e1db01cae9da8a13da53605cd767574` and 534 current files at `9d19e4141d57617e2bf895e21e34a5bd8f15047c`. |
-| Canonical-field scan | 24 source text/blob records at the resolved `4deabc5a` commit. |
-| Operational isolation | Legacy `package.json` script map and blob at `9d19e4141d57617e2bf895e21e34a5bd8f15047c`. |
+| Canonical-field scan | 24 authenticated redacted source/source-blob records at the resolved `4deabc5a` commit. |
+| Operational isolation | Legacy `package.json` script map and source-blob identity at `9d19e4141d57617e2bf895e21e34a5bd8f15047c`. |
 
 The shared helper parses the closed schema and fails loud for malformed commits/blobs and missing selector source files. The provenance-owner test is the single generic parser oracle; it owns malformed generated-path records, ordering, duplicate entries, and every named snapshot's drop-entry control, while consumer guards retain only their distinct behavioral assertions.
 
@@ -138,3 +140,22 @@ Tests  39 passed (39)
 ```
 
 The source commands reproduced all six recorded content addresses (`87/78/78/79/518/534` paths). `npm run typecheck`, `npm run lint`, and `git diff --check` passed.
+
+## Follow-up 3 — identifier-safe source evidence
+
+The exact-byte follow-up above authenticated Git blobs correctly but also copied direct
+identifier-shaped values from historical source comments/examples into the new evidence file. The
+final schema therefore separates provenance from consumable evidence: `sourceBlob` retains the
+original Git object identity, while `contentAddress` authenticates source text after the declared
+`zero-direct-identifiers-v1` transform. Newline count and selector definition line positions remain
+unchanged. A code-owned SHA-256 of the complete parsed payload prevents an editor from changing
+text and recomputing its adjacent digest.
+
+The security negative control first failed on the unsanitized evidence. The final focused run proves
+the checked-in JSON has no SSN- or UCSD EID-shaped literal, rejects changed text with its recorded
+content address, and rejects changed text even when its local content address is recomputed.
+
+```text
+Test Files  2 passed (2)
+Tests  24 passed (24)
+```

@@ -129,7 +129,10 @@ describe("operational isolation", () => {
       '"dashboard": "tsx --env-file=.env src/cli.ts dashboard --capture-ngrok"',
       '"dashboard": "tampered"',
     );
-    assert.throws(() => parseFrozenLegacyArchitectureProvenance(tampered), /frozen legacy blob mismatch/i);
+    assert.throws(
+      () => parseFrozenLegacyArchitectureProvenance(tampered),
+      /frozen legacy file content-address mismatch/i,
+    );
   });
 
   it("requires an exported direct-const factory call carrying the exact isolated values", () => {
