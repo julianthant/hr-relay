@@ -1159,7 +1159,7 @@ the operator's to accept case by case; nothing here waives a floor, it only move
 checked, from "the slice will check at the end" (the assumption that just failed) to every commit.
 
 **2026-09-02 amendment — D191 now binds the self-contained three-project gate actually shipped.**
-`test:coverage` collects each authored Vitest file exactly once across the disjoint `unit`,
+`test:coverage` collects each offline authored Vitest file exactly once across the disjoint `unit`,
 `architecture`, and `scenario` projects; architecture is no longer inside the unit glob. The command
 remains the per-commit gate because it still strictly contains the cases available through `test`
 and `test:architecture`, adds coverage floors, and runs without the legacy checkout. `test` is the
@@ -1337,7 +1337,8 @@ set. The test asserts:
 2. every recursively discovered `*.test.ts` file is in the inventory (no unregistered guard — forces a
    conscious add, and forces this doc's inventory to stay honest);
 3. the named `unit`, `architecture`, and `scenario` Vitest projects form one exhaustive,
-   non-overlapping collection of every authored `*.test.ts`/`*.test.tsx` file; architecture includes
+   non-overlapping collection of every offline authored `*.test.ts`/`*.test.tsx` file; the future
+   live-dependent combined tier stays uncollected until it has its own runner; architecture includes
    the complete recursive guard directory exactly, `unit` excludes it exactly, the architecture
    project excludes nothing, and `test:architecture` selects only that project while forcing empty
    collection to fail; an
