@@ -432,10 +432,12 @@ dashboard never re-derives that set from its own potentially newer code. An olde
 field remains readable and projects explicit unavailable authority. Ref dashboard-surfaces §9.9
 owns the requirement/open-session overlay. Because the card set is lease authority while the
 projection's change triggers are spans, the dashboard's span-tail tick also re-reads the exact
-lease set the cards render and publishes a fresh snapshot when a card-drawn fact moves — a lease
-born before its first span, the ticker's `starting` → `idle`, an operator directive, or a crash or
-expiry settled by another process. Heartbeat instants and the versions they bump draw nothing and
-publish nothing. There is no **health** on an open tile: nothing probes a
+lease set the cards render, plus the pool declarations, and publishes a fresh snapshot when a
+served fact moves — a lease born before its first span, the ticker's `starting` → `idle`, an
+operator directive, a crash or expiry settled by another process, or a `plan-worker-count`.
+Heartbeat instants and the versions they bump draw nothing and publish nothing. Pool workers are
+launched through `scripts/secure-env-bootstrap.ts cli`, the CLI's sole invoker; a launch naming
+`src/cli.ts` directly spawns an inert child that exits 0 before proving its lease birth. There is no **health** on an open tile: nothing probes a
 live session, so it states which system its session speaks to and how long it has been open, and
 reads `Not checked`
 (`src/dashboard/surfaces/shell.tsx:710`) — which is the honest verdict and must never be drawn as a

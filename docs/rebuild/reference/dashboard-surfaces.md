@@ -5237,8 +5237,9 @@ span upgrades that same slot to the ordinary open tile with exact identity; obse
 the requirement set remain appended and visible. A historical lease without the launch-time field is
 an explicit unavailable reason, never an empty set. A terminal worker draws neither kind because its
 process owns no browser resources. Freshness is the projection's, not the client's: a lease-only
-transition (birth, phase, directive, settlement) publishes a snapshot from the same tick that tails
-the span files, so no card waits for a span to move (ref execution-and-sessions §3).
+transition (birth, phase, directive, settlement) or a pool declaration change publishes a snapshot
+from the same tick that tails the span files, so neither a card nor the Add-workers roster waits for
+a span to move (ref execution-and-sessions §3).
 
 **The pool controls are the demo's `+ Add workers` dialog**, which is the shape ref
 execution-and-sessions names (*"`+ Add workers` chooses a workflow and a count"*): a workflow

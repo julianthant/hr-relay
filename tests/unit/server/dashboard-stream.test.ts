@@ -155,7 +155,7 @@ describe("dashboard stream hub", () => {
     w.authority.putWorkerLease(workerLeaseOf({
       lifecycle: { state: "starting", startedAt: w.clock.now().toISOString() },
     }));
-    w.projection.reconcileWorkerLeases();
+    w.projection.reconcileWorkerAuthority();
 
     const latest = observed.filter((envelope) => envelope.type === "snapshot").at(-1);
     assert.ok(latest);

@@ -692,27 +692,27 @@ describe("lease-only transitions reach the Session Panel without a span (D248 fr
     const w = world();
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards.length, 0);
     w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "starting", startedAt } }));
-    w.projection.reconcileWorkerLeases();
+    w.projection.reconcileWorkerAuthority();
     assert.equal(snapshots(w), 1);
     const [card] = w.projection.buildDashboardDayWire(DAY).workerCards;
     assert.equal(card?.state, "starting");
     assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"] });
-    w.projection.reconcileWorkerLeases();
-    w.projection.reconcileWorkerLeases();
+    w.projection.reconcileWorkerAuthority();
+    w.projection.reconcileWorkerAuthority();
     assert.equal(snapshots(w), 1);
   });
 
   it("ignores heartbeat-only writes and publishes each phase, directive and settlement move exactly once", () => {
     const w = world();
     w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "starting", startedAt } }));
-    w.projection.reconcileWorkerLeases();
+    w.projection.reconcileWorkerAuthority();
     assert.equal(snapshots(w), 1);
 
     // The maintenance ticker settles `idle`: a lease-only phase move.
     w.authority.putWorkerLease(workerLeaseOf({
       workerId, lifecycle: { state: "idle", startedAt, heartbeatAt: instantOffsetOf(0, 5_000) }, version: 2,
     }));
-    w.projection.reconcileWorkerLeases();
+    w.projection.reconcileWorkerAuthority();
     assert.equal(snapshots(w), 2);
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0]?.state, "idle");
 
@@ -720,14 +720,14 @@ describe("lease-only transitions reach the Session Panel without a span (D248 fr
     w.authority.putWorkerLease(workerLeaseOf({
       workerId, lifecycle: { state: "idle", startedAt, heartbeatAt: instantOffsetOf(0, 10_000) }, version: 3,
     }));
-    w.projection.reconcileWorkerLeases();
+    w.projection.reconcileWorkerAuthority();
     assert.equal(snapshots(w), 2);
 
     // An operator directive is a lease write with no span of its own.
     w.authority.putWorkerLease(workerLeaseOf({
       workerId, lifecycle: { state: "idle", startedAt, heartbeatAt: instantOffsetOf(0, 10_000) }, directive: "pause", version: 4,
     }));
-    w.projection.reconcileWorkerLeases();
+    w.projection.reconcileWorkerAuthority();
     assert.equal(snapshots(w), 3);
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0]?.directive, "pause");
   });
@@ -746,7 +746,7 @@ describe("lease-only transitions reach the Session Panel without a span (D248 fr
       directive: "stop",
       version: 5,
     }));
-    w.projection.reconcileWorkerLeases();
+    w.projection.reconcileWorkerAuthority();
     assert.equal(snapshots(w), before + 1);
     const [card] = w.projection.buildDashboardDayWire(DAY).workerCards;
     assert.equal(card?.state, "failed");
@@ -757,7 +757,7 @@ describe("lease-only transitions reach the Session Panel without a span (D248 fr
   it("publishes the disappearance of a settled lease the span stream never named", () => {
     const w = world();
     w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "starting", startedAt } }));
-    w.projection.reconcileWorkerLeases();
+    w.projection.reconcileWorkerAuthority();
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards.length, 1);
     w.authority.putWorkerLease(workerLeaseOf({
       workerId,
@@ -765,10 +765,26 @@ describe("lease-only transitions reach the Session Panel without a span (D248 fr
       directive: "stop",
       version: 2,
     }));
-    w.projection.reconcileWorkerLeases();
+    w.projection.reconcileWorkerAuthority();
     assert.equal(snapshots(w), 2);
     // D248: a settled lease is a card only while the spans still name its worker.
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards.length, 0);
+  });
+
+  it("publishes a pool declaration the operator planned, which no span carries (D269)", () => {
+    const w = world();
+    const plannedAt = instantOffsetOf(0, 2_000);
+    w.authority.putWorkerPool({
+      workflow: "person-lookup", desiredWorkers: 2, plannedBy: "local-operator",
+      plannedAt, version: 1, createdAt: plannedAt, updatedAt: plannedAt,
+    });
+    w.projection.reconcileWorkerAuthority();
+    assert.equal(snapshots(w), 1);
+    assert.deepEqual(w.projection.buildDashboardDayWire(DAY).workerPools, [
+      { workflowId: "person-lookup", desiredWorkers: 2, version: 1, plannedBy: "local-operator", plannedAt },
+    ]);
+    w.projection.reconcileWorkerAuthority();
+    assert.equal(snapshots(w), 1);
   });
 
   it("degrades loudly when lease authority cannot be read instead of serving a stale card set", () => {
@@ -776,7 +792,7 @@ describe("lease-only transitions reach the Session Panel without a span (D248 fr
     w.authority.listLiveWorkerLeases = () => {
       throw new Error("leases table unreadable");
     };
-    w.projection.reconcileWorkerLeases();
+    w.projection.reconcileWorkerAuthority();
     assert.equal(w.projection.health().state, "degraded");
     assert.match(w.projection.health().lastError ?? "", /worker lease reconcile failed: leases table unreadable/);
     assert.equal(w.scheduledRebuilds.length, 1);
