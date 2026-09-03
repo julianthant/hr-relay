@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
-import { workflowDefinitionOf } from "../../src/base/workflow-definition.js";
+import { composeWorkflowModule, workflowDefinitionOf, workflowEntryKinds } from "../../src/base/workflow-definition.js";
+import { taskStoreRegistry } from "../../src/stores/index.js";
+import { compileFixtureWorkflow, everyEntryKindWorkflow, fixtureBuildManifest } from "./fixtures/workflow-definition-fixtures.js";
 import { workflowProjections } from "../../src/base/workflow.js";
 import {
   WORKFLOW_MODULES,
@@ -170,6 +172,99 @@ describe("workflow definition registry conformance", () => {
       "../../src/workflows/separations/module.ts",
     ]) {
       expect(existsSync(new URL(retired, import.meta.url)), retired).toBe(false);
+    }
+  });
+});
+
+describe("registry-wide conformance covers every explicit entry kind (D315)", () => {
+  it("projects a definition using task, parallel, delegate, gate and transaction entries through bootstrap/start, Explorer and the detail timeline", () => {
+    const compiled = compileFixtureWorkflow(everyEntryKindWorkflow);
+    const fixtureModule = composeWorkflowModule(compiled, taskStoreRegistry.stores);
+    expect(workflowEntryKinds(everyEntryKindWorkflow).toSorted())
+      .toEqual(["delegate", "gate", "parallel", "task", "transaction"]);
+    const modules = [...WORKFLOW_MODULES, fixtureModule];
+    const { descriptor, definition } = fixtureModule;
+    const id = String(descriptor.id);
+    const expectedGroups = definition.steps.map(([group, entries]) => ({
+      key: group.key,
+      label: group.label,
+      nodes: entries.flatMap((entry) => (entry.kind === "parallel"
+        ? [entry.id, ...descriptor.timeline.find((category) => category.key === group.key)?.nodes
+          .map(({ id: nodeId }) => String(nodeId))
+          .filter((nodeId) => nodeId !== entry.id && !entries.some((other) => other.id === nodeId)) ?? []]
+        : [entry.id])),
+    }));
+    expect(descriptor.timeline.map((group) => ({
+      key: group.key,
+      label: group.label,
+      nodes: group.nodes.map(({ id: nodeId }) => String(nodeId)),
+    }))).toEqual(expectedGroups);
+
+    const world = makeWorld();
+    try {
+      const bootstrap = buildBootstrap({
+        appVersion: "0.1.0",
+        clock: manualClock(AT),
+        modules,
+        descriptorSetHash: descriptorSetHash(modules.map((module) => module.descriptor.contractFingerprint)),
+        settingsSchemaHash: descriptorSetHash(["settings-schema"]),
+        projection: world.projection,
+        authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
+        backupSummary: () => "current",
+        preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
+        advisoryAvailability: () => ({
+          state: "unavailable",
+          code: "not-configured",
+          reason: "no ai.advisory provider is composed in this test",
+        }),
+      });
+      const start = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows)
+        .find((workflow) => String(workflow.id) === id)?.start;
+      assert.ok(start !== undefined, `${id} is absent from the bootstrap start surface`);
+      expect(start.steps.map(({ key, label }) => ({ key, label })))
+        .toEqual(expectedGroups.map(({ key, label }) => ({ key, label })));
+      expect(start.steps.map(({ key }) => key)).toEqual(projectStartSteps(descriptor).map(({ key }) => key));
+
+      const explorer = buildWorkflowExplorer({
+        ...explorerQueryDeps(manualClock(AT), EXPLORER_HASH),
+        modules,
+        buildManifest: fixtureBuildManifest([id]),
+      });
+      const explorerWorkflow = explorer.workflows.find((workflow) => String(workflow.id) === id);
+      assert.ok(explorerWorkflow !== undefined, `${id} is absent from Explorer`);
+      expect(explorerWorkflow.nodes.map(({ id: nodeId, shape }) => `${String(nodeId)}:${shape.kind}`).toSorted()).toEqual([
+        "child:child-run",
+        "crm-dates:task",
+        "crm-record:task",
+        "fan:parallel",
+        "pending-set:task",
+        "review:gate",
+        "search:task",
+        "sweep:transaction",
+      ]);
+
+      const seed = 503;
+      queuedEventOf(world, { seed, workflow: id });
+      for (const node of descriptor.nodes) {
+        if (node.kind === "task") taskEventsOf(world, seed, String(node.id), "done");
+      }
+      const detail = buildRunDetail({
+        stateRoot: world.stateRoot,
+        projection: world.projection,
+        authority: world.authority,
+        descriptors: { resolve: (workflowId) => workflowId === id ? descriptor : undefined },
+      }, uuidOf(seed));
+      expect(detail.timeline.steps?.map((step) => ({
+        label: step.label,
+        members: step.members.map((member) => member.label),
+      }))).toEqual(expectedGroups.map(({ label, nodes }) => ({
+        label,
+        members: nodes.map((nodeId) => descriptor.timeline
+          .flatMap((group) => group.nodes)
+          .find((node) => String(node.id) === nodeId)?.label),
+      })));
+    } finally {
+      world.dispose();
     }
   });
 });
