@@ -54,8 +54,22 @@ export function fixtureBuildManifest(ids: readonly string[]): BuildManifest {
   });
 }
 
+/**
+ * One manifest object per fixture id: `compileWorkflow` memoizes per definition
+ * AND refuses a second manifest identity, so compiling the same fixture twice
+ * (a `describe`-level compile plus a case-level one) must present the same
+ * manifest object, not a structurally equal fresh one.
+ */
+const FIXTURE_MANIFESTS = new Map<string, BuildManifest>();
+
 export function compileFixtureWorkflow(definition: AnyWorkflowDefinition): AnyCompiledWorkflow {
-  return compileWorkflow(definition, { manifest: fixtureBuildManifest([String(definition.id)]) });
+  const id = String(definition.id);
+  let manifest = FIXTURE_MANIFESTS.get(id);
+  if (manifest === undefined) {
+    manifest = fixtureBuildManifest([id]);
+    FIXTURE_MANIFESTS.set(id, manifest);
+  }
+  return compileWorkflow(definition, { manifest });
 }
 
 export const EveryEntryKindInput = z.strictObject({
