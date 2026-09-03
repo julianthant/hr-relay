@@ -10,23 +10,23 @@
  * real task implementations against the deterministic driver, which is the only
  * way to observe "it refused" rather than "it returned something plausible".
  *
- * Every fixture value below is a value observed live, read-only, on 2026-08-12:
- * document 4510 (a fully processed separation) and document 4502 (an
- * unprocessed one whose Timekeeper Name, Termination Effective Date, Payroll
- * Title Code, Payroll Title and Transaction Number are all blank and whose
- * Department sits on Kuali's `- - -` sentinel). The second is why the absent
- * arms exist and why they are the common case rather than an edge.
+ * The fixtures preserve processed and unprocessed shapes observed live,
+ * read-only, on 2026-08-12, but rekey both documents, names and EIDs to
+ * synthetic values. They prove parsing and refusal semantics only; current
+ * Kuali state belongs to T1b. The unprocessed shape keeps five blank controls
+ * and Kuali's `- - -` department sentinel because that is why the absent arms
+ * exist and are not merely theoretical edges.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { manualClock } from "../../src/domain/clock.js";
-import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../src/stores/kuali/driver/fake.js";
-import type { KualiFakeSeparationForm } from "../../src/stores/kuali/driver/fake.js";
-import { readSeparationDocumentTask } from "../../src/stores/kuali/tasks/read-separation-document.js";
-import { matchTerminationTypeTask } from "../../src/stores/separations/tasks/match-termination-type.js";
-import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../src/domain/separations/termination-type.js";
-import { separationsKualiReadDescriptor } from "../../src/workflows/separations/kuali-extraction/descriptor.js";
-import { walkDescriptor } from "./helpers/pure-walk.js";
+import { manualClock } from "../../../../src/domain/clock.js";
+import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../../../src/stores/kuali/driver/fake.js";
+import type { KualiFakeSeparationForm } from "../../../../src/stores/kuali/driver/fake.js";
+import { readSeparationDocumentTask } from "../../../../src/stores/kuali/tasks/read-separation-document.js";
+import { matchTerminationTypeTask } from "../../../../src/stores/separations/tasks/match-termination-type.js";
+import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../../src/domain/separations/termination-type.js";
+import { separationsKualiReadDescriptor } from "../../../../src/workflows/separations/kuali-extraction/descriptor.js";
+import { walkDescriptor } from "../../helpers/pure-walk.js";
 
 const taskCtx = Object.freeze({
   signal: new AbortController().signal,
@@ -36,14 +36,14 @@ const taskCtx = Object.freeze({
 });
 
 const ACTION_ID = "6a7a33b2ac106d428b3217e0";
-const DOCUMENT_NUMBER = "4510";
+const DOCUMENT_NUMBER = "4444";
 const RUN_INPUT = { actionId: ACTION_ID, documentNumber: DOCUMENT_NUMBER };
 
-/** Live doc 4510, verbatim (2026-08-12). */
+/** Synthetic processed-document shape derived from the 2026-08-12 observation. */
 const PROCESSED_FORM: KualiFakeSeparationForm = {
   formType: "RRSS Separation Request Form",
-  employeeName: "Clauckia, Drose",
-  eid: "10001799",
+  employeeName: "Fixture, Primary",
+  eid: "10800000",
   employeeType: "Student",
   studentTitleCode: "4921 - STDT 2",
   division: "Campus Dining and Retail",
@@ -60,15 +60,15 @@ const PROCESSED_FORM: KualiFakeSeparationForm = {
   payrollTitleCode: "004921",
   payrollTitle: "STDT 2",
   submittedTerminationTemplate: true,
-  transactionNumber: "T002209631",
+  transactionNumber: "T009000000",
   finalPay: "does-not-need-final-pay-student",
 };
 
-/** Live doc 4502, verbatim (2026-08-12) — the unprocessed shape. */
+/** Synthetic unprocessed-document shape derived from the 2026-08-12 observation. */
 const UNPROCESSED_FORM: KualiFakeSeparationForm = {
   ...PROCESSED_FORM,
-  employeeName: "Cramia, Dreitho",
-  eid: "10001754",
+  employeeName: "Fixture, Secondary",
+  eid: "10800001",
   studentTitleCode: "4920 - STDT 3",
   location: "64 Degrees",
   terminationType: "Appointment Expired",
@@ -90,7 +90,7 @@ function driverFor(form: KualiFakeSeparationForm, documentNumber = DOCUMENT_NUMB
   const world = createKualiFakeWorld({
     actionId: ACTION_ID,
     documentNumber,
-    displayedEid: "10001799",
+    displayedEid: "10800000",
   });
   world.separationForm = form;
   return { world, driver: createDeterministicKualiDriver(world, manualClock(new Date("2026-08-12T20:29:08.000Z"))) };

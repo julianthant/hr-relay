@@ -20,24 +20,24 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { EidSchema, FingerprintSchema, IsoInstantSchema } from "../../src/domain/ids.js";
-import { classifyNameSimilarity } from "../../src/domain/matching/name-match.js";
-import { deriveIdentityEvidenceDigest } from "../../src/domain/separations/identity-evidence.js";
-import { MatchIdentityOutputSchema } from "../../src/domain/contracts/separations/match-identity.js";
-import type { MatchIdentityOutput } from "../../src/domain/contracts/separations/match-identity.js";
-import { classifyJobSummary } from "../../src/domain/separations/job-summary-classification.js";
-import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summary.js";
-import type { UcpathJobSummary } from "../../src/domain/ui/ucpath-job-summary.js";
-import type { SearchPersonOrgOutput } from "../../src/domain/contracts/ucpath/search-person-org.js";
-import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
-import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org-operation.js";
-import { readJobSummaryTask } from "../../src/stores/ucpath/tasks/read-job-summary.js";
-import { matchIdentityTask } from "../../src/stores/separations/tasks/match-identity.js";
-import { verifyIdentityApprovalTask } from "../../src/stores/separations/tasks/verify-identity-approval.js";
-import { separationsIdentityCheckDescriptor } from "../../src/workflows/separations/identity-check/descriptor.js";
-import { SEPARATIONS_IDENTITY_CHECK_CLAIMS } from "./coverage-claims.js";
-import { walkDescriptor } from "./helpers/pure-walk.js";
-import { noSeparationWritePlan } from "../../src/domain/separations/write-plan.js";
+import { EidSchema, FingerprintSchema, IsoInstantSchema } from "../../../../src/domain/ids.js";
+import { classifyNameSimilarity } from "../../../../src/domain/matching/name-match.js";
+import { deriveIdentityEvidenceDigest } from "../../../../src/domain/separations/identity-evidence.js";
+import { MatchIdentityOutputSchema } from "../../../../src/domain/contracts/separations/match-identity.js";
+import type { MatchIdentityOutput } from "../../../../src/domain/contracts/separations/match-identity.js";
+import { classifyJobSummary } from "../../../../src/domain/separations/job-summary-classification.js";
+import { UcpathJobSummaryReadSchema } from "../../../../src/domain/ui/ucpath-job-summary.js";
+import type { UcpathJobSummary } from "../../../../src/domain/ui/ucpath-job-summary.js";
+import type { SearchPersonOrgOutput } from "../../../../src/domain/contracts/ucpath/search-person-org.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/stores/ucpath/driver/fake.js";
+import { deriveJobRowFromCells } from "../../../../src/stores/ucpath/driver/person-org-operation.js";
+import { readJobSummaryTask } from "../../../../src/stores/ucpath/tasks/read-job-summary.js";
+import { matchIdentityTask } from "../../../../src/stores/separations/tasks/match-identity.js";
+import { verifyIdentityApprovalTask } from "../../../../src/stores/separations/tasks/verify-identity-approval.js";
+import { separationsIdentityCheckDescriptor } from "../../../../src/workflows/separations/identity-check/descriptor.js";
+import { SEPARATIONS_IDENTITY_CHECK_CLAIMS } from "../../coverage-claims.js";
+import { walkDescriptor } from "../../helpers/pure-walk.js";
+import { noSeparationWritePlan } from "../../../../src/domain/separations/write-plan.js";
 
 const taskCtx = Object.freeze({
   signal: new AbortController().signal,
@@ -46,9 +46,9 @@ const taskCtx = Object.freeze({
   recordData: () => undefined,
 });
 
-const EID = EidSchema.parse("10833507");
-const OTHER_EID = EidSchema.parse("10401814");
-const DOCUMENT = "4510";
+const EID = EidSchema.parse("10800000");
+const OTHER_EID = EidSchema.parse("10800001");
+const DOCUMENT = "4444";
 const OBSERVED_AT = IsoInstantSchema.parse("2026-08-12T18:00:00.000Z");
 
 /** Columns as the live Person Org Employment Instances grid renders them. */
@@ -87,7 +87,7 @@ function jobSummary(
   return {
     pageStateId: "ucpath.person-org.detail-ready",
     emplId: EID,
-    displayedName: "Hernandez, Jose Santos",
+    displayedName: "Fixture, Primary",
     jobRows,
     rowCount: jobRows.length,
     renderContext: {
@@ -103,7 +103,7 @@ function jobSummary(
 function nameSearch(overrides: Partial<SearchPersonOrgOutput["selection"]> = {}): SearchPersonOrgOutput {
   const candidate = {
     emplId: EID,
-    name: "Hernandez, Jose Santos",
+    name: "Fixture, Primary",
     department: "Housing Dining Hospitality",
     jobTitle: "STDT 3",
     employeeStatus: "active" as const,
@@ -122,7 +122,7 @@ function nameSearch(overrides: Partial<SearchPersonOrgOutput["selection"]> = {})
 
 const RUN_INPUT = {
   documentNumber: DOCUMENT,
-  employeeName: "Hernandez, Jose Santos",
+  employeeName: "Fixture, Primary",
   emplId: EID,
   emplIdSource: "document-eid" as const,
   documentEid: { state: "present" as const, value: EID },
@@ -233,14 +233,14 @@ describe("separations-identity-check scenarios", () => {
   });
 
   it("separations-identity-check/similar-name-never-auto-proceeds — S15's silent risk, closed", async () => {
-    // Kuali "Hernandez, Jose Santo" vs UCPath "Hernandez, Jose Santos": one edit.
-    // Legacy calls this `similar`, trusts the EID, proceeds AND rewrites the
-    // name in the live document. Here it remains disconfirming evidence, while
+    // Synthetic Kuali "Fixture, Primari" vs UCPath "Fixture, Primary": one edit.
+    // Legacy calls this `similar`, trusts the EID and proceeds. Here it remains
+    // disconfirming evidence, while
     // exact supplied-EID read-back determines that no approval is required.
     const summary = await readJobSummary(jobSummary([cells()]));
     const comparison = await comparisonFor(summary, nameSearch(), {
       ...RUN_INPUT,
-      employeeName: "Hernandez, Jose Santo",
+      employeeName: "Fixture, Primari",
     });
     assert.equal(comparison.packet.nameTier, "similar");
     assert.equal(comparison.packet.approvalShape, "choose-a-candidate");
@@ -250,20 +250,20 @@ describe("separations-identity-check scenarios", () => {
     assert.equal(comparisons[0]?.field, "name");
   });
 
-  it("separations-identity-check/different-name-two-candidates — S17: the T002173685 shape", async () => {
+  it("separations-identity-check/different-name-two-candidates — S17: the two-candidate wrong-name shape", async () => {
     // The document's EID resolves one person; a search on the document's NAME
     // resolves a DIFFERENT career employee. Both candidates remain visible.
     //
     // A finding worth recording: the incident's OWN pair — Kuali
-    // "Hernandez, Jose Santos" versus
-    // the UCPath detail's "Santos Hernandez" — classifies as `same` under the
+    // "Fixture, Primary" versus
+    // the UCPath detail's "Primary Fixture" — classifies as `same` under the
     // ported tier function, because the alignment tolerates extra tokens on the
     // longer side. Legacy fires its wrong-person control only on `different`,
     // so a tier-triggered identity rule would not have detected the very case
     // it exists for. The independently supplied/read-back EID is decisive here;
     // the contradictory name candidate remains evidence rather than a fallback.
     assert.equal(
-      classifyNameSimilarity("Hernandez, Jose Santos", "Santos Hernandez"),
+      classifyNameSimilarity("Fixture, Primary", "Primary Fixture"),
       "same",
     );
     const summary = await readJobSummary(jobSummary([cells()]));
@@ -273,7 +273,7 @@ describe("separations-identity-check scenarios", () => {
         status: "resolved",
         selected: {
           emplId: OTHER_EID,
-          name: "Hernandez, Jose",
+          name: "Fixture, Prim",
           department: "Facilities Management",
           jobTitle: "BLDG MAINT WORKER SR",
           employeeStatus: "active",
@@ -284,7 +284,7 @@ describe("separations-identity-check scenarios", () => {
     };
     const comparison = await comparisonFor(summary, careerSearch, {
       ...RUN_INPUT,
-      employeeName: "Hernandez, Maria",
+      employeeName: "Different, Person",
     });
     assert.equal(comparison.packet.nameTier, "different");
     assert.equal(comparison.packet.approvalShape, "type-the-eid");
@@ -327,7 +327,7 @@ describe("separations-identity-check scenarios", () => {
     const classified = classifyJobSummary(summary.jobRows);
     assert.equal(classified.disposition, "no-active-job");
     assert.equal(classified.inactiveRowCount, 2);
-    // Legacy throws here. The rows still reach the operator verbatim.
+    // The legacy shape throws here. The synthetic rows still reach the operator verbatim.
     assert.deepEqual(classified.rows.map(({ hrStatus }) => hrStatus), ["Terminated", "Terminated"]);
   });
 

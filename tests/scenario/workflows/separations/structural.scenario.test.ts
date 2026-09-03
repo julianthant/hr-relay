@@ -345,7 +345,7 @@ describe("separations scenarios — the composition", () => {
   it("separations/action-not-in-action-list — a document nobody holds an action on refuses BY NAME", async () => {
     const world = actionListWorld();
     world.actionListLinks = { [COMPOSITION_DOCUMENT]: [] };
-    world.actionListListedNumbers = ["4537", "4495"];
+    world.actionListListedNumbers = ["4444", "4445"];
     const code = await refusalCode(async () => await runResolveAction(world));
     // Not an empty answer and not a fallback: a completed Kuali step leaves the
     // Action List, which is a REAL and common state, and the run that cannot be
@@ -399,9 +399,8 @@ describe("separations scenarios — the composition", () => {
       ["employee-name-absent", { employeeName: noCell("the control was empty") }],
       ["last-day-worked-absent", { lastDayWorked: noCell("the control was empty") }],
       ["separation-date-absent", { separationDate: noCell("the control was empty") }],
-      // S7. Live doc 4495 carried 09/02/2026 three weeks before it was read —
-      // chunk 2 deliberately does NOT refuse that, because reading a form is
-      // not filing a termination. This node is where it refuses.
+      // S7's synthetic future-date shape: the read accepts it because reading
+      // a form is not filing a termination. This node is where it refuses.
       ["separation-date-in-future", { separationDate: kualiDate("09/02/2026") }],
     ] as const) {
       assert.equal(await refusalCode(() => runPlan(overrides)), code);
@@ -524,9 +523,8 @@ describe("separations scenarios — the composition", () => {
     assert.equal(accepted.approvalStatus, "Pending");
 
     for (const [code, overrides] of [
-      // The live proof of the class: `T002204014` is a perfectly well-formed
-      // T-number on a transaction UCPath REFUSED, and legacy's own read-back
-      // tests only `/^T\d{6,}$/`.
+      // A well-formed synthetic T-number can still belong to a transaction
+      // UCPath refused; format validity is not settlement authority.
       ["termination-not-in-effect", { approvalStatus: "Denied" as const }],
       ["termination-receipt-subject-mismatch", { emplId: COMPOSITION_OTHER_EID }],
       ["termination-receipt-date-mismatch", { effectiveDate: "06/11/2026" }],
@@ -1026,8 +1024,8 @@ describe("separations scenarios — the composition", () => {
     // §4e's 2026-08-14 amendment, at composed level and for the case it exists
     // for: this fixture's separation date MOVED (06/12 → 06/19 on a holiday),
     // and the value the document ends up carrying is the `dates` node's
-    // RECONCILED one — not the stale date the document was read with. Legacy's
-    // step 13 is what this replaces, and §9.14's doc 4524 is the live case.
+    // RECONCILED one — not the stale date the document was read with. This
+    // synthetic case preserves the shape that replaces legacy step 13.
     assert.equal(h.kuali.persistedFinalization?.separationDate, COMPOSITION_SEPARATION_DATE);
     assert.equal(h.kuali.persistedFinalization?.lastDayWorked, COMPOSITION_LAST_DAY_WORKED);
     assert.notEqual(COMPOSITION_SEPARATION_DATE, COMPOSITION_KUALI_LDW);

@@ -216,6 +216,20 @@ describe("scenario coverage", () => {
     }
   });
 
+  it("keeps each workflow's executable scenarios in its one structural T1a file", () => {
+    for (const descriptor of DESCRIPTORS) {
+      const workflow = String(descriptor.id);
+      const expectedFile = `${SCENARIO_ROOT}/workflows/${workflow}/structural.scenario.test.ts`;
+      const ownedFiles = new Set(
+        EXECUTABLE_SCENARIO_MANIFEST
+          .filter(({ scenarioId }) => String(scenarioId).startsWith(`${workflow}/`))
+          .map(({ file }) => file),
+      );
+
+      assert.deepEqual([...ownedFiles], [expectedFile], `${workflow} must own one structural T1a file`);
+    }
+  });
+
   it("holds descriptor and task references to an independently observed executable manifest", () => {
     assert.deepEqual(
       auditExecutableScenarioParity(
