@@ -86,8 +86,6 @@ All commands exited 0.
 
 ## R7 residue
 
-None from this seam: no broad package-script taxonomy or canonical contract
-prose changed. The inherited architecture-test import still requires
-`HRAUTO_LEGACY_REPO` because `helpers/guard-files.ts` resolves the legacy root
-at module load; self-contained architecture collection is a separate R1
-omission, not masked by this evidence.
+No broad package-script taxonomy or historical-count prose changed in this seam. U02 later removed
+the inherited `HRAUTO_LEGACY_REPO` dependency, and u06 independently forced empty collection to
+fail; their final evidence supersedes the pre-integration limitation recorded here.

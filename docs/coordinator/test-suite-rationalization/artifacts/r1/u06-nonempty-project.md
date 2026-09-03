@@ -51,7 +51,7 @@ permissive empty-suite policy.
 ## Gate results
 
 ```text
-$ npm run test:architecture
+$ npm run test:architecture # pre-final u06 measurement; later controls increase the count
 Test Files  70 passed (70)
 Tests  701 passed (701)
 

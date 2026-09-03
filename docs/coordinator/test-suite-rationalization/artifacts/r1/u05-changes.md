@@ -78,7 +78,8 @@ Tests 12 passed (12)
 
 - Reconcile `guards-and-tests` historical counts/topology to 70 active files and the named
   architecture project.
-- Ratify the self-contained frozen-provenance contract and remove paired root-instruction prose
-  that still says final guard execution finds/requires the sibling legacy checkout.
+- Ratify the self-contained frozen-provenance contract in the broad authority prose. Commit
+  `8a96afec` already removed the stale sibling-checkout requirement from the paired root
+  instructions; that part of this pre-integration note is resolved.
 - Record the coordinator's exact same-seam/same-oracle deletion standard and affected/full/parity
   evidence budgets in the owning test authority without turning budgets into guarantee weakening.

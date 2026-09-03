@@ -13,7 +13,8 @@ seam is now:
 | `scenario` | `tests/scenario/**/*.test.ts` | none |
 
 `npm run test:architecture` is exactly
-`vitest run --project architecture --reporter=dot`. `guard-manifest` binds the project include,
+`vitest run --project architecture --reporter=dot --passWithNoTests=false` after the u06
+empty-collection repair. `guard-manifest` binds the project include,
 unit exclusion, and script together; its synthetic refusals cover the old path filter, the wrong
 project, file/glob narrowing, `--exclude`, an alternate config, a missing/narrow unit exclusion,
 and a non-recursive/narrow architecture include.
