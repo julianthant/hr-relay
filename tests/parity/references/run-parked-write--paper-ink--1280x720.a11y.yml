@@ -1,7 +1,7 @@
 # run-parked-write--paper-ink--1280x720
 # adapter: fixture
 # fixture: run-parked-write
-# descriptorHash: 19094d245748eb9efc2317e461869bfd39f52957aa6dd2d5f3a338c0c27eb49d
+# descriptorHash: ebc5510f55d5a170b6b2e21cd56b41f2a51d088cbe1640ceb588a557ad011d44
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -266,7 +266,7 @@
       - 'listitem "9:45 AM: warning note: Save submitted; the confirmation page did not render"': 9:45 AM Save submitted; the confirmation page did not render
       - 'listitem "9:45 AM: warning note: Write fenced at generation 1; the run is parked pending proof"': 9:45 AM Write fenced at generation 1; the run is parked pending proof
     - searchbox "Search logs"
-    - text: 19094d24
+    - text: ebc5510f
     - button "Run provenance"
     - text: idle
   - complementary "Run data":
