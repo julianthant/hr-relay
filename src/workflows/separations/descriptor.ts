@@ -94,8 +94,8 @@ import { z } from "zod";
 import { OmittedStepResultArmSchema } from "../../domain/workflow/step-omission.js";
 import { KUALI_FINALIZATION_STEP } from "./kuali-finalization/step.js";
 import { UCPATH_TRANSACTION_STEP } from "./ucpath-transaction/step.js";
-import { flow } from "../../base/flow.js";
-import { defineWorkflowDescriptor, requireFact } from "../../base/workflow.js";
+import { compileWorkflowRecipe, defineWorkflowRecipe } from "../../base/workflow-recipe.js";
+import { requireFact } from "../../base/workflow.js";
 import { WorkflowIdSchema } from "../../domain/ids.js";
 import { ResolvedIdentitySubjectSchema } from "../../domain/separations/identity-approval.js";
 import {
@@ -119,7 +119,6 @@ import {
   APPROVAL_NODE,
   COMPARISON_NODE,
   GATE_NODE,
-  IDENTITY_CHECK_STEP_NODES,
   NAME_SEARCH_NODE,
   SUBJECT_NODE,
   approvalNode,
@@ -128,28 +127,29 @@ import {
   nameSearchNode,
   subjectNode,
 } from "./identity-check/nodes.js";
+import { IDENTITY_CHECK_STEP } from "./identity-check/step.js";
 import {
   DEPARTMENT_NODE,
   EMPLOYMENT_NODE,
   JOB_SUMMARY_NODE,
-  JOB_SUMMARY_STEP_NODES,
   departmentOptionNode,
   employmentNode,
   jobSummaryNode,
 } from "./job-summary/nodes.js";
+import { JOB_SUMMARY_STEP } from "./job-summary/step.js";
 import {
   DATES_NODE,
-  KRONOS_TIMECARD_STEP_NODES,
   TIMECARD_NODE,
   TIMECARD_SEARCH_NODE,
   datesNode,
   timecardNode,
   timecardSearchNode,
 } from "./kronos-timecard/nodes.js";
+import { KRONOS_TIMECARD_OMISSION } from "./kronos-timecard/omission.js";
+import { KRONOS_TIMECARD_STEP } from "./kronos-timecard/step.js";
 import {
   ACTION_NODE,
   DOCUMENT_NODE,
-  KUALI_EXTRACTION_STEP_NODES,
   PLAN_NODE,
   TERMINATION_TYPE_NODE,
   actionNode,
@@ -157,25 +157,26 @@ import {
   planNode,
   terminationTypeNode,
 } from "./kuali-extraction/nodes.js";
+import { KUALI_EXTRACTION_STEP } from "./kuali-extraction/step.js";
 import {
   FILING_PRESENCE_NODE,
   FINALIZE_NODE,
-  KUALI_FINALIZATION_STEP_NODES,
   existingComments,
   filingPresenceNode,
   finalizeKualiNode,
 } from "./kuali-finalization/nodes.js";
+import { KUALI_FINALIZATION_OMISSION } from "./kuali-finalization/omission.js";
 import {
   PENDING_SET_NODE,
   RECEIPT_NODE,
   SWEEP_NODE,
   TERMINATION_NODE,
-  UCPATH_TRANSACTION_STEP_NODES,
   clearPendingNode,
   fileTerminationNode,
   pendingSetNode,
   receiptNode,
 } from "./ucpath-transaction/nodes.js";
+import { UCPATH_TRANSACTION_OMISSION } from "./ucpath-transaction/omission.js";
 
 /**
  * How long a New Kronos search may go without answering EITHER WAY. Chunk 1's
@@ -326,21 +327,17 @@ function omittedOr<T, R>(
   return widened === undefined ? Object.freeze({ state: "omitted" as const, step }) : present(widened);
 }
 
-const separationsFlow = flow(SeparationsInput)
-  .pipe(actionNode.wire({
-    dependsOn: [],
-    bind: ({ input }) => ({ documentNumber: input.documentNumber }),
-  }))
-  .pipe(documentNode.wire({
-    dependsOn: [ACTION_NODE],
-    bind: ({ input, outputs }) => ({
+export const separationsRecipe = defineWorkflowRecipe(
+  SeparationsInput,
+  ({ group, taskFromFragment, transactionFromFragment, gateFromFragment, result }) => {
+    const action = taskFromFragment(actionNode, [], ({ input }) => ({
+      documentNumber: input.documentNumber,
+    }));
+    const document = taskFromFragment(documentNode, [action], ({ input, outputs }) => ({
       actionId: outputs[ACTION_NODE].actionId,
       documentNumber: input.documentNumber,
-    }),
-  }))
-  .pipe(planNode.wire({
-    dependsOn: [DOCUMENT_NODE],
-    bind: ({ input, outputs }) => ({
+    }));
+    const plan = taskFromFragment(planNode, [document], ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       employeeName: outputs[DOCUMENT_NODE].employee.name,
       lastDayWorked: outputs[DOCUMENT_NODE].separation.lastDayWorked,
@@ -348,51 +345,42 @@ const separationsFlow = flow(SeparationsInput)
       // S7's reference is the READ's own instant, not a clock: the refusal then
       // says what is true — *as of the moment this run read the document*.
       observedAt: outputs[DOCUMENT_NODE].observedAt,
-    }),
-  }))
-  .pipe(terminationTypeNode.wire({
-    dependsOn: [DOCUMENT_NODE],
-    bind: ({ input, outputs }) => ({
+    }));
+    const terminationType = taskFromFragment(
+      terminationTypeNode,
+      [document],
+      ({ input, outputs }) => ({
       terminationType: outputs[DOCUMENT_NODE].separation.terminationType,
       // The complete option list this run ACTUALLY observed, so a republished
       // control refuses on the first run that sees it (§4a's accepted cost).
       observedOptions: outputs[DOCUMENT_NODE].options.terminationType,
       documentNumber: input.documentNumber,
-    }),
-  }))
-  .pipe(nameSearchNode.wire({
-    dependsOn: [PLAN_NODE],
+      }),
+    );
+    const nameSearch = taskFromFragment(nameSearchNode, [plan], ({ outputs }) => ({
     // `keepNonHdh: true`, always, and UNCONDITIONALLY run — the fragment's own
     // doc says why; the composition feeds it the plan's employee name.
-    bind: ({ outputs }) => ({
       kind: "by-name" as const,
       name: outputs[PLAN_NODE].employeeName,
       keepNonHdh: true,
-    }),
-  }))
-  .pipe(subjectNode.wire({
-    dependsOn: [DOCUMENT_NODE, PLAN_NODE, NAME_SEARCH_NODE],
-    bind: ({ input, outputs }) => ({
+    }));
+    const subject = taskFromFragment(subjectNode, [document, plan, nameSearch], ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       employeeName: outputs[PLAN_NODE].employeeName,
       documentEid: outputs[DOCUMENT_NODE].employee.eid,
       nameSelection: outputs[NAME_SEARCH_NODE].selection,
-    }),
-  }))
-  .pipe(jobSummaryNode.wire({
-    dependsOn: [SUBJECT_NODE],
-    bind: ({ outputs }) => ({ emplId: outputs[SUBJECT_NODE].emplId }),
-  }))
-  .pipe(employmentNode.wire({
-    dependsOn: [DOCUMENT_NODE, JOB_SUMMARY_NODE],
-    bind: ({ input, outputs }) => ({
+    }));
+    const jobSummary = taskFromFragment(jobSummaryNode, [subject], ({ outputs }) => ({
+      emplId: outputs[SUBJECT_NODE].emplId,
+    }));
+    const employment = taskFromFragment(employmentNode, [document, jobSummary], ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       jobSummary: outputs[JOB_SUMMARY_NODE],
-    }),
-  }))
-  .pipe(departmentOptionNode.wire({
-    dependsOn: [DOCUMENT_NODE, EMPLOYMENT_NODE],
-    bind: ({ input, outputs }) => ({
+    }));
+    const departmentOption = taskFromFragment(
+      departmentOptionNode,
+      [document, employment],
+      ({ input, outputs }) => ({
       deptId: outputs[EMPLOYMENT_NODE].deptId,
       department: outputs[EMPLOYMENT_NODE].department,
       // This document's OWN control, read this run — never a captured constant,
@@ -400,18 +388,13 @@ const separationsFlow = flow(SeparationsInput)
       // teach this repository about before somebody can be separated.
       observedOptions: outputs[DOCUMENT_NODE].options.department,
       documentNumber: input.documentNumber,
-    }),
-  }))
-  .pipe(timecardSearchNode.wire({
-    dependsOn: [SUBJECT_NODE],
-    bind: ({ input, outputs }) => ({
+      }),
+    );
+    const timecardSearch = taskFromFragment(timecardSearchNode, [subject], ({ input, outputs }) => ({
       emplId: outputs[SUBJECT_NODE].emplId,
       searchTimeoutMs: input.searchTimeoutMs,
-    }),
-  }))
-  .pipe(timecardNode.wire({
-    dependsOn: [SUBJECT_NODE, PLAN_NODE, TIMECARD_SEARCH_NODE],
-    bind: ({ outputs }) => {
+    }));
+    const timecard = taskFromFragment(timecardNode, [subject, plan, timecardSearch], ({ outputs }) => {
       // Reading the search's own match is what makes the dependency load-bearing
       // rather than decorative: Go To is disabled without the selection, and a
       // disabled Go To is a loud failure, never an empty card.
@@ -421,11 +404,8 @@ const separationsFlow = flow(SeparationsInput)
         rangeStart: outputs[PLAN_NODE].timecardWindow.start,
         rangeEnd: outputs[PLAN_NODE].timecardWindow.end,
       };
-    },
-  }))
-  .pipe(datesNode.wire({
-    dependsOn: [PLAN_NODE, TIMECARD_NODE],
-    bind: ({ input, outputs }) => ({
+    });
+    const dates = taskFromFragment(datesNode, [plan, timecard], ({ input, outputs }) => ({
       plan: outputs[PLAN_NODE],
       timekeeperName: input.timekeeperName,
       lastPunchDate: outputs[TIMECARD_NODE].grid.lastPunchDate,
@@ -438,20 +418,17 @@ const separationsFlow = flow(SeparationsInput)
         start: outputs[TIMECARD_NODE].range.observedStart,
         end: outputs[TIMECARD_NODE].range.observedEnd,
       },
-    }),
-  }))
-  .pipe(comparisonNode.wire({
+    }));
+    const comparison = taskFromFragment(
+      comparisonNode,
+      [document, plan, subject, jobSummary, nameSearch, terminationType, departmentOption, employment, dates],
+      ({ input, outputs }) => ({
     /**
      * Everything identity authority consumes depends INTO this node. That is
      * what makes `identity-gate-before-commit` pass on a graph with three
      * transaction nodes: no write can consume a value outside the packet that
      * machine verification or the operator decision was bound to.
      */
-    dependsOn: [
-      DOCUMENT_NODE, PLAN_NODE, SUBJECT_NODE, JOB_SUMMARY_NODE, NAME_SEARCH_NODE,
-      TERMINATION_TYPE_NODE, DEPARTMENT_NODE, EMPLOYMENT_NODE, DATES_NODE,
-    ],
-    bind: ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       documentName: outputs[PLAN_NODE].employeeName,
       documentEid: outputs[DOCUMENT_NODE].employee.eid,
@@ -500,40 +477,35 @@ const separationsFlow = flow(SeparationsInput)
           source: outputs[DATES_NODE].source,
         },
       },
-    }),
-  }))
-  .pipe(identityApprovalGate.wire({ dependsOn: [COMPARISON_NODE] }))
-  .pipe(approvalNode.wire({
-    dependsOn: [COMPARISON_NODE, GATE_NODE],
-    bind: ({ outputs }) => ({
+      }),
+    );
+    const identityGate = gateFromFragment(identityApprovalGate, [comparison]);
+    const approval = taskFromFragment(approvalNode, [comparison, identityGate], ({ outputs }) => ({
       packet: outputs[COMPARISON_NODE].packet,
       evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
       approval: outputs[GATE_NODE],
-    }),
-  }))
-  .pipe(pendingSetNode.wire({
-    dependsOn: [APPROVAL_NODE],
-    bind: ({ outputs }) => ({
+    }));
+    const pendingSet = taskFromFragment(pendingSetNode, [approval], ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-    }),
-  }))
-  .pipe(clearPendingNode.wire({
-    dependsOn: [APPROVAL_NODE, PENDING_SET_NODE],
-    prepare: { bind: ({ outputs }) => ({
+    }));
+    const clearPending = transactionFromFragment(clearPendingNode, [approval, pendingSet], {
+    prepareBind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
       observedSet: outputs[PENDING_SET_NODE],
-    }) },
-    commit: { bind: ({ outputs }) => ({
+    }),
+    commitBind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
       observedSet: outputs[PENDING_SET_NODE],
-    }) },
-  }))
-  .pipe(fileTerminationNode.wire({
-    dependsOn: [APPROVAL_NODE, TERMINATION_TYPE_NODE, EMPLOYMENT_NODE, DATES_NODE, SWEEP_NODE],
-    prepare: { bind: ({ outputs }) => ({
+    }),
+    });
+    const fileTermination = transactionFromFragment(
+      fileTerminationNode,
+      [approval, terminationType, employment, dates, clearPending],
+      {
+    prepareBind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
       emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
@@ -542,8 +514,8 @@ const separationsFlow = flow(SeparationsInput)
       reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
       lastDateWorked: outputs[DATES_NODE].lastDayWorked,
       initiatorComments: outputs[DATES_NODE].terminationComments,
-    }) },
-    commit: { bind: ({ outputs }) => ({
+    }),
+    commitBind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
       emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
@@ -552,29 +524,24 @@ const separationsFlow = flow(SeparationsInput)
       reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
       lastDateWorked: outputs[DATES_NODE].lastDayWorked,
       initiatorComments: outputs[DATES_NODE].terminationComments,
-    }) },
-  }))
-  .pipe(receiptNode.wire({
-    dependsOn: [APPROVAL_NODE, DATES_NODE, TERMINATION_NODE],
-    bind: ({ outputs }) => ({
+    }),
+      },
+    );
+    const receipt = taskFromFragment(receiptNode, [approval, dates, fileTermination], ({ outputs }) => ({
       // A transaction node's scope value is the typed outcome envelope (D144);
       // `output` is the COMMIT contract's own bare output.
       proof: outputs[TERMINATION_NODE].output.receipt,
       disposition: outputs[TERMINATION_NODE].disposition,
       approvedEmplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-    }),
-  }))
-  .pipe(filingPresenceNode.wire({
-    dependsOn: [RECEIPT_NODE],
-    bind: ({ outputs }) => outputs[RECEIPT_NODE],
-  }))
-  .pipe(finalizeKualiNode.wire({
-    dependsOn: [
-      APPROVAL_NODE, ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE,
-      DATES_NODE, RECEIPT_NODE, FILING_PRESENCE_NODE,
-    ],
-    prepare: { bind: ({ input, outputs }) => ({
+    }));
+    const filingPresence = taskFromFragment(filingPresenceNode, [receipt], ({ outputs }) =>
+      outputs[RECEIPT_NODE]);
+    const finalizeKuali = transactionFromFragment(
+      finalizeKualiNode,
+      [approval, action, document, plan, employment, departmentOption, dates, receipt, filingPresence],
+      {
+    prepareBind: ({ input, outputs }) => ({
       actionId: outputs[ACTION_NODE].actionId,
       documentNumber: input.documentNumber,
       emplId: outputs[APPROVAL_NODE].approved.emplId,
@@ -603,14 +570,14 @@ const separationsFlow = flow(SeparationsInput)
         }),
         observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
       },
-    }) },
+    }),
     /**
      * The SAME target the prepare staged, bound from workflow input plus the
      * gate-approved identity and the folds — never from the prepare's own
      * output. That is what makes the permanent key stable before any page
      * mutation (ref workflow-model §3.1), and what the beat-⑥ read-back compares against.
      */
-    commit: { bind: ({ input, outputs }) => ({
+    commitBind: ({ input, outputs }) => ({
       actionId: outputs[ACTION_NODE].actionId,
       documentNumber: input.documentNumber,
       emplId: outputs[APPROVAL_NODE].approved.emplId,
@@ -634,15 +601,23 @@ const separationsFlow = flow(SeparationsInput)
         }),
         observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
       },
-    }) },
-  }))
-  .build({
-    schema: SeparationsResultSchema,
-    dependsOn: [
-      APPROVAL_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE, DATES_NODE, RECEIPT_NODE,
-      SWEEP_NODE, TERMINATION_NODE, FINALIZE_NODE,
-    ],
-    derive: ({ outputs }) => ({
+    }),
+      },
+    );
+
+    return {
+      steps: [
+        [KUALI_EXTRACTION_STEP, [action, document, plan, terminationType]],
+        [IDENTITY_CHECK_STEP, [nameSearch, subject, comparison, identityGate, approval]],
+        [JOB_SUMMARY_STEP, [jobSummary, employment, departmentOption]],
+        [group(KRONOS_TIMECARD_STEP, { omission: KRONOS_TIMECARD_OMISSION }), [timecardSearch, timecard, dates]],
+        [group(UCPATH_TRANSACTION_STEP, { omission: UCPATH_TRANSACTION_OMISSION }), [pendingSet, clearPending, fileTermination, receipt]],
+        [group(KUALI_FINALIZATION_STEP, { omission: KUALI_FINALIZATION_OMISSION }), [filingPresence, finalizeKuali]],
+      ],
+      result: result(
+        SeparationsResultSchema,
+        [approval, employment, departmentOption, dates, receipt, clearPending, fileTermination, finalizeKuali],
+        ({ outputs }) => ({
       documentNumber: outputs[APPROVAL_NODE].documentNumber,
       approved: outputs[APPROVAL_NODE].approved,
       employment: {
@@ -674,10 +649,13 @@ const separationsFlow = flow(SeparationsInput)
         disposition: finalize.disposition,
         proof: finalize.output.savedState,
       })),
-    }),
-  });
+        }),
+      ),
+    };
+  },
+);
 
-export const separationsDescriptor = defineWorkflowDescriptor({
+export const separationsDescriptor = compileWorkflowRecipe(separationsRecipe, {
   id: "separations",
   version: 1,
   contractFingerprint: resolveWorkflowFingerprint(
@@ -853,30 +831,6 @@ export const separationsDescriptor = defineWorkflowDescriptor({
    * stands.
    */
   subjectProjection: { nodeId: JOB_SUMMARY_NODE, fieldPath: "displayedName" },
-  /**
-   * D225 — the operator-approved categorical timeline (2026-08-18, separations
-   * §9.18): six categories over the nineteen nodes, each keyed (D265) by the
-   * step folder that owns its nodes, legacy's step vocabulary
-   * kept where it fits. Each category is IMPORTED whole from the folder that is
-   * the step (D265 §1.2.2 rule 2): its key and label from the folder's
-   * `step.ts`, its member ids from the folder's own node fragments — this
-   * declaration only lists the six, so a folder and its category cannot come
-   * to disagree about what the step is called or which nodes it owns.
-   * Legacy's `transaction-check` folds into *UCPath
-   * transaction*, because here the pending check is the sweep transaction plus
-   * the in-write probes, not a standalone step. The gate is a MEMBER of
-   * *Identity check* — a wait is a state of a step, not a step of its own —
-   * and the always-rerun re-executions around a gate resume fold into their
-   * category's `×N` marker instead of drawing duplicate segments.
-   */
-  timeline: [
-    KUALI_EXTRACTION_STEP_NODES,
-    IDENTITY_CHECK_STEP_NODES,
-    JOB_SUMMARY_STEP_NODES,
-    KRONOS_TIMECARD_STEP_NODES,
-    UCPATH_TRANSACTION_STEP_NODES,
-    KUALI_FINALIZATION_STEP_NODES,
-  ],
   identity: {
     /**
      * The ITEM is the DOCUMENT — one separation document is one separation — and
@@ -1037,5 +991,4 @@ export const separationsDescriptor = defineWorkflowDescriptor({
     "separations/re-read-is-a-new-item",
     "separations/gate-resume-shape",
   ],
-  flow: separationsFlow,
 });

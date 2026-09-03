@@ -915,6 +915,7 @@ export interface OperatorGateNodeFragment<
   readonly statusKey?: string;
   readonly resolvedBy: "operator";
   readonly result: Result;
+  readonly when?: NodeConditionSpec;
   wire<
     InputSchema extends z.ZodType,
     S extends Readonly<Record<string, AnyNodeEntry>>,
@@ -1043,6 +1044,7 @@ function defineOperatorGateNode<
     ...(identity.statusKey === undefined ? {} : { statusKey: identity.statusKey }),
     resolvedBy: "operator",
     result: identity.result,
+    ...(identity.when === undefined ? {} : { when: identity.when }),
     wire(wiring) {
       return (builder) => builder.gate(id, {
         label: identity.label,

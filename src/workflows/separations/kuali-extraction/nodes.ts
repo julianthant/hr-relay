@@ -65,11 +65,4 @@ export const terminationTypeNode = nodes.task(TERMINATION_TYPE_NODE, Separations
   replay: "checkpoint",
 });
 
-/** The step's timeline category — key and label from `step.ts`, nodes from the fragments above. */
-export const KUALI_EXTRACTION_STEP_NODES = nodes.category([
-  actionNode,
-  documentNode,
-  planNode,
-  terminationTypeNode,
-]);
 export { ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, TERMINATION_TYPE_NODE } from "./node-ids.js";

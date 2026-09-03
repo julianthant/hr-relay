@@ -4,7 +4,7 @@
   "theme": "paper-ink",
   "adapter": "fixture",
   "fixtureId": "run-open-gate",
-  "descriptorHash": "ec683d932e1b6b4794e2c3de2382aa0cb6b1bfd4e2acf067178bd9bda218accb",
+  "descriptorHash": "cfeb71e88c7a52f091176c266c375bcdd02b878b332b038ec5fa2931afe22d50",
   "appVersion": "0.1.0",
   "capturedAt": "2026-08-03",
   "variant": "default"

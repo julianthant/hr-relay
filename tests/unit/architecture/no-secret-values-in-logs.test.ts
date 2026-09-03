@@ -176,6 +176,8 @@ const CANONICAL_SANITIZER_EXPORTS = new Set([
 ]);
 const CANONICAL_WORKFLOW_MODULE = "src/base/workflow.ts";
 const CANONICAL_DESCRIPTOR_FACTORY_EXPORTS = new Set(["defineWorkflowDescriptor"]);
+const CANONICAL_WORKFLOW_RECIPE_MODULE = "src/base/workflow-recipe.ts";
+const CANONICAL_RECIPE_COMPILER_EXPORTS = new Set(["compileWorkflowRecipe"]);
 
 function importedCanonicalBindings(
   path: string,
@@ -843,8 +845,7 @@ function isCanonicalDescriptorSpecObject(
 ): boolean {
   const call = object.parent;
   return ts.isCallExpression(call)
-    && call.arguments.length === 1
-    && call.arguments[0] === object
+    && call.arguments.at(-1) === object
     && isCanonicalDescriptorFactory(call.expression);
 }
 
@@ -908,12 +909,20 @@ export function findSecretInterpolations(path: string, content: string): readonl
   const violations: string[] = [];
   const descriptors = descriptorLoopBindings(source);
   const canonicalSanitizerImports = importedCanonicalSanitizers(path, source);
-  const descriptorFactoryImports = importedCanonicalBindings(
-    path,
-    source,
-    CANONICAL_WORKFLOW_MODULE,
-    CANONICAL_DESCRIPTOR_FACTORY_EXPORTS,
-  );
+  const descriptorFactoryImports = new Set([
+    ...importedCanonicalBindings(
+      path,
+      source,
+      CANONICAL_WORKFLOW_MODULE,
+      CANONICAL_DESCRIPTOR_FACTORY_EXPORTS,
+    ),
+    ...importedCanonicalBindings(
+      path,
+      source,
+      CANONICAL_WORKFLOW_RECIPE_MODULE,
+      CANONICAL_RECIPE_COMPILER_EXPORTS,
+    ),
+  ]);
   const bindings = aliasBindings(source);
   const staticExpressionText = (
     raw: ts.Expression,
@@ -1275,6 +1284,17 @@ describe("no secret values in logs", () => {
       "  presentation: {",
       "    title: (input: { emplId: string }) => `EID ${input.emplId}` ,",
       "    subtitle: (input: { eid: string; show: boolean }) => (input.show ? `EID ${input.eid}` : undefined),",
+      "  },",
+      "});",
+    ].join("\n")), []);
+
+    assert.deepEqual(findSecretInterpolations("src/workflows/example/descriptor.ts", [
+      'import { compileWorkflowRecipe } from "../../base/workflow-recipe.js";',
+      "declare const recipe: unknown;",
+      "export const descriptor = compileWorkflowRecipe(recipe, {",
+      "  presentation: {",
+      "    title: (input: { emplId: string }) => `EID ${input.emplId}` ,",
+      "    subtitle: (input: { eid: string }) => `EID ${input.eid}` ,",
       "  },",
       "});",
     ].join("\n")), []);

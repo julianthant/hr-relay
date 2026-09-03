@@ -15,6 +15,8 @@
  */
 import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { workflowRecipeFor } from "../base/workflow-recipe.js";
+import type { WorkflowRecipe } from "../base/workflow-recipe.js";
 import { workflowProjections } from "../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { RegisteredTaskStore } from "../base/store.js";
@@ -89,6 +91,47 @@ export interface WorkflowModuleBindingView {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly stores: readonly RegisteredTaskStore[];
 }
+
+/** A recipe-bearing module as the recipe compiler's registry audit sees it. */
+export interface WorkflowRecipeModuleView extends WorkflowModuleBindingView {
+  /** Ordinary pre-D311 modules intentionally omit this field. */
+  readonly recipe?: WorkflowRecipe;
+}
+
+/** One recipe and the exact descriptor it compiled, as registered at the composition root. */
+export interface WorkflowRecipeRegistration {
+  readonly descriptor: AnyWorkflowDescriptor;
+  readonly recipe: WorkflowRecipe;
+}
+
+/**
+ * D311's registry-facing recipe population.
+ *
+ * A module may expose a recipe only when that exact object compiled its own
+ * descriptor. The compiler's identity ledger is deliberately checked again at
+ * the composition boundary: otherwise a module could be registered with a
+ * recipe that describes a different workflow while each value looks valid in
+ * isolation. Modules not yet converted to recipes are not silently assigned a
+ * synthetic declaration; they remain outside this population until converted.
+ */
+export function workflowRecipeRegistry(
+  modules: readonly WorkflowRecipeModuleView[],
+): readonly WorkflowRecipeRegistration[] {
+  const registrations: WorkflowRecipeRegistration[] = [];
+  for (const module of modules) {
+    if (module.recipe === undefined) continue;
+    if (workflowRecipeFor(module.descriptor) !== module.recipe) {
+      throw new Error(
+        `workflow ${String(module.descriptor.id)} registers a recipe that did not compile its own descriptor`,
+      );
+    }
+    registrations.push(Object.freeze({ descriptor: module.descriptor, recipe: module.recipe }));
+  }
+  return Object.freeze(registrations);
+}
+
+/** Every converted workflow, derived only from the one module tuple. */
+export const WORKFLOW_RECIPES = workflowRecipeRegistry(WORKFLOW_MODULES);
 
 /**
  * Ref data-intake-and-edit-data §1's spreadsheet-capable declaration, read off the workflow's own
