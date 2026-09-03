@@ -9,7 +9,7 @@
 
 ## Assignment
 
-Invoke `/supervise` and complete only u27, u28, and u30 after R2, R4, and R5a are integrated. Own ordinary graph scenarios/integration walks and T2/T3 dashboard scenarios, then close scenario layout/naming/config and family review. No live workflow run is authorized. The board is read-only.
+Invoke `/supervise` and complete only u27, u28, and u30 after R2, R4, R3a, and R5a are integrated. Own ordinary graph scenarios/integration walks and T2/T3 dashboard scenarios, then close scenario layout/naming/config and family review. Consume R5a's 17-file/142-case inventory and preserve its seven workflow-owned T1 structural files plus two uncollected T1b manifests. No live workflow run is authorized. The board is read-only.
 
 **Run branch:** `feature/test-r5b-scenario-review` from the coordinator-recorded reservation base; never merge into the coordinator branch
 **Report:** `docs/coordinator/test-suite-rationalization/reports/r5b-scenario-review.md`

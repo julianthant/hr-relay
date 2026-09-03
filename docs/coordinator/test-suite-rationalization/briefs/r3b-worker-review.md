@@ -9,7 +9,7 @@
 
 ## Assignment
 
-Invoke `/supervise` and complete only u15, u17, and u18 after R2, R4, and R3a are integrated. Own worker/session/lease/concurrency tests, then reconcile the entire integrated R3 family against lower-layer units and scenarios. The board is read-only.
+Invoke `/supervise` and complete only u15, u17, and u18 after R2, R4, R3a, and R5a are integrated. Own worker/session/lease/concurrency tests, then reconcile the entire integrated R3 family against lower-layer units and scenarios. Exact carried residue from R3a is: `worker-pool-composition.test.ts` and `worker-pool-parallel-proof.test.ts` fail their active-5174 real-runtime shutdown paths, and the failed worker composition emits a cleanup-time artifact-reader `ENOENT`. Reproduce and fix the owned cause without retry, skip, timeout widening, or killing an unrelated process. The board is read-only.
 
 **Run branch:** `feature/test-r3b-worker-review` from the coordinator-recorded reservation base; never merge into the coordinator branch
 **Report:** `docs/coordinator/test-suite-rationalization/reports/r3b-worker-review.md`
