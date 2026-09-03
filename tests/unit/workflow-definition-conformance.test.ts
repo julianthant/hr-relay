@@ -41,7 +41,7 @@ describe("workflow definition registry conformance", () => {
     // Every definition-backed module in the one tuple, in tuple order — the
     // two acceptance workflows and each converted chunk harness.
     expect(WORKFLOW_DEFINITIONS.map(({ descriptor }) => String(descriptor.id)))
-      .toEqual(WORKFLOW_MODULES.filter((module) => module.definition !== undefined).map(({ descriptor }) => String(descriptor.id)));
+      .toEqual(WORKFLOW_MODULES.filter((module) => "definition" in module).map(({ descriptor }) => String(descriptor.id)));
     expect(WORKFLOW_DEFINITIONS.map(({ descriptor }) => String(descriptor.id)))
       .toEqual(expect.arrayContaining(["person-lookup", "separations"]));
     expect(WORKFLOW_DEFINITIONS.every(({ descriptor, definition }) => workflowDefinitionOf(descriptor) === definition))
