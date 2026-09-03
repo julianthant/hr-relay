@@ -1,10 +1,17 @@
 # R7 brief — cross-family reorganization, consequential review, authorities, and final proof
 
+**Coordination UUID:** `f24df892-5171-48f4-97ff-4e91490f8622`
+**Parent coordinator:** task `01a064e2-c3cf-7422-90c7-1dce60d194e5` / host `local`
+**Canonical title:** `Supervisor · test-suite-rationalization · Cf24df892 · R07 · final integration review`
+**Profile/workspace:** `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator/docs/coordinator/test-suite-rationalization/project-profile.md` · `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator/docs/coordinator/test-suite-rationalization`
+**Board:** `docs/coordinator/test-suite-rationalization/board.md` — read only; coordinator is sole writer
+**Worktree allowance:** one slot total, consumed by the supervisor worktree; use read-only workers or sequential supervisor-owned implementation
+
 ## Assignment
 
 Invoke `/supervise` and complete units u37–u42 only after R1–R6 are integrated and their reports are accepted. Reconcile the entire estate, land cross-family taxonomy/config/script/doc changes, and produce the final proof packet. The coordinator board remains read-only.
 
-**Run branch:** `feature/test-r7-integration-review` from the fully integrated R1–R6 base
+**Run branch:** `feature/test-r7-integration-review` from the coordinator-recorded fully integrated R1–R6 reservation base; never merge into the coordinator branch
 **Report:** `docs/coordinator/test-suite-rationalization/reports/r7-integration-review.md`
 **Writable evidence:** `docs/coordinator/test-suite-rationalization/artifacts/r7/u37-reconciliation.md` through `u42-final-gates.md`
 
