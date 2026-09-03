@@ -422,6 +422,16 @@ describe("dry-run scenario evidence assertions", () => {
   if (scenarioCase === undefined) throw new Error("fixture manifest has no case");
   const before = { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 } as const;
 
+  it("refuses an evaluation whose declared arm disagrees with the case shape; the manifest arm, not the case, selects the assertion set (D318)", () => {
+    assert.ok(scenarioCase && "preview" in scenarioCase, "the fixture case is a preview-arm case");
+    assert.throws(
+      () => evaluateDryRunScenarioEvidence("live-read", scenarioCase, before, READY_EVIDENCE),
+      /dry-run case ordinary does not belong to the live-read arm/u,
+    );
+    const evaluated = evaluateDryRunScenarioEvidence("dry-run-preview", scenarioCase, before, READY_EVIDENCE);
+    assert.ok(evaluated.length > 0);
+  });
+
   it("rejects an authority verdict mutation instead of collapsing its meaning", () => {
     const absentCase = parseDryRunScenarioManifest({
       ...GATED_MANIFEST,

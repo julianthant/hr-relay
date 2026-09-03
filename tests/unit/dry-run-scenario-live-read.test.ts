@@ -30,7 +30,6 @@ import { evaluateDryRunScenarioEvidence } from "../../src/core/dry-run-scenario-
 import { manualClock } from "../../src/domain/clock.js";
 import { parseDryRunScenarioManifest } from "../../src/domain/trust/dry-run-scenario.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { createProductionDryRunScenarioRuntime } from "../../src/server/dry-run-scenario/runtime.js";
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
 import { selectedSettingsFixture } from "./fixtures/dry-run-admission-fixtures.js";
 import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
@@ -43,6 +42,14 @@ import {
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor, separationsDescriptor } from "../helpers/registered-workflows.js";
 import { evaluateT1bManifest } from "../helpers/t1b-manifests.js";
+import { z } from "zod";
+import { flow } from "../../src/base/flow.js";
+import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
+import { DelegationEdgeIdSchema, ItemIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
+import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
+import { createProductionDryRunScenarioRuntime, liveReadGraphRefusal } from "../../src/server/dry-run-scenario/runtime.js";
+import { HASH_A, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
 
 // The checked-in declarations, evaluated without importing them: a collected
 // file may never import a T1b manifest (the pair invariant), and the exact
@@ -216,5 +223,90 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     // D209 is unchanged: the graph itself still refuses a dry run by name.
     assert.deepEqual(workflowDryRunSupport(personLookupDescriptor), { state: "unsupported", reason: "no-transaction-node" });
     assert.equal(workflowDryRunSupport(separationsDescriptor).state, "supported");
+  });
+  it("refuses a manifest whose arm disagrees with its case shape before any graph or effect check (D318)", async () => {
+    const { root, clock } = composedRoot("hrauto-live-read-arm-shape-");
+    const database = AuthorityDatabase.open(
+      { path: join(root, rebuildRuntimeIsolation.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "live-read-arm-shape-test" },
+      clock,
+    );
+    database.close();
+    const runtime = createProductionDryRunScenarioRuntime({
+      isolation: rebuildRuntimeIsolation,
+      repoRoot: root,
+      env: {},
+      clock,
+      ids: sequentialIdFactory("g"),
+      drainWorker: () => Promise.reject(new Error("a refused admission must not drain")),
+    });
+    const previewCase = SEPARATIONS_DRY_RUN.cases[0];
+    const liveReadCase = PERSON_LOOKUP_LIVE_READ.cases[0];
+    assert.ok(previewCase && "preview" in previewCase);
+    assert.ok(liveReadCase && !("preview" in liveReadCase));
+    // A live-read manifest on the transaction-free person-lookup graph would
+    // otherwise be admitted; the preview-shaped case refuses first.
+    await assert.rejects(
+      runtime.start({ manifest: PERSON_LOOKUP_LIVE_READ, scenarioCase: previewCase, canonicalInput: CANONICAL_INPUT }),
+      /live-read manifest person-lookup\/live-read carries a preview-arm case; the arms are exclusive/u,
+    );
+    // A preview manifest on the transaction-bearing separations graph would
+    // otherwise pass its support check; the live-read-shaped case refuses first.
+    await assert.rejects(
+      runtime.start({ manifest: SEPARATIONS_DRY_RUN, scenarioCase: liveReadCase, canonicalInput: {} }),
+      /dry-run-preview manifest separations\/dry-run carries a live-read case; the arms are exclusive/u,
+    );
+  });
+
+  it("refuses the live-read arm for a delegating graph: a child run's writes live under its own run, outside this run's zero-delta proof (D318)", () => {
+    const DelegateInput = z.strictObject({ name: z.string().min(1) });
+    const delegatingFlow = flow(DelegateInput)
+      .childRun("delegate", {
+        id: WorkflowIdSchema.parse("person-lookup"),
+        input: z.strictObject({ emplId: z.string().min(1) }),
+        result: z.strictObject({ ok: z.boolean() }),
+      }, {
+        dependsOn: [],
+        edgeId: DelegationEdgeIdSchema.parse("live-read-delegate"),
+        cardinality: "one",
+        bind: () => ({ emplId: EXECUTOR_EID }),
+        deriveChildItemId: () => ItemIdSchema.parse(UUID_7),
+        await: "terminal",
+        join: "one",
+        policy: {
+          onChildFailed: "fail-parent",
+          cascadeCancel: "cascade",
+          afterChildRetry: "resume-parent",
+          visibility: "inline",
+        },
+      })
+      .build({ schema: z.strictObject({ ok: z.boolean() }), dependsOn: [], derive: () => ({ ok: true }) });
+    const delegating = defineWorkflowDescriptor({
+      id: "live-read-delegating-fixture",
+      version: 1,
+      contractFingerprint: HASH_A,
+      code: "ld",
+      label: "Delegating fixture",
+      icon: "Search",
+      category: "operations",
+      canonicalInput: defineCanonicalInput(DelegateInput, DelegateInput, [{ name: "Battistessa, Johnnie" }]),
+      inputSubject: "name",
+      surface: { shape: "single" },
+      enqueue: "reject-active",
+      actions: STANDARD_WORKFLOW_ACTIONS,
+      surfaces: {},
+      details: [],
+      identity: { matchKey: (input: z.output<typeof DelegateInput>) => `name:${input.name}` },
+      presentation: { title: (input: z.output<typeof DelegateInput>) => input.name },
+      scenarios: ["live-read-delegating-fixture/happy"],
+      flow: delegatingFlow,
+    });
+    // No transaction node, so the transaction refusal cannot be what fires.
+    assert.deepEqual(workflowDryRunSupport(delegating), { state: "unsupported", reason: "no-transaction-node" });
+    assert.match(
+      liveReadGraphRefusal(delegating, "fixture/live-read") ?? "",
+      /live-read manifest fixture\/live-read names workflow live-read-delegating-fixture, whose compiled graph carries child-run node\(s\) delegate; a delegating graph runs its child under its own run and write intents, which this run's zero-delta proof cannot see — no live-read arm admits it \(D318\)/u,
+    );
+    assert.equal(liveReadGraphRefusal(personLookupDescriptor, "person-lookup/live-read"), undefined);
+    assert.match(liveReadGraphRefusal(separationsDescriptor, "separations/live-read") ?? "", /transaction node\(s\)/u);
   });
 });
