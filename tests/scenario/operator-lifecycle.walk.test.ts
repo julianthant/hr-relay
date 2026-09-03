@@ -110,9 +110,9 @@ import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-thro
 const ROSTER_CSV = [
   "Work-study roster,,",
   "Employee ID#,Effective Date,Dept",
-  "10456712,07/01/2026,Housing Dining Hospitality",
-  "10-4567,07/01/2026,Housing Dining Hospitality",
-  "10998801,07/01/2026,Student Affairs",
+  "10800000,07/01/2026,Housing Dining Hospitality",
+  "10-8000,07/01/2026,Housing Dining Hospitality",
+  "10800001,07/01/2026,Student Affairs",
   "",
 ].join("\n");
 const REJECTED_SOURCE_ROW = 2;

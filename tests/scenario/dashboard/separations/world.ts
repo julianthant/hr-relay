@@ -17,10 +17,9 @@
  * those three is wired to THROW rather than to no-op — a seam that quietly
  * answered would let a test claim a path it never walked.
  *
- * The §9.22 Track C proof (`docs/migrations/separations.md`, D256–D259) is the
- * LIVE evidence of what these squares do against a real UCPath day. This world
- * re-states the same claims over a recorded run so they are checked on every
- * commit rather than on the day somebody boots a BFF.
+ * The §9.22 Track C proof (`docs/migrations/separations.md`, D256–D259) remains
+ * the live evidence. This world replays only the same contract SHAPE with
+ * reserved synthetic identifiers; it makes no current-world claim.
  *
  * ## What this world does NOT fake
  *
@@ -69,8 +68,10 @@ import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../../../unit/fixtures/phase1c-con
 import { sequentialIdFactory } from "../../../unit/fixtures/phase1f-run-fixtures.js";
 
 export const APP_VERSION = "0.1.0";
-/** The document §9.22 ran all three of its live runs against. */
-export const DOCUMENT_NUMBER = "4502";
+/** Reserved offline values: no collected scenario addresses a live subject. */
+export const FIXTURE_DOCUMENT_NUMBER = "4444";
+export const FIXTURE_EID = "10800000";
+export const FIXTURE_DISPLAY_NAME = "Example, Avery";
 export const WORKER_ID = "separations-worker-1";
 export const GATE_ID = "identity-approval";
 /** The node the identity gate waits on — read off the graph, never spelled here. */
@@ -427,14 +428,18 @@ export function parkAtIdentityGate(
 
 /**
  * The `job-summary` checkpoint a run writes once UCPath has answered — the
- * fact ref dashboard-surfaces §1.2's subject projection reads. The VALUE is the
- * contract's own example, so a contract that renamed `displayedName` moves this
- * fixture with it instead of leaving a stale literal behind.
+ * fact ref dashboard-surfaces §1.2's subject projection reads. Its shape starts
+ * from the contract example, then its identifying leaves are replaced with the
+ * corpus's reserved synthetic values.
  */
 export function seedJobSummaryCheckpoint(world: SeparationsDashboardWorld, runId: string): string {
   const run = world.database.authority.runs.get(runId);
   if (run === undefined) throw new Error(`run ${runId} is not in authority`);
-  const example = UcpathReadJobSummary.example;
+  const example = UcpathReadJobSummary.output.parse({
+    ...UcpathReadJobSummary.example,
+    emplId: FIXTURE_EID,
+    displayedName: FIXTURE_DISPLAY_NAME,
+  });
   world.database.withAuthorityTransaction((repositories) => repositories.runCheckpoints.insert(
     RunCheckpointRecordSchema.parse({
       workflowId: run.envelope.workflow,
@@ -458,25 +463,25 @@ export function seedJobSummaryCheckpoint(world: SeparationsDashboardWorld, runId
 }
 
 /**
- * The identity evidence packet §9.22 approved, built by the PRODUCTION builder
- * from real reads rather than hand-assembled: `approvalShape` and the
- * comparison set are the builder's own conclusions, which is exactly what the
- * ceremony square is about — the SERVER decides the shape.
+ * A synthetic identity evidence packet built by the PRODUCTION builder:
+ * `approvalShape` and the comparison set are the builder's own conclusions,
+ * which is exactly what the ceremony square is about — the SERVER decides the
+ * shape without this collected scenario carrying external-world identifiers.
  */
 export function separationsIdentityPacket(
   overrides: Readonly<{
     documentName?: string;
   }> = {},
 ): IdentityEvidencePacket {
-  const eid = "10001754";
-  const documentName = overrides.documentName ?? "Cramia, Dreitho";
+  const eid = FIXTURE_EID;
+  const documentName = overrides.documentName ?? FIXTURE_DISPLAY_NAME;
   // Parsed through the search contract's OWN selection schema, so a fixture can
   // never express a selection UCPath's reader could not have produced.
   const nameSelection = UcpathPersonSelectionSchema.parse({
     status: "resolved",
     selected: {
       emplId: eid,
-      name: "Cramia, Dreitho",
+      name: FIXTURE_DISPLAY_NAME,
       department: "Housing Dining Hospitality",
       jobTitle: "STDT 3",
       employeeStatus: "active",
@@ -485,7 +490,7 @@ export function separationsIdentityPacket(
     candidateEids: [eid],
   });
   return buildIdentityEvidencePacket({
-    documentNumber: DOCUMENT_NUMBER,
+    documentNumber: FIXTURE_DOCUMENT_NUMBER,
     documentName,
     documentEidText: "the separation document carried no EID",
     emplIdSource: "name-resolved",
@@ -493,7 +498,7 @@ export function separationsIdentityPacket(
     jobSummary: {
       pageStateId: "ucpath.person-org.detail-ready",
       emplId: eid as never,
-      displayedName: "Cramia, Dreitho",
+      displayedName: FIXTURE_DISPLAY_NAME,
       jobRows: [{
         rowIndex: 0,
         emplRecord: "0",
@@ -524,10 +529,10 @@ export function separationsIdentityPacket(
         emplRecord: "0",
         effectiveDate: "04/01/2026",
         lastDateWorked: "03/31/2026",
-        initiatorComments: "Termination eff 04/01/2026. Last Day Worked 03/31/2026. Kuali form #4502.",
+        initiatorComments: `Termination eff 04/01/2026. Last Day Worked 03/31/2026. Kuali form #${FIXTURE_DOCUMENT_NUMBER}.`,
       },
       document: {
-        documentNumber: DOCUMENT_NUMBER,
+        documentNumber: FIXTURE_DOCUMENT_NUMBER,
         department: "000412 - Housing/Dining/Hospitality",
         departmentCode: "000412",
         ucpathDepartment: "HOUSING/DINING/HOSPITALITY",

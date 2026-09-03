@@ -138,6 +138,30 @@ function scenarioCorpusFiles(): readonly ScenarioCorpusFile[] {
     .map((file) => ({ file, itTitles: itTitles(readFileSync(join(REPO_ROOT, file), "utf8")) }));
 }
 
+/**
+ * Collected scenarios are offline evidence. An EID-shaped fixture therefore
+ * comes only from the reserved synthetic ranges established by R5a; a value
+ * observed from a real system belongs exclusively to an uncollected T1b run.
+ * Diagnostics name only source locations so an accidental identifier never
+ * becomes test output of its own.
+ */
+function nonSyntheticScenarioEidLocations(): readonly string[] {
+  const reserved = /^(?:108000\d{2}|19999999)$/u;
+  return walkFiles(join(REPO_ROOT, SCENARIO_ROOT), { extensions: [".ts"] })
+    .filter((file) => file.endsWith(".test.ts"))
+    .flatMap((file) => {
+      const relativeFile = relative(REPO_ROOT, file).replaceAll("\\", "/");
+      return readFileSync(file, "utf8")
+        .split("\n")
+        .flatMap((line, index) => (
+          [...line.matchAll(/(?<![0-9A-Za-z-])1\d{7}(?![0-9A-Za-z-])/gu)]
+            .some((match) => !reserved.test(match[0]))
+            ? [`${relativeFile}:${String(index + 1)}`]
+            : []
+        ));
+    });
+}
+
 /** The fixture side: paths claimed for descriptors with no production reference. */
 function graphClaimedScenarioIds(): readonly string[] {
   return [...new Set(
@@ -245,6 +269,10 @@ describe("scenario coverage", () => {
         `${workflow} must execute every T1a scenario in its one structural file`,
       );
     }
+  });
+
+  it("keeps every EID-shaped value in a collected scenario synthetic", () => {
+    assert.deepEqual(nonSyntheticScenarioEidLocations(), []);
   });
 
   it("holds descriptor and task references to an independently observed executable manifest", () => {

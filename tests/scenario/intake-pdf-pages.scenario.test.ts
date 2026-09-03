@@ -127,7 +127,7 @@ describe("extraction/extract-pdf-pages scenarios", () => {
     const empty = await runTask(Buffer.alloc(0));
     assert.equal(empty.failure?.code, "unreadable-pdf");
 
-    const notAPdf = await runTask(Buffer.from("Employee ID#,Effective Date\n10456712,07/01/2026\n", "utf8"));
+    const notAPdf = await runTask(Buffer.from("Employee ID#,Effective Date\n10800000,07/01/2026\n", "utf8"));
     assert.equal(notAPdf.failure?.code, "unreadable-pdf");
     assert.equal(notAPdf.written.length, 0);
   });
