@@ -1,7 +1,7 @@
 # R7 report — cross-family integration review and final proof
 
 **Status:** COMPLETE for u37–u42. All exit commands pass, the independent review is clean, and the
-tracked run worktree is clean. The preserved ≤90-second coverage target remains open: the accepted
+run worktree is clean of tracked and ignored residue. The preserved ≤90-second coverage target remains open: the accepted
 121.88-second run misses it by 31.88 seconds without weakening unique protection.
 
 **Branch:** `feature/test-r7-integration-review`
@@ -38,7 +38,8 @@ amended owning-reference excerpts. The workflow build manifest remained current.
 | Parity | 17 specs / 281 cases / 222 reference triples; 281/281 in 57.12 s, inside ≤75 s |
 | Other gates | typecheck, lint, architecture, manifest, roadmap, Duo 43/43, performance bounds, diff and twins PASS |
 | Hermeticity | accepted long gates ran with legitimate healthy Node listeners on 3938/5174 before and after, no legacy override |
-| Review | all standards/spec/correctness/silent-failure/performance/tests/docs/security axes closed; no open finding |
+| Review | all standards/spec/correctness/silent-failure/performance/tests/docs/security axes closed; final tests/docs re-reviews clean; final spec cleanup-evidence finding resolved |
+| Cleanup | ignored proof state moved to recoverable `/tmp/r7-cleanup.Tk5vPp`; no listeners, owned processes, browsers, worker worktrees, or worker branches remain |
 
 Detailed gate output, exact deltas, controlled-red proof, invalid contention samples, performance
 counters, and cleanup live in `artifacts/r7/u42-final-gates.md`. The exhaustive family ledger is
@@ -50,9 +51,11 @@ counters, and cleanup live in `artifacts/r7/u42-final-gates.md`. The exhaustive 
 Independent read-only reviewers initially found topology duplication, future-live scenario
 collection, missing duplicate-owner/phase-output red controls, stale doc claims, and stale census
 values. Commits `530f85ae`, `7bab5346`, `689d5142`, `3daa6de1`, `dea5a4f6`, and `9ab1eede`
-addressed them. Tests re-review returned zero findings. The final docs/spec re-reviews inspect the
-committed report packet; any resulting correction is a separate explicit commit rather than an
-unreported working-tree adjustment.
+addressed them. Final tests and docs re-reviews returned zero findings. Final specification
+re-review confirmed the packet's topology, arithmetic, output, timing, base/target, and generated
+claims, then found one high close-out contradiction: cleanup was still future tense. The final close
+commit performs the cleanup and records the exact post-cleanup results in u42; the finding is not
+waived.
 
 Security review found no authentication, authorization, dependency, credential, external-network,
 or production-root change. No live HR workflow ran and no HR write occurred. No board row was
@@ -80,6 +83,7 @@ condition.
 - `85a7dd86` — record consequential test review
 - `9ab1eede` — refresh final suite topology census
 - `62209483` — refresh generated roadmap authority
+- `e05f825f` — commit the R7 report and complete gate packet
 
 ## Coordinator handoff
 

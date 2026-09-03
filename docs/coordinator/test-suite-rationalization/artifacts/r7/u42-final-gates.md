@@ -104,8 +104,26 @@ non-duration counters gate.
 
 ## Cleanup
 
-After the final artifacts are committed, the supervisor removes its ignored example `.env`,
-dependency symlink, dashboard state/backups, coverage report, built parity bundle, and Playwright
-output; then proves no port listener, current-worktree Node/Vite/Playwright/Chromium process, or
-`playwright-cli` browser remains. The exact post-cleanup command results and final HEAD are recorded
-in the run report.
+Cleanup was performed after the report packet commit `e05f825febe6241ee4cf9b5900fe11def5120263`.
+The pre-cleanup `git status --short --ignored` named exactly `.env`, `.tracker-rebuild/`,
+`config/settings.json.authority.json`, `coverage/`, `dist/`, `node_modules`, and
+`tests/parity/.output/`. Those ignored, regenerable paths were moved out of the run worktree to the
+recoverable host-temporary directory `/tmp/r7-cleanup.Tk5vPp`; no tracked path was removed.
+
+The immediate post-cleanup observations were:
+
+| Command | Exit/result |
+|---|---|
+| `git status --short --ignored` | 0; no output |
+| `git status --porcelain=v1` | 0; no output |
+| listeners on TCP 3938 and 5174 (`lsof`) | 1; no output — neither port had a listener |
+| current-worktree Node/Vite/Playwright/Chromium process scan | 1; no output — no match |
+| `playwright-cli list` | 0; `(no browsers)` |
+| current worktree registration | `e05f825f...`, `feature/test-r7-integration-review` |
+| `feature/test-r7-*` branch inventory | only the current run branch |
+
+All reviewers were read-only, so R7 created no worker worktree or worker branch to remove. This run
+worktree and branch deliberately remain registered for coordinator integration, as the brief
+requires the coordinator to perform project-worktree cleanup. The final resolved commit SHA cannot
+be embedded inside the commit that contains it; it is proven with `git rev-parse HEAD` in the
+supervisor return together with a final empty porcelain check.
