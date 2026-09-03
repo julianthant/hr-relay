@@ -2,7 +2,7 @@
 
 **Coordination UUID:** `57c2dec9-138e-4578-b5da-389ad9b4007a` · `C57c2dec9`
 **Canonical title:** `Supervisor · phase-3c-migration · C57c2dec9 · R3c · deletion acceptance`
-**Parent coordinator:** Claude Code session `571dd99a-cd47-4529-adfe-a4bc7569c29a` (only allowed agent-to-agent channel)
+**Parent coordinator:** Claude Code session `1c78d186-91c1-4728-9da4-29102181632d` (successor of `571dd99a`; only allowed agent-to-agent channel)
 **Worktree / branch:** `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/phase-3c-migration-c57c2dec9-r03-authoring-runtime` (path name inherited from R3) · `feature/phase-3c-migration-c57c2dec9-r3c-deletion-acceptance` at `c258677b` (= integrated `feature/03c-workflow-migration` tip)
 **Worktree allowance:** 1 (this worktree). No worker worktrees; workers sequential here.
 **Units:** u29, u30, u31, u32 (run plan §Units). **Out of scope:** u33–u36 (docs package — R3d), every order row, any new feature. Doc edits here are limited to what a deletion forces (stale references that would otherwise lie, root twins convention paragraph for `defineWorkflowStepNodeFactory`).

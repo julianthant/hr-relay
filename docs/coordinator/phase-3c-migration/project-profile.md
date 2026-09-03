@@ -6,7 +6,7 @@
 **Coordination short id:** `C57c2dec9`
 **Work key:** `phase-3c-migration`
 **Coordinator title:** `Coordinate · phase-3c-migration · C57c2dec9 · workflow migration` (alias of the earlier `Coordinate · phase-3c-migration · workflow migration`)
-**Coordinator session:** Claude Code background session `571dd99a-cd47-4529-adfe-a4bc7569c29a` (job `571dd99a`; claude.ai session `session_01UqXpak3DKYZxtCEGxLZb4R`)
+**Coordinator session:** Claude Code background session `1c78d186-91c1-4728-9da4-29102181632d` (job `1c78d186`; claude.ai session `session_01HBcuNKmDKAAxRsnJBcDt5a`), successor since 2026-09-02 21:11 PDT of the original coordinator session `571dd99a-cd47-4529-adfe-a4bc7569c29a` (job `571dd99a`), which ended after recording the R3c launch at `c1ecf074`. Same coordination UUID, workspace, board and integration line.
 **Integration checkout:** `/Users/julianhein/Projects/hr-automation-rebuild` · `feature/03c-workflow-migration`
 **Verified baseline:** 2026-09-02 17:40 PDT at `cb9a147645f12e230754f0dfcb86cd829ba50335`; D319 later narrows the plan without changing the active R3 implementation seam
 

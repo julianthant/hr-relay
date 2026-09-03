@@ -4,12 +4,12 @@
 **Coordination UUID:** `57c2dec9-138e-4578-b5da-389ad9b4007a` · `C57c2dec9`
 **Work key:** `phase-3c-migration`
 **Coordinator title:** `Coordinate · phase-3c-migration · C57c2dec9 · workflow migration`
-**Coordinator session:** Claude Code `571dd99a-cd47-4529-adfe-a4bc7569c29a`
+**Coordinator session:** Claude Code `1c78d186-91c1-4728-9da4-29102181632d` (successor of `571dd99a-cd47-4529-adfe-a4bc7569c29a` since 2026-09-02 21:11 PDT)
 **Coordinator checkout:** `/Users/julianhein/Projects/hr-automation-rebuild` · `feature/03c-workflow-migration`
 **Integration target:** `feature/03c-workflow-migration`, recreated from local `master` at `1867c78b6ff9f2ffc891e94aa1394bd7ff3bb642`; D319 scope reset follows the R3 launch record at `956c77b8`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-02 in the D319 scope-reconciliation commit
+**Last verified:** 2026-09-02 21:11 PDT at `c1ecf074` by the successor coordinator
 
 ## Facts every run needs
 
@@ -40,7 +40,7 @@
 | u01–u06 | R1 | closed 2026-09-02 | branch tip `31c3f9a5`; merge `a40276b6`, contained by master merge `29186a31`; supervisor worktree/branch removed; exact task `01a0644f-936c-7d72-8fbc-12a04b527b3e` archived | typecheck/lint, 393 files/4,853 coverage tests, parity 287/287, manifest/roadmap/diff/twins PASS | complete; six findings resolved | bounded D311 compiler complete; D312–D317 successor remains R3 |
 | u10–u12 | R2 | closed 2026-09-02 | branch tip `ed9ee5ac`; merge `b1b36349`, contained by master merge `29186a31`; supervisor worktree/branch removed; exact task `01a0644f-936c-7d72-8fbc-128e5f1b1a47` archived | typecheck, lint, roadmap freshness, diff check PASS; three focused re-reviews Count 0 | complete | Order 1 intake/live provenance complete; read-only T1 decision and fresh I-9 canary remain explicit residue |
 | u25–u28 | R3b | closed 2026-09-02 ~21:00 PDT | branch tip `915d9702`; merge `c258677b` into `feature/03c-workflow-migration`; branch ref deleted; worktree retained by plan for R3c (re-pointed to `feature/phase-3c-migration-c57c2dec9-r3c-deletion-acceptance` at `c258677b`); session `7dee2c47` stopped | coordinator re-ran on `c258677b`: typecheck 0 errors, lint clean, coverage 401 files / 4,921 tests (85.48/76.54/89.43/87.41), parity 287/287, manifest/roadmap/catalog current, diff --check clean, twins identical | Correctness 5 (worst low, 2 fixed), Silent failures 2 (1 fixed allowlist; 1 ruled judgement → D314 wording question), Tests 1 | report `reports/r3-authoring-runtime.md`; residue → R3c/R3d |
-| u29–u32 | R3c | dispatched 2026-09-02 21:02 PDT (session `8dacde07`) | base `c258677b` | pending | required | deletion acceptance + retired-path guard + T1b states |
+| u29–u32 | R3c | session `8dacde07` LOST 2026-09-02 ~21:10 PDT (absent from `claude agents --json`, zero commits on its branch, no report/handoff); relaunched by the successor coordinator — see run-plan wave ledger | base `c258677b` | pending | required | deletion acceptance + retired-path guard + T1b states |
 | u33–u36 | R3d | planned | — | — | required | author documentation package |
 | u15–u19 | R3 | closed 2026-09-02 ~21:00 PDT via R3b | commits `8a931cc6..c1bdcf68` + safety `0566b181`, stabilized by R3b and integrated in merge `c258677b`; branch ref deleted; session `e266c808` stopped 20:21 PDT (context exhausted, over cap) | as R3b row | as R3b row | u15–u18 complete; u19 slice (Person Lookup T1 pair + live-read met, four harness conversions, grouping proof) complete; u19 remainder superseded by u29–u36 |
 | u110–u113 | R4 | held for operator after R3 | — | — | required | 3c-B: accept Person Lookup and Separations, reconcile Phase 3 authorities, run integrated gates and sweep; do not dispatch without operator instruction |
