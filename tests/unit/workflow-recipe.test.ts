@@ -24,7 +24,7 @@ const lookupInput = ({ input }: { input: { emplId?: string; name?: string; keepN
     ? { kind: "by-name" as const, name: input.name ?? "Fixture Person", keepNonHdh: input.keepNonHdh }
     : { kind: "by-eid" as const, emplId: input.emplId };
 
-describe("workflow recipe compiler", () => {
+describe("transitional workflow recipe compiler", () => {
   it("derives execution order and edges from task references while preserving tuple presentation order", () => {
     const graph = descriptorRuntimeNodes(personLookupDescriptor);
 

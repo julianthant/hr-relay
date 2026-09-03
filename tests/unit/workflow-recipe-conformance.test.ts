@@ -34,7 +34,7 @@ function recipeTaskIds(recipe: typeof WORKFLOW_RECIPES[number]["recipe"]): reado
   return recipe.steps.flatMap(([, tasks]) => tasks.map((task) => task.id));
 }
 
-describe("workflow recipe registry conformance", () => {
+describe("transitional workflow recipe registry conformance", () => {
   it("derives the converted population from the one module tuple and refuses a mismatched compiler identity", () => {
     expect(WORKFLOW_RECIPES.map(({ descriptor }) => String(descriptor.id)))
       .toEqual(["person-lookup", "separations"]);
