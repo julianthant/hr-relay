@@ -2,15 +2,15 @@
 
 **Coordination UUID:** `f24df892-5171-48f4-97ff-4e91490f8622` (`Cf24df892`)
 **Coordinator:** task `01a064e2-c3cf-7422-90c7-1dce60d194e5` / host `local` (continued from `01a064c1-e4ef-7bc0-bcd7-0329b5dfd357`); checkout `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/test-suite-rationalization-f24df892-coordinator`
-**Current integration base:** `b80201a6` on `feature/test-suite-rationalization`
+**Current integration base:** `a638e8c3` on `feature/test-suite-rationalization`
 **Current capacity:** two supervisor worktrees while the unrelated Phase 3c worktree and this coordinator checkout occupy the other two auxiliary slots
 
 | Run | Theme | Units | Worker roles | Base | Integration order | Parallel-ready | Needs first | Exit evidence |
 |---|---|---|---|---|---:|---|---|---|
 | R1 | Architecture guards and static/type/lint gates | u01–u06 | Scout/Analyst/Terra | kickoff commit | 1 | yes, Wave 1 with R6 | — | self-contained architecture gate, correct static project wiring, evidence/report |
 | R6 | Playwright parity, performance, smoke, Duo, generated checks | u31–u36 | Scout/Analyst/Terra | kickoff commit | 2 | yes, Wave 1 with R1 | — | parity/check-family inventory, retained-risk evidence, focused gates/report |
-| R2 | Core/domain/workflow/write/storage unit tests | u07–u12 | Scout/Analyst/Terra | reservation commit (record exact SHA before launch) | 3 | yes, Wave 2A with R4 | R1, R6 cleared at `37c080bc` | audited non-server/non-dashboard unit family, focused and full-family gates/report |
-| R4 | Dashboard model/jsdom/component tests versus parity/T2 | u19–u24 | Scout/Analyst/Terra | reservation commit (record exact SHA before launch) | 4 | yes, Wave 2A with R2 | R1, R6 cleared at `37c080bc` | jsdom/pure-model split, overlap evidence, focused gates/report |
+| R2 | Core/domain/workflow/write/storage unit tests | u07–u12 | Scout/Analyst/Terra | `a638e8c3543199f9baa93e18113ec4eeb716bdb5` | 3 | yes, Wave 2A with R4 | R1, R6 cleared at `37c080bc` | audited non-server/non-dashboard unit family, focused and full-family gates/report |
+| R4 | Dashboard model/jsdom/component tests versus parity/T2 | u19–u24 | Scout/Analyst/Terra | `a638e8c3543199f9baa93e18113ec4eeb716bdb5` | 4 | yes, Wave 2A with R2 | R1, R6 cleared at `37c080bc` | jsdom/pure-model split, overlap evidence, focused gates/report |
 | R3a | Server/BFF/runtime tests and real-port hermeticity | u13, u14, u16 | Scout/Analyst/Terra | latest integrated R2+R4 base | 5 | yes, Wave 2B with R5a | R1, R6, R2, R4 integration | active-port reproduction/repair, isolated runtime evidence, focused gates/report |
 | R5a | Scenario inventory, T1 structure, and T1b authority | u25, u26, u29 | Scout/Analyst/Terra | latest integrated R2+R4 base | 6 | yes, Wave 2B with R3a | R1, R6, R2, R4 integration | complete scenario inventory, T1/T1b truth, focused gates/report |
 | R3b | Worker/session tests plus server-family consolidation/review | u15, u17, u18 | Scout/Analyst/Terra | after R2+R4+R3a | 7 | yes, Wave 3 with R5b | R2, R4, R3a | worker/lease audit, cross-layer consolidation, active-port full gate/report |

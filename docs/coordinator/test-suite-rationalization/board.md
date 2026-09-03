@@ -8,7 +8,7 @@
 **Integration target:** `feature/test-suite-rationalization`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-02 at `0d858495`; current coordinator checkout/task binding and prior R1/R6 cleanup verified
+**Last verified:** 2026-09-02 at Wave 2A reservation commit `a638e8c3`; current coordinator checkout/task binding and prior R1/R6 cleanup verified
 
 ## Facts every run needs
 
