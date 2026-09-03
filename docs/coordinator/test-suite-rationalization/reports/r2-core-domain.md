@@ -90,7 +90,7 @@ implementation and pre-review evidence commit.
 | Silent failures | Count 0 · Worst none |
 | Performance | Diff review skipped: no production hot path, runner, fixture topology, timeout, isolation, or parallelism changed |
 | Tests | One P2 hard-coded-default blind spot found and fixed; re-review Count 0 · Worst none |
-| Docs | One medium incomplete commit inventory found and fixed; final re-review follows the report-closing commit |
+| Docs | One medium incomplete commit inventory found and fixed; final re-review Count 0 · Worst none |
 | Security | Count 0 · Worst none; supervisor-owned review found no auth, credential, permission, dependency, browser, command-execution, or production authority mutation |
 | Simplify | Skipped: no production code changed; the test addition and truthful-label edits are already the minimum accepted delta |
 

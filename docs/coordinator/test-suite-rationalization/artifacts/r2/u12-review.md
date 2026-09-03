@@ -94,7 +94,7 @@ the positive projection case could not disprove hard-coded default values. Commi
 that defect. On the complete target, Standards required the repository-level coverage invocation;
 the uncontended result above resolved that omission, with its sole failure assigned to R3a/u16.
 Spec, Correctness, Silent Failures, and Tests re-review passed with no remaining R2-local finding.
-Docs found one incomplete commit inventory in the report; the report-closing change fixes it and
-receives the final Docs re-review. Performance was inapplicable because no hot path/runner changed;
+Docs found one incomplete commit inventory in the report; the report-closing change fixed it and
+the final Docs re-review passed. Performance was inapplicable because no hot path/runner changed;
 supervisor-owned Security found no trust-boundary change. Server-projection relocation and the final
 D317 recipe deletion/rename remain R3/R7 and active Phase 3c residue respectively.
