@@ -137,7 +137,7 @@ doc: 00 §0.3 · Redesign single-source runtime authority · ref:dashboard-surfa
 > Design, but do not yet implement, one CRUD-capable run-record authority for every current, queued, terminal, archived, and deleted run, plus one settings catalog and protected local settings root for every non-provider-key setting. The design must make existing authorities migratable without erasing evidence.
 
 builds:
-- [ ] DOCS canonical run-record identity, lifecycle, typed CRUD/CAS operations, deletion semantics, and projection contract
+- [x] DOCS canonical run-record identity, lifecycle, typed CRUD/CAS operations, deletion semantics, and projection contract — D330 (0.3 Task 1)
 - [ ] DOCS one settings catalog/root, leaf classification, validation, revision/CAS, secret-return policy, and UI edit contract
 - [ ] DOCS migration/read-forward/rollback/recovery rules for the existing SQLite, span, environment, and settings authorities
 - [ ] DOCS deletion tests, proof ladder, implementation seams, and exact 1.6/2.6/3.1 handoff briefs
@@ -146,14 +146,17 @@ needs:
 - phase0-governance
 
 #### 1 · Define the canonical run-record authority {#phase0-run-authority-design}
-status: planned
+status: done
 doc: ref:dashboard-surfaces §2.3 · ref:execution-and-sessions §3 · ref:operator-trust §1
 
 builds:
-- [ ] DOCS make one SQLite-backed run-record service the existence and lifecycle authority for queue, current, terminal, archive, and tombstone states
-- [ ] DOCS expose typed create/read/update/delete and compare-and-swap transitions; keep tables private to adapters
-- [ ] DOCS retain spans, logs, receipts, and artifacts as append-only evidence linked to the run, never competing lifecycle authorities
-- [ ] DOCS specify queue ordering, first-eligible claim, retry/relaunch, archive, purge, and D308's terminal-only physical deletion behind an insert-only tombstone
+- [x] DOCS make one SQLite-backed run-record service the existence and lifecycle authority for queue, current, terminal, archive, and tombstone states — D330 §D330.2–§D330.3
+- [x] DOCS expose typed create/read/update/delete and compare-and-swap transitions; keep tables private to adapters — D330 §D330.4–§D330.5, §D330.10
+- [x] DOCS retain spans, logs, receipts, and artifacts as append-only evidence linked to the run, never competing lifecycle authorities — D330 §D330.9
+- [x] DOCS specify queue ordering, first-eligible claim, retry/relaunch, archive, purge, and D308's terminal-only physical deletion behind an insert-only tombstone — D330 §D330.6–§D330.8
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R01 | D330 landed in ref dashboard-surfaces §D327 → §D330.1–§D330.12 (4e65270f + follow-ups); D268 fold arms, `runs_view` and §2.4 purge-run superseded by dated notes · left: 0.3 Tasks 2–4; 1.6 implements the service, 2.6 migrates readers
 
 #### 2 · Define the canonical settings catalog and root {#phase0-settings-authority-design}
 status: planned

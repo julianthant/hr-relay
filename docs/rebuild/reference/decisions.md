@@ -1,4 +1,4 @@
-# `reference/decisions.md` — the decision ledger (D1–D329, 2026-07-17 → 2026-09-04)
+# `reference/decisions.md` — the decision ledger (D1–D330, 2026-07-17 → 2026-09-04)
 
 **This is the POINTER INDEX, not a spec.** One line per decision saying what was decided, when, and
 **which doc owns it** — never the contract itself. Implement from the owning doc; a decision is not
@@ -2021,3 +2021,13 @@ changes planning and admission authority, preserves historical evidence, and aut
 | # | Decision | Owning doc |
 |---|---|---|
 | **D329** | **PHASE 3.2 FINISHES EVERY CODE-CHANGING WORKFLOW SEAM, REVALIDATES CARRIED WORK AT CURRENT HEAD, COMPLETES PERSON LOOKUP `live-read` AND SEPARATIONS DRY-RUN ACCEPTANCE, THEN INDEPENDENTLY FREEZES ONE EXACT CANDIDATE BEFORE PHASE 3.3 MAY EXERCISE REAL WRITE AUTHORITY.** Historical tasks map exactly into the new numbered structure but remain current-verification pending until re-proved. In-seam defects may be repaired by the owning revalidation supervisor; cross-seam defects create a new 3.2 remediation task; the final freeze is audit-only and restarts after any failure. Phase 3.3 performs no software development and runs four serial tasks: admit candidate/targets/disposition and repeat the no-write rehearsal; prove pending sweep on an independent disposable target; prove the coupled UCPath filing and Kuali finalization on the real target; reconcile acceptance and close. One bounded authorization names the exact candidate/fingerprints, targets, disposition and sequence, and expires on drift, unexpected failure or UNKNOWN. Active filenames are decimal `03.1`–`03.4`; former 03b/03c plans are superseded history and old task/3c-A/3c-B labels are lookup keys only. D329 supersedes D320/D326 only where they encode the inverted Separations-before-authoring order or old 3c split; D319, D309, D310, D326's hierarchy/order and D328's wave grammar remain binding. | `docs/decisions/phase-governance.md` §D329 (context) · docs 03.2/03.3 (execution authority) · roadmap §Governance · ref workflow-model §1.6 · ref write-safety §3.2/§14 |
+
+## Reconciliation round 136 (2026-09-04) — Phase 0.3 Task 1, the run-record lifecycle contract
+
+_phase: 0_
+_D330 records the Phase 0.3 Task 1 design landed by supervisor run R01 (coordination C31da5310): the exact
+run-record lifecycle service contract that D327 required. It changes no runtime code; 1.6 implements it._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D330** | **THE RUN-RECORD LIFECYCLE SERVICE CONTRACT: ONE IDENTITY TUPLE MINTED ONCE AT CREATE, A THREE-WAY EXISTENCE ANSWER (`absent` / `present{live|archived}` / `deleted`), THE CLOSED SEVEN-STATE MACHINE ADOPTED VERBATIM, ONE `version` CAS TOKEN PLUS ONE `claimGeneration` OWNERSHIP FENCE, A CLOSED TYPED OPERATION SET WITH NAMED REFUSALS, ONE TOTAL QUEUE ORDER WITH FIRST-ELIGIBLE CLAIM AS ONE SQLITE WRITE TRANSACTION, RETRY/RESTART/RELAUNCH AS THREE LINEAGES UNDER THE D289 ITEM RULE, AND ARCHIVE/PURGE/DELETE WITH D308 VERBATIM (0.3 Task 1, 2026-09-04).** Design only (D326): 1.6 implements, 2.6 migrates readers, 3.1 consumes. Supersedes in part D268's fold `ended`/`claimedBy` lifecycle arms, retires `runs_view` as a state read, and replaces §2.4's never-built `cli purge-run` row with D308 delete; "purge" names evidence retention only. Evidence linkage, the adapter boundary and the 1.6 property/deletion tests are §D330.9–§D330.11. | ref dashboard-surfaces §D327 / §D330 (primary) · §2.3 · §2.4 · doc 00 §0.3 Task 1 · roadmap `phase0-run-authority-design` |
