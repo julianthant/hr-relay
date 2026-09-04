@@ -315,9 +315,13 @@ worktree sweep proves no 3c-A worktree, local feature branch or exact task resid
 
 **D320 (operator answer 2026-09-03): keep the strict T1b gate.** Separations must record a fresh
 `met` result against a newly vetted closed Kuali document; its existing typed
-`blocked/not-started` result does not satisfy this exit. The operator selected this path but did not
-identify the replacement document in the answer, so the target remains an outstanding input and no
-substitute may be inferred.
+`blocked/not-started` result does not satisfy this exit. The operator supplied the replacement in
+ignored local configuration on 2026-09-03. Live dry-run result
+`abe85e59-3e55-4ac0-99e8-ac1a1856ada1` / run
+`5c9e0c34-f507-48fe-b59b-8c75b9c0051a` verified the Kuali document, UCPath subject, job and
+department reads, then failed before the New Kronos timecard checkpoint with
+`EMPLOYEE_NOT_FOUND`; exact-run write intents/attempts/outbox were 0/0/0. The canary is available,
+but this is not the required `met` result, so the strict exit remains open.
 
 ## 3c-B · Accept Person Lookup and Separations, then close Phase 3
 

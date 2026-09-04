@@ -27,9 +27,6 @@ import { evaluateT1bManifest } from "../../helpers/t1b-manifests.js";
 const WORKFLOW_SCENARIO_ROOT = "tests/scenario/workflows";
 const MANIFEST_FILE = "dry-run.scenario.ts";
 const MANIFEST_REGISTRY_PATH = "src/server/dry-run-scenario/manifests.ts";
-const PHASE_DOC_PATH = "docs/rebuild/03b-finish-separations.md";
-/** The one order-8 status line that names the mapped inventory in prose. */
-const INVENTORY_LINE_MARKER = "the subject/canary inventory mapped live and dated";
 
 /**
  * Every T1b manifest in the layout (ref guards-and-tests §10.9), by workflow id
@@ -113,15 +110,9 @@ function workflowsRegisteredByManifestRegistry(): ReadonlyMap<string, string> {
   return registered;
 }
 
-/**
- * The one subject D284 left, and the document both of its arms address. The
- * literals are the guard's own — transcribed from doc 03b §The canary registry
- * and `docs/migrations/separations.md` §9.19/§9.31 — so config cannot drift
- * from the doc it claims to be the as-built of without this file going red.
- */
+/** The one separations subject D284 left; its number is private configuration (D300). */
 const SOLE_SUBJECT_LABEL = "finalization-canary";
-const SOLE_SUBJECT_DOCUMENT = "4537";
-const SOLE_SUBJECT_LAST_OBSERVED = "2026-09-01";
+const SOLE_SUBJECT_LAST_OBSERVED = "2026-09-03";
 
 /**
  * The ONE test-target reference the registry may commit (D300). The chain arm
@@ -160,42 +151,6 @@ function armsDeclaredBy(target: TestTargetRegistryEntry): readonly Readonly<{ wo
     const arm = target.workflows[workflow];
     return arm === undefined ? [] : [{ workflow, kind: arm.kind }];
   });
-}
-
-/**
- * The doc side of the registry pin. Doc 03b no longer carries the table — it
- * carries ONE status line naming every Kuali document the registry holds as an
- * active identity, and `config/test-subjects.json` must hold exactly that set,
- * in both directions. A document that quietly leaves either side is the drift
- * the registry exists to prevent (§9.16 recorded two canaries evaporating; D284
- * retired every document but one, and the line may name no other).
- */
-function documentNumbersNamedByPhaseDoc(): readonly string[] {
-  const lines = readFileSync(join(REPO_ROOT, PHASE_DOC_PATH), "utf8").split("\n");
-  const matches = lines.filter((line) => line.includes(INVENTORY_LINE_MARKER));
-  const only = matches[0];
-  if (matches.length !== 1 || only === undefined) {
-    throw new Error(`${PHASE_DOC_PATH} must name the mapped canary inventory on exactly one line`);
-  }
-  const numbers = only.match(/\b4\d{3}\b/g);
-  if (numbers === null) {
-    throw new Error(`${PHASE_DOC_PATH} inventory line names no Kuali document number`);
-  }
-  return [...new Set(numbers)].sort();
-}
-
-/**
- * Every Kuali document number config still COMMITS. Since D300 the chain arm
- * commits a closed reference rather than a number — the arm below asserts that
- * directly — so the finalization arm's observation record is the one place a
- * literal remains, and it is what doc 03b's inventory line must agree with.
- */
-function documentNumbersRegisteredInConfig(): readonly string[] {
-  const numbers = TEST_TARGET_REGISTRY.targets.flatMap((target) => {
-    const declared = target.workflows["separations-kuali-finalization"]?.publicInput.documentNumber;
-    return declared === undefined ? [] : [declared];
-  });
-  return [...new Set(numbers)].sort();
 }
 
 describe("test target registry architecture", () => {
@@ -301,7 +256,7 @@ describe("test target registry architecture", () => {
       state: "configured",
       reference: DOCUMENT_NUMBER_REFERENCE,
     });
-    assert.equal(subject.workflows[FINALIZATION_WORKFLOW]?.publicInput.documentNumber, SOLE_SUBJECT_DOCUMENT);
+    assert.deepEqual(subject.workflows[FINALIZATION_WORKFLOW]?.publicInput, {});
   });
 
   it("registers exactly the layout's T1b manifests in the manifest registry, each at its own path", () => {
@@ -317,14 +272,15 @@ describe("test target registry architecture", () => {
     }
   });
 
-  it("pins the sole subject's gone availability and retained observation history", () => {
+  it("pins the sole subject's current availability and submit-free failed rehearsal", () => {
     const canary = TEST_TARGET_REGISTRY.targets.find(({ label }) => label === SOLE_SUBJECT_LABEL);
-    assert.equal(canary?.availability.state, "gone");
+    assert.equal(canary?.availability.state, "available");
     assert.equal(canary?.availability.lastObserved, SOLE_SUBJECT_LAST_OBSERVED);
-    assert.match(String(canary?.availability.reason), /absent from the Kuali Action List/u);
-    assert.match(String(canary?.availability.reason), /DOCUMENT_NOT_IN_ACTION_LIST/u);
-    // D284 keeps the one historical label and its observed leaves when that
-    // subject decays. Availability blocks every start before they are used.
+    assert.match(String(canary?.availability.reason), /EMPLOYEE_NOT_FOUND/u);
+    assert.match(String(canary?.availability.reason), /0\/0\/0/u);
+    // The standalone harness remains blocked on upstream-authored leaves and
+    // commits no observations from the retired document.
+    assert.deepEqual(canary?.workflows[FINALIZATION_WORKFLOW]?.publicInput, {});
     const pending = canary?.workflows[FINALIZATION_WORKFLOW]?.pending ?? {};
     // The resolver judges a leaf pending by a DEFINED reason; zod keeps an
     // explicitly-`undefined` key on the parsed object, so `Object.keys` alone
@@ -439,11 +395,11 @@ describe("test target registry architecture", () => {
     assert.equal(Object.isFrozen(document.reference), true);
   });
 
-  it("registers exactly the Kuali documents doc 03b's inventory line names", () => {
-    assert.deepEqual(documentNumbersRegisteredInConfig(), documentNumbersNamedByPhaseDoc());
-    // The set is pinned as a literal too, so a doc edit that adds a number to
-    // config AND the line together still has to change this file on purpose.
-    assert.deepEqual(documentNumbersRegisteredInConfig(), [SOLE_SUBJECT_DOCUMENT]);
+  it("commits no Kuali document number in either separations arm", () => {
+    const subject = TEST_TARGET_REGISTRY.targets.find(({ label }) => label === SOLE_SUBJECT_LABEL);
+    const serialized = JSON.stringify(subject?.workflows ?? {});
+    assert.equal(/\b4\d{3}\b/u.test(serialized), false);
+    assert.equal(Object.hasOwn(subject?.workflows[FINALIZATION_WORKFLOW]?.publicInput ?? {}, "documentNumber"), false);
   });
 
   it("gives every entry an owning workflow the build manifest actually built", () => {
@@ -476,7 +432,7 @@ describe("test target registry architecture", () => {
       {
         label: SOLE_SUBJECT_LABEL,
         kind: "full-chain-dry-run",
-        state: "gone",
+        state: "available",
         lastObserved: SOLE_SUBJECT_LAST_OBSERVED,
         document: DOCUMENT_NUMBER_REFERENCE.env,
       },
@@ -487,29 +443,30 @@ describe("test target registry architecture", () => {
    * D284 left ONE subject, declared for BOTH resolvers, so the committed
    * registry can no longer exhibit a label that belongs to the other workflow.
    * What it must still exhibit is that each resolver answers from its OWN arm
-   * and never guesses across the boundary. The gone availability claim blocks
-   * the chain before it reads its configured document number. The refusal-BY-NAME path for a subject that lacks an arm is pinned in
+   * and never guesses across the boundary. The refusal-BY-NAME path for a subject that lacks an arm is pinned in
    * tests/unit/test-target-registry.test.ts, which can construct such a subject
    * without committing a false one to config.
   */
   it("answers both resolvers from the one subject's own arm, without cross-workflow guessing", () => {
-    const forbiddenEnvironment = new Proxy(Object.create(null) as NodeJS.ProcessEnv, {
-      get: () => {
-        throw new Error("gone chain resolver must not read an environment");
-      },
+    const chain = resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, "finalization-canary", {
+      [DOCUMENT_NUMBER_REFERENCE.env]: "4999",
     });
-    const chain = resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, "finalization-canary", forbiddenEnvironment);
     assert.deepEqual(chain, {
-      state: "blocked",
+      state: "ready",
       label: "finalization-canary",
-      reason: `blocked: needs ${SOLE_SUBJECT_LABEL}; registry says gone, last observed ${SOLE_SUBJECT_LAST_OBSERVED}`,
+      canonicalInput: {
+        documentNumber: "4999",
+        timekeeperName: "Julian Zaw",
+        searchTimeoutMs: 15_000,
+      },
     });
     const finalization = resolveSeparationsKualiFinalizationTestTarget(
       TEST_TARGET_REGISTRY,
       "finalization-canary",
     );
     assert.equal(finalization.state, "blocked");
-    assert.equal(finalization.reason, `blocked: needs ${SOLE_SUBJECT_LABEL}; registry says gone, last observed ${SOLE_SUBJECT_LAST_OBSERVED}`);
+    assert.match(finalization.reason, /transactionNumber not yet filed/u);
+    assert.match(finalization.reason, new RegExp(`last observed ${SOLE_SUBJECT_LAST_OBSERVED}$`, "u"));
     // Its person leaves are never registry- or environment-supplied, and the
     // resolver says so in one public sentence once the pending leaves clear.
     assert.match(

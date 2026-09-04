@@ -4,18 +4,18 @@
     {
       "label": "finalization-canary",
       "availability": {
-        "state": "gone",
-        "lastObserved": "2026-09-01",
-        "reason": "The 2026-09-01 dry-run read found the document absent from the Kuali Action List (DOCUMENT_NOT_IN_ACTION_LIST); no write was attempted."
+        "state": "available",
+        "lastObserved": "2026-09-03",
+        "reason": "The operator selected the replacement on 2026-09-03 and live dry-run 5c9e0c34-f507-48fe-b59b-8c75b9c0051a verified the Kuali document and UCPath subject reads before New Kronos returned EMPLOYEE_NOT_FOUND; exact-run write intents, attempts and outbox were 0/0/0. The document number remains only in ignored local configuration."
       },
       "provenance": {
-        "document": "docs/rebuild/03b-finish-separations.md",
-        "section": "The canary registry \u2014 doc 4537; docs/migrations/separations.md \u00a79.19; re-verified read-only 2026-08-28 (R2/u1r-a)"
+        "document": "docs/rebuild/03c-migrate-the-remaining-workflows.md",
+        "section": "3c-A exit gate \u2014 replacement selected 2026-09-03; live dry-run result abe85e59-3e55-4ac0-99e8-ac1a1856ada1"
       },
       "usagePolicy": "read-only",
       "cleanupObligation": "Do not save or finalize the Kuali document; a dry-run rehearsal must leave its form unchanged.",
       "owner": "HR automation operator",
-      "purpose": "The one active test subject (D284), selected as ONE Kuali document number in ignored local configuration (D300): the composed separations chain rehearses on it from that number, reads the employee name and document EID from Kuali, resolves the UCPath subject through its identity gate, and carries its declared timekeeper constant into all three writes \u2014 \u2461 the UCPath filing, then \u2460 the sweep on the row \u2461 creates, then \u2462 the Kuali finalization. The standalone separations-kuali-finalization arm is an observation record whose resolver blocks by name: its person leaves are never registry- or environment-supplied. The document's transactionNumber is EMPTY, so \u2462 writes into an empty field rather than over a stale one.",
+      "purpose": "The one active separations test subject (D284), selected as ONE Kuali document number in ignored local configuration (D300): the composed separations chain rehearses on it from that number, reads the employee name and document EID from Kuali, resolves the UCPath subject through its identity gate, and carries its declared timekeeper constant into all three writes \u2014 \u2461 the UCPath filing, then \u2460 the sweep on the row \u2461 creates, then \u2462 the Kuali finalization. The standalone separations-kuali-finalization arm remains a blocked manifest witness and commits no facts from a prior document; its person leaves are never registry- or environment-supplied.",
       "workflows": {
         "separations": {
           "kind": "full-chain-dry-run",
@@ -31,32 +31,7 @@
         },
         "separations-kuali-finalization": {
           "kind": "ordinary",
-          "publicInput": {
-            "actionId": "6a8336ee44b521eae41895dc",
-            "documentNumber": "4537",
-            "emplIdSource": "document-eid",
-            "ucpathDeptId": {
-              "state": "present",
-              "value": "000412"
-            },
-            "ucpathDepartment": {
-              "state": "present",
-              "value": "HOUSING/DINING/HOSPITALITY"
-            },
-            "observedDepartmentOptions": [
-              "- - -",
-              "000141 - Early Childhood Education Center",
-              "000412 - Housing/Dining/Hospitality",
-              "000414 - Bookstore",
-              "000422 - Triton Print & Digital Media",
-              "000719 -  Supply Chain Services"
-            ],
-            "payrollTitleCode": "004920",
-            "payrollTitle": "STDT 3",
-            "lastDayWorked": "08/28/2026",
-            "separationDate": "08/28/2026",
-            "observedExistingComments": ""
-          },
+          "publicInput": {},
           "pending": {
             "transactionNumber": "not yet filed (UCPath filing \u2461 pending)",
             "timekeeperComments": "not authored (the composed chain's comments node composes it)",

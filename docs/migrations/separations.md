@@ -7412,3 +7412,21 @@ assertion `subject-availability: subject-unavailable` — before reading the env
 browser. No run, span, gate, intent, attempt or outbox row was created. D284's rule stands: the label
 and its history are retained and no replacement canary is chosen here; naming one remains an operator
 decision.
+
+### 9.40 Replacement canary first live rehearsal — present, submit-free failure at New Kronos (2026-09-03)
+
+The operator selected a replacement closed Kuali document and stored its number only in ignored
+local configuration, as D300 requires. The committed registry contains the closed reference and no
+document or person identifier. Command
+`npm run cli -- dry-run-scenario separations --subject finalization-canary` produced result
+`abe85e59-3e55-4ac0-99e8-ac1a1856ada1`, run
+`5c9e0c34-f507-48fe-b59b-8c75b9c0051a`, trace `sp-173847-5c9e`, attempt 1.
+
+The live run verified the Kuali Action List binding and document read, resolved the UCPath subject,
+and completed job, active-employment and department-option checkpoints. It then failed before the
+New Kronos timecard-search checkpoint with typed code `EMPLOYEE_NOT_FOUND`. The durable run is
+terminal `failed`; no gate opened; write state is `not-attempted`; and the scenario evaluator
+asserted exact-run `write_intents` / `write_attempts` / `durable_outbox` deltas of **0 / 0 / 0**.
+The result is honest availability evidence but not D320's required fresh `met` T1b. Do not retry it
+as though a deterministic employee-not-found result were transient; either the New Kronos subject
+fact must be corrected with evidence or the operator must select another canary.

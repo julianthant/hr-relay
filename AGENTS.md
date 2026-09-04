@@ -293,6 +293,12 @@ environment-supplied.
 > label and its evidence, change availability to `gone`, block before reading the environment, and
 > choose no replacement. Never retry a decayed canary as though configuration were availability.
 
+> 2026-09-03 — A replacement canary can be live-available without satisfying its T1b case. The
+> first replacement rehearsal verified the Kuali document and UCPath subject, then failed at New
+> Kronos with `EMPLOYEE_NOT_FOUND` and exact-run 0/0/0 write authority. Keep the document number in
+> ignored configuration, remove the prior document's observation leaves instead of relabeling them,
+> record the target as available, and leave the fresh `met` acceptance gate open.
+
 > 2026-09-01 — Calling the command kernel directly can commit a run without publishing the
 > write-once `run.queued` root that every worker span requires. The dry-run scenario start used
 > that lower-level path, so its failed live run remained valid authority but made span reconciliation

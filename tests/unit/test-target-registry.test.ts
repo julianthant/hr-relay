@@ -32,8 +32,8 @@ const DOCUMENT_NUMBER_SECRET = {
 /** The fixture subject's number, configured the way an operator's `.env` does. */
 const FIXTURE_DOCUMENT_NUMBER = "4502";
 const FIXTURE_CONFIGURED_ENV = { [DOCUMENT_NUMBER_SECRET.env]: FIXTURE_DOCUMENT_NUMBER };
-/** The committed canary's number, likewise supplied only by the environment. */
-const COMMITTED_DOCUMENT_NUMBER = "4537";
+/** A private canary-shaped value, supplied only by the test environment. */
+const COMMITTED_DOCUMENT_NUMBER = "4999";
 const COMMITTED_CONFIGURED_ENV = { [DOCUMENT_NUMBER_SECRET.env]: COMMITTED_DOCUMENT_NUMBER };
 
 /**
@@ -157,7 +157,7 @@ function recordingEnv(values: Record<string, string>): {
 }
 
 describe("the committed test target registry", () => {
-  it("carries exactly two subjects: doc 4537 under finalization-canary, and D318's person-lookup-canary", () => {
+  it("carries exactly two closed-reference subjects without committing either identifier", () => {
     assert.deepEqual(TEST_TARGET_REGISTRY.targets.map(({ label }) => label), ["finalization-canary", "person-lookup-canary"]);
     assert.equal(TEST_TARGET_REGISTRY.schemaVersion, 2);
   });
@@ -202,18 +202,22 @@ describe("the committed test target registry", () => {
     assert.equal(Object.hasOwn(chain?.publicInput.document ?? {}, "documentNumber"), false);
   });
 
-  it("blocks the gone composed canary before reading its configured number", () => {
+  it("resolves the available composed canary through its configured number", () => {
     const { env, read } = recordingEnv(COMMITTED_CONFIGURED_ENV);
     const resolution = resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, "finalization-canary", env);
     assert.deepEqual(resolution, {
-      state: "blocked",
+      state: "ready",
       label: "finalization-canary",
-      reason: "blocked: needs finalization-canary; registry says gone, last observed 2026-09-01",
+      canonicalInput: {
+        documentNumber: COMMITTED_DOCUMENT_NUMBER,
+        timekeeperName: "Julian Zaw",
+        searchTimeoutMs: 15_000,
+      },
     });
-    assert.deepEqual(read, []);
+    assert.deepEqual(read, [DOCUMENT_NUMBER_SECRET.env]);
   });
 
-  it("blocks the finalization arm on the gone availability claim", () => {
+  it("blocks the standalone finalization arm on its declared pending leaves", () => {
     const result = resolveSeparationsKualiFinalizationTestTarget(
       TEST_TARGET_REGISTRY,
       "finalization-canary",
@@ -221,7 +225,7 @@ describe("the committed test target registry", () => {
     assert.deepEqual(result, {
       state: "blocked",
       label: "finalization-canary",
-      reason: "blocked: needs finalization-canary; registry says gone, last observed 2026-09-01",
+      reason: "blocked: needs finalization-canary for separations-kuali-finalization; transactionNumber not yet filed (UCPath filing \u2461 pending); timekeeperComments not authored (the composed chain's comments node composes it); terminationEffectiveDate not observed on the form; the chain's dates node derives it (separation date + 1), last observed 2026-09-03",
     });
     // Since D300 this resolver cannot spend a credential because it cannot be
     // HANDED one: it takes the registry and the label, and nothing else.

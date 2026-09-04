@@ -29,7 +29,10 @@ On 2026-09-03 the operator chose A/A:
 - Once every 3c-A exit condition is green, 3c-B is authorized to start and close Phase 3 without a
   second start approval.
 
-The answer selected no replacement document, waived no gate, authorized no external write, and did
-not admit a third workflow.
+The operator subsequently selected the replacement in ignored local configuration. The first live
+dry-run verified the Kuali document and UCPath reads but failed at the New Kronos employee search,
+with exact-run write authority still 0/0/0. The target is available; the required fresh `met`
+result remains open. No gate was waived, no external write was authorized, and no third workflow
+was admitted.
 
 Normative owner: doc 03c §3c-A exit gate and §3c-B.
