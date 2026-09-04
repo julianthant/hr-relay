@@ -346,6 +346,11 @@ environment-supplied.
   legacy and absent prefixes. Source headings, node ids, anchors and D326 execution labels remain the
   authority; this is a deterministic presentation name only.
 
+- **2026-09-03 — roadmap cards are bounded execution summaries.** The map omits `status: never` nodes
+  while retaining them in the plan, shows output progress as one built/total reading instead of square
+  markers, keeps long phase roll-ups in the inspector, and ellipsizes phase metadata before the card
+  edge. Preserve those constraints in `tests/unit/roadmap/roadmap-ui.test.ts`.
+
 - **2026-09-03 — the roadmap site is a desktop master-detail operations map.**
   `scripts/generate-roadmap.ts` owns the interface and `docs/roadmap/index.html` stays generated. The
   command bar and plan facts sit above a scrollable map; the 420px inspector rail participates in layout

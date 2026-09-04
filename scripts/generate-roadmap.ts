@@ -93,7 +93,7 @@ function displayTitle(title: string): string {
     .replace(/^Phase\s+\d+\s+exit\s*[—-]\s*/i, "")
     .replace(/^Phase\s+\d+\s*·\s*/i, "")
     .replace(/^(?:\d+[a-z](?:-spine)?)(?:\s*·\s*\d+[a-z](?:-spine)?)*\s*[—-]\s*/i, "")
-    .replace(/^\d+[a-z]?\s*·\s*/i, "")
+    .replace(/^\d+(?:\.\d+)*(?:[a-z])?\s*·\s*/i, "")
     .trim();
   return withoutCode.length === 0 ? title : withoutCode[0]?.toUpperCase() + withoutCode.slice(1);
 }
@@ -480,7 +480,9 @@ function buildItemNode(item: Item, parentKey: string, index: number, registry: M
     detail,
     docHtml: "",
     docProgress: NO_DOC_PROGRESS,
-    children: (item.items ?? []).map((child, i) => buildItemNode(child, key, i, registry, identities)),
+    children: (item.items ?? [])
+      .filter((child) => child.status !== "never")
+      .map((child, i) => buildItemNode(child, key, i, registry, identities)),
     depth: 0, x: 0, y: 0, w: NODE_W, h: NODE_H, rowCenter: 0,
   };
 }
@@ -488,7 +490,9 @@ function buildItemNode(item: Item, parentKey: string, index: number, registry: M
 function buildPhaseNode(node: PhaseNode, registry: Map<string, Registered>, identities: Map<string, DisplayIdentity>): TreeNode {
   const features = resolveFeatures(node.features, node.status);
   const identity = identities.get(node.id) ?? { code: node.phase, title: node.title, name: node.title };
-  const parts = node.items.map((item, i) => buildItemNode(item, node.id, i, registry, identities));
+  const parts = node.items
+    .filter((item) => item.status !== "never")
+    .map((item, i) => buildItemNode(item, node.id, i, registry, identities));
   parts.sort((left, right) => {
     const leftCode = /^(\d+)([a-z])\b/i.exec(left.title);
     const rightCode = /^(\d+)([a-z])\b/i.exec(right.title);
@@ -657,6 +661,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
   let flagIndex = 0;
   for (const node of roadmap.spine) {
     if (node.kind === "phase") {
+      if (node.status === "never") continue;
       const root = buildPhaseNode(node, registry, identities);
       attachDocs(root, docs);
       const bandHeight = layoutPhase(root, cursor);
@@ -747,7 +752,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
         .map((line, i) => `<tspan x="${N(node.x + 16)}" dy="${i === 0 ? 0 : 17}">${escapeHtml(line)}</tspan>`)
         .join("");
       const eyebrow = isPhase && node.eyebrow !== undefined
-        ? `<text class="eb" x="${N(node.x + 16)}" y="${N(node.y + 21)}">${escapeHtml((`${node.code} · ${node.eyebrow.replace(/^Phase\s+\d+\s*·\s*/i, "")}`).toUpperCase())}</text>`
+        ? `<text class="eb" x="${N(node.x + 16)}" y="${N(node.y + 21)}">${escapeHtml(wrapTitle((`${node.code} · ${node.eyebrow.replace(/^Phase\s+\d+\s*·\s*/i, "")}`).toUpperCase(), Math.floor((node.w - 32) / 5.8), 1)[0] ?? "")}</text>`
         : `<text class="task-code" x="${N(node.x + 16)}" y="${N(node.y + 20)}">${escapeHtml(node.code)}</text>`;
       const dotY = isPhase ? node.y + node.h - 17 : node.y + 17;
       const stateX = isPhase ? node.x + 28 : node.x + node.w - 16;
@@ -760,24 +765,16 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
       const info = infoText === undefined
         ? ""
         : `<text class="info ${infoTone}" x="${N(node.x + 16)}" y="${N(node.y + 72)}">${escapeHtml(wrapTitle(infoText, Math.floor((node.w - 32) / 5.8), 1)[0] ?? "")}</text>`;
-      // the built-by-layer bar: one square per feature, filled when done
-      const squares = node.features.slice(0, 10).map((f, i) => {
-        const sx = node.x + 16 + i * 12;
-        const sy = node.y + node.h - 17;
-        return `<rect class="fq ${f.layer ?? "plain"} ${f.status}" x="${N(sx)}" y="${N(sy)}" width="9" height="9" rx="2"/>`;
-      }).join("");
-      const more = node.features.length > 10 ? `<text class="fq-more" x="${N(node.x + 16 + 10 * 12)}" y="${N(node.y + node.h - 9)}">+${String(node.features.length - 10)}</text>` : "";
       const built = node.features.filter((f) => f.status === "done").length;
       const countText = node.features.length === 0 ? "" : `${String(built)} / ${String(node.features.length)} built`;
       const rightText = [node.size, countText].filter((t): t is string => t !== undefined && t.length > 0).join(" · ");
       const right = rightText.length === 0 ? "" : `<text class="meta" x="${N(node.x + node.w - 16)}" y="${N(node.y + node.h - 9)}" text-anchor="end">${escapeHtml(rightText)}</text>`;
-      const phaseChipText = node.chip?.text.replace(/\*\*/g, "").toUpperCase();
-      const chip = isPhase && node.chip !== undefined && phaseChipText !== stateLabel
-        ? `<text class="pc ${node.chip.tone ?? node.status}" x="${N(node.x + node.w - 16)}" y="${N(node.y + node.h - 14)}" text-anchor="end">${escapeHtml(phaseChipText ?? "")}</text>`
-        : "";
-      const phaseBar = isPhase ? "" : squares + more + info;
+      // Phase chips summarize several child states and do not fit beside the
+      // phase status. Their complete text remains first-class in the
+      // inspector; the card keeps one unambiguous state line.
+      const phaseBar = isPhase ? "" : info;
       // the doc-progress tick: a hairline along the card's bottom edge, below
-      // both the layer squares and the meta line, so it adds a reading without
+      // the card's metadata, so it adds a reading without
       // taking any room. Absent when no doc has assessed this node's subtree.
       const doc = node.docProgress;
       const tickW = node.w - 24;
@@ -785,7 +782,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
         ? ""
         : `<rect class="dpt" x="${N(node.x + 12)}" y="${N(node.y + node.h - 4)}" width="${N(tickW)}" height="2" rx="1"/><rect class="dpt on" x="${N(node.x + 12)}" y="${N(node.y + node.h - 4)}" width="${N((tickW * doc.done) / doc.total)}" height="2" rx="1"/>`;
       const spokenProgress = node.features.length === 0 ? "" : `, ${String(built)} of ${String(node.features.length)} outputs built`;
-      return `<a class="${cls}" href="#${node.key}" data-key="${node.key}" aria-label="${escapeHtml(`${node.code}, ${node.title}, ${stateLabel.toLowerCase()}${spokenProgress}`)}"><g><rect class="bx" x="${N(node.x)}" y="${N(node.y)}" width="${N(node.w)}" height="${N(node.h)}" rx="8"/>${eyebrow}${dot}${state}<text class="tt" x="${N(node.x + 16)}" y="${N(titleY)}">${title}</text>${phaseBar}${isPhase ? chip : right}${tick}</g></a>`;
+      return `<a class="${cls}" href="#${node.key}" data-key="${node.key}" aria-label="${escapeHtml(`${node.code}, ${node.title}, ${stateLabel.toLowerCase()}${spokenProgress}`)}"><g><rect class="bx" x="${N(node.x)}" y="${N(node.y)}" width="${N(node.w)}" height="${N(node.h)}" rx="8"/>${eyebrow}${dot}${state}<text class="tt" x="${N(node.x + 16)}" y="${N(titleY)}">${title}</text>${phaseBar}${isPhase ? "" : right}${tick}</g></a>`;
     })
     .join("");
 
@@ -825,7 +822,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
 
 /*
  * THESIS: A roadmap should read like an operations map, not a miniature dashboard trapped inside every node.
- * OWN-WORLD: Cool paper and ink, one cobalt action accent, semantic green/amber/blue, square controls, fine route lines.
+ * OWN-WORLD: Cool paper and ink, one cobalt action accent, semantic green/amber/blue, fine route lines.
  * STORY: Scan the phase spine, follow one workstream, inspect a node, then return to the full plan without losing place.
  * FIRST VIEWPORT: Compact command bar and facts above a full-height map, with a stable inspector rail at the right.
  * FORM: Desktop master-detail operations map; predictable structure, dense data, and no modal interruption.
@@ -892,7 +889,7 @@ const CSS = String.raw`
   .drawer .hint{color:var(--fg-2);font-size:13px;margin:0 0 10px;max-width:65ch}
   .dh{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px} .eb2{font-family:var(--mono);font-size:11px;color:var(--fg-3)}
   .key-section{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.key-section h3{font-size:13px;margin:0 0 8px;font-weight:650}.key-list{display:grid;gap:8px;margin:0}.key-row{display:grid;grid-template-columns:92px 1fr;gap:12px;align-items:start}.key-row dt{font:600 11px/1.5 var(--mono);color:var(--fg-3)}.key-row dd{margin:0;color:var(--fg-2);font-size:12.5px}.sample-line{display:inline-block;width:30px;border-top:2px solid var(--line-strong);vertical-align:middle;margin-right:5px}.sample-line.req-open{border-color:var(--accent);border-top-style:dashed}.sample-line.req-met{border-color:var(--ok-mark)}
-  .feature-sample{display:inline-block;width:10px;height:10px;border:1.5px solid var(--line-strong);border-radius:2px;vertical-align:-1px;margin-right:3px;background:var(--card)}.feature-sample.done{background:var(--fg-3)}.feature-sample.frontend{border-color:var(--info-mark)}.feature-sample.frontend.done{background:var(--info-mark)}.feature-sample.both{border-color:var(--accent)}.feature-sample.both.done{background:var(--accent)}.feature-sample.wiring{border-color:var(--warn-mark)}.feature-sample.wiring.done{background:var(--warn-mark)}.doc-rule{display:inline-block;width:48px;height:4px;background:linear-gradient(90deg,var(--fg-3) 60%,var(--line-strong) 60%);border-radius:2px;vertical-align:2px;margin-right:5px}
+  .doc-rule{display:inline-block;width:48px;height:4px;background:linear-gradient(90deg,var(--fg-3) 60%,var(--line-strong) 60%);border-radius:2px;vertical-align:2px;margin-right:5px}
 
   /* Roadmap map */
   .tree .spine{stroke:var(--line-strong);stroke-width:2.5}
@@ -907,8 +904,6 @@ const CSS = String.raw`
   .tree .state{fill:var(--fg-3);font-family:var(--mono);font-size:9px;font-weight:650;letter-spacing:.06em}.tree .done .state{fill:var(--ok)}.tree .active .state{fill:var(--info)}.tree .you .state{fill:var(--warn)}.tree .proposed .state{fill:var(--accent)}
   .tree .meta{fill:var(--fg-3);font-family:var(--mono);font-size:9px;font-variant-numeric:tabular-nums}
   .tree .info{font-family:var(--mono);font-size:9.5px;fill:var(--fg-3)} .tree .info.done{fill:var(--ok)} .tree .info.active{fill:var(--info)} .tree .info.you{fill:var(--warn)} .tree .info.proposed{fill:var(--accent)} .tree .info.never{fill:var(--fg-4)}
-  .tree .pc{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;font-weight:600;fill:var(--fg-3)}
-  .tree .pc.done{fill:var(--ok)} .tree .pc.active{fill:var(--info)} .tree .pc.you{fill:var(--warn)} .tree .pc.proposed{fill:var(--accent)}
   .tree .st{fill:var(--card);stroke:var(--line-strong);stroke-width:2}
   .tree .done .st{fill:var(--ok-mark);stroke:var(--ok-mark)} .tree .active .st{fill:var(--info-mark);stroke:var(--info-mark)}
   .tree .you .st{fill:var(--warn-mark);stroke:var(--warn-mark)} .tree .proposed .st{fill:var(--accent);stroke:var(--accent)} .tree .never .st{stroke-dasharray:2 2}
@@ -921,10 +916,6 @@ const CSS = String.raw`
   .tree .planned.avail .bx{stroke:var(--fg-2);stroke-width:2}
   .tree .phase .bx{stroke-width:2}
   .tree .nd.sel .bx{stroke:var(--accent);stroke-width:3;stroke-dasharray:none}.tree .nd.rel:not(.sel) .bx{stroke:var(--accent);stroke-width:1.75}
-  .tree .fq{fill:var(--card);stroke:var(--fg-4);stroke-width:1.2}
-  .tree .fq.frontend{stroke:var(--info-mark)} .tree .fq.both{stroke:var(--accent)} .tree .fq.wiring{stroke:var(--warn-mark)} .tree .fq.backend{stroke:var(--fg-3)} .tree .fq.docs,.tree .fq.proof{stroke:var(--fg-4)}
-  .tree .fq.done{fill:var(--fg-3)} .tree .fq.frontend.done{fill:var(--info-mark)} .tree .fq.both.done{fill:var(--accent)} .tree .fq.wiring.done{fill:var(--warn-mark)} .tree .fq.backend.done{fill:var(--fg-3)} .tree .fq.docs.done,.tree .fq.proof.done{fill:var(--fg-4)}
-  .tree .fq-more{fill:var(--fg-3);font-family:var(--mono);font-size:9px}
   /* The doc-progress rule is deliberately quiet and is explained in the guide. */
   .tree .dpt{fill:var(--line-strong)} .tree .dpt.on{fill:var(--fg-3)}
   .tree .flag rect{fill:var(--well);stroke:var(--line)} .tree .flag circle{fill:var(--ok-mark)} .tree .flag text{fill:var(--fg-2);font-size:11.5px}
@@ -1096,12 +1087,11 @@ function renderPage(roadmap: Roadmap, docs: DocBindingIndex): string {
     .join("");
   const dataJson = JSON.stringify(data).replaceAll("<", "\\u003c");
   const aboutHtml = `<p class="hint">${inline(roadmap.meta.lede)}</p>
-<section class="key-section"><h3>Read the structure</h3><p class="hint">Numbered phases run down the left spine. Lettered workstreams run left to right. Each workstream's tasks stack beneath it. Every task name starts with its full path, so <code>3B.1A</code> is task 1A inside workstream 3B. Select any node to inspect its full record; click blank map space to return here.</p></section>
+<section class="key-section"><h3>Read the structure</h3><p class="hint">Numbered phases run down the left spine. Phase parts run left to right, and each part's tasks stack beneath it. Every task name starts with its full path, so <code>3.1.1</code> is task 1 inside part 3.1. Select any node to inspect its full record; click blank map space to return here.</p></section>
 <section class="key-section"><h3>Node status</h3><div class="legend" aria-label="Node status legend">
-<span><i class="sw done"></i>Complete</span><span><i class="sw active"></i>Active now</span><span><i class="sw you"></i>Needs you</span><span><i class="sw avail"></i>Ready next</span><span><i class="sw locked"></i>Blocked</span><span><i class="sw proposed"></i>Proposed</span><span><i class="sw never"></i>Deferred</span>
+<span><i class="sw done"></i>Complete</span><span><i class="sw active"></i>Active now</span><span><i class="sw you"></i>Needs you</span><span><i class="sw avail"></i>Ready next</span><span><i class="sw locked"></i>Blocked</span><span><i class="sw proposed"></i>Proposed</span>
 </div></section>
 <section class="key-section"><h3>Inside each node</h3><dl class="key-list">
-<div class="key-row"><dt><i class="feature-sample frontend done"></i><i class="feature-sample wiring"></i></dt><dd>Each square is one planned output. Filled means built; outline means open. Color names the engineering layer.</dd></div>
 <div class="key-row"><dt><span class="lay frontend">FE</span> <span class="lay backend">BE</span></dt><dd>Frontend and backend work. <span class="lay both">BOTH</span> is a vertical slice; <span class="lay wiring">WIRE</span> connects existing halves; <span class="lay docs">DOCS</span> changes authority; <span class="lay proof">PROOF</span> is measured or live evidence.</dd></div>
 <div class="key-row"><dt>S / M / L / XL</dt><dd>Estimated implementation size.</dd></div>
 <div class="key-row"><dt>7 / 9 built</dt><dd>Outputs landed at the roadmap's recorded HEAD.</dd></div>
