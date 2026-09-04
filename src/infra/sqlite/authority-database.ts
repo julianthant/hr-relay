@@ -5028,9 +5028,7 @@ export class AuthorityDatabase implements Disposable {
             const audit = this.#readRecord("command_audits", record.auditId, CommandAuditRecordSchema);
             const commandFingerprint = command === undefined
               ? undefined
-              : createHash("sha256")
-                  .update(`hrauto:protected-settings-command:v1\0${canonicalJsonStringify(command)}`)
-                  .digest("hex");
+              : deriveSettingsCommandFingerprint(command);
             const commandTarget = command === undefined ? undefined : objectProperty(command, "target");
             const auditResult: unknown = audit?.result;
             const result = typeof auditResult === "object" && auditResult !== null

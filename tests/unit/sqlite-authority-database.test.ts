@@ -472,7 +472,7 @@ function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
 }
 
-function createExactReleasedDatabase(path: string, version: 27 | 28 | 29): void {
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
@@ -923,6 +923,31 @@ describe("native SQLite authority schema", () => {
     } finally {
       raw.close();
     }
+  });
+
+  it("refuses an at-floor authority whose immutable baseline claims another target", () => {
+    const path = databasePath("invalid-baseline-target.sqlite");
+    createExactReleasedDatabase(path, 30);
+    const raw = new DatabaseSync(path);
+    raw.prepare(`
+      INSERT INTO authority_upgrades (
+        record_key, upgrade_id, phase, record_json, created_at
+      ) VALUES (?, 'fresh', 'baseline', ?, ?)
+    `).run(UUID_1, JSON.stringify({
+      recordKey: UUID_1,
+      upgradeId: "fresh",
+      phase: "baseline",
+      fromSchemaVersion: 0,
+      toSchemaVersion: 1,
+      by: "local-operator",
+      recordedAt: NOW,
+    }), NOW);
+    raw.close();
+
+    assert.throws(
+      () => openDatabase(path),
+      /authority table authority_upgrades record .* failed strict record schema validation/u,
+    );
   });
 
   it.each([
