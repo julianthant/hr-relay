@@ -605,7 +605,10 @@ read-only no-migrate open mode for `storage backup`, `storage doctor` and the up
 `baseline` `authority_upgrades` row written in the transaction that creates a fresh at-floor database
 (D321 regeneration), and the `protectedSettingsCurrent` singleton repository (get / advance-in-transaction)
 so wave peer 2-2 never edits this file; the `authority-ahead` open wrapper that releases the `server`
-process record (§D332.6). **Owes:** §D332.11 M3 (the open half), M9, M21, M10's `baseline` cell; the
+process record (§D332.6); `src/server/dashboard/compose.ts` and its focused composition test solely to
+place the already-acquired `server` process lock inside that open-failure wrapper. The operator admitted
+this narrow seam expansion on 2026-09-04 because preserving the earlier file list would leave M9
+unimplemented with no later owner. **Owes:** §D332.11 M3 (the open half), M9, M21, M10's `baseline` cell; the
 `planned` `guard-inventory.json` entry for `no-lifecycle-sql-outside-the-adapter` (activation: 1.6 Task 4;
 its `.test.ts` must not exist yet, ref guards-and-tests §5.1). **Gate:** base + those proofs + every
 existing storage/backup/doctor suite green with a v29 fixture that `storage backup` and `storage doctor`

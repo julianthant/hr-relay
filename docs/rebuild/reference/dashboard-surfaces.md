@@ -1966,11 +1966,16 @@ the row was written after the backup, which is the property that makes the backu
 ##### D332.5 — journal, idempotence, replay
 
 **The journal is `authority_upgrades`**, an insert-only table in the authority database (it is the D321
-coupling's own half: the database proves what happened to the settings files beside it). One row per
-phase, keyed `(upgradeId, phase ∈ {baseline, planned, committed, settled})`; `baseline` is written
-exactly once, by D321 regeneration, in the transaction that creates a fresh at-floor database (its
-`upgradeId` is the literal `fresh`); `planned` rows may repeat across attempts (each attempt is
-evidence); `committed` and `settled` are UNIQUE per `upgradeId`. A row
+coupling's own half: the database proves what happened to the settings files beside it). Every row has
+its own opaque `record_key` (`recordKey` in the parsed record), minted fresh for that append; it is the
+table's primary identity and never participates in `upgradeId`. The phase is
+`phase ∈ {baseline, planned, committed, settled}`. Partial unique indexes enforce at most one
+`baseline`, `committed`, and `settled` row per `upgradeId`; `planned` is deliberately excluded, so the
+same deterministic `upgradeId` may retain multiple planned attempts as distinct evidence rows.
+`baseline` is written exactly once, by D321 regeneration, in the transaction that creates a fresh
+at-floor database (its `upgradeId` is the literal `fresh`). This separate row identity resolves the
+earlier contradictory wording that both keyed every row by `(upgradeId, phase)` and required repeated
+`planned` rows (operator choice, 2026-09-04). A row
 carries: `upgradeId`, `planDigest`, `fromSchemaVersion`, `toSchemaVersion`, the backup binding
 `{ manifestPath, sha256, authorityGeneration }`, the settings identities `{ ordinaryRevisionBefore,
 ordinaryRevisionAfter, settingsFingerprintAfter, settingsSchemaHashAfter, protectedRevisionAfter,
