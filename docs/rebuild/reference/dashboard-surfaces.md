@@ -751,6 +751,8 @@ no second path a badge could take.
 The rebuild owns the distinct `.tracker-rebuild/` state root. Production `src` owns `.tracker/`;
 neither runtime reads or writes the other's root.
 
+> 2026-09-04 | D331 (R02) | STALE since D321: both runtimes name their root `.tracker` (repo-relative, never shared); the rebuild's tree below reads `.tracker/` and, at 1.6, gains `settings/` — the D331 protected settings root (`settings.json`, `protected.json`, `authority.json`, transient prepare/rollback, one lock) beside the database that journals it (ref clock-config-secrets §D331.3). Read `.tracker-rebuild/` in the tree as `.tracker/`.
+
 ```
 .tracker-rebuild/
 ├── spans/   <workflow>-<date>.jsonl   span events (low volume — the queue/timeline truth)
