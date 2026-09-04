@@ -1,5 +1,14 @@
 import { z } from "zod";
 import { deepFreeze } from "./immutability.js";
+import {
+  CommandAuditIdSchema,
+  CommandIdSchema,
+  FingerprintSchema,
+  IsoInstantSchema,
+  LOCAL_OPERATOR_ACTOR_ID,
+  NonNegativeIntSchema,
+  PositiveIntSchema,
+} from "./ids.js";
 
 export const AuthorityTableNameSchema = z.enum([
   "authority_meta",
@@ -51,6 +60,8 @@ export const AuthorityTableNameSchema = z.enum([
   "worker_pools",
   "run_sessions",
   "deleted_runs",
+  "protected_settings_current",
+  "authority_upgrades",
 ]);
 
 export const ProjectionTableNameSchema = z.enum([
@@ -128,3 +139,92 @@ export type AuthorityTableName = z.infer<typeof AuthorityTableNameSchema>;
 export type ProjectionTableName = z.infer<typeof ProjectionTableNameSchema>;
 export type TableName = z.infer<typeof TableNameSchema>;
 export type TableSpec = z.infer<typeof TableSpecSchema>;
+
+export const AuthorityUpgradePhaseSchema = z.enum([
+  "baseline",
+  "planned",
+  "committed",
+  "settled",
+]);
+
+const AuthorityUpgradeRecordBaseSchema = z.strictObject({
+  recordKey: z.uuid(),
+  upgradeId: z.union([z.literal("fresh"), FingerprintSchema]),
+  fromSchemaVersion: NonNegativeIntSchema,
+  toSchemaVersion: PositiveIntSchema,
+  by: z.literal(LOCAL_OPERATOR_ACTOR_ID),
+  recordedAt: IsoInstantSchema,
+});
+
+const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
+  upgradeId: z.literal("fresh"),
+  phase: z.literal("baseline"),
+  fromSchemaVersion: z.literal(0),
+});
+
+const AuthorityUpgradeExecutionRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
+  upgradeId: FingerprintSchema,
+  phase: z.enum(["planned", "committed", "settled"]),
+  planDigest: FingerprintSchema,
+  backup: z.strictObject({
+    manifestPath: z.string().min(1),
+    sha256: FingerprintSchema,
+    authorityGeneration: NonNegativeIntSchema,
+  }),
+  settings: z.strictObject({
+    ordinaryRevisionBefore: PositiveIntSchema,
+    ordinaryRevisionAfter: PositiveIntSchema,
+    settingsFingerprintAfter: FingerprintSchema,
+    settingsSchemaHashAfter: FingerprintSchema,
+    protectedRevisionAfter: PositiveIntSchema,
+    protectedEntryNames: z.array(z.string().min(1)),
+  }),
+  tombstoneBackfill: z.strictObject({
+    fromRoots: NonNegativeIntSchema,
+    fromReconstructedRoots: NonNegativeIntSchema,
+    unknown: NonNegativeIntSchema,
+  }),
+  orphanGateRecordsRemoved: NonNegativeIntSchema,
+  historicalExposure: z.array(z.literal("operator.timekeeperName")),
+  envKeysToRemove: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/u)),
+});
+
+/** D332.5 — append-only upgrade evidence; protected values never enter this record. */
+export const AuthorityUpgradeRecordSchema = z.discriminatedUnion("phase", [
+  AuthorityUpgradeBaselineRecordSchema,
+  AuthorityUpgradeExecutionRecordSchema,
+]);
+export type AuthorityUpgradeRecord = z.infer<typeof AuthorityUpgradeRecordSchema>;
+
+export const ProtectedSettingsEntrySchema = z.strictObject({
+  name: z.string().min(1),
+  valueId: z.uuid(),
+  updatedAt: IsoInstantSchema,
+});
+
+/** D331.4 — the protected document's journal identity; never a value, digest, or length. */
+export const ProtectedSettingsCurrentRecordSchema = z.strictObject({
+  revision: PositiveIntSchema,
+  commandId: CommandIdSchema,
+  commandFingerprint: FingerprintSchema,
+  auditId: CommandAuditIdSchema,
+  committedAt: IsoInstantSchema,
+  entries: z.array(ProtectedSettingsEntrySchema),
+}).superRefine((record, context) => {
+  if (record.revision < 2) {
+    context.addIssue({
+      code: "custom",
+      path: ["revision"],
+      message: "protected settings current authority begins at the first applied revision 2",
+    });
+  }
+  const names = record.entries.map(({ name }) => name);
+  if (new Set(names).size !== names.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["entries"],
+      message: "protected settings current entry names must be unique",
+    });
+  }
+});
+export type ProtectedSettingsCurrentRecord = z.infer<typeof ProtectedSettingsCurrentRecordSchema>;

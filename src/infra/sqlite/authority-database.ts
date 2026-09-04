@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
@@ -11,8 +11,11 @@ import {
 import type { ProviderAdmissionRepository } from "../../base/providers.js";
 import {
   AUTHORITY_TABLE_REGISTRY,
+  AuthorityUpgradeRecordSchema,
   AuthorityTableNameSchema,
+  ProtectedSettingsCurrentRecordSchema,
   ProjectionTableNameSchema,
+  type ProtectedSettingsCurrentRecord,
   type AuthorityTableName,
   type ProjectionTableName,
   type TableName,
@@ -55,6 +58,7 @@ import {
   FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
+  LOCAL_OPERATOR_ACTOR_ID,
   NonNegativeIntSchema,
   OutboxIdSchema,
   ProviderAdmissionIdSchema,
@@ -283,10 +287,11 @@ import {
 import {
   AUTHORITY_APPLICATION_ID,
   CURRENT_AUTHORITY_SCHEMA_VERSION,
-  SQLITE_TABLE_DDL,
-  RETIRED_PHONE_CAPTURE_TABLES,
+  INTEGRATED_AUTHORITY_TABLES_BY_VERSION,
   SQLITE_MIGRATIONS,
+  UPGRADE_FLOOR_SCHEMA_VERSION,
   auditMigrationTableCoverage,
+  requiresStoppedSystemAuthorityUpgrade,
   tableClassification,
 } from "./migrations.js";
 import {
@@ -338,10 +343,18 @@ import {
   type PermanentWriteResolution,
 } from "./write-commit-contracts.js";
 
+export const AuthorityDatabaseOpenModeSchema = z.enum([
+  "read-write",
+  "storage-backup-read-only-no-migrate",
+  "storage-doctor-read-only-no-migrate",
+  "storage-upgrade-preflight-read-only-no-migrate",
+]);
+
 export const AuthorityDatabaseOptionsSchema = z.strictObject({
   path: z.string().min(1),
   busyTimeoutMs: z.number().int().positive(),
   migrationOwner: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  openMode: AuthorityDatabaseOpenModeSchema.default("read-write"),
 });
 
 export const AuthorityMetaSchema = z.strictObject({
@@ -416,6 +429,11 @@ type RuntimeConfigRepository = Readonly<{
 type SettingsCurrentRepository = Readonly<{
   get(): SettingsCurrentRecord | undefined;
   advance(input: unknown): SettingsCurrentRecord;
+}>;
+
+type ProtectedSettingsCurrentRepository = Readonly<{
+  get(): ProtectedSettingsCurrentRecord | undefined;
+  advanceInTransaction(input: unknown): ProtectedSettingsCurrentRecord;
 }>;
 
 /**
@@ -939,6 +957,7 @@ export type AuthorityRepositories = Readonly<{
   notifications: NotificationRepository;
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
   settingsCurrent: SettingsCurrentRepository;
+  protectedSettingsCurrent: ProtectedSettingsCurrentRepository;
   runtimeConfig: RuntimeConfigRepository;
   versionPlans: VersionPlanRepository;
   versionBumpApplications: ImmutableRepository<VersionBumpApplicationStorageRecord> & Readonly<{
@@ -1191,6 +1210,10 @@ function parseJsonRecord<Schema extends z.ZodType>(schema: Schema, text: string)
 function activityPseudonymObjectProperty(value: unknown, key: string): unknown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   return Reflect.get(value, key);
+}
+
+function objectProperty(value: object, key: string): unknown {
+  return Reflect.get(value, key) as unknown;
 }
 
 function sqliteChanges(value: number | bigint): number {
@@ -1772,9 +1795,10 @@ function invariantViolations(database: DatabaseSync): readonly string[] {
   });
 }
 
-function validateAuthorityRecordSchemas(database: DatabaseSync): number {
+function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: ReadonlySet<string>): number {
   let validated = 0;
   for (const [table, schema] of Object.entries(AUTHORITY_RECORD_SCHEMA_REGISTRY)) {
+    if (presentTables !== undefined && !presentTables.has(table)) continue;
     const rows = database.prepare(`
       SELECT record_key, record_json FROM ${table} ORDER BY record_key
     `).iterate();
@@ -2504,6 +2528,10 @@ export class AuthorityDatabase implements Disposable {
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     const existed = options.path !== ":memory:" && existsSync(options.path);
+    const readOnlyNoMigrate = options.openMode !== "read-write";
+    if (readOnlyNoMigrate && !existed) {
+      throw new Error(`${options.openMode} requires an existing authority database`);
+    }
     if (existed && statSync(options.path).size === 0) {
       throw new Error(`authority database ${options.path} exists but is empty; refusing to replace it`);
     }
@@ -2513,6 +2541,7 @@ export class AuthorityDatabase implements Disposable {
     this.#path = options.path;
     this.#busyTimeoutMs = options.busyTimeoutMs;
     this.#database = new DatabaseSync(options.path, {
+      readOnly: readOnlyNoMigrate,
       enableForeignKeyConstraints: true,
       enableDoubleQuotedStringLiterals: false,
       allowExtension: false,
@@ -2526,9 +2555,21 @@ export class AuthorityDatabase implements Disposable {
 
     try {
       const existingVersion = existed ? this.#admitExistingSchema() : undefined;
-      this.#configureConnection();
-      this.#initializeSchema(existingVersion, options.migrationOwner);
-      this.#validateDatabase();
+      if (!readOnlyNoMigrate
+        && existingVersion !== undefined
+        && requiresStoppedSystemAuthorityUpgrade(existingVersion)) {
+        throw new Error(
+          `upgrade-required { schemaVersion: ${String(existingVersion)}, floor: ${String(UPGRADE_FLOOR_SCHEMA_VERSION)} }`,
+        );
+      }
+      if (readOnlyNoMigrate) {
+        this.#configureReadOnlyConnection();
+        this.#validateReadOnlyNoMigrateDatabase(existingVersion);
+      } else {
+        this.#configureConnection();
+        this.#initializeSchema(existingVersion, options.migrationOwner);
+        this.#validateDatabase();
+      }
     } catch (error) {
       this.#database.close();
       throw new Error(`failed to open authority database ${options.path}: ${errorMessage(error)}`, { cause: error });
@@ -3294,6 +3335,12 @@ export class AuthorityDatabase implements Disposable {
     this.#database.exec(`PRAGMA busy_timeout = ${String(this.#busyTimeoutMs)}`);
   }
 
+  #configureReadOnlyConnection(): void {
+    this.#database.exec("PRAGMA foreign_keys = ON");
+    this.#database.exec("PRAGMA query_only = ON");
+    this.#database.exec(`PRAGMA busy_timeout = ${String(this.#busyTimeoutMs)}`);
+  }
+
   #admitExistingSchema(): number {
     const applicationId = this.#readIntPragma("application_id");
     if (applicationId !== AUTHORITY_APPLICATION_ID) {
@@ -3311,7 +3358,7 @@ export class AuthorityDatabase implements Disposable {
     if (meta.migration_owner !== null || meta.migration_started_at !== null) {
       throw new Error(`authority database is locked by migration owner ${String(meta.migration_owner)}`);
     }
-    if (userVersion > 18 && userVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) {
+    if (userVersion > 18 && requiresStoppedSystemAuthorityUpgrade(userVersion)) {
       const existingTables = this.#database.prepare(`
         SELECT name FROM sqlite_master
         WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
@@ -3325,13 +3372,9 @@ export class AuthorityDatabase implements Disposable {
        * `deleted_runs`) are absent from both. Any other set at these versions
        * is a divergent suffix and refuses below.
        */
-      const ddlTables = Object.keys(SQLITE_TABLE_DDL);
-      const retired: readonly string[] = RETIRED_PHONE_CAPTURE_TABLES;
-      const integratedByVersion: Readonly<Record<number, readonly string[]>> = {
-        27: ddlTables.filter((name) => name !== "deleted_runs").sort(),
-        28: ddlTables.filter((name) => name !== "deleted_runs" && !retired.includes(name)).sort(),
-      };
-      const integratedTables = integratedByVersion[userVersion];
+      const integratedTables = userVersion === 27 || userVersion === 28 || userVersion === 29
+        ? INTEGRATED_AUTHORITY_TABLES_BY_VERSION[userVersion]
+        : undefined;
       const isExactIntegrated = integratedTables !== undefined
         && existingTables.length === integratedTables.length
         && existingTables.every((name, index) => name === integratedTables[index]);
@@ -3367,11 +3410,38 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #runMigrations(fromVersion: number, migrationOwner: string): void {
+    if (requiresStoppedSystemAuthorityUpgrade(fromVersion)) {
+      throw new Error(
+        `upgrade-required { schemaVersion: ${String(fromVersion)}, floor: ${String(UPGRADE_FLOOR_SCHEMA_VERSION)} }`,
+      );
+    }
     this.#database.exec("BEGIN EXCLUSIVE");
     try {
       const migrations = SQLITE_MIGRATIONS.filter(({ version }) => version > fromVersion);
       for (const migration of migrations) {
         for (const statement of migration.statements) this.#database.exec(statement);
+        if (fromVersion === 0 && migration.version === UPGRADE_FLOOR_SCHEMA_VERSION) {
+          const baseline = AuthorityUpgradeRecordSchema.parse({
+            recordKey: randomUUID(),
+            upgradeId: "fresh",
+            phase: "baseline",
+            fromSchemaVersion: 0,
+            toSchemaVersion: UPGRADE_FLOOR_SCHEMA_VERSION,
+            by: LOCAL_OPERATOR_ACTOR_ID,
+            recordedAt: this.#now(),
+          });
+          this.#database.prepare(`
+            INSERT INTO authority_upgrades (
+              record_key, upgrade_id, phase, record_json, created_at
+            ) VALUES (?, ?, ?, ?, ?)
+          `).run(
+            baseline.recordKey,
+            baseline.upgradeId,
+            baseline.phase,
+            canonicalJsonStringify(baseline),
+            baseline.recordedAt,
+          );
+        }
         if (migration.version === 1) {
           this.#database.prepare(`
             INSERT INTO authority_meta (
@@ -3398,6 +3468,41 @@ export class AuthorityDatabase implements Disposable {
     } catch (error) {
       this.#database.exec("ROLLBACK");
       throw error;
+    }
+  }
+
+  #validateReadOnlyNoMigrateDatabase(schemaVersion: number | undefined): void {
+    if (schemaVersion === undefined) {
+      throw new Error("read-only no-migrate admission requires an existing schema version");
+    }
+    QuickCheckRowSchema.parse(this.#database.prepare("PRAGMA quick_check(1)").get());
+    const foreignKeyFailures = this.#database.prepare("PRAGMA foreign_key_check").all();
+    if (foreignKeyFailures.length > 0) {
+      throw new Error(
+        `authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`,
+      );
+    }
+    const names = this.#database.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+      ORDER BY name
+    `).all().map((row) => TableNameRowSchema.parse(row).name);
+    const expected = schemaVersion === 27 || schemaVersion === 28 || schemaVersion === 29
+      ? INTEGRATED_AUTHORITY_TABLES_BY_VERSION[schemaVersion]
+      : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+    if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
+      throw new Error(
+        `authority database tables do not match admitted v${String(schemaVersion)} registry: `
+        + `actual=${names.join(",")} expected=${expected.join(",")}`,
+      );
+    }
+    validateAuthorityRecordSchemas(this.#database, new Set(names));
+    const violations = invariantViolations(this.#database);
+    if (violations.length > 0) {
+      throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
+    }
+    if (this.#readIntPragma("foreign_keys") !== 1) {
+      throw new Error("authority database foreign keys are disabled");
     }
   }
 
@@ -4889,6 +4994,111 @@ export class AuthorityDatabase implements Disposable {
             if (changes !== 1) {
               throw new Error(
                 `settings current revision ${String(record.revision)} affected ${String(changes)} rows`,
+              );
+            }
+            return { result: record, changes };
+          });
+        },
+      }),
+      protectedSettingsCurrent: Object.freeze({
+        get: () => this.#readRecord(
+          "protected_settings_current",
+          "current",
+          ProtectedSettingsCurrentRecordSchema,
+        ),
+        advanceInTransaction: (input: unknown) => {
+          const record = ProtectedSettingsCurrentRecordSchema.parse(input);
+          if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") {
+            throw new Error("protected settings current may advance only inside an authority transaction");
+          }
+          return this.#authorityWrite("protected_settings_current", () => {
+            const current = this.#readRecord(
+              "protected_settings_current",
+              "current",
+              ProtectedSettingsCurrentRecordSchema,
+            );
+            const expectedRevision = current === undefined ? 2 : current.revision + 1;
+            if (record.revision !== expectedRevision) {
+              throw new Error(
+                `protected settings current revision ${String(record.revision)} does not exactly advance `
+                + `${String(current?.revision ?? 1)} to ${String(expectedRevision)}`,
+              );
+            }
+            const command = this.#readRecord("commands", record.commandId, CommandRequestSchema);
+            const audit = this.#readRecord("command_audits", record.auditId, CommandAuditRecordSchema);
+            const commandFingerprint = command === undefined
+              ? undefined
+              : createHash("sha256")
+                  .update(`hrauto:protected-settings-command:v1\0${canonicalJsonStringify(command)}`)
+                  .digest("hex");
+            const commandTarget = command === undefined ? undefined : objectProperty(command, "target");
+            const auditResult: unknown = audit?.result;
+            const result = typeof auditResult === "object" && auditResult !== null
+              ? auditResult
+              : undefined;
+            const affectedTargets = result === undefined ? undefined : objectProperty(result, "affectedTargets");
+            const affectedTargetList = Array.isArray(affectedTargets)
+              ? affectedTargets as readonly unknown[]
+              : undefined;
+            const target = affectedTargetList?.[0];
+            if (command === undefined
+              || objectProperty(command, "family") !== "settings"
+              || objectProperty(command, "type") !== "apply-protected-settings"
+              || typeof commandTarget !== "object"
+              || commandTarget === null
+              || objectProperty(commandTarget, "expectedRevision") !== record.revision - 1
+              || commandFingerprint !== record.commandFingerprint
+              || audit === undefined
+              || audit.request.commandId !== record.commandId
+              || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+              || result === undefined
+              || objectProperty(result, "state") !== "applied"
+              || objectProperty(result, "commandId") !== record.commandId
+              || objectProperty(result, "restartRequired") !== false
+              || affectedTargetList === undefined
+              || affectedTargetList.length !== 1
+              || typeof target !== "object"
+              || target === null
+              || objectProperty(target, "family") !== "protected-settings"
+              || objectProperty(target, "revision") !== record.revision
+              || audit.affectedDependencyIds.length !== 0
+              || audit.completedAt !== record.committedAt) {
+              throw new Error(
+                `protected settings current revision ${String(record.revision)} does not bind its exact command and audit result`,
+              );
+            }
+            const json = canonicalJsonStringify(record);
+            const resultRow = current === undefined
+              ? this.#database.prepare(`
+                  INSERT INTO protected_settings_current
+                    (record_key, revision, command_id, command_fingerprint, audit_id, record_json, created_at)
+                  VALUES ('current', ?, ?, ?, ?, ?, ?)
+                `).run(
+                  record.revision,
+                  record.commandId,
+                  record.commandFingerprint,
+                  record.auditId,
+                  json,
+                  record.committedAt,
+                )
+              : this.#database.prepare(`
+                  UPDATE protected_settings_current
+                  SET revision = ?, command_id = ?, command_fingerprint = ?, audit_id = ?,
+                    record_json = ?, created_at = ?
+                  WHERE record_key = 'current' AND revision = ?
+                `).run(
+                  record.revision,
+                  record.commandId,
+                  record.commandFingerprint,
+                  record.auditId,
+                  json,
+                  record.committedAt,
+                  current.revision,
+                );
+            const changes = sqliteChanges(resultRow.changes);
+            if (changes !== 1) {
+              throw new Error(
+                `protected settings current revision ${String(record.revision)} affected ${String(changes)} rows`,
               );
             }
             return { result: record, changes };
