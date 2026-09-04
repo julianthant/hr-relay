@@ -571,7 +571,11 @@ The **base gate** every task runs before its own row is
 (a descriptor's import closure includes `src/domain/**`, so a stale manifest is a red gate, not drift);
 `npm run test:parity` must stay green UNCHANGED through the whole part — adapter A8 (the served
 eight-leaf editor inventory and the `settings.json: not set` line) is re-frozen deliberately at 3.1,
-never here. Every leaf a task adds to a served contract is dispositioned under D183 in the same commit
+never here. **Operator exception (2026-09-04, choice 3 A):** before wave 2, a serial supervisor
+repair may refresh only stale descriptor-hash parity metadata inherited from D324. It must prove
+screenshots and accessibility content unchanged, retain all assertions, and pass parity in assertion
+mode after the repair. This admits no A8 or Settings UI change and no general reference refreeze.
+Both wave peers branch from the same integrated repaired baseline. Every leaf a task adds to a served contract is dispositioned under D183 in the same commit
 (§D331.11 P41, §D332.11 M26). **Integration order:** Task 1 → wave 2 (`2-1` ∥ `2-2`) → 3 → 4 → 5 →
 6 → 7, each merged `--no-ff` onto master with the base gate green before the next branches.
 

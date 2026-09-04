@@ -30,6 +30,19 @@
 
 ## Units
 
+### R09 / U09 — Repair the inherited parity baseline
+
+- Operator choice 3 A; serial after R01 and before wave 2. Existing run ids remain unchanged.
+- Launch: compact nested `sup_supervisor`, because this is one bounded reference repair; no concurrent supervisor.
+- Parent: `/root`, coordinator task `01a06d9c-1667-7451-a022-5f661d373703` / `local`; coordination UUID `161eaed0-8809-4a38-b11b-fcd85b727f86`.
+- Exact agent id: reserved pending dispatch; allowance 2 auxiliary worktrees, within budget 4.
+- Branch: `feature/phase-1-6-authorities-c161eaed0-r09-parity-baseline`.
+- Worktree: `/Users/julianhein/Projects/hr-automation-rebuild-r09-parity-baseline`.
+- Base: ratification commit immediately preceding worktree creation; exact SHA recorded before dispatch.
+- Scope/gate/report: `briefs/r09.md`; `reports/r09.md`; metadata-only diff proof, parity assertion pass, lint, full profile base gate.
+- R02/R03 consume the same R09 integrated baseline; their earlier `ebc41c45` base reservations are superseded.
+- Status: reserved. Cleanup pending; nested agent has no separate sidebar archival.
+
 ### U01 — Land the singleton v30 schema floor
 - Scope: doc 01 §1.6 Task 1 exact seam.
 - Acceptance: base gate, M3(open), M9, M21, baseline matrix cell, storage/backup/doctor v29 no-migrate proofs, planned guard row.
@@ -118,7 +131,7 @@
 
 ## Stable coordinator progress footer
 
-Steps — 1/10 complete
+Steps — 1/11 complete
 - [x] R01 — Task 1: Land the schema floor
 - [!] R02 — Task 2-1: Implement the canonical run-record service — blocked on wave parity baseline
 - [!] R03 — Task 2-2: Implement the settings catalog and protected root — blocked on wave parity baseline
@@ -129,3 +142,4 @@ Steps — 1/10 complete
 - [ ] R08 — Task 7: Close the rebuilt foundation
 - [ ] RECONCILE — Reconcile Phase 1.6 canonical authorities
 - [ ] CLOSE — Close the coordinator workspace and all supervisor rows
+- [>] R09 — Repair the inherited parity baseline

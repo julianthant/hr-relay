@@ -24,6 +24,8 @@
 
 ## Decisions ratified
 
+- 2026-09-04 · chat item 3 = A → serial R09 repairs inherited descriptor-hash parity metadata before wave 2; screenshot and accessibility content must remain unchanged and assertion-mode parity must pass → doc 01 §1.6 binding exception and decisions index.
+
 - 2026-09-04 · operator launch instruction → one supervisor per admitted 1.6 task; only the explicitly named Task 2 wave runs concurrently → owner this run plan.
 - 2026-09-04 · chat item 1 = A → Task 1 may edit dashboard composition solely to release its already-acquired process lock when authority opening refuses → owner `docs/rebuild/01-build-the-spine.md` §1.6 Task 1 at `a00be759`.
 - 2026-09-04 · chat item 2 = A → every upgrade-journal append has an independent row identity; repeated `planned` rows remain evidence while terminal phases are unique per upgrade → owner `docs/rebuild/reference/dashboard-surfaces.md` §D332.5 and D332's decision pointer at `a00be759`.
@@ -49,4 +51,4 @@
 
 ## Questions for the operator
 
-- Choose the authority path for the inherited descriptor-hash parity drift before the paired R02/R03 launch.
+- None. Choice 3 A is ratified; R02/R03 await R09 integration and closure.
