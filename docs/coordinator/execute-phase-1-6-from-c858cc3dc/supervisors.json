@@ -23,7 +23,7 @@
       "report": "/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r01.md",
       "gate": "npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check",
       "needs_first": "none (existing merged implementation)",
-      "cursor": "0f0762eb-1bba-4876-ba57-d3884925fabd:2",
+      "cursor": "0f0762eb-1bba-4876-ba57-d3884925fabd:14",
       "reservation": 2,
       "clientThreadId": "client-new-thread:a6e2f58d-eaff-402c-a4fc-1623650b9a1f",
       "launch_base": "99c9ed51882a4e53069d18cf0e890c98f9810be2",

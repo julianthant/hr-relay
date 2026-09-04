@@ -20,6 +20,7 @@ This folder was `docs/rebuild/reviews/` until 2026-08-20 (cohesion plan ruling R
 
 | file | date | what it was | what superseded it |
 |---|---|---|---|
+| `2026-09-04-agent-instruction-loading.md` | 2026-09-04 | local Codex instruction truncation audit, content-preserving root/module migrations, and validation evidence | current root/module instruction pairs, their linked references, and owning contracts |
 | `2026-07-17-task-contract-review.md` | 2026-07-17 | was `reviews/01-review.md` — adversarial review of doc 01 (the task contract): nine findings, two BLOCKERs (parked/polling tasks; session ownership), verdict "buildable with amendments" | `reference/task-contract.md`; resolutions in `reference/decisions.md` round 1 (D4, D5, D15) |
 | `2026-07-17-workflow-model-review.md` | 2026-07-17 | was `reviews/02-review.md` — adversarial review of doc 02 (the workflow model): docs 01/02 described two different systems at the task-identity seam, plus two correctness holes | `reference/workflow-model.md`; `reference/decisions.md` round 1 (D1–D3, D6–D9, D16) |
 | `2026-07-17-dashboard-surfaces-review.md` | 2026-07-17 | was `reviews/03-review.md` — adversarial review of doc 03 (the tracker dashboard): two incompatible `SpanEvent` wire contracts, and both flagship mechanisms checked against the OCR happy path | `reference/dashboard-surfaces.md`; `reference/decisions.md` round 1 (D1, D10–D14) |
