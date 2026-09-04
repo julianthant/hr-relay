@@ -10,8 +10,8 @@ Exact task-tool address book: `supervisors.json` (coordinator-owned). Read it be
 | Run | Phase task | Theme | Order / wave | Needs first | State |
 |---|---|---|---|---|---|
 | R01 | 1.6.1 | Verify the schema floor | 1 / serial | none | closed |
-| R02 | 1.6.2-1 | Implement the canonical run-record service | 2 / wave 2 | none (R01 fully closed) | parallel-ready |
-| R03 | 1.6.2-2 | Implement the settings catalog and protected root | 3 / wave 2 | none (R01 fully closed) | parallel-ready |
+| R02 | 1.6.2-1 | Implement the canonical run-record service | 2 / wave 2 | none (R01 fully closed) | reserved |
+| R03 | 1.6.2-2 | Implement the settings catalog and protected root | 3 / wave 2 | none (R01 fully closed) | reserved |
 | R04 | 1.6.3 | Cut over executor and worker lifecycle writers | 4 / serial | R03 closed and R02 closed | planned |
 | R05 | 1.6.4 | Cut over operator run commands and archive/delete writers | 5 / serial | R04 closed | planned |
 | R06 | 1.6.5 | Cut over settings mutation and runtime resolution | 6 / serial | R05 closed | planned |
@@ -32,3 +32,5 @@ Rows progress planned → reserved → active → returned → verified → inte
 - The inherited parity worktree is now fully closed; exact evidence is in inherited-lifecycle.json. R01 is the sole open auxiliary worktree.
 
 Resume: admission repair is complete and existing R01 is executing its bounded M9/M21 proof amendment. The consumed temporary handoff was removed; board.md and supervisors.json own current status. Preserve one supervisor per immediate task; never create a duplicate.
+
+Wave gate scheduling: R02 and R03 request GATE READY before full gates; coordinator grants one machine gate token at a time. Each owns two auxiliary-worktree slots. Shared derived manifest output is regenerated at ordered integration; neither peer edits the other's source or artifacts.

@@ -6,13 +6,13 @@
 **Integration checkout:** /Users/julianhein/Projects/hr-automation-rebuild · master
 **Board owner:** this coordinator only; supervisors and workers read only.
 **Profile / plan / exact address book:** project-profile.md / run-plan.md / supervisors.json
-**Earlier integration HEAD verified:** f1c1ae8f27b29706446b490d65efaf99e5756f70; unrelated instruction-review file remains dirty and is preserved.
+**Earlier integration HEAD verified:** f1c1ae8f27b29706446b490d65efaf99e5756f70; the unrelated instruction reorganization subsequently committed independently. Current tree checked before wave dispatch.
 
 | Run | Phase task | State | Evidence / residue |
 |---|---|---|---|
 | R01 | 1.6.1 | closed | Verified df41e0b5, merged 5b1fb626; integrated/runtime gates green; worktree/ref removed and exact task archived |
-| R02 | 1.6.2-1 | planned | Wait for R01 closure; wave with R03, integrate first |
-| R03 | 1.6.2-2 | planned | Same verified base as R02; integrate second |
+| R02 | 1.6.2-1 | reserved | Wave allowance 2; brief r02.md; integrate first |
+| R03 | 1.6.2-2 | reserved | Wave allowance 2; brief r03.md; same base; integrate second |
 | R04 | 1.6.3 | planned | Wait for both wave peers closed |
 | R05 | 1.6.4 | planned | Wait for R04 closed |
 | R06 | 1.6.5 | planned | Wait for R05 closed |
