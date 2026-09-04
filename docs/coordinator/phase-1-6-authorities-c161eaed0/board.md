@@ -20,11 +20,11 @@
 - Task 4's claimed/running cancel question is already settled as option A in the owning D330 sections and adds proof #27; it is not an open coordinator decision.
 - Task 1's tombstone schema lives in `src/domain/run/deleted-run.ts`; doc 01's stale `authority.ts` location was corrected at `e1674420` without changing product scope.
 - M3 allocation: Task 1 owns the direct database open/no-migrate half; Task 6 owns and re-runs the successful backup/doctor inspector and manifest half. This resolves the impossible cross-seam gate without moving any compatibility file into R01.
-- Parity is inherited red at R01's exact base: 116 references differ only in the embedded descriptor hash after `dae04a11` changed the generated manifest subsequent to parity refreeze `7caa3fa9`. R01's range leaves the manifest, parity references, and fixture-day helper byte-unchanged, so the coordinator classified this as inherited evidence; Task 1 must not refreeze or alter the parity lane.
+- Parity is inherited red after `dae04a11` changed the generated manifest subsequent to parity refreeze `7caa3fa9`. R01's range leaves the manifest, parity references, and fixture-day helper byte-unchanged. R09 supersedes the initial metadata-only diagnosis: header failures hid displayed hashes; its update run changed 31 screenshots and 52 semantic accessibility snapshots, limited to derived hashes plus existing-tolerance raster noise. Exact proof belongs in R09's evidence/report.
 
 ## Decisions ratified
 
-- 2026-09-04 · chat item 3 = A → serial R09 repairs inherited descriptor-hash parity metadata before wave 2; screenshot and accessibility content must remain unchanged and assertion-mode parity must pass → doc 01 §1.6 binding exception and decisions index.
+- 2026-09-04 · chat item 3 = A, followed by explicit “Yes—include verified hash-only changes” → serial R09 may refresh inherited derived-hash metadata and displayed hashes in screenshot/accessibility references; other content, layout, production code, assertions and pixel tolerance remain unchanged; assertion-mode parity must pass → doc 01 §1.6 binding exception and decisions index.
 
 - 2026-09-04 · operator launch instruction → one supervisor per admitted 1.6 task; only the explicitly named Task 2 wave runs concurrently → owner this run plan.
 - 2026-09-04 · chat item 1 = A → Task 1 may edit dashboard composition solely to release its already-acquired process lock when authority opening refuses → owner `docs/rebuild/01-build-the-spine.md` §1.6 Task 1 at `a00be759`.

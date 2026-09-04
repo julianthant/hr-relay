@@ -2047,8 +2047,9 @@ precedence rule that D327 required. It changes no runtime code; 1.6 implements i
 
 ## Phase 1.6 parity admission clarification (2026-09-04)
 
-Operator choice 3 A permits one serial pre-wave supervisor repair of inherited D324 descriptor-hash
-parity metadata, with unchanged screenshot/accessibility content and a green assertion-mode gate;
+Operator choice 3 A, expanded by explicit approval of verified displayed hash-only changes, permits
+one serial pre-wave repair of inherited D324 derived-hash metadata and screenshot/accessibility
+references, preserving all other content, layout, production code and assertions, with a green assertion-mode gate;
 the narrow exception is owned by doc 01 §1.6's binding paragraph. A8 remains deferred to 3.1.
 
 ## Reconciliation round 138 (2026-09-04) — Phase 0.3 Task 3, the authority upgrade

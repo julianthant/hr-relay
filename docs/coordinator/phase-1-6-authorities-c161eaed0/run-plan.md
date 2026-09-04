@@ -39,7 +39,7 @@
 - Branch: `feature/phase-1-6-authorities-c161eaed0-r09-parity-baseline`.
 - Worktree: `/Users/julianhein/Projects/hr-automation-rebuild-r09-parity-baseline`.
 - Base: `3d9c7917f7db8b83edb473582840ed595353ee4e`, verified at worktree creation and supplied verbatim at dispatch.
-- Scope/gate/report: `briefs/r09.md`; `reports/r09.md`; metadata-only diff proof, parity assertion pass, lint, full profile base gate.
+- Scope/gate/report: `briefs/r09.md`; `reports/r09.md`; verified derived-hash-only metadata/display/reference diff proof (operator explicitly approved displayed hashes), parity assertion pass, lint, full profile base gate. Other semantic content, layout, production code and existing tolerance remain unchanged.
 - R02/R03 consume the same R09 integrated baseline; their earlier `ebc41c45` base reservations are superseded.
 - Status: active. Cleanup pending; nested agent has no separate sidebar archival.
 
