@@ -1,0 +1,149 @@
+[
+  {
+    "mutation": "m9-settings-open",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m9-settings-open.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/server/compose-real-port.test.ts",
+      "-t",
+      "M9"
+    ],
+    "exit_code": 1,
+    "elapsed_seconds": 5.166,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m9-settings-open-red.log",
+    "expected_failure": "zero settings-family openSync",
+    "failed_tests": 1,
+    "verified_behavioral_failure": true
+  },
+  {
+    "mutation": "m9-settings-read",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m9-settings-read.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/server/compose-real-port.test.ts",
+      "-t",
+      "M9"
+    ],
+    "exit_code": 1,
+    "elapsed_seconds": 4.625,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m9-settings-read-red.log",
+    "expected_failure": "zero settings-family readFileSync",
+    "failed_tests": 1,
+    "verified_behavioral_failure": true
+  },
+  {
+    "mutation": "m9-resolver",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m9-resolver.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/server/compose-real-port.test.ts",
+      "-t",
+      "M9"
+    ],
+    "exit_code": 1,
+    "elapsed_seconds": 5.159,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m9-resolver-red.log",
+    "expected_failure": "zero resolveConfigWithProvenance",
+    "failed_tests": 1,
+    "verified_behavioral_failure": true
+  },
+  {
+    "mutation": "m9-lock-release",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m9-lock-release.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/server/compose-real-port.test.ts",
+      "-t",
+      "M9"
+    ],
+    "exit_code": 1,
+    "elapsed_seconds": 5.43,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m9-lock-release-red.log",
+    "expected_failure": "AssertionError: Expected values to be strictly equal:",
+    "failed_tests": 1,
+    "verified_behavioral_failure": true
+  },
+  {
+    "mutation": "m21-live-ddl",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m21-live-ddl.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/sqlite-authority-database.test.ts",
+      "-t",
+      "M21 admits exact"
+    ],
+    "exit_code": 1,
+    "elapsed_seconds": 3.764,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m21-live-ddl-red.log",
+    "expected_failure": "D290 divergent post-v18 migration suffix: DCC1 v27",
+    "failed_tests": 3,
+    "verified_behavioral_failure": true
+  },
+  {
+    "mutation": "m21-extra-table",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m21-extra-table.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/sqlite-authority-database.test.ts",
+      "-t",
+      "M21 refuses an extra"
+    ],
+    "exit_code": 1,
+    "elapsed_seconds": 3.959,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m21-extra-table-red.log",
+    "expected_failure": "Missing expected exception.",
+    "failed_tests": 1,
+    "verified_behavioral_failure": true
+  },
+  {
+    "mutation": "m21-control-neutralized",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m21-control-neutralized.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/sqlite-authority-database.test.ts",
+      "-t",
+      "M21 negative control"
+    ],
+    "exit_code": 1,
+    "elapsed_seconds": 5.031,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m21-control-neutralized-red.log",
+    "expected_failure": "Missing expected exception.",
+    "failed_tests": 3,
+    "verified_behavioral_failure": true
+  }
+]

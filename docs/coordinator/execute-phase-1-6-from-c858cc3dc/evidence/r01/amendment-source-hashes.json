@@ -1,0 +1,14 @@
+{
+  "commit": "d650a43b",
+  "files": {
+    "tests/unit/server/compose-real-port.test.ts": "a9bfdd8017eb814caad4803b5a71bbabd471b01e7099e3a64d248f02297fcd80",
+    "tests/unit/sqlite-authority-database.test.ts": "688e19a7e557af863ef4aca3bd4fc5f2696d9248aa3f98229ac79046733a4def",
+    "tests/unit/fixtures/authority-build-variant.ts": "4d4bafe565157aac369f8eb8b54cbcf947871c7a141247260bc2323386902d86"
+  },
+  "initial_focused_harness_failure": {
+    "command": "npx vitest run --project unit tests/unit/sqlite-authority-database.test.ts -t M21",
+    "exit_code": 1,
+    "reason": "missing required busyTimeoutMs in broken-build fixture open; not counted as behavioral red proof",
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m21-focused.log"
+  }
+}

@@ -1,0 +1,171 @@
+[
+  {
+    "mutation": "m9-settings-open",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/proof-mutation.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/server/compose-real-port.test.ts",
+      "-t",
+      "M9"
+    ],
+    "environment": {
+      "R01_PROOF_MUTATION": "m9-settings-open"
+    },
+    "exit_code": 1,
+    "elapsed_seconds": 4.97,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m9-settings-open-initial-env-selector-red.log",
+    "expected_failure": "M9: zero settings-family openSync calls before downgrade refusal",
+    "failed_tests": 1,
+    "verified_behavioral_failure": true
+  },
+  {
+    "mutation": "m9-settings-read",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/proof-mutation.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/server/compose-real-port.test.ts",
+      "-t",
+      "M9"
+    ],
+    "environment": {
+      "R01_PROOF_MUTATION": "m9-settings-read"
+    },
+    "exit_code": 1,
+    "elapsed_seconds": 4.621,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m9-settings-read-initial-env-selector-red.log",
+    "expected_failure": "M9: zero settings-family readFileSync calls before downgrade refusal",
+    "failed_tests": 1,
+    "verified_behavioral_failure": true
+  },
+  {
+    "mutation": "m9-resolver",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/proof-mutation.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/server/compose-real-port.test.ts",
+      "-t",
+      "M9"
+    ],
+    "environment": {
+      "R01_PROOF_MUTATION": "m9-resolver"
+    },
+    "exit_code": 1,
+    "elapsed_seconds": 3.498,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m9-resolver-initial-env-selector-red.log",
+    "expected_failure": "M9: zero resolveConfigWithProvenance calls before downgrade refusal",
+    "failed_tests": 1,
+    "verified_behavioral_failure": true
+  },
+  {
+    "mutation": "m9-lock-release",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/proof-mutation.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/server/compose-real-port.test.ts",
+      "-t",
+      "M9"
+    ],
+    "environment": {
+      "R01_PROOF_MUTATION": "m9-lock-release"
+    },
+    "exit_code": 1,
+    "elapsed_seconds": 3.212,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m9-lock-release-initial-env-selector-red.log",
+    "expected_failure": "AssertionError: Expected values to be strictly equal:",
+    "failed_tests": 1,
+    "verified_behavioral_failure": true
+  },
+  {
+    "mutation": "m21-live-ddl",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/proof-mutation.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/sqlite-authority-database.test.ts",
+      "-t",
+      "M21 admits exact"
+    ],
+    "environment": {
+      "R01_PROOF_MUTATION": "m21-live-ddl"
+    },
+    "exit_code": 1,
+    "elapsed_seconds": 2.498,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m21-live-ddl-initial-env-selector-red.log",
+    "expected_failure": "D290 divergent post-v18 migration suffix: DCC1 v27",
+    "failed_tests": 3,
+    "verified_behavioral_failure": true
+  },
+  {
+    "mutation": "m21-extra-table",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/proof-mutation.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/sqlite-authority-database.test.ts",
+      "-t",
+      "M21 refuses an extra"
+    ],
+    "environment": {
+      "R01_PROOF_MUTATION": "m21-extra-table"
+    },
+    "exit_code": 1,
+    "elapsed_seconds": 2.098,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m21-extra-table-initial-env-selector-red.log",
+    "initial_nonproof_attempt": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m21-extra-table-initial-anchor-error.log",
+    "expected_failure": "AssertionError: Missing expected exception.",
+    "failed_tests": 1,
+    "verified_behavioral_failure": true
+  },
+  {
+    "mutation": "m21-control-neutralized",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "--config",
+      "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/proof-mutation.config.ts",
+      "--project",
+      "unit",
+      "tests/unit/sqlite-authority-database.test.ts",
+      "-t",
+      "M21 negative control"
+    ],
+    "environment": {
+      "R01_PROOF_MUTATION": "m21-control-neutralized"
+    },
+    "exit_code": 1,
+    "elapsed_seconds": 2.625,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/m21-control-neutralized-initial-env-selector-red.log",
+    "expected_failure": "AssertionError: Missing expected exception.",
+    "failed_tests": 3,
+    "verified_behavioral_failure": true
+  }
+]

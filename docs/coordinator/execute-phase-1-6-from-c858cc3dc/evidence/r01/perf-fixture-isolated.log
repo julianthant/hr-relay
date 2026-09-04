@@ -1,0 +1,17 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild
+
+ ✓ |unit| tests/unit/server/dashboard-perf-fixture-shape.test.ts > the §7.4 dashboard perf fixture > accepts the ratified non-duration structural performance bounds 1ms
+ ✓ |unit| tests/unit/server/dashboard-perf-fixture-shape.test.ts > the §7.4 dashboard perf fixture > refuses every structural performance regression by its exact counter 0ms
+ ✓ |unit| tests/unit/server/dashboard-perf-fixture-shape.test.ts > the §7.4 dashboard perf fixture > serves exactly the declared row count for the measured day 251ms
+ ✓ |unit| tests/unit/server/dashboard-perf-fixture-shape.test.ts > the §7.4 dashboard perf fixture > puts exactly one operation on the day, with the declared member count 226ms
+ ✓ |unit| tests/unit/server/dashboard-perf-fixture-shape.test.ts > the §7.4 dashboard perf fixture > scopes by day, so the day filter has something to filter 250ms
+ ✓ |unit| tests/unit/server/dashboard-perf-fixture-shape.test.ts > the §7.4 dashboard perf fixture > writes a note corpus above the declared floor, through the real writer 18ms
+ ✓ |unit| tests/unit/server/dashboard-perf-fixture-shape.test.ts > the §7.4 dashboard perf fixture > carries a realistic terminal mix — settled rows with and without a derived receipt 216ms
+ ✓ |unit| tests/unit/server/dashboard-perf-fixture-shape.test.ts > the §7.4 dashboard perf fixture > names a measured run that can actually serve a logs page 1ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  16:16:29
+   Duration  18.20s (transform 2.82s, setup 0ms, import 4.03s, tests 14.04s, environment 0ms)
+

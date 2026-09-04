@@ -1,0 +1,32 @@
+[
+  {
+    "command": "npm run typecheck",
+    "exit_code": 0,
+    "elapsed_seconds": 24.58,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/amended-typecheck.log"
+  },
+  {
+    "command": "npm run lint",
+    "exit_code": 0,
+    "elapsed_seconds": 39.77,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/amended-lint.log"
+  },
+  {
+    "command": "npm run test:coverage",
+    "exit_code": 0,
+    "elapsed_seconds": 146.337,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/amended-test-coverage.log"
+  },
+  {
+    "command": "npm run build:manifest:check",
+    "exit_code": 0,
+    "elapsed_seconds": 2.0,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/amended-build-manifest-check.log"
+  },
+  {
+    "command": "npm run test:parity",
+    "exit_code": 0,
+    "elapsed_seconds": 58.103,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/amended-test-parity.log"
+  }
+]
