@@ -1,0 +1,41 @@
+{
+  "commit": "324017e7",
+  "counts": {
+    "accessibility_digest_only": 210,
+    "metadata_descriptor_only": 210,
+    "png": 31
+  },
+  "exact_digest_substitutions": [
+    {
+      "before": "2db0988e",
+      "after": "77185eb4",
+      "occurrences": 2
+    },
+    {
+      "before": "8191c959ec27",
+      "after": "d23204eba53b",
+      "occurrences": 6
+    },
+    {
+      "before": "82196f1a4bd4",
+      "after": "7ddf947b5a69",
+      "occurrences": 6
+    },
+    {
+      "before": "8a4f301b41fb502099a365c1f4ae457e7faf4001a0d1f7d236b811bb7f377f98",
+      "after": "fe74ae963f7083419f1dfa4f2da9391717c208f311a3fe0bf4eb4a9f579472c7",
+      "occurrences": 60
+    },
+    {
+      "before": "ff8c5fd7",
+      "after": "7cb1e184",
+      "occurrences": 38
+    },
+    {
+      "before": "ff8c5fd78912e40100770dae22be908d41bef31f284b28e1520f6b145cb85aa2",
+      "after": "7cb1e18470ed6ad8a9a682e3bccd9c121800ed893d75d9316be116879898e39e",
+      "occurrences": 360
+    }
+  ],
+  "scope": "All JSON and YAML changes independently normalized; image count verified, prior pixel analysis not rerun. Fresh R01 parity assertion gate independently passed 269/269."
+}
