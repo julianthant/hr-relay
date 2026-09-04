@@ -1,0 +1,30 @@
+[
+  {
+    "run": "R02",
+    "task_id": "01a06ec4-e9e6-7ae1-9cf2-15211b4f357f",
+    "events": [
+      {
+        "event_name": "SubagentStart",
+        "tool_name": null,
+        "tool_use_id": null,
+        "outcome": "violation:subagent 01a06ec7-8805-7693-846b-178780568a17 started without a reserved sup_scout row",
+        "created_at": "2026-09-04T23:36:08+00:00"
+      }
+    ],
+    "disposition": "Scout returned without work; hold worker dispatch; continue admitted supervisor-owned implementation; supervisor records exact worker lifecycle"
+  },
+  {
+    "run": "R03",
+    "task_id": "01a06ec5-26e2-7e21-96f7-7e86fea92d62",
+    "events": [
+      {
+        "event_name": "SubagentStart",
+        "tool_name": null,
+        "tool_use_id": null,
+        "outcome": "violation:subagent 01a06ec7-6f79-7d23-a8d5-943842e06dce started without a reserved sup_scout row",
+        "created_at": "2026-09-04T23:36:01+00:00"
+      }
+    ],
+    "disposition": "Scout returned without work; hold worker dispatch; continue admitted supervisor-owned implementation; supervisor records exact worker lifecycle"
+  }
+]

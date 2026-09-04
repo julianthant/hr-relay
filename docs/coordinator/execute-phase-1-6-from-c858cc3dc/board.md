@@ -38,3 +38,7 @@ Previous nested R09 verified at f3928347, preserved by merge 59c8bfb1, independe
 ## Recovery artifacts
 
 Consumed `handoffs/2026-09-04-phase-1-6-verified-id-repair.md` removed after checking current git, task status and gate evidence: approval/repair is complete and all surviving facts are recorded above, in the address book, run plan and retained audits. No open dependency remains on that temporary handoff.
+
+## Worker admission issue
+
+Both initial read-only Scouts stopped before work: SubagentStart found no reserved sup_scout row; the exact dispatch PreToolUse event is absent. Evidence: evidence/wave-two-worker-admission.json. Supervisors were instructed to retain no-work lifecycle rows, hold further worker dispatch, avoid fabricating admission or changing hooks, and continue their admitted central implementation. No worker output is counted as proof.
