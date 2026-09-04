@@ -686,7 +686,10 @@ tombstones; drop the tombstone columns and it is red). **Order:** wave 2, peer 1
 deleted with its thirteen importers, `settings > default`; `operator.timekeeperName` leaves `ConfigSchema`
 under generation 5's retirement arm); `src/infra/config/settings-file.ts` (the `settings/` root: two
 documents, one lock, prepare/rollback per target, the private-file protocol, the D321 coupling per
-document); `src/server/settings-runtime.ts`, `src/server/settings/**`, the kernel's
+document); `src/server/settings-runtime.ts`, `src/server/settings/**`, the existing
+`src/server/dashboard/commands/settings-service.ts` adapter, `src/domain/dashboard/bootstrap.ts` +
+`src/server/dashboard/queries/bootstrap.ts` solely for P14's schema hashes (source-owner paths
+corrected during C858cc3dc R03 verification, 2026-09-04), the kernel's
 `apply-protected-settings` arm (§D331.5's two CAS arms, marked envelope, `{present, valueId, updatedAt}`
 readback); `src/domain/secrets.ts` (A5 deleted: migrated names read from the protected store only, the
 `config-and-secret` dual channel gone, `providerModelChain`'s `legacyModelEnv` fallback gone,
