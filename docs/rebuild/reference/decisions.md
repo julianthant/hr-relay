@@ -1922,3 +1922,26 @@ waives no proof or gate._
 | # | Decision | Owning doc |
 |---|---|---|
 | **D320** | **SEPARATIONS MUST RECORD A FRESH `met` T1b RESULT ON A NEWLY VETTED CLOSED KUALI DOCUMENT BEFORE 3c-A CLOSES; ONCE EVERY 3c-A EXIT CONDITION IS GREEN, 3c-B IS AUTHORIZED TO RUN AND CLOSE PHASE 3 WITHOUT ANOTHER START APPROVAL.** The existing `blocked/not-started` result remains honest evidence but is not green acceptance. D284 still forbids an inferred replacement: the operator must place the new document number in ignored configuration and the registry must record a dated `available` observation before the live preview. The 3c-B authorization is conditional on the clean-context guide proof, automatic runtime-inheritance proof, fresh Separations T1b `met`, integrated gates and lifecycle close. It authorizes no external write and no third workflow. | doc 03c §3c-A exit gate and §3c-B (primary) · `docs/decisions/phase-governance.md` §Phase 3 close |
+
+## Reconciliation round 127 (2026-09-03) — the rebuild state root is `.tracker`
+
+_phase: 3c_
+_D321 records the operator's instruction to run the rebuild under `.tracker` instead of
+`.tracker-rebuild`. The normative isolation table and the must-differ list land in ref
+clock-config-secrets in this same commit; the operator had already retired the old root's contents, so
+the rename carried no state._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D321** | **BOTH REPOS NAME THEIR STATE ROOT `.tracker` (OPERATOR DECISION): A REPO-RELATIVE ROOT NEVER COLLIDES ACROSS CHECKOUTS, SO `stateRoot` LEAVES `DISTINCT_RESOURCE_KEYS` EXACTLY AS `browserProfileRoot` DID UNDER D216.** The rebuild's `stateRoot` is `.tracker`, `artifactRoot` `.tracker/artifacts` and `processLockRoot` `.tracker/locks`; the artifact root, the lock root, both ports and `browserSessionNamespace` still differ from legacy's and are still asserted by `operational-isolation.test.ts`. The runtime binding, its strict literal schema, `config/runtime-isolation.json`, `.gitignore` and every fixture root were renamed together. The settings authority (`settings.json` and its sidecars) moves from `config/` into the state root so that deleting `.tracker` removes the file and the journal that proves it together, and the next `npm run dashboard` regenerates the root, a fresh database and the revision-1 baseline. No authority moved: the operator had trashed the `.tracker-rebuild/` contents before the rename. | ref clock-config-secrets §Operational isolation (primary) · `config/runtime-isolation.json` · `tests/unit/architecture/helpers/operational-isolation-audit.ts` |
+
+## Reconciliation round 128 (2026-09-03) — authority backups run only on operator command
+
+_phase: 3c_
+_D322 records the operator's instruction that the state root hold the bare minimum and that a
+SQLite backup be written only when asked. The normative text replaces 2i-D's cadence paragraph in
+ref dashboard-surfaces §2.5 in this same commit._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D322** | **AN AUTHORITY BACKUP IS WRITTEN ONLY BY `cli storage backup`; THE DASHBOARD RUNS NO BACKUP CADENCE, NO GRACEFUL-DRAIN BACKUP AND NO BACKUP-HEALTH INBOX ALERT.** 2i-D's start/15-minute/drain triggers and the D222 stale/missing storage notification producer are retired; the `AuthorityBackupService` and its verified manifest, `storage doctor`'s backup report, the bootstrap `storage.backup` indicator and `storage restore --from <manifest>` are unchanged. Freshness is judged by authority generation alone (`current` when the newest verified backup captured the live generation, `stale` when the authority moved past it, `missing` when none exists); the 45-minute age bound is gone and `maxBackupAgeMs` is an optional policy no production composition sets. `storage doctor` exits 0 on healthy authority plus reconciled span authority and reports the backup arm without gating on it. The dashboard's doctor-wire `service` arm is the fixed `never-run` reading naming the command. | ref dashboard-surfaces §2.5 (primary) · `src/server/storage/compose.ts` · `src/server/dashboard/compose.ts` |

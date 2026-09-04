@@ -291,7 +291,7 @@ doc: 02 §2i — the operator surface (A–G) · ref:operator-trust §1.3 · ref
 builds:
 - [x] BOTH trust surfaces + notification bell over the durable inbox
 - [x] BOTH Edit Data rail (D168)
-- [x] BOTH Settings + storage doctor + live backup cadence (D169) — the phase delivered health/doctor; DCC1–DCC3 later added the bounded resolver-owned edit/readback/preflight path
+- [x] BOTH Settings + storage doctor + live backup cadence (D169) — the phase delivered health/doctor; DCC1–DCC3 later added the bounded resolver-owned edit/readback/preflight path — D322 (2026-09-03) retired the automatic cadence: backups are written only by `cli storage backup`
 - [x] BOTH intake surface over schema v12 (D170–D173)
 - [x] DOCS Mobile/phone Capture Mode was built in this historical phase and is retired by D294; diagnostic screenshots, run Capture tiles, and Archive evidence remain
 - [x] BOTH read-only Workflow Explorer + UI catalog
@@ -1339,7 +1339,7 @@ builds:
 - [x] BE the registry-derived preflight/doctor service — `buildBootstrap` serves its retained strict report and `POST /api/v1/preflight/rerun` returns exact readback
 - [x] FE the Settings write path, persisted readback, preflight rerun and read-only doctor controls
 - [x] BE `mergeSettings` applies every `ConfigSchema` group through a compiler-exhaustive map, including `browser` (ref clock-config-secrets §3)
-- [x] BE both composition roots read the strict revisioned `config/settings.json` authority beside its writer (ref clock-config-secrets §3)
+- [x] BE both composition roots read the strict revisioned `.tracker/settings.json` authority (D321 moved it from `config/` into the state root) beside its writer (ref clock-config-secrets §3)
 - [ ] FE Settings → Help → Keyboard, or a global `?` — the top bar's keyboard glyph was deleted on the operator's instruction "we already have help in settings" and the destination was never built, so `ShortcutsPopover` (`top-bar.tsx:912`) has ZERO callers and `surfaces/shortcuts.tsx` is reachable from nowhere (fidelity-3 SE7, SE43, SE44; a Track F question)
 - [ ] BE `settingsSections` lists the status sections whose data is already served — System hosts reads `systemInstances` off the bootstrap, Workflow capabilities is descriptor-derived; neither needs new authority (fidelity-3 SE40–SE42; a Track F question)
 - [ ] FE the storage section's at-rest half — the three stat cards (authority generation, rows on disk, newest backup) and the `Backups` table with Size / Verdict / Note (fidelity-3 SE45, SE46, SE48, SE49)

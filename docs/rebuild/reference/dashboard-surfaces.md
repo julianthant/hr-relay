@@ -1434,8 +1434,8 @@ continues through the command/audit journal and atomic `explorer-overrides.json`
 <!-- roadmap-status: p2-2j -->
 - [x] the boot interlock: `quick_check`, schema-version validation, foreign keys, every authority row's `record_json` parsed through its registered strict schema, and the invariant queries — any failure starts read-only degraded with one named cause and blocks enqueue/claim/commit/control
 - [x] the verified online backup: `node:sqlite.backup`, the copy self-verified read-only, the manifest bound to the final bytes, fsync + atomic rename; no `VACUUM INTO` and no live-WAL file copy (D72)
-- [x] 2i-D's cadence — one backup at process start, a coalesced verified backup on each 15-minute tick ONLY when the store is dirty, and a graceful-drain backup inside `stop()`
-- [x] the two health readings, and which is which: the cheap bootstrap summary versus the doctor's on-demand byte re-verification (`cli storage doctor [--json]`, exit 0 only when authority and span/authority reconciliation are healthy AND a verified current backup exists)
+- [x] 2i-D's cadence — one backup at process start, a coalesced verified backup on each 15-minute tick ONLY when the store is dirty, and a graceful-drain backup inside `stop()` — **superseded by D322 (2026-09-03): no automatic backup; `cli storage backup` is the only writer**
+- [x] the two health readings, and which is which: the cheap bootstrap summary versus the doctor's on-demand byte re-verification (`cli storage doctor [--json]`, exit 0 only when authority and span/authority reconciliation are healthy; since D322 the backup arm is reported, not gated)
 - [x] **D181** — `cli storage restore --from <manifest>` is live and DRILLED (2026-08-09, on a copy of the standing local authority database); singleton roles claim atomically, workers own per-start records, all owners participate in exclusive restore admission, records release only after authority closure, and any unproven pre-swap WAL/SHM rollback reports an explicit uncertain state
 - [ ] the 14/8/5 retention sweep and a configurable backup path — both D193 `wont-build-unless-asked` (§2.1's `def-retention` block carries them)
 > 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/infra/sqlite/{offline-restore,recovery-stop-proof,runtime-process-locks}.ts, src/server/storage/compose.ts, src/server/dashboard/queries/storage.ts and the drill table below; left: only D193's two remainders
@@ -1557,8 +1557,9 @@ and capture handoffs remain consistent. (This sentence read "Phase 1 cannot exit
 actually landed, in **2j**.) Backups are useful recovery state, so they
 are excluded from ordinary tracker cleanup and covered by disk-space warnings.
 
-**As-built (2i-D, 2026-08-08, D169) — the doctor/backup wire is live; restore and retention are
-the recorded remainders.** The dashboard composition is the backup cadence's owner: one verified
+**As-built (2i-D, 2026-08-08, D169; the CADENCE below is superseded by D322, 2026-09-03) — the
+doctor/backup wire is live; restore and retention are the recorded remainders.** The dashboard
+composition WAS the backup cadence's owner: one verified
 backup at process start, a coalesced verified backup on each 15-minute tick **only when the store
 is dirty** (`authorityGeneration` moved past the last verified backup), and a graceful-drain
 backup inside `stop()` whose failure throws to the stopper AFTER cleanup. A failed run leaves no
@@ -1583,6 +1584,25 @@ growth to real generations. First real run of the doctor (2026-08-08) correctly 
 standing local authority DEGRADED at schema v10 against the v11 build — the migration applies at
 the next read-write open, and a summary that had guessed "healthy" would have hidden exactly
 this.
+
+**D322 (2026-09-03) — an authority backup is written only on operator command.** The operator asked
+that the state root hold the bare minimum and regenerate itself when deleted, and that a SQLite backup
+exist only when requested. The dashboard therefore runs NO backup cadence: no start backup, no
+15-minute dirty tick, no graceful-drain backup inside `stop()`, and no D222 stale/missing storage
+notification (that producer is retired; the `storage` notification kind stays in the vocabulary with
+no live emitter). `npm run cli -- storage backup [--json]` is the one writer: it opens the EXISTING
+authority (a missing database is a refusal, never an empty backup), asks the unchanged
+`AuthorityBackupService` for a verified backup at the live generation, and prints the manifest;
+SQLite's online backup makes it safe beside a running dashboard. Freshness is judged by authority
+generation alone — `current` when the newest verified manifest captured the live generation, `stale`
+once the authority moved past it, `missing` when none exists; the 45-minute age bound is gone and
+`maxBackupAgeMs` is an optional policy no production composition sets. `storage doctor` exits 0 on
+healthy authority plus reconciled span authority and REPORTS the backup arm without gating on it;
+the doctor wire's `service` arm is the fixed `never-run` reading that names the command. Restore
+(`storage restore --from <manifest>`, D181) and the bootstrap `storage.backup` indicator are unchanged. A
+read-only inspection of a backup copy leaves SQLite `-wal`/`-shm` companions behind; the service removes
+them after every inspection (an empty WAL is the only admissible state), so `backups/authority/` holds
+exactly `.sqlite` + `.manifest.json` pairs.
 
 #### D181 — the restore command, and the process locks the interlock was always about (2j, 2026-08-09)
 

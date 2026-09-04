@@ -7,6 +7,26 @@ lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/store
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
 
+- **2026-09-03: a read-only SQLite inspection is not side-effect free on disk (D322; ref
+  dashboard-surfaces §2.5).** Verifying a backup copy through a `readOnly` connection looked like a pure
+  read, but a read-only WAL-mode open creates `-shm`/`-wal` companions beside the copy and cannot
+  delete them on close, so every verified backup left two stray files and every doctor pass
+  recreated them — the "tmp files" the operator found in the state root. Nothing else opens a backup
+  copy, so the service now removes the companions after each inspection and refuses a non-empty WAL
+  (a copy with pending WAL bytes is not self-contained). Clean up only what you alone hold open;
+  never delete a live database's companions.
+
+- **2026-09-03: a file authority proven by a database must live beside that database (D321; ref
+  clock-config-secrets §Operational isolation).** `config/settings.json` was correct on its own
+  terms — a settings revision counts only when the authority database journals the command that
+  produced it — but it sat outside the state root. Wiping `.tracker-rebuild/` to start over left a
+  revision-2 file with no journal behind it, and the next boot refused with "no durable command
+  journal". The refusal was right; the layout was wrong: two halves of one proof in two directories
+  means a delete can separate them. The settings file and its sidecars now live in the state root,
+  so deleting the root deletes both, and the next boot regenerates a fresh database and the
+  never-applied baseline. When a check spans two stores, co-locate them or make the check name the
+  repair; never make the reset succeed by silently discarding one half.
+
 - **2026-09-01: a relaxed never-delete trigger must read a tombstone, not a flag (D308; ref
   dashboard-surfaces §"D308 — delete means delete").** Removing the `*_never_deleted` triggers to
   admit one delete command would have admitted every future `DELETE` too. Each trigger instead

@@ -299,7 +299,7 @@ normalize(h) = h.trim().toLowerCase().replace(/\s+/g, " ")
 Order-insensitive and unambiguous: canonical JSON preserves element boundaries, so `["a b","c"]`
 cannot collide semantically with `["a","b c"]`. Duplicate counts/occurrences are included.
 Saved at `config/column-mappings/<workflow>/<fingerprint>.json` (gitignored operator state, mirrors
-`config/settings.json`).
+`.tracker/settings.json`).
 
 > **As built (2026-08-20): the reuse LOGIC is built, the STORE is not.** `resolveSavedMapping`,
 > `heldBindings` and the three refusal gates are complete and unit-pinned in

@@ -143,10 +143,10 @@ runtimes.** `config/runtime-isolation.json` pins the values and `operational-iso
 
 | | legacy | rebuild |
 |---|---|---|
-| state root | `.tracker` | `.tracker-rebuild` |
-| artifact root | `.tracker` | `.tracker-rebuild/artifacts` |
+| state root | `.tracker` | `.tracker` |
+| artifact root | `.tracker` | `.tracker/artifacts` |
 | backend / frontend port | 3838 / 5173 | 3938 / 5174 |
-| process locks | `.tracker/daemons` | `.tracker-rebuild/locks` |
+| process locks | `.tracker/daemons` | `.tracker/locks` |
 | browser profile root / session namespace | `.auth` / `hrauto-legacy` | `.auth` / `hrauto-rebuild` |
 
 Two rows carry a decision rather than a value. **Command NAMES are not an isolation resource

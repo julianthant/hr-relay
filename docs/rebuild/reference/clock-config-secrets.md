@@ -102,7 +102,7 @@ means something beside the thing it replaced. Nothing here describes this reposi
 - [x] one resolver implements `env > settings.json > default` exactly once, with per-leaf provenance and a canonical fingerprint (§3; `src/domain/config/resolve.ts`)
 - [x] one secrets accessor covers environment secrets, registered key FAMILIES, and the Duo credential file; `secrets-single-source` and `no-secret-values-in-logs` both carry EMPTY allowlists (§6)
 - [x] closed per-system route schemas, explicit prod/test instance refusal, current-fiscal-year validation, the runtime environment/dependency registries and the strict preflight report schemas are all implemented and bidirectionally audited (§3 · §4 · §5 · §6.2)
-- [x] `config/settings.json` is one strict revisioned file authority; both composition roots read it before the one resolver runs, and `settings/apply-settings` is its sole producer (§3, D282)
+- [x] `.tracker/settings.json` (the state root; `config/settings.json` until D321) is one strict revisioned file authority; both composition roots read it before the one resolver runs, and `settings/apply-settings` is its sole producer (§3, D282)
 - [x] `mergeSettings` is compiler-exhaustive over all 16 `ConfigSchema` groups, including `browser`; the focused resolver test pins both browser leaves and their `settings` provenance (§3)
 - [ ] no contract or descriptor declares the secrets its tasks need, so `validateBootSecrets` / `validateDescriptorSecrets` have no production caller and a missing credential surfaces at the first task that needs one (§6)
 > 2026-08-28 | DCC1 | the strict settings producer, restart reader and exhaustive browser merge landed; secret declaration/preflight remains separate
@@ -389,7 +389,7 @@ test URLs and timeouts, display, capture, browser and provider settings, plus th
 `ocr.pageConcurrency`, `ocr.maxValidationRetries`, `concurrency.defaultWorkers` and
 `paths.reportsDir`. The report-output destination is the sole admitted path: `stateRoot`,
 `artifactRoot`, `browserProfileRoot`, credential/auth paths and every other path remain excluded.
-Credentials, annual dates and other non-admitted environment-owned leaves cannot enter `config/settings.json`; widening the
+Credentials, annual dates and other non-admitted environment-owned leaves cannot enter `.tracker/settings.json`; widening the
 general config schema cannot widen the editor by accident. `SETTINGS_SCHEMA_HASH` is derived from
 that exact editable schema, and the command also binds the canonical patch fingerprint and the full
 canonical command-envelope fingerprint.
@@ -561,7 +561,7 @@ the legacy runtime. A relative `profileRoot` is refused loudly rather than resol
 real-root-derived path into a filesystem mutator, and a test that constructs the real session
 factory must bind its own profile root.
 
-### Operational isolation: two runtimes, one machine (D88 · D216 · D247)
+### Operational isolation: two runtimes, one machine (D88 · D216 · D247 · D321)
 
 A repository boundary does not separate two runtimes on one host. The values that must differ are
 **data** in `config/runtime-isolation.json` (schema version 3), and
@@ -569,16 +569,16 @@ A repository boundary does not separate two runtimes on one host. The values tha
 
 |                             | legacy                                           | rebuild                                          |
 | --------------------------- | ------------------------------------------------ | ------------------------------------------------ |
-| state root                  | `.tracker`                                       | `.tracker-rebuild`                               |
-| artifact root               | `.tracker`                                       | `.tracker-rebuild/artifacts`                     |
+| state root                  | `.tracker`                                       | `.tracker`                               |
+| artifact root               | `.tracker`                                       | `.tracker/artifacts`                     |
 | backend / frontend port     | 3838 / 5173                                      | 3938 / 5174                                      |
-| process locks               | `.tracker/daemons`                               | `.tracker-rebuild/locks`                         |
+| process locks               | `.tracker/daemons`                               | `.tracker/locks`                         |
 | browser profile / session   | `.auth` / `hrauto-legacy`                        | `.auth` / `hrauto-rebuild`                       |
 | launch commands             | `dashboard`, `dashboard:prod`, `dashboard:watch` | `dashboard`, `dashboard:prod`, `cli`             |
 
-`DISTINCT_RESOURCE_KEYS` is `stateRoot`, `artifactRoot`, `processLockRoot`,
-`browserSessionNamespace`, plus both ports checked in their own right. **Two entries in that table
-are deliberately EQUAL, and each says why.**
+`DISTINCT_RESOURCE_KEYS` is `artifactRoot`, `processLockRoot`, `browserSessionNamespace`, plus
+both ports checked in their own right. **Three entries in that table are deliberately EQUAL, and
+each says why.**
 
 - **`browserProfileRoot` left the distinct list with D216** (operator decision, 2026-08-14): both
   repositories name their profile root `.auth`, and the roots are repo-relative, so they can never
@@ -590,6 +590,18 @@ are deliberately EQUAL, and each says why.**
   which the rows above make legible and harmless. What is still pinned is that each declared command
   is **byte-exactly** the script in its own checkout's `package.json`, so a drifted or missing
   launch command fails on either side.
+- **`stateRoot` left the distinct list with D321** (operator decision, 2026-09-03): both repositories
+  name their state root `.tracker`, and the roots are repo-relative, so the two runtimes never share
+  a directory — the same argument D216 made for `.auth`. The artifact root (`.tracker/artifacts` vs
+  `.tracker`), the lock root (`.tracker/locks` vs `.tracker/daemons`), both ports and the session
+  namespace still differ and are still audited. **The state root must regenerate to defaults when deleted.** D321 therefore also moves the settings
+  authority — `settings.json` with its `.authority.json`, `.prepare.json`, `.rollback.json` and lock
+  siblings — from `config/` into the state root, beside the database whose command journal proves it.
+  Deleting `.tracker` now removes both halves together, and the next `npm run dashboard` recreates the
+  root, a fresh migrated database and the never-applied revision-1 settings baseline. Before D321 the
+  settings file lived in `config/` and outlived a deleted state root, and the boot refused with
+  "settings revision 2 has no durable command journal" — correct fail-loud, wrong place for the file
+  (see ref lessons, 2026-09-03). The refusal now names that fix.
 
 Isolation values reach the runtime through ONE exported direct-`const` `defineRuntimeIsolation`
 call (`src/config/runtime-isolation.ts`) whose schema is a strict object of `z.literal`s, consumed by
@@ -604,7 +616,7 @@ the wrong argument path each fail by name. An identifier mention is not proof.
 the process loudly instead of becoming an unobserved rejection. For `dashboard` that promise settles
 only after the composed runtime stopped: the command awaits the first `SIGINT`/`SIGTERM` through an
 injectable `signals` seam and then calls `composeDashboardRuntime`'s `stop()` exactly once — that
-ordering (HTTP ingress → hub/timers → worker supervisor → graceful-drain backup → database → process
+ordering (HTTP ingress → hub/timers → worker supervisor → database → process
 lock) remains the sole shutdown authority, and this only awaits it. The production seam registers
 both signals with `process.on`, never `process.once`: a `once` listener removes itself the moment it
 fires, and a signal with ZERO listeners falls back to Node's default disposition. Both listeners
