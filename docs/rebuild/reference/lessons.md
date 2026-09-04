@@ -7,6 +7,18 @@ lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/store
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
 
+- **2026-09-04: a schema-version literal in the backup contract and an unconditional at-open
+  migration each looked like strictness and together make the pre-upgrade backup worthless (D332;
+  ref dashboard-surfaces §D332.1, §D332.4).** `AuthorityBackupManifestSchema`, `BackupVerificationSchema`
+  and `AuthorityCopyInspectionSchema` pin `schemaVersion` to `z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)`
+  and the read-only inspector refuses any copy whose version or table set is not exactly the build's —
+  so the first build that bumps the version cannot parse, verify or restore any backup taken before
+  it, including the one D327 requires before the upgrade. And `AuthorityDatabase.open` runs every
+  pending migration whenever `existingVersion < CURRENT`, so the new build's `storage backup` over an
+  old root would migrate it silently before copying it. Pin literals on the WRITE path only, admit a
+  bounded version range against per-version frozen table sets on the READ path, and gate the
+  migration chain at the floor with a named read-only no-migrate open mode for the commands that must
+  see old bytes as they are. A backup nobody can read back is a ceremony, not a rollback asset.
 - **2026-09-04: a value that is both a config leaf and a registered secret is inside every snapshot,
   fingerprint and backup (D331; ref clock-config-secrets §D331.6).** `TIMEKEEPER_NAME` looked like an
   ordinary operator default — it had a `CONFIG_ENV_BINDINGS` row like any timeout — but it was also a
