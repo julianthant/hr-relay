@@ -9,7 +9,7 @@
 **Integration target:** `master`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-04T18:47:17Z at authority-ratification commit `a00be7591c1a801b27d84c7b43c8a6f1708068ed`
+**Last verified:** 2026-09-04T19:24:38Z at coordinator commit `b5e1380cc85483f60452371f7e446904510dfb4e`
 
 ## Facts every run needs
 
@@ -20,6 +20,7 @@
 - Task 4's claimed/running cancel question is already settled as option A in the owning D330 sections and adds proof #27; it is not an open coordinator decision.
 - Task 1's tombstone schema lives in `src/domain/run/deleted-run.ts`; doc 01's stale `authority.ts` location was corrected at `e1674420` without changing product scope.
 - M3 allocation: Task 1 owns the direct database open/no-migrate half; Task 6 owns and re-runs the successful backup/doctor inspector and manifest half. This resolves the impossible cross-seam gate without moving any compatibility file into R01.
+- Parity is inherited red at R01's exact base: 116 references differ only in the embedded descriptor hash after `dae04a11` changed the generated manifest subsequent to parity refreeze `7caa3fa9`. R01's range leaves the manifest, parity references, and fixture-day helper byte-unchanged, so the coordinator classified this as inherited evidence; Task 1 must not refreeze or alter the parity lane.
 
 ## Decisions ratified
 
@@ -31,7 +32,7 @@
 
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
-| U01 · Task 1 schema floor | R01 | active | pending | pending | supervisor-owned consequential review | Operator chose 1A/2A; owning authorities ratified at `a00be759`; supervisor cleared to resume. |
+| U01 · Task 1 schema floor | R01 | active | pending | required base gate pending; parity inherited-red evidence accepted | supervisor-owned consequential review | Operator choices ratified at `a00be759`; parity repair is outside R01 and its inputs remain unchanged. |
 | U02 · Task 2-1 run-record service | R02 | blocked on U01 | pending | pending | supervisor-owned consequential review | Wave 2 peer 1. |
 | U03 · Task 2-2 settings catalog/root | R03 | blocked on U01 | pending | pending | supervisor-owned consequential review | Wave 2 peer 2. |
 | U04 · Task 3 runtime lifecycle writers | R04 | blocked on U02+U03 | pending | pending | supervisor-owned consequential review | Serial after both wave merges. |
@@ -43,6 +44,7 @@
 ## Residue
 
 - R01's two pre-implementation authority contradictions were ratified at `a00be759`; no open residue remains from that stop.
+- The inherited descriptor-hash parity drift remains repository residue for an owning later task; it does not authorize R01 to change parity artifacts.
 
 ## Questions for the operator
 
