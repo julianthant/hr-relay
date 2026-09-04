@@ -303,6 +303,35 @@ artifact writes at the wrong location — the silent-wrong-value failure this pr
 prevent. The browser is not entitled to a filesystem default; it is entitled to a loud error. The
 general rule and its walker are ref frontend-backend-integration §8.13's.
 
+### A display default is the host's primary display (D324, 2026-09-03)
+
+The operator's rule: with nothing applied in Settings, the browser viewport IS the screen the
+dashboard runs on. The precedence does not change; as with D121 the split is on WHERE the default
+comes from:
+
+- `schema.ts` keeps `DEFAULT_DISPLAY` (2560 × 1440) as the CONTRACT default. It is the headless
+  fallback for a host that has no display to report (a CI runner, an SSH session — a genuinely valid
+  state for a headless browser viewport) and nothing else.
+- `src/infra/host/primary-display.ts` probes the host's primary display once per process tree: the
+  macOS main display's LOGICAL resolution from `system_profiler SPDisplaysDataType -json` (never the
+  backing pixels), the Windows primary screen bounds through PowerShell, the X11 `primary` output
+  through `xrandr`. Every parser is strict: an unrecognized answer is a thrown error naming the tool,
+  never a guessed viewport; a missing tool or no attached display is `unavailable`.
+- `src/domain/config/host-display.ts` owns the encoding. `hostAwareResolutionEnvironment` in
+  `secrets.ts` — the ONE permitted environment write — publishes the observation as
+  `HRAUTO_HOST_PRIMARY_DISPLAY` (`<width>x<height>` or `none`) if no parent already did, and the
+  three compositions that resolve config (dashboard, worker, dry-run scenario) obtain their
+  environment through it. A parent's published value is kept verbatim and never re-probed, so a
+  monitor plugged in between the dashboard boot and a worker spawn cannot split the config
+  generation: children inherit the environment and resolve the identical fingerprint.
+- `resolve.ts` reads that one key as the `display` DEFAULT (`hostDisplayDefault`), beneath a
+  Settings override and reported as `default`, which is what it is. A malformed published value is
+  a refusal. The Settings editor's "default" column resolves against the host display leaf alone
+  (`hostPrimaryDisplayEnvironment`), so it shows the host value rather than the headless fallback.
+- The key is registered in `src/domain/runtime-environment.ts` on its own `config-default` channel:
+  a runtime-published input to the resolver's DEFAULT layer, deliberately without a
+  `CONFIG_ENV_BINDINGS` entry, because an env-layer binding would let it outrank Settings.
+
 ### The environment layer is a validated binding registry, not a path→name map
 
 ```ts

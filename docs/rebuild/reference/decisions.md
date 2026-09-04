@@ -1955,3 +1955,14 @@ presentation authority, not runtime behavior, and preserves D319's workflow-admi
 | # | Decision | Owning doc |
 |---|---|---|
 | **D323** | **THE ROADMAP HAS ONE VISIBLE HIERARCHY: NUMBERED PHASES DOWN THE VERTICAL SPINE, LETTERED PARTS HORIZONTALLY FROM EACH PHASE, AND CONCRETE TASKS VERTICALLY BENEATH THEIR PART.** Phase 3 is 3A Shared dashboard, 3B Separations, 3C Workflow authoring and acceptance, and 3D Codex and Claude cooperation. Phase 4 is the workflow-migration program: approved workflows become 4A, 4B, 4C and onward. Phase 5 owns cutover readiness and the one authority switch. Phase 6 owns the desktop app. Every planned node belongs to one of those phases; working sessions live only in node logs and never on the spine. This supersedes D319 only where D319 allocated a new numbered phase per workflow. D319's admission boundary remains: no workflow implementation starts before its current behavior and proposed workflow are verified and operator-approved. | `docs/decisions/phase-governance.md` §D323 (context) · ref workflow-model §1.6.2 · roadmap §Governance · docs 03c–06 |
+
+## Reconciliation round 130 (2026-09-03) — the display default is the host's screen
+
+_phase: 3c_
+_D324 records the operator's instruction that, with nothing applied in Settings, the dashboard uses
+the resolution of the screen it runs on. The normative text lands in ref clock-config-secrets §3 in
+this same commit._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D324** | **THE `display` DEFAULT IS THE HOST'S PRIMARY DISPLAY, PROBED ONCE PER PROCESS TREE AND PUBLISHED AS `HRAUTO_HOST_PRIMARY_DISPLAY`; THE 2560×1440 CONTRACT DEFAULT REMAINS ONLY FOR A HOST WITH NO DISPLAY TO REPORT.** Precedence stays `env > settings > default` — the host value is the DEFAULT layer, beneath a Settings override, reported as `default`. `src/infra/host/primary-display.ts` reads the macOS main display's logical resolution, the Windows primary screen bounds or the X11 primary output with strict parsers (unrecognized answer = thrown, no display = `unavailable`); `secrets.ts` owns the one environment write; a parent's publication is never re-probed so worker children resolve the identical config fingerprint. | ref clock-config-secrets §3 "A display default is the host's primary display" (primary) · `src/domain/config/host-display.ts` · `src/infra/host/primary-display.ts` |
