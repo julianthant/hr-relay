@@ -15,7 +15,8 @@
 - `/Users/julianhein/Projects/hr-automation-rebuild/AGENTS.md` and its byte-identical `CLAUDE.md` twin — repository scope.
 - `/Users/julianhein/.agents/skills/coordinator/SKILL.md` — coordinator lifecycle.
 - `/Users/julianhein/.agents/skill-library/parallel-agent-work/REFERENCE.md` — supervisor/worktree ledger, integration, cleanup, and exact progress footer.
-- Supervisors invoke `/supervise`; their worker tree is limited to native `sup_scout`, `sup_analyst`, `sup_luna`, and `sup_terra` roles under the repository rules.
+- Supervisors invoke `/supervise`. The 2026-09-04 retiering at `d38498fb` and the current coordinator/supervise skills require Astra supervisors and native `sup_scout`, `sup_analyst`, `sup_terra` (trivial only), and `sup_sol` (default execution) support. R01's historical Luna/Terra staffing remains evidence, not the policy for future dispatch. Verify actual role availability; never substitute a bare model or generic role.
+- `/Users/julianhein/.agents/skill-library/orchestration-runtime/REFERENCE.md` — current mechanical envelope/cleanup protocol. This coordination predates enrollment; the 2026-09-04 read-only status check reported no enrolled sessions. Preserve the existing immutable UUID and ledger rather than minting another identity.
 
 ## Canonical authorities
 

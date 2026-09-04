@@ -4,6 +4,10 @@
 **Coordinator owner/channel:** `01a06d9c-1667-7451-a022-5f661d373703` / `local`
 **Integration checkout:** `/Users/julianhein/Projects/hr-automation-rebuild` · `master`
 
+**Staffing amendment (2026-09-04):** for every future dispatch, the current profile's Astra supervisor
+and Terra/Sol native role policy supersedes the older Sol/Luna/Terra planning labels below. Historical
+R01 staffing is preserved. Verify native-role availability without silently substituting roles.
+
 | Run | Canonical supervisor title | Theme | Units | Worker roles | Base | Worktree allowance | Integration order | Parallel-ready | Needs first | Exit evidence |
 |---|---|---|---|---|---|---|---|---|---|---|
 | R01 | Supervisor · phase-1-6-authorities · C161eaed0 · R01 · schema floor | Task 1 schema floor | U01 | Luna/Terra | `dfd73b638bdd1bd49c7e4df91cbca5797ec12ebe` | 4 | 1 | no · serial prerequisite | — | isolated base+task gate green; report verified; integrated gate green; worktree/ref/task closed |
@@ -117,7 +121,7 @@
 
 ## Decisions gating runs
 
-- Wave 2 parity baseline: Phase 1.6 requires parity green and byte-unchanged, but exact base `ebc41c45` inherits 116 descriptor-hash-only mismatches after `dae04a11`; choose the owning authority path before R02/R03 dispatch.
+- Wave 2 parity baseline: operator-approved R09 repairs inherited derived-hash references, including verified displayed hashes, under doc 01's narrow exception. The operator decision is resolved; R09's verified integration and closure remain prerequisites for R02/R03.
 - The prior claimed/running cancel decision is ratified in D330 and Task 4 owes proof #27.
 
 ## Date or external gates
