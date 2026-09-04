@@ -424,11 +424,11 @@ builds:
 
 ### 1.6 · Implement canonical run and settings authorities {#p1-authority-implementation}
 status: planned
-date: after 0.3
+date: after 0.3 (closed 2026-09-04)
 size: XL
-doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.3 · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.3 · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §9.2 · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2 · ref:frontend-backend-integration §4
 
-> Implement the exact 0.3 contracts without redesigning them. Every task is one supervisor seam; Tasks 1 and 2 may run in parallel only after the 0.3 coordinator proves their schemas and migration boundaries independent and records the isolation in its run plan.
+> Implement the exact 0.3 contracts — D330, D331, D332 — without redesigning them. Every task is one supervisor seam bound in doc 01 §1.6 to its files, gate, proofs and deletion test. R04 (0.3 Task 4) ruled the original Tasks 1 and 2 NOT independent as written — both add schema steps and would bump `CURRENT` twice — so the part is re-sliced: Task 1 lands the one serial schema floor, and Tasks 2-1 (run-record service) and 2-2 (settings catalog/root) run as a D328 wave from the master that contains Task 1's merge; the 1.6 coordinator records that base SHA and both worktrees before dispatch. Tasks 3–7 run serially in order. No other pair is a wave.
 
 builds:
 - [ ] BE one canonical SQLite-backed run-record service with typed CRUD/CAS lifecycle operations
@@ -440,86 +440,130 @@ needs:
 - phase0-authority-design-close
 - p1-exit
 
-#### 1 · Implement the canonical run-record service {#p1f-run-store}
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound every task to one seam/gate/order/proof set/deletion test in doc 01 §1.6; re-sliced into serial floor + wave 2 (`2-1`/`2-2`) + serial 3–7 after the cross-contract review proved the schema coupling · left: the coordinator's `cancel`-of-a-running-run ruling before Task 4 (R04 report, NEEDS COORDINATOR)
+
+#### 1 · Land the schema floor {#p1f-floor}
 status: planned
-doc: ref:dashboard-surfaces §2.3 · ref:execution-and-sessions §3
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §2.3
 
 builds:
-- [ ] BE schema/migration plus a single repository API for create, read, update, delete/tombstone, claim, retry, archive, and purge
-- [ ] BE atomic ordering and compare-and-swap invariants for concurrent workers and operator commands
-- [ ] PROOF contract, migration, concurrency, and property tests that fail against each displaced authority
+- [ ] BE one migration `v30 = floor` carrying every D332 schema step (`deleted_runs` ordinals + `ordinal_source` with the re-created trigger, `checkpoint_payloads_never_deleted`, `protected_settings_current`, `authority_upgrades`) and the frozen D290 27/28/29 literals in the same commit as the `CURRENT` bump
+- [ ] BE the `#runMigrations` floor gate, the read-only no-migrate open for `storage backup|doctor` and the upgrade preflight, `upgrade-required` on every other door, the `baseline` journal row at D321 regeneration, the `protectedSettingsCurrent` repository
+- [ ] PROOF M3 (open half), M9, M21, the `baseline` matrix cell; the `planned` `no-lifecycle-sql-outside-the-adapter` entry
 
-#### 2 · Implement the settings catalog and protected root {#p1f-settings-store}
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | node created: the serial floor the wave branches from (doc 01 §1.6 Task 1) · left: everything
+
+#### 2-1 · Implement the canonical run-record service {#p1f-run-store}
 status: planned
-doc: ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+date: wave 2 peer · branches from the master holding Task 1's merge
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.3 · ref:execution-and-sessions §3
 
 builds:
-- [ ] BE one leaf catalog and revisioned repository under `.tracker/settings/`
-- [ ] BE move username, password, timekeeper identity, local canary inputs, display overrides, timeouts, paths, worker defaults, and all other operator-managed non-provider-key configuration out of `.env`
-- [ ] BE leave only provider API keys in `.env`; keep D324's probed host display as the catalogued default when no override exists; expose protected settings as presence/revision, never plaintext readback
-- [ ] PROOF permissions, symlink refusal, redaction, restart-scope, and concurrent update tests
+- [ ] BE `src/core/run-record-service.ts` + the lifecycle repositories: the §D330.5 operation set with named refusals, three-way `read`, ordered `list`, the two-source watermark
+- [ ] BE one-transaction first-eligible claim with the full token, claim fence vs. operator CAS, composite terminalize, D308 tree delete behind the tombstone with gate records and `ordinal_source = tombstone`
+- [ ] PROOF §D330.11 #1–#23, #25, #26 and P33's claim half over the real service; deletion tests #16 and #25
+
+needs:
+- p1f-floor
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | relabelled 2-1 (wave 2 peer) and bound to its seam; owes 25 of §D330.11's 26 proofs (#24 is Task 4's) · left: implementation
+
+#### 2-2 · Implement the settings catalog and protected root {#p1f-settings-store}
+status: planned
+date: wave 2 peer · branches from the master holding Task 1's merge
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2 · ref:frontend-backend-integration §4
+
+builds:
+- [ ] BE one leaf catalog (`src/domain/config/catalog.ts`) and the revisioned `.tracker/settings/` root with two documents, one lock, two CAS arms and write-only protected values
+- [ ] BE move username, password, timekeeper identity, local canary inputs, display overrides, timeouts, paths, worker defaults, and all other operator-managed non-provider-key configuration out of `.env`; delete adapters A4 and A5 in this task
+- [ ] BE leave only provider API keys in `.env`; keep D324's probed host display as the catalogued default when no override exists; expose protected settings as presence/revision, never plaintext; `manifestVersion` 2 backup write shape
+- [ ] PROOF §D331.11 P1–P15, P17–P19, P21–P32, P33 protected half, P34–P39, P41 and M14's schema half; `settings-catalog` guard active; `npm run test:parity` unchanged (A8)
+
+needs:
+- p1f-floor
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | relabelled 2-2 (wave 2 peer) and bound to its seam; never edits `migrations.ts` or `authority-database.ts` (Task 1 landed the singleton) · left: implementation
 
 #### 3 · Cut over executor and worker lifecycle writers {#p1f-run-writers}
 status: planned
-doc: ref:workflow-model §4 · ref:execution-and-sessions §3 · ref:frontend-backend-integration §3.4
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:workflow-model §4 · ref:execution-and-sessions §3 · ref:frontend-backend-integration §3.4
 
 builds:
-- [ ] BE route start/fan-out publication, queue claim, heartbeat, executor transition, retry scheduling, and terminal publication through the run service
-- [ ] BE preserve stable run/session ids and append-only evidence links
-- [ ] PROOF remove or guard every core-runtime lifecycle write outside the service
+- [ ] BE route start/fan-out publication, queue claim, heartbeat, executor transition, retry scheduling, and terminal publication through the run service (`worker-loop`, `worker-sessions`, `worker/compose`, the start surfaces)
+- [ ] BE preserve stable run/session ids and append-only evidence links; `span.ended` only after the terminal commit
+- [ ] PROOF #4–#7, #9, #10 through the real worker composition; deletion test `worker-loop-writes-only-through-the-service`
 
 needs:
 - p1f-run-store
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate/deletion test (doc 01 §1.6 Task 3); serial after wave 2 · left: implementation
+
 #### 4 · Cut over operator run commands and archive/delete writers {#p1f-run-commands}
 status: planned
-doc: ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §2.3 · ref:operator-trust §5.7
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.3 · ref:operator-trust §5.7
 
 builds:
-- [ ] BE route CLI/dashboard start, retry, cancel, rename, archive, relaunch, terminal-only delete/tombstone, bulk, and purge commands through the run service
-- [ ] BE return one typed settlement/conflict vocabulary and preserve command actor/version attribution
-- [ ] PROOF idempotence, stale CAS, concurrent-worker, archive/relaunch lineage, and D308 deletion semantics
+- [ ] BE route CLI/dashboard start, retry, cancel, rename, archive, relaunch, terminal-only delete/tombstone, bulk, and purge commands through the run service (`command-kernel`, `command-service`, the `cli` run verbs)
+- [ ] BE return one typed settlement/conflict vocabulary (`target-deleted` is the one new code) and preserve command actor/version attribution
+- [ ] PROOF idempotence, stale CAS, concurrent-worker, archive/relaunch lineage, and D308 deletion semantics through the real kernel; `no-lifecycle-sql-outside-the-adapter` (#24) activated with its `runs-view-has-no-reader` arm in the same commit
 
 needs:
 - p1f-run-writers
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate (doc 01 §1.6 Task 4); needs the coordinator's ruling on operator `cancel` of a claimed/running run in §D330.5 before start · left: that ruling, then implementation
+
 #### 5 · Cut over settings mutation and runtime resolution {#p1f-settings-consumers}
 status: planned
-doc: ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
 
 builds:
-- [ ] BE route secure bootstrap, worker composition, browser/login, workflow defaults, and preflight inputs through the catalog; dashboard presentation remains 3.1 work
-- [ ] BE add revision/CAS update, validation, restart-required reporting, and protected write-only inputs
-- [ ] PROOF every setting resolves from exactly one catalog leaf and one persisted authority
+- [ ] BE route secure bootstrap, worker composition, browser/login, workflow defaults, and preflight inputs through the catalog and the protected store; dashboard presentation remains 3.1 work (the eight-leaf editor inventory stays served, A8)
+- [ ] BE revision/CAS update, validation, restart-required reporting, and protected write-only inputs reach every composition; the worker spawn environment is value-free
+- [ ] PROOF P16, P20, P33's composition half, P4 at composition level; deletion test `composition-reads-no-environment-leaf`; `npm run test:parity` unchanged
 
 needs:
 - p1f-settings-store
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate/deletion test (doc 01 §1.6 Task 5); serial after Task 4 (shares the composition roots with Task 3) · left: implementation
+
 #### 6 · Prove upgrade, rollback, recovery, and compatibility deletion {#p1f-migration-proof}
 status: planned
-doc: ref:operator-trust §1 · ref:guards-and-tests · ref:clock-config-secrets §3
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.5 · ref:operator-trust §1 · ref:guards-and-tests §5.2 · ref:clock-config-secrets §3
 
 builds:
-- [ ] BE idempotent preflighted upgrade that requires an explicit verified `cli storage backup`, plus its own transactional journal, rollback, and mixed-generation refusal; do not add an automatic backup cadence
-- [ ] PROOF migrate representative current, terminal, archived, and malformed authorities without losing evidence
-- [ ] PROOF import operator-managed non-provider-key configuration once, retain provider keys in `.env`, preserve derived defaults, and refuse ambiguous duplicates
-- [ ] BE delete transitional readers/writers when their deletion tests turn green
+- [ ] BE `cli storage upgrade [--plan] [--json]`: the 15-step preflight requiring an explicit verified `cli storage backup`, prepare/rollback files under the private-file protocol, one exclusive transaction with the journaled settings rewrite and marked protected import, settle, the `authority_upgrades` arms, the closed boot matrix and its `storage-authority` preflight check; no automatic backup cadence
+- [ ] PROOF migrate representative current, terminal, archived, and malformed authorities without losing evidence (M1–M27; ordinals backfilled with provenance, orphan gate records journaled, evidence and snapshots byte-identical)
+- [ ] PROOF import operator-managed non-provider-key configuration once, retain provider keys in `.env`, preserve derived defaults, and refuse ambiguous duplicates (§D332.S1–S6); the backup READ path widened and the WRITE path recording the observed version
+- [ ] BE land A0/A1 with `authority-upgrade-adapters-isolated` active and `authority-upgrade-adapters-retired` + `settings-root-single-pathname` planned for 2.6; delete nothing here — A4/A5 left in 2-2, A0–A3 expire at 2.6, A8 at 3.1; then run the upgrade on the operator's root and announce the `migrated-refused` remove-list
 
 needs:
 - p1f-run-commands
 - p1f-settings-consumers
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate; the deletion checkbox restated — nothing is deleted in 1.6 Task 6, every adapter's deletion task is named (doc 01 §1.6 Task 6) · left: implementation
 
 #### 7 · Close the rebuilt foundation {#p1f-close}
 status: planned
 doc: 01 §1.6 · Implement canonical run and settings authorities · 02 §2.6 · 03.1 §Reopened completion tasks
 
 builds:
-- [ ] PROOF typecheck, lint, coverage, architecture, manifest, storage-doctor, and targeted live dry-run gates
-- [ ] PROOF adversarial review finds no second run/settings lifecycle authority or secret-value leak
-- [ ] DOCS record migrations and hand 2.6 only verified contracts, residuals, and exact gates
+- [ ] PROOF typecheck, lint, coverage, architecture, manifest, stores-catalog, parity (unchanged), storage-doctor on the upgraded root, and both workflows' T1b live manifests with exact zero write-authority deltas
+- [ ] PROOF adversarial review finds no second run/settings lifecycle authority or secret-value leak, and the `no-lifecycle-sql` negative control intact
+- [ ] DOCS record the migration and hand 2.6 only verified contracts, the migrated fixture pair, the named adapter deletions (A0/A1 → 2.6 Task 4; A2 + its unit test and A3 → 2.6 Task 3; A8/P40 → 3.1 Task 9-2), residuals, and exact gates
 
 needs:
 - p1f-migration-proof
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its gate and its 2.6 handoff list (doc 01 §1.6 Task 7) · left: implementation
 
 ## Phase 2 · Prove writes and build the platform tails {#phase-2}
 phase: Phase 2
