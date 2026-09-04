@@ -3487,6 +3487,174 @@ any notification. The digest cannot move between (1) and (4): `archived_runs` is
 its own trigger and SQLite serializes the writer, so a concurrent relaunch or second delete
 observes either the pre-image or the tombstone, never a half-cascade.
 
+###### D329.9 — evidence linkage invariants
+
+Every class below is evidence **about** a run; none of them **is** one. Each links to the run by
+`runId` and nothing else (§D329.1), each is append-only by its own mechanism, and each may qualify a
+lifecycle fact the service has already decided without ever deciding one itself.
+
+| Evidence class | Link to the run | Append-only by | May EXPLAIN | Never DECIDES | On D308 delete |
+|---|---|---|---|---|---|
+| span/note JSONL lines and the `run.queued` root | `runId` on every event line; the root additionally carries the full identity tuple `liveSpanRootMismatches` reconciles against the row | immutable shared per-workflow-per-day files, never rewritten (D301) | the timeline, node progress, what a worker observed | existence, lifecycle state, disposition | stays; the doctor classifies its root `deleted` (D308), an accounted state beside `archived` |
+| `run_checkpoints` | `run_id` column plus the resume key (`workflow`, `itemId`, `nodeId`, `attempt`) | insert-only per resume key | which nodes completed and what a resume would reuse | that a run is `running` or `terminal` | leaves with the run |
+| `run_results` and `run_terminal_authorizations` (`record_key` = `runId`), `failures` (`run_id`; own key `failureId`), `run_terminal_outbox` (`run_id`) | as noted | written in the SAME transaction as the `terminal` transition (§D329.4) | the outcome the terminal row already names, and the `failureId` it names | that the run is terminal; the lifecycle row decides that | leave with the run |
+| `write_intents` → `write_attempts` → `durable_outbox` | ONLY `write_intents` carries `runId`, and only inside `record_json`; attempts and outbox link solely by `write_intent_id` (lesson 2026-08-25) | insert-only rows plus the sequencer's fenced status advance | that a write was fenced, attempted, parked or committed | the `parked-write` state; per-run counts derive through THIS run's intent ids, never a global table count | leave with the run; the permanent idempotency keys are released and the confirm copy says so |
+| `evidence_receipts` | `run_id`, UNIQUE | one immutable composition per run | the ordered obligation/verdict tuples | the outcome | leaves with the run |
+| `gate_results` (a logical repository over `checkpoint_payloads`, record key `${runId}:${gateId}`) | the `runId` half of that composite key, and `$.runId` in the record | insert-only simple record | which gate decision resolved a park | `parked-gate`; the row decides it (§D329.3) | **stays** — D308 keeps `checkpoint_payloads` as shared authority, so a gate record whose run is tombstoned is orphaned evidence the service answers `deleted` for. 1.6 either cascades these exact `${runId}:` keys with the run or proves the orphan is unreachable from every surface; §D329.11 names that test. |
+| `diagnostic_bundles` (`run_id`) and `diagnostic_attachments` (`bundle_id`) | as noted | insert-only, content-digest bound | what was captured at a failure or operator request | existence or state | leave with the run, attachments first |
+| captures and content-addressed artifact bytes | none directly — reached only through a bundle or capture membership row; one ref legitimately serves many runs (D292) | immutable content-addressed objects | what an artifact contains | any run fact whatsoever | the bytes STAY as shared authority; only the membership rows leave |
+| `dry_run_scenario_results` | `run_id`, absent on the `not-started` arm | insert-only evidence; exact replay returns the canonical row, divergent replay refuses | that a T1b case executed and what it observed | whether a run exists — the `not-started` arm names no run at all | leaves with the run when it names one |
+| `activity_person_pseudonyms` | `run_id`, keyed (`runId`, `keyGeneration`) | insert-only under a generation-bound HMAC commitment (D288) | a person count over historical runs | any lifecycle fact | leaves with the run |
+| `archive_relaunches` | `record_key` = the NEW run's id; `archived_run_id` = the source run | insert-only | relaunch lineage (§D329.7) | that either end exists | leaves when either end is deleted |
+
+**The invariants, numbered:**
+
+1. **Every evidence row names a `runId` the service can answer for.** The answer is `present` or
+   `deleted`; an `absent` answer standing beside real evidence is a doctor finding by run id
+   (§2.5's `missing` / `malformed` arms), never permission to manufacture a lifecycle row.
+2. **The queue root is published once, from the committed record, through the shared builder.**
+   `runQueuedSpanEvent` is the one projection of a committed run identity into `run.queued`, and
+   that root is the only span the lifecycle service itself causes; every other span belongs to the
+   executor or the worker. A rootless span file is repaired only offline, through D301's admitted
+   `authority-reconstruction` marker bound to the preserved prefix — never by a runtime append and
+   never by rewriting the file (lessons 2026-09-01).
+3. **Authority leads, evidence lags.** Evidence is written AFTER the authority transaction it
+   describes commits (D218/D268: the projector's one live feed is a disk tail, so the fold can only
+   see bytes already landed). The single exception is fenced-write instrumentation, which CAPTURES
+   its batch and clocks it before `ctx.driver.commit` and DELIVERS the commit-role span events only
+   after the callback settles (lesson 2026-08-25); that ordering is the write sequencer's, and it
+   still publishes nothing before the durable fence.
+4. **No reader joins evidence to evidence to reach a lifecycle fact.** A gate record plus a span, a
+   receipt plus an outbox row, a checkpoint plus a JSONL tail — none of these combinations yields
+   state, outcome, existence or disposition. Every such question is one `read` (§D329.5), and a
+   surface that cannot get its answer that way is missing an operation, not a join.
+5. **Redaction travels with the evidence, not with the reader.** Evidence rows and every projection
+   over them carry `idempotencyKeyDigest` or a bounded `key digest <12>…` reference and never a raw
+   permanent key or a person identifier; a `matchKey` stays byte-exact in authority and is redacted
+   only in diagnostics, wires and rendered projections. The owning rules are already written — see
+   the dated lessons of 2026-08-28 (match key is durable identity), 2026-08-29 (permanent write keys
+   are authority-only; diagnostic safety is an admission, not an age stamp) — and this contract adds
+   no exception for lifecycle evidence.
+
+###### D329.10 — the adapter boundary
+
+**One adapter owns the SQL.** Exactly one infra module — today `src/infra/sqlite/authority-database.ts`
+and the narrow repositories it exposes — may issue SQL over `tasks`, `archived_runs` and
+`deleted_runs`. It holds the private `DatabaseSync`; repositories cannot execute arbitrary SQL or
+receive the raw connection (§2.3), and no other module may open a second handle to reach these
+tables. Direct table access remains an infrastructure detail (D327): it is not a supported seam, and
+no surface, test or script is entitled to it.
+
+**One service owns the mutators.** The run-record lifecycle service is the ONLY caller of the
+lifecycle repositories' mutating methods (`create`, `claimNext`, the CAS transitions, `terminalize*`,
+`archive`, `delete`). Application code reaches lifecycle facts only through the service's typed
+operation set (§D329.5):
+
+| Caller class | May call | May never |
+|---|---|---|
+| command kernel (run family, version-archive family) | `create`, `transition`, `retry`, `restart`, `relaunch`, `archive`, `delete`, `deleteArchived` | write a lifecycle row directly, or CAS on anything but the served `version` |
+| worker loop | `claimNext`, `renewClaim`, `workerTransition`, `terminalize`, `requeue` (recovery sweep) | select an eligible row itself, or fence on anything but its claim |
+| executor / write sequencer | `terminalize` through the worker, and its own evidence writes | change state; it emits evidence, and evidence decides nothing (§D329.9) |
+| BFF queries and projectors | `read`, `list` | any mutator, and any lifecycle inference from a fold |
+| storage doctor, `cli storage doctor`, D301 repair | `read`, `list` only — plus D301's one offline JSONL append | write, repair or delete any lifecycle row; select a substitute row |
+| CLI (`phase`, `dry-run-scenario`, `storage`) | the same typed operations as its composed surface | reach the adapter to make an answer convenient |
+
+**Projection tables are never a lifecycle input.** `spans`, `gates`, `notes` and `runs_view` are
+rebuildable read models (§2.3); nothing in the service reads them, and a rebuild of them changes no
+existence answer, no state and no disposition. The reverse also holds: the service never writes a
+projection table.
+
+**The guard 1.6 must add.** An architecture guard in `tests/unit/architecture/` (with its
+`docs/rebuild/guard-inventory.json` entry in the same commit) that refuses, outside the adapter +
+service allowlist, (a) any SQL text matching `FROM tasks`, `FROM archived_runs` or `FROM deleted_runs`
+and their `INSERT INTO` / `UPDATE` / `DELETE FROM` forms, and (b) any import of a lifecycle
+repository mutator. The allowlist is exactly two modules — the infra adapter and the service — and it
+is a literal list, not a path prefix. The existing table-class registry coverage tests (§2.3, which
+mutate each authority repository and prove `authority_generation` advances) extend to cover the
+service: a lifecycle operation that commits without advancing the generation, or a service method
+with no coverage row, fails the guard.
+
+**A test may not bypass the service to make a surface green.** Fixtures compose the real service over
+a real temporary database; inserting a `tasks` row by hand to reach a state the operation set refuses
+proves the surface, not the system, and is exactly the shape §D329.11 exists to prevent.
+
+###### D329.11 — what 1.6 must prove
+
+Property and deletion tests, each as *name → invariant → red-capable oracle*. 1.6 writes these; this
+list is the obligation, not the code.
+
+1. `identity-unique-under-concurrent-create` → `runId`, (`workflow`,`itemId`,`attempt`) and
+   (`workflow`,`runNumber`) are unique and `attempt`/`runNumber` advance monotonically → N concurrent
+   creates for one item yield N distinct rows with a strictly increasing attempt set and no duplicate
+   run number; break the reservation read and a duplicate appears.
+2. `create-refuses-tombstoned-run-id` → a deleted `runId` is never re-created → create naming a
+   tombstoned id refuses `tombstoned` and writes zero rows; remove the tombstone check and the row
+   lands.
+3. `create-refuses-missing-parent-and-retry-source` → `parent.runId` and `retryOf` must name existing
+   non-deleted rows → both refuse by field name; today's store accepts them, so the test is red
+   before 1.6's change.
+4. `claim-next-race-one-winner` → two workers racing `claimNext` on one eligible row → exactly one
+   receives the row with `claimGeneration+1`; the other observes `state = 'claimed'` and gets
+   `none-eligible` — never the same `runId` twice, and never a second row for a busy worker.
+5. `claim-refuses-stale-runtime-generation` → a worker whose boot token no longer equals the active
+   `runtime_config` row and `settings_current` epoch claims nothing → refusal `runtime-stale` with the
+   queued row's `version` and `state` unchanged.
+6. `lost-heartbeat-requeue-then-zombie-write` → a recovery `requeue` leaves `claimGeneration` intact
+   so the previous owner's next fenced write refuses → sweep requeues an expired claim, the zombie's
+   `renewClaim`/`terminalize` refuses `lost`, and the row's `version` moves only by the sweep's one
+   increment.
+7. `requeue-refuses-live-heartbeat` → the sweep never touches a live claim → refusal
+   `heartbeat-live`, nothing written.
+8. `cas-conflict-returns-current-version` → a stale `expectedVersion` refuses `conflict` carrying
+   `currentVersion` and writes nothing → assert both the refusal shape and the byte-identical row.
+9. `terminalize-composite-atomicity` → the terminal transition and its result/failure/authorization
+   rows commit in ONE transaction → an injected failure after the result insert leaves the row
+   non-terminal AND no result; a success leaves `version = expectedVersion + 1` with exactly one
+   result or one failure and one authorization.
+10. `terminalize-replay-exact-and-divergent` → command-id replay is idempotent → the byte-exact
+    replay returns `applied-already` with the current `version` and writes nothing; a divergent
+    payload under the same command id refuses `replay-divergent`.
+11. `retry-and-restart-mint-next-attempt` → a new row, same item, `retryOf` set, `sessionId`
+    inherited, `attempt` = the item's next → assert the new row's identity tuple and that the source
+    row is untouched; `restart` additionally carries `recovery: "restart-from-start"`.
+12. `retry-refuses-deleted-or-unknown-write-source` → `source-deleted` for a tombstoned source and a
+    refusal for a `parked-write` source not yet resolved → nothing minted in either case.
+13. `relaunch-mints-fresh-run-with-archive-lineage` → a relaunch is a FRESH run, not a retry → the new
+    row has no `retryOf`, an `archive_relaunches` row binds `archivedRunId → runId`, and a cited
+    digest that does not match refuses `schema-mismatch` with nothing written.
+14. `archive-idempotent-if-identical` → re-archiving identical bytes returns the existing record; a
+    divergent re-archive refuses → assert the `archived_runs` row is byte-identical after both calls.
+15. `delete-order-tombstone-first-leaves-first` → the tombstone is written first with an empty tally,
+    the cascade runs leaves-first, and the tally settles exactly once → observe the statement order
+    inside the transaction and assert the settled tally's per-table row counts equal what left.
+16. `every-never-deleted-trigger-still-aborts` → each `*_never_deleted` trigger — the five run-owned
+    ones v29 rewrote (`archived_runs`, `archive_relaunches`, `dry_run_scenario_results`,
+    `activity_person_pseudonyms`, `ledger_projections`) and the four `deleted_runs` triggers — aborts a
+    stray `DELETE` issued outside the cascade → drive each table directly with no tombstone present
+    and assert the named abort; a trigger that has been dropped makes this red.
+17. `delete-refuses-member-and-non-terminal-tree` → `is-member` for a delegated member alone,
+    `tree-non-terminal{runId}` while any member is non-terminal, `not-terminal` for the run itself →
+    each refuses with zero rows removed and no tombstone written.
+18. `delete-archived-digest-mismatch-writes-nothing` → the archive door admits only an exactly cited
+    `contentDigest` → a mismatched digest refuses `schema-mismatch` before the tombstone insert.
+19. `deleted-run-id-cannot-return` → after delete, `read` answers `deleted` forever, a second `delete`
+    refuses `tombstoned`, an exact replay returns `applied-already`, and `create` on that id refuses.
+20. `existence-answers-are-total` → `absent` / `present:live` / `present:archived` / `deleted` for the
+    four constructed cases → assert the closed union; no arm returns `null` or throws.
+21. `span-only-root-answers-absent-with-a-finding` → a `run.queued` root whose run authority is gone →
+    `read` answers `absent` and the doctor emits its `missing` finding; assert zero `tasks` rows were
+    written by the read path.
+22. `orphaned-gate-record-after-delete` → the §D329.9 open question → after deleting a run that had a
+    `${runId}:${gateId}` record, either the record left with the run or no surface can reach it; the
+    test asserts whichever 1.6 chooses and fails if a live gate can be resolved for a tombstoned run.
+23. `group-tree-lifecycle-end-to-end` → a real multi-member group (as-built every enqueue stamps
+    `shape: "single"`, so this path is unexercised) → members carry `parent`, the anchor terminalizes
+    only after every member, `cancel-tree` fans out as N CAS transitions, and delete of the tree takes
+    leaves first while delete of one member refuses.
+24. `no-lifecycle-sql-outside-the-adapter` → §D329.10's guard → the guard file plus its
+    `guard-inventory.json` entry, proven against a violating fixture the way every mechanical arm is
+    (`guard-manifest.test.ts`), so a dead arm cannot stand in for enforcement.
+
 ###### D329.12 — what this contract supersedes (dated 2026-09-04)
 
 Each item is also marked in place with a dated note; the owning section keeps its history.
