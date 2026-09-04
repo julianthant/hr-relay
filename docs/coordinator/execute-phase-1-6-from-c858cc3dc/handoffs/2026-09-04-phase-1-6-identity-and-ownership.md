@@ -54,3 +54,7 @@ git -C /Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild log -3 --on
 Required gate commands are in profile and each canonical task binding. `npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check`; R01 additionally assertion parity. Do not overlap coverage with compiler/linter.
 
 Resume prompt: Read `/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/handoffs/2026-09-04-phase-1-6-identity-and-ownership.md` and this workspace's board/address book; verify git and current R01 gates first. Continue the same Phase 1.6 coordination at its ownership/task-admission blockers, preserving the existing supervisor identity and declared wave order.
+
+## Shared-checkout change observed after snapshot
+
+After handoff commit, unrelated edits appeared on master in AGENTS.md, CLAUDE.md, docs/rebuild/reference/lessons.md, and untracked src/server/AGENTS.md plus CLAUDE.md. This coordinator did not create, inspect, stage or alter them. Recheck their ownership and current git status before any integration; do not discard or include them in this coordination commits.
