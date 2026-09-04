@@ -11,8 +11,8 @@
 | Run | Phase task | State | Evidence / residue |
 |---|---|---|---|
 | R01 | 1.6.1 | closed | Verified df41e0b5, merged 5b1fb626; integrated/runtime gates green; worktree/ref removed and exact task archived |
-| R02 | 1.6.2-1 | reserved | Wave allowance 2; brief r02.md; integrate first |
-| R03 | 1.6.2-2 | reserved | Wave allowance 2; brief r03.md; same base; integrate second |
+| R02 | 1.6.2-1 | active | Exact task/binding in supervisors.json; base d2fe05dd; integrate first |
+| R03 | 1.6.2-2 | active | Exact task/binding in supervisors.json; base d2fe05dd; integrate second |
 | R04 | 1.6.3 | planned | Wait for both wave peers closed |
 | R05 | 1.6.4 | planned | Wait for R04 closed |
 | R06 | 1.6.5 | planned | Wait for R05 closed |
@@ -29,7 +29,7 @@ Initial report commit 1638c973 passed typecheck, lint, coverage (411 files / 5,0
 
 Test commit d650a43b adds these proofs without production changes. The two full affected files pass 132 tests and the seven retained mutation controls fail at their behavioral assertions. First amended coverage failed on the evidence harness's unregistered environment selector and an unchanged performance fixture's 30-second hook. The supervisor removed that selector in favor of closed explicit configurations; focused environment guard and fixture rechecks passed. Amended full gate passes all five commands, including 411 files / 5,040 tests and 269 assertion-only parity tests. Final clean report/evidence commit df41e0b5 verified and merged --no-ff at 5b1fb626. Evidence now lives in this workspace under `evidence/r01/`. The integrated gate passes (411 files / 5,040 tests plus typecheck/lint/manifest); `evidence/r01-integrated/` retains output. Registered and physical worktree removed and local branch deleted. Runtime cleanup verification passed and the exact task was archived; evidence/r01-runtime-cleanup.json and evidence/r01-archive.json prove both.
 
-R01 is fully closed with zero worker rows and its allowance released. R02/R03 are ready for the declared wave; R04–R08 remain blocked by the declared serial dependencies. No other task is launched.
+R01 is fully closed with zero worker rows and its allowance released. R02/R03 are executing the declared wave from d2fe05dd after verified admission-only handshakes. Both exact launch delegations and runtime events were authenticated before replacing their temporary IDs and restoring original enrollment by the already-approved repair mechanism. Proof: evidence/wave-two-launch-identity.json. Normal wait/send calls passed. R04–R08 remain unlaunched and blocked by serial dependencies.
 
 ## Inherited lifecycle closed
 
