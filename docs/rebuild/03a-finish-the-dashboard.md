@@ -3,7 +3,7 @@
 Phase 3 proves the reusable dashboard/workflow platform with Person Lookup and Separations, and
 nothing could be wired into a dashboard that did not exist yet. **Phase 3.1 is that dashboard**: the
 generic surfaces every admitted workflow inherits, built once, plus the hardening the first real
-connection to a running workflow exposed. D325 makes it the first of four coordinator-owned parts:
+connection to a running workflow exposed. D326 makes it the first of four coordinator-owned parts:
 **3.1 Shared dashboard**, then **3.2 Separations**, **3.3 Workflow authoring and acceptance**, and
 **3.4 Codex and Claude cooperation**. This file owns `{#dash-defaults}` and its numbered supervisor
 tasks. `03b-finish-separations.md`, `03c-migrate-the-remaining-workflows.md`, and
@@ -29,6 +29,7 @@ or amended live in `reference/`; this doc holds the work, its state, and its exi
 - [x] historical Tasks 1–7 retain their evidence
 - [ ] D326 reopens Tasks 8–32 after 2.6 to finish every generic operator journey; 3.2 cannot resume until the unchanged Task-8 acceptance matrix is green
 > 2026-09-03 | D326/D327 dashboard reset | operator review found broken/incomplete run-modal, date, queue-delete, settings/setup, session, notification, log, archive, Explorer, intake, trust, realtime, and production journeys. Historical closure is superseded; no workflow-specific policy moves into 3.1
+> 2026-09-03 | 3.1 parallel execution plan | coordination `C21194e18` groups Tasks 9–26 and 30 into five dependency-gated parallel waves capped at four dedicated worktrees; Tasks 8, 27–29 and 31–32 remain serial gates. `master` is integration-only, every Task 8–32 supervisor receives the exact `feature/phase-3-1-dashboard-c21194e18-rNN-*` branch and sibling worktree recorded below, and the coordinator alone verifies, merges and closes each row
 > 2026-08-20 | docs-cohesion 03a | verified against src/dashboard/** and src/server/dashboard/**; every Track D finding still reproduces at HEAD (no exported deriveRunStatus, two TASK_OUTCOME vocabularies, two panelKindOf copies, zero React.memo, WORKFLOW_DESCRIPTORS imported at dashboard-app.tsx:25); left: D1–D5, the lease, the pool, observed logs, the §7.4 numbers
 > 2026-08-21 | docs-cohesion 03a fidelity fold | the demo-fidelity re-audit (1,956 elements/rows, 756 exact) is folded in as Track F; Track B's "frontend done" stands as the findings-ledger bar it was defined by, and demo fidelity is the stricter bar above it; left: the operator's ~150 rulings, then the FE / BE / PROOF lines Track F carries
 > 2026-08-25 | track-f archive UI + Activity AC24 + Explorer EX5 | `3d461962` served list warning/rehearsal facts and `d1f87916` drew them with the archive's already-served identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared status vocabulary; `4e09fb49` carries Explorer's `Version registry` door through dashboard route state to Archive's actual `Versions & bumps` view. A mechanical recount of ledger 3's 1,119 rows gives 353 exact and 238 OPEN marks; left in this unit: every other non-archive served-and-dropped fact
@@ -63,6 +64,76 @@ and parity, **Task 5** serialized Duo ceremonies, **Task 6** built worker pools 
 and **Task 7** recorded observed page facts. Reopened Tasks 8–32 are the current execution plan.
 Every card is one supervisor-session outcome under the 3.1 coordinator. Historical Track B/C/D/F
 names remain in logs and decision records only.
+
+### Parallel execution and worktree contract
+
+The remaining work is grouped by **workstream**, not by HR workflow. The stable coordination
+identity is `phase-3-1-dashboard` / `21194e18-9e1e-4c51-af5e-5d2f1c8b04bf`
+(`C21194e18`). The 3.1 coordinator records its live board and run plan under
+`docs/coordinator/phase-3-1-dashboard-c21194e18/` when execution begins. The portable plan here
+fixes the task, wave, branch, worktree and integration order before any supervisor is dispatched.
+
+**`master` is the integration checkout only.** No Task 8–32 supervisor implements in the primary
+checkout or commits directly to `master`. Each task starts from the coordinator-verified
+post-previous-wave `master` SHA in the exact dedicated worktree below, commits only to its recorded
+`feature/` branch, and returns a clean worktree. The coordinator verifies the task gate, merges
+`--no-ff` in ascending task order inside the wave, runs the integrated gate after every merge, then
+removes the registered and physical worktree, deletes the local feature branch and archives the
+exact supervisor task. The next wave starts only after every prior-wave row is integrated and
+closed.
+
+The repository-wide allowance is four auxiliary worktrees. A four-task wave therefore gives each
+supervisor an allowance of one: its run worktree. It may use read-only agents or sequence writable
+support inside that worktree, but it may not create another writable worktree. Existing unrelated
+worktrees reduce the admitted wave size; the coordinator sequences the excess rather than raising
+the allowance. Task 8 must freeze non-overlapping file and artifact ownership for every wave. If its
+code inventory finds that two proposed peers share a mutable seam, those rows become sequential in
+the live coordinator run plan; they never edit the same file concurrently.
+
+| Workstream | Type of work | Tasks | Ordering inside the stream |
+|---|---|---|---|
+| Baseline | truth inventory and immutable acceptance contract | 8 | serial prerequisite for all implementation |
+| Frame and control plane | shell/date, settings/setup/storage/sessions, production runtime | 9–14, 30 | 9 → 10; 11 + 13 → 14 → 12; 12 + 14 → 30 |
+| Run operations | start, queue commands, notifications | 15–17 | 14 → 15 → 16; 17 is independent after Task 8 |
+| Run evidence and trust | detail, Context/Data, logs, receipts/failures, gates | 18–22 | 18 freezes section seams; 19–22 then run in parallel |
+| Standing surfaces | Archive, Activity/export, Explorer, Intake/Edit Data, Review/People | 23–27 | 23 → 24; 25 and 26 are independent; 27 waits for the run-detail section seams |
+| Cross-cutting closure | realtime, performance, proof infrastructure, acceptance | 28–29, 31–32 | 28 → 29 → 31 → 32; these are serial because each measures or proves the integrated tree |
+
+Worktree root: `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/`. Every row's worktree
+leaf is also its branch suffix; prepend `feature/` for the branch name.
+
+| Group | Task | Worktree leaf / branch suffix | Needs first | Integration order |
+|---|---:|---|---|---:|
+| Serial gate 0 | 8 | `phase-3-1-dashboard-c21194e18-r08-truth-reset` | 2.6 closed | 1 |
+| Parallel wave 1 | 9 | `phase-3-1-dashboard-c21194e18-r09-shell` | Task 8 | 2 |
+| Parallel wave 1 | 11 | `phase-3-1-dashboard-c21194e18-r11-settings` | Task 8 | 3 |
+| Parallel wave 1 | 13 | `phase-3-1-dashboard-c21194e18-r13-storage` | Task 8 | 4 |
+| Parallel wave 1 | 25 | `phase-3-1-dashboard-c21194e18-r25-explorer` | Task 8 | 5 |
+| Parallel wave 2 | 10 | `phase-3-1-dashboard-c21194e18-r10-date-navigation` | Tasks 8, 9 | 6 |
+| Parallel wave 2 | 14 | `phase-3-1-dashboard-c21194e18-r14-sessions` | Tasks 8, 11, 13 | 7 |
+| Parallel wave 2 | 17 | `phase-3-1-dashboard-c21194e18-r17-notifications` | Task 8 | 8 |
+| Parallel wave 2 | 26 | `phase-3-1-dashboard-c21194e18-r26-intake-edit` | Task 8 | 9 |
+| Parallel wave 3 | 12 | `phase-3-1-dashboard-c21194e18-r12-setup` | Tasks 11, 13, 14 | 10 |
+| Parallel wave 3 | 15 | `phase-3-1-dashboard-c21194e18-r15-run-start` | Tasks 8, 14 | 11 |
+| Parallel wave 3 | 23 | `phase-3-1-dashboard-c21194e18-r23-archive` | Task 8 | 12 |
+| Parallel wave 4 | 16 | `phase-3-1-dashboard-c21194e18-r16-queue` | Task 15 | 13 |
+| Parallel wave 4 | 18 | `phase-3-1-dashboard-c21194e18-r18-run-detail` | Task 15 | 14 |
+| Parallel wave 4 | 24 | `phase-3-1-dashboard-c21194e18-r24-activity` | Task 23 | 15 |
+| Parallel wave 4 | 30 | `phase-3-1-dashboard-c21194e18-r30-production-runtime` | Tasks 12, 13, 14 | 16 |
+| Parallel wave 5 | 19 | `phase-3-1-dashboard-c21194e18-r19-context-data` | Tasks 16, 18 | 17 |
+| Parallel wave 5 | 20 | `phase-3-1-dashboard-c21194e18-r20-logs` | Tasks 16, 18 | 18 |
+| Parallel wave 5 | 21 | `phase-3-1-dashboard-c21194e18-r21-receipts-failures` | Tasks 16, 18 | 19 |
+| Parallel wave 5 | 22 | `phase-3-1-dashboard-c21194e18-r22-gates` | Tasks 16, 18 | 20 |
+| Serial gate 6 | 27 | `phase-3-1-dashboard-c21194e18-r27-review-people` | Tasks 18–22 | 21 |
+| Serial gate 7 | 28 | `phase-3-1-dashboard-c21194e18-r28-realtime` | Tasks 9–27 | 22 |
+| Serial gate 8 | 29 | `phase-3-1-dashboard-c21194e18-r29-performance` | Task 28 | 23 |
+| Serial gate 9 | 31 | `phase-3-1-dashboard-c21194e18-r31-proof-infrastructure` | Tasks 9–30 | 24 |
+| Serial gate 10 | 32 | `phase-3-1-dashboard-c21194e18-r32-acceptance` | Task 31 and every earlier row closed | 25 |
+
+The worktree name is fixed by this table; only the base SHA, dispatch-returned task/host ids and
+state change at runtime. A supervisor's canonical run number is the Phase 3.1 task number (`R08`
+through `R32`), so the task, branch, worktree, report and cleanup ledger join without title or
+recency guesses.
 
 ### What "done" means for this phase
 
@@ -778,7 +849,8 @@ an acceptance audit, not a place to absorb repairs.
 <!-- roadmap: dash-truth-reset -->
 
 - [ ] Inventory every visible control, route, field, producer, command, and defect against code.
-- [ ] Freeze the owner/gate/fixture/live-proof acceptance matrix Task 32 must execute unchanged.
+- [ ] Freeze the owner/gate/fixture/live-proof acceptance matrix Task 32 must execute unchanged,
+  including non-overlapping file and artifact ownership for every planned parallel wave.
 
 ### Task 9 · Finish the shell, navigation, and accessibility baseline
 <!-- roadmap: dash-shell -->
@@ -840,6 +912,8 @@ an acceptance audit, not a place to absorb repairs.
 
 - [ ] Render groups/attempts/status arms/duration/systems/provenance and preserve exact live UI state
   across patches, retry, archive, reconnect, and out-of-order delivery.
+- [ ] Freeze separate section projector/component/test seams for Context/Data, Logs,
+  Receipts/Failures, and Gates so Tasks 19–22 can run without a shared mutable switch or query file.
 
 ### Task 19 · Finish Context, Data, Attempts, and Edit readback
 <!-- roadmap: dash-context-data -->

@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only history kept in the detail drawer rather than on the phase spine. -->
 asOf: 2026-09-03
-head: 1e02b2cb
+head: 2aee4040
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, D323 phase hierarchy, `00`'s size model)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
@@ -936,6 +936,7 @@ needs:
 - p2f-close
 
 log:
+- 2026-09-03 | 3.1 parallel execution plan | coordination `C21194e18` makes `master` integration-only for Tasks 8–32, fixes five dependency-gated parallel waves under the four-worktree limit, and names every task worktree/branch in doc 03a · left: 2.6 closure, then Task 8's ownership matrix before wave 1 dispatch
 - 2026-09-03 | D326/D327 reopened scope | Tasks 8–32 supersede the false part closure without invalidating Tasks 1–7 evidence. Each new task is one supervisor session; the final acceptance task audits only and opens focused remediation tasks rather than absorbing broad fixes
 - 2026-09-03 | D326 decimal hierarchy | historical 3.1 work is expressed as seven chronological supervisor tasks; `test-tiers` lives in 3.3 where its T1–T3 acceptance work belongs · later workflow-specific Review/People and fidelity deltas remain assigned by D279/D283
 - 2026-08-20 | docs-cohesion step 5.0 | `duo-lease` · `parallel-runs` · `observed-logs` drawn under this node (R11/R12 and the operator's observed-logs ruling), each with its own section in doc 03a · left: 5.3a builds the lease, 5.3b the pool and the session view
@@ -1164,16 +1165,21 @@ log:
 
 #### 8 · Re-baseline dashboard truth and acceptance {#dash-truth-reset}
 status: planned
+date: serial gate 0 · worktree r08-truth-reset
 doc: 03a §Task 8 · Re-baseline dashboard truth and acceptance · ref:dashboard-surfaces · ref:frontend-backend-integration
 
 builds:
 - [ ] PROOF inventory every visible control, route, served field, command arm, producer, and current defect against production code
-- [ ] DOCS map each generic operator journey to one owner, red/green gate, fixture, live proof need, and later workflow-specific boundary
+- [ ] DOCS map each generic operator journey to one owner, red/green gate, fixture, live proof need, later workflow-specific boundary, and non-overlapping wave file/artifact scope
 - [ ] DOCS turn every historical unchecked 3.1 line into a current task, explicit disposition, or superseded record
 - [ ] PROOF publish the acceptance matrix that Task 32 will execute unchanged
 
+log:
+- 2026-09-03 | 3.1 parallel execution plan | serial prerequisite in `phase-3-1-dashboard-c21194e18-r08-truth-reset`; it must merge before any implementation wave and freeze the file/artifact ownership that makes peers independent · left: execute after 2.6 closes
+
 #### 9 · Finish the shell, navigation, and accessibility baseline {#dash-shell}
 status: planned
+date: parallel wave 1 · worktree r09-shell
 doc: 03a §Task 9 · Finish the shell, navigation, and accessibility baseline · ref:dashboard-surfaces §3 · ref:frontend-backend-integration §7
 
 builds:
@@ -1181,8 +1187,15 @@ builds:
 - [ ] FE make every action keyboard/touch reachable with truthful names, focus return, reduced motion, and both-theme contrast
 - [ ] PROOF component plus production-bundle desktop/mobile accessibility and parity coverage
 
+needs:
+- dash-truth-reset
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 1 frame seam in `phase-3-1-dashboard-c21194e18-r09-shell`, parallel with Tasks 11, 13 and 25 · left: Task 8 ownership freeze
+
 #### 10 · Repair date navigation and the date picker {#dash-date-navigation}
 status: planned
+date: parallel wave 2 · worktree r10-date-navigation
 doc: 03a §Task 10 · Repair date navigation and the date picker · ref:clock-config-secrets §1 · ref:dashboard-surfaces §3
 
 builds:
@@ -1190,8 +1203,15 @@ builds:
 - [ ] FE handle month/year boundaries, invalid input, loading races, disabled dates, focus/escape/outside-click, and mobile geometry
 - [ ] PROOF timezone/DST matrix plus browser tests for direct links, rapid changes, refresh, Back/Forward, and stale-response rejection
 
+needs:
+- dash-shell
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 2 date-state seam in `phase-3-1-dashboard-c21194e18-r10-date-navigation`, after the shell contract and parallel with Tasks 14, 17 and 26 · left: Tasks 8 and 9
+
 #### 11 · Finish Settings over the canonical settings authority {#dash-settings}
 status: planned
+date: parallel wave 1 · worktree r11-settings
 doc: 03a §Task 11 · Finish Settings over the canonical settings authority · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
 
 builds:
@@ -1199,8 +1219,15 @@ builds:
 - [ ] BOTH support revisioned edit/save/conflict/reset flows; protected values are write-only and display presence, never plaintext
 - [ ] PROOF invalid, stale, partial, interrupted, restart-required, and redaction paths against persisted readback
 
+needs:
+- dash-truth-reset
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 1 settings seam in `phase-3-1-dashboard-c21194e18-r11-settings`, parallel with Tasks 9, 13 and 25 · left: Task 8 ownership freeze
+
 #### 12 · Finish Setup and preflight {#dash-setup}
 status: planned
+date: parallel wave 3 · worktree r12-setup
 doc: 03a §Task 12 · Finish Setup and preflight · ref:frontend-backend-integration §5.1 · ref:operator-trust §3
 
 builds:
@@ -1208,8 +1235,17 @@ builds:
 - [ ] BOTH make every fix action real, idempotent, attributable, and followed by authoritative re-check
 - [ ] PROOF execute the declared preflight fault corpus and restart/recovery cases from a fresh local state root
 
+needs:
+- dash-settings
+- dash-storage
+- dash-sessions
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 3 composed-preflight seam in `phase-3-1-dashboard-c21194e18-r12-setup`, parallel with Tasks 15 and 23 only after settings, storage and sessions merge · left: Tasks 11, 13 and 14
+
 #### 13 · Finish storage doctor, backup, and recovery controls {#dash-storage}
 status: planned
+date: parallel wave 1 · worktree r13-storage
 doc: 03a §Task 13 · Finish storage doctor, backup, and recovery controls · ref:operator-trust §1 · ref:frontend-backend-integration §6
 
 builds:
@@ -1217,8 +1253,15 @@ builds:
 - [ ] BOTH keep destructive/recovery commands revision-bound and stopped-system gated
 - [ ] PROOF corrupt-copy doctor, verified backup/restore, interrupted recovery, stale command, and settings/run consistency cases
 
+needs:
+- dash-truth-reset
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 1 storage seam in `phase-3-1-dashboard-c21194e18-r13-storage`, parallel with Tasks 9, 11 and 25 · left: Task 8 ownership freeze
+
 #### 14 · Finish sessions, worker pools, and browser lifecycle {#dash-sessions}
 status: planned
+date: parallel wave 2 · worktree r14-sessions
 doc: 03a §Task 14 · Finish sessions, worker pools, and browser lifecycle · ref:execution-and-sessions §3 · ref:execution-and-sessions §11
 
 builds:
@@ -1226,8 +1269,16 @@ builds:
 - [ ] BOTH show durable session membership, worker state, current claim, browser profile instance, health, and refusal reason without inference
 - [ ] PROOF crash/restart, stale CAS, duplicate ownership, pool resize, orphan cleanup, and two-run parallel dry-run behavior
 
+needs:
+- dash-settings
+- dash-storage
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 2 session/runtime seam in `phase-3-1-dashboard-c21194e18-r14-sessions`, after Tasks 11 and 13 and parallel with Tasks 10, 17 and 26 · left: wave 1 integration
+
 #### 15 · Make the Run modal enqueue and start real work {#dash-run-modal}
 status: planned
+date: parallel wave 3 · worktree r15-run-start
 doc: 03a §Task 15 · Make the Run modal enqueue and start real work · ref:workflow-model §4 · ref:frontend-backend-integration §5.1.1
 
 builds:
@@ -1236,8 +1287,15 @@ builds:
 - [ ] BOTH show created rows, warnings, decisions, conflicts, actor, settlement time, and unavailable-worker state from the server response
 - [ ] PROOF single, batch, dry-run, validation, conflict, no-worker, delayed-worker, reload, and exactly-once enqueue/claim paths
 
+needs:
+- dash-sessions
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 3 run-start seam in `phase-3-1-dashboard-c21194e18-r15-run-start`, parallel with Tasks 12 and 23 after the session supervisor is real · left: Task 14
+
 #### 16 · Finish queue rows, commands, and deletion {#dash-queue}
 status: planned
+date: parallel wave 4 · worktree r16-queue
 doc: 03a §Task 16 · Finish queue rows, commands, and deletion · ref:dashboard-surfaces §4 · ref:frontend-backend-integration §5.1
 
 builds:
@@ -1246,8 +1304,15 @@ builds:
 - [ ] BOTH define delete as an idempotent lifecycle/tombstone operation with explicit evidence-retention and visible result
 - [ ] PROOF command matrix, stale conflicts, double-clicks, concurrent worker transitions, and queue/current/archive convergence
 
+needs:
+- dash-run-modal
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 4 queue seam in `phase-3-1-dashboard-c21194e18-r16-queue`, parallel with Tasks 18, 24 and 30 after authoritative start exists · left: Task 15
+
 #### 17 · Finish notifications and delivery behavior {#dash-notifications}
 status: planned
+date: parallel wave 2 · worktree r17-notifications
 doc: 03a §Task 17 · Finish notifications and delivery behavior · ref:operator-trust §4 · ref:dashboard-surfaces §2.6
 
 builds:
@@ -1255,17 +1320,32 @@ builds:
 - [ ] BOTH implement pinned/read/snooze/dismiss/filter/open-target behavior from durable actor-keyed rows
 - [ ] PROOF row-before-OS-delivery, dedupe, restart, reconnect-gap, permission-denied, stale command, and target-link cases
 
+needs:
+- dash-truth-reset
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 2 notification seam in `phase-3-1-dashboard-c21194e18-r17-notifications`, parallel with Tasks 10, 14 and 26 · left: Task 8 ownership freeze
+
 #### 18 · Finish run detail and the live timeline {#dash-run-detail}
 status: planned
+date: parallel wave 4 · worktree r18-run-detail
 doc: 03a §Task 18 · Finish run detail and the live timeline · ref:dashboard-surfaces §5
 
 builds:
 - [ ] BOTH render task groups, attempts, replay/skipped/blocked arms, live duration, systems, provenance, and focusable timeline segments
 - [ ] BOTH follow the selected run live without losing expansion, focus, scroll, or exact attempt identity
+- [ ] BOTH freeze separate section projector/component/test seams so Tasks 19–22 need no shared mutable switch or query file
 - [ ] PROOF refresh/reconnect, replay, retry, archive, out-of-order patch, and terminal convergence against direct authority checks
+
+needs:
+- dash-run-modal
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 4 run-detail foundation in `phase-3-1-dashboard-c21194e18-r18-run-detail`, parallel with Tasks 16, 24 and 30; its exit freezes the four disjoint wave-5 section seams · left: Task 15
 
 #### 19 · Finish Context, Data, Attempts, and Edit readback {#dash-context-data}
 status: planned
+date: parallel wave 5 · worktree r19-context-data
 doc: 03a §Task 19 · Finish Context, Data, Attempts, and Edit readback · ref:dashboard-surfaces §5 · ref:data-intake-and-edit-data §6
 
 builds:
@@ -1273,8 +1353,16 @@ builds:
 - [ ] BOTH submit edits through the authoritative command path and show exact persisted readback/conflict results
 - [ ] PROOF empty, redacted, malformed, stale, cross-attempt, archived, and edit-rerun cases
 
+needs:
+- dash-queue
+- dash-run-detail
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 5 Context/Data section seam in `phase-3-1-dashboard-c21194e18-r19-context-data`, parallel with Tasks 20–22 only through Task 18's frozen section boundary · left: Tasks 16 and 18
+
 #### 20 · Finish logs, observations, and captures {#dash-logs}
 status: planned
+date: parallel wave 5 · worktree r20-logs
 doc: 03a §Task 20 · Finish logs, observations, and captures · ref:operator-trust §2.3 · ref:dashboard-surfaces §5
 
 builds:
@@ -1282,8 +1370,16 @@ builds:
 - [ ] BOTH render bounded searchable note/observed/fence/navigation/pause/event rows plus diagnostic captures and bundles
 - [ ] PROOF pagination snapshots, stale-response isolation, archive read-forward, redaction, artifact absence, and large-log behavior
 
+needs:
+- dash-queue
+- dash-run-detail
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 5 Logs section seam in `phase-3-1-dashboard-c21194e18-r20-logs`, parallel with Tasks 19, 21 and 22 only through Task 18's frozen section boundary · left: Tasks 16 and 18
+
 #### 21 · Finish receipts and failure records {#dash-receipts-failures}
 status: planned
+date: parallel wave 5 · worktree r21-receipts-failures
 doc: 03a §Task 21 · Finish receipts and failure records · ref:operator-trust §5 · ref:write-safety §6
 
 builds:
@@ -1291,8 +1387,16 @@ builds:
 - [ ] BOTH connect explain/retry/open-evidence actions to authoritative commands and immutable evidence
 - [ ] PROOF success, verified no-op, refusal, failed, unknown-submit, recovered, retried, archived, and tamper cases
 
+needs:
+- dash-queue
+- dash-run-detail
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 5 Receipt/Failure section seam in `phase-3-1-dashboard-c21194e18-r21-receipts-failures`, parallel with Tasks 19, 20 and 22 only through Task 18's frozen section boundary · left: Tasks 16 and 18
+
 #### 22 · Finish gates and parked-write resolution {#dash-gates}
 status: planned
+date: parallel wave 5 · worktree r22-gates
 doc: 03a §Task 22 · Finish gates and parked-write resolution · ref:write-safety §14 · ref:dashboard-surfaces §5
 
 builds:
@@ -1300,8 +1404,16 @@ builds:
 - [ ] BOTH make approve/reject/reopen and parked-write resolution real, attributable, revision-bound commands
 - [ ] PROOF stale, expired, changed-plan, skipped-condition, resumed, rejected, archived, and unauthorized paths
 
+needs:
+- dash-queue
+- dash-run-detail
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 5 Gate/Parked-write section seam in `phase-3-1-dashboard-c21194e18-r22-gates`, parallel with Tasks 19–21 only through Task 18's frozen section boundary · left: Tasks 16 and 18
+
 #### 23 · Finish Archive, versions, relaunch, and deletion {#dash-archive}
 status: planned
+date: parallel wave 3 · worktree r23-archive
 doc: 03a §Task 23 · Finish Archive, versions, relaunch, and deletion · ref:dashboard-surfaces §9.5 · ref:operator-trust §5.7
 
 builds:
@@ -1309,8 +1421,15 @@ builds:
 - [ ] BOTH implement view, compare, version bump, export, relaunch, archive, and delete with explicit evidence-retention results
 - [ ] PROOF historical-generation read-forward, stale commands, relaunch lineage, storage delta, delete idempotence, and current/archive convergence
 
+needs:
+- dash-truth-reset
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 3 Archive seam in `phase-3-1-dashboard-c21194e18-r23-archive`, parallel with Tasks 12 and 15 · left: Task 8 ownership freeze
+
 #### 24 · Finish Activity, search, and export {#dash-activity}
 status: planned
+date: parallel wave 4 · worktree r24-activity
 doc: 03a §Task 24 · Finish Activity, search, and export · ref:operator-trust §5.8 · ref:dashboard-surfaces §9.8
 
 builds:
@@ -1318,8 +1437,15 @@ builds:
 - [ ] BOTH produce truthful summaries and spreadsheet/diagnostic exports from stable result snapshots
 - [ ] PROOF pagination, cancellation, stale responses, redaction, large history, empty/error cases, and exported-row reconciliation
 
+needs:
+- dash-archive
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 4 Activity/search/export seam in `phase-3-1-dashboard-c21194e18-r24-activity`, parallel with Tasks 16, 18 and 30 after Archive freezes history identity · left: Task 23
+
 #### 25 · Finish Workflow Explorer and catalog editing {#dash-explorer}
 status: planned
+date: parallel wave 1 · worktree r25-explorer
 doc: 03a §Task 25 · Finish Workflow Explorer and catalog editing · ref:workflow-model §1 · ref:operator-trust §5.9
 
 builds:
@@ -1327,8 +1453,15 @@ builds:
 - [ ] BOTH support allowed presentation/policy edits through validated overlays with preview, diff, versioning, hot-apply/restart truth, and rollback
 - [ ] PROOF invalid/cyclic/stale overlays, generated-manifest drift, version bump, reload, and clean-context authoring guidance
 
+needs:
+- dash-truth-reset
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 1 Explorer/catalog seam in `phase-3-1-dashboard-c21194e18-r25-explorer`, parallel with Tasks 9, 11 and 13 · left: Task 8 ownership freeze
+
 #### 26 · Finish Intake and Edit Data surfaces {#dash-intake-edit}
 status: planned
+date: parallel wave 2 · worktree r26-intake-edit
 doc: 03a §Task 26 · Finish Intake and Edit Data surfaces · ref:data-intake-and-edit-data · ref:frontend-backend-integration §5.1
 
 builds:
@@ -1336,8 +1469,15 @@ builds:
 - [ ] BOTH show producer progress, records, blocked reasons, mappings, validation, provenance, and exact workflow handoff availability
 - [ ] PROOF real representative files plus malformed, partial, canceled, stale, redacted, duplicate, and archived cases
 
+needs:
+- dash-truth-reset
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 2 Intake/Edit Data seam in `phase-3-1-dashboard-c21194e18-r26-intake-edit`, parallel with Tasks 10, 14 and 17 · left: Task 8 ownership freeze
+
 #### 27 · Finish generic Review and People contracts {#dash-review-people}
 status: planned
+date: serial gate 6 · worktree r27-review-people
 doc: 03a §Task 27 · Finish generic Review and People contracts · ref:dashboard-surfaces §5 · ref:frontend-backend-integration §5
 
 builds:
@@ -1345,8 +1485,18 @@ builds:
 - [ ] BOTH require workflow descriptors to provide workflow-specific fields/actions later; 3.1 supplies no invented Separations/OCR policy
 - [ ] PROOF generic fixtures, direct/deep links, accessibility, large groups, partial members, and unavailable workflow-specific content
 
+needs:
+- dash-context-data
+- dash-logs
+- dash-receipts-failures
+- dash-gates
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | serial section-extension gate in `phase-3-1-dashboard-c21194e18-r27-review-people`; it follows wave 5 so it cannot collide with the four run-detail section writers · left: Tasks 18–22
+
 #### 28 · Prove realtime convergence and reconnect {#dash-realtime}
 status: planned
+date: serial gate 7 · worktree r28-realtime
 doc: 03a §Task 28 · Prove realtime convergence and reconnect · ref:frontend-backend-integration §3.5 · ref:dashboard-surfaces §1
 
 builds:
@@ -1354,8 +1504,33 @@ builds:
 - [ ] BOTH converge create/update/archive/delete and settings/worker changes without full-day reparsing or stale UI state
 - [ ] PROOF ordering, duplicate, missed cursor, restart generation, offline/reconnect, selected-run switch, and permanent backfill-gap behavior
 
+needs:
+- dash-shell
+- dash-date-navigation
+- dash-settings
+- dash-setup
+- dash-storage
+- dash-sessions
+- dash-run-modal
+- dash-queue
+- dash-notifications
+- dash-run-detail
+- dash-context-data
+- dash-logs
+- dash-receipts-failures
+- dash-gates
+- dash-archive
+- dash-activity
+- dash-explorer
+- dash-intake-edit
+- dash-review-people
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | serial convergence gate in `phase-3-1-dashboard-c21194e18-r28-realtime`; it starts only after every feature worktree through Task 27 is integrated and closed · left: Tasks 9–27
+
 #### 29 · Meet large-data and responsiveness budgets {#dash-performance}
 status: planned
+date: serial gate 8 · worktree r29-performance
 doc: 03a §Task 29 · Meet large-data and responsiveness budgets · ref:frontend-backend-integration §7.4
 
 builds:
@@ -1363,8 +1538,15 @@ builds:
 - [ ] FE add shared virtualization/pagination primitives only where measurement crosses the recorded trigger
 - [ ] PROOF preserve the recorded performance fixture and fail on structural counter regressions; keep host timing observational
 
+needs:
+- dash-realtime
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | serial integrated-performance gate in `phase-3-1-dashboard-c21194e18-r29-performance`; it measures the converged tree and cannot run beside feature writers · left: Task 28
+
 #### 30 · Finish production startup, serving, and shutdown {#dash-production-runtime}
 status: planned
+date: parallel wave 4 · worktree r30-production-runtime
 doc: 03a §Task 30 · Finish production startup, serving, and shutdown · ref:frontend-backend-integration §6.9 · ref:execution-and-sessions
 
 builds:
@@ -1372,8 +1554,17 @@ builds:
 - [ ] BE stop signals, workers, browsers, writers, projections, locks, and backups in the declared order without abandoned authority
 - [ ] PROOF clean start, duplicate start, missing bundle/settings, signal drain, second signal, crash recovery, and orphan sweep
 
+needs:
+- dash-setup
+- dash-storage
+- dash-sessions
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | wave 4 production-runtime seam in `phase-3-1-dashboard-c21194e18-r30-production-runtime`, parallel with Tasks 16, 18 and 24 after setup/storage/session authority is integrated · left: Tasks 12–14
+
 #### 31 · Build the complete dashboard proof infrastructure {#dash-proof-infrastructure}
 status: planned
+date: serial gate 9 · worktree r31-proof-infrastructure
 doc: 03a §Task 31 · Build the complete dashboard proof infrastructure · ref:guards-and-tests §3 · ref:frontend-backend-integration §7
 
 builds:
@@ -1382,8 +1573,16 @@ builds:
 - [ ] PROOF T4 live dry-run journeys bind assertions to direct SQLite/evidence checks without authorizing writes
 - [ ] PROOF parity references include Settings, sessions, setup, dialogs, and the DS specimen; update only through the deliberate lane
 
+needs:
+- dash-performance
+- dash-production-runtime
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | serial proof-corpus gate in `phase-3-1-dashboard-c21194e18-r31-proof-infrastructure`; it owns the shared T2/T3/T4/parity infrastructure only after features, convergence, performance and production runtime settle · left: Tasks 9–30
+
 #### 32 · Execute integrated dashboard acceptance and close 3.1 {#dash-acceptance}
 status: planned
+date: serial gate 10 · worktree r32-acceptance
 doc: 03a §Task 32 · Execute integrated dashboard acceptance and close 3.1 · 03a §Exit criteria
 
 builds:
@@ -1416,6 +1615,9 @@ needs:
 - dash-performance
 - dash-production-runtime
 - dash-proof-infrastructure
+
+log:
+- 2026-09-03 | 3.1 parallel execution plan | final isolated acceptance in `phase-3-1-dashboard-c21194e18-r32-acceptance`; the 3.1 coordinator dispatches it only after every earlier task worktree, branch and supervisor row is integrated and closed · left: Tasks 8–31
 
 ### 3.2 · Separations {#order-8}
 status: you
