@@ -454,16 +454,18 @@ log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the `cancel`-of-a-claimed-run ruling landed (option A, §D330.5 request arm, §D330.11 #27); no open ruling remains before Task 4 · left: implementation from Task 1
 
 #### 1 · Land the schema floor {#p1f-floor}
-status: planned
+status: done
+date: 2026-09-04
 doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §2.3
 
 builds:
-- [ ] BE one migration `v30 = floor` carrying every D332 schema step (`deleted_runs` ordinals + `ordinal_source` with the re-created trigger, `checkpoint_payloads_never_deleted`, `protected_settings_current`, `authority_upgrades`) and the frozen D290 27/28/29 literals in the same commit as the `CURRENT` bump
-- [ ] BE the `#runMigrations` floor gate, the read-only no-migrate open for `storage backup|doctor` and the upgrade preflight, `upgrade-required` on every other door, the `baseline` journal row at D321 regeneration, the `protectedSettingsCurrent` repository
-- [ ] PROOF M3 (open half), M9, M21, the `baseline` matrix cell; the `planned` `no-lifecycle-sql-outside-the-adapter` entry
+- [x] BE one migration `v30 = floor` carrying every D332 schema step (`deleted_runs` ordinals + `ordinal_source` with the re-created trigger, `checkpoint_payloads_never_deleted`, `protected_settings_current`, `authority_upgrades`) and the frozen D290 27/28/29 literals in the same commit as the `CURRENT` bump
+- [x] BE the `#runMigrations` floor gate, the read-only no-migrate open for `storage backup|doctor` and the upgrade preflight, `upgrade-required` on every other door, the `baseline` journal row at D321 regeneration, the `protectedSettingsCurrent` repository
+- [x] PROOF M3 (open half), M9, M21, the `baseline` matrix cell; the `planned` `no-lifecycle-sql-outside-the-adapter` entry
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | node created: the serial floor the wave branches from (doc 01 §1.6 Task 1) · left: everything
+- 2026-09-04 | phase-1-6-authorities C161eaed0 R01 | merged the v30 floor, no-migrate preflight modes, baseline journal, protected singleton, tombstone forward shape and dashboard lock-release wrapper at `ebc41c45`; integrated typecheck/lint/coverage/manifest gate green, supervisor worktree/ref/task closed · left: wave 2 and serial Tasks 3–7
 
 #### 2-1 · Implement the canonical run-record service {#p1f-run-store}
 status: planned

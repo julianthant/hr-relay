@@ -619,12 +619,12 @@ deleted here; the direct M3 open-half test is the red-capable oracle (remove the
 reports the floor). **Order:** first; merged before 2-1/2-2 branch. Later additive migrations (`v31+`)
 apply at open as before — the floor is a one-time gate (§D332.1).
 
-- [ ] One migration `v30 = floor` with the four D332 schema steps and the re-created `deleted_runs`
+- [x] One migration `v30 = floor` with the four D332 schema steps and the re-created `deleted_runs`
   trigger; `CURRENT` bumped in the SAME commit as the frozen 27/28/29 literals (§D332.3 step 3(b), M21).
-- [ ] `#runMigrations` gated at the floor; the read-only no-migrate open mode for its three callers;
+- [x] `#runMigrations` gated at the floor; the read-only no-migrate open mode for its three callers;
   every other door `upgrade-required { schemaVersion, floor }`; the `baseline` journal row at
   regeneration; the open releases the `server` record on `authority-ahead` (§D332.1, §D332.5, §D332.6; M3, M9).
-- [ ] `AUTHORITY_TABLE_REGISTRY`, the record schemas, the `protectedSettingsCurrent` repository and the
+- [x] `AUTHORITY_TABLE_REGISTRY`, the record schemas, the `protectedSettingsCurrent` repository and the
   `planned` guard entry; base gate green with a v29 fixture untouched by each direct read-only
   no-migrate open mode. Task 6 owns successful pre-floor backup/doctor command and manifest compatibility.
 

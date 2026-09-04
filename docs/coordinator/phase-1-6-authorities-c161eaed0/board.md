@@ -9,7 +9,7 @@
 **Integration target:** `master`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-04T19:24:38Z at coordinator commit `b5e1380cc85483f60452371f7e446904510dfb4e`
+**Last verified:** 2026-09-04T20:55:56Z at R01 merge `ebc41c45863c9748f3cc48b23f2b9483fb748421`
 
 ## Facts every run needs
 
@@ -32,9 +32,9 @@
 
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
-| U01 · Task 1 schema floor | R01 | active | pending | required base gate pending; parity inherited-red evidence accepted | supervisor-owned consequential review | Operator choices ratified at `a00be759`; parity repair is outside R01 and its inputs remain unchanged. |
-| U02 · Task 2-1 run-record service | R02 | blocked on U01 | pending | pending | supervisor-owned consequential review | Wave 2 peer 1. |
-| U03 · Task 2-2 settings catalog/root | R03 | blocked on U01 | pending | pending | supervisor-owned consequential review | Wave 2 peer 2. |
+| U01 · Task 1 schema floor | R01 | complete | `ebc41c45` (`--no-ff`) | integrated typecheck/lint/coverage/manifest green; focused 56/56 and combined 123/123 | consequential review finding fixed at `14c95b42` | Report `reports/r01.md`; worktree removed, branch deleted, exact task archived. |
+| U02 · Task 2-1 run-record service | R02 | blocked on wave parity baseline | pending | pending | supervisor-owned consequential review | Dependency U01 is closed; dispatch remains paired with U03 from exact base `ebc41c45`. |
+| U03 · Task 2-2 settings catalog/root | R03 | blocked on wave parity baseline | pending | inherited parity red before branch | supervisor-owned consequential review | Canonical gate requires parity green and byte-unchanged; operator ruling required before launch. |
 | U04 · Task 3 runtime lifecycle writers | R04 | blocked on U02+U03 | pending | pending | supervisor-owned consequential review | Serial after both wave merges. |
 | U05 · Task 4 operator run commands | R05 | blocked on U04 | pending | pending | supervisor-owned consequential review | Includes landed claimed-run cancel arm. |
 | U06 · Task 5 settings consumers | R06 | blocked on U05 | pending | pending | supervisor-owned consequential review | Serial; shares composition roots with Task 3. |
@@ -45,7 +45,8 @@
 
 - R01's two pre-implementation authority contradictions were ratified at `a00be759`; no open residue remains from that stop.
 - The inherited descriptor-hash parity drift remains repository residue for an owning later task; it does not authorize R01 to change parity artifacts.
+- Wave 2 cannot satisfy the canonical green-and-unchanged parity invariant from base `ebc41c45` until the operator chooses whether to restore the baseline through a newly admitted authority-repair run or amend the task gate.
 
 ## Questions for the operator
 
-- None.
+- Choose the authority path for the inherited descriptor-hash parity drift before the paired R02/R03 launch.

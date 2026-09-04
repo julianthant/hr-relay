@@ -7,8 +7,8 @@
 | Run | Canonical supervisor title | Theme | Units | Worker roles | Base | Worktree allowance | Integration order | Parallel-ready | Needs first | Exit evidence |
 |---|---|---|---|---|---|---|---|---|---|---|
 | R01 | Supervisor · phase-1-6-authorities · C161eaed0 · R01 · schema floor | Task 1 schema floor | U01 | Luna/Terra | `dfd73b638bdd1bd49c7e4df91cbca5797ec12ebe` | 4 | 1 | no · serial prerequisite | — | isolated base+task gate green; report verified; integrated gate green; worktree/ref/task closed |
-| R02 | Supervisor · phase-1-6-authorities · C161eaed0 · R02 · run-record service | Task 2-1 run authority | U02 | Luna/Terra | exact R01 merge SHA | 2 | 2 | yes · only with R03 from same base | U01 integrated and closed | isolated base+task gate green; report verified; integrated gate green; worktree/ref/task closed |
-| R03 | Supervisor · phase-1-6-authorities · C161eaed0 · R03 · settings catalog and root | Task 2-2 settings authority | U03 | Luna/Terra | exact R01 merge SHA | 2 | 3 | yes · only with R02 from same base | U01 integrated and closed | isolated base+parity+task gate green; report verified; integrated gate green; worktree/ref/task closed |
+| R02 | Supervisor · phase-1-6-authorities · C161eaed0 · R02 · run-record service | Task 2-1 run authority | U02 | Luna/Terra | `ebc41c45863c9748f3cc48b23f2b9483fb748421` | 2 | 2 | yes · only with R03 from same base | wave parity baseline ruling | isolated base+task gate green; report verified; integrated gate green; worktree/ref/task closed |
+| R03 | Supervisor · phase-1-6-authorities · C161eaed0 · R03 · settings catalog and root | Task 2-2 settings authority | U03 | Luna/Terra | `ebc41c45863c9748f3cc48b23f2b9483fb748421` | 2 | 3 | yes · only with R02 from same base | wave parity baseline ruling | isolated base+parity+task gate green; report verified; integrated gate green; worktree/ref/task closed |
 | R04 | Supervisor · phase-1-6-authorities · C161eaed0 · R04 · lifecycle writers | Task 3 runtime writers | U04 | Luna/Terra | exact R03 integration SHA | 4 | 4 | no · serial after wave 2 | U02+U03 integrated and closed | isolated base+task gate green; report verified; integrated gate green; worktree/ref/task closed |
 | R05 | Supervisor · phase-1-6-authorities · C161eaed0 · R05 · operator run commands | Task 4 command writers | U05 | Luna/Terra | exact R04 merge SHA | 4 | 5 | no · serial | U04 integrated and closed | isolated base+architecture+task gate green; report verified; integrated gate green; worktree/ref/task closed |
 | R06 | Supervisor · phase-1-6-authorities · C161eaed0 · R06 · settings consumers | Task 5 runtime resolution | U06 | Luna/Terra | exact R05 merge SHA | 4 | 6 | no · serial | U05 integrated and closed | isolated base+parity+task gate green; report verified; integrated gate green; worktree/ref/task closed |
@@ -19,9 +19,9 @@
 
 | Coordination UUID | Run | Parent coordinator | Canonical title | Task id / corrections | Host id | Project id | Launch time | Base · worktree · branch | Allowance/reservation | Report/gate | Order | Status | Cleanup | Last cursor |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `161eaed0-8809-4a38-b11b-fcd85b727f86` | R01 | `01a06d9c-1667-7451-a022-5f661d373703` / `local` | Supervisor · phase-1-6-authorities · C161eaed0 · R01 · schema floor | `01a06da0-533b-7a22-99ea-a6c094b9bc0a` (setup handle `client-new-thread:193fd8f9-0b7d-4e57-8c4c-e0cfeb3f91b2`) | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | launched 2026-09-04T18:10:12Z | `dfd73b638bdd1bd49c7e4df91cbca5797ec12ebe` · `/Users/julianhein/.codex/worktrees/5a36/hr-automation-rebuild` · `feature/phase-1-6-authorities-c161eaed0-r01-schema-floor` | 4 slots · active | `reports/r01.md` · base + Task 1 proofs | 1 | active · parity inherited-red classified; finishing required gates | pending | `8d4d27b2-20f4-4bf0-99fd-11ea752aa99e:134` |
-| `161eaed0-8809-4a38-b11b-fcd85b727f86` | R02 | `01a06d9c-1667-7451-a022-5f661d373703` / `local` | Supervisor · phase-1-6-authorities · C161eaed0 · R02 · run-record service | pending | pending | pending | pending | R01 merge pending · managed worktree pending · `feature/phase-1-6-authorities-c161eaed0-r02-run-record-service` | 2 slots · planned | `reports/r02.md` · base + Task 2-1 proofs | 2 | planned | pending | none |
-| `161eaed0-8809-4a38-b11b-fcd85b727f86` | R03 | `01a06d9c-1667-7451-a022-5f661d373703` / `local` | Supervisor · phase-1-6-authorities · C161eaed0 · R03 · settings catalog and root | pending | pending | pending | pending | R01 merge pending · managed worktree pending · `feature/phase-1-6-authorities-c161eaed0-r03-settings-root` | 2 slots · planned | `reports/r03.md` · base + Task 2-2 proofs + parity | 3 | planned | pending | none |
+| `161eaed0-8809-4a38-b11b-fcd85b727f86` | R01 | `01a06d9c-1667-7451-a022-5f661d373703` / `local` | Supervisor · phase-1-6-authorities · C161eaed0 · R01 · schema floor | `01a06da0-533b-7a22-99ea-a6c094b9bc0a` (setup handle `client-new-thread:193fd8f9-0b7d-4e57-8c4c-e0cfeb3f91b2`) | `local` | `e23dea50-674d-4a39-ad94-49fcff726de8` | launched 2026-09-04T18:10:12Z | `dfd73b638bdd1bd49c7e4df91cbca5797ec12ebe` · worktree removed · branch deleted | 4 slots · released | `reports/r01.md` · base + Task 1 proofs | 1 | complete · merged `ebc41c45` | exact task archived | `8d4d27b2-20f4-4bf0-99fd-11ea752aa99e:144` |
+| `161eaed0-8809-4a38-b11b-fcd85b727f86` | R02 | `01a06d9c-1667-7451-a022-5f661d373703` / `local` | Supervisor · phase-1-6-authorities · C161eaed0 · R02 · run-record service | pending | pending | `e23dea50-674d-4a39-ad94-49fcff726de8` | pending | `ebc41c45863c9748f3cc48b23f2b9483fb748421` · managed worktree pending · `feature/phase-1-6-authorities-c161eaed0-r02-run-record-service` | 2 slots · blocked | `reports/r02.md` · base + Task 2-1 proofs | 2 | blocked on wave parity ruling | pending | none |
+| `161eaed0-8809-4a38-b11b-fcd85b727f86` | R03 | `01a06d9c-1667-7451-a022-5f661d373703` / `local` | Supervisor · phase-1-6-authorities · C161eaed0 · R03 · settings catalog and root | pending | pending | `e23dea50-674d-4a39-ad94-49fcff726de8` | pending | `ebc41c45863c9748f3cc48b23f2b9483fb748421` · managed worktree pending · `feature/phase-1-6-authorities-c161eaed0-r03-settings-root` | 2 slots · blocked | `reports/r03.md` · base + Task 2-2 proofs + parity | 3 | blocked on wave parity ruling | pending | none |
 | `161eaed0-8809-4a38-b11b-fcd85b727f86` | R04 | `01a06d9c-1667-7451-a022-5f661d373703` / `local` | Supervisor · phase-1-6-authorities · C161eaed0 · R04 · lifecycle writers | pending | pending | pending | pending | wave 2 integration pending · managed worktree pending · `feature/phase-1-6-authorities-c161eaed0-r04-lifecycle-writers` | 4 slots · planned | `reports/r04.md` · base + Task 3 proofs | 4 | planned | pending | none |
 | `161eaed0-8809-4a38-b11b-fcd85b727f86` | R05 | `01a06d9c-1667-7451-a022-5f661d373703` / `local` | Supervisor · phase-1-6-authorities · C161eaed0 · R05 · operator run commands | pending | pending | pending | pending | R04 merge pending · managed worktree pending · `feature/phase-1-6-authorities-c161eaed0-r05-run-commands` | 4 slots · planned | `reports/r05.md` · base + Task 4 proofs | 5 | planned | pending | none |
 | `161eaed0-8809-4a38-b11b-fcd85b727f86` | R06 | `01a06d9c-1667-7451-a022-5f661d373703` / `local` | Supervisor · phase-1-6-authorities · C161eaed0 · R06 · settings consumers | pending | pending | pending | pending | R05 merge pending · managed worktree pending · `feature/phase-1-6-authorities-c161eaed0-r06-settings-consumers` | 4 slots · planned | `reports/r06.md` · base + Task 5 proofs + parity | 6 | planned | pending | none |
@@ -42,7 +42,7 @@
 ### U02 — Implement the canonical run-record service
 - Scope: doc 01 §1.6 Task 2-1 exact seam; no settings/composition/schema work.
 - Acceptance: base gate, D330 #1–#23/#25/#26, P33 claim half, deletion proofs #16/#25.
-- Dependency: U01 integrated and closed.
+- Dependency: U01 integrated and closed; paired wave parity-baseline ruling pending.
 - Role: Sol supervisor with permitted Luna/Terra support.
 - Mode: parallel-safe only with U03 from the same base.
 - Artifact: `reports/r02.md`.
@@ -51,7 +51,7 @@
 ### U03 — Implement the settings catalog and protected root
 - Scope: doc 01 §1.6 Task 2-2 exact seam; no migrations/authority-database/run-service/Settings UI.
 - Acceptance: base gate, unchanged parity, assigned D331 ladder, M14 schema half, A4/A5/A7 deletion tests and catalog guard.
-- Dependency: U01 integrated and closed.
+- Dependency: U01 integrated and closed; paired wave parity-baseline ruling pending.
 - Role: Sol supervisor with permitted Luna/Terra support.
 - Mode: parallel-safe only with U02 from the same base.
 - Artifact: `reports/r03.md`.
@@ -104,7 +104,8 @@
 
 ## Decisions gating runs
 
-- None. The prior claimed/running cancel decision is ratified in D330 and Task 4 owes proof #27.
+- Wave 2 parity baseline: Phase 1.6 requires parity green and byte-unchanged, but exact base `ebc41c45` inherits 116 descriptor-hash-only mismatches after `dae04a11`; choose the owning authority path before R02/R03 dispatch.
+- The prior claimed/running cancel decision is ratified in D330 and Task 4 owes proof #27.
 
 ## Date or external gates
 
@@ -117,10 +118,10 @@
 
 ## Stable coordinator progress footer
 
-Steps — 0/10 complete
-- [>] R01 — Task 1: Land the schema floor
-- [ ] R02 — Task 2-1: Implement the canonical run-record service
-- [ ] R03 — Task 2-2: Implement the settings catalog and protected root
+Steps — 1/10 complete
+- [x] R01 — Task 1: Land the schema floor
+- [!] R02 — Task 2-1: Implement the canonical run-record service — blocked on wave parity baseline
+- [!] R03 — Task 2-2: Implement the settings catalog and protected root — blocked on wave parity baseline
 - [ ] R04 — Task 3: Cut over executor and worker lifecycle writers
 - [ ] R05 — Task 4: Cut over operator run commands and archive/delete writers
 - [ ] R06 — Task 5: Cut over settings mutation and runtime resolution
