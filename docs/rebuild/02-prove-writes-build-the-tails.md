@@ -487,11 +487,25 @@ This reopened part starts only after 1.6 closes. It changes downstream read mode
 operator services that consume run/settings authority; it does not change the canonical stores,
 rewrite append-only evidence, repeat D135's controlled write, or improvise a new contract.
 
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 (`ref dashboard-surfaces` §9.2), D331
+> plus D332's settings half (`ref clock-config-secrets` §3), D332 (`ref dashboard-surfaces` §2.5) and
+> the adapter roster (`ref guards-and-tests` §5.2) exactly as 0.3 landed them. This part READS those
+> contracts; it amends none of them. A proposed contract change returns to a newly numbered 0.3 task
+> and is never improvised here.
+
 ### Task 1 · Revalidate trust and evidence consumers
 <!-- roadmap: p2f-trust -->
 
 - [ ] Rewire notification, receipt, failure, capture, log, gate, and parked-write run joins.
 - [ ] Prove durable linkage through retry, archive, and tombstone without rewriting evidence.
+
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes §D330.9's evidence-linkage invariants:
+> spans/logs, receipts, failures, captures and gate records are evidence ABOUT a run and link to it by
+> the stable `runId` alone, so no reader joins evidence to evidence to reach a lifecycle fact and the
+> span fold contributes no lifecycle arm (§D330.12 item 1). Existence stays §D330.2's three-way answer
+> (`absent` · `present` live/archived · `deleted`), and §D330.8's tombstone governs deletion — a
+> deleted run's gate records leave WITH the run. The notification inbox row stays run-linked. No
+> redesign.
 
 ### Task 2 · Revalidate data, intake, and Edit Data consumers
 <!-- roadmap: p2f-data -->
@@ -499,11 +513,26 @@ rewrite append-only evidence, repeat D135's controlled write, or improvise a new
 - [ ] Rewire only actual run/settings dependencies across intake, OCR, manifests, mappings, and edits.
 - [ ] Preserve artifact readability; missing canonical linkage fails loud.
 
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes §D330.9 — intake, OCR, manifest, mapping
+> and Edit Data rows are evidence linked by `runId` and decide no lifecycle fact — together with
+> `ref clock-config-secrets` §D331.8 (a leaf has exactly one source, so no intake or Edit Data path
+> writes settings or a lifecycle row) and §D332.7 item 4 (the upgrade leaves evidence and its
+> immutability rules untouched, so existing artifacts stay readable across it). No redesign.
+
 ### Task 3 · Revalidate operator read models
 <!-- roadmap: p2f-operator -->
 
 - [ ] Rewire archive, Activity, Explorer, doctor, preflight, and settings-status reads.
 - [ ] Prove current/queue/archive/delete counts converge and protected settings never read back.
+
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes §D330.5: `read` and `list` are the ONLY
+> lifecycle reads — never a span fold, never `runs_view`. This task lands adapter A2's deletion, so the
+> `run-status-fold-contributes-no-lifecycle-arm` unit test lands in the SAME commit that deletes the two
+> `run-status.ts` fold arms (§D332.9 rule 4; `ref guards-and-tests` §5.2 A2); A3's `runs_view` table is
+> removed with the projector's rewire, its `runs-view-has-no-reader` arm already active from 1.6.
+> Settings status reads only `ref clock-config-secrets` §D331.6's presence/revision tuple; doctor and
+> preflight follow §D331.11 P16 and report the `authority_upgrades` phases (§D332.5/§D332.6). No
+> redesign.
 
 ### Task 4 · Run the non-mutating migration and recovery proof
 <!-- roadmap: p2f-proof -->
@@ -512,11 +541,27 @@ rewrite append-only evidence, repeat D135's controlled write, or improvise a new
   gates; cite D135 rather than performing a second controlled write.
 - [ ] Prove displaced sources cannot alter a response.
 
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes §D332.4's restore-and-rollback admission
+> with §D332.11 M17 (`restore-rollback-pairs-with-evidence`) and M22
+> (`pre-floor-manifest-readable-for-restore`), re-run over a migrated COPY, and §D332.7 item 6 — a run
+> left `authority-unknown` by a restore is never re-admitted. This task deletes adapters A0 and A1 and
+> flips `authority-upgrade-adapters-retired` and `settings-root-single-pathname` from `planned` to
+> `active` in that same deletion commit (`ref guards-and-tests` §5.2, intended entries 1–2). Because
+> 1.6 Task 6 already upgraded the operator's real root, §D332.9 rule 5's `authority-below-floor`
+> refusal is what a pre-floor artifact meets afterwards. D135 is cited; no second controlled write. No
+> redesign.
+
 ### Task 5 · Close tail revalidation and hand fixtures to 3.1
 <!-- roadmap: p2f-close -->
 
 - [ ] Pass targeted/full/generated/production-route gates and an adversarial deletion-test review.
 - [ ] Hand 3.1 stable contracts, representative fixtures, and an unresolved-defect ledger.
+
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | hands 3.1 `ref clock-config-secrets` §D331.10 (the
+> Settings/Setup edit contract), the served observed/active `display` pair (§D331.10's `derived-host`
+> row on §D331.5's bootstrap/readback wire), and P40/A8 — the eleven frozen parity references carrying
+> the Settings surface's `settings.json: not set` line are re-frozen DELIBERATELY at 3.1, not here —
+> alongside the fixture matrix. No redesign.
 
 ## Integration amendment — Phase 2's share
 

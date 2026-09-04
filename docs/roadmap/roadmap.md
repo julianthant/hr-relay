@@ -850,7 +850,7 @@ builds:
 status: planned
 date: after 1.6
 size: L
-doc: 02 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust · ref:data-intake-and-edit-data · ref:frontend-backend-integration
+doc: 02 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust · ref:data-intake-and-edit-data · ref:frontend-backend-integration · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
 
 > Migrate and prove the downstream read models, joins, and operator services after 1.6 has changed the stores and core writers. This part may expose implementation defects, but any proposed contract redesign returns to 0.3 authority rather than being improvised here.
 
@@ -864,36 +864,48 @@ needs:
 - p1f-close
 - p2-2j
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330/D331/D332 as landed — `ref:dashboard-surfaces` §9.2 and §2.5, `ref:clock-config-secrets` §3, `ref:guards-and-tests` §5.2 (no redesign) · left: a proposed contract change returns to a newly numbered 0.3 task
+
 #### 1 · Revalidate trust and evidence consumers {#p2f-trust}
 status: planned
-doc: ref:operator-trust · ref:dashboard-surfaces §2.6
+doc: ref:operator-trust · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §9.2
 
 builds:
 - [ ] BOTH migrate notifications, receipts, failures, captures, logs, gates, and parked-write views
 - [ ] PROOF every row remains linked to the canonical run id through retry, archive, and tombstone
 - [ ] PROOF notification delivery never races ahead of the durable run-linked inbox row
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.9 evidence linkage by stable `runId`, §D330.2 existence, §D330.8 tombstone (no redesign) · left: the notification inbox row stays run-linked
+
 #### 2 · Revalidate data, intake, and Edit Data consumers {#p2f-data}
 status: planned
-doc: ref:data-intake-and-edit-data · ref:dashboard-surfaces §9.7
+doc: ref:data-intake-and-edit-data · ref:dashboard-surfaces §9.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3
 
 builds:
 - [ ] BOTH migrate intake, OCR, Edit Data, manifests, mappings, and capture evidence
 - [ ] PROOF existing artifacts remain readable across authority migration and missing links fail loud
 - [ ] PROOF no intake/edit path writes run lifecycle or settings state directly
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.9, D331 §D331.8 (one source per leaf) and D332 §D332.7 item 4 (no redesign) · left: no intake or Edit Data path writes settings or a lifecycle row
+
 #### 3 · Revalidate operator read models {#p2f-operator}
 status: planned
-doc: ref:frontend-backend-integration §6 · ref:dashboard-surfaces §9
+doc: ref:frontend-backend-integration §6 · ref:dashboard-surfaces §9 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
 
 builds:
 - [ ] BOTH migrate archive, Activity, Explorer, storage doctor, setup/preflight, and generic read models
 - [ ] PROOF archive/current/queue counts converge from one run authority under create, update, archive, relaunch, delete, and restore
 - [ ] PROOF settings status and preflight resolve from one catalog without returning protected values
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 (`read`/`list` are the only lifecycle reads), D331 §D331.6/§D331.11 P16 and D332 §D332.5/§D332.6 (no redesign) · left: adapters A2 and A3 are deleted here with their tests
+
 #### 4 · Run the non-mutating migration and recovery proof {#p2f-proof}
 status: planned
-doc: 02 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust §1 · ref:guards-and-tests
+doc: 02 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust §1 · ref:guards-and-tests · ref:dashboard-surfaces §2.5 · ref:guards-and-tests §5.2
 
 builds:
 - [ ] PROOF run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation gates
@@ -905,9 +917,12 @@ needs:
 - p2f-data
 - p2f-operator
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D332 §D332.4 with M17/M22 over a migrated copy and §D332.7 item 6 (no redesign) · left: A0/A1 deleted and their two inventory entries flipped to `active` in that commit
+
 #### 5 · Close tail revalidation and hand fixtures to 3.1 {#p2f-close}
 status: planned
-doc: 02 §2.6 · Revalidate tails against canonical authorities · 03.1 §Reopened completion tasks
+doc: 02 §2.6 · Revalidate tails against canonical authorities · 03.1 §Reopened completion tasks · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
 
 builds:
 - [ ] PROOF run targeted suites, full coverage/lint/typecheck, architecture guards, generated checks, and production-route smoke
@@ -916,6 +931,9 @@ builds:
 
 needs:
 - p2f-proof
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 and the §D331.5 wire for the handover fixtures (no redesign) · left: P40/A8's eleven parity references are re-frozen at 3.1, not here
 
 ### Historical disposition record after 2E
 status: never
@@ -1251,7 +1269,7 @@ log:
 #### 9-2 · Finish Settings over the canonical settings authority {#dash-settings}
 status: planned
 date: parallel wave 9 · worktree r09-2-settings
-doc: 03.1 §Task 9-2 · Finish Settings over the canonical settings authority · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+doc: 03.1 §Task 9-2 · Finish Settings over the canonical settings authority · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4 · ref:guards-and-tests §5.2
 
 builds:
 - [ ] BOTH render every catalog leaf in one Settings information architecture with source, validity, editability, sensitivity, and restart scope
@@ -1263,11 +1281,12 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 settings seam in `phase-3-1-dashboard-c21194e18-r11-settings`, parallel with Tasks 9, 13 and 25 · left: Task 8 ownership freeze
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 edit contract, §D331.5's two CAS arms and §D331.6 presence readback (no redesign) · left: the deliberate P40/A8 parity re-freeze happens here
 
 #### 9-3 · Finish storage doctor, backup, and recovery controls {#dash-storage}
 status: planned
 date: parallel wave 9 · worktree r09-3-storage
-doc: 03.1 §Task 9-3 · Finish storage doctor, backup, and recovery controls · ref:operator-trust §1 · ref:frontend-backend-integration §6
+doc: 03.1 §Task 9-3 · Finish storage doctor, backup, and recovery controls · ref:operator-trust §1 · ref:frontend-backend-integration §6 · ref:dashboard-surfaces §2.5
 
 builds:
 - [ ] BOTH expose health, doctor evidence, backup creation, restore admission, degradation, and actionable refusals without overstating safety
@@ -1279,6 +1298,7 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 storage seam in `phase-3-1-dashboard-c21194e18-r13-storage`, parallel with Tasks 9, 11 and 25 · left: Task 8 ownership freeze
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D332 §D332.1 (`cli storage upgrade` as a fourth subcommand), §D332.6 verdicts, §D332.5 journal and §D332.4 restore admission (no redesign) · left: D322 explicit-only backup stands
 
 #### 9-4 · Finish Workflow Explorer and catalog editing {#dash-explorer}
 status: planned
@@ -1364,7 +1384,7 @@ log:
 #### 11-1 · Finish Setup and preflight {#dash-setup}
 status: planned
 date: parallel wave 11 · worktree r11-1-setup
-doc: 03.1 §Task 11-1 · Finish Setup and preflight · ref:frontend-backend-integration §5.1 · ref:operator-trust §3
+doc: 03.1 §Task 11-1 · Finish Setup and preflight · ref:frontend-backend-integration §5.1 · ref:operator-trust §3 · ref:clock-config-secrets §3
 
 builds:
 - [ ] BOTH derive setup state from the settings catalog, storage, workers, browsers, and workflow prerequisites
@@ -1378,11 +1398,12 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 composed-preflight seam in `phase-3-1-dashboard-c21194e18-r12-setup`, parallel with Tasks 15 and 23 only after settings, storage and sessions merge · left: Tasks 11, 13 and 14
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 and §D331.11 P16 (no redesign) · left: the first post-upgrade boot's `migrated-refused { key }` is a setup fault with the `.env` remove-list (§D332.S5)
 
 #### 11-2 · Make the Run modal enqueue and start real work {#dash-run-modal}
 status: planned
 date: parallel wave 11 · worktree r11-2-run-start
-doc: 03.1 §Task 11-2 · Make the Run modal enqueue and start real work · ref:workflow-model §4 · ref:frontend-backend-integration §5.1.1
+doc: 03.1 §Task 11-2 · Make the Run modal enqueue and start real work · ref:workflow-model §4 · ref:frontend-backend-integration §5.1.1 · ref:dashboard-surfaces §9.2
 
 builds:
 - [ ] BOTH plan against the served descriptor, validate exact inputs/options, and submit one authoritative start command
@@ -1395,11 +1416,12 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 run-start seam in `phase-3-1-dashboard-c21194e18-r15-run-start`, parallel with Tasks 12 and 23 after the session supervisor is real · left: Task 14
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 `create`, §D330.6 first-eligible claim in one transaction with `runtime-stale`, and §D330.4's served `version` as the one CAS token (no redesign) · left: a bulk start is D235's N children and one vector
 
 #### 11-3 · Finish Archive, versions, relaunch, and deletion {#dash-archive}
 status: planned
 date: parallel wave 11 · worktree r11-3-archive
-doc: 03.1 §Task 11-3 · Finish Archive, versions, relaunch, and deletion · ref:dashboard-surfaces §9.5 · ref:operator-trust §5.7
+doc: 03.1 §Task 11-3 · Finish Archive, versions, relaunch, and deletion · ref:dashboard-surfaces §9.5 · ref:operator-trust §5.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5
 
 builds:
 - [ ] BOTH derive terminal/archive/tombstone lists and frozen sections from the same canonical run authority
@@ -1411,11 +1433,12 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 Archive seam in `phase-3-1-dashboard-c21194e18-r23-archive`, parallel with Tasks 12 and 15 · left: Task 8 ownership freeze
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.8 (archive, `delete-archived-run` citing `contentDigest`), §D330.7 relaunch as a fresh run with archive lineage, and D332 §D332.7 item 7 (no redesign) · left: archive visibility is unchanged across the upgrade
 
 #### 12-1 · Finish queue rows, commands, and deletion {#dash-queue}
 status: planned
 date: parallel wave 12 · worktree r12-1-queue
-doc: 03.1 §Task 12-1 · Finish queue rows, commands, and deletion · ref:dashboard-surfaces §4 · ref:frontend-backend-integration §5.1
+doc: 03.1 §Task 12-1 · Finish queue rows, commands, and deletion · ref:dashboard-surfaces §4 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §9.2
 
 builds:
 - [ ] BOTH render ordering, status, identity, session, worker, progress, outcome, constraints, evidence, and group/member facts from the canonical run record
@@ -1428,11 +1451,12 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 4 queue seam in `phase-3-1-dashboard-c21194e18-r16-queue`, parallel with Tasks 18, 24 and 30 after authoritative start exists · left: Task 15
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 row facts, §D330.6 `list` order and §D330.8 delete plus tombstone (no redesign) · left: this task owns the two R01 residues — producing the `remove-queue-surface` / `tombstone-queue-surface` wire events, and reconciling the two projector outcome enums that disagree on `skipped`
 
 #### 12-2 · Finish run detail and the live timeline {#dash-run-detail}
 status: planned
 date: parallel wave 12 · worktree r12-2-run-detail
-doc: 03.1 §Task 12-2 · Finish run detail and the live timeline · ref:dashboard-surfaces §5
+doc: 03.1 §Task 12-2 · Finish run detail and the live timeline · ref:dashboard-surfaces §5 · ref:dashboard-surfaces §9.2
 
 builds:
 - [ ] BOTH render task groups, attempts, replay/skipped/blocked arms, live duration, systems, provenance, and focusable timeline segments
@@ -1445,6 +1469,7 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 4 run-detail foundation in `phase-3-1-dashboard-c21194e18-r18-run-detail`, parallel with Tasks 16, 24 and 30; its exit freezes the four disjoint wave-5 section seams · left: Task 15
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.3's seven states and §D330.4's `version` as `rowRevision`, with D268's one derivation retained and no fold arm (§D330.12 item 1) (no redesign) · left: attempts render as separately selectable rows, never compared (D289 amendment)
 
 #### 12-3 · Finish Activity, search, and export {#dash-activity}
 status: planned
