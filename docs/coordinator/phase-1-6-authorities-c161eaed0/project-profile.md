@@ -8,7 +8,7 @@
 **Coordinator title:** `Coordinate · phase-1-6-authorities · C161eaed0 · Phase 1.6`
 **Coordinator task/host:** `01a06d9c-1667-7451-a022-5f661d373703` / `local`
 **Integration checkout:** `/Users/julianhein/Projects/hr-automation-rebuild` · `master`
-**Verified:** 2026-09-04T18:10:12Z at `9201b025ad1582fabc3c3fdf7f20a1a8cac9ae18`
+**Verified:** 2026-09-04T18:10:12Z at coordination commit `dfd73b638bdd1bd49c7e4df91cbca5797ec12ebe`
 
 ## Applicable instructions
 
