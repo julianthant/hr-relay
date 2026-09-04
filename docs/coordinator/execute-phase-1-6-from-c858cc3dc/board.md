@@ -42,3 +42,5 @@ Consumed `handoffs/2026-09-04-phase-1-6-verified-id-repair.md` removed after che
 ## Worker admission issue
 
 Both initial read-only Scouts stopped before work: SubagentStart found no reserved sup_scout row; the exact dispatch PreToolUse event is absent. Evidence: evidence/wave-two-worker-admission.json. Supervisors were instructed to retain no-work lifecycle rows, hold further worker dispatch, avoid fabricating admission or changing hooks, and continue their admitted central implementation. No worker output is counted as proof.
+
+R02 source-owner correction: the strict persisted RunRecordSchema lives in src/domain/run/record.ts, not authority.ts. That exact file is admitted for already-required D330 fields, including cancelRequested. Doc 01 binding and generated envelope updated; no semantic decision or migration admitted. Durable command replay placement remains under source review.

@@ -656,7 +656,10 @@ and disposition predicates and the §D330.6 order in one write transaction; `ren
 `workerTransition`; the composite `terminalize`; `requeue`; `archive`; `delete`/`deleteArchived` with the
 member tree leaves-first, gate records, tombstone-first and `ordinal_source = tombstone`; `read` three-way;
 `list` ordered; as-built throws converted to named refusal arms); `src/domain/authority.ts` run-record
-types (existence union, refusal union, `RunRecord` fields §D330.1 adds); `tests/unit/run-record-service/`.
+types (existence union and refusal union); `src/domain/run/record.ts` (the actual strict persisted
+`RunRecordSchema` owner, including the fields D330 requires such as `cancelRequested`; source-owner
+path corrected during C858cc3dc R02 verification, 2026-09-04, without a contract change);
+`tests/unit/run-record-service/`.
 **Does not touch:** `migrations.ts`, any composition root, the command kernel, the worker loop,
 `src/domain/config/**`, `src/infra/config/**`, `secrets.ts`, the settings runtime (2-2's). **Owes:**
 §D330.11 #1–#23, #25, #26 over the real service and a temporary database (never a hand-inserted `tasks`

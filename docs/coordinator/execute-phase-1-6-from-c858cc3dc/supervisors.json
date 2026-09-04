@@ -123,7 +123,7 @@
       "report": "/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r02.md",
       "gate": "npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check",
       "needs_first": "none",
-      "cursor": "ea22d1a2-0dce-4458-97ff-2a56551d8008:7",
+      "cursor": "ea22d1a2-0dce-4458-97ff-2a56551d8008:15",
       "scope": [
         "src/core/run-record-service.ts",
         "src/domain/authority.ts",
@@ -131,7 +131,8 @@
         "tests/unit/run-record-service",
         "src/domain/workflow/generated-build-manifest.ts",
         "docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r02.md",
-        "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r02"
+        "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r02",
+        "src/domain/run/record.ts"
       ],
       "reservation": 2,
       "launch_policy": "separate project task, managed worktree from shared master base; admission-only first turn; START after exact identity and binding captured",
@@ -161,7 +162,7 @@
       "report": "/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r03.md",
       "gate": "npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check",
       "needs_first": "none",
-      "cursor": "b2e0f5b4-89cc-49be-a19f-cd62225f77d8:7",
+      "cursor": "b2e0f5b4-89cc-49be-a19f-cd62225f77d8:14",
       "scope": [
         "src/domain/config",
         "src/infra/config",
