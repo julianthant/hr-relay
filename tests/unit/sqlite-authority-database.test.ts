@@ -75,6 +75,7 @@ import { compositionQueuedRun } from "./fixtures/separations-composition-fixture
 import { DCC4_SUPERSEDED_V19_MIGRATION } from "./fixtures/dcc4-superseded-migration.js";
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
+import { withAuthorityBuildVariant } from "./fixtures/authority-build-variant.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -995,6 +996,55 @@ describe("native SQLite authority schema", () => {
     const database = openDatabaseWithoutMigration(path, "storage-upgrade-preflight-read-only-no-migrate");
     assert.equal(database.getMeta().schemaVersion, version);
     database.close();
+    assert.deepEqual(readFileSync(path), before);
+  });
+
+  it.each([27, 28, 29] as const)("M21 admits exact v%s before traversing the released chain to the floor", (version) => {
+    const path = databasePath(`m21-chain-v${String(version)}.sqlite`);
+    createExactReleasedDatabase(path, version);
+    const before = readFileSync(path);
+    const admitted = openDatabaseWithoutMigration(path, "storage-upgrade-preflight-read-only-no-migrate");
+    assert.equal(admitted.getMeta().schemaVersion, version);
+    admitted.close();
+    assert.deepEqual(readFileSync(path), before);
+
+    // Task 6 owns the production upgrade command. This test-only seam runs
+    // the ordinary immutable chain only AFTER real read-only admission.
+    applyReleasedMigrationChainForTest(path, version);
+    const upgraded = openDatabase(path);
+    assert.equal(upgraded.getMeta().schemaVersion, 30);
+    assert.deepEqual(upgraded.inspectSchema().tables.map(({ name }) => name),
+      AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort());
+  });
+
+  it("M21 refuses an extra table in exact v29 before admission or migration changes any bytes", () => {
+    const path = databasePath("m21-extra-table-v29.sqlite");
+    createExactReleasedDatabase(path, 29);
+    const raw = new DatabaseSync(path);
+    raw.exec("CREATE TABLE unreviewed_v29_suffix (record_key TEXT PRIMARY KEY) STRICT");
+    raw.close();
+    const before = readFileSync(path);
+    assert.throws(
+      () => openDatabaseWithoutMigration(path, "storage-upgrade-preflight-read-only-no-migrate"),
+      /D290 divergent post-v18 migration suffix: DCC1 v29/u,
+    );
+    assert.deepEqual(readFileSync(path), before);
+  });
+
+  it.each([27, 28, 29] as const)("M21 negative control: live-DDL-derived lists reject the admitted v%s fixture", async (version) => {
+    const path = databasePath(`m21-derived-v${String(version)}.sqlite`);
+    createExactReleasedDatabase(path, version);
+    const admitted = openDatabaseWithoutMigration(path, "storage-upgrade-preflight-read-only-no-migrate");
+    assert.equal(admitted.getMeta().schemaVersion, version);
+    admitted.close();
+    const before = readFileSync(path);
+    await withAuthorityBuildVariant("ddl-derived-layouts", async () => {
+      const { AuthorityDatabase: brokenBuild } = await import("../../src/infra/sqlite/authority-database.js");
+      assert.throws(() => brokenBuild.open({
+        path, busyTimeoutMs: 250, migrationOwner: "m21-negative-control",
+        openMode: "storage-upgrade-preflight-read-only-no-migrate",
+      }, CLOCK), new RegExp(`D290 divergent post-v18 migration suffix: DCC1 v${String(version)}`, "u"));
+    });
     assert.deepEqual(readFileSync(path), before);
   });
 

@@ -73,6 +73,7 @@ import {
   SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,
   persistCorruptJournaledSettings,
 } from "../fixtures/settings-runtime-corruption-fixtures.js";
+import { withAuthorityBuildVariant } from "../fixtures/authority-build-variant.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
 
@@ -245,12 +246,20 @@ function copyRuntimePackageFixture(repoRoot: string): void {
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
-  return { ...actual, fsyncSync: vi.fn(actual.fsyncSync), readFileSync: vi.fn(actual.readFileSync) };
+  return {
+    ...actual,
+    fsyncSync: vi.fn(actual.fsyncSync),
+    readFileSync: vi.fn(actual.readFileSync),
+    openSync: vi.fn(actual.openSync),
+    mkdirSync: vi.fn(actual.mkdirSync),
+  };
 });
 
 afterEach(async () => {
   vi.mocked(fsyncSync).mockReset();
   vi.mocked(readFileSync).mockReset();
+  vi.mocked(openSync).mockReset();
+  vi.mocked(mkdirSync).mockReset();
   vi.restoreAllMocks();
   // LIFO, like any resource teardown: the subscription closes before the
   // runtime stops, and the runtime stops — including its graceful-drain
@@ -345,6 +354,67 @@ function journalExplorer(
 }
 
 describe("composed dashboard runtime over an owned loopback socket", () => {
+  it("M9 refuses a real v30 authority under CURRENT29 before settings opens or config resolution", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-downgrade-v30-"));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
+    const artifactRoot = join(repoRoot, rebuildRuntimeIsolation.artifactRoot);
+    const lockPath = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
+    mkdirSync(stateRoot, { recursive: true });
+    const path = join(stateRoot, "state.db");
+    AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "m9-floor-fixture" }).close();
+    const before = readFileSync(path);
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 30);
+      assert.notEqual(raw.prepare("SELECT name FROM sqlite_master WHERE name = 'authority_upgrades'").get(), undefined);
+    } finally {
+      raw.close();
+    }
+    // A readable planted settings file makes the early-read negative control
+    // reach the same authority refusal rather than failing on ENOENT first.
+    writeFileSync(join(stateRoot, "settings.json"), "{}", { mode: 0o600 });
+
+    await withAuthorityBuildVariant("current-29", async () => {
+      const build = await import("../../../src/infra/sqlite/migrations.js");
+      assert.equal(build.CURRENT_AUTHORITY_SCHEMA_VERSION, 29);
+      const resolver = await import("../../../src/domain/config/resolve.js");
+      const resolveSpy = vi.spyOn(resolver, "resolveConfigWithProvenance");
+      const { composeDashboardRuntime: composeOlderBuild } = await import("../../../src/server/dashboard/compose.js");
+      vi.mocked(readFileSync).mockClear();
+      vi.mocked(openSync).mockClear();
+      vi.mocked(mkdirSync).mockClear();
+      try {
+        await assert.rejects(composeOlderBuild({
+          isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0,
+          env: {}, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")), repoRoot,
+        }), /authority schema 30 is newer than supported 29/u);
+
+        const isSettingsPath = (value: unknown): boolean => typeof value === "string"
+          && (value.startsWith(join(stateRoot, "settings.json"))
+            || value.startsWith(join(stateRoot, "settings") + "/"));
+        assert.equal(vi.mocked(openSync).mock.calls.filter(([target]) => isSettingsPath(target)).length,
+          0, "M9: zero settings-family openSync calls before downgrade refusal");
+        assert.equal(vi.mocked(readFileSync).mock.calls.filter(([target]) => isSettingsPath(target)).length,
+          0, "M9: zero settings-family readFileSync calls before downgrade refusal");
+        assert.equal(resolveSpy.mock.calls.length, 0, "M9: zero resolveConfigWithProvenance calls before downgrade refusal");
+        assert.ok(vi.mocked(mkdirSync).mock.calls.some(([target]) => target === stateRoot),
+          "M9: state-root mkdir precedes the refused authority open");
+        assert.ok(vi.mocked(openSync).mock.calls.some(([target]) => target === artifactRoot),
+          "M9: artifact-root directory check precedes the refused authority open");
+        assert.equal(statSync(artifactRoot).mode & 0o777, 0o700);
+        const released = JSON.parse(readFileSync(lockPath, "utf8")) as Record<string, unknown>;
+        assert.equal(released.acquiredAt, "2026-08-28T12:00:00.000Z");
+        assert.equal(released.releasedAt, "2026-08-28T12:00:00.000Z");
+        assert.deepEqual(readFileSync(path), before);
+      } finally {
+        resolveSpy.mockRestore();
+      }
+    });
+    assert.equal((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 30);
+  });
+
   it.each([
     { version: 29, refusal: /upgrade-required \{ schemaVersion: 29, floor: 30 \}/u },
     { version: 31, refusal: /authority schema 31 is newer than supported 30/u },
