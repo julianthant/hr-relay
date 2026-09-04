@@ -34,7 +34,7 @@
 
 | Run | Session id | Name (`-n`) | Launched | Worktree | Branch | Report | State |
 |---|---|---|---|---|---|---|---|
-| R01 | — | Supervisor · phase-0-3-authority-design · C31da5310 · R01 · run-authority-design | — | `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/phase-0-3-authority-design-c31da5310-r01-run-authority-design` | `feature/phase-0-3-authority-design-c31da5310-r01-run-authority-design` | `docs/coordinator/phase-0-3-authority-design-c31da5310/reports/r01.md` | reserved |
+| R01 | `d02757ca-9aad-4126-b564-bfed36cf2b4d` (short `d02757ca`) | Supervisor · phase-0-3-authority-design · C31da5310 · R01 · run-authority-design | 2026-09-04 via `claude --bg --permission-mode auto` from the run worktree (local: needs repo tooling; cloud cannot see the checkout) | `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/phase-0-3-authority-design-c31da5310-r01-run-authority-design` | `feature/phase-0-3-authority-design-c31da5310-r01-run-authority-design` | `docs/coordinator/phase-0-3-authority-design-c31da5310/reports/r01.md` | active |
 
 ## Integration and close
 
