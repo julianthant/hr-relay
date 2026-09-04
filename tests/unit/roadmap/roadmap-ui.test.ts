@@ -15,6 +15,25 @@ async function renderRoadmap(): Promise<void> {
 }
 
 describe("roadmap desktop interaction", () => {
+  it("gives every subtask a deterministic hierarchical name", async () => {
+    await renderRoadmap();
+
+    const code = (key: string): string | null => document.querySelector(`.nd[data-key="${key}"] .task-code`)?.textContent ?? null;
+    expect(code("dash-defaults")).toBe("3A");
+    expect(code("track-b")).toBe("3A.1");
+    expect(code("sep-1")).toBe("3B.1A");
+    expect(code("workflow-guide-proof")).toBe("3C.2B");
+    expect(code("order-0-dash")).toBe("3C.3A.1");
+    expect(code("def-byte-path")).toBe("5A.1");
+
+    const node = document.querySelector<SVGAElement>('.nd[data-key="track-b"]');
+    expect(node?.getAttribute("href")).toBe("#track-b");
+    expect(node?.getAttribute("aria-label")).toMatch(/^3A\.1, Build the shared dashboard surfaces,/);
+    node?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(document.querySelector("#drawer-title")?.textContent).toBe("3A.1 · Build the shared dashboard surfaces");
+    document.querySelector("#canvas-wrap")?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  });
+
   it("leaves node detail by clicking blank canvas space", async () => {
     await renderRoadmap();
     const node = document.querySelector<SVGAElement>(".nd[data-key]");

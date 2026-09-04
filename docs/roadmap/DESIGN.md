@@ -84,6 +84,10 @@ phases run vertically, lettered workstreams run horizontally, and tasks stack be
 Blank map space leaves the selected node and returns the inspector to the guide. `Esc` does the same;
 a second `Esc` collapses the inspector. Dragging blank space pans without triggering that exit.
 
+Visible task names use deterministic hierarchy paths. A workstream is `3B`; its tasks are `3B.1A`,
+`3B.1B`, and so on. Deeper evidence cards continue the path (`3C.3A.1`). This display convention does
+not replace the plan's stable source headings or anchor IDs.
+
 ## Elevation & Depth
 
 The map, cards, and inspector are separated by surface color and one-pixel rules. No shadow is used on
@@ -99,6 +103,10 @@ state; feature markers are square because they represent discrete planned output
 Every node prints its status in words beside the marker. Up to ten feature squares appear on the node;
 the remainder is summarized numerically. Filled squares are built, outlines are open, and color names
 the layer. The thin bottom rule reports documentation-checklist progress and stays visually secondary.
+
+Task-path labels use system mono and cobalt. They sit in the upper-left corner of each non-phase card,
+opposite its written status, so the title can stay semantic instead of carrying an inconsistent local
+prefix.
 
 The guide is the canonical key for all visible symbols. The toolbar groups dependency and zoom controls
 by task, and every control has visible hover, active, and keyboard-focus states.

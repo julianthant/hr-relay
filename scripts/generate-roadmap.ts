@@ -75,19 +75,66 @@ function inline(text: string): string {
 interface Registered {
   id: string;
   title: string;
+  displayName: string;
   status: Status;
   requires: Requirement[];
   unlocks: string[];
   order: number;
 }
 
-function collectRegistry(roadmap: Roadmap): Map<string, Registered> {
+interface DisplayIdentity {
+  code: string;
+  title: string;
+  name: string;
+}
+
+function displayTitle(title: string): string {
+  const withoutCode = title
+    .replace(/^Phase\s+\d+\s+exit\s*[—-]\s*/i, "")
+    .replace(/^Phase\s+\d+\s*·\s*/i, "")
+    .replace(/^(?:\d+[a-z](?:-spine)?)(?:\s*·\s*\d+[a-z](?:-spine)?)*\s*[—-]\s*/i, "")
+    .replace(/^\d+[a-z]?\s*·\s*/i, "")
+    .trim();
+  return withoutCode.length === 0 ? title : withoutCode[0]?.toUpperCase() + withoutCode.slice(1);
+}
+
+function collectDisplayIdentities(roadmap: Roadmap): Map<string, DisplayIdentity> {
+  const identities = new Map<string, DisplayIdentity>();
+  const add = (key: string, code: string, sourceTitle: string): void => {
+    const title = displayTitle(sourceTitle);
+    identities.set(key, { code, title, name: `${code} · ${title}` });
+  };
+  const walk = (items: Item[], parentKey: string, parentCode: string): void => {
+    items.forEach((item, index) => {
+      const key = item.id ?? `${parentKey}-${String(index + 1)}`;
+      const localCode = /^(\d+(?:[A-Z])?)\s*·\s*/.exec(item.title)?.[1];
+      const code = localCode === undefined ? `${parentCode}.${String(index + 1)}` : `${parentCode}.${localCode}`;
+      add(key, code, item.title);
+      walk(item.items ?? [], key, code);
+    });
+  };
+  roadmap.spine.forEach((node, phaseIndex) => {
+    if (node.kind !== "phase") return;
+    const phaseNumber = /\d+/.exec(node.phase)?.[0] ?? String(phaseIndex);
+    add(node.id, `Phase ${phaseNumber}`, node.title);
+    node.items.forEach((item, index) => {
+      const key = item.id ?? `${node.id}-${String(index + 1)}`;
+      const phasePart = new RegExp(`^${phaseNumber}[A-Z]\\s*·\\s*`).exec(item.title)?.[0]?.match(/^\d+[A-Z]/)?.[0];
+      const code = phasePart ?? `${phaseNumber}.${String(index + 1)}`;
+      add(key, code, item.title);
+      walk(item.items ?? [], key, code);
+    });
+  });
+  return identities;
+}
+
+function collectRegistry(roadmap: Roadmap, identities: Map<string, DisplayIdentity>): Map<string, Registered> {
   const registry = new Map<string, Registered>();
   let order = 0;
   const add = (id: string | undefined, title: string, status: Status, requires: Requirement[] | undefined): void => {
     if (id === undefined) return;
     if (registry.has(id)) throw new Error(`roadmap.json: duplicate id "${id}"`);
-    registry.set(id, { id, title, status, requires: requires ?? [], unlocks: [], order: order++ });
+    registry.set(id, { id, title, displayName: identities.get(id)?.name ?? title, status, requires: requires ?? [], unlocks: [], order: order++ });
   };
   const walk = (items: Item[]): void => {
     for (const item of items) {
@@ -134,7 +181,7 @@ function renderRequires(requires: Requirement[] | undefined, registry: Map<strin
     const met = requirementMet(requirement, registry);
     if (requirement.kind === "node") {
       const target = registry.get(requirement.ref);
-      const title = target === undefined ? requirement.ref : target.title;
+      const title = target === undefined ? requirement.ref : target.displayName;
       return `<a class="req ${met ? "met" : "open"}" href="#${requirement.ref}" data-go="${requirement.ref}"><i>${met ? "✓" : "○"}</i>${inline(title)}</a>`;
     }
     const cls = requirement.kind === "you" ? (met ? "met" : "you") : met ? "met" : "open";
@@ -149,7 +196,7 @@ function renderUnlocks(id: string, registry: Map<string, Registered>): string {
   if (entry === undefined || entry.unlocks.length === 0) return "";
   const chips = entry.unlocks.map((target) => {
     const t = registry.get(target);
-    return `<a class="req unl" href="#${target}" data-go="${target}"><i>→</i>${inline(t?.title ?? target)}</a>`;
+    return `<a class="req unl" href="#${target}" data-go="${target}"><i>→</i>${inline(t?.displayName ?? target)}</a>`;
   });
   return `<div class="deps"><span class="dl">Unlocks</span>${chips.join("")}</div>`;
 }
@@ -370,6 +417,7 @@ interface TreeNode {
   kind: "phase" | "item" | "flag";
   status: Status;
   title: string;
+  code: string;
   eyebrow: string | undefined;
   whenSecondary: string | undefined;
   chip: Chip | undefined;
@@ -402,8 +450,9 @@ const FLAG_H = 44;
 const TODAY_H = 40;
 const CHILD_X = PAD + NODE_W + 64; // tasks start to the right of the phase column
 
-function buildItemNode(item: Item, parentKey: string, index: number, registry: Map<string, Registered>): TreeNode {
+function buildItemNode(item: Item, parentKey: string, index: number, registry: Map<string, Registered>, identities: Map<string, DisplayIdentity>): TreeNode {
   const key = item.id ?? `${parentKey}-${String(index + 1)}`;
+  const identity = identities.get(key) ?? { code: key, title: item.title, name: item.title };
   const features = resolveFeatures(item.features, item.status);
   const detail = [
     item.desc === undefined ? "" : `<p class="desc">${inline(item.desc)}</p>`,
@@ -419,7 +468,8 @@ function buildItemNode(item: Item, parentKey: string, index: number, registry: M
     nodeId: item.id,
     kind: "item",
     status: item.status,
-    title: item.title,
+    title: identity.title,
+    code: identity.code,
     eyebrow: item.date,
     whenSecondary: undefined,
     chip: item.chip,
@@ -430,14 +480,15 @@ function buildItemNode(item: Item, parentKey: string, index: number, registry: M
     detail,
     docHtml: "",
     docProgress: NO_DOC_PROGRESS,
-    children: (item.items ?? []).map((child, i) => buildItemNode(child, key, i, registry)),
+    children: (item.items ?? []).map((child, i) => buildItemNode(child, key, i, registry, identities)),
     depth: 0, x: 0, y: 0, w: NODE_W, h: NODE_H, rowCenter: 0,
   };
 }
 
-function buildPhaseNode(node: PhaseNode, registry: Map<string, Registered>): TreeNode {
+function buildPhaseNode(node: PhaseNode, registry: Map<string, Registered>, identities: Map<string, DisplayIdentity>): TreeNode {
   const features = resolveFeatures(node.features, node.status);
-  const parts = node.items.map((item, i) => buildItemNode(item, node.id, i, registry));
+  const identity = identities.get(node.id) ?? { code: node.phase, title: node.title, name: node.title };
+  const parts = node.items.map((item, i) => buildItemNode(item, node.id, i, registry, identities));
   parts.sort((left, right) => {
     const leftCode = /^(\d+)([a-z])\b/i.exec(left.title);
     const rightCode = /^(\d+)([a-z])\b/i.exec(right.title);
@@ -460,7 +511,8 @@ function buildPhaseNode(node: PhaseNode, registry: Map<string, Registered>): Tre
     nodeId: node.id,
     kind: "phase",
     status: node.status,
-    title: node.title,
+    title: identity.title,
+    code: identity.code,
     eyebrow: `${node.phase} · ${node.when.primary}`,
     whenSecondary: node.when.secondary,
     chip: node.chip,
@@ -598,14 +650,14 @@ interface Band {
   text: string;
 }
 
-function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs: DocBindingIndex): { svg: string; data: Record<string, { title: string; html: string; requires: string[]; unlocks: string[]; parent: string | null; children: string[] }> } {
+function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs: DocBindingIndex, identities: Map<string, DisplayIdentity>): { svg: string; data: Record<string, { title: string; html: string; requires: string[]; unlocks: string[]; parent: string | null; children: string[] }> } {
   const roots: TreeNode[] = [];
   const bands: Band[] = [];
   let cursor = PAD;
   let flagIndex = 0;
   for (const node of roadmap.spine) {
     if (node.kind === "phase") {
-      const root = buildPhaseNode(node, registry);
+      const root = buildPhaseNode(node, registry, identities);
       attachDocs(root, docs);
       const bandHeight = layoutPhase(root, cursor);
       roots.push(root);
@@ -695,11 +747,13 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
         .map((line, i) => `<tspan x="${N(node.x + 16)}" dy="${i === 0 ? 0 : 17}">${escapeHtml(line)}</tspan>`)
         .join("");
       const eyebrow = isPhase && node.eyebrow !== undefined
-        ? `<text class="eb" x="${N(node.x + 16)}" y="${N(node.y + 21)}">${escapeHtml((wrapTitle(node.eyebrow, 30, 1)[0] ?? "").toUpperCase())}</text>`
-        : "";
+        ? `<text class="eb" x="${N(node.x + 16)}" y="${N(node.y + 21)}">${escapeHtml((`${node.code} · ${node.eyebrow.replace(/^Phase\s+\d+\s*·\s*/i, "")}`).toUpperCase())}</text>`
+        : `<text class="task-code" x="${N(node.x + 16)}" y="${N(node.y + 20)}">${escapeHtml(node.code)}</text>`;
       const dotY = isPhase ? node.y + node.h - 17 : node.y + 17;
-      const dot = `<circle class="st" cx="${N(node.x + 16)}" cy="${N(dotY)}" r="4.5"/>`;
-      const state = `<text class="state" x="${N(node.x + 28)}" y="${N(dotY)}" dy="0.35em">${stateLabel}</text>`;
+      const stateX = isPhase ? node.x + 28 : node.x + node.w - 16;
+      const dotX = isPhase ? node.x + 16 : stateX - stateLabel.length * 6.1 - 10;
+      const dot = `<circle class="st" cx="${N(dotX)}" cy="${N(dotY)}" r="4.5"/>`;
+      const state = `<text class="state" x="${N(stateX)}" y="${N(dotY)}" dy="0.35em"${isPhase ? "" : ' text-anchor="end"'}>${stateLabel}</text>`;
       // the info line: an item's chip (in its tone) or its date / decision
       const infoText = !isPhase && node.chip !== undefined ? node.chip.text.replace(/\*\*/g, "") : !isPhase && node.eyebrow !== undefined ? node.eyebrow : undefined;
       const infoTone = !isPhase && node.chip !== undefined ? (node.chip.tone ?? node.status) : "meta";
@@ -731,7 +785,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
         ? ""
         : `<rect class="dpt" x="${N(node.x + 12)}" y="${N(node.y + node.h - 4)}" width="${N(tickW)}" height="2" rx="1"/><rect class="dpt on" x="${N(node.x + 12)}" y="${N(node.y + node.h - 4)}" width="${N((tickW * doc.done) / doc.total)}" height="2" rx="1"/>`;
       const spokenProgress = node.features.length === 0 ? "" : `, ${String(built)} of ${String(node.features.length)} outputs built`;
-      return `<a class="${cls}" href="#${node.key}" data-key="${node.key}" aria-label="${escapeHtml(`${node.title}, ${stateLabel.toLowerCase()}${spokenProgress}`)}"><g><rect class="bx" x="${N(node.x)}" y="${N(node.y)}" width="${N(node.w)}" height="${N(node.h)}" rx="8"/>${eyebrow}${dot}${state}<text class="tt" x="${N(node.x + 16)}" y="${N(titleY)}">${title}</text>${phaseBar}${isPhase ? chip : right}${tick}</g></a>`;
+      return `<a class="${cls}" href="#${node.key}" data-key="${node.key}" aria-label="${escapeHtml(`${node.code}, ${node.title}, ${stateLabel.toLowerCase()}${spokenProgress}`)}"><g><rect class="bx" x="${N(node.x)}" y="${N(node.y)}" width="${N(node.w)}" height="${N(node.h)}" rx="8"/>${eyebrow}${dot}${state}<text class="tt" x="${N(node.x + 16)}" y="${N(titleY)}">${title}</text>${phaseBar}${isPhase ? chip : right}${tick}</g></a>`;
     })
     .join("");
 
@@ -748,7 +802,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
       : `<span class="docn" title="doc checklist items done — this node and everything under it">${String(node.docProgress.done)}/${String(node.docProgress.total)} docs</span>`;
     const header = `<div class="dh"><span class="chip ${node.status}">${node.status === "you" ? "needs you" : node.status}</span>${renderChip(chip, node.status)}${node.size === undefined ? "" : `<span class="size">${node.size}</span>`}${docn}${node.eyebrow === undefined ? "" : `<span class="eb2">${inline(node.eyebrow)}${node.kind === "phase" && node.whenSecondary !== undefined ? ` · ${inline(node.whenSecondary)}` : ""}</span>`}</div>`;
     data[node.key] = {
-      title: node.title,
+      title: `${node.code} · ${node.title}`,
       // title → chip/status + n/m docs → doc: refs → summary → builds → needs
       // → unlocks → table → notes → session log (`detail`) → from the docs
       html: header + renderDocs(node.docs) + node.detail + node.docHtml,
@@ -849,6 +903,7 @@ const CSS = String.raw`
   .tree .bx{fill:var(--card);stroke:var(--line-strong);stroke-width:1.25}
   .tree .tt{fill:var(--fg);font-size:13.5px;font-weight:620;letter-spacing:-.01em}.tree .phase .tt{font-size:15px;font-weight:680}
   .tree .eb{fill:var(--fg-3);font-family:var(--mono);font-size:9.5px;letter-spacing:.06em}
+  .tree .task-code{fill:var(--accent);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.045em}
   .tree .state{fill:var(--fg-3);font-family:var(--mono);font-size:9px;font-weight:650;letter-spacing:.06em}.tree .done .state{fill:var(--ok)}.tree .active .state{fill:var(--info)}.tree .you .state{fill:var(--warn)}.tree .proposed .state{fill:var(--accent)}
   .tree .meta{fill:var(--fg-3);font-family:var(--mono);font-size:9px;font-variant-numeric:tabular-nums}
   .tree .info{font-family:var(--mono);font-size:9.5px;fill:var(--fg-3)} .tree .info.done{fill:var(--ok)} .tree .info.active{fill:var(--info)} .tree .info.you{fill:var(--warn)} .tree .info.proposed{fill:var(--accent)} .tree .info.never{fill:var(--fg-4)}
@@ -1033,14 +1088,15 @@ const JS = String.raw`
 `;
 
 function renderPage(roadmap: Roadmap, docs: DocBindingIndex): string {
-  const registry = collectRegistry(roadmap);
-  const { svg, data } = renderCanvas(roadmap, registry, docs);
+  const identities = collectDisplayIdentities(roadmap);
+  const registry = collectRegistry(roadmap, identities);
+  const { svg, data } = renderCanvas(roadmap, registry, docs, identities);
   const tiles = roadmap.tiles
     .map((t) => `<div class="tile${t.hot ? " hot" : ""}"><div class="k">${inline(t.label)}</div><div class="v">${inline(t.value)}</div>${t.sub === undefined ? "" : `<div class="s">${inline(t.sub)}</div>`}</div>`)
     .join("");
   const dataJson = JSON.stringify(data).replaceAll("<", "\\u003c");
   const aboutHtml = `<p class="hint">${inline(roadmap.meta.lede)}</p>
-<section class="key-section"><h3>Read the structure</h3><p class="hint">Numbered phases run down the left spine. Lettered workstreams run left to right. Each workstream's tasks stack beneath it. Select any node to inspect its full record; click blank map space to return here.</p></section>
+<section class="key-section"><h3>Read the structure</h3><p class="hint">Numbered phases run down the left spine. Lettered workstreams run left to right. Each workstream's tasks stack beneath it. Every task name starts with its full path, so <code>3B.1A</code> is task 1A inside workstream 3B. Select any node to inspect its full record; click blank map space to return here.</p></section>
 <section class="key-section"><h3>Node status</h3><div class="legend" aria-label="Node status legend">
 <span><i class="sw done"></i>Complete</span><span><i class="sw active"></i>Active now</span><span><i class="sw you"></i>Needs you</span><span><i class="sw avail"></i>Ready next</span><span><i class="sw locked"></i>Blocked</span><span><i class="sw proposed"></i>Proposed</span><span><i class="sw never"></i>Deferred</span>
 </div></section>

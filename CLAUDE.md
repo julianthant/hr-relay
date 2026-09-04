@@ -332,6 +332,11 @@ environment-supplied.
 
 ## Conventions
 
+- **2026-09-03 — roadmap task names are full hierarchy paths in the UI.** The generator derives visible
+  task labels from the plan hierarchy (`3A.1`, `3B.1A`, `3C.3A.1`) instead of exposing a mix of local,
+  legacy and absent prefixes. Source headings, node ids, anchors and D325 execution labels remain the
+  authority; this is a deterministic presentation name only.
+
 - **2026-09-03 — the roadmap site is a desktop master-detail operations map.**
   `scripts/generate-roadmap.ts` owns the interface and `docs/roadmap/index.html` stays generated. The
   command bar and plan facts sit above a scrollable map; the 420px inspector rail participates in layout
