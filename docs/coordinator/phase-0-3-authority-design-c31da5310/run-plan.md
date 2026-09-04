@@ -8,7 +8,7 @@
 | Run | Canonical supervisor title | Roadmap task | Theme | Units | Worker roles | Base | Worktree allowance | Integration order | Parallel-ready | Needs first | Exit evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | R01 | Supervisor · phase-0-3-authority-design · C31da5310 · R01 · run-authority-design | 0.3 Task 1 `phase0-run-authority-design` | canonical run-record authority contract | U01 | sup-scout, sup-analyst, sup-opus | `26c70b9b` | 2 | 1 | no (operator: sequential) | — | design gate green in worktree; report verified; merged `--no-ff`; integrated gate green; worktree/branch/session closed |
-| R02 | Supervisor · phase-0-3-authority-design · C31da5310 · R02 · settings-authority-design | 0.3 Task 2 `phase0-settings-authority-design` | settings catalog + protected root contract | U02 | sup-scout, sup-analyst, sup-opus | post-R01 master (see ledger) | 2 | 2 | no | R01 closed | same |
+| R02 | Supervisor · phase-0-3-authority-design · C31da5310 · R02 · settings-authority-design | 0.3 Task 2 `phase0-settings-authority-design` | settings catalog + protected root contract | U02 | sup-scout, sup-analyst, sup-opus | `da870d2d` | 2 | 2 | no | R01 closed | same |
 | R03 | Supervisor · phase-0-3-authority-design · C31da5310 · R03 · migration-recovery-design | 0.3 Task 3 `phase0-authority-migration-design` | migration, compatibility, recovery | U03 | sup-scout, sup-analyst, sup-opus | R02 merge | 2 | 3 | no | R01 · R02 closed (roadmap `needs:`) | same |
 | R04 | Supervisor · phase-0-3-authority-design · C31da5310 · R04 · authority-design-close | 0.3 Task 4 `phase0-authority-design-close` | adversarial close + implementation briefs | U04 | sup-analyst, sup-opus | R03 merge | 2 | 4 | no | R03 closed | same + every §0.3 checkbox evidenced |
 
@@ -35,6 +35,7 @@
 | Run | Session id | Name (`-n`) | Launched | Worktree | Branch | Report | State |
 |---|---|---|---|---|---|---|---|
 | R01 | `d02757ca-9aad-4126-b564-bfed36cf2b4d` (short `d02757ca`) | Supervisor · phase-0-3-authority-design · C31da5310 · R01 · run-authority-design | 2026-09-04 via `claude --bg --permission-mode auto` from the run worktree (local: needs repo tooling; cloud cannot see the checkout) | `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/phase-0-3-authority-design-c31da5310-r01-run-authority-design` | `feature/phase-0-3-authority-design-c31da5310-r01-run-authority-design` | `docs/coordinator/phase-0-3-authority-design-c31da5310/reports/r01.md` | closed — merged `1a04d565`, gate green, worktree removed + pruned, branch deleted (ref gone), session stopped 2026-09-04 |
+| R02 | `3700aeea-2d56-47f2-9beb-4e2138cc0c7a` (short `3700aeea`) | Supervisor · phase-0-3-authority-design · C31da5310 · R02 · settings-authority-design | 2026-09-04 via `claude --bg --permission-mode auto` from the run worktree; base `da870d2d` | `/Users/julianhein/Projects/hr-automation-rebuild/.hr-rebuild-worktrees/phase-0-3-authority-design-c31da5310-r02-settings-authority-design` | `feature/phase-0-3-authority-design-c31da5310-r02-settings-authority-design` | `docs/coordinator/phase-0-3-authority-design-c31da5310/reports/r02.md` | active |
 
 ## Integration and close
 
