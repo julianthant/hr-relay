@@ -1,0 +1,54 @@
+R09 accepted parity repair inventory
+base 3d9c7917f7db8b83edb473582840ed595353ee4e
+reference commit 324017e754d550326d4a2b02d84712ce254dadaf
+
+Deliberate update: 269/269 passed
+Assertion mode: 269/269 passed
+Changed: 210 a11y YAML + 210 metadata JSON + 31 PNG = 451 files
+
+Exact accessibility transformations (and no others):
+180 ff8c5fd78912e40100770dae22be908d41bef31f284b28e1520f6b145cb85aa2 -> 7cb1e18470ed6ad8a9a682e3bccd9c121800ed893d75d9316be116879898e39e
+30  8a4f301b41fb502099a365c1f4ae457e7faf4001a0d1f7d236b811bb7f377f98 -> fe74ae963f7083419f1dfa4f2da9391717c208f311a3fe0bf4eb4a9f579472c7
+38  ff8c5fd7 -> 7cb1e184
+6   8191c959ec27 -> d23204eba53b
+6   82196f1a4bd4 -> 7ddf947b5a69
+2   2db0988e -> 77185eb4
+
+Metadata transformations:
+180 person/default descriptorHash only
+30 separations descriptorHash only
+
+Unexercised pairs left byte-identical to base:
+run-receipt--graphite-warm--1280x720
+run-receipt--graphite-warm--1440x900
+run-receipt--graphite-warm--narrow-1024x768
+run-receipt--paper-ink--1280x720
+run-receipt--paper-ink--1440x900
+run-receipt--paper-ink--narrow-1024x768
+
+PNG proof:
+31 contain the compact displayed-hash region.
+19 have no raw RGB movement outside the one-pixel-padded significant-hash bounds.
+12 carry 8-74 raw noise pixels outside those bounds (344 total).
+Maximum outside-region RGB channel delta is 13/255, below the unchanged 0.2 per-pixel tolerance.
+No accessibility semantic change corresponds to those pixels.
+
+Outside-region noise files (pixels, max RGB-channel delta):
+run-failed--graphite-warm--1440x900.png 40 2
+run-failed--paper-ink--1280x720.png 11 1
+run-failed--paper-ink--1440x900.png 69 1
+run-group--paper-ink--1280x720.png 29 11
+run-open-gate--paper-ink--1280x720.png 74 11
+run-open-gate--paper-ink--1440x900.png 11 1
+run-parked-write--graphite-warm--1280x720.png 10 13
+run-parked-write--paper-ink--1280x720.png 56 1
+run-parked-write--paper-ink--1440x900.png 11 1
+run-queued--graphite-warm--1440x900.png 8 6
+run-running--paper-ink--1280x720.png 14 8
+run-running--paper-ink--1440x900.png 11 1
+
+Representative SHA-256:
+base run-running graphite 1280x720 705bf1b92225fb5df313ba0cbd1928efcbe484eb46f2a89cfcbc1c02f62d7c51
+accepted run-running graphite 1280x720 7a463d8af9ff5aab78f508e348b256662c42cfb305bec4fee2388d480bc40c6c
+base archive-version-bump paper-ink 1440x900 9b71daf064a3490fa23ebbd3a217ec6680f644c77e0239b6f4792529457fe747
+accepted archive-version-bump paper-ink 1440x900 ff4ec9ecd1538f8dfaca2f8f5cd04690f5bfae4ed4514a37f04d7bf39a18541a

@@ -1,0 +1,31 @@
+{
+  "source": "/Users/julianhein/Projects/hr-automation-rebuild-r09-parity-baseline/.tracker/r09-parity-evidence",
+  "owner": "inherited nested parity R09, verified user takeover",
+  "files": [
+    {
+      "file": "accepted-archive-version-bump--paper-ink--1440x900.png",
+      "sha256": "ff4ec9ecd1538f8dfaca2f8f5cd04690f5bfae4ed4514a37f04d7bf39a18541a",
+      "bytes": 193214
+    },
+    {
+      "file": "accepted-run-running--graphite-warm--1280x720.png",
+      "sha256": "7a463d8af9ff5aab78f508e348b256662c42cfb305bec4fee2388d480bc40c6c",
+      "bytes": 105793
+    },
+    {
+      "file": "base-archive-version-bump--paper-ink--1440x900.png",
+      "sha256": "9b71daf064a3490fa23ebbd3a217ec6680f644c77e0239b6f4792529457fe747",
+      "bytes": 193260
+    },
+    {
+      "file": "base-run-running--graphite-warm--1280x720.png",
+      "sha256": "705bf1b92225fb5df313ba0cbd1928efcbe484eb46f2a89cfcbc1c02f62d7c51",
+      "bytes": 105748
+    },
+    {
+      "file": "inventory.txt",
+      "sha256": "1b50b911f54693a668b7430e841a243ad948cde6a845e478a1e5c1ca51dc5b79",
+      "bytes": 2497
+    }
+  ]
+}
