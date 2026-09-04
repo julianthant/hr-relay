@@ -1451,7 +1451,8 @@ the real tree and against its own violating fixture.
 
 **Planned — two, each with a concrete missing executor/input:** `preflight-coverage` (six DCC2
 dashboard runners exist, but the declared fault corpus has no executor) and `one-time-import-offline`
-(the cutover data migration, doc 05 §Exit criteria).
+(the cutover data migration, doc 05 §Exit criteria). D332's adapter deletion tests are planned entries
+too; §5.2 lists them.
 
 **Retired — nine, each naming its successor or disposition in the inventory:** `runtime-isolation` → `operational-isolation`
 (D93), `rebuild-gates` → `gate-coverage` (D93), `legacy-preservation` → nothing, deliberately (D93),
@@ -1476,6 +1477,205 @@ A guard added to any doc that never lands in the inventory fails the manifest �
 promise cannot quietly stay a promise. The manifest still **cannot** prevent a deliberate
 coordinated edit deleting both a guard and its entry; no self-owned test can (§5's closing
 paragraph).
+
+### 5.2 D332 compatibility adapters and their deletion tests (0.3 Task 3, 2026-09-04)
+
+A *compatibility adapter* is defined by ref dashboard-surfaces §D332.9, whose five rules — named at
+birth in one place; born with its deletion test; never a fallback; expiry is a deletion, not a switch;
+pre-floor artifacts refuse by name after expiry — are cited here, not restated. The roster lives in
+THIS doc because §5's manifest is where deletion tests converge: rule 2 makes every adapter's expiry a
+`planned` `guard-inventory.json` entry whose `activationMilestone` is its phase, and §5.1's walk rule —
+**a planned or retired entry's `.test.ts` file must not exist on disk** — is what stops a promised
+deletion test from becoming a written-but-inert one. Two things this section is NOT. It is not the
+migration proof list: the twenty-four proofs 1.6 owes for the upgrade itself are ref dashboard-surfaces
+§D332.11's, and no row of them is repeated below. It is not the D330/D331 proof lists either
+(§D330.11, ref clock-config-secrets §D331.11); where a `P<n>` or numbered proof row there already owns
+an adapter's oracle, the roster says `n/a` and adds no second inventory entry. Every as-built line
+cited below was re-read at `ea6985b9` and re-verified at `98d9cf69` (no `src/` change between them).
+
+| Adapter | What it reads / translates | Owning module (1.6 fixes the path; name illustrative) | Allowed importers | Expiry phase | Deletion test | Red-capable oracle | Inventory entry |
+|---|---|---|---|---|---|---|---|
+| **A0** | the upgrade command's pre-floor readers: the old-layout parser and sidecar reader, the widened `.env` admission that classifies migrated leaves, the tombstone ordinal backfill, the orphan-gate sweep | `src/infra/compat/pre-floor-upgrade-readers.ts` | exactly the `storage upgrade` command module; never a dashboard, worker or dry-run composition, never `scripts/secure-env-bootstrap.ts` | 2.6 | `authority-upgrade-adapters-retired` (arm 1) | while the module exists, a reachability scan from every production composition root finds it and the arm FAILS; after 2.6's deletion the module path does not exist and the arm passes | `planned` now → `active` at 2.6 |
+| **A1** | the old-pathname prepare/rollback reconciler the upgrade runs before the move (A0's dependency) | `src/infra/compat/old-pathname-reconciler.ts`, composing `join(stateRoot, "settings.json")` and its four siblings | A0 alone | 2.6 | `authority-upgrade-adapters-retired` (arm 2) + `settings-root-single-pathname` | module absence is arm 2; the pathname half is separate — `settings-root-single-pathname` FAILS while any `src/` module composes the OLD pathname and passes when `<stateRoot>/settings/` is the only settings authority any module names | `planned` now → `active` at 2.6 (two entries) |
+| **A2** | the D268 fold arms in `run-status.ts` as lifecycle inputs — `row.ended` and `row.claimedBy` | `src/server/dashboard/run-status.ts:113` and `:117` (two lines inside `deriveRunStatus`, no new module) | its two existing callers, `queries/run-detail.ts:703` and `projectors/run-queue-projection.ts:1125` | 2.6 | `run-status-fold-contributes-no-lifecycle-arm` (a unit test, not a guard — see below) | a table-driven test over `(authority lifecycle × fold)` pairs whose expectations are authority-only; two pairs FAIL while the arms exist and pass once they are gone | n/a — unit test; §D330.12 item 1 is the ruling |
+| **A3** | `runs_view` — NOT an adapter (§D332.9): a dead rebuildable table with zero readers, removed at 2.6 with the projector's rewire; listed for roster completeness. Nothing here can "fail while the read exists", because no read exists | the table (`migrations.ts:619`, `:647`; `src/domain/authority.ts:60`) and `repositories.runsView` (`authority-database.ts:972`, `:7565`) | as built: NO reader — the projector `clear()`s at `run-queue-projection.ts:718` and `upsert`s at `:1005` and serves from its in-memory fold via `deriveRunStatus` at `:1125` | 2.6 | `runs-view-has-no-reader` — an ARM of §D330.10's `no-lifecycle-sql-outside-the-adapter` guard, not a new entry (see below) | red-capable already at 1.6: the arm FAILS on any `SELECT`/`get`/`list` against `runs_view` outside the adapter, and the negative control is a stubbed `repositories.runsView.get` that THROWS, under which the whole dashboard query suite must stay green | n/a — an arm of the §D330.10 guard's entry |
+| **A4** | the resolver's environment layer: `CONFIG_ENV_BINDINGS` (`resolve.ts:241`), the env application at `resolve.ts:388–394`, `configResolutionEnvironment` (`secrets.ts:569`), the `"env"` provenance arm (`provenance.ts:7`), the Settings editor's env-provenance read (`queries/settings-editor.ts:106–107`), and the `src/`-dead `resolveConfig` export (`resolve.ts:415`) | `src/domain/config/resolve.ts` + `provenance.ts` + `settings-editor.ts` | the nine composition callers of `resolveConfigWithProvenance` (`resolve.ts:419`), all of which lose the parameter at 1.6 | 1.6 | `n/a` — ref clock-config-secrets §D331.11 P3 + P4 own it | the `env` parameter is FIRST in both signatures, so its removal is compile-time red across every caller; P4's runtime half resolves under a hostile `process.env` populated for every retired key and asserts byte-identical output and no `"env"` provenance value anywhere | n/a — P3/P4 under the `settings-catalog` entry |
+| **A5** | `secrets.ts`'s `process.env` reads for migrated non-provider names, and `TIMEKEEPER_NAME`'s `config-and-secret` dual channel | `src/domain/secrets.ts` (the accessors; `optionalTestTargetSecret` at `:470` is one of them) | `secrets.ts` is already the sole module permitted to read a credential from `process.env` (`secrets-single-source`), so the list is the accessors' own callers | 1.6 | `n/a` — ref clock-config-secrets §D331.11 P34 + P39 own it | P34 plants each migrated key in `.env` and in `process.env` and asserts the two named refusals with NO accessor read; P39's `secrets-single-source` WRITE arm is the other half — the guard gains an arm asserting the migrated names are written by the protected store and read from nowhere else | n/a — P34/P39 under the existing `secrets-single-source` and `runtime-environment-coverage` entries |
+| **A6** | the pre-floor tombstone reader: NULL-ordinal `deleted_runs` rows (DDL `migrations.ts:419–430` has no ordinal columns) and `tallyVersion` 1 | the lifecycle service's tombstone reads and `DeletedRunTableSchema` | permanent — the ordinary readers | **permanent** — NOT an adapter (§D332.7 items 2–3): it reads history that legitimately lacks the fields | none — a permanent read-forward PROOF instead | the proof, not a deletion: §D332.11 row 11 plus §D330.11 test 25's watermark oracle over migrated rows. The negative control is that a NULL-ordinal row must never be back-filled with a guess; today's two-source watermark reads `tasks` alone (`authority-database.ts:5517–5518`, `:5541–5542`, under comments `:5511–5513`/`:5531–5533` that assume runs are never deleted) | n/a — §D332.11 row 11; never expires |
+| **A7** | the `snapshot-generations` retirement arm | `src/domain/config/snapshot-generations.ts` (`CURRENT_CONFIG_SNAPSHOT_GENERATION = 4` at `:97`; the `retired` member at `:47–48`; `auditConfigSnapshotGenerations` at `:206`) | permanent — the ordinary readers | **permanent** — NOT an adapter (§4.1, §D332.7 item 4) | none — an ARM of the existing `config-snapshot-generations` entry: `retired-leaves-are-a-closed-list` | the proof is §D332.11 row 14. The NEGATIVE CONTROL is the load-bearing half: a vanished registered leaf that is NOT on the closed retired list must still refuse, exactly as `:234–235` refuses today | n/a — a new ARM of the `config-snapshot-generations` entry; never expires |
+| **A8** | the eleven frozen parity references carrying the Settings surface's `settings.json: not set` line, and DCC3's eight-leaf editor inventory | `tests/parity/references/{settings,storage-settings}--*.yml` and the Settings surface inventory | the parity lane | 3.1 | `n/a` — ref clock-config-secrets §D331.11 P40 owns it | P40's oracle is a DELIBERATE re-freeze: `npm run test:parity` shows the eleven fail, `npm run test:parity:update` re-freezes, and the diff is reviewed as bytes. `parity-reference-authority` (§5 item 9) is what makes that failure real rather than a silent rewrite | n/a — P40; the parity lane's own entry already exists |
+
+#### A0 — the upgrade command's pre-floor readers
+
+*Name* `authority-upgrade-adapters-retired` (arm 1). *Invariant:* after 2.6 no module under `src/`
+reads a pre-floor shape — no old-layout settings parser, no sidecar reader, no widened `.env`
+admission, no tombstone backfill, no orphan-gate sweep — and the module that held them is gone.
+*Red-capable oracle:* two arms, and both must be red for the right reason. Before deletion, a
+reachability arm walks the import closure of every production composition root
+(`src/server/dashboard/compose.ts`, `src/server/worker/compose.ts`,
+`src/server/dry-run-scenario/runtime.ts`, `scripts/secure-env-bootstrap.ts`) and FAILS if the adapter
+module is reachable from any of them — this is the arm that holds §D332.9 rule 3 while the adapter is
+alive, since its widened `.env` admission is a parameter of the `storage upgrade` call and never of the
+bootstrap. After 2.6 the arm asserts the module path does not exist at all. The violating fixture is a
+composition root that imports the compat module transitively through one hop; `guard-manifest` runs the
+arm against it so a deleted arm cannot stand in for enforcement. The two arms answer differently, so a
+test that passed before and after deletion — §D332.9 rule 2's stated failure — is impossible here.
+
+#### A1 — the old-pathname prepare/rollback reconciler
+
+*Name* `authority-upgrade-adapters-retired` (arm 2), plus the separate `settings-root-single-pathname`.
+*Invariant:* the reconciler that settles a `settings.json.prepare.json` / `.rollback.json` at the OLD
+pathname exists only inside the upgrade, and after 2.6 the old pathname is composed nowhere.
+*Red-capable oracle:* arm 2 has A0's shape (reachable-from-a-composition-root before, path-absent
+after). `settings-root-single-pathname` is the second, different oracle and it is needed because a
+module can be deleted while a stray pathname survives: three sites compose the old pathname today —
+`src/server/dashboard/compose.ts:606`, `src/server/worker/compose.ts:415`,
+`src/server/dry-run-scenario/runtime.ts:209`, each `join(stateRoot, "settings.json")`, with the four
+siblings derived at `src/infra/config/settings-file.ts:577–578` and `:1104–1106`. At activation the
+guard scans `src/` and FAILS on any composition of the old pathname or its siblings, passing only when
+`<stateRoot>/settings/` is the sole settings authority a module names. Violating fixture: a composition
+module that rebuilds the old pathname from `stateRoot`.
+
+#### A2 — the D268 fold arms as lifecycle inputs
+
+*Name* `run-status-fold-contributes-no-lifecycle-arm`. **A unit test, not a guard**, and deliberately:
+the invariant is a value-level behaviour of one exported function over an enumerable input space, which
+a table-driven test proves directly, whereas a guard would have to assert the absence of two source
+lines — a text assertion about code that a rename defeats. §D330.12 item 1 is the ruling it enforces.
+*Invariant:* `deriveRunStatus` derives status from the authority record alone; the span fold
+contributes no lifecycle arm. *Red-capable oracle:* two pairs whose expectations are authority-only
+and which today's `src/server/dashboard/run-status.ts:113` and `:117` get wrong — authority `claimed`
+with fold `{ ended: { outcome: "done" } }` must answer `running` (line 113 answers `done` today), and
+fold `{ claimedBy }` with authority `queued` must answer `queued` (line 117 answers `running` today).
+Both callers, `queries/run-detail.ts:703` and `projectors/run-queue-projection.ts:1125`, are exercised
+through their real queries so the fold cannot be removed from one and left in the other. Red-capable
+from 1.6, deleted at 2.6.
+
+#### A3 — `runs_view` (not an adapter: a dead table with no reader)
+
+§D332.9 rule 2 needs a test that FAILS while the adapter exists and passes once it is gone; for
+`runs_view` no such test can exist, because as built nothing reads it — so A3 is classified with A6/A7
+as NOT an adapter. What replaces the deletion test is a guard ARM plus a negative control, and the
+table is simply removed at 2.6. *Name* `runs-view-has-no-reader`. It folds into §D330.10's `no-lifecycle-sql-outside-the-adapter` guard
+as an ARM rather than becoming its own inventory entry, because that guard already owns the closed
+allowlist of modules permitted to issue lifecycle SQL and already parses the SQL text it forbids;
+adding `runs_view`'s read forms to that table is one row in an existing mechanism, while a separate
+entry would be a second place the same allowlist is written. *Invariant:* `runs_view` is written and
+never read — §D330.10's "projection tables are never a lifecycle input". *Red-capable oracle:* the arm
+FAILS on any `SELECT … FROM runs_view` or any `repositories.runsView.get`/`.list` call outside the
+adapter; its violating fixture is a query module that reads the table for a status. The negative
+control proves the as-built claim rather than assuming it: stub `repositories.runsView.get` to THROW,
+run the dashboard query suite, and require it green — today it is, because the projector's only uses
+are `clear()` at `run-queue-projection.ts:718` and `upsert` at `:1005` and it serves from the in-memory
+fold at `:1125`. That control is what makes the table's removal at 2.6 a deletion rather than a
+migration.
+
+#### A4 — the resolver's environment layer
+
+*Name:* none of its own — ref clock-config-secrets §D331.11 P3 and P4 own it, and this roster adds no
+entry. *Invariant:* the resolver takes no environment input and `ConfigProvenanceSchema` has no `"env"`
+arm. *Red-capable oracle, two halves.* Compile-time: the `env` parameter is FIRST in both
+`resolveConfig` (`src/domain/config/resolve.ts:415`) and `resolveConfigWithProvenance` (`:419`), so
+removing it is red at every one of the nine composition call sites — no silent widening is possible.
+Runtime: P4 resolves with a hostile `process.env` populated for every retired key and asserts
+byte-identical output and no `"env"` value anywhere; P3 asserts `CONFIG_ENV_BINDINGS` (`resolve.ts:241`)
+is empty and `runtime-environment.ts`'s `config` channel has zero members. Note for 1.6: `resolveConfig`
+has zero `src/` callers today but five test files import it, so its deletion is a test edit too —
+§D331.11 P39's "changed deliberately in the same commit" rule covers exactly this.
+
+#### A5 — `secrets.ts`'s migrated `process.env` reads
+
+*Name:* none of its own — ref clock-config-secrets §D331.11 P34 and P39 own it. *Invariant:* a migrated
+non-provider name is never read from the environment as a value, and `TIMEKEEPER_NAME`'s
+`config-and-secret` dual channel is gone with its leaf. *Red-capable oracle:* P34 plants each migrated
+key in the admitted `.env` and in the parent `process.env` and asserts the two named refusals (bootstrap
+by key name; dashboard and worker boot by key name) with zero accessor reads — a read is the failure,
+not a wrong value. The second half is P39's new WRITE arm on the existing `secrets-single-source` guard:
+the migrated names must be readable only from the protected store, so a restored `process.env` read
+inside `secrets.ts` is red at the guard, not merely at a unit test. `optionalTestTargetSecret`
+(`src/domain/secrets.ts:470`) is the D300 document-number reference this moves, and it keeps its
+two-arm selector.
+
+#### A6 — the pre-floor tombstone reader (permanent read-forward, never an adapter)
+
+*Name:* none — it never expires, so it has a proof and no deletion test. *Invariant:* a pre-floor
+`deleted_runs` row that legitimately lacks the three ordinals and carries `tallyVersion` 1 is read
+forward as it is, and is never completed, re-settled or guessed. *Proof:* §D332.11 row 11
+(`tombstone-backfill-with-provenance`) plus §D330.11 test 25's watermark oracle over migrated rows —
+neither is repeated here. The as-built reason it is read-forward rather than transitional: the DDL at
+`src/infra/sqlite/migrations.ts:419–430` has no ordinal columns at all, and the two watermarks read
+`tasks` alone (`src/infra/sqlite/authority-database.ts:5517–5518` and `:5541–5542`) under comments at
+`:5511–5513` and `:5531–5533` that say in as many words that runs are never deleted. The negative
+control is §D332.7 item 2's rejected alternative: a fabricated ordinal in the one row that exists to
+tell the truth is a lie, so `ordinal_source = unknown` plus a doctor finding is the correct answer and
+a test that accepts a back-filled number for a rootless tombstone is red.
+
+#### A7 — the `snapshot-generations` retirement arm (permanent)
+
+*Name* `retired-leaves-are-a-closed-list` — an ARM of the existing `config-snapshot-generations` entry
+(§5 item 10), not a new entry, because that guard already owns the per-generation leaf-set ratchet and
+this is one more direction of the same ratchet. *Invariant:* a leaf may be ABSENT from a stored
+snapshot at or after the generation that retired it, and only then; every stored `fingerprint` still
+verifies over its exact stored bytes. *Red-capable oracle:* §D332.11 row 14 — a pre-floor snapshot WITH
+`operator.timekeeperName` and a post-floor snapshot WITHOUT it both parse, and a post-floor snapshot
+WITH it refuses by leaf name. The **negative control is the load-bearing half**: a registered leaf that
+vanished from the current schema WITHOUT being on the closed retired list must still refuse, exactly as
+`src/domain/config/snapshot-generations.ts:234–235` refuses today ("a released generation is never
+rewritten"). Without that control the arm would read as "absence is fine", which is the opposite of the
+rule. `CURRENT_CONFIG_SNAPSHOT_GENERATION` is 4 at `:97`; 1.6 registers generation 5 as the registry's
+first retirement.
+
+#### A8 — the `settings.json: not set` parity references
+
+*Name:* none of its own — ref clock-config-secrets §D331.11 P40 owns it. *Invariant:* the eleven frozen
+parity references carrying the Settings surface's `settings.json: not set` line, and DCC3's eight-leaf
+editor inventory, are re-frozen DELIBERATELY at 3.1 and never tolerated as drift. *Red-capable oracle:*
+run `npm run test:parity` and see exactly those eleven fail; re-freeze with the one deliberate
+`npm run test:parity:update`; review the diff as bytes. What makes that a real oracle rather than a
+rewrite is §5 item 9's `parity-reference-authority`, which proves a mismatched reference is compared and
+left untouched rather than silently updated, and §5 item 9's D145 arm, which pins `maxDiffPixels: 0` so
+a moved pixel cannot hide inside an allowance.
+
+#### Intended `guard-inventory.json` entries (1.6 lands them; 0.3 changes no config file)
+
+0.3 is design (D326): `docs/rebuild/guard-inventory.json` is config-class and does not change in this
+phase. What follows is the intended shape, in prose, for 1.6 to land — each as
+`name · file · status · owner · activationMilestone · invariant`.
+
+1. **`settings-root-single-pathname`** · `tests/unit/architecture/settings-root-single-pathname.test.ts`
+   · status: `planned` · owner: `docs/rebuild/reference/clock-config-secrets.md` (with
+   `docs/rebuild/reference/guards-and-tests.md` as the manifest half) · `activationMilestone`: `2.6` ·
+   invariant: after A1 expires, no `src/` module composes `<stateRoot>/settings.json` or its four
+   `.authority.json` / `.prepare.json` / `.rollback.json` / lock siblings — `<stateRoot>/settings/` is
+   the only settings authority any module names.
+2. **`authority-upgrade-adapters-retired`** ·
+   `tests/unit/architecture/authority-upgrade-adapters-retired.test.ts` · status: `planned` · owner:
+   `docs/rebuild/reference/dashboard-surfaces.md` · `activationMilestone`: `2.6` · invariant: the A0 and
+   A1 compatibility modules are unreachable from every production composition root while they exist and
+   absent from the tree after 2.6; no flag, mode or environment value re-enables a pre-floor reader.
+3. **`runs-view-has-no-reader`** — NOT a new entry. It lands as an arm of §D330.10's
+   `no-lifecycle-sql-outside-the-adapter` guard (whose own entry 1.6 adds), because that guard already
+   holds the two-module lifecycle-SQL allowlist and the forbidden SQL forms; a separate entry would
+   write the same allowlist twice. Invariant carried by the arm: `runs_view` is written by the projector
+   and read by nothing, so 2.6 removes the table with the projector's rewire.
+4. **`run-status-fold-contributes-no-lifecycle-arm`** — NOT an inventory entry either. It is a **unit
+   test** under `tests/unit/`, because the invariant is a value-level behaviour of `deriveRunStatus`
+   over an enumerable `(authority × fold)` space; a guard could only assert the absence of two source
+   lines, which a rename defeats and which proves nothing about the derived answer. §D330.12 item 1 is
+   the ruling; 2.6 deletes the arms.
+5. **`config-snapshot-generations`** gains an ARM, not an entry: `retired-leaves-are-a-closed-list`,
+   with the negative control that an unregistered vanished leaf still refuses. The entry's `invariant`
+   text is extended in the same commit that lands the arm.
+
+**`one-time-import-offline` is not reused.** Its subject is the doc 05 cutover legacy data import, and
+overloading it with D332's authority upgrade would make one planned entry answer two unrelated
+questions and leave the cutover import without a name. D332's upgrade gets its own entries above.
+
+Two manifest rules bind all of these. A `planned` entry's `.test.ts` file **must not exist on disk**
+until activation (§5.1: `guard-manifest` `deepEqual`s the active `file` list against a recursive walk of
+`tests/unit/architecture/`, so an early file is a red gate). And at expiry the entry flips to `active`
+in the SAME commit that deletes the adapter's module, its allowlisted imports and the schema or path it
+read (§D332.9 rule 4) — the deletion and its proof are one commit, or the adapter outlives its phase.
 
 ---
 

@@ -449,11 +449,24 @@ catalogued defaults rather than being copied into a second persisted authority.
 ### Task 3 · Design migration, compatibility, and recovery
 <!-- roadmap: phase0-authority-migration-design -->
 
-- [ ] Define an idempotent upgrade from existing SQLite rows, `settings.json` sidecars, `.env`
-  leaves, and local canary inputs without copying provider API keys or erasing run evidence.
-- [ ] Require an explicit verified `cli storage backup` before the upgrade, then use a transactional
-  migration journal and rollback; do not restore the automatic backup cadence retired by D322.
-- [ ] Name temporary adapters, mixed-generation refusals, read-forward rules, and deletion tests.
+- [x] Define an idempotent upgrade from existing SQLite rows, `settings.json` sidecars, `.env`
+  leaves, and local canary inputs without copying provider API keys or erasing run evidence. — D332
+  §D332.1 (`cli storage upgrade`, stopped system, never at boot), §D332.3 (prepare → one exclusive
+  transaction → settle), §D332.5 (`upgradeId`, `already-upgraded`, the resume arms), §D332.7
+  (evidence, snapshots, spans and archive digests byte-identical; ordinals backfilled with
+  provenance), ref clock-config-secrets §D332 settings half (provider families classified by name,
+  never read)
+- [x] Require an explicit verified `cli storage backup` before the upgrade, then use a transactional
+  migration journal and rollback; do not restore the automatic backup cadence retired by D322. —
+  D332 §D332.2 step 10 (the newest verified manifest must re-verify and match the live generation;
+  the command writes no backup), §D332.5 (`authority_upgrades`, one journal inside the database),
+  §D332.4 (transactional vs operator rollback; the pre-upgrade backup plus `upgrades/<id>.rollback.json`);
+  §2.5 items 3–4 carry dated notes and no cadence returns
+- [x] Name temporary adapters, mixed-generation refusals, read-forward rules, and deletion tests. —
+  D332 §D332.9 (policy and roster A0–A8 with expiry phases), ref guards-and-tests §5.2 (each
+  deletion test and intended inventory entries), §D332.6 (the closed boot matrix), §D332.8
+  (read-forward table), §D332.11 (24 proofs)
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R03 | Task 3 designed as D332 in ref dashboard-surfaces §2.5 (primary), ref clock-config-secrets §D332 (settings half) and ref guards-and-tests §5.2 (adapters); no runtime code changed (D326). Task 4 open.
 
 ### Task 4 · Close design and issue implementation briefs
 <!-- roadmap: phase0-authority-design-close -->
