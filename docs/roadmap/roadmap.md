@@ -138,7 +138,7 @@ doc: 00 §0.3 · Redesign single-source runtime authority · ref:dashboard-surfa
 
 builds:
 - [x] DOCS canonical run-record identity, lifecycle, typed CRUD/CAS operations, deletion semantics, and projection contract — D330 (0.3 Task 1)
-- [ ] DOCS one settings catalog/root, leaf classification, validation, revision/CAS, secret-return policy, and UI edit contract
+- [x] DOCS one settings catalog/root, leaf classification, validation, revision/CAS, secret-return policy, and UI edit contract — D331 (0.3 Task 2)
 - [ ] DOCS migration/read-forward/rollback/recovery rules for the existing SQLite, span, environment, and settings authorities
 - [ ] DOCS deletion tests, proof ladder, implementation seams, and exact 1.6/2.6/3.1 handoff briefs
 
@@ -159,14 +159,17 @@ log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R01 | D330 landed in ref dashboard-surfaces §D327 → §D330.1–§D330.12 (4e65270f + follow-ups); D268 fold arms, `runs_view` and §2.4 purge-run superseded by dated notes · left: 0.3 Tasks 2–4; 1.6 implements the service, 2.6 migrates readers
 
 #### 2 · Define the canonical settings catalog and root {#phase0-settings-authority-design}
-status: planned
+status: done
 doc: ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
 
 builds:
-- [ ] DOCS enumerate every setting once with schema, default, editability, sensitivity, restart scope, and owning consumer
-- [ ] DOCS place all operator-managed local configuration under one gitignored `.tracker/settings/` root; provider API keys alone remain in `.env`, while runtime observations such as the host-derived display remain catalogued defaults rather than competing persisted settings
-- [ ] DOCS give Settings one revisioned update API and never return protected values after write
-- [ ] DOCS remove environment precedence for migrated non-provider-key leaves and forbid duplicate fallback authorities
+- [x] DOCS enumerate every setting once with schema, default, editability, sensitivity, restart scope, and owning consumer — D331 §D331.1 (row schema), §D331.9 (the 88-row catalog)
+- [x] DOCS place all operator-managed local configuration under one gitignored `.tracker/settings/` root; provider API keys alone remain in `.env`, while runtime observations such as the host-derived display remain catalogued defaults rather than competing persisted settings — D331 §D331.2 (five source classes), §D331.3 (the root), §D331.4 (journal coupling)
+- [x] DOCS give Settings one revisioned update API and never return protected values after write — D331 §D331.5 (two CAS arms, refusals, wire), §D331.6 (write-only policy), §D331.10 (edit contract)
+- [x] DOCS remove environment precedence for migrated non-provider-key leaves and forbid duplicate fallback authorities — D331 §D331.7 (restart scope, claim-token provenance), §D331.8 (one source per leaf), §D331.11 (proofs), §D331.12 (supersessions)
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R02 | D331 landed in ref clock-config-secrets §D327 → §D331.1–§D331.12 (7869ad1e + follow-ups); §3 precedence/binding sentences, DCC3's eight-leaf boundary, D321's layout sentence, §6's `source: environment` and D300's `.env` source superseded by dated notes · left: 0.3 Tasks 3–4; 1.6 implements the catalog/root, 2.6 migrates consumers, 3.1 builds the surface
 
 #### 3 · Design migration, compatibility, and recovery {#phase0-authority-migration-design}
 status: planned

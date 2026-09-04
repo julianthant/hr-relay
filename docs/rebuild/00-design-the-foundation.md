@@ -428,13 +428,23 @@ catalogued defaults rather than being copied into a second persisted authority.
 ### Task 2 · Define the canonical settings catalog and root
 <!-- roadmap: phase0-settings-authority-design -->
 
-- [ ] Enumerate every leaf once with schema, default, editability, sensitivity, restart scope, and
-  owning consumer.
-- [ ] Supersede D321's single-file layout with one protected `.tracker/settings/` directory while
+- [x] Enumerate every leaf once with schema, default, editability, sensitivity, restart scope, and
+  owning consumer. — D331 §D331.1 (the closed row schema and its pairing refusals), §D331.9 (the
+  88-row catalog: 59 ordinary, 7 protected, 5 provider-key families, 1 derived host fact, 16 code-fixed)
+- [x] Supersede D321's single-file layout with one protected `.tracker/settings/` directory while
   retaining its state-root/database-journal coupling; move username, password, timekeeper identity,
-  local canary inputs, overrides, timeouts, paths, and worker defaults there.
-- [ ] Keep only provider API keys in `.env`; preserve D324's host-derived display as a catalogued
-  default; expose protected values through write-only inputs and presence/revision readback.
+  local canary inputs, overrides, timeouts, paths, and worker defaults there. — D331 §D331.2
+  (source classes), §D331.3 (the directory: 0700, one lock, two 0600 documents, prepare/rollback per
+  target, backups copy the ordinary half only), §D331.4 (two SQLite singletons; "outlives its
+  database" refuses per document), §D331.12 items 3–4
+- [x] Keep only provider API keys in `.env`; preserve D324's host-derived display as a catalogued
+  default; expose protected values through write-only inputs and presence/revision readback. — D331
+  §D331.5 (`apply-settings` + `apply-protected-settings`, marked-envelope journal), §D331.6
+  (`{present, valueId, updatedAt}` readback; never in Config, fingerprint, snapshot, token, wire,
+  evidence, backup or child environment), §D331.7 (`generation`/`next-use`/`next-start`/`process`;
+  protected revision is not a claim-token field), §D331.8 (`settings > default`; retired keys refuse
+  by name; `.env` allowlist = provider families)
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R02 | Task 2 designed as D331 in ref clock-config-secrets §D327; no runtime code changed (D326). Tasks 3–4 open.
 
 ### Task 3 · Design migration, compatibility, and recovery
 <!-- roadmap: phase0-authority-migration-design -->
