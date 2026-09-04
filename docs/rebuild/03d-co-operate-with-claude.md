@@ -15,9 +15,10 @@ settled with the words *"reachable only if a second actor ever exists"*. Those s
 here, all at once. Each is named below with the file that proves it. Contracts belong to `reference/`
 as always; this doc owns the track, not the contracts.
 
-**D323 numbering note (2026-09-03).** This is Phase 3D. It follows the same visible hierarchy as
-every other phase part: 3D sits horizontally beside 3A–3C and its implementation/proof tasks run
-vertically beneath it. It remains separately schedulable and is not a cutover prerequisite.
+**D325 execution note (2026-09-03).** This is the fourth and final Phase 3 part. Its coordinator
+starts only after 3C closes. Tasks 1 and 2 are sequential, Tasks 3A/3B are an independent
+dedicated-worktree wave, and Task 4 integrates them into the attributed cooperation proof that
+closes Phase 3.
 
 ## Track summary
 <!-- roadmap: claude-operator -->
@@ -27,10 +28,11 @@ vertically beneath it. It remains separately schedulable and is not a cutover pr
 - [ ] a loopback MCP server Claude Code reaches from the terminal, with a tool per command family and per read model
 - [ ] full parity on everything except identity gates and controlled commits, which take the **two-actor rule**
 - [ ] monitoring — the SSE stream tail, the notification inbox for the claude actor, the observed log
-- [ ] one BFF with the web dashboard and the desktop app both open, and Claude a third client of the same port
+- [ ] one BFF with the web dashboard, a second browser client and Claude attached to the same port; desktop attachment remains Phase 6
 - [ ] a Claude-driven separations dry run, every action attributed, one gate resolved by claude and confirmed by the operator
 - [ ] nothing is built at HEAD — there is no MCP server in this repository and the BFF has no actor model beyond one literal
 > 2026-08-21 | docs-cohesion R15 | phase drawn from the operator's instruction; verified UNBUILT — `grep -rn mcp package.json src` matches nothing, there is no `.mcp.json`, and `.claude/` holds only `agents/` and `skills/`; the one-actor facts read out of `src/domain/ids.ts:134-138`, `src/server/dashboard/queries/bootstrap.ts:90` and `src/server/dashboard/projectors/run-queue-projection.ts:1518`; left: all of it
+> 2026-09-03 | D325 task reshape | 3D follows closed 3C; Tasks 3A/3B are the only parallel wave, and Task 4 owns T4 plus Phase 3 close
 <!-- /roadmap-status -->
 
 ### What the cooperation track is
@@ -49,10 +51,11 @@ value that is not `127.0.0.1` or `localhost`, and the port is pinned at 3938 by
 `config/runtime-isolation.json`. What is missing is not a port, and not an API: it is a client Claude
 Code can speak to, and an actor model that can tell the two clients apart once it has one.
 
-**Five task nodes, in the order they unblock each other.** `{#claude-actor}` (the actor model and the
-two-actor rule) → `{#claude-mcp}` (the MCP server and its tools) → `{#claude-monitor}` (watching) →
-`{#claude-clients}` (one BFF, several clients) → `{#claude-proof}` (a Claude-driven dry run,
-attributed). The first is first for a reason: an MCP server built before the actor model would stamp
+**Four chronological task numbers, with one parallel wave.** Task 1 (`{#claude-actor}`) builds the
+actor model and two-actor rule. Task 2 (`{#claude-mcp}`) builds the MCP client surface. Tasks 3A
+(`{#claude-monitor}`) and 3B (`{#claude-clients}`) then run in parallel dedicated worktrees. Task 4
+(`{#claude-proof}`) integrates them in a Claude-driven dry run and the first T4 journey. Task 1 is
+first for a reason: an MCP server built before the actor model would stamp
 `local-operator` on everything Claude does, and every durable record it touched would then be a lie
 that no later fix can retract — `reference/operator-trust` §"Actor attribution" already says why
 (*"retrofitting an actor onto an existing immutable ledger and command history is impossible — the old
@@ -71,7 +74,7 @@ tenancy problem, and none of the second is designed here.
 | 1 | **The ONE command protocol** (`ref frontend-backend-integration` §3.4) | Nine families × 36 actions through `POST /api/v1/commands`, one journal, one kernel. Claude does not get a second route, a second envelope or a "agent mode" flag — it composes the same `CommandEnvelope` the dashboard composes, with a different `requestedBy`. Anything Claude can do that the dashboard cannot would be a second product |
 | 2 | **CAS on every arm** (`ref frontend-backend-integration` §3.4; D253) | Every arm carries a required `expectedVersion` and the kernel revalidates the row inside its own transaction. Two operators acting on one run therefore get D253's named `conflict` carrying the server's `currentVersion` — never a silent overwrite. This is the single most important inheritance: **the protocol was designed for one actor and is already correct for two**, and what changes is that the conflict arm stops being a rare race and becomes ordinary traffic |
 | 3 | **D75's one solo request-identity checkpoint** (`doc 01` §1f; `ref frontend-backend-integration` §3.4) | Every BFF request already crosses one checkpoint, and every schema-valid command claim must match its strict configured `local-operator` before effects. This track extends that adapter with a second credential-derived actor; it does not create another admission path |
-| 4 | **D181's `server` role lock** (`src/server/dashboard/compose.ts:346-356`) | One BFF per machine, enforced before the authority database opens. That is what makes "both apps open" answerable at all: the web dashboard's BFF and the desktop app's BFF cannot both exist, so one of them is the host and everything else — the other app, the browser tab, Claude's MCP server — is a CLIENT of it. `{#claude-clients}` is the whole of that argument |
+| 4 | **D181's `server` role lock** (`src/server/dashboard/compose.ts:346-356`) | One BFF per machine, enforced before the authority database opens. Phase 3D proves the web dashboard, a second browser client and Claude against that one host. Phase 6 later proves the desktop attachment without reopening the topology. |
 | 5 | **The ALWAYS-GATE** (`ref write-safety` §14) | §14.6 risk 1 names rubber-stamping as the dominant risk of a gate that fires on every run, and risk 6 says *who approved* may never be lost. An agent that can approve a wrong-person gate is rubber-stamping with a machine — so the operator's ruling is a **two-actor rule**, and §14's human control survives it intact rather than being widened |
 | 6 | **`{#observed-logs}`** (`doc 03a` §Observed logs — the log carries what the page said) | Monitoring is only worth having if the log carries what the PAGE said rather than which step ran. An agent reading step names learns nothing it could not have predicted; an agent reading the recorded provenance points — field, value, system, observed-at — can tell the operator that UCPath returned four people. It is a `needs:`, not a nice-to-have |
 
@@ -83,19 +86,19 @@ there either.
 
 ### Where it sits in the order
 
-**the cooperation track, after 3a.** The generic surfaces and their commands must exist before a second client can
-drive them — `{#dash-defaults}` is a hard prerequisite, and `{#observed-logs}` under it is the second.
-Both are Phase 3a nodes.
+**The cooperation track follows closed 3C.** D325 makes the part order 3A, 3B, 3C, 3D. The generic
+surfaces, closed Separations authority and accepted workflow compiler must all be reconciled before a
+second actor becomes Phase 3's final proof client.
 
 **Before the migrations lean on it.** R10's end-to-end tier (T4) is defined as *"an agent-operated run
 of MANY dry-run scenarios in parallel"* — the agent in that sentence is this track's, and the tool
 surface it drives is `{#claude-mcp}`'s. `{#test-tiers}`' T4 line names this node for that reason.
-There is no circularity: T4 also needs `{#parallel-runs}` and `{#duo-lease}`, and this track needs
-neither, so 3d can be built and proved on ONE dry run long before T4 is schedulable.
+There is no circularity: 3C Task 4 owns only T1–T3 and the coverage floor. 3D Task 4 owns T4 after
+the MCP, monitoring and multi-client seams exist.
 
-**It is not a prerequisite of the cutover.** `05-cut-over.md` §Exit criteria names no part of it, and
-nothing here changes what production does when nobody is watching. If the track is never built, the
-operator operates the dashboard alone, exactly as today.
+**It is an organizational prerequisite, not a new write-safety gate.** D325 places it before Phase 4
+and makes its proof the Phase 3 close. The runtime remains safe without a Claude client; this part
+proves the promised cooperation surface and attribution before later workflow coordinators rely on it.
 
 ### The honest state at HEAD (2026-08-21)
 
@@ -129,7 +132,7 @@ access rule, and anything running as the operator's user on the operator's machi
 port 3938. This track makes what Claude does **legible and attributed**; it does not pretend to make
 the local port a trust boundary it has never been.
 
-## Actor identity and the two-actor rule
+## Task 1 · Derive actor identity and enforce the two-actor rule
 <!-- roadmap: claude-actor -->
 
 <!-- roadmap-status: claude-actor -->
@@ -219,7 +222,7 @@ resolution and reads as one. That is a decision with a D-number when it is built
 `ref write-safety` §14 (the gate half) and `ref write-safety` §4.1 (the write-resolution half), with a
 pointer in `ref decisions`.
 
-## The local MCP server
+## Task 2 · Build the local MCP client surface
 <!-- roadmap: claude-mcp -->
 
 <!-- roadmap-status: claude-mcp -->
@@ -284,7 +287,7 @@ drives a browser — Claude already has `playwright-cli` for live verification, 
 put a second, unattributed path to a real HR system beside the one this whole program exists to make
 safe.
 
-## Monitoring — the stream, the inbox, the observed log
+## Task 3A · Add cursor-based monitoring and the actor inbox
 <!-- roadmap: claude-monitor -->
 
 <!-- roadmap-status: claude-monitor -->
@@ -332,12 +335,12 @@ report and an agent that can help.
 gap will summarize a degraded stream as a healthy one, and the operator's whole reason for having a
 second watcher is that it tells them when watching stopped working.
 
-## One BFF, two clients
+## Task 3B · Make existing clients actor-aware
 <!-- roadmap: claude-clients -->
 
 <!-- roadmap-status: claude-clients -->
 - [ ] the D181 `server` role lock ELECTS the host — whichever process takes it is the BFF, and the other names it rather than starting a second
-- [ ] the desktop app, finding the lock held, attaches to the running BFF as a client (the Phase 6 half of this; `doc 06` §Electron shell already says it must refuse by name)
+- [ ] a second browser client and the Claude MCP client attach to the existing BFF; Phase 6 separately proves desktop attachment
 - [ ] every actor-bearing surface renders the actor rather than assuming it — gate `resolvedBy`, `archivedBy`, `plannedBy`, the receipt, the notification row
 - [ ] a client roster the operator can see: who is attached right now, and what each one last did
 - [ ] the conflict path exercised as ORDINARY traffic — two clients on one run version, both refused by name with the server's `currentVersion`
@@ -348,11 +351,10 @@ second watcher is that it tells them when watching stopped working.
 **"What happens if the user has both open" has a decided answer, and it was decided by D181 before
 anyone asked.** The dashboard takes a `server` role lock before it opens the authority database,
 because two dashboards over one authority store is the collision `config/runtime-isolation.json` has
-named since D88. So there is never more than one BFF on the machine. The web dashboard's dev server
-proxies `/api` to it; the desktop app hosts it as a managed child (`doc 06` §Electron shell) *or*,
-finding the lock already held, attaches to the one that is running. Claude's MCP server is a third
-client of the same port. **One BFF, one authority database, one journal, one projection — and three
-things looking at it.**
+named since D88. So there is never more than one BFF on the machine. The web dashboard, a second
+browser client and Claude's MCP server attach to that port in this task. Phase 6 later proves the
+desktop app's host-or-attach behavior. **One BFF, one authority database, one journal, one projection,
+and several clients looking at it.**
 
 **That topology is what makes the rest of the track safe rather than merely convenient.** Because
 every client CASes against the same rows, two actors cannot silently overwrite each other; because
@@ -378,7 +380,7 @@ here is how to start one. In a checkout that sentence names `npm run dashboard`;
 must not, for `doc 06`'s reason — telling an operator to run npm inside an app with no terminal is
 telling them to do something they cannot do.
 
-## Proof — a Claude-driven dry run, attributed end to end
+## Task 4 · Prove attributed cooperation and close Phase 3
 <!-- roadmap: claude-proof -->
 
 <!-- roadmap-status: claude-proof -->
@@ -386,8 +388,9 @@ telling them to do something they cannot do.
 - [ ] every action attributed to `claude` in the command journal, the spans and the evidence receipt
 - [ ] ONE identity gate resolved by claude and confirmed by the operator, with both actors and both instants on the durable row
 - [ ] a deliberate conflict — operator and claude acting on one run version — refused by name on both sides, with neither client reporting success
-- [ ] both apps open during the run (web dashboard + desktop app or a second tab), one BFF, one journal, proved from the lock files
+- [ ] the web dashboard, a second browser tab and Claude are attached during the run; one BFF and one journal are proved from the lock files
 - [ ] the result recorded durably the way every dry-run scenario is (R10) — an evidence row plus a dated line here
+- [ ] T4's first agent-operated journey is green, Phase 3 authorities are reconciled, and every 3D worktree/branch/task row is closed
 > 2026-08-21 | docs-cohesion R15 | nothing built; the T4 runner this becomes is `{#test-tiers}`' and no workflow has a T1 pair at HEAD, so the first proof is ONE scenario rather than the parallel tier
 <!-- /roadmap-status -->
 

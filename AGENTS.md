@@ -25,9 +25,12 @@ admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phas
 - The **phase docs** under `docs/rebuild/` record tasks, evidence, decisions and exit criteria.
   Phases 0-3 are `00-design-the-foundation` · `01-build-the-spine` ·
   `02-prove-writes-build-the-tails` · `03a-finish-the-dashboard` · `03b-finish-separations` ·
-  `03c-migrate-the-remaining-workflows`. D323 fixes the visible hierarchy: numbered phases run down
+  `03c-migrate-the-remaining-workflows`. D323/D325 fix the visible hierarchy and execution order: numbered phases run down
   the roadmap spine, lettered parts run horizontally, and each part's tasks run vertically. Phase 3
-  is 3A dashboard, 3B Separations, 3C authoring/acceptance and 3D Codex/Claude cooperation. Phase 4
+  is 3A dashboard, then 3B Separations, then 3C authoring/acceptance, then 3D Codex/Claude
+  cooperation. One coordinator owns each lettered part; each numbered task is one supervisor
+  session, and same-number lettered tasks are a parallel wave with one dedicated worktree per task.
+  Phase 4
   admits later workflows as 4A/4B/4C only after D319 verification and operator approval; Phase 5 is
   readiness plus the one cutover, and Phase 6 is the desktop app. Stable filenames stay unchanged.
 - `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D264; **D131 is a retired gap —
@@ -328,6 +331,14 @@ environment-supplied.
 > every ordinary validator; unmarked late roots remain malformed and an exact repeat writes nothing.
 
 ## Conventions
+
+- **2026-09-03 — Phase 3 task labels are execution authority, not decoration (D325).** Run 3A, then
+  3B, then 3C, then 3D; one coordinator owns each part, and every immediate numbered task is one
+  supervisor session. Same-number lettered tasks are one parallel wave only when they are genuinely
+  independent. Before dispatch, bind every parallel task to its own exact branch and absolute
+  worktree and record integration order in the coordinator ledger; the roadmap carries the portable
+  wave label, not a guessed machine path. Operator choices and live authorization remain `needs:`
+  on the task they unblock.
 
 - **2026-09-03 — the roadmap is an outcome hierarchy, not a session journal (D323).** Only numbered
   phases sit on the vertical spine; each phase's lettered parts run horizontally and each part's

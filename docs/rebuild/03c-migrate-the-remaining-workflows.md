@@ -13,9 +13,10 @@ Contracts live in
 `reference/`. This doc also hosts **§Testing tiers**, whose normative spec is
 `reference/guards-and-tests.md`.
 
-**Phase 3c has two internal gates, not two additional numbered phases.** **3c-A** builds and proves
-the workflow-authoring platform. **3c-B** finishes Person Lookup/Separations acceptance, reconciles
-their evidence, and closes Phase 3. It then stops. No other workflow implementation starts from this
+**Phase 3C has two internal gates, not two additional phases.** The first builds and proves
+the workflow-authoring platform. The second finishes Person Lookup/Separations acceptance, reconciles
+their evidence, and closes 3C. D325 then unlocks 3D; Phase 3 closes only after 3D's attributed
+cooperation proof. No other workflow implementation starts from this
 doc. “Pantry and recipe” may explain the idea in
 conversation, but the target API and plan use the domain terms **task store**, **task**, **workflow
 definition**, **worker**, **browser session**, **compiled workflow**, and **workflow run** (D317).
@@ -35,7 +36,7 @@ to call the model complete.
 - [x] pre-D319 intake — Person Lookup Search/Match and I-9 lookup evidence landed through merge `b1b36349`; Search/Match moved into Phase 3 acceptance and I-9 remains an unnumbered candidate
 - [ ] `{#workflow-authoring-model}` — finish D312–D318: final workflow naming/API, direct entry algebra, omissions, recovery, `live-read`, four-artifact enforcement, author documentation, T1 proof and deletion of redundant authoring declarations
 - [ ] 3c-A exit — author guide and agent rules landed, task reuse is discoverable, both acceptance conversions are green, and the old authoring path is deleted
-- [ ] 3c-B exit — Person Lookup and Separations acceptance reconciled, Phase 3 authorities current, integrated gates green and Phase 3 worktree/task residue closed
+- [ ] 3C exit — Person Lookup and Separations acceptance reconciled, 3C authorities current, integrated gates green and 3C worktree/task residue closed; D325 then unlocks 3D
 - [x] D319 removes every not-yet-admitted workflow from Phase 3 implementation scope; old order labels are candidate evidence only
 - [ ] `{#workflow-admission}` — after Phase 3, verify one candidate's complete admission packet with the operator before defining Phase 4A's migration tasks
 - [ ] the legacy capability register — **46 open · 19 replaced · 6 native · 7 retired** of 78 (recounted from `config/legacy-capabilities.json`, 2026-09-02); open entries remain backlog obligations, not Phase 3 completion criteria
@@ -48,12 +49,14 @@ to call the model complete.
 > 2026-09-02 | D317 execution plan | 3c split internally into blocking 3c-A authoring-platform proof and a later migration batch; D319 supersedes only that later-batch assignment
 > 2026-09-02 | baseline `b1b36349` verification | bounded D311 compiler and candidate intake are integrated; D312–D318 final authoring/runtime acceptance remains; R1/R2 owned worktrees are closed
 > 2026-09-03 | D323 | Phase 3 now reads as 3A–3D; every later workflow remains verification-gated but enters the standing Phase 4 sequence as 4A, 4B, 4C and onward
+> 2026-09-03 | D325 | 3C follows a closed 3B, each numbered task is one supervisor session, same-number lettered tasks are dedicated-worktree parallel waves, and 3C unlocks 3D instead of closing Phase 3
 <!-- /roadmap-status -->
 
-**Phase 3c is the end of Phase 3, not the rest of the migration program.** Phase 3a built the
-dashboard every workflow inherits, 3b takes Separations through the safety loop, and 3c builds one
+**Phase 3C is the authoring and acceptance part, not the rest of the migration program.** Phase 3A built the
+dashboard every workflow inherits, 3B takes Separations through the safety loop, and 3C builds one
 workflow-definition/compiler seam so Person Lookup and Separations can prove the complete authoring
-model. Phase 3 then closes. Later workflows are admitted one at a time as lettered Phase 4 parts.
+model. 3D then proves Codex/Claude cooperation and closes Phase 3. Later workflows are admitted one
+at a time as lettered Phase 4 parts.
 
 **What it reads as met before it starts.** From **03a**: the generic surfaces — run modal, queue
 row, run detail + timeline, gate ceremony, notifications, archive · activity · explorer, intake and
@@ -210,7 +213,16 @@ future fix belongs before that session opens the tree.
 | change logs, screenshots, receipts, Archive or generic dashboard rendering | the shared runtime/projection surface |
 | change only workflow grouping/options | **no file besides `workflow.ts`** |
 
-### 3c-A implementation run — verified progress and remaining order
+### Task 1 · Finish the workflow-definition platform
+<!-- roadmap: workflow-authoring-core -->
+
+<!-- roadmap-status: workflow-authoring-core -->
+- [x] final D317 workflow names and direct entry algebra landed; fragment adapters and duplicate authored glue are deleted (R3/R3c)
+- [x] the compiler derives graph, stores, sessions, registry, manifest and generic projections from one `workflow.ts` (`ab04231c`)
+- [x] omission, recovery, live-read and four-artifact guards are implemented and red-capable (D313–D318)
+- [x] Person Lookup and Separations preserve their public workflow identities through the final compiler (`ab04231c`)
+> 2026-09-03 | D325 task reshape | the completed compiler/platform body becomes Task 1; the two remaining proof seams move to parallel Tasks 2A/2B
+<!-- /roadmap-status -->
 
 A fresh session does not repeat the bounded compiler work. It starts at the first unfinished part
 of unit 2, preserves the green evidence from units 1/3/4, and closes each remaining unit with its
@@ -278,6 +290,32 @@ authors both acceptance workflows with no undocumented step and no escape hatch,
 coverage, architecture, parity and the workflow proofs on the integration branch, then the exact worktree
 lifecycle close of item 11. Do not start a third workflow inside this run.
 
+### Task 2A · Prove automatic runtime inheritance
+<!-- roadmap: workflow-runtime-inheritance -->
+
+<!-- roadmap-status: workflow-runtime-inheritance -->
+- [ ] one compiler-backed proof shows worker/session acquisition, authentication, checkpoints, semantic logs, screenshots, receipts, notifications and Archive without workflow-specific glue
+- [ ] the proof fails when any inherited runtime product is disconnected
+- [ ] the task returns an isolated gate and clean dedicated-worktree evidence to the 3C coordinator
+> 2026-09-03 | D325 task reshape | extracted from the only open runtime-inheritance box so one supervisor owns one proof seam
+<!-- /roadmap-status -->
+
+This task owns the runtime-inheritance test and no workflow authoring changes. It runs in parallel
+with Task 2B after Task 1 and returns one proof artifact plus its isolated gate.
+
+### Task 2B · Prove the author guide from a clean context
+<!-- roadmap: workflow-guide-proof -->
+
+<!-- roadmap-status: workflow-guide-proof -->
+- [ ] a clean-context author follows `docs/guides/workflow-authoring.md` for Person Lookup and Separations without undocumented steps
+- [ ] any required escape hatch or second authored file fails the four-artifact/change-routing contract
+- [ ] the task records exact guide corrections, or records that none were required, and returns clean dedicated-worktree evidence
+> 2026-09-03 | D325 task reshape | extracted from the only open author-experience box so it can run beside runtime inheritance without shared mutable scope
+<!-- /roadmap-status -->
+
+This task owns guide-follow-through and documentation corrections only. It runs in parallel with
+Task 2A after Task 1; it does not change compiler/runtime code.
+
 **Worktree-capacity preflight.** The 2026-09-02 read-only audit found the Phase 3c R1/R2 branches and
 worktrees closed, but eight registered auxiliary `feature/test-*` worktrees owned by the separate
 test-suite-rationalization program still occupy the shared repository. One currently carries an
@@ -324,14 +362,15 @@ department reads, then failed before the New Kronos timecard checkpoint with
 `EMPLOYEE_NOT_FOUND`; exact-run write intents/attempts/outbox were 0/0/0. The canary is available,
 but this is not the required `met` result, so the strict exit remains open.
 
-## 3c-B · Accept Person Lookup and Separations, then close Phase 3
+## Accept Person Lookup and Separations, then close 3C
 
 3c-B does not start before 3c-A and does not start a third workflow. D320 records the operator's
 2026-09-03 authorization to start it as soon as every 3c-A exit condition is green; no second start
-approval is required. It reconciles the final 3c-A proof with Person Lookup's
+approval is required. It reconciles the final authoring proof with Person Lookup's
 migration record and the as-built Separations authority in doc 03b, confirms that the generic
 dashboard and Explorer projections describe both compiled workflows, runs the integrated gates,
-updates the canonical Phase 3 status, performs the exact worktree/task sweep and stops. Unfinished
+updates the canonical 3C status, performs the exact worktree/task sweep and stops. D325 then unlocks
+3D. Unfinished
 controlled-live Separations proof remains owned by doc 03b; 3c-A uses Separations as a compiler
 acceptance case and does not convert that structural proof into a completed external-write claim.
 
@@ -720,20 +759,6 @@ on `unverifiableByPage`, order-7 automation degrades to "operator manually confi
 — which changes the rebuilt workflow contract, so it must be settled at order 7 before readiness.
 
 ## Testing tiers
-<!-- roadmap: test-tiers -->
-
-<!-- roadmap-status: test-tiers -->
-- [x] DOCS the spec — `ref guards-and-tests` §10 is written as-built: the no-dry-run / dry-run split, T1a/T1b/T2/T3/T4, the subject registry, the durable result, layout, naming, the vitest project per tier and the run policy (landed in d5b0f8f2, as of dc2901de; R10)
-- [ ] BE T1 layout — `tests/scenario/workflows/<id>/` with ONE `structural.scenario.test.ts` per workflow plus its `dry-run.scenario.ts` manifest; the pretending fixture scenarios rewritten
-- [ ] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard/*` that are scenarios in disguise (moved, not duplicated)
-- [ ] BE T3 the first combined pair — `docs/migrations/separations.md` §9.22's hand-run double-entry as a file
-- [x] BE the subject registry `config/test-subjects.json` + the insert-only `dry_run_scenario_results` row + `cli dry-run-scenario`
-- [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded
-- [ ] BE the coverage floor at 80/80/80 global (measured 84.23 / 82.15 / 84.74 at the spec's writing)
-- [x] BE the FIRST T1 pair — `separations-kuali-finalization`, seeded from the valid proof shape of the dismantled `kuali-timekeeper-annotation` workflow (D266, doc 03b §The workflow tree)
-> 2026-08-20 | docs-cohesion 03c | the DOCS line is landed at HEAD (`ref guards-and-tests` §10.1–§10.12, landed in d5b0f8f2, as of dc2901de); the six code lines are 5.2b–5.2d and no workflow in this doc has a T1 pair yet — left: everything below DOCS
-> 2026-08-25 | test-tiers | the first T1 pair and shared subject/runner/result machinery exist; the general T1 layout migration remains open, and this pair's live green waits for its 2026-08-28 subject
-<!-- /roadmap-status -->
 
 `tests/` is organized by **what a test needs**, and this is what every migration below adds its
 tests to. The **no-dry-run** tests — unit, the architecture guards, ONE honest structural fixture
@@ -757,7 +782,7 @@ covered once by registry-wide workflow/compiler conformance. The normative spec 
 the vitest project per tier, the run policy, the subject registry, the durable result row — is
 `reference/guards-and-tests.md` (R10, 2026-08-20).
 
-## Phase 3 acceptance · Person Lookup
+## Task 3A · Accept Person Lookup
 <!-- roadmap: order-0 -->
 
 <!-- roadmap-status: order-0 -->
@@ -802,6 +827,41 @@ has four squares rather than seven: person-lookup does not gate, raises no park 
 consumes no intake, so §5.1.4, §5.1.6 and §5.1.7 have nothing to declare. That is the template
 working, not a gap: a square is absent when the workflow has nothing to put in it, and present-but-
 empty when the wire has not been run.
+
+## Task 3B · Accept Separations through the compiled workflow
+<!-- roadmap: separations-acceptance -->
+
+<!-- roadmap-status: separations-acceptance -->
+- [x] Separations authors its final grouped workflow in one `workflow.ts` and preserves every public identifier (`ab04231c`)
+- [x] direct entries preserve omissions, the conditional identity gate, transaction fences, checkpoints, screenshots, observed logs, receipts and generic projections (`ab04231c`)
+- [ ] re-run the complete equivalence and T1 acceptance after Tasks 2A/2B integrate; no structural proof may be promoted into a completed external-write claim
+- [ ] reconcile the accepted compiled workflow with doc 03b's closed Separations authority and return clean dedicated-worktree evidence
+> 2026-09-03 | D325 task reshape | compiler acceptance is distinct from 3B's live-write close and runs beside Person Lookup acceptance only after both Task 2 proofs land
+<!-- /roadmap-status -->
+
+This task owns compiled-workflow equivalence and acceptance only. Phase 3B owns every real
+Separations write and must already be closed before this task starts.
+
+## Task 4 · Finish T1–T3 and close 3C
+<!-- roadmap: test-tiers -->
+
+<!-- roadmap-status: test-tiers -->
+- [x] DOCS the spec — `ref guards-and-tests` §10 is written as-built: the no-dry-run / dry-run split, T1a/T1b/T2/T3/T4, the subject registry, the durable result, layout, naming, the vitest project per tier and the run policy (landed in d5b0f8f2, as of dc2901de; R10)
+- [ ] BE T1 layout — `tests/scenario/workflows/<id>/` with ONE `structural.scenario.test.ts` per workflow plus its `dry-run.scenario.ts` manifest; the pretending fixture scenarios rewritten
+- [ ] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard/*` that are scenarios in disguise (moved, not duplicated)
+- [ ] BE T3 the first combined pair — `docs/migrations/separations.md` §9.22's hand-run double-entry as a file
+- [x] BE the subject registry `config/test-subjects.json` + the insert-only `dry_run_scenario_results` row + `cli dry-run-scenario`
+- [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded — owned by 3D Task 4 after 3C closes (D325)
+- [ ] BE the coverage floor at 80/80/80 global (measured 84.23 / 82.15 / 84.74 at the spec's writing)
+- [x] BE the FIRST T1 pair — `separations-kuali-finalization`, seeded from the valid proof shape of the dismantled `kuali-timekeeper-annotation` workflow (D266, doc 03b §The workflow tree)
+> 2026-08-20 | docs-cohesion 03c | the DOCS line is landed at HEAD (`ref guards-and-tests` §10.1–§10.12, landed in d5b0f8f2, as of dc2901de); the six code lines are 5.2b–5.2d and no workflow in this doc has a T1 pair yet — left: everything below DOCS
+> 2026-08-25 | test-tiers | the first T1 pair and shared subject/runner/result machinery exist; the general T1 layout migration remains open, and this pair's live green waits for its 2026-08-28 subject
+> 2026-09-03 | D325 task reshape | Task 4 owns T1–T3, the coverage floor, integrated gates and 3C lifecycle close; T4 moves to 3D's final cooperation proof
+<!-- /roadmap-status -->
+
+Task 4 integrates the two Task 3 acceptance worktrees, completes T1–T3 and the coverage floor, runs
+the whole repository gate, reconciles 3C's authorities, and performs the exact worktree/task sweep.
+Its green close unlocks 3D; it does not start any Phase 4 workflow.
 
 ## Unverified candidate evidence · former order 1 · I-9 Lookup
 
@@ -1214,13 +1274,14 @@ traceback that names each one's trigger.
 
 ## Decisions this phase ratified
 
-**D311-D320 are this phase's workflow-authoring, proof and boundary decisions.** D311-D318 ratify
+**D311-D320, D323 and D325 are this phase's workflow-authoring, proof and boundary decisions.** D311-D318 ratify
 the workflow/compiler and its measurable simplicity, omission, recovery, entry-algebra and deletion
-boundaries. D319 ends Phase 3 after Person Lookup/Separations acceptance and requires a verified,
-operator-approved admission packet before another workflow is admitted. D323 places every admitted
-later workflow in Phase 4 as a lettered part. D320 keeps
-the strict Separations T1b exit and conditionally authorizes 3c-B. The bounded compiler is integrated
-and final acceptance remains open at `{#workflow-authoring-model}`.
+boundaries. D319 originally ended Phase 3 after Person Lookup/Separations acceptance and still
+requires a verified, operator-approved admission packet before another workflow is admitted. D323
+places every admitted later workflow in Phase 4 as a lettered part. D320 keeps the strict
+Separations T1b exit and conditionally authorizes 3C acceptance. D325 supersedes only the old close
+endpoint: 3C closes its own part and unlocks 3D. The bounded compiler is integrated and final
+acceptance remains open at `{#workflow-authoring-model}`.
 
 | D | Where it binds in this doc |
 |---|---|
@@ -1237,8 +1298,9 @@ and final acceptance remains open at `{#workflow-authoring-model}`.
 | D317 (round 123, 2026-09-02) | `workflow` is the authored technical model; `recipe` is analogy only; `workflow.ts` + `defineWorkflow` compile to `CompiledWorkflow` |
 | D318 (round 124, 2026-09-02) | transaction-free workflows satisfy T1b through the explicit `live-read` arm with `dryRun=false`, zero transaction nodes and exact zero write-authority deltas; D209 preview semantics remain unchanged |
 | D319 (round 125, 2026-09-02) | Phase 3 stops after Person Lookup/Separations acceptance; every other workflow stays unnumbered until its admission packet is verified and operator-approved |
-| D320 (round 126, 2026-09-03) | Separations still needs a fresh `met` T1b result on a newly vetted closed Kuali document; once every 3c-A exit condition is green, 3c-B is already authorized to reconcile and close Phase 3 |
+| D320 (round 126, 2026-09-03) | Separations still needs a fresh `met` T1b result on a newly vetted closed Kuali document; once every 3c-A exit condition is green, 3C acceptance is already authorized. D325 supersedes only D320's Phase 3 close endpoint |
 | D323 (round 129, 2026-09-03) | numbered phases form the roadmap spine; Phase 3 is 3A–3D; verified later workflows enter Phase 4 as 4A, 4B, 4C and onward |
+| D325 (round 131, 2026-09-03) | Phase 3 runs 3A → 3B → 3C → 3D; one coordinator owns each part, each numbered task is one supervisor session, same-number lettered tasks are dedicated-worktree parallel waves, and 3D closes Phase 3 |
 | R10 (operator, 2026-08-20; amended D311) | T1 behavior per workflow, T2/T3 per new dashboard capability, the 80 % floor |
 
 A round ratified by a future migration is added here in the same commit that records it, with its
@@ -1259,7 +1321,7 @@ remains below for phases created after admission._
 | 3 | Separations compiles through the same authoring seam without weakening its existing gates, transactions, receipts or recovery contracts | **partial** - transitional equivalence is green; R3 owns final conversion. Unfinished controlled-live proof remains doc 03b work |
 | 4 | Generic dashboard and Explorer conformance is green for both acceptance workflows; T2/T3 is added only for a genuinely new behavior | **partial** - transitional conformance is green; final entry kinds and omission/recovery surfaces remain |
 | 5 | The author guide, paired root instructions and internal agent pointer all describe the one final authoring path | **open** - R3 work |
-| 6 | D319/D323 admission is visible in the roadmap: unverified workflows have no Phase 4 letter or authorized implementation run | **MET in docs when this change lands** - the former rows remain evidence-only until Phase 3 close removes or extracts them |
+| 6 | D319/D323 admission is visible in the roadmap: unverified workflows have no Phase 4 letter or authorized implementation run | **MET in docs when this change lands** - the former rows remain evidence-only until 3C close removes or extracts them |
 | 7 | Nothing in the legacy repository has been deleted, and Person Lookup/Separations legacy paths remain runnable | **MET, and standing** - the legacy repository remains the D89 rollback asset |
 | 8 | Every Phase 3c run is integrated and closed: gates green, worktrees removed, local branches deleted, exact tasks archived and residue recorded | **partial** - R1/R2 are closed; R3 and final reconciliation/close remain |
 

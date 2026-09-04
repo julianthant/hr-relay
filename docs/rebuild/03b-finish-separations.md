@@ -4,12 +4,10 @@ Phase 3 proves the reusable dashboard/workflow platform with Person Lookup and S
 **Phase 3b is the first write workflow**: Separations, former order 8, chosen deliberately as the
 hard entry because a large multi-system workflow forces the store task libraries into existence
 for later admitted workflows (D193). This doc carries Phase 3's own tree node `{#phase-3}` and the
-whole Separations subtree. Phase 3 has three admitted docs: **3a** finished the dashboard
-(`03a-finish-the-dashboard.md`, `{#dash-defaults}`), **3b** is this one, and **3c** finishes the
-authoring foundation and accepts Person Lookup plus Separations
-(`03c-migrate-the-remaining-workflows.md`). D319 leaves every other workflow unnumbered until the
-operator verifies and approves its admission packet. The stable-path `03d` file is a later track,
-not part of Phase 3.
+whole Separations subtree. Under D325, **3A** closes first, this **3B** coordinator then owns the
+numbered Separations tasks, **3C** follows with authoring and acceptance, and **3D** closes Phase 3
+with Codex/Claude cooperation. D319 leaves every other workflow unnumbered until the operator
+verifies and approves its admission packet.
 
 **What lives where.** This doc holds the work, its state at HEAD and its exit. The contracts it
 built or amended live in `reference/`. The as-built record of the migration itself — every live
@@ -57,6 +55,12 @@ saw. The decisions live in `reference/decisions.md`.
 > 2026-08-30 | R2 observed close | software closure green at parent `54060ded`: 341 files / 3,761 tests in coverage and 239/239 assert-mode parity; paired reference commit `50007d66` had independent zero-finding review. Assigned-runtime admission then refused before runner import because the assigned worktree's `.env`, `.tracker-rebuild`, and locks were unavailable (§9.32; coordinator reports `r2-gates`, `r2-p3`, `r2-p4`). No browser, run, authority, person-field inspection, approval, write, or UNKNOWN retry occurred; no fresh live observation or exact-run 0/0/0 proof exists. A2–A5 and A8 remain open; R3 obligations remain separately owned
 > 2026-09-01 | R1 u1 stop | D300 admission green; current Action List search for 4537 failed `DOCUMENT_NOT_IN_ACTION_LIST` before S7/gate/write. Run `325cd998…` / trace `sp-142939-325c`, failure `b5f34a55…`, exact-run 0/0/0, write state not-attempted (§9.33). Registry row now `gone`; no replacement chosen; all three commits remain open
 <!-- /roadmap-status -->
+
+**D325 execution shape.** Tasks 1A–1C are the independent read-store wave, Tasks 2A–2B are the
+independent write-store wave, Tasks 3–6 compose, preview, and repair the workflow in order, Tasks
+7A–7C close the backend, dashboard, and workflow-layout seams in dedicated worktrees, and Task 8
+consumes the operator's live-write prerequisites and records the final Separations evidence. A
+same-number letter suffix means parallel supervisor sessions, not sub-steps inside one session.
 
 ### What Phase 3b is, and why separations went first
 
@@ -422,7 +426,7 @@ read-back.
 Kuali action list's person column; that column is the SUBMITTER, and the document's own subject is a
 different person (§9.19 §1). A record that names the wrong person is one nobody can act on.
 
-### 1 · new-kronos timecard read
+### Task 1A · Build the New Kronos timecard read
 <!-- roadmap: sep-1 -->
 
 <!-- roadmap-status: sep-1 -->
@@ -458,7 +462,7 @@ were unreachable by any fixture and are the reason the rules exist:
 **What is left.** Nothing for the migration. One recorded observation stays open: §9.20 item 7's
 cold-profile first-search refusal, which is a driver-owner question rather than a separations one.
 
-### 2 · Kuali separation-document read
+### Task 1B · Build the Kuali separation-document read
 <!-- roadmap: sep-2 -->
 
 <!-- roadmap-status: sep-2 -->
@@ -489,7 +493,7 @@ name. The two runs that FOUND the defect are permanently frozen at their pre-fix
 are left as they are, and the fix was re-proved on three fresh runs rather than by rewriting
 authority. That trade is what D199 later generalized.
 
-### 3 · UCPath employment grid + identity authority
+### Task 1C · Build UCPath employment and identity reads
 <!-- roadmap: sep-3 -->
 
 <!-- roadmap-status: sep-3 -->
@@ -527,7 +531,7 @@ two-candidate presentation existing on every run.
 with *"declared dependency `identity-approval` has no checkpoint record"*. The message was TRUE about
 a record that cannot exist. The fix moves the READER, never fabricates the row.
 
-### 4 · UCPath termination WRITE
+### Task 2A · Build the UCPath termination write
 <!-- roadmap: sep-4 -->
 
 <!-- roadmap-status: sep-4 -->
@@ -553,7 +557,7 @@ unmeasured is worth reading once: it was recorded twice as riding on the preview
 settled preview emits ONE event with no beat decomposition and **has no fence at all**, so reaching
 it could never have produced the number. It rides with the controlled commits (§9.17 item 4).
 
-### 5a/b/c · Kuali finalization WRITE
+### Task 2B · Build the Kuali finalization write
 <!-- roadmap: sep-5 -->
 
 <!-- roadmap-status: sep-5 -->
@@ -596,7 +600,7 @@ Under one-pass staging a conditional field would need an expectation composed fr
 prior value, which is the re-read the model forbids — so unconditional staging is the simpler AND the
 more honest form.
 
-### 6a · THE COMPOSITION
+### Task 3 · Compose the Separations workflow
 <!-- roadmap: sep-6a -->
 
 <!-- roadmap-status: sep-6a -->
@@ -622,7 +626,7 @@ lets the human decide, which is right for a workflow whose product is an approve
 composition FILES a termination, so a grid it cannot reduce to ONE row is a run that cannot compute
 what it is about to write, and it refuses before the gate opens.
 
-### 6b · composed LIVE pass
+### Task 4 · Run the composed live dry-run pass
 <!-- roadmap: sep-6b -->
 
 <!-- roadmap-status: sep-6b -->
@@ -658,7 +662,7 @@ in the right place having started in the wrong one. Where the real path refuses 
 parked, mid-submit — the preview refuses too: *a preview that answered where the real run stops is
 the same defect from the other side.*
 
-### 6c · PREVIEW TERMINAL reached
+### Task 5 · Reach and verify preview terminal
 <!-- roadmap: sep-6c -->
 
 <!-- roadmap-status: sep-6c -->
@@ -688,7 +692,50 @@ released the orphaned claim on the next boot, after which the run finished.
 measurement does not ride on the preview terminal and never could: a preview has no fence. It rides
 with the controlled commits.
 
-### Track A · separations backend completion
+## Task 6 · Repair defects exposed by the live pass
+<!-- roadmap: platform-fixes -->
+
+<!-- roadmap-status: platform-fixes -->
+- [x] D218 — the run/queue projector tails the span stream FROM DISK, cross-process; the in-process `onEvent` hook is DELETED so "append first, fold after" is structural (`compose.ts:598`, `command-service.ts:159`)
+- [x] D221 — a retry is the ITEM's next unspent attempt, taken from authority inside the enqueue's own transaction (`authority-database.ts:3782`); live-proved §9.20
+- [x] D219/D220 — a chunk harness is a step of its composition, declared as a required module ROLE; "proves machinery, belongs to no composition" is its own arm (`src/domain/workflow/module-role.ts`)
+- [x] D222 — the backup hazard moved from the every-view banner to the durable inbox, published on state TRANSITIONS only (`src/domain/notification-triggers.ts:92`). Ratified under phase 3a; it lands here because it is one of the same sweep
+- [x] D243/D244 — Duo's shared WebAuthn signature counter, root-caused and pinned by this repository's own gate (`duo-autopilot/src/sign-count.js`, `tests/unit/duo-sign-count.test.ts`)
+- [x] D216 — both repos name their browser-profile root `.auth`; the SESSION namespace is the distinct half (`config/runtime-isolation.json`)
+> 2026-08-20 | docs-cohesion 03b | all six verified present at the file:line cited; nothing left
+<!-- /roadmap-status -->
+
+Six platform corrections that only live runs of a composed, gated, multi-process workflow could
+force. Their normative text lives in the reference docs each owns; what belongs here is why a
+migration was the thing that found them.
+
+**A projection fed by an in-process hook is correct only while every emitter lives in that process,
+and nothing fails when that stops being true (D218).** The worker is a separate OS process, so every
+run enqueued after the dashboard booted served an EMPTY timeline while its full span history sat in
+`spans/*.jsonl`. It hid because run STATUS joins authority per surface and LOGS re-read the notes
+JSONL per request, so the two surfaces BESIDE the timeline kept working and the gap read as a
+rendering quirk.
+
+**Every component of an ITEM-scoped key must itself be item-scoped (D221).** D214 closed the
+collision one ATTEMPT could hold; the same collision one level up — across RUNS of one item — stayed
+open, because `run`/`retry` minted a new run for the same logical item at attempt 1. **A separations
+run that failed at or after `timecard-search` could not be retried at all.** Fixing the field's
+MEANING rather than the key's SHAPE moved nothing on disk: no migration, no schema version, every
+stored `record_key` byte-identical.
+
+**An alert lane that lives inside the thing it reports on cannot report that thing's death (D222).**
+Backup stale/missing publishes `storage-degraded` on transitions only, while authority-unavailable
+KEEPS the banner — the inbox is an authority table, and an authority that cannot be written cannot
+record a notification about its own death.
+
+**A counter kept per WRITER cannot describe a resource shared by many writers (D243/D244).** Duo's
+counter is per CREDENTIAL; Duo Autopilot's copy is per BROWSER PROFILE; doc 05 §1 partitions profiles
+per `(worker, system, instance, configFingerprint)`. So N writers shared one server-side counter and
+none could see another's copy. The pin lives in THIS repository's gate rather than the extension's
+own lane, because `duo-autopilot/` is a hard runtime dependency and a rule pinned where
+`npm run test:coverage` cannot see it is a rule no per-commit gate checks.
+
+### Task 7A · Finish backend recovery and evidence
 <!-- roadmap: track-a -->
 
 <!-- roadmap-status: track-a -->
@@ -766,7 +813,7 @@ profile's device binding permanently. The presented value is now `max(stored + 1
 (`duo-autopilot/src/sign-count.js`), and the runtime refuses on Duo's own rendered refusal in 9.52 s
 naming the real cause instead of burning the bound and blaming Duo hand-approval.
 
-### Dashboard · wire separations
+### Task 7B · Finish Separations dashboard scenarios
 <!-- roadmap: sep-dash -->
 
 <!-- roadmap-status: sep-dash -->
@@ -808,50 +855,7 @@ against the whole eight-workflow SET hash); the open run-detail panel did not fo
 evidence receipt was unreachable from a panel you had open; and one poisoned 2026-08-14 run was
 blocking every archive. None was reachable without connecting the two halves.
 
-## Platform fixes the live runs forced
-<!-- roadmap: platform-fixes -->
-
-<!-- roadmap-status: platform-fixes -->
-- [x] D218 — the run/queue projector tails the span stream FROM DISK, cross-process; the in-process `onEvent` hook is DELETED so "append first, fold after" is structural (`compose.ts:598`, `command-service.ts:159`)
-- [x] D221 — a retry is the ITEM's next unspent attempt, taken from authority inside the enqueue's own transaction (`authority-database.ts:3782`); live-proved §9.20
-- [x] D219/D220 — a chunk harness is a step of its composition, declared as a required module ROLE; "proves machinery, belongs to no composition" is its own arm (`src/domain/workflow/module-role.ts`)
-- [x] D222 — the backup hazard moved from the every-view banner to the durable inbox, published on state TRANSITIONS only (`src/domain/notification-triggers.ts:92`). Ratified under phase 3a; it lands here because it is one of the same sweep
-- [x] D243/D244 — Duo's shared WebAuthn signature counter, root-caused and pinned by this repository's own gate (`duo-autopilot/src/sign-count.js`, `tests/unit/duo-sign-count.test.ts`)
-- [x] D216 — both repos name their browser-profile root `.auth`; the SESSION namespace is the distinct half (`config/runtime-isolation.json`)
-> 2026-08-20 | docs-cohesion 03b | all six verified present at the file:line cited; nothing left
-<!-- /roadmap-status -->
-
-Six platform corrections that only live runs of a composed, gated, multi-process workflow could
-force. Their normative text lives in the reference docs each owns; what belongs here is why a
-migration was the thing that found them.
-
-**A projection fed by an in-process hook is correct only while every emitter lives in that process,
-and nothing fails when that stops being true (D218).** The worker is a separate OS process, so every
-run enqueued after the dashboard booted served an EMPTY timeline while its full span history sat in
-`spans/*.jsonl`. It hid because run STATUS joins authority per surface and LOGS re-read the notes
-JSONL per request, so the two surfaces BESIDE the timeline kept working and the gap read as a
-rendering quirk.
-
-**Every component of an ITEM-scoped key must itself be item-scoped (D221).** D214 closed the
-collision one ATTEMPT could hold; the same collision one level up — across RUNS of one item — stayed
-open, because `run`/`retry` minted a new run for the same logical item at attempt 1. **A separations
-run that failed at or after `timecard-search` could not be retried at all.** Fixing the field's
-MEANING rather than the key's SHAPE moved nothing on disk: no migration, no schema version, every
-stored `record_key` byte-identical.
-
-**An alert lane that lives inside the thing it reports on cannot report that thing's death (D222).**
-Backup stale/missing publishes `storage-degraded` on transitions only, while authority-unavailable
-KEEPS the banner — the inbox is an authority table, and an authority that cannot be written cannot
-record a notification about its own death.
-
-**A counter kept per WRITER cannot describe a resource shared by many writers (D243/D244).** Duo's
-counter is per CREDENTIAL; Duo Autopilot's copy is per BROWSER PROFILE; doc 05 §1 partitions profiles
-per `(worker, system, instance, configFingerprint)`. So N writers shared one server-side counter and
-none could see another's copy. The pin lives in THIS repository's gate rather than the extension's
-own lane, because `duo-autopilot/` is a hard runtime dependency and a rule pinned where
-`npm run test:coverage` cannot see it is a rule no per-commit gate checks.
-
-## The workflow tree — folders are the rail and the timeline
+## Task 7C · Finalize the workflow tree and T1 scaffold
 <!-- roadmap: workflow-tree -->
 
 <!-- roadmap-status: workflow-tree -->
@@ -913,7 +917,7 @@ Separations, including the Kronos harness whose own HR category remains `timekee
 copy of the identity-gate nodes and import `identity-check/`'s — the functional simplification that
 required `build:manifest` regeneration.
 
-## Smaller operator calls open
+## Task 8 · Record live acceptance and close Separations
 <!-- roadmap: operator-calls -->
 
 <!-- roadmap-status: operator-calls -->

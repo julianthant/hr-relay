@@ -43,6 +43,11 @@
  *       negative control is the `builds-without-layer` fixture, which proves
  *       the refusal happens at all (a `Feature` may be a bare string in the
  *       schema, so the check is not vacuous at the type level).
+ *   (f) D325's Phase 3 execution grammar is structural: the parts are exactly
+ *       3A → 3B → 3C → 3D, each part requires the preceding part, immediate
+ *       tasks are consecutive numbered supervisor sessions, and same-number
+ *       lettered tasks are one dependency-complete parallel wave whose cards
+ *       explicitly name dedicated worktrees.
  *
  * Arms (c) and (d) ship as RATCHETS, because at HEAD the `doc:` column has been
  * pasted onto exactly one node (step 2b's dogfood) and step 5.0 of
@@ -244,6 +249,114 @@ function flattenPlan(roadmap: Roadmap): PlanNode[] {
   return nodes;
 }
 
+const PHASE_THREE_PARTS = [
+  { id: "dash-defaults", label: "3A" },
+  { id: "order-8", label: "3B" },
+  { id: "workflow-authoring-model", label: "3C" },
+  { id: "claude-operator", label: "3D" },
+] as const;
+const PHASE_THREE_TASK_RE = /^(\d+)([A-Z]?) · /;
+
+/** D325's execution grammar over the immediate Phase 3 part/task hierarchy. */
+export function auditPhaseThreeExecutionOrder(roadmap: Roadmap): string[] {
+  const phase = roadmap.spine.find((entry) => entry.kind === "phase" && entry.id === "phase-3");
+  if (phase === undefined || phase.kind !== "phase") return [];
+
+  const violations: string[] = [];
+  const actualPartIds = phase.items.map((part) => part.id ?? "<missing-id>");
+  const expectedPartIds = PHASE_THREE_PARTS.map((part) => part.id);
+  if (actualPartIds.join("\u001f") !== expectedPartIds.join("\u001f")) {
+    violations.push(
+      `Phase 3 parts must be exactly ${expectedPartIds.join(" → ")}; found ${actualPartIds.join(" → ")}`,
+    );
+  }
+
+  for (const [partIndex, expectedPart] of PHASE_THREE_PARTS.entries()) {
+    const part = phase.items.find((candidate) => candidate.id === expectedPart.id);
+    if (part === undefined) continue;
+    if (!part.title.startsWith(`${expectedPart.label} · `)) {
+      violations.push(`Phase 3 part {#${expectedPart.id}} must start with "${expectedPart.label} · "; found "${part.title}"`);
+    }
+    if (partIndex > 0) {
+      const previousPartId = PHASE_THREE_PARTS[partIndex - 1]?.id;
+      const requirements = new Set(
+        (part.requires ?? []).flatMap((requirement) => (requirement.kind === "node" ? [requirement.ref] : [])),
+      );
+      if (previousPartId !== undefined && !requirements.has(previousPartId)) {
+        violations.push(`Phase 3 part {#${expectedPart.id}} must require preceding part {#${previousPartId}}`);
+      }
+    }
+
+    const groups = new Map<number, Array<{ item: Item; suffix: string }>>();
+    for (const task of part.items ?? []) {
+      const match = PHASE_THREE_TASK_RE.exec(task.title);
+      if (match === null) {
+        violations.push(
+          `Phase 3 part {#${expectedPart.id}} immediate task {#${task.id ?? "missing-id"}} must start with a number or parallel-wave label such as "2A · "; found "${task.title}"`,
+        );
+        continue;
+      }
+      const number = Number(match[1]);
+      const suffix = match[2] ?? "";
+      const group = groups.get(number) ?? [];
+      group.push({ item: task, suffix });
+      groups.set(number, group);
+    }
+
+    const numberedGroups = [...groups.entries()];
+    for (const [groupIndex, [number, tasks]] of numberedGroups.entries()) {
+      const expectedNumber = groupIndex + 1;
+      if (number !== expectedNumber) {
+        violations.push(
+          `Phase 3 part {#${expectedPart.id}} task groups must be consecutive and chronological from 1; position ${String(groupIndex + 1)} is ${String(number)}`,
+        );
+      }
+
+      if (tasks.length === 1) {
+        const onlyTask = tasks[0];
+        if (onlyTask !== undefined && onlyTask.suffix !== "") {
+          violations.push(
+            `Phase 3 part {#${expectedPart.id}} Task ${String(number)} has only one card, so it must use plain "${String(number)}", not "${String(number)}${onlyTask.suffix}"`,
+          );
+        }
+      } else {
+        for (const [taskIndex, task] of tasks.entries()) {
+          const expectedSuffix = String.fromCharCode("A".charCodeAt(0) + taskIndex);
+          if (task.suffix !== expectedSuffix) {
+            violations.push(
+              `Phase 3 part {#${expectedPart.id}} parallel wave ${String(number)} must be lettered A, B, C in order; position ${String(taskIndex + 1)} is "${task.suffix || "plain"}"`,
+            );
+          }
+          const expectedDate = `parallel wave ${String(number)} · dedicated worktree`;
+          if (task.item.date !== expectedDate) {
+            violations.push(
+              `Phase 3 part {#${expectedPart.id}} Task ${String(number)}${task.suffix} must declare "${expectedDate}"; found "${task.item.date ?? "no date"}"`,
+            );
+          }
+        }
+      }
+
+      if (groupIndex === 0) continue;
+      const priorTasks = numberedGroups[groupIndex - 1]?.[1] ?? [];
+      const priorIds = priorTasks.flatMap(({ item }) => (item.id === undefined ? [] : [item.id]));
+      for (const task of tasks) {
+        const requirements = new Set(
+          (task.item.requires ?? []).flatMap((requirement) => (requirement.kind === "node" ? [requirement.ref] : [])),
+        );
+        for (const priorId of priorIds) {
+          if (!requirements.has(priorId)) {
+            violations.push(
+              `Phase 3 part {#${expectedPart.id}} Task ${String(number)}${task.suffix} must require prior-wave task {#${priorId}}`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  return violations;
+}
+
 /** `{#id}` when the node has one, its title when it does not — every message names the node somehow. */
 function label(node: PlanNode): string {
   return node.id === undefined ? `"${node.title}"` : `{#${node.id}} "${node.title}"`;
@@ -377,6 +490,9 @@ export function auditRoadmapDocBinding(
       );
     }
   }
+
+  // (f) — D325's strict part order and supervisor-session task grammar.
+  violations.push(...auditPhaseThreeExecutionOrder(roadmap));
 
   return {
     violations,
@@ -580,5 +696,30 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
       "## session: 2026-09-03 | roadmap-redesign | history does not belong on the phase spine\n\n<!-- roadmap:end -->",
     );
     expect(() => parsePlan(withSessionMarker)).toThrow(/phase .* needs an \{#id\}/);
+  });
+
+  it("refuses Phase 3 parts or supervisor tasks that leave D325's chronological execution grammar", () => {
+    const reordered = RoadmapSchema.parse(parsePlan(tree.planText));
+    const phase = reordered.spine.find((entry) => entry.kind === "phase" && entry.id === "phase-3");
+    expect(phase?.kind).toBe("phase");
+    if (phase === undefined || phase.kind !== "phase") throw new Error("test fixture has no Phase 3");
+    const part = phase.items.find((item) => item.id === "order-8");
+    if (part?.items === undefined) throw new Error("test fixture has no Phase 3B tasks");
+    [part.items[0], part.items[3]] = [part.items[3], part.items[0]];
+    expect(auditPhaseThreeExecutionOrder(reordered).join("\n")).toContain(
+      "task groups must be consecutive and chronological from 1",
+    );
+
+    const noWorktree = RoadmapSchema.parse(parsePlan(tree.planText));
+    const noWorktreePhase = noWorktree.spine.find((entry) => entry.kind === "phase" && entry.id === "phase-3");
+    if (noWorktreePhase === undefined || noWorktreePhase.kind !== "phase") throw new Error("test fixture has no Phase 3");
+    const parallelTask = noWorktreePhase.items
+      .find((item) => item.id === "order-8")
+      ?.items?.find((item) => item.title.startsWith("1A · "));
+    if (parallelTask === undefined) throw new Error("test fixture has no Phase 3B Task 1A");
+    delete parallelTask.date;
+    expect(auditPhaseThreeExecutionOrder(noWorktree).join("\n")).toContain(
+      'Task 1A must declare "parallel wave 1 · dedicated worktree"',
+    );
   });
 });

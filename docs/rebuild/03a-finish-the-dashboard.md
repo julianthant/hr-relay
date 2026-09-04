@@ -1,16 +1,15 @@
 # 03a · Phase 3a — finish the dashboard
 
 Phase 3 proves the reusable dashboard/workflow platform with Person Lookup and Separations, and
-nothing could be wired into a dashboard that did not exist yet. **Phase 3a is that dashboard**: the
+nothing could be wired into a dashboard that did not exist yet. **Phase 3A is that dashboard**: the
 generic surfaces every admitted workflow inherits, built once, plus the hardening the first real
-connection to a running workflow exposed. Phase 3 has three admitted docs: **3a** is this one (tree
-node `{#dash-defaults}` and everything under it), **3b** finishes Separations
-(`03b-finish-separations.md`, which also carries Phase 3's own node `{#phase-3}`), and **3c** finishes
-the authoring foundation and accepts Person Lookup plus Separations
-(`03c-migrate-the-remaining-workflows.md`). D319 leaves every other workflow unnumbered until the
-operator verifies and approves its admission packet. `03d-co-operate-with-claude.md` is a stable-path
-later track, not a Phase 3 subdivision. Contracts this phase built or amended live in `reference/`;
-this doc holds the work, its state, and its exit.
+connection to a running workflow exposed. D325 makes it the first of four coordinator-owned parts:
+**3A Shared dashboard**, then **3B Separations**, **3C Workflow authoring and acceptance**, and
+**3D Codex and Claude cooperation**. This file owns `{#dash-defaults}` and its seven numbered
+supervisor tasks. `03b-finish-separations.md`, `03c-migrate-the-remaining-workflows.md`, and
+`03d-co-operate-with-claude.md` own the following parts. D319 leaves every other workflow
+unnumbered until the operator verifies and approves its admission packet. Contracts this phase built
+or amended live in `reference/`; this doc holds the work, its state, and its exit.
 
 ## Phase summary
 <!-- roadmap: dash-defaults -->
@@ -27,6 +26,7 @@ this doc holds the work, its state, and its exit.
 - [x] `ref frontend-backend-integration` §7.4's performance budgets — the instrument, BEFORE baseline and both D4/D5 AFTER measurements are recorded against the same 1,240-row / 108-member fixture; the recorded bounds are the later-workflow non-regression gates
 - [ ] the run-detail panel's **Review** and **People** bodies — `availableSections` cannot return either section, so both tabs are structurally unreachable; the projections behind them land with the OCR and group migrations in 03c, not here
 - [x] demo fidelity — CLOSED BY DISPOSITION 2026-08-27 (D279); D294 subsequently retires the phone-capture portion of its historical residue. The remaining historical audit counts remain evidence, not active product work (Track F, §Demo fidelity — every detail, region by region; `docs/decisions/dashboard.md` §D271–D276)
+- [x] D325 sequences the work as Tasks 1–7, each one supervisor session; 3A closes before the 3B coordinator begins
 > 2026-08-20 | docs-cohesion 03a | verified against src/dashboard/** and src/server/dashboard/**; every Track D finding still reproduces at HEAD (no exported deriveRunStatus, two TASK_OUTCOME vocabularies, two panelKindOf copies, zero React.memo, WORKFLOW_DESCRIPTORS imported at dashboard-app.tsx:25); left: D1–D5, the lease, the pool, observed logs, the §7.4 numbers
 > 2026-08-21 | docs-cohesion 03a fidelity fold | the demo-fidelity re-audit (1,956 elements/rows, 756 exact) is folded in as Track F; Track B's "frontend done" stands as the findings-ledger bar it was defined by, and demo fidelity is the stricter bar above it; left: the operator's ~150 rulings, then the FE / BE / PROOF lines Track F carries
 > 2026-08-25 | track-f archive UI + Activity AC24 + Explorer EX5 | `3d461962` served list warning/rehearsal facts and `d1f87916` drew them with the archive's already-served identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared status vocabulary; `4e09fb49` carries Explorer's `Version registry` door through dashboard route state to Archive's actual `Versions & bumps` view. A mechanical recount of ledger 3's 1,119 rows gives 353 exact and 238 OPEN marks; left in this unit: every other non-archive served-and-dropped fact
@@ -54,14 +54,12 @@ trigger in doc 04 — they are named absences on a built surface, not unfinished
 
 ### The order of work
 
-**Track B** finished the surfaces with separations as the forcing function (2026-08-19 → 20, B1–B8
-all landed). **Track C** then proved the connection — one pass where the real dashboard drove a real
-composed dry run and every UI claim was paired with a direct authority read (2026-08-20). **Track D**
-was ratified out of the same day's architecture audit (D264): eleven ordered moves, none a rewrite,
-sequenced AFTER Track C on purpose, so the proof ran against the tree the operator had been using
-rather than a freshly refactored one. The **three planned nodes** follow: the Duo ceremony lease
-first (it is a hazard that exists today), then the worker pool and sessions on top of it, and
-observed logs beside them.
+The seven roadmap tasks preserve the real delivery order while replacing historical track names as
+execution labels: **Task 1** built the shared surfaces, **Task 2** proved the real dashboard-to-run
+connection, **Task 3** hardened shared status, commands, and read budgets, **Task 4** closed fidelity
+and parity, **Task 5** serialized Duo ceremonies, **Task 6** built worker pools and run sessions,
+and **Task 7** recorded observed page facts. Every card is one supervisor-session outcome under the
+3A coordinator. Historical Track B/C/D/F names remain in logs and decision records only.
 
 ### What "done" means for this phase
 
@@ -151,7 +149,7 @@ sentence implies, and both matter to whoever wires the next workflow:
   (evidence QUALIFIES an outcome rather than feeding the live stream) pending its re-home into
   Receipt.
 
-### Track B · dashboard completion
+### Task 1 · Build the shared dashboard surfaces
 <!-- roadmap: track-b -->
 
 <!-- roadmap-status: track-b -->
@@ -189,7 +187,7 @@ named decision, won't-fix with its argument, or open against a named producer-tr
 open records remain, each blocked on a commit somebody will write rather than on a question somebody
 must answer.
 
-### Track C · connection proof
+### Task 2 · Prove the dashboard against a real run
 <!-- roadmap: track-c -->
 
 <!-- roadmap-status: track-c -->
@@ -234,7 +232,7 @@ the same day off one typed `4502`.
 corpus photographs the corrected surfaces rather than the defective ones, with every content drift
 attributed to a ratified wave-2 decision before the operator approved it.
 
-### Track D · dashboard hardening, pre-cutover budgets
+### Task 3 · Harden shared status, commands, and read budgets
 <!-- roadmap: track-d -->
 
 <!-- roadmap-status: track-d -->
@@ -339,7 +337,7 @@ the placeholder, the delimiters, D250's worked examples — and every one is a d
 developer typed into this repository, so every one is `repository-authored`. A guard asking that
 question at the moment a field crosses onto a wire is the guard working.
 
-## Demo fidelity — every detail, region by region
+## Task 4 · Close demo fidelity and parity
 <!-- roadmap: track-f -->
 
 <!-- roadmap-status: track-f -->
@@ -543,7 +541,7 @@ section points into. The demo pixels were not re-photographed by ledgers 1 and 2
 demo live. Ledger 1 also lists the 20 unserved-wire `builds:` lines it derived (two shell, ten queue,
 eight run-start); they sit on `{#dash-defaults}`, because `{#track-b}` is done and may not reopen.
 
-## Duo ceremony lease — one login at a time per credential
+## Task 5 · Serialize Duo login ceremonies
 <!-- roadmap: duo-lease -->
 
 <!-- roadmap-status: duo-lease -->
@@ -591,7 +589,7 @@ recorded, a guard that fails any login path reaching SSO without a token, and th
 in `reference/execution-and-sessions.md` in the commit that builds it. It lands BEFORE the worker
 pool, because the pool multiplies the hazard it removes.
 
-## Parallel runs — sessions and the worker pool
+## Task 6 · Manage worker pools and run sessions
 <!-- roadmap: parallel-runs -->
 
 <!-- roadmap-status: parallel-runs -->
@@ -651,7 +649,7 @@ durable session record the worker cards read their membership from, and TWO sepa
 scenarios running in parallel and recorded — which is also the end-to-end tier's first exercise and
 what `{#test-tiers}` reads as its parallel case. It needs the Duo lease first.
 
-## Observed logs — the log carries what the page said
+## Task 7 · Record observed page facts
 <!-- roadmap: observed-logs -->
 
 <!-- roadmap-status: observed-logs -->

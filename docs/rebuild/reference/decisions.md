@@ -1966,3 +1966,14 @@ this same commit._
 | # | Decision | Owning doc |
 |---|---|---|
 | **D324** | **THE `display` DEFAULT IS THE HOST'S PRIMARY DISPLAY, PROBED ONCE PER PROCESS TREE AND PUBLISHED AS `HRAUTO_HOST_PRIMARY_DISPLAY`; THE 2560×1440 CONTRACT DEFAULT REMAINS ONLY FOR A HOST WITH NO DISPLAY TO REPORT.** Precedence stays `env > settings > default` — the host value is the DEFAULT layer, beneath a Settings override, reported as `default`. `src/infra/host/primary-display.ts` reads the macOS main display's logical resolution, the Windows primary screen bounds or the X11 primary output with strict parsers (unrecognized answer = thrown, no display = `unavailable`); `secrets.ts` owns the one environment write; a parent's publication is never re-probed so worker children resolve the identical config fingerprint. | ref clock-config-secrets §3 "A display default is the host's primary display" (primary) · `src/domain/config/host-display.ts` · `src/infra/host/primary-display.ts` |
+
+## Reconciliation round 131 (2026-09-03) — Phase 3 is a sequence of coordinator-owned parts
+
+_phase: program planning_
+_D325 turns D323's visible hierarchy into the execution contract the roadmap was missing. It
+changes planning, task ownership and presentation authority only; completed implementation evidence
+and stable node ids remain intact._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D325** | **PHASE 3 RUNS 3A, THEN 3B, THEN 3C, THEN 3D; EACH LETTERED PART HAS ONE COORDINATOR, AND EACH NUMBERED TASK IS ONE SUPERVISOR SESSION.** A later part may not start merely because one of its prerequisites happened to land early: the preceding part must close and reconcile its authority first. Task numbers are chronological. Tasks that are genuinely independent share one number and receive letter suffixes (`2A`, `2B`, `2C`); they form one parallel supervisor wave, render at the same task depth, and each receives its own exact branch and absolute worktree binding in the coordinator ledger before dispatch. The coordinator records integration order before launch and closes every worktree, branch and task row after verified integration. Operator choices and live authorizations are `needs:` for a supervisor task, never free-standing implementation tasks. Phase 3 closes only after 3D's attributed cooperation proof; D320's 3C acceptance authorization remains, but its statement that 3C closes Phase 3 is superseded. | roadmap §Governance (primary) · `docs/decisions/phase-governance.md` §D325 · docs 03a–03d |

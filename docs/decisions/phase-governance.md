@@ -29,13 +29,16 @@ On 2026-09-03 the operator chose A/A:
 - Once every 3c-A exit condition is green, 3c-B is authorized to start and close Phase 3 without a
   second start approval.
 
+D325 later supersedes only that close endpoint: the authorization still opens 3C acceptance, but
+3C now closes its own part and unlocks 3D; 3D closes Phase 3.
+
 The operator subsequently selected the replacement in ignored local configuration. The first live
 dry-run verified the Kuali document and UCPath reads but failed at the New Kronos employee search,
 with exact-run write authority still 0/0/0. The target is available; the required fresh `met`
 result remains open. No gate was waived, no external write was authorized, and no third workflow
 was admitted.
 
-Normative owner: doc 03c §3c-A exit gate and §3c-B.
+Normative owner: doc 03c §3c-A exit gate and §Accept Person Lookup and Separations, then close 3C.
 
 ## D323 — One visible phase hierarchy
 
@@ -57,3 +60,25 @@ workflow receives no implementation scope until its current behavior and propose
 verified and approved.
 
 Normative owners: roadmap §Governance, ref workflow-model §1.6.2, and the phase docs 03c–06.
+
+## D325 — Phase 3 execution order and task ownership
+
+On 2026-09-03 the operator made D323's visual hierarchy executable:
+
+- Phase 3 runs in the strict order 3A, 3B, 3C, 3D. Closing and reconciling one part unlocks the
+  next; already-landed work in a later part does not waive that boundary.
+- One coordinator owns one lettered part. Every immediate numbered task beneath that part is one
+  supervisor session with a coherent outcome and explicit exit evidence.
+- Plain numbers are sequential. Same-number lettered tasks such as `2A`, `2B`, and `2C` are one
+  parallel wave. They appear at the same task depth and may launch together only when their scopes,
+  artifacts, authorities and external resources are independent.
+- Every parallel task receives its own exact feature branch and absolute worktree in the coordinator
+  ledger before dispatch. The roadmap identifies the wave; the coordinator ledger owns the
+  machine-specific paths, task ids, integration order and cleanup evidence.
+- Operator decisions and live-write authorizations are prerequisites on the supervisor task they
+  unblock. They are not implementation tasks assigned to a supervisor.
+- Phase 3 closes after 3D's attributed cooperation proof. D320 still authorizes 3C acceptance after
+  its stated gates are green, but 3C now closes only its own part and unlocks 3D.
+
+Normative owners: roadmap §Governance and docs 03a–03d. The existing parallel-work lifecycle owns
+dispatch-time branch, worktree, integration and cleanup records.
