@@ -2,7 +2,7 @@
 /**
  * D273 item 2, rendered — the markup half of the run-detail timeline ports.
  *
- * The sheet is `docs/decisions/2026-08-25-03a-demo-fidelity-run-detail.md`
+ * Operator context is `docs/decisions/dashboard.md` §D273
  * (answered A on 2026-08-26); the audited rows are ledger 2 B41, B44, B50, B57,
  * B60 and B61. `run-detail-timeline.test.ts` pins the three folds; this file
  * pins that the component actually CONSUMES them, which a fold cannot see.

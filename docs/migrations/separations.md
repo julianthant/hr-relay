@@ -6415,7 +6415,7 @@ is outside u1's no-code/no-config scope and requires a separately authorized dec
 
 > 2026-08-28 — the registry role this section gave 4568 (label `separations-controlled-commit-canary`, the second active canary) was superseded by §9.31 (D284): 4568 ceased to be an active registry identity on 2026-08-28. Everything recorded below stays as recorded.
 
-**Why it ran.** D280 (`docs/decisions/2026-08-27-canary-4568.md`) named Kuali doc **4568** as a
+**Why it ran.** The dry-run-first canary decision (D280; `docs/decisions/live-verification.md`) named Kuali doc **4568** as a
 second canary: *"make it the dry run and canary. do it dry run first and then make it canary"* — a
 composed `dryRun=true` audit first, then the controlled commits ②→①→③ with the operator at the
 keyboard, while 4537 keeps its 2026-08-28 role. Unit u23's job was to read 4568's facts LIVE, apply
@@ -6961,7 +6961,7 @@ the requested day”; it now includes the prior value and last observed value, s
 completed doc 4524 (`gone`, last observed 2026-08-14), and 4537 existed only as
 `finalization-canary` under the `separations-kuali-finalization` workflow. The rebuild may not
 substitute a document number or guess across a workflow boundary, so the unit stopped and asked
-(`docs/decisions/2026-08-28-r2-u1-4537-registry-reconciliation.md`). The operator answered `1 A`
+(`docs/decisions/live-verification.md` §One active Separations test subject). The operator chose the verify-first option
 with an override that became **D284**: after one fresh read-only verification, the active registry
 holds exactly one subject — existing label `finalization-canary`, Kuali doc 4537 — addressable by
 BOTH workflows without cross-workflow guessing; every other active label is removed and its

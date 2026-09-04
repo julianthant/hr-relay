@@ -21,7 +21,7 @@ byte-stable. The Start Run task resumed after that snapshot; it has no completed
 | R2/u1p restored the deliberate parity authority after the registry/fingerprint changes | refreeze `17a11a6c`; merge `4ad93cb4`; close `a24dc46f`; independent review zero findings; clean committed gate 321 files / 3,520 tests and 239/239 parity | 2026-08-28 |
 | R-DCF dashboard-fidelity closure is integrated into `integration/03b` | run close `d8554009`; root merge `e0cd4353`; recorded gate 320 files / 3,490 tests and 239/239 parity | 2026-08-28 |
 | R-DCC control-plane implementation is closed on its run branch: settings, preflight/doctor, storage reconciliation, and safe Explorer edit | `codex/r-dcc-dashboard-control-plane` at closure merge `0a73386f`; all unit worktrees are clean | 2026-08-28 |
-| R-DCR delivered and reviewed cross-date search, the Separations search surface, and evidenced XLSX export on its run branch | `codex/r-dcr-reporting-search` at `37e4fc17`; that commit's `docs/decisions/2026-08-28-dashboard-reporting-authority.md` records 3,543 coverage tests and 239 parity tests green on the branch | 2026-08-28 |
+| R-DCR delivered and reviewed cross-date search, the Separations search surface, and evidenced XLSX export on its run branch | `codex/r-dcr-reporting-search` at `37e4fc17`; `docs/decisions/dashboard.md` §D288–D289 retains the operator context, and the branch recorded 3,543 coverage tests and 239 parity tests green | 2026-08-28 |
 | R-DCA established strict artifact-byte serving authority; DCA1 is committed and DCA3 has a clean feature branch | `codex/r-dca-dashboard-artifacts` at `eda17b27`; `feature/dca3-captures-section` at `fc6581c6` | 2026-08-28 |
 
 ## 2 · Drift — where the as-built differs from the plan

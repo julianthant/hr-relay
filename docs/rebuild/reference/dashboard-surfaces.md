@@ -199,7 +199,7 @@ cross-referenced rather than re-litigated.
 
 ### D281 — UI-1: the elements the demo does not cover (2026-08-27)
 
-Ratified 2026-08-27 from `docs/decisions/2026-08-27-ui-fidelity-new-elements.md` (run UI-1; the audit
+Ratified 2026-08-27; operator context is `docs/decisions/dashboard.md` §D281 (run UI-1; the audit
 `docs/plans/2026-08-27-ui-fidelity-audit.md`'s `new-in-current` rows plus UF-FU-2), all recommended.
 The rebuild-demo (legacy `1ec1d870`, `src/dashboard/components/dev/rebuild-demo/`) is the design
 authority for everything it covers; what it does not cover is ruled here, once, so no later audit
@@ -213,14 +213,14 @@ re-books it. Merged at `a3683bf3`.
 6. Keep the authored display names and notes for `new-kronos`, `old-kronos`, `sharepoint` (`settings-model.ts` `SYSTEM_HOST_PRESENTATION`, each marked `// authored — no demo counterpart`); UF-SET-26 requires a note on every row. B leaves three of nine rows blank, C waits on copy the demo never had.
 7. **The storage band goes full-bleed.** The demo's geometry (`RebuildDemo.tsx:654` / `DemoSettings.tsx:1204+`: border-bottom only, no radius, x=0, mounted above the shellView switch) replaces the inset `Banner` card at the storage-band site — on the queue view too, since the same site serves both. D276 item 4's refusal to revert the `Banner` PRIMITIVE stands: the primitive keeps its bordered, rounded shape everywhere else; the band gets its own full-bleed arm. A keeps an x=12 band over x=0 takeovers; C is the half-match U4a rejected (`dashboard-app.tsx:1377-1383`). **Open port: UI-2 U6** (`docs/plans/2026-08-27-ui-runs.md`).
 
-Standing from the same receive (`docs/decisions/2026-08-27-ui-1-receive.md`, all recommended, no D-number — run-plan
+Standing from the same receive (summarized in `docs/decisions/dashboard.md` §D281, all recommended, no D-number — run-plan
 matters): intake and the UI catalog adopt `TakeoverFrame` (UF-FU-1 → UI-2 U7); fidelity ledger 1's Region A
 counts are recounted (U8); the G1 finding (`docs/findings/activity.md`) is diagnosed as the one backend unit
 inside UI-2 (U9) and Activity's populated body is audited after it (U10); UI-2 starts after Phase 3b R2 closes.
 
 ### D282 — finish the dashboard; retain truthful current-only evidence (2026-08-28)
 
-Ratified from `docs/decisions/2026-08-28-dashboard-completion.md` after the operator answered both
+Ratified from the operator answers summarized in `docs/decisions/dashboard.md` §D282–D283 after both
 coordinator residue questions **A** and directed the coordinator to complete the dashboard through
 parallel supervised runs.
 

@@ -1,7 +1,7 @@
 /**
  * D273 item 2 — the run-detail timeline's ported folds.
  *
- * The sheet is `docs/decisions/2026-08-25-03a-demo-fidelity-run-detail.md`,
+ * Operator context is `docs/decisions/dashboard.md` §D273,
  * answered A on 2026-08-26; the audited rows are ledger 2 (`docs/plans/
  * 2026-08-21-03a-fidelity-2-run-detail.md`) B44, B57, B60 and B61.
  *

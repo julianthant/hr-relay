@@ -1581,7 +1581,7 @@ future ports and proofs, not claims that any port or parity re-freeze has landed
 ## Reconciliation round 96 (2026-08-27) — Phase 3a closes; three close-out rulings land
 
 _phase: 3a_
-_D277–D279 are minted by this round from `docs/decisions/2026-08-27-03a-close-decisions.md` and land with their normative text in their owning docs. Item 1 of that sheet (merge `integration/03a-final` into master `--no-ff`) and item 3 (keep `src/dashboard/AGENTS.md` for Codex sessions; Claude sessions never author it — `src/dashboard/CLAUDE.md` §"AGENTS.md") are operational and carry no number._
+_D277–D279 are minted by this round; their operator context is consolidated in `docs/decisions/phase-governance.md` §Phase 3a close, and their normative text lands in the owning docs. The integration merge and session-instruction choices recorded there are operational and carry no number._
 
 | # | Decision | Owning doc |
 |---|---|---|
@@ -1592,7 +1592,7 @@ _D277–D279 are minted by this round from `docs/decisions/2026-08-27-03a-close-
 ## Reconciliation round 97 (2026-08-27) — a second canary is named for the controlled commits
 
 _phase: 3b_
-_D280 is minted by this round from `docs/decisions/2026-08-27-canary-4568.md` and lands with its normative text in doc 03b §registry (the 4568 row, filled from the live read) and `config/test-subjects.json`._
+_D280 is minted by this round; its operator context is consolidated in `docs/decisions/live-verification.md` §4568 dry-run-first canary, and its normative text lands in doc 03b §registry and `config/test-subjects.json`._
 
 | # | Decision | Owning doc |
 |---|---|---|
@@ -1601,7 +1601,7 @@ _D280 is minted by this round from `docs/decisions/2026-08-27-canary-4568.md` an
 ## Reconciliation round 98 (2026-08-27) — UI-1: the elements the demo does not cover
 
 _phase: 3b (side scope: the dashboard's demo fidelity, run UI-1)_
-_D281 is minted by this round from `docs/decisions/2026-08-27-ui-fidelity-new-elements.md` (items 1–7, all recommended; coordinator receive `docs/decisions/2026-08-27-ui-1-receive.md`) and lands with its normative text in ref dashboard-surfaces §10, the D281 block._
+_D281 is minted by this round; its operator context is consolidated in `docs/decisions/dashboard.md` §UI-1 demo-uncovered elements, and its normative text lands in ref dashboard-surfaces §10._
 
 | # | Decision | Owning doc |
 |---|---|---|
@@ -1610,7 +1610,7 @@ _D281 is minted by this round from `docs/decisions/2026-08-27-ui-fidelity-new-el
 ## Reconciliation round 99 (2026-08-28) — finish the dashboard without weakening its authority
 
 _phase: 3 cross-cutting dashboard completion_
-_D282 is minted from `docs/decisions/2026-08-28-dashboard-completion.md` and lands with its normative text in ref dashboard-surfaces §10._
+_D282 is minted from the operator context consolidated in `docs/decisions/dashboard.md` §Dashboard completion scope and lands with its normative text in ref dashboard-surfaces §10._
 
 | # | Decision | Owning doc |
 |---|---|---|
@@ -1628,7 +1628,7 @@ _D283 records the operator's execution clarification after D282; normative text 
 ## Reconciliation round 101 (2026-08-28) — 4537 becomes the one active separations test subject
 
 _phase: 3b_
-_D284 is minted from `docs/decisions/2026-08-28-r2-u1-4537-registry-reconciliation.md` item 1,
+_D284 is minted from the operator context consolidated in `docs/decisions/live-verification.md` §One active Separations test subject,
 answered A with the operator's explicit single-subject override. Its normative text lands in doc 03b
 §The canary registry._
 
@@ -1661,7 +1661,7 @@ Their normative text lands in doc 03b in this same commit._
 _phase: 3a dashboard completion_
 _D288–D289 are minted from the operator's “all recommended” answer to the Phase 3b status report;
 the source decision sheet is retained on `codex/r-dcr-reporting-search`, and the answers are recorded
-in `docs/decisions/2026-08-28-dashboard-reporting-authority-answers.md`._
+in `docs/decisions/dashboard.md` §Reporting identity._
 
 | # | Decision | Owning doc |
 |---|---|---|
@@ -1866,8 +1866,8 @@ claimed by this documentation decision._
 ## Reconciliation round 122 (2026-09-02) — the workflow has a measurable simplicity and recovery contract
 
 _phase: 3c_
-_D312–D316 record the operator's answers to the modular-workflow decision brief. The complete
-answered sheet is `docs/decisions/2026-09-02-modular-workflow-authoring.md`; normative contracts
+_D312–D316 record the operator's answers to the modular-workflow decision brief. The operator
+context is consolidated in `docs/decisions/workflow-authoring.md`; normative contracts
 land in their owning references and doc 03c in this same commit. These are documentation decisions:
 no compiler, conversion, omission UI or recovery command is claimed built._
 
@@ -1887,7 +1887,7 @@ vocabulary. It changes no runtime behavior and claims no compiler implementation
 
 | # | Decision | Owning doc |
 |---|---|---|
-| **D317** | **THE AUTHORED TECHNICAL MODEL IS A WORKFLOW, NOT A RECIPE.** “Pantry and recipe” remains an explanatory analogy only. The authored file is `src/workflows/<id>/workflow.ts`, the public factory is `defineWorkflow`, its value is `WorkflowDefinition`, the compiler is `compileWorkflow`, its generated value is `CompiledWorkflow`, and one execution is a `WorkflowRun`. Current descriptors/modules are compatibility products during conversion, not a second authored workflow. `recipe`, `WorkflowRecipe`, `defineWorkflowRecipe` and `recipe.ts` are forbidden names for this seam. Phase 3c is internally gated: 3c-A builds/proves this authoring platform and deletes the old path; 3c-B migrates orders 1–7 and 9 only afterward. | ref workflow-model §1.6 (primary) · doc 03c §Workflow authoring model and §3c-A implementation run · roadmap `{#workflow-authoring-model}` · `docs/decisions/2026-09-02-modular-workflow-authoring.md` terminology amendment |
+| **D317** | **THE AUTHORED TECHNICAL MODEL IS A WORKFLOW, NOT A RECIPE.** “Pantry and recipe” remains an explanatory analogy only. The authored file is `src/workflows/<id>/workflow.ts`, the public factory is `defineWorkflow`, its value is `WorkflowDefinition`, the compiler is `compileWorkflow`, its generated value is `CompiledWorkflow`, and one execution is a `WorkflowRun`. Current descriptors/modules are compatibility products during conversion, not a second authored workflow. `recipe`, `WorkflowRecipe`, `defineWorkflowRecipe` and `recipe.ts` are forbidden names for this seam. Phase 3c is internally gated: 3c-A builds/proves this authoring platform and deletes the old path; 3c-B migrates orders 1–7 and 9 only afterward. | ref workflow-model §1.6 (primary) · doc 03c §Workflow authoring model and §3c-A implementation run · roadmap `{#workflow-authoring-model}` · `docs/decisions/workflow-authoring.md` §Modular workflow authoring |
 
 ## Reconciliation round 124 (2026-09-02) — transaction-free workflows keep live T1 proof without a fake dry run
 
@@ -1921,4 +1921,4 @@ waives no proof or gate._
 
 | # | Decision | Owning doc |
 |---|---|---|
-| **D320** | **SEPARATIONS MUST RECORD A FRESH `met` T1b RESULT ON A NEWLY VETTED CLOSED KUALI DOCUMENT BEFORE 3c-A CLOSES; ONCE EVERY 3c-A EXIT CONDITION IS GREEN, 3c-B IS AUTHORIZED TO RUN AND CLOSE PHASE 3 WITHOUT ANOTHER START APPROVAL.** The existing `blocked/not-started` result remains honest evidence but is not green acceptance. D284 still forbids an inferred replacement: the operator must place the new document number in ignored configuration and the registry must record a dated `available` observation before the live preview. The 3c-B authorization is conditional on the clean-context guide proof, automatic runtime-inheritance proof, fresh Separations T1b `met`, integrated gates and lifecycle close. It authorizes no external write and no third workflow. | doc 03c §3c-A exit gate and §3c-B (primary) · `docs/decisions/2026-09-03-phase-3-close.md` |
+| **D320** | **SEPARATIONS MUST RECORD A FRESH `met` T1b RESULT ON A NEWLY VETTED CLOSED KUALI DOCUMENT BEFORE 3c-A CLOSES; ONCE EVERY 3c-A EXIT CONDITION IS GREEN, 3c-B IS AUTHORIZED TO RUN AND CLOSE PHASE 3 WITHOUT ANOTHER START APPROVAL.** The existing `blocked/not-started` result remains honest evidence but is not green acceptance. D284 still forbids an inferred replacement: the operator must place the new document number in ignored configuration and the registry must record a dated `available` observation before the live preview. The 3c-B authorization is conditional on the clean-context guide proof, automatic runtime-inheritance proof, fresh Separations T1b `met`, integrated gates and lifecycle close. It authorizes no external write and no third workflow. | doc 03c §3c-A exit gate and §3c-B (primary) · `docs/decisions/phase-governance.md` §Phase 3 close |

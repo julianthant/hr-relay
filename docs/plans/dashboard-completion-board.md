@@ -15,7 +15,7 @@
 - Dated trap: concurrent full coverage timed out child-spawning files on 2026-08-27; the shared `lockf` command above serializes only the expensive lanes while implementation remains parallel.
 
 ## Decisions ratified
-- 2026-08-28 · `docs/decisions/2026-08-28-dashboard-completion.md` → D282: keep Activity `Unread`; authorize strict storage reconciliation; activate dashboard-owned deferrals.
+- 2026-08-28 · operator context in `docs/decisions/dashboard.md` §D282–D283 → D282: keep Activity `Unread`; authorize strict storage reconciliation; activate dashboard-owned deferrals.
 - 2026-08-28 · operator clarification → D283: complete current-workflow/cross-cutting work now; later workflow producers stay in Phase 3c.
 - Standing: D272–D276 demo fidelity · D278 intake/capture column · D279 carried residue · D281 demo-uncovered elements.
 

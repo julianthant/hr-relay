@@ -12,7 +12,7 @@ _Ceiling ~400 lines. Every line carries a sha, a path, or a sheet item — a fac
 - Traps (dated): a worktree needs `npm ci` + `.env`/`.auth` symlinks from the root + `HRAUTO_LEGACY_REPO` (2026-08-27) · `test:coverage` under load can time out child-spawning files even below load 20 and with four workers — read counts, prove named failures alone, then use `VITEST_MAX_WORKERS=1` for the one green full-lane result (UI-2 final: 319 / 3,483) · Chromium's UA `:focus-visible` ring moves parity references when focus moves — `outline-none` on the focused frame (UI-1 U4a, `src/dashboard/CLAUDE.md` lesson) · the root's vite on 5174 serves the ROOT's code; a worktree's tree is seen via `npm run web -- --port 5175` from the worktree, with the served labels still coming from the root's BFF · **never use `playwright-cli close-all` in a shared run**: U6's required orphan sweep closed U29's named Chromium session; close only the session/process the unit created (UI-2 U6, 2026-08-27)
 
 ## Decisions ratified (one line each → sheet + item + owning doc)
-- 2026-08-27 `docs/decisions/2026-08-27-ui-fidelity-new-elements.md` 1–7 + `docs/decisions/2026-08-27-ui-1-receive.md` 8–12, all recommended → **D281** (ref dashboard-surfaces §10; changelog round 98)
+- 2026-08-27 operator context consolidated in `docs/decisions/dashboard.md` §D281, items 1–12 all recommended → **D281** (ref dashboard-surfaces §10; changelog round 98)
 - 2026-08-27 receive item 12 re-asked → B: UI-2 runs 08-27 before R2 under a date stop rule (`docs/handoffs/2026-08-27-run-ui-2-residue.md` §Guard / §Date stop rule)
 - Standing (do not re-open): D272–D276 (ref dashboard-surfaces §10) · D275.1 the two catalog toolbar buttons · D276.4 the `Banner` primitive is not reverted (D281.7 gives the storage band its own full-bleed arm instead) · D177 the generated selector catalog · D187 parity references need a browser
 
@@ -38,6 +38,6 @@ _Ceiling ~400 lines. Every line carries a sha, a path, or a sheet item — a fac
 - G2 run-open centre/right column not re-derived (0 rows that day; covered by the `-2-run-detail` ledger) → parked, owner doc 04 §"Carried in from Phase 3a" (D279)
 
 ## Questions for the operator (the coordinator turns these into a sheet)
-- UI-1's supervisor token figure (for the run log) — asked in `docs/decisions/2026-08-27-ui-1-receive.md` item 12's note
+- UI-1's supervisor token figure (for the run log) — historical receive note summarized with `docs/decisions/dashboard.md` §D281
 - Should Activity's honest current-only `Unread` axis stay in `BY WORKFLOW` or move elsewhere? U10 did not decide product truth the demo does not cover (UF-AC-13).
 - May a future backend unit cross the current infra/domain schema boundary to add storage-doctor span/authority reconciliation, with the projection refusal at `run-queue-projection.ts:887` unchanged? U9 could not truthfully add a server-only formatter line.
