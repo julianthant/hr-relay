@@ -416,12 +416,12 @@ catalogued defaults rather than being copied into a second persisted authority.
 <!-- roadmap: phase0-run-authority-design -->
 
 - [x] Define stable run identity and typed create/read/update/delete, claim, retry, archive, relaunch,
-  purge, and compare-and-swap transitions. — D329 §D329.1, §D329.3–§D329.5, §D329.7
+  purge, and compare-and-swap transitions. — D330 §D330.1, §D330.3–§D330.5, §D330.7
 - [x] Keep spans, logs, receipts, captures, and artifacts append-only evidence linked to the run;
-  none may decide whether the run exists or what lifecycle state it occupies. — D329 §D329.2, §D329.9
+  none may decide whether the run exists or what lifecycle state it occupies. — D330 §D330.2, §D330.9
 - [x] Adopt D308's terminal-only physical deletion behind an insert-only tombstone; define queue
-  ordering, first-eligible claim, evidence retention, and direct-table adapter boundaries. — D329 §D329.6, §D329.8, §D329.10–§D329.11
-> 2026-09-04 | phase-0-3-authority-design C31da5310 R01 | Task 1 designed as D329 in ref dashboard-surfaces §D327; no runtime code changed (D326). Tasks 2–4 open.
+  ordering, first-eligible claim, evidence retention, and direct-table adapter boundaries. — D330 §D330.6, §D330.8, §D330.10–§D330.11
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R01 | Task 1 designed as D330 in ref dashboard-surfaces §D327; no runtime code changed (D326). Tasks 2–4 open.
 
 ### Task 2 · Define the canonical settings catalog and root
 <!-- roadmap: phase0-settings-authority-design -->
