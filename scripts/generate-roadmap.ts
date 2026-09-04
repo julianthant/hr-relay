@@ -390,11 +390,11 @@ interface TreeNode {
   rowCenter: number;
 }
 
-const NODE_W = 224;
-const NODE_H = 72;
-const PHASE_H = 88;
-const COL_STEP = 244;   // one phase-part column (NODE_W + 20)
-const SUB_GAP = 10;     // between stacked sub-tasks
+const NODE_W = 252;
+const NODE_H = 96;
+const PHASE_H = 108;
+const COL_STEP = 276;   // one phase-part column (NODE_W + 24)
+const SUB_GAP = 12;     // between stacked sub-tasks
 const INDENT = 18;      // each nesting level steps right and narrows by this
 const PAD = 28;
 const BAND_GAP = 72;    // between phase bands
@@ -560,6 +560,15 @@ function wrapTitle(title: string, width: number, maxLines: number): string[] {
   return lines;
 }
 
+function nodeStatusLabel(node: TreeNode, available: boolean): string {
+  if (node.status === "done") return "COMPLETE";
+  if (node.status === "active") return "ACTIVE";
+  if (node.status === "you") return "NEEDS YOU";
+  if (node.status === "proposed") return "PROPOSED";
+  if (node.status === "never") return "DEFERRED";
+  return available ? "READY" : "BLOCKED";
+}
+
 const N = (value: number): string => String(Math.round(value * 10) / 10);
 
 /** The phase's rail: one straight reading line from the phase into its ordered parts. */
@@ -679,35 +688,38 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
       const isPhase = node.kind === "phase";
       const available = node.requires.every((r) => requirementMet(r, registry));
       const cls = `nd ${node.kind} ${node.status}${available ? " avail" : " locked"}`;
-      const titleLines = wrapTitle(node.title, isPhase ? 27 : Math.floor((node.w - 40) / 6.8), 2);
-      const titleY = isPhase ? node.y + 36 : node.y + 19;
+      const stateLabel = nodeStatusLabel(node, available);
+      const titleLines = wrapTitle(node.title, isPhase ? 27 : Math.floor((node.w - 32) / 7.3), 2);
+      const titleY = isPhase ? node.y + 49 : node.y + 42;
       const title = titleLines
-        .map((line, i) => `<tspan x="${N(node.x + 26)}" dy="${i === 0 ? 0 : 15}">${escapeHtml(line)}</tspan>`)
+        .map((line, i) => `<tspan x="${N(node.x + 16)}" dy="${i === 0 ? 0 : 17}">${escapeHtml(line)}</tspan>`)
         .join("");
       const eyebrow = isPhase && node.eyebrow !== undefined
-        ? `<text class="eb" x="${N(node.x + 12)}" y="${N(node.y + 17)}">${escapeHtml((wrapTitle(node.eyebrow, 30, 1)[0] ?? "").toUpperCase())}</text>`
+        ? `<text class="eb" x="${N(node.x + 16)}" y="${N(node.y + 21)}">${escapeHtml((wrapTitle(node.eyebrow, 30, 1)[0] ?? "").toUpperCase())}</text>`
         : "";
-      const dotY = isPhase ? node.y + 32 : node.y + 15;
-      const dot = `<circle class="st" cx="${N(node.x + 14)}" cy="${N(dotY)}" r="4.5"/>`;
+      const dotY = isPhase ? node.y + node.h - 17 : node.y + 17;
+      const dot = `<circle class="st" cx="${N(node.x + 16)}" cy="${N(dotY)}" r="4.5"/>`;
+      const state = `<text class="state" x="${N(node.x + 28)}" y="${N(dotY)}" dy="0.35em">${stateLabel}</text>`;
       // the info line: an item's chip (in its tone) or its date / decision
       const infoText = !isPhase && node.chip !== undefined ? node.chip.text.replace(/\*\*/g, "") : !isPhase && node.eyebrow !== undefined ? node.eyebrow : undefined;
       const infoTone = !isPhase && node.chip !== undefined ? (node.chip.tone ?? node.status) : "meta";
       const info = infoText === undefined
         ? ""
-        : `<text class="info ${infoTone}" x="${N(node.x + 26)}" y="${N(node.y + 49)}">${escapeHtml(wrapTitle(infoText, Math.floor((node.w - 40) / 5.6), 1)[0] ?? "")}</text>`;
+        : `<text class="info ${infoTone}" x="${N(node.x + 16)}" y="${N(node.y + 72)}">${escapeHtml(wrapTitle(infoText, Math.floor((node.w - 32) / 5.8), 1)[0] ?? "")}</text>`;
       // the built-by-layer bar: one square per feature, filled when done
-      const squares = node.features.slice(0, 14).map((f, i) => {
-        const sx = node.x + 26 + i * 11;
-        const sy = node.y + node.h - 15;
-        return `<rect class="fq ${f.layer ?? "plain"} ${f.status}" x="${N(sx)}" y="${N(sy)}" width="8" height="8" rx="1.5"/>`;
+      const squares = node.features.slice(0, 10).map((f, i) => {
+        const sx = node.x + 16 + i * 12;
+        const sy = node.y + node.h - 17;
+        return `<rect class="fq ${f.layer ?? "plain"} ${f.status}" x="${N(sx)}" y="${N(sy)}" width="9" height="9" rx="2"/>`;
       }).join("");
-      const more = node.features.length > 14 ? `<text class="fq-more" x="${N(node.x + 26 + 14 * 11)}" y="${N(node.y + node.h - 8)}">+${String(node.features.length - 14)}</text>` : "";
+      const more = node.features.length > 10 ? `<text class="fq-more" x="${N(node.x + 16 + 10 * 12)}" y="${N(node.y + node.h - 9)}">+${String(node.features.length - 10)}</text>` : "";
       const built = node.features.filter((f) => f.status === "done").length;
-      const countText = node.features.length === 0 ? "" : node.status === "done" ? `${String(node.features.length)} built` : `${String(built)}/${String(node.features.length)}`;
+      const countText = node.features.length === 0 ? "" : `${String(built)} / ${String(node.features.length)} built`;
       const rightText = [node.size, countText].filter((t): t is string => t !== undefined && t.length > 0).join(" · ");
-      const right = rightText.length === 0 ? "" : `<text class="meta" x="${N(node.x + node.w - 10)}" y="${N(node.y + node.h - 8)}" text-anchor="end">${escapeHtml(rightText)}</text>`;
-      const chip = isPhase && node.chip !== undefined
-        ? `<text class="pc ${node.chip.tone ?? node.status}" x="${N(node.x + 12)}" y="${N(node.y + node.h - 11)}">${escapeHtml(node.chip.text.replace(/\*\*/g, "").toUpperCase())}</text>`
+      const right = rightText.length === 0 ? "" : `<text class="meta" x="${N(node.x + node.w - 16)}" y="${N(node.y + node.h - 9)}" text-anchor="end">${escapeHtml(rightText)}</text>`;
+      const phaseChipText = node.chip?.text.replace(/\*\*/g, "").toUpperCase();
+      const chip = isPhase && node.chip !== undefined && phaseChipText !== stateLabel
+        ? `<text class="pc ${node.chip.tone ?? node.status}" x="${N(node.x + node.w - 16)}" y="${N(node.y + node.h - 14)}" text-anchor="end">${escapeHtml(phaseChipText ?? "")}</text>`
         : "";
       const phaseBar = isPhase ? "" : squares + more + info;
       // the doc-progress tick: a hairline along the card's bottom edge, below
@@ -718,7 +730,8 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
       const tick = doc.total === 0
         ? ""
         : `<rect class="dpt" x="${N(node.x + 12)}" y="${N(node.y + node.h - 4)}" width="${N(tickW)}" height="2" rx="1"/><rect class="dpt on" x="${N(node.x + 12)}" y="${N(node.y + node.h - 4)}" width="${N((tickW * doc.done) / doc.total)}" height="2" rx="1"/>`;
-      return `<a class="${cls}" href="#${node.key}" data-key="${node.key}" aria-label="${escapeHtml(`${node.title} — ${node.status}`)}"><g><rect class="bx" x="${N(node.x)}" y="${N(node.y)}" width="${N(node.w)}" height="${N(node.h)}" rx="${isPhase ? "10" : "8"}"/>${eyebrow}${dot}<text class="tt" x="${N(node.x + 26)}" y="${N(titleY)}">${title}</text>${phaseBar}${isPhase ? chip : right}${tick}</g></a>`;
+      const spokenProgress = node.features.length === 0 ? "" : `, ${String(built)} of ${String(node.features.length)} outputs built`;
+      return `<a class="${cls}" href="#${node.key}" data-key="${node.key}" aria-label="${escapeHtml(`${node.title}, ${stateLabel.toLowerCase()}${spokenProgress}`)}"><g><rect class="bx" x="${N(node.x)}" y="${N(node.y)}" width="${N(node.w)}" height="${N(node.h)}" rx="8"/>${eyebrow}${dot}${state}<text class="tt" x="${N(node.x + 16)}" y="${N(titleY)}">${title}</text>${phaseBar}${isPhase ? chip : right}${tick}</g></a>`;
     })
     .join("");
 
@@ -756,106 +769,113 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
 
 // ─── page ──────────────────────────────────────────────────────────────────
 
+/*
+ * THESIS: A roadmap should read like an operations map, not a miniature dashboard trapped inside every node.
+ * OWN-WORLD: Cool paper and ink, one cobalt action accent, semantic green/amber/blue, square controls, fine route lines.
+ * STORY: Scan the phase spine, follow one workstream, inspect a node, then return to the full plan without losing place.
+ * FIRST VIEWPORT: Compact command bar and facts above a full-height map, with a stable inspector rail at the right.
+ * FORM: Desktop master-detail operations map; predictable structure, dense data, and no modal interruption.
+ */
 const CSS = String.raw`
   :root {
-    --bg:#f6f8fa; --card:#ffffff; --well:#f1f4f8; --fg:#0b0f19; --fg-2:#334155; --fg-3:#475569; --fg-4:#94a3b8;
-    --line:#e4e7ec; --line-strong:#cbd2dc; --accent:#4338ca; --accent-quiet:rgba(67,56,202,.10);
-    --ok:#065f46; --ok-mark:#059669; --ok-quiet:rgba(5,150,105,.12); --info:#0369a1; --info-mark:#0ba5ec; --info-quiet:rgba(11,165,236,.12);
-    --warn:#b54708; --warn-mark:#f79009; --warn-quiet:rgba(247,144,9,.14); --danger:#b42318;
-    --shadow:0 1px 2px rgba(11,15,25,.06),0 4px 16px rgba(11,15,25,.05);
-    --sans:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif; --mono:"IBM Plex Mono","SFMono-Regular",Menlo,Consolas,monospace;
+    color-scheme:light dark;
+    --bg:#f3f6f8; --grid:rgba(28,45,61,.08); --card:#ffffff; --well:#edf2f5; --fg:#13202b; --fg-2:#3b4b59; --fg-3:#607180; --fg-4:#8996a3;
+    --line:#dce3e8; --line-strong:#aebbc5; --accent:#2457d6; --accent-quiet:#e8eefc;
+    --ok:#087554; --ok-mark:#0b8f67; --ok-quiet:#e1f3ed; --info:#096b9b; --info-mark:#1293cf; --info-quiet:#e2f2fa;
+    --warn:#9a5700; --warn-mark:#d97706; --warn-quiet:#fff0d8; --danger:#b42318;
+    --scrim:rgba(14,25,35,.18); --sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
   }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-    --bg:#09090b; --card:#18181b; --well:#121215; --fg:#fafafa; --fg-2:#d4d4d8; --fg-3:#a1a1aa; --fg-4:#6b6b74;
-    --line:rgba(255,255,255,.08); --line-strong:rgba(255,255,255,.18); --accent:#a5b4fc; --accent-quiet:rgba(165,180,252,.14);
-    --ok:#12b76a; --ok-mark:#12b76a; --ok-quiet:rgba(18,183,106,.14); --info:#4ea1f3; --info-mark:#4ea1f3; --info-quiet:rgba(78,161,243,.14);
-    --warn:#f79009; --warn-mark:#f79009; --warn-quiet:rgba(247,144,9,.16); --danger:#f97066; --shadow:0 1px 2px rgba(0,0,0,.4);
+    --bg:#0e151b; --grid:rgba(206,225,239,.07); --card:#172129; --well:#111a21; --fg:#edf4f7; --fg-2:#c2ced5; --fg-3:#93a3ad; --fg-4:#687984;
+    --line:#283640; --line-strong:#4b5d68; --accent:#86a8ff; --accent-quiet:#1f335f;
+    --ok:#50c89b; --ok-mark:#32b487; --ok-quiet:#153a30; --info:#66b9df; --info-mark:#42a7d5; --info-quiet:#17394a;
+    --warn:#f5af54; --warn-mark:#e89023; --warn-quiet:#493018; --danger:#ff8d83; --scrim:rgba(0,0,0,.34);
   } }
   :root[data-theme="dark"] {
-    --bg:#09090b; --card:#18181b; --well:#121215; --fg:#fafafa; --fg-2:#d4d4d8; --fg-3:#a1a1aa; --fg-4:#6b6b74;
-    --line:rgba(255,255,255,.08); --line-strong:rgba(255,255,255,.18); --accent:#a5b4fc; --accent-quiet:rgba(165,180,252,.14);
-    --ok:#12b76a; --ok-mark:#12b76a; --ok-quiet:rgba(18,183,106,.14); --info:#4ea1f3; --info-mark:#4ea1f3; --info-quiet:rgba(78,161,243,.14);
-    --warn:#f79009; --warn-mark:#f79009; --warn-quiet:rgba(247,144,9,.16); --danger:#f97066; --shadow:0 1px 2px rgba(0,0,0,.4);
+    --bg:#0e151b; --grid:rgba(206,225,239,.07); --card:#172129; --well:#111a21; --fg:#edf4f7; --fg-2:#c2ced5; --fg-3:#93a3ad; --fg-4:#687984;
+    --line:#283640; --line-strong:#4b5d68; --accent:#86a8ff; --accent-quiet:#1f335f;
+    --ok:#50c89b; --ok-mark:#32b487; --ok-quiet:#153a30; --info:#66b9df; --info-mark:#42a7d5; --info-quiet:#17394a;
+    --warn:#f5af54; --warn-mark:#e89023; --warn-quiet:#493018; --danger:#ff8d83; --scrim:rgba(0,0,0,.34);
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;min-height:100vh}
+  body{margin:0;min-width:1024px;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;min-height:100dvh;overflow:hidden}
   a{color:var(--info);text-decoration:none} a:hover{text-decoration:underline}
   code{font-family:var(--mono);font-size:.92em;background:var(--well);padding:0 4px;border-radius:3px}
-  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
-  button{font:inherit;font-size:12.5px;padding:5px 10px;border-radius:6px;border:1px solid var(--line-strong);background:var(--card);color:var(--fg-2);cursor:pointer} button:hover{border-color:var(--fg-4);color:var(--fg)} button[aria-pressed="true"]{background:var(--accent-quiet);border-color:var(--accent);color:var(--accent)}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  button{min-height:34px;font:600 12px/1 var(--sans);padding:0 11px;border-radius:6px;border:1px solid var(--line-strong);background:var(--card);color:var(--fg-2);cursor:pointer}
+  button:hover{border-color:var(--fg-3);background:var(--well);color:var(--fg)} button:active{background:var(--accent-quiet)} button[aria-pressed="true"]{background:var(--accent-quiet);border-color:var(--accent);color:var(--accent)}
+  .skip{position:fixed;inset:8px auto auto 8px;z-index:10;transform:translateY(-150%);padding:8px 12px;background:var(--card);border:1px solid var(--accent);color:var(--fg)} .skip:focus{transform:none}
 
-  /* ─ masthead (one line) ─ */
-  .mast{padding:8px 16px;border-bottom:1px solid var(--line);background:var(--card);display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 16px}
-  .hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
-  h1{font-size:16px;line-height:1.2;margin:0;font-weight:600;letter-spacing:-.01em}
-  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3)}
-  .ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap} .pct{font-family:var(--mono);font-size:11.5px;min-width:36px;text-align:center}
-  /* ─ tiles: one slim strip ─ */
-  .tiles{display:flex;gap:6px;padding:6px 16px;border-bottom:1px solid var(--line);background:var(--bg);overflow-x:auto}
-  .tile{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:4px 10px;min-width:max-content;display:flex;align-items:baseline;gap:8px;font-size:12px}
+  /* App chrome */
+  .mast{padding:12px 18px;border-bottom:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:space-between;gap:20px;flex:none}
+  .hd{min-width:0}.title-line{display:flex;align-items:baseline;gap:12px}.hd p{margin:4px 0 0;max-width:72ch;color:var(--fg-3);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  h1{font-size:20px;line-height:1.15;margin:0;font-weight:650;letter-spacing:-.025em;text-wrap:balance}
+  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3);white-space:nowrap}
+  .ctl{display:flex;gap:8px;align-items:center;flex:none}.control-group{display:flex;align-items:center}.control-group button{border-radius:0;margin-left:-1px}.control-group button:first-child{border-radius:6px 0 0 6px;margin-left:0}.control-group button:last-child{border-radius:0 6px 6px 0}.icon-control{width:34px;padding:0;font-size:17px;font-weight:400}.pct{height:34px;min-width:52px;border-block:1px solid var(--line-strong);display:inline-flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:var(--fg-3);background:var(--well)}
+  .tiles{display:flex;gap:8px;padding:8px 18px;border-bottom:1px solid var(--line);background:var(--bg);overflow-x:auto;flex:none}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px 10px;min-width:max-content;display:flex;align-items:baseline;gap:8px;font-size:12px}
   .tile .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3)}
   .tile .v{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums} .tile .s{font-size:11px;color:var(--fg-3)}
   .tile.hot{border-color:var(--warn-mark);background:var(--warn-quiet)} .tile.hot .v{color:var(--warn)}
-  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--fg-2);margin:10px 0} .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend{display:grid;grid-template-columns:1fr 1fr;gap:7px 14px;font-size:12.5px;color:var(--fg-2);margin:8px 0 14px}.legend span{display:flex;align-items:center;gap:7px}
   .sw{width:11px;height:11px;border-radius:50%;border:2px solid var(--line-strong);background:var(--card);flex:none}
-  .sw.done{background:var(--ok-mark);border-color:var(--ok-mark)} .sw.active{background:var(--info-mark);border-color:var(--info-mark);box-shadow:0 0 0 3px var(--info-quiet)}
+  .sw.done{background:var(--ok-mark);border-color:var(--ok-mark)} .sw.active{background:var(--info-mark);border-color:var(--info-mark)}
   .sw.you{background:var(--warn-mark);border-color:var(--warn-mark)} .sw.proposed{background:var(--accent);border-color:var(--accent)} .sw.never{background:transparent;border-style:dashed}
   .sw.avail{border-color:var(--fg-2);border-width:2.5px} .sw.locked{border-style:dashed}
-  .lay{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;font-weight:600;padding:0 5px;border-radius:3px;border:1px solid var(--line);color:var(--fg-3);background:var(--well);display:inline-block;vertical-align:middle;line-height:1.5;margin:0 4px 1px 0}
+  .lay{font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;font-weight:600;padding:1px 5px;border-radius:3px;border:1px solid var(--line);color:var(--fg-3);background:var(--well);display:inline-block;vertical-align:middle;line-height:1.5;margin:0 4px 1px 0}
   .lay.frontend{color:var(--info);border-color:var(--info-quiet);background:var(--info-quiet)} .lay.backend{color:var(--fg-2);border-color:var(--line-strong)}
   .lay.both{color:var(--accent);border-color:var(--accent-quiet);background:var(--accent-quiet)} .lay.wiring{color:var(--warn);border-color:var(--warn-quiet);background:var(--warn-quiet)}
-  /* ─ workspace: the canvas IS the page; the drawer floats over it ─ */
-  .work{position:relative;flex:1;min-height:0}
-  .canvas{position:absolute;inset:0;overflow:auto;background:
-    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--fg) 7%, transparent) 1px, transparent 0) 0 0/22px 22px, var(--bg)}
+  .work{display:grid;grid-template-columns:minmax(0,1fr) 420px;flex:1;min-height:0;overflow:hidden}.work.panel-closed{grid-template-columns:minmax(0,1fr) 0}
+  .canvas{min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;background:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px),var(--bg);background-size:24px 24px;cursor:grab}
+  .canvas:active{cursor:grabbing}
   .tree{display:block;font-family:var(--sans);transform-origin:0 0}
-  .drawer{position:absolute;top:14px;right:14px;width:min(400px, calc(100% - 28px));max-height:calc(100% - 28px);overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 32px rgba(11,15,25,.16);padding:14px 16px 20px;font-size:13.5px;z-index:2}
+  .drawer{min-width:0;overflow:auto;background:var(--card);border-left:1px solid var(--line);padding:18px 20px 28px;font-size:13.5px}
   .drawer[hidden]{display:none}
-  .dtop{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px}
-  .drawer h2{font-size:16px;margin:0;line-height:1.3;font-weight:600}
-  #drawer-close{padding:0 8px;line-height:1.4;font-size:16px}
-  .drawer .hint{color:var(--fg-3);font-size:12.5px;margin:0 0 8px}
+  .dtop{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line);position:sticky;top:-18px;background:var(--card);z-index:1;padding-top:18px}
+  .drawer h2{font-size:18px;margin:0;line-height:1.25;font-weight:650;letter-spacing:-.015em;text-wrap:balance}
+  #drawer-close{width:34px;padding:0;font-size:17px;line-height:1;flex:none}
+  .drawer .hint{color:var(--fg-2);font-size:13px;margin:0 0 10px;max-width:65ch}
   .dh{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px} .eb2{font-family:var(--mono);font-size:11px;color:var(--fg-3)}
-  .dnav{display:flex;gap:6px;margin:0 0 10px;flex-wrap:wrap}
+  .key-section{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.key-section h3{font-size:13px;margin:0 0 8px;font-weight:650}.key-list{display:grid;gap:8px;margin:0}.key-row{display:grid;grid-template-columns:92px 1fr;gap:12px;align-items:start}.key-row dt{font:600 11px/1.5 var(--mono);color:var(--fg-3)}.key-row dd{margin:0;color:var(--fg-2);font-size:12.5px}.sample-line{display:inline-block;width:30px;border-top:2px solid var(--line-strong);vertical-align:middle;margin-right:5px}.sample-line.req-open{border-color:var(--accent);border-top-style:dashed}.sample-line.req-met{border-color:var(--ok-mark)}
+  .feature-sample{display:inline-block;width:10px;height:10px;border:1.5px solid var(--line-strong);border-radius:2px;vertical-align:-1px;margin-right:3px;background:var(--card)}.feature-sample.done{background:var(--fg-3)}.feature-sample.frontend{border-color:var(--info-mark)}.feature-sample.frontend.done{background:var(--info-mark)}.feature-sample.both{border-color:var(--accent)}.feature-sample.both.done{background:var(--accent)}.feature-sample.wiring{border-color:var(--warn-mark)}.feature-sample.wiring.done{background:var(--warn-mark)}.doc-rule{display:inline-block;width:48px;height:4px;background:linear-gradient(90deg,var(--fg-3) 60%,var(--line-strong) 60%);border-radius:2px;vertical-align:2px;margin-right:5px}
 
-  /* ─ svg nodes ─ */
+  /* Roadmap map */
   .tree .spine{stroke:var(--line-strong);stroke-width:2.5}
   .tree .te{fill:none;stroke:var(--line-strong);stroke-width:1.5}
-  .tree .rq{fill:none;stroke:var(--accent);stroke-width:1.75;stroke-dasharray:5 4;opacity:0;pointer-events:none;transition:opacity .15s}
+  .tree .rq{fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:5 4;opacity:0;pointer-events:none}
   .tree .rq.met{stroke:var(--ok-mark)} .tree .rq.on{opacity:.95} .tree.show-all .rq{opacity:.45} .tree.show-all .rq.on{opacity:1}
-  @media (prefers-reduced-motion: reduce){.tree .rq{transition:none}}
-  .tree .nd{cursor:pointer} .tree .nd:hover .bx{filter:brightness(.97)} .tree .nd:focus{outline:none} .tree .nd:focus-visible .bx{stroke:var(--accent);stroke-width:2.5}
-  .tree .bx{fill:var(--card);stroke:var(--line-strong);stroke-width:1.5}
-  .tree .tt{fill:var(--fg);font-size:12.5px;font-weight:500} .tree .phase .tt{font-size:13.5px;font-weight:600}
+  .tree .nd{cursor:pointer}.tree .nd:hover{text-decoration:none}.tree .nd:hover .bx{fill:var(--well);stroke:var(--fg-3)}.tree .nd:focus{outline:none}.tree .nd:focus-visible .bx{stroke:var(--accent);stroke-width:2.5}
+  .tree .bx{fill:var(--card);stroke:var(--line-strong);stroke-width:1.25}
+  .tree .tt{fill:var(--fg);font-size:13.5px;font-weight:620;letter-spacing:-.01em}.tree .phase .tt{font-size:15px;font-weight:680}
   .tree .eb{fill:var(--fg-3);font-family:var(--mono);font-size:9.5px;letter-spacing:.06em}
-  .tree .meta{fill:var(--fg-3);font-family:var(--mono);font-size:9.5px}
+  .tree .state{fill:var(--fg-3);font-family:var(--mono);font-size:9px;font-weight:650;letter-spacing:.06em}.tree .done .state{fill:var(--ok)}.tree .active .state{fill:var(--info)}.tree .you .state{fill:var(--warn)}.tree .proposed .state{fill:var(--accent)}
+  .tree .meta{fill:var(--fg-3);font-family:var(--mono);font-size:9px;font-variant-numeric:tabular-nums}
   .tree .info{font-family:var(--mono);font-size:9.5px;fill:var(--fg-3)} .tree .info.done{fill:var(--ok)} .tree .info.active{fill:var(--info)} .tree .info.you{fill:var(--warn)} .tree .info.proposed{fill:var(--accent)} .tree .info.never{fill:var(--fg-4)}
   .tree .pc{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;font-weight:600;fill:var(--fg-3)}
   .tree .pc.done{fill:var(--ok)} .tree .pc.active{fill:var(--info)} .tree .pc.you{fill:var(--warn)} .tree .pc.proposed{fill:var(--accent)}
   .tree .st{fill:var(--card);stroke:var(--line-strong);stroke-width:2}
   .tree .done .st{fill:var(--ok-mark);stroke:var(--ok-mark)} .tree .active .st{fill:var(--info-mark);stroke:var(--info-mark)}
   .tree .you .st{fill:var(--warn-mark);stroke:var(--warn-mark)} .tree .proposed .st{fill:var(--accent);stroke:var(--accent)} .tree .never .st{stroke-dasharray:2 2}
-  .tree .done .bx{fill:color-mix(in srgb, var(--ok-mark) 9%, var(--card));stroke:color-mix(in srgb, var(--ok-mark) 55%, var(--line-strong))}
-  .tree .active .bx{fill:color-mix(in srgb, var(--info-mark) 10%, var(--card));stroke:var(--info-mark);stroke-width:2}
-  .tree .you .bx{fill:color-mix(in srgb, var(--warn-mark) 12%, var(--card));stroke:var(--warn-mark);stroke-width:2}
-  .tree .proposed .bx{fill:color-mix(in srgb, var(--accent) 9%, var(--card));stroke:var(--accent);stroke-dasharray:5 3}
+  .tree .done .bx{stroke:color-mix(in srgb,var(--ok-mark) 45%,var(--line-strong))}
+  .tree .active .bx{fill:var(--info-quiet);stroke:var(--info-mark);stroke-width:2}
+  .tree .you .bx{fill:var(--warn-quiet);stroke:var(--warn-mark);stroke-width:2}
+  .tree .proposed .bx{stroke:var(--accent);stroke-dasharray:5 3}
   .tree .never .bx{stroke-dasharray:3 3;fill:transparent} .tree .never .tt{fill:var(--fg-3)}
   .tree .planned.locked .bx{stroke-dasharray:4 3} .tree .planned.locked .tt{fill:var(--fg-2)}
   .tree .planned.avail .bx{stroke:var(--fg-2);stroke-width:2}
   .tree .phase .bx{stroke-width:2}
-  .tree .nd.sel .bx{stroke:var(--accent);stroke-width:3;stroke-dasharray:none;filter:drop-shadow(0 0 6px var(--accent-quiet))}
-  .tree .nd.dim .bx,.tree .nd.dim text,.tree .nd.dim .st,.tree .nd.dim .fq,.tree .nd.dim .dpt{opacity:.35}
+  .tree .nd.sel .bx{stroke:var(--accent);stroke-width:3;stroke-dasharray:none}.tree .nd.rel:not(.sel) .bx{stroke:var(--accent);stroke-width:1.75}
   .tree .fq{fill:var(--card);stroke:var(--fg-4);stroke-width:1.2}
   .tree .fq.frontend{stroke:var(--info-mark)} .tree .fq.both{stroke:var(--accent)} .tree .fq.wiring{stroke:var(--warn-mark)} .tree .fq.backend{stroke:var(--fg-3)} .tree .fq.docs,.tree .fq.proof{stroke:var(--fg-4)}
   .tree .fq.done{fill:var(--fg-3)} .tree .fq.frontend.done{fill:var(--info-mark)} .tree .fq.both.done{fill:var(--accent)} .tree .fq.wiring.done{fill:var(--warn-mark)} .tree .fq.backend.done{fill:var(--fg-3)} .tree .fq.docs.done,.tree .fq.proof.done{fill:var(--fg-4)}
   .tree .fq-more{fill:var(--fg-3);font-family:var(--mono);font-size:9px}
-  /* the doc-progress tick: a hairline, muted in both themes — it must read as a hint, never as a second status */
+  /* The doc-progress rule is deliberately quiet and is explained in the guide. */
   .tree .dpt{fill:var(--line-strong)} .tree .dpt.on{fill:var(--fg-3)}
   .tree .flag rect{fill:var(--well);stroke:var(--line)} .tree .flag circle{fill:var(--ok-mark)} .tree .flag text{fill:var(--fg-2);font-size:11.5px}
   .tree .today line{stroke:var(--accent);stroke-width:2;stroke-dasharray:6 5} .tree .today circle{fill:var(--accent)} .tree .today text{fill:var(--accent);font-family:var(--mono);font-size:10.5px;letter-spacing:.06em}
 
-  /* ─ drawer fragments ─ */
+  /* Inspector content */
   .chip{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
   .chip.done{background:var(--ok-quiet);color:var(--ok)} .chip.active{background:var(--info-quiet);color:var(--info)} .chip.you{background:var(--warn-quiet);color:var(--warn)}
   .chip.planned{background:var(--well);color:var(--fg-3);border-color:var(--line)} .chip.proposed{background:var(--accent-quiet);color:var(--accent)} .chip.never{color:var(--fg-3);border-color:var(--line-strong);border-style:dashed}
@@ -900,7 +920,7 @@ const CSS = String.raw`
   .fdocs .dna{margin:2px 0 0;font-size:12px;color:var(--fg-4);font-style:italic}
   .note{margin:10px 0 0;padding:9px 12px;border-radius:8px;background:var(--well);border:1px solid var(--line);font-size:12.5px;color:var(--fg-2)}
   .note.you{border-color:var(--warn-mark);background:var(--warn-quiet)} .note.you b{color:var(--warn)}
-  footer{padding:5px 16px;border-top:1px solid var(--line);font-size:11px;color:var(--fg-3);background:var(--card);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  footer{padding:5px 18px;border-top:1px solid var(--line);font-size:10.5px;color:var(--fg-3);background:var(--card);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
 `;
 
 const JS = String.raw`
@@ -910,25 +930,47 @@ const JS = String.raw`
   var canvas = document.getElementById('canvas-wrap');
   var drawer = document.getElementById('drawer-body');
   var panel = document.getElementById('drawer');
+  var work = document.getElementById('work');
   var aboutBtn = document.getElementById('about');
   var aboutHtml = drawer.innerHTML;
-  function openPanel(){ panel.hidden = false; }
-  function closePanel(){ panel.hidden = true; aboutBtn.setAttribute('aria-pressed', 'false'); }
   var title = document.getElementById('drawer-title');
   var baseW = parseFloat(svg.getAttribute('width'));
   var baseH = parseFloat(svg.getAttribute('height'));
   var scale = 1;
   var selected = null;
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   function nodes(){ return svg.querySelectorAll('.nd'); }
   function edges(){ return svg.querySelectorAll('.rq'); }
+  function openPanel(){ panel.hidden = false; work.classList.remove('panel-closed'); aboutBtn.setAttribute('aria-expanded', 'true'); }
   function edgeOn(key, on){
     edges().forEach(function(e){ if (e.getAttribute('data-from') === key || e.getAttribute('data-to') === key) e.classList.toggle('on', on); });
   }
   function clearHover(){ edges().forEach(function(e){ e.classList.remove('on'); }); if (selected) edgeOn(selected, true); }
+  function clearSelection(){
+    selected = null;
+    nodes().forEach(function(n){ n.classList.remove('sel'); n.classList.remove('rel'); });
+    edges().forEach(function(e){ e.classList.remove('on'); });
+    if (history.replaceState) history.replaceState(null, '', location.pathname + location.search);
+  }
+  function showGuide(){
+    clearSelection();
+    title.textContent = 'How to read this roadmap';
+    drawer.innerHTML = aboutHtml;
+    drawer.scrollTop = 0;
+    openPanel();
+    aboutBtn.setAttribute('aria-pressed', 'true');
+  }
+  function closePanel(){
+    clearSelection();
+    panel.hidden = true;
+    work.classList.add('panel-closed');
+    aboutBtn.setAttribute('aria-pressed', 'false');
+    aboutBtn.setAttribute('aria-expanded', 'false');
+  }
   function select(key, scroll){
     if (!data[key]) return;
     selected = key;
-    nodes().forEach(function(n){ n.classList.toggle('sel', n.getAttribute('data-key') === key); n.classList.remove('dim'); });
+    nodes().forEach(function(n){ n.classList.toggle('sel', n.getAttribute('data-key') === key); n.classList.remove('rel'); });
     edges().forEach(function(e){ e.classList.remove('on'); });
     edgeOn(key, true);
     var related = {}; related[key] = true;
@@ -936,24 +978,19 @@ const JS = String.raw`
     data[key].unlocks.forEach(function(k){ related[k] = true; });
     (function down(k){ related[k] = true; (data[k] ? data[k].children : []).forEach(down); })(key);
     (function up(k){ var p = data[k] && data[k].parent; if (p) { related[p] = true; up(p); } })(key);
-    if (data[key].requires.length + data[key].unlocks.length > 0) {
-      nodes().forEach(function(n){ if (!related[n.getAttribute('data-key')]) n.classList.add('dim'); });
-    }
+    nodes().forEach(function(n){ if (related[n.getAttribute('data-key')]) n.classList.add('rel'); });
     openPanel();
     aboutBtn.setAttribute('aria-pressed', 'false');
     title.textContent = data[key].title;
-    var nav = '';
-    if (data[key].requires.length + data[key].unlocks.length > 0) nav = '<div class="dnav"><button type="button" id="clear-dim">Show all nodes</button></div>';
-    drawer.innerHTML = nav + data[key].html;
+    drawer.innerHTML = data[key].html;
     drawer.scrollTop = 0;
     if (history.replaceState) history.replaceState(null, '', '#' + key);
-    var cd = document.getElementById('clear-dim');
-    if (cd) cd.addEventListener('click', function(){ nodes().forEach(function(n){ n.classList.remove('dim'); }); });
     if (scroll) {
       var el = svg.querySelector('.nd[data-key="' + key + '"] .bx, .nd[data-key="' + key + '"] rect');
       if (el) {
-        var x = parseFloat(el.getAttribute('x')) * scale, y = parseFloat(el.getAttribute('y')) * scale;
-        canvas.scrollTo({ left: Math.max(0, x - canvas.clientWidth / 2 + 112 * scale), top: Math.max(0, y - canvas.clientHeight / 2 + 30 * scale), behavior: 'smooth' });
+        var x = (parseFloat(el.getAttribute('x')) + parseFloat(el.getAttribute('width')) / 2) * scale;
+        var y = (parseFloat(el.getAttribute('y')) + parseFloat(el.getAttribute('height')) / 2) * scale;
+        canvas.scrollTo({ left: Math.max(0, x - canvas.clientWidth / 2), top: Math.max(0, y - canvas.clientHeight / 2), behavior: reduceMotion ? 'auto' : 'smooth' });
       }
     }
   }
@@ -969,25 +1006,29 @@ const JS = String.raw`
     select(a.getAttribute('data-go'), true);
   });
   function applyScale(){ svg.setAttribute('width', baseW * scale); svg.setAttribute('height', baseH * scale); document.getElementById('zoom-pct').textContent = Math.round(scale * 100) + '%'; }
-  // the drawer floats over the canvas; keep the right gutter clear for it when centring a node
-  var work = document.getElementById('work');
   document.getElementById('zoom-in').addEventListener('click', function(){ scale = Math.min(2.5, scale * 1.2); applyScale(); });
   document.getElementById('zoom-out').addEventListener('click', function(){ scale = Math.max(0.15, scale / 1.2); applyScale(); });
   document.getElementById('zoom-fit').addEventListener('click', function(){ scale = Math.max(0.25, Math.min(2.5, (canvas.clientWidth - 8) / baseW)); applyScale(); });
   document.getElementById('zoom-all').addEventListener('click', function(){ scale = Math.max(0.15, Math.min(2.5, (canvas.clientWidth - 8) / baseW, (canvas.clientHeight - 8) / baseH)); applyScale(); });
   document.getElementById('zoom-100').addEventListener('click', function(){ scale = 1; applyScale(); });
   document.getElementById('drawer-close').addEventListener('click', closePanel);
-  aboutBtn.addEventListener('click', function(){ selected = null; nodes().forEach(function(n){ n.classList.remove('sel'); n.classList.remove('dim'); }); edges().forEach(function(e){ e.classList.remove('on'); }); title.textContent = 'About this roadmap'; drawer.innerHTML = aboutHtml; openPanel(); aboutBtn.setAttribute('aria-pressed', 'true'); if (history.replaceState) history.replaceState(null, '', location.pathname); });
-  window.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') closePanel(); });
+  aboutBtn.addEventListener('click', showGuide);
+  window.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') { if (selected) showGuide(); else closePanel(); } });
   var showAll = document.getElementById('show-all');
   showAll.addEventListener('click', function(){ var on = svg.classList.toggle('show-all'); showAll.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   // drag to pan
   var drag = null;
-  canvas.addEventListener('mousedown', function(ev){ if (ev.target.closest('.nd')) return; drag = { x: ev.clientX, y: ev.clientY, l: canvas.scrollLeft, t: canvas.scrollTop }; canvas.style.cursor = 'grabbing'; });
-  window.addEventListener('mousemove', function(ev){ if (!drag) return; canvas.scrollLeft = drag.l - (ev.clientX - drag.x); canvas.scrollTop = drag.t - (ev.clientY - drag.y); });
-  window.addEventListener('mouseup', function(){ drag = null; canvas.style.cursor = ''; });
+  var dragged = false;
+  canvas.addEventListener('mousedown', function(ev){ if (ev.target.closest('.nd')) return; drag = { x: ev.clientX, y: ev.clientY, l: canvas.scrollLeft, t: canvas.scrollTop }; dragged = false; });
+  window.addEventListener('mousemove', function(ev){ if (!drag) return; if (Math.abs(ev.clientX - drag.x) + Math.abs(ev.clientY - drag.y) > 4) dragged = true; canvas.scrollLeft = drag.l - (ev.clientX - drag.x); canvas.scrollTop = drag.t - (ev.clientY - drag.y); });
+  window.addEventListener('mouseup', function(){ drag = null; });
+  canvas.addEventListener('click', function(ev){
+    if (ev.target.closest('.nd')) return;
+    if (dragged) { dragged = false; return; }
+    if (selected) showGuide();
+  });
   var initial = location.hash.replace('#', '');
-  if (initial && data[initial]) select(initial, true);
+  if (initial && data[initial]) select(initial, true); else showGuide();
 })();
 `;
 
@@ -999,32 +1040,46 @@ function renderPage(roadmap: Roadmap, docs: DocBindingIndex): string {
     .join("");
   const dataJson = JSON.stringify(data).replaceAll("<", "\\u003c");
   const aboutHtml = `<p class="hint">${inline(roadmap.meta.lede)}</p>
-<div class="legend" aria-label="Legend">
-<span><i class="sw done"></i>complete</span><span><i class="sw active"></i>active</span><span><i class="sw you"></i>needs you</span><span><i class="sw avail"></i>available next</span><span><i class="sw locked"></i>locked</span><span><i class="sw proposed"></i>proposed</span><span><i class="sw never"></i>won't build / deferred</span>
-</div>
-<p class="hint">Read the plan in one direction: numbered phases run down the spine at the left, lettered parts run horizontally from each phase, and the tasks for each part run vertically beneath it. Session history stays inside each box's detail drawer. The squares inside a box are its features — one per feature, coloured by layer, filled when built — so a box reads "3 of 5 built, the missing two are wiring": <span class="lay frontend">FE</span>React only · <span class="lay backend">BE</span>BFF / kernel · <span class="lay both">BOTH</span>vertical slice · <span class="lay wiring">WIRE</span>connecting two halves that exist · <span class="lay docs">DOCS</span> · <span class="lay proof">PROOF</span>live run / measurement.</p>
-<p class="hint">Click a box for its detail; hover to light up what it <b>needs</b> and what it <b>unlocks</b> (green when the prerequisite is met, dashed when open; amber = an act only you can take). Drag to pan; zoom with the controls; <code>Esc</code> closes this panel.</p>`;
+<section class="key-section"><h3>Read the structure</h3><p class="hint">Numbered phases run down the left spine. Lettered workstreams run left to right. Each workstream's tasks stack beneath it. Select any node to inspect its full record; click blank map space to return here.</p></section>
+<section class="key-section"><h3>Node status</h3><div class="legend" aria-label="Node status legend">
+<span><i class="sw done"></i>Complete</span><span><i class="sw active"></i>Active now</span><span><i class="sw you"></i>Needs you</span><span><i class="sw avail"></i>Ready next</span><span><i class="sw locked"></i>Blocked</span><span><i class="sw proposed"></i>Proposed</span><span><i class="sw never"></i>Deferred</span>
+</div></section>
+<section class="key-section"><h3>Inside each node</h3><dl class="key-list">
+<div class="key-row"><dt><i class="feature-sample frontend done"></i><i class="feature-sample wiring"></i></dt><dd>Each square is one planned output. Filled means built; outline means open. Color names the engineering layer.</dd></div>
+<div class="key-row"><dt><span class="lay frontend">FE</span> <span class="lay backend">BE</span></dt><dd>Frontend and backend work. <span class="lay both">BOTH</span> is a vertical slice; <span class="lay wiring">WIRE</span> connects existing halves; <span class="lay docs">DOCS</span> changes authority; <span class="lay proof">PROOF</span> is measured or live evidence.</dd></div>
+<div class="key-row"><dt>S / M / L / XL</dt><dd>Estimated implementation size.</dd></div>
+<div class="key-row"><dt>7 / 9 built</dt><dd>Outputs landed at the roadmap's recorded HEAD.</dd></div>
+<div class="key-row"><dt>D325</dt><dd>A ratified decision in the decision index.</dd></div>
+<div class="key-row"><dt><i class="doc-rule"></i></dt><dd>The thin bottom rule is documentation progress: dark is complete, light is still open.</dd></div>
+</dl></section>
+<section class="key-section"><h3>Lines and controls</h3><dl class="key-list">
+<div class="key-row"><dt><i class="sample-line"></i></dt><dd>Solid gray lines show the plan hierarchy.</dd></div>
+<div class="key-row"><dt><i class="sample-line req-met"></i></dt><dd>Green dependency lines mean the prerequisite is complete.</dd></div>
+<div class="key-row"><dt><i class="sample-line req-open"></i></dt><dd>Dashed blue dependency lines are still open.</dd></div>
+</dl><p class="hint">Hover or select a node to reveal its dependencies. Drag blank space to pan. Use the toolbar to zoom. Press <code>Esc</code> once to leave a node, or again to collapse this guide.</p></section>`;
   return `<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(roadmap.meta.title)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="icon" href="data:,">
 <style>${CSS}</style>
+<a class="skip" href="#canvas-wrap">Skip to roadmap</a>
 <header class="mast">
-<div class="hd"><h1>${escapeHtml(roadmap.meta.title)}</h1><span class="eyebrow">${inline(roadmap.meta.eyebrow)} · as of ${escapeHtml(roadmap.meta.asOf)} · HEAD ${escapeHtml(roadmap.meta.head)}</span></div>
+<div class="hd"><div class="title-line"><h1>${escapeHtml(roadmap.meta.title)}</h1><span class="eyebrow">As of ${escapeHtml(roadmap.meta.asOf)} · HEAD ${escapeHtml(roadmap.meta.head)}</span></div><p>${inline(roadmap.meta.eyebrow)}</p></div>
 <div class="ctl">
-<button type="button" id="about" aria-pressed="true">Legend</button>
-<button type="button" id="show-all" aria-pressed="false">All prerequisite links</button>
-<button type="button" id="zoom-out" aria-label="Zoom out">−</button><span id="zoom-pct" class="pct">100%</span><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-fit">Fit width</button><button type="button" id="zoom-all">Fit all</button><button type="button" id="zoom-100">100%</button>
+<button type="button" id="about" aria-pressed="true" aria-expanded="true" aria-controls="drawer">Guide</button>
+<button type="button" id="show-all" aria-pressed="false">Show all dependencies</button>
+<div class="control-group" aria-label="Zoom controls"><button type="button" class="icon-control" id="zoom-out" aria-label="Zoom out">−</button><span id="zoom-pct" class="pct" aria-live="polite">100%</span><button type="button" class="icon-control" id="zoom-in" aria-label="Zoom in">+</button></div>
+<div class="control-group"><button type="button" id="zoom-fit">Fit width</button><button type="button" id="zoom-all">Overview</button><button type="button" id="zoom-100">Actual size</button></div>
 </div>
 </header>
 <div class="tiles">${tiles}</div>
-<div class="work" id="work">
-<div class="canvas" id="canvas-wrap">${svg}</div>
-<aside class="drawer" id="drawer" aria-live="polite">
-<div class="dtop"><h2 id="drawer-title">About this roadmap</h2><button type="button" id="drawer-close" aria-label="Close">×</button></div>
+<main class="work" id="work">
+<div class="canvas" id="canvas-wrap" tabindex="0" aria-label="Roadmap canvas. Drag blank space to pan.">${svg}</div>
+<aside class="drawer" id="drawer" aria-live="polite" aria-labelledby="drawer-title">
+<div class="dtop"><h2 id="drawer-title">How to read this roadmap</h2><button type="button" id="drawer-close" aria-label="Collapse inspector" title="Collapse inspector">×</button></div>
 <div id="drawer-body">${aboutHtml}</div>
 </aside>
-</div>
+</main>
 <footer>${inline(roadmap.meta.footer)}</footer>
 <script type="application/json" id="rm-data">${dataJson}</script>
 <script>${JS}</script>

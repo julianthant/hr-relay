@@ -332,6 +332,16 @@ environment-supplied.
 
 ## Conventions
 
+- **2026-09-03 — the roadmap site is a desktop master-detail operations map.**
+  `scripts/generate-roadmap.ts` owns the interface and `docs/roadmap/index.html` stays generated. The
+  command bar and plan facts sit above a scrollable map; the 420px inspector rail participates in layout
+  and never floats over nodes. Every node names its status in text, feature squares mean planned outputs
+  (fill = built, outline = open, color = layer), and the thin bottom rule alone means documentation
+  progress. Clicking blank map space leaves node detail and returns to the guide; `Esc` does the same
+  before a second `Esc` collapses the inspector. Preserve this interaction in
+  `tests/unit/roadmap/roadmap-ui.test.ts`, then run `npm run roadmap` and `npm run roadmap:check` after
+  every renderer change.
+
 - **2026-09-03 — Phase 3 task labels are execution authority, not decoration (D325).** Run 3A, then
   3B, then 3C, then 3D; one coordinator owns each part, and every immediate numbered task is one
   supervisor session. Same-number lettered tasks are one parallel wave only when they are genuinely
