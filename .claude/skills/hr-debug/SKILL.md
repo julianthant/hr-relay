@@ -13,7 +13,7 @@ The general debugging method is the global `debug` skill (gate → minimise → 
 - A fallback, default, `??`, or swallowed catch to make the run pass — this repo's rule is fail loud; the silent-failure-hunter reviewer will refuse it anyway.
 - Fixing legacy (`../hr-automation`) — it is frozen data; port with provenance, never edit.
 - Reproducing only in a fixture when the failure was live: live access is pre-authorized — go look at the page.
-- Touching another process's lock file or `.tracker-rebuild` rows by hand to "unblock".
+- Touching another process's lock file or `.tracker` rows by hand to "unblock".
 
 ## 1 · Triage — what kind of failure is it?
 
@@ -29,7 +29,7 @@ The general debugging method is the global `debug` skill (gate → minimise → 
 | "is the dry run really submit-free" / which workflows have a dry run | **Dry-run audit** → §9 |
 
 ## 2 · Selector / page-state repair (the loop — no shortcuts)
-1. Read the run's failure record (`npm run cli -- explain run <id>`) and the store's screenshots under `.tracker-rebuild/artifacts/…`; quote the exact error and the step.
+1. Read the run's failure record (`npm run cli -- explain run <id>`) and the store's screenshots under `.tracker/artifacts/…`; quote the exact error and the step.
 2. `playwright-cli -s=dbg open "<url>"` headless with Duo Autopilot (`channel: chromium`); log in with `.env` creds; `playwright-cli --raw snapshot > /tmp/s.yml`; find the TRUE anchor.
 3. Fix in the store driver / selector registry: **structural anchors first (`id`, `name`, role+accessible name), observed labels behind them; a no-match must refuse by NAME, never fall through** (`.or()` is a union under strict mode — it asserts the arms are exclusive; prefer `.first()`-settle + a pure verdict function, D213).
 4. Port from legacy only with `// ported from hr-automation@<sha> <path>`; re-verify LIVE (D150 — live beats diffing legacy).
@@ -45,7 +45,7 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 
 ## 4 · Runtime / singleton
 - BFF is ONE process (lock + pinned 3938). Compare SERVED vs TREE fingerprint: `curl -s localhost:3938/api/v1/explorer | jq '.[].contractFingerprint'` vs `src/domain/workflow/generated-build-manifest.ts` after `npm run build:manifest`. Mismatch → restart the BFF; every run it planned is unclaimable.
-- `ls .tracker-rebuild/locks/` + `kill -0 <pid>` — a dead holder's lock is observed, never rewritten by you.
+- `ls .tracker/locks/` + `kill -0 <pid>` — a dead holder's lock is observed, never rewritten by you.
 - Worker wedged at boot with its own old claim → D200 (lease is the evidence; sweep by workerId). A `claimed` row with an `attempting` intent is refused at startup by design — that is a §4.1 recovery, not a restart.
 
 ## 5 · Identity / checkpoint

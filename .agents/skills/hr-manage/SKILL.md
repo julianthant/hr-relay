@@ -18,15 +18,16 @@ Browser operations read `~/.agents/skill-library/playwright-cli/REFERENCE.md`. P
 
 ```bash
 playwright-cli list; playwright-cli close-all                # orphan Chromiums first
-ls .tracker-rebuild/locks/                                    # D181 role locks: server / worker — a stale pid here explains "already running"
+ls .tracker/locks/                                    # D181 role locks: server / worker — a stale pid here explains "already running"
 npm run dashboard                                              # ONE terminal: BFF :3938 + vite :5174 (Ctrl+C stops both); BFF alone: npm run cli -- dashboard
 curl -s localhost:3938/api/v1/bootstrap | head -c 200          # ECONNREFUSED = not up yet; wait, don't retry the run
 curl -s localhost:3938/api/v1/explorer | jq '.[].contractFingerprint' | head   # SERVED fingerprints
 npm run build:manifest && git diff --quiet src/domain/workflow/generated-build-manifest.ts || echo "TREE MOVED — restart the BFF"
 npm run cli -- worker <workflow-id> [--drain]                  # one worker per workflow; parallelism = more workers / more queued items, see §3
-npm run cli -- storage doctor                                  # authority + backup health before a batch
+npm run cli -- storage doctor                                  # authority + span reconciliation (+ backup report) before a batch
+npm run cli -- storage backup                                  # the ONLY way a verified SQLite backup is written (D322)
 ```
-The BFF is a singleton (pinned port + lock). A BFF started before a descriptor edit serves the OLD fingerprint and `run-executor` refuses every run it plans — restart it (hr-debug §stale-bff). Isolation: `.tracker-rebuild/`, ports 3938/5174, session namespace `hrauto-rebuild` — never legacy's.
+The BFF is a singleton (pinned port + lock). A BFF started before a descriptor edit serves the OLD fingerprint and `run-executor` refuses every run it plans — restart it (hr-debug §stale-bff). Isolation: `.tracker/`, ports 3938/5174, session namespace `hrauto-rebuild` — never legacy's.
 
 ## 2 · Start a run (one subject)
 
@@ -50,7 +51,7 @@ The BFF is a singleton (pinned port + lock). A BFF started before a descriptor e
 |---|---|
 | What happened in run X | `npm run cli -- explain run <traceId\|runId> [--json]` — authority, not logs |
 | Live timeline / queue / gate | dashboard (playwright-cli snapshot + screenshot); the run-detail panel holds the failure record + evidence receipt |
-| Raw events | `.tracker-rebuild/spans/*.jsonl` (grep run id); a torn last line is an in-flight append, not corruption |
+| Raw events | `.tracker/spans/*.jsonl` (grep run id); a torn last line is an in-flight append, not corruption |
 | Durable truth | `run_checkpoints`, `gate_results`, `write_intents`, `write_attempts`, `durable_outbox` — what a dry run must leave at 0 |
 | Alerts | the notification bell / inbox (storage-degraded, needs-you); the storage banner for authority-unavailable |
 | Health | `npm run cli -- storage doctor [--json]`; worker log lines; locks dir |
@@ -66,8 +67,8 @@ States from authority (`queued · claimed · running · parked · done · failed
 
 ## 6 · Housekeeping
 
-- Stop: Ctrl+C the dashboard terminal; `--drain` a worker; `playwright-cli close-all`; confirm `.tracker-rebuild/locks/` is empty of live pids (`kill -0`).
+- Stop: Ctrl+C the dashboard terminal; `--drain` a worker; `playwright-cli close-all`; confirm `.tracker/locks/` is empty of live pids (`kill -0`).
 - Archive / activity: the archive model is append-only (v13 tables abort UPDATE/DELETE) — apply re-derives blockers in its own transaction; a refused apply is normal when a run went queued in between.
-- Backups: `storage doctor` must say healthy AND current before a real write; `storage restore --from <manifest>` only stopped-system and only when the operator says so.
+- Backups are written only on command (`storage backup`, D322) — take one before a real write; `storage doctor` reports the latest but no longer gates on it; `storage restore --from <manifest>` only stopped-system and only when the operator says so.
 - Anything that smells like a platform defect → `.agents/skill-library/hr-debug/REFERENCE.md`; a
   repeatable gotcha → tell the operator it is lesson-worthy (`/hr-lesson` is theirs).
