@@ -727,12 +727,11 @@ not touch:** `deriveRunStatus` and its two callers (A2, 2.6), the projector's `r
 any schema. **Owes:** §D330.11 #24; the kernel suites re-pointed; every command's idempotence, stale CAS
 and worker-race arms through the real kernel. **Gate:** base + `npm run test:architecture` with the guard
 active. **Deletion test:** the guard itself (#24) — red on any lifecycle SQL or mutator import outside
-the two-module literal allowlist. **Order:** fourth. **Needs:** the coordinator's ruling on operator
-`cancel` of a claimed/validating/running run (R04 report, NEEDS COORDINATOR item 1 — D330 as written
-closes the as-built version-fenced cancel of a running row; the recommended arm is a `cancelRequested`
-self-edge the worker honours at its next non-fenced boundary); until ruled, `cancel` over a claimed row
-is refused `owned-by-worker` exactly as §D330.5 says, and the ruling lands in §D330.5 before this task
-starts.
+the two-module literal allowlist. **Order:** fourth. **Cancel of a claimed run:** the coordinator ruled
+option A on 2026-09-04 and it is landed in §D330.5 (the request arm), §D330.3 (self-edge and tree sentence),
+§D330.11 #27 and the `cancelling` served status — an operator `cancel` on a `claimed`/`validating`/`running`
+row sets `cancelRequested` under CAS and the worker settles `terminal/cancelled` at its next non-fenced
+boundary; this task implements exactly that arm and owes #27.
 
 - [ ] Route CLI/dashboard start, retry, cancel, rename, archive, relaunch, D308 terminal-only
   delete/tombstone, bulk and purge commands through the run service; one typed settlement/conflict

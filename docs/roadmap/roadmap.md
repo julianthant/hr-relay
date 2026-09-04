@@ -147,6 +147,7 @@ needs:
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | 0.3 closed: D330/D331/D332 adversarially reviewed as one system (eleven fixes landed in the owning specs, one product-truth item to the coordinator), every residue dispositioned, 1.6 bound task by task with the floor + wave 2 ruling, 2.6/3.1 consumption cited · left: the coordinator's phase roll-up and the `cancel` ruling; 1.6 starts at Task 1 (the floor)
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the one product-truth item is ruled (option A) and landed inside D330 as a dated amendment; no NEEDS COORDINATOR item remains open · left: the coordinator's phase roll-up only
 
 #### 1 · Define the canonical run-record authority {#phase0-run-authority-design}
 status: done
@@ -206,6 +207,7 @@ needs:
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | closed: cross-contract adversarial review (11 fixes landed, 1 NEEDS COORDINATOR), residue checklist, 1.6 binding with the floor + wave ruling, 2.6/3.1 consumption notes; design gate green in the run worktree · left: the coordinator's `cancel` ruling in §D330.5 before 1.6 Task 4
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the twelfth finding (operator `cancel` of a claimed run) ruled option A by the coordinator and landed in §D330.3/§D330.5/§D330.11 #27; 12 of 12 closed · left: nothing
 
 ## Phase 1 · Build the platform spine {#phase-1}
 phase: Phase 1
@@ -448,6 +450,7 @@ needs:
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound every task to one seam/gate/order/proof set/deletion test in doc 01 §1.6; re-sliced into serial floor + wave 2 (`2-1`/`2-2`) + serial 3–7 after the cross-contract review proved the schema coupling · left: the coordinator's `cancel`-of-a-running-run ruling before Task 4 (R04 report, NEEDS COORDINATOR)
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the `cancel`-of-a-claimed-run ruling landed (option A, §D330.5 request arm, §D330.11 #27); no open ruling remains before Task 4 · left: implementation from Task 1
 
 #### 1 · Land the schema floor {#p1f-floor}
 status: planned
@@ -523,6 +526,7 @@ needs:
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate (doc 01 §1.6 Task 4); needs the coordinator's ruling on operator `cancel` of a claimed/running run in §D330.5 before start · left: that ruling, then implementation
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the coordinator ruled option A; the `cancelRequested` arm is in §D330.5 and this task owes §D330.11 #27 — the earlier `left:` is closed · left: implementation
 
 #### 5 · Cut over settings mutation and runtime resolution {#p1f-settings-consumers}
 status: planned

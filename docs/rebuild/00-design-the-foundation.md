@@ -496,6 +496,7 @@ catalogued defaults rather than being copied into a second persisted authority.
   roadmap nodes cite the contracts on `doc:` — no 2.6/3.1 task text contradicted the contracts; the gap
   was citation, now closed
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | Task 4 closed: the cross-contract review, the resolved-decisions checklist, the 1.6 binding and the 2.6/3.1 consumption notes are landed; no runtime code changed (D326). 0.3 closes with this task; the open item is the coordinator's `cancel` ruling, needed before 1.6 Task 4.
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the coordinator ruled the `cancel` item option A; landed as a dated amendment in ref dashboard-surfaces §D330.3, §D330.5 (the `cancelRequested` request arm, the `cancelling` served status) and §D330.11 #27. Every R04 finding is now closed in its owning spec; nothing is open before 1.6.
 
 0.3 closes only when every checkbox above has durable evidence. The execution order after it is
 **1.6 implementation → 2.6 downstream revalidation → reopened 3.1 dashboard completion**.
