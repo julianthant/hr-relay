@@ -635,6 +635,16 @@ apply at open as before — the floor is a one-time gate (§D332.1).
   `planned` guard entry; base gate green with a v29 fixture untouched by each direct read-only
   no-migrate open mode. Task 6 owns successful pre-floor backup/doctor command and manifest compatibility.
 
+
+**Continuation verification (2026-09-04, C858cc3dc R01).** Independent verification found and closed
+M9's exact older-build/zero-settings-access proof and M21's full v27/v28/v29 traversal plus negative
+controls. Test commit `d650a43b`, report/evidence `df41e0b5`, integrated by `5b1fb626`; the base gate
+passes 411 files / 5,040 tests, and assertion-only parity passes 269 tests with unchanged references.
+Seven mutation controls fail at their intended assertions. Task 1's supervisor worktree, branch and
+exact task are fully closed. [Receive proof](../coordinator/execute-phase-1-6-from-c858cc3dc/reports/r01-receive.md)
+records the limits: M3 command/manifest compatibility and M21's command-level `foreign-suffix`
+wire and upgrade repetition remain Task 6. Wave peers 2-1/2-2 started together from `d2fe05dd`.
+
 ### Task 2-1 · Implement the canonical run-record service
 <!-- roadmap: p1f-run-store -->
 

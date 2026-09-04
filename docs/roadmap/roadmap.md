@@ -466,9 +466,10 @@ builds:
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | node created: the serial floor the wave branches from (doc 01 §1.6 Task 1) · left: everything
 - 2026-09-04 | phase-1-6-authorities C161eaed0 R01 | merged the v30 floor, no-migrate preflight modes, baseline journal, protected singleton, tombstone forward shape and dashboard lock-release wrapper at `ebc41c45`; integrated typecheck/lint/coverage/manifest gate green, supervisor worktree/ref/task closed · left: wave 2 and serial Tasks 3–7
+- 2026-09-04 | execute-phase-1-6-from C858cc3dc R01 | independently verified inherited work and closed M9/M21 proof gaps at `5b1fb626`; 411 files / 5,040 tests and 269 assertion-only parity tests pass with unchanged references; supervisor lifecycle fully closed; receive proof in docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r01-receive.md · left: wave 2 and Tasks 3–7
 
 #### 2-1 · Implement the canonical run-record service {#p1f-run-store}
-status: planned
+status: active
 date: wave 2 peer · branches from the master holding Task 1's merge
 doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.3 · ref:execution-and-sessions §3
 
@@ -482,9 +483,10 @@ needs:
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | relabelled 2-1 (wave 2 peer) and bound to its seam; owes 25 of §D330.11's 26 proofs (#24 is Task 4's) · left: implementation
+- 2026-09-04 | execute-phase-1-6-from C858cc3dc R02 | started the declared wave from common verified base `d2fe05dd`; exact task/worktree/branch and allowance in docs/coordinator/execute-phase-1-6-from-c858cc3dc/supervisors.json · left: implementation, assigned proofs and complete lifecycle
 
 #### 2-2 · Implement the settings catalog and protected root {#p1f-settings-store}
-status: planned
+status: active
 date: wave 2 peer · branches from the master holding Task 1's merge
 doc: 01 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2 · ref:frontend-backend-integration §4
 
@@ -499,6 +501,7 @@ needs:
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | relabelled 2-2 (wave 2 peer) and bound to its seam; never edits `migrations.ts` or `authority-database.ts` (Task 1 landed the singleton) · left: implementation
+- 2026-09-04 | execute-phase-1-6-from C858cc3dc R03 | started the declared wave from common verified base `d2fe05dd`; exact task/worktree/branch and allowance in docs/coordinator/execute-phase-1-6-from-c858cc3dc/supervisors.json · left: implementation, assigned proofs and complete lifecycle
 
 #### 3 · Cut over executor and worker lifecycle writers {#p1f-run-writers}
 status: planned
