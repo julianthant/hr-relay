@@ -12,12 +12,6 @@ import {
   type RunDetailSectionResponse,
   type RunDetailWire,
 } from "../../domain/dashboard/run-detail.js";
-import {
-  RunReceiptComparisonTargetSchema,
-  RunReceiptComparisonWireSchema,
-  type RunReceiptComparisonTarget,
-  type RunReceiptComparisonWire,
-} from "../../domain/dashboard/run-comparison.js";
 import { StorageDoctorWireSchema, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
 import { SettingsFactsWireSchema, type SettingsFactsWire } from "../../domain/dashboard/settings.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
@@ -61,7 +55,6 @@ import {
   WIRE_ERROR_BODY,
   diagnosticBundleIdentityError,
   httpError,
-  runComparisonIdentityError,
   schemaError,
 } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
@@ -135,8 +128,6 @@ export interface DashboardQueries {
   searchRuns(query: CrossDateSearchQueryInput): Promise<CrossDateSearchPage>;
   dashboardDay(day: string): Promise<DashboardDayWire>;
   runDetail(runId: string): Promise<RunDetailWire>;
-  /** D289: compare this exact retry run with the exact receipt named by `retryOf`. */
-  runReceiptComparison(target: RunReceiptComparisonTarget): Promise<RunReceiptComparisonWire>;
   runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal): Promise<RunDetailSectionResponse>;
   /** One D137 bundle, read by its exact durable id only after the operator asks. */
   diagnosticBundle(bundleId: string, signal?: AbortSignal): Promise<DiagnosticBundleWire>;
@@ -259,28 +250,6 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         throw runIdentityError(context, "RUN_DETAIL_IDENTITY_MISMATCH", runId);
       }
       return detail;
-    },
-    async runReceiptComparison(target: RunReceiptComparisonTarget): Promise<RunReceiptComparisonWire> {
-      const parsedTarget = RunReceiptComparisonTargetSchema.parse(target);
-      const path = `/api/v1/runs/${encodeURIComponent(parsedTarget.runId)}/comparison`;
-      const comparison = parseOrThrow(
-        RunReceiptComparisonWireSchema,
-        `GET ${path}`,
-        await transport.requestJson(path),
-      );
-      if (comparison.runId !== parsedTarget.runId) {
-        throw runComparisonIdentityError(`GET ${path}`, "runId");
-      }
-      if (comparison.retryOf !== parsedTarget.retryOf) {
-        throw runComparisonIdentityError(`GET ${path}`, "retryOf");
-      }
-      if (comparison.workflowId !== parsedTarget.workflowId) {
-        throw runComparisonIdentityError(`GET ${path}`, "workflowId");
-      }
-      if (comparison.currentReceiptId !== parsedTarget.currentReceiptId) {
-        throw runComparisonIdentityError(`GET ${path}`, "currentReceiptId");
-      }
-      return comparison;
     },
     async runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal): Promise<RunDetailSectionResponse> {
       const query = cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`;

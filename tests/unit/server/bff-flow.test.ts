@@ -48,10 +48,8 @@ import {
 } from "../../../src/domain/archive/model.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
-import { DiagnosticBundleIdSchema, RunIdSchema } from "../../../src/domain/ids.js";
+import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
-import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../src/domain/trust/evidence.js";
-import { defineReceiptComparisonRegistry } from "../../../src/domain/trust/receipt-comparison.js";
 import { RunDetailSectionResponseSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
@@ -89,7 +87,6 @@ import { createReceiptService } from "../../../src/server/trust/receipt-service.
 import { createDashboardApp, type DashboardAppDeps } from "../../../src/server/dashboard/routes/api.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../src/domain/dashboard/subscription.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
-import type { RunReceiptComparisonQueryDeps } from "../../../src/server/dashboard/queries/run-comparison.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
@@ -117,7 +114,7 @@ import {
 import { HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
-import { AT, cleanReceiptOf, DAY, runRecordOf, traceOf, uuidOf } from "./helpers/dashboard-harness.js";
+import { AT, DAY, traceOf, uuidOf } from "./helpers/dashboard-harness.js";
 import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
@@ -125,8 +122,6 @@ import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-s
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
-import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
-import { separationsDescriptor } from "../../helpers/registered-workflows.js";
 
 interface Harness {
   readonly app: ReturnType<typeof createDashboardApp>;
@@ -210,28 +205,11 @@ const OPERATOR_JSON_HEADERS = Object.freeze({
   "content-type": "application/json",
 });
 
-const COMPARISON_REGISTRY = defineReceiptComparisonRegistry(separationsDescriptor, {
-  workflowId: "separations",
-  facts: [{
-    id: "separations.action.document-number",
-    label: "Document number",
-    disclosure: { posture: "allow", classification: "safe-diagnostic", transform: "allow" },
-    binding: {
-      collection: "observations",
-      sourceKinds: ["system", "checkpoint"],
-      nodeId: "resolve-action",
-      taskId: "kuali/search-separation-action",
-      fieldPath: "documentNumber",
-    },
-  }],
-});
-
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
 
 function harness(options: {
-  readonly receiptComparison?: RunReceiptComparisonQueryDeps;
   readonly requestIdentity?: RequestIdentityCheckpoint;
   readonly intake?: IntakeService;
   /** Wrap the real start-plan service (e.g. to observe whether admission reached it). */
@@ -488,7 +466,6 @@ function harness(options: {
           },
         }),
     runDetail: runDetailDeps,
-    receiptComparison: options.receiptComparison,
     archive: archiveQueryDeps({ database, clock, appVersion: "0.1.0", descriptors: [fixtureDescriptor] }),
     commands,
     startPlans,
@@ -550,50 +527,6 @@ function settingsAuthoritySnapshot(h: Harness, commandId: string) {
     runtimeGeneration: h.database.authority.runtimeConfig.get()?.generation,
     authorityGeneration: h.database.getMeta().authorityGeneration,
   };
-}
-
-function comparisonRunPair(): readonly [RunRecord, RunRecord] {
-  const prior = runRecordOf({ seed: 641, workflow: "separations" });
-  const currentBase = runRecordOf({ seed: 642, workflow: "separations" });
-  return [prior, RunRecordSchema.parse({
-    ...currentBase,
-    envelope: {
-      ...currentBase.envelope,
-      itemId: prior.envelope.itemId,
-      retryOf: prior.envelope.runId,
-      attempt: 2,
-    },
-  })];
-}
-
-function comparisonReceipt(run: RunRecord, value: string): RunEvidenceReceipt {
-  return RunEvidenceReceiptSchema.parse({
-    ...cleanReceiptOf({ seed: Number(String(run.envelope.runId).slice(0, 4)), workflow: "separations" }),
-    runId: run.envelope.runId,
-    workflowId: run.envelope.workflow,
-    attempt: run.envelope.attempt,
-    retryOf: run.envelope.retryOf === undefined
-      ? { state: "absent" }
-      : { state: "present", value: run.envelope.retryOf },
-    observations: [{
-      id: uuidOf(run.envelope.attempt + 8640),
-      field: "documentNumber",
-      mandatory: true,
-      source: {
-        kind: "system",
-        taskId: "kuali/search-separation-action",
-        observedAt: "2026-08-28T12:00:00.000Z",
-      },
-      state: "satisfied",
-      value: {
-        key: "documentNumber",
-        state: "allowed",
-        classification: "safe-diagnostic",
-        transform: "allow",
-        value,
-      },
-    }],
-  });
 }
 
 async function captureDiagnosticBundle(h: Harness, runId = RUN_ID) {
@@ -2575,116 +2508,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(
       timeline.events.filter(({ label }) => label === "probe").map(({ state }) => state),
       ["done"],
-    );
-  });
-
-  it("serves the exact comparison through createDashboardApp and the typed client", async () => {
-    const [prior, current] = comparisonRunPair();
-    const priorReceipt = comparisonReceipt(prior, "4502");
-    const currentReceipt = comparisonReceipt(current, "4537");
-    const runs = new Map<string, RunRecord>([
-      [prior.envelope.runId, prior],
-      [current.envelope.runId, current],
-    ]);
-    const receipts = new Map<string, readonly RunEvidenceReceipt[]>([
-      [prior.envelope.runId, [priorReceipt]],
-      [current.envelope.runId, [currentReceipt]],
-    ]);
-    const served = harness({
-      receiptComparison: {
-        registry: COMPARISON_REGISTRY,
-        authority: {
-          getRun: (runId) => runs.get(runId),
-          listReceiptsByRun: (runId) => receipts.get(runId) ?? [],
-        },
-      },
-    });
-    const servedClient = createDashboardClient({
-      baseUrl: "http://bff.test",
-      fetchImpl: async (input, init) => served.app.request(input, init),
-    });
-    const comparisonTarget = {
-      runId: current.envelope.runId,
-      retryOf: prior.envelope.runId,
-      workflowId: current.envelope.workflow,
-      currentReceiptId: currentReceipt.receiptId,
-    };
-
-    assert.deepEqual(await servedClient.runReceiptComparison(comparisonTarget), {
-      wireVersion: 1,
-      runId: current.envelope.runId,
-      retryOf: prior.envelope.runId,
-      workflowId: "separations",
-      currentReceiptId: currentReceipt.receiptId,
-      priorReceiptId: priorReceipt.receiptId,
-      facts: [{
-        state: "changed",
-        factId: "separations.action.document-number",
-        label: "Document number",
-        before: "4502",
-        after: "4537",
-      }],
-    });
-
-    await assert.rejects(
-      servedClient.runReceiptComparison({ ...comparisonTarget, runId: RunIdSchema.parse(uuidOf(9991)) }),
-      (error: unknown) => error instanceof DashboardClientError
-        && error.status === 404
-        && error.code === "TARGET_NOT_FOUND",
-    );
-
-    const unavailable = harness();
-    const unavailableClient = createDashboardClient({
-      baseUrl: "http://bff.test",
-      fetchImpl: async (input, init) => unavailable.app.request(input, init),
-    });
-    await assert.rejects(
-      unavailableClient.runReceiptComparison(comparisonTarget),
-      (error: unknown) => error instanceof DashboardClientError
-        && error.status === 409
-        && error.code === "SECTION_UNAVAILABLE",
-    );
-
-    const refused = harness({
-      receiptComparison: {
-        registry: COMPARISON_REGISTRY,
-        authority: {
-          getRun: (runId) => runs.get(runId),
-          listReceiptsByRun: (runId) => runId === current.envelope.runId ? [] : [priorReceipt],
-        },
-      },
-    });
-    const refusedClient = createDashboardClient({
-      baseUrl: "http://bff.test",
-      fetchImpl: async (input, init) => refused.app.request(input, init),
-    });
-    await assert.rejects(
-      refusedClient.runReceiptComparison(comparisonTarget),
-      (error: unknown) => error instanceof DashboardClientError
-        && error.status === 409
-        && error.code === "COMPARISON_IDENTITY_REFUSED",
-    );
-
-    const broken = harness({
-      receiptComparison: {
-        registry: COMPARISON_REGISTRY,
-        authority: {
-          getRun: (runId) => runs.get(runId),
-          listReceiptsByRun: () => {
-            throw new Error("receipt database read exploded");
-          },
-        },
-      },
-    });
-    const brokenClient = createDashboardClient({
-      baseUrl: "http://bff.test",
-      fetchImpl: async (input, init) => broken.app.request(input, init),
-    });
-    await assert.rejects(
-      brokenClient.runReceiptComparison(comparisonTarget),
-      (error: unknown) => error instanceof DashboardClientError
-        && error.status === 500
-        && error.code === "INTERNAL_FAILURE",
     );
   });
 

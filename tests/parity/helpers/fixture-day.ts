@@ -40,19 +40,12 @@ import {
   type TimelineStepWire,
 } from "../../../src/domain/dashboard/run-detail.js";
 import {
-  RunReceiptComparisonWireSchema,
-  type RunReceiptComparisonWire,
-} from "../../../src/domain/dashboard/run-comparison.js";
-import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
-import {
   DiagnosticBundleWireSchema,
   type DiagnosticBundleWire,
 } from "../../../src/domain/dashboard/diagnostic-bundle.js";
 import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
 import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
-import {
-} from "../../../src/dashboard/client/commands.js";
 import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../src/domain/dashboard/start-plan.js";
 import {
   SETTINGS_SYSTEM_HOSTS_SECTION_ID,
@@ -658,9 +651,6 @@ export const FIXTURE_IDS = Object.freeze({
   groupOf12: uuidOf(50),
   groupOf13: uuidOf(70),
   memberRun: uuidOf(31),
-  /** D289 fixture-only deep links keep ordinary queue references byte-stable. */
-  comparisonRun: uuidOf(90),
-  comparisonRefusedRun: uuidOf(91),
   /** command-route behavior selectors for the fixture BFF */
   conflictRun: uuidOf(5),
   rejectedRun: uuidOf(7),
@@ -922,18 +912,6 @@ export const FIXTURE_RUN_DETAILS: Readonly<Record<string, RunDetailWire>> = Obje
       },
     ],
   }),
-  [FIXTURE_IDS.comparisonRun]: detailOf({
-    seed: 90, panelKind: "run", title: "Separations retry", status: "done", workflowId: "separations", attempt: 2,
-    gate: NO_GATE,
-    outcome: { state: "terminal", result: "verified-done", completedAt: at(58) },
-    timeline: [{ seed: 90, minute: 57, label: "verify separation", state: "done" }],
-  }),
-  [FIXTURE_IDS.comparisonRefusedRun]: detailOf({
-    seed: 91, panelKind: "run", title: "Separations retry", status: "done", workflowId: "separations", attempt: 2,
-    gate: NO_GATE,
-    outcome: { state: "terminal", result: "verified-done", completedAt: at(58) },
-    timeline: [{ seed: 91, minute: 57, label: "verify separation", state: "done" }],
-  }),
 });
 
 /* ── lazy sections ───────────────────────────────────────────────────────── */
@@ -1009,49 +987,6 @@ const RECEIPT_MISSING = {
   state: "missing",
   reason: "this fixture adapter holds no authority rows to derive a receipt from",
 } as const;
-
-function comparisonReceipt(seed: number) {
-  return RunEvidenceReceiptSchema.parse({
-    composition: 2,
-    receiptId: uuidOf(seed + 1000),
-    runId: uuidOf(seed),
-    traceId: traceOf(seed),
-    workflowId: "separations",
-    attempt: 2,
-    generatedAt: at(58),
-    descriptorFingerprint: separationsDescriptor.contractFingerprint,
-    configFingerprint: CONFIG_FINGERPRINT,
-    retryOf: { state: "present", value: uuidOf(89) },
-    failure: { state: "absent" },
-    input: [],
-    observations: [],
-    decisions: [],
-    actions: [],
-    verification: [],
-    output: [],
-    reuse: [],
-    warnings: [],
-    confidence: "verified",
-    result: "verified-done",
-  });
-}
-
-export const FIXTURE_RECEIPT_COMPARISONS: Readonly<Record<string, RunReceiptComparisonWire>> = Object.freeze({
-  [FIXTURE_IDS.comparisonRun]: RunReceiptComparisonWireSchema.parse({
-    wireVersion: 1,
-    runId: FIXTURE_IDS.comparisonRun,
-    retryOf: uuidOf(89),
-    workflowId: "separations",
-    currentReceiptId: uuidOf(1090),
-    priorReceiptId: uuidOf(1089),
-    facts: [
-      { state: "added", factId: "separations.observation.document-status", label: "Document status", after: "Complete" },
-      { state: "removed", factId: "separations.observation.assignment-note", label: "Assignment note", before: "Pending review" },
-      { state: "changed", factId: "separations.observation.effective-date", label: "Effective date", before: "2026-08-01", after: "2026-08-02" },
-      { state: "withheld", factId: "separations.observation.protected-reference", label: "Protected reference" },
-    ],
-  }),
-});
 
 /** The failed run's record, in the strict already-redacted wire shape (D142). */
 function failureDetail(runId: string, failureId: string, seed: number) {
@@ -1471,16 +1406,6 @@ export const FIXTURE_SECTIONS: Readonly<Record<string, Readonly<Record<string, R
     { label: "Selection", valueRedacted: "13 members" },
     { label: "Active status", valueRedacted: "mixed" },
   ]),
-  [FIXTURE_IDS.comparisonRun]: sectionsOf(90, [
-    { level: "info", minute: 57, message: "Separations retry completed" },
-  ], [
-    { label: "Status", valueRedacted: "complete" },
-  ], undefined, undefined, undefined, undefined, comparisonReceipt(90)),
-  [FIXTURE_IDS.comparisonRefusedRun]: sectionsOf(91, [
-    { level: "info", minute: 57, message: "Separations retry completed" },
-  ], [
-    { label: "Status", valueRedacted: "complete" },
-  ], undefined, undefined, undefined, undefined, comparisonReceipt(91)),
 });
 
 /* ── bootstrap ───────────────────────────────────────────────────────────── */

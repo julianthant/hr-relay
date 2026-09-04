@@ -653,7 +653,7 @@ type EvidenceReceiptRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<RunEvidenceReceipt>;
   get(receiptId: string): RunEvidenceReceipt | undefined;
   findByRun(runId: string): RunEvidenceReceipt | undefined;
-  /** D289: cardinality-preserving exact-run read for receipt comparison. */
+  /** Cardinality-preserving exact-run read for diagnostics and repository checks. */
   listByRun(runId: string): readonly RunEvidenceReceipt[];
 }>;
 

@@ -9,11 +9,11 @@ import { cleanReceiptOf, runRecordOf, uuidOf } from "./server/helpers/dashboard-
 
 describe("evidence receipt repository", () => {
   it("filters multiple real SQLite receipt rows by exact run with stable cardinality", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-receipt-comparison-"));
+    const root = mkdtempSync(join(tmpdir(), "hrauto-evidence-receipt-"));
     const database = AuthorityDatabase.open({
       path: join(root, "authority.sqlite"),
       busyTimeoutMs: 250,
-      migrationOwner: "receipt-comparison-test",
+      migrationOwner: "evidence-receipt-test",
     }, manualClock(new Date("2026-08-28T12:00:00.000Z")));
 
     try {
@@ -39,11 +39,11 @@ describe("evidence receipt repository", () => {
   });
 
   it("returns no receipt for a well-formed absent run in populated SQLite authority", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-receipt-comparison-"));
+    const root = mkdtempSync(join(tmpdir(), "hrauto-evidence-receipt-"));
     const database = AuthorityDatabase.open({
       path: join(root, "authority.sqlite"),
       busyTimeoutMs: 250,
-      migrationOwner: "receipt-comparison-test",
+      migrationOwner: "evidence-receipt-test",
     }, manualClock(new Date("2026-08-28T12:00:00.000Z")));
 
     try {
@@ -60,11 +60,11 @@ describe("evidence receipt repository", () => {
   });
 
   it("refuses a list read whose run id is not exact", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-receipt-comparison-"));
+    const root = mkdtempSync(join(tmpdir(), "hrauto-evidence-receipt-"));
     const database = AuthorityDatabase.open({
       path: join(root, "authority.sqlite"),
       busyTimeoutMs: 250,
-      migrationOwner: "receipt-comparison-test",
+      migrationOwner: "evidence-receipt-test",
     }, manualClock(new Date("2026-08-28T12:00:00.000Z")));
 
     try {

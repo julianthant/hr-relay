@@ -569,13 +569,6 @@ const GENERIC_WORKFLOW_ID_ALLOWLIST: readonly GenericWorkflowIdAllowlistEntry[] 
   { file: "src/server/dry-run-scenario/manifests.ts", workflowId: "separations-kuali-finalization", reason: DRY_RUN_TARGET_REASON },
   { file: "src/server/dry-run-scenario/manifests.ts", workflowId: "person-lookup", reason: DRY_RUN_TARGET_REASON },
   {
-    file: "src/server/dashboard/compose.ts",
-    workflowId: "separations",
-    reason:
-      "D289 — the retry receipt-comparison registry is sealed against the CURRENT separations descriptor's exact "
-      + "node-to-task ownership; the file refuses by name when that descriptor is absent.",
-  },
-  {
     file: "src/server/dashboard/projectors/run-queue-projection.ts",
     workflowId: "separations",
     reason:

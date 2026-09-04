@@ -90,7 +90,6 @@ import {
   DashboardDayWireSchema,
   QueueSurfaceWireSchema,
 } from "../../../../src/domain/dashboard/projection.js";
-import { RunReceiptComparisonWireSchema } from "../../../../src/domain/dashboard/run-comparison.js";
 import {
   RunDetailSectionResponseSchema,
   RunDetailWireSchema,
@@ -578,7 +577,6 @@ export function canariesIn(text: string, names: readonly CanaryName[] = ALL_CANA
 export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/run-detail", egress: "operator-loopback", module: "src/domain/dashboard/run-detail.ts", schema: RunDetailWireSchema },
   { id: "wire/run-detail-section", egress: "operator-loopback", module: "src/domain/dashboard/run-detail.ts", schema: RunDetailSectionResponseSchema },
-  { id: "wire/run-receipt-comparison", egress: "operator-loopback", module: "src/domain/dashboard/run-comparison.ts", schema: RunReceiptComparisonWireSchema },
   { id: "wire/queue-surface", egress: "operator-loopback", module: "src/domain/dashboard/projection.ts", schema: QueueSurfaceWireSchema },
   { id: "wire/dashboard-day", egress: "operator-loopback", module: "src/domain/dashboard/projection.ts", schema: DashboardDayWireSchema },
   { id: "wire/stream-envelope", egress: "operator-loopback", module: "src/domain/dashboard/subscription.ts", schema: DashboardStreamEnvelopeSchema },
@@ -1421,12 +1419,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/diagnostic-bundle", path: "contents[].mediaType", origin: "repository-authored" },
   { surface: "wire/diagnostic-bundle", path: "redaction.warnings[]", origin: "repository-authored" },
 
-  // D289 allows only reviewed safe-diagnostic values into before/after; labels
-  // are fixed by the closed Separations registry rather than copied from a receipt.
-  { surface: "wire/run-receipt-comparison", path: "facts[].after", origin: "captured-hr-value" },
-  { surface: "wire/run-receipt-comparison", path: "facts[].before", origin: "captured-hr-value" },
-  { surface: "wire/run-receipt-comparison", path: "facts[].label", origin: "repository-authored" },
-
   { surface: "durable/failure-record", path: "causeChain[].summary", origin: "external-text",
     exception: "each cause's own thrown message, same reason as `summary` and dropped by the same advisory declaration." },
   { surface: "durable/failure-record", path: "page.titleRedacted", origin: "declared-redacted" },
@@ -1485,7 +1477,6 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/explorer.ts", state: "audited", reason: "the explorer projects descriptors, contracts and the UI catalog" },
     { module: "src/domain/dashboard/primitives.ts", state: "audited", reason: "shared wire primitives are carried by the surfaces that embed them" },
     { module: "src/domain/dashboard/projection.ts", state: "audited", reason: "the queue row and day projection are the operator's main surface" },
-    { module: "src/domain/dashboard/run-comparison.ts", state: "audited", reason: "D289 serves only closed-registry safe values or relation-free withheld facts" },
     { module: "src/domain/dashboard/run-detail.ts", state: "audited", reason: "run detail and its sections carry everything one run touched" },
     { module: "src/domain/dashboard/search.ts", state: "audited", reason: "cross-date search serves redacted run authority and an opaque continuation" },
     { module: "src/domain/dashboard/settings.ts", state: "audited", reason: "the read-only Settings sections state configured system hosts and descriptor-derived capabilities" },

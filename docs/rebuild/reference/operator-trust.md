@@ -865,22 +865,17 @@ the receipt carries the SERVER's verdict with the facts it compared. The operato
 redacted identifiers: the receipt already did the comparison. A source that is absent is reported
 absent — the comparison never silently shrinks to one side and calls that agreement.
 
-#### 2.3.1a Closed receipt-comparison identity for the current Separations corpus (D289)
+#### 2.3.1a Retry receipts remain separate evidence (D289 amendment, 2026-09-03)
 
-Field-level rerun comparison is governed by a closed Separations registry over the existing
-immutable receipts. Every comparable fact declaration binds one stable fact id, operator label and
-disclosure posture to its exact collection, source kind, task/node id and field path. No tuple is
-inferred from receipt order, display text, or a field name alone. The prior run is exactly the
-current run's `retryOf`; it must exist and share the workflow and logical `itemId`. Both exact
-receipts must be unique. Missing or duplicate receipts, item mismatches, and zero or multiple
-registry matches refuse by name.
+A retry links to its predecessor through `retryOf`, but each attempt's receipt remains an
+independent statement of what that attempt observed, reused, decided, wrote, and verified. The
+dashboard does not calculate or present a field-level diff between two receipts. The operator opens
+each attempt and reads its ordinary facts; the product does not choose which differences matter or
+collapse two attempts into one derived comparison.
 
-The boundary has explicit `added`, `removed`, `changed`, and `withheld` arms. Only facts reviewed as
-`safe-diagnostic/allow` may expose before/after values. Direct identifiers, suffixes, sensitive HR
-values, and their digests may be compared internally but cross only as `withheld`; withholding must
-not be represented as equality or absence. OCR and later-workflow facts are unregistered until the
-owning workflow migration adds a reviewed declaration. Adding a new receipt fact therefore cannot
-silently broaden disclosure or comparison coverage.
+D289's closed Separations comparison registry, comparison wire, endpoint, and receipt-tab panel are
+retired. The immutable receipts themselves, their `retryOf` relation, attempt numbers, reuse rows,
+and privacy classifications remain unchanged.
 
 #### 2.3.2 The receipt is a pure function of authority, derived and then pinned (D141)
 
@@ -1271,40 +1266,25 @@ terminal record cites as not-run or does not cite, both refuse by name. Explain 
 omitted step keys and renders an asserted node with the `operator-asserted` disposition; typed fact
 VALUES never appear in a receipt, an Explain, a span or a wire — only step keys and field keys.
 
-### 2.4 Rerun transparency
+### 2.4 Attempt transparency
 
 <!-- roadmap: p2-2g -->
 <!-- roadmap: def-search-export -->
 
 <!-- roadmap-status: def-search-export -->
-- [ ] the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (§2.4)
 - [ ] the screenshot gallery and the artifact-bytes route the diagnostic store would serve (§2.2)
-- [x] the per-fact half exists today: `retryOf` plus `reuse` rows carrying `ageMs` and the bound they were judged against
-> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/trust/evidence.ts:97-103 and src/core/command-kernel.ts:623; left: the comparison, which needs a run corpus to be worth shaping
+- [x] attempts remain separately inspectable: `retryOf` links them, the queue shows the attempt number, and each receipt carries its own facts and `reuse` rows
+- [ ] fold runs for one logical item into one queue row with separately selectable attempts; the current projection emits one top-level row per run
+> 2026-09-03 | D289 amendment | automatic field-level comparison retired; separate attempt evidence remains
 <!-- /roadmap-status -->
 
-A retry/rerun receipt links to the prior run and shows a field-level diff:
-
-- input changed vs unchanged;
-- checkpoint reused vs rerun, with age/freshness/provenance;
-- operator-corrected fields and the facts they superseded;
-- branch/gate outcomes that changed;
-- prior durable write proof reused (therefore no click) vs new fenced write;
-- configuration/descriptor/task fingerprint differences.
-
-The dashboard never labels replayed data as newly observed. This is the operator-facing projection
-of refs workflow-model/write-safety's provenance and permanent proof rules.
-
-**As-built — half of this is built, and the half that is missing is the DIFF.** A receipt carries
-`retryOf` (the prior run, minted by the kernel's retry at `src/core/command-kernel.ts:623`) and its
-own `reuse` rows — `fresh-live | checkpoint | corrected | prior-proof`, each with `ageMs` and the
-`freshnessLimitMs` it was judged against (`src/domain/trust/evidence.ts:97-103`) — so "was this
-observed again or replayed" is answered per fact, on the run's own receipt, and the trust surface
-prints `retry of <runId>` (`src/dashboard/surfaces/trust.tsx:289`). What does not exist is the
-FIELD-LEVEL COMPARISON of two receipts: nothing in `src/` reads a prior run's receipt beside the
-current one to say which input changed, which branch outcome moved, or which fingerprint differs.
-The operator can open both receipts; the system does not diff them. Owned by `{#def-search-export}`,
-which is where a corpus of runs to compare first becomes reachable.
+A retry preserves the logical queue item, receives the next attempt number, and links to the prior
+run through `retryOf`. The target presentation is one queue row for that item with separately
+selectable attempts. Each attempt keeps its own run detail, timeline, logs, receipt, failure, and
+reuse facts. The dashboard renders those facts normally and never labels replayed data as newly
+observed. It does not produce an automatic before/after interpretation; the operator may inspect
+the attempts and compare them directly. The queue projection currently emits one top-level row per
+run, so item-row folding remains unbuilt.
 
 ### 2.5 `explain run`
 
@@ -2611,8 +2591,8 @@ These are correctness and recoverability requirements, not production-scale cere
 - [x] eleven of the 49 inventory rows now name their own gap in brackets rather than reading as shipped
 - [x] DCC1–DCC3 close the resolver-owned `apply-settings` arm plus Settings readback, preflight rerun and doctor controls; credentials, AI assist, delete/recover and resolver-unowned settings remain open
 - [ ] `test-login` and the workflow-preflight RUNNER are unbuilt; the storage/authority half of the doctor is real and was drilled at 2j (D181)
-- [x] DCR3–DCR6 deliver strict current-corpus search authority/transport, the Separations Top Bar surface, actor-attributed evidenced operator XLSX and D289's exact immutable-receipt rerun comparison (rows 24, 42); DCA serves diagnostic-index and frozen Archive bytes while broader generic artifact-resource coverage remains open
-> 2026-08-31 | DCA integration | D289 search/comparison and XLSX remain delivered; D291/D292 add verified diagnostic and Archive byte serving plus mounted Receipt captures; the broader generic artifact-resource family remains open
+- [x] DCR3–DCR5 deliver strict current-corpus search authority/transport, the Separations Top Bar surface and actor-attributed evidenced operator XLSX; DCA serves diagnostic-index and frozen Archive bytes while broader generic artifact-resource coverage remains open. DCR6's original D289 comparison was delivered historically and retired by its 2026-09-03 amendment.
+> 2026-09-03 | D289 amendment | automatic receipt comparison retired; search, XLSX and capture evidence remain delivered
 <!-- /roadmap-status -->
 
 The following is the canonical list Claude may use to build an explanatory webpage. It describes
@@ -2789,7 +2769,7 @@ node at all; they are listed under the table and reported to the plan rather tha
 | `explain failure <fingerprint>` (§2.1, §4.2) | **open** — the indexed column and `listByFingerprint` exist; the command does not | **unowned** (see below) |
 | The knowledge/fix store has no writer, no reader and no surface; §4.3's audit needs a `version` field nobody has ratified (§4.1, §4.3) | **open** — table, admission audit and projection are built and unit-tested; nothing in the running system reaches them | `{#track-a}`'s close-out line (“regression scenarios, knowledge records, capability dispositions”) |
 | Five of seven notification event kinds have no producer, leaving four trigger arms unreachable (§6.3) | **open** | the notification square on `{#sep-dash}` and each `Dashboard · wire` set for `failed` / `subject-mismatch` / `write-parked`; `repeating` and `verified-done` are **unowned** |
-| A rerun's FIELD-LEVEL diff against the prior run (§2.4) | **open** — per-fact `reuse` rows and `retryOf` exist; nothing compares two receipts | `{#def-search-export}`, where a corpus of runs to compare first becomes reachable |
+| A rerun's field-level diff against the prior run (§2.4) | **retired by the 2026-09-03 D289 amendment** — attempts remain separately inspectable and the product performs no automatic comparison | none |
 | `preflight-coverage` is `planned`; nothing executes the preflight fault manifests (§3.1) | **open** | `{#cross-cutting}` — D188 re-owned it; it activates with the first migration that adds a preflight runner |
 | §3.2's minimum coverage policy is not proved in full (the audit is over graph-derived points, not a contract's error enum) | **open** | `{#test-tiers}` (R10), spec `ref guards-and-tests §Testing tiers` |
 

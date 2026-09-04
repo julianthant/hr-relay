@@ -120,7 +120,6 @@ import { ContextRail, ContextRailSpine } from "./context-rail.js";
 import { useContextRail, type ContextSections } from "./context-rail-model.js";
 import { elapsedSecondsBetween, fmtClock, fmtElapsed, plural } from "./format.js";
 import { ReceiptView, type ReceiptSectionPayload } from "./receipt.js";
-import { useReceiptComparison } from "./receipt-model.js";
 import { RunCaptures } from "./run-captures.js";
 import type { RunCapturesState } from "./run-captures-model.js";
 import { RunProvenanceBar, type QueueSurfaceWire } from "./run-identity.js";
@@ -2042,17 +2041,6 @@ export const LogPanel = memo(function LogPanel({
     state: "missing" as const,
     reason: "this run advertises no receipt section",
   };
-  const receiptComparisonTarget = effectiveTab === "receipt"
-    && receipt.state === "available"
-    && receipt.value.retryOf.state === "present"
-    ? {
-        runId: receipt.value.runId,
-        retryOf: receipt.value.retryOf.value,
-        workflowId: receipt.value.workflowId,
-        currentReceiptId: receipt.value.receiptId,
-      }
-    : undefined;
-  const receiptComparison = useReceiptComparison(receiptComparisonTarget);
   const clearCaptureSelection = captures?.state === "available" ? captures.select : undefined;
   // The same read spans Logs and Receipt, but a dialog belongs to the tab that
   // opened it. Moving tabs closes that short-lived visual state without
@@ -2598,7 +2586,6 @@ export const LogPanel = memo(function LogPanel({
             <ReceiptView
               outcome={detail.outcome}
               receipt={receipt}
-              comparison={receiptComparison}
               resolvedInstances={surface?.resolvedInstances ?? []}
               /*
                 Ledger 2 row D13 — `dryRun` is REQUIRED on `ReceiptView` and is

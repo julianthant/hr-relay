@@ -119,7 +119,6 @@ const WIRE_SCHEMA_MODULES = [
   "../../../src/domain/dashboard/explorer.js",
   "../../../src/domain/dashboard/primitives.js",
   "../../../src/domain/dashboard/projection.js",
-  "../../../src/domain/dashboard/run-comparison.js",
   "../../../src/domain/dashboard/run-detail.js",
   "../../../src/domain/dashboard/start-plan.js",
   "../../../src/domain/dashboard/storage.js",

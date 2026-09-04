@@ -1303,6 +1303,15 @@ commits again. Confirmation names what will rerun and which completed writes wil
 fresh-fact mismatch against a completed write refuses/parks, and an unknown write exposes only its
 evidence-resolution actions. Neither choice changes business input or the admitted omission bundle.
 
+**D289 amendment — attempts are separate, and the dashboard does not compare them (2026-09-03).**
+A retry remains under the same logical item. One queue row must contain its separately selectable
+attempts, each named by its own attempt number and opening its own timeline, logs, receipt, failure
+and facts. The operator can inspect those attempts and compare them directly; there is no automatic
+field-level comparison, synthesized difference state, or comparison endpoint. D289's comparison
+panel and its closed Separations registry are retired. The authority already preserves the shared
+item and attempt numbers; the current queue projection still emits one top-level row per run, so the
+one-row attempt presentation is a named frontend/projection gap rather than an as-built claim.
+
 **`supersede-active` says two different things in three places, and the doc says so rather than
 picking one.** The kernel implements the row above exactly. The PLANNER does not anticipate it:
 `src/services/start/plan.ts` checks for an active run only under `reject-active`, so a plan composed
@@ -4363,8 +4372,8 @@ hygiene row.
 - [ ] BE the generic artifact resource-status/gallery family: DCA1's exact diagnostic-index byte route and D292's mounted Receipt capture consumer are served; `ArtifactResourceWireSchema` status and the generic gallery remain unserved
 - [ ] BOTH cross-date run search — the top bar filters the SERVED DAY only, and Activity's range is an aggregate rather than a row search (§9.9 owns the day search)
 - [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164)
-- [ ] BOTH the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (`ref operator-trust` §2.4); the per-fact half (`retryOf`, `reuse` rows with `ageMs`) already exists
-> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/server/dashboard/queries/activity-export.ts, src/domain/dashboard/activity.ts, src/dashboard/client/queries.ts; left: every non-CSV half of this node
+- [x] D289 amendment RETIRES automatic rerun comparison — the same logical item keeps separately inspectable attempts with their own number and ordinary facts (`ref operator-trust` §2.4)
+> 2026-09-03 | D289 amendment | comparison surface removed; no replacement comparison is planned
 <!-- /roadmap-status -->
 
 #### 9.5.3 The Workflow Explorer and the UI catalog — read-only graph, strict safe edits (D176/D177)

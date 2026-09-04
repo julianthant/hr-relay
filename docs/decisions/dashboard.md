@@ -76,7 +76,7 @@ the workflow that can verify them.
 Normative owners: ref dashboard-surfaces §10, doc 03c workflow admission, and the dashboard
 completion plan.
 
-## D288–D289 — reporting identity
+## D288–D289 — reporting identity (comparison later superseded)
 
 The operator accepted both recommendations on 2026-08-28:
 
@@ -88,6 +88,14 @@ The operator accepted both recommendations on 2026-08-28:
   identifier-derived values.
 
 Normative owners: ref dashboard-surfaces §D288 and ref operator-trust §2.3.1a.
+
+On 2026-09-03 the operator superseded the second choice: attempts are separate, belong under one
+logical queue row with their own attempt number, and display their ordinary facts without an
+automatic comparison. The operator may inspect the attempts and compare them directly. The
+comparison registry, endpoint, and receipt-tab panel were removed; the receipts and retry link
+remain. The authority already preserves the logical item and attempt number, but the queue still
+emits one top-level row per run; folding those runs into one item row remains UI work. Normative
+owners: ref dashboard-surfaces §2.4 and ref operator-trust §2.4.
 
 ## Archive version-bump snapshot disposition
 

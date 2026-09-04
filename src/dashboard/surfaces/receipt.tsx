@@ -20,19 +20,13 @@
  * it (ledger 2 row D8) and the one identity line (row D9); both are folded in
  * `receipt-model.ts`.
  */
-import { ArrowLeft, ArrowRight, EyeOff, RefreshCw, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import type { z } from "zod";
-import type { RunReceiptComparisonWire } from "../../domain/dashboard/run-comparison.js";
 import { cn } from "../lib/utils.js";
-import { Banner, Button, DS_STATUS, EmptyState, MetaLine, Skeleton, dsIcon, dsRadius, dsText } from "../ds/ui.js";
+import { Banner, DS_STATUS, EmptyState, MetaLine, dsIcon, dsRadius, dsText } from "../ds/ui.js";
 import { ReceiptEvidenceBody } from "./trust.js";
 import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
-import {
-  receiptComparisonValue,
-  receiptConfidenceChip,
-  receiptIdentityItems,
-  type ReceiptComparisonRequest,
-} from "./receipt-model.js";
+import { receiptConfidenceChip, receiptIdentityItems } from "./receipt-model.js";
 import { testInstanceSystems } from "./test-instance-hazard.js";
 import type { OutcomeWire, TerminalOutcomeResult } from "./status-model.js";
 
@@ -104,14 +98,11 @@ export function ReceiptView({
   receipt,
   resolvedInstances = [],
   dryRun,
-  comparison,
 }: {
   outcome: OutcomeWire;
   receipt: ReceiptSectionPayload;
   resolvedInstances?: readonly { system: string; instance: "prod" | "test" }[];
   dryRun: boolean | undefined;
-  /** The panel owns the request so static receipt rendering remains a pure read. */
-  comparison?: ReceiptComparisonRequest;
 }) {
   const testSystems = testInstanceSystems(resolvedInstances);
   const value = receipt.state === "available" ? receipt.value : undefined;
@@ -187,7 +178,6 @@ export function ReceiptView({
       {value !== undefined && (
         <ReceiptEvidenceBody receipt={value} bandCarriesIdentity={outcome.state === "terminal"} />
       )}
-      {value !== undefined && comparison !== undefined && <ReceiptComparisonPanel comparison={comparison} />}
       {receipt.state === "missing" && <EmptyState title="No receipt" description={receipt.reason} />}
       {receipt.state === "purged" && <EmptyState title="Receipt purged" description={receipt.reason} />}
       {receipt.state === "error" && (
@@ -195,124 +185,6 @@ export function ReceiptView({
           {receipt.message} <span className={cn(dsText.meta, dsText.nums)}>code {receipt.code}</span>
         </Banner>
       )}
-    </div>
-  );
-}
-
-/** D289's current-versus-exact-prior receipt comparison, within the Receipt tab. */
-export function ReceiptComparisonPanel({ comparison }: { comparison: ReceiptComparisonRequest }) {
-  return (
-    <section
-      aria-label="Earlier run comparison"
-      className="@container flex min-w-0 flex-col gap-[var(--ds-space-base)] border-t border-[color:var(--ds-border-subtle)] pt-[var(--ds-space-loose)]"
-    >
-      <div className="flex flex-col gap-[var(--ds-space-hair)]">
-        <h3 className={cn(dsText.section, "font-semibold text-[color:var(--ds-fg)]")}>Earlier run comparison</h3>
-        <p className={cn(dsText.body, "max-w-[70ch] text-[color:var(--ds-fg-muted)]")}>
-          Reviewed details from this run and its earlier attempt. Protected details remain withheld.
-        </p>
-      </div>
-      {comparison.state.state === "not-comparable" && (
-        <EmptyState
-          title="No earlier run to compare"
-          description="This run does not name an earlier attempt, so no comparison is available."
-          className="border border-dashed border-[color:var(--ds-border-subtle)] bg-[var(--ds-surface-2)] p-[var(--ds-space-loose)]"
-        />
-      )}
-      {comparison.state.state === "loading" && <ComparisonLoading />}
-      {comparison.state.state === "ready" && <ComparisonFacts facts={comparison.state.value.facts} />}
-      {comparison.state.state === "unavailable" && (
-        <Banner tone="warning" title="Earlier run comparison is unavailable">
-          The comparison authority is not available for this run. The receipt above remains the current authority.
-        </Banner>
-      )}
-      {comparison.state.state === "refused" && (
-        <Banner tone="danger" title="Earlier run comparison was refused">
-          Authority could not establish a valid comparison for these two runs. The receipt above remains unchanged.
-        </Banner>
-      )}
-      {comparison.state.state === "error" && (
-        <Banner
-          tone="danger"
-          title="Earlier run comparison could not be loaded"
-          action={<Button variant="secondary" icon={<RefreshCw aria-hidden className={dsIcon.sm} />} onClick={comparison.retry}>Retry comparison</Button>}
-        >
-          The comparison could not be read. Retry the same comparison before relying on it.
-        </Banner>
-      )}
-    </section>
-  );
-}
-
-function ComparisonLoading() {
-  return (
-    <div role="status" aria-label="Loading earlier run comparison" className="flex flex-col gap-[var(--ds-space-base)]">
-      <Skeleton className="h-5 w-40" />
-      <Skeleton className="h-14" />
-      <Skeleton className="h-14" />
-    </div>
-  );
-}
-
-function ComparisonFacts({ facts }: { facts: readonly RunReceiptComparisonWire["facts"][number][] }) {
-  if (facts.length === 0) {
-    return (
-      <EmptyState
-        title="No reviewed differences"
-        description="No reviewed detail changed between this run and its earlier attempt."
-        className="border border-dashed border-[color:var(--ds-border-subtle)] bg-[var(--ds-surface-2)] p-[var(--ds-space-loose)]"
-      />
-    );
-  }
-  return (
-    <ul className="flex min-w-0 flex-col gap-[var(--ds-space-base)]" aria-label="Reviewed receipt differences">
-      {facts.map((fact) => (
-        <li key={fact.factId} className="min-w-0 border-b border-[color:var(--ds-border-subtle)] pb-[var(--ds-space-base)] last:border-b-0 last:pb-0">
-          <ComparisonFact fact={fact} />
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function ComparisonFact({ fact }: { fact: RunReceiptComparisonWire["facts"][number] }) {
-  if (fact.state === "withheld") {
-    return (
-      <div className="flex min-h-[44px] items-start gap-[var(--ds-space-base)]">
-        <EyeOff aria-hidden className={cn(dsIcon.sm, "mt-0.5 shrink-0 text-[color:var(--ds-fg-muted)]")} />
-        <div className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
-          <span className={cn(dsText.ui, "font-medium text-[color:var(--ds-fg)]")}>{fact.label}</span>
-          <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>Withheld to protect this detail.</span>
-        </div>
-      </div>
-    );
-  }
-  const values = fact.state === "added"
-    ? [{ label: "This run", value: receiptComparisonValue(fact.after), icon: <ArrowRight aria-hidden className={dsIcon.sm} /> }]
-    : fact.state === "removed"
-      ? [{ label: "Earlier run", value: receiptComparisonValue(fact.before), icon: <ArrowLeft aria-hidden className={dsIcon.sm} /> }]
-      : [
-          { label: "Earlier run", value: receiptComparisonValue(fact.before), icon: <ArrowLeft aria-hidden className={dsIcon.sm} /> },
-          { label: "This run", value: receiptComparisonValue(fact.after), icon: <ArrowRight aria-hidden className={dsIcon.sm} /> },
-        ];
-  const stateLabel = fact.state === "added" ? "Added" : fact.state === "removed" ? "Removed" : "Changed";
-  return (
-    <div className="flex min-w-0 flex-col gap-[var(--ds-space-snug)]">
-      <div className="flex min-h-[44px] flex-wrap items-center gap-[var(--ds-space-base)]">
-        <span className={cn(dsText.ui, "font-medium text-[color:var(--ds-fg)]")}>{fact.label}</span>
-        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{stateLabel}</span>
-      </div>
-      <dl className="grid min-w-0 grid-cols-1 gap-[var(--ds-space-snug)] @min-[560px]:grid-cols-2">
-        {values.map((entry) => (
-          <div key={entry.label} className="flex min-w-0 gap-[var(--ds-space-snug)] bg-[var(--ds-surface-2)] p-[var(--ds-space-base)]">
-            <span className="mt-0.5 shrink-0 text-[color:var(--ds-fg-muted)]">{entry.icon}</span>
-            <div className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
-              <dt className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{entry.label}</dt>
-              <dd className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg)]")}>{entry.value}</dd>
-            </div>
-          </div>
-        ))}
-      </dl>
     </div>
   );
 }

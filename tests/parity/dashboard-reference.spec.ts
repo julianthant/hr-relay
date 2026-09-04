@@ -73,8 +73,6 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   // smaller groups exist to exercise the QUEUE's well sizing, not the panel.
   { id: "run-group", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.groupOf13 } },
   { id: "run-member", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.memberRun } },
-  { id: "run-receipt-comparison", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.comparisonRun, section: "receipt" } },
-  { id: "run-receipt-comparison-refused", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.comparisonRefusedRun, section: "receipt" } },
   { id: "start-run", route: { day: FIXTURE_DAY, start: true } },
   // The intake workspace's four points (2i-E3). `intake-mapping` is the one
   // that matters most: a bound column and an unbound one with a live proposal
@@ -610,13 +608,6 @@ const SCENE_ANCHORS: Record<string, (page: import("@playwright/test").Page) => P
       page.getByRole("button", { name: "UCPath termination — done, took 2m 48s, a step in it ran 2 times" }),
     ).toBeVisible();
   },
-  "run-receipt-comparison": async (page) => {
-    await expect(page.getByRole("region", { name: "Earlier run comparison" })).toBeVisible();
-    await expect(page.getByText("Protected reference", { exact: true })).toBeVisible();
-  },
-  "run-receipt-comparison-refused": async (page) => {
-    await expect(page.getByRole("alert").filter({ hasText: "Earlier run comparison was refused" })).toBeVisible();
-  },
   "intake-rerun": async (page) => {
     const rerunTab = page.getByRole("tab", { name: "Rerun diff" });
     await rerunTab.click();
@@ -634,40 +625,6 @@ const SCENE_ANCHORS: Record<string, (page: import("@playwright/test").Page) => P
     await expect(page.getByRole("textbox", { name: "Operator label" })).toBeVisible();
   },
 };
-
-/**
- * D289 comparison states live below the compact receipt summary. Capture their
- * own proof in view rather than letting the upper receipt chrome hide a broken
- * arm on a narrow viewport. The floating workflow panel covers the comparison
- * heading at 1024px, so minimize it through its real control first. Scrolling
- * is deliberately focus-neutral: after that product action, the screenshot
- * setup may move the viewport, never the operator's keyboard.
- */
-async function scrollComparisonIntoCaptureView(
-  page: import("@playwright/test").Page,
-  stateId: string,
-): Promise<void> {
-  const workflowPanel = page.getByRole("button", { name: /Workflow Panel.*floating window/u });
-  await workflowPanel.click();
-  await expect(page.getByRole("button", { name: /Workflow Panel.*minimised/u })).toBeVisible();
-  const target = stateId === "run-receipt-comparison-refused"
-    ? page.getByRole("alert").filter({ hasText: "Earlier run comparison was refused" })
-    : page.getByRole("heading", { name: "Earlier run comparison" });
-  const focusBefore = await page.evaluate(() => {
-    const active = document.activeElement;
-    return active === null
-      ? null
-      : { tagName: active.tagName, id: active.id, role: active.getAttribute("role"), name: active.getAttribute("aria-label") };
-  });
-  await target.evaluate((element) => element.scrollIntoView({ block: "center", inline: "center" }));
-  await expect(target).toBeInViewport();
-  await expect.poll(async () => page.evaluate(() => {
-    const active = document.activeElement;
-    return active === null
-      ? null
-      : { tagName: active.tagName, id: active.id, role: active.getAttribute("role"), name: active.getAttribute("aria-label") };
-  })).toEqual(focusBefore);
-}
 
 for (const viewport of PARITY_VIEWPORTS) {
   for (const theme of PARITY_THEMES) {
@@ -699,18 +656,7 @@ for (const viewport of PARITY_VIEWPORTS) {
           await assertShellGeometry(page, `${state.id} @ ${viewport.name} ${theme.name}`);
 
           await SCENE_ANCHORS[state.id]?.(page);
-          if (state.id === "run-receipt-comparison" || state.id === "run-receipt-comparison-refused") {
-            await scrollComparisonIntoCaptureView(page, state.id);
-          }
-
-          // A typed HTTP refusal is the subject of this state, not an uncaught
-          // application error. Chromium reports its expected 409 as a console
-          // error even though the typed client handles it and the alert below
-          // proves the refusal reached the receipt panel.
-          const unexpectedErrors = state.id === "run-receipt-comparison-refused"
-            ? errors.filter((message) => !/status of 409 \(Conflict\)/u.test(message))
-            : errors;
-          expect(unexpectedErrors, `page errors while rendering ${state.id}`).toEqual([]);
+          expect(errors, `page errors while rendering ${state.id}`).toEqual([]);
 
           await captureParityPair(page, REFERENCES, {
             stateId: state.id,

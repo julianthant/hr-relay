@@ -17,7 +17,7 @@ unnumbered shelf and close only when their own trigger fires.
 - [x] every deferral names its trigger, and none is a silent drop — nine nodes, each with a trigger, decided stance or retirement
 - [x] two have a decided STANCE instead of a trigger (D193) — the retention sweep's schedule and the content-store refcount; they are `wont-build-unless-asked`
 - [-] the record-sanity-check advisory — **retired** by the operator 2026-08-18 (D192; `config/legacy-capabilities.json`), not deferred any more
-- [ ] the production byte path remains open: `dashboard:prod` still does not serve the built local dashboard. The cross-cutting trigger fired: DCR3–DCR6 close search, its Separations surface, evidenced XLSX and rerun comparison; D291/D292/D306 serve run/Archive screenshots. The broader generic resource/gallery family, Settings and Explorer retain explicitly named later scope
+- [ ] the production byte path remains open: `dashboard:prod` still does not serve the built local dashboard. The cross-cutting trigger fired: DCR3–DCR5 close search, its Separations surface and evidenced XLSX; D291/D292/D306 serve run/Archive screenshots, and the 2026-09-03 D289 amendment retires automatic attempt comparison. The broader generic resource/gallery family, Settings and Explorer retain explicitly named later scope
 - [ ] the propagation windows — measured for Kuali only (D135/D207); UCPath and ServiceNow wait on their own live probes at order 7
 - [ ] controlled desktop update — v1 is signed manual in-place install; the later updater waits for the packaged upgrade proof and one fail-loud quiescence/ordered-shutdown authority (D297)
 - [ ] the non-phone Phase 3a fidelity residue carried in by D279 (2026-08-27) — see §"Carried in from Phase 3a"; each line closes here or is explicitly parked. D294 closes the retired Capture Mode subset.
@@ -64,7 +64,7 @@ resource/gallery family remains unbuilt. DCC1–DCC3 close the
 resolver-owned Settings edits and preflight/doctor controls. DCC4–DCC5 complete the existing-workflow
 Explorer boundary: label/icon/category hot apply; timeline/grouping and notification unavailable
 without owners; policy/Edit Data strict source briefs. DCR3–DCR5 close cross-date search, its
-Separations Top Bar surface, evidenced XLSX export and rerun comparison.
+Separations Top Bar surface and evidenced XLSX export; the 2026-09-03 D289 amendment retires automatic attempt comparison.
 New-workflow authoring and broader legacy settings/editor capability entries remain open by name,
 which is what distinguishes a deferral from a hole.
 
@@ -354,17 +354,18 @@ mechanism transfer D207 allows between two Kuali writes does not reach UCPath at
 - [x] BOTH the DCR3 cross-date search authority + transport — strict `GET /api/v1/search` query/page contracts and typed client over the measured current separations corpus
 - [x] FE the DCR4 cross-date search surface — the Top Bar defaults to the durable Separations corpus and retains an explicit served-day scope
 - [x] BE the DCR5 operator xlsx export — a dedicated command verifies and persists exact attachment evidence for a DCR3 snapshot or Activity range; the D164 retention sink remains distinct
-- [ ] the D289 rerun FIELD-LEVEL diff — authority is ratified, but no comparison implementation reads the exact prior/current immutable receipts yet
-> 2026-08-28 | DCR receive | DCR3 search authority/transport, DCR4 surface and DCR5 evidenced XLSX delivered; artifact bytes and the D289 rerun diff remain open
+- [x] D289 amendment retires automatic rerun comparison — attempts remain separately inspectable with their own ordinary facts and no synthesized diff
+- [ ] fold one logical item's runs into one queue row with separately selectable attempt numbers; the current queue projection still emits one top-level row per run
+> 2026-09-03 | D289 amendment | comparison registry, endpoint and Receipt panel removed; no replacement comparison is planned
 <!-- /roadmap-status -->
 
 **What the deferral is.** The remaining legacy affordances the rebuild does not surface. DCR3–DCR5
 now serve strict **search runs across dates**, its Separations Top Bar surface and an evidenced XLSX
 for an exact search snapshot or Activity range. Verified diagnostic screenshots can now be opened
 from a run's Logs or Receipt and from frozen Archive evidence; the broader generic gallery family
-remains unbuilt. The D289 rerun
-comparison authority is ratified, but no implementation yet reads the prior receipt beside the current
-one.
+remains unbuilt. The 2026-09-03 D289 amendment retired automatic comparison; each attempt keeps its
+own ordinary facts and the operator compares attempts directly. The requested one-item-row attempt
+presentation remains unbuilt over the current one-row-per-run queue projection.
 
 **The decision that deferred them.** No single one — they were named OUT of the 2i operator-surface
 tail (D168–D180, rounds 38–44) as the tail was scoped, and each has a reason of its own recorded
@@ -376,22 +377,23 @@ production, so what is missing is an operator-facing export, not a writer.
 **Its trigger: the Phase-3 cross-cutting closure**, and the shaping constraint is the interesting
 half. These three are listed under `{#cross-cutting}` — "where legacy is still ahead" — and every
 one of them is deliberately shaped **against a real run corpus** rather than invented in planning.
-A search surface built today would be filtered against two workflows' worth of runs; the field-level
-rerun diff has the same problem, which is why `ref operator-trust` §2.4 records it as waiting on the
-comparison being worth shaping rather than on any missing plumbing.
+A search surface built today would be filtered against two workflows' worth of runs. The field-level
+rerun diff was later built under D289 and then retired by its 2026-09-03 amendment because the product should present
+each attempt's facts without interpreting differences between attempts.
 **The operator fired the scheduling trigger on 2026-08-28 through D282.** The implementation must
 measure and test the corpus that now exists rather than author ranking from fixture intuition; the
-artifact route, search, export and rerun-diff rows remain open until their proofs land.
+artifact route, search and export rows remain open until their proofs land; the rerun-diff row is
+retired.
 
 **Built today.** Diagnostic bundles are content-addressed with a durable attachment index and
 per-field redaction applied AT capture; D291/D292 serve verified run and Archive bytes, D306 adds
 explicit per-run browser screenshots and exposes the same evidence in Logs and Receipt, the
 Activity report has a second authority behind it and a served CSV (D236/D240), and DCR3–DCR5 add
-the strict corpus search, surface and evidenced XLSX. The remaining absences are the broader
-generic status/gallery family and D289's receipt-comparison implementation.
+the strict corpus search, surface and evidenced XLSX. The remaining absence is the broader generic
+status/gallery family; the 2026-09-03 D289 amendment removed the automatic receipt-comparison feature.
 
-**Not built.** Two items remain: the broader generic status/gallery family and the D289 field-level
-rerun comparison. Run-bound and Archive screenshot evidence no longer waits on either.
+**Not built.** The broader generic status/gallery family remains. Run-bound and Archive screenshot
+evidence does not wait on it.
 
 ## Auto-purge diagnostics on a measured schedule · reclaim unreferenced artifact bytes
 <!-- roadmap: def-retention -->
@@ -534,7 +536,7 @@ waiver. What is forbidden is a third state — a deferral nobody can find the tr
 | 6 | **The production byte path serves the built local dashboard** | **open** | standalone D189/D294 task: parse `--prod` and safely serve `dist/dashboard` |
 | 7 | **The explorer's EDIT half + the authoring path** | **partly MET** | D283/DCC4–DCC5 complete the existing-workflow boundary: label/icon/category hot apply; timeline/grouping and notification unavailable without owners; policy/Edit Data strict source briefs. New-workflow authoring and broader design remain under D186's later-workflow boundary. |
 | 8 | **Editable settings** | **partly MET** | DCC1–DCC3 close the resolver-owned atomic edit, readback, preflight rerun and doctor controls; credentials, AI assist, delete/recover and resolver-unowned legacy settings remain open |
-| 9 | **Cross-date search · screenshots · Excel export** | **partly MET** | DCR3–DCR5 deliver current-corpus search, its Separations Top Bar surface and evidenced XLSX; artifact bytes/screenshots and the D289 rerun comparison remain open |
+| 9 | **Cross-date search · screenshots · Excel export** | **partly MET** | DCR3–DCR5 deliver current-corpus search, its Separations Top Bar surface and evidenced XLSX; artifact bytes/screenshots remain open, while the 2026-09-03 D289 amendment retired automatic rerun comparison |
 | 10 | **Propagation windows, per system** | **partly MET** | Kuali measured and closed (D135), transferred provisionally to the separations finalization (D207); **UCPath open** (order 7, both contracts `operator-only`), **ServiceNow open** (no commit contract yet) |
 | 11 | **The Phase 3a carry-in (D279) is closed or parked, line by line** | **open** | C1–C4 closed by DCF6; the former Capture Mode C5 is retired by D294. Neither is a cutover blocker. |
 | 12 | **Controlled desktop update** | **open, deferred** | D297 fixes the policy and trigger; v1 ships manual in-place updates, then an in-app channel may be scheduled only after the older→newer preservation proof and one ordered quiescence authority exist |

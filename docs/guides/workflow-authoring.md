@@ -126,7 +126,7 @@ item 4); until it is decided, this is the documented registration step.
 (`docs/migrations/separations-legacy-behavior.md`) or a T2/T3 `tests/scenario/dashboard/<id>/`
 folder — is admitted only through a cited `ARTIFACT_EXEMPTIONS` entry in the same guard. A generic
 server/dashboard file that must branch on a workflow id under a ratified decision (today D288's
-person-pseudonym fold and backfill and D289's receipt comparison, all `separations`) is admitted only
+person-pseudonym fold and backfill, both `separations`) is admitted only
 through a cited `GENERIC_WORKFLOW_ID_ALLOWLIST` entry. Both lists are closed: each entry names its
 decision, and a stale or uncited entry is itself red. Neither is a way around §2's last row — a new
 dashboard capability is still built generically once.

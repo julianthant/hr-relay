@@ -672,25 +672,14 @@ environment-supplied.
   door that cites its `contentDigest`. Span/notes JSONL are never rewritten (D301) — the storage doctor
   reads the tombstone. The released idempotency key is stated in the confirm copy, not hidden.
 
-- **2026-08-28 — retry receipt comparison is a closed coordinate authority, not a receipt diff.**
-  Seal every Separations fact against the current descriptor's exact node-to-task ownership, then
-  match the immutable receipt's collection/source/task/field-path coordinate exactly. Resolve the
-  prior only from `retryOf`; require the same workflow and logical item plus one exact receipt per
-  run, with each receipt's run, workflow, attempt and retry identity agreeing with its own run
-  authority. Match the coordinate before interpreting state so an unresolved reviewed fact refuses
-  by name, and refuse zero or multiple exact matches before producing any arm. Only reviewed
-  `safe-diagnostic`/`allow` values may cross as added/removed/changed. Identifier suffixes, sensitive
-  HR values, deterministic population-count aliases and digests are compared only inside the
-  authority and always leave as the same
-  `withheld` arm; that arm must reveal neither value nor equality, difference or absence. Facts not
-  present in the closed registry—including same-task OCR facts with a different field or value
-  key—never fall through to comparison. Two fact ids may not claim the same collection/node/task/
-  field coordinate for any overlapping source kind, even when their disclosure postures differ.
-  Identity refusals name the failed dimension, never item identifiers or unkeyed hashes. (D289)
-  At the comparison query boundary, only the expected receipt/retry/workflow-item/cardinality/closed-
-  registry reconciliation failures become the safe typed `COMPARISON_IDENTITY_REFUSED` 409. Preserve
-  the detailed authority error only as an internal cause; its wire message names the failed dimension
-  without run, receipt, item or fact identifiers. Any unrelated throw remains `INTERNAL_FAILURE`.
+- **2026-09-03 — attempts are evidence records, not inputs to an automatic comparison (D289 amendment).**
+  A retry stays under the same logical queue item and takes its next attempt number. Its target
+  presentation is one item row with separately selectable attempts, each rendering its own ordinary
+  timeline, logs, receipt, failure, reuse and outcome. Do not add
+  a cross-attempt diff, comparison registry, comparison endpoint, or receipt-tab comparison panel.
+  `retryOf` remains lineage, not permission for the product to decide which differences matter.
+  The operator opens the separate attempts and compares their facts directly. The current projection
+  still emits one top-level row per run, so the item-row fold is explicit unfinished work.
 
 - **2026-08-30 — request-only Settings refusals must precede authority access.** After strict
   input parsing, compare the requested schema hash and canonical patch fingerprint before lock

@@ -1381,8 +1381,9 @@ log:
 status: planned
 doc: 04 §Search runs across dates / view screenshots / export Excel · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §2.2 · ref:operator-trust §2.4
 
-> DCR3–DCR6 deliver current-corpus search authority/transport, its Separations Top Bar surface,
-> actor-attributed evidenced XLSX and the strict immutable-receipt rerun comparison. D291/D292
+> DCR3–DCR5 deliver current-corpus search authority/transport, its Separations Top Bar surface,
+> and actor-attributed evidenced XLSX. DCR6's automatic receipt comparison was delivered historically
+> and retired by the 2026-09-03 D289 amendment. D291/D292
 > serve verified run/Archive capture bytes, and D306 adds selected browser-lease screenshots plus
 > the shared Logs/Receipt viewer; only the broader generic resource/gallery family remains open.
 
@@ -1392,12 +1393,14 @@ builds:
 - [x] BOTH the DCR3 cross-date search authority + transport — strict bounded route and typed client over the measured current separations corpus
 - [x] FE the DCR4 cross-date search surface — the Top Bar defaults to durable Separations corpus search and retains an explicit served-day scope
 - [x] BE the DCR5 operator xlsx export — one dedicated command persists and verifies attachment evidence for an exact DCR3 snapshot or Activity range; D164's retention sink remains distinct
-- [x] BOTH the D289 rerun FIELD-LEVEL diff — the closed Separations fact registry compares the exact `retryOf` prior/current immutable receipts, transports only reviewed safe values and emits relation-free `withheld` rows for protected facts (ref:operator-trust §2.3.1a)
+- [x] BOTH D289 amendment — each retry remains a separately inspectable attempt under the same logical queue item; the dashboard performs no automatic receipt comparison (ref:operator-trust §2.4)
+- [ ] BOTH fold one logical item's runs into one queue row with separately selectable attempt numbers; the current projection emits one top-level row per run
 
 needs:
 - cross-cutting
 
 log:
+- 2026-09-03 | D289 amendment | retired the comparison registry, wire, endpoint and Receipt panel; ordinary per-attempt facts and `retryOf` lineage remain
 - 2026-09-01 | D306 browser evidence | new/reset dashboard starts default to Headed with screenshot capture on; per-run Headless/Headed and capture policy are immutable start/run authority, and the same verified restricted capture collection renders in Logs and Receipt
 - 2026-08-29 | R-DCR close | DCR1 and DCR3–DCR6 closed: D288 serves honest unavailable for the seven current ineligible Separations rows while strict fixtures prove the populated arm; D289's exact receipt comparison is built; D75's solo request checkpoint attributes new XLSX v2 evidence; artifact bytes/screenshots remain open
 - 2026-08-28 | DCR receive | DCR3–DCR5 search authority/transport, Separations surface and evidenced XLSX delivered; artifact bytes and D289 comparison implementation remain open

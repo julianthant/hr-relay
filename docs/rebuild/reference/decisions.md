@@ -1666,7 +1666,7 @@ in `docs/decisions/dashboard.md` §Reporting identity._
 | # | Decision | Owning doc |
 |---|---|---|
 | **D288** | **ACTIVITY'S DISTINCT-PEOPLE AXIS USES INSERT-ONLY, SECRET-KEYED, GENERATION-BOUND PSEUDONYM EVIDENCE FROM EACH RUN'S EXACT CANONICAL SUBJECT BINDING.** Current Separations rows may be backfilled only from a unique exact binding; missing, ambiguous, mixed-generation, or incomplete-generation evidence is unavailable by name. Raw identifiers, suffixes and unkeyed digests never cross. | ref dashboard-surfaces §D288 (primary) |
-| **D289** | **FIELD-LEVEL RERUN COMPARISON USES A CLOSED SEPARATIONS FACT REGISTRY OVER IMMUTABLE RECEIPTS.** The prior is exactly `retryOf` with the same workflow/item identity; exact receipts and fact matches are unique or refuse. The wire distinguishes added/removed/changed/withheld, exposes only reviewed safe-diagnostic values, withholds sensitive and identifier-derived values, and registers no OCR facts. | ref operator-trust §2.3.1a (primary) |
+| **D289** | **AMENDED 2026-09-03: ONE LOGICAL QUEUE ROW CONTAINS SEPARATE ATTEMPTS; THE DASHBOARD DOES NOT AUTOMATICALLY COMPARE THEM.** The original field-level rerun comparison was built and is now retired. `retryOf` and the item's next attempt number remain lineage; each attempt retains its own timeline, logs, receipt, failure, reuse and outcome. Authority already preserves that identity, while folding the current one-row-per-run projection into one item row remains UI work. | ref operator-trust §2.4 (primary) · ref dashboard-surfaces §2.4 · `docs/decisions/dashboard.md` §D288–D289 |
 
 ## 2026-08-30 — reporting/Settings migration-history integration
 

@@ -113,6 +113,14 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-03 — an attempt is a complete reading surface, not one side of a product-authored diff
+  (D289 amendment, 2026-09-03).** Fold retries into one logical-item queue row with separately
+  selectable attempt numbers; each attempt opens its own timeline, logs, receipt, failure, reuse and outcome. The dashboard
+  must not compare two attempts automatically or revive a comparison-only request, state machine,
+  panel, or parity scene. `retryOf` remains visible lineage so the operator can open the attempts
+  and compare their facts directly. Until the queue projection stops emitting one top-level row per
+  run, that folding is an explicit gap rather than behavior the docs may claim is built.
+
 - **2026-09-03 — a wire the client "mirrors" is a wire the client can drift from.** The start-plan
   request/response schemas live ONLY in `src/domain/dashboard/start-plan.ts`; `client/commands.ts`
   imports them and exports `StartPlanResponse` as a type alias of `StartPlanWire`. Never redeclare a
