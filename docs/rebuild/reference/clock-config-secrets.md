@@ -543,6 +543,8 @@ A row carries these columns, every one a closed enum or a literal — never free
 | `consumers` | one or more `{ module, purpose }` literals | who reads it; the guard proves every consumer listed exists and every reader of the key is listed |
 | `currentSource` / `targetSource` | closed `{ kind, name }` pairs (`env:UCPATH_PASSWORD`, `settings.json`, `protected.json`, `.env`, `probe`, `code`); a leaf with two live sources today carries BOTH pairs as a `currentSource` ARRAY — never a compound string, never a parenthetical | the migration edge 0.3 Task 3 consumes; identical on both sides for an unmoved leaf. Where the two current sources disagree at import, Task 3 refuses the upgrade by key name (D327's ambiguous-duplicate rule) and imports only when they are byte-equal or one is absent |
 
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R03 | the `currentSource` tie-break sentence is implemented by §D332 (settings half) §D332.S3: canonicalize through the leaf's own schema, import once when equal, refuse `ambiguous-duplicate { key, sources }` when not.
+
 Two consequences the columns force. **`sensitivity` decides storage, not the operator's taste**: a
 `protected-*` row can only have `sourceClass: protected-store`, a `provider-key` row only
 `provider-env`, a `derived-host` row only `derived-host`; the registry's `superRefine` refuses any
@@ -799,6 +801,8 @@ The rules, each a proof 1.6 owes (§D331.11):
    number is never copied into a name or EID field — only the SOURCE moves from `.env` to the
    store. A person-lookup EID canary is a `protected-identifier`; a Kuali document number is a
    `protected-identifier` too (it resolves to a person).
+
+   > 2026-09-04 | phase-0-3-authority-design C31da5310 R03 | the import of both canary references — valid imports, malformed refuses `invalid-value { key }`, absent stays `blocked` by key — is §D332 (settings half) §D332.S4.
 7. **Clear is a write.** `{ clear: true }` removes the entry and retires its `valueId`; it is
    journaled, CAS-fenced and revision-advancing like a set. **Every protected row has a per-name
    value schema** the apply arm and the accessor share: the canaries keep `KualiDocumentNumberSchema`
@@ -1159,6 +1163,8 @@ parenthetical pointer too); the ledger row (`reference/decisions.md`) points her
    leaf, which are ordinary rows. `SETTINGS_SCHEMA_HASH` moves with the catalog; the existing file's
    refusal under the new hash is the upgrade problem 0.3 Task 3 owns (a journaled rewrite under the
    new hash after a verified D322 backup, never a tolerated mismatch).
+
+   > 2026-09-04 | phase-0-3-authority-design C31da5310 R03 | landed: §D332 (settings half) §D332.S2 owns the leaf-for-leaf carry and the two re-validations; the rewrite's revision/journal identity is ref dashboard-surfaces §D332.3 step 3(d).
 3. **§Operational isolation, D321's layout sentence** — "`settings.json` with its `.authority.json`,
    `.prepare.json`, `.rollback.json` and lock siblings" in the state root becomes the
    `.tracker/settings/` directory of §D331.3. The coupling sentences ("deleting `.tracker` removes
@@ -1191,6 +1197,301 @@ parenthetical pointer too); the ledger row (`reference/decisions.md`) points her
    preserved verbatim (§D331.2 `derived-host`); D322's explicit-only backup rule binds §D331.3;
    D330.4/§D330.6 bind the claim token; ref execution-and-sessions owns the Duo credential file's
    lock/signCount protocol; ref stores' catalog is unaffected (no task contract changes).
+
+##### D332 (settings half) — importing today's `.env`, `settings.json` and canary inputs at the upgrade (0.3 Task 3, 2026-09-04)
+
+ref dashboard-surfaces §D332 owns the upgrade command, its preflight, its one exclusive transaction,
+its journal, its rollback and its boot matrix. §D332.10 assigns THIS subsection the import: which key
+becomes which leaf, the seven tie-breaks, the canary references, the `migrated-refused` first boot,
+and what the protected store's first revision holds and does not hold. §D332.3 step 3(d)–(e) consumes
+the output below as exactly two journaled commands — one `apply-settings` envelope for the ordinary
+document, one marked `apply-protected-settings` envelope for the store — and adds nothing to it.
+Every refusal named here names a KEY or a DOCUMENT and never a value. Nothing here changes runtime
+code (D326); every as-built sentence names its file and line.
+
+###### D332.S1 — what imports, from where, to where
+
+The migrated set is closed and countable. `CONFIG_ENV_BINDINGS` registers **33** bindings today
+(`src/domain/config/resolve.ts:84–241`; §D331.12 item 1 fixes the count, and §D331.8's "32 config
+bindings" is that same set minus `TIMEKEEPER_NAME`, which it lists separately because
+`runtime-environment.ts:226` gives that one key the dual `config-and-secret` channel). Adding the
+three remaining credentials, the pseudonym pair, the two canary references and the five provider
+model chains gives **45 imported names**; the five legacy singular `OCR_*_MODEL` spellings are
+`migrated-refused` but never imported, so the closed removal vocabulary is **50 names**. The plan's
+`envKeysToRemove[]` (§D332.5) lists exactly those of the 50 observed present in the admitted `.env`.
+
+| `.env` key(s) | catalog row (§D331.9 `key`) | destination | per-leaf schema | absent ⇒ |
+|---|---|---|---|---|
+| `HRAUTO_KUALI_TEST_URL` · `HRAUTO_NEW_KRONOS_TEST_URL` · `HRAUTO_ONBASE_TEST_URL` · `HRAUTO_OLD_KRONOS_TEST_URL` · `HRAUTO_SERVICENOW_TEST_URL` · `HRAUTO_SHAREPOINT_TEST_URL` | `urls.<system>.test.entry` (six single-leaf rows) | `settings/settings.json` → same leaf path | `<System>RoutesSchema.partial()`'s `entry` (as built `z.url()`, `resolve.ts:61–83`) | leaf omitted; `defaultKind: none` — there is simply no test override |
+| `HRAUTO_CRM_TEST_URL` | `urls.crm.test.entry` (one leaf of the five-leaf row) | `settings/settings.json` → `urls.crm.test.entry` | `CrmRoutesSchema.partial()`'s `entry` | leaf omitted |
+| `HRAUTO_I9_TEST_URL` | `urls.i9.test.entry` (one leaf of the two-leaf row) | `settings/settings.json` → `urls.i9.test.entry` | `I9RoutesSchema.partial()`'s `entry` | leaf omitted |
+| `HRAUTO_UCPATH_TEST_URL` | `urls.ucpath.test.smartHr` — **`smartHr`, not `entry`** (`resolve.ts:93–99`) | `settings/settings.json` → `urls.ucpath.test.smartHr` | `UcpathRoutesSchema.partial()`'s `smartHr` | leaf omitted |
+| `ANNUAL_DATES_END` · `KRONOS_DEFAULT_END_DATE` · `KRONOS_DEFAULT_START_DATE` | `annualDates.<FY>.{jobEndDate,kronosDefaultEndDate,kronosDefaultStartDate}` | `settings/settings.json` → ONE fiscal-year entry (below) | `UsDateSchema` per leaf; the entry is group-valid (§D331.8 (i)) | the year has no entry; a workflow that needs it refuses at its own use |
+| `HRAUTO_UKG_NAVIGATION_MS` | `timeouts.ukgNavigationMs` | `settings/settings.json` | `z.number().int().positive()` | leaf omitted = `default` (`contract`) |
+| `HRAUTO_NAVIGATION_RETRIES` · `HRAUTO_SEPARATION_TERMINATION_WINDOW_DAYS` | `performance.navigationRetries` · `performance.separationTerminationWindowDays` | `settings/settings.json` | `z.number().int().positive()` | leaf omitted = `default` (`contract`) |
+| `OCR_SECOND_OPINION_MAX` · `OCR_PAGE_MAX_WAIT_MS` · `OCR_TIER1_PATIENCE_MS` · `OCR_PAGE_CONCURRENCY` · `OCR_DISAMBIG_CONCURRENCY` · `OCR_SUGGEST_CONCURRENCY` · `OCR_BACKOFF_BASE_MS` · `OCR_BACKOFF_CAP_MS` · `OCR_MAX_VALIDATION_RETRIES` | the nine `ocr.*` rows | `settings/settings.json` | `z.number().int().positive()`, and `nonnegative()` for `pageConcurrency` / `maxValidationRetries` | leaf omitted = `default` (`contract`) |
+| `HRAUTO_HEALTH_MONITOR_TICK_MS` · `HRAUTO_HEALTH_MONITOR_MAX_REFRESH` · `HRAUTO_HEALTH_MONITOR_MAX_REOPEN` | `browserHealth.{monitorTickMs,maxAutoRefresh,maxReopen}` | `settings/settings.json` | `z.number().int().positive()` / `nonnegative()` | leaf omitted = `default` (`contract`) |
+| `HRAUTO_DEFAULT_WORKERS` | `concurrency.defaultWorkers` | `settings/settings.json` | `z.number().int().positive()` | leaf omitted = `default` (`contract`) |
+| `HRAUTO_DAEMON_IDLE_MS` · `HRAUTO_DAEMON_IDLE_REPOLL_MS` | `daemon.{idleMs,idleRepollMs}` | `settings/settings.json` | `z.number().int().positive()` | leaf omitted = `default` (`contract`) |
+| `DEBUG_SCREENSHOTS` · `HR_AUTOMATION_DUO_WEBAUTHN` | `features.{debugScreenshots,duoWebAuthn}` | `settings/settings.json` | `z.boolean()` | leaf omitted = `default` (`contract`) |
+| `OCR_GEMINI_MODELS` · `OCR_GROQ_MODELS` · `OCR_MISTRAL_MODELS` · `OCR_OPENROUTER_MODELS` · `OCR_SAMBANOVA_MODELS` | `providers.{gemini,groq,mistral,openRouter,sambanova}.models` | `settings/settings.json` | the 1.6 model-chain list schema (`readonly string[]`; comma-separated in the environment today, `secrets.ts:659` `providerModelChain`) | leaf omitted; the family has no configured chain |
+| `TIMEKEEPER_NAME` (dual-channel, `runtime-environment.ts:226`) | `timekeeperName` | `settings/protected.json` → entry `timekeeperName`; the ordinary leaf `operator.timekeeperName` is DELETED, not carried (§D332.S2) | the per-name schema 1.6 owes (`SECRET_SPECS` entry, non-empty string as built, `secrets.ts:147`) | entry absent → `present: false`; `requireSecret` throws `SecretMissingError` naming the key at first use |
+| `UCPATH_USER_ID` | `ucpathUserId` | `settings/protected.json` | per-name schema owed by 1.6 (`secrets.ts:145`) | `present: false`; the blocking enqueue preflight refuses by key |
+| `UCPATH_PASSWORD` | `ucpathPassword` | `settings/protected.json` | per-name schema owed by 1.6 (`secrets.ts:146`) | `present: false`; the blocking enqueue preflight refuses by key |
+| `ONBOARDING_ROSTER_URL` | `sharepointOnboardingRosterUrl` | `settings/protected.json` | per-name schema owed by 1.6 (`secrets.ts:148`) | `present: false`; the blocking enqueue preflight refuses by key |
+| `HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY` **+** `HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION` | `activityPersonPseudonym` — **ONE** entry (`secrets.ts:111–134`) | `settings/protected.json` | the 64-hex key shape + generation-id shape (`requireActivityPersonPseudonymDomain`) | `present: false`; D288 evidence writes refuse by name, and no pseudonym is recomputed (§D332.S6) |
+| `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER` | `separationsKualiFinalizationCanaryDocumentNumber` | `settings/protected.json` | `KualiDocumentNumberSchema` (`TEST_TARGET_SECRET_SPECS`, `valueKind: kuali-document-number`) | `present: false` → the next dry-run start resolves `blocked` by key (D300, §D332.S4) |
+| `HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID` | `personLookupCanaryEid` | `settings/protected.json` | `EidSchema` (`TEST_TARGET_SECRET_SPECS`, `valueKind: ucpath-eid`) | `present: false` → the next dry-run start resolves `blocked` by key (D300, §D332.S4) |
+| — (no environment key) | every other `ordinary-settings` leaf the old document already holds | `settings/settings.json`, leaf-for-leaf (§D332.S2) | the catalog's per-leaf schema | leaf omitted = `default` by its `defaultKind` |
+
+**Annual dates get exactly one fiscal-year entry, chosen at plan time.** As built the three annual
+keys apply to `FY${clock.fiscalYear()}` at the moment of resolution (`resolve.ts:360, 363–385`), and a
+partial set for a year the document does not already hold throws. The import therefore materializes
+ONE entry under `FY<clock.fiscalYear()>` observed once from the runtime clock at plan time, prints
+that exact key in the plan, and imports all three leaves or none: a partial set refuses
+`cross-field-invalid { keys }` naming the missing leaves (§D331.5, §D331.8 (i)). Because the
+fiscal-year key is part of the plan it is part of `planDigest`, so a plan minted before a fiscal-year
+roll and executed after it re-plans (§D332.5's re-plan arm) instead of writing last year's entry —
+which is why the year is fixed at plan time and never re-derived at settlement. After the floor the
+wildcard binding is gone with the environment layer: a NEW fiscal year is an operator edit in
+Settings, not an inherited environment value. That is a real behaviour change and the plan says so.
+
+**What is never read or copied, by name.**
+
+- **The five provider key families' pool cells** — `GEMINI_API_KEY{,2..8}`, `GROQ_API_KEY{,2..8}`,
+  `MISTRAL_API_KEY{,2..8}`, `OPEN_ROUTER_API_KEY{,2..8}`, `SAMBANOVA_API_KEY{,2..8}`
+  (`secrets.ts:151–155`). The upgrade classifies the key NAME as `provider-env` and **never opens the
+  value**. They stay `.env`'s under the shrunken allowlist (§D331.8), are read only by
+  `requireSecretFamily` / `optionalSecretFamily` (`secrets.ts:627, 638`), and `protected.json` gets no
+  row for them.
+- **The five legacy singular spellings** `OCR_GEMINI_MODEL`, `OCR_GROQ_MODEL`, `OCR_MISTRAL_MODEL`,
+  `OCR_OPENROUTER_MODEL`, `OCR_SAMBANOVA_MODEL` (`secrets.ts:151–155` `legacyModelEnv`). They are not
+  a catalogued `currentSource`, so importing one would carry a source the target does not have. The
+  plan lists a present singular key under "present, never imported" with the remedy "set
+  `OCR_<FAMILY>_MODELS` to the intended chain and re-run `storage upgrade --plan`, then remove both
+  lines", and §D331.8 makes them `migrated-refused` at the first post-upgrade boot once 1.6 deletes
+  the fallback arm. This deliberately does not mint an eighth dual-source row: §D331.1's
+  `currentSource` arrays are seven and stay seven. As built the registry already classes all five
+  `retired-in-target` (`runtime-environment.ts:160–163, 186`) while `providerModelChain` still reads
+  them as a one-element fallback (`secrets.ts:666–667`) — a present singular key is therefore already
+  relying on an arm the registry calls retired, which is exactly why the import refuses to carry it
+  rather than guessing a chain.
+- **`test-only` keys** — `HRAUTO_E2E_STUBS`, `HRAUTO_LEGACY_REPO`, `HR_DRYRUN_DOC_ID`,
+  `HR_SOAK_ITERATIONS`, `HR_TEARDOWN_SOAK_ITERATIONS`, `HR_TEST_HEADED`, `PARITY_UPDATE`,
+  `SEL_SESSION`, `TMPDIR`, `TZ`, `__NUMENV_TEST__` and the four test-only families
+  (`CEREBRAS_API_KEY`, `COHERE_API_KEY`, `OCRSPACE_API_KEY`, `ZEP_API_KEY`)
+  (`runtime-environment.ts:165–169, 294–297`). None targets a catalogued leaf; none is imported,
+  refused or reported as migrated.
+- **`retired-in-target` keys** — the inert list at `runtime-environment.ts:171–183` (`DEBUG`,
+  `HRAUTO_TRACKER_DIR`, the `KRONOS_*` picker/calendar timings, the capture keys D294 retired, and the
+  rest). Unread before the upgrade, unread after it, never a refusal, never imported.
+- **The launch nonce** `HRAUTO_DASHBOARD_LAUNCH_NONCE` (`runtime-environment.ts:236–243`) — process
+  ownership, not configuration (§D331.2) — and `HRAUTO_HOST_PRIMARY_DISPLAY`, which is the D324
+  `config-default` PUBLICATION, not a source: the upgrade neither reads nor writes it, and
+  `display.*` imports only from the old document.
+
+###### D332.S2 — the `settings.json` side
+
+The old ordinary document is read once, in preflight, through the as-built no-follow reader and the
+as-built strict `EditableSettingsOverrideSchema` (`src/domain/config/schema.ts:337–360`,
+`src/domain/config/settings.ts:25, 39`), under §D332.2 step 9's journal agreement. Its leaves are then
+carried **leaf-for-leaf** into `settings/settings.json` under the NEW `SETTINGS_SCHEMA_HASH`. Four
+rules govern the carry:
+
+1. **One patch, no clears.** The `apply-settings` patch of §D332.3 step 3(d) is the union of (the
+   carried document leaves) and (the imported environment leaves of §D332.S1), each as
+   `{ set: <value> }`. There is no `{ clear: true }` entry, because nothing is being unset — a leaf
+   the old document did not hold is simply absent from the patch and resolves `default` by its
+   `defaultKind`.
+2. **`operator.timekeeperName` leaves the ordinary document.** It becomes the protected entry
+   `timekeeperName` (§D332.S1) and is REMOVED from the ordinary document, because §D331.6 rule 2
+   deletes the leaf from `ConfigSchema` outright. As built the persisted document cannot hold it —
+   `EditableSettingsOverrideSchema` has no `operator` member — so on a document this build can parse
+   the removal is a no-op; it is stated because the post-upgrade document must be provably free of the
+   leaf, and "cannot happen" is not "checked".
+3. **Every carried leaf re-validates twice.** First through the catalog's per-leaf schema (the
+   `schema` column of §D331.9); a failure is `invalid-value { key }`. Then the fully merged candidate
+   goes through the composition's exact resolver, exactly as §D331.5's arm requires; a failure is
+   `cross-field-invalid { keys }` (lesson 2026-08-28: individually valid leaves can break a
+   cross-field invariant on restart, and `display`'s two leaves and `annualDates`' three are the live
+   cases). The canonical next bytes must also be ≤ 1 048 576 B or the plan refuses
+   `document-too-large { file }` (§D332.2 step 15). Every one of these is a preflight refusal: nothing
+   is written.
+4. **A leaf the old document holds that the catalog does not** refuses `not-editable { key }`
+   (§D331.5's arm, evaluated over the old document because the catalog is static). None is expected —
+   the strict parse above admits only `EditableSettingsOverrideSchema` members, and §D331.5 makes
+   that set the first rows of the longer `ordinary-settings` class — so the arm should be unreachable;
+   it is stated anyway, because an unchecked "expected empty" is how a leaf disappears silently.
+
+`SETTINGS_SCHEMA_HASH` is derived from `EditableSettingsOverrideSchema`
+(`src/domain/config/settings.ts:13`), so widening that schema to the whole `ordinary-settings` class
+changes the hash by construction: the old file's `settingsSchemaHash` will not equal the new build's,
+and that mismatch is precisely what the rewrite resolves rather than tolerates (§D331.12 item 2). The
+revision, command, audit and `settings_current` identity of the rewrite belong to §D332.3 step 3(d)
+and are cited, not restated here.
+
+###### D332.S3 — the tie-break for the seven dual-source leaves
+
+§D331.1 fixes the rule and §D332.2 step 12 runs it in preflight. The seven `currentSource` arrays are
+`urls.crm.test.*` ↔ `HRAUTO_CRM_TEST_URL`, `urls.ucpath.test.*` ↔ `HRAUTO_UCPATH_TEST_URL`,
+`urls.i9.test.*` ↔ `HRAUTO_I9_TEST_URL`, `ocr.pageConcurrency` ↔ `OCR_PAGE_CONCURRENCY`,
+`ocr.maxValidationRetries` ↔ `OCR_MAX_VALIDATION_RETRIES`, `concurrency.defaultWorkers` ↔
+`HRAUTO_DEFAULT_WORKERS`, and `timekeeperName` ↔ `TIMEKEEPER_NAME` / `operator.timekeeperName`.
+
+**The rule, per leaf:**
+
+| Observed | Outcome |
+|---|---|
+| byte-equal after canonicalization | import once, from either source; the plan names the leaf and both sources |
+| exactly one present | import it; the plan names the one source |
+| both present and different | refuse `ambiguous-duplicate { key, sources }`, `sources` the closed pair `["settings.json", "env:<KEY>"]`; nothing is written |
+
+The remedy the refusal carries is fixed text: **"make them equal or remove one, then re-run
+`npm run cli -- storage upgrade --plan`"**. There is no precedence tie-break — today's resolver would
+silently pick the environment side, and D327 says refuse (§D331.1).
+
+**Canonicalization is the leaf's own schema, and nothing else.** Parse BOTH candidates through the
+catalog's `schema` for that leaf, then compare the PARSED values; never compare raw strings, and never
+apply a normalization the schema does not itself perform.
+
+- **Integer leaves** (`ocr.pageConcurrency`, `ocr.maxValidationRetries` — `z.number().int().nonnegative()`;
+  `concurrency.defaultWorkers` — `z.number().int().positive()`): the environment side is text and the
+  document side is a JSON number, so the canonical form is the parsed integer — `"4"` and `4` are
+  equal and import once. An environment value that fails the leaf schema is `invalid-value { key }`
+  (§D332.2 step 11) and never reaches the comparison.
+- **URL leaves** (`urls.crm.test.entry`, `urls.i9.test.entry`, `urls.ucpath.test.smartHr`): the
+  canonical form is the string the leaf's `z.url()` returns, unchanged. No trimming, no case folding,
+  no trailing-slash equivalence, no default-port removal. Two endpoints that differ by one byte after
+  the schema are DIFFERENT and refusing is the correct answer: a "close enough" URL is exactly the
+  plausible-but-wrong substitution the fail-loud rule forbids, and it would point a live run at the
+  wrong system.
+- **`timekeeperName`**: the comparison is on the value bytes, in constant time, under the plan; the
+  refusal names the KEY only — never either value, never a length, never a digest (§D331.6 rule 1,
+  §D331.5's marked-envelope discipline). This is the one dual-source row whose comparison touches a
+  `protected-identifier`, so the plan records only that the two sources disagreed.
+
+**Evaluate per leaf, not per group.** For the three multi-leaf URL rows the array is a GROUP fact: as
+built the editable document omits exactly the environment-owned leaf from each group
+(`CrmRoutesSchema.omit({ entry: true })`, `UcpathRoutesSchema.omit({ smartHr: true })`,
+`I9RoutesSchema.omit({ entry: true })` — `schema.ts:341–348`), so the two sources are leaf-disjoint by
+construction and the refusal cannot trip on a document this build can parse. The per-leaf check runs
+anyway. The same holds for `timekeeperName`: `EditableSettingsOverrideSchema` has no `operator`
+member, so a persisted document carrying one fails the strict parse in preflight before the tie-break
+is reached; the arm exists for the catalog's completeness and for a resolver-input caller, and for
+`ocr.pageConcurrency`, `ocr.maxValidationRetries` and `concurrency.defaultWorkers` — the three rows
+where both sources really can hold the SAME leaf today — it is the arm that actually fires.
+
+`--plan` and execution evaluate this rule over the same evidence, and `upgradeId` binds the old
+document's `settingsFingerprint` while `planDigest` binds the plan (§D332.5), so an edit to either
+source between the two yields a different digest and re-plans rather than importing a value the
+operator never saw in a plan.
+
+###### D332.S4 — canary references
+
+`config/test-subjects.json` stays the committed PUBLIC registry and the upgrade does not touch it
+(§D332.8's file row; §D331.6 rule 6). It carries, today, exactly two closed references:
+
+| target label | workflow | reference NAME | environment key | per-kind schema |
+|---|---|---|---|---|
+| `finalization-canary` | `separations` | `separationsKualiFinalizationCanaryDocumentNumber` | `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER` | `KualiDocumentNumberSchema` |
+| `person-lookup-canary` | `person-lookup` | `personLookupCanaryEid` | `HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID` | `EidSchema` |
+
+Per reference, at preflight (§D332.2 step 13) and then at import:
+
+- **present and valid** → imports as that protected NAME in `settings/protected.json`, judged by that
+  reference's per-kind schema and by no other. Only the SOURCE moves; `optionalTestTargetSecret` reads
+  the same name afterwards and the dry-run start admission keeps retaining the reference NAME only.
+- **present and malformed** → `invalid-value { key }`, a preflight refusal that writes nothing. It
+  names the environment key and the reference name; never the observed value, never its length.
+- **absent** → imports nothing. The entry reads back `present: false`, and the next dry-run start
+  resolves `blocked` by key before any browser starts — D300's semantics, unchanged.
+
+The reference is CLOSED in code (`TestTargetDocumentNumberSecretReferenceSchema` /
+`TestTargetEidSecretReferenceSchema`, `secrets.ts:90–104`): the registry names exactly one
+`(name, env)` pair per target and the upgrade never chooses, invents or re-points one. A document
+number is never copied into a name or EID field and an EID never into a document-number field — the
+per-kind schema decides, and a value that would parse under the wrong kind is still refused because
+the reference binds the pair.
+
+The availability labels are registry facts the upgrade neither reads as permission nor changes: a
+`gone`, `unknown` or `consumed` label blocks at start exactly as D284/D300 already require, and
+importing that target's value changes nothing about that. Configuration is not availability
+(lesson 2026-09-01), and the upgrade does not re-observe a subject or edit a `lastObserved` date.
+
+###### D332.S5 — the first post-upgrade boot (`migrated-refused`)
+
+**The plan says it before it happens.** `storage upgrade --plan`, and the final report of a real run,
+list every migrated key still present in the admitted `.env` **by name** — the journal's
+`envKeysToRemove[]` (§D332.5) — with the remedy **"remove these lines from `.env`"**. Nothing about
+this is a surprise at the next boot.
+
+**The next boot refuses, by design.** After the floor, a `migrated-refused` key present in the
+admitted `.env` refuses at the bootstrap door by key name, and one present in the parent process
+environment refuses dashboard and worker boot by key name and is reported by the environment doctor
+(§D331.8). The refusal text repeats the same list the plan printed. Neither is ever read as a value
+again: `protected.json` and `settings/settings.json` are the only sources after the upgrade.
+
+**Why the upgrade cannot remove them itself.** `.env` is the one file the upgrade never touches
+(§D332.3's opening sentence). It is operator-owned and mode `0600`; the runtime never writes it; its
+comments, ordering and non-catalogued content are the operator's; and it holds the five provider
+families the upgrade is forbidden to open, so rewriting it would mean reading through a file whose
+values it must never see. The bootstrap's grammar admission
+(`admitLocalEnvironmentFile`, `src/domain/secrets.ts:382–430`) is a READ contract — no-follow open,
+fstat, `mode & 0o077 === 0`, bounded size, strict grammar, one-to-one `parseEnv` cross-check, explicit
+parent bindings win — not an edit contract, and turning it into one would put a writer on the one
+file that proves what the operator chose.
+
+**Why leaving them is safe.** A value that cannot be read cannot shadow (§D331.8). The keys are
+refused by NAME at the door, before any value is applied to the process environment, so a stale line
+cannot re-enter the resolver, which after 1.6 takes no environment input at all
+(`resolveConfig(document, hostFacts, clock?)`, §D331.2).
+
+**The downgrade hole, and how D332 closes it.** The dangerous case is not a new build — it is an OLD
+build run against an upgraded root. An old build still carries `CONFIG_ENV_BINDINGS` and would read
+the still-present migrated keys, so its resolver would silently shadow the new documents with the very
+values the operator was told to remove. That path is closed one step earlier than config resolution:
+the upgraded database's `user_version` is above the old build's `CURRENT_AUTHORITY_SCHEMA_VERSION`, so
+`#admitExistingSchema` refuses **`authority-ahead { schemaVersion, supported }` at the database open**,
+before any settings byte or environment value is read (§D332.6's `ahead` row and its stated ordering;
+the same ordering also prevents the old build from reaching the vacant old pathname and reading it as
+"virgin"). Both halves are load-bearing: the boot refusal closes the new-build path, and the
+open-ordering closes the old-build path. Neither alone would do.
+
+###### D332.S6 — what the import never claims
+
+1. **Provider keys are never copied, and `.env` is byte-identical.** The upgrade classifies the five
+   families' pool cells by NAME and never opens a value; `.env` is unchanged after the upgrade, which
+   §D332.11 proof M20 (`env-untouched`) pins together with the plan's key list and the first boot's
+   refusals.
+2. **Protected values are imported WRITE-ONLY.** The command row, its audit and
+   `protected_settings_current` hold the MARKED envelope (`"<set>"` per value, §D331.5) and
+   `{ name, valueId, updatedAt }` per entry (§D331.4); `authority_upgrades` holds
+   `protectedEntryNames[]` and no value, no digest of a value and no length (§D332.5). The ONE place a
+   value transits is `<stateRoot>/upgrades/<upgradeId>.prepare.json`, which is a protected-class
+   artifact for exactly that reason — never backed up, never served, named in a report only by
+   existence — and is removed at settlement (§D332.3 step 2 and step 4). The import never returns,
+   digests, lengths or `last4`s a value, and never answers "is this the same value as before"; there
+   is no verification oracle (§D331.6 rules 1 and 4).
+3. **Historical exposure is recorded, never claimed erased.** The pre-upgrade backup §D332.2 step 10
+   requires carries `operator.timekeeperName` in every `config_snapshots` row and in every
+   `configFingerprint` preimage, and the retained `<upgradeId>.rollback.json` carries it in the prior
+   `settings.json` bytes wherever the leaf was set there. The journal's `planned` row records
+   `historicalExposure: ["operator.timekeeperName"]` and the plan prints it (§D332.7 item 5); §4.1
+   forbids rewriting a released snapshot generation, and §D331.6 rule 8 forbids any report, doctor
+   line or Settings surface saying the migration removed it. This is one accepted `direct-identifier`
+   exposure — never a password, never a canary. Both files stay `0600`, and the rollback file is
+   excluded from backups.
+4. **The pseudonym pair moves as ONE entry.** `activityPersonPseudonym` carries the HMAC key and its
+   public generation id together (`secrets.ts:111–134`), so a rotation cannot split them and D288's
+   generation-bound commitment semantics are unchanged. No pseudonym is recomputed and no
+   `activityPersonPseudonyms` row is read, rewritten or backfilled by the upgrade: re-derivation
+   belongs to D288's reviewed backfill capability, which this command does not invoke and this
+   contract does not authorize.
+5. **Absence is a state, not a default and not a failure.** A name absent from the plan imports
+   nothing and reads back `present: false` at revision 1's empty store (§D331.3). The upgrade never
+   describes such a store as "configured", never treats absence as "not configured by choice", and
+   never regenerates an entry — the operator enters it through §D331.5's protected arm, and until then
+   the first credential-needing action refuses by key name.
 
 ## 4. Immutable per-run config and instance snapshot — required in Phase 1
 
