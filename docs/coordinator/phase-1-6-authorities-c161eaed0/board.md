@@ -9,7 +9,7 @@
 **Integration target:** `master`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-04T18:19:14Z at plan-correction commit `e16744205343d04f8b87032ecb34dd92dca2ead9`
+**Last verified:** 2026-09-04T18:47:17Z at authority-ratification commit `a00be7591c1a801b27d84c7b43c8a6f1708068ed`
 
 ## Facts every run needs
 
@@ -23,12 +23,14 @@
 ## Decisions ratified
 
 - 2026-09-04 · operator launch instruction → one supervisor per admitted 1.6 task; only the explicitly named Task 2 wave runs concurrently → owner this run plan.
+- 2026-09-04 · chat item 1 = A → Task 1 may edit dashboard composition solely to release its already-acquired process lock when authority opening refuses → owner `docs/rebuild/01-build-the-spine.md` §1.6 Task 1 at `a00be759`.
+- 2026-09-04 · chat item 2 = A → every upgrade-journal append has an independent row identity; repeated `planned` rows remain evidence while terminal phases are unique per upgrade → owner `docs/rebuild/reference/dashboard-surfaces.md` §D332.5 and D332's decision pointer at `a00be759`.
 
 ## Unit ledger
 
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
-| U01 · Task 1 schema floor | R01 | needs operator | pending | pending | supervisor-owned consequential review | Cleanly stopped before product/test edits; two contract/seam choices open in chat decision brief items 1–2. |
+| U01 · Task 1 schema floor | R01 | active | pending | pending | supervisor-owned consequential review | Operator chose 1A/2A; owning authorities ratified at `a00be759`; supervisor cleared to resume. |
 | U02 · Task 2-1 run-record service | R02 | blocked on U01 | pending | pending | supervisor-owned consequential review | Wave 2 peer 1. |
 | U03 · Task 2-2 settings catalog/root | R03 | blocked on U01 | pending | pending | supervisor-owned consequential review | Wave 2 peer 2. |
 | U04 · Task 3 runtime lifecycle writers | R04 | blocked on U02+U03 | pending | pending | supervisor-owned consequential review | Serial after both wave merges. |
@@ -39,9 +41,8 @@
 
 ## Residue
 
-- R01 found the lock-release seam and repeated-planned-row identity contradictions before implementation; both remain owned by U01 pending operator choice.
+- R01's two pre-implementation authority contradictions were ratified at `a00be759`; no open residue remains from that stop.
 
 ## Questions for the operator
 
-- Chat decision brief item 1: allow Task 1 to edit dashboard composition for ahead-version lock release, or defer a required proof.
-- Chat decision brief item 2: permit repeated `planned` journal evidence with a separate row key, or keep `(upgradeId, phase)` unique and make retries idempotent.
+- None.
