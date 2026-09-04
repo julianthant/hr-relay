@@ -11,7 +11,7 @@
 
 | Run | Phase task | State | Evidence / residue |
 |---|---|---|---|
-| R01 | 1.6.1 | planned | Verify canonical merged floor plus repaired baseline parity |
+| R01 | 1.6.1 | active | Verify canonical merged floor plus repaired baseline parity |
 | R02 | 1.6.2-1 | planned | Dependencies in run plan |
 | R03 | 1.6.2-2 | planned | Dependencies in run plan |
 | R04 | 1.6.3 | planned | Dependencies in run plan |
