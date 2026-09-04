@@ -43,11 +43,11 @@
  *       negative control is the `builds-without-layer` fixture, which proves
  *       the refusal happens at all (a `Feature` may be a bare string in the
  *       schema, so the check is not vacuous at the type level).
- *   (f) D326's Phase 0–3 execution grammar is structural: every part uses the
+ *   (f) D326/D328's Phase 0–3 execution grammar is structural: every part uses the
  *       same decimal label (`0.1`, `1.1`, `2.1`, `3.1`), each part requires the
- *       preceding part, and immediate tasks are consecutive plain-numbered
- *       supervisor sessions. Parallelism belongs to the coordinator run plan,
- *       never to letter suffixes in the durable outcome hierarchy.
+ *       preceding part, and immediate task ordinals advance consecutively.
+ *       Parallel waves use consecutive numeric hyphen members at task depth;
+ *       the coordinator run plan still owns their execution bindings.
  *
  * Arms (c) and (d) ship as RATCHETS, because at HEAD the `doc:` column has been
  * pasted onto exactly one node (step 2b's dogfood) and step 5.0 of
@@ -267,9 +267,9 @@ const FOUNDATIONAL_PHASE_PARTS = [
     parts: ["dash-defaults", "order-8", "workflow-authoring-model", "claude-operator"],
   },
 ] as const;
-const SUPERVISOR_TASK_RE = /^(\d+) · /;
+const SUPERVISOR_TASK_RE = /^(\d+)(?:-(\d+))? · /;
 
-/** D326's shared grammar over the immediate Phase 0–3 part/task hierarchy. */
+/** D326/D328's shared grammar over the immediate Phase 0–3 part/task hierarchy. */
 export function auditPhaseThreeExecutionOrder(roadmap: Roadmap): string[] {
   const violations: string[] = [];
   for (const expectedPhase of FOUNDATIONAL_PHASE_PARTS) {
@@ -305,22 +305,64 @@ export function auditPhaseThreeExecutionOrder(roadmap: Roadmap): string[] {
         }
       }
 
-      for (const [taskIndex, task] of (part.items ?? []).entries()) {
+      let expectedOrdinal = 1;
+      let activeWaveOrdinal: number | undefined;
+      let expectedWaveMember = 1;
+      let activeWaveMembers = 0;
+      const closeWave = (): void => {
+        if (activeWaveOrdinal === undefined) return;
+        if (activeWaveMembers < 2) {
+          violations.push(
+            `Phase ${String(expectedPhase.phaseNumber)} part {#${expectedPartId}} parallel ordinal ${String(activeWaveOrdinal)} must contain at least two contiguous members`,
+          );
+        }
+        expectedOrdinal = activeWaveOrdinal + 1;
+        activeWaveOrdinal = undefined;
+        expectedWaveMember = 1;
+        activeWaveMembers = 0;
+      };
+
+      for (const task of part.items ?? []) {
         const match = SUPERVISOR_TASK_RE.exec(task.title);
         if (match === null) {
           violations.push(
-            `Phase ${String(expectedPhase.phaseNumber)} part {#${expectedPartId}} immediate task {#${task.id ?? "missing-id"}} must start with a plain number such as "2 · "; found "${task.title}"`,
+            `Phase ${String(expectedPhase.phaseNumber)} part {#${expectedPartId}} immediate task {#${task.id ?? "missing-id"}} must start with a serial number such as "2 · " or a parallel member such as "2-1 · "; found "${task.title}"`,
           );
           continue;
         }
-        const number = Number(match[1]);
-        const expectedNumber = taskIndex + 1;
-        if (number !== expectedNumber) {
+        const ordinal = Number(match[1]);
+        const member = match[2] === undefined ? undefined : Number(match[2]);
+
+        if (member === undefined) {
+          closeWave();
+          if (ordinal !== expectedOrdinal) {
+            violations.push(
+              `Phase ${String(expectedPhase.phaseNumber)} part {#${expectedPartId}} tasks must advance by consecutive serial/wave ordinals from 1; expected ${String(expectedOrdinal)}, found ${String(ordinal)}`,
+            );
+          }
+          expectedOrdinal += 1;
+          continue;
+        }
+
+        if (activeWaveOrdinal !== undefined && ordinal !== activeWaveOrdinal) closeWave();
+        if (activeWaveOrdinal === undefined) {
+          if (ordinal !== expectedOrdinal) {
+            violations.push(
+              `Phase ${String(expectedPhase.phaseNumber)} part {#${expectedPartId}} tasks must advance by consecutive serial/wave ordinals from 1; expected ${String(expectedOrdinal)}, found ${String(ordinal)}`,
+            );
+          }
+          activeWaveOrdinal = ordinal;
+          expectedWaveMember = 1;
+        }
+        if (member !== expectedWaveMember) {
           violations.push(
-            `Phase ${String(expectedPhase.phaseNumber)} part {#${expectedPartId}} tasks must be consecutive and chronological from 1; position ${String(expectedNumber)} is ${String(number)}`,
+            `Phase ${String(expectedPhase.phaseNumber)} part {#${expectedPartId}} parallel task members for ordinal ${String(ordinal)} must be consecutive from -1; expected ${String(ordinal)}-${String(expectedWaveMember)}, found ${String(ordinal)}-${String(member)}`,
           );
         }
+        expectedWaveMember += 1;
+        activeWaveMembers += 1;
       }
+      closeWave();
     }
   }
 
@@ -461,7 +503,7 @@ export function auditRoadmapDocBinding(
     }
   }
 
-  // (f) — D326's shared decimal part order and supervisor-session task grammar.
+  // (f) — D326/D328's shared decimal part order and supervisor-session task grammar.
   violations.push(...auditPhaseThreeExecutionOrder(roadmap));
 
   return {
@@ -668,7 +710,7 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     expect(() => parsePlan(withSessionMarker)).toThrow(/phase .* needs an \{#id\}/);
   });
 
-  it("refuses Phase 0–3 parts or supervisor tasks that leave D326's shared decimal execution grammar", () => {
+  it("refuses Phase 0–3 parts or supervisor tasks that leave D326/D328's shared execution grammar", () => {
     const reordered = RoadmapSchema.parse(parsePlan(tree.planText));
     const phase = reordered.spine.find((entry) => entry.kind === "phase" && entry.id === "phase-3");
     expect(phase?.kind).toBe("phase");
@@ -677,7 +719,7 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     if (part?.items === undefined) throw new Error("test fixture has no Phase 3.2 tasks");
     [part.items[0], part.items[3]] = [part.items[3], part.items[0]];
     expect(auditPhaseThreeExecutionOrder(reordered).join("\n")).toContain(
-      "tasks must be consecutive and chronological from 1",
+      "tasks must advance by consecutive serial/wave ordinals from 1",
     );
 
     const lettered = RoadmapSchema.parse(parsePlan(tree.planText));
@@ -689,7 +731,23 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     if (task === undefined) throw new Error("test fixture has no Phase 3.2 Task 1");
     task.title = task.title.replace(/^1 · /, "1A · ");
     expect(auditPhaseThreeExecutionOrder(lettered).join("\n")).toContain(
-      'must start with a plain number such as "2 · "',
+      'must start with a serial number such as "2 · " or a parallel member such as "2-1 · "',
+    );
+
+    const skippedMember = RoadmapSchema.parse(parsePlan(tree.planText));
+    const skippedMemberPhase = skippedMember.spine.find(
+      (entry) => entry.kind === "phase" && entry.id === "phase-3",
+    );
+    if (skippedMemberPhase === undefined || skippedMemberPhase.kind !== "phase") {
+      throw new Error("test fixture has no Phase 3");
+    }
+    const waveMember = skippedMemberPhase.items
+      .find((item) => item.id === "dash-defaults")
+      ?.items?.find((item) => item.title.startsWith("9-2 · "));
+    if (waveMember === undefined) throw new Error("test fixture has no Phase 3.1 wave-9 member 2");
+    waveMember.title = waveMember.title.replace(/^9-2 · /, "9-3 · ");
+    expect(auditPhaseThreeExecutionOrder(skippedMember).join("\n")).toContain(
+      "parallel task members for ordinal 9 must be consecutive from -1; expected 9-2, found 9-3",
     );
   });
 });

@@ -27,9 +27,10 @@ or amended live in `reference/`; this doc holds the work, its state, and its exi
 - [ ] the run-detail panel's **Review** and **People** bodies — `availableSections` cannot return either section, so both tabs are structurally unreachable; the projections behind them land with the OCR and group migrations in 03c, not here
 - [x] demo fidelity — CLOSED BY DISPOSITION 2026-08-27 (D279); D294 subsequently retires the phone-capture portion of its historical residue. The remaining historical audit counts remain evidence, not active product work (Track F, §Demo fidelity — every detail, region by region; `docs/decisions/dashboard.md` §D271–D276)
 - [x] historical Tasks 1–7 retain their evidence
-- [ ] D326 reopens Tasks 8–32 after 2.6 to finish every generic operator journey; 3.2 cannot resume until the unchanged Task-8 acceptance matrix is green
+- [ ] D326 reopens Task 8, parallel waves 9–13, and serial Tasks 14–18 after 2.6 to finish every generic operator journey; 3.2 cannot resume until the unchanged Task-8 acceptance matrix is green
+> 2026-09-04 | D328 parallel task identities | each parallel wave now shares one ordinal and uses numeric members (`9-1`, `9-2`, ...); serial tasks keep plain ordinals. The hyphen names a peer supervisor task, not a checklist subtask, and each member's exact branch/worktree appears in the binding table below
 > 2026-09-03 | D326/D327 dashboard reset | operator review found broken/incomplete run-modal, date, queue-delete, settings/setup, session, notification, log, archive, Explorer, intake, trust, realtime, and production journeys. Historical closure is superseded; no workflow-specific policy moves into 3.1
-> 2026-09-03 | 3.1 parallel execution plan | coordination `C21194e18` groups Tasks 9–26 and 30 into five dependency-gated parallel waves capped at four dedicated worktrees; Tasks 8, 27–29 and 31–32 remain serial gates. `master` is integration-only, every Task 8–32 supervisor receives the exact `feature/phase-3-1-dashboard-c21194e18-rNN-*` branch and sibling worktree recorded below, and the coordinator alone verifies, merges and closes each row
+> 2026-09-03 | 3.1 parallel execution plan | coordination `C21194e18` groups the remaining implementation into five dependency-gated parallel waves capped at four dedicated worktrees, with Task 8 and the final five tasks as serial gates. `master` is integration-only, every supervisor receives the exact `feature/phase-3-1-dashboard-c21194e18-rNN-*` branch and sibling worktree recorded below, and the coordinator alone verifies, merges and closes each row
 > 2026-08-20 | docs-cohesion 03a | verified against src/dashboard/** and src/server/dashboard/**; every Track D finding still reproduces at HEAD (no exported deriveRunStatus, two TASK_OUTCOME vocabularies, two panelKindOf copies, zero React.memo, WORKFLOW_DESCRIPTORS imported at dashboard-app.tsx:25); left: D1–D5, the lease, the pool, observed logs, the §7.4 numbers
 > 2026-08-21 | docs-cohesion 03a fidelity fold | the demo-fidelity re-audit (1,956 elements/rows, 756 exact) is folded in as Track F; Track B's "frontend done" stands as the findings-ledger bar it was defined by, and demo fidelity is the stricter bar above it; left: the operator's ~150 rulings, then the FE / BE / PROOF lines Track F carries
 > 2026-08-25 | track-f archive UI + Activity AC24 + Explorer EX5 | `3d461962` served list warning/rehearsal facts and `d1f87916` drew them with the archive's already-served identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared status vocabulary; `4e09fb49` carries Explorer's `Version registry` door through dashboard route state to Archive's actual `Versions & bumps` view. A mechanical recount of ledger 3's 1,119 rows gives 353 exact and 238 OPEN marks; left in this unit: every other non-archive served-and-dropped fact
@@ -61,7 +62,7 @@ The first seven roadmap tasks preserve the historical delivery order while repla
 execution labels: **Task 1** built the shared surfaces, **Task 2** proved the real dashboard-to-run
 connection, **Task 3** hardened shared status, commands, and read budgets, **Task 4** closed fidelity
 and parity, **Task 5** serialized Duo ceremonies, **Task 6** built worker pools and run sessions,
-and **Task 7** recorded observed page facts. Reopened Tasks 8–32 are the current execution plan.
+and **Task 7** recorded observed page facts. Reopened Task 8, waves 9–13, and Tasks 14–18 are the current execution plan.
 Every card is one supervisor-session outcome under the 3.1 coordinator. Historical Track B/C/D/F
 names remain in logs and decision records only.
 
@@ -73,7 +74,7 @@ identity is `phase-3-1-dashboard` / `21194e18-9e1e-4c51-af5e-5d2f1c8b04bf`
 `docs/coordinator/phase-3-1-dashboard-c21194e18/` when execution begins. The portable plan here
 fixes the task, wave, branch, worktree and integration order before any supervisor is dispatched.
 
-**`master` is the integration checkout only.** No Task 8–32 supervisor implements in the primary
+**`master` is the integration checkout only.** No remaining 3.1 supervisor implements in the primary
 checkout or commits directly to `master`. Each task starts from the coordinator-verified
 post-previous-wave `master` SHA in the exact dedicated worktree below, commits only to its recorded
 `feature/` branch, and returns a clean worktree. The coordinator verifies the task gate, merges
@@ -93,11 +94,11 @@ the live coordinator run plan; they never edit the same file concurrently.
 | Workstream | Type of work | Tasks | Ordering inside the stream |
 |---|---|---|---|
 | Baseline | truth inventory and immutable acceptance contract | 8 | serial prerequisite for all implementation |
-| Frame and control plane | shell/date, settings/setup/storage/sessions, production runtime | 9–14, 30 | 9 → 10; 11 + 13 → 14 → 12; 12 + 14 → 30 |
-| Run operations | start, queue commands, notifications | 15–17 | 14 → 15 → 16; 17 is independent after Task 8 |
-| Run evidence and trust | detail, Context/Data, logs, receipts/failures, gates | 18–22 | 18 freezes section seams; 19–22 then run in parallel |
-| Standing surfaces | Archive, Activity/export, Explorer, Intake/Edit Data, Review/People | 23–27 | 23 → 24; 25 and 26 are independent; 27 waits for the run-detail section seams |
-| Cross-cutting closure | realtime, performance, proof infrastructure, acceptance | 28–29, 31–32 | 28 → 29 → 31 → 32; these are serial because each measures or proves the integrated tree |
+| Frame and control plane | shell/date, settings/setup/storage/sessions, production runtime | 9-1, 9-2, 9-3, 10-1, 10-2, 11-1, 12-4 | 9-1 → 10-1; 9-2 + 9-3 → 10-2 → 11-1; 11-1 + 10-2 → 12-4 |
+| Run operations | start, queue commands, notifications | 10-3, 11-2, 12-1 | 10-2 → 11-2 → 12-1; 10-3 is independent after Task 8 |
+| Run evidence and trust | detail, Context/Data, logs, receipts/failures, gates | 12-2, 13-1–13-4 | 12-2 freezes section seams; 13-1–13-4 then run in parallel |
+| Standing surfaces | Archive, Activity/export, Explorer, Intake/Edit Data, Review/People | 9-4, 10-4, 11-3, 12-3, 14 | 11-3 → 12-3; 9-4 and 10-4 are independent; 14 waits for the run-detail section seams |
+| Cross-cutting closure | realtime, performance, proof infrastructure, acceptance | 15–18 | 15 → 16 → 17 → 18; these are serial because each measures or proves the integrated tree |
 
 Worktree root: `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/`. Every row's worktree
 leaf is also its branch suffix; prepend `feature/` for the branch name.
@@ -105,34 +106,34 @@ leaf is also its branch suffix; prepend `feature/` for the branch name.
 | Group | Task | Worktree leaf / branch suffix | Needs first | Integration order |
 |---|---:|---|---|---:|
 | Serial gate 0 | 8 | `phase-3-1-dashboard-c21194e18-r08-truth-reset` | 2.6 closed | 1 |
-| Parallel wave 1 | 9 | `phase-3-1-dashboard-c21194e18-r09-shell` | Task 8 | 2 |
-| Parallel wave 1 | 11 | `phase-3-1-dashboard-c21194e18-r11-settings` | Task 8 | 3 |
-| Parallel wave 1 | 13 | `phase-3-1-dashboard-c21194e18-r13-storage` | Task 8 | 4 |
-| Parallel wave 1 | 25 | `phase-3-1-dashboard-c21194e18-r25-explorer` | Task 8 | 5 |
-| Parallel wave 2 | 10 | `phase-3-1-dashboard-c21194e18-r10-date-navigation` | Tasks 8, 9 | 6 |
-| Parallel wave 2 | 14 | `phase-3-1-dashboard-c21194e18-r14-sessions` | Tasks 8, 11, 13 | 7 |
-| Parallel wave 2 | 17 | `phase-3-1-dashboard-c21194e18-r17-notifications` | Task 8 | 8 |
-| Parallel wave 2 | 26 | `phase-3-1-dashboard-c21194e18-r26-intake-edit` | Task 8 | 9 |
-| Parallel wave 3 | 12 | `phase-3-1-dashboard-c21194e18-r12-setup` | Tasks 11, 13, 14 | 10 |
-| Parallel wave 3 | 15 | `phase-3-1-dashboard-c21194e18-r15-run-start` | Tasks 8, 14 | 11 |
-| Parallel wave 3 | 23 | `phase-3-1-dashboard-c21194e18-r23-archive` | Task 8 | 12 |
-| Parallel wave 4 | 16 | `phase-3-1-dashboard-c21194e18-r16-queue` | Task 15 | 13 |
-| Parallel wave 4 | 18 | `phase-3-1-dashboard-c21194e18-r18-run-detail` | Task 15 | 14 |
-| Parallel wave 4 | 24 | `phase-3-1-dashboard-c21194e18-r24-activity` | Task 23 | 15 |
-| Parallel wave 4 | 30 | `phase-3-1-dashboard-c21194e18-r30-production-runtime` | Tasks 12, 13, 14 | 16 |
-| Parallel wave 5 | 19 | `phase-3-1-dashboard-c21194e18-r19-context-data` | Tasks 16, 18 | 17 |
-| Parallel wave 5 | 20 | `phase-3-1-dashboard-c21194e18-r20-logs` | Tasks 16, 18 | 18 |
-| Parallel wave 5 | 21 | `phase-3-1-dashboard-c21194e18-r21-receipts-failures` | Tasks 16, 18 | 19 |
-| Parallel wave 5 | 22 | `phase-3-1-dashboard-c21194e18-r22-gates` | Tasks 16, 18 | 20 |
-| Serial gate 6 | 27 | `phase-3-1-dashboard-c21194e18-r27-review-people` | Tasks 18–22 | 21 |
-| Serial gate 7 | 28 | `phase-3-1-dashboard-c21194e18-r28-realtime` | Tasks 9–27 | 22 |
-| Serial gate 8 | 29 | `phase-3-1-dashboard-c21194e18-r29-performance` | Task 28 | 23 |
-| Serial gate 9 | 31 | `phase-3-1-dashboard-c21194e18-r31-proof-infrastructure` | Tasks 9–30 | 24 |
-| Serial gate 10 | 32 | `phase-3-1-dashboard-c21194e18-r32-acceptance` | Task 31 and every earlier row closed | 25 |
+| Parallel wave 1 | 9-1 | `phase-3-1-dashboard-c21194e18-r09-1-shell` | Task 8 | 2 |
+| Parallel wave 1 | 9-2 | `phase-3-1-dashboard-c21194e18-r09-2-settings` | Task 8 | 3 |
+| Parallel wave 1 | 9-3 | `phase-3-1-dashboard-c21194e18-r09-3-storage` | Task 8 | 4 |
+| Parallel wave 1 | 9-4 | `phase-3-1-dashboard-c21194e18-r09-4-explorer` | Task 8 | 5 |
+| Parallel wave 2 | 10-1 | `phase-3-1-dashboard-c21194e18-r10-1-date-navigation` | Tasks 8, 9-1 | 6 |
+| Parallel wave 2 | 10-2 | `phase-3-1-dashboard-c21194e18-r10-2-sessions` | Tasks 8, 9-2, 9-3 | 7 |
+| Parallel wave 2 | 10-3 | `phase-3-1-dashboard-c21194e18-r10-3-notifications` | Task 8 | 8 |
+| Parallel wave 2 | 10-4 | `phase-3-1-dashboard-c21194e18-r10-4-intake-edit` | Task 8 | 9 |
+| Parallel wave 3 | 11-1 | `phase-3-1-dashboard-c21194e18-r11-1-setup` | Tasks 9-2, 9-3, 10-2 | 10 |
+| Parallel wave 3 | 11-2 | `phase-3-1-dashboard-c21194e18-r11-2-run-start` | Tasks 8, 10-2 | 11 |
+| Parallel wave 3 | 11-3 | `phase-3-1-dashboard-c21194e18-r11-3-archive` | Task 8 | 12 |
+| Parallel wave 4 | 12-1 | `phase-3-1-dashboard-c21194e18-r12-1-queue` | Task 11-2 | 13 |
+| Parallel wave 4 | 12-2 | `phase-3-1-dashboard-c21194e18-r12-2-run-detail` | Task 11-2 | 14 |
+| Parallel wave 4 | 12-3 | `phase-3-1-dashboard-c21194e18-r12-3-activity` | Task 11-3 | 15 |
+| Parallel wave 4 | 12-4 | `phase-3-1-dashboard-c21194e18-r12-4-production-runtime` | Tasks 11-1, 9-3, 10-2 | 16 |
+| Parallel wave 5 | 13-1 | `phase-3-1-dashboard-c21194e18-r13-1-context-data` | Tasks 12-1, 12-2 | 17 |
+| Parallel wave 5 | 13-2 | `phase-3-1-dashboard-c21194e18-r13-2-logs` | Tasks 12-1, 12-2 | 18 |
+| Parallel wave 5 | 13-3 | `phase-3-1-dashboard-c21194e18-r13-3-receipts-failures` | Tasks 12-1, 12-2 | 19 |
+| Parallel wave 5 | 13-4 | `phase-3-1-dashboard-c21194e18-r13-4-gates` | Tasks 12-1, 12-2 | 20 |
+| Serial gate 6 | 14 | `phase-3-1-dashboard-c21194e18-r14-review-people` | Tasks 12-2 and 13-1–13-4 | 21 |
+| Serial gate 7 | 15 | `phase-3-1-dashboard-c21194e18-r15-realtime` | Waves 9–13 and Task 14 | 22 |
+| Serial gate 8 | 16 | `phase-3-1-dashboard-c21194e18-r16-performance` | Task 15 | 23 |
+| Serial gate 9 | 17 | `phase-3-1-dashboard-c21194e18-r17-proof-infrastructure` | Waves 9–13 and Tasks 14–16 | 24 |
+| Serial gate 10 | 18 | `phase-3-1-dashboard-c21194e18-r18-acceptance` | Task 17 and every earlier row closed | 25 |
 
 The worktree name is fixed by this table; only the base SHA, dispatch-returned task/host ids and
-state change at runtime. A supervisor's canonical run number is the Phase 3.1 task number (`R08`
-through `R32`), so the task, branch, worktree, report and cleanup ledger join without title or
+state change at runtime. A supervisor's canonical run number is the Phase 3.1 task identity (`R08`,
+`R09-1` through `R13-4`, then `R14` through `R18`), so the task, branch, worktree, report and cleanup ledger join without title or
 recency guesses.
 
 ### What "done" means for this phase
@@ -841,159 +842,160 @@ the redaction declaration.
 
 ## Reopened completion tasks
 
-Tasks 8–32 begin only after 2.6 hands over stable authority contracts and fixtures. They are ordered
-by operator journey; each task is one supervisor session with its own red-capable gate. Task 32 is
+Task 8, parallel waves 9–13, and serial Tasks 14–18 begin only after 2.6 hands over stable authority
+contracts and fixtures. They are ordered by operator journey; each task is one supervisor session
+with its own red-capable gate. Task 18 is
 an acceptance audit, not a place to absorb repairs.
 
 ### Task 8 · Re-baseline dashboard truth and acceptance
 <!-- roadmap: dash-truth-reset -->
 
 - [ ] Inventory every visible control, route, field, producer, command, and defect against code.
-- [ ] Freeze the owner/gate/fixture/live-proof acceptance matrix Task 32 must execute unchanged,
+- [ ] Freeze the owner/gate/fixture/live-proof acceptance matrix Task 18 must execute unchanged,
   including non-overlapping file and artifact ownership for every planned parallel wave.
 
-### Task 9 · Finish the shell, navigation, and accessibility baseline
+### Task 9-1 · Finish the shell, navigation, and accessibility baseline
 <!-- roadmap: dash-shell -->
 
 - [ ] Finish shell/navigation/responsive states and keyboard, touch, focus, reduced-motion, theme,
   accessibility, component, and production-browser proof.
 
-### Task 10 · Repair date navigation and the date picker
-<!-- roadmap: dash-date-navigation -->
-
-- [ ] Make URL, selected date, timezone, loaded snapshot, controls, focus, races, DST, and browser
-  history one tested state machine.
-
-### Task 11 · Finish Settings over the canonical settings authority
+### Task 9-2 · Finish Settings over the canonical settings authority
 <!-- roadmap: dash-settings -->
 
 - [ ] Render every catalog leaf and implement revisioned edit/conflict/reset/restart flows; protected
   values remain write-only and prove persisted readback by presence/revision.
 
-### Task 12 · Finish Setup and preflight
-<!-- roadmap: dash-setup -->
-
-- [ ] Derive setup from authoritative settings/storage/workers/browsers/prerequisites and execute the
-  complete preflight fault corpus with real idempotent repair/re-check actions.
-
-### Task 13 · Finish storage doctor, backup, and recovery controls
+### Task 9-3 · Finish storage doctor, backup, and recovery controls
 <!-- roadmap: dash-storage -->
 
 - [ ] Expose truthful health/doctor/explicit-backup/restore/degradation actions and prove corrupt,
   interrupted, stale, stopped-system, and cross-authority consistency cases.
 
-### Task 14 · Finish sessions, worker pools, and browser lifecycle
+### Task 9-4 · Finish Workflow Explorer and catalog editing
+<!-- roadmap: dash-explorer -->
+
+- [ ] Complete graph/catalog authority and validated overlay preview/diff/version/hot-apply/rollback;
+  prove invalid, cyclic, stale, manifest-drift, reload, and clean-context authoring cases.
+
+### Task 10-1 · Repair date navigation and the date picker
+<!-- roadmap: dash-date-navigation -->
+
+- [ ] Make URL, selected date, timezone, loaded snapshot, controls, focus, races, DST, and browser
+  history one tested state machine.
+
+### Task 10-2 · Finish sessions, worker pools, and browser lifecycle
 <!-- roadmap: dash-sessions -->
 
 - [ ] Make every session/pool control execute a real supervisor effect and prove durable membership,
   claims, browser instances, crash/restart, CAS, resize, parallel runs, and orphan cleanup.
 
-### Task 15 · Make the Run modal enqueue and start real work
+### Task 10-3 · Finish notifications and delivery behavior
+<!-- roadmap: dash-notifications -->
+
+- [ ] Publish every declared trigger and prove durable row-before-delivery, dedupe, restart,
+  reconnect-gap, permission-denied, lifecycle controls, and target navigation.
+
+### Task 10-4 · Finish Intake and Edit Data surfaces
+<!-- roadmap: dash-intake-edit -->
+
+- [ ] Complete upload-to-handoff and Edit Data flows with progress/provenance/refusals; prove real,
+  malformed, partial, canceled, stale, redacted, duplicate, and archived cases.
+
+### Task 11-1 · Finish Setup and preflight
+<!-- roadmap: dash-setup -->
+
+- [ ] Derive setup from authoritative settings/storage/workers/browsers/prerequisites and execute the
+  complete preflight fault corpus with real idempotent repair/re-check actions.
+
+### Task 11-2 · Make the Run modal enqueue and start real work
 <!-- roadmap: dash-run-modal -->
 
 - [ ] Plan/validate/submit one authoritative command, create rows in the chosen workflow queue, and
   let the first eligible row auto-claim when an eligible worker exists.
 - [ ] Prove single/batch/dry-run/error/conflict/no-worker/delayed-worker/reload/exactly-once paths.
 
-### Task 16 · Finish queue rows, commands, and deletion
-<!-- roadmap: dash-queue -->
-
-- [ ] Render every row fact from the canonical run record; make all single/bulk commands real,
-  revision-bound, idempotent, and convergent across current/archive/tombstone views.
-
-### Task 17 · Finish notifications and delivery behavior
-<!-- roadmap: dash-notifications -->
-
-- [ ] Publish every declared trigger and prove durable row-before-delivery, dedupe, restart,
-  reconnect-gap, permission-denied, lifecycle controls, and target navigation.
-
-### Task 18 · Finish run detail and the live timeline
-<!-- roadmap: dash-run-detail -->
-
-- [ ] Render groups/attempts/status arms/duration/systems/provenance and preserve exact live UI state
-  across patches, retry, archive, reconnect, and out-of-order delivery.
-- [ ] Freeze separate section projector/component/test seams for Context/Data, Logs,
-  Receipts/Failures, and Gates so Tasks 19–22 can run without a shared mutable switch or query file.
-
-### Task 19 · Finish Context, Data, Attempts, and Edit readback
-<!-- roadmap: dash-context-data -->
-
-- [ ] Render origins/redaction/checkpoints/attempts/edits and prove authoritative edit readback,
-  validation, conflict, archive, malformed, empty, and cross-attempt cases.
-
-### Task 20 · Finish logs, observations, and captures
-<!-- roadmap: dash-logs -->
-
-- [ ] Compose missing truthful producers; render bounded searchable logs/captures/bundles and prove
-  pagination snapshots, stale isolation, read-forward, redaction, absence, and large streams.
-
-### Task 21 · Finish receipts and failure records
-<!-- roadmap: dash-receipts-failures -->
-
-- [ ] Render derived write/evidence/failure/recovery facts and prove success, no-op, refusal, failure,
-  unknown submit, retry, archive, explanation, and tamper behavior.
-
-### Task 22 · Finish gates and parked-write resolution
-<!-- roadmap: dash-gates -->
-
-- [ ] Implement evidence-complete revision-bound gate/parked-write commands and prove stale, expired,
-  changed-plan, skipped-condition, resume, rejection, archive, and authorization cases.
-
-### Task 23 · Finish Archive, versions, relaunch, and deletion
+### Task 11-3 · Finish Archive, versions, relaunch, and deletion
 <!-- roadmap: dash-archive -->
 
 - [ ] Derive every view from canonical runs and prove frozen evidence, versioning, export, relaunch
   lineage, terminal-only delete/tombstone, idempotence, storage delta, and convergence.
 
-### Task 24 · Finish Activity, search, and export
+### Task 12-1 · Finish queue rows, commands, and deletion
+<!-- roadmap: dash-queue -->
+
+- [ ] Render every row fact from the canonical run record; make all single/bulk commands real,
+  revision-bound, idempotent, and convergent across current/archive/tombstone views.
+
+### Task 12-2 · Finish run detail and the live timeline
+<!-- roadmap: dash-run-detail -->
+
+- [ ] Render groups/attempts/status arms/duration/systems/provenance and preserve exact live UI state
+  across patches, retry, archive, reconnect, and out-of-order delivery.
+- [ ] Freeze separate section projector/component/test seams for Context/Data, Logs,
+  Receipts/Failures, and Gates so Tasks 13-1–13-4 can run without a shared mutable switch or query file.
+
+### Task 12-3 · Finish Activity, search, and export
 <!-- roadmap: dash-activity -->
 
 - [ ] Implement bounded cross-date filters and stable redacted exports; prove pagination,
   cancellation, stale responses, large history, errors, and exported-row reconciliation.
 
-### Task 25 · Finish Workflow Explorer and catalog editing
-<!-- roadmap: dash-explorer -->
-
-- [ ] Complete graph/catalog authority and validated overlay preview/diff/version/hot-apply/rollback;
-  prove invalid, cyclic, stale, manifest-drift, reload, and clean-context authoring cases.
-
-### Task 26 · Finish Intake and Edit Data surfaces
-<!-- roadmap: dash-intake-edit -->
-
-- [ ] Complete upload-to-handoff and Edit Data flows with progress/provenance/refusals; prove real,
-  malformed, partial, canceled, stale, redacted, duplicate, and archived cases.
-
-### Task 27 · Finish generic Review and People contracts
-<!-- roadmap: dash-review-people -->
-
-- [ ] Build only generic panel/page contracts and states; workflow-specific fields/actions remain
-  descriptor-owned in later work. Prove routes, accessibility, large groups, partials, and absence.
-
-### Task 28 · Prove realtime convergence and reconnect
-<!-- roadmap: dash-realtime -->
-
-- [ ] Publish or remove every declared topic and prove ordered, duplicate, missed, restart, offline,
-  selection-switch, settings/worker, archive/delete, and backfill-gap convergence.
-
-### Task 29 · Meet large-data and responsiveness budgets
-<!-- roadmap: dash-performance -->
-
-- [ ] Bound database/filesystem/projection/serialization/render/memory work and add shared
-  pagination/virtualization only where the preserved structural fixture crosses its trigger.
-
-### Task 30 · Finish production startup, serving, and shutdown
+### Task 12-4 · Finish production startup, serving, and shutdown
 <!-- roadmap: dash-production-runtime -->
 
 - [ ] Prove production bundle serving, admission/readiness, duplicate/missing-state refusal, ordered
   signal drain, second signal, crash recovery, and orphan sweep.
 
-### Task 31 · Build the complete dashboard proof infrastructure
+### Task 13-1 · Finish Context, Data, Attempts, and Edit readback
+<!-- roadmap: dash-context-data -->
+
+- [ ] Render origins/redaction/checkpoints/attempts/edits and prove authoritative edit readback,
+  validation, conflict, archive, malformed, empty, and cross-attempt cases.
+
+### Task 13-2 · Finish logs, observations, and captures
+<!-- roadmap: dash-logs -->
+
+- [ ] Compose missing truthful producers; render bounded searchable logs/captures/bundles and prove
+  pagination snapshots, stale isolation, read-forward, redaction, absence, and large streams.
+
+### Task 13-3 · Finish receipts and failure records
+<!-- roadmap: dash-receipts-failures -->
+
+- [ ] Render derived write/evidence/failure/recovery facts and prove success, no-op, refusal, failure,
+  unknown submit, retry, archive, explanation, and tamper behavior.
+
+### Task 13-4 · Finish gates and parked-write resolution
+<!-- roadmap: dash-gates -->
+
+- [ ] Implement evidence-complete revision-bound gate/parked-write commands and prove stale, expired,
+  changed-plan, skipped-condition, resume, rejection, archive, and authorization cases.
+
+### Task 14 · Finish generic Review and People contracts
+<!-- roadmap: dash-review-people -->
+
+- [ ] Build only generic panel/page contracts and states; workflow-specific fields/actions remain
+  descriptor-owned in later work. Prove routes, accessibility, large groups, partials, and absence.
+
+### Task 15 · Prove realtime convergence and reconnect
+<!-- roadmap: dash-realtime -->
+
+- [ ] Publish or remove every declared topic and prove ordered, duplicate, missed, restart, offline,
+  selection-switch, settings/worker, archive/delete, and backfill-gap convergence.
+
+### Task 16 · Meet large-data and responsiveness budgets
+<!-- roadmap: dash-performance -->
+
+- [ ] Bound database/filesystem/projection/serialization/render/memory work and add shared
+  pagination/virtualization only where the preserved structural fixture crosses its trigger.
+
+### Task 17 · Build the complete dashboard proof infrastructure
 <!-- roadmap: dash-proof-infrastructure -->
 
 - [ ] Complete T2 feature, T3 production-browser, T4 live dry-run, accessibility, performance, and
   deliberate parity lanes over every generic surface and state arm.
 
-### Task 32 · Execute integrated dashboard acceptance and close 3.1
+### Task 18 · Execute integrated dashboard acceptance and close 3.1
 <!-- roadmap: dash-acceptance -->
 
 - [ ] Execute Task 8's unchanged matrix plus full/generated/parity/recovery/performance/live gates.

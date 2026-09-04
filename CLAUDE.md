@@ -25,17 +25,18 @@ admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phas
 - The **phase docs** under `docs/rebuild/` record tasks, evidence, decisions and exit criteria.
   Phases 0-3 are `00-design-the-foundation` · `01-build-the-spine` ·
   `02-prove-writes-build-the-tails` · `03a-finish-the-dashboard` · `03b-finish-separations` ·
-  `03c-migrate-the-remaining-workflows`. D326 supersedes D323/D325's split naming grammar for
+  `03c-migrate-the-remaining-workflows`. D326 supersedes D323/D325's split phase grammar for
   Phases 0–3: numbered phases contain decimal parts, each part contains numbered supervisor tasks,
   and each task contains checklist subtasks. The active order is 0.3 authority design, 1.6 authority
   implementation, 2.6 downstream revalidation, 3.1 dashboard, 3.2 Separations, 3.3
   authoring/acceptance, then 3.4 Codex/Claude cooperation. One coordinator owns each decimal part;
-  each numbered task is one supervisor session. Parallelism is recorded in the coordinator run plan,
-  not encoded by letter-suffixed task labels.
+  each task is one supervisor session. D328 makes admitted parallel waves visible: peers share the
+  ordinal and use consecutive numeric members (`3.1.9-1`, `3.1.9-2`, ...), while serial tasks keep
+  `N`; the coordinator run plan still owns their exact worktree lifecycle.
   Phase 4
   admits later workflows as 4A/4B/4C only after D319 verification and operator approval; Phase 5 is
   readiness plus the one cutover, and Phase 6 is the desktop app. Stable filenames stay unchanged.
-- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D327; **D131 is a retired gap —
+- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D328; **D131 is a retired gap —
   never reuse it**). A **pointer index**, not a spec: it tells you which doc owns a contract. Never
   implement from it.
 - `docs/rebuild/reference/` — the contracts, each doc owning its own; in prose **`ref <slug>`**:
@@ -341,9 +342,9 @@ environment-supplied.
 
 ## Conventions
 
-- **2026-09-03 — roadmap task names are full hierarchy paths in the UI.** The generator derives visible
-  task labels from the plan hierarchy (`0.3.1`, `1.6.4`, `3.1.15`) instead of exposing a mix of local,
-  legacy and absent prefixes. Source headings, node ids, anchors and D326 execution labels remain the
+- **2026-09-04 — roadmap task names are full hierarchy paths in the UI.** The generator derives visible
+  task labels from the plan hierarchy (`0.3.1`, `1.6.4`, `3.1.9-1`) instead of exposing a mix of local,
+  legacy and absent prefixes. Source headings, node ids, anchors and D326/D328 execution labels remain the
   authority; this is a deterministic presentation name only.
 
 - **2026-09-03 — roadmap cards are bounded execution summaries.** The map omits `status: never` nodes
@@ -361,11 +362,12 @@ environment-supplied.
   `tests/unit/roadmap/roadmap-ui.test.ts`, then run `npm run roadmap` and `npm run roadmap:check` after
   every renderer change.
 
-- **2026-09-03 — Phases 0–3 share one decimal execution hierarchy (D326).** Run 0.3, 1.6, 2.6,
+- **2026-09-04 — Phases 0–3 share one decimal execution hierarchy with visible parallel waves (D326/D328).** Run 0.3, 1.6, 2.6,
   3.1, 3.2, 3.3, then 3.4; one coordinator owns each part, and every immediate numbered task is one
   supervisor session. Before parallel dispatch, bind each independent task to its own exact branch
-  and absolute worktree and record integration order in the coordinator ledger; parallelism is an
-  execution fact, not a second label grammar. Operator choices and live authorization remain
+  and absolute worktree and record integration order in the coordinator ledger. Parallel peers share
+  their ordinal and use numeric hyphen members (`N-1`, `N-2`, ...); serial tasks remain `N`.
+  The hyphen names a peer task, not another hierarchy level. Operator choices and live authorization remain
   `needs:` on the task they unblock.
 
 - **2026-09-03 — the roadmap is an outcome hierarchy, not a session journal (D323/D326).** Only numbered

@@ -102,3 +102,27 @@ D326 supersedes D323/D325's lettered naming and parallel-wave labels, not their 
 coordinator ownership, isolation, integration, or close-before-next-part rules.
 
 Normative owners: roadmap §Governance, docs 00–03d, and the canonical decision ledger D326.
+
+## D328 — Numeric wave members identify parallel supervisor tasks
+
+On 2026-09-04 the operator chose a visible task grammar that makes parallel execution legible in
+the roadmap and in every worktree binding. A serial supervisor task keeps the ordinary `N` label.
+When two or more independent supervisor tasks are admitted as one parallel wave, they share that
+ordinal and receive consecutive numeric members: `N-1`, `N-2`, ... . Thus `3.1.9-1` and
+`3.1.9-2` are peer supervisor tasks in Phase 3.1 wave 9, not a task and its checklist subtask.
+
+- the hyphenated source label is one task identity at the same hierarchy depth as a serial task;
+- the shared `N` identifies the wave and the `-M` member identifies one independently supervised
+  branch/worktree row;
+- a parallel group has at least two members, starts at `-1`, and is consecutive and contiguous;
+- serial ordinals and parallel-wave ordinals advance together without gaps;
+- the coordinator ledger still owns exact scope, base SHA, branch, absolute worktree, gate,
+  integration order, cleanup, and task archival; the label records concurrency, not completion;
+- historical labels remain in dated logs/evidence only, and stable roadmap ids do not change.
+
+D328 supersedes only D326's prohibition on encoding parallelism in task labels. D326's decimal
+phase/part hierarchy, one-coordinator-per-part rule, one-supervisor-per-task rule, and strict part
+order remain binding. Letter-suffixed task-wave grammar remains retired.
+
+Normative owners: roadmap §Governance, `docs/roadmap/notation.md`, admitted phase plans and the
+canonical decision ledger D328.

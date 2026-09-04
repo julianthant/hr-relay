@@ -93,7 +93,7 @@ function displayTitle(title: string): string {
     .replace(/^Phase\s+\d+\s+exit\s*[—-]\s*/i, "")
     .replace(/^Phase\s+\d+\s*·\s*/i, "")
     .replace(/^(?:\d+[a-z](?:-spine)?)(?:\s*·\s*\d+[a-z](?:-spine)?)*\s*[—-]\s*/i, "")
-    .replace(/^\d+(?:\.\d+)*(?:[a-z])?\s*·\s*/i, "")
+    .replace(/^\d+(?:\.\d+)*(?:-\d+)?(?:[a-z])?\s*·\s*/i, "")
     .trim();
   return withoutCode.length === 0 ? title : withoutCode[0]?.toUpperCase() + withoutCode.slice(1);
 }
@@ -107,7 +107,7 @@ function collectDisplayIdentities(roadmap: Roadmap): Map<string, DisplayIdentity
   const walk = (items: Item[], parentKey: string, parentCode: string): void => {
     items.forEach((item, index) => {
       const key = item.id ?? `${parentKey}-${String(index + 1)}`;
-      const localCode = /^(\d+(?:[A-Z])?)\s*·\s*/.exec(item.title)?.[1];
+      const localCode = /^(\d+(?:-\d+)?(?:[A-Z])?)\s*·\s*/.exec(item.title)?.[1];
       const code = localCode === undefined ? `${parentCode}.${String(index + 1)}` : `${parentCode}.${localCode}`;
       add(key, code, item.title);
       walk(item.items ?? [], key, code);
@@ -1087,7 +1087,7 @@ function renderPage(roadmap: Roadmap, docs: DocBindingIndex): string {
     .join("");
   const dataJson = JSON.stringify(data).replaceAll("<", "\\u003c");
   const aboutHtml = `<p class="hint">${inline(roadmap.meta.lede)}</p>
-<section class="key-section"><h3>Read the structure</h3><p class="hint">Numbered phases run down the left spine. Phase parts run left to right, and each part's tasks stack beneath it. Every task name starts with its full path, so <code>3.1.1</code> is task 1 inside part 3.1. Select any node to inspect its full record; click blank map space to return here.</p></section>
+<section class="key-section"><h3>Read the structure</h3><p class="hint">Numbered phases run down the left spine. Phase parts run left to right, and each part's tasks stack beneath it. Every task name starts with its full path, so <code>3.1.1</code> is serial task 1 inside part 3.1. Parallel peers share a wave number: <code>3.1.9-1</code> and <code>3.1.9-2</code> are separate supervisor tasks executed together in wave 9. Select any node to inspect its full record; click blank map space to return here.</p></section>
 <section class="key-section"><h3>Node status</h3><div class="legend" aria-label="Node status legend">
 <span><i class="sw done"></i>Complete</span><span><i class="sw active"></i>Active now</span><span><i class="sw you"></i>Needs you</span><span><i class="sw avail"></i>Ready next</span><span><i class="sw locked"></i>Blocked</span><span><i class="sw proposed"></i>Proposed</span>
 </div></section>

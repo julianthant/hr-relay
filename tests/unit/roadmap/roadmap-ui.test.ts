@@ -21,6 +21,10 @@ describe("roadmap desktop interaction", () => {
     const code = (key: string): string | null => document.querySelector(`.nd[data-key="${key}"] .task-code`)?.textContent ?? null;
     expect(code("dash-defaults")).toBe("3.1");
     expect(code("track-b")).toBe("3.1.1");
+    expect(code("dash-shell")).toBe("3.1.9-1");
+    expect(code("dash-settings")).toBe("3.1.9-2");
+    expect(code("dash-storage")).toBe("3.1.9-3");
+    expect(code("dash-explorer")).toBe("3.1.9-4");
     expect(code("sep-1")).toBe("3.2.1");
     expect(code("workflow-guide-proof")).toBe("3.3.3");
     expect(code("order-0-dash")).toBe("3.3.4.1");
@@ -46,7 +50,10 @@ describe("roadmap desktop interaction", () => {
     expect(document.querySelectorAll(".nd .state").length).toBe(document.querySelectorAll(".nd.item, .nd.phase").length);
     expect(document.querySelector("#drawer-body")?.textContent).not.toContain("Each square is one planned output");
     expect(document.querySelector("#drawer-body")?.textContent).toContain("Outputs landed at the roadmap's recorded HEAD");
-    expect(document.querySelector("#drawer-body")?.textContent).toContain("3.1.1 is task 1 inside part 3.1");
+    expect(document.querySelector("#drawer-body")?.textContent).toContain("3.1.1 is serial task 1 inside part 3.1");
+    expect(document.querySelector("#drawer-body")?.textContent).toContain(
+      "3.1.9-1 and 3.1.9-2 are separate supervisor tasks executed together in wave 9",
+    );
 
     node?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 
