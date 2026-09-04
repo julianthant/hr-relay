@@ -35,7 +35,7 @@ holds each · §8 a worked example · §9 the settled questions.
 | Concept | Owner |
 |---|---|
 | The Clock — sole time-read site, freshness `now`, trace-id time-of-day, span/ledger timestamps | **This doc** |
-| Config resolver — env > settings.json > default precedence, typed schema | **This doc** |
+| Config resolver — env > settings.json > default precedence, typed schema (D331: `settings > default` once 1.6 lands; the environment stops being a resolver input) | **This doc** |
 | Immutable per-run config/instance resolution + snapshot | **This doc** (fields live on ref workflow-model's `RunEnvelope`) |
 | Fiscal-year date source + rollover fail-loud | **This doc** |
 | Secrets accessor (`.env` / `.auth` / Duo credential) | **This doc** |
@@ -222,6 +222,7 @@ span and freshness check would be wrong in the same way, all at once, with no cr
 (`src/domain/config/resolve.ts`). No read site repeats the precedence, and the defaults live in
 exactly one place — the zod schema's `.default()`s — so the legacy duplication between `config.ts`
 and `DEFAULT_OPERATOR_SETTINGS` (§1) cannot recur by construction.
+> 2026-09-04 | D331 (0.3 Task 2) | SUPERSEDED for the precedence, kept for "exactly once": at 1.6 the one resolver implements `settings > default` and takes NO environment input — the ordinary document, the host facts and the contract/runtime-path defaults are its whole input (§D331.8). `"env"` leaves `ConfigProvenanceSchema`. Every catalogued leaf has exactly one source.
 
 ### The schema is closed, per system and per group
 
@@ -229,6 +230,7 @@ and `DEFAULT_OPERATOR_SETTINGS` (§1) cannot recur by construction.
 `paths`, `annualDates`, `operator`, `display`, `performance`, `ocr`, `capture`, `browserHealth`,
 `browser`, `concurrency`, `daemon`, `features`, `providers`. Every group but `paths` carries a
 complete `.default(...)`; `paths` is required (see D121 below).
+> 2026-09-04 | D331 | CORRECTION: the schema is 15 groups — there is no `capture` group (D294 retired it; `snapshot.ts` refuses to mint the key). The closed-per-system route objects stand; under D331 the ORDINARY document schema has no `urls.<system>.prod` member at all, so no document input can move a production endpoint (§D331.8).
 
 ```ts
 // each system owns an equally CLOSED route object — adding a route is a schema change,
@@ -363,6 +365,7 @@ from.
 `HRAUTO_DAEMON_IDLE*`, `DEBUG_SCREENSHOTS` and `HR_AUTOMATION_DUO_WEBAUTHN`. **Every binding writes
 into `urls.<system>.test` or into a non-URL leaf — no environment variable can move a production
 endpoint**, which is what makes §4's "production is the code default" true rather than customary.
+> 2026-09-04 | D331 | CORRECTION and SUPERSESSION: 33 bindings are registered today, not 38 — the five `HRAUTO_CAPTURE_*` names have zero occurrences in the tree (D294). All 33 retire at 1.6: `CONFIG_ENV_BINDINGS` becomes empty (its type stays so the guard can assert emptiness), every migrated key becomes `retired-in-target`, and the annual-dates group rule and "unset by omission" are restated as document-schema invariants (§D331.8). The `apply`-per-binding coercion has no successor because the document is typed JSON, not text.
 
 The three annual-date variables are treated as a GROUP. If any of them is set while the current
 fiscal year has no configured entry, all three must be set or resolution throws
@@ -457,6 +460,7 @@ environment binding wins. Precedence remains **`env > settings > default`**. DCC
 server-listed eight-leaf editor and exact persisted/active readbacks. Its visible inventory is not
 the whole backend allowlist. `src/server/settings-runtime.ts` derives that read-only wire from the
 selected file/current/runtime authorities; no separate mutable runtime-generation file exists.
+> 2026-09-04 | D331 | SUPERSEDED: "Precedence remains `env > settings > default`" → `settings > default` (§D331.8). DCC3's eight-leaf editor is superseded AS A BOUNDARY: the editable schema becomes the whole `ordinary-settings` class and the catalog is the ONE generator of the persisted schema, the editor inventory and the resolver input (§D331.5); "its visible inventory is not the whole backend allowlist" ceases to be true. Credentials and canary inputs enter `.tracker/settings/protected.json` under their own schema, never the ordinary document; annual dates and every other operator-managed leaf become ordinary rows. The as-built file protocol in the two paragraphs above is REUSED for both documents under one lock (§D331.3).
 
 The previous broad-hash envelope without `lastApplied` is incompatible and refuses by contract;
 there is no implicit data conversion. Runtime-state migration needs separate authorization.
@@ -488,6 +492,430 @@ values once, refuses ambiguous duplicates and preserves provider API keys in pla
 explicit verified D322 `cli storage backup`; a transactional migration journal is not an automatic
 backup cadence. Phase 1.6 owns the repository, writers and core runtime resolution, Phase 2.6 owns
 downstream consumers, and Phase 3.1 owns the Settings/Setup interface.
+
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R02 | designed as **D331** (§D331.1–§D331.12 below); no runtime code changed (D326). 0.3 Task 3 owns migration/recovery; 1.6 implements; §D331.11 lists the owed proofs.
+
+##### D331 — the settings catalog and protected root contract (0.3 Task 2, 2026-09-04)
+
+D327 required the settings half of the authority reset to be DESIGNED before 1.6 implements it. This
+subsection is that design: one closed catalog that enumerates every local configuration leaf exactly
+once, five source classes with exactly one active authority each, one protected `.tracker/settings/`
+root that supersedes D321's single-file layout while keeping its database-journal coupling, one
+revisioned compare-and-swap update API with two closed arms, a write-only protected-value policy
+with presence/revision readback, one restart-scope vocabulary that names where the D330 claim
+token's four fields come from, and a precedence rule under which a resolver leaf has exactly ONE
+source. It changes no runtime code (D326): Phase 1.6 implements the repository, writers and core
+resolution; 2.6 rewires downstream consumers; 3.1 builds the Settings/Setup interface (§D331.10).
+Migration, read-forward and recovery from today's `.env`/`settings.json`/registry layout are 0.3
+Task 3's, not this subsection's; §D331.12 names what this subsection supersedes.
+
+**Vocabulary.** A *leaf* is one catalogued configuration value with one key. A *source class* is
+where a leaf's value is allowed to come from; a leaf has exactly one. The *ordinary document* is the
+revisioned JSON document of operator-managed non-protected leaves. The *protected store* is the
+separately revisioned file of credentials and local canary/test inputs. The *resolver* is the ONE
+function that turns (ordinary document, host facts, contract defaults) into a `Config`; it never
+sees a protected value. A *generation* is D330's runtime token (§D331.7).
+
+###### D331.1 — the catalog: one closed registry, one row per leaf
+
+The catalog is CODE, not a document: 1.6 lands it as one parsed and recursively frozen registry
+(`src/domain/config/catalog.ts`, name illustrative) with exactly one row per leaf, and the guard
+lane proves it bidirectionally complete against every source it enumerates — every populated
+`ConfigSchema` leaf, every `SECRET_SPECS` / `TEST_TARGET_SECRET_SPECS` entry, every
+`SECRET_FAMILY_SPECS` family and every `config-default` / process-ownership channel of
+`runtime-environment.ts` has exactly one row, and no row names a leaf that does not exist. A leaf
+without a row, or a row without a leaf, is a red gate, never a rendering gap (the same posture as
+§3's bidirectional provenance). §D331.9 is the human-readable projection of that registry, frozen
+here as the design's enumeration; when 1.6's registry and §D331.9 disagree, the registry is wrong
+until the disagreement is a ratified decision.
+
+A row carries these columns, every one a closed enum or a literal — never free text:
+
+| Column | Values | Meaning |
+|---|---|---|
+| `key` | the resolver's `ConfigLeafPath` (`group.leaf`), or a secret name (`ucpathPassword`), or a family name (`gemini`) | the ONE name a consumer asks for; also the row's identity |
+| `schema` | a zod schema reference by name | the value contract; the catalog never redeclares it — it POINTS at `schema.ts` / `secret-names.ts` |
+| `defaultKind` | `contract` (a `.default()` in `schema.ts`) · `runtime-path` (D121, `runtime-paths.ts`) · `host-derived` (D324, probed once per process tree) · `none` (absent is a valid, distinguishable state; the consumer decides) · `required` (absence refuses by name at the consumer's first use) | WHERE the default comes from; a leaf has exactly one |
+| `editability` | `operator` (writable through the update API, §D331.5) · `deployment` (writable only by a code change; the row names the file) · `derived` (never written; observed) · `machine` (written by the runtime itself, never by an operator) | who may change it |
+| `sensitivity` | `ordinary` · `protected-identifier` · `protected-secret` · `provider-key` · `derived-host` | the redaction class AND the storage class; joins §6's `classification` one-to-one (`direct-identifier` → `protected-identifier`, `secret`/`credential-file` → `protected-secret`) |
+| `restartScope` | `generation` · `next-start` · `next-use` · `process` | when a change takes effect (§D331.7) |
+| `sourceClass` | `ordinary-settings` · `protected-store` · `provider-env` · `derived-host` · `runtime-isolation` | the ONE active authority the value comes from (§D331.2) |
+| `consumers` | one or more `{ module, purpose }` literals | who reads it; the guard proves every consumer listed exists and every reader of the key is listed |
+| `currentSource` / `targetSource` | closed `{ kind, name }` pairs (`env:UCPATH_PASSWORD`, `settings.json`, `registry`, `probe`) | the migration edge 0.3 Task 3 consumes; identical on both sides for an unmoved leaf |
+
+Two consequences the columns force. **`sensitivity` decides storage, not the operator's taste**: a
+`protected-*` row can only have `sourceClass: protected-store`, a `provider-key` row only
+`provider-env`, a `derived-host` row only `derived-host`; the registry's `superRefine` refuses any
+other pairing, so a credential cannot be catalogued into the ordinary document by a typo. **A leaf
+has one `sourceClass`**, so "read it from settings, else from the environment" is not expressible
+in the catalog's type — that is how §D331.8's precedence rule is enforced rather than intended.
+
+###### D331.2 — the five source classes and the one authority per class
+
+| Source class | Members (§D331.9 is exhaustive) | The ONE active authority | Read through |
+|---|---|---|---|
+| `ordinary-settings` | every operator-managed non-protected leaf: actor label, the nine `urls.<system>.test` overrides, every `timeouts.*`, the four operator paths (`reportsDir`, `downloadsDir`, `onboardingDocsDir`, `i9CheckTrackerPath`), `annualDates`, `display` (as an explicit override only), `performance.*`, `ocr.*`, `browserHealth.*`, `browser.*`, `concurrency.*`, `daemon.*`, `features.*`, `providers.<capability>.*` budgets, and the five provider MODEL CHAINS (model ids are not secrets; §6 kept them in the secrets module only because it was the sole environment reader — that reason expires with the environment layer) | `.tracker/settings/settings.json`, revisioned (§D331.4) | the resolver, into `Config`; provenance `settings` or `default` |
+| `protected-store` | `ucpathUserId`, `ucpathPassword`, `timekeeperName` (it leaves `operator.timekeeperName` and `Config` entirely — its dual `config-and-secret` channel is retired), `sharepointOnboardingRosterUrl`, the D288 pseudonym HMAC key and its public generation id (stored as one pair so a rotation cannot split them), and the local canary/test inputs (`separationsKualiFinalizationCanaryDocumentNumber`, `personLookupCanaryEid`) | `.tracker/settings/protected.json`, separately revisioned, write-only (§D331.6) | the secrets accessor (`requireSecret` / `optionalSecret` / `inspectSecret` / `optionalTestTargetSecret`), whose SOURCE becomes the protected store; the resolver never sees these |
+| `provider-env` | the five `SECRET_FAMILY_SPECS` key pools (`GEMINI_API_KEY{,2..8}`, `GROQ_…`, `MISTRAL_…`, `OPEN_ROUTER_…`, `SAMBANOVA_…`) — API KEYS ONLY | the repository's fixed `.env`, admitted by the secure bootstrap (unchanged) | `requireSecretFamily` / `optionalSecretFamily` |
+| `derived-host` | `HRAUTO_HOST_PRIMARY_DISPLAY` (D324) — the probed primary display | the once-per-process-tree probe, published on the `config-default` channel | the resolver's DEFAULT layer for `display`, beneath an explicit ordinary override |
+| `runtime-isolation` | `paths.stateRoot`, `paths.artifactRoot`, `paths.browserProfileRoot`, `paths.duoCredential`, `paths.duoExtensionDir` (D121/D216/D321) and the Duo WebAuthn credential FILE (machine-written under the profile root; `credential-file`, read by `requireSecretFile` only) | `config/runtime-isolation.json` + `runtime-paths.ts` (a code change), the ceremony | the resolver (paths) / `requireSecretFile` |
+
+**The environment layer of the resolver is RETIRED for catalogued leaves.** After 1.6,
+`CONFIG_ENV_BINDINGS` is empty and `resolve.ts` takes no environment override input at all; its
+inputs are (the ordinary document, the host facts, the contract/runtime-path defaults). What remains
+environment-sourced is exactly: provider API keys (through the secrets accessor, never the
+resolver), the `config-default` host display publication (a DEFAULT, not an override), the
+process-ownership launch nonce, and the test-lane-only keys the environment registry already
+classes `test-only`. The resolver signature loses its `env` parameter outright:
+`resolveConfig(document, hostFacts, clock?)`, where `hostFacts` is a strict object the composition
+root builds from the `config-default` channel — never `process.env` itself and never a projection of
+it (today `configResolutionEnvironment` returns `process.env` by identity, which is the latent
+channel through which a "migrated" leaf could keep a shadow authority). The bootstrap's `.env` admission does not change shape — it changes what it
+will ACCEPT (§D331.8).
+
+**What is deliberately NOT under `.tracker/settings/`.** The Duo WebAuthn credential file stays
+under the browser profile root because the runtime, not the operator, writes it (its signCount and
+lock protocol are ref execution-and-sessions'); the isolation paths stay code because two runtimes on
+one machine must not be able to point at each other's roots by editing a file (§Operational
+isolation). Both are catalogued (`editability: machine` / `deployment`) so the enumeration is
+complete, and both are excluded from the update API by that column, not by omission. Two things are
+NOT configuration and are excluded from the catalog BY NAME rather than catalogued: the dashboard
+launch nonce (`HRAUTO_DASHBOARD_LAUNCH_NONCE`, process-ownership evidence between the launcher and
+Vite) and the environment registry's `test-only` keys (test-lane inputs that never target a
+production leaf). The registry's `retired-in-target` list is the third non-catalogued set, and
+§D331.8 grows it.
+
+###### D331.3 — the protected root: `.tracker/settings/`
+
+D321 put `settings.json` and five siblings directly in the state root (as built:
+`join(stateRoot, "settings.json")` plus `.lock`, `.lock.reaper`, `.authority.json`,
+`.prepare.json`, `.rollback.json`). D331 moves that whole family one level down into ONE directory
+and adds the protected store beside it. Nothing else may live in the directory; an unlisted entry
+is an integrity refusal by basename, never ignored.
+
+```
+<stateRoot>/settings/            directory · mode 0700 · owner = runtime UID · every ancestor verified
+                                 from the filesystem root before any lock (lesson 2026-08-30: walk,
+                                 create missing components one at a time below verified ancestors,
+                                 refuse application symlinks and any raw `..` symlink target, bind
+                                 dev/inode and recheck before admission, file ops and settlement)
+├── settings.json                the ORDINARY document · 0600 exactly · nlink 1 · ≤ 1 048 576 B ·
+                                 `SettingsFileRecord` (revision, settingsSchemaHash,
+                                 settingsFingerprint, settings, lastApplied?) — unchanged shape
+├── protected.json               the PROTECTED store · 0600 exactly · nlink 1 · ≤ 64 000 B ·
+                                 `ProtectedStoreRecord` (§D331.6) — never backed up, never served
+├── authority.json               the initialization sidecar for BOTH documents: `{ schemaVersion,
+                                 rootFingerprint, settingsSchemaHash, protectedSchemaHash,
+                                 ordinary: "virgin" | "initialized", protected: "virgin" | "initialized" }`
+├── prepare.json                 transient · at most one · names its `target: "ordinary" | "protected"`
+├── rollback.json                transient · at most one · names its `target`
+├── settings.lock                ONE lock for the whole root (the atomic hard-link claim, its
+└── settings.lock.reaper         acquisition twin and the stale-reaper barrier — protocol unchanged)
+```
+
+**One lock, two documents.** Both arms of the update API (§D331.5) serialize on the same lock, so
+there is no lock ordering, no cross-document race, and one reaper. The prepare/rollback protocol is
+the as-built one (root CLAUDE.md lessons 2026-08-28/08-30, lifted verbatim into 1.6's brief), applied
+per target: a prepare record holds the exact prior and next bytes of the target document AND of
+`authority.json`, and settlement/rollback restores or keeps them as one unit. The two documents are
+never written in one command; a command names exactly one target.
+
+**Every file is a private regular file read through one no-follow descriptor** (`readPrivateRegularFile`
+semantics: `O_NOFOLLOW`, fstat that descriptor, regular, nlink in the allowed set, owner = runtime
+UID, mode exactly `0600`, size within the file's bound by stat AND by bytes read, post-read fstat
+identical). A group- or world-readable `protected.json` is a refusal naming the file, never a
+warning: the value it protects is a live SSO password.
+
+**The D321 coupling is kept and doubled.** Deleting `.tracker` deletes the directory, the database
+that journals it, and the backups' subject together; a fresh `npm run dashboard` regenerates the
+root, a migrated database, the never-applied revision-1 ordinary baseline and an EMPTY revision-1
+protected store (every entry absent — the dashboard opens; the first credential-needing action
+refuses by key name). A document whose revision is above 1 while the database holds no matching
+journal row refuses by document name ("no durable command journal for protected.json"), exactly as
+today's rule for `settings.json`. The journal side is two singletons (§D331.4).
+
+**Backups (D322) copy the ordinary half only.** `cli storage backup` includes `settings.json` and
+`authority.json` in its verified manifest; it NEVER copies `protected.json` (a backup is a second
+copy of a password the operator did not ask to make). The manifest records the protected store's
+revision and each entry's `{ name, valueId, updatedAt }` so a restore can say which entries must be
+re-entered. What a restore does with that is 0.3 Task 3's; D331 fixes only that a restored root
+reports those entries `absent`, never regenerates them, and never treats their absence as "not
+configured by choice".
+
+###### D331.4 — revision, journal coupling and the two singletons
+
+Each document has its own monotonic `revision` (1 = the never-applied baseline). The as-built
+rules for the ordinary document stand unchanged: the file's `lastApplied` binds the command id,
+whole-envelope fingerprint, expected revision, schema hash and patch fingerprint; the SQLite
+`settings_current` singleton (`revision ≥ 2`, `settingsFingerprint`, `commandId`,
+`commandFingerprint`, `auditId`, `committedAt`) is written in the same transaction as the command
+and audit rows; boot reconciliation keeps next bytes only for that exact committed identity.
+
+The protected store gets the SAME protocol under a second singleton, `protected_settings_current`:
+`{ revision ≥ 2, commandId, commandFingerprint, auditId, committedAt, entries: [{ name, valueId,
+updatedAt }] }`. It holds NAMES and write identities only — no value, no digest, no MAC, no length.
+`settings_current` and `protected_settings_current` are independent: advancing one never touches
+the other, and only the ordinary one participates in the runtime generation (§D331.7).
+
+**CAS is the only mutation protocol** (the same sentence as D330.4, on purpose). Every apply carries
+the target document's `expectedRevision`; a mismatch refuses `revision-conflict { currentRevision }`
+with nothing written and no lock held longer than the read. There is no unconditional write, no
+"latest wins", and no merge of two concurrent patches.
+
+###### D331.5 — the update API: one command family, two closed arms
+
+The settings command family is exactly two commands, both through the existing loopback command
+ingress (Host/Origin door, `application/json`, server-stamped `requestedBy`/`source`/time, one
+command id from acceptance to settlement, bulk parents unchanged):
+
+| Command | Target | Payload | Result |
+|---|---|---|---|
+| `apply-settings` (exists) | `{ expectedRevision }` of `settings.json` | `{ settingsSchemaHash, patchFingerprint, patch }` — `patch` is the closed editable schema, which under D331 equals the `ordinary-settings` class EXACTLY (every row with `editability: operator`; §D331.9 is the list). DCC3's eight-leaf allowlist is therefore superseded as a boundary — it becomes the first eight rows of a longer closed list, not a second list | `{ revision, settingsFingerprint, restartRequired: true }` |
+| `apply-protected-settings` (new) | `{ expectedRevision }` of `protected.json` | `{ protectedSchemaHash, writeId, entries }` — `entries` is a closed strict object keyed by protected NAME whose values are `{ set: <value> }` or `{ clear: true }`; `writeId` is a client-minted UUID naming this write | `{ revision, entries: { <name>: { present, valueId?, updatedAt? } } , restartRequired: false }` |
+
+**The two envelope fingerprints differ in what they cover, and that difference is the design.** The
+ordinary command's fingerprint covers the whole canonical envelope INCLUDING the patch (values are
+not secret; a replay must reproduce them). The protected command's fingerprint covers the whole
+canonical envelope with every `set` value replaced by the literal marker `"<set>"` — it binds the
+command id, actor, source, time, reason, expected revision, `writeId` and the SET/CLEAR SHAPE of
+`entries`, and never the value bytes or any function of them (a hash of a password is an offline
+guessing oracle, and the journal is not 0600). The durable command row and its audit `request` hold that MARKED
+envelope — never the submitted one — and boot re-authentication (today a byte comparison of
+`canonicalJsonStringify(audit.request)`) compares marked bytes to marked bytes, so the journal's
+authentication protocol works without ever retaining a value. Divergence of a VALUE under an exact
+replay is detected inside the executor, under the lock, against the store's own keyed MAC
+(§D331.6) — the journal never learns it. (A journaled per-value digest was considered and rejected:
+a salted or unsalted hash of a password in a non-`0600` table is an offline guessing oracle, and the
+random `valueId` already gives the journal a stable write identity without one.)
+
+**Refusal arms** (closed; every arm names the key or document, never a value):
+
+| Arm | When | Before authority access? |
+|---|---|---|
+| `schema-mismatch` | the caller's schema hash ≠ the build's | yes — request-only (lesson 2026-08-30: refuse before lock or `readState`; even a read initializes virgin evidence) |
+| `patch-fingerprint-mismatch` / `envelope-fingerprint-mismatch` | recomputed ≠ supplied | yes |
+| `not-editable { key }` | a key whose catalog `editability ≠ operator`, or a protected name absent from the catalog | yes — the catalog is static |
+| `invalid-value { key }` | zod refusal on the leaf's own schema (the protected arm validates through the SAME per-name schema the accessor uses — `KualiDocumentNumberSchema`, `EidSchema`, the 64-hex HMAC shape…) | yes |
+| `revision-conflict { currentRevision }` | CAS | no — under the lock |
+| `cross-field-invalid { keys }` | the fully merged ordinary candidate fails the composition's resolver (lesson 2026-08-28: individually valid leaves can break a cross-field invariant on restart) | no |
+| `document-too-large` | the canonical next bytes exceed the target's bound; the prior file is untouched | no |
+| `authority-unjournaled` / `authority-uncertain` | D321 rule; surviving prepare/rollback evidence | no — refuses restart reconciliation and any apply by name |
+| `directory-integrity` / `lock-unavailable` | §D331.3 checks; the reaper protocol's refusals | no |
+| `already-applied { revision }` | byte-exact envelope replay under the same command id (protected: same fingerprint AND every `set` value's MAC matches) | no |
+| `command-divergent` | same command id, different fingerprint — or, protected arm only, same fingerprint and a `set` value whose MAC differs | no |
+
+**Wire mapping.** One bootstrap/readback wire (`settings-runtime.ts`'s successor) serves, per
+catalogued row: for `ordinary-settings` the persisted, active and default values with provenance
+(as DCC3 does today) plus the row's `restartScope`; for `protected-store` the presence tuple only
+(§D331.6); for `provider-env` `inspectSecret`-shaped availability per family (`present` with the
+count of populated pool cells, `missing`, `unknown`) and NOTHING else; for `derived-host` the
+observed value and its provenance `default`; for `runtime-isolation` the resolved absolute paths,
+read-only. The browser never reads a file or a table and never reconstructs either document
+(ref frontend-backend-integration §4).
+
+###### D331.6 — protected values are write-only; readback is presence and revision
+
+`ProtectedStoreRecord`:
+
+```
+{ schemaVersion: 1, revision, protectedSchemaHash,
+  storeKey: <32 random bytes, base64>,                 // minted at store creation, rotated never; MAC key only
+  entries: { <name>: { valueId: uuid, value: <the exact string>, updatedAt: iso,
+                       mac: HMAC-SHA256(storeKey, name ‖ valueId ‖ value) } },
+  lastApplied?: { commandId, commandFingerprint, expectedRevision, protectedSchemaHash, writeId } }
+```
+
+The rules, each a proof 1.6 owes (§D331.11):
+
+1. **Never returned after write.** No wire, receipt, span, log, notification, preflight/doctor
+   report, diagnostic bundle, XLSX export, Explorer projection or error message carries a protected
+   VALUE, a digest of it, its length, a `last4`, a "matches?" comparator or a "changed since"
+   diff. The readback tuple is exactly `{ present: boolean, valueId?, updatedAt? }` per catalogued
+   name, plus the store `revision`. (`§6`'s evidence transforms are unchanged for RUN evidence: a
+   receipt may still carry the `last4` §6 already permits for a `direct-identifier` observed during
+   a run — that is evidence redaction, not a Settings readback, and it is produced by the run, not
+   by the store.)
+2. **Never in a fingerprint or a snapshot.** A protected value is not a `Config` leaf, so it is not
+   in `configFingerprint`, not in `settingsFingerprint`, not in the provenance map, not in a
+   per-run config snapshot, not in the D330 claim token. `timekeeperName` leaves `ConfigSchema`
+   (`operator.timekeeperName` is deleted, not emptied); its consumers call the accessor.
+3. **Never in a child's environment.** Today a worker inherits credentials because the bootstrap put
+   `.env` into the parent's `process.env`. Under D331 the parent publishes NOTHING protected: each
+   process reads the store itself through the accessor under the same file checks. The
+   `secrets-single-source` guard extends to forbid any `process.env` WRITE of a catalogued protected
+   name, and the environment registry lists every migrated name as `retired-in-target` so a stale
+   shell export is a boot refusal by name (§D331.8), never a silent shadow.
+4. **The MAC never leaves the file.** It exists for one purpose: under the lock, an exact replay of
+   `apply-protected-settings` proves its `set` values are the values the first apply stored
+   (`already-applied`) or are not (`command-divergent`). It is not journaled, not served, not
+   logged, and not a password-verification oracle (there is no "check this password" command).
+5. **Absent is a valid state, and it is distinguishable.** An entry that was never set or was
+   cleared is `present: false`; the accessor's `requireSecret` throws `SecretMissingError` naming the
+   KEY; `inspectSecret` answers `missing`; a store that cannot be read (mode, owner, size, parse)
+   is `unknown` and re-throws everything else. "The check failed" is never "the check found nothing".
+6. **Canary inputs are protected, not ordinary.** `config/test-subjects.json` stays the committed
+   PUBLIC registry (label → workflow, kind, availability, `lastObserved`, reference NAME);
+   `optionalTestTargetSecret` reads the protected store by that name with the same per-kind schema.
+   D300's semantics are unchanged — unset is `blocked` by key, malformed is a defect by key, the
+   number is never copied into a name or EID field — only the SOURCE moves from `.env` to the
+   store. A person-lookup EID canary is a `protected-identifier`; a Kuali document number is a
+   `protected-identifier` too (it resolves to a person).
+7. **Clear is a write.** `{ clear: true }` removes the entry and retires its `valueId`; it is
+   journaled, CAS-fenced and revision-advancing like a set.
+8. **Historical exposure is named, not erased.** Today `operator.timekeeperName` is a `Config` leaf,
+   so every existing `config_snapshots` row carries the timekeeper's name verbatim, every
+   `configFingerprint` has it in its preimage, and every `cli storage backup` copied it. §4.1
+   forbids rewriting a released snapshot generation for three reasons that still hold; D331 records
+   this as ACCEPTED historical exposure of one `direct-identifier` (never a password, never a
+   canary), requires backup files to stay `0600` under existing writer hygiene (§6.1), and forbids
+   any claim that the migration erases it. Retiring the leaf also needs an explicit RETIREMENT arm in
+   `snapshot-generations.ts` (`auditConfigSnapshotGenerations` refuses a vanished registered leaf
+   today) — an owed 1.6 change, and 0.3 Task 3 owns the generation rule.
+
+###### D331.7 — restart scope, and where the D330 claim token comes from
+
+| `restartScope` | Rows | Takes effect | Mechanism |
+|---|---|---|---|
+| `generation` | every `ordinary-settings` row; the `derived-host` display default | at the next dashboard boot, for every process the dashboard then spawns | `apply-settings` advances `settings_current`; the dashboard's boot activates a new runtime generation with the resolved config; workers compare the token on every claim |
+| `next-use` | every `protected-store` CREDENTIAL row (`ucpathUserId`, `ucpathPassword`, `timekeeperName`, `sharepointOnboardingRosterUrl`, the pseudonym pair) | at the next accessor call | the accessor reads the store at each use; nothing caches a credential across uses; a run that already holds a browser session keeps it |
+| `next-start` | the canary/test-input rows | at the next dry-run start admission | admission reads the store once and retains the reference NAME (never the value) in the run's start record |
+| `process` | `runtime-isolation` rows; the launch nonce; the host display PROBE | at the next process start | code / launcher / once-per-process-tree probe (D324: a child never re-probes) |
+
+**The claim token's four fields, by provenance** (R01 residue, closed here):
+
+| Field | Minted by | Value |
+|---|---|---|
+| `generation` | the dashboard's boot activation (`runtime_config` singleton), monotonic across boots | +1 per activation; never reused |
+| `settingsRevision` | `settings_current` (the ORDINARY document's revision) | the revision the activation resolved from |
+| `settingsFingerprint` | SHA-256 over the canonical ordinary document bytes | must equal `settings.json`'s own `settingsFingerprint` at activation |
+| `configFingerprint` | SHA-256 over `canonicalJsonStringify(config)` for the resolver's output over (ordinary document, host facts, defaults) | the snapshot identity every run retains (§4) |
+
+The protected store's revision is NOT a token field, by design: a credential rotation must not make
+every idle worker `runtime-stale`, and it must not invalidate an in-flight claim — D330.4's rule
+("a generation advance never touches an in-flight claim") holds a fortiori for a write that advances
+no generation. A worker that claimed under generation N and reaches its first login after a
+protected apply logs in with the NEW credential: that is the `next-use` scope working, and the run's
+receipt names the run, not the credential revision.
+
+**A saved display override versus a changed host.** The probe is `process` scope and the leaf is
+`generation` scope, so: with no override, plugging in a different monitor changes nothing until the
+next dashboard boot, whose activation carries a new `configFingerprint` (the default moved) — every
+worker it spawns inherits the published value, and the old generation's idle workers refuse
+`runtime-stale` on their next claim. With an explicit override saved, the host change is invisible
+to `Config` at any boot; the Settings surface shows the override AND the current host observation
+side by side so the operator can clear the override deliberately (§D331.10). The override is an
+ordinary row; the observation is never persisted.
+
+###### D331.8 — precedence: a leaf has exactly one source
+
+**The rule.** For an `ordinary-settings` row the value is `settings > default`, where `default` is
+the row's `defaultKind` (`contract`, `runtime-path` or `host-derived`). For every other class the
+value is its one authority (§D331.2) and there is no second layer at all. `ConfigProvenanceSchema`
+shrinks to `"settings" | "default"`; the `"env"` arm is deleted, not deprecated. §3's sentence
+"One resolver implements `env > settings.json > default` exactly once" is superseded by the dated
+note beside it: one resolver implements `settings > default` exactly once, and the ENVIRONMENT IS
+NOT AN INPUT to it.
+
+**What "duplicate fallback authorities are forbidden" means, mechanically:**
+
+- The catalog's type admits one `sourceClass` per row (§D331.1), so a second source is
+  unrepresentable, not merely unadvised.
+- `CONFIG_ENV_BINDINGS` is empty and its registry type is retained only so the guard can assert
+  emptiness; `runtime-environment.ts`'s `config` channel has zero members; `TIMEKEEPER_NAME`'s
+  `config-and-secret` dual channel is deleted with its leaf.
+- Every migrated environment key (the 32 config bindings, `UCPATH_USER_ID`, `UCPATH_PASSWORD`,
+  `TIMEKEEPER_NAME`, `ONBOARDING_ROSTER_URL`, the two pseudonym keys, the two canary keys, the five
+  `OCR_*_MODELS` chain keys) moves to `RETIRED_ENVIRONMENT_KEYS`. A retired key PRESENT in the
+  admitted `.env` refuses at bootstrap by key name with the remedy ("set it in Settings, then remove
+  it from `.env`"); a retired key present in the parent process environment is reported by the
+  environment doctor (§6.2) and refuses dashboard and worker boot by key name. Neither is ever read
+  as a value. This is the "stale `.env` leaf shadowing a migrated value" case closed at the door: a
+  value that cannot be read cannot shadow.
+- The `.env` admission allowlist becomes: the five provider key families' pool cells, and nothing
+  else. The bootstrap's mechanics (no-follow open, `mode & 0o077 === 0`, 64 000-byte bound, strict
+  grammar, one-to-one `parseEnv` cross-check, explicit parent bindings win) are unchanged; only the
+  set of keys it will carry into the process changes. Unknown keys were already refused.
+- `SettingsOverrideSchema` (the resolver's sparse input) and `EditableSettingsOverrideSchema` (the
+  persisted/editable document) become ONE schema over the `ordinary-settings` class: the resolver
+  accepts exactly what the document can hold, so no composition can inject an override the operator
+  cannot see. The `paths` group of that schema holds the four operator paths only; the five
+  isolation paths are not overridable by any input.
+- Test-lane keys (`HRAUTO_E2E_STUBS`, `PARITY_UPDATE`, `SEL_SESSION`, …) stay `test-only` in the
+  environment registry; none targets a catalogued leaf, and the guard keeps it that way.
+- The `config-default` channel has exactly ONE member, the host display publication. No other leaf
+  may ever use it; a second `config-default` member is the "no shadow authority" rule reopened
+  through the default layer, and the environment-coverage guard pins the channel's cardinality.
+- Three properties of the retired environment layer are RESTATED as document-layer invariants so
+  they do not vanish with it: (i) `annualDates.<FY>` is group-valid — an entry is either complete
+  (all three dates) or absent, enforced by the document schema and re-checked by `cross-field-invalid`,
+  never a half-year that parses; (ii) a leaf is UNSET by omission from the sparse document — there
+  is no "empty string means unset" rule because the document is typed JSON, not text, and an empty
+  string is an `invalid-value` refusal wherever the leaf's schema does not admit it; (iii) no
+  document input can move a production endpoint — the ordinary document schema has NO
+  `urls.<system>.prod` member at all, so "production is the code default" (§4) stays a property of
+  the schema rather than of the layer that was removed.
+
+**What still comes from the environment, and why each is not a duplicate:** provider API keys
+(secrets accessor, never the resolver — one authority, `.env`); the host display publication (a
+DEFAULT beneath the ordinary override — the override is the only competing value, and it is the
+operator's explicit one); the launch nonce (process ownership, not configuration); test-only keys
+(never a production leaf).
+
+###### D331.12 — what this contract supersedes (dated 2026-09-04)
+
+Each item is also carried as a dated note beside the superseded text, so a reader of that section
+meets the supersession where the old rule stood; the ledger row (`reference/decisions.md`) points
+here.
+
+1. **§3 "One resolver implements `env > settings.json > default` exactly once"** — the "exactly
+   once" half stands; the precedence becomes `settings > default` and the environment is not a
+   resolver input (§D331.8). `"env"` leaves `ConfigProvenanceSchema`. The same section's two
+   factual errors are corrected in the dated note: the schema has 15 groups (there is no `capture`
+   group — D294 retired it and `snapshot.ts` refuses to mint the key), and 33 bindings are registered
+   today, not 38 (the five `HRAUTO_CAPTURE_*` names have zero occurrences in the tree). All 33 retire
+   at 1.6.
+2. **§3 "The settings producer and editable boundary"** — "Precedence remains `env > settings >
+   default`" is superseded; "DCC3 retains the existing server-listed eight-leaf editor" is superseded
+   as a BOUNDARY (the editable schema becomes the whole `ordinary-settings` class, §D331.5); "Its
+   visible inventory is not the whole backend allowlist" ceases to be true — the catalog is the one
+   generator of the persisted schema, the editor inventory and the resolver's input. "Credentials,
+   annual dates and other non-admitted environment-owned leaves cannot enter `.tracker/settings.json`"
+   stays true of the ORDINARY document for credentials and canaries (they enter `protected.json`
+   under their own schema) and becomes false for annual dates and every other operator-managed
+   leaf, which are ordinary rows. `SETTINGS_SCHEMA_HASH` moves with the catalog; the existing file's
+   refusal under the new hash is the upgrade problem 0.3 Task 3 owns (a journaled rewrite under the
+   new hash after a verified D322 backup, never a tolerated mismatch).
+3. **§Operational isolation, D321's layout sentence** — "`settings.json` with its `.authority.json`,
+   `.prepare.json`, `.rollback.json` and lock siblings" in the state root becomes the
+   `.tracker/settings/` directory of §D331.3. The coupling sentences ("deleting `.tracker` removes
+   both halves together"; "the next `npm run dashboard` recreates the root, a fresh migrated database
+   and the never-applied revision-1 baseline") stand and now cover two documents. The as-built
+   refusal text "remove settings.json and its .authority.json sidecar there" names files that will
+   not exist; 1.6 rewords it with the directory.
+4. **§6 "The three registries"** — `timekeeperName` (`source: environment`) and every other
+   non-provider `SECRET_SPECS` row move to `source: protected-store`; the `source` discriminant gains
+   that arm and `environment` survives only for the five provider families. `providerModelChain`
+   stops reading the environment: model chains are ordinary rows (§D331.2). The two
+   `direct-identifier` rows keep their classification and their §6 redaction join.
+5. **§6 the bootstrap paragraph and §6.2** — the `.env` admission mechanics stand; its accepted key
+   set shrinks to the provider families (§D331.8) and every migrated key becomes
+   `retired-in-target`, reported by the environment doctor and refused at bootstrap/boot by name.
+   The D300 `test-target-document-number` smoke selector stays a bootstrap arm but reads the
+   document number from the protected store through `optionalTestTargetSecret`, not from `.env`.
+6. **D300 (2026-09-01)** — its semantics are unchanged (one closed document-number reference; unset
+   is `blocked` by key; malformed is a defect by key; never a name or EID in the registry). Its
+   SOURCE sentence ("in `.env`") is superseded by §D331.6 item 6; its "only test-target secret"
+   sentence is read as "the only test-target secret OF SEPARATIONS": the person-lookup
+   `live-read` canary (`personLookupCanaryEid`, `docs/migrations/person-lookup.md` §T1b, D318's arm)
+   is the second member of the class, registered per workflow label exactly as D284/D300 require.
+7. **ref dashboard-surfaces §2.1** — the state-root tree still says `.tracker-rebuild/` (stale since
+   D321, noted by R01); the dated note there names `.tracker/` and adds the `settings/` subtree.
+8. **What is NOT superseded, and is cited rather than restated:** ref frontend-backend-integration
+   §4's D327 ownership cut ("the browser never reads files/tables or reconstructs either authority")
+   binds §D331.10; §4's immutable per-run snapshot and §4.1's generation rule bind §D331.7; D324 is
+   preserved verbatim (§D331.2 `derived-host`); D322's explicit-only backup rule binds §D331.3;
+   D330.4/§D330.6 bind the claim token; ref execution-and-sessions owns the Duo credential file's
+   lock/signCount protocol; ref stores' catalog is unaffected (no task contract changes).
 
 ## 4. Immutable per-run config and instance snapshot — required in Phase 1
 
@@ -659,6 +1087,7 @@ each says why.**
   settings file lived in `config/` and outlived a deleted state root, and the boot refused with
   "settings revision 2 has no durable command journal" — correct fail-loud, wrong place for the file
   (see ref lessons, 2026-09-03). The refusal now names that fix.
+  > 2026-09-04 | D331 | the LAYOUT sentence is superseded: at 1.6 the family lives in the `.tracker/settings/` directory (`settings.json`, `protected.json`, `authority.json`, transient `prepare.json`/`rollback.json`, one `settings.lock` + reaper) — §D331.3. The COUPLING sentences stand and cover both documents: deleting `.tracker` removes both halves together; a document whose revision outlives its journal refuses by document name; the regenerated baseline is revision-1 ordinary plus an EMPTY revision-1 protected store. The refusal text naming `settings.json` and its `.authority.json` sidecar is reworded by 1.6.
 
 Isolation values reach the runtime through ONE exported direct-`const` `defineRuntimeIsolation`
 call (`src/config/runtime-isolation.ts`) whose schema is a strict object of `z.literal`s, consumed by
@@ -881,6 +1310,7 @@ export const SECRET_FILE_SPECS = […];   // 1: the Duo WebAuthn credential
 | `timekeeperName` | environment | `TIMEKEEPER_NAME` | `direct-identifier` |
 | `sharepointOnboardingRosterUrl` | environment | `ONBOARDING_ROSTER_URL` | `secret` |
 | `duoWebauthnCredential` | file | `paths.duoCredential` (§4) | `credential-file` |
+> 2026-09-04 | D331 | SUPERSEDED for `source`: at 1.6 `ucpathUserId`, `ucpathPassword`, `timekeeperName` and `sharepointOnboardingRosterUrl` (and the D288 pseudonym pair, and both test-target references) read from the protected store (`source: protected-store`, §D331.2/§D331.6); `environment` survives only for the five provider key families; `providerModelChain` stops reading the environment because model chains are ordinary rows. `timekeeperName` also leaves `ConfigSchema` — its `config-and-secret` dual channel is deleted with the leaf (§D331.8). Classifications and the redaction join are unchanged.
 
 **The classification is not decoration — it is the join to §6's redaction contract**, and the two
 `direct-identifier` rows are the reason it is per-entry rather than per-table: an operator's user id
@@ -1126,6 +1556,8 @@ loopback Origin checks, and no secret-bearing URLs or logs remain base requireme
 also make diagnostic bundles safer to share with an AI assistant.
 
 ### 6.2 One environment doctor replaces scattered startup surprises
+
+> 2026-09-04 | D331 | at 1.6 the doctor also reports every `retired-in-target` catalogued key present in the process environment or the admitted `.env` as a named refusal ("set it in Settings, then remove it"), so a stale exported credential or test URL can never shadow a migrated leaf (§D331.8).
 
 <!-- roadmap: cross-cutting -->
 <!-- roadmap: p1-authority -->

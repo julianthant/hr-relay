@@ -7,6 +7,17 @@ lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/store
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
 
+- **2026-09-04: a value that is both a config leaf and a registered secret is inside every snapshot,
+  fingerprint and backup (D331; ref clock-config-secrets §D331.6).** `TIMEKEEPER_NAME` looked like an
+  ordinary operator default — it had a `CONFIG_ENV_BINDINGS` row like any timeout — but it was also a
+  `direct-identifier` in `SECRET_SPECS`, the tree's one `config-and-secret` channel. As a `Config`
+  leaf it was persisted verbatim in insert-only `config_snapshots`, hashed into every
+  `configFingerprint` and copied by every `cli storage backup`, none of which §4.1 lets a migration
+  rewrite. A classification is a storage decision: a protected value is never a `Config` leaf, and
+  a journal that must authenticate a protected write stores a random write id and a marked envelope,
+  never the value or a digest of it (a digest of a password in a table that is not `0600` is an
+  offline guessing oracle). Record historical exposure by name; never claim a migration erased it.
+
 - **2026-09-03: a read-only SQLite inspection is not side-effect free on disk (D322; ref
   dashboard-surfaces §2.5).** Verifying a backup copy through a `readOnly` connection looked like a pure
   read, but a read-only WAL-mode open creates `-shm`/`-wal` companions beside the copy and cannot
