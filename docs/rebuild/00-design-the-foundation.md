@@ -17,7 +17,7 @@ no runtime code by policy — its product is the design every later phase implem
 - [x] the operator ratified isolated coexistence (**D88**), **ONE all-at-once cutover** (**D89**), legacy change accounting (**D90**/**D94**), the testing policy (**D91**) and the deferred probe gates (**D92**)
 - [x] the rebuild's ADDRESS settled (**D93**): its own repository, seeded 2026-07-31 from `hr-automation@5879004`
 - [x] historical Parts **0.1–0.2** are complete; their evidence and later amendments remain intact
-- [ ] **0.3** is reopened by D326/D327: design one run-record authority, one settings catalog/root, their migration and recovery rules, and exact implementation briefs before 1.6 changes code
+- [x] **0.3** is reopened by D326/D327: design one run-record authority, one settings catalog/root, their migration and recovery rules, and exact implementation briefs before 1.6 changes code — CLOSED 2026-09-04: D330 · D331 · D332 and the §0.3 Task 4 bindings (coordination C31da5310, merges `1a04d565` `63f6da4f` `ff4e08b9` `5dcdd112`)
 > 2026-09-03 | D326/D327 authority reset | 0.3 is the earliest active part. This planning reconciliation did not implement either authority; the runtime phase marker therefore remains historical until the 0.3→1.6→2.6→3.1 chain completes
 > 2026-08-21 | docs-cohesion 00 | verified against reference/decisions.md rounds 1–12, reference/charter.md items 1–27, reference/write-safety.md §14, src/cli.ts, vitest.config.ts:39-43, config/legacy-capabilities.json (78 entries) and every size attribute in docs/roadmap/roadmap.md; left: nothing in Phase 0 itself — the amendments and the two unbuilt promises are recorded below and every one of them is owned elsewhere
 <!-- /roadmap-status -->
