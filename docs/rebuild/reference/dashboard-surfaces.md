@@ -1795,13 +1795,34 @@ OR ABOVE the floor (a later additive step still applies at open), so the floor i
 a new policy for every migration. D321's regeneration rule stands untouched: a state root with NO
 database and NO settings family regenerates at boot (there is nothing to upgrade), and a fresh database
 is created directly at the current version with the never-applied revision-1 baselines — it needs no
-upgrade, writes no `authority_upgrades` row, and is `at-floor/new-layout/no-journal` in §D332.6's matrix.
+upgrade and writes ONE `authority_upgrades` row of phase `baseline` (§D332.5) in the transaction that
+creates it, so §D332.6's matrix reads "fresh" from the journal rather than inferring it from a
+revision-1 document that a foreign database could equally carry.
+
+**The open never migrates across the floor.** As built `AuthorityDatabase.open` calls
+`#initializeSchema` unconditionally and `#runMigrations` applies every pending version whenever
+`existingVersion < CURRENT`; left alone, a 1.6 build's `storage backup` over a v29 root would silently
+apply the floor's schema steps — no journal row, no settings half, no admission, no backup — and the
+operator's "pre-upgrade backup" would be a backup of a half-migrated root. 1.6 therefore gates the
+chain: `#runMigrations` runs only when `existingVersion ≥ floor`; a pre-floor database is admitted
+READ-ONLY and NO-MIGRATE for exactly three callers — `storage backup`, `storage doctor`, and `storage
+upgrade`'s own preflight — through a named open mode, and every other caller receives
+`upgrade-required` from the open itself. The backup a pre-floor root gets is therefore a backup of the
+bytes as they are (§D332.11 M3, M5).
 
 ##### D332.2 — preflight: every refusal before any write
 
 Preflight is read-only, total, and ordered; the first failing step names the refusal and nothing later
-runs. Steps 1–3 are re-run after admission is claimed (§D332.3 step 1), so nothing a concurrent process
-did between `--plan` and execution can pass on stale evidence.
+runs. Steps 1–3 AND 10 are re-run after admission is claimed (§D332.3 step 1), and the live
+`authority_generation` is read once more INSIDE the exclusive transaction before COMMIT and must still
+equal the backup's — so nothing a concurrent process did between `--plan` and execution, or between
+the operator's backup and the transaction, can pass on stale evidence. Because a dashboard start
+advances `authority_generation` even when it enqueues nothing (it records its activation snapshot),
+the plan prints the order the operator must follow: settle the old settings authority first (step 8),
+stop every process, THEN `cli storage backup`, THEN `cli storage upgrade`. D322's "safe beside a
+running dashboard" describes the backup command; the UPGRADE's precondition is the stopped system,
+and a backup taken while a dashboard was still running is simply `stale` by generation the moment
+that dashboard wrote. Re-taking the backup changes `upgradeId` (§D332.5) and therefore re-plans.
 
 | # | Check | Refusal (closed) | Notes |
 |---|---|---|---|
@@ -1809,16 +1830,16 @@ did between `--plan` and execution can pass on stale evidence.
 | 2 | authority health: `application_id`, `quick_check = ok`, foreign keys, every `record_json` through its registered strict schema, the invariant queries | `authority-unhealthy { cause }` | the boot interlock's checks, run read-only; an unhealthy store is restored (D181) first, never upgraded — an upgrade over corruption would journal a lie |
 | 3 | schema identity: `user_version` = `meta.schema_version`; `migration_owner` null; version ≤ build's current | `authority-ahead { schemaVersion, supported }` (as-built refusal text "authority schema N is newer than supported M") · `migration-locked { owner }` | ahead = downgrade; refused by the OPEN, before this command sees the row (§D332.6) |
 | 4 | D290 lineage: version ≤ 18, or 18 < version < floor with the exact integrated table set for that version | `foreign-suffix { version, source }` (as-built D290 refusal, `source ∈ {DCC1, DCC4, DCR, unrecognized}`) | a foreign suffix is never converted; the remedy is the D290 sentence: restore a common-lineage backup or start fresh |
-| 5 | already upgraded: `authority_upgrades` holds a `settled` row for this root | `already-upgraded { upgradeId, settledAt }` — exit 0, nothing written | idempotence (§D332.5) |
-| 6 | in-flight upgrade: a `committed` row without `settled`, or a `<stateRoot>/upgrades/<id>.prepare.json` | not a refusal — enters the resume arm (§D332.5) after steps 7–13 pass | the only admitted mixed state |
-| 7 | settings layout is old or none: no `<stateRoot>/settings/` entry exists | `mixed-generation { database: pre-floor, settings: new-layout }` | a new directory beside a pre-floor database is a restored database under an upgraded root (§D332.4 names the path back), never something to merge |
+| 5 | floor position, decided WITH the layout and the journal (never from the journal alone): `user_version ≥ floor` → §D332.6's matrix answers — `settled` row + new layout present + old layout absent → `already-upgraded { upgradeId, settledAt }`, exit 0, nothing written; `committed` without `settled` → the resume arms (§D332.5) after steps 8–15; any OTHER at-floor cell → that cell's own verdict verbatim (`authority-deleted { settings/ }`, `mixed-generation { … }`), never `already-upgraded`. `user_version < floor` → continue | `already-upgraded` · the matrix verdicts | a `settled` row with `settings/` gone answers `authority-deleted` here exactly as every boot door does; the command never tells the operator a root is fine that boot will refuse |
+| 6 | in-flight pre-floor attempt: exactly zero or one `<stateRoot>/upgrades/<id>.prepare.json` | `upgrade-evidence-divergent { files }` on two or more prepare files (which attempt is superseded cannot be inferred) | one prepare enters the re-plan arm (§D332.5) after steps 7–15 pass |
+| 7 | settings layout is old or none: no `<stateRoot>/settings/` entry exists (the database is known pre-floor from step 5) | `mixed-generation { database: pre-floor, settings: new-layout }` | a new directory beside a pre-floor database is a restored database under an upgraded root (§D332.4 names the path back), never something to merge |
 | 8 | old-pathname settlement: no `settings.json.prepare.json` / `settings.json.rollback.json` exists | `settings-authority-unsettled { file }` | §D331.3: every path-bound record dies with the move; the remedy is the as-built rule — the OLD runtime's boot reconciliation settles it (before 1.6 lands: run today's dashboard once; after: adapter A1, §D332.9, runs the exact as-built reconciler under the old pathname inside the upgrade, and refuses on any mixed presence exactly as lesson 2026-08-30 requires) |
-| 9 | old settings ↔ journal agreement (D321): virgin (revision 1, no `settings_current`), or `settings.json.revision = settings_current.revision`, fingerprints equal, the singleton's `commandId`/`auditId` rows present and authenticated | `authority-unjournaled { file }` (file above singleton) · `authority-uncertain { file }` (file below, or fingerprint/command mismatch) · `authority-deleted { file }` (sidecar `initialized`, file absent) | two revisions that disagree are never reconciled by choosing one; the remedy names the D321 rule |
+| 9 | old settings ↔ journal agreement (D321), read through A0's FROZEN pre-floor copies of `SettingsFileRecordSchema`, `EditableSettingsOverrideSchema` and the pre-floor `SETTINGS_SCHEMA_HASH` literal (the live reader refuses any file under another hash by construction, so it can never be pointed at an old-layout file): virgin (revision 1, no `settings_current`), or `settings.json.revision = settings_current.revision`, fingerprints equal under the frozen schema, the singleton's `commandId`/`auditId` rows present and authenticated | `authority-unjournaled { file }` (file above singleton) · `authority-uncertain { file }` (file below, or fingerprint/command mismatch) · `authority-deleted { file }` (sidecar `initialized` with the file absent — AND the mirror image: file absent or sidecar `virgin` while a `settings_current` row exists, a database that outlived its settings family; as built the reader returns `undefined` there and nothing refuses) | two revisions that disagree are never reconciled by choosing one; the remedy names the D321 rule |
 | 10 | backup prerequisite (D322/D327): the newest verified manifest under `<stateRoot>/backups/authority/` re-verifies byte-for-byte (the doctor's on-demand verification), its `schemaVersion` equals the live `user_version`, and its `authorityGeneration` equals the live `authority_generation` observed in this same read | `backup-missing` · `backup-invalid { file }` · `backup-stale { live, backup }` | the command NEVER writes a backup (D322: `cli storage backup` is the one writer, and this is not a cadence); the generation equality closes the gap between the operator's backup and this run — any write in between makes the backup `stale` by construction |
 | 11 | `.env` admission: the secure bootstrap's own grammar and descriptor checks, then every key classified by the D331 catalog (`provider-env` family cell · migrated leaf · `retired-in-target` · `test-only` · unknown) | `env-unadmitted { cause }` (mode, size, grammar — the bootstrap's refusals) · `env-unknown-key { key }` (already a refusal today) · `invalid-value { key }` (a migrated leaf whose value fails the leaf's own schema) | keys are read by NAME for classification; values of migrated leaves are parsed only through the leaf's schema and only into the plan; provider-key VALUES are never read at all (§D332.3 step 4) |
 | 12 | dual-source agreement (§D331.1): for each of the seven `currentSource` arrays, the `settings.json` value and the environment value are byte-equal after canonicalization, or one is absent | `ambiguous-duplicate { key, sources }` | never a tie-break by precedence: today `env > settings` would silently pick one, and D327 says refuse |
 | 13 | canary references: each `config/test-subjects.json` reference name resolves to an environment key present-and-valid, present-and-malformed, or absent | `invalid-value { key }` on malformed; absent is a PLAN fact (the entry imports as absent = `blocked` by key, D300) | never a name or EID into a document-number field and vice versa: the per-kind schema decides |
-| 14 | tombstone evidence for the ordinal backfill (§D332.7): for every `deleted_runs` row lacking ordinals, the span corpus is read through the doctor's bounded no-follow traversal; each tombstoned `runId` has zero or one `run.queued` root whose `workflow` and `traceId` equal the tombstone's | `malformed-evidence { runId, field }` on two roots, or a root disagreeing with the tombstone | zero roots is a plan fact, not a refusal (`ordinalSource: unknown`, §D332.7) |
+| 14 | tombstone evidence for the ordinal backfill (§D332.7): for every `deleted_runs` row lacking ordinals, the span corpus is read through the doctor's bounded no-follow traversal; each tombstoned `runId` has zero or one `run.queued` root whose `workflow` and `traceId` equal the tombstone's; a root carrying a closed D301 `authority-reconstruction` marker counts as that one root | `malformed-evidence { runId, field }` on two roots (a `runId` is one UUID and has one root; two day partitions naming it is a contradiction), or a root disagreeing with the tombstone | zero roots is a plan fact, not a refusal (`ordinalSource: unknown`, §D332.7) |
 | 15 | plan bounds: the canonical next bytes of `settings/settings.json` ≤ 1 048 576 B and `settings/protected.json` ≤ 64 000 B | `document-too-large { file }` | the same bounds §D331.3 gives the readers |
 
 The plan the preflight prints (and `--json` serializes) names: `upgradeId`; from/to schema versions; the
@@ -1867,14 +1888,23 @@ plan lists them; boot refuses by name until they are gone, §D331.8).
    already-deleted runs are orphans today; §D332.7 item 3) — and only then the
    `checkpoint_payloads_never_deleted` trigger is created, relaxed behind the tombstone, with its tally
    key (§D330.9); `protected_settings_current` (§D331.4); `authority_upgrades` (§D332.5's journal); the
-   D290 admission gains its `integratedByVersion[29]` table set in the SAME commit that bumps `CURRENT`
-   (as-built the check is a per-version table-set equality applied to every `18 < version < CURRENT`,
-   so without that entry every v29 database — the only databases this upgrade exists for — would refuse
-   as a "divergent post-v18 suffix"); (c) the tombstone ordinal backfill (§D332.7 item 2) — the one
+   D290 admission's `integratedByVersion` becomes FROZEN LITERAL table lists for 27, 28 AND 29 in the
+   SAME commit that bumps `CURRENT` (as built the check is a per-version table-set equality applied to
+   every `18 < version < CURRENT`, and the 27/28 sets are DERIVED from the live build's DDL by filtering
+   out `deleted_runs` — so adding `protected_settings_current` and `authority_upgrades` to the DDL would
+   grow those derived sets and make every genuine v27, v28 and v29 database refuse as a "divergent
+   post-v18 suffix", the only databases this upgrade exists for; §D332.11 M21 exercises all three);
+   (c) the tombstone ordinal backfill (§D332.7 item 2) — the one
    UPDATE of `deleted_runs` rows this contract ever admits, executed by dropping
-   `deleted_runs_immutable_update`, updating exactly the pre-floor rows, and re-creating the trigger
-   inside this same transaction, so a crash leaves either the old trigger and no backfill or the new
-   trigger and the whole backfill; (d) the
+   `deleted_runs_immutable_update` (as built its `WHEN` admits only the tally settle, so the backfill
+   would abort under it), updating exactly the pre-floor rows, and re-creating the trigger inside this
+   same transaction WITH the four new columns added to its `NEW = OLD` equality list — so a later tally
+   settle can no more rewrite an ordinal than it can rewrite `trace_id` — and a crash leaves either the
+   old trigger and no backfill or the new trigger and the whole backfill. The orphan-gate sweep of (b)
+   selects by exact prefix (`substr(record_key, 1, 36) = runId AND substr(record_key, 37, 1) = ':'`,
+   never `LIKE`), and relies on the as-built fact that `checkpoint_payloads` holds ONLY gate records keyed
+   `${runId}:${gateId}` (a `RunId` is a fixed-length UUID, so no other run's key shares the prefix); a
+   future non-gate writer of the table is a defect §D330.11 test 22 and M23 make loud; (d) the
    settings rewrite as ONE journaled command: a server-authored `apply-settings` envelope (actor = the
    fixed local operator, `source: "storage-upgrade"`, `requestedBy` stamped, reason = the `upgradeId`)
    whose patch is the imported ordinary leaves (ref clock-config-secrets §D332 settings half, tie-break
@@ -1916,7 +1946,7 @@ Rollback has two shapes, and the operator is told which one applies by the state
 | Shape | When | What happens | What is never touched |
 |---|---|---|---|
 | **Transactional** | any failure before COMMIT (step 3) | SQLite ROLLBACK; the old layout is untouched; the prepare and rollback files remain as evidence; the next `storage upgrade` re-plans (§D332.5) | spans, notes, every evidence table, `config_snapshots`, `.env`, the backup |
-| **Operator** | after COMMIT — the operator decides the upgrade must not stand | `cli storage restore --from <the pre-upgrade manifest the journal names>` restores the database exactly as D181 does today — which requires one 1.6 change to the manifest contract: as built `BackupManifestSchema`'s `schemaVersion` is `z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)`, so the moment 1.6 bumps `CURRENT` every pre-floor manifest (the very backup this upgrade requires) would be unparseable by the new build and the rollback asset would be ceremonial; the READ schema (restore, doctor candidate listing, this preflight) therefore admits `1 ≤ schemaVersion ≤ CURRENT` while the WRITE schema keeps the literal, and a restored pre-floor database is then `upgrade-required` at the next boot (§D332.6), never silently opened. The restore command additionally, when the manifest's `schemaVersion` is pre-floor AND `<stateRoot>/upgrades/<id>.rollback.json` names that manifest's `sha256`, restores the old-layout files from the rollback file's prior bytes and removes `<stateRoot>/settings/` — refusing `protected-entries-written { revision }` if `protected.json`'s revision exceeds 2 (entries were entered after the upgrade; the operator clears them through the API or deletes the file deliberately, never silently), and refusing `rollback-evidence-missing` when no rollback file matches, in which case the database restore alone would produce the §D332.6 mixed state and the command does NOT perform it | spans/notes JSONL (D301), `config_snapshots` (§4.1 — a snapshot minted after the upgrade under a generation that retires `operator.timekeeperName` stays exactly as minted; the old runtime reads it forward or refuses by leaf name, never edits it), diagnostic and content-addressed artifacts, `.env` |
+| **Operator** | after COMMIT — the operator decides the upgrade must not stand | `cli storage restore --from <the pre-upgrade manifest the journal names>` restores the database exactly as D181 does today — which requires ONE NAMED SET of 1.6 changes to the backup READ path, without which the rollback asset is ceremonial and §D332.2 step 10 cannot even re-verify the pre-upgrade backup: as built `AuthorityBackupManifestSchema`, `BackupVerificationSchema` and `AuthorityCopyInspectionSchema` (`recovery-contracts.ts`) each pin `schemaVersion` to `z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)`, `BackupVerificationSchema.exactTableRegistry` is `z.literal(true)`, and `inspectExistingDatabaseReadOnly` — which `verifyBackupManifestAtPath` calls — refuses both a `schemaVersion ≠ CURRENT` and a table set that is not exactly `AUTHORITY_TABLE_REGISTRY`; the moment 1.6 bumps `CURRENT`, every pre-floor manifest is unparseable and every pre-floor copy uninspectable by the new build. The READ path (those three schemas, the inspector's version equality and its registry equality, restore's `beforeProjection` inspection, the doctor's candidate listing, this preflight) therefore admits `floor − 1 ≤ schemaVersion ≤ CURRENT` against a PER-VERSION FROZEN table set (the same literal lists §D332.3 step 3(b) freezes for D290), while every WRITE path keeps the literal `CURRENT`; a restored pre-floor database is then `upgrade-required` at the next boot (§D332.6), never silently opened. The restore command additionally, when the manifest's `schemaVersion` is pre-floor AND `<stateRoot>/upgrades/<id>.rollback.json` names that manifest's `sha256`, restores the old-layout files from the rollback file's prior bytes and removes `<stateRoot>/settings/` — refusing `protected-entries-written { revision }` if `protected.json`'s revision exceeds 2 (entries were entered after the upgrade; the operator clears them through the API or deletes the file deliberately, never silently), and refusing `rollback-evidence-missing` when no rollback file matches, in which case the database restore alone would produce the §D332.6 mixed state and the command does NOT perform it | spans/notes JSONL (D301), `config_snapshots` (§4.1 — a snapshot minted after the upgrade under a generation that retires `operator.timekeeperName` stays exactly as minted; the old runtime reads it forward or refuses by leaf name, never edits it), diagnostic and content-addressed artifacts, `.env` |
 
 A restore is a restore: `authority-unknown` accounting for runs newer than the restored generation
 (§2.5 item 6) applies to a rolled-back upgrade exactly as to any other restore, and §D332.7 item 6
@@ -1929,13 +1959,16 @@ the row was written after the backup, which is the property that makes the backu
 
 **The journal is `authority_upgrades`**, an insert-only table in the authority database (it is the D321
 coupling's own half: the database proves what happened to the settings files beside it). One row per
-phase, keyed `(upgradeId, phase ∈ {planned, committed, settled})`; `planned` rows may repeat across
-attempts (each attempt is evidence), `committed` and `settled` are UNIQUE per `upgradeId`. A row
+phase, keyed `(upgradeId, phase ∈ {baseline, planned, committed, settled})`; `baseline` is written
+exactly once, by D321 regeneration, in the transaction that creates a fresh at-floor database (its
+`upgradeId` is the literal `fresh`); `planned` rows may repeat across attempts (each attempt is
+evidence); `committed` and `settled` are UNIQUE per `upgradeId`. A row
 carries: `upgradeId`, `planDigest`, `fromSchemaVersion`, `toSchemaVersion`, the backup binding
 `{ manifestPath, sha256, authorityGeneration }`, the settings identities `{ ordinaryRevisionBefore,
 ordinaryRevisionAfter, settingsFingerprintAfter, settingsSchemaHashAfter, protectedRevisionAfter,
-protectedEntryNames[] }`, `tombstoneBackfill { fromRoots, unknown }`, `envKeysToRemove[]` (names),
-`by` (the local operator id), and the clock's instant. It carries NO value, NO digest of a value, and
+protectedEntryNames[] }`, `tombstoneBackfill { fromRoots, fromReconstructedRoots, unknown }`,
+`orphanGateRecordsRemoved`, `historicalExposure[]`, `envKeysToRemove[]` (names), `by` (the local
+operator id), and the clock's instant. It carries NO value, NO digest of a value, and
 NO file bytes — the prepare file carries bytes, the journal carries identities.
 
 **Why one journal, and why here.** The run half and the settings half of the upgrade are one SQLite
@@ -1962,8 +1995,9 @@ cannot be resumed against changed inputs.
 | `settled` row for this root's `upgradeId` (or any `settled` row while the database is at-floor and the layout new) | `already-upgraded` | exit 0; zero writes; the doctor reports the same |
 | `committed` row, no `settled`; prepare present with the same `planDigest` | **resume-settle** | re-run §D332.3 step 4 only: each new-layout file is written iff absent or byte-different from the prepare's next bytes; each old-layout file must equal the rollback file's prior bytes or be absent — anything else refuses `upgrade-evidence-divergent { file }` and writes nothing |
 | `committed` row, no `settled`; prepare absent; new layout byte-consistent with `settings_current` / `protected_settings_current` under §D331.4's boot predicates; old layout absent | **settle-record** | write the `settled` row only — the one inference, and it is an exact-byte proof, not a presence check |
-| `committed` row, no `settled`; any other file state | `upgrade-evidence-divergent` | refuse; the operator path is §D332.4's operator rollback or restoring the prepare/rollback files from wherever they went — never a guess |
-| prepare present, no `committed` row | **re-plan** | the database is pre-floor (COMMIT never happened); run the full preflight; if `planDigest` equals the prepare's, execute step 3 (the prepare is reused byte-exact); if it differs, the prepare is superseded — replaced by the new one, and the old is removed only after the new is durable |
+| `committed` row, no `settled`; any other prepare/rollback or file state (a prepare with a different `planDigest`, two prepare files, a new-layout file that matches neither) | `upgrade-evidence-divergent { files }` | refuse; the operator path is §D332.4's operator rollback or restoring the prepare/rollback files from wherever they went — never a guess |
+| two or more prepare files, no `committed` row | `upgrade-evidence-divergent { files }` | refuse and write nothing: which attempt is superseded cannot be inferred from the files |
+| exactly one prepare present, no `committed` row | **re-plan** | the database is pre-floor (COMMIT never happened); run the full preflight; if `planDigest` equals the prepare's, execute step 3 (the prepare is reused byte-exact); if it differs, the prepare is superseded — replaced by the new one, and the old is removed only after the new is durable |
 | nothing | fresh | the ordinary path |
 
 **Replay never diverges silently.** The settings rewrite and the protected import are journaled
@@ -1989,8 +2023,9 @@ NAME with both observed halves, and no cell is "probably fine".
 | pre-floor | old or none | prepare present, no `committed` | `upgrade-required` — the interrupted attempt is `storage upgrade`'s re-plan arm, invisible to boot except as a doctor line |
 | pre-floor | new | any | **`mixed-generation { database: pre-floor, settings: new-layout }`** — a pre-floor database restored under an upgraded root; remedy: `storage restore` with the matching rollback evidence (§D332.4), or start fresh (D321) |
 | at-floor | new | `settled` | **healthy** — the ordinary D331 boot predicates then run per document |
-| at-floor | new | none | **healthy iff** `settings_current` is absent or at revision 1 baseline AND the layout is the never-applied baselines (a database created at-floor); otherwise `mixed-generation { database: at-floor, journal: none }` — an at-floor database that was never upgraded and is not fresh is a foreign database under this root |
-| at-floor | old, or old + new, or none with `settings_current.revision ≥ 2` | `committed` | **`upgrade-unsettled { upgradeId }`** on every door except `storage upgrade` (resume-settle) and `storage doctor` (reports it) |
+| at-floor | new | `baseline` | **healthy** — a database D321 regeneration created at-floor (§D332.1); the ordinary D331 boot predicates then run per document |
+| at-floor | new | none | **`mixed-generation { database: at-floor, journal: none }`** — an at-floor database with no journal row at all was neither upgraded here nor created here; it is a foreign database under this root, and no revision-1 document makes it fresh (the journal reads, it does not infer) |
+| at-floor | old, or old + new, or none | `committed` | **`upgrade-unsettled { upgradeId }`** on every door except `storage upgrade` (resume-settle) and `storage doctor` (reports it) |
 | at-floor | old, or old + new | `settled` or none | **`mixed-generation { database: at-floor, settings: old-layout }`** — old files reappeared after settlement (a folder copy restored over the root, or an old runtime run against it); remedy: remove the old family deliberately after confirming the new documents are the ones the journal names; nothing merges them |
 | at-floor | none | `settled` | `authority-deleted { settings/ }` — the D321 rule per document: initialized documents vanished; refuse, never regenerate |
 | foreign suffix (D290) | any | any | `foreign-suffix { version, source }` — as built |
@@ -2000,8 +2035,18 @@ Two matrix facts are worth stating outright. **Downgrade is refused by the open,
 reader**: the as-built `#admitExistingSchema` throws on `user_version > CURRENT` before any settings
 byte is read, so an old build pointed at an upgraded root fails on the database and never reaches the
 "no `settings.json`, must be virgin" reading that would otherwise start it with defaults over a journal
-at revision ≥ 2 — the one path by which a downgrade could look like a fresh install. 1.6 keeps that
-ordering and §D332.11 proof M9 pins it. **The old layout is never read for a value after the floor**:
+at revision ≥ 2 — the one path by which a downgrade could look like a fresh install. As built the
+refusal is reached AFTER `mkdirSync(stateRoot)`, `ensureOwnerOnlyDirectory(artifactRoot)` and the
+`server` process-lock acquisition, and the open throws outside the block that releases that lock — so
+a downgrade attempt leaves a state-root directory, a materialized `-shm`, and an unreleased `server`
+record with `releasedAt: null`, which D181's birth-bound liveness observation reconciles as stale at
+the next acquisition; 1.6 wraps the open so an `authority-ahead` refusal releases the record. What the
+attempt never does is read a migrated environment value into `Config`: `resolveConfigWithProvenance`
+runs after the open, and `hostAwareResolutionEnvironment`'s pre-open work only probes the host display.
+§D332.11 proof M9 pins that ordering. **The exclusive transaction is a second, independent barrier
+beside the D181 observation**: a worker that somehow still held a connection when §D332.3 step 3 began
+would hit `BEGIN EXCLUSIVE`'s WAL write lock and fail `SQLITE_BUSY` after `busy_timeout`, loud, not
+interleaved — and any open while `migration_owner` is set is refused by `#admitExistingSchema`. **The old layout is never read for a value after the floor**:
 an at-floor runtime that finds `<stateRoot>/settings.json` refuses on its presence (row 8), it does not
 parse it; the only reader of old bytes after 1.6 is the upgrade command's preflight, and it reads them
 into a plan, not into `Config`.
@@ -2018,9 +2063,12 @@ into a plan, not into `Config`.
 2. **Spent ordinals are recovered from evidence, once, with provenance.** A pre-floor `deleted_runs`
    row carries `workflow` and `traceId` but no `itemId`/`attempt`/`runNumber` (R01 residue; §D330.1).
    The backfill reads, in preflight, the tombstoned run's `run.queued` root — the one span the
-   lifecycle service itself publishes, carrying the full identity tuple (§D330.9) — through the doctor's
+   lifecycle service itself publishes, or D301's offline `authority-reconstruction` of it, which was
+   derived from the exact run/session/start-plan chain and carries the same identity tuple (§D330.9) —
+   through the doctor's
    bounded traversal, requires its `workflow`/`traceId` to equal the tombstone's, and writes the three
-   ordinals with `ordinal_source = span-root-backfill`. Zero roots (the file was pruned past D86's
+   ordinals with `ordinal_source = span-root-backfill` (a D301-marked root is counted in the journal's
+   `fromReconstructedRoots`). Zero roots (the file was pruned past D86's
    30 days, or the run was tombstoned before its root ever landed) leaves the ordinals NULL with
    `ordinal_source = unknown` and a doctor finding `tombstone-ordinal-unknown { runId }` — never a
    guessed number. The two-source watermark (§D330.1) then reads `tasks` ∪ non-null tombstone ordinals.
@@ -2068,7 +2116,10 @@ into a plan, not into `Config`.
    read, from this date, as: nothing is parked (a park is a lifecycle state and there is no row); the
    protection is ref write-safety's probe-then-park (D17) on the NEXT attempt of the same item, whose
    live probe against the external system, not the lost ledger row, decides whether the transaction
-   already landed — and the finding exists so the operator knows to expect that probe to find one. The
+   already landed: the fence's first beat reads the permanent `(system, key)` row regardless of
+   originating run and an UNSEEN key is exactly what reaches the policy-controlled probe (ref
+   write-safety §3), subject to the transaction node's declared `probePolicy` (ref workflow-model §5.6)
+   — and the finding exists so the operator knows to expect that probe to find one. The
    operator's path forward is a new run of the item (enqueue, or relaunch if an archive exists); the
    finding is retained as a durable doctor fact until that item's next run settles, and is never
    cleared by a runtime write. Considered and rejected for the missing-root tombstones of item 2: a
@@ -2129,17 +2180,21 @@ policy has five rules; the roster and each adapter's deletion test live in ref g
    start a fresh root (D321)" — the same posture D290 takes toward a foreign suffix.
 
 The roster this contract names, with the phase each expires (ref guards-and-tests §5.2 carries the
-oracle per row): **A0** the upgrade command's pre-floor readers (old-layout parser and sidecar reader,
-the widened `.env` admission that classifies migrated leaves, the tombstone backfill, the orphan-gate
-sweep) — 2.6: 1.6 lands it and runs it on the operator's authority, 2.6 deletes it once its deletion
+oracle per row): **A0** the upgrade command's pre-floor readers (the old-layout parser and sidecar
+reader over FROZEN pre-floor copies of `SettingsFileRecordSchema`, `EditableSettingsOverrideSchema`
+and the pre-floor `SETTINGS_SCHEMA_HASH` literal — the live reader cannot parse an old file because
+its hash moved with the catalog; the widened `.env` admission that classifies migrated leaves; the
+tombstone backfill; the orphan-gate sweep) — 2.6: 1.6 lands it and runs it on the operator's authority, 2.6 deletes it once its deletion
 test is green (doc 01 §1.6 Task 6's rule); it is reachable ONLY through `storage upgrade`, never from a
 boot or worker composition, and its widened `.env` admission is a parameter of that command's call,
 not of the bootstrap; **A1** the old-pathname prepare/rollback reconciler the upgrade runs before the
 move — 2.6 (it is A0's dependency); **A2** the D268 fold arms in `run-status.ts` (`row.ended`,
 `row.claimedBy`) as lifecycle inputs — 2.6 (§D330.12 item 1; two lines, two callers, red-capable from
-1.6); **A3** `runs_view` as a state read — 2.6 (§D330.12 item 2; as built the table has ZERO readers —
-the projector clears and upserts it and serves from its in-memory fold — so its deletion test is
-red-capable at 1.6 and the table can go with the projector's rewire); **A4** the resolver's environment
+1.6); **A3** `runs_view` — NOT an adapter (as built the table has ZERO readers: the projector clears
+and upserts it and serves from its in-memory fold), so no test can fail while "the read" exists; it is
+a dead rebuildable table removed at 2.6 with the projector's rewire (§D330.12 item 2), proven by the
+`no-lifecycle-sql-outside-the-adapter` arm plus a stub-throws negative control, and listed here so the
+roster is complete; **A4** the resolver's environment
 layer (`CONFIG_ENV_BINDINGS`, `configResolutionEnvironment`, the `"env"` provenance arm, the Settings
 editor's env-provenance read, the dead `resolveConfig` export) — 1.6 (§D331.8: deleted with the
 catalog, not kept for a phase; the `env` parameter is first in the signature, so its removal is
@@ -2178,7 +2233,9 @@ ref guards-and-tests §5.2's and are not repeated here.
    not the upgrade, requeues it.
 3. `boot-refuses-pre-floor-by-name` → §D332.1/§D332.6 → dashboard boot, worker boot and dry-run start
    over a v29 fixture refuse `upgrade-required { 29, floor }` and run no migration; `storage backup`
-   and `storage doctor` still work over it.
+   and `storage doctor` open it through the read-only no-migrate mode (§D332.1) and leave
+   `user_version` at 29 — remove the gate on `#runMigrations` and this is red because the backup's
+   manifest reports the floor.
 4. `preflight-is-total-and-ordered` → §D332.2 → for each refusal row, a fixture that trips exactly that
    row yields exactly that name, in table order, with zero writes (assert no prepare file, no journal
    row, byte-identical database and old layout).
@@ -2199,19 +2256,24 @@ ref guards-and-tests §5.2's and are not repeated here.
    the rerun refuses `upgrade-unsettled`.
 9. `downgrade-refuses-at-open` → §D332.6 → the as-built `#admitExistingSchema` (or its 1.6 successor)
    over an at-floor database under a build whose `CURRENT` is 29 throws "newer than supported" before
-   any settings path is stat'ed (assert with a filesystem spy: zero opens under the state root other
-   than the database).
+   any settings path is opened and before any migrated environment value is applied to `Config`
+   (assert with a filesystem spy on the settings family and a resolver spy: zero settings-path opens,
+   zero `resolveConfigWithProvenance` calls; the state-root `mkdir`, artifact-root check and process
+   lock DO run first, as built, and the proof names them rather than pretending they do not).
 10. `mixed-generation-matrix-is-closed` → §D332.6 → every cell of the matrix is constructed on disk and
     yields exactly the named verdict; a cell yielding `healthy` that the table does not mark healthy is
-    red.
+    red. One cell is unconstructible and the proof says so: `at-floor / none / committed` with
+    `settings_current` still at revision 1 cannot arise because the rewrite always advances the
+    singleton; the proof asserts that impossibility rather than constructing it.
 11. `tombstone-backfill-with-provenance` → §D332.7 item 2 → a pre-floor tombstone with one matching root
     gains its three ordinals and `span-root-backfill`; with no root gains NULLs and `unknown` plus the
     doctor finding; with two roots, or a root whose `traceId` disagrees, the upgrade refuses
     `malformed-evidence` before the transaction; after the upgrade the watermark for the backfilled item
     is one past the tombstoned attempt (§D330.11 test 25's oracle over migrated rows).
 12. `deleted-runs-trigger-survives-backfill` → §D332.3 step 3(c) → after the upgrade
-    `deleted_runs_immutable_update` exists and aborts a stray UPDATE; §D330.11 test 16's enumeration
-    counts it.
+    `deleted_runs_immutable_update` exists, aborts a stray UPDATE, and aborts an UPDATE that changes
+    only `item_id`, `attempt`, `run_number` or `ordinal_source` while leaving the tally alone;
+    §D330.11 test 16's enumeration counts it.
 13. `evidence-and-snapshots-byte-identical` → §D332.7 items 1, 4 → SHA-256 over every span/note file
     and over each evidence table's `record_json` set is equal before and after the upgrade;
     `config_snapshots` rows are byte-identical and every stored `fingerprint` still verifies.
@@ -2232,16 +2294,18 @@ ref guards-and-tests §5.2's and are not repeated here.
 18. `authority-unknown-never-readmitted` → §D332.7 item 6 → after a restore that drops a run with a
     fenced-write span, `read` answers `absent`, the doctor finding carries `possibleExternalWrite: true`,
     no `tasks` row exists for it after any boot, and the next enqueue of the same item proceeds to the
-    ordinary live probe (a stub probe observes the call).
+    ordinary live probe (a stub probe observes the call) — asserted for the registered separations
+    and person-lookup transaction nodes, whose declared `probePolicy` must admit the unseen-key probe.
 19. `no-force-flags` → §D332.5 → `storage upgrade --force`, `--skip-backup` and `--allow-mixed` refuse
     as unknown arguments by name (the `parseDashboardCommandOptions` posture), never as accepted modes.
 20. `env-untouched` → §D332.3 → `.env` is byte-identical after the upgrade and the plan lists every
     migrated key present in it; the first post-upgrade boot refuses `migrated-refused { key }` for each
     until removed (§D331.11 P34's oracle, run over the upgrade's own plan output).
-21. `d290-admits-v29-into-the-floor` → §D332.3 step 3(b) → an exact v29 database (the integrated table
-    set) passes `#admitExistingSchema` under a build whose `CURRENT` is the floor and upgrades; a v29
-    database with one extra table refuses `foreign-suffix { 29, unrecognized }`; remove the
-    `integratedByVersion[29]` entry and the first case is red.
+21. `d290-admits-v27-v28-v29-into-the-floor` → §D332.3 step 3(b) → exact v27, v28 and v29 databases
+    (each its frozen integrated table set) pass `#admitExistingSchema` under a build whose `CURRENT` is
+    the floor and upgrade through the ordinary chain; a v29 database with one extra table refuses
+    `foreign-suffix { 29, unrecognized }`; derive the lists from the live DDL again (the as-built
+    shape) and the v27/v28 arms go red because the DDL now holds the D332 tables.
 22. `pre-floor-manifest-readable-for-restore` → §D332.4 → a v29 backup manifest parses under the READ
     schema, `storage restore --from` it succeeds, and the restored root is `upgrade-required` at the
     next boot; `storage backup` under the new build still writes `schemaVersion = CURRENT` exactly, and

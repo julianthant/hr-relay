@@ -1239,7 +1239,7 @@ model chains gives **45 imported names**; the five legacy singular `OCR_*_MODEL`
 | `UCPATH_USER_ID` | `ucpathUserId` | `settings/protected.json` | per-name schema owed by 1.6 (`secrets.ts:145`) | `present: false`; the blocking enqueue preflight refuses by key |
 | `UCPATH_PASSWORD` | `ucpathPassword` | `settings/protected.json` | per-name schema owed by 1.6 (`secrets.ts:146`) | `present: false`; the blocking enqueue preflight refuses by key |
 | `ONBOARDING_ROSTER_URL` | `sharepointOnboardingRosterUrl` | `settings/protected.json` | per-name schema owed by 1.6 (`secrets.ts:148`) | `present: false`; the blocking enqueue preflight refuses by key |
-| `HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY` **+** `HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION` | `activityPersonPseudonym` — **ONE** entry (`secrets.ts:111–134`) | `settings/protected.json` | the 64-hex key shape + generation-id shape (`requireActivityPersonPseudonymDomain`) | `present: false`; D288 evidence writes refuse by name, and no pseudonym is recomputed (§D332.S6) |
+| `HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY` **+** `HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION` | `activityPersonPseudonym` — **ONE** entry (`secrets.ts:111–131`) | `settings/protected.json` | the 64-hex key shape + generation-id shape (`requireActivityPersonPseudonymDomain`) | `present: false`; D288 evidence writes refuse by name, and no pseudonym is recomputed (§D332.S6) |
 | `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER` | `separationsKualiFinalizationCanaryDocumentNumber` | `settings/protected.json` | `KualiDocumentNumberSchema` (`TEST_TARGET_SECRET_SPECS`, `valueKind: kuali-document-number`) | `present: false` → the next dry-run start resolves `blocked` by key (D300, §D332.S4) |
 | `HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID` | `personLookupCanaryEid` | `settings/protected.json` | `EidSchema` (`TEST_TARGET_SECRET_SPECS`, `valueKind: ucpath-eid`) | `present: false` → the next dry-run start resolves `blocked` by key (D300, §D332.S4) |
 | — (no environment key) | every other `ordinary-settings` leaf the old document already holds | `settings/settings.json`, leaf-for-leaf (§D332.S2) | the catalog's per-leaf schema | leaf omitted = `default` by its `defaultKind` |
@@ -1248,8 +1248,16 @@ model chains gives **45 imported names**; the five legacy singular `OCR_*_MODEL`
 keys apply to `FY${clock.fiscalYear()}` at the moment of resolution (`resolve.ts:360, 363–385`), and a
 partial set for a year the document does not already hold throws. The import therefore materializes
 ONE entry under `FY<clock.fiscalYear()>` observed once from the runtime clock at plan time, prints
-that exact key in the plan, and imports all three leaves or none: a partial set refuses
-`cross-field-invalid { keys }` naming the missing leaves (§D331.5, §D331.8 (i)). Because the
+that exact key in the plan, and imports the leaves it finds onto that entry exactly as the resolver
+merges them today: as built (`resolve.ts:366–373`) a partial environment set throws ONLY when the
+fiscal year has no existing entry at all, and merges per field when one exists — so a partial set
+refuses `cross-field-invalid { keys }` naming the missing leaves only when `config.annualDates[FY]`
+would otherwise be absent, and an operator whose `.env` holds `ANNUAL_DATES_END` alone over a
+defaulted year today keeps a working entry rather than gaining a refusal (§D331.5, §D331.8 (i)
+still bind the resulting document: the merged entry is complete or the document does not parse). The
+old ordinary document can never already hold the entry: `EditableSettingsOverrideSchema` has no
+`annualDates` member today (`schema.ts:337–360`), so the only pre-floor sources are the defaults and
+these three keys. Because the
 fiscal-year key is part of the plan it is part of `planDigest`, so a plan minted before a fiscal-year
 roll and executed after it re-plans (§D332.5's re-plan arm) instead of writing last year's entry —
 which is why the year is fixed at plan time and never re-derived at settlement. After the floor the
@@ -1272,7 +1280,7 @@ Settings, not an inherited environment value. That is a real behaviour change an
   lines", and §D331.8 makes them `migrated-refused` at the first post-upgrade boot once 1.6 deletes
   the fallback arm. This deliberately does not mint an eighth dual-source row: §D331.1's
   `currentSource` arrays are seven and stay seven. As built the registry already classes all five
-  `retired-in-target` (`runtime-environment.ts:160–163, 186`) while `providerModelChain` still reads
+  `retired-in-target` (`runtime-environment.ts:171–186, 277–283`) while `providerModelChain` still reads
   them as a one-element fallback (`secrets.ts:666–667`) — a present singular key is therefore already
   relying on an arm the registry calls retired, which is exactly why the import refuses to carry it
   rather than guessing a chain.
@@ -1280,7 +1288,7 @@ Settings, not an inherited environment value. That is a real behaviour change an
   `HR_SOAK_ITERATIONS`, `HR_TEARDOWN_SOAK_ITERATIONS`, `HR_TEST_HEADED`, `PARITY_UPDATE`,
   `SEL_SESSION`, `TMPDIR`, `TZ`, `__NUMENV_TEST__` and the four test-only families
   (`CEREBRAS_API_KEY`, `COHERE_API_KEY`, `OCRSPACE_API_KEY`, `ZEP_API_KEY`)
-  (`runtime-environment.ts:165–169, 294–297`). None targets a catalogued leaf; none is imported,
+  (`runtime-environment.ts:165–169, 270–276`). None targets a catalogued leaf; none is imported,
   refused or reported as migrated.
 - **`retired-in-target` keys** — the inert list at `runtime-environment.ts:171–183` (`DEBUG`,
   `HRAUTO_TRACKER_DIR`, the `KRONOS_*` picker/calendar timings, the capture keys D294 retired, and the
@@ -1292,9 +1300,14 @@ Settings, not an inherited environment value. That is a real behaviour change an
 
 ###### D332.S2 — the `settings.json` side
 
-The old ordinary document is read once, in preflight, through the as-built no-follow reader and the
-as-built strict `EditableSettingsOverrideSchema` (`src/domain/config/schema.ts:337–360`,
-`src/domain/config/settings.ts:25, 39`), under §D332.2 step 9's journal agreement. Its leaves are then
+The old ordinary document is read once, in preflight, through the as-built no-follow reader and
+adapter A0's FROZEN pre-floor copies of `SettingsFileRecordSchema`, `EditableSettingsOverrideSchema`
+(`src/domain/config/schema.ts:337–360`, `src/domain/config/settings.ts:25, 39`) and the pre-floor
+`SETTINGS_SCHEMA_HASH` literal — never the live schemas: `SettingsFileRecordSchema`'s `superRefine`
+refuses any record whose `settingsSchemaHash` differs from the build's (`settings.ts:47–53`), and the
+hash is derived from `EditableSettingsOverrideSchema` (`settings.ts:13`), which rule 4 below widens by
+construction, so the live reader cannot parse an old file and the fingerprint comparison of §D332.2
+step 9 is computed under the frozen schema — under that step's journal agreement. Its leaves are then
 carried **leaf-for-leaf** into `settings/settings.json` under the NEW `SETTINGS_SCHEMA_HASH`. Four
 rules govern the carry:
 
@@ -1403,7 +1416,9 @@ Per reference, at preflight (§D332.2 step 13) and then at import:
   the same name afterwards and the dry-run start admission keeps retaining the reference NAME only.
 - **present and malformed** → `invalid-value { key }`, a preflight refusal that writes nothing. It
   names the environment key and the reference name; never the observed value, never its length.
-- **absent** → imports nothing. The entry reads back `present: false`, and the next dry-run start
+- **absent** (unset, or whitespace-only — as built `optionalTestTargetSecret` treats a
+  whitespace-only value as absent, `secrets.ts:476`, and `resolveSecretValue` does the same at
+  `:517–521`; never as malformed) → imports nothing. The entry reads back `present: false`, and the next dry-run start
   resolves `blocked` by key before any browser starts — D300's semantics, unchanged.
 
 The reference is CLOSED in code (`TestTargetDocumentNumberSecretReferenceSchema` /
@@ -1452,7 +1467,10 @@ the still-present migrated keys, so its resolver would silently shadow the new d
 values the operator was told to remove. That path is closed one step earlier than config resolution:
 the upgraded database's `user_version` is above the old build's `CURRENT_AUTHORITY_SCHEMA_VERSION`, so
 `#admitExistingSchema` refuses **`authority-ahead { schemaVersion, supported }` at the database open**,
-before any settings byte or environment value is read (§D332.6's `ahead` row and its stated ordering;
+before any settings byte is read and before any migrated environment value is applied to `Config`
+(the pre-open work is `mkdirSync(stateRoot)`, the artifact-root check, the process lock and the host
+display probe — `resolveConfigWithProvenance` runs only after the open; §D332.6's `ahead` row names
+the unreleased lock record that attempt leaves behind and its stated ordering;
 the same ordering also prevents the old build from reaching the vacant old pathname and reading it as
 "virgin"). Both halves are load-bearing: the boot refusal closes the new-build path, and the
 open-ordering closes the old-build path. Neither alone would do.
@@ -1482,7 +1500,7 @@ open-ordering closes the old-build path. Neither alone would do.
    exposure — never a password, never a canary. Both files stay `0600`, and the rollback file is
    excluded from backups.
 4. **The pseudonym pair moves as ONE entry.** `activityPersonPseudonym` carries the HMAC key and its
-   public generation id together (`secrets.ts:111–134`), so a rotation cannot split them and D288's
+   public generation id together (`secrets.ts:111–131`), so a rotation cannot split them and D288's
    generation-bound commitment semantics are unchanged. No pseudonym is recomputed and no
    `activityPersonPseudonyms` row is read, rewritten or backfilled by the upgrade: re-derivation
    belongs to D288's reviewed backfill capability, which this command does not invoke and this
