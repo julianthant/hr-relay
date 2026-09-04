@@ -9,12 +9,18 @@
 **Integration target:** `master`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-04 at `26c70b9b` (root tree dirty with a foreign session's uncommitted restructuring; untouched)
+**Last verified:** 2026-09-04 at `436bf4a8` (root tree: only the foreign session's four uncommitted deletions of the old `platform-authority-reset-cd8c37470` workspace remain; untouched)
 
 ## Facts every run needs
 
-- Authorities: profile §Canonical authorities. The primary run contract is ref dashboard-surfaces
-  §D327 (line ~3195); the primary settings contract is ref clock-config-secrets §D327 (line ~464).
+- Authorities: profile §Canonical authorities. The primary run contract is now **D330** = ref
+  dashboard-surfaces §D327 → §D330.1–§D330.12 (merged `1a04d565`); the primary settings contract is
+  ref clock-config-secrets §D327 (line ~464), to be written by R02.
+- Decision numbering: master holds D1–D330. D329 is the foreign Phase 3 chronology decision
+  (`188e2137`), NOT the run-record contract; R01 renumbered after a collision. Every minting commit
+  must prove the next number free against `master` in the same command.
+- The foreign restructuring landed on master (`188e2137`, `132003c1`): phase docs are now
+  `03.1`–`03.4`, the old `03a`–`03d` names are history, and `legacy-capability-disposition` is green.
 - Gates: profile §Gates — design runs use `roadmap` + `roadmap:check` + `typecheck` + `lint` +
   `test:architecture`; the coordinator runs `test:coverage` at integration.
 - 0.3 is design-only (D326): no runtime code under `src/`, `tests/`, `scripts/`, `config/` changes.
@@ -42,17 +48,35 @@
   protected `.tracker/settings/` root; provider API keys alone in `.env`.
 - 2026-09-03 · D328 → parallel waves are `N-1`/`N-2` labels; §0.3 has none.
 - 2026-09-04 · operator → dispatch one supervisor per 0.3 task, sequentially.
+- 2026-09-04 · D330 (`1a04d565`, round 136) → the run-record lifecycle service contract: identity
+  tuple, three-way existence, seven-state machine, version CAS + claim fence, closed operation set with
+  wire mapping, total queue order with one-transaction claim, retry/restart/relaunch lineages,
+  archive/purge/delete with D308 verbatim, evidence linkage, adapter boundary, 26 proofs for 1.6.
+  Coordinator accepted the D268 partial supersession, `runs_view` retirement as a state read, and the
+  gate-records-leave-with-the-run ruling as applications of D327's letter.
 
 ## Unit ledger
 
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
-| U01 | R01 | reserved | — | — | domain/authority, adversarial concurrency | Task 1 · canonical run-record authority contract |
-| U02 | R02 | planned | — | — | security/config | Task 2 · settings catalog + protected root contract |
+| U01 | R01 | closed | merge `1a04d565` (--no-ff, branch head `e953de9d`, 8 commits from `26c70b9b`) + reconcile `436bf4a8`; worktree removed, branch deleted, session `d02757ca` stopped | integrated: roadmap:check fresh · typecheck 0 · lint 0 · test:coverage 411/411 files, 5019 tests (exit 0) | supervisor + sup-analyst adversarial review, 15 scenarios, 8 holes fixed in `9bdcf667` | report `reports/r01.md`; D329→D330 renumber `e953de9d` |
+| U02 | R02 | reserved | — | — | security/config | Task 2 · settings catalog + protected root contract |
 | U03 | R03 | planned | — | — | migration/recovery | Task 3 · upgrade, compatibility, recovery design |
 | U04 | R04 | planned | — | — | consequential | Task 4 · adversarial close + 1.6/2.6/3.1 briefs |
 
 ## Residue
+
+- R01 → R02: claim runtime token (`generation`, `settingsRevision`, `settingsFingerprint`,
+  `configFingerprint`) keeps its shape; R02 owns its provenance. dashboard-surfaces §2.1
+  `.tracker-rebuild/` wording stale post-D321.
+- R01 → R03: pre-1.6 tombstones lack `itemId`/`attempt`/`runNumber` (migration seeds the ordinal
+  watermark); `authority-unknown` re-admission after restore; §2.5 item 6 "park external writes" on
+  runs the service calls `absent`; §2.5 items 3–4 still carry the D322-retired backup cadence inline;
+  schema additions (`checkpoint_payloads` trigger + tally column; `deleted_runs` three columns).
+- R01 → R04: §D330.11's 26 proofs 1.6 owes; group/tree path unexercised as-built (every enqueue
+  stamps `shape: "single"`); two projector outcome enums disagree on `skipped`
+  (`run-queue-projection.ts:110` vs `:133`, unowned); `remove-queue-surface` /
+  `tombstone-queue-surface` wire events have no producer.
 
 - Prior coordinator workspace `docs/coordinator/platform-authority-reset-cd8c37470/` (incl. its
   handoff `handoffs/2026-09-03-phase-0-3-start.md`) is deleted-uncommitted by a foreign session.
