@@ -596,9 +596,10 @@ and 5 both edit the composition roots.
 D332 schema step: `deleted_runs` + `item_id`/`attempt`/`run_number`/`ordinal_source` with
 `deleted_runs_immutable_update` dropped and re-created with the four columns in its equality set;
 `checkpoint_payloads_never_deleted` created relaxed behind the tombstone with its tally key;
-`protected_settings_current`; `authority_upgrades`); `src/domain/authority.ts` (`AUTHORITY_TABLE_REGISTRY`,
-`DeletedRunTableSchema` with nullable ordinals, `ordinal_source` and `tallyVersion`, the
-`AuthorityUpgradeRecord` schema); `src/infra/sqlite/authority-database.ts` for exactly four things — the
+`protected_settings_current`; `authority_upgrades`); `src/domain/authority.ts` (`AUTHORITY_TABLE_REGISTRY`
+and the `AuthorityUpgradeRecord` schema); `src/domain/run/deleted-run.ts` (the existing
+`DeletedRunTableSchema` owner, extended with nullable ordinals, `ordinal_source` and `tallyVersion`);
+`src/infra/sqlite/authority-database.ts` for exactly four things — the
 D290 `integratedByVersion` FROZEN literal lists for 27, 28 and 29, the `#runMigrations` floor gate with the
 read-only no-migrate open mode for `storage backup`, `storage doctor` and the upgrade's preflight, the
 `baseline` `authority_upgrades` row written in the transaction that creates a fresh at-floor database
