@@ -1,0 +1,26 @@
+[
+  {
+    "command": "npm run typecheck",
+    "exit_code": 0,
+    "seconds": 14.289,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01-integrated/typecheck.log"
+  },
+  {
+    "command": "npm run lint",
+    "exit_code": 0,
+    "seconds": 32.669,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01-integrated/lint.log"
+  },
+  {
+    "command": "npm run test:coverage",
+    "exit_code": 0,
+    "seconds": 143.758,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01-integrated/coverage.log"
+  },
+  {
+    "command": "npm run build:manifest:check",
+    "exit_code": 0,
+    "seconds": 1.992,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01-integrated/manifest.log"
+  }
+]

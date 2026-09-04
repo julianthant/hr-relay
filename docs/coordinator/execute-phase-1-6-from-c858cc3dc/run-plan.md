@@ -9,7 +9,7 @@ Exact task-tool address book: `supervisors.json` (coordinator-owned). Read it be
 
 | Run | Phase task | Theme | Order / wave | Needs first | State |
 |---|---|---|---|---|---|
-| R01 | 1.6.1 | Verify the schema floor | 1 / serial | none (existing merged implementation) | active |
+| R01 | 1.6.1 | Verify the schema floor | 1 / serial | none (existing merged implementation) | integrated |
 | R02 | 1.6.2-1 | Implement the canonical run-record service | 2 / wave 2 | R01 closed; baseline parity green | planned |
 | R03 | 1.6.2-2 | Implement the settings catalog and protected root | 3 / wave 2 | R01 closed; baseline parity green | planned |
 | R04 | 1.6.3 | Cut over executor and worker lifecycle writers | 4 / serial | R03 closed and R02 closed | planned |

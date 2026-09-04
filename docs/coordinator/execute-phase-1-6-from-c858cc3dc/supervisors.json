@@ -19,11 +19,11 @@
       "branch": "feature/execute-phase-1-6-from-c858cc3dc-r01-verify-schema-floor",
       "allowance": 2,
       "order": 1,
-      "state": "active",
+      "state": "integrated",
       "report": "/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r01.md",
       "gate": "npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check",
       "needs_first": "none (existing merged implementation)",
-      "cursor": "0f0762eb-1bba-4876-ba57-d3884925fabd:34",
+      "cursor": "0f0762eb-1bba-4876-ba57-d3884925fabd:40",
       "reservation": 2,
       "clientThreadId": "client-new-thread:a6e2f58d-eaff-402c-a4fc-1623650b9a1f",
       "launch_base": "99c9ed51882a4e53069d18cf0e890c98f9810be2",
@@ -31,50 +31,71 @@
       "launch_status": "ready",
       "identity_evidence": "Unique exact-worktree task metadata and original create_thread delegation output verified full UUID, R01 report, parent, launch time and assigned feature branch; retained client id",
       "transport_blocker": null,
-      "proof_residue": [
-        "M9/M21 proofs implemented; amended full gate and final report pending"
-      ],
-      "last_verified_commit": "d650a43b",
-      "cleanup": "pending proof remediation, integration and full lifecycle closure",
+      "proof_residue": [],
+      "last_verified_commit": "df41e0b502d435fe4492b46a5c06f221f1de2129",
+      "cleanup": "worktree registration/directory and branch absent; runtime verifier running before archive",
       "observed_gates": [
         {
           "command": "npm run typecheck",
           "exit_code": 0,
-          "elapsed_seconds": 14.102,
-          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/typecheck.log"
+          "elapsed_seconds": 24.58,
+          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/amended-typecheck.log"
         },
         {
           "command": "npm run lint",
           "exit_code": 0,
-          "elapsed_seconds": 43.454,
-          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/lint.log"
-        },
-        {
-          "command": "npx vitest run --project unit tests/unit/cli-dashboard-lifecycle.test.ts",
-          "exit_code": 0,
-          "elapsed_seconds": 2.386,
-          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/cli-lifecycle-env-check.log"
+          "elapsed_seconds": 39.77,
+          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/amended-lint.log"
         },
         {
           "command": "npm run test:coverage",
           "exit_code": 0,
-          "elapsed_seconds": 141.851,
-          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/test-coverage.log"
+          "elapsed_seconds": 146.337,
+          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/amended-test-coverage.log"
         },
         {
           "command": "npm run build:manifest:check",
           "exit_code": 0,
-          "elapsed_seconds": 2.078,
-          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/build-manifest-check.log"
+          "elapsed_seconds": 2.0,
+          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/amended-build-manifest-check.log"
         },
         {
           "command": "npm run test:parity",
           "exit_code": 0,
-          "elapsed_seconds": 62.047,
-          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/test-parity.log"
+          "elapsed_seconds": 58.103,
+          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/amended-test-parity.log"
         }
       ],
-      "identity_repair": "operator-approved, applied; normal wait_threads succeeded"
+      "identity_repair": "operator-approved, applied; normal wait_threads succeeded",
+      "merge_sha": "5b1fb626b5be63dac6e39fb9e747f113247a7484",
+      "integrated_gates": [
+        {
+          "command": "npm run typecheck",
+          "exit_code": 0,
+          "seconds": 14.289,
+          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01-integrated/typecheck.log"
+        },
+        {
+          "command": "npm run lint",
+          "exit_code": 0,
+          "seconds": 32.669,
+          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01-integrated/lint.log"
+        },
+        {
+          "command": "npm run test:coverage",
+          "exit_code": 0,
+          "seconds": 143.758,
+          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01-integrated/coverage.log"
+        },
+        {
+          "command": "npm run build:manifest:check",
+          "exit_code": 0,
+          "seconds": 1.992,
+          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01-integrated/manifest.log"
+        }
+      ],
+      "worktree_removed": true,
+      "branch_deleted": true
     },
     {
       "run": "R02",
