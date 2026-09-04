@@ -29,6 +29,6 @@ Rows progress planned → reserved → active → returned → verified → inte
 - Working tree clean at 59c8bfb1d165ca83c7b7b470fab2ca60bd16fe1b.
 - Canonical Task 1 complete at merge ebc41c45, recorded in the roadmap.
 - Current HEAD includes merged hash-only parity repair 59c8bfb1; R01 must verify it in assertion mode before wave admission.
-- One unrelated auxiliary worktree occupied; preserve it. Ownership clarification pending for later implementation.
+- The inherited parity worktree is now fully closed; exact evidence is in inherited-lifecycle.json. R01 is the sole open auxiliary worktree.
 
-Resume: exact boundary in `handoffs/2026-09-04-phase-1-6-verified-id-repair.md`; preserve one supervisor per immediate task and resume existing R01 after admission is repaired, never create a duplicate.
+Resume: admission repair is complete and existing R01 is executing its bounded M9/M21 proof amendment. The consumed temporary handoff was removed; board.md and supervisors.json own current status. Preserve one supervisor per immediate task; never create a duplicate.

@@ -4,48 +4,37 @@
 **Work key:** execute-phase-1-6-from
 **Coordinator:** 01a06e8e-d1fc-7260-9fc7-cda1ea031a9a · local
 **Integration checkout:** /Users/julianhein/Projects/hr-automation-rebuild · master
-**Board owner/write rule:** this coordinator only; supervisors and workers read only.
-**Profile:** project-profile.md
-**Run plan/address book:** run-plan.md / supervisors.json
-**Last verified:** 59c8bfb1d165ca83c7b7b470fab2ca60bd16fe1b, clean tree, 2026-09-04
+**Board owner:** this coordinator only; supervisors and workers read only.
+**Profile / plan / exact address book:** project-profile.md / run-plan.md / supervisors.json
+**Current integration HEAD verified:** f1c1ae8f27b29706446b490d65efaf99e5756f70; unrelated instruction-review file remains dirty and is preserved.
 
 | Run | Phase task | State | Evidence / residue |
 |---|---|---|---|
-| R01 | 1.6.1 | active | Baseline verification green; M9/M21 proof remediation brief ready; approved identity repair applied and normal wait_threads passed |
-| R02 | 1.6.2-1 | planned | Dependencies in run plan |
-| R03 | 1.6.2-2 | planned | Dependencies in run plan |
-| R04 | 1.6.3 | planned | Dependencies in run plan |
-| R05 | 1.6.4 | planned | Dependencies in run plan |
-| R06 | 1.6.5 | planned | Dependencies in run plan |
-| R07 | 1.6.6 | planned | Dependencies in run plan |
-| R08 | 1.6.7 | planned | Dependencies in run plan |
+| R01 | 1.6.1 | active | d650a43b adds M9/M21 proofs; seven mutation controls red as intended; amended full gate rerunning after harness fix |
+| R02 | 1.6.2-1 | planned | Wait for R01 closure; wave with R03, integrate first |
+| R03 | 1.6.2-2 | planned | Same verified base as R02; integrate second |
+| R04 | 1.6.3 | planned | Wait for both wave peers closed |
+| R05 | 1.6.4 | planned | Wait for R04 closed |
+| R06 | 1.6.5 | planned | Wait for R05 closed |
+| R07 | 1.6.6 | planned | Wait for R06 closed |
+| R08 | 1.6.7 | planned | Wait for R07 closed |
 
-## Admission residue
+## Verified continuation and admission
 
-- 2026-09-04 operator confirmed the previous coordinator is stopped and assigned this coordinator to continue and verify existing work. Ownership is resolved; existing implementation is verified from canonical code/specs and exact evidence. Previous task identities are not silently adopted.
+The operator stopped the previous coordinator and assigned this coordinator sole continuation and verification. No duplicate R01 was created. R01's temporary task id was replaced with its uniquely verified permanent id after explicit user approval. Original launch digest, decoded envelope, parent, UUID, run, project, worktree, branch and base were revalidated. Audit: `evidence/task-identity-repair-proposal.json` and `evidence/task-identity-repair-result.json`; normal wait/send tools now pass unchanged admission controls. No hook files or cleanup checks changed.
 
-## Verified open findings (2026-09-04)
+## R01 proof state
 
-- R01/G1: M9 requires zero settings-family filesystem opens and zero resolver calls during downgrade refusal (ref dashboard-surfaces §D332.11 #9, lines 2283–2289). The existing compose-real-port v29/v31 lock-release test lacks those spies and the exact CURRENT=29 / floor=30 setup. Coordinator verified source and tests; add exact regression proof, do not waive.
-- R01/G2: M21 requires exact v27/v28/v29 traversal, v29 extra-table refusal and a DDL-derived-list negative control (§D332.11 #21). Current tests prove all-three read-only admission, v27 traversal and v27 extra-table refusal. Coordinator verified the gap. Add proof at the assigned Task 1 seam; Task 6 still owns the real upgrade command repetition.
-- Runtime transport: create_thread returned client-new-thread:a6e2f58d-eaff-402c-a4fc-1623650b9a1f. Permanent task 01a06e90-ea8a-7f72-8559-e9c1829a0ec6 was verified from unique exact-worktree metadata and the original delegation envelope. The hook still records only the client id, and the child has no enrolled runtime session. wait_threads was rejected by PreToolUse because the permanent id is absent from the runtime address book. No runtime state or hook was modified and no blocked call bypassed.
+Initial report commit 1638c973 passed typecheck, lint, coverage (411 files / 5,032 tests), manifest and assertion parity (269 tests). Coordinator independently found two remaining proof gaps against D332.11: M9's exact older-build refusal with zero settings filesystem/resolver access, and M21's complete v27/v28/v29 traversal and DDL-derived-list negative control. The bounded `briefs/r01-proof-amendment.md` assigned these to the existing supervisor.
 
-## Resume boundary
+Test commit d650a43b adds these proofs without production changes. The two full affected files pass 132 tests and the seven retained mutation controls fail at their behavioral assertions. First amended coverage failed on the evidence harness's unregistered environment selector and an unchanged performance fixture's 30-second hook. The supervisor removed that selector in favor of closed explicit configurations; focused environment guard and fixture rechecks passed. Full gate is rerunning; do not claim acceptance from the initial baseline or narrow checks. Latest evidence is under the exact R01 worktree's workspace-relative `evidence/r01/`, pending report commit and integration.
 
-Handoff: `handoffs/2026-09-04-phase-1-6-verified-id-repair.md`. R01 has no worker rows. Its supervisor worktree, branch and task remain open deliberately. R02–R08 were never launched. Zero lifecycle rows are claimed closed.
-
-## Resumed verification
-
-- R01 final commit `1638c9736f9f9ac03c63aab359a24a08e47179af`: clean supervisor worktree; 411 files / 5,032 tests and 269 assert-mode parity tests passed; typecheck, lint and manifest check passed. G1/G2 remain open, and no supervisor lifecycle closure is claimed.
-
-## Admission repair proposal
-
-Exact old/proposed records and authenticated launch linkage: `evidence/task-identity-repair-proposal.json` (2bba9c34). Operator approval requested explicitly after the hook rejection; no response yet. Ready R01 proof continuation: `briefs/r01-proof-amendment.md` (3dfcf704). Previous parity text normalization independently proved in `evidence/inherited-parity-verification.json` (bd243209).
-
-## Approved admission repair applied
-
-2026-09-04 user answered yes to the exact proposed repair. Original launch, metadata, branch, base and envelope revalidated; runtime address replaced and original enrollment restored atomically. Audit: `evidence/task-identity-repair-result.json`. Normal `wait_threads` accepted the permanent task id. No hook files, scope or cleanup checks changed by the repair. R01 will continue its existing task with the bounded generated proof amendment.
+R01 has no worker rows; its supervisor branch, worktree and sidebar task remain open. R02–R08 remain unlaunched. No current-program supervisor row is closed.
 
 ## Inherited lifecycle closed
 
-Previous nested R09 verified at f3928347, preserved on merge 59c8bfb1, and independently passed the integrated base gate (411 files / 5,032 tests). Retained screenshot proof copied with exact hashes. Registered and physical worktree removed, branch deleted and verified absent. No separate sidebar task or writable worker existed. Exact row: `inherited-lifecycle.json`. The prior ledger remains historical as-left state; this operator-assigned continuation owns the completed cleanup evidence.
+Previous nested R09 verified at f3928347, preserved by merge 59c8bfb1, independently passed the integrated base gate (411 files / 5,032 tests), and had its retained screenshot proof copied with exact hashes. Registered and physical worktree removed; branch deleted and absence verified. No separate sidebar task or writable worker existed. Exact closure row: `inherited-lifecycle.json`; gate evidence `evidence/inherited-integrated-gate/`; text/raster provenance `evidence/inherited-parity-verification.json` and `evidence/inherited-parity-screenshots/`. Closure commit d7adfaf1. The previous ledger remains historical as-left state.
+
+## Recovery artifacts
+
+Consumed `handoffs/2026-09-04-phase-1-6-verified-id-repair.md` removed after checking current git, task status and gate evidence: approval/repair is complete and all surviving facts are recorded above, in the address book, run plan and retained audits. No open dependency remains on that temporary handoff.
