@@ -35,7 +35,7 @@
         "G1 M9 exact downgrade spies",
         "G2 M21 full ladder proof"
       ],
-      "last_verified_commit": "e9f9579734e50b94586c9d22b8d2861874e2a4d0",
+      "last_verified_commit": "1638c9736f9f9ac03c63aab359a24a08e47179af",
       "cleanup": "not admitted: acceptance proof gaps, active gate collection, runtime task-id rejection; worktree and branch retained",
       "observed_gates": [
         {
@@ -55,6 +55,24 @@
           "exit_code": 0,
           "elapsed_seconds": 2.386,
           "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/cli-lifecycle-env-check.log"
+        },
+        {
+          "command": "npm run test:coverage",
+          "exit_code": 0,
+          "elapsed_seconds": 141.851,
+          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/test-coverage.log"
+        },
+        {
+          "command": "npm run build:manifest:check",
+          "exit_code": 0,
+          "elapsed_seconds": 2.078,
+          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/build-manifest-check.log"
+        },
+        {
+          "command": "npm run test:parity",
+          "exit_code": 0,
+          "elapsed_seconds": 62.047,
+          "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/test-parity.log"
         }
       ]
     },
@@ -76,7 +94,7 @@
       "state": "planned",
       "report": "/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r02.md",
       "gate": "npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check",
-      "needs_first": "R01 closed; baseline parity green; sole coordinator ownership",
+      "needs_first": "R01 closed; baseline parity green",
       "cursor": null
     },
     {
@@ -97,7 +115,7 @@
       "state": "planned",
       "report": "/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r03.md",
       "gate": "npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check",
-      "needs_first": "R01 closed; baseline parity green; sole coordinator ownership",
+      "needs_first": "R01 closed; baseline parity green",
       "cursor": null
     },
     {

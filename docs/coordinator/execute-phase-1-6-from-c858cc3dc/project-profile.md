@@ -33,5 +33,5 @@
 ## Operations and admission
 - Live read-only and dryRun=true verification pre-authorized. Browser work uses playwright-cli with its reference and Duo Autopilot. Legacy production remains isolated.
 - R07 owns stopped-system explicit backup then authority upgrade on the real root exactly as Task 6 admits; announce remove-list without leaking configuration values. Actual transactions/finalizations are excluded.
-- Another Phase 1.6 worktree is present. Ownership clarification is pending before implementation wave dispatch; independent verification of already-merged Task 1 is safe.
+- 2026-09-04 operator stopped the prior coordinator and assigned this coordinator sole continuation and verification of existing Phase 1.6 work. Verify provenance before acting on prior residue; do not revive the prior coordinator.
 - No workspace migration or authority adoption from another coordinator. This workspace stays retained at close.

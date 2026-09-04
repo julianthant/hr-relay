@@ -11,7 +11,7 @@
 
 | Run | Phase task | State | Evidence / residue |
 |---|---|---|---|
-| R01 | 1.6.1 | residue | R01 report committed; M9/M21 proof gaps verified; task-ID hook blocks monitoring/continuation; gates still collecting |
+| R01 | 1.6.1 | residue | R01 report committed; M9/M21 proof gaps verified; task-ID hook blocks continuation; final base and parity gates green |
 | R02 | 1.6.2-1 | planned | Dependencies in run plan |
 | R03 | 1.6.2-2 | planned | Dependencies in run plan |
 | R04 | 1.6.3 | planned | Dependencies in run plan |
@@ -22,7 +22,7 @@
 
 ## Admission residue
 
-- Sole ownership of remaining Phase 1.6 implementation is awaiting operator clarification because another coordination has a worktree in this scope. No foreign task/report adoption.
+- 2026-09-04 operator confirmed the previous coordinator is stopped and assigned this coordinator to continue and verify existing work. Ownership is resolved; existing implementation is verified from canonical code/specs and exact evidence. Previous task identities are not silently adopted.
 
 ## Verified open findings (2026-09-04)
 
@@ -33,3 +33,7 @@
 ## Resume boundary
 
 Handoff: `handoffs/2026-09-04-phase-1-6-identity-and-ownership.md`. R01 has no worker rows. Its supervisor worktree, branch and task remain open deliberately. R02–R08 were never launched. Zero lifecycle rows are claimed closed.
+
+## Resumed verification
+
+- R01 final commit `1638c9736f9f9ac03c63aab359a24a08e47179af`: clean supervisor worktree; 411 files / 5,032 tests and 269 assert-mode parity tests passed; typecheck, lint and manifest check passed. G1/G2 remain open, and no supervisor lifecycle closure is claimed.
