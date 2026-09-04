@@ -51,7 +51,7 @@ admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phas
   knowledge, the explorer) · `frontend-backend-integration` (the BFF, the wire, the parity lane) ·
   `foundation-gap-audit` (frozen — a design input, owns nothing) · `stores` (the DERIVED store
   catalog — read it before authoring a task, and remember the code wins over it).
-- `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`): 78 entries of
+- `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`): 79 entries of
   "X looked safe and did Y", each naming its decision. Read it before kernel / driver / dashboard /
   write-safety work; add new root-level lessons THERE (module lessons stay in the module's AGENTS.md).
 - `docs/rebuild/00`–`06` — active plan-document paths. D323 maps their owning work into the visible
