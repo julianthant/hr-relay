@@ -7,7 +7,7 @@
  * against the durable worker lease — §11.3's only coordination channel:
  *
  * 1. acquire the per-worker `workers` process lock under the test's
- *    `.tracker-rebuild`-scoped lock root;
+ *    `.tracker`-scoped lock root;
  * 2. open the SAME authority database the supervising dashboard serves from
  *    and prove birth by writing its own lease under its own OS pid;
  * 3. poll the lease's operator directive; on `stop`, report the `stopped`

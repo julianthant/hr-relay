@@ -19,7 +19,7 @@ export interface StorageQueryDeps {
     stateRoot: string;
     authorityPath: string;
     backupDirectory: string;
-    maxBackupAgeMs: number;
+    maxBackupAgeMs?: number;
     busyTimeoutMs: number;
   }>;
   readonly clock: Clock;

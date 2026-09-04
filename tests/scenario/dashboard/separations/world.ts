@@ -133,7 +133,7 @@ function gateNodeViews(descriptor: AnyWorkflowDescriptor): readonly Readonly<{
 
 export function createSeparationsWorld(): SeparationsDashboardWorld {
   const root = mkdtempSync(join(tmpdir(), "hrauto-sep-dash-"));
-  const stateRoot = join(root, ".tracker-rebuild");
+  const stateRoot = join(root, ".tracker");
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
     { path: join(root, "state.db"), busyTimeoutMs: 1000, migrationOwner: "separations-dashboard-scenario" },

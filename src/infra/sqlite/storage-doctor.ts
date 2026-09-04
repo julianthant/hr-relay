@@ -43,7 +43,7 @@ export const StorageDoctorOptionsSchema = z.strictObject({
   stateRoot: z.string().min(1),
   authorityPath: z.string().min(1),
   backupDirectory: z.string().min(1),
-  maxBackupAgeMs: z.number().int().positive(),
+  maxBackupAgeMs: z.number().int().positive().optional(),
   busyTimeoutMs: z.number().int().positive(),
 });
 
@@ -792,7 +792,7 @@ function authorityIdentityChanged(
 
 export const BackupSummaryOptionsSchema = z.strictObject({
   backupDirectory: z.string().min(1),
-  maxBackupAgeMs: z.number().int().positive(),
+  maxBackupAgeMs: z.number().int().positive().optional(),
 });
 
 export const SpanAuthorityHealthSummarySchema = z.strictObject({
@@ -871,7 +871,7 @@ export function summarizeBackupHealth(
   }
   if (newest === undefined) return "missing";
   const age = clock.nowMs() - newest.createdAtMs;
-  if (age > options.maxBackupAgeMs) return "stale";
+  if (options.maxBackupAgeMs !== undefined && age > options.maxBackupAgeMs) return "stale";
   if (liveAuthorityGeneration !== undefined
     && liveAuthorityGeneration > newest.authorityGeneration) {
     return "stale";
@@ -997,7 +997,7 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
     });
   } else {
     const generationGap = latestVerified.candidate.generationGap;
-    const stale = latestVerified.candidate.ageMs > options.maxBackupAgeMs
+    const stale = (options.maxBackupAgeMs !== undefined && latestVerified.candidate.ageMs > options.maxBackupAgeMs)
       || generationGap.state === "known" && generationGap.value > 0;
     const gapSummary = generationGap.state === "known"
       ? String(generationGap.value)

@@ -19,7 +19,7 @@
  * Three things are deliberately NOT here:
  *
  * - **The ledger.** What was filed in a real HR system stays in
- *   `.tracker-rebuild/ledger/` forever, byte-identical, independent of run
+ *   `.tracker/ledger/` forever, byte-identical, independent of run
  *   archival. Archiving is a *display* lifecycle; the ledger is an *audit*
  *   one, and nothing in this module can name a ledger file.
  * - **A resume path.** Relaunch mints a FRESH run on the CURRENT version from

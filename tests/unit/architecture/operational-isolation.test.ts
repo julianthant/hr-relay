@@ -144,7 +144,7 @@ describe("operational isolation", () => {
 
       // A drifted literal is not the declared runtime.
       write(root, config.module, readFileSync(join(root, config.module), "utf8")
-        .replace(JSON.stringify(isolation.rebuild.stateRoot), JSON.stringify(".tracker")));
+        .replace(JSON.stringify(isolation.rebuild.stateRoot), JSON.stringify(".tracker-drift")));
       assert.match(fixtureViolations(root).join("\n"), /exact isolated values/);
       seedValidRuntime(root);
 

@@ -94,7 +94,7 @@ function surface(): Surface {
 
   const artifacts = createContentAddressedArtifactWriter({
     workspaceRoot: root,
-    artifactRoot: ".tracker-rebuild/artifacts",
+    artifactRoot: ".tracker/artifacts",
   });
   const parser = createIntakeParser({ artifacts });
   const projections = {
@@ -147,7 +147,7 @@ function surface(): Surface {
 
   // The real span writer and the real queue projection, so an enqueued row is
   // proved to reach the surface an operator actually reads (D171).
-  const stateRoot = join(root, ".tracker-rebuild");
+  const stateRoot = join(root, ".tracker");
   const projection = createRunQueueProjection({
     stateRoot,
     clock,

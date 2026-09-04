@@ -338,14 +338,14 @@ describe("dashboard HTTP request ownership", () => {
     try {
       const artifacts = createContentAddressedArtifactWriter({
         workspaceRoot: workspace,
-        artifactRoot: ".tracker-rebuild/artifacts",
+        artifactRoot: ".tracker/artifacts",
       });
       const ref = await artifacts.put(Buffer.alloc(2 * 1024 * 1024, 0x4b), {
         mediaType: "application/octet-stream",
       });
       const reader = createServerVerifiedArtifactReader({
         workspaceRoot: workspace,
-        artifactRoot: ".tracker-rebuild/artifacts",
+        artifactRoot: ".tracker/artifacts",
         observeLeaseClosed() {
           leaseClosed = true;
         },
@@ -525,14 +525,14 @@ describe("dashboard HTTP request ownership", () => {
     try {
       const artifacts = createContentAddressedArtifactWriter({
         workspaceRoot: workspace,
-        artifactRoot: ".tracker-rebuild/artifacts",
+        artifactRoot: ".tracker/artifacts",
       });
       const ref = await artifacts.put(Buffer.alloc(2 * 1024 * 1024, 0x5a), {
         mediaType: "application/octet-stream",
       });
       const reader = createServerVerifiedArtifactReader({
         workspaceRoot: workspace,
-        artifactRoot: ".tracker-rebuild/artifacts",
+        artifactRoot: ".tracker/artifacts",
         observeLeaseClosed: leaseClosed.resolve,
       });
       const app = new Hono<TestDashboardEnv>();

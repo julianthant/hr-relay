@@ -65,11 +65,11 @@ function assertNoProcessSignalListeners(): void {
 describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
   it("binds the exact rebuild-only resources", () => {
     assert.deepEqual(rebuildRuntimeIsolation, {
-      stateRoot: ".tracker-rebuild",
-      artifactRoot: ".tracker-rebuild/artifacts",
+      stateRoot: ".tracker",
+      artifactRoot: ".tracker/artifacts",
       backendPort: 3938,
       frontendPort: 5174,
-      processLockRoot: ".tracker-rebuild/locks",
+      processLockRoot: ".tracker/locks",
       browserProfileRoot: ".auth",
       browserSessionNamespace: "hrauto-rebuild",
     });
@@ -92,8 +92,8 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     assert.deepEqual(JSON.parse(output[0] ?? ""), {
       completedThrough: "2j",
       active: "3-workflow-migration",
-      stateRoot: ".tracker-rebuild",
-      artifactRoot: ".tracker-rebuild/artifacts",
+      stateRoot: ".tracker",
+      artifactRoot: ".tracker/artifacts",
       backendPort: 3938,
       frontendPort: 5174,
       browserSessionNamespace: "hrauto-rebuild",
@@ -118,7 +118,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
       args: ["explain", "run", "pl-000619-4ebf", "--json"],
       write: (value) => output.push(value),
       explain: (isolation, args) => {
-        assert.equal(isolation.stateRoot, ".tracker-rebuild");
+        assert.equal(isolation.stateRoot, ".tracker");
         seen.push([...args]);
         return "the explanation";
       },
@@ -143,7 +143,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
       args: ["storage", "doctor", "--json"],
       write: (value) => output.push(value),
       storage: (isolation, args) => {
-        assert.equal(isolation.stateRoot, ".tracker-rebuild");
+        assert.equal(isolation.stateRoot, ".tracker");
         seen.push([...args]);
         return Promise.resolve({ output: "the doctor report", exitCode: 0 });
       },
@@ -472,8 +472,8 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     assert.deepEqual(JSON.parse(written[0] ?? ""), {
       completedThrough: "2j",
       active: "3-workflow-migration",
-      stateRoot: ".tracker-rebuild",
-      artifactRoot: ".tracker-rebuild/artifacts",
+      stateRoot: ".tracker",
+      artifactRoot: ".tracker/artifacts",
       backendPort: 3938,
       frontendPort: 5174,
       browserSessionNamespace: "hrauto-rebuild",

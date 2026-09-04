@@ -12,7 +12,7 @@
  * - `deriveArchivedRunRecord` builds the self-contained record.
  *
  * The ledger appears here only as POINTERS. Nothing in this module reads,
- * writes, prunes or renumbers `.tracker-rebuild/ledger/` — archiving is a
+ * writes, prunes or renumbers `.tracker/ledger/` — archiving is a
  * display lifecycle and what was filed in a real HR system is an audit one.
  */
 import {

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 3,
-  "note": "D93: the cross-tree bridge scan and its moduleFamilies/forbiddenBridgeClasses registry are RETIRED — two repositories share no module graph. What survives is operational isolation on one machine: distinct commands, state/artifact roots, ports, process locks, and browser profiles/sessions. `legacy.*` describes the legacy repo; `rebuild.*` describes this one. D247: the rebuild's launch commands are plain (`dashboard`, `dashboard:prod`, `cli`) — command NAMES are no longer required to differ from legacy's; the isolation is the ports, roots, locks and sessions.",
+  "note": "D93: the cross-tree bridge scan and its moduleFamilies/forbiddenBridgeClasses registry are RETIRED — two repositories share no module graph. What survives is operational isolation on one machine: distinct commands, state/artifact roots, ports, process locks, and browser profiles/sessions. `legacy.*` describes the legacy repo; `rebuild.*` describes this one. D247: the rebuild's launch commands are plain (`dashboard`, `dashboard:prod`, `cli`) — command NAMES are no longer required to differ from legacy's; the isolation is the ports, roots, locks and sessions. D321 (2026-09-03): the rebuild state root is `.tracker`, the same NAME as legacy's — repo-relative roots never collide across checkouts, so `stateRoot` left the must-differ list; the artifact root, lock root, ports and session namespace still differ.",
   "legacy": {
     "sourceRoot": "src",
     "entrypoint": "src/cli.ts",
@@ -25,11 +25,11 @@
       "dashboard:prod": "tsx scripts/secure-env-bootstrap.ts cli dashboard --prod",
       "cli": "tsx scripts/secure-env-bootstrap.ts cli"
     },
-    "stateRoot": ".tracker-rebuild",
-    "artifactRoot": ".tracker-rebuild/artifacts",
+    "stateRoot": ".tracker",
+    "artifactRoot": ".tracker/artifacts",
     "backendPort": 3938,
     "frontendPort": 5174,
-    "processLockRoot": ".tracker-rebuild/locks",
+    "processLockRoot": ".tracker/locks",
     "browserProfileRoot": ".auth",
     "browserSessionNamespace": "hrauto-rebuild",
     "runtimeConfig": {

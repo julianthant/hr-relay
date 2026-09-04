@@ -1726,7 +1726,7 @@ describe("apply-settings authority", () => {
   it("finishes exact settings cleanup before acknowledging a post-commit replay", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-replay-cleanup-"));
     roots.push(root);
-    const settingsPath = join(root, "config", "settings.json");
+    const settingsPath = join(root, ".tracker", "settings.json");
     let cleanupFailed = false;
     const settings = createSettingsApplicationExecutor(createSettingsFileAuthority({
       path: settingsPath,

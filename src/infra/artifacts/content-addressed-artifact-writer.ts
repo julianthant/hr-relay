@@ -65,7 +65,7 @@ async function initializeArtifactRoot(workspaceRoot: string, artifactRoot: strin
   const workspace = resolve(workspaceRoot);
   if (workspace === sep) throw new Error("artifact workspaceRoot cannot be the filesystem root");
   await rejectSymlink(workspace, "artifact workspace root");
-  const trackerRoot = join(workspace, ".tracker-rebuild");
+  const trackerRoot = join(workspace, ".tracker");
   const root = join(workspace, artifactRoot);
   await rejectSymlink(trackerRoot, "rebuild state root");
   await mkdir(trackerRoot, { recursive: true, mode: 0o700 });
@@ -174,10 +174,20 @@ function assertMatchingMediaType(stored: Readonly<{ ref: ArtifactRef }>, metadat
 
 export function createContentAddressedArtifactWriter(
   options: ContentAddressedArtifactWriterOptions,
-): ContentAddressedArtifactWriter {
+): ContentAddressedArtifactWriter & { readonly ready: Promise<void> } {
   const artifactRoot = RebuildArtifactRootSchema.parse(options.artifactRoot);
   const rootPromise = initializeArtifactRoot(options.workspaceRoot, artifactRoot);
   return Object.freeze({
+    /**
+     * Root initialization starts at construction. A composition MUST await this
+     * before serving: an un-awaited rejection (a workspace removed under a
+     * fast shutdown) is an unhandled rejection, not a legible boot failure.
+     * A getter, not a stored chain: a derived promise nobody awaits would
+     * itself reject unhandled whenever `put()` already reported the failure.
+     */
+    get ready(): Promise<void> {
+      return rootPromise.then(() => undefined);
+    },
     async put(source: Uint8Array | Readable, metadataInput: ArtifactPutMetadata) {
       const metadata = ArtifactPutMetadataSchema.parse(metadataInput);
       const bytes = await materialize(source);

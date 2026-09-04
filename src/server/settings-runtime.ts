@@ -24,7 +24,9 @@ function requireMatchingSettingsCommand(
 ) {
   if (command === undefined) {
     throw new Error(
-      `settings revision ${String(record.revision)} has no durable command journal for ${applied.commandId}`,
+      `settings revision ${String(record.revision)} has no durable command journal for ${applied.commandId}; `
+      + "the settings file outlived its authority database (both live in the state root) — restore the state root, "
+      + "or remove settings.json and its .authority.json sidecar there to boot from the never-applied baseline",
     );
   }
   if (command.family !== "settings" || command.type !== "apply-settings") {

@@ -381,7 +381,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     }) => {
       const root = mkdtempSync(join(tmpdir(), "hrauto-settings-precedence-"));
       cleanups.push(() => rmSync(root, { recursive: true, force: true }));
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const databasePath = join(root, "state.db");
       const database = AuthorityDatabase.open({
         path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test",
@@ -457,7 +457,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("authenticates a committed prepare and final readback without duplicate authority observations", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-observation-"));
     cleanups.push(() => rmSync(root, { recursive: true, force: true }));
-    const path = join(root, "config", "settings.json");
+    const path = join(root, ".tracker", "settings.json");
     const database = AuthorityDatabase.open({
       path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test",
     });
@@ -544,7 +544,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-prior-recovery-"));
       cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
       const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-      const path = join(repoRoot, "config", "settings.json");
+      const path = join(repoRoot, ".tracker", "settings.json");
       const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
       mkdirSync(stateRoot, { recursive: true });
       const databasePath = join(stateRoot, "state.db");
@@ -683,7 +683,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-orphan-audit-"));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, "config", "settings.json");
+    const path = join(repoRoot, ".tracker", "settings.json");
     const command = settingsCommand(
       "33333333-3333-4333-8333-333333333333",
       clock.now().toISOString(),
@@ -862,7 +862,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, "config", "settings.json");
+    const path = join(repoRoot, ".tracker", "settings.json");
     const command = settingsCommand(
       "33333333-3333-4333-8333-333333333333",
       clock.now().toISOString(),
@@ -899,7 +899,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, "config", "settings.json");
+    const path = join(repoRoot, ".tracker", "settings.json");
     const command = settingsCommand(
       "33333333-3333-4333-8333-333333333333",
       clock.now().toISOString(),
@@ -934,7 +934,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, "config", "settings.json");
+    const path = join(repoRoot, ".tracker", "settings.json");
     const command = settingsCommand(
       "33333333-3333-4333-8333-333333333333",
       clock.now().toISOString(),
@@ -1244,7 +1244,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
     };
     const outcome = createSettingsFileAuthority({
-      path: join(repoRoot, "config", "settings.json"),
+      path: join(repoRoot, ".tracker", "settings.json"),
       validateCandidate: (settings) => {
         resolveConfigWithProvenance({}, settings, clock);
       },
@@ -1311,7 +1311,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, "config", "settings.json");
+    const path = join(repoRoot, ".tracker", "settings.json");
     const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
     mkdirSync(stateRoot, { recursive: true });
     const database = AuthorityDatabase.open(
@@ -1416,7 +1416,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     );
     const applied = await firstClient.executeCommand(command);
     const persisted = SettingsFileRecordSchema.parse(JSON.parse(
-      readFileSync(join(repoRoot, "config", "settings.json"), "utf8"),
+      readFileSync(join(repoRoot, ".tracker", "settings.json"), "utf8"),
     ));
     assert.deepEqual(applied, {
       state: "applied",
@@ -1516,7 +1516,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       const screenWidth = readback.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
       assert.equal(screenWidth?.effectiveValue, 1980);
       assert.equal(screenWidth?.settingsValue, 1980);
-      assert.match(readFileSync(join(repoRoot, "config", "settings.json"), "utf8"), /"screenWidth":1980/u);
+      assert.match(readFileSync(join(repoRoot, ".tracker", "settings.json"), "utf8"), /"screenWidth":1980/u);
       assert.equal(readRuntimeSettingsRevision(repoRoot), 1);
       const replay = await client.applySettings(command);
       assert.equal(replay.state, "already-applied");

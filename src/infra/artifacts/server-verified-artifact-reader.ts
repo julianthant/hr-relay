@@ -113,7 +113,7 @@ async function initializeRoots(workspaceRoot: string, artifactRootInput: unknown
   if (workspace === sep) throw new Error("artifact workspaceRoot cannot be the filesystem root");
   const artifactRoot = RebuildArtifactRootSchema.parse(artifactRootInput);
   await rejectSymlink(workspace, "artifact workspace root");
-  const trackerRoot = join(workspace, ".tracker-rebuild");
+  const trackerRoot = join(workspace, ".tracker");
   const artifactPath = join(workspace, artifactRoot);
   const scratchPath = join(trackerRoot, "verified-byte-scratch");
   await rejectSymlink(trackerRoot, "rebuild state root");
@@ -1115,7 +1115,7 @@ function createLease(
 
 export function createServerVerifiedArtifactReader(
   options: ServerVerifiedArtifactReaderOptions,
-): ServerVerifiedArtifactReader {
+): ServerVerifiedArtifactReader & { readonly ready: Promise<void> } {
   const rootsPromise = initializeRoots(options.workspaceRoot, options.artifactRoot);
   const inspect = async (
     refInput: ArtifactRef,
@@ -1205,7 +1205,17 @@ export function createServerVerifiedArtifactReader(
       throw primary;
     }
   };
-  const reader: ServerVerifiedArtifactReader = {
+  const reader: ServerVerifiedArtifactReader & { readonly ready: Promise<void> } = {
+    /**
+     * Root initialization starts at construction. A composition MUST await this
+     * before serving: an un-awaited rejection (a workspace removed under a
+     * fast shutdown) is an unhandled rejection, not a legible boot failure.
+     * A getter, not a stored chain: a derived promise nobody awaits would
+     * itself reject unhandled whenever `verify()`/`prepare()` already reported it.
+     */
+    get ready(): Promise<void> {
+      return rootsPromise.then(() => undefined);
+    },
     async verify(ref: ArtifactRef, signal?: AbortSignal) {
       await inspect(ref, signal, false);
     },

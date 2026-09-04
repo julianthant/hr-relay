@@ -581,14 +581,14 @@ describe("reviewed activity person pseudonym backfill", () => {
 
   it("composes one explicit selected-run backfill command against the isolated authority", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-command-"));
-    const stateRoot = ".tracker-rebuild";
+    const stateRoot = ".tracker";
     const path = join(root, stateRoot, "state.db");
     const isolation = defineRuntimeIsolation({
       stateRoot,
-      artifactRoot: ".tracker-rebuild/artifacts",
+      artifactRoot: ".tracker/artifacts",
       backendPort: 3938,
       frontendPort: 5174,
-      processLockRoot: ".tracker-rebuild/locks",
+      processLockRoot: ".tracker/locks",
       browserProfileRoot: ".auth",
       browserSessionNamespace: "hrauto-rebuild",
     });

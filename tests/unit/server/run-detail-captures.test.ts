@@ -51,7 +51,7 @@ function writeArtifactEnvelope(
   bytes: Uint8Array,
   storedRef: ArtifactRef = ref,
 ): void {
-  const artifactRoot = join(workspaceRoot, ".tracker-rebuild", "artifacts");
+  const artifactRoot = join(workspaceRoot, ".tracker", "artifacts");
   mkdirSync(artifactRoot, { recursive: true });
   writeFileSync(join(artifactRoot, `${ref.sha256}.artifact`), JSON.stringify({
     ref: storedRef,
@@ -94,7 +94,7 @@ function harness() {
   const sourceReads: number[] = [];
   const artifactReader = createServerVerifiedArtifactReader({
     workspaceRoot: world.stateRoot,
-    artifactRoot: ".tracker-rebuild/artifacts",
+    artifactRoot: ".tracker/artifacts",
     observeIo: (kind, bytes) => {
       if (kind === "source-read") sourceReads.push(bytes);
     },
@@ -113,7 +113,7 @@ function harness() {
     sourceReads,
     world,
     removeArtifact: (ref: ArtifactRef) =>
-      rmSync(join(world.stateRoot, ".tracker-rebuild", "artifacts", `${ref.sha256}.artifact`)),
+      rmSync(join(world.stateRoot, ".tracker", "artifacts", `${ref.sha256}.artifact`)),
     writeArtifact: (ref: ArtifactRef, bytes: Uint8Array, storedRef: ArtifactRef = ref) =>
       writeArtifactEnvelope(world.stateRoot, ref, bytes, storedRef),
   };

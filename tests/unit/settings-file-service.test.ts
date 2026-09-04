@@ -29,7 +29,7 @@ let commandSequence = 0;
 function settingsPath(): string {
   const root = mkdtempSync(join(tmpdir(), "hrauto-settings-file-"));
   roots.push(root);
-  return join(root, "config", "settings.json");
+  return join(root, ".tracker", "settings.json");
 }
 
 function createTestService(options: Readonly<{

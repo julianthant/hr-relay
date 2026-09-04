@@ -407,15 +407,15 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const workerId = poolWorkerId(workflowId, poolIndex);
 
   const env = input.env ?? configResolutionEnvironment();
+  const stateRoot = join(repoRoot, input.isolation.stateRoot);
+  mkdirSync(stateRoot, { recursive: true });
   const settingsAuthority = createSettingsFileAuthority({
-    path: join(repoRoot, "config", "settings.json"),
+    path: join(stateRoot, "settings.json"),
     validateCandidate: (settings) => {
       resolveConfigWithProvenance(env, settings, clock);
     },
     hooks: input.settingsFileHooks,
   });
-  const stateRoot = join(repoRoot, input.isolation.stateRoot);
-  mkdirSync(stateRoot, { recursive: true });
   /**
    * D181: the `workers` role lock, taken before the database opens. The
    * authority worker LEASE is the richer fence and stays the one that decides
@@ -526,6 +526,8 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     workspaceRoot: repoRoot,
     artifactRoot: input.isolation.artifactRoot,
   });
+  // The root initializes at construction; a worker never runs a task before it exists.
+  await artifacts.ready;
   const diagnosticService = createDiagnosticCaptureService({
     artifacts,
     authority: database.authority,

@@ -79,7 +79,7 @@ describe("failureStatus", () => {
   });
 
   it("answers typed path-free corruption for a diagnostic readback failure", () => {
-    const localPath = "/private/operator/.tracker-rebuild/artifacts/missing";
+    const localPath = "/private/operator/.tracker/artifacts/missing";
     const corruption = failureStatus(new DiagnosticBundleCorruptError(
       "diagnostic bundle 00000000-0000-4000-8000-000000000004 is corrupt: an attachment could not be verified",
       { cause: new Error(`ENOENT ${localPath}`) },

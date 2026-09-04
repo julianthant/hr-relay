@@ -773,7 +773,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     assert.equal(usage.exitCode, 1);
     assert.match(
       usage.output,
-      /authority and span\/authority reconciliation are healthy AND a verified current backup exists/u,
+      /authority and span\/authority reconciliation are healthy; the backup arm is reported, not gated \(D322\)/u,
     );
   });
 

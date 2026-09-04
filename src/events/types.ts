@@ -19,7 +19,7 @@
  * RETIRED from this union. It carried a declared per-workflow key vocabulary
  * and had ZERO production emitters: the kernel's `SpanEmitter`
  * (`src/core/span-emitter.ts`) never had the arm, so nothing in `src/` could
- * produce one, and `.tracker-rebuild/spans` holds no such line. A vocabulary
+ * produce one, and `.tracker/spans` holds no such line. A vocabulary
  * arm nothing can emit is not "unused", it is unreachable — and it made every
  * surface fed by it render its empty state permanently while every gate stayed
  * green. Removing it is reversible and honest; building the emitter was work

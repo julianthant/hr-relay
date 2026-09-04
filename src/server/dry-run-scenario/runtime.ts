@@ -206,7 +206,7 @@ export function createProductionDryRunScenarioRuntime(
   const stateRoot = join(input.repoRoot, input.isolation.stateRoot);
   const databasePath = join(stateRoot, "state.db");
   const settingsAuthority = createSettingsFileAuthority({
-    path: join(input.repoRoot, "config", "settings.json"),
+    path: join(stateRoot, "settings.json"),
     validateCandidate: (settings) => { resolveConfigWithProvenance(input.env, settings, input.clock); },
   });
   const appVersion = PackageVersionSchema.parse(

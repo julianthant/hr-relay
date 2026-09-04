@@ -1,6 +1,6 @@
 /**
  * The dry-run admission fixture every T1b composition proof shares: a selected
- * `config/settings.json` journaled through the REAL settings kernel arm and
+ * `.tracker/settings.json` journaled through the REAL settings kernel arm and
  * activated through the existing dashboard activation contract — never an
  * alternate runtime writer — plus a read-only view of the start-effect tables.
  */
@@ -30,7 +30,7 @@ export function selectedSettingsFixture(
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "dry-run-admission-test" }, clock);
   databases.push(database);
   const file = createSettingsFileAuthority({
-    path: join(root, "config", "settings.json"),
+    path: join(root, ".tracker", "settings.json"),
     validateCandidate: (settings) => { resolveConfigWithProvenance(env, settings, clock); },
   });
   const ids = sequentialIdFactory("b");

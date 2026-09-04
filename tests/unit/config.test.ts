@@ -319,7 +319,7 @@ describe("strict config resolution", () => {
     const root = mkdtempSync(join("/tmp", "hrauto-settings-safe-directory-"));
     try {
       const sticky = join(root, "sticky");
-      const directory = join(sticky, "config");
+      const directory = join(sticky, ".tracker");
       mkdirSync(directory, { recursive: true });
       chmodSync(root, 0o755);
       chmodSync(sticky, 0o1777);
@@ -441,7 +441,7 @@ describe("strict config resolution", () => {
   it("refuses a redirected bound directory before reading or settling through its replacement", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-directory-redirect-"));
     try {
-      const directory = join(root, "config");
+      const directory = join(root, ".tracker");
       const retained = join(root, "retained");
       const path = join(directory, "settings.json");
       const authority = createSettingsFileAuthority({ path });
@@ -564,7 +564,7 @@ describe("strict config resolution", () => {
     (field) => {
       const root = mkdtempSync(join(tmpdir(), "hrauto-settings-pure-refusal-"));
       try {
-        const path = join(root, "config", "settings.json");
+        const path = join(root, ".tracker", "settings.json");
         const afterLockLinked = vi.fn();
         const authority = createSettingsFileAuthority({ path, hooks: { afterLockLinked } });
         const request = SettingsApplyInputSchema.parse(settingsApplyRequest(
@@ -609,7 +609,7 @@ describe("strict config resolution", () => {
   it("binds crash-recovery replay to the full canonical settings command envelope", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-command-envelope-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const patch = { browser: { headless: false } } as const;
       const command = {
         commandId: SETTINGS_COMMAND_1,
@@ -725,7 +725,7 @@ describe("strict config resolution", () => {
   it("rejects actor metadata that would make the persisted settings file max plus one byte", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-next-bytes-limit-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const authority = createSettingsFileAuthority({ path });
 
       assert.throws(
@@ -737,7 +737,7 @@ describe("strict config resolution", () => {
         /settings candidate is 1048577 bytes; maximum is 1048576 before replacement/u,
       );
       assert.equal(authority.read().revision, 1);
-      assert.equal(readdirSync(join(root, "config")).includes("settings.json"), false);
+      assert.equal(readdirSync(join(root, ".tracker")).includes("settings.json"), false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -746,7 +746,7 @@ describe("strict config resolution", () => {
   it("persists actor metadata whose canonical settings file is exactly the byte maximum", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-next-bytes-boundary-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const applied = createSettingsFileAuthority({ path }).apply(settingsApplyRequest(
         SETTINGS_COMMAND_1,
         1,
@@ -772,14 +772,14 @@ describe("strict config resolution", () => {
   it("recovers an acquisition-named hard-link twin left by process loss", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-lock-twin-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const child = crashSettingsAuthorityAtHook(path, "afterLockLinked");
       assert.equal(child.signal, "SIGKILL", child.stderr);
 
       const recovered = createSettingsFileAuthority({ path }).read();
       assert.equal(recovered.revision, 1);
       assert.deepEqual(
-        readdirSync(join(root, "config")),
+        readdirSync(join(root, ".tracker")),
         ["settings.json.authority.json"],
       );
     } finally {
@@ -790,7 +790,7 @@ describe("strict config resolution", () => {
   it("holds exclusive settings authority until transaction commit or rollback", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-exclusive-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const firstAuthority = createSettingsFileAuthority({ path });
       const first = firstAuthority.apply(settingsApplyRequest(
         SETTINGS_COMMAND_1,
@@ -820,7 +820,7 @@ describe("strict config resolution", () => {
       if (second.state === "applied") second.rollback();
       assert.deepEqual(readFileSync(path), committedBytes);
       assert.equal(createSettingsFileAuthority({ path }).read().revision, 2);
-      assert.equal(readdirSync(join(root, "config")).includes("settings.json.rollback.json"), false);
+      assert.equal(readdirSync(join(root, ".tracker")).includes("settings.json.rollback.json"), false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -829,7 +829,7 @@ describe("strict config resolution", () => {
   it("durably prepares exact prior and next settings before the live rename", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-durable-prepare-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const request = settingsApplyRequest(
         SETTINGS_COMMAND_1,
         1,
@@ -861,7 +861,7 @@ describe("strict config resolution", () => {
   it("restores the exact prior settings when a prepared command did not commit", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-prepare-rollback-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const child = crashSettingsApplyAfterLiveRename(
         path,
         settingsApplyRequest(
@@ -878,7 +878,7 @@ describe("strict config resolution", () => {
       assert.deepEqual(recovered.settings, {});
       assert.equal(existsSync(path), false);
       assert.equal(existsSync(`${path}.prepare.json`), false);
-      assert.deepEqual(readdirSync(join(root, "config")), ["settings.json.authority.json"]);
+      assert.deepEqual(readdirSync(join(root, ".tracker")), ["settings.json.authority.json"]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -887,7 +887,7 @@ describe("strict config resolution", () => {
   it("serializes stale cleanup through main-lock reacquisition", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-stale-reaper-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const request = settingsApplyRequest(
         SETTINGS_COMMAND_1,
         1,
@@ -949,7 +949,7 @@ describe("strict config resolution", () => {
   ] as const)("recovers a dead stale-reaper that crashed %s", (_phase, hook) => {
     const root = mkdtempSync(join(tmpdir(), `hrauto-settings-dead-reaper-${hook}-`));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const staleMain = crashSettingsAuthorityAtHook(path, "afterLockLinked");
       assert.equal(staleMain.signal, "SIGKILL", staleMain.stderr);
       const deadReaper = crashSettingsAuthorityAtHook(path, hook);
@@ -958,7 +958,7 @@ describe("strict config resolution", () => {
       const recovered = createSettingsFileAuthority({ path }).read();
 
       assert.equal(recovered.revision, 1);
-      assert.deepEqual(readdirSync(join(root, "config")), ["settings.json.authority.json"]);
+      assert.deepEqual(readdirSync(join(root, ".tracker")), ["settings.json.authority.json"]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -967,7 +967,7 @@ describe("strict config resolution", () => {
   it("keeps revision CAS inside the exclusive atomic-replace authority", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-cas-race-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const contender = createSettingsFileAuthority({ path });
       let raceAttempted = false;
       const winner = createSettingsFileAuthority({
@@ -1009,7 +1009,7 @@ describe("strict config resolution", () => {
   it("distinguishes virgin settings from deletion after initialization", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-deletion-evidence-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const authority = createSettingsFileAuthority({ path });
       assert.equal(authority.read().revision, 1);
       const applied = authority.apply(settingsApplyRequest(
@@ -1034,7 +1034,7 @@ describe("strict config resolution", () => {
   it("recovers a settings replace that completed before initialization evidence advanced", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-init-recovery-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const evidencePath = `${path}.authority.json`;
       const authority = createSettingsFileAuthority({ path });
       assert.equal(authority.read().revision, 1);
@@ -1060,7 +1060,7 @@ describe("strict config resolution", () => {
   it("fails loud after process loss between first-update sidecar and settings-byte rollback", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-rollback-order-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const evidencePath = `${path}.authority.json`;
       const request = settingsApplyRequest(
         SETTINGS_COMMAND_1,
@@ -1121,7 +1121,7 @@ describe("strict config resolution", () => {
     for (const hook of interruptedHooks) {
       const root = mkdtempSync(join(tmpdir(), `hrauto-settings-rollback-${hook}-`));
       try {
-        const path = join(root, "config", "settings.json");
+        const path = join(root, ".tracker", "settings.json");
         const child = crashFirstUpdateRollbackAtHook(path, hook);
         assert.equal(child.signal, "SIGKILL", `${hook}: ${child.stderr}`);
         assert.match(readFileSync(`${path}.rollback.json`, "utf8"), /"rollbackId":/u);
@@ -1138,10 +1138,10 @@ describe("strict config resolution", () => {
   it("admits restart only after first-update rollback evidence is durably removed", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-rollback-complete-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const child = crashFirstUpdateRollbackAtHook(path, "afterRollbackCompleted");
       assert.equal(child.signal, "SIGKILL", child.stderr);
-      assert.equal(readdirSync(join(root, "config")).includes("settings.json.rollback.json"), false);
+      assert.equal(readdirSync(join(root, ".tracker")).includes("settings.json.rollback.json"), false);
 
       const restarted = createSettingsFileAuthority({ path }).read();
       assert.equal(restarted.revision, 1);
@@ -1202,7 +1202,7 @@ describe("strict config resolution", () => {
   it("persists an atomic patch for exact restart readback while environment leaves stay authoritative", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-authority-"));
     try {
-      const path = join(root, "config", "settings.json");
+      const path = join(root, ".tracker", "settings.json");
       const patch = { browser: { headless: false }, display: { screenWidth: 1920 } } as const;
       const authority = createSettingsFileAuthority({ path });
 
@@ -1240,7 +1240,7 @@ describe("strict config resolution", () => {
   it("keeps the prior settings bytes exact when staging is interrupted", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-interrupted-"));
     try {
-      const directory = join(root, "config");
+      const directory = join(root, ".tracker");
       const path = join(directory, "settings.json");
       const initial = createSettingsFileAuthority({ path });
       const firstPatch = { browser: { headless: false } } as const;
@@ -1275,7 +1275,7 @@ describe("strict config resolution", () => {
   it("reports failure-integrity inspection errors instead of hiding them", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-failure-inspection-"));
     try {
-      const directory = join(root, "config");
+      const directory = join(root, ".tracker");
       const path = join(directory, "settings.json");
       let liveReplacementReached = false;
       const authority = createSettingsFileAuthority({
@@ -1316,8 +1316,8 @@ describe("strict config resolution", () => {
   it("refuses malformed or incomplete persisted settings instead of resolving defaults", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-malformed-"));
     try {
-      const path = join(root, "config", "settings.json");
-      mkdirSync(join(root, "config"));
+      const path = join(root, ".tracker", "settings.json");
+      mkdirSync(join(root, ".tracker"));
       const authority = createSettingsFileAuthority({ path });
 
       writeFileSync(path, '{"revision":2', { encoding: "utf8", mode: 0o600 });

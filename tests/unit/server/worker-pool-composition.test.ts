@@ -1031,7 +1031,7 @@ describe("dashboard shutdown closes the worker supervisor between ingress and th
     // the fault line) ran while the process lock was still held. Moving
     // close() after the lock release records a releasedAt instant here.
     assert.deepEqual(lockStateAtShutdownFault, [null]);
-    // The process lock under .tracker-rebuild/locks records its release only
+    // The process lock under .tracker/locks records its release only
     // after the supervisor closed (the closed-supervisor refusal itself is
     // pinned in the W2 suite). The file stays as the durable record; the NEXT
     // acquirer archives it.

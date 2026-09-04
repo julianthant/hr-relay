@@ -184,7 +184,7 @@ interface World {
  */
 function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
   const root = mkdtempSync(join(tmpdir(), "hrauto-lifecycle-walk-"));
-  const stateRoot = join(root, ".tracker-rebuild");
+  const stateRoot = join(root, ".tracker");
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
     { path: join(root, "state.db"), busyTimeoutMs: 1000, migrationOwner: "operator-lifecycle-walk" },
@@ -255,7 +255,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
 
   const artifacts = createContentAddressedArtifactWriter({
     workspaceRoot: root,
-    artifactRoot: ".tracker-rebuild/artifacts",
+    artifactRoot: ".tracker/artifacts",
   });
   const parser = createIntakeParser({ artifacts });
   const projections = {

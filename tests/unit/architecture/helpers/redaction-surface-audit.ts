@@ -1452,7 +1452,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "file/ledger-entry", path: "payload.idempotencyKey", origin: "captured-hr-value",
     exception: "the permanent key IS the external transaction's natural identity (ref write-safety SS3); a redacted key names no transaction and the dedupe fence could not be re-derived from it." },
   { surface: "file/ledger-entry", path: "payload.proof.value", origin: "captured-hr-value",
-    exception: "the schema-bound proof the external system returned is the whole content of a filed-transaction record (ref write-safety SS6). A ledger of digests proves nothing was filed. It never leaves `.tracker-rebuild/ledger/`." },
+    exception: "the schema-bound proof the external system returned is the whole content of a filed-transaction record (ref write-safety SS6). A ledger of digests proves nothing was filed. It never leaves `.tracker/ledger/`." },
 
   { surface: "egress/advisory-prompt", path: "answerSchema", origin: "repository-authored" },
   { surface: "egress/advisory-prompt", path: "instruction", origin: "repository-authored" },

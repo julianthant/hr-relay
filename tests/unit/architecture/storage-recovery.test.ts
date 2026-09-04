@@ -3930,9 +3930,10 @@ describe("authority.health preflight and static recovery boundary", () => {
     assert.equal(healthy.state, "healthy");
 
     rmSync(directory, { recursive: true });
-    const unhealthy = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
-    assert.equal(unhealthy.state, "unhealthy");
-    assert.match(unhealthy.summary, /backup state is missing/);
+    const withoutBackup = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
+    // D322: a missing backup is the operator's choice, reported but never gating.
+    assert.equal(withoutBackup.state, "healthy");
+    assert.match(withoutBackup.summary, /backup missing/);
   });
 
   it("keeps the native handle private and bans live-copy or VACUUM backup fallbacks", () => {

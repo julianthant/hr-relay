@@ -33,7 +33,7 @@ afterEach(() => {
 function fixture() {
   const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-span-root-repair-"));
   roots.push(repoRoot);
-  const stateRoot = join(repoRoot, ".tracker-rebuild");
+  const stateRoot = join(repoRoot, ".tracker");
   mkdirSync(stateRoot);
   const authorityPath = join(stateRoot, "state.db");
   const processLockRoot = join(stateRoot, "locks");

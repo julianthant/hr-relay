@@ -970,7 +970,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "OfflineRestoreRequest", schema: OfflineRestoreRequestSchema, fixtures: [{ manifestPath: "/tmp/authority.manifest.json", stoppedSystemProof: STOPPED_SYSTEM_PROOF }] },
   { name: "OfflineRestoreReport", schema: OfflineRestoreReportSchema, fixtures: [{ state: "restored", restoredAt: NOW, manifestFileName: "authority-g4.sqlite.manifest.json", backupFileName: "authority-g4.sqlite", suspectFileName: "suspect-state.sqlite", sourceDatabaseIdentity: HASH_B, authorityGeneration: 4, projectionRebuilt: true, authorityPreservedAcrossProjectionRebuild: true }] },
   { name: "SchemaBoundCanonicalValue", schema: SchemaBoundCanonicalValueSchema, fixtures: [{ schemaHash: HASH_A, value: "approved" }] },
-  { name: "RebuildArtifactRoot", schema: RebuildArtifactRootSchema, fixtures: [".tracker-rebuild/artifacts"] },
+  { name: "RebuildArtifactRoot", schema: RebuildArtifactRootSchema, fixtures: [".tracker/artifacts"] },
   { name: "ContentAddressedArtifactRef", schema: ArtifactRefSchema, fixtures: [{ id: UUID_1, sha256: HASH_A, bytes: 7, mediaType: "text/plain" }] },
   { name: "ArtifactPutMetadata", schema: ArtifactPutMetadataSchema, fixtures: [{ mediaType: "application/pdf" }] },
   { name: "SessionNeed", schema: SessionNeedSchema, fixtures: [

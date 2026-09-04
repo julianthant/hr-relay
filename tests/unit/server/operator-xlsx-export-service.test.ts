@@ -131,7 +131,7 @@ function exportHarness(label: string) {
     database,
     artifacts: createContentAddressedArtifactWriter({
       workspaceRoot: root,
-      artifactRoot: ".tracker-rebuild/artifacts",
+      artifactRoot: ".tracker/artifacts",
     }),
     close: () => {
       database.close();
@@ -207,7 +207,7 @@ describe("operator XLSX export service", () => {
     }, clock);
     const artifacts = createContentAddressedArtifactWriter({
       workspaceRoot: root,
-      artifactRoot: ".tracker-rebuild/artifacts",
+      artifactRoot: ".tracker/artifacts",
     });
     try {
       const service = createOperatorXlsxExportService({
@@ -295,7 +295,7 @@ describe("operator XLSX export service", () => {
     }, clock);
     const artifacts = createContentAddressedArtifactWriter({
       workspaceRoot: root,
-      artifactRoot: ".tracker-rebuild/artifacts",
+      artifactRoot: ".tracker/artifacts",
     });
     try {
       const service = createOperatorXlsxExportService({

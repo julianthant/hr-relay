@@ -150,7 +150,7 @@ describe("dashboard preflight runner composition", () => {
       if (address === null || typeof address === "string") throw new Error("test server exposed no TCP address");
       const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-vite-deadline-"));
       roots.push(root);
-      const stateRoot = join(root, ".tracker-rebuild");
+      const stateRoot = join(root, ".tracker");
       const artifactRoot = join(stateRoot, "artifacts");
       mkdirSync(artifactRoot, { recursive: true });
       let monotonicReads = 0;
@@ -198,7 +198,7 @@ describe("dashboard preflight runner composition", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-preflight-employee-10873698-"));
     roots.push(root);
     const repoRoot = join(root, "runtime-checkout");
-    const stateRoot = join(root, ".tracker-rebuild");
+    const stateRoot = join(root, ".tracker");
     const artifactRoot = join(stateRoot, "artifacts");
     mkdirSync(artifactRoot, { recursive: true });
     const runner = createDashboardPreflightRunners({
@@ -242,7 +242,7 @@ describe("dashboard preflight runner composition", () => {
   it("serves only configured root basenames when filesystem inspection fails", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-preflight-employee-10873698-"));
     roots.push(root);
-    const stateRoot = join(root, ".tracker-rebuild");
+    const stateRoot = join(root, ".tracker");
     const artifactRoot = join(stateRoot, "artifacts");
     const runner = createDashboardPreflightRunners({
       repoRoot: process.cwd(),
@@ -275,7 +275,7 @@ describe("dashboard preflight runner composition", () => {
     assert.deepEqual(observation, {
       check: "filesystem.health",
       state: "unhealthy",
-      summary: "configured rebuild storage could not be verified (filesystem-root-unavailable: .tracker-rebuild, artifacts)",
+      summary: "configured rebuild storage could not be verified (filesystem-root-unavailable: .tracker, artifacts)",
       impact: "authority or evidence writes cannot be admitted",
     });
     assert.equal(observation.summary.includes(root), false);
@@ -285,7 +285,7 @@ describe("dashboard preflight runner composition", () => {
   it("serves only the process-lock root basename when ownership evidence is malformed", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-preflight-employee-10873698-"));
     roots.push(root);
-    const stateRoot = join(root, ".tracker-rebuild");
+    const stateRoot = join(root, ".tracker");
     const artifactRoot = join(stateRoot, "artifacts");
     const processLockRoot = join(stateRoot, "locks");
     mkdirSync(artifactRoot, { recursive: true });
@@ -344,7 +344,7 @@ describe("dashboard preflight runner composition", () => {
       if (address === null || typeof address === "string") throw new Error("test server exposed no TCP address");
       const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-large-vite-"));
       roots.push(root);
-      const stateRoot = join(root, ".tracker-rebuild");
+      const stateRoot = join(root, ".tracker");
       const artifactRoot = join(stateRoot, "artifacts");
       mkdirSync(artifactRoot, { recursive: true });
       const runner = createDashboardPreflightRunners({
@@ -391,7 +391,7 @@ describe("dashboard preflight runner composition", () => {
       if (address === null || typeof address === "string") throw new Error("test server exposed no TCP address");
       const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-foreign-vite-"));
       roots.push(root);
-      const stateRoot = join(root, ".tracker-rebuild");
+      const stateRoot = join(root, ".tracker");
       const artifactRoot = join(stateRoot, "artifacts");
       mkdirSync(artifactRoot, { recursive: true });
       const runner = createDashboardPreflightRunners({
@@ -440,7 +440,7 @@ describe("dashboard preflight runner composition", () => {
       if (address === null || typeof address === "string") throw new Error("test server exposed no TCP address");
       const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-wrong-launcher-"));
       roots.push(root);
-      const stateRoot = join(root, ".tracker-rebuild");
+      const stateRoot = join(root, ".tracker");
       const artifactRoot = join(stateRoot, "artifacts");
       mkdirSync(artifactRoot, { recursive: true });
       const runner = createDashboardPreflightRunners({
@@ -477,7 +477,7 @@ describe("dashboard preflight runner composition", () => {
   it("owns the exact dashboard registry subset and executes its local pure/filesystem/process detectors", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-"));
     roots.push(root);
-    const stateRoot = join(root, ".tracker-rebuild");
+    const stateRoot = join(root, ".tracker");
     const artifactRoot = join(stateRoot, "artifacts");
     const processLockRoot = join(stateRoot, "locks");
     mkdirSync(artifactRoot, { recursive: true });

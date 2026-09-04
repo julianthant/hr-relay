@@ -340,7 +340,7 @@ function tempArtifactWriter(): ContentAddressedArtifactWriter {
   disposers.push(() => rmSync(workspaceRoot, { recursive: true, force: true }));
   return createContentAddressedArtifactWriter({
     workspaceRoot,
-    artifactRoot: ".tracker-rebuild/artifacts",
+    artifactRoot: ".tracker/artifacts",
   });
 }
 

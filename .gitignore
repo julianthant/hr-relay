@@ -26,17 +26,7 @@ duo-autopilot/credentials/
 duo-autopilot/node_modules/
 
 # Rebuild runtime state + artifacts (isolated roots, see config/runtime-isolation.json)
-.tracker-rebuild/
-
-# Local settings authority, initialization/rollback evidence, lock, and crash-left staging files.
-config/settings.json
-config/settings.json.authority.json
-config/settings.json.prepare.json
-config/settings.json.rollback.json
-config/settings.json.lock
-config/settings.json.lock.reaper
-config/.settings.json.lock.reaper.*.recovery
-config/.settings.json*.tmp
+.tracker/
 
 # Coverage lane output (`npm run test:coverage`) — regenerated every run.
 coverage/

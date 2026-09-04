@@ -76,6 +76,7 @@ npm run test:parity:update # the ONE deliberate way to re-freeze a reference (PA
 
 npm run cli               # the runtime CLI (help | phase | dashboard | worker | dry-run-scenario | explain | storage | ocr)
 npm run cli -- dry-run-scenario <workflow> --subject <label> # execute exactly one T1b manifest case
+npm run cli -- storage backup  # the ONLY writer of a verified SQLite backup (D322); `storage doctor` / `storage restore --from` beside it
 npm run dashboard         # the dev dashboard in ONE terminal: BFF (3938) + vite (5174); Ctrl+C stops both
 npm run cli -- dashboard  # the BFF alone; `dashboard:prod` passes --prod and serves dist/dashboard from it (run web:build first)
 npm run web               # the vite dev server alone, proxying /api to a BFF you started yourself
@@ -190,16 +191,26 @@ pins what must differ, and `operational-isolation.test.ts` proves it:
 
 |                           | legacy                                           | rebuild                                                      |
 | ------------------------- | ------------------------------------------------ | ------------------------------------------------------------ |
-| state root                | `.tracker`                                       | `.tracker-rebuild`                                           |
-| artifact root             | `.tracker`                                       | `.tracker-rebuild/artifacts`                                 |
+| state root                | `.tracker`                                       | `.tracker`                                           |
+| artifact root             | `.tracker`                                       | `.tracker/artifacts`                                 |
 | backend / frontend port   | 3838 / 5173                                      | 3938 / 5174                                                  |
-| process locks             | `.tracker/daemons`                               | `.tracker-rebuild/locks`                                     |
+| process locks             | `.tracker/daemons`                               | `.tracker/locks`                                     |
 | browser profile / session | `.auth` / `hrauto-legacy`                        | `.auth` / `hrauto-rebuild` (D216 — roots are repo-relative and never collide; the SESSION namespace is the distinct half) |
 | launch commands           | `dashboard`, `dashboard:prod`, `dashboard:watch` | `dashboard`, `dashboard:prod`, `cli` (D247 — names may coincide; each must be byte-exactly its declared script) |
 
 Command NAMES are not an isolation resource (D247): a muscle-memory `npm run dashboard` in the wrong
 checkout starts that checkout's dashboard on its own port under its own roots and locks, which the
-rows above make legible and harmless. Isolation values reach the runtime through one
+rows above make legible and harmless. The state root NAME is not one either (D321, 2026-09-03): both
+repos use `.tracker`, a repo-relative root that never collides across checkouts, exactly as D216
+argued for `.auth`; the artifact root, lock root, ports and session namespace still differ. The
+settings authority (`settings.json` + its `.authority.json` / `.prepare.json` / `.rollback.json` /
+lock siblings) lives INSIDE the state root since D321, beside the database whose command journal
+proves it, so deleting `.tracker` removes both halves together and the next `npm run dashboard`
+regenerates the root, a fresh migrated database and the never-applied revision-1 settings baseline.
+A settings file that outlives its database refuses by name ("no durable command journal") — that is
+the fail-loud rule working; never reset it by discarding one half silently. The state root holds only
+what the runtime writes on demand; an authority backup exists only after `npm run cli -- storage
+backup` (D322 — no start/interval/drain cadence, no stale-backup alert). Isolation values reach the runtime through one
 exported direct-`const` `defineRuntimeIsolation` call that `src/cli.ts` consumes in the declared
 exported `runCli` runner. The secure environment bootstrap is that runner's sole production invoker;
 an identifier mention, another function, or direct module execution is not proof.
@@ -372,7 +383,7 @@ environment-supplied.
 - **2026-09-03 — a long-lived CLI command must own its shutdown, and the process lock is the
   proof.** The `dashboard` branch detached `compose(...).then(...)` and discarded `running.stop`, so
   `composeDashboardRuntime`'s ordering never ran: SIGINT took Node's default terminate and left
-  `.tracker-rebuild/locks/server.lock.json` at `releasedAt: null`, the authority handle abandoned and
+  `.tracker/locks/server.lock.json` at `releasedAt: null`, the authority handle abandoned and
   no graceful-drain backup. `startRebuildRuntime` is now `async` and the branch awaits the
   composition, then the FIRST SIGINT/SIGTERM through an injectable `signals` seam, then `stop()` —
   once, awaited, with that ordering still the sole shutdown authority. Register both signals with
@@ -517,7 +528,7 @@ environment-supplied.
   `(obligation, authority verdict, mandatory)` tuples, including every `node.*` row; the runner
   compares that list exactly and never projects `absent`/`ambiguous` into a shared verdict.
 - **2026-08-30 — dry-run start admits an existing activation; it does not mint one.** Read the
-  selected `repoRoot/config/settings.json` through SQLite → `readJournaledSettings`, then resolve
+  selected `<stateRoot>/settings.json` through SQLite → `readJournaledSettings`, then resolve
   the supplied environment with those actual Settings. Before any plan/start effect, hold one
   SQLite transaction → exact file fence, recheck the journal, and require the matching activated
   runtime and retained snapshot. Plan and execute synchronously inside that transaction using its
@@ -735,7 +746,7 @@ environment-supplied.
   Do not advertise ACL inspection or race-proof protection against the owning UID.
 
 - **2026-08-28 — an atomic settings rename does not make the command journal atomic.** The
-  `apply-settings` executor replaces one strict, fingerprinted `config/settings.json` envelope by
+  `apply-settings` executor replaces one strict, fingerprinted `.tracker/settings.json` envelope (in `config/` until D321) by
   temp-write → file fsync → atomic rename → directory fsync, then reads the exact bytes back. Claim
   its adjacent lock by atomic hard link before the revision read and retain that claim until the
   SQLite journal/audit transaction commits or exact compensation finishes; otherwise two writers

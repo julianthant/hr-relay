@@ -11,7 +11,7 @@ import type {
   VerifiedArtifactIoKind,
 } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
 
-const ARTIFACT_ROOT = ".tracker-rebuild/artifacts";
+const ARTIFACT_ROOT = ".tracker/artifacts";
 const SMALL_BYTES = Uint8Array.from([0x00, 0x10, 0x7f, 0x80, 0xff]);
 
 async function collectBytes(body: ReadableStream<Uint8Array>): Promise<Buffer> {
@@ -164,7 +164,7 @@ async function expectVerifyAndPrepareToReject(
     );
     assert.ok(closed.every(({ fd }) => fd === -1), `${operation} must report only closed handles`);
     assert.deepEqual(
-      await readdir(join(workspace, ".tracker-rebuild", "verified-byte-scratch")),
+      await readdir(join(workspace, ".tracker", "verified-byte-scratch")),
       [],
       `${operation} must leave no named scratch residue`,
     );
@@ -474,7 +474,7 @@ describe("server verified artifact reader", () => {
       assert.deepEqual(preparedReads, [64 * 1024], "the next chunk must refuse after the first read observes abort");
       assert.deepEqual(closed.map(({ kind }) => kind).toSorted(), ["prepared", "snapshot", "source"]);
       assert.ok(closed.every(({ fd }) => fd === -1));
-      assert.deepEqual(await readdir(join(workspace, ".tracker-rebuild", "verified-byte-scratch")), []);
+      assert.deepEqual(await readdir(join(workspace, ".tracker", "verified-byte-scratch")), []);
     });
   });
 
@@ -534,7 +534,7 @@ describe("server verified artifact reader", () => {
       });
       assert.equal(injected, true);
       assert.deepEqual(
-        await readdir(join(workspace, ".tracker-rebuild", "verified-byte-scratch")),
+        await readdir(join(workspace, ".tracker", "verified-byte-scratch")),
         [],
       );
     });
@@ -570,7 +570,7 @@ describe("server verified artifact reader", () => {
       assert.equal(injected, true);
       assert.deepEqual(closed.map(({ kind }) => kind).toSorted(), [...expectedClosed].toSorted());
       assert.ok(closed.every(({ fd }) => fd === -1), "every observed transient handle must already be closed");
-      assert.deepEqual(await readdir(join(workspace, ".tracker-rebuild", "verified-byte-scratch")), []);
+      assert.deepEqual(await readdir(join(workspace, ".tracker", "verified-byte-scratch")), []);
     });
   });
 
@@ -606,7 +606,7 @@ describe("server verified artifact reader", () => {
       });
       assert.deepEqual(closed.map(({ kind }) => kind).toSorted(), ["prepared", "snapshot", "source"]);
       assert.ok(closed.every(({ fd }) => fd === -1), "compound failure must not retain an open handle");
-      assert.deepEqual(await readdir(join(workspace, ".tracker-rebuild", "verified-byte-scratch")), []);
+      assert.deepEqual(await readdir(join(workspace, ".tracker", "verified-byte-scratch")), []);
     });
   });
 

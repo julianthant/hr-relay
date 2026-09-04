@@ -721,7 +721,7 @@ export async function startSeededServer(
   // asserted before any temp root, database or port exists.
   assertServedBundle(input.distDir, input.bundle);
   const root = mkdtempSync(join(tmpdir(), "hrauto-parity-seeded-"));
-  const stateRoot = join(root, ".tracker-rebuild");
+  const stateRoot = join(root, ".tracker");
   const clock = manualClock(SEEDED_AT);
   const database = AuthorityDatabase.open(
     { path: join(root, "authority.sqlite"), busyTimeoutMs: 1000, migrationOwner: "parity-seeded-bff" },

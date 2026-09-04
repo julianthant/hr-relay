@@ -232,8 +232,8 @@ function harness(options: {
   ) => AuthorityRepositories["diagnosticBundles"];
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
-  const stateRoot = join(root, ".tracker-rebuild");
-  const settingsPath = join(root, "config", "settings.json");
+  const stateRoot = join(root, ".tracker");
+  const settingsPath = join(root, ".tracker", "settings.json");
   const clock = manualClock(AT);
   const ids = sequentialIdFactory("c");
   const database = AuthorityDatabase.open(
@@ -242,12 +242,12 @@ function harness(options: {
   );
   const artifacts = createContentAddressedArtifactWriter({
     workspaceRoot: root,
-    artifactRoot: ".tracker-rebuild/artifacts",
+    artifactRoot: ".tracker/artifacts",
   });
   const artifactSourceReads: number[] = [];
   const artifactReader = createServerVerifiedArtifactReader({
     workspaceRoot: root,
-    artifactRoot: ".tracker-rebuild/artifacts",
+    artifactRoot: ".tracker/artifacts",
     observeIo: (kind, bytes) => {
       if (kind === "source-read") artifactSourceReads.push(bytes);
     },
@@ -1998,7 +1998,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("normalizes diagnostic attachment authority failure without leaking its storage path", async () => {
-    const localPath = "/private/operator/.tracker-rebuild/state.sqlite";
+    const localPath = "/private/operator/.tracker/state.sqlite";
     const h = harness({
       diagnosticBundles: (real) => ({
         ...real,
@@ -3037,7 +3037,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       state: "unavailable",
       cause: {
         code: "span-stream-invalid",
-        summary: "span corpus parent .tracker-rebuild could not be inspected (ENOENT)",
+        summary: "span corpus parent .tracker could not be inspected (ENOENT)",
       },
     });
     assert.deepEqual(report.restoreCandidates, []);

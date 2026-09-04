@@ -339,7 +339,10 @@ function validateCommands(
 
 /** Resources that must differ between the two runtimes on one machine. */
 export const DISTINCT_RESOURCE_KEYS = [
-  "stateRoot",
+  // `stateRoot` left this list with D321 (operator decision, 2026-09-03): both
+  // repos name their state root `.tracker`, and a repo-relative root never
+  // collides across checkouts. The artifact root, the lock root, both ports
+  // and the session namespace below still differ and stay audited.
   "artifactRoot",
   "processLockRoot",
   // `browserProfileRoot` left this list with D216 (operator decision,

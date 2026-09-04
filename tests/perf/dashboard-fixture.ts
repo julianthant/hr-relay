@@ -684,7 +684,7 @@ function seedNotes(context: SeedContext, tally: SeedTally): number {
 /**
  * Seeds the fixture and returns the production query surfaces bound to it.
  * The caller MUST `close()`: the state root is a `mkdtemp` directory, never
- * `.tracker-rebuild`, so a benchmark can never touch a real runtime's state.
+ * `.tracker`, so a benchmark can never touch a real runtime's state.
  */
 export function seedDashboardPerfFixture(): PerfFixture {
   const root = mkdtempSync(join(tmpdir(), "hrauto-perf-dashboard-"));

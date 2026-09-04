@@ -23,14 +23,18 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
     if (context.signal.aborted) throw new Error("authority.health preflight was aborted before inspection");
     const report = await doctorAuthorityStorage(this.#options, this.#clock);
     if (context.signal.aborted) throw new Error("authority.health preflight was aborted during inspection");
+    // D322: the backup arm is REPORTED, never gated — a backup exists only after
+    // `cli storage backup`, so its absence is the operator's choice, not a fault.
     if (report.authority.state === "healthy"
-      && report.backup.state === "current"
       && report.spanAuthority.state === "reconciled") {
+      const backupState = report.backup.state === "current" || report.backup.state === "stale"
+        ? `${report.backup.state} verified backup at generation ${String(report.backup.latest.authorityGeneration)}`
+        : `backup ${report.backup.state}`;
       return PreflightObservationSchema.parse({
         check: this.check,
         state: "healthy",
-        summary: `authority schema ${String(report.authority.inspection.schemaVersion)}, verified backup generation `
-          + `${String(report.backup.latest.authorityGeneration)}, and ${String(report.spanAuthority.streamRunCount)} span run(s) are reconciled`
+        summary: `authority schema ${String(report.authority.inspection.schemaVersion)}, ${backupState}, `
+          + `and ${String(report.spanAuthority.streamRunCount)} span run(s) are reconciled`
           + ` (${String(report.spanAuthority.archived.length)} archived, ${String(report.spanAuthority.deleted.length)} deleted)`,
       });
     }

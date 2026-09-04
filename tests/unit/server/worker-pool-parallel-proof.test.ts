@@ -823,7 +823,7 @@ describe("W5 real processes: two children supervised concurrently through the co
   function openRealHarness(launchCommandOverride?: string): RealHarness {
     const root = mkdtempSync(join(tmpdir(), "hrauto-w5-real-"));
     roots.push(root);
-    const stateRoot = join(root, ".tracker-rebuild");
+    const stateRoot = join(root, ".tracker");
     const dbPath = join(stateRoot, "state.db");
     const lockRoot = join(stateRoot, "locks");
     mkdirSync(stateRoot, { recursive: true });

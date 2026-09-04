@@ -35,7 +35,7 @@ import { HASH_A, HASH_B, NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
 import { RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 
-const ARTIFACT_ROOT = ".tracker-rebuild/artifacts";
+const ARTIFACT_ROOT = ".tracker/artifacts";
 const JSON_BYTES = Uint8Array.from([0x5b, 0x5d]);
 
 interface Fixture {
@@ -227,7 +227,7 @@ describe("E29 diagnostic bundle readback", () => {
       fields: [],
       attachments: [],
     });
-    const localPath = "/private/operator/.tracker-rebuild/state.sqlite";
+    const localPath = "/private/operator/.tracker/state.sqlite";
     const assertSafeCorruption = async (read: () => Promise<unknown>): Promise<void> => {
       await assert.rejects(read, (error: unknown) => {
         assert.ok(error instanceof DiagnosticBundleCorruptError);

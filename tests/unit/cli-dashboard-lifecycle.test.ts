@@ -44,9 +44,11 @@ const BOOT_TIMEOUT_MS = 120_000;
 const SHUTDOWN_TIMEOUT_MS = 60_000;
 /**
  * When the second Ctrl+C is sent, measured against a scratch root's virgin
- * authority: the child listens ~1s after spawn and its whole drain takes ~40ms,
- * so 10ms lands inside the ordering with room to spare, and comfortably after
- * the first signal was delivered and handled (sub-millisecond).
+ * authority: the child listens ~1s after spawn and its whole drain took ~40ms
+ * while it still wrote a graceful-drain backup; since D322 removed that backup
+ * the drain completes in well under 10ms, so 2ms lands inside the ordering and
+ * still comfortably after the first signal was delivered and handled
+ * (sub-millisecond).
  *
  * It must also stay inside the drain: `ownDashboardUntilShutdown` disposes both
  * listeners once `stop()` settles — correctly, since everything durable is
@@ -55,7 +57,7 @@ const SHUTDOWN_TIMEOUT_MS = 60_000;
  * prove nothing. The test asserts the child is still running before it signals
  * rather than assuming the timing holds.
  */
-const SECOND_SIGNAL_DELAY_MS = 10;
+const SECOND_SIGNAL_DELAY_MS = 2;
 
 /**
  * A dashboard already listening on the isolated port makes this test measure
@@ -97,7 +99,7 @@ function requirePrivateEnvironmentFile(): void {
 /**
  * `composeDashboardRuntime` takes `repoRoot = process.cwd()`, so spawning this
  * child in the checkout would boot a real dashboard over the developer's own
- * `.tracker-rebuild/state.db` on every per-commit gate: a config snapshot
+ * `.tracker/state.db` on every per-commit gate: a config snapshot
  * inserted, the active runtime generation advanced, the real `server` lock
  * claimed, a drain backup written. The child gets a scratch cwd holding ONLY
  * what the composition reads relative to its root:
@@ -108,7 +110,7 @@ function requirePrivateEnvironmentFile(): void {
  *  - `node_modules` — a symlink, because Node resolves the bare `--import tsx`
  *    specifier against the CWD.
  *
- * `.tracker-rebuild/**` and `config/**` are the composition's own to create,
+ * `.tracker/**` and `config/**` are the composition's own to create,
  * and the bootstrap derives `.env` from its own module URL, so the checkout's
  * mode-600 file still applies to a child running anywhere.
  */

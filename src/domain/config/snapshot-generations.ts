@@ -34,7 +34,7 @@ import { ConfigSchema } from "./schema.js";
  * open, because that is corruption rather than schema evolution.
  *
  * Generation 1 is the shape the 2026-08-04 Phase-1 exit database actually
- * carries (`.tracker-rebuild/phase1-exit-state.db`). Anything older is not
+ * carries (`.tracker/phase1-exit-state.db`). Anything older is not
  * represented by a surviving database and is deliberately NOT tolerated: an
  * unverifiable historical shape gets a loud refusal, not a guess.
  */

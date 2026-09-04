@@ -194,7 +194,7 @@ function fixture(options: {
 }
 
 function writeStoredArtifact(root: string, ref: ArtifactRef, bytes: Uint8Array): void {
-  const artifactRoot = join(root, ".tracker-rebuild", "artifacts");
+  const artifactRoot = join(root, ".tracker", "artifacts");
   mkdirSync(artifactRoot, { recursive: true });
   writeFileSync(join(artifactRoot, `${ref.sha256}.artifact`), JSON.stringify({
     ref,
@@ -227,7 +227,7 @@ describe("DCA4 exact archived capture routes", () => {
     const leaseClosed = Promise.withResolvers<void>();
     const artifactReader = createServerVerifiedArtifactReader({
       workspaceRoot: root,
-      artifactRoot: ".tracker-rebuild/artifacts",
+      artifactRoot: ".tracker/artifacts",
       observeLeaseClosed: () => {
         leaseCloses += 1;
         leaseClosed.resolve();
@@ -270,7 +270,7 @@ describe("DCA4 exact archived capture routes", () => {
     const transferReported = Promise.withResolvers<Error>();
     const artifactReader = createServerVerifiedArtifactReader({
       workspaceRoot: root,
-      artifactRoot: ".tracker-rebuild/artifacts",
+      artifactRoot: ".tracker/artifacts",
       observeLeaseClosed: leaseClosed.resolve,
     });
     const { app } = fixture({

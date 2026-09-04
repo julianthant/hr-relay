@@ -17,7 +17,7 @@
         "kind": "replaced",
         "milestone": "1f",
         "replacement": "src/server/worker/compose.ts",
-        "differencesAccepted": "Legacy's detached per-workflow daemon — spawned by daemon-registry, owning its own HTTP control surface, lockfile, session and claim loop — is replaced by a FOREGROUND `cli worker <workflow-id> --pool-index <positive-int> [--drain]` process. Control moves off HTTP onto the one idempotent actor-stamped command family plus the authority's own claim leases. Each worker start owns a durable process record under .tracker-rebuild/locks/workers; D181 strictly aggregates those records into one restore-safety observation while identity collision remains the authority lease's job. There is no per-daemon stdout log file: a worker's events reach the operator only through the ONE projection."
+        "differencesAccepted": "Legacy's detached per-workflow daemon — spawned by daemon-registry, owning its own HTTP control surface, lockfile, session and claim loop — is replaced by a FOREGROUND `cli worker <workflow-id> --pool-index <positive-int> [--drain]` process. Control moves off HTTP onto the one idempotent actor-stamped command family plus the authority's own claim leases. Each worker start owns a durable process record under .tracker/locks/workers; D181 strictly aggregates those records into one restore-safety observation while identity collision remains the authority lease's job. There is no per-daemon stdout log file: a worker's events reach the operator only through the ONE projection."
       },
       "ownerMilestone": "1f",
       "verificationEvidence": [

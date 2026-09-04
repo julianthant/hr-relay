@@ -23,8 +23,8 @@
  * and is served on its Settings surface / doctor route; this process cannot
  * see it and does not pretend to.
  */
-import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import { DESCRIPTORS, SERVER_REGISTRY } from "../../control/workflow-registry.js";
@@ -32,6 +32,7 @@ import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../domain/ids.js";
 import {
+  AuthorityBackupService,
   AuthorityDatabase,
   OfflineAuthorityRestoreService,
   OfflineRestoreFailure,
@@ -46,7 +47,6 @@ import type {
   StorageDoctorReport,
 } from "../../infra/sqlite/recovery-contracts.js";
 import {
-  AUTHORITY_BACKUP_MAX_AGE_MS,
   descriptorSetHash,
 } from "../dashboard/compose.js";
 import { createRunQueueProjection } from "../dashboard/projectors/run-queue-projection.js";
@@ -104,10 +104,13 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
 
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
+  "       storage backup [--json]",
   "       storage restore --from <manifest.json> [--json]",
   "       storage repair-span-root --run <run-id> [--json]",
   "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5); exit 0 only when",
-  "           authority and span/authority reconciliation are healthy AND a verified current backup exists",
+  "           authority and span/authority reconciliation are healthy; the backup arm is reported, not gated (D322)",
+  "  backup   write ONE verified authority backup + manifest under the state root's backups/authority;",
+  "           this command is the only backup writer (D322) — the dashboard runs no cadence",
   "  restore  quarantine the suspect authority and swap in one EXACT verified backup,",
   "           rebuilding projections against the staged copy first; the runtime must be",
   "           stopped and the manifest is never chosen for you",
@@ -457,6 +460,62 @@ function describeLocksForRefusal(
   }
 }
 
+/**
+ * D322: the ONE backup writer. Opens the existing authority (never creates
+ * one — a missing database is a refusal, not an empty backup), asks the real
+ * `AuthorityBackupService` for a verified backup at the live generation, and
+ * prints the manifest it wrote. Safe beside a running dashboard: SQLite's
+ * online backup reads a consistent snapshot under WAL.
+ */
+async function backupCommand(
+  isolation: RuntimeIsolation,
+  rest: readonly string[],
+  clock: Clock,
+  repoRoot: string,
+): Promise<StorageCommandOutcome> {
+  const json = rest.includes("--json");
+  const stateRoot = join(repoRoot, isolation.stateRoot);
+  const authorityPath = join(stateRoot, "state.db");
+  if (!existsSync(authorityPath)) {
+    return {
+      output: `storage backup REFUSED — no authority database exists at ${basename(stateRoot)}/state.db; `
+        + "start the dashboard once to create it, then back it up",
+      exitCode: 1,
+    };
+  }
+  const database = AuthorityDatabase.open(
+    { path: authorityPath, busyTimeoutMs: 5000, migrationOwner: "storage-backup" },
+    clock,
+  );
+  try {
+    const service = new AuthorityBackupService(
+      database,
+      { directory: join(stateRoot, "backups", "authority") },
+      clock,
+    );
+    const report = await service.request({
+      trigger: "operator",
+      requiredGeneration: database.getMeta().authorityGeneration,
+    });
+    const manifest = report.manifests.at(-1);
+    if (manifest === undefined) {
+      throw new Error("verified backup run reported no manifest");
+    }
+    return {
+      output: json
+        ? JSON.stringify(report, null, 2)
+        : [
+            `backup: verified — ${manifest.backupFileName}`,
+            `  generation ${String(manifest.authorityGeneration)}, ${String(manifest.byteSize)} bytes, sha256 ${manifest.sha256}`,
+            `  manifest ${manifest.backupFileName}.manifest.json (restore with: storage restore --from <that manifest>)`,
+          ].join("\n"),
+      exitCode: 0,
+    };
+  } finally {
+    database.close();
+  }
+}
+
 export async function composeStorageCommand(
   isolation: RuntimeIsolation,
   args: readonly string[],
@@ -465,6 +524,7 @@ export async function composeStorageCommand(
 ): Promise<StorageCommandOutcome> {
   const [subcommand, ...rest] = args;
   if (subcommand === "restore") return restoreCommand(isolation, rest, clock, repoRoot);
+  if (subcommand === "backup") return backupCommand(isolation, rest, clock, repoRoot);
   if (subcommand === "repair-span-root") return repairSpanRootCommand(isolation, rest, clock, repoRoot);
   if (subcommand !== "doctor") {
     return { output: STORAGE_USAGE, exitCode: subcommand === undefined ? 1 : 2 };
@@ -476,11 +536,9 @@ export async function composeStorageCommand(
     stateRoot,
     authorityPath: join(stateRoot, "state.db"),
     backupDirectory: join(stateRoot, "backups", "authority"),
-    maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
     busyTimeoutMs: 5000,
   }, clock);
   const healthy = report.authority.state === "healthy"
-    && report.backup.state === "current"
     && report.spanAuthority.state === "reconciled";
   return {
     output: json ? JSON.stringify(report, null, 2) : formatReport(report),

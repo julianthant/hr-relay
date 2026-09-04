@@ -885,7 +885,7 @@ describe("parity JSON evidence verifier", () => {
     assert.equal(PARITY_PLAYWRIGHT_COMMAND, process.execPath);
     assert.equal(
       dirname(parityCommandLockPath(process.cwd())),
-      join(realpathSync(process.cwd()), ".tracker-rebuild/locks"),
+      join(realpathSync(process.cwd()), ".tracker/locks"),
       "the command lock must live under the canonical checkout-owned process-lock root",
     );
   });
@@ -904,7 +904,7 @@ describe("parity JSON evidence verifier", () => {
       process.env.TMPDIR = secondTmp;
       const aliasPath = parityCommandLockPath(alias);
       assert.equal(aliasPath, canonicalPath);
-      assert.equal(dirname(aliasPath), join(realpathSync(root), ".tracker-rebuild/locks"));
+      assert.equal(dirname(aliasPath), join(realpathSync(root), ".tracker/locks"));
     } finally {
       if (priorTmp === undefined) delete process.env.TMPDIR;
       else process.env.TMPDIR = priorTmp;

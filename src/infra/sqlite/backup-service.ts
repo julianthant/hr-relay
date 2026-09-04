@@ -37,6 +37,30 @@ type AuthorityBackupSource = Pick<
   "getMeta" | "getSourceDatabaseIdentity" | "onlineBackupTo"
 >;
 
+/**
+ * A read-only SQLite connection to a WAL-mode copy creates `-shm` (and `-wal`)
+ * companions and cannot delete them when it closes. Nothing else ever opens a
+ * backup copy, so after each inspection those companions are removed; an EMPTY
+ * WAL is the only admissible state — bytes in it would mean the copy is not
+ * self-contained, which is a refusal, not a cleanup. D322: the backup directory
+ * holds exactly `.sqlite` + `.manifest.json` pairs, nothing else.
+ */
+function removeReadOnlyInspectionCompanions(backupPath: string): void {
+  const walPath = `${backupPath}-wal`;
+  if (existsSync(walPath)) {
+    const size = statSync(walPath).size;
+    if (size !== 0) {
+      throw new Error(
+        `backup copy ${basename(backupPath)} has a ${String(size)}-byte WAL after read-only inspection; `
+        + "the copy is not self-contained",
+      );
+    }
+    rmSync(walPath);
+  }
+  const shmPath = `${backupPath}-shm`;
+  if (existsSync(shmPath)) rmSync(shmPath);
+}
+
 export type VerifiedBackup = Readonly<{
   manifestPath: string;
   backupPath: string;
@@ -105,6 +129,7 @@ export async function verifyBackupManifestAtPath(
     `backup file ${manifest.backupFileName}`,
   );
   const inspection = AuthorityDatabase.inspectExistingReadOnly(backupPath);
+  removeReadOnlyInspectionCompanions(backupPath);
   for (const field of ["applicationId", "schemaVersion", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
     if (inspection[field] !== manifest[field]) {
       throw new Error(`backup file ${manifest.backupFileName} ${field} does not match its manifest`);
@@ -193,6 +218,7 @@ export class AuthorityBackupService {
     try {
       await this.#source.onlineBackupTo(temporaryBackupPath);
       const inspection = AuthorityDatabase.inspectExistingReadOnly(temporaryBackupPath);
+      removeReadOnlyInspectionCompanions(temporaryBackupPath);
       chmodSync(temporaryBackupPath, 0o600);
       fsyncPath(temporaryBackupPath);
       const createdAt = this.#clock.now().toISOString();

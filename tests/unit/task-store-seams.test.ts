@@ -194,17 +194,17 @@ describe("task, store, session, provider, and artifact seams", () => {
     try {
       assert.throws(() => createContentAddressedArtifactWriter({
         workspaceRoot: workspace,
-        artifactRoot: ".tracker/artifacts",
+        artifactRoot: ".tracker-rebuild/artifacts",
       }), /Invalid input/);
       const writer = createContentAddressedArtifactWriter({
         workspaceRoot: workspace,
-        artifactRoot: ".tracker-rebuild/artifacts",
+        artifactRoot: ".tracker/artifacts",
       });
       const bytes = new TextEncoder().encode("same immutable bytes");
       const first = await writer.put(bytes, { mediaType: "text/plain" });
       const reopenedWriter = createContentAddressedArtifactWriter({
         workspaceRoot: workspace,
-        artifactRoot: ".tracker-rebuild/artifacts",
+        artifactRoot: ".tracker/artifacts",
       });
       const second = await reopenedWriter.put(Readable.from([bytes]), { mediaType: "text/plain" });
       assert.deepEqual(second, first);
@@ -216,7 +216,7 @@ describe("task, store, session, provider, and artifact seams", () => {
         /already exists with media type text\/plain/,
       );
       assert.deepEqual(
-        (await readdir(join(workspace, ".tracker-rebuild/artifacts"))).sort(),
+        (await readdir(join(workspace, ".tracker/artifacts"))).sort(),
         [`${first.sha256}.artifact`],
       );
     } finally {
@@ -238,7 +238,7 @@ describe("task, store, session, provider, and artifact seams", () => {
       try {
         const faulting = createContentAddressedArtifactWriter({
           workspaceRoot: workspace,
-          artifactRoot: ".tracker-rebuild/artifacts",
+          artifactRoot: ".tracker/artifacts",
           injectFault(actual) {
             if (armed && actual === step) {
               armed = false;
@@ -249,12 +249,12 @@ describe("task, store, session, provider, and artifact seams", () => {
         await assert.rejects(faulting.put(bytes, { mediaType: "text/plain" }), new RegExp(`injected ${step}`));
         const recovery = createContentAddressedArtifactWriter({
           workspaceRoot: workspace,
-          artifactRoot: ".tracker-rebuild/artifacts",
+          artifactRoot: ".tracker/artifacts",
         });
         const ref = await recovery.put(bytes, { mediaType: "text/plain" });
         assert.deepEqual(await readStream(await recovery.open(ref)), bytes);
         assert.deepEqual(
-          (await readdir(join(workspace, ".tracker-rebuild/artifacts"))).sort(),
+          (await readdir(join(workspace, ".tracker/artifacts"))).sort(),
           [`${ref.sha256}.artifact`],
         );
       } finally {
@@ -275,7 +275,7 @@ describe("task, store, session, provider, and artifact seams", () => {
       import { createContentAddressedArtifactWriter } from ${JSON.stringify(writerModuleUrl)};
       const writer = createContentAddressedArtifactWriter({
         workspaceRoot: ${JSON.stringify(workspace)},
-        artifactRoot: ".tracker-rebuild/artifacts",
+        artifactRoot: ".tracker/artifacts",
         injectFault(step) {
           if (step === "temp-synced") process.kill(process.pid, "SIGKILL");
         },
@@ -302,7 +302,7 @@ describe("task, store, session, provider, and artifact seams", () => {
       assert.deepEqual(result, { code: null, signal: "SIGKILL" }, stderr);
       assert.notEqual(child.pid, undefined);
 
-      const root = join(workspace, ".tracker-rebuild/artifacts");
+      const root = join(workspace, ".tracker/artifacts");
       const crashEntries = await readdir(root);
       assert.equal(crashEntries.some((name) => name.endsWith(".lock")), false);
       assert.equal(crashEntries.includes(`${sha256}.artifact`), false);
@@ -311,7 +311,7 @@ describe("task, store, session, provider, and artifact seams", () => {
 
       const recovery = createContentAddressedArtifactWriter({
         workspaceRoot: workspace,
-        artifactRoot: ".tracker-rebuild/artifacts",
+        artifactRoot: ".tracker/artifacts",
       });
       const ref = await recovery.put(bytes, { mediaType: "text/plain" });
       assert.equal(ref.sha256, sha256);
@@ -325,7 +325,7 @@ describe("task, store, session, provider, and artifact seams", () => {
   it("rejects relative workspaces, a symlinked workspace, and symlinked rebuild roots", async () => {
     const relativeWriter = createContentAddressedArtifactWriter({
       workspaceRoot: "relative-workspace",
-      artifactRoot: ".tracker-rebuild/artifacts",
+      artifactRoot: ".tracker/artifacts",
     });
     await assert.rejects(
       relativeWriter.put(new Uint8Array(), { mediaType: "application/octet-stream" }),
@@ -340,17 +340,17 @@ describe("task, store, session, provider, and artifact seams", () => {
       await symlink(workspace, workspaceAlias, "dir");
       const aliasWriter = createContentAddressedArtifactWriter({
         workspaceRoot: workspaceAlias,
-        artifactRoot: ".tracker-rebuild/artifacts",
+        artifactRoot: ".tracker/artifacts",
       });
       await assert.rejects(
         aliasWriter.put(new Uint8Array(), { mediaType: "application/octet-stream" }),
         /artifact workspace root cannot be a symbolic link/,
       );
 
-      await symlink(outside, join(workspace, ".tracker-rebuild"), "dir");
+      await symlink(outside, join(workspace, ".tracker"), "dir");
       const writer = createContentAddressedArtifactWriter({
         workspaceRoot: workspace,
-        artifactRoot: ".tracker-rebuild/artifacts",
+        artifactRoot: ".tracker/artifacts",
       });
       await assert.rejects(
         writer.put(new Uint8Array(), { mediaType: "application/octet-stream" }),
@@ -368,11 +368,11 @@ describe("task, store, session, provider, and artifact seams", () => {
     try {
       const writer = createContentAddressedArtifactWriter({
         workspaceRoot: workspace,
-        artifactRoot: ".tracker-rebuild/artifacts",
+        artifactRoot: ".tracker/artifacts",
       });
       const bytes = new TextEncoder().encode("corruption fixture");
       const ref = await writer.put(bytes, { mediaType: "text/plain" });
-      const path = join(workspace, ".tracker-rebuild/artifacts", `${ref.sha256}.artifact`);
+      const path = join(workspace, ".tracker/artifacts", `${ref.sha256}.artifact`);
       const original = await readFile(path, "utf8");
 
       await writeFile(path, "not-json", "utf8");
@@ -398,11 +398,11 @@ describe("task, store, session, provider, and artifact seams", () => {
     try {
       const firstWriter = createContentAddressedArtifactWriter({
         workspaceRoot: workspace,
-        artifactRoot: ".tracker-rebuild/artifacts",
+        artifactRoot: ".tracker/artifacts",
       });
       const secondWriter = createContentAddressedArtifactWriter({
         workspaceRoot: workspace,
-        artifactRoot: ".tracker-rebuild/artifacts",
+        artifactRoot: ".tracker/artifacts",
       });
       const bytes = new TextEncoder().encode("concurrent immutable bytes");
       const results = await Promise.all([
@@ -413,7 +413,7 @@ describe("task, store, session, provider, and artifact seams", () => {
       const winner = await firstWriter.put(bytes, { mediaType: "text/plain" });
       const retried = await secondWriter.put(bytes, { mediaType: "text/plain" });
       assert.deepEqual(retried, winner);
-      assert.deepEqual(await readdir(join(workspace, ".tracker-rebuild/artifacts")), [
+      assert.deepEqual(await readdir(join(workspace, ".tracker/artifacts")), [
         `${winner.sha256}.artifact`,
       ]);
     } finally {

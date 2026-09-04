@@ -60,7 +60,7 @@ function fixture(afterLockLinked: () => void = () => undefined) {
   }, clock);
   cleanups.push(() => database.close());
   let lockAcquisitions = 0;
-  const path = join(root, "config", "settings.json");
+  const path = join(root, ".tracker", "settings.json");
   const file = createSettingsFileAuthority({
     path,
     validateCandidate: (settings) => { resolveConfigWithProvenance({}, settings, clock); },

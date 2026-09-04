@@ -9,7 +9,7 @@
  * production ever recorded one — so `cli storage restore` could not have
  * worked even once. The missing half was never the proof; it was the fact the
  * proof is about. `config/runtime-isolation.json` has pinned
- * `.tracker-rebuild/locks` as a distinct resource since D88 and no code wrote
+ * `.tracker/locks` as a distinct resource since D88 and no code wrote
  * there.
  *
  * ## Atomic singleton admission plus one worker record per process start

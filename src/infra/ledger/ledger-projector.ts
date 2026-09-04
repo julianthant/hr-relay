@@ -56,7 +56,7 @@ export const LedgerProjectorOptionsSchema = z.strictObject({
 });
 
 /**
- * `.tracker-rebuild/ledger/` (ref dashboard-surfaces §2.1). Deliberately NOT reachable from
+ * `.tracker/ledger/` (ref dashboard-surfaces §2.1). Deliberately NOT reachable from
  * `pruneEventStreams`, which can only see `spans/` and `notes/`: the ledger's
  * retention floor is "forever" (D86), and a prune path that could name this
  * directory would be a way to delete proof of a real HR transaction.

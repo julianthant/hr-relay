@@ -92,7 +92,6 @@ import {
   type BackupServiceStateWire,
 } from "../../domain/dashboard/storage.js";
 import {
-  AuthorityBackupService,
   AuthorityDatabase,
   AuthorityHealthPreflightRunner,
   summarizeBackupHealth,
@@ -107,7 +106,6 @@ import { createContentAddressedArtifactWriter } from "../../infra/artifacts/cont
 import { createServerVerifiedArtifactReader } from "../../infra/artifacts/server-verified-artifact-reader.js";
 import { createNotificationInbox } from "../../services/notifications/inbox.js";
 import { createBackfillGapNotifier } from "../../services/notifications/backfill-gap.js";
-import { createBackupHealthNotifier } from "../../services/notifications/storage-health.js";
 import {
   GateParkObservationSchema,
   createGateParkNotifier,
@@ -356,16 +354,6 @@ export interface DashboardComposeInput {
 
 const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();
 
-/** Ref dashboard-surfaces §2.5: a dirty store gets a coalesced verified backup at least every 15 minutes. */
-const AUTHORITY_BACKUP_INTERVAL_MS = 15 * 60 * 1000;
-/**
- * Three intervals — one slow or missed cycle must not flap the Settings
- * indicator, while a genuinely stalled backup lane still reads stale well
- * inside an operator session. Any authority-generation gap reads stale
- * regardless of age.
- */
-export const AUTHORITY_BACKUP_MAX_AGE_MS = 45 * 60 * 1000;
-
 /**
  * The advisory model this root names when the operator's `.env` declares no
  * chain — the same explicit-with-provenance rule `OCR_GEMINI_MODEL_ID` follows
@@ -613,7 +601,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
 
   const env = input.env ?? configResolutionEnvironment();
   const settingsAuthority = createSettingsFileAuthority({
-    path: join(repoRoot, "config", "settings.json"),
+    path: join(stateRoot, "settings.json"),
     validateCandidate: (settings) => {
       resolveConfigWithProvenance(env, settings, clock);
     },
@@ -717,50 +705,24 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   });
 
   /**
-   * Ref dashboard-surfaces §2.5 (2i-D): this process owns the authority backup cadence — one
-   * verified backup at start, a coalesced verified backup whenever the store
-   * is DIRTY on the interval tick, and a graceful-drain backup at stop.
-   * Retention sweeping (14 daily + 8 coalesced + 5 pre-migration) is a
-   * recorded remainder; until it lands, only dirty ticks write, so the
-   * directory grows with real generations only.
+   * D322 (ref dashboard-surfaces §2.5): this process runs NO backup cadence. A verified
+   * authority backup is written only when the operator asks for one
+   * (`npm run cli -- storage backup`), so the backup directory holds requested
+   * generations only and the doctor wire's `service` arm is the fixed
+   * never-run reading that names the command. 2i-D's start/interval/drain
+   * triggers and the D222 stale/missing storage alert are retired with it.
    */
   const backupDirectory = join(stateRoot, "backups", "authority");
-  const backups = new AuthorityBackupService(database, { directory: backupDirectory }, clock);
-  let backupServiceState: BackupServiceStateWire = BackupServiceStateWireSchema.parse({
+  const backupServiceState: BackupServiceStateWire = BackupServiceStateWireSchema.parse({
     state: "never-run",
-    reason: "no backup has completed since this dashboard process started",
+    reason: "backups are written only on operator command (npm run cli -- storage backup)",
   });
-  let lastBackedUpGeneration = -1;
-  const requestBackup = async (
-    trigger: "interval" | "graceful-drain" | "operator",
-  ): Promise<void> => {
-    try {
-      const report = await backups.request({
-        trigger,
-        requiredGeneration: database.getMeta().authorityGeneration,
-      });
-      lastBackedUpGeneration = report.finalGeneration;
-      backupServiceState = BackupServiceStateWireSchema.parse({
-        state: "ok",
-        finishedAt: clock.now().toISOString(),
-        finalGeneration: report.finalGeneration,
-      });
-    } catch (error) {
-      // The on-disk doctor cannot see a failed run — it leaves no manifest —
-      // so the failure is RETAINED and served on the doctor wire's `service`
-      // arm; it must never crash the serving process, and it must never read
-      // as an unchanged "ok".
-      backupServiceState = BackupServiceStateWireSchema.parse({
-        state: "failed",
-        failedAt: clock.now().toISOString(),
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  };
   /**
-   * The ONE cheap backup reading (ref dashboard-surfaces §2.5) — shared verbatim by the
-   * bootstrap summary and the notification watch below, so the bell can never
-   * announce a state the Settings indicator would not show.
+   * The ONE cheap backup reading (ref dashboard-surfaces §2.5) for the bootstrap summary:
+   * `current` when the newest verified manifest captured the live authority
+   * generation, `stale` once the authority moved past it, `missing` when none
+   * exists. D322 sets no age bound — a backup is exactly as old as the
+   * operator's last command.
    */
   const readBackupSummary = (): "current" | "stale" | "missing" => {
     let liveGeneration: { state: "known"; value: number } | { state: "unavailable" };
@@ -769,23 +731,17 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     } catch {
       // A DISTINGUISHABLE unknown, not a default: authority unavailability is
       // already the summary's own `authority` arm, and the backup indicator
-      // then judges by manifest age alone — the degraded contract
+      // then judges by manifest presence alone — the degraded contract
       // `summarizeBackupHealth` documents.
       liveGeneration = { state: "unavailable" };
     }
     return summarizeBackupHealth(
-      { backupDirectory, maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS },
+      { backupDirectory },
       liveGeneration.state === "known" ? liveGeneration.value : undefined,
       clock,
     );
   };
 
-  /**
-   * D222: a stale/missing backup is ref dashboard-surfaces §2.6's `storage` notification, not
-   * an every-view banner — the durable inbox row is the alert, produced here
-   * because this process owns the backup cadence and therefore the reading.
-   * Transition-only publishing (and the restart fold) live in the notifier.
-   */
   const inbox = createNotificationInbox({
     authority: database,
     clock,
@@ -793,48 +749,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     actorId: LOCAL_OPERATOR_ACTOR_ID,
   });
   const backfillGapNotifier = createBackfillGapNotifier({ inbox });
-  const backupNotifier = createBackupHealthNotifier({ inbox });
-  const publishBackupHealth = async (): Promise<void> => {
-    try {
-      await backupNotifier.observed(readBackupSummary());
-    } catch (error) {
-      // Retained, never swallowed: a failed publish means the durable alert
-      // row could not be written (the inbox is an authority table), and this
-      // process's one served storage-lane failure surface is the doctor
-      // wire's `service` arm. The notifier forgets nothing on a throw, so the
-      // next tick retries the same transition.
-      backupServiceState = BackupServiceStateWireSchema.parse({
-        state: "failed",
-        failedAt: clock.now().toISOString(),
-        message: `storage-health notification failed: ${error instanceof Error ? error.message : String(error)}`,
-      });
-    }
-  };
-  // Startup preflight is served only after the startup backup lane has settled,
-  // so `authority.health` never races a manifest that this process already owns.
-  await requestBackup("interval");
-  await publishBackupHealth();
-  const backupTimer = setInterval(() => {
-    let authorityGeneration: number;
-    try {
-      authorityGeneration = database.getMeta().authorityGeneration;
-    } catch (error) {
-      backupServiceState = BackupServiceStateWireSchema.parse({
-        state: "failed",
-        failedAt: clock.now().toISOString(),
-        message: error instanceof Error ? error.message : String(error),
-      });
-      return;
-    }
-    // The health watch runs on EVERY tick — age-based staleness advances with
-    // no generation movement, so a clean store must still be observed.
-    if (authorityGeneration > lastBackedUpGeneration) {
-      void requestBackup("interval").then(publishBackupHealth);
-    } else {
-      void publishBackupHealth();
-    }
-  }, AUTHORITY_BACKUP_INTERVAL_MS);
-  backupTimer.unref();
 
   /**
    * D262: the second wired producer — ref dashboard-surfaces §2.6's open operator gate. A run
@@ -889,7 +803,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       stateRoot,
       authorityPath: join(stateRoot, "state.db"),
       backupDirectory,
-      maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
       busyTimeoutMs: 5000,
     }, clock),
     listLiveWorkerProcesses: () => database.authority.workerLeases.listLive().map((lease) => ({
@@ -1262,12 +1175,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     activityReport: (from, to) => projection.buildActivityReportWire(from, to),
   });
 
-  const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
-  const blockingChecks = initialPreflight.results.filter(({ status }) => status === "fail");
-  if (blockingChecks.length > 0) {
+  const abortStartup = (reason: Error): never => {
     hub.close();
     clearInterval(spanTailTimer);
-    clearInterval(backupTimer);
     clearInterval(gateParkTimer);
     for (const evidence of workerControl.supervisor.close()) {
       reportSupervisorFault(new Error(
@@ -1276,9 +1186,23 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     }
     database.close();
     processLock.release();
-    throw new Error(
+    throw reason;
+  };
+  // The artifact writer and verified reader start initializing their roots at
+  // construction. Serve nothing until both exist: awaited here, a failure is a
+  // legible boot refusal with cleanup; un-awaited, a workspace removed under a
+  // fast shutdown becomes an unhandled rejection after stop() has returned.
+  try {
+    await Promise.all([artifacts.ready, artifactReader.ready]);
+  } catch (error: unknown) {
+    abortStartup(new Error("dashboard artifact roots could not be initialized", { cause: error }));
+  }
+  const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
+  const blockingChecks = initialPreflight.results.filter(({ status }) => status === "fail");
+  if (blockingChecks.length > 0) {
+    abortStartup(new Error(
       `dashboard preflight refused startup: ${blockingChecks.map(({ check, summary }) => `${check}: ${summary}`).join("; ")}`,
-    );
+    ));
   }
 
   const app = createDashboardApp({
@@ -1341,7 +1265,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
         stateRoot,
         authorityPath: join(stateRoot, "state.db"),
         backupDirectory,
-        maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
         busyTimeoutMs: 5000,
       },
       clock,
@@ -1395,7 +1318,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
         failures.push(error);
       }
       clearInterval(spanTailTimer);
-      clearInterval(backupTimer);
       clearInterval(gateParkTimer);
       /**
        * W3 shutdown ordering: the supervisor closes AFTER ingress stopped
@@ -1420,14 +1342,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       } catch (error: unknown) {
         failures.push(error);
       }
-      // Ref dashboard-surfaces §2.5's graceful-drain trigger: one final verified backup while
-      // the database is still open. A failure surfaces AFTER cleanup — loud
-      // to the stopper, never a half-closed process.
-      try {
-        await requestBackup("graceful-drain");
-      } catch (error: unknown) {
-        failures.push(error);
-      }
+      // D322: no graceful-drain backup — an authority backup is written only on
+      // operator command (`cli storage backup`), never as a side effect of stop().
       let databaseClosed = false;
       try {
         database.close();
@@ -1444,9 +1360,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
         } catch (error: unknown) {
           failures.push(error);
         }
-      }
-      if (backupServiceState.state === "failed") {
-        failures.push(new Error(`graceful-drain authority backup failed: ${backupServiceState.message}`));
       }
       const primary = failures[0];
       if (failures.length === 1) throw primary;

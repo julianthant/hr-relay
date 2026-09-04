@@ -42,7 +42,7 @@ describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnost
   { label: "valid-filename", marker: "10999999", event: "valid-file", field: "workflow" },
   { label: "schema-key", marker: "/private/SYNTHETIC_SECRET_NEVER_REAL/10999999", event: "schema-key", field: "strict span schema" },
   { label: "schema-field", marker: "SYNTHETIC_SECRET_NEVER_REAL", event: "schema-field", field: "notRunReason" },
-  // CLI isolation fixes stateRoot to the anchor's direct .tracker-rebuild child;
+  // CLI isolation fixes stateRoot to the anchor's direct .tracker child;
   // only doctor/browser options can express intermediate relative components.
   ...(boundary === "cli-json" ? [] : [
     { label: "nested-root", marker: "SYNTHETIC_SECRET_NEVER_REAL_10999999", event: "nested-root", field: "path component 1" },

@@ -47,7 +47,7 @@ describe("dashboard preflight runners", () => {
   it("maps a concrete occupied-port transport refusal to unhealthy ownership", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-preflight-transport-"));
     roots.push(root);
-    const stateRoot = join(root, ".tracker-rebuild");
+    const stateRoot = join(root, ".tracker");
     const clock = manualClock(new Date(NOW));
     const frontendPort = await occupiedPort(true);
     const composed = createDashboardPreflightRunners({
@@ -73,7 +73,7 @@ describe("dashboard preflight runners", () => {
   it("implements every dashboard.serve check from observable runtime boundaries", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-"));
     roots.push(root);
-    const stateRoot = join(root, ".tracker-rebuild");
+    const stateRoot = join(root, ".tracker");
     const artifactRoot = join(stateRoot, "artifacts");
     mkdirSync(artifactRoot, { recursive: true });
     writeFileSync(join(root, "package.json"), JSON.stringify({
@@ -123,7 +123,7 @@ describe("dashboard preflight runners", () => {
   it("uses the injected frontend HTTP probe and propagates an indeterminate probe failure", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-probe-"));
     roots.push(root);
-    const stateRoot = join(root, ".tracker-rebuild");
+    const stateRoot = join(root, ".tracker");
     const artifactRoot = join(stateRoot, "artifacts");
     mkdirSync(artifactRoot, { recursive: true });
     writeFileSync(join(root, "package.json"), JSON.stringify({

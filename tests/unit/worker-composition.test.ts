@@ -183,7 +183,7 @@ function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, pa
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
   };
   const authority = createSettingsFileAuthority({
-    path: join(repoRoot, "config", "settings.json"),
+    path: join(repoRoot, ".tracker", "settings.json"),
     validateCandidate: (settings) => {
       resolveConfigWithProvenance({}, settings, clock);
     },
@@ -217,7 +217,7 @@ function persistJournaledWorkerSettings(
   try {
     journalWorkerSettings(database, persisted);
     const authority = createSettingsFileAuthority({
-      path: join(repoRoot, "config", "settings.json"),
+      path: join(repoRoot, ".tracker", "settings.json"),
       validateCandidate: (settings) => {
         resolveConfigWithProvenance({}, settings, clock);
       },
@@ -575,7 +575,7 @@ describe("composed worker runtime", () => {
             clock,
             { browser: { headless: false } },
           );
-          admissionSettingsBytes = readFileSync(join(repoRoot, "config", "settings.json"));
+          admissionSettingsBytes = readFileSync(join(repoRoot, ".tracker", "settings.json"));
           // This is deliberately a nested savepoint under claim admission,
           // not an independent durable dashboard commit. The thrown claim
           // must roll its journal back while retaining the already-written file.
@@ -587,7 +587,7 @@ describe("composed worker runtime", () => {
       (error: unknown) => error,
     );
     assert.equal(admissionCrossed, true);
-    assert.deepEqual(readFileSync(join(repoRoot, "config", "settings.json")), admissionSettingsBytes);
+    assert.deepEqual(readFileSync(join(repoRoot, ".tracker", "settings.json")), admissionSettingsBytes);
     const database = reopen(stateRoot, clock);
     assert.equal(sessions.opens("ucpath"), 0);
     assert.equal(sessions.opens("crm"), 0);

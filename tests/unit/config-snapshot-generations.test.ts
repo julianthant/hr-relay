@@ -58,7 +58,7 @@ function legacyPhoneCaptureConfig() {
  * A current-generation database whose one config snapshot is then rewritten to
  * the shape it had at `removed` — the same surgery history performed, so the
  * row is a genuine older snapshot rather than a hand-written approximation of
- * one. `.tracker-rebuild/phase1-exit-state.db` (the preserved Phase-1 exit
+ * one. `.tracker/phase1-exit-state.db` (the preserved Phase-1 exit
  * database, gitignored) reproduces exactly this shape with `removed` set to
  * `timeouts.sessionAcquireMs`.
  */
