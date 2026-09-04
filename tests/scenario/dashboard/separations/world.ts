@@ -5,7 +5,7 @@
  *
  * ## What is real here, and why each half has to be
  *
- * Doc 03b's "Dashboard · wire separations" sub-task landed nine squares, and
+ * Doc 03.1's "Dashboard · wire separations" sub-task landed nine squares, and
  * every one of them is a DECLARATION on one side and a served value on the
  * other. A unit test can pin either side; only a scenario can pin that the two
  * are joined, because the join is made by the composition — the descriptor

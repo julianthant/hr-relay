@@ -1,5 +1,5 @@
 /**
- * The observed-log emission's redaction (D270, `03a-finish-the-dashboard.md`
+ * The observed-log emission's redaction (D270, `03.1-finish-the-dashboard.md`
  * §Observed logs).
  *
  * Every point a task records through `ctx.recordData` — the D115 collector — is

@@ -326,8 +326,8 @@ direction it can be wrong — **provisionally**, until the reusing write's own c
 confirms it.
 
 **Its trigger: each system's own live probe, UCPath at order 7.** This deferral is per system, not
-global; it closes one system at a time, and `03c-migrate-the-remaining-workflows.md` §Live probe
-status is where the unproven ones are tracked.
+global; it closes one system at a time, and `ref workflow-model` §1.6.2 requires each admitted
+Phase 4 packet to name and close its unproven live probes.
 
 **Built today.** The whole mechanism, and two of four contracts carry real numbers. Kuali's window
 was measured on the exact form through the exact mutation: the save answers in ~2.5–3.0 s, Kuali's

@@ -11,7 +11,7 @@ import { buildSafeUiCatalog, uiCatalogProjections } from "../../src/stores/ucpat
 /**
  * Behavioural fixtures for the two 1d maintenance CLIs that close the legacy
  * `src/scripts/selectors/*` capabilities (`ui:catalog`, `selector:search`).
- * Doc 03c §Non-workflow capability closure inventory requires behavioural CLI fixtures and help output for a native or
+ * Ref workflow-model §1.6.3 requires behavioural CLI fixtures and help output for a native or
  * replaced CLI disposition, so these exercise the real entry points as child
  * processes rather than re-testing the library functions in-process.
  *

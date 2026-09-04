@@ -4,7 +4,7 @@ Records superseded by the owning docs wherever they differ — kept so nothing i
 cite as normative.**
 
 Everything here was true when it was written and is preserved verbatim. What is normative now lives
-in the phase docs (`docs/rebuild/00`–`05`), the contract specs (`docs/rebuild/reference/`) and the
+in the phase docs (`docs/rebuild/00`–`06`, including decimal Phase 3 parts), the contract specs (`docs/rebuild/reference/`) and the
 tree plus its governance prose (`docs/roadmap/roadmap.md`). Each file carries a one-line header
 naming its successor; the tables below say the same thing in one place, with the old filename in
 the **what it was** column so an old citation resolves.
@@ -48,6 +48,8 @@ here with a header naming the doc that now answers it.
 
 | file | date | what it was | what superseded it |
 |---|---|---|---|
+| `2026-09-04-03b-separations-before-authoring.md` | through 2026-09-03 | was active `03b-finish-separations.md` / Phase 3.2, placing Separations implementation and controlled proof before the final workflow-authoring conversion | D329; `03.2-finish-workflow-authoring.md` revalidates its landed seams and freezes the candidate, then `03.3-accept-person-lookup-and-separations.md` owns controlled acceptance. Its exact old-to-new task crosswalk is in both active docs |
+| `2026-09-04-03c-authoring-after-separations.md` | through 2026-09-03 | was active `03c-migrate-the-remaining-workflows.md` / Phase 3.3 plus the Phase 4 admission backlog; it retained 3c-A/3c-B and candidate-order narratives after the roadmap moved to numbered tasks | D329; `03.2-finish-workflow-authoring.md` owns authoring/read-only acceptance, `03.3-accept-person-lookup-and-separations.md` owns controlled acceptance, and `reference/workflow-model.md` §1.6.2 owns future workflow admission |
 | `2026-08-20-frontend-backend-integration-1.3.md` | 2026-07-30 | was `reference/frontend-backend-integration.md` §1.3 — the audit's list of integration requirements the reference specs did not yet carry (bootstrap document, resumable subscription, panel-kind projection, start/enqueue contracts, command families, Review patches, one count family, archive snapshots, capture metadata, contextual command results) | `reference/frontend-backend-integration.md` §3 / §5 / §5.1, whose sections now carry each item as built or as a named absence; the file's own tail table maps item → section |
 | `2026-08-20-03b-separations-status-2026-08-14.md` | 2026-08-14 | was `07-master-plan.md` §3.1's "Separations' §3.2 status, 2026-08-14" block, carried into `03b-finish-separations.md` by the shelf split — the 8-of-9 reading as it stood before the canary was named, before D221 was live-proved and before the browser-profile wedge was root-caused | `docs/rebuild/03b-finish-separations.md` §Phase summary / §Separations — order 8, the first migration / §Exit criteria, and `docs/migrations/separations.md` §9.19 · §9.20 · §9.22 · §9.24; the file's own header lists what moved |
 | `2026-08-20-master-plan-dissolved.md` | 2026-08-20 | `docs/rebuild/07-master-plan.md` exactly as it stood at commit `8bd97c2f`, preserved when step 3b distributed it | the phase docs `00`–`05` and `docs/roadmap/roadmap.md` §Governance; the file's own header carries the 35-row § → destination table (`ce5d87fa`). Still named as the `owner` of the planned `one-time-import-offline` entry in `guard-inventory.json`, whose invariant already points at `doc 05 §Exit criteria` |

@@ -1,5 +1,5 @@
 /**
- * D312 (doc 03c 3c-A unit 2) — the ref stores §2 renderer, against a fixture registry.
+ * D312 (doc 03.2 Task 2) — the ref stores §2 renderer, against a fixture registry.
  *
  * `store-catalog-current.test.ts` proves the CHECKED-IN bytes; this file proves the renderer's
  * behaviour on shapes the live registry does not currently carry: a plain (non-discriminated) union

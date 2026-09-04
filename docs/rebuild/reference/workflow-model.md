@@ -727,16 +727,13 @@ meantime: a server/client mismatch fails loud rather than rendering a stale surf
 
 #### 1.2.1 The module's role declaration (D219, 2026-08-14)
 
-<!-- roadmap: platform-fixes -->
 
-<!-- roadmap-status: platform-fixes -->
 - [x] every MODULE declares a required closed `role`, validated fail-loud at the composition root; a dangling `chunk-harness.of` and a harness-of-a-harness are unrepresentable (§1.2.1, D219/D220; `src/domain/workflow/module-role.ts`, `src/control/workflow-registry.ts` `auditWorkflowModuleRoles`)
 - [x] a retry is the ITEM's next unspent attempt, taken from authority inside the inserting transaction; `runs.enqueue` refuses an attempt the item has already spent (§4/§5.6 #1/§5.7, D221)
 - [x] the checkpoint identity carries the claim generation, so a gate park and its resume are two executions rather than one refused insert (§5.7, D214, migration v14)
 - [x] the span path carries the claim generation too, so the two executions are two timeline rows (§6, D214)
 - [x] a dry run runs beat ① before it stages, so a rehearsal cannot fail where the performance succeeds (§2.1, D215)
 > 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/workflow/module-role.ts`, `src/control/workflow-registry.ts`, `src/infra/sqlite/migrations.ts` (v14) and `src/core/run-executor.ts`; left: nothing in this doc's half — D218/D222 are ref dashboard-surfaces's and D243/D244 ref execution-and-sessions'
-<!-- /roadmap-status -->
 
 A registered workflow is one of three things to the program's taxonomy, and the MODULE — never the
 descriptor — states which, as a **required** closed union:
@@ -781,16 +778,14 @@ tuple audit gains the same check at CI.
 
 **What the role does NOT change:** registration, startability, run identity, or §3.2 obligations.
 A chunk harness stays independently runnable through the start-plan lane — each of the five
-separations harnesses still owes/holds its own controlled-commit proof — and doc 03c §Exit criteria names no
+separations harnesses still owes/holds its own controlled-commit proof — and docs 03.2/03.3 name no
 criterion about rail presence. How the role PRESENTS (rail nesting, picker, counts, run-row labels)
 is ref dashboard-surfaces's (§Shell, D219); the bootstrap wire serves the raw fact and the frontend owns display,
 per the standing R2 D17/D18 split.
 
 #### 1.2.2 The workflow tree IS the rail and the timeline (D265, 2026-08-21)
 
-<!-- roadmap: workflow-tree -->
 
-<!-- roadmap-status: workflow-tree -->
 - [x] the rule, the separations mapping and the `workflow-layout` guard's invariant are written (this section, D265, 2026-08-21)
 - [x] `src/workflows/separations/` holds six step folders and the composition's `timeline` is one category per folder
 - [x] the five harnesses live INSIDE the step they prove; `chunk-harness` carries `step`; ids unchanged
@@ -800,7 +795,6 @@ per the standing R2 D17/D18 split.
 > 2026-08-21 | workflow-tree ruling | ratified from the operator's ruling on the `src/workflows/` layout; the code unit is the next session's — nothing under `src/workflows/` has moved yet
 > 2026-08-21 | workflow-tree ruling | D266 the same session: the `proving/` arm withdrawn, `kuali-timekeeper-annotation` dismantled into the Kuali finalization step's T1 pair
 > 2026-08-25 | test-tiers | source retirement, first T1 pair, role/registry/layout guards, manifest regeneration and dashboard parity landed; subject registry, insert-only result and CLI runner are now built. The live T1b green waits only for the finalization canary's 2026-08-28 availability
-<!-- /roadmap-status -->
 
 **Operator ruling (2026-08-21).** *"We will just have a separations folder for the separations
 workflow and put identity-check, kronos-timecard folders inside. They will be the timeline steps, and
@@ -894,7 +888,7 @@ folder — D312 §1.6.1 item 5, 2026-09-02); (c) every `chunk-harness.step` name
 `descriptor-coverage` §1.4 and `workflow-editor-compile-integrity` derive a descriptor's path from
 its ROLE (`src/workflows/<id>/` or `src/workflows/<of>/<step>/`), never from its id alone.
 
-**Every later migration inherits this shape** (doc 03c §The seven-step migration playbook, step 2):
+**Every later migration inherits this shape** through the Phase 4 admission packet (§1.6.2):
 one top-level folder when the workflow is a rail workflow, step folders for its declared timeline,
 harnesses inside the step they prove, and no third source-folder arm.
 
@@ -1017,11 +1011,11 @@ Settings' work (ref operator-trust §5.2) and it is named here because a reader 
 I rename a step" needs the answer to be "you edit the descriptor, for now" rather than a path that
 resolves to nothing.
 
-### 1.6 Workflow definition — the one authoring seam (D311/D317, 2026-09-02)
+### 1.6 Workflow definition — the one authoring seam (D311/D317/D329, 2026-09-04)
 
 <!-- roadmap: workflow-authoring-model -->
 
-**Implementation status (2026-09-02, 3c-A deletion acceptance).** `src/base/workflow-definition.ts`
+**Implementation status (2026-09-02 deletion acceptance; current verification pending under D329).** `src/base/workflow-definition.ts`
 is the one seam: `defineWorkflow` / `compileWorkflow` / `WorkflowDefinition` / `CompiledWorkflow`
 (D317 names, R3), the closed `task | parallel | delegate | gate | transaction` entry algebra, D313
 omission admission and D314 recovery are built and gated. Every registered workflow — Person Lookup,
@@ -1032,7 +1026,15 @@ omission, and each harness imports the identities of the step it proves. The for
 `.pipe()`), the per-step `node-ids.ts`/`nodes.ts`/`step.ts`/`omission.ts` files and the last
 hand-authored `descriptor.ts`/`module.ts` pair (`separations-identity-check`) are deleted, and the
 transitional "not yet converted" arm is gone from the registry, the Explorer's source links and the
-`workflow-layout` guard. Doc 03c 3c-A owns the remaining guide and reference reconciliation.
+`workflow-layout` guard. Doc 03.2 owns current-source revalidation, read-only acceptance, and the
+independent exact-candidate freeze; historical completion does not pre-mark those tasks complete.
+
+**D329 chronology amendment.** Every activity that can change the compiler, shared runtime,
+task-store substrate, Person Lookup, Separations, or their load-bearing configuration completes in
+Phase 3.2 before one exact candidate freezes. Phase 3.3 consumes that candidate without source
+changes for the independent pending-sweep witness, coupled UCPath filing/Kuali finalization, and
+acceptance reconciliation. Drift or a software defect returns to a newly numbered 3.2 remediation
+task and invalidates affected evidence; an UNKNOWN is never retried.
 
 The runtime model above remains authoritative, but workflow authors no longer hand-maintain each of
 its projections independently. A **workflow definition** is the reviewed source form for every new
@@ -1212,6 +1214,24 @@ describe the analogy, not the model.
 
 #### 1.6.2 Workflow admission before a Phase 4 part (D319/D323, 2026-09-03)
 
+<!-- roadmap: migrations -->
+
+<!-- roadmap-status: migrations -->
+- [ ] Phase 4 starts only after Phase 3.4 closes
+- [ ] one complete current-behavior and proposed-definition packet is verified at a time
+- [!] the operator approves the exact candidate boundary before a lettered part is created
+> 2026-09-04 | D329 authority move | future-workflow admission remains here; the former active 03c candidate-order narrative is superseded history
+<!-- /roadmap-status -->
+
+<!-- roadmap: workflow-admission -->
+
+<!-- roadmap-status: workflow-admission -->
+- [ ] select one candidate after Phase 3 closes
+- [ ] verify all nine packet fields without guessing
+- [!] approve the exact boundary and tuple model before creating 4A
+> 2026-09-04 | D329 authority move | this section, not the archived 03c plan, owns the next-workflow admission gate
+<!-- /roadmap-status -->
+
 A legacy workflow name, old implementation folder, proposed order row, or partially verified intake
 record is a **workflow candidate**, not a rebuilt workflow and not an admitted Phase 4 part.
 Candidates stay outside Phase 4's active lettered sequence until the operator approves one complete
@@ -1243,6 +1263,23 @@ Admission verification and phase completion are different gates. Admission prove
 workflow is understood well enough to build. Phase completion proves that the rebuilt workflow works
 under T1, live selector verification and controlled-write evidence where applicable. Work done for
 one candidate never silently admits the next candidate.
+
+#### 1.6.3 Shared capabilities enter with the first admitted consumer (D319/D329)
+
+<!-- roadmap: cross-cutting -->
+
+<!-- roadmap-status: cross-cutting -->
+- [ ] no unassigned shared-capability backlog becomes implementation authority by itself
+- [ ] an admitted Phase 4 workflow names each shared capability it is the first verified consumer to require
+- [ ] cutover capability dispositions remain explicit until an admitted owner proves or retires them
+> 2026-09-04 | D329 authority move | the old 03c backlog is retained only as historical evidence; admission creates the actionable owner
+<!-- /roadmap-status -->
+
+A shared task-store, dashboard, intake, secret, export, notification, or operator-trust capability
+does not receive a free-standing migration task merely because an old inventory listed it. The first
+approved workflow whose verified packet needs that capability owns its implementation and proof.
+Cross-workflow infrastructure may be separated into its own supervisor task inside that workflow's
+lettered Phase 4 part, but its admission, dependencies, and exit evidence remain explicit there.
 
 ---
 
@@ -1363,9 +1400,7 @@ it is never serialized, dropped, or substituted into a plausible refusal.
 
 ### 2.1 How a previewed run ENDS (D210)
 
-<!-- roadmap: sep-6c -->
 
-<!-- roadmap-status: sep-6c -->
 - [x] a previewed run settles `done` with `RunDryRunPreviewResult` in the same `run_results` row, bound to the PREVIEW schema hash — no new authority table, no schema version, `RunOutcome` gains no arm (D210)
 - [x] its dependencies are the transaction node's own `dependsOn`, and `buildPreview` shares `build`'s run-identity checks and unforgeable seal while refusing a non-dry-run envelope and any node other than the graph's `stopsAt`
 - [x] the receipt reports `completion.terminal-result` as `unknown` with a load-bearing `DRY_RUN_PREVIEW` warning, so `verified-done` is structurally unreachable and the receipt settles `partial`/`unknown` (ref operator-trust §2.3)
@@ -1373,7 +1408,6 @@ it is never serialized, dropped, or substituted into a plausible refusal.
 - [x] `prepare` and `subject` live inside the `would-prepare` arm, so "no staged page" cannot be mistaken for an empty one; `transaction.previewed` carries the `not-observed` subject verdict for the same reason
 - [ ] the queue row and the timeline still have no arm for a preview: `transaction.previewed` is carried on the span stream and deliberately ignored by `run-queue-projection`, and the operator-facing truth is the evidence receipt alone. Surfacing it is a wire + UI change, named here and unbuilt
 > 2026-08-21 | docs-cohesion workflow-model | verified against `src/core/run-executor.ts`, `src/base/workflow.ts` (`buildPreview`) and `src/events/types.ts`; left: the queue/timeline preview arm
-<!-- /roadmap-status -->
 
 Ref task-contract §6.2 says what a dry run does at a transaction node — *"records an honest
 `transaction.previewed` span, and ends the run at the node"* — and §10.1 says it stops there
@@ -1516,9 +1550,7 @@ export const PersonLookupInput = z.union([
 ## 3. The ONE builder API (absorbs ref task-contract §5)
 
 <!-- roadmap: p1-authority -->
-<!-- roadmap: sep-6a -->
 
-<!-- roadmap-status: sep-6a -->
 - [x] the composed `separations` descriptor is the builder's real-scale proof in production shape: **19 nodes** — 15 `.step`, 1 `.gate`, 3 `.transaction` — assembled from the five chunk harnesses' proven tasks (`src/workflows/separations/descriptor.ts:288-700`)
 - [x] the identity-authority task dominates both sinks, decision and output: `identity-gate-before-commit` audits terminal results and transactions, and pins the gate's exact name-only condition (D202/D309)
 - [x] the packet carries the WRITE PLAN — dates, template, department — so moved evidence refuses either supplied-EID machine verification or name-only approval (D211/D309, ref write-safety §14.10/§14.12)
@@ -1527,7 +1559,6 @@ export const PersonLookupInput = z.union([
 - [x] the composition declares `role: composition` and the five chunks became `chunk-harness of separations` on the day it registered; nothing about their run identity moved (§1.2.1, D219)
 - [ ] `branch`, `parallel` and `child-run` remain unexercised by this composition and by every other registered workflow; the builder's proof for those three kinds is `tests/types/flow-graph.typecheck.ts` and `fixtureDescriptor`
 > 2026-08-21 | docs-cohesion workflow-model | verified against `src/workflows/separations/descriptor.ts` (19 builder calls counted) and `src/control/workflow-registry.ts`; left: the three unexercised node kinds
-<!-- /roadmap-status -->
 
 Ref task-contract §5's `FlowBuilder` sketch and this doc's earlier `.task({...})` shape are unified here —
 this is the single API; ref task-contract defers to it. The builder accumulates a **`Steps` generic map**
@@ -1958,7 +1989,6 @@ unchanged — conditionality is still a key-presence fact at the type level.
 ## 4. The run-state machine (gates are run-state, not task internals — D5)
 
 <!-- roadmap: p1-kernel -->
-<!-- roadmap: platform-fixes -->
 
 Tasks stay run-to-completion with bounded duration (ref task-contract's retry/timeout policy). Long waits —
 OCR approval, oath-upload's child-signature watching, external signals — are **gate nodes** in the
@@ -2134,9 +2164,7 @@ problems (no fix-one-refresh-repeat loops).
 ### 5.5 Checkpoint freshness (D8 — closes the stale-read→live-write hole)
 
 <!-- roadmap: p1-authority -->
-<!-- roadmap: sep-3 -->
 
-<!-- roadmap-status: sep-3 -->
 - [x] `ucpath/read-job-summary` returns the whole grid with statuses VERBATIM and classifies nothing; the disposition is a pure unconditional fold, and the absent arms split by what a blank MEANS — empl record, HR status and business unit refuse it, the nine descriptive cells carry `{state:"absent", reason}` (D201)
 - [x] the shared identity-authority task dominates both sinks; the guard also pins `identity-approval` to `packet.emplIdSource == name-resolved` (D202/D309)
 - [x] a gate's durable record is a `gate_results` row and the freshness walk reads it as evidence — `upstreamEvidence.gateResults` beside `checkpoints` (D203; `src/domain/task-provenance.ts:84-102`)
@@ -2145,7 +2173,6 @@ problems (no fix-one-refresh-repeat loops).
 - [!] the incident that motivated the gate would not have tripped a tier-triggered one: `classifyNameSimilarity("Hernandez, Jose Santos", "Santos Hernandez")` returns `same`. D309 therefore gates every `name-resolved` identity regardless of tier, while exact independently supplied/read-back EID uses machine authority
 > 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/task-provenance.ts`, `src/domain/workflow/checkpoint.ts` and `src/core/evidence-receipt.ts`; left: nothing — chunk 3 is closed
 
-<!-- /roadmap-status -->
 
 **A gate's durable evidence is a `gate_results` row, and a downstream task's provenance must accept
 it as such (D203, 2026-08-12).** A task's read-completion validation resolves its declared
@@ -2285,9 +2312,7 @@ only its evidence-resolution actions; these two choices do not bypass write reco
 ### 5.7 The checkpoint store — and resume scope (D9)
 
 <!-- roadmap: p1-authority -->
-<!-- roadmap: sep-6b -->
 
-<!-- roadmap-status: sep-6b -->
 - [x] the durable key is `(workflow, item_id, node_id, attempt, claim_generation)` — migration **v14**, a table rebuild because a UNIQUE constraint cannot be widened in place, copying `record_key` verbatim and every pre-D214 generation as `NULL` (`src/infra/sqlite/migrations.ts:994-1016`)
 - [x] the generation is read-forward: `checkpointLookupKey` appends nothing when it is absent, so every pre-D214 row keeps a byte-identical key — while `runCheckpoints.insert` REFUSES a new record naming no generation, so no further unrecorded row can be written (D133/D214)
 - [x] the span path carries the generation too (`#<claimGeneration>.<taskAttempt>`), so a gate park and its resume are two rows on the timeline rather than one folded row (§6, `src/core/run-executor.ts:1185`)
@@ -2296,7 +2321,6 @@ only its evidence-resolution actions; these two choices do not bypass write reco
 - [x] the composed graph's first live pass is what found both defects: run `00419600` read thirteen nodes, parked, took a real approval and died one node later (D214); run `555ba4b4` retried `12a5cd3e` and died in 1.89 s (D221)
 > 2026-08-21 | docs-cohesion workflow-model | verified against `src/infra/sqlite/migrations.ts` (v3 frozen at :268-279, v14 at :994-1016), `src/domain/workflow/checkpoint.ts` and `src/core/run-executor.ts`; left: nothing — 6b's platform items are closed
 
-<!-- /roadmap-status -->
 
 SQLite, beside the run authority tables (live truth stays SQLite; JSONL stays audit). The logical
 item key is **`(workflow, item_id)`** — retries share it, rerun-with-new-input gets a fresh one —
@@ -2639,17 +2663,14 @@ storage, SSE. This section keeps only the engine-side semantics THIS doc owns:
 
 ## 8. Worked example — person-lookup (the Phase-1 exit vertical slice)
 
-<!-- roadmap: order-0 -->
 <!-- roadmap: p1-exit -->
 
-<!-- roadmap-status: order-0 -->
 - [x] `person-lookup` is migrated, registered and live-proved: four nodes, `role: standalone`, `code: "pl"` (`src/workflows/person-lookup/descriptor.ts`)
 - [x] its start surface is the canonical `inputRun`: an `eid` pattern rule with an `otherwise` arm emitting `name`, which is exactly the ONE-varying-value shape D260 states (`:212-213`)
 - [x] the `always-rerun` `active-status` node and the `when`-gated `crm-dates` node are the tree's only live examples of either policy
 - [x] the result `derive` reads exactly its declared terminal dependencies and refuses a missing conditional output by name through `requireFact`
 - [ ] the listing in this section is a SKETCH in four places the shipped module spells differently — enumerated immediately below it, and left as a sketch on purpose because it is the shape an author reads
 > 2026-08-21 | docs-cohesion workflow-model | verified line-by-line against `src/workflows/person-lookup/descriptor.ts:111-162`; left: nothing — order 0 is closed
-<!-- /roadmap-status -->
 
 The first step **imports ref task-contract §9.1's `ucpath/search-person-org` contract verbatim** (D16 — one
 definition, this doc consumes it): input is the `by-name`/`by-eid` discriminated union, output is
@@ -2766,7 +2787,6 @@ Nothing launched, no Duo spent, no partial run row.
 
 ### 8.1 AS-BUILT — the worked example is the shipped workflow (2j, 2026-08-09)
 
-<!-- roadmap: order-0 -->
 <!-- roadmap: p1-exit -->
 
 <!-- roadmap-status: p1-exit -->

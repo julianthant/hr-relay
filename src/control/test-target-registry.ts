@@ -40,7 +40,7 @@ export const SeparationsKualiFinalizationSubjectKindSchema = z.enum(["ordinary"]
 
 /**
  * What a subject of the COMPOSED separations chain is for: the full-chain
- * rehearsal role, and the controlled-commit role D280 names. Doc 03b's other
+ * rehearsal role, and the controlled-commit role D280 names. Doc 03.3's other
  * migration roles retired with D284 along with the documents that carried them.
  */
 export const SeparationsChainSubjectKindSchema = z.enum([
@@ -206,7 +206,7 @@ export const TestTargetWorkflowArmsSchema = z.strictObject({
 
 /**
  * Every entry carries these, whatever workflow addresses it: what the subject is
- * FOR (`purpose`, doc 03b's "what it is good for" column), the dated
+ * FOR (`purpose`, doc 03.3's target-registry contract), the dated
  * availability claim — a fact about the DOCUMENT, not about one workflow — the
  * record that observed it, and D85's usage rules.
  */

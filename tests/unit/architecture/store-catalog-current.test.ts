@@ -1,5 +1,5 @@
 /**
- * D312 (doc 03c 3c-A unit 2) — ref stores §2 is GENERATED from `taskStoreRegistry`, not written.
+ * D312 (doc 03.2 Task 2) — ref stores §2 is GENERATED from `taskStoreRegistry`, not written.
  *
  * The reuse index is the one document an author consults before minting a task. A hand-maintained
  * index goes stale silently, and a stale index is exactly what mints a second implementation of a

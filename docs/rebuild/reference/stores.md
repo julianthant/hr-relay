@@ -120,7 +120,7 @@ which store you are in, this decides how wide the new read task is:
 
 Generated from the live task-store registry: every registered store, its declaration status, and
 every task's contract shape — the index to search BEFORE writing a task. This catalog is the D312 /
-doc 03c "find before you build" surface: an author decides REUSE / CUSTOMIZE / BUILD here, and
+doc 03.2 Task 2's "find before you build" surface: an author decides REUSE / CUSTOMIZE / BUILD here, and
 `docs/guides/workflow-authoring.md` §2 is the author's entry point into it. Run
 `npm run stores:catalog` after any store change; `npm run stores:catalog:check` fails on stale
 bytes. Hand-written provenance, live-verification dates and reuse guidance live in §2b below.
@@ -643,7 +643,7 @@ them is a decision only a graph holding ALL of the reads can make.
 
 Five of the nine browser stores are declaration-only (`unwired` driver, stub session provider, 0
 tasks, no `system-bindings.ts` entry). Building one is genuinely BUILD work, not CUSTOMIZE — see §1
-step 3. Candidate evidence is cataloged in doc 03c §Unverified candidate evidence - not a phase order:
+step 3. Candidate evidence is cataloged under ref workflow-model §1.6.2 and remains unadmitted until the operator acts:
 
 | Store | Migration order that mints it | Workflow(s) | Notes |
 |---|---|---|---|

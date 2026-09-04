@@ -53,7 +53,7 @@ Three adaptations for a reader in THIS tree (a third was undisclosed until Track
 
     This paragraph used to say the page did not exist at all — it was a real deferral, and D274
     item 3 ("port specimen page plus parity scene") ruled it built on 2026-08-26, closing
-    `03a-finish-the-dashboard.md` OPEN question 3 and ledger 3 UK146–UK158. Two details of the port
+    `03.1-finish-the-dashboard.md` OPEN question 3 and ledger 3 UK146–UK158. Two details of the port
     are recorded in the page's own header comment rather than here, because they are facts about
     this tree's guards and not about the design language: the Workflow `<Select>`'s option values
     carry a `specimen-` prefix (`dashboard-wire-boundary` forbids a registered workflow-id literal

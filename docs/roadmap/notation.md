@@ -26,7 +26,7 @@ status: active                             ← done | active | you | planned | p
 when: 08-12 → today | nine days so far     ← primary | secondary (secondary optional)
 size: XL                                   ← S | M | L | XL (optional)
 chip: active                               ← optional; chip-tone: overrides the colour
-doc: 03c §Phase summary · ref:write-safety §5   ← the doc sections that OWN this node's contracts
+doc: 03.2 §Phase summary · ref:write-safety §5   ← the doc sections that OWN this node's contracts
 open: yes                                  ← yes | no (unused by the tree; kept for the doc)
 
 > summary — one line; more "> " lines are joined with a space
@@ -45,7 +45,7 @@ note: text                                 ← a note block; note!: an amber (op
 log:                                       ← the node's session journal, newest-first in the drawer
 - 2026-08-20 | docs-cohesion step 2b | what landed (`ea7704e0`) · what is left
 
-### 3A · Shared dashboard {#track-a}        ← a LETTERED PART under the phase: "### Title {#id}"
+### 3.2 · Workflow authoring {#workflow-authoring-model} ← a DECIMAL PART under Phases 0–3: "### Title {#id}"
 status: you
 date: D196 · D205 live 08-13               ← the item's info line (dates, decisions)
 size: L
@@ -58,7 +58,7 @@ builds: … / needs: … / log: … / note: …
 |---|---|---|
 | !A1 | You name the canary | **YOU** |
 
-#### 1 · new-kronos timecard read {#sep-1}   ← a TASK in that part (#### and ##### nest one level each)
+#### 1 · Verify the workflow-definition platform {#workflow-authoring-core} ← a TASK in that part
 
 ## flag: 2026-08-12 | D193 — scope and entry …   ← a dated RATIFIED milestone on the spine
 ## today: 2026-08-20 · HEAD 5f6713f · …          ← the TODAY rule
@@ -71,12 +71,12 @@ builds: … / needs: … / log: … / note: …
 Verbatim from the parser's own banner (`scripts/roadmap/parse-plan.ts`) — the grammar is what the parser enforces, line by line:
 
 ```
-doc: 03a §2.1 · ref:write-safety §5 · 00
+doc: 03.1 §2.1 · ref:write-safety §5 · 00
   An ATTRIBUTE line (so it sits in the attribute block under the heading,
   beside `status:`), legal on a phase, a task or a sub-task. Its value is
   one or more refs joined by " · " (the split happens only before a doc token, so a section may contain " · "). A ref is `<doc>` or `<doc> §<section>`,
   and `<doc>` is one of exactly two things:
-    · a PHASE doc number — `00` `01` `02` `03a` `03b` `03c` `03d` `04` `05` `06`,
+    · a PHASE doc number — `00` `01` `02` `03.1` `03.2` `03.3` `03.4` `04` `05` `06`,
       the actionable `docs/rebuild/NN-*.md` docs (the number IS the phase,
       and phase 3 is four docs, so bare `03` is not one of them);
     · `ref:<slug>` — a spec under `docs/rebuild/reference/`, cited by name
@@ -88,7 +88,7 @@ doc: 03a §2.1 · ref:write-safety §5 · 00
   whitespace: dotted numbers (`5.4`), a range (`5.4–5.6`), or a heading
   NAME (`Phase summary`) — the phase docs number no headings, so naming
   one is the only way to cite it. Rendered as a muted
-  `doc 03a §2.1 · ref write-safety §5` line under the drawer title.
+  `doc 03.1 §2.1 · ref write-safety §5` line under the drawer title.
   Absence is legal HERE — presence is a guard's business.
 
 log:
@@ -110,7 +110,7 @@ Rules that keep the tree honest:
 - **Ids are stable anchors** (`order-3`, `track-a`, `sep-6c`) — never rename one; links and deep links bind to them. `needs:` refs must resolve; cycles fail loud.
 - **The visible hierarchy is fixed:** numbered phases are the only spine nodes; Phases 0–3 use decimal parts (`0.3`, `3.1`), while later admitted parts retain their declared lettered labels (`4A`, `5A`). Concrete tasks are vertical children beneath their part. Every planned node belongs to a numbered phase. Session history lives only in node `log:` drawers.
 - **Parallel supervisor labels are a contract (D328):** a serial immediate task starts with `N`; two or more independent tasks in one admitted parallel wave share that ordinal and use consecutive numeric members (`N-1`, `N-2`, ...). The shared prefix identifies the wave, the suffix identifies one independently supervised branch/worktree row, and every member remains at the ordinary task depth. Groups start at `-1`, are consecutive and contiguous, and each card carries `date: parallel wave N · worktree <leaf>`. The coordinator ledger still records exact scope, base SHA, branch, absolute worktree, gate, integration order and cleanup before dispatch. The hyphen is part of one task identity—not another hierarchy level or checklist subtask—and letter-suffixed wave labels remain retired.
-- **The doc binding is two-way** (D263, `docs/roadmap/roadmap.md` §Governance) — every node carries a `doc:` line naming the phase-doc (`03a §2.1`) and reference (`ref:write-safety §5`) sections that OWN its contracts, and every doc section that describes a node carries `<!-- roadmap: <id> -->` on the line directly under its heading. The phase docs stay normative: where the tree and the doc disagree, the doc is right and the tree is corrected. The `roadmap-doc-binding` guard (landing as step 3 of `docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md`) refuses a `doc:` ref that resolves to no such section and a `<!-- roadmap: id -->` tag that names no such node — so a rename on either side fails the gate instead of rotting.
+- **The doc binding is two-way** (D263, `docs/roadmap/roadmap.md` §Governance) — every node carries a `doc:` line naming the phase-doc (`03.1 §2.1`) and reference (`ref:write-safety §5`) sections that OWN its contracts, and every doc section that describes a node carries `<!-- roadmap: <id> -->` on the line directly under its heading. The phase docs stay normative: where the tree and the doc disagree, the doc is right and the tree is corrected. The `roadmap-doc-binding` guard (landing as step 3 of `docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md`) refuses a `doc:` ref that resolves to no such section and a `<!-- roadmap: id -->` tag that names no such node — so a rename on either side fails the gate instead of rotting.
 - **`log:` lines are append-only.** Never edit or delete another session's line; a wrong one is corrected by a NEW line that says so. The block is a journal, not a status field.
 - Inline markup in any text: `` `code` ``, `**bold**`; D-numbers are auto-highlighted. No other markdown inside the region.
 - The plan records **what is built and what is required**; it does not invent scope. An unplanned feature is a finding for `docs/findings/`, not a roadmap line.
@@ -122,10 +122,10 @@ Also bump `asOf:` and `head:` (the HEAD you are updating FROM), the `## today:` 
 The other half of the binding carries its own checklist. Immediately under a tagged section's prose (one block per node id per doc):
 
 ```
-<!-- roadmap-status: sep-1 -->
-- [x] the virtualized timecard read terminates on range coverage (D205, 2026-08-13)
-- [ ] the Kronos controlled commit — waits for 08-28
-> 2026-08-20 | docs-cohesion 05-separations | verified against src/stores/kronos/…; left: the commit proof
+<!-- roadmap-status: workflow-authoring-core -->
+- [~] the workflow compiler landed historically; current-source verification is pending
+- [ ] prove the retired authoring path is absent
+> 2026-09-04 | D329 carry-forward | historical completion is evidence to inspect, not current completion authority
 <!-- /roadmap-status -->
 ```
 

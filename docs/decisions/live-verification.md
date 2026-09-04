@@ -1,7 +1,7 @@
 # Live verification decisions — operator context
 
 This topic record preserves answers about Separations canaries and bounded live-run execution.
-Normative behavior remains in doc 03b, the Separations migration record, and the reference docs
+Normative behavior remains in docs 03.2/03.3, the Separations migration record, and the reference docs
 named by `docs/rebuild/reference/decisions.md`.
 
 ## D280 — 4568 dry-run-first canary
@@ -35,7 +35,7 @@ workflows. Every other active label was removed; historical observations remaine
 evidence. If the subject disappeared or materially changed, it stayed registered with an honest
 unavailable state and no substitute.
 
-Normative owner: doc 03b §The canary registry.
+Normative owner: doc 03.3 §The canary and target registry.
 
 ## D286 — test-subject secrets
 
@@ -43,7 +43,7 @@ The operator selected both recommendations on 2026-08-28. Display names and the 
 strict secret references, and the EID reference had to be provisioned and smoked without printing
 its value before controlled commit ②.
 
-Normative owner: doc 03b §The canary registry.
+Normative owner: doc 03.3 §The canary and target registry.
 
 ## D287 — controlled sequence
 
@@ -51,7 +51,11 @@ After one green composed rehearsal with exact-run 0/0/0 write evidence, the oper
 ② → ① → ③ and an immediate ① witness after ②. Every ALWAYS-GATE remained in force, and an UNKNOWN
 submit remained terminal for retry purposes.
 
-Normative owner: doc 03b §Track A.
+D310 later separated the pending-sweep witness from the real filing, and D329 now requires the
+independent sweep to complete before the coupled filing/finalization task. The old ② → ① → ③
+sequence is historical authorization, not permission or ordering for another run.
+
+Normative owner: doc 03.3 Tasks 1–3.
 
 ## R2c diagnostic scope
 

@@ -494,15 +494,12 @@ landed binding supplies a verifier rather than an `isAuthenticatedUrl` predicate
 neutral reset asserts through `assertAuthenticatedApplication`.
 
 ### 4.2 A refused Duo ceremony is an OBSERVATION, and the counter it refuses on is SHARED (D243, 2026-08-19)
-<!-- roadmap: platform-fixes -->
 
-<!-- roadmap-status: platform-fixes -->
 - [x] the login wait races Duo's rendered terminal refusal, so a dead ceremony refuses in ~9.5 s instead of burning the envelope (`waitForAuthenticatedLanding`, `src/infra/browser/ucsd-sso.ts:340`)
 - [x] the presented counter is `max(stored + 1, nowSec)`, monotonic across every profile sharing the credential (`duo-autopilot/src/sign-count.js`)
 - [x] the rule is pinned in THIS repo's gate, not the extension's offline lane (D244; `tests/unit/duo-sign-count.test.ts`)
 - [x] the ceremonies are serialized by §10's per-credential lease (D267, `cb7f17f8`) — the arithmetic removes the counter GAP, the lease removes the RACE
 > 2026-08-21 | docs-cohesion execution-and-sessions | verified against src/infra/browser/ucsd-sso.ts, duo-autopilot/src/sign-count.js and src/domain/config/schema.ts (sessionAcquireMs 60 000 vs duoApprovalSeconds 180); left: §10's lease
-<!-- /roadmap-status -->
 
 **A login recipe MUST refuse on Duo's own terminal refusal, and MUST NOT wait for its landing bound
 to expire in order to learn that Duo already answered.** `waitForAuthenticatedLanding` races the

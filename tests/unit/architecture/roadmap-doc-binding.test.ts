@@ -23,8 +23,8 @@
  *
  * The arms, in the order they run:
  *
- *   (a) every `doc:` ref on every node resolves. A phase ref (`03a`) names
- *       exactly one `docs/rebuild/03a-*.md`; a reference ref (`ref:write-safety`)
+ *   (a) every `doc:` ref on every node resolves. A phase ref (`03.1`) names
+ *       exactly one `docs/rebuild/03.1-*.md`; a reference ref (`ref:write-safety`)
  *       names `docs/rebuild/reference/write-safety.md`. A `§section` matches a
  *       heading's NUMBER (`§5.4` → `## 5.4 …`, `## 5.4. …`) or its TEXT
  *       (`§Phase summary` → `## Phase summary`) — the phase docs number no
@@ -152,8 +152,8 @@ const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
  * section this guard can resolve.
  */
 const SECTION_RE = /^(\d+(?:\.\d+)+|\d+\.)\s+(.*)$/;
-/** `03a · Phase 3a — finish the dashboard` and `09 — Write-Safety: …`: the doc's own number, then its name. */
-const DOC_NUMBER_PREFIX_RE = /^\d{2}[a-c]?\s*[·—–-]\s*(.+)$/;
+/** `03.1 · Finish the dashboard` and `09 — Write-Safety: …`: the doc's own number, then its name. */
+const DOC_NUMBER_PREFIX_RE = /^\d{2}(?:\.\d+)?\s*[·—–-]\s*(.+)$/;
 const RANGE_RE = /^(\d+(?:\.\d+)*)[–—-](\d+(?:\.\d+)*)$/;
 const FENCE_RE = /^(?:```|~~~)/;
 
@@ -264,7 +264,7 @@ const FOUNDATIONAL_PHASE_PARTS = [
   {
     phaseId: "phase-3",
     phaseNumber: 3,
-    parts: ["dash-defaults", "order-8", "workflow-authoring-model", "claude-operator"],
+    parts: ["dash-defaults", "workflow-authoring-model", "workflow-live-acceptance", "claude-operator"],
   },
 ] as const;
 const SUPERVISOR_TASK_RE = /^(\d+)(?:-(\d+))? · /;
@@ -616,15 +616,15 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     const { violations } = auditFixture("dangling-phase-doc");
     expect(violations).toHaveLength(1);
     expect(violations[0]).toContain("{#fx-task}");
-    expect(violations[0]).toContain('doc: ref "03b §Phase summary"');
-    expect(violations[0]).toContain("names no docs/rebuild/03b-*.md");
+    expect(violations[0]).toContain('doc: ref "03.2 §Phase summary"');
+    expect(violations[0]).toContain("names no docs/rebuild/03.2-*.md");
   });
 
   it("refuses a doc: ref whose section names no heading in the file it resolves to", () => {
     const { violations } = auditFixture("dangling-section");
     expect(violations).toHaveLength(2);
     expect(violations[0]).toContain("{#fx-task}");
-    expect(violations[0]).toContain("docs/rebuild/03a-the-dashboard.md");
+    expect(violations[0]).toContain("docs/rebuild/03.1-the-dashboard.md");
     expect(violations[0]).toContain('no heading numbered or titled "Not a heading here"');
     // A section the file has under a LONGER title is the common miss — the
     // phase docs are cited by heading text and their titles carry
@@ -645,7 +645,7 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
   it("refuses a <!-- roadmap: id --> tag that names no node", () => {
     const { violations } = auditFixture("tag-names-no-node");
     expect(violations).toHaveLength(1);
-    expect(violations[0]).toContain("docs/rebuild/03a-the-dashboard.md:");
+    expect(violations[0]).toContain("docs/rebuild/03.1-the-dashboard.md:");
     expect(violations[0]).toContain("<!-- roadmap: fx-ghost -->");
     expect(violations[0]).toContain(`names no node in ${PLAN_SOURCE_PATH}`);
   });
@@ -653,7 +653,7 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
   it("refuses a <!-- roadmap-status: id --> block that names no node", () => {
     const { violations } = auditFixture("status-names-no-node");
     expect(violations).toHaveLength(1);
-    expect(violations[0]).toContain("docs/rebuild/03a-the-dashboard.md:");
+    expect(violations[0]).toContain("docs/rebuild/03.1-the-dashboard.md:");
     expect(violations[0]).toContain("<!-- roadmap-status: fx-ghost -->");
     expect(violations[0]).toContain(`names no node in ${PLAN_SOURCE_PATH}`);
   });
@@ -715,7 +715,7 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     const phase = reordered.spine.find((entry) => entry.kind === "phase" && entry.id === "phase-3");
     expect(phase?.kind).toBe("phase");
     if (phase === undefined || phase.kind !== "phase") throw new Error("test fixture has no Phase 3");
-    const part = phase.items.find((item) => item.id === "order-8");
+    const part = phase.items.find((item) => item.id === "workflow-authoring-model");
     if (part?.items === undefined) throw new Error("test fixture has no Phase 3.2 tasks");
     [part.items[0], part.items[3]] = [part.items[3], part.items[0]];
     expect(auditPhaseThreeExecutionOrder(reordered).join("\n")).toContain(
@@ -726,7 +726,7 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     const letteredPhase = lettered.spine.find((entry) => entry.kind === "phase" && entry.id === "phase-3");
     if (letteredPhase === undefined || letteredPhase.kind !== "phase") throw new Error("test fixture has no Phase 3");
     const task = letteredPhase.items
-      .find((item) => item.id === "order-8")
+      .find((item) => item.id === "workflow-authoring-model")
       ?.items?.find((item) => item.title.startsWith("1 · "));
     if (task === undefined) throw new Error("test fixture has no Phase 3.2 Task 1");
     task.title = task.title.replace(/^1 · /, "1A · ");

@@ -48,7 +48,7 @@ composes a runtime, so a bad answer here is a refusal, not a live mistake.
   `gone` · `unknown` with the date it was last observed, and it is where a future `gone`/`unknown`
   for doc 4537 lands — the row stays, the dated claim changes, so the history that the document
   evaporated survives. The eight retired labels were removed outright rather than left as `gone`
-  rows; their history lives in doc 03b §The canary registry and `docs/migrations/separations.md`
+  rows; their current owner is doc 03.3 §The canary and target registry, with history in `docs/migrations/separations.md`
   §9.31 (which records docs 4510 and 4524 evaporating between passes).
 - **Blocked, never failed** — an unresolvable label reports `blocked: needs <label>`, because a
   canary leaving the university is not a defect in the workflow. A subject that is available but

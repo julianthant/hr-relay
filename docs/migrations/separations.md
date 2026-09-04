@@ -21,7 +21,7 @@
 follows (roadmap §Governance: migration docs are **children** of the master plan — they answer §3.4 and
 record what a workflow reuses/adds; they never re-order the program). Chosen as the Phase-3 entry by
 the operator on 2026-08-12 (**D193**) because a big multi-system workflow forces the store task
-libraries into existence — see doc 03c §Phase summary's entry block for the reasoning.
+libraries into existence — see ref workflow-model §1.6.2 and doc 03.2 for the current reasoning.
 
 **Sources.** Legacy is read **read-only** as a frozen reference (D93/D94). Every legacy fact below is
 cited to `legacy:<path>:<line>` at commit **`1bffbd65`** (2026-08-06), and anything ported into code
@@ -39,8 +39,8 @@ sibling doc `separations-legacy-behavior.md`; this doc cites its S-numbers rathe
 | **2** | Stores — what exists today, what this migration mints, and the proposed rich-extraction convention |
 | **3** | Build strategy — the bottom-up "lego" decomposition and what composition can actually use |
 | **4** | **Open decisions** — one entry per genuinely open item, each as options + pros/cons + a recommendation, each now carrying the operator's 2026-08-12 answer |
-| **5** | The §b questionnaire (doc 03c §The §b migration questionnaire) — twelve items, each with a **verdict line**, its draft, and the recorded answer |
-| **6** | Exit criteria (doc 03c §Exit criteria) |
+| **5** | The §b questionnaire (ref workflow-model §1.6.2) — twelve items, each with a **verdict line**, its draft, and the recorded answer |
+| **6** | Exit criteria (docs 03.2–03.3) |
 | **7** | Open items that are NOT for this questionnaire |
 | **8** | Cross-references |
 
@@ -76,7 +76,7 @@ One Kuali RRSS separation document → one terminated employee, across three sys
 
 ### 1.2 The motivating incident, and the gate that answers it
 
-Doc 03c §Unverified candidate evidence - not a phase order puts separations at order 8 because of the **wrong-person termination `T002173685`**. A
+The former doc 03c candidate-order evidence put separations at order 8 because of the **wrong-person termination `T002173685`**. D329 retires that order as active authority. A
 graduating student's Kuali doc carried EID `10833507` ("Hernandez, Jose Santos"); UCPath rendered the
 name as "Santos Hernandez", the similarity classifier returned `different`, a name search on the
 common name resolved a **career** maintenance worker (`10401814`, employed since 2016), and the
@@ -324,14 +324,14 @@ proved before anything is composed.
    - **`separations-kuali-finalization`** — the finalization write, same single-transaction-node
      shape, its own permanent key and its own read-back proof.
    Each write sub-workflow owes its own **controlled-commit proof on an operator-approved target**
-   (doc 03c §Phase summary step 5) — and that is a real gate, not a formality: it is what lets the composed
+   (now doc 03.3 Tasks 1–3) — and that is a real gate, not a formality: it is what lets the composed
    workflow inherit two proven writes instead of proving both at once, at the end, on the largest
    graph in the program.
    > 2026-08-21 — D265: the five sub-workflow IDS above are unchanged, but their HOME moves — each
    > harness lives inside the step folder it proves under `src/workflows/separations/<step>/`
    > (`kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction`
    > · `kuali-finalization`), and `kuali-timekeeper-annotation` moves under `src/workflows/proving/`.
-   > `ref workflow-model` §1.2.2 owns the rule; doc 03b §The workflow tree is the code unit.
+   > `ref workflow-model` §1.2.2 owns the rule; doc 03.2 Task 5-2 owns current compiled acceptance.
    > 2026-08-21 — D266: `kuali-timekeeper-annotation` (the "pattern" the two write sub-workflows above
    > followed) is DISMANTLED; its real-sequencer harness seeds the first T1 pair, for
    > `separations-kuali-finalization` (`tests/scenario/workflows/separations-kuali-finalization/`).
@@ -1014,13 +1014,13 @@ one field that must differ. No named field ⇒ no variant.
 **Context.** Ref clock-config-secrets §4 wants a per-run test/prod instance decision; whether a UCPath or Kuali *test*
 instance exists for this workflow is operator knowledge that neither repo records.
 
-- **Option (i) — a real UCPath/Kuali test instance, if one exists.** *Pros:* the full write path including `Save and Submit` gets exercised with no real termination filed. *Cons:* only useful if its selectors and workflow steps match production, which is itself a live-verification job; and a green test-instance run is explicitly **not** the controlled-commit evidence doc 03c §Phase summary step 5 requires.
+- **Option (i) — a real UCPath/Kuali test instance, if one exists.** *Pros:* the full write path including `Save and Submit` gets exercised with no real termination filed. *Cons:* only useful if its selectors and workflow steps match production, which is itself a live-verification job; and a green test-instance run is explicitly **not** the controlled-commit evidence doc 03.3 requires.
 - **Option (ii) — an operator-approved production canary: one named separation the operator accepts will be filed for real, with the approval recorded. ★ recommended for the commit proof.** *Pros:* it **is** the required evidence; it is exactly how D128 and D135 were done. *Cons:* irreversible, and it needs a real pending separation with the operator present.
 - **Option (iii) — blocked until the operator names a target.** *Pros:* honest if neither exists. *Cons:* blocks §6's controlled-commit criterion.
 
 **Recommendation:** (ii) for the commit proof — it is the only option that satisfies the exit
 criterion — with (i) used for fill/prepare rehearsal *if* a test instance exists. Either way, naming
-the target is doc 03c §Phase summary step-5 operator work, which §7 already records.
+the target is doc 03.3 Task 1 operator work, which §7 already records.
 
 #### 4f3. `probeToFenceMaxMs` for the UCPath termination (item 3)
 
@@ -1065,7 +1065,7 @@ automated it is its own migration with its own questionnaire (and, per §3.1, it
 
 **4f2 — option (ii): an operator-approved PRODUCTION canary.** No test instance is used for the
 commit proof. One named separation the operator accepts will be filed for real, with the approval
-recorded — exactly how D128 and D135 were done, and the only thing that satisfies doc 03c §Phase summary step 5.
+recorded — exactly how D128 and D135 were done, and the only thing that satisfies doc 03.3 Tasks 1–3.
 **The specific canary target is named by the operator when the controlled-commit step is reached, and
 is never invented here** (§7's first bullet stands unchanged).
 
@@ -1149,12 +1149,12 @@ What B requires and what this answer accepts:
 
 ---
 
-## 5. The §b questionnaire (doc 03c §The §b migration questionnaire — twelve items)
+## 5. The §b questionnaire (ref workflow-model §1.6.2 — twelve items)
 
 **Read this first — the operator asked for exactly one thing from this section.** *"Rephrase those
 questions like §4 and ask me in the same format if I still have to answer them — I'm not sure if they
 are the same questions you asked in §4."* They largely **are** the same questions: §4 is where the
-genuinely open decisions were pulled out and given options, and §5's items are the doc 03c §The §b migration questionnaire
+genuinely open decisions were pulled out and given options, and §5's items are the ref workflow-model §1.6.2 questionnaire
 template those decisions came from. So every item below now opens with a **one-line verdict** in one
 of three classes, and only the last class is work for the operator:
 
@@ -1505,7 +1505,7 @@ machinery is involved.
   variant; ref write-safety §14.7's question resolves **out of scope for this migration** (**§4f1**).
 - **Intake:** none, as drafted. One typed Kuali document number; ref data-intake-and-edit-data is not involved.
 - **Instance:** an **operator-approved production canary** for the commit proof, target named by the
-  operator at doc 03c §Phase summary step 5 (**§4f2**).
+  operator through doc 03.3 Task 1 (**§4f2**).
 - **Department gate (HDH) — CORRECTED by §4b.** It does **not** port as a proceed-without-timecard
   arm. §4b's answer is hard-fail on any unavailable or unreadable Kronos, and the recorded nuance
   covers exactly this case ("special cases where the Kuali-carried date alone would suffice… those
@@ -1755,7 +1755,7 @@ every selector, the packet composition, the freshness limits and the graph itsel
 
 ---
 
-## 6. Exit criteria for this migration (doc 03c §Exit criteria)
+## 6. Exit criteria for this migration (docs 03.2–03.3)
 
 Repeated here so the checklist is in one place; the master plan owns the normative text.
 
@@ -1773,7 +1773,7 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 
 ## 7. Open items that are NOT for this questionnaire
 
-- **The controlled-commit target.** A UCPath termination and a Kuali finalization the operator approves. None is invented here; naming one is operator work at doc 03c §Phase summary step 5 (the *shape* of that choice is §4f2). **Two facts narrow the choice as of 2026-08-14 (§9.16):** doc 4524 is out (its action completed and its form no longer renders), and `clear-pending`'s COMMITTED arm has no live subject at all — deleting `T002209631` removed the only mapped subject holding a pending row.
+- **The controlled-commit target.** A UCPath termination and a Kuali finalization the operator approves. None is invented here; naming one is operator work at doc 03.3 Task 1 (the *shape* of that choice is §4f2). **Two facts narrow the choice as of 2026-08-14 (§9.16):** doc 4524 is out (its action completed and its form no longer renders), and `clear-pending`'s COMMITTED arm has no live subject at all — deleting `T002209631` removed the only mapped subject holding a pending row.
 - **Two UCPath facts that need one real submit** (ref write-safety §13 item 6): whether the confirmation dialog renders the `T…` inline, and the propagation window between submit and searchability. Both are currently **ported legacy knowledge**, not rebuild-verified.
 - **`recoveryAbsence` for the UCPath termination.** Until a propagation window is measured, a post-fence absence is `operator-only`; inventing a `minSinceFenceMs` is the banned unverified constant (D128's standing rule).
 - **The re-run wall's item 2 — a way for an operator to say "read it again" — is BUILT** (2026-08-14,
@@ -1910,7 +1910,7 @@ visibility into every day the rule declined to count.
 
 ### 9.2 Chunk 1 — the live proof: **MET at attempt 17** (2026-08-12/13)
 
-**Status: CLOSED.** Doc 03c §Phase summary step 4 for chunk 1 is **MET**. Run **`sk-171645-4adf`**
+**Status: CLOSED.** Former doc 03c §Phase summary step 4 (historical label) for chunk 1 is **MET**. Run **`sk-171645-4adf`**
 (`4adf2efb-c433-422e-8e89-d7836da59a1f`), EID `10776990` / *Kou, Nathan* over `06/10/2026 –
 08/12/2026` (64 days), reached terminal **`done`** against real WFD with a complete, correctly-bound
 grid read. The full attempt record — including the two runs that closed it and the tenth defect the
@@ -1934,7 +1934,7 @@ proves the cell binding, not just the day coverage.
 
 ### 9.2a Chunk 1 — the attempt record (14 failures, then two runs that closed it)
 
-**Honest status *as of attempt 14*.** Doc 03c §Phase summary step 4 (the live dry-run for this chunk) was
+**Honest status *as of attempt 14*.** Former doc 03c §Phase summary step 4 (historical label; the live dry-run for this chunk) was
 **NOT MET**. The
 `separations-kronos-timecard` workflow was started against the real system thirteen times through
 the real start-plan → command → worker path. **The search half is proved live** — `search` reached
@@ -2006,7 +2006,7 @@ above and from the pay-period overhang that attempt 13 fixed:
 The refusal is CORRECT and is the whole point of that check — a last punch derived from 14 of 35 days
 would be a plausible-but-wrong separation date. What it says about the chunk is that the virtualized
 grid's scroll-to-end is not yet reliable over a five-week window; the durable failure fingerprint
-`53336e1c` records `seen 6×`, so this is a recurring class rather than a one-off. Doc 03c §Phase summary step 4
+`53336e1c` records `seen 6×`, so this is a recurring class rather than a one-off. Former doc 03c §Phase summary step 4 (historical label)
 for chunk 1 stayed **OPEN** after this attempt, and the next one owed the scroll loop rather than
 another window.
 
@@ -2245,7 +2245,7 @@ read reports the parsed date and S7's refusal stays a precondition of *filing a 
 
 ### 9.4 Chunk 2 — the live proof: **PASSED**, five runs, 2026-08-12
 
-Doc 03c §Phase summary step 4 (the live dry-run for this chunk) is **MET**. Five runs were started through the
+Former doc 03c §Phase summary step 4 (historical label; the live dry-run for this chunk) is **MET**. Five runs were started through the
 real start-plan → command → worker path against the real Kuali production space; **all five reached
 terminal `done` on attempt 1**, and the last three held `verified` evidence receipts over real data
 at settlement. Two later attempts to re-prove the same three documents against the final tree
@@ -2394,7 +2394,7 @@ outside it is `unknown` and makes the whole grid `indeterminate-status` rather t
 
 ### 9.6 Chunk 3 — the live proof: **PASSED**, and the two defects it caught
 
-Doc 03c §Phase summary step 4 for chunk 3 is **MET**. Two runs went through the real start-plan → command →
+Former doc 03c §Phase summary step 4 (historical label) for chunk 3 is **MET**. Two runs went through the real start-plan → command →
 worker → **operator gate command** → worker path against real UCPath. The second reached terminal
 `done` with a `verified-done` evidence receipt; the first found a platform defect no fixture could
 reach and is left failed as the record of it.
@@ -2810,7 +2810,7 @@ a refusal, and **the durable footprint was `absent` on every one** — no
 either node. That is the structural commit-freedom claim, asserted against the
 authority database rather than against logs, five times over.
 
-#### The honest status of doc 03c §Phase summary step 4 for chunk 4: **PARTLY MET**
+#### The honest status of former doc 03c §Phase summary step 4 (historical label) for chunk 4: **PARTLY MET**
 
 | Asked for | Status |
 |---|---|
@@ -3041,7 +3041,7 @@ disagrees.**
    `kualiFinalizationFormKeysMissing()`'s list.
 2. **`recoveryAbsence: "stabilized"` is ACCEPTED and is now ratified as D207** (ref write-safety §4.2), with
    5a's argument plus one obligation it did not carry: the transferred window is **provisional until
-   this write's own controlled-commit proof confirms it** (doc 03c §Phase summary step 5), and the composed
+   this write's own controlled-commit proof confirms it** (doc 03.3 Task 3), and the composed
    workflow may not rely on the stabilized arm in production before that.
 3. **The step-13 date write-backs stay unstaged.** §4e's normative list is built as written; the open
    question is queued for the operator rather than answered by the driver.
@@ -3156,7 +3156,7 @@ aborts that mutation by name. The durable footprint of the whole pass is **zero*
 row for the permanent key, no transaction checkpoint. The controlled real commit stays OPEN on the
 operator's unnamed §4f2 canary.
 
-#### The honest status of doc 03c §Phase summary step 4 for chunk 5: **MET for the dry-run half**
+#### The honest status of former doc 03c §Phase summary step 4 (historical label) for chunk 5: **MET for the dry-run half**
 
 | Asked for | Status |
 |---|---|
@@ -3644,7 +3644,7 @@ since 2026-08-05, and ZERO checkpoints for `clear-pending`, `file-termination` o
 across every run this database has ever held.** The only two `write_intents` rows in the file are
 2026-08-04's Phase-2 controlled commit, untouched.
 
-#### The honest status of doc 03c §Phase summary step 4 for chunk 6: **PARTLY MET**
+#### The honest status of former doc 03c §Phase summary step 4 (historical label) for chunk 6: **PARTLY MET**
 
 | Asked for | Status |
 |---|---|
@@ -4021,7 +4021,7 @@ never clicked either. Every Kuali finding below came from the same PASSIVE `Acti
 listener §9.12's instrument established — Kuali issues that query itself on every document route
 open; this pass read the answer and sent nothing extra.
 
-#### The honest status of doc 03c §Phase summary step 4 for chunk 6, updated
+#### The honest status of former doc 03c §Phase summary step 4 (historical label) for chunk 6, updated
 
 | Asked for | Status |
 |---|---|
@@ -4242,7 +4242,7 @@ Submit` and Kuali `Save` were never clicked; `submitDocumentV2` was never issued
 wizard's `Continue` was never clicked. **No gate this session was approved on a not-dry run** — part
 B never reached its gate, and part A's approval authorized a preview.
 
-#### The honest status of doc 03c §Phase summary step 4 for chunk 6, updated again
+#### The honest status of former doc 03c §Phase summary step 4 (historical label) for chunk 6, updated again
 
 | Asked for | Status |
 |---|---|
@@ -6284,7 +6284,7 @@ name-only label, a complete row with a foreign label) against the extracted on-s
 (`70f0bbf2`), fixed at `b87dc560`. `krn-slats-tabular-data` is driver-internal like
 `p.totals-counter` — legacy has no key for it — so it is not a registry element.
 
-**Disposition:** fix, live-verified (a8). Doc 03b's sep-1 line is closed with this section; the
+**Disposition:** fix, live-verified (a8). Former doc 03b's sep-1 line (historical label) is closed with this section; the
 store's `CLAUDE.md` carries the invariant and the lesson; `ref lessons` carries the general form.
 Not done here: the throttled cold home's navbar bound (a7/a8) is an artefact of 20× throttling and
 elapsed loudly by name — no bound was widened.
@@ -6405,7 +6405,7 @@ from 2026-08-12 but no live worker process or live lock holder; the dead unrelea
 records were also left untouched. The board intake blob remained
 `0ef85a59de1ffec7f3a60c265cb9eb95f14dda20` at close.
 
-**Disposition.** This is an honest preflight block, not a controlled-commit claim. Doc 03b exit
+**Disposition.** This is an honest preflight block, not a controlled-commit claim. Former doc 03b exit
 criterion 5 remains **OPEN — all three**. Reconciling the requested 4537 identity with the registry
 is outside u1's no-code/no-config scope and requires a separately authorized decision.
 
@@ -7015,7 +7015,7 @@ this arm's kind: `separations/dry-run` case `nothing-to-sweep` (graph expectatio
 §9.27 addendum 7's 4502 run, the `already-present` arm from §9.19 row ①) and
 `separations-kuali-finalization/dry-run` case `ordinary` (the expectation for the day ② has filed —
 a run today records a `blocked` row, not `failed`). `tests/unit/architecture/test-target-registry.test.ts`
-walks every manifest and every registry arm and proves config = manifests = doc 03b's inventory
+walks every manifest and every registry arm and proves config = manifests = doc 03.3's admission inventory
 line = {4537} in both directions; the retired labels are asserted absent by
 `tests/unit/test-target-registry.test.ts`.
 

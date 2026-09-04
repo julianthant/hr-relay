@@ -207,7 +207,7 @@ export const ExecutorSpanEventSchema = z.union([
     taskId: TaskIdSchema,
   }),
   /**
-   * D270 / `03a-finish-the-dashboard.md` §Observed logs — every point a task
+   * D270 / `03.1-finish-the-dashboard.md` §Observed logs — every point a task
    * records is captured and stamped AT RECORD TIME, so the observations a task
    * made before it threw are on the stream even though its checkpoint never
    * was. One event per `ctx.recordData` CALL: a batch is one observation of the

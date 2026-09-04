@@ -256,7 +256,7 @@ function renderNotes(notes: string[] | undefined): string {
  * The node's binding to the plan SSOT, as a muted line under the drawer title.
  * The site is ONE static file with no server behind it, so a ref is not a link
  * — it is a `title` naming the file on disk, which is what a reader needs to
- * open it. A PHASE ref reads `doc 03a §2.1` and titles `docs/rebuild/03a-*.md`;
+ * open it. A PHASE ref reads `doc 03.1 §2.1` and titles `docs/rebuild/03.1-*.md`;
  * the glob stands in for the slug on purpose, because this renderer is pure and
  * reading the directory to resolve `01` → `01-build-the-spine.md` would put I/O
  * in a function whose whole job is formatting. A REFERENCE ref reads
@@ -1095,7 +1095,7 @@ function renderPage(roadmap: Roadmap, docs: DocBindingIndex): string {
 <div class="key-row"><dt><span class="lay frontend">FE</span> <span class="lay backend">BE</span></dt><dd>Frontend and backend work. <span class="lay both">BOTH</span> is a vertical slice; <span class="lay wiring">WIRE</span> connects existing halves; <span class="lay docs">DOCS</span> changes authority; <span class="lay proof">PROOF</span> is measured or live evidence.</dd></div>
 <div class="key-row"><dt>S / M / L / XL</dt><dd>Estimated implementation size.</dd></div>
 <div class="key-row"><dt>7 / 9 built</dt><dd>Outputs landed at the roadmap's recorded HEAD.</dd></div>
-<div class="key-row"><dt>D325</dt><dd>A ratified decision in the decision index.</dd></div>
+<div class="key-row"><dt>D329</dt><dd>A ratified decision in the decision index.</dd></div>
 <div class="key-row"><dt><i class="doc-rule"></i></dt><dd>The thin bottom rule is documentation progress: dark is complete, light is still open.</dd></div>
 </dl></section>
 <section class="key-section"><h3>Lines and controls</h3><dl class="key-list">

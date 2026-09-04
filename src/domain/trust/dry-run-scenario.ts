@@ -34,7 +34,7 @@ export const DryRunSubjectKindSchema = z.enum([
   "subject-mismatch",
   "name-differs",
   "concurrent-jobs",
-  // `separations` — the migration roles doc 03b mapped its documents into.
+  // `separations` — the acceptance roles docs 03.2/03.3 map their targets into.
   "full-chain-dry-run",
   "future-dated",
   "controlled-commit-candidate",

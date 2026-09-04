@@ -160,7 +160,7 @@ export interface WorkflowDefinitionRegistration {
  * own descriptor. The compiler's identity ledger is deliberately checked again
  * at the composition boundary: otherwise a module could be registered with a
  * definition that describes a different workflow while each value looks valid
- * in isolation. Since 3c-A's deletion acceptance every registered module is
+ * in isolation. Since D317's deletion acceptance every registered module is
  * definition-backed; there is no unconverted arm to skip.
  */
 export function workflowDefinitionRegistry(

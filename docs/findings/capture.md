@@ -12,7 +12,7 @@ side of this tree, verified 2026-08-21 against `src/dashboard/surfaces/capture-s
 `src/dashboard/client/queries.ts` and `src/server/dashboard/routes/api.ts` per
 `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` §7 (ledger 3, rows CP2, CP6–CP16, CP21,
 CP45). D175 rules the PHONE side and built it; nothing rules the operator side's absence
-(`docs/rebuild/03a-finish-the-dashboard.md` OPEN question 8). See `README.md` for the standing
+(`docs/rebuild/03.1-finish-the-dashboard.md` OPEN question 8). See `README.md` for the standing
 rules; this file did not exist before this pass.
 
 Owning doc for every record below: `docs/rebuild/reference/data-intake-and-edit-data.md` §5.1,

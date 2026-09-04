@@ -79,7 +79,7 @@ phase; each names the decision that moved it.
 | Phase-0 contract | Set by | What amended it |
 |---|---|---|
 | **Legacy change accounting** — every legacy maintenance commit mapped to affected capabilities, fail-closed, with a clean legacy `src`/`tests` worktree required | **D90** (round 10), mechanized by **D94** (round 12) | **RETIRED — D150 (2026-08-05).** The two repositories touch each other in neither direction; `config/legacy-change-accounting.json` is a frozen historical record and must not be extended. The risk it covered (a ported selector going stale after legacy fixed it) is covered instead by **live re-verification at each workflow's migration**, which the charter already makes mandatory and pre-authorizes. A selector checked against the live system beats one diffed against legacy's copy of it |
-| **The gate family** — `typecheck` / `lint` / `test` / `test:architecture`, the last two as the per-commit pair | **D91** (floors), **D93** (the plain names) | **D191 (2026-08-09)**: `test:coverage` REPLACES the pair as the per-commit gate — a strict superset, measured faster. D91's FLOORS are untouched and still 60 % global / 80 % safety-critical (`vitest.config.ts:39-43`); R10's raise of the global floor to 80 is owned by `{#test-tiers}` and has not landed |
+| **The gate family** — `typecheck` / `lint` / `test` / `test:architecture`, the last two as the per-commit pair | **D91** (floors), **D93** (the plain names) | **D191 (2026-08-09)**: `test:coverage` REPLACES the pair as the per-commit gate — a strict superset, measured faster. D91's FLOORS are untouched and still 60 % global / 80 % safety-critical (`vitest.config.ts:39-43`); R10's raise of the global floor to 80 is now owned by `{#workflow-authoring-core}` and has not landed |
 | **A command's NAME is an isolation resource** — the rebuild's launch commands carried a `rebuild:` prefix so a mistyped command could not start the wrong runtime | **D88**'s isolation list, carried forward by **D93** | **D247 (2026-08-20)**: names may coincide. A muscle-memory `npm run dashboard` in the wrong checkout starts THAT checkout's dashboard, on its own port, under its own roots and locks — which is legible and harmless. Isolation is the VALUES, not the names. **D216 (2026-08-14)** is the same correction one row down: both repos name the browser-profile root `.auth`, because a repo-relative root cannot collide and `browserSessionNamespace` is the half that actually protects browser state |
 | **One master plan, one file** | charter §One master plan (operator directive 2026-07-17) | **D263 (2026-08-20)**: the plan keeps one identity and gains a machine-readable FORM — `docs/roadmap/roadmap.md` in the roadmap notation, bound to the docs BOTH ways (`doc:` refs on every node, `<!-- roadmap: id -->` tags on every describing section, the `roadmap-doc-binding` guard refusing either that resolves to nothing). The single file itself was dissolved into the eight phase docs the same day; the prose still wins on any disagreement, and the disagreement is now CAUGHT rather than argued |
 | **Phase 3 begins at migration order 0** | **D84** (round 8) — the order optimizes total time-to-resume-all, so separations and onboarding come last | **D193(c) (2026-08-12)** moves the ENTRY to **separations (order 8)**: a big multi-system workflow forces the store task libraries into existence, so one migration mints what every later one reuses instead of trickling stores in through small reads. D84's ORDER is explicitly not re-sequenced — it stays the risk-proof ordering |
@@ -348,14 +348,16 @@ correction, not commitments. The same unit and the same scale are restated in `r
 
 **As built, this table is the tree.** Every row above is the `size:` attribute on its node today —
 `{#p1-base}` L, `{#p1-authority}` XL, `{#p1-kernel}` XL, `{#p1-spine}` M, `{#p2-proof}` L,
-`{#p2-2g}` L, `{#p2-2h}` XL, `{#p2-2i}` L, `{#p2-2j}` M, `{#order-0}`–`{#order-3}` M,
-`{#order-4}`–`{#order-7}` L, `{#order-8}` and `{#order-9}` XL. Nothing was re-estimated after the
-fact. The one estimate currently under test is `{#order-8}`'s XL: separations is in flight at 8 of
-9 exit criteria, which is the first real measurement this model will get for a migration.
+`{#p2-2g}` L, `{#p2-2h}` XL, `{#p2-2i}` L, and `{#p2-2j}` M. D319 retired the candidate
+migration-order nodes before admission; their M/L/XL estimates remain historical planning evidence,
+not active node bindings. Separations' former XL estimate is now represented by the bounded 3.2
+authoring/acceptance tasks and 3.3 controlled-proof tasks that actually remain.
 
 **The table is no longer the whole inventory.** Five nodes minted since D76 are sized in its unit
 and were never in it — `{#dash-defaults}` L, `{#duo-lease}` S, `{#parallel-runs}` L,
-`{#observed-logs}` M, `{#test-tiers}` L. That is the model being applied rather than a gap: a new
+`{#observed-logs}` M, plus the L-sized former test-tier close now distributed across
+`{#workflow-authoring-core}`, the two workflow-acceptance tasks, `{#workflow-candidate-freeze}` and
+`{#workflow-acceptance-close}`. That is the model being applied rather than a gap: a new
 node gets a size because the notation asks for one. It is recorded here so a reader does not read
 this table as a closed list.
 
@@ -505,8 +507,8 @@ was re-sequenced.
 Phase-1 blockers — UCPath receipt proof before the Phase-2 controlled commit that consumes it,
 ServiceNow receipt proof and OnBase upload verification before their order-7 migration evidence.
 _As built, that rule is now a shelf rather than a sentence:_ `04-close-the-deferrals.md` holds eight
-deferrals, each with its trigger, and `03c-migrate-the-remaining-workflows.md` §Live probe status
-tracks the probes themselves. The two-item test — an owner and a trigger, never silence — is what
+deferrals, each with its trigger, and each admitted Phase 4 packet under `ref workflow-model` §1.6.2
+tracks its own live probes. The two-item test — an owner and a trigger, never silence — is what
 D186 and D189 were later held to.
 
 ### 3 — Executable feasibility, recorded as feasibility and not as implementation. MET
@@ -548,4 +550,5 @@ without re-sequencing, and no Phase-0 contract has been withdrawn. What a reader
 this doc is in §Phase summary: **six** contracts amended by a later decision, and **one** promise
 ratified here that is still unbuilt — the `scaffold` generators (the `new-workflow` half owned by
 `{#def-explorer-edit}`, the `new-task` half **unowned and reported**). D85's dry-run command and
-test-target registry later landed under R10's names (`{#test-tiers}`).
+test-target registry later landed under R10's names; D329 routes its remaining mutable work through
+`{#workflow-authoring-core}` and its final proof through `{#workflow-candidate-freeze}`.

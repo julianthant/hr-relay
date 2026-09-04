@@ -13,7 +13,7 @@ into `docs/handoffs/2026-08-14-parity-refreeze.md`, which recorded D219's isolat
 diffs (three fixtures: `explorer-graph`, `explorer-transaction`, `start-run`). _(That re-freeze
 landed as `bd1d4b6`; the handoff briefs were removed 2026-08-18 and live in git history.)_
 
-**The design's answers to the open questions below:** no phase-doc conflict (no doc 03c §Exit criteria criterion names
+**The design's answers to the open questions below:** no phase-doc conflict (no current Phase 3 exit criterion names
 rail presence; chunks stay registered and start through the start-plan lane), and the composition's
 badge counts composition runs ONLY — historical harness runs stay under the harness's own nested
 entry, because a badge that disagrees with its own panel is D81's divergence class.

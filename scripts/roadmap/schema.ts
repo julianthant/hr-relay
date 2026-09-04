@@ -32,7 +32,7 @@ export const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 /**
  * A node's binding to the plan SSOT: which doc section owns the contract this
  * node builds. Two kinds, because the shelf has two halves — a `phase` ref
- * names an actionable `docs/rebuild/NN-*.md` by its phase number (`03a`), a
+ * names an actionable `docs/rebuild/NN-*.md` by its phase number (`03.1`), a
  * `reference` ref names an unnumbered spec under `docs/rebuild/reference/` by
  * slug and carries the `ref:` prefix in `doc` (`ref:write-safety`). `section`
  * is the part after `§` (dotted numbers, a range, or a heading NAME — the
@@ -42,7 +42,7 @@ export const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
  */
 export const DocRefSchema = z
   .object({
-    doc: z.string().regex(/^(?:0[0-2]|03[abcd]|0[456]|ref:[a-z][a-z0-9-]*)$/),
+    doc: z.string().regex(/^(?:0[0-2]|03\.[1-4]|0[456]|ref:[a-z][a-z0-9-]*)$/),
     kind: z.enum(["phase", "reference"]),
     section: z.string().min(1).optional(),
     raw: z.string().min(1),
@@ -166,7 +166,7 @@ export type SpineEntry = z.infer<typeof SpineEntrySchema>;
 /** A plan node's stable anchor — the `{#id}` the notation declares. */
 export const NodeIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
 
-/** A repo-relative markdown path with forward slashes, e.g. `docs/rebuild/03a-…md`. */
+/** A repo-relative markdown path with forward slashes, e.g. `docs/rebuild/03.1-…md`. */
 export const DocPathSchema = z.string().regex(/^docs\/[A-Za-z0-9._/-]+\.md$/);
 
 /**

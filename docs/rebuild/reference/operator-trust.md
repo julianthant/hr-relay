@@ -569,7 +569,7 @@ and no Phase-2 replacement record.
 
 **`explain failure <fingerprint>` is NOT built.** The composer's own usage line names it, and its
 subject dispatch accepts only `run` (`src/server/explain/compose.ts:39-44`). The lookup it needs
-exists; the command does not. Owned by `{#track-a}`'s close-out beside the knowledge surface (§4.3),
+exists; the command does not. Owned by `{#workflow-write-mechanics}` beside the knowledge surface (§4.3),
 and named again in §4.2 where the doc used to describe it in the present tense.
 
 #### 2.1.1 The failure section serves content through a whitelist schema (D142)
@@ -745,14 +745,11 @@ read apply unchanged; there is no second screenshot store or duplicate byte rout
 ### 2.3 `RunEvidenceReceipt`
 
 <!-- roadmap: p2-2g -->
-<!-- roadmap: sep-6c -->
 <!-- roadmap: observed-logs -->
 
-<!-- roadmap-status: sep-6c -->
 - [x] a previewed run's receipt derives `partial` with `unknown` confidence, so `verified-done` is structurally unreachable for a preview (§2.3.7, D215/D238)
 - [x] the envelope's `dryRun` and the terminal preview result must AGREE or the derivation throws
 > 2026-08-20 | docs-cohesion operator-trust | verified against src/core/evidence-receipt.ts:707-761; the preview terminal's receipt shape is as chunk 6c recorded it
-<!-- /roadmap-status -->
 
 Every terminal run—success, failure, cancellation, or partial outcome—has a server-derived receipt:
 
@@ -904,14 +901,11 @@ correct run with a skipped node to `partial`.
 
 #### 2.3.3 The receipt binds to the surfaces its derivation consumes, not to the descriptor's closure (D199)
 
-<!-- roadmap: sep-2 -->
 
-<!-- roadmap-status: sep-2 -->
 - [x] the receipt binds to the SURFACES its derivation consumes, not to the descriptor's 31-file closure (D199)
 - [x] `declared-evidence` takes the stored receipt row as its baseline — the only check that can see a declaration living outside the closure
 - [x] no waiver arm: chunk 2's five split three re-derived byte-identically, two frozen by design
 > 2026-08-20 | docs-cohesion operator-trust | verified against src/core/receipt-derivation-binding.ts; the six-row check table matches the code
-<!-- /roadmap-status -->
 
 **D141's "re-deriving one run yields the same bytes" was true only within one commit.**
 `buildRunEvidenceReceipt` stamped `descriptorFingerprint` from the CURRENT build's
@@ -975,14 +969,11 @@ Owned by `src/core/receipt-derivation-binding.ts`; pinned by
 
 #### 2.3.4 A gate's evidence is a `gate_results` row, so the approver reaches the receipt (D204)
 
-<!-- roadmap: sep-3 -->
 
-<!-- roadmap-status: sep-3 -->
 - [x] a gate's durable evidence is its `gate_results` row, so the approver reaches the receipt (D204)
 - [x] the decision arm is DECLARED per `(workflow, gate)`; an undeclared gate and an unlisted arm value both fail loud
 - [x] redaction extends by a `gate-result` scope rather than a hole; the operator's reasoning is shown, not redacted
 > 2026-08-20 | docs-cohesion operator-trust | verified against src/core/evidence-receipt.ts and src/domain/trust/gate-decisions.ts
-<!-- /roadmap-status -->
 
 > **`gate_results` is a repository name, not a table.** `authority.gateResults` stores its records in
 > `checkpoint_payloads` keyed `<runId>:<gateId>` (`src/infra/sqlite/authority-database.ts`). This
@@ -1179,7 +1170,7 @@ authority and at the domain schema both.
 
 **Ratified 2026-08-21; transaction lane completed 2026-08-25.** §2.3.1's table stopped being a
 receipt-only contract. Every point a task records through `ctx.recordData` is captured and stamped
-at record time for a `data.observed` event (`03a` §Observed logs), and each leaf is pushed through
+at record time for a `data.observed` event (doc 03.1 §Observed logs), and each leaf is pushed through
 `redactEvidenceLeaf` — the SAME function, over the SAME table, that the receipt uses. There is
 deliberately no second redaction implementation: a log that leaked a value the receipt would have
 dropped is the same defect from a different surface, and the two channels are then provably
@@ -1396,14 +1387,11 @@ this section read as though the manifest gates the suite. It does not.
 ### 3.2 Minimum scenario coverage
 
 <!-- roadmap: p2-2j -->
-<!-- roadmap: track-a -->
 
-<!-- roadmap-status: track-a -->
 - [ ] regression scenarios for separations' close-out
 - [ ] knowledge records for separations — blocked on a CALLER, not on a schema: the store, the admission audit and the projection are built and unreachable (§4.1)
 - [ ] capability dispositions
 > 2026-08-20 | docs-cohesion operator-trust | verified the three doc-side close-out obligations against the code; all three open, and the knowledge half needs one composition-root wire rather than a design
-<!-- /roadmap-status -->
 
 - Every task: happy path, every declared business absence/error code, schema-invalid input/output.
 - Every browser task: expected page state, unexpected page state, selector missing, cancellation,
@@ -1429,7 +1417,7 @@ a contract's error enum.
 **Where the policy is moving.** R10 (operator, 2026-08-20) reorganizes `tests/` by what a test NEEDS
 — a no-dry-run tier and a dry-run tier built on a live `dryRun=true` run of each workflow with
 checkpoints asserted over authority — and the owning spec is **ref guards-and-tests §Testing tiers**,
-tracked as `{#test-tiers}`. This section keeps the operator-trust half (what a scenario IS, and why
+tracked as `{#workflow-authoring-core}` with workflow cases under the two 3.2 acceptance tasks. This section keeps the operator-trust half (what a scenario IS, and why
 `example` is not one) and stops being the place the tier layout is described.
 
 ### 3.3 Unexpected states become data, never fallbacks
@@ -1454,7 +1442,6 @@ test plus live evidence. A failure fingerprint may not be marked resolved with o
 ## 4. Structured knowledge and AI-assisted fix history
 
 <!-- roadmap: p2-2g -->
-<!-- roadmap: track-a -->
 
 ### 4.1 LESSONS are migration input, not the new authority
 
@@ -1504,7 +1491,7 @@ behind a path-escape guard. D139 recorded that wiring the generator to an npm sc
 or `package.json` constructs the knowledge service or calls the projection, so no `KNOWLEDGE.md`
 exists in this tree and no record has ever been written by the running system. The store, the
 admission audit (§4.5) and the projection are real and unit-tested; the operator has no way to reach
-them. Owned by `{#track-a}`'s close-out, which is where the first migration's knowledge records land.
+them. Owned by `{#workflow-write-mechanics}`, which carries the former first-migration software close-out.
 
 ### 4.2 `FixRecord`—what Codex/Claude changed and how it was proven
 
@@ -1552,7 +1539,7 @@ needs a CAS on a record version and `KnowledgeRecordSchema` carries no `version`
 as a schema decision the maintenance slice must ratify rather than guess, and it has not been taken,
 so nothing marks a stale record `unverified`. **Search does not exist**: there is no CLI command, no
 BFF route and no surface over knowledge or fix records at all. Both remainders belong to
-`{#track-a}`'s close-out beside §4.1's generator, and neither is blocking anything today for the
+`{#workflow-write-mechanics}` beside §4.1's generator, and neither is blocking anything today for the
 plain reason that the table is empty.
 
 ### 4.4 Optional AI assistance reads the evidence; it never becomes the evidence
@@ -2236,7 +2223,6 @@ catalog does not serve throws by id rather than being filed under a made-up head
 ### 5.9 The node panel is a FIELD table, and its census is derived (2026-08-19, D227)
 
 <!-- roadmap: track-b -->
-<!-- roadmap: sep-dash -->
 
 <!-- roadmap-status: track-b -->
 - [x] B6 — the node panel is a FIELD table whose census projects the contract's own zod shape (D227)
@@ -2456,14 +2442,11 @@ suppresses delivery only: it never flips status, and marking read never clears a
 ### 6.3 As-built — the closed vocabulary, the two publishers, and the five arms with no producer
 
 <!-- roadmap: p2-2g -->
-<!-- roadmap: sep-dash -->
 
-<!-- roadmap-status: sep-dash -->
 - [x] the notification square — `gate-park.ts` publishes `gate-opened` for a run parked at a gate, on transitions only (D262)
 - [ ] `failed`, `subject-mismatch` and `write-parked` have no producer, so the square is filled for the GATE arm alone (§6.3)
 - [!] there is no OS delivery implementation in the tree, so every publish settles `no-channel` — the durable row is the whole alert
 > 2026-08-20 | docs-cohesion operator-trust | verified against src/services/notifications/{gate-park,storage-health,inbox}.ts and src/server/dashboard/compose.ts; left: four unreachable trigger arms and the delivery channel
-<!-- /roadmap-status -->
 
 **The vocabulary is closed twice over.** `NotificationTriggerSchema`
 (`src/domain/notifications.ts:12-19`) has six arms — `failed`, `gate-waiting`, `write-parked`,
@@ -2492,7 +2475,7 @@ is schema-valid, dedupe-folded and rendered the moment something publishes it; n
 the policy list above with that in mind: a run that fails, a subject that mismatches and a write that
 parks are exactly the events §6 exists for, and today the operator learns about them from the queue
 row and the run panel, not from the inbox. The wiring is per-node work: the failed/subject-mismatch/
-write-parked arms belong with `{#sep-dash}`'s and each `Dashboard · wire` set's notification square,
+write-parked arms belong with `{#separations-compiled-acceptance}` and each admitted workflow's notification delta,
 `repeating` needs the `countByFingerprint` threshold §2.1 already indexes for, and `verified-done` is
 the one inbox-only arm.
 
@@ -2745,14 +2728,11 @@ carry run state; generic run-aware editing remains absent.
 
 ## 10. Explicit residuals
 
-<!-- roadmap: operator-calls -->
 
-<!-- roadmap-status: operator-calls -->
 - [x] every residual re-checked against the code and classified closed / open / standing, with the owning node named (§10)
 - [x] one residual was FALSE as written — restricted bundles are local but not short-lived, because nothing purges them
 - [!] four residuals have NO node: the uncalled Kuali registry audits, `explain failure`, the absent OS delivery channel, and `explain run`'s notifications reason, stale since D262
 > 2026-08-20 | docs-cohesion operator-trust | the four unowned items are reported to the plan, not adopted here — this doc may not mint a node
-<!-- /roadmap-status -->
 
 Re-checked item by item against the code on 2026-08-20. Each row is **closed** (the mechanism
 exists — the residual was a gap and is not one now), **open** with the node that owns it, or
@@ -2767,11 +2747,11 @@ node at all; they are listed under the table and reported to the plan rather tha
 | Diagnostic screenshots may carry unavoidable HR context; capture-time redaction cannot promise perfect VISUAL redaction | **standing** — only a screenshot may stay `restricted`; every other attachment arm is redacted text, and a never-exportable key surviving as `allowed` fails the capture (§2.2.1) | this doc; no build closes it |
 | …“restricted bundles remain local and **short-lived** unless pinned” | **CORRECTED — the second half was false.** They are local. They are not short-lived: the sweep is built, tested, and has no caller, so no bundle has ever been purged on this machine (§2.2) | `{#def-retention}`, status `never` — D193 dispositioned scheduling AND the content-store refcount as `wont-build-unless-asked` |
 | `explain failure <fingerprint>` (§2.1, §4.2) | **open** — the indexed column and `listByFingerprint` exist; the command does not | **unowned** (see below) |
-| The knowledge/fix store has no writer, no reader and no surface; §4.3's audit needs a `version` field nobody has ratified (§4.1, §4.3) | **open** — table, admission audit and projection are built and unit-tested; nothing in the running system reaches them | `{#track-a}`'s close-out line (“regression scenarios, knowledge records, capability dispositions”) |
-| Five of seven notification event kinds have no producer, leaving four trigger arms unreachable (§6.3) | **open** | the notification square on `{#sep-dash}` and each `Dashboard · wire` set for `failed` / `subject-mismatch` / `write-parked`; `repeating` and `verified-done` are **unowned** |
+| The knowledge/fix store has no writer, no reader and no surface; §4.3's audit needs a `version` field nobody has ratified (§4.1, §4.3) | **open** — table, admission audit and projection are built and unit-tested; nothing in the running system reaches them | `{#workflow-write-mechanics}`' software close-out line |
+| Five of seven notification event kinds have no producer, leaving four trigger arms unreachable (§6.3) | **open** | `{#separations-compiled-acceptance}` and each admitted workflow's notification delta for `failed` / `subject-mismatch` / `write-parked`; `repeating` and `verified-done` are **unowned** |
 | A rerun's field-level diff against the prior run (§2.4) | **retired by the 2026-09-03 D289 amendment** — attempts remain separately inspectable and the product performs no automatic comparison | none |
 | `preflight-coverage` is `planned`; nothing executes the preflight fault manifests (§3.1) | **open** | `{#cross-cutting}` — D188 re-owned it; it activates with the first migration that adds a preflight runner |
-| §3.2's minimum coverage policy is not proved in full (the audit is over graph-derived points, not a contract's error enum) | **open** | `{#test-tiers}` (R10), spec `ref guards-and-tests §Testing tiers` |
+| §3.2's minimum coverage policy is not proved in full (the audit is over graph-derived points, not a contract's error enum) | **open** | `{#workflow-authoring-core}` (R10), spec `ref guards-and-tests §Testing tiers` |
 
 **Four residuals no node names — reported, not adopted.** This doc may not mint a node, so each is
 stated here and carried to the plan.

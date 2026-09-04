@@ -85,7 +85,7 @@ Blank map space leaves the selected node and returns the inspector to the guide.
 a second `Esc` collapses the inspector. Dragging blank space pans without triggering that exit.
 
 Visible task names use deterministic hierarchy paths. A phase part is `3.1`; its tasks are `3.1.1`,
-`3.1.2`, and so on. Deeper evidence cards continue the path (`3.3.4.1`). Phase 4 retains its admitted
+`3.1.2`, and so on. Parallel task members continue the path (`3.2.5-2`). Phase 4 retains its admitted
 lettered migration labels. This display convention does not replace the plan's stable source headings
 or anchor IDs.
 

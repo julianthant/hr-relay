@@ -100,7 +100,7 @@ None of these blocks a phase, and none is a waiver: each names where it is owned
 - [x] 1b — the strict wire primitives are still the served ones — `src/domain/dashboard/{bootstrap,projection,run-detail,subscription,artifacts,primitives}.ts`, recursively strict, unknown keys refused (`strict-boundary-schemas`)
 - [x] 1b — single-source enforced, not merely intended: `clock-single-source`, `manual-clock-test-only`, `secrets-single-source`, `no-secret-values-in-logs`
 - [ ] two invariants the ratchet port map NAMES are held by nothing — `cancel-mechanism` (one-mechanism cancel) and `tracker-row-emission` (no arm bans an `appendFileSync` to the event JSONL outside the emitter); owner `ref:guards-and-tests` §2.1 / §5.1
-- [ ] the coverage floor is still 60/80 (`vitest.config.ts:40-41`); R10 raises the global floor to 80 (measured 84/82/85) and that has not landed — owner `{#test-tiers}`
+- [ ] the coverage floor is still 60/80 (`vitest.config.ts:40-41`); R10 raises the global floor to 80 (measured 84/82/85) and that has not landed — owner `{#workflow-authoring-core}`
 > 2026-08-21 | docs-cohesion 01 | verified against tests/unit/architecture/helpers/ratchet-arms.ts, docs/rebuild/guard-inventory.json (75 entries, 65/8/2), vitest.config.ts:40-41, src/domain/dashboard/** and the filled `p1-base` blocks in reference/{guards-and-tests §2, operator-trust §2, frontend-backend-integration §3}; left: the two unheld port-map invariants and the coverage-floor raise, both owned elsewhere
 
 <!-- /roadmap-status -->
@@ -180,7 +180,7 @@ and secret prerequisite coverage; adversarial ratchet fixtures; and no open deci
 `tracker-row-emission` appear in the ratchet port map and no arm holds them — written down in
 `ref:guards-and-tests` §2.1 / §5.1 rather than implied. And the coverage floor in
 `vitest.config.ts:40-41` is still the 1a value (60 global / 80 safety-critical); R10's raise to a
-global 80 is planned under `{#test-tiers}` and is not landed.
+global 80 is planned under `{#workflow-authoring-core}` and is not landed.
 
 ## 1.2 · Durable authority and workflow model
 <!-- roadmap: p1-authority -->
@@ -777,7 +777,7 @@ and the run-detail panel was two pixels wide. Both are fixed; both are recorded 
   the pair with `test:coverage` (a strict superset, measured faster), and the legacy half retired
   with **D93/D150** — nothing here reads legacy's working tree and legacy work blocks no rebuild
   gate. `test:coverage` gates **60/80** lines/statements/functions (`vitest.config.ts:40-41`);
-  branches are report-only. R10 raises the global floor to 80 and has not landed (`{#test-tiers}`).
+  branches are report-only. R10 raises the global floor to 80 and has not landed (`{#workflow-authoring-core}`).
 - **Write-safety fixtures** pin simultaneous and later sequential same-key dedupe, proof validation
   for every completion arm, fresh subject binding, crash injection across the atomic commit, and
   ledger-projector concurrency and tail loss. Alternating EID and file-digest mismatch produce zero
@@ -813,6 +813,6 @@ and the run-detail panel was two pixels wide. Both are fixed; both are recorded 
 
 Nothing in Phase 1's own scope. Every residual the later rewrites found on a spine contract is
 listed with its owner in §Phase summary above, and each is owned by a later node: `{#track-c}`,
-`{#observed-logs}`, **Track D row D6** and **row D11**, `{#def-byte-path}`, `{#test-tiers}`, and
+`{#observed-logs}`, **Track D row D6** and **row D11**, `{#def-byte-path}`, `{#workflow-authoring-core}`, and
 three reference-doc sections. D75 closed the former unowned `requestedBy` admission check on
 2026-08-29 without adding a second actor.

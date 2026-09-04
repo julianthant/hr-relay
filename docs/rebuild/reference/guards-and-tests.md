@@ -661,7 +661,7 @@ read while still permitting replay-safe browser downloads.
 > 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory; the panel itself is a deferral, not a guard gap
 <!-- /roadmap-status -->
 
-- **`legacy-capability-disposition.test.ts`.** Doc 03c §Non-workflow capability closure inventory's strict inventory covers every old
+- **`legacy-capability-disposition.test.ts`.** Ref workflow-model §1.6.3's strict non-workflow inventory covers every old
   workflow directory, `services/*` module, route file/endpoint family, top-level dashboard component
   family, CLI subcommand/ops script, exporter/codegen/maintenance/dev tool exactly once. New legacy
   paths fail until classified. Runtime proxy is forbidden. Cutover-readiness mode rejects open/
@@ -712,13 +712,10 @@ read while still permitting replay-safe browser downloads.
 
 #### 3.11 as-built — the capability-closure sweep (D184, 2026-08-09, 2j)
 
-<!-- roadmap: operator-calls -->
 
-<!-- roadmap-status: operator-calls -->
 - [x] D184's sweep is done and its rule holds: a wrong `native` claim is worse than an honest `open`, so a family whose operator-visible half did not land stays open and says what is missing
 - [ ] D192's re-disposition is the doc-side item still open here
 > 2026-08-20 | docs-cohesion ref guards-and-tests | verified against §3.11 as-built; the other two calls in this node belong to `reference/dashboard-surfaces` and the migration record
-<!-- /roadmap-status -->
 
 The normative text above is unchanged. What follows is what actually landed, and what the guard
 had been failing to hold until it did.
@@ -739,7 +736,7 @@ worse than an honest `open`**, so a family whose core landed but whose operator-
 not (the Log Panel without its screenshot gallery, Settings without an editor, capture without an
 operator photo review) stays open and says exactly what is missing.
 
-**Three vocabulary additions**, all sanctioned by doc 03c §Non-workflow capability closure inventory rather than invented here:
+**Three vocabulary additions**, all sanctioned by ref workflow-model §1.6.3 rather than invented here:
 
 - `open` gains a required non-empty `reason`. A bare `{kind, milestone}` is *how* 73 entries came
   to name shipped milestones — there was nothing in the record to contradict.
@@ -1594,14 +1591,11 @@ the parity corpus (§10.1).
 
 ## 9. Worked example — adding one new submit-bearing workflow
 
-<!-- roadmap: order-8 -->
 <!-- roadmap: migrations -->
 
-<!-- roadmap-status: order-8 -->
 - [x] the worked example is as-built for the guard half — every RED it names is a guard that exists at HEAD
 - [x] steps 6–7 have their first concrete implementation: the `separations-kuali-finalization` pair, typed subject registry, durable result table and production CLI runner; its first green live canary remains date-blocked until 2026-08-28
 > 2026-08-25 | test-tiers | blocked execution persisted the no-browser result; the migration node's PROOF stays open because blocked is evidence that the test did not run, not a green result
-<!-- /roadmap-status -->
 
 <!-- roadmap-status: migrations -->
 - [x] the per-workflow guard loop is unchanged and every guard it fires is active
@@ -1665,9 +1659,7 @@ guards—one contract change, and the compiler plus ratchets force the rest.
 
 ## 10. The test family, and the split by what a test needs (R10)
 
-<!-- roadmap: test-tiers -->
 
-<!-- roadmap-status: test-tiers -->
 - [x] DOCS the spec — §10 rewritten as-built with the tiers, layout, naming, run policy, subject registry, durable result and the two checklists (this commit)
 - [ ] BE T1 layout — `tests/scenario/workflows/<workflow-id>/` with ONE structural scenario per workflow and its `dry-run.scenario.ts` manifest; the pretending scenarios rewritten (§10.3, §10.4)
 - [x] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard` (§10.12) — the first feature is `separations` at `tests/scenario/dashboard/separations/` (2026-08-27); the corpus audit learned the tier as its THIRD kind (`DASHBOARD_SCENARIO_FILE_PATTERN`), which carries the integration walk's obligations because it walks no graph
@@ -1675,11 +1667,10 @@ guards—one contract change, and the compiler plus ratchets force the rest.
 - [x] BE the subject registry (`config/test-subjects.json`, values via `src/domain/secrets.ts`) + the insert-only `dry_run_scenario_results` row + `cli dry-run-scenario` (§10.5, §10.6)
 - [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded — needs `{#parallel-runs}` and `{#duo-lease}` first (§10.8)
 - [ ] BE coverage floor 80/80/80 global, with D91's 50 % global branch gate adopted alongside it (§10.10)
-- [x] BE the FIRST T1 pair in the tree — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the valid proof contracts/helpers of the dismantled annotation workflow (D266; doc 03b §The workflow tree)
+- [x] BE the FIRST T1 pair in the tree — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the valid proof contracts/helpers of the dismantled annotation workflow (D266; ref workflow-model §1.2.2)
 > 2026-08-20 | docs-cohesion ref guards-and-tests | the spec is written against the code (`vitest.config.ts`, `src/core/run-executor.ts`, `src/core/write-sequencer.ts`, `tests/scenario/**`, `tests/parity/**`, `docs/migrations/separations.md` §9.22); left: the four code units 5.2b–5.2d. Two as-built findings recorded rather than assumed: `TransactionDryRunPreviewSchema`'s `mismatch` subject arm is unreachable, and a real subject's EID is hardcoded across seven tracked files
 > 2026-08-25 | test-tiers | registry, authority row and CLI runner built; the finalization canary now records `blocked`/`not-started` before browser composition because its honest subject is unavailable until 2026-08-28. The T1 PROOF remains open until that manifest records `met`
 > 2026-09-02 | test-suite-rationalization R5a | the T1a structural half is complete for all seven registered workflows: each owns exactly one `workflows/<workflow-id>/structural.scenario.test.ts`, the architecture lane refuses split/flat ownership, and all structural person/document identities are synthetic. The overall T1 item remains open: only `separations` and `separations-kuali-finalization` have T1b manifests, and their sole retained canary is honestly `gone`/blocked rather than `met`.
-<!-- /roadmap-status -->
 
 This section is normative and it is the one an agent writing tests reads first. **R10's rule:
 `tests/` is organized by what a test NEEDS in order to run**, because that is the only split that
@@ -1901,7 +1892,7 @@ registry resolves it.
   committed registry chooses no subject on its own; the operator's ignored `.env` does. A subject two
   workflows can drive is ONE row with two arms — never two entries and never an alias, because an
   alias puts the workflow choice back into a name. **Today the registry holds exactly one subject** —
-  `finalization-canary` — with both arms; doc 03b §The canary registry is its as-built and
+  `finalization-canary` — with both arms; doc 03.3 Tasks 1–3 own its current admission and
   `docs/migrations/separations.md` §9.31 tabulates the eight labels that retired into history. This
   is D85 part 3's `TestTargetRegistry`, built.
 - **`pending` — how the registry says "true, and not ready".** An arm may DECLARE the canonical
@@ -1937,7 +1928,7 @@ registry resolves it.
   mis-addressed label is a defect in the request, not a decayed canary.
 - **Both directions are guarded** (`test-target-registry`): every manifest case's
   `(label, workflow, kind)` matches an ARM of a registry entry, and every registry arm has a case in
-  that workflow's own manifest; the committed registry, doc 03b's inventory line and the manifests
+  that workflow's own manifest; the committed registry, doc 03.3's admission inventory and the manifests
   name the same document set.
 
 ### 10.6 The durable result — what a `PROOF` tick is allowed to cite
@@ -2158,7 +2149,7 @@ uncalibrated allowance.
 
 ### 10.11 Checklist — how a NEW workflow adds its tests
 
-For the agent doing a migration. The 7-step loop in doc 03c cites this list; every item is a gate
+For the agent doing an admitted migration. Ref workflow-model §1.6.2 cites this list; every item is a gate
 that goes RED before it goes green.
 
 **D311/D317 amendment — test the workflow/compiler boundary once, and workflow behavior where it differs.**

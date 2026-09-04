@@ -122,7 +122,7 @@ The following are settled:
 - [x] 0.5 no optimistic authority — every surface settles through the served result and the next projection (D253, `app/command-result.ts`)
 - [x] 0.9 two repos, one cutover — structural since D93; `config/runtime-isolation.json` + `operational-isolation.test.ts` pin the one-machine half
 - [ ] 0.3's artifact half — "large immutable bytes use dedicated artifact routes": the schemas exist and NO route serves them (§3.6)
-- [ ] 0.6 end-to-end slices — the "Playwright visual proof" cell is filled for every ported surface (151 references) but the "fixture + degraded state" cell is not uniform; R10's test tiers are the plan for it (`ref:guards-and-tests`, `{#test-tiers}`)
+- [ ] 0.6 end-to-end slices — the "Playwright visual proof" cell is filled for every ported surface (151 references) but the "fixture + degraded state" cell is not uniform; R10's test-tier remainder is now owned by `{#workflow-authoring-core}` (`ref:guards-and-tests`)
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/routes/api.ts, http-server.ts, src/dashboard/client/**, provider-capability-boundary.test.ts; left: the artifact byte route (§3.6) and D11 (§4)
 <!-- /roadmap-status -->
 
@@ -1039,8 +1039,6 @@ Track D's checklist for every row that lands on this section — D1, D4, D6, D7,
 ## 5. Surface-to-backend wiring matrix
 
 <!-- roadmap: dash-defaults -->
-<!-- roadmap: sep-dash -->
-<!-- roadmap: order-0-dash -->
 
 This matrix is the generic surface completeness checklist. Under D311/D317 the workflow compiler fills its
 workflow-varying declarations and one registry-wide conformance suite checks every workflow definition. A
@@ -1093,8 +1091,6 @@ until every cell in its row has an implementation and a test. The **Built** colu
 <!-- roadmap: dash-defaults -->
 <!-- roadmap: track-b -->
 <!-- roadmap: track-d -->
-<!-- roadmap: sep-dash -->
-<!-- roadmap: order-0-dash -->
 
 **A flow is a WIRE SQUARE.** Each subsection below is one square built once in `{#dash-defaults}`.
 D311/D317 make the workflow compiler its per-workflow declaration path and the registry-wide conformance
@@ -1201,8 +1197,6 @@ is a true sentence about a stale basis rather than a partial re-offer.
 #### 5.1.1 Run modal — plan, confirm, enqueue
 
 <!-- roadmap: dash-defaults -->
-<!-- roadmap: sep-dash -->
-<!-- roadmap: order-0-dash -->
 
 1. The descriptor projection determines which start doors exist and serves the real timeline with each
    step's `required | selectable` start state; absence includes the reason.
@@ -1362,8 +1356,6 @@ D251's fourth premise — that the bundle already carrying a fact makes a wire a
 
 <!-- roadmap: dash-defaults -->
 <!-- roadmap: track-b -->
-<!-- roadmap: sep-dash -->
-<!-- roadmap: order-0-dash -->
 
 1. The day snapshot paints counts, rows, worker cards and the notification summary from ONE cursor.
 2. A row states its ordinal, class, containment, linked runs, facts and pipeline (§3.2), and carries
@@ -1390,8 +1382,6 @@ re-parsing the whole day (row D4); and the projector's member-preview and duplic
 
 <!-- roadmap: dash-defaults -->
 <!-- roadmap: track-b -->
-<!-- roadmap: sep-dash -->
-<!-- roadmap: order-0-dash -->
 
 1. Bootstrap validates hashes and renders shell vocabulary.
 2. Selecting a row fetches the detail header and the default panel section.
@@ -1477,7 +1467,6 @@ for one fact.
 #### 5.1.4 Gate ceremony — and the parked-write resolution beside it
 
 <!-- roadmap: dash-defaults -->
-<!-- roadmap: sep-dash -->
 
 1. A parked run's detail advertises its ceremony section — `identity-gate` or `parked-write` — and
    the section carries the packet, the server-computed `approvalShape`, and the typed resolutions.
@@ -1502,7 +1491,7 @@ resource, `resolve-gate` with a schema-bound `result`, the `identity-gate-before
 `gate_results` authority, and D204's receipt derivation over the gate row.
 **Per-workflow:** the packet itself and its ceremony are separations-shaped; a second gated workflow
 either adds its own section arm or generalises the packet. That generalisation is the square's real
-remaining work and is what `{#order-4-dash}` and `{#order-9-dash}` will force.
+remaining work and is assigned when the first applicable workflow passes `{#workflow-admission}`.
 
 **Left:** the generalisation above. And one contract statement has to be corrected rather than
 carried: an earlier draft of this flow described a **Review** gate — records streaming per page,
@@ -1516,8 +1505,6 @@ describes the built one.
 
 <!-- roadmap: dash-defaults -->
 <!-- roadmap: track-b -->
-<!-- roadmap: sep-dash -->
-<!-- roadmap: order-0-dash -->
 
 1. Archive serves a paged index and a **self-contained** archived detail — frozen row, detail,
    receipt and failure plus evidence POINTERS, readable with the descriptor list empty (D179).
@@ -1546,7 +1533,6 @@ workflow-versioning half is row **D8**.
 #### 5.1.6 Notifications — the durable inbox and its bell
 
 <!-- roadmap: dash-defaults -->
-<!-- roadmap: sep-dash -->
 
 1. A service publishes a durable, actor-keyed notification row on a closed trigger; the row commits
    before any OS delivery is attempted (D138).
@@ -1645,7 +1631,6 @@ Exited with contract tests proving a snapshot plus any valid patch sequence equa
 ### 6.3 `1i-spine`: exact shell + Person Lookup vertical slice
 
 <!-- roadmap: p1-spine -->
-<!-- roadmap: order-0-dash -->
 
 Ported and wired the approved production shell, Workflow Panel, Status Bar, Queue Panel, run/member
 Log Panel, Context rail, Receipt placeholder, Start Run, and Session Panel. The target was not “four
@@ -1665,14 +1650,12 @@ terminal duration, D126 accessible-name collision), and 2j found a fourth that e
 passed over: the run-detail panel was **two pixels wide** at every viewport since this slice, while
 the accessibility tree reported every word of it (D187, §7.1).
 
-<!-- roadmap-status: order-0-dash -->
 - [x] run modal — the typed name/EID start plan (§5.1.1)
 - [x] queue row — the person-lookup row, its status and its timing, with D123/D124/D126 fixed from the live run (§5.1.2)
 - [x] run detail — timeline, receipt, Context rail; the two-pixel panel found and fixed in 2j (D187)
 - [x] archive · activity · explorer — person-lookup rows appear through the generic surfaces (§5.1.5)
-- [ ] PROOF T2 dashboard scenario for the wired surfaces (R10, `{#test-tiers}`)
+- [ ] PROOF T2 dashboard scenario for the wired surfaces (R10; `{#person-lookup-acceptance}` / `{#separations-compiled-acceptance}`)
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against the §5.1 squares' as-built and tests/parity/dashboard-reference.spec.ts; left: the T2 scenario the testing tiers add
-<!-- /roadmap-status -->
 
 ### 6.4 Phase 2 transaction proof
 
@@ -1943,11 +1926,11 @@ today; existing generic behavior stays byte- and interaction-compatible through 
 
 <!-- roadmap-status: migrations -->
 - [x] D311/D317 ratify the workflow-to-wire compiler as the one generic integration contract
-- [x] person-lookup (`{#order-0-dash}`) and separations (`{#sep-dash}`) supply the existing behavior the compiler must preserve
+- [x] person-lookup (`{#person-lookup-acceptance}`) and separations (`{#separations-compiled-acceptance}`) supply the existing behavior the compiler must preserve
 - [ ] the workflow compiler, registry-wide conformance suite and two acceptance conversions
 - [ ] retire the repeated `Dashboard · wire` tasks for workflows that introduce no new capability
 - [ ] the squares a later migration needs and this build has not got: the Review panel kind, Group People, a generalised gate packet, the artifact byte route (§5)
-> 2026-09-02 | D311 | owner-first design ratified; implementation remains open in doc 03c §Workflow authoring model
+> 2026-09-02 | D311 | owner-first design ratified; implementation remains open in doc 03.2 §Task 1
 <!-- /roadmap-status -->
 
 ### 6.9 BUILT 2026-09-03 — the BFF serves the ordinary built dashboard in `--prod` mode (D189, amended D294)
@@ -2210,12 +2193,12 @@ rule as much as a Fast Refresh one, and why `terminalOutcomeText`, `deriveServed
 `planRunDetailFollow` and `classifyRunShape` are exported pure functions. The tiers that close the
 rest — one structural fixture scenario per workflow, dashboard feature scenarios, dashboard
 conditions attached to a live dry run, and the agent-operated parallel e2e — are
-`ref:guards-and-tests`'s and the tree's `{#test-tiers}` node.
+`ref:guards-and-tests`'s and D329's `{#workflow-authoring-core}` node.
 
 <!-- roadmap-status: p2-2j -->
 - [x] the layer table above is real for six of seven layers, each with named files
 - [x] 2j's own findings are fixed and recorded — the unreachable restore path (D181), the dark `paper-ink` corpus and the two-pixel panel (D187), the underivable receipt (D187)
-- [ ] the component layer — no React render lane exists; R10's tiers own it (`{#test-tiers}`)
+- [ ] the component layer — no React render lane exists; `{#workflow-authoring-core}` owns it
 - [ ] the parity lane is outside the per-commit gate: `test:coverage` does not run it, so a `.tsx` change is gated only by the layers above until someone runs `npm run test:parity`
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against vitest.config.ts (two projects: unit, scenario), package.json scripts and tests/**; left: the component layer and the parity lane's place in the gate
 <!-- /roadmap-status -->

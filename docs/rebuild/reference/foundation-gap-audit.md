@@ -463,7 +463,6 @@ effective value AND its source.
 ---
 
 ## 7. Open questions for the operator / orchestrator
-<!-- roadmap: operator-calls -->
 
 _All five are CLOSED, and this section is kept as the record of the Phase-0 operator-call register
 rather than as a live list. §7.1 → Kuali is SAVE-only and verified by reload read-back, OnBase by
@@ -473,8 +472,8 @@ per workflow at migration time via the §b questionnaire, not defaulted here (re
 the multi-user phase (D79), which D193 makes a LATER with no owner. §7.4 → per-run instance
 selection is owned by ref clock-config-secrets. §7.5 → the three docs were written and are
 `reference/write-safety.md`, `reference/guards-and-tests.md` and `reference/clock-config-secrets.md`.
-The operator call that IS open lives at the tree's `{#operator-calls}` node and in
-`03b-finish-separations.md` §Smaller operator calls open — this doc holds no status block for it._
+The operator call that IS open moved under D329 to `{#separations-compiled-acceptance}`; its former
+03b record is preserved in `history/superseded/` and this doc holds no status block for it._
 
 
 1. **Kuali & OnBase receipts.** Gap 1 forces a post-submit read-back to prove a filed doc for the

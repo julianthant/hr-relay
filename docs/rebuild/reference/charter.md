@@ -52,7 +52,7 @@ specified the world they replaced.)
 - [x] all 27 items were ratified in Phase 0 and reconciled through **Round 12** (D1–D94); the phase's own record — what it designed, how it ended — is `00-design-the-foundation.md` §Phase summary
 - [x] the items are numbered `### 1.`–`### 27.` as of 2026-08-21, so `ref:charter §12` resolves for the first time; the shape is `12.` rather than `§12 —` because that is what `scripts/roadmap/scan-docs.ts`'s section grammar parses
 - [x] **six** of these contracts have since been AMENDED by a later decision — D150 (legacy change accounting, §24 + §Non-negotiables), D191 (the gate family, §Non-negotiables), D247 with D216 beside it (command names are not an isolation resource), D263 (§One master plan's form), D193(c) (the Phase-3 entry, D84's order intact), D184 (the D58 inventory guard) — each marked in place above and tabulated in doc 00 §What no longer binds
-- [ ] **one** Phase-0 promise is still unbuilt: D79's `scaffold new-task` / `scaffold new-workflow` (the `new-workflow` half is owned by `{#def-explorer-edit}`, the `new-task` half has NO node owner). D85's test-target registry and real-kernel dry-run command are built under their R10 names (`config/test-subjects.json` and `cli dry-run-scenario`; `{#test-tiers}`)
+- [ ] **one** Phase-0 promise is still unbuilt: D79's `scaffold new-task` / `scaffold new-workflow` (the `new-workflow` half is owned by `{#def-explorer-edit}`, the `new-task` half has NO node owner). D85's test-target registry and real-kernel dry-run command are built under their R10 names (`config/test-subjects.json` and `cli dry-run-scenario`); current revalidation is owned by `{#workflow-authoring-core}`
 - [x] nothing in Phase 0 ITSELF is open — it wrote no runtime code by policy (§Process), so every item's build state is owned by the phase that implemented it, not by this doc
 > 2026-08-21 | docs-cohesion charter | verified against `src/core/runtime-composition.ts:142-143`, `docs/rebuild/00-design-the-foundation.md` §What no longer binds + §Two Phase-0 promises are still unbuilt, and `reference/decisions.md` rounds 1–12; left: nothing in Phase 0 — the six amendments and the two unbuilt promises are each owned elsewhere
 <!-- /roadmap-status -->
@@ -466,7 +466,7 @@ content) + ref operator-trust (receipt surface).
   per-commit gate is `typecheck` / `lint` / `test:coverage`, which REPLACES the earlier
   `test` + `test:architecture` pair (a strict superset, measured faster). The FLOORS below are
   D91's and are unchanged in the tree (`vitest.config.ts:39-43`); R10's raise of the global floor
-  to 80 % is owned by the tree's `{#test-tiers}` node and has not landed._
+  to 80 % is owned by `{#workflow-authoring-core}` and has not landed._
   Rebuild lines/statements/functions gate at
   60% globally and 80% for the named safety-critical set. Branches are report-only through Phase 1
   and gate at 50%/70% at Phase-2 exit. Suite size is reported and reviewed at phase exits rather
@@ -542,7 +542,7 @@ The foundation's documentation is part of the foundation.
 <!-- roadmap: cutover -->
 
 <!-- roadmap-status: migrations -->
-- [x] the strategy itself is unchanged and still governs: one workflow at a time, each with its own migration plan doc, the §b questionnaire answered BEFORE building (doc 03c §Phase summary's seven-step playbook)
+- [x] the strategy itself is unchanged and still governs: one workflow at a time, each with its own migration plan doc, the §b questionnaire answered before building (ref workflow-model §1.6.2)
 - [x] order 0 (person-lookup) is live-proven from Phase 1; **separations (order 8) is the migration in flight** — **D193(c)** moved the phase ENTRY here to force the store task libraries into existence, explicitly WITHOUT re-sequencing D84's risk-proof order
 - [ ] thirteen workflows across nine order rows remain, and **no workflow after separations is named yet**; only person-lookup and the six separations descriptors are registered, so orders 1–7 and 9 have no descriptor at all
 - [ ] store reality behind the order: only `ucpath`, `crm`, `kuali` and `new-kronos` have real drivers; `onbase`, `servicenow`, `i9`, `old-kronos` and `sharepoint` are three-line session declarations with zero tasks

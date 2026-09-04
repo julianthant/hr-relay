@@ -17,7 +17,7 @@ The durable decisions were:
 - D279: Phase 3a closed 10/10, with structural fidelity residue carried to the later dashboard work
   by explicit disposition.
 
-Normative owners: ref guards-and-tests, ref dashboard-surfaces, doc 03a, and the then-current
+Normative owners: ref guards-and-tests, ref dashboard-surfaces, doc 03.1, and the then-current
 dashboard deferral track.
 
 ## D320 — Phase 3 close
@@ -38,7 +38,8 @@ with exact-run write authority still 0/0/0. The target is available; the require
 result remains open. No gate was waived, no external write was authorized, and no third workflow
 was admitted.
 
-Normative owner: doc 03c §3c-A exit gate and §Accept Person Lookup and Separations, then close 3C.
+Historical owner: `docs/rebuild/history/superseded/2026-09-04-03c-authoring-after-separations.md`.
+D329 supersedes this start/close shape and moves current authority to docs 03.2/03.3.
 
 ## D323 — One visible phase hierarchy
 
@@ -59,7 +60,7 @@ D323 supersedes only D319's phase-number allocation. D319's safety boundary rema
 workflow receives no implementation scope until its current behavior and proposed definition are
 verified and approved.
 
-Normative owners: roadmap §Governance, ref workflow-model §1.6.2, and the phase docs 03c–06.
+Normative owners: roadmap §Governance, ref workflow-model §1.6.2, and the active phase docs 03.1–06.
 
 ## D325 — Phase 3 execution order and task ownership
 
@@ -80,7 +81,7 @@ On 2026-09-03 the operator made D323's visual hierarchy executable:
 - Phase 3 closes after 3D's attributed cooperation proof. D320 still authorizes 3C acceptance after
   its stated gates are green, but 3C now closes only its own part and unlocks 3D.
 
-Normative owners: roadmap §Governance and docs 03a–03d. The existing parallel-work lifecycle owns
+Normative owners: roadmap §Governance and docs 03.1–03.4. The existing parallel-work lifecycle owns
 dispatch-time branch, worktree, integration and cleanup records.
 
 ## D326 — One decimal execution hierarchy across Phases 0–3
@@ -101,7 +102,7 @@ foundational phase:
 D326 supersedes D323/D325's lettered naming and parallel-wave labels, not their one-plan,
 coordinator ownership, isolation, integration, or close-before-next-part rules.
 
-Normative owners: roadmap §Governance, docs 00–03d, and the canonical decision ledger D326.
+Normative owners: roadmap §Governance, docs 00–03.4, and the canonical decision ledger D326.
 
 ## D328 — Numeric wave members identify parallel supervisor tasks
 
@@ -126,3 +127,35 @@ order remain binding. Letter-suffixed task-wave grammar remains retired.
 
 Normative owners: roadmap §Governance, `docs/roadmap/notation.md`, admitted phase plans and the
 canonical decision ledger D328.
+
+## D329 — Authoring freezes before controlled acceptance
+
+On 2026-09-04 the operator corrected Phase 3's chronology and retired its last active legacy labels:
+
+- Phase 3.2 owns every remaining code-changing seam, current-source revalidation of landed work,
+  Person Lookup `live-read`, Separations dry-run acceptance, and an independent exact-candidate freeze.
+- Historical completion is carried through an exact old-to-new task crosswalk, but starts as
+  `current verification pending`; only current-source proof may close a new task.
+- A revalidation supervisor may repair a defect wholly inside its assigned seam. A cross-seam defect
+  creates a newly numbered 3.2 remediation task. The final freeze task is audit-only; any failure
+  invalidates the candidate and restarts the audit after remediation.
+- Phase 3.3 performs no software development. Its four serial tasks are candidate/target admission
+  plus final rehearsal, an independent pending-sweep proof, the coupled UCPath filing plus Kuali
+  finalization, and acceptance reconciliation/lifecycle close.
+- One bounded operational authorization names the exact candidate commit and fingerprints, the
+  disposable and real targets, the restoration/retention disposition, and the permitted sequence.
+  It expires on source or load-bearing configuration drift, target drift, unexpected failure, or
+  an UNKNOWN submission.
+- Active Phase 3 filenames are `03.1-finish-the-dashboard.md`,
+  `03.2-finish-workflow-authoring.md`, `03.3-accept-person-lookup-and-separations.md`, and
+  `03.4-co-operate-with-claude.md`. The former 03b/03c plans remain verbatim under
+  `docs/rebuild/history/superseded/`; old task numbers and 3c-A/3c-B are historical lookup keys only.
+
+D329 supersedes D320 and D326 where they place Separations before final workflow authoring or let
+the old 3c-A/3c-B structure control execution. It preserves D319's admission boundary, D326's
+decimal hierarchy and strict part sequencing, D328's numeric parallel-wave grammar, D309 identity
+authority, D310's independent deletion witness/filing-survival protocol, and the no-retry rule for
+UNKNOWN writes.
+
+Normative owners: roadmap §Governance, docs 03.2 and 03.3, ref workflow-model §1.6, ref write-safety
+§3.2/§14, and the canonical decision ledger D329.

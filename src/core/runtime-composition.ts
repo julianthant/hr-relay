@@ -195,10 +195,10 @@ export function registerActivityPersonPseudonymComposer(
  * completed 2026-08-09 (D168–D180), and tail `2j` — the integration/restore/
  * soak/documentation gate — closed Phase 2 the same day (D181–D189).
  *
- * `active` is now **Phase 3**, the per-workflow migration loop (doc 03c §Phase summary),
- * and it is deliberately the phase rather than a workflow id: doc 03c §Recommended migration order
- * orders the migrations but the operator picks which one starts, so naming one
- * here would be this file asserting a decision it does not own.
+ * `active` is now **Phase 3**, whose decimal parts finish the shared platform and
+ * acceptance before Phase 4 admits later workflows (`ref workflow-model` §1.6.2).
+ * It is deliberately the phase rather than a workflow id: no candidate receives
+ * a Phase 4 letter until the operator approves its verified admission packet.
  *
  * Two criteria left Phase 2 with an explicit disposition rather than a build,
  * and both are recorded where a reader will find them: the explorer's EDIT

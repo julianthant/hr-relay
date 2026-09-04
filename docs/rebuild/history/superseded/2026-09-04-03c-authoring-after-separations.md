@@ -1,3 +1,5 @@
+_History — superseded by `docs/rebuild/03.2-finish-workflow-authoring.md`, `docs/rebuild/03.3-accept-person-lookup-and-separations.md`, and `ref workflow-model` §1.6.2 under D329 (see `history/README.md`); kept verbatim as written through 2026-09-03._
+
 # 03.3 · Phase 3.3 — finish workflow authoring and acceptance
 
 This doc is the dedicated home of **Phase 3.3**, tree node `{#workflow-authoring-model}`, and the

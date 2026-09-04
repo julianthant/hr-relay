@@ -1,6 +1,6 @@
 /**
  * T2 — the `separations` dashboard feature over the REAL projection
- * (ref guards-and-tests §10.12, doc 03b "Dashboard · wire separations").
+ * (ref guards-and-tests §10.12, doc 03.1 "Dashboard · wire separations").
  *
  * These scenarios keep only claims that cross the real start command, queue
  * projection, checkpoint read, or run-detail timeline. Pure Explorer

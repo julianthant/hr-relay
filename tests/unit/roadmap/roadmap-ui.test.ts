@@ -25,9 +25,9 @@ describe("roadmap desktop interaction", () => {
     expect(code("dash-settings")).toBe("3.1.9-2");
     expect(code("dash-storage")).toBe("3.1.9-3");
     expect(code("dash-explorer")).toBe("3.1.9-4");
-    expect(code("sep-1")).toBe("3.2.1");
-    expect(code("workflow-guide-proof")).toBe("3.3.3");
-    expect(code("order-0-dash")).toBe("3.3.4.1");
+    expect(code("workflow-authoring-core")).toBe("3.2.1");
+    expect(code("workflow-guide-proof")).toBe("3.2.4-2");
+    expect(code("separations-compiled-acceptance")).toBe("3.2.5-2");
     expect(code("def-byte-path")).toBe("5A.1");
 
     const node = document.querySelector<SVGAElement>('.nd[data-key="track-b"]');

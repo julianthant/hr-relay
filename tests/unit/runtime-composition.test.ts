@@ -77,7 +77,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     // The transaction proof (D135) and tail 2g (D134–D145) completed
     // 2026-08-04; the marker advanced with the first 2h-A slice (D160) and
     // again at 2j, which CLOSED Phase 2 (D181–D189). `active` names the PHASE,
-    // not a workflow: doc 03c §Recommended migration order orders the migrations but the operator picks
+    // not a workflow: ref workflow-model §1.6.2 governs admission while the operator picks
     // which one starts, so a workflow id here would be the runtime asserting a
     // decision it does not own.
     assert.match(

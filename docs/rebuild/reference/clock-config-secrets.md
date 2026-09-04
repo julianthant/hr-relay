@@ -1091,7 +1091,7 @@ migration safe (one owner, empty allowlist) is the one already green.
   registered reference in ignored `.env`; the three person-value references and their smoke retire,
   and the composed `separations` chain derives every person fact (employee name, document EID, the
   UCPath subject) live instead. Committed config and smoke output still carry only public
-  field/reference/key metadata. See doc 03b §The canary registry for the normative as-built.
+  field/reference/key metadata. See doc 03.3 Tasks 1–3 for the current acceptance admission.
 
 ### 6.1 Explicit single-operator/local scope
 

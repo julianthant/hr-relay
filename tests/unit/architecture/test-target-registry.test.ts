@@ -411,7 +411,7 @@ describe("test target registry architecture", () => {
     }
   });
 
-  it("pins every separations chain subject to doc 03b's kind and availability", () => {
+  it("pins every separations chain subject to doc 03.3's kind and availability", () => {
     const rows = TEST_TARGET_REGISTRY.targets
       .flatMap((target) => {
         const chain = target.workflows.separations;

@@ -3,8 +3,8 @@
 **Status:** evidence only; not an admitted workflow and not authorized for implementation. The
 workflow-specific intake and login/search observation completed 2026-09-02, before D319.
 
-**Admission owner:** `docs/rebuild/03c-migrate-the-remaining-workflows.md` §Workflow admission after
-Phase 3
+**Admission owner:** ref workflow-model §1.6.2; this candidate remains unnumbered until operator
+admission after Phase 3
 
 **Inherited contracts:** ref charter §1/§3/§8; ref task-contract §2.7/§2.8/§3.1;
 ref stores §1/§4; ref guards-and-tests §10.11;
@@ -87,7 +87,7 @@ Applied to I-9 Lookup, the owner text at `1273c360` means:
 | Proof | Required cases |
 |---|---|
 | T1 structural | Signed modern record; rendered modern record with no Signed Section 2 row; historical redirect; true zero result; visible access-restricted zero result; multiple rows with one eligible action; only incomplete Section 1/2 actions; missing profile/I-9 id; malformed grid row; empty signer cell; audit table timeout; auth/page/schema transient retry; permanent failure; result/probe unknown; subject mismatch; crash after the search checkpoint and checkpoint-resume into summary; crash after summary checkpoint and checkpoint-resume into terminal derivation; restart from start as the same logical item/new attempt, ignoring old read/compute checkpoints and rerunning search, summary, and derivation from pristine input. |
-| T1b live | Required by doc 03c/ref guards-and-tests but blocked by the D209 conflict in §5. After an owning-contract resolution, use at least one same-day `available` signer subject that reaches a modern summary and produces a non-empty signed observation, plus any additional truthful registry arms the manifest claims. |
+| T1b live | Required by ref workflow-model §1.6.2/ref guards-and-tests but blocked by the D209 conflict in §5. After an owning-contract resolution, use at least one same-day `available` signer subject that reaches a modern summary and produces a non-empty signed observation, plus any additional truthful registry arms the manifest claims. |
 | Generic projection | Start/queue/detail/archive/Explorer conformance rides the recipe compiler suite. I-9 adds no new dashboard capability and therefore no duplicate T2/T3 feature pair. |
 
 R3 must register a public canary label only after finding a current, access-visible record with an
@@ -147,7 +147,7 @@ ratified; the runner/result arm and this workflow's T1 pair remain implementatio
 ## 6. Capability and close evidence
 
 `legacy-workflow-i9-lookup` stays `open` during intake. Its current reason incorrectly calls this a
-UCPath read; doc 03c owns the correction: the workflow reads the I-9 system. R3 updates the derived
+UCPath read; ref workflow-model §1.6.2 owns the correction: the workflow reads the I-9 system. R3 updates the derived
 capability entry only with the native store/workflow, T1/live evidence, generic projection proof,
 and proof that no superseded hand-authored assembly was reintroduced. Production routing remains on
 legacy until D89/D93's all-at-once cutover.

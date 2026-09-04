@@ -1,5 +1,5 @@
 /**
- * Generates ref stores §2 — the discoverable task-store catalog (D312, doc 03c 3c-A unit 2).
+ * Generates ref stores §2 — the discoverable task-store catalog (D312; doc 03.2 Task 2).
  *
  * An author about to write a task must be able to find an existing one by system, capability,
  * effect, inputs and outputs BEFORE creating a second implementation of the same page visit. That

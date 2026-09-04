@@ -73,7 +73,7 @@ They then narrowed execution to what Separations and current cross-cutting autho
 OCR, Group People, capture-to-workflow binding, and other workflow-specific producers remain with
 the workflow that can verify them.
 
-Normative owners: ref dashboard-surfaces §10, doc 03c workflow admission, and the dashboard
+Normative owners: ref dashboard-surfaces §10, ref workflow-model §1.6.2 workflow admission, and the dashboard
 completion plan.
 
 ## D288–D289 — reporting identity (comparison later superseded)

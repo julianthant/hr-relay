@@ -24,19 +24,21 @@ admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phas
   ownership map and D263.
 - The **phase docs** under `docs/rebuild/` record tasks, evidence, decisions and exit criteria.
   Phases 0-3 are `00-design-the-foundation` · `01-build-the-spine` ·
-  `02-prove-writes-build-the-tails` · `03a-finish-the-dashboard` · `03b-finish-separations` ·
-  `03c-migrate-the-remaining-workflows`. D326 supersedes D323/D325's split phase grammar for
+  `02-prove-writes-build-the-tails` · `03.1-finish-the-dashboard` ·
+  `03.2-finish-workflow-authoring` · `03.3-accept-person-lookup-and-separations` ·
+  `03.4-co-operate-with-claude`. D326 supersedes D323/D325's split phase grammar for
   Phases 0–3: numbered phases contain decimal parts, each part contains numbered supervisor tasks,
   and each task contains checklist subtasks. The active order is 0.3 authority design, 1.6 authority
-  implementation, 2.6 downstream revalidation, 3.1 dashboard, 3.2 Separations, 3.3
-  authoring/acceptance, then 3.4 Codex/Claude cooperation. One coordinator owns each decimal part;
+  implementation, 2.6 downstream revalidation, 3.1 dashboard, 3.2 workflow authoring/read-only
+  acceptance/candidate freeze, 3.3 controlled acceptance, then 3.4 Codex/Claude cooperation. One coordinator owns each decimal part;
   each task is one supervisor session. D328 makes admitted parallel waves visible: peers share the
   ordinal and use consecutive numeric members (`3.1.9-1`, `3.1.9-2`, ...), while serial tasks keep
   `N`; the coordinator run plan still owns their exact worktree lifecycle.
   Phase 4
   admits later workflows as 4A/4B/4C only after D319 verification and operator approval; Phase 5 is
-  readiness plus the one cutover, and Phase 6 is the desktop app. Stable filenames stay unchanged.
-- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D328; **D131 is a retired gap —
+  readiness plus the one cutover, and Phase 6 is the desktop app. D329 retires the old 03a–03d
+  filenames and active 3c-A/3c-B labels; their historical evidence lives under `history/superseded/`.
+- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D329; **D131 is a retired gap —
   never reuse it**). A **pointer index**, not a spec: it tells you which doc owns a contract. Never
   implement from it.
 - `docs/rebuild/reference/` — the contracts, each doc owning its own; in prose **`ref <slug>`**:
@@ -52,8 +54,8 @@ admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phas
 - `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`): 60 entries of
   "X looked safe and did Y", each naming its decision. Read it before kernel / driver / dashboard /
   write-safety work; add new root-level lessons THERE (module lessons stay in the module's AGENTS.md).
-- `docs/rebuild/00`–`06` — stable plan-document paths. D323 maps their owning work into the visible
-  Phase 0–6 hierarchy even where a preserved filename predates that mapping. Each phase owns its
+- `docs/rebuild/00`–`06` — active plan-document paths. D323 maps their owning work into the visible
+  Phase 0–6 hierarchy; D329 aligns every Phase 3 filename to its decimal part. Each phase owns its
   tasks, decisions and **exit criteria**;
   `docs/roadmap/roadmap.md` is the summary. The old `07-master-plan.md` was dissolved into them on
   2026-08-20 and is preserved, with a section-by-section table of where everything went, at
@@ -370,6 +372,13 @@ environment-supplied.
   The hyphen names a peer task, not another hierarchy level. Operator choices and live authorization remain
   `needs:` on the task they unblock.
 
+- **2026-09-04 — finish workflow authoring before controlled acceptance (D329).** Phase 3.2 owns every
+  code-changing seam, both workflows' transaction-free/read-only acceptance, and an independent exact-candidate
+  freeze. Phase 3.3 consumes that immutable candidate in four serial tasks: admission/rehearsal,
+  independent pending-sweep proof, coupled UCPath filing plus Kuali finalization, then reconciliation.
+  Candidate drift or a software defect returns to a newly numbered 3.2 remediation task; old 03b/03c
+  task labels are historical lookup keys only.
+
 - **2026-09-03 — the roadmap is an outcome hierarchy, not a session journal (D323/D326).** Only numbered
   phases sit on the vertical spine; Phases 0–3 use decimal parts and numbered tasks beneath them.
   Phase 4 retains admitted workflow migrations as
@@ -560,7 +569,7 @@ environment-supplied.
   (D314). D265 folders stay organization/audit structure, not semantic timeline order; T1 stays per
   workflow and T2/T3 is added only for a genuinely new dashboard capability; "recipe" is analogy
   only. See docs/guides/workflow-authoring.md (practical), ref workflow-model §§1.6, 5.6 and 5.8
-  (normative), doc 03c `{#workflow-authoring-model}` (routing).
+  (normative), doc 03.2 `{#workflow-authoring-model}` (routing).
 - A workflow's T1 proof lives at
   `tests/scenario/workflows/<workflow-id>/{structural.scenario.test.ts,dry-run.scenario.ts}`: exactly
   one collected structural scenario and one sibling T1b live manifest. D318 gives that manifest two
@@ -721,7 +730,7 @@ environment-supplied.
   both fail, preserve them primary-first in an `AggregateError` and carry it through any parked-write
   cause. Post-click verification starts after authority is fenced, so task lookup, input binding and
   `span.started` emission belong inside the `PostFenceWriteFailure` boundary too; none may escape
-  without parking. See ref write-safety §3 and doc 03a §Observed logs.
+  without parking. See ref write-safety §3 and doc 03.1 §Observed logs.
 
 ### Dated lessons
 

@@ -1,10 +1,10 @@
 # Person Lookup - Phase 3 Search + Match acceptance record
 
-**Status:** admitted in Phase 3; workflow-specific intake completed 2026-09-02 and final acceptance
-belongs to Phase 3c-B after the authoring foundation lands
+**Status:** admitted in Phase 3; workflow-specific intake completed 2026-09-02. Current-source
+verification is pending in doc 03.2 Task 5-1; controlled acceptance closes in doc 03.3 Task 4.
 
-**Plan owner:** `docs/rebuild/03c-migrate-the-remaining-workflows.md` §Phase 3 acceptance · Person
-Lookup
+**Plan owner:** `docs/rebuild/03.2-finish-workflow-authoring.md` Task 5-1 and
+`docs/rebuild/03.3-accept-person-lookup-and-separations.md` Task 4
 
 **Inherited contracts:** ref charter §1/§3/§8; ref workflow-model §1.6/§8; ref task-contract
 §2.7/§2.8/§3.1; ref stores §2; ref dashboard-surfaces §9; ref guards-and-tests §10.11;
@@ -74,7 +74,7 @@ Applied to Person Lookup, the owner text at `1273c360` means:
 |---|---|
 | T1 structural — Search | EID and name ingress; unique selection; no result; multiple/ambiguous result; CRM found/missing; CRM transient retry and permanent failure; UCPath drill subject mismatch; optional CRM dates included/not requested; crash after a checkpoint followed by checkpoint resume that replays valid ancestors but executes the `always-rerun` active-status ancestor again; restart from start as the same logical item/new attempt, rerunning every read/compute from pristine input; every declared conditional/refusal/result arm. Reuse and relocate current useful scenarios rather than freezing legacy implementation trivia. |
 | T1 structural — Match | DOB+SSN, DOB-only, and SSN-only accepted forms that the final strict schema admits; both identifiers absent rejected at ingress; unique match; no-match; multiple/ambiguous candidates; malformed result grid; subject mismatch; transient retry; permanent auth/page/schema failure; result/probe unknown; crash after the read checkpoint followed by checkpoint resume; restart from start as the same logical item/new attempt with the Match reads and terminal compute executed again. |
-| T1b live — Search | Required by doc 03c/ref guards-and-tests but blocked by the D209 conflict in §4. After an owning-contract resolution, use current registered Search subjects only for truthful input arms and record reached/excluded nodes, checkpoints, verdict and zero write-authority deltas. |
+| T1b live — Search | Required by doc 03.2 Task 5-1/ref guards-and-tests; §4 records the D209 resolution and existing evidence. Current acceptance must reverify it against the candidate being frozen, using current registered Search subjects only for truthful input arms and recording reached/excluded nodes, checkpoints, verdict and zero write-authority deltas. |
 | T1b live — Match | Required but blocked by §4's D209 conflict. After resolution, use a dated current HR Tasks record whose secret-backed name/DOB/identifier inputs exercise one eligible Match result without exposing values in committed evidence. |
 | T2 — mode chooser | The run modal serves Search and Match as two options of the one `person-lookup` workflow, with mode-specific labels, input instructions/parsers, and no duplicate registry/archive/Explorer identity. |
 | T3 — live mode condition | Required for the new mode interaction but blocked by §4 because T3 attaches to a dry-run scenario. After resolution, start each mode through the real ceremony and prove the selected mode controls the expected title/input contract and timeline/result while the durable workflow id remains `person-lookup`. Ordinary generic surfaces need no duplicate feature proof. |

@@ -13,8 +13,8 @@ contracts exist — Kuali finalization and two UCPath writes — after D266 reti
 proof contract; their `recoveryAbsence` policies differ on measurement, not convenience (§4.2).
 The identity-approval gate is built, live-proved and served through all three
 of its ceremonies (§14.9, §14.11). What is NOT proven is per-workflow: **each workflow with a write
-owes its own controlled-commit proof at its own migration** (§3.2), and separations owes three of
-them (doc 03b).
+owes its own controlled-commit proof at its own migration** (§3.2), and Separations owes three of
+them (doc 03.3 Tasks 2–3).
 
 **The guarantee boundary is stated, not implied.** The permanent key and its CAS guarantee at most
 one unattended commit attempt per intent generation, and the kernel converges to `done` from valid
@@ -23,7 +23,7 @@ against every remote UI regardless of consistency" is not claimed and is not enf
 browser probe (§1).
 
 **Where the evidence lives.** Doc 02 owns the Phase-2 phase record and points here for the numbers;
-doc 03b owns separations' own three proofs and their 08-28 target; `docs/migrations/separations.md`
+doc 03.3 owns Separations' three controlled proofs and current targets; `docs/migrations/separations.md`
 is the as-built migration record. This doc owns the CONTRACT — what every write must declare, what
 the kernel does with it, and what may never be substituted for proof.
 
@@ -274,7 +274,6 @@ the arm rather than to build a producer for it. It is recorded here rather than 
 pass because a shared schema change is code work with its own gate.
 
 ### 2.2 Per-system instantiation (three shapes, one mechanism)
-<!-- roadmap: sep-5 -->
 
 - [ ] Kronos/PayPath has NO commit contract, no probe and no verifier — order 6 is where `new-kronos` gains its first write family, and every row of this section has to be answered for it from scratch
 - [ ] its completion arm is undecided: a Kronos pay-rule save has no receipt anyone has looked for, so the §b questionnaire has to establish whether a positive read-back exists before the shape can be chosen
@@ -282,7 +281,7 @@ pass because a shared schema change is code work with its own gate.
 
 - [ ] OnBase has no commit contract and, uniquely, **no positive landing signal at all** — legacy's success test is "the import postback did not land on a recognised ASP.NET error page", which passes on `authenticated` OR `unknown`
 - [ ] it is the only candidate for `unverifiableByPage`, and that registry is EMPTY: earning an entry is a reviewed act, and the consequence — every upload parks for manual confirmation — changes the operator's daily workload rather than the safety story (§13 OQ2)
-- [ ] ServiceNow's receipt arm is the easy half of the same order (a `waitForURL` for `number=`, parsed `/^HRC\d{6,}$/`) and still has no contract; its propagation window is doc 03c §Live probe status
+- [ ] ServiceNow's receipt arm is the easy half of the same shape (a `waitForURL` for `number=`, parsed `/^HRC\d{6,}$/`) and still has no contract; its future admitted workflow packet owns the propagation measurement under `ref workflow-model` §1.6.2
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/write-safety.ts`'s empty `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` and the absence of any `onbase`/`servicenow` contract; left: both write families
 
 Three current commit contracts exist. Every row below is read off the contract, not off the design;
@@ -329,7 +328,6 @@ does today.
 
 ## 3. The kernel write sequence
 <!-- roadmap: p1-kernel -->
-<!-- roadmap: sep-6b -->
 
 <!-- roadmap-status: p1-kernel -->
 - [x] the seven beats are built in `src/core/write-sequencer.ts` behind the interpreter's `WriteSequencer` seam; §4 recovery and the typed resolutions are `src/core/write-recovery.ts` (D111, Phase 1f)
@@ -342,13 +340,11 @@ does today.
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/core/write-sequencer.ts`, `src/core/write-recovery.ts`, `src/base/mutation-capability.ts`, `src/infra/sqlite/migrations.ts:300-327`; left: nothing in the kernel — what remains is per-workflow (§3.2)
 <!-- /roadmap-status -->
 
-<!-- roadmap-status: sep-6b -->
 - [x] a checkpoint's durable key is `(workflow, item, node, attempt, claimGeneration?)` — the claim generation is what distinguishes a gate resume's re-execution of an `always-rerun` node from the first execution inside the SAME attempt (D214; ref workflow-model §5.7 owns the key)
 - [x] a DRY RUN runs beat ① first, exactly as the real path does, so the ordinary separations subject settles `already-present` before anything is staged instead of refusing in `prepare` (D215; `write-sequencer.ts:1710-1760`)
 - [x] `transaction.previewed`'s fourth subject verdict `not-observed` reaches the JSONL wire schema as well as the kernel's union, and `span-events.test.ts:109` enumerates all four (D215; the fork that killed a live worker one emit short of terminal)
 - [ ] `probeToFenceMaxMs` is still unmeasured — see §5's *what a settled preview cannot measure*
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/core/write-sequencer.ts` (`executeDryRun`), `src/core/span-emitter.ts:155`, `src/events/types.ts:182`, `tests/unit/events/span-events.test.ts:109`; left: the `probeToFenceMaxMs` measurement, which needs a run that fences
-<!-- /roadmap-status -->
 
 The kernel drives a fixed seven-beat sequence. It binds and parses the commit input first, from
 workflow input plus declared upstream outputs; commit input cannot depend on ephemeral prepare
@@ -575,21 +571,18 @@ supplied-EID machine verification without the exact origin and UCPath read-back 
 requires; a name-resolved packet still opens the operator gate.
 
 ### 3.2 The controlled-commit criterion — every write workflow owes its own
-<!-- roadmap: track-a -->
 
-<!-- roadmap-status: track-a -->
 - [x] the criterion is MET once, on the kernel, by `kuali-timekeeper-annotation` (§3.4, D135) — that is what unblocked write-heavy migration
 - [ ] separations owes **three** controlled commits — `ucpath/create-termination`, `ucpath/delete-pending-terminations`, `kuali/save-separation-finalization` — each on an operator-approved canary. As of 2026-09-02, D309 removes separate in-workflow approval sequencing from the blocker set; migration §§9.35–9.36 still block the protocol on sweep-key reuse and finalization citing a deleted filing. The target-restoration requirement below remains binding; any narrowly scoped retention exception is an operator decision in this owner
 - [ ] chunk 5c's Kuali commit additionally carries D207's named obligation: confirm the transferred 30 s window or move it (§4.2)
 - [ ] `probeToFenceMaxMs` per workflow is still unmeasured, and a settled preview cannot measure it (§5)
-- [ ] every later migration order owes the same five-part shape at its own migration — orders 4, 6, 7 and 9 name it explicitly (doc 03c)
+- [ ] every later admitted write workflow owes the same five-part shape in its own Phase 4 packet (`ref workflow-model` §1.6.2); old order rows are evidence, not admission
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/{ucpath,kuali}/*`, `docs/rebuild/03b-finish-separations.md`, `docs/rebuild/03c-migrate-the-remaining-workflows.md` §The seven-step migration playbook step 5; left: all three separations commits and every non-separations write
-<!-- /roadmap-status -->
 
 The kernel is proven once. **A store's receipt and probe quality is not proven by that, and never
 transfers**, so every workflow with a write owes this criterion at its own migration, against a
-configured test instance or a deliberately harmless operator-approved canary. Doc 03c's step 5 is
-the process; this is the contract it enforces. Five parts, all five required:
+configured test instance or a deliberately harmless operator-approved canary. Each admitted
+workflow's execution plan owns the process; this is the contract it enforces. Five parts, all five required:
 
 | # | What must be shown | Why it cannot be dropped |
 |---|---|---|
@@ -599,8 +592,8 @@ the process; this is the contract it enforces. Five parts, all five required:
 | 4 | **an idempotent re-run answering `already-present`** with no browser and no second click | the permanent key is the whole double-submit story; an unexercised mutex is an assumption |
 | 5 | **the target restored**, each restore proved by the same read-back | a canary you cannot put back is a production edit with a test's name on it |
 
-**Absence of a safe target BLOCKS rebuild-ready — it does not license a substitution.** Doc 03c
-states this as a gate and it is a write-safety rule: a dry run alone cannot prove landing, recovery
+**Absence of a safe target BLOCKS rebuild-ready — it does not license a substitution.** Phase 3.3
+and every later admission packet state this as a gate, and it is a write-safety rule: a dry run alone cannot prove landing, recovery
 or dedupe, and converting a green dry run into a write-safety claim is the one substitution this
 program forbids. The §b questionnaire records the target, the reversibility, the expected proof and
 the stop condition BEFORE the step runs.
@@ -611,9 +604,9 @@ the stop condition BEFORE the step runs.
 its controlled commit must confirm or move it.
 
 **Where each proof lives.** The Phase-2 kernel proof is §3.4 below, with doc 02 carrying the phase
-record. Separations' three are doc 03b's, with `docs/migrations/separations.md` §6 as the checklist
-and its §9.x as the live log; current protocol blockers are §§9.35–9.36, not the old 08-28 window. Every later order names its
-own in doc 03c. A proof is RECORDED, never re-run: re-running one would be a second real HR write
+record. Separations' three are doc 03.3's, with `docs/migrations/separations.md` §6 as the checklist
+and its §9.x as the live log; current protocol blockers are §§9.35–9.36, not the old 08-28 window. Every later admitted workflow names its
+own under `ref workflow-model` §1.6.2. A proof is RECORDED, never re-run: re-running one would be a second real HR write
 (ref guards-and-tests §10.1).
 
 ### 3.3 As-built — the sequencer's beat-⑦ ratification and the dry-run half (D111 · D122)
@@ -924,7 +917,7 @@ command that released generation 1, with the same evidence-note requirement.
 - [x] the recovery state machine is built (`src/core/write-recovery.ts`) and answers exactly four typed decisions — `backfilled`, `safe-to-retry`, `wait{notBefore, observationsNeeded}`, `parked{code, message}` over the five closed park codes
 - [x] the ONE measured window in this program is Kuali's, from D135's four cycles on doc 4490 — `minSinceFenceMs: 30_000`, 2 reads, 5 000 ms apart, same source state
 - [ ] **UCPath has no measured window and both its commits stay `operator-only`** — the negative there would authorize a SECOND real termination, so §4.2 criterion 3 fails before the other two are asked
-- [ ] **ServiceNow has no measured window and no commit contract yet** — order 7's work; its propagation is doc 03c §Live probe status
+- [ ] **ServiceNow has no measured window and no commit contract yet** — its future admitted workflow packet must own both under `ref workflow-model` §1.6.2
 - [ ] the deferral's trigger: a controlled commit on each system that can record a save-answer latency, a first agreeing server-side read and a first agreeing reload (doc 04 `{#def-propagation}`)
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/core/write-recovery.ts`, `src/domain/contracts/ucpath/{create-termination,delete-pending-terminations}.ts` (both `operator-only`, each with its reason), `src/domain/contracts/kuali/*` (both `stabilized`); left: every non-Kuali window
 <!-- /roadmap-status -->
@@ -1161,17 +1154,13 @@ than decided here. What D136 guarantees is that the parked *intent* — the dura
 authority, the thing that records whether a real HR transaction exists — always has a typed way out.
 
 ### 4.2 A measured propagation window transfers with the MECHANISM, and only under its own proof (D207, 2026-08-14)
-<!-- roadmap: sep-5 -->
-<!-- roadmap: track-a -->
 
-<!-- roadmap-status: sep-5 -->
 - [x] `kuali/save-separation-finalization` exists with its prepare arm `kuali/stage-separation-finalization`, its verifier `kuali/verify-separation-finalization` and its probe `kuali/match-separation-finalization`
 - [x] its `recoveryAbsence` is `stabilized` on D135's Kuali numbers, INHERITED under this section's three criteria rather than measured — the same `submitDocumentV2` on the same RRSS form, the same reload of the same document, and a settlement that re-saves the identical staged values
 - [x] the staged set is TWELVE fields in one pass, not ten — D217 folded legacy's step-13 date write-backs in; the graph did not move, and both new controls carry `exactly-one-visible` from a read-only pass, NOT D208's `exactly-one-editable`
-- [ ] the inheritance is PROVISIONAL: chunk 5c's controlled commit must record the save-answer latency, the first agreeing server-side read and the first agreeing reload, and either confirm the 30 s bound or move it — **the composed workflow may not rely on the stabilized arm in production until it does** (doc 03b; waits for 08-28)
+- [ ] the inheritance is PROVISIONAL: Phase 3.3 Task 3's controlled commit must record the save-answer latency, the first agreeing server-side read and the first agreeing reload, and either confirm the 30 s bound or move it — **the composed workflow may not rely on the stabilized arm in production until it does**
 - [ ] five of the twelve staged fields have an ASSERTED payload check and five are recorded-and-named because their `formKey` model shape was never observed; the controlled commit closes them by reading the real payload
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/kuali/save-separation-finalization.ts:117-145`, `docs/migrations/separations.md` §4e/§9.10; left: the controlled commit and the five unasserted payload checks
-<!-- /roadmap-status -->
 
 D64/D69 admit `recoveryAbsence.kind:"stabilized"` **only** with a measured propagation window; the
 open question this subsection settles is what a measurement is a measurement *of*. **It is a
@@ -1201,12 +1190,12 @@ and settling a negative re-fences and re-saves the identical ten staged values.
 
 **The obligation this creates, stated as an obligation and not as a note.** A transferred window is
 **provisional until that write's OWN controlled-commit proof confirms it** — §3.2's optional sixth
-part, gated by doc 03c's step 5. The finalization's proof is separations chunk 5c: its authorized
+part, gated by doc 03.3 Task 3. The finalization's proof is the frozen-candidate controlled run: its authorized
 real commit must record the same three observations D135 recorded — the save's answer latency, the
 first agreeing server-side read, and the first agreeing browser reload — and either confirm the 30 s
 bound or move it. **The composed separations workflow may not rely on the stabilized arm in
 production before that confirmation lands**, and at HEAD it has not: the commit waits for the
-operator's 08-28 window (doc 03b). Until then the reuse is a declared, argued inheritance carrying a
+bounded Phase 3.3 authorization. Until then the reuse is a declared, argued inheritance carrying a
 named owner, which is exactly the difference between this and a generous placeholder.
 
 **What is `operator-only` today, and why each one is.** Both UCPath commits fail criterion 3 before
@@ -1214,21 +1203,18 @@ the other two are asked — settling a false negative on `ucpath/create-terminat
 real termination, and on `ucpath/delete-pending-terminations` it re-runs a control that DELETES
 rows, which is worse in the same direction. Each contract carries that argument as its own
 `reason` string, so a reader of the code gets the same sentence as a reader of this doc. ServiceNow
-and OnBase have no commit contract yet; their windows are order 7's question and doc 03c §Live probe
-status is the gate. The standing deferral is doc 04's `{#def-propagation}`.
+and OnBase have no commit contract yet; their windows belong to the first admitted workflow packet
+that requires them (`ref workflow-model` §1.6.2). The standing deferral is doc 04's `{#def-propagation}`.
 
 ---
 
 ## 5. Double-submit prevention
-<!-- roadmap: sep-4 -->
 
-<!-- roadmap-status: sep-4 -->
 - [x] the termination write exists as a transaction pair — `ucpath/stage-termination` → `ucpath/create-termination`, `save-verify` through `ucpath/verify-termination`, probe `ucpath/match-existing-termination`, key `ucpath:termination|<eid>|<effectiveDate>`
 - [x] the pending sweep exists as its OWN transaction pair with an exact-set permanent key — `ucpath/stage-pending-termination-sweep` → `ucpath/delete-pending-terminations`, key `ucpath:pending-terminations-clear:v2|<eid>|<set-digest>` — composed BEFORE the termination (D310)
 - [x] both are `recoveryAbsence: operator-only` and both carry their reason in the contract (§4.2)
-- [ ] neither has run its §3.2 controlled commit; the sweep's COMMITTED arm additionally has **no witness**. D310 forbids deleting the real filing as that witness; the independent disposable target and its restoration/retention disposition remain an operator-owned R4 packet (doc 03b)
+- [ ] neither has run its §3.2 controlled commit; the sweep's COMMITTED arm additionally has **no witness**. D310 forbids deleting the real filing as that witness; doc 03.3 Tasks 1–2 own the independent disposable target, its restoration/retention disposition, and the controlled witness
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/ucpath/{create-termination,delete-pending-terminations,stage-termination,stage-pending-termination-sweep}.ts`; left: both controlled commits, and the sweep's committed-arm witness
-<!-- /roadmap-status -->
 
 - [ ] onboarding's hire probe has no contract in this tree yet — legacy's `findExistingHireTransaction` matches on name + effdt + jobCode because a pre-hire person has NO EID, and porting it widens the verdict from a fail-open boolean to `ProbeVerdict` with `ambiguous` → park
 - [ ] that widening is the safety upgrade this section exists for, and it is the one probe whose key cannot be EID-derived — so its key hygiene (§8's ban on position, index and attempt) has to be argued at the migration rather than assumed
@@ -1675,22 +1661,16 @@ only. A fifth contract is where that stops being enough.
 ---
 
 ## 12. Worked example — a separations termination, with a crash
-<!-- roadmap: order-8 -->
-<!-- roadmap: sep-6a -->
 
-<!-- roadmap-status: sep-6a -->
 - [x] the composition is BUILT — `src/workflows/separations/descriptor.ts` composes twenty nodes ending in three transactions: `clear-pending` → `file-termination` → `finalize-kuali`, all downstream of the shared identity-authority task
 - [x] the identity packet carries the WRITE PLAN, so the digest machine verification or an approval binds to covers the dates, the template, the reason code and the department — not only the person (D211/D309; §14.10/§14.12)
 - [x] `identity-gate-before-commit` audits BOTH sinks (every transaction node AND the terminal result), pins the exact name-resolved gate condition, and caught the descriptor's first draft reading the run's product off the pre-authority node (D202/D309)
 - [ ] none of the three transactions has run its §3.2 controlled commit — the worked example below is the DESIGN walked against the real node names, not a record of a run
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/workflows/separations/descriptor.ts:262-280,528-660` and the four contract files; left: the three controlled commits (doc 03b)
-<!-- /roadmap-status -->
 
-<!-- roadmap-status: order-8 -->
 - [x] separations is migration order 8's workflow and the first migration this program attempts; its graph, its gate and its three writes exist
-- [ ] its §3.2 proofs are what "rebuild-ready" waits on, and they wait on the operator's 08-28 window (doc 03b Track A)
+- [ ] its §3.2 proofs are what "rebuild-ready" waits on; doc 03.3 owns the bounded authorization and three controlled proofs
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/workflows/separations/descriptor.ts` and `docs/rebuild/03b-finish-separations.md` §Track A; left: everything downstream of the three commits
-<!-- /roadmap-status -->
 
 This walks ONE of the composition's three transactions — `file-termination` — with the node and
 contract names the descriptor actually uses. It is the design demonstrated, not a run record: the
@@ -1776,9 +1756,7 @@ no commit on an observably different open record; neither alone proves every bus
 ---
 
 ## 13. Open questions for the operator / orchestrator
-<!-- roadmap: operator-calls -->
 
-<!-- roadmap-status: operator-calls -->
 - [x] OQ1 Kuali `save-verify` reliability — RESOLVED by the 2026-07-23 live probe (D78) and then proved by a real commit (§3.4); its four design constraints are requirements on the arm, not trivia
 - [x] OQ3 ledger tamper-evidence altitude — ANSWERED by deferral (D79): hash chain and tail anchor return with the multi-user phase or a separately ratified compliance need
 - [x] OQ6 UCPath receipt readability — RESOLVED by the 2026-08-04 live probe (D130) WITHOUT spending the operator's authorization for a submit, and the arm as previously specified was wrong (§2.2)
@@ -1786,7 +1764,6 @@ no commit on an observably different open record; neither alone proves every bus
 - [!] **OQ4 probe policy + `probeToFenceMaxMs` per workflow** — asked per workflow at migration, and every budget in the tree is currently authored rather than measured (§5)
 - [!] **OQ5 is the pending sweep a standing pre-step on every UCPath create path, or only on separations?** — separations composes it as its own transaction pair, which answers the SHAPE; whether onboarding's create path takes one too is order 9's call
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/ucpath/delete-pending-terminations.ts`, `src/workflows/separations/descriptor.ts:557`, the absence of any OnBase or onboarding commit contract, and `src/workflows/*/descriptor.ts`'s four authored budgets; left: OQ2, OQ4, OQ5 — three operator calls, none blocking at HEAD
-<!-- /roadmap-status -->
 
 Three of six are answered and stay here with their answers, because each answer is a constraint on a
 built arm. Three are live operator or orchestrator calls, each with the migration that forces it.
@@ -1816,7 +1793,7 @@ built arm. Three are live operator or orchestrator calls, each with the migratio
    document exists today**, so the probe is gated on the next real document upload (operator,
    2026-07-24). Consequence to be explicit about before order 7: if OnBase lands on always-park,
    its automation degrades to "the operator manually confirms every upload," which changes the
-   daily workload rather than the safety story. Owner: this doc; gate: doc 03c §Live probe status.
+   daily workload rather than the safety story. Owner: this doc; gate: the first admitted workflow packet that needs OnBase (`ref workflow-model` §1.6.2).
 3. ~~Ledger tamper-evidence altitude~~ — **amended by D79:** hash chain + independent tail anchor
    are deferred until multi-user or a separately ratified compliance need. The initial ledger is
    never-pruned, ordered, actor-attributed, strict, backed up, and reconciled from atomic outboxes.
@@ -1833,7 +1810,7 @@ built arm. Three are live operator or orchestrator calls, each with the migratio
    one, or only separations? Onboarding (order 9) is the next create path and is where the question
    is answered. One live finding constrains it — clearing the last pending row for a mapped subject
    removed the only witness the sweep's COMMITTED arm had, so whoever answers this also has to say
-   how that arm gets exercised (doc 03b).
+   how that arm gets exercised (doc 03.3 Task 2 owns the independent witness for Separations).
 6. ~~**UCPath `receipt` readability**~~ — **RESOLVED 2026-08-04 by live probe (D130): BUILDABLE, and
    the arm as previously specified was WRONG.** Settled **read-only**, with **no transaction
    created** — the operator's authorization for one real submit was not spent, because the question
@@ -1893,7 +1870,7 @@ built arm. Three are live operator or orchestrator calls, each with the migratio
    submit and searchability. Legacy answers both from its own live mapping — "**Cannot read it from
    the dialog itself**" (`workflows/separations/CLAUDE.md:147`, mapped 2026-04-01) and a 15s
    readback poll (`transaction.ts:947-965`) — and those are ported as legacy knowledge, not as
-   rebuild-verified facts. Owner: this doc; gate: doc 03c §Live probe status.
+   rebuild-verified facts. Owner: this doc; gate: the first admitted workflow packet that needs the observation (`ref workflow-model` §1.6.2).
 
 ---
 
@@ -1968,8 +1945,6 @@ Three legacy mechanics do **not** port, because the rebuild has real gate nodes:
   the write live in one trace with one identity.
 
 ### 14.3 Where the gate sits in the graph
-<!-- roadmap: sep-3 -->
-<!-- roadmap: sep-6a -->
 
 ```
   read: resolve candidates ─► GATE identity-approval ─► transaction[ prepare ─► bind ─► fence ─► commit ─► proof ]
@@ -2048,7 +2023,6 @@ does eliminate is the class of wrong-person write that happened *with no human e
 candidate*, which is exactly what `T002173685` was.
 
 ### 14.7 Open question deliberately left to migration
-<!-- roadmap: order-8 -->
 
 The gate is designed here; two values belong to the separations §b questionnaire: the **freshness
 limit** on the approval (how long may an approval sit before re-gating — hours, not days), and
@@ -2099,15 +2073,12 @@ field — and §14 attaches again. Recording that boundary is the point of writi
 exemption is a property of this graph, and it expires the moment the graph changes.
 
 ### 14.9 As-built — the gate is BUILT, and three things changed on contact (D202, 2026-08-12)
-<!-- roadmap: sep-3 -->
 
-<!-- roadmap-status: sep-3 -->
 - [x] separations chunk 3 builds §14 as `separations-identity-check` — two UCPath reads, a pure comparison producing the decision packet, the operator gate, and a post-gate check; registered, live-proved and terminal `done` over a real person (D202)
 - [x] `identity-gate-before-commit` audits BOTH sinks and caught the descriptor's first draft (D202); the same guard pins the registered gate's schema hash to `IdentityApprovalResultSchema`
 - [x] a gate has NO checkpoint and never will, so its durable record is the `gate_results` row — and the kernel's freshness walk reads it as ONE `operator`-sourced fact (D203), while the receipt reads it through the DECLARED mapping in `src/domain/trust/gate-decisions.ts` rather than sniffing the payload for a field called `decision` (D204)
 - [x] `ucpath/read-job-summary` returns the whole grid VERBATIM and classifies nothing; the disposition is a pure unconditional fold, so a single-employment person who is already terminated is checked rather than skipped (D201)
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/separations/identity-approval.ts:83-165`, `src/domain/trust/gate-decisions.ts`, `tests/unit/architecture/identity-gate-before-commit.test.ts`; left: nothing in chunk 3
-<!-- /roadmap-status -->
 
 Separations chunk 3 (`docs/migrations/separations.md` §9.5/§9.6) builds §14 as
 `separations-identity-check`: two UCPath reads, a pure comparison producing the decision packet, the
@@ -2164,7 +2135,6 @@ decides without leaving the dashboard, and a wrong-person control whose evidence
 control that cannot be exercised.
 
 ### 14.10 The packet carries the WRITE PLAN, and the digest binds to it (D211, 2026-08-14)
-<!-- roadmap: sep-6a -->
 
 §14.4's packet list ends at "the fields that agreed vs disagreed", which is complete for a gate whose
 only question is *is this the right person*. Separations chunks 4 and 5 each discovered the other
@@ -2204,7 +2174,6 @@ not have fired on the very case it exists for.
 
 ### 14.11 As-built — the THREE CEREMONIES exist, and an unknown shape refuses (D226, 2026-08-19)
 <!-- roadmap: track-b -->
-<!-- roadmap: sep-dash -->
 
 <!-- roadmap-status: track-b -->
 - [x] B1 — all three gate ceremonies are built and the surface renders exactly the one control the server asked for (`src/dashboard/app/identity-ceremony.ts`, `src/dashboard/surfaces/identity-approve.tsx`); the `choose` ceremony selects no default, and an unrecognised `approvalShape` refuses by name in both the type system and at runtime (D226)
@@ -2212,11 +2181,9 @@ not have fired on the very case it exists for.
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/separations/identity-evidence.ts:208` and the two dashboard modules; left: nothing in B1 — the rest of Track B is ref dashboard-surfaces's and ref frontend-backend-integration's
 <!-- /roadmap-status -->
 
-<!-- roadmap-status: sep-dash -->
 - [x] wire square 5.1.4, the gate ceremony, is the one square this doc owns: the approval shape is computed SERVER-side and served, and the client may compose no leaf of the result but the operator's own decision
 - [ ] the other eight wire squares are ref dashboard-surfaces's, ref frontend-backend-integration's and ref operator-trust's
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/dashboard/app/identity-ceremony.ts` (`composeCommandRequest`) and `src/domain/dashboard/run-detail.ts:938-944`; left: nothing this doc owns
-<!-- /roadmap-status -->
 
 §14.6 risk 1 requires the **shape of the control to change with the risk**, and §14.9's as-built
 records how that is enforced on the server: `approvalShape` is computed in

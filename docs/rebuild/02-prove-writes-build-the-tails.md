@@ -55,20 +55,18 @@ complete" is not surprised by them later, and each names the node that owns the 
 
 | Residual | State at HEAD | Owner |
 |---|---|---|
-| the **notes stream** has no emitter | `emitNote` is composed and never called; `.tracker-rebuild/notes/` has never existed, while the Logs section re-reads it per request and a failed run OPENS on it | `{#observed-logs}` (03a) — `ref dashboard-surfaces` §1.1 |
+| the **notes stream** has no emitter | `emitNote` is composed and never called; `.tracker-rebuild/notes/` has never existed, while the Logs section re-reads it per request and a failed run OPENS on it | `{#observed-logs}` (03.1) — `ref dashboard-surfaces` §1.1 |
 | the **ledger projector** has no production caller | `createLedgerProjector` is written, unit-proven and guarded; only tests call it. Beat ⑦ writes the durable ledger OUTBOX row, so the audit floor is intact — nothing drains it to a file, and the composed READ half reads an empty corpus | **unowned — reported to the orchestrator**; `ref dashboard-surfaces` §1.2 states it in place |
-| **five of seven notification trigger arms** have no publisher | `run-failed`, `subject-mismatch`, `write-parked`, `repeating-failure`, `verified-done`. The other two shipped as production publishers (D222 backup health, D262 the open operator gate) | each belongs to the surface or slice that owns the state it announces — `{#dash-defaults}` (03a) and the per-workflow `*-dash` nodes; `ref dashboard-surfaces` §2.6 |
+| **five of seven notification trigger arms** have no publisher | `run-failed`, `subject-mismatch`, `write-parked`, `repeating-failure`, `verified-done`. The other two shipped as production publishers (D222 backup health, D262 the open operator gate) | each belongs to the surface or slice that owns the state it announces — `{#dash-defaults}` (03.1) and the first admitted workflow that requires a workflow-specific producer; `ref dashboard-surfaces` §2.6 |
 | the **knowledge projection** is unwired | knowledge/fix admission is durable and audited inside its insert transaction (D139); the projection has no caller, so no `KNOWLEDGE.md` exists, and `explain failure <fingerprint>` is not built | `ref operator-trust` §4.1/§4.2 name it in place; no node owns it — **reported** |
 | the **retention sweep** is uncalled | the retention-projection model is complete end to end and deliberately unwired (D164); the diagnostics/artifact sweep has no caller | `{#def-retention}` (04) — `never` by D193 |
 
 **What Phase 2 deliberately does not prove.** Workflow-specific gates and each production system's
 receipt/verify quality stay migration-specific — the foundation write sequence is proven, each
-workflow still owes its OWN §3.2 controlled-commit proof at its migration. Two later checkpoints
-carry that forward, both in `03c`: the **first-gate live checkpoint** at order 4
-(oath-signature/emergency-contact — the first live exercise of the completion union plus an approval
-gate, park and resolve, end to end on the new base), and the **first workflow-specific production
-write checkpoint** at order 6, which validates that workflow's receipt/probe policy on top of the
-already-proven transaction kernel.
+workflow still owes its OWN §3.2 controlled-commit proof at its migration. Each admitted Phase 4
+packet (`ref workflow-model` §1.6.2) must name any first-gate live checkpoint and every
+workflow-specific production-write checkpoint it requires. D319/D329 retire the old preassigned
+order numbers as build authority; candidate evidence may inform the packet but cannot schedule it.
 
 ## 2.1 · Controlled write proof
 <!-- roadmap: p2-proof -->
@@ -229,8 +227,8 @@ The historical status block below is the combined evidence for these three deliv
 - [x] the retention-projection model end to end, **unwired by design** (D164; §4.1)
 - [x] **legacy change accounting RETIRED** (D150) — the two repositories stop touching each other; live re-verification at each workflow's migration replaces the diff
 - [ ] two 2h designs have no caller and both are named in place: the saved-mapping STORE (§2.3 — every intake upload re-maps) and a descriptor that DECLARES an artifact projection (§4.1); **unowned, reported**
-- [ ] descriptor-driven upload / capture / spreadsheet / bare START methods — no registered workflow declares one, so the run modal has one method kind (D251, `ref frontend-backend-integration` §5.1.1) → the first declaring workflow, `{#order-2}` (downloads) and `{#order-3}` (the OCR pipeline)
-- [ ] progressive OCR **Review** records — the store exists; the `review` panel kind and its wire section are declared-unserved (D184) → `{#order-3}`
+- [ ] descriptor-driven upload / capture / spreadsheet / bare START methods — no registered workflow declares one, so the run modal has one method kind (D251, `ref frontend-backend-integration` §5.1.1) → the first D319-admitted workflow that declares each method (`{#workflow-admission}`)
+- [ ] progressive OCR **Review** records — the store exists; the `review` panel kind and its wire section are declared-unserved (D184) → the first D319-admitted OCR workflow (`{#workflow-admission}`)
 > 2026-08-21 | docs-cohesion 02 | verified against the `p2-2h` blocks in `reference/{data-intake-and-edit-data,frontend-backend-integration,guards-and-tests}.md` and spot-checked in `src/domain/{fields,intake,ocr}/**`, `src/stores/{extraction,roster,ocr,normalization}/**`, `src/infra/sqlite/migrations.ts:863-908`; left: the two uncalled designs and the two surfaces waiting on a declaring workflow
 
 <!-- /roadmap-status -->
@@ -365,9 +363,9 @@ does — see §2j.
 - [x] **D190** closed the safety-critical coverage floor (70.08 % → 99.43 % on `run-queue-projection.ts`) and **D191** made `test:coverage` the per-commit gate
 - [x] every owning doc brought to as-built
 - [ ] `ScenarioManifest`'s preflight fault set has **no runner** and `preflight-coverage` stays `planned` with D188's real trigger — the first migration that adds one; the declaration side is held by `runtime-dependency-coverage` (`ref operator-trust` §3.1, `ref guards-and-tests`)
-- [ ] the **component layer has no test lane** — this tree renders no React outside the parity corpus, and the parity lane is OUTSIDE the per-commit gate, so a `.tsx` change is gated only by typecheck/lint/unit until someone runs `npm run test:parity` → `{#test-tiers}`
-- [ ] **D91's BRANCH half is UNMET** and its Phase-2-exit trigger has passed: `coverage.thresholds` configures lines/statements/functions only, so branches are report-only at a measured 71.76 % (`ref guards-and-tests` §3.14/§10.10) → `{#test-tiers}`
-- [x] **D85 parts 2 and 3 did not land in Phase 2, then closed under R10** — `cli dry-run-scenario <workflow> --subject <label>`, `config/test-subjects.json` and insert-only result evidence (`ref guards-and-tests` §10.5/§10.6) → `{#test-tiers}`
+- [ ] the **component layer has no test lane** — this tree renders no React outside the parity corpus, and the parity lane is OUTSIDE the per-commit gate, so a `.tsx` change is gated only by typecheck/lint/unit until someone runs `npm run test:parity` → `{#workflow-authoring-core}`
+- [ ] **D91's BRANCH half is UNMET** and its Phase-2-exit trigger has passed: `coverage.thresholds` configures lines/statements/functions only, so branches are report-only at a measured 71.76 % (`ref guards-and-tests` §3.14/§10.10) → `{#workflow-authoring-core}`
+- [x] **D85 parts 2 and 3 did not land in Phase 2, then closed under R10** — `cli dry-run-scenario <workflow> --subject <label>`, `config/test-subjects.json` and insert-only result evidence (`ref guards-and-tests` §10.5/§10.6); current revalidation is owned by `{#workflow-authoring-core}`
 - [ ] the 14/8/5 retention sweep and a configurable backup path — both `wont-build-unless-asked` by D193 → `{#def-retention}`
 > 2026-08-25 | test-tiers | D85's deferred subject/runner/result machinery is now built; this Phase-2 record still leaves the preflight runner, component/parity lane and D91 branch floor with their existing owners
 
@@ -380,7 +378,7 @@ every owning doc updated to as-built.
 
 **COMPLETE 2026-08-09 (D181–D190).** Its normative contracts are `ref operator-trust` §3 and §3.1,
 `ref execution-and-sessions` §7.1, `ref guards-and-tests` §3.11 and §3.15, and `ref
-dashboard-surfaces` §2.5, with `03c` §Non-workflow capability closure inventory holding the D58
+dashboard-surfaces` §2.5, with `ref workflow-model` §1.6.3 holding the D58
 closure — each carries its own `p2-2j` status block.
 
 ### What 2j found, because that is what a gate is for
@@ -605,15 +603,17 @@ blocks the exit — each is listed so a later reader is not surprised, and each 
 
 | Residual | Owner |
 |---|---|
-| the notes stream has no emitter (`emitNote` composed, never called) | `{#observed-logs}` — 03a |
+| the notes stream has no emitter (`emitNote` composed, never called) | `{#observed-logs}` — 03.1 |
 | `createLedgerProjector` has no production caller (the beat-⑦ outbox row IS durable) | **unowned — reported** |
-| five of seven notification trigger arms have no publisher | `{#dash-defaults}` — 03a, and the per-workflow `*-dash` nodes |
+| five of seven notification trigger arms have no publisher | `{#dash-defaults}` — 03.1, and the first admitted workflow that requires each workflow-specific producer |
 | the knowledge projection has no caller; `explain failure <fingerprint>` unbuilt | **unowned — reported** |
 | the retention sweep has no caller; the 14/8/5 policy and a configurable backup path | `{#def-retention}` — 04, `never` by D193 |
 | Broader legacy Settings capabilities remain deferred; the bounded editor, backend `apply-settings`, persisted readback and preflight controls are active under DCC1–DCC3 | `{#def-settings}` — 04 |
 | six of seven worker / session controls have kernel arms and no control | **unowned — reported** |
 
-At Phase 2 exit, four **test-lane** gaps left 2j the same way, all owned by `{#test-tiers}` under R10 except the
+At Phase 2 exit, four **test-lane** gaps left 2j the same way. D329 now assigns the mutable shared
+test work to `{#workflow-authoring-core}`, the per-workflow cases to the two 3.2 acceptance tasks,
+and the final audit to `{#workflow-candidate-freeze}`; the exception remains the
 first: `preflight-coverage` stays `planned` behind D188's trigger (the first migration that adds a
 preflight runner); there is no component render lane and the parity lane sits outside the per-commit
 gate; D91's BRANCH half is unmet at a measured 71.76 %. D85's parts 2 and 3 did not land in Phase 2;

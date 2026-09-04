@@ -1,10 +1,10 @@
-# `reference/decisions.md` — the decision ledger (D1–D276, 2026-07-17 → 2026-08-26)
+# `reference/decisions.md` — the decision ledger (D1–D329, 2026-07-17 → 2026-09-04)
 
 **This is the POINTER INDEX, not a spec.** One line per decision saying what was decided, when, and
 **which doc owns it** — never the contract itself. Implement from the owning doc; a decision is not
 ratified until its normative text lands there in the same commit that records it. Refs read
 `ref <slug>` for a spec under `docs/rebuild/reference/`, `doc NN` for a phase doc under
-`docs/rebuild/` (`00`…`03a`/`03b`/`03c`…`05`), `roadmap` for `docs/roadmap/roadmap.md`.
+`docs/rebuild/` (`00`…`03.1`/`03.2`/`03.3`/`03.4`…`06`), `roadmap` for `docs/roadmap/roadmap.md`.
 **`D131` is a retired gap — never reuse it** (the record of the 2026-08-04 numbering race; see
 §Known gap below).
 
@@ -2010,3 +2010,14 @@ remain intact._
 | # | Decision | Owning doc |
 |---|---|---|
 | **D328** | **A PARALLEL SUPERVISOR WAVE SHARES ONE ORDINAL AND USES CONSECUTIVE NUMERIC HYPHEN MEMBERS: `N-1`, `N-2`, ...; A SERIAL TASK REMAINS `N`.** The shared prefix identifies the wave and each suffix identifies one independently supervised branch/worktree row. A parallel group has at least two members, starts at `-1`, stays consecutive and contiguous, and renders at the same task depth; the hyphen is part of one task identity, not another hierarchy level or checklist subtask. Serial and wave ordinals advance together without gaps. The coordinator ledger still binds each member's exact scope, base SHA, branch, absolute worktree, gate, integration order, cleanup and task archival before dispatch. D328 supersedes only D326's prohibition on encoding parallelism in task labels; D326's decimal hierarchy, coordinator ownership, one-supervisor-per-task rule and part order remain binding, and letter-suffixed wave labels remain retired. | roadmap §Governance (primary) · `docs/roadmap/notation.md` · `docs/decisions/phase-governance.md` §D328 · admitted phase plans |
+
+## Reconciliation round 135 (2026-09-04) — authoring freezes before controlled acceptance
+
+_phase: program planning_
+_D329 records the operator's correction after comparing Phase 3.2 and 3.3: the earlier order allowed
+the authoring conversion to remove or reshape code after Separations had supposedly completed. It
+changes planning and admission authority, preserves historical evidence, and authorizes no live write._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D329** | **PHASE 3.2 FINISHES EVERY CODE-CHANGING WORKFLOW SEAM, REVALIDATES CARRIED WORK AT CURRENT HEAD, COMPLETES PERSON LOOKUP `live-read` AND SEPARATIONS DRY-RUN ACCEPTANCE, THEN INDEPENDENTLY FREEZES ONE EXACT CANDIDATE BEFORE PHASE 3.3 MAY EXERCISE REAL WRITE AUTHORITY.** Historical tasks map exactly into the new numbered structure but remain current-verification pending until re-proved. In-seam defects may be repaired by the owning revalidation supervisor; cross-seam defects create a new 3.2 remediation task; the final freeze is audit-only and restarts after any failure. Phase 3.3 performs no software development and runs four serial tasks: admit candidate/targets/disposition and repeat the no-write rehearsal; prove pending sweep on an independent disposable target; prove the coupled UCPath filing and Kuali finalization on the real target; reconcile acceptance and close. One bounded authorization names the exact candidate/fingerprints, targets, disposition and sequence, and expires on drift, unexpected failure or UNKNOWN. Active filenames are decimal `03.1`–`03.4`; former 03b/03c plans are superseded history and old task/3c-A/3c-B labels are lookup keys only. D329 supersedes D320/D326 only where they encode the inverted Separations-before-authoring order or old 3c split; D319, D309, D310, D326's hierarchy/order and D328's wave grammar remain binding. | `docs/decisions/phase-governance.md` §D329 (context) · docs 03.2/03.3 (execution authority) · roadmap §Governance · ref workflow-model §1.6 · ref write-safety §3.2/§14 |

@@ -668,8 +668,6 @@ the toil was acceptable, because nobody measured it.
 
 ### 2.8 The rich-extraction convention — one task per PAGE VISIT (D194, ratified 2026-08-12)
 
-<!-- roadmap: sep-1 -->
-<!-- roadmap: sep-2 -->
 §2.7 answers *how much a task owes*. This answers the neighbouring question the store libraries
 forced open at the order-8 separations migration: **how wide a read task's output should be.** The
 operator ratified the rich-extraction convention on 2026-08-12; the options it was chosen from, and
@@ -719,15 +717,12 @@ CRM **history** page is a second visit and stays its own task under this convent
 
 ### 2.9 The first store authored under §2.8 — `new-kronos` as-built (D196, 2026-08-12)
 
-<!-- roadmap: sep-1 -->
-<!-- roadmap-status: sep-1 -->
 - [x] two tasks because two page visits — `new-kronos/search-employee` and `new-kronos/read-separation-timecard`, both live-proven (D196, 2026-08-12; `src/stores/new-kronos/tasks/`)
 - [x] the completeness INVARIANT over the virtualized grid: the scroll loop and the fold share ONE implementation, `timecardRangeCoverage`, and the loop terminates on coverage rather than on the widget (D205, 2026-08-13; `src/stores/new-kronos/driver/grid-scroll.ts:130`)
 - [x] columns bound by header NAME, read from the same container as the cells, with the counts compared (D205)
 - [x] the store is structurally read-only: no `commit` contract, no `MutationCapability` in its import graph, and the UI-registry audit refuses an `external-commit` element by name
 - [ ] the pay-rule WRITE family — order 6, below
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/new-kronos/{index.ts,declaration.ts,tasks/,driver/grid-scroll.ts} and src/domain/ui/new-kronos-timecard.ts; left: nothing in this section — the write family is `{#order-6}`'s
-<!-- /roadmap-status -->
 
 - [ ] BE the `new-kronos` store gains its pay-rule write family: a `commit` contract with `writeSafety`, a `CommitCapableSystemDriver` operation, and the `external-commit` element the registry audit refuses today — the capability is added deliberately by that slice and cannot be inherited (§2.9)
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified: `src/stores/new-kronos/` has read tasks only and its driver declares no commit operation; the rest of order 6 (the canonical-EID audit gate, work-study) is owned by 03c and ref data-intake-and-edit-data §1
@@ -806,15 +801,12 @@ adds the capability deliberately; it cannot be inherited.
 
 ### 2.10 The first store CUSTOMIZED under §2.8 — `kuali` as-built (D197, 2026-08-12)
 
-<!-- roadmap: sep-2 -->
-<!-- roadmap-status: sep-2 -->
 - [x] a fifth task extended the ONE `DriverDeclaration<KualiRrssDocumentDriver>` rather than minting a second (D197, 2026-08-12; `src/stores/kuali/declaration.ts`)
 - [x] catalog attribution splits by FACT where a read and a write share one document, and the Save button stays the commit task's alone
 - [x] the registry invariant became PER SUBJECT IDENTITY — one `eid` observation, at most one `document-number` observation — rather than being relaxed to "at least one"
 - [x] a person field's `state`/`reason` arms are transaction facts, not identifiers; only `value` carries the identifier (D140 refinement)
 - [x] the store is ten tasks at HEAD, still on the one declaration — D261's Action-List resolver (`kuali/search-separation-action`) is the latest, added 2026-08-20
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/kuali/{declaration.ts,tasks/ (10 files)} and src/domain/ui/{kuali-rrss-document,kuali-separation-document,kuali-action-list}.ts; left: nothing in this section
-<!-- /roadmap-status -->
 §2.9 settled what a store BUILT whole owes. Separations chunk 2 is the other case ref stores §1
 distinguishes — a **CUSTOMIZE** of an existing semantic-ready store — and it settles five more rules
 that are normative for every store slice that extends one rather than creating one.
@@ -863,14 +855,11 @@ rebuild by name — so a classification fix strands the receipts of runs settled
 
 ### 2.11 The third store authored under §2.8 — `ucpath/read-job-summary` (D201, 2026-08-12)
 
-<!-- roadmap: sep-3 -->
-<!-- roadmap-status: sep-3 -->
 - [x] `ucpath/read-job-summary` returns the whole Employment Instances grid verbatim and classifies nothing; the disposition is a pure fold in `src/domain/separations/job-summary-classification.ts` (D201, 2026-08-12)
 - [x] structural cells (empl record, HR status, business unit) refuse a blank; the nine descriptive cells carry `{state:"absent", reason}`
 - [x] one page visit, two parses — the search keeps its own preferred-assignment derivation rather than widening a shipped output schema
 - [x] a settle wait proves that SOME outcome rendered and a pure verdict function says which; the four-result page that broke the old three-arm `.or()` is a pinned case (D213, 2026-08-14)
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/domain/contracts/ucpath/read-job-summary.ts, src/domain/separations/job-summary-classification.ts and src/domain/ui/ucpath-job-summary.ts; left: nothing in this section — the gate half is ref write-safety §14 and ref workflow-model §5.5
-<!-- /roadmap-status -->
 Separations chunk 3 mints the UCPath side of §2.8's convention, and it settles two authoring rules the
 first two stores did not have to answer.
 
@@ -919,15 +908,12 @@ warned about, paid the way §2.8 said to pay it: a new contract beside the old o
 
 ### 2.12 One store, two screen families, TWO write transactions — `ucpath`'s termination family (D206, 2026-08-14)
 
-<!-- roadmap: sep-4 -->
-<!-- roadmap-status: sep-4 -->
 - [x] two transaction nodes in one graph, and the DELETE is its own transaction with its own probe, verifier and permanent key (D206, 2026-08-14; `src/stores/ucpath/tasks/`, ten tasks)
 - [x] ONE rich page read, TWO probe folds (`src/stores/ucpath/termination-verdict.ts`)
 - [x] the subject binds UCPath's own `PERSON_NAME_NAME_DISPLAY`, kept driver-internal because legacy has no key for it — the anchor renders zero nodes until UCPath resolves a person, so the subject observation and the `emplid-not-recognized` refusal are one check
 - [x] the closed vocabulary accepts both surfaces' spellings (`TER` and `Terminatn`), neither arm fuzzy, and a value matching neither falls through
-- [ ] the controlled commit on a real subject — canary doc 4537, blocked until its separation date 2026-08-28 (`{#track-a}`)
+- [ ] the controlled commit on a real subject — historical canary 4537 is evidence only; current admission and writes are owned by `{#acceptance-admission}` then `{#separation-filing-finalization}`
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/ucpath/{tasks/ (10 files),termination-verdict.ts,driver-declaration.ts} and src/domain/ui/{ucpath-driver,ucpath-smart-hr-termination,ucpath-ss-smart-hr}.ts; left: the live commit, which is Track A's PROOF row
-<!-- /roadmap-status -->
 Separations chunk 4 is the first slice to add a WRITE family to a store that already had a read
 family, and the first to compose **two transaction nodes in one graph**. Five rules fall out, and
 each was forced by something live rather than chosen.
@@ -1208,7 +1194,6 @@ boundary (D61).
 ### 3.5 Workflow mini-stores — pure specialization, never a system-policy bypass
 
 <!-- roadmap: p1-authority -->
-<!-- roadmap: sep-2 -->
 
 `src/stores/<workflow-id>/` holds only pure, sessionless `effect:"read"` tasks whose contract ids
 use `workflow:<id>/<verb-object>`. These are workflow-specific transforms and joins that are still
@@ -1400,20 +1385,14 @@ defineWorkerSessionProvider(system, options?)   // the 1f runtime provider: one 
 
 ### 6.2 Dry-run: a graph composition, not a task flag
 
-<!-- roadmap: sep-6b -->
-<!-- roadmap-status: sep-6b -->
 - [x] `executeDryRun` PROBES before it previews (D215, 2026-08-14): an ordinary subject with nothing pending settles `already-present` and the preview REPORTS that settlement — no checkpoint, no observed-present intent, no transition — instead of staging a page with no row to bind and refusing
 - [x] the preview's `prepare`/`subject` fields moved inside the `would-prepare` arm, so a preview that staged nothing cannot spell an empty staged page
 - [x] where the real path refuses — ambiguous, unknown, parked, mid-submit — the preview refuses too
 - [x] the composed separations graph reached its gate, took a real approval and ran on (D214's claim generation is what made the second execution of an `always-rerun` node representable)
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/core/write-sequencer.ts (`executeDryRun`, `TransactionDryRunPreview`) and src/domain/write-safety-primitives.ts; the run-level half is ref workflow-model §5.7 and §2.1
-<!-- /roadmap-status -->
 
-<!-- roadmap: track-a -->
-<!-- roadmap-status: track-a -->
 - [ ] PROOF the `would-prepare` preview arm observed on a live composed dry run of the full separations graph — the probing preview is built and pinned, and the arm that stages a page has not been walked live end to end since D215 landed
 > 2026-08-21 | docs-cohesion 5.1 task-contract | this doc owns only the dry-run CONTRACT; Track A's other rows (the three controlled commits, `probeToFenceMaxMs` per beat, the close-out) are 03b's and ref write-safety's
-<!-- /roadmap-status -->
 
 - `dryRun` rides the **RunEnvelope** (kernel-owned, ref workflow-model — D6), never workflow input
   or TaskCtx.
@@ -1498,14 +1477,11 @@ which it is at its head, because a worked example is the first thing an author c
 
 ### 9.1 `ucpath/search-person-org` (read) — the canonical example (D16)
 
-<!-- roadmap: order-0 -->
-<!-- roadmap-status: order-0 -->
 - [x] the contract and its impl exist and are live-proven — `src/domain/contracts/ucpath/search-person-org.ts` + `src/stores/ucpath/tasks/search-person-org.ts`, run `4ebf7275` against real UCPath + CRM (D74, 2026-08-04)
 - [x] the CRM half is two contracts under the same rules (§9.1.1), each with its own `subject-mismatch` code
 - [x] `workflow:person-lookup/read-active-status` is the mini-store fold beside them — the whole store, one task
 - [ ] PROOF the T1 structural fixture scenario and its T3 dry-run pair (R10) — person-lookup has neither
 > 2026-08-21 | docs-cohesion 5.1 task-contract | transcribed from the shipped contract, which differs from the 2026-07-17 sketch this section used to show; the workflow-level half is ref workflow-model §8
-<!-- /roadmap-status -->
 
 **Defined once, here; ref workflow-model §8 composes it.** This is the shipped contract, abridged —
 the sketch that stood here until 2026-08-21 was written before the store existed and differed from

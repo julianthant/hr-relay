@@ -1,3 +1,5 @@
+_History — superseded by `docs/rebuild/03.2-finish-workflow-authoring.md` and `docs/rebuild/03.3-accept-person-lookup-and-separations.md` under D329 (see `history/README.md`); kept verbatim as written through 2026-09-03._
+
 # 03.2 · Phase 3.2 — finish separations
 
 Phase 3 proves the reusable dashboard/workflow platform with Person Lookup and Separations.

@@ -3,7 +3,7 @@
 > The one practical path for adding or changing a workflow in this repository. The normative
 > contract is `ref workflow-model` §1.6 (types, compiler products, invariants, refusals); the test
 > obligations are `ref guards-and-tests` §10.3/§10.4/§10.11; the concept boundaries and the change
-> routing table are doc 03c `{#workflow-authoring-model}`. This guide restates none of them as a
+> routing table are doc 03.2 `{#workflow-authoring-model}`. This guide restates none of them as a
 > second opinion — it shows the real files, in the order you touch them, with every code excerpt
 > copied from the tree at the commit named on it. Where this guide and the code disagree, the code
 > wins and this guide is the bug.
@@ -58,7 +58,7 @@ Open `docs/rebuild/reference/stores.md` §2 — the **generated task-store catal
 by system, capability, effect (`read` / `prepare` / `commit`), inputs and outputs. It is regenerated
 from `src/stores/index.ts` by `npm run stores:catalog`, and `npm run stores:catalog:check` fails on
 stale bytes, so what it lists is what the registry binds today. Then classify each operation you
-need with doc 03c's reuse table (copied here so the decision is made before any file opens):
+need with doc 03.2's current task ownership and `ref workflow-model` §1.6.1 (the table is copied here so the decision is made before any file opens):
 
 | Need | Author action | Additional proof |
 |---|---|---|
@@ -682,7 +682,7 @@ four older harness scenarios predate the canonical layout and sit at
 `tests/scenario/<harness-id>.scenario.test.ts` under the cited `PRE_CANONICAL_SCENARIOS` list of
 `workflow-authoring-budget`; a new harness uses the canonical path. Note the guard's direction: arm
 (d) refuses a FIFTH artifact, it never requires the four — the T1 pair and the record are required
-by `ref guards-and-tests` §10.11 and doc 03c's exit gate, and the `test-target-registry` and
+by `ref guards-and-tests` §10.11 and doc 03.2's exit gate, and the `test-target-registry` and
 `scenario-coverage` guards are what go red when a pair is missing.
 
 ---
@@ -990,7 +990,7 @@ only (recorded, coordinator sheet item 5).
 **`docs/migrations/<id>.md`.** The dated record: the reuse map (REUSE / CUSTOMIZE / BUILD per
 operation, with legacy commit + path provenance for anything ported), the scenario inventory, the
 T1b result ids (`dry_run_scenario_results` row, run and trace id, attempt, verdict) and the
-capability close. It is what a `PROOF` tick in doc 03c cites.
+capability close. It is what a `PROOF` tick in doc 03.2 or controlled result in doc 03.3 cites.
 
 **The gates a new workflow makes red, and what each means**
 
@@ -1033,7 +1033,7 @@ capability close. It is what a `PROOF` tick in doc 03c cites.
 
 ## 12 · "What file do I change?"
 
-Doc 03c's routing table, verbatim — one reason, one owner:
+Doc 03.2's routing table, aligned to D329 — one reason, one owner:
 
 | Change | One primary owner |
 |---|---|
@@ -1051,4 +1051,4 @@ And the files a workflow author never opens to make a workflow work: a generated
 module, a node fragment, a registry row beyond the two import lines, a dashboard adapter, a
 checkpoint writer, a screenshot hook, a session bootstrap. If a change seems to need one of those,
 the change belongs to a shared capability (§2's last row) or the guide is wrong — file the gap
-against doc 03c `{#workflow-authoring-model}` rather than working around it.
+against doc 03.2 `{#workflow-authoring-model}` rather than working around it.

@@ -216,7 +216,7 @@ re-books it. Merged at `a3683bf3`.
 Standing from the same receive (summarized in `docs/decisions/dashboard.md` §D281, all recommended, no D-number — run-plan
 matters): intake and the UI catalog adopt `TakeoverFrame` (UF-FU-1 → UI-2 U7); fidelity ledger 1's Region A
 counts are recounted (U8); the G1 finding (`docs/findings/activity.md`) is diagnosed as the one backend unit
-inside UI-2 (U9) and Activity's populated body is audited after it (U10); UI-2 starts after Phase 3b R2 closes.
+inside UI-2 (U9) and Activity's populated body is audited after it (U10); UI-2 started after the former Phase 3b R2 closed.
 
 ### D282 — finish the dashboard; retain truthful current-only evidence (2026-08-28)
 
@@ -251,7 +251,7 @@ workflow can prove; OCR can come later.** Parallel completion runs therefore cov
 cross-cutting authority already present: D279 fidelity residue, editable settings and preflight,
 Explorer's safe edit subset, Activity/search/export/rerun transparency, artifact reads and strict
 storage diagnosis. OCR Review, Group People, capture→workflow binding and any fact whose first real
-producer is a later Phase 3c workflow stay with that migration. They are not fabricated behind a
+producer is a later admitted Phase 4 workflow stay with that migration. They are not fabricated behind a
 fixture-only production arm, and their absence does not block the current-workflow completion
 program. This supersedes only D282 item 3's scheduling sentence that generic Review/People surfaces
 complete immediately; D282 items 1–2 and its authority rules stand.
@@ -958,8 +958,8 @@ in §2.4; ordinary cleanup, Hide, projection rebuild, and runtime code cannot re
 
 #### D218 — the projector consumes the span stream FROM DISK, cross-process (2026-08-14)
 
-<!-- roadmap: platform-fixes -->
-<!-- roadmap-status: platform-fixes -->
+<!-- roadmap: separations-compiled-acceptance -->
+<!-- roadmap-status: separations-compiled-acceptance -->
 - [x] D218 — the projection's ONE live feed is an offset-aware disk tail; the `onEvent` hook is deleted, so "append first, fold after" is structural (`ingestFromDisk`, `src/server/dashboard/projectors/run-queue-projection.ts`)
 - [x] D218 — two triggers, one cursor: the 250 ms dashboard poll and the command service's own tick after `run.queued`/`gate.resolved`
 - [x] D218 — a torn trailing line is not consumed until its newline lands; an unparsable line degrades and the guarded rebuild refuses it by name; a file shorter than its cursor throws
@@ -1725,9 +1725,9 @@ the restore interlock are safety floor and remain mandatory.
 > 2026-08-25 | track-f A46 | verified against src/domain/notification-triggers.ts, src/services/notifications/{inbox,storage-health,gate-park,backfill-gap}.ts, src/server/dashboard/subscriptions/dashboard-stream.ts and src/domain/dashboard/projection.ts; left: the five unpublished arms
 <!-- /roadmap-status -->
 
-<!-- roadmap: platform-fixes -->
+<!-- roadmap: separations-compiled-acceptance -->
 
-_D218 and D222 are both `platform-fixes`; that node's checklist is the status block under §2.3's
+_D218 and D222 are carried into `separations-compiled-acceptance`; that node's historical platform checklist is the status block under §2.3's
 D218 — one block per node per doc._
 
 Desktop notifications are delivery conveniences, not the record. A `notifications` authority table
@@ -2025,9 +2025,9 @@ or `coordinator` either; and the two execution seams a running program would nee
 executor and the parallel `all-settled` join — refuse BY NAME with `capability-unavailable`
 (`src/core/run-executor.ts:1508-1515` and `:1350-1356`). So this section is a contract built AHEAD
 of its first consumer, which is the right order for a shape that decides what a fan-out may mint,
-and it is not a description of anything that runs today. The workflows that will declare it are
-`{#order-4}` (oath-signature · emergency-contact) and `{#order-7}` (oath-upload · onbase), and §7 is
-the worked example the program is read against.
+and it is not a description of anything that runs today. The D319 admission backlog includes the
+oath-signature/emergency-contact and oath-upload/onbase candidates that may first declare it;
+`{#workflow-admission}` assigns the actual owner, and §7 is the worked example the program is read against.
 
 The `order-4` checklist lives at §9.10, which owns the group PRESENTATION this contract feeds; the
 one status block here is `order-7`'s, at §4.5.
@@ -2602,7 +2602,6 @@ and the § number map at the top of this doc is the permanent record.
 
 ### 9.1 The run modal — plan, confirm, enqueue
 
-<!-- roadmap: sep-dash -->
 
 **What it is.** The one start door. It is the surface that turns an operator's intent into a
 `StartPlanProposal` and then into authority rows, and it is deliberately **generic**: the modal
@@ -2809,7 +2808,6 @@ sequence, the payload shapes and the parity references — including D264, which
 declaration fields onto the bootstrap so step 1 reads a projection rather than the client bundle.
 That changes where the declaration is READ, not what it says.
 
-<!-- roadmap-status: sep-dash -->
 - [x] D250 — the typed box describes itself: value-noun, separator phrase and parser sentence derived from the closed spec; `examples[]` proved typeable at `build()` (`src/domain/workflow/ingress.ts`, `defineWorkflowDescriptor`)
 - [x] D251 — the four modal rows, three already in the client bundle; the policy drawn read-only with its reason; the unstartable reason composed and now drawn
 - [x] D296 — the peer-method tablist over the served `start.spreadsheetIntake`; the spreadsheet arm is a one-stage handoff ending at `Open the intake…`; the toolbar's `Import spreadsheet` and `Workflow explorer` doors are deleted (§9.5.3)
@@ -2820,12 +2818,11 @@ That changes where the declaration is READ, not what it says.
 - [x] D211 — the write plan rides INSIDE the packet, so §14.5's digest binds the dates, the template and the department; a moved date re-opens the gate (§9.4)
 - [x] D245 — the confirmed-present arm serves its proof contract, described field by field; nothing pre-filled, nothing pasted (§9.4)
 - [x] D20 — `Write parked` is an unknown outcome and has exactly two typed exits; a parked row is sent no data-mutating command at all (§9.4)
-- [ ] the gate PACKET is separations-shaped — a second gated workflow adds its own section arm or generalises it (`{#order-4-dash}`, `{#order-9-dash}`, §9.4)
+- [ ] the gate PACKET is separations-shaped — the first D319-admitted second gated workflow adds its own section arm or generalises it (`{#workflow-admission}`, §9.4)
 - [!] `supersede-active` says two different things: implemented in `run-fan-out.ts`, unchecked in `services/start/plan.ts`. Two code sites disagree; the surface prints the planner's truth
-- [ ] D15 — person-lookup's Search and Match modes: `src/workflows/person-lookup/descriptor.ts` declares ONE graph and no mode (`{#order-1}`, §9.10)
+- [ ] D15 — person-lookup's Search and Match modes: the final workflow must expose the accepted mode boundary (`{#person-lookup-acceptance}`, §9.10)
 - [ ] the upload / capture / spreadsheet / bare method kinds, and with them the method tabs — no registered workflow declares `surfaces.uploadRun` (2h-deferred)
 > 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/dashboard/surfaces/{run-start,run-start-kit,run-start-model,identity-approve,park-resolve}*, src/domain/workflow/ingress.ts, src/services/start/plan.ts, src/core/run-fan-out.ts; left: the second method kind and D15's modes, both owned by workflows nobody has built
-<!-- /roadmap-status -->
 
 ### 9.2 The queue row — the day's work
 
@@ -3301,7 +3298,8 @@ the whole surface now uses, or the code is wrong; that is an operator's call, an
 not relitigated here (D126's rule). D12's queue-row half is the same shape from the other side — the age
 is fully served and the `waiting` pill draws none of it, on a recorded operator direction (*"the word
 names the work, not the wait"*), with the wait rendering in the row's FOOTER meta and, at full strength,
-in the log panel. Both sit under `{#operator-calls}`.
+in the log panel. D329 routes any still-open source-changing disposition through
+`{#separations-compiled-acceptance}` before the candidate freeze.
 
 **Wire.** `ref frontend-backend-integration` §5.1.2 owns `QueueBaseFields`' payload shape, the bulk
 endpoint, the action-descriptor rule (§8.5) and the parity references.
@@ -3318,8 +3316,8 @@ endpoint, the action-descriptor rule (§8.5) and the parity references.
 - [x] the shape hazard compares a run against its OWN workflow's served fingerprint; three verdicts, both directions pinned
 - [x] D252 — a ledger value names its step, direction and freshness bound, all from the DECLARATION, through the same functions the executor calls (§9.3.1)
 - [x] D253 — three result arms, TWO refusals, one exhaustive `settleCommandResult` fold guarded against a violating fixture (§9.3.1)
-- [!] D16's "no confirmation dialog" against the served member-counting confirm — the code confirms; an operator call (`{#operator-calls}`)
-- [x] D12's gate age is fully served and the `waiting` pill draws none of it — answered 2026-08-18 (the amendment above; `03b-finish-separations.md` §Smaller operator calls open): the pill carries no age, the wait renders in the row's footer meta and in the log panel
+- [!] D16's "no confirmation dialog" against the served member-counting confirm — the code confirms; reconcile before `{#separations-compiled-acceptance}` closes
+- [x] D12's gate age is fully served and the `waiting` pill draws none of it — answered 2026-08-18 (the amendment above; former doc 03b §Smaller operator calls open, preserved in history): the pill carries no age, the wait renders in the row's footer meta and in the log panel
 - [ ] D9's `rejected` containment arm is not on the wire; `ContainmentSchema` serves `root | member | linked` and the row model's `rejected` arm is not on it
 - [ ] D13's `Re-upload` is not in `ActionCommandKeySchema`; the failure summary half is built and served
 - [ ] every group-row fact (D5 collapse, D11's well, D14's group-of-one, `memberPreview`, the rollup) is drawn from fixtures — no `operation` run has ever been minted (§9.10)
@@ -3793,7 +3791,6 @@ corrected, under what freshness rule, and what a correction does to a resumed ru
 
 ### 9.4 The gate ceremony — and the parked-write resolution beside it
 
-<!-- roadmap: sep-dash -->
 
 The `sep-dash` checklist lives in §9.1's status block; this section adds no second one.
 
@@ -3927,8 +3924,8 @@ dialog could only report as a transport failure.
 lifecycles, the section as a wire resource, `resolve-gate` with a schema-bound `result`, the
 `identity-gate-before-commit` guard, `gate_results` authority, D204's receipt derivation over the gate
 row. **The PACKET is separations-shaped**, and a second gated workflow either adds its own section arm
-or generalises it; that generalisation is this square's real remaining work and is what
-`{#order-4-dash}` and `{#order-9-dash}` will force. One contract statement is corrected rather than
+or generalises it; that generalisation is this square's real remaining work and is what the first
+D319-admitted second gated workflow (`{#workflow-admission}`) will force. One contract statement is corrected rather than
 carried: an earlier draft described a **Review** gate — records streaming per page, per-field drafts,
 "one gate command containing the full correction set". `GateCommandRequest`'s payload is a single
 schema-bound `result` and the `review` section is declared-unserved (§9.3), so that flow describes
@@ -4612,7 +4609,6 @@ own entry stays a `ghost` button because it is not a command.
 ### 9.6 Notifications — the durable inbox and its bell
 
 <!-- roadmap: p2-2g -->
-<!-- roadmap: platform-fixes -->
 
 The `p2-2g` checklist lives at §2.6, which owns the durable ROW — the fold, the trigger union, the
 publish-then-deliver ordering — and `platform-fixes`' at §2.3's D218 block. This section adds
@@ -5161,7 +5157,7 @@ the drawn label. Row-model D9's long-label sentence is §9.10's to carry.)*
 **One correction the audit forced.** D12, D18, D22 and D23 all name the status **`Waiting on you`**;
 the drawn word is **`Review`**. `Needs you` survives only as the composite pill and the queue BAND
 label. The code's behaviour is the short word, and whether the doc's vocabulary or the drawn one is
-authoritative is an operator call (`{#operator-calls}`), like D12's undrawn gate age beside it
+authoritative must be reconciled by `{#separations-compiled-acceptance}`, like D12's undrawn gate age beside it
 (§9.2).
 
 #### The workflow rail lists main workflows only (D219 → D220 → D241)
@@ -5389,7 +5385,7 @@ D264's moved declaration fields) and §7 the parity lane.
 - [x] D219/D220/D241/D266 — role-driven grouping in ONE module: harnesses nested where listed and dropped from the rail; the sole `proving` workflow and `Test equipment` group retired
 - [x] D224 — the action bar is an island; the gap above the panels equals the gap between them
 - [x] D195 — the panel region is a grid, so the no-run-open case cannot leave ~950px of empty black
-- [!] the drawn word for `waiting` is `Review`; D12/D18/D22/D23 all say `Waiting on you` — an operator call (`{#operator-calls}`)
+- [!] the drawn word for `waiting` is `Review`; D12/D18/D22/D23 all say `Waiting on you` — reconcile under `{#separations-compiled-acceptance}` before freeze
 - [ ] re-calibration on the SSE `health` heartbeat, deferred with its trigger named (D189's exposed path)
 > 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/dashboard/surfaces/{shell,shell-model,workflow-category,status}*, src/dashboard/ds/{primitives-status.tsx,tokens.css}, src/dashboard/state/served-clock.ts, src/dashboard/app/{dashboard-app,global-keys}*, src/dashboard/surfaces/layout-metrics.ts; left: the heartbeat instant and one vocabulary call
 <!-- /roadmap-status -->
@@ -5448,7 +5444,7 @@ dropped, and this table is how a citation to the old flat list resolves.
 | **D5** (collapse/auto-expand, close-on-settle) · **D6** (`linked` signers) · **D9** (rejected members) · **D11** (one member presentation) · **D13** (`Re-upload`) · **D14** (a group of one) · **D16** (tree-scoped cancel) | below, this section | the group model — the half nothing can mint |
 | **D7** · **D8** · **D10** · **D17** | §9.3 (named as owed) | the OCR review and packet-receipt sections, unservable today |
 | **D12** (the gate's age) | §9.2 | served in full; the pill draws none of it — an operator call |
-| **D15** (Search and Match as modes) | §9.1 | the descriptor declares ONE graph and no mode (`{#order-1}`) |
+| **D15** (Search and Match as modes) | §9.1 | reconcile the accepted mode boundary under `{#person-lookup-acceptance}` |
 | **D18** (the pill row) · **D22** (the shortened vocabulary) | §9.9 | the status bar and the two `Done`s |
 | **D19** (tabs, Receipt, Data) | §9.3 + §9.3.1 | the served tab set and the Context rail |
 | **D20** (`Write parked`) | §9.4 | the two typed exits |
@@ -5530,7 +5526,7 @@ dropped, and this table is how a citation to the old flat list resolves.
   footer titles it with its blast radius (§9.2). Its "no confirmation dialog and no undo window" half
   is contradicted by the built surface, which raises a confirm whose body counts the members; the
   code's behaviour is the confirm, and which of the two wins is an operator call
-  (`{#operator-calls}`).
+  before `{#separations-compiled-acceptance}` closes.
 
 #### Two house rules the series settled for every surface
 
@@ -5572,5 +5568,5 @@ dropped, and this table is how a citation to the old flat list resolves.
 - [ ] **nothing mints an `operation` run** — every enqueue path stamps `shape: "single"`, so D5's settle-collapse, D9's rejected arithmetic, D11's well and D14's group-of-one have never run against a real group; the whole group model is fixture-fed
 - [ ] D9's `rejected` containment arm is not on the wire (`ContainmentSchema` serves `root | member | linked`)
 - [ ] D13's `Re-upload` verb, and the OCR/packet surfaces D7/D8/D10/D17 describe (§9.3)
-- [!] D16's "no confirmation dialog" against the built confirm-first dialog — an operator call (`{#operator-calls}`)
+- [!] D16's "no confirmation dialog" against the built confirm-first dialog — reconcile before `{#separations-compiled-acceptance}` closes
 > 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/tokens.css; left: the producer for every group-shaped fact in this section
