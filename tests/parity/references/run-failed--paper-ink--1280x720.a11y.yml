@@ -1,7 +1,7 @@
 # run-failed--paper-ink--1280x720
 # adapter: fixture
 # fixture: run-failed
-# descriptorHash: ff8c5fd78912e40100770dae22be908d41bef31f284b28e1520f6b145cb85aa2
+# descriptorHash: 7cb1e18470ed6ad8a9a682e3bccd9c121800ed893d75d9316be116879898e39e
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -274,7 +274,7 @@
         - text: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process What the run said 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath 9:36 AM Run failed at cross-verify; nothing was written"
       - 'listitem "9:36 AM: error note: Run failed at cross-verify; nothing was written"': 9:36 AM Run failed at cross-verify; nothing was written
     - searchbox "Search logs"
-    - text: ff8c5fd7
+    - text: 7cb1e184
     - button "Run provenance"
     - text: idle
   - complementary "Run data":

@@ -1,7 +1,7 @@
 # run-queued--graphite-warm--1280x720
 # adapter: fixture
 # fixture: run-queued
-# descriptorHash: ff8c5fd78912e40100770dae22be908d41bef31f284b28e1520f6b145cb85aa2
+# descriptorHash: 7cb1e18470ed6ad8a9a682e3bccd9c121800ed893d75d9316be116879898e39e
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -255,7 +255,7 @@
     - list "Run log lines":
       - 'listitem "9:55 AM: info note: Run queued at interactive priority"': 9:55 AM Run queued at interactive priority
     - searchbox "Search logs"
-    - text: ff8c5fd7
+    - text: 7cb1e184
     - button "Run provenance"
     - text: idle
   - complementary "Run data":
