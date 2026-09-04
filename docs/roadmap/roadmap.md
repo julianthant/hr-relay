@@ -128,10 +128,10 @@ log:
 - 2026-08-21 | docs-cohesion 00 | D76's model is LIVE, not history — all 24 items it sized carry the same `size:` on their node today, unchanged and never re-estimated, and the five phase-level sizes agree with §Phases at a glance. All three tiers shipped whole (MUST in phases 1–2, SHOULD in 2g/2h, LATER all five in 2i BEFORE Phase 3), so the fallback shape the tiers define has never been exercised. D79's trims all held except its last sentence: the `scaffold` generators the lightweight tier was ratified with do not exist. Five nodes minted since D76 are sized in its unit and were never in its table — `dash-defaults` `duo-lease` `parallel-runs` `observed-logs` `test-tiers`
 
 ### 0.3 · Redesign single-source runtime authority {#phase0-authority-reset}
-status: active
-date: 2026-09-03 → next session
+status: done
+date: 2026-09-03 → 2026-09-04
 size: M
-chip: earliest start
+chip: closed 2026-09-04
 doc: 00 §0.3 · Redesign single-source runtime authority · ref:dashboard-surfaces §2.3 · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
 
 > Design, but do not yet implement, one CRUD-capable run-record authority for every current, queued, terminal, archived, and deleted run, plus one settings catalog and protected local settings root for every non-provider-key setting. The design must make existing authorities migratable without erasing evidence.
@@ -140,10 +140,13 @@ builds:
 - [x] DOCS canonical run-record identity, lifecycle, typed CRUD/CAS operations, deletion semantics, and projection contract — D330 (0.3 Task 1)
 - [x] DOCS one settings catalog/root, leaf classification, validation, revision/CAS, secret-return policy, and UI edit contract — D331 (0.3 Task 2)
 - [x] DOCS migration/read-forward/rollback/recovery rules for the existing SQLite, span, environment, and settings authorities — D332 (0.3 Task 3)
-- [ ] DOCS deletion tests, proof ladder, implementation seams, and exact 1.6/2.6/3.1 handoff briefs
+- [x] DOCS deletion tests, proof ladder, implementation seams, and exact 1.6/2.6/3.1 handoff briefs — R04 (0.3 Task 4): doc 01 §1.6 binding, docs 02 §2.6 / 03.1 notes, ref guards-and-tests §5.2 as amended
 
 needs:
 - phase0-governance
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | 0.3 closed: D330/D331/D332 adversarially reviewed as one system (eleven fixes landed in the owning specs, one product-truth item to the coordinator), every residue dispositioned, 1.6 bound task by task with the floor + wave 2 ruling, 2.6/3.1 consumption cited · left: the coordinator's phase roll-up and the `cancel` ruling; 1.6 starts at Task 1 (the floor)
 
 #### 1 · Define the canonical run-record authority {#phase0-run-authority-design}
 status: done
@@ -189,17 +192,20 @@ needs:
 - phase0-settings-authority-design
 
 #### 4 · Close design and issue implementation briefs {#phase0-authority-design-close}
-status: planned
-doc: 00 §0.3 · Redesign single-source runtime authority · 01 §1.6 · 02 §2.6 · 03.1 §Reopened completion tasks
+status: done
+doc: 00 §0.3 · Redesign single-source runtime authority · 01 §1.6 · 02 §2.6 · 03.1 §Reopened completion tasks · ref:guards-and-tests §5.2
 
 builds:
-- [ ] PROOF adversarially review run identity, concurrent queue mutation, settings revision conflicts, recovery, and redaction
-- [ ] DOCS resolve every open authority decision in its owning reference spec and decision pointer
-- [ ] DOCS bind each 1.6 task to one implementation seam, gate, integration order, and deletion test
-- [ ] DOCS confirm 2.6 and 3.1 consume the new contracts without redesigning them
+- [x] PROOF adversarially review run identity, concurrent queue mutation, settings revision conflicts, recovery, and redaction — R04 cross-contract table (twelve scenarios a–l; `reports/r04.md`); fixes in ref dashboard-surfaces §D332.3/§D332.4/§D332.5/§D332.6/§D332.11 M25–M27/§D330.8/§D330.11 #16, ref clock-config-secrets §D331.3/§D331.6/§D331.11 P41, ref guards-and-tests §5.2, ref lessons
+- [x] DOCS resolve every open authority decision in its owning reference spec and decision pointer — the resolved-decisions checklist in `reports/r04.md`; no new decision minted; one item (operator `cancel` of a claimed run, §D330.5) deferred to the coordinator as product truth
+- [x] DOCS bind each 1.6 task to one implementation seam, gate, integration order, and deletion test — doc 01 §1.6 (serial floor · wave `2-1`/`2-2` · serial 3–7; 94 proofs assigned once each) and roadmap `p1f-floor`, `p1f-*`
+- [x] DOCS confirm 2.6 and 3.1 consume the new contracts without redesigning them — dated notes in doc 02 §2.6 (intro + Tasks 1–5) and doc 03.1 (Tasks 9-2, 9-3, 11-1, 11-2, 11-3, 12-1, 12-2); contract citations on the thirteen nodes' `doc:` lines
 
 needs:
 - phase0-authority-migration-design
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | closed: cross-contract adversarial review (11 fixes landed, 1 NEEDS COORDINATOR), residue checklist, 1.6 binding with the floor + wave ruling, 2.6/3.1 consumption notes; design gate green in the run worktree · left: the coordinator's `cancel` ruling in §D330.5 before 1.6 Task 4
 
 ## Phase 1 · Build the platform spine {#phase-1}
 phase: Phase 1
