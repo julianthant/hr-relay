@@ -30,3 +30,8 @@ The operator accepted all five recommendations on 2026-09-02 and then corrected 
 
 The choices do not create a second runtime, weaken write safety, or treat typed operator input as an
 independent observation.
+
+On 2026-09-03 the operator confirmed the remaining D313 interpretation: verification after an
+omission is workflow-specific. There is no universal verifier and no platform rule that compares
+two attempts. A workflow declares a separate mandatory verification entry only when that
+workflow's own write contract requires one.

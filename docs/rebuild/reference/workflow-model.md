@@ -2548,9 +2548,11 @@ The omitted step executes no entry at all. Its schema-valid replacement values a
 operator assertions with D307 provenance, never observations.
 
 An independent verification entry elsewhere in the selected workflow may still be mandatory before a
-write. That entry is not part of the omitted step, receives the asserted value as typed input and
-runs normally; it cannot be silently omitted when a selected transaction depends on it. Thus the
-modal decides the whole omission up front without making “well-typed” synonymous with “verified.”
+write. Whether one exists, what it verifies and which selected transaction depends on it are all
+declared by that workflow; the platform supplies no universal verifier. That entry is not part of
+the omitted step, receives the asserted value as typed input and runs normally; it cannot be
+silently omitted when a selected transaction depends on it. Thus the modal decides the whole
+omission up front without making “well-typed” synonymous with “verified.”
 Retry, relaunch and fan-out copy the exact admitted omission bundle unchanged; choosing different
 omissions or values is a new start plan, never a mid-run edit.
 
