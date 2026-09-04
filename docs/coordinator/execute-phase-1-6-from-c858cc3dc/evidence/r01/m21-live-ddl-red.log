@@ -1,0 +1,145 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild
+
+R01 proof control applied: m21-live-ddl: /Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/src/infra/sqlite/migrations.ts
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > keeps the stopped-system gate below the floor so later additive migrations remain automatic
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > creates a fresh authority at the v30 floor with one baseline journal row
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses an at-floor authority whose immutable baseline claims another target
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > admits v29 through storage-backup-read-only-no-migrate without migrating or changing its bytes
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > admits v29 through storage-doctor-read-only-no-migrate without migrating or changing its bytes
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > admits v29 through storage-upgrade-preflight-read-only-no-migrate without migrating or changing its bytes
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses an ordinary v29 open with upgrade-required before any migration
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > admits the frozen integrated v27 layout for upgrade preflight
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > admits the frozen integrated v28 layout for upgrade preflight
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > admits the frozen integrated v29 layout for upgrade preflight
+ × |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > M21 admits exact v27 before traversing the released chain to the floor 50ms
+   → failed to open authority database /var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-rebuild-sqlite-E8WO6Z/m21-chain-v27.sqlite: D290 divergent post-v18 migration suffix: DCC1 v27; automatic conversion is not authorized
+ × |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > M21 admits exact v28 before traversing the released chain to the floor 38ms
+   → failed to open authority database /var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-rebuild-sqlite-BGbp8V/m21-chain-v28.sqlite: D290 divergent post-v18 migration suffix: DCC1 v28; automatic conversion is not authorized
+ × |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > M21 admits exact v29 before traversing the released chain to the floor 30ms
+   → failed to open authority database /var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-rebuild-sqlite-KrZFE0/m21-chain-v29.sqlite: D290 divergent post-v18 migration suffix: DCC1 v29; automatic conversion is not authorized
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > M21 refuses an extra table in exact v29 before admission or migration changes any bytes
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > M21 negative control: live-DDL-derived lists reject the admitted v27 fixture
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > M21 negative control: live-DDL-derived lists reject the admitted v28 fixture
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > M21 negative control: live-DDL-derived lists reject the admitted v29 fixture
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > creates the complete v30 schema floor and preserves journal append semantics
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > creates every registered table with its exact authority classification and required pragmas
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > keeps the released migration chain from the exact common v18 authority
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > keeps the released v28 phone-capture retirement over an empty exact v27 authority
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses a v27 authority whose table set is no longer the exact integrated lineage
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses a v27 authority with capture_sessions atomically
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses a v27 authority with capture_photo_order atomically
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses a v27 authority with capture_finalization_outboxes atomically
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses a v27 authority with capture-command atomically
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses a v27 authority with capture-command-audit atomically
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses a v27 authority with capture-handoff-session atomically
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses a v27 authority with capture-intake-manifest atomically
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses the exact complete DCR v24 suffix before migration or mutation
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses an exact DCR v21 evidence-bearing suffix without v22 residue
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses an empty exact DCR v21 suffix instead of converting it
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses an exact DCR v22 suffix with matching generation authority
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses exact DCR v23 XLSX evidence without backfilling actor attribution
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses orphaned exact v22 evidence and leaves v22 without guard residue
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > keeps the released migration chain over the exact committed Stage-B v1 shape
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > invalidates exact v5 start plans that cannot retain D109 raw ingress and boots requiring re-plan
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > keeps the released chain from v6 without changing existing authority
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > keeps the released chain from v7, reopens, and validates read-only
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > reopens an already-current database without rerunning the migration
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses the exact complete divergent DCC1 v21 suffix before migration or mutation
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > refuses the exact superseded DCC4 v19 suffix before migration or mutation
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > fails loud for empty, foreign, newer, locked, and structurally invalid databases
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > fails when another connection holds the migration/write lease
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority generation accounting > keeps one read snapshot while another connection commits without waiting
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority generation accounting > accounts for every authority table and increments once per outer authority mutation
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority generation accounting > shares nested authority transactions and increments exactly once
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority generation accounting > rolls back a caught nested fence failure to its savepoint without leaking an intent
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority generation accounting > rolls back a caught nested atomic outbox failure while committing unrelated outer work once
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority generation accounting > leaves generation unchanged for empty, projection-only, idempotent, and rolled-back work
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority generation accounting > never increments authority generation for projection upsert or clear
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority persistence invariants > reopens v1 XLSX evidence unchanged and unattributed beside exact attributed v2 arms
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority persistence invariants > refuses a v2 XLSX 'actor column' mismatch at read and boot
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority persistence invariants > refuses a v2 XLSX 'record JSON actor' mismatch at read and boot
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority persistence invariants > refuses an XLSX artifact index that disagrees with its strict evidence record
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority persistence invariants > reconciles every mirrored XLSX evidence column during boot inspection
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority persistence invariants > makes command insertion idempotent but rejects command-id content reuse
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority persistence invariants > keeps committed and observed-present idempotency keys permanent
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority persistence invariants > enforces command, delegation, write-attempt, and outbox foreign keys
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > authority persistence invariants > rejects authority mutation inside a projection transaction
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > D230 run ordinals > hands out consecutive ordinals per workflow and refuses a spent one
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > D230 run ordinals > counts each workflow separately and tolerates a gap
+ ↓ |unit| tests/unit/sqlite-authority-database.test.ts > D230 run ordinals > reads an unstamped pre-v15 row forward without back-filling it
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > M21 admits exact v27 before traversing the released chain to the floor
+Error: failed to open authority database /var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-rebuild-sqlite-E8WO6Z/m21-chain-v27.sqlite: D290 divergent post-v18 migration suffix: DCC1 v27; automatic conversion is not authorized
+ ❯ new AuthorityDatabase src/infra/sqlite/authority-database.ts:2575:13
+    2573|     } catch (error) {
+    2574|       this.#database.close();
+    2575|       throw new Error(`failed to open authority database ${options.pat…
+       |             ^
+    2576|     }
+    2577|
+ ❯ AuthorityDatabase.open src/infra/sqlite/authority-database.ts:2588:12
+ ❯ openDatabaseWithoutMigration tests/unit/sqlite-authority-database.test.ts:392:38
+ ❯ tests/unit/sqlite-authority-database.test.ts:1006:22
+
+Caused by: Error: D290 divergent post-v18 migration suffix: DCC1 v27; automatic conversion is not authorized
+ ❯ AuthorityDatabase.#admitExistingSchema src/infra/sqlite/authority-database.ts:3394:13
+ ❯ new AuthorityDatabase src/infra/sqlite/authority-database.ts:2557:46
+ ❯ AuthorityDatabase.open src/infra/sqlite/authority-database.ts:2588:12
+ ❯ openDatabaseWithoutMigration tests/unit/sqlite-authority-database.test.ts:392:38
+ ❯ tests/unit/sqlite-authority-database.test.ts:1006:22
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > M21 admits exact v28 before traversing the released chain to the floor
+Error: failed to open authority database /var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-rebuild-sqlite-BGbp8V/m21-chain-v28.sqlite: D290 divergent post-v18 migration suffix: DCC1 v28; automatic conversion is not authorized
+ ❯ new AuthorityDatabase src/infra/sqlite/authority-database.ts:2575:13
+    2573|     } catch (error) {
+    2574|       this.#database.close();
+    2575|       throw new Error(`failed to open authority database ${options.pat…
+       |             ^
+    2576|     }
+    2577|
+ ❯ AuthorityDatabase.open src/infra/sqlite/authority-database.ts:2588:12
+ ❯ openDatabaseWithoutMigration tests/unit/sqlite-authority-database.test.ts:392:38
+ ❯ tests/unit/sqlite-authority-database.test.ts:1006:22
+
+Caused by: Error: D290 divergent post-v18 migration suffix: DCC1 v28; automatic conversion is not authorized
+ ❯ AuthorityDatabase.#admitExistingSchema src/infra/sqlite/authority-database.ts:3394:13
+ ❯ new AuthorityDatabase src/infra/sqlite/authority-database.ts:2557:46
+ ❯ AuthorityDatabase.open src/infra/sqlite/authority-database.ts:2588:12
+ ❯ openDatabaseWithoutMigration tests/unit/sqlite-authority-database.test.ts:392:38
+ ❯ tests/unit/sqlite-authority-database.test.ts:1006:22
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  |unit| tests/unit/sqlite-authority-database.test.ts > native SQLite authority schema > M21 admits exact v29 before traversing the released chain to the floor
+Error: failed to open authority database /var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-rebuild-sqlite-KrZFE0/m21-chain-v29.sqlite: D290 divergent post-v18 migration suffix: DCC1 v29; automatic conversion is not authorized
+ ❯ new AuthorityDatabase src/infra/sqlite/authority-database.ts:2575:13
+    2573|     } catch (error) {
+    2574|       this.#database.close();
+    2575|       throw new Error(`failed to open authority database ${options.pat…
+       |             ^
+    2576|     }
+    2577|
+ ❯ AuthorityDatabase.open src/infra/sqlite/authority-database.ts:2588:12
+ ❯ openDatabaseWithoutMigration tests/unit/sqlite-authority-database.test.ts:392:38
+ ❯ tests/unit/sqlite-authority-database.test.ts:1006:22
+
+Caused by: Error: D290 divergent post-v18 migration suffix: DCC1 v29; automatic conversion is not authorized
+ ❯ AuthorityDatabase.#admitExistingSchema src/infra/sqlite/authority-database.ts:3394:13
+ ❯ new AuthorityDatabase src/infra/sqlite/authority-database.ts:2557:46
+ ❯ AuthorityDatabase.open src/infra/sqlite/authority-database.ts:2588:12
+ ❯ openDatabaseWithoutMigration tests/unit/sqlite-authority-database.test.ts:392:38
+ ❯ tests/unit/sqlite-authority-database.test.ts:1006:22
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 60 skipped (63)
+   Start at  16:16:16
+   Duration  3.04s (transform 1.85s, setup 0ms, import 2.79s, tests 120ms, environment 0ms)
+

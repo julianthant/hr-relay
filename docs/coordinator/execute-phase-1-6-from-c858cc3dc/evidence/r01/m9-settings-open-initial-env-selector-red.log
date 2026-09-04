@@ -1,0 +1,110 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild
+
+R01_PROOF_MUTATION applied: m9-settings-open: /Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/src/server/dashboard/compose.ts
+ × |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > M9 refuses a real v30 authority under CURRENT29 before settings opens or config resolution 287ms
+   → M9: zero settings-family openSync calls before downgrade refusal
+
+1 !== 0
+
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > releases its acquired server process record when authority v29 refuses open
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > releases its acquired server process record when authority v31 refuses open
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > require diagnostic precedence > preserves 'simultaneously malformed command, aud…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > require diagnostic precedence > preserves 'malformed command before malformed au…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > require diagnostic precedence > preserves 'malformed audit and current with vali…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > require diagnostic precedence > preserves 'divergent command envelope versus mal…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > require diagnostic precedence > preserves 'missing command versus malformed audit' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > require diagnostic precedence > preserves 'divergent audit before divergent curr…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > read diagnostic precedence > preserves 'simultaneously malformed command, aud…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > read diagnostic precedence > preserves 'malformed command before malformed au…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > read diagnostic precedence > preserves 'malformed audit and current with vali…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > read diagnostic precedence > preserves 'divergent command envelope versus mal…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > read diagnostic precedence > preserves 'missing command versus malformed audit' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > read diagnostic precedence > preserves 'divergent audit before divergent curr…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > recover diagnostic precedence > preserves 'simultaneously malformed command, aud…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > recover diagnostic precedence > preserves 'malformed command before malformed au…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > recover diagnostic precedence > preserves 'malformed audit and current with vali…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > recover diagnostic precedence > preserves 'divergent command envelope versus mal…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > recover diagnostic precedence > preserves 'missing command versus malformed audit' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > recover diagnostic precedence > preserves 'divergent audit before divergent curr…' without settling evidence
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > authenticates a committed prepare and final readback without duplicate authority observations
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > prepared revision 3 over journaled revision 2 > 'restores the exact journaled prior ge…'
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > prepared revision 3 over journaled revision 2 > 'retains evidence when the prior comma…'
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > prepared revision 3 over journaled revision 2 > 'retains evidence when the prior audit…'
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > prepared revision 3 over journaled revision 2 > 'retains evidence when the prior curre…'
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > retains exact prepared settings evidence when 'only its audit' is present
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > retains exact prepared settings evidence when 'only its command' is present
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > retains exact prepared settings evidence when 'only settings_current' is present
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > retains exact prepared settings evidence when 'its command and audit' is present
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > retains exact prepared settings evidence when 'its command and settings_current' is present
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > retains exact prepared settings evidence when 'its audit and settings_current' is present
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > serves the exact editable settings command schema hash
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > launches pool workers through the secure bootstrap's cli arm, never the inert src/cli.ts module
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > publishes a lease-only worker card from the real tail tick, before any span exists (D248 freshness)
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > clears a durable prepare when the process died before the live settings rename
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > rolls back a prepared settings rename whose command transaction never committed
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > keeps exact prepared settings only after their command, audit, and current result committed
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > serves Explorer with one recovery admission and one document read per GET request
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > serves Explorer with one recovery admission and one document read per validate request
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > keeps the admitted GET view when a new claim lands after admission, then re-admits on the next request
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > keeps the admitted validate view when a new claim lands after admission, then re-admits on the next request
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > blocks unjournaled Explorer reads after restart while preserving exact command replay (landed=true)
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > blocks unjournaled Explorer reads after restart while preserving exact command replay (landed=false)
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > reconciles exact journal, audit and next bytes before startup admits Explorer
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses startup and retains the claim for partial-journal
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses startup and retains the claim for divergent-journal
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses startup and retains the claim for divergent-audit
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses startup and retains the claim for foreign-result
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses startup and retains the claim for wrong-revision
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses startup and retains the claim for missing-next-bytes
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses startup and retains the claim for damaged-next-bytes
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses an unjournaled persisted settings generation before serving
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses valid settings bytes with corrupt 'journal command envelope' on dashboard boot
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses valid settings bytes with corrupt 'audit request identity' on dashboard boot
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses valid settings bytes with corrupt 'audit result state' on dashboard boot
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses valid settings bytes with corrupt 'audit result command identity' on dashboard boot
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses valid settings bytes with corrupt 'audit result settings identity' on dashboard boot
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses valid settings bytes with corrupt 'audit result target identity' on dashboard boot
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses valid settings bytes with corrupt 'audit version vector' on dashboard boot
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses valid settings bytes with corrupt 'audit dependency vector' on dashboard boot
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses a byte-exact older settings file even when that revision was once journaled
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > refuses new start plans after settings apply until this dashboard restarts
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > activates the exact persisted settings generation after a dashboard restart
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > creates the artifact root as an owner-only directory
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > keeps an applied revision restart-required until a dashboard restart activates it
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > serves bootstrap, day, and SSE through a real ephemeral listener and releases it at teardown
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > built-bundle mode refuses to compose without dist/dashboard/index.html, and serves the bundle beside the API when it exists
+ ↓ |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > vite-dev mode (the default) serves no bundle bytes: an unrouted path stays a JSON 404
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime over an owned loopback socket > M9 refuses a real v30 authority under CURRENT29 before settings opens or config resolution
+AssertionError: M9: zero settings-family openSync calls before downgrade refusal
+
+1 !== 0
+
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/unit/server/compose-real-port.test.ts:397:16
+    395|           && (value.startsWith(join(stateRoot, "settings.json"))
+    396|             || value.startsWith(join(stateRoot, "settings") + "/"));
+    397|         assert.equal(vi.mocked(openSync).mock.calls.filter(([target]) …
+       |                ^
+    398|           0, "M9: zero settings-family openSync calls before downgrade…
+    399|         assert.equal(vi.mocked(readFileSync).mock.calls.filter(([targe…
+ ❯ Module.withAuthorityBuildVariant tests/unit/fixtures/authority-build-variant.ts:33:5
+ ❯ tests/unit/server/compose-real-port.test.ts:379:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 68 skipped (69)
+   Start at  16:06:45
+   Duration  4.07s (transform 2.62s, setup 0ms, import 3.67s, tests 288ms, environment 0ms)
+

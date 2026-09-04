@@ -1,0 +1,31 @@
+{
+  "dependency_setup": {
+    "command": "npm ci",
+    "exit_code": 0,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/npm-ci.log"
+  },
+  "environment_setup": {
+    "commands": [
+      "umask 077",
+      "install -m 600 .env.example .env"
+    ],
+    "exit_code": 0,
+    "mode": "0o600",
+    "byte_identical_to_checked_in_example": true,
+    "credential_values_added": false
+  },
+  "initial_typecheck": {
+    "exit_code": 2,
+    "reason": "node_modules absent; incompatible global compiler selected",
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/typecheck-initial-missing-dependencies.log"
+  },
+  "initial_coverage": {
+    "exit_code": 1,
+    "reason": "private checkout .env absent",
+    "files_passed": 410,
+    "files_failed": 1,
+    "tests_passed": 5031,
+    "tests_failed": 1,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/test-coverage-initial-missing-env.log"
+  }
+}

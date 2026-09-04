@@ -1,0 +1,55 @@
+failed to load config from /Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/proof-mutation.config.ts
+failed to load config from /Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/proof-mutation.config.ts
+failed to load config from /Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/proof-mutation.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+AggregateError: Failed to initialize projects. There were errors during projects setup. See below for more details.
+    at resolveProjects (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:11165:27)
+    at Vitest._setServer (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:13150:20)
+    at BasicMinimalPluginContext.handler (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:14191:5)
+    at _createServer (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vite/dist/node/chunks/node.js:26631:84)
+    at createViteServer (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:8835:17)
+    at createVitest (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:14221:18)
+    at prepareVitest (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:14588:14)
+    at startVitest (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:14531:14)
+    at start (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cac.DdICfEr1.js:2340:15)
+    at CAC.run (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cac.DdICfEr1.js:2318:2) {
+  [errors]: [
+    Error: --mode must name one registered R01 proof control
+        at file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/.vite-temp/proof-mutation.config.ts.timestamp-1788563722269-1a007f864dbbe8.mjs:129:27
+        at loadConfigFromFile (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vite/dist/node/chunks/node.js:36977:62)
+        at resolveConfig (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vite/dist/node/chunks/node.js:36581:22)
+        at _createServer (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vite/dist/node/chunks/node.js:26388:65)
+        at createViteServer (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:8835:17)
+        at initializeProject (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:11051:2)
+        at async Promise.allSettled (index 0)
+        at resolveProjects (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:11156:35)
+        at Vitest._setServer (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:13150:20)
+        at BasicMinimalPluginContext.handler (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:14191:5),
+    Error: --mode must name one registered R01 proof control
+        at file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/.vite-temp/proof-mutation.config.ts.timestamp-1788563722268-71a7cdd28a7a8.mjs:129:27
+        at loadConfigFromFile (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vite/dist/node/chunks/node.js:36977:62)
+        at resolveConfig (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vite/dist/node/chunks/node.js:36581:22)
+        at _createServer (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vite/dist/node/chunks/node.js:26388:65)
+        at createViteServer (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:8835:17)
+        at initializeProject (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:11051:2)
+        at async Promise.allSettled (index 1)
+        at resolveProjects (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:11156:35)
+        at Vitest._setServer (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:13150:20)
+        at BasicMinimalPluginContext.handler (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:14191:5),
+    Error: --mode must name one registered R01 proof control
+        at file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/.vite-temp/proof-mutation.config.ts.timestamp-1788563722269-3180af0db0ada8.mjs:129:27
+        at loadConfigFromFile (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vite/dist/node/chunks/node.js:36977:62)
+        at resolveConfig (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vite/dist/node/chunks/node.js:36581:22)
+        at _createServer (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vite/dist/node/chunks/node.js:26388:65)
+        at createViteServer (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:8835:17)
+        at initializeProject (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:11051:2)
+        at async Promise.allSettled (index 2)
+        at resolveProjects (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:11156:35)
+        at Vitest._setServer (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:13150:20)
+        at BasicMinimalPluginContext.handler (file:///Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:14191:5)
+  ]
+}
+
+
+

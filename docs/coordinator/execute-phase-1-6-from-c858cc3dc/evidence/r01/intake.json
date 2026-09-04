@@ -1,0 +1,129 @@
+[
+  {
+    "name": "identity",
+    "command": [
+      "git",
+      "status",
+      "--short"
+    ],
+    "exit_code": 0,
+    "stdout": "?? docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/\n",
+    "stderr": ""
+  },
+  {
+    "name": "base",
+    "command": [
+      "git",
+      "rev-parse",
+      "HEAD"
+    ],
+    "exit_code": 0,
+    "stdout": "99c9ed51882a4e53069d18cf0e890c98f9810be2\n",
+    "stderr": ""
+  },
+  {
+    "name": "branch",
+    "command": [
+      "git",
+      "branch",
+      "--show-current"
+    ],
+    "exit_code": 0,
+    "stdout": "feature/execute-phase-1-6-from-c858cc3dc-r01-verify-schema-floor\n",
+    "stderr": ""
+  },
+  {
+    "name": "worktrees",
+    "command": [
+      "git",
+      "worktree",
+      "list",
+      "--porcelain"
+    ],
+    "exit_code": 0,
+    "stdout": "worktree /Users/julianhein/Projects/hr-automation-rebuild\nHEAD 99c9ed51882a4e53069d18cf0e890c98f9810be2\nbranch refs/heads/master\n\nworktree /Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild\nHEAD 99c9ed51882a4e53069d18cf0e890c98f9810be2\nbranch refs/heads/feature/execute-phase-1-6-from-c858cc3dc-r01-verify-schema-floor\n\nworktree /Users/julianhein/Projects/hr-automation-rebuild-r09-parity-baseline\nHEAD f39283475d36ea5eda06f5d6b2f690235aaf076b\nbranch refs/heads/feature/phase-1-6-authorities-c161eaed0-r09-parity-baseline\n\n",
+    "stderr": ""
+  },
+  {
+    "name": "product-diff-from-approved-baseline",
+    "command": [
+      "git",
+      "diff",
+      "--name-only",
+      "59c8bfb1d165ca83c7b7b470fab2ca60bd16fe1b",
+      "HEAD",
+      "--",
+      "src",
+      "tests",
+      "scripts",
+      "package.json",
+      "package-lock.json"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "floor-implementation-commit",
+    "command": [
+      "git",
+      "show",
+      "--stat",
+      "--oneline",
+      "ff55cb7a",
+      "--",
+      "src/infra/sqlite/migrations.ts",
+      "src/infra/sqlite/authority-database.ts"
+    ],
+    "exit_code": 0,
+    "stdout": "ff55cb7a feat(storage): establish v30 authority floor\n src/infra/sqlite/authority-database.ts | 240 ++++++++++++++++++++++++++++++---\n src/infra/sqlite/migrations.ts         | 139 ++++++++++++++++++-\n 2 files changed, 363 insertions(+), 16 deletions(-)\n",
+    "stderr": ""
+  },
+  {
+    "name": "runtime-status",
+    "command": [
+      "python3",
+      "/Users/julianhein/.agents/skill-library/orchestration-runtime/scripts/orchestrate.py",
+      "status",
+      "--cwd",
+      "/Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild"
+    ],
+    "exit_code": 0,
+    "stdout": "State: /Users/julianhein/.codex/orchestration/state.sqlite3\nNo enrolled orchestration sessions.\n",
+    "stderr": ""
+  },
+  {
+    "name": "role-policy",
+    "command": [
+      "python3",
+      "/Users/julianhein/.agents/skills/supervise/scripts/check-role-policy.py",
+      "--platform",
+      "codex",
+      "--repo",
+      "/Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild"
+    ],
+    "exit_code": 0,
+    "stdout": "codex: role policy valid (1 supervisor + 4 workers)\n",
+    "stderr": ""
+  },
+  {
+    "name": "node",
+    "command": [
+      "node",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "v26.1.0\n",
+    "stderr": ""
+  },
+  {
+    "name": "npm",
+    "command": [
+      "npm",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "11.13.0\n",
+    "stderr": ""
+  }
+]

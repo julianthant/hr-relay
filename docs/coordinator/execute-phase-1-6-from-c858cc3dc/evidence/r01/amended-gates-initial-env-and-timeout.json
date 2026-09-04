@@ -1,0 +1,20 @@
+[
+  {
+    "command": "npm run typecheck",
+    "exit_code": 0,
+    "elapsed_seconds": 14.896,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/amended-typecheck-initial-env-and-timeout.log"
+  },
+  {
+    "command": "npm run lint",
+    "exit_code": 0,
+    "elapsed_seconds": 43.492,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/amended-lint-initial-env-and-timeout.log"
+  },
+  {
+    "command": "npm run test:coverage",
+    "exit_code": 1,
+    "elapsed_seconds": 241.653,
+    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/amended-test-coverage-initial-env-and-timeout.log"
+  }
+]
