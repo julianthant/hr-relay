@@ -9,7 +9,7 @@ The operator approved instruction cleanup and validation (passes 1–2 of the lo
 Plugin configuration, credentials, installed versions, hooks, and task-history maintenance were excluded.
 Claude's existing uncommitted root/server/lesson migration was retained and incorporated. The source
 HEAD before this pass was `d7adfaf1a27b787ad3655e601b4ea45427924718`; the working root had already shrunk from its committed
-111,537 bytes to 46,683 bytes. A separately active coordinator ledger was not part of this change.
+111,537 bytes to 46,683 bytes. A separately active coordinator ledger was not edited or staged by this cleanup.
 
 The saved input of task `01a06e91-9b12-7533-b022-221ade48be0b` contained exactly the first 32,768
 UTF-8 bytes of that working root, ending at `produces` map `rebu`. Its 13,915-byte tail, including
@@ -17,6 +17,11 @@ After changes, was absent. Global instructions were prepended separately. The of
 reference is [AGENTS.md discovery](https://learn.chatgpt.com/docs/agent-configuration/agents-md).
 The post-edit checks below reconstruct that observed byte-limited project chain locally; they do
 not claim a new model session was launched or that this already-running task reloaded its prompt.
+
+While coverage was running, another active session committed the instruction moves and the
+then-in-progress report in `f1c1ae8f`. The completed instruction files were compared against that
+commit with no differences. That history was retained; this report's final gate evidence was
+committed separately. Unrelated coordinator changes were left untouched.
 
 ## Results
 
@@ -90,4 +95,44 @@ No runtime code or tests changed. No new test was added for this documentation-o
 The existing required per-commit gates were run sequentially, keeping the full coverage lane
 free of this task's compiler/linter contention.
 
-VALIDATION_PENDING
+- `npm run typecheck`: passed.
+- `npm run lint`: passed, zero warnings.
+- Initial `npm run test:coverage`: 410 files passed; the setup hook in
+  `tests/unit/server/dashboard-perf-fixture-shape.test.ts:41` exceeded the unchanged 30,000 ms
+  limit. Vitest reported 5,024 passing tests and eight skipped because that setup failed;
+  the full gate was red (233.84 s).
+- `npm run test -- --project unit tests/unit/server/dashboard-perf-fixture-shape.test.ts`:
+  all eight tests passed, one file, 12.82 s, with no source changes.
+- The full retry uses the same configured suite and coverage settings, with a transient
+  two-worker override to reduce contention, then the same suite-size check:
+  `npm exec -- vitest run --coverage --maxWorkers=2 && npm exec -- tsx scripts/suite-size.ts`.
+  Test membership, per-file isolation, in-test concurrency, thresholds, and 30-second limits
+  are unchanged. No compiler or linter from this task ran concurrently with coverage.
+
+### Final gate evidence
+
+The full two-worker retry exited 0: **411 files / 5,032 tests passed**, no skipped tests,
+167.10 s. The same previously failing fixture passed all eight assertions inside that run.
+This is consistent with contention at the higher worker count; no code defect or fix is claimed.
+
+| Coverage metric | Result |
+| --- | ---: |
+| Statements | 85.61% |
+| Branches | 76.52% |
+| Functions | 89.45% |
+| Lines | 87.55% |
+
+The coverage command enforced all configured floors. The subsequent suite-size command passed:
+321 unit files, 73 architecture files, 17 scenario files. `git diff --check` passed, all nine
+instruction pairs match, all nine project chains fit, and touched entry-point/report Markdown
+links resolve. No temporary instrumentation, runtime changes, or test changes were introduced.
+
+Gate output SHA-256 (retained locally with the task's temporary backup):
+
+| Output | SHA-256 |
+| --- | --- |
+| `typecheck.log` | `ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036` |
+| `lint.log` | `7ddb1ed4692d7f46ded772bee29d287ee65a7f38e09708bb0ca19a4c7f9c695f` |
+| `coverage.log` | `925975738875c16ba9c7810d45b8f359d037fd97bc56162bf92663e7d0848714` |
+| `fixture-recheck.log` | `cec83be980972543b1b5d10deac8d87ac72219ad33429640079340223082876f` |
+| `coverage-two-workers.log` | `484da0266af9f64336bab19ae1f77e1e0c6fa7cb40b69a9f38b9f6a905e96fa7` |
