@@ -22,9 +22,9 @@ HR documents are predictable. The skill's memory is **`references/document-shape
 
 ## 2 · Extract (parallel, transcribe-only)
 
-- Dispatch one reader per block (or per ~10 pages): `sup_luna` for clean print, `sup_terra` for
+- Dispatch one reader per block (or per ~10 pages): `sup_terra` for clean print, `sup_sol` for
   handwriting or poor scans, always at high reasoning. Set native `agent_type` to that exact role,
-  use `fork_turns: "none"`, and begin `task_name` with `sup_luna_scan_` or `sup_terra_scan_`.
+  use `fork_turns: "none"`, and begin `task_name` with `sup_terra_scan_` or `sup_sol_scan_`.
   Never substitute `default`, `worker`, `explorer`, or a bare model override; if the role is
   unavailable, stop and report it. Native roles enforce a 240k context window and compact at 220k.
   Paste the shape's field list and rails into each self-contained brief.
