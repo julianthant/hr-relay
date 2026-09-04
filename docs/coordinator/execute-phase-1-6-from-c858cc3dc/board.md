@@ -45,3 +45,7 @@ Exact old/proposed records and authenticated launch linkage: `evidence/task-iden
 ## Approved admission repair applied
 
 2026-09-04 user answered yes to the exact proposed repair. Original launch, metadata, branch, base and envelope revalidated; runtime address replaced and original enrollment restored atomically. Audit: `evidence/task-identity-repair-result.json`. Normal `wait_threads` accepted the permanent task id. No hook files, scope or cleanup checks changed by the repair. R01 will continue its existing task with the bounded generated proof amendment.
+
+## Inherited lifecycle closed
+
+Previous nested R09 verified at f3928347, preserved on merge 59c8bfb1, and independently passed the integrated base gate (411 files / 5,032 tests). Retained screenshot proof copied with exact hashes. Registered and physical worktree removed, branch deleted and verified absent. No separate sidebar task or writable worker existed. Exact row: `inherited-lifecycle.json`. The prior ledger remains historical as-left state; this operator-assigned continuation owns the completed cleanup evidence.
