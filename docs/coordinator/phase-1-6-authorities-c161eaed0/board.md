@@ -19,6 +19,7 @@
 - Every run preserves fail-loud behavior and updates tests; changes under a descriptor import closure require manifest regeneration/checking.
 - Task 4's claimed/running cancel question is already settled as option A in the owning D330 sections and adds proof #27; it is not an open coordinator decision.
 - Task 1's tombstone schema lives in `src/domain/run/deleted-run.ts`; doc 01's stale `authority.ts` location was corrected at `e1674420` without changing product scope.
+- M3 allocation: Task 1 owns the direct database open/no-migrate half; Task 6 owns and re-runs the successful backup/doctor inspector and manifest half. This resolves the impossible cross-seam gate without moving any compatibility file into R01.
 
 ## Decisions ratified
 
