@@ -1,4 +1,4 @@
-# Board — Phase 0.3 · Redesign single-source runtime authority
+# Board — Phase 0.3 · Redesign single-source runtime authority — CLOSED 2026-09-04
 
 **Project profile:** `docs/coordinator/phase-0-3-authority-design-c31da5310/project-profile.md`
 **Coordination UUID:** `31da5310-fb55-4982-ad02-05f4c9356d8b`
@@ -9,7 +9,8 @@
 **Integration target:** `master`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-04 at `df486f7a` (root tree clean)
+**Last verified:** 2026-09-04 at `287ae52f` (root tree clean; no auxiliary worktrees, no `feature/*` branches, no supervisor sessions)
+**Board state:** CLOSED — every run integrated and closed; Phase 0.3 done in the plan (`287ae52f`); the runtime marker still reports `completedThrough: 2j` by design until 1.6 implements (D326)
 
 ## Facts every run needs
 
@@ -20,7 +21,7 @@
   journal, rollback, boot matrix, preservation, adapter policy), its settings half in
   clock-config-secrets, and §5.2 adapter roster A0–A8 + deletion tests in guards-and-tests (merged
   `ff4e08b9`).
-- Decision numbering: master holds D1–D332 (D333 next). D329 is the foreign Phase 3 chronology decision
+- Decision numbering: master holds D1–D332 (D333 next). R04 minted none; its cancel ruling is a dated amendment inside D330. D329 is the foreign Phase 3 chronology decision
   (`188e2137`), NOT the run-record contract; R01 renumbered after a collision. Every minting commit
   must prove the next number free against `master` in the same command.
 - The foreign restructuring landed on master (`188e2137`, `132003c1`): phase docs are now
@@ -75,6 +76,15 @@
   accepted: the `baseline` journal row at D321 regeneration; the journaled orphaned gate-record sweep
   for pre-floor tombstones (D308/§D330.9); adapter expiry phases as set (re-slot only by naming the
   owning deletion-test task).
+- 2026-09-04 · coordinator ruling (R04 NEEDS COORDINATOR item 1, landed `faa205b8`, merged `5dcdd112`) →
+  operator `cancel` of a claimed/validating/running run is a REQUEST (`cancelRequested` self-edge under
+  version CAS; the worker settles `terminal/cancelled` through `terminalize` under its claim fence at its
+  next non-fenced boundary; `cancelling` served status; §D330.11 #27). Authority: the 2026-08-25
+  fenced-write lesson and §D330.4 forbid a direct terminal write over a fenced row; the queue's cancel verb
+  stays. Operator may overturn; 1.6 Task 4 owns the implementation.
+- 2026-09-04 · R04 wave ruling (doc 01 §1.6, roadmap `5dcdd112`) → 1.6 is Task 1 schema floor (serial),
+  wave `2-1` run-record service / `2-2` settings catalog+root (independent only after the floor), then
+  serial Tasks 3–7. Tasks 3 and 5 share composition roots and are never a wave.
 
 ## Unit ledger
 
@@ -83,39 +93,25 @@
 | U01 | R01 | closed | merge `1a04d565` (--no-ff, branch head `e953de9d`, 8 commits from `26c70b9b`) + reconcile `436bf4a8`; worktree removed, branch deleted, session `d02757ca` stopped | integrated: roadmap:check fresh · typecheck 0 · lint 0 · test:coverage 411/411 files, 5019 tests (exit 0) | supervisor + sup-analyst adversarial review, 15 scenarios, 8 holes fixed in `9bdcf667` | report `reports/r01.md`; D329→D330 renumber `e953de9d` |
 | U02 | R02 | closed | merge `63f6da4f` (--no-ff, branch head `fa160fbf`, 8 commits from `da870d2d`) + reconcile `629a166a`; worktree removed, branch deleted, session `3700aeea` stopped | integrated: roadmap:check fresh · typecheck 0 · lint 0 · test:coverage 411/411 files, 5019 tests (exit 0) | supervisor + sup-analyst adversarial review, 23 findings, 6 blockers + 11 should-fix closed in `6c10b57f` | report `reports/r02.md`; research under `research/r02-*.md`; lesson in ref lessons (`7869ad1e`) |
 | U03 | R03 | closed | merge `ff4e08b9` (--no-ff, branch head `c103cf0d`, 9 commits from `d346349f` incl. one worker merge `98d9cf69`) + reconcile `df486f7a`; worktree removed, branch deleted, worker worktree/branch already gone, session `1c0e3c45` stopped | integrated: roadmap:check fresh · typecheck 0 · lint 0 · test:coverage 411/411 files, 5019 tests (exit 0; first attempt killed by host low memory, re-run green) | supervisor + sup-analyst adversarial review, 18 scenarios, 6 blockers + 10 should-fix closed in `14c5377f` | report `reports/r03.md`; lesson in ref lessons (`8718190b`) |
-| U04 | R04 | reserved | — | — | consequential | Task 4 · adversarial close + 1.6/2.6/3.1 briefs |
+| U04 | R04 | closed | merge `5dcdd112` (--no-ff, branch head `36abda8f`, 14 commits from `98037ef7` incl. one worker merge `5acbabec`) + reconcile `287ae52f`; worktree removed, branch deleted, session `43613407` stopped | integrated: roadmap:check fresh · typecheck 0 · lint 0 · test:coverage 411/411 files, 5019 tests (exit 0) | sup-analyst cross-contract review, 12 scenarios, 12/12 closed in `16569461` + `faa205b8` | report `reports/r04.md`; 1.6 bound in doc 01 §1.6 (95 proofs, deletion tests, serial floor + wave 2-1/2-2); 2.6/3.1 consumption notes `661149e5`/`699de307`; CLAUDE.md/AGENTS.md name D330–D332 (`95004f52`) |
 
 ## Residue
 
-- R01 → R02: claim runtime token (`generation`, `settingsRevision`, `settingsFingerprint`,
-  `configFingerprint`) keeps its shape; R02 owns its provenance. dashboard-surfaces §2.1
-  `.tracker-rebuild/` wording stale post-D321.
-- R01 → R03: pre-1.6 tombstones lack `itemId`/`attempt`/`runNumber` (migration seeds the ordinal
-  watermark); `authority-unknown` re-admission after restore; §2.5 item 6 "park external writes" on
-  runs the service calls `absent`; §2.5 items 3–4 still carry the D322-retired backup cadence inline;
-  schema additions (`checkpoint_payloads` trigger + tally column; `deleted_runs` three columns).
-- R02 → R03: `SETTINGS_SCHEMA_HASH` journaled rewrite after a verified D322 backup; old-pathname
-  `.prepare.json`/`.rollback.json` refusal; seven dual-source leaves' import tie-break; `protected.json`
-  vs `protected_settings_current` restore semantics; `snapshot-generations` retirement arm for
-  `operator.timekeeperName`; pre-migration backup plaintext exposure (record, never claim erased);
-  `migrated-refused` first-boot experience.
-- R02 → R04: §D331.11's 40 proofs (new `settings-catalog` guard + inventory entry; proof-file
-  pinning; ~9 unit files); eleven `settings.json: not set` parity references re-frozen by 3.1; the
-  served observed/active `display` pair for 3.1's Settings surface; per-name protected value schemas.
-- R03 → R04: §D332.11's 24 proofs and the 1.6 carry list (read-only no-migrate open mode, D290
-  literal freeze 27/28/29, backup read-path widening, A0 frozen schema copies, `baseline` journal
-  row, `snapshot-generations` retired-leaf list, §5.2 inventory entries, the
-  `run-status-fold-contributes-no-lifecycle-arm` test); wording debts (§D330.11 test 16 "28" vs
-  17 distinct triggers; `resolveConfig` test-only importers; `OCR_*_MODEL` fallback in
-  `providerModelChain`); the operator-visible `migrated-refused` first boot after 1.6.
-- R01 → R04: §D330.11's 26 proofs 1.6 owes; group/tree path unexercised as-built (every enqueue
-  stamps `shape: "single"`); two projector outcome enums disagree on `skipped`
-  (`run-queue-projection.ts:110` vs `:133`, unowned); `remove-queue-surface` /
-  `tombstone-queue-surface` wire events have no producer.
-
-- Prior coordinator workspace `platform-authority-reset-cd8c37470/` and its handoff: RESOLVED — the
-  foreign session committed the deletion at `f1ab64c9`; nothing of it is still needed here.
+- Every R01–R03 residue row was dispositioned by R04 (`reports/r04.md` §Resolved-decisions checklist,
+  38 rows, each `resolved at <doc §>` or bound to a 1.6/2.6 task). Nothing is open before 1.6.
+- Handed to the **Phase 1.6 coordinator** (`reports/r04.md` §Residue for the 1.6 coordinator): the
+  floor's base SHA and both wave worktrees go in the 1.6 run plan before `2-1`/`2-2` dispatch; Task
+  `2-1` may be split into units inside one session, never into another numbered task; proof totals
+  §D330.11 27 · §D331.11 41 · §D332.11 27 = 95 rows plus the §5.2 unit test and six inventory entries;
+  an optional 2.6 Task 5 docs item adds D330–D332 pointers to ref operator-trust /
+  frontend-backend-integration / data-intake-and-edit-data.
+- Operator-visible after 1.6 (by design, §D331.8): the first post-upgrade boot refuses
+  `migrated-refused { key }` until the listed `.env` lines are removed.
+- Prior coordinator workspace `platform-authority-reset-cd8c37470/`: RESOLVED — deleted by the foreign
+  session at `f1ab64c9`.
+- Handoffs in this workspace: none were created (every run closed successfully).
 
 ## Questions for the operator
 
-- None at intake.
+- None blocking. One overridable ruling: the cancel-of-a-claimed-run request model (Decisions ratified,
+  2026-09-04 coordinator ruling). Overturning it before 1.6 Task 4 costs one dated amendment in §D330.5/§D330.3/§D330.11.
