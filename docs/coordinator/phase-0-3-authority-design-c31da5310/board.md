@@ -9,14 +9,18 @@
 **Integration target:** `master`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-04 at `629a166a` (root tree clean; the foreign session committed its deletions at `f1ab64c9`)
+**Last verified:** 2026-09-04 at `df486f7a` (root tree clean)
 
 ## Facts every run needs
 
 - Authorities: profile §Canonical authorities. The primary run contract is now **D330** = ref
   dashboard-surfaces §D327 → §D330.1–§D330.12 (merged `1a04d565`); the primary settings contract is
-  **D331** = ref clock-config-secrets §D327 → §D331.1–§D331.12 (merged `63f6da4f`).
-- Decision numbering: master holds D1–D331 (D332 next). D329 is the foreign Phase 3 chronology decision
+  **D331** = ref clock-config-secrets §D327 → §D331.1–§D331.12 (merged `63f6da4f`); the
+  migration/recovery contract is **D332** = ref dashboard-surfaces §2.5 (upgrade command, preflight,
+  journal, rollback, boot matrix, preservation, adapter policy), its settings half in
+  clock-config-secrets, and §5.2 adapter roster A0–A8 + deletion tests in guards-and-tests (merged
+  `ff4e08b9`).
+- Decision numbering: master holds D1–D332 (D333 next). D329 is the foreign Phase 3 chronology decision
   (`188e2137`), NOT the run-record contract; R01 renumbered after a collision. Every minting commit
   must prove the next number free against `master` in the same command.
 - The foreign restructuring landed on master (`188e2137`, `132003c1`): phase docs are now
@@ -63,6 +67,14 @@
   class's second member (already as-built in `src/domain/secrets.ts`; dated note scopes D300 to
   Separations); protected revision outside the claim token. `SETTINGS_SCHEMA_HASH` rewrite routed
   to R03.
+- 2026-09-04 · D332 (`ff4e08b9`) → the authority upgrade: one command with explicit D322 backup
+  prerequisite, preflight under D181 admission, transactional journal (`authority_upgrades`) with
+  rollback and mixed-generation/downgrade refusal, boot matrix, evidence/identity preservation, the
+  `.env`/`settings.json`/canary import with tie-break and `migrated-refused` first boot, adapter
+  roster A0–A8 with expiry phases and red-capable deletion tests, 24 proofs for 1.6. Coordinator
+  accepted: the `baseline` journal row at D321 regeneration; the journaled orphaned gate-record sweep
+  for pre-floor tombstones (D308/§D330.9); adapter expiry phases as set (re-slot only by naming the
+  owning deletion-test task).
 
 ## Unit ledger
 
@@ -70,8 +82,8 @@
 |---|---|---|---|---|---|---|
 | U01 | R01 | closed | merge `1a04d565` (--no-ff, branch head `e953de9d`, 8 commits from `26c70b9b`) + reconcile `436bf4a8`; worktree removed, branch deleted, session `d02757ca` stopped | integrated: roadmap:check fresh · typecheck 0 · lint 0 · test:coverage 411/411 files, 5019 tests (exit 0) | supervisor + sup-analyst adversarial review, 15 scenarios, 8 holes fixed in `9bdcf667` | report `reports/r01.md`; D329→D330 renumber `e953de9d` |
 | U02 | R02 | closed | merge `63f6da4f` (--no-ff, branch head `fa160fbf`, 8 commits from `da870d2d`) + reconcile `629a166a`; worktree removed, branch deleted, session `3700aeea` stopped | integrated: roadmap:check fresh · typecheck 0 · lint 0 · test:coverage 411/411 files, 5019 tests (exit 0) | supervisor + sup-analyst adversarial review, 23 findings, 6 blockers + 11 should-fix closed in `6c10b57f` | report `reports/r02.md`; research under `research/r02-*.md`; lesson in ref lessons (`7869ad1e`) |
-| U03 | R03 | reserved | — | — | migration/recovery | Task 3 · upgrade, compatibility, recovery design |
-| U04 | R04 | planned | — | — | consequential | Task 4 · adversarial close + 1.6/2.6/3.1 briefs |
+| U03 | R03 | closed | merge `ff4e08b9` (--no-ff, branch head `c103cf0d`, 9 commits from `d346349f` incl. one worker merge `98d9cf69`) + reconcile `df486f7a`; worktree removed, branch deleted, worker worktree/branch already gone, session `1c0e3c45` stopped | integrated: roadmap:check fresh · typecheck 0 · lint 0 · test:coverage 411/411 files, 5019 tests (exit 0; first attempt killed by host low memory, re-run green) | supervisor + sup-analyst adversarial review, 18 scenarios, 6 blockers + 10 should-fix closed in `14c5377f` | report `reports/r03.md`; lesson in ref lessons (`8718190b`) |
+| U04 | R04 | reserved | — | — | consequential | Task 4 · adversarial close + 1.6/2.6/3.1 briefs |
 
 ## Residue
 
@@ -90,6 +102,12 @@
 - R02 → R04: §D331.11's 40 proofs (new `settings-catalog` guard + inventory entry; proof-file
   pinning; ~9 unit files); eleven `settings.json: not set` parity references re-frozen by 3.1; the
   served observed/active `display` pair for 3.1's Settings surface; per-name protected value schemas.
+- R03 → R04: §D332.11's 24 proofs and the 1.6 carry list (read-only no-migrate open mode, D290
+  literal freeze 27/28/29, backup read-path widening, A0 frozen schema copies, `baseline` journal
+  row, `snapshot-generations` retired-leaf list, §5.2 inventory entries, the
+  `run-status-fold-contributes-no-lifecycle-arm` test); wording debts (§D330.11 test 16 "28" vs
+  17 distinct triggers; `resolveConfig` test-only importers; `OCR_*_MODEL` fallback in
+  `providerModelChain`); the operator-visible `migrated-refused` first boot after 1.6.
 - R01 → R04: §D330.11's 26 proofs 1.6 owes; group/tree path unexercised as-built (every enqueue
   stamps `shape: "single"`); two projector outcome enums disagree on `skipped`
   (`run-queue-projection.ts:110` vs `:133`, unowned); `remove-queue-surface` /
