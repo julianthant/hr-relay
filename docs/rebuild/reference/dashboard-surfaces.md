@@ -3182,6 +3182,10 @@ doctor classifies a root whose run has a tombstone as **`deleted`**, an accounte
 `config_snapshots`, `checkpoint_payloads` and the content-addressed artifact bytes — shared or
 pre-run authority a single run does not own. (4) The tombstone.
 
+> 2026-09-04 | D329 §D329.9 | Precision, not reversal: the `gate_results` repository stores its
+> `${runId}:${gateId}` records inside `checkpoint_payloads`. Those keys are owned by exactly one run
+> and leave with it; the shared checkpoint payloads stay as written above.
+
 **The tombstone is the admission.** Schema v29 does not remove any never-delete trigger; it
 rewrites each one on a run-owned table (`archived_runs`, `archive_relaunches`,
 `dry_run_scenario_results`, `activity_person_pseudonyms`, `ledger_projections`) to abort UNLESS a
@@ -3500,7 +3504,7 @@ lifecycle fact the service has already decided without ever deciding one itself.
 | `run_results` and `run_terminal_authorizations` (`record_key` = `runId`), `failures` (`run_id`; own key `failureId`), `run_terminal_outbox` (`run_id`) | as noted | written in the SAME transaction as the `terminal` transition (§D329.4) | the outcome the terminal row already names, and the `failureId` it names | that the run is terminal; the lifecycle row decides that | leave with the run |
 | `write_intents` → `write_attempts` → `durable_outbox` | ONLY `write_intents` carries `runId`, and only inside `record_json`; attempts and outbox link solely by `write_intent_id` (lesson 2026-08-25) | insert-only rows plus the sequencer's fenced status advance | that a write was fenced, attempted, parked or committed | the `parked-write` state; per-run counts derive through THIS run's intent ids, never a global table count | leave with the run; the permanent idempotency keys are released and the confirm copy says so |
 | `evidence_receipts` | `run_id`, UNIQUE | one immutable composition per run | the ordered obligation/verdict tuples | the outcome | leaves with the run |
-| `gate_results` (a logical repository over `checkpoint_payloads`, record key `${runId}:${gateId}`) | the `runId` half of that composite key, and `$.runId` in the record | insert-only simple record | which gate decision resolved a park | `parked-gate`; the row decides it (§D329.3) | **stays** — D308 keeps `checkpoint_payloads` as shared authority, so a gate record whose run is tombstoned is orphaned evidence the service answers `deleted` for. 1.6 either cascades these exact `${runId}:` keys with the run or proves the orphan is unreachable from every surface; §D329.11 names that test. |
+| `gate_results` (a logical repository over `checkpoint_payloads`, record key `${runId}:${gateId}`) | the `runId` half of that composite key, and `$.runId` in the record | insert-only simple record | which gate decision resolved a park | `parked-gate`; the row decides it (§D329.3) | **leaves with the run.** D308's "what stays" keeps `checkpoint_payloads` as shared or pre-run authority a single run does not own; a `${runId}:${gateId}` record is owned by exactly one run, so the cascade removes those exact keys and nothing else in the table. §D329.11 test 22 pins it. (Ruled 2026-09-04 under D308's own rationale; D308's list did not know gate records lived in that table.) |
 | `diagnostic_bundles` (`run_id`) and `diagnostic_attachments` (`bundle_id`) | as noted | insert-only, content-digest bound | what was captured at a failure or operator request | existence or state | leave with the run, attachments first |
 | captures and content-addressed artifact bytes | none directly — reached only through a bundle or capture membership row; one ref legitimately serves many runs (D292) | immutable content-addressed objects | what an artifact contains | any run fact whatsoever | the bytes STAY as shared authority; only the membership rows leave |
 | `dry_run_scenario_results` | `run_id`, absent on the `not-started` arm | insert-only evidence; exact replay returns the canonical row, divergent replay refuses | that a T1b case executed and what it observed | whether a run exists — the `not-started` arm names no run at all | leaves with the run when it names one |
@@ -3644,9 +3648,10 @@ list is the obligation, not the code.
 21. `span-only-root-answers-absent-with-a-finding` → a `run.queued` root whose run authority is gone →
     `read` answers `absent` and the doctor emits its `missing` finding; assert zero `tasks` rows were
     written by the read path.
-22. `orphaned-gate-record-after-delete` → the §D329.9 open question → after deleting a run that had a
-    `${runId}:${gateId}` record, either the record left with the run or no surface can reach it; the
-    test asserts whichever 1.6 chooses and fails if a live gate can be resolved for a tombstoned run.
+22. `gate-records-leave-with-the-run` → §D329.9's ruling → after deleting a run that had a
+    `${runId}:${gateId}` record, no `checkpoint_payloads` row with that `${runId}:` prefix remains,
+    every other `checkpoint_payloads` row is byte-identical, and the tombstone tally counts them;
+    a gate that can still be resolved for a tombstoned run makes this red.
 23. `group-tree-lifecycle-end-to-end` → a real multi-member group (as-built every enqueue stamps
     `shape: "single"`, so this path is unexercised) → members carry `parent`, the anchor terminalizes
     only after every member, `cancel-tree` fans out as N CAS transitions, and delete of the tree takes
