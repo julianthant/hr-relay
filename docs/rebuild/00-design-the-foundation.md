@@ -471,10 +471,32 @@ catalogued defaults rather than being copied into a second persisted authority.
 ### Task 4 · Close design and issue implementation briefs
 <!-- roadmap: phase0-authority-design-close -->
 
-- [ ] Adversarially review identity, concurrency, recovery, redaction, permissions, and migration.
-- [ ] Land every decision in its owning reference contract and `reference/decisions.md` pointer.
-- [ ] Bind each 1.6 task to one implementation seam and gate; prove 2.6 and 3.1 consume the contracts
-  without redesigning them.
+- [x] Adversarially review identity, concurrency, recovery, redaction, permissions, and migration. —
+  R04's cross-contract pass over D330 × D331 × D332 as one system (twelve seam scenarios; the table is
+  `docs/coordinator/phase-0-3-authority-design-c31da5310/reports/r04.md`): eleven findings fixed in the
+  owning text — ref dashboard-surfaces §D332.3 step 2 (prepare/rollback files under the private-file
+  protocol), §D332.4 (backup WRITE records the observed version; READ admits the D290 lineage and
+  `manifestVersion` 1; `protected-entries-written` against the journal's `protectedRevisionAfter`),
+  §D332.5 (basename on wires), §D332.6 (the healthy row's generation activation; the wire mapping of the
+  boot-door verdicts), §D332.11 M25–M27, §D330.8 (`ordinal_source`; `retryOf` over a tombstone), §D330.11
+  #16 (17 triggers); ref clock-config-secrets §D331.3 (as-built manifest note), §D331.6 rule 1 (the
+  pseudonym's public half), §D331.11 P41; ref guards-and-tests §5.2 (A0's two entries; A4's thirteen
+  importers; A5's `providerModelChain` fallback); ref lessons — and ONE deferred to the coordinator as
+  product truth: operator `cancel` of a claimed/running run under §D330.5 (NEEDS COORDINATOR, report item 1)
+- [x] Land every decision in its owning reference contract and `reference/decisions.md` pointer. — every
+  R01–R03 residue item and every R04 finding ends `resolved at <doc §>` or `deferred to <task> because`
+  in the report's resolved-decisions checklist; no new decision was minted (D333 stays free; every fix
+  is a dated amendment inside D330/D331/D332)
+- [x] Bind each 1.6 task to one implementation seam and gate; prove 2.6 and 3.1 consume the contracts
+  without redesigning them. — doc 01 §1.6 (the binding: Task 1 the serial schema floor, wave `2-1`/`2-2`,
+  serial Tasks 3–7, each with seam, gate, order, its share of the 94 proofs and one deletion test; the
+  wave ruling: Tasks 1 and 2 as written were NOT independent, the floor makes them so) and roadmap
+  `p1f-floor`/`p1f-*`; docs 02 §2.6 and 03.1 §Reopened completion tasks (9-2, 9-3, 11-1, 11-2, 11-3,
+  12-1, 12-2) carry dated consumption notes citing the exact contract sections, and their thirteen
+  roadmap nodes cite the contracts on `doc:` — no 2.6/3.1 task text contradicted the contracts; the gap
+  was citation, now closed
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | Task 4 closed: the cross-contract review, the resolved-decisions checklist, the 1.6 binding and the 2.6/3.1 consumption notes are landed; no runtime code changed (D326). 0.3 closes with this task; the open item is the coordinator's `cancel` ruling, needed before 1.6 Task 4.
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the coordinator ruled the `cancel` item option A; landed as a dated amendment in ref dashboard-surfaces §D330.3, §D330.5 (the `cancelRequested` request arm, the `cancelling` served status) and §D330.11 #27. Every R04 finding is now closed in its owning spec; nothing is open before 1.6.
 
 0.3 closes only when every checkbox above has durable evidence. The execution order after it is
 **1.6 implementation → 2.6 downstream revalidation → reopened 3.1 dashboard completion**.

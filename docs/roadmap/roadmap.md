@@ -128,10 +128,10 @@ log:
 - 2026-08-21 | docs-cohesion 00 | D76's model is LIVE, not history — all 24 items it sized carry the same `size:` on their node today, unchanged and never re-estimated, and the five phase-level sizes agree with §Phases at a glance. All three tiers shipped whole (MUST in phases 1–2, SHOULD in 2g/2h, LATER all five in 2i BEFORE Phase 3), so the fallback shape the tiers define has never been exercised. D79's trims all held except its last sentence: the `scaffold` generators the lightweight tier was ratified with do not exist. Five nodes minted since D76 are sized in its unit and were never in its table — `dash-defaults` `duo-lease` `parallel-runs` `observed-logs` `test-tiers`
 
 ### 0.3 · Redesign single-source runtime authority {#phase0-authority-reset}
-status: active
-date: 2026-09-03 → next session
+status: done
+date: 2026-09-03 → 2026-09-04
 size: M
-chip: earliest start
+chip: closed 2026-09-04
 doc: 00 §0.3 · Redesign single-source runtime authority · ref:dashboard-surfaces §2.3 · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
 
 > Design, but do not yet implement, one CRUD-capable run-record authority for every current, queued, terminal, archived, and deleted run, plus one settings catalog and protected local settings root for every non-provider-key setting. The design must make existing authorities migratable without erasing evidence.
@@ -140,10 +140,14 @@ builds:
 - [x] DOCS canonical run-record identity, lifecycle, typed CRUD/CAS operations, deletion semantics, and projection contract — D330 (0.3 Task 1)
 - [x] DOCS one settings catalog/root, leaf classification, validation, revision/CAS, secret-return policy, and UI edit contract — D331 (0.3 Task 2)
 - [x] DOCS migration/read-forward/rollback/recovery rules for the existing SQLite, span, environment, and settings authorities — D332 (0.3 Task 3)
-- [ ] DOCS deletion tests, proof ladder, implementation seams, and exact 1.6/2.6/3.1 handoff briefs
+- [x] DOCS deletion tests, proof ladder, implementation seams, and exact 1.6/2.6/3.1 handoff briefs — R04 (0.3 Task 4): doc 01 §1.6 binding, docs 02 §2.6 / 03.1 notes, ref guards-and-tests §5.2 as amended
 
 needs:
 - phase0-governance
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | 0.3 closed: D330/D331/D332 adversarially reviewed as one system (eleven fixes landed in the owning specs, one product-truth item to the coordinator), every residue dispositioned, 1.6 bound task by task with the floor + wave 2 ruling, 2.6/3.1 consumption cited · left: the coordinator's phase roll-up and the `cancel` ruling; 1.6 starts at Task 1 (the floor)
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the one product-truth item is ruled (option A) and landed inside D330 as a dated amendment; no NEEDS COORDINATOR item remains open · left: the coordinator's phase roll-up only
 
 #### 1 · Define the canonical run-record authority {#phase0-run-authority-design}
 status: done
@@ -189,17 +193,21 @@ needs:
 - phase0-settings-authority-design
 
 #### 4 · Close design and issue implementation briefs {#phase0-authority-design-close}
-status: planned
-doc: 00 §0.3 · Redesign single-source runtime authority · 01 §1.6 · 02 §2.6 · 03.1 §Reopened completion tasks
+status: done
+doc: 00 §0.3 · Redesign single-source runtime authority · 01 §1.6 · 02 §2.6 · 03.1 §Reopened completion tasks · ref:guards-and-tests §5.2
 
 builds:
-- [ ] PROOF adversarially review run identity, concurrent queue mutation, settings revision conflicts, recovery, and redaction
-- [ ] DOCS resolve every open authority decision in its owning reference spec and decision pointer
-- [ ] DOCS bind each 1.6 task to one implementation seam, gate, integration order, and deletion test
-- [ ] DOCS confirm 2.6 and 3.1 consume the new contracts without redesigning them
+- [x] PROOF adversarially review run identity, concurrent queue mutation, settings revision conflicts, recovery, and redaction — R04 cross-contract table (twelve scenarios a–l; `reports/r04.md`); fixes in ref dashboard-surfaces §D332.3/§D332.4/§D332.5/§D332.6/§D332.11 M25–M27/§D330.8/§D330.11 #16, ref clock-config-secrets §D331.3/§D331.6/§D331.11 P41, ref guards-and-tests §5.2, ref lessons
+- [x] DOCS resolve every open authority decision in its owning reference spec and decision pointer — the resolved-decisions checklist in `reports/r04.md`; no new decision minted; one item (operator `cancel` of a claimed run, §D330.5) deferred to the coordinator as product truth
+- [x] DOCS bind each 1.6 task to one implementation seam, gate, integration order, and deletion test — doc 01 §1.6 (serial floor · wave `2-1`/`2-2` · serial 3–7; 94 proofs assigned once each) and roadmap `p1f-floor`, `p1f-*`
+- [x] DOCS confirm 2.6 and 3.1 consume the new contracts without redesigning them — dated notes in doc 02 §2.6 (intro + Tasks 1–5) and doc 03.1 (Tasks 9-2, 9-3, 11-1, 11-2, 11-3, 12-1, 12-2); contract citations on the thirteen nodes' `doc:` lines
 
 needs:
 - phase0-authority-migration-design
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | closed: cross-contract adversarial review (11 fixes landed, 1 NEEDS COORDINATOR), residue checklist, 1.6 binding with the floor + wave ruling, 2.6/3.1 consumption notes; design gate green in the run worktree · left: the coordinator's `cancel` ruling in §D330.5 before 1.6 Task 4
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the twelfth finding (operator `cancel` of a claimed run) ruled option A by the coordinator and landed in §D330.3/§D330.5/§D330.11 #27; 12 of 12 closed · left: nothing
 
 ## Phase 1 · Build the platform spine {#phase-1}
 phase: Phase 1
@@ -424,11 +432,11 @@ builds:
 
 ### 1.6 · Implement canonical run and settings authorities {#p1-authority-implementation}
 status: planned
-date: after 0.3
+date: after 0.3 (closed 2026-09-04)
 size: XL
-doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.3 · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.3 · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §9.2 · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2 · ref:frontend-backend-integration §4
 
-> Implement the exact 0.3 contracts without redesigning them. Every task is one supervisor seam; Tasks 1 and 2 may run in parallel only after the 0.3 coordinator proves their schemas and migration boundaries independent and records the isolation in its run plan.
+> Implement the exact 0.3 contracts — D330, D331, D332 — without redesigning them. Every task is one supervisor seam bound in doc 01 §1.6 to its files, gate, proofs and deletion test. R04 (0.3 Task 4) ruled the original Tasks 1 and 2 NOT independent as written — both add schema steps and would bump `CURRENT` twice — so the part is re-sliced: Task 1 lands the one serial schema floor, and Tasks 2-1 (run-record service) and 2-2 (settings catalog/root) run as a D328 wave from the master that contains Task 1's merge; the 1.6 coordinator records that base SHA and both worktrees before dispatch. Tasks 3–7 run serially in order. No other pair is a wave.
 
 builds:
 - [ ] BE one canonical SQLite-backed run-record service with typed CRUD/CAS lifecycle operations
@@ -440,86 +448,132 @@ needs:
 - phase0-authority-design-close
 - p1-exit
 
-#### 1 · Implement the canonical run-record service {#p1f-run-store}
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound every task to one seam/gate/order/proof set/deletion test in doc 01 §1.6; re-sliced into serial floor + wave 2 (`2-1`/`2-2`) + serial 3–7 after the cross-contract review proved the schema coupling · left: the coordinator's `cancel`-of-a-running-run ruling before Task 4 (R04 report, NEEDS COORDINATOR)
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the `cancel`-of-a-claimed-run ruling landed (option A, §D330.5 request arm, §D330.11 #27); no open ruling remains before Task 4 · left: implementation from Task 1
+
+#### 1 · Land the schema floor {#p1f-floor}
 status: planned
-doc: ref:dashboard-surfaces §2.3 · ref:execution-and-sessions §3
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §2.3
 
 builds:
-- [ ] BE schema/migration plus a single repository API for create, read, update, delete/tombstone, claim, retry, archive, and purge
-- [ ] BE atomic ordering and compare-and-swap invariants for concurrent workers and operator commands
-- [ ] PROOF contract, migration, concurrency, and property tests that fail against each displaced authority
+- [ ] BE one migration `v30 = floor` carrying every D332 schema step (`deleted_runs` ordinals + `ordinal_source` with the re-created trigger, `checkpoint_payloads_never_deleted`, `protected_settings_current`, `authority_upgrades`) and the frozen D290 27/28/29 literals in the same commit as the `CURRENT` bump
+- [ ] BE the `#runMigrations` floor gate, the read-only no-migrate open for `storage backup|doctor` and the upgrade preflight, `upgrade-required` on every other door, the `baseline` journal row at D321 regeneration, the `protectedSettingsCurrent` repository
+- [ ] PROOF M3 (open half), M9, M21, the `baseline` matrix cell; the `planned` `no-lifecycle-sql-outside-the-adapter` entry
 
-#### 2 · Implement the settings catalog and protected root {#p1f-settings-store}
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | node created: the serial floor the wave branches from (doc 01 §1.6 Task 1) · left: everything
+
+#### 2-1 · Implement the canonical run-record service {#p1f-run-store}
 status: planned
-doc: ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+date: wave 2 peer · branches from the master holding Task 1's merge
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.3 · ref:execution-and-sessions §3
 
 builds:
-- [ ] BE one leaf catalog and revisioned repository under `.tracker/settings/`
-- [ ] BE move username, password, timekeeper identity, local canary inputs, display overrides, timeouts, paths, worker defaults, and all other operator-managed non-provider-key configuration out of `.env`
-- [ ] BE leave only provider API keys in `.env`; keep D324's probed host display as the catalogued default when no override exists; expose protected settings as presence/revision, never plaintext readback
-- [ ] PROOF permissions, symlink refusal, redaction, restart-scope, and concurrent update tests
+- [ ] BE `src/core/run-record-service.ts` + the lifecycle repositories: the §D330.5 operation set with named refusals, three-way `read`, ordered `list`, the two-source watermark
+- [ ] BE one-transaction first-eligible claim with the full token, claim fence vs. operator CAS, composite terminalize, D308 tree delete behind the tombstone with gate records and `ordinal_source = tombstone`
+- [ ] PROOF §D330.11 #1–#23, #25, #26 and P33's claim half over the real service; deletion tests #16 and #25
+
+needs:
+- p1f-floor
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | relabelled 2-1 (wave 2 peer) and bound to its seam; owes 25 of §D330.11's 26 proofs (#24 is Task 4's) · left: implementation
+
+#### 2-2 · Implement the settings catalog and protected root {#p1f-settings-store}
+status: planned
+date: wave 2 peer · branches from the master holding Task 1's merge
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2 · ref:frontend-backend-integration §4
+
+builds:
+- [ ] BE one leaf catalog (`src/domain/config/catalog.ts`) and the revisioned `.tracker/settings/` root with two documents, one lock, two CAS arms and write-only protected values
+- [ ] BE move username, password, timekeeper identity, local canary inputs, display overrides, timeouts, paths, worker defaults, and all other operator-managed non-provider-key configuration out of `.env`; delete adapters A4 and A5 in this task
+- [ ] BE leave only provider API keys in `.env`; keep D324's probed host display as the catalogued default when no override exists; expose protected settings as presence/revision, never plaintext; `manifestVersion` 2 backup write shape
+- [ ] PROOF §D331.11 P1–P15, P17–P19, P21–P32, P33 protected half, P34–P39, P41 and M14's schema half; `settings-catalog` guard active; `npm run test:parity` unchanged (A8)
+
+needs:
+- p1f-floor
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | relabelled 2-2 (wave 2 peer) and bound to its seam; never edits `migrations.ts` or `authority-database.ts` (Task 1 landed the singleton) · left: implementation
 
 #### 3 · Cut over executor and worker lifecycle writers {#p1f-run-writers}
 status: planned
-doc: ref:workflow-model §4 · ref:execution-and-sessions §3 · ref:frontend-backend-integration §3.4
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:workflow-model §4 · ref:execution-and-sessions §3 · ref:frontend-backend-integration §3.4
 
 builds:
-- [ ] BE route start/fan-out publication, queue claim, heartbeat, executor transition, retry scheduling, and terminal publication through the run service
-- [ ] BE preserve stable run/session ids and append-only evidence links
-- [ ] PROOF remove or guard every core-runtime lifecycle write outside the service
+- [ ] BE route start/fan-out publication, queue claim, heartbeat, executor transition, retry scheduling, and terminal publication through the run service (`worker-loop`, `worker-sessions`, `worker/compose`, the start surfaces)
+- [ ] BE preserve stable run/session ids and append-only evidence links; `span.ended` only after the terminal commit
+- [ ] PROOF #4–#7, #9, #10 through the real worker composition; deletion test `worker-loop-writes-only-through-the-service`
 
 needs:
 - p1f-run-store
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate/deletion test (doc 01 §1.6 Task 3); serial after wave 2 · left: implementation
+
 #### 4 · Cut over operator run commands and archive/delete writers {#p1f-run-commands}
 status: planned
-doc: ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §2.3 · ref:operator-trust §5.7
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.3 · ref:operator-trust §5.7
 
 builds:
-- [ ] BE route CLI/dashboard start, retry, cancel, rename, archive, relaunch, terminal-only delete/tombstone, bulk, and purge commands through the run service
-- [ ] BE return one typed settlement/conflict vocabulary and preserve command actor/version attribution
-- [ ] PROOF idempotence, stale CAS, concurrent-worker, archive/relaunch lineage, and D308 deletion semantics
+- [ ] BE route CLI/dashboard start, retry, cancel, rename, archive, relaunch, terminal-only delete/tombstone, bulk, and purge commands through the run service (`command-kernel`, `command-service`, the `cli` run verbs)
+- [ ] BE return one typed settlement/conflict vocabulary (`target-deleted` is the one new code) and preserve command actor/version attribution
+- [ ] PROOF idempotence, stale CAS, concurrent-worker, archive/relaunch lineage, and D308 deletion semantics through the real kernel; `no-lifecycle-sql-outside-the-adapter` (#24) activated with its `runs-view-has-no-reader` arm in the same commit
 
 needs:
 - p1f-run-writers
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate (doc 01 §1.6 Task 4); needs the coordinator's ruling on operator `cancel` of a claimed/running run in §D330.5 before start · left: that ruling, then implementation
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the coordinator ruled option A; the `cancelRequested` arm is in §D330.5 and this task owes §D330.11 #27 — the earlier `left:` is closed · left: implementation
+
 #### 5 · Cut over settings mutation and runtime resolution {#p1f-settings-consumers}
 status: planned
-doc: ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
 
 builds:
-- [ ] BE route secure bootstrap, worker composition, browser/login, workflow defaults, and preflight inputs through the catalog; dashboard presentation remains 3.1 work
-- [ ] BE add revision/CAS update, validation, restart-required reporting, and protected write-only inputs
-- [ ] PROOF every setting resolves from exactly one catalog leaf and one persisted authority
+- [ ] BE route secure bootstrap, worker composition, browser/login, workflow defaults, and preflight inputs through the catalog and the protected store; dashboard presentation remains 3.1 work (the eight-leaf editor inventory stays served, A8)
+- [ ] BE revision/CAS update, validation, restart-required reporting, and protected write-only inputs reach every composition; the worker spawn environment is value-free
+- [ ] PROOF P16, P20, P33's composition half, P4 at composition level; deletion test `composition-reads-no-environment-leaf`; `npm run test:parity` unchanged
 
 needs:
 - p1f-settings-store
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate/deletion test (doc 01 §1.6 Task 5); serial after Task 4 (shares the composition roots with Task 3) · left: implementation
+
 #### 6 · Prove upgrade, rollback, recovery, and compatibility deletion {#p1f-migration-proof}
 status: planned
-doc: ref:operator-trust §1 · ref:guards-and-tests · ref:clock-config-secrets §3
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.5 · ref:operator-trust §1 · ref:guards-and-tests §5.2 · ref:clock-config-secrets §3
 
 builds:
-- [ ] BE idempotent preflighted upgrade that requires an explicit verified `cli storage backup`, plus its own transactional journal, rollback, and mixed-generation refusal; do not add an automatic backup cadence
-- [ ] PROOF migrate representative current, terminal, archived, and malformed authorities without losing evidence
-- [ ] PROOF import operator-managed non-provider-key configuration once, retain provider keys in `.env`, preserve derived defaults, and refuse ambiguous duplicates
-- [ ] BE delete transitional readers/writers when their deletion tests turn green
+- [ ] BE `cli storage upgrade [--plan] [--json]`: the 15-step preflight requiring an explicit verified `cli storage backup`, prepare/rollback files under the private-file protocol, one exclusive transaction with the journaled settings rewrite and marked protected import, settle, the `authority_upgrades` arms, the closed boot matrix and its `storage-authority` preflight check; no automatic backup cadence
+- [ ] PROOF migrate representative current, terminal, archived, and malformed authorities without losing evidence (M1–M27; ordinals backfilled with provenance, orphan gate records journaled, evidence and snapshots byte-identical)
+- [ ] PROOF import operator-managed non-provider-key configuration once, retain provider keys in `.env`, preserve derived defaults, and refuse ambiguous duplicates (§D332.S1–S6); the backup READ path widened and the WRITE path recording the observed version
+- [ ] BE land A0/A1 with `authority-upgrade-adapters-isolated` active and `authority-upgrade-adapters-retired` + `settings-root-single-pathname` planned for 2.6; delete nothing here — A4/A5 left in 2-2, A0–A3 expire at 2.6, A8 at 3.1; then run the upgrade on the operator's root and announce the `migrated-refused` remove-list
 
 needs:
 - p1f-run-commands
 - p1f-settings-consumers
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate; the deletion checkbox restated — nothing is deleted in 1.6 Task 6, every adapter's deletion task is named (doc 01 §1.6 Task 6) · left: implementation
 
 #### 7 · Close the rebuilt foundation {#p1f-close}
 status: planned
 doc: 01 §1.6 · Implement canonical run and settings authorities · 02 §2.6 · 03.1 §Reopened completion tasks
 
 builds:
-- [ ] PROOF typecheck, lint, coverage, architecture, manifest, storage-doctor, and targeted live dry-run gates
-- [ ] PROOF adversarial review finds no second run/settings lifecycle authority or secret-value leak
-- [ ] DOCS record migrations and hand 2.6 only verified contracts, residuals, and exact gates
+- [ ] PROOF typecheck, lint, coverage, architecture, manifest, stores-catalog, parity (unchanged), storage-doctor on the upgraded root, and both workflows' T1b live manifests with exact zero write-authority deltas
+- [ ] PROOF adversarial review finds no second run/settings lifecycle authority or secret-value leak, and the `no-lifecycle-sql` negative control intact
+- [ ] DOCS record the migration and hand 2.6 only verified contracts, the migrated fixture pair, the named adapter deletions (A0/A1 → 2.6 Task 4; A2 + its unit test and A3 → 2.6 Task 3; A8/P40 → 3.1 Task 9-2), residuals, and exact gates
 
 needs:
 - p1f-migration-proof
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its gate and its 2.6 handoff list (doc 01 §1.6 Task 7) · left: implementation
 
 ## Phase 2 · Prove writes and build the platform tails {#phase-2}
 phase: Phase 2
@@ -806,7 +860,7 @@ builds:
 status: planned
 date: after 1.6
 size: L
-doc: 02 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust · ref:data-intake-and-edit-data · ref:frontend-backend-integration
+doc: 02 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust · ref:data-intake-and-edit-data · ref:frontend-backend-integration · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
 
 > Migrate and prove the downstream read models, joins, and operator services after 1.6 has changed the stores and core writers. This part may expose implementation defects, but any proposed contract redesign returns to 0.3 authority rather than being improvised here.
 
@@ -820,36 +874,48 @@ needs:
 - p1f-close
 - p2-2j
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330/D331/D332 as landed — `ref:dashboard-surfaces` §9.2 and §2.5, `ref:clock-config-secrets` §3, `ref:guards-and-tests` §5.2 (no redesign) · left: a proposed contract change returns to a newly numbered 0.3 task
+
 #### 1 · Revalidate trust and evidence consumers {#p2f-trust}
 status: planned
-doc: ref:operator-trust · ref:dashboard-surfaces §2.6
+doc: ref:operator-trust · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §9.2
 
 builds:
 - [ ] BOTH migrate notifications, receipts, failures, captures, logs, gates, and parked-write views
 - [ ] PROOF every row remains linked to the canonical run id through retry, archive, and tombstone
 - [ ] PROOF notification delivery never races ahead of the durable run-linked inbox row
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.9 evidence linkage by stable `runId`, §D330.2 existence, §D330.8 tombstone (no redesign) · left: the notification inbox row stays run-linked
+
 #### 2 · Revalidate data, intake, and Edit Data consumers {#p2f-data}
 status: planned
-doc: ref:data-intake-and-edit-data · ref:dashboard-surfaces §9.7
+doc: ref:data-intake-and-edit-data · ref:dashboard-surfaces §9.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3
 
 builds:
 - [ ] BOTH migrate intake, OCR, Edit Data, manifests, mappings, and capture evidence
 - [ ] PROOF existing artifacts remain readable across authority migration and missing links fail loud
 - [ ] PROOF no intake/edit path writes run lifecycle or settings state directly
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.9, D331 §D331.8 (one source per leaf) and D332 §D332.7 item 4 (no redesign) · left: no intake or Edit Data path writes settings or a lifecycle row
+
 #### 3 · Revalidate operator read models {#p2f-operator}
 status: planned
-doc: ref:frontend-backend-integration §6 · ref:dashboard-surfaces §9
+doc: ref:frontend-backend-integration §6 · ref:dashboard-surfaces §9 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
 
 builds:
 - [ ] BOTH migrate archive, Activity, Explorer, storage doctor, setup/preflight, and generic read models
 - [ ] PROOF archive/current/queue counts converge from one run authority under create, update, archive, relaunch, delete, and restore
 - [ ] PROOF settings status and preflight resolve from one catalog without returning protected values
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 (`read`/`list` are the only lifecycle reads), D331 §D331.6/§D331.11 P16 and D332 §D332.5/§D332.6 (no redesign) · left: adapters A2 and A3 are deleted here with their tests
+
 #### 4 · Run the non-mutating migration and recovery proof {#p2f-proof}
 status: planned
-doc: 02 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust §1 · ref:guards-and-tests
+doc: 02 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust §1 · ref:guards-and-tests · ref:dashboard-surfaces §2.5 · ref:guards-and-tests §5.2
 
 builds:
 - [ ] PROOF run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation gates
@@ -861,9 +927,12 @@ needs:
 - p2f-data
 - p2f-operator
 
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D332 §D332.4 with M17/M22 over a migrated copy and §D332.7 item 6 (no redesign) · left: A0/A1 deleted and their two inventory entries flipped to `active` in that commit
+
 #### 5 · Close tail revalidation and hand fixtures to 3.1 {#p2f-close}
 status: planned
-doc: 02 §2.6 · Revalidate tails against canonical authorities · 03.1 §Reopened completion tasks
+doc: 02 §2.6 · Revalidate tails against canonical authorities · 03.1 §Reopened completion tasks · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
 
 builds:
 - [ ] PROOF run targeted suites, full coverage/lint/typecheck, architecture guards, generated checks, and production-route smoke
@@ -872,6 +941,9 @@ builds:
 
 needs:
 - p2f-proof
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 and the §D331.5 wire for the handover fixtures (no redesign) · left: P40/A8's eleven parity references are re-frozen at 3.1, not here
 
 ### Historical disposition record after 2E
 status: never
@@ -1207,7 +1279,7 @@ log:
 #### 9-2 · Finish Settings over the canonical settings authority {#dash-settings}
 status: planned
 date: parallel wave 9 · worktree r09-2-settings
-doc: 03.1 §Task 9-2 · Finish Settings over the canonical settings authority · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+doc: 03.1 §Task 9-2 · Finish Settings over the canonical settings authority · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4 · ref:guards-and-tests §5.2
 
 builds:
 - [ ] BOTH render every catalog leaf in one Settings information architecture with source, validity, editability, sensitivity, and restart scope
@@ -1219,11 +1291,12 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 settings seam in `phase-3-1-dashboard-c21194e18-r11-settings`, parallel with Tasks 9, 13 and 25 · left: Task 8 ownership freeze
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 edit contract, §D331.5's two CAS arms and §D331.6 presence readback (no redesign) · left: the deliberate P40/A8 parity re-freeze happens here
 
 #### 9-3 · Finish storage doctor, backup, and recovery controls {#dash-storage}
 status: planned
 date: parallel wave 9 · worktree r09-3-storage
-doc: 03.1 §Task 9-3 · Finish storage doctor, backup, and recovery controls · ref:operator-trust §1 · ref:frontend-backend-integration §6
+doc: 03.1 §Task 9-3 · Finish storage doctor, backup, and recovery controls · ref:operator-trust §1 · ref:frontend-backend-integration §6 · ref:dashboard-surfaces §2.5
 
 builds:
 - [ ] BOTH expose health, doctor evidence, backup creation, restore admission, degradation, and actionable refusals without overstating safety
@@ -1235,6 +1308,7 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 storage seam in `phase-3-1-dashboard-c21194e18-r13-storage`, parallel with Tasks 9, 11 and 25 · left: Task 8 ownership freeze
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D332 §D332.1 (`cli storage upgrade` as a fourth subcommand), §D332.6 verdicts, §D332.5 journal and §D332.4 restore admission (no redesign) · left: D322 explicit-only backup stands
 
 #### 9-4 · Finish Workflow Explorer and catalog editing {#dash-explorer}
 status: planned
@@ -1320,7 +1394,7 @@ log:
 #### 11-1 · Finish Setup and preflight {#dash-setup}
 status: planned
 date: parallel wave 11 · worktree r11-1-setup
-doc: 03.1 §Task 11-1 · Finish Setup and preflight · ref:frontend-backend-integration §5.1 · ref:operator-trust §3
+doc: 03.1 §Task 11-1 · Finish Setup and preflight · ref:frontend-backend-integration §5.1 · ref:operator-trust §3 · ref:clock-config-secrets §3
 
 builds:
 - [ ] BOTH derive setup state from the settings catalog, storage, workers, browsers, and workflow prerequisites
@@ -1334,11 +1408,12 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 composed-preflight seam in `phase-3-1-dashboard-c21194e18-r12-setup`, parallel with Tasks 15 and 23 only after settings, storage and sessions merge · left: Tasks 11, 13 and 14
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 and §D331.11 P16 (no redesign) · left: the first post-upgrade boot's `migrated-refused { key }` is a setup fault with the `.env` remove-list (§D332.S5)
 
 #### 11-2 · Make the Run modal enqueue and start real work {#dash-run-modal}
 status: planned
 date: parallel wave 11 · worktree r11-2-run-start
-doc: 03.1 §Task 11-2 · Make the Run modal enqueue and start real work · ref:workflow-model §4 · ref:frontend-backend-integration §5.1.1
+doc: 03.1 §Task 11-2 · Make the Run modal enqueue and start real work · ref:workflow-model §4 · ref:frontend-backend-integration §5.1.1 · ref:dashboard-surfaces §9.2
 
 builds:
 - [ ] BOTH plan against the served descriptor, validate exact inputs/options, and submit one authoritative start command
@@ -1351,11 +1426,12 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 run-start seam in `phase-3-1-dashboard-c21194e18-r15-run-start`, parallel with Tasks 12 and 23 after the session supervisor is real · left: Task 14
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 `create`, §D330.6 first-eligible claim in one transaction with `runtime-stale`, and §D330.4's served `version` as the one CAS token (no redesign) · left: a bulk start is D235's N children and one vector
 
 #### 11-3 · Finish Archive, versions, relaunch, and deletion {#dash-archive}
 status: planned
 date: parallel wave 11 · worktree r11-3-archive
-doc: 03.1 §Task 11-3 · Finish Archive, versions, relaunch, and deletion · ref:dashboard-surfaces §9.5 · ref:operator-trust §5.7
+doc: 03.1 §Task 11-3 · Finish Archive, versions, relaunch, and deletion · ref:dashboard-surfaces §9.5 · ref:operator-trust §5.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5
 
 builds:
 - [ ] BOTH derive terminal/archive/tombstone lists and frozen sections from the same canonical run authority
@@ -1367,11 +1443,12 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 Archive seam in `phase-3-1-dashboard-c21194e18-r23-archive`, parallel with Tasks 12 and 15 · left: Task 8 ownership freeze
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.8 (archive, `delete-archived-run` citing `contentDigest`), §D330.7 relaunch as a fresh run with archive lineage, and D332 §D332.7 item 7 (no redesign) · left: archive visibility is unchanged across the upgrade
 
 #### 12-1 · Finish queue rows, commands, and deletion {#dash-queue}
 status: planned
 date: parallel wave 12 · worktree r12-1-queue
-doc: 03.1 §Task 12-1 · Finish queue rows, commands, and deletion · ref:dashboard-surfaces §4 · ref:frontend-backend-integration §5.1
+doc: 03.1 §Task 12-1 · Finish queue rows, commands, and deletion · ref:dashboard-surfaces §4 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §9.2
 
 builds:
 - [ ] BOTH render ordering, status, identity, session, worker, progress, outcome, constraints, evidence, and group/member facts from the canonical run record
@@ -1384,11 +1461,12 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 4 queue seam in `phase-3-1-dashboard-c21194e18-r16-queue`, parallel with Tasks 18, 24 and 30 after authoritative start exists · left: Task 15
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 row facts, §D330.6 `list` order and §D330.8 delete plus tombstone (no redesign) · left: this task owns the two R01 residues — producing the `remove-queue-surface` / `tombstone-queue-surface` wire events, and reconciling the two projector outcome enums that disagree on `skipped`
 
 #### 12-2 · Finish run detail and the live timeline {#dash-run-detail}
 status: planned
 date: parallel wave 12 · worktree r12-2-run-detail
-doc: 03.1 §Task 12-2 · Finish run detail and the live timeline · ref:dashboard-surfaces §5
+doc: 03.1 §Task 12-2 · Finish run detail and the live timeline · ref:dashboard-surfaces §5 · ref:dashboard-surfaces §9.2
 
 builds:
 - [ ] BOTH render task groups, attempts, replay/skipped/blocked arms, live duration, systems, provenance, and focusable timeline segments
@@ -1401,6 +1479,7 @@ needs:
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 4 run-detail foundation in `phase-3-1-dashboard-c21194e18-r18-run-detail`, parallel with Tasks 16, 24 and 30; its exit freezes the four disjoint wave-5 section seams · left: Task 15
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.3's seven states and §D330.4's `version` as `rowRevision`, with D268's one derivation retained and no fold arm (§D330.12 item 1) (no redesign) · left: attempts render as separately selectable rows, never compared (D289 amendment)
 
 #### 12-3 · Finish Activity, search, and export {#dash-activity}
 status: planned

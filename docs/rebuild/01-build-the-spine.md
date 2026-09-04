@@ -557,55 +557,261 @@ authority model and does not own Phase-2 downstream read models or Phase-3 dashb
 Its scope is the stores, migrations, lifecycle/configuration writers, core runtime consumers, and
 their deletion tests.
 
-### Task 1 · Implement the canonical run-record service
+**The binding (0.3 Task 4, R04, 2026-09-04).** 1.6 implements **D330** (ref dashboard-surfaces
+§D330.1–§D330.12), **D331** (ref clock-config-secrets §D331.1–§D331.12) and **D332** (ref
+dashboard-surfaces §2.5 D332.1–D332.12, its settings half ref clock-config-secrets §D332.S1–S6, the
+adapter roster ref guards-and-tests §5.2) verbatim; a task that needs a contract change returns it to
+a newly numbered 0.3 task and does not improvise. Every task below is one supervisor session (D326)
+bound to ONE seam (the files it may touch), ONE gate, its place in the integration order, the proofs
+it owes from the three ladders (§D330.11's 26, §D331.11's 41, §D332.11's 27 — 94 rows, each assigned
+exactly once below, plus the guard entries and the one unit test ref guards-and-tests §5.2 names),
+and ONE deletion test — the red-capable proof that the displaced authority is gone, never a switch.
+The **base gate** every task runs before its own row is
+`npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check`
+(a descriptor's import closure includes `src/domain/**`, so a stale manifest is a red gate, not drift);
+`npm run test:parity` must stay green UNCHANGED through the whole part — adapter A8 (the served
+eight-leaf editor inventory and the `settings.json: not set` line) is re-frozen deliberately at 3.1,
+never here. Every leaf a task adds to a served contract is dispositioned under D183 in the same commit
+(§D331.11 P41, §D332.11 M26). **Integration order:** Task 1 → wave 2 (`2-1` ∥ `2-2`) → 3 → 4 → 5 →
+6 → 7, each merged `--no-ff` onto master with the base gate green before the next branches.
+
+**The wave ruling.** The roadmap admitted Tasks "1 and 2" as a wave only after 0.3 proved their
+schemas and migration boundaries independent. R04's cross-contract review proved they are NOT
+independent as written — both add SQLite schema steps, both would bump `CURRENT` (two floors, two
+frozen D290 lists, §D332.3 step 3(b)), both edit `migrations.ts`, `AUTHORITY_TABLE_REGISTRY` and
+`authority-database.ts`, and §D332.5 makes the run half and the settings half one transaction by
+design. They become independent the moment the schema floor is one serial commit: after it, the
+run-record service touches the lifecycle adapter/service files and the settings work touches
+`src/domain/config/**`, `src/infra/config/**`, `secrets.ts`, the settings runtime and the bootstrap,
+with no shared file. So the part is re-sliced (D328): **Task 1 is the serial floor; Tasks 2-1 and 2-2
+are the wave**, each in its own worktree and `feature/<unit>` branch from the master that contains
+Task 1's merge; the 1.6 coordinator's run plan records that base SHA and the two worktrees before
+dispatch. Tasks 3–7 keep their numbers and run serially. No other pair is admitted as a wave: Tasks 3
+and 5 both edit the composition roots.
+
+### Task 1 · Land the schema floor
+<!-- roadmap: p1f-floor -->
+
+**Seam:** `src/infra/sqlite/migrations.ts` (ONE numbered migration `v30`, the **floor**, carrying every
+D332 schema step: `deleted_runs` + `item_id`/`attempt`/`run_number`/`ordinal_source` with
+`deleted_runs_immutable_update` dropped and re-created with the four columns in its equality set;
+`checkpoint_payloads_never_deleted` created relaxed behind the tombstone with its tally key;
+`protected_settings_current`; `authority_upgrades`); `src/domain/authority.ts` (`AUTHORITY_TABLE_REGISTRY`,
+`DeletedRunTableSchema` with nullable ordinals, `ordinal_source` and `tallyVersion`, the
+`AuthorityUpgradeRecord` schema); `src/infra/sqlite/authority-database.ts` for exactly four things — the
+D290 `integratedByVersion` FROZEN literal lists for 27, 28 and 29, the `#runMigrations` floor gate with the
+read-only no-migrate open mode for `storage backup`, `storage doctor` and the upgrade's preflight, the
+`baseline` `authority_upgrades` row written in the transaction that creates a fresh at-floor database
+(D321 regeneration), and the `protectedSettingsCurrent` singleton repository (get / advance-in-transaction)
+so wave peer 2-2 never edits this file; the `authority-ahead` open wrapper that releases the `server`
+process record (§D332.6). **Owes:** §D332.11 M3 (the open half), M9, M21, M10's `baseline` cell; the
+`planned` `guard-inventory.json` entry for `no-lifecycle-sql-outside-the-adapter` (activation: 1.6 Task 4;
+its `.test.ts` must not exist yet, ref guards-and-tests §5.1). **Gate:** base + those proofs + every
+existing storage/backup/doctor suite green with a v29 fixture that `storage backup` and `storage doctor`
+open and leave at `user_version` 29. **Deletion test:** none is deleted here; M3 is the red-capable
+oracle (remove the gate and the manifest reports the floor). **Order:** first; merged before 2-1/2-2
+branch. Later additive migrations (`v31+`) apply at open as before — the floor is a one-time gate
+(§D332.1).
+
+- [ ] One migration `v30 = floor` with the four D332 schema steps and the re-created `deleted_runs`
+  trigger; `CURRENT` bumped in the SAME commit as the frozen 27/28/29 literals (§D332.3 step 3(b), M21).
+- [ ] `#runMigrations` gated at the floor; the read-only no-migrate open mode for its three callers;
+  every other door `upgrade-required { schemaVersion, floor }`; the `baseline` journal row at
+  regeneration; the open releases the `server` record on `authority-ahead` (§D332.1, §D332.5, §D332.6; M3, M9).
+- [ ] `AUTHORITY_TABLE_REGISTRY`, the record schemas, the `protectedSettingsCurrent` repository and the
+  `planned` guard entry; base gate green with a v29 fixture untouched by backup/doctor.
+
+### Task 2-1 · Implement the canonical run-record service
 <!-- roadmap: p1f-run-store -->
 
-- [ ] Add the canonical schema/migration and one repository API for lifecycle CRUD/CAS operations.
-- [ ] Prove concurrent ordering, claim, retry, archive, relaunch, and tombstone invariants.
-- [ ] Pin contract/property tests that fail against each displaced lifecycle authority.
+**Seam:** NEW `src/core/run-record-service.ts` (the §D330.5 operation set with its closed refusal union
+— the ONLY caller of the lifecycle repositories' mutators, §D330.10); the lifecycle repositories in
+`src/infra/sqlite/authority-database.ts` over `tasks` / `archived_runs` / `deleted_runs` (create with the
+two-source watermark and the tombstone check; `claimNext` with the token REQUIRED IN FULL, the dependency
+and disposition predicates and the §D330.6 order in one write transaction; `renewClaim`;
+`workerTransition`; the composite `terminalize`; `requeue`; `archive`; `delete`/`deleteArchived` with the
+member tree leaves-first, gate records, tombstone-first and `ordinal_source = tombstone`; `read` three-way;
+`list` ordered; as-built throws converted to named refusal arms); `src/domain/authority.ts` run-record
+types (existence union, refusal union, `RunRecord` fields §D330.1 adds); `tests/unit/run-record-service/`.
+**Does not touch:** `migrations.ts`, any composition root, the command kernel, the worker loop,
+`src/domain/config/**`, `src/infra/config/**`, `secrets.ts`, the settings runtime (2-2's). **Owes:**
+§D330.11 #1–#23, #25, #26 over the real service and a temporary database (never a hand-inserted `tasks`
+row, §D330.10); §D331.11 P33's claim half (an absent token refuses, never skips); the table-class
+coverage rows extended to every service method (§D330.10); A6 read-forward proven by #25 over
+NULL-ordinal rows. **Gate:** base + those proofs. **Deletion tests:** #16 (every `*_never_deleted`
+trigger enumerated at test time — 17 as-built plus the floor's) and #25 (the watermark reads
+tombstones; drop the tombstone columns and it is red). **Order:** wave 2, peer 1.
 
-### Task 2 · Implement the settings catalog and protected root
+- [ ] The service and repository API for the closed operation set with named refusals, three-way
+  `read`, ordered `list` and CAS on `version` alone (§D330.2, §D330.4, §D330.5, §D330.6).
+- [ ] The invariants: one-transaction first-eligible claim with the full token, claim fence vs.
+  operator CAS, composite terminalize, retry/restart/relaunch lineages, archive-if-identical, D308 tree
+  delete behind the tombstone with gate records and the two-source watermark (§D330.1, §D330.6–§D330.9).
+- [ ] §D330.11 #1–#23, #25, #26 and P33's claim half, red-capable against the displaced writers; the
+  coverage rows for every service method.
+
+### Task 2-2 · Implement the settings catalog and protected root
 <!-- roadmap: p1f-settings-store -->
 
-- [ ] Add the one leaf catalog and revisioned protected repository under `.tracker/settings/`.
-- [ ] Move operator-managed local configuration out of `.env`; leave provider API keys there.
-- [ ] Preserve host-derived defaults, protect credentials/local canary inputs, and prove permissions,
-  symlink refusal, redaction, restart scope, and concurrent updates.
+**Seam:** NEW `src/domain/config/catalog.ts` (the closed 88-row registry, §D331.1/§D331.9);
+`src/domain/config/{schema,resolve,provenance,settings,snapshot,snapshot-generations,runtime-generation}.ts`
+(A4 deleted: `CONFIG_ENV_BINDINGS`, the env application and the `"env"` provenance arm gone, `resolveConfig`
+deleted with its thirteen importers, `settings > default`; `operator.timekeeperName` leaves `ConfigSchema`
+under generation 5's retirement arm); `src/infra/config/settings-file.ts` (the `settings/` root: two
+documents, one lock, prepare/rollback per target, the private-file protocol, the D321 coupling per
+document); `src/server/settings-runtime.ts`, `src/server/settings/**`, the kernel's
+`apply-protected-settings` arm (§D331.5's two CAS arms, marked envelope, `{present, valueId, updatedAt}`
+readback); `src/domain/secrets.ts` (A5 deleted: migrated names read from the protected store only, the
+`config-and-secret` dual channel gone, `providerModelChain`'s `legacyModelEnv` fallback gone,
+`optionalTestTargetSecret` from the store); `src/domain/runtime-environment.ts` +
+`scripts/secure-env-bootstrap.ts` (`RETIRED_ENVIRONMENT_KEYS` refused by name; the `.env` allowlist is the
+five provider families); `src/domain/runtime-dependencies.ts`; `src/infra/sqlite/backup-service.ts` +
+`recovery-contracts.ts` for the `manifestVersion` 2 WRITE shape only (the two ordinary documents plus
+protected presence metadata, P15 — the READ widening is Task 6's); the nine `resolveConfigWithProvenance`
+call sites, minimally (the `env` argument drops); `tests/unit/architecture/settings-catalog.test.ts` with
+its `active` inventory entry and the `config-snapshot-generations` entry's invariant text extended for the
+`retired-leaves-are-a-closed-list` arm (same commit as P38); P39's sixteen deliberately edited files. **Does not touch:** `migrations.ts`,
+`authority-database.ts` (Task 1 landed the singleton), the run-record service, the worker loop, the
+Settings SURFACE (3.1) — the settings-editor query keeps serving DCC3's eight-leaf inventory derived from
+the catalog until 3.1 (A8). **Owes:** §D331.11 P1–P15, P17–P19, P21–P32, P33's protected half, P34–P39,
+P41; §D332.11 M14's schema half (generation 5 registered; a pre-floor snapshot with the leaf parses).
+**Gate:** base + those proofs + `npm run test:parity` green UNCHANGED. **Deletion tests:** P3/P4 (A4 —
+compile-time red at every caller, runtime red under a hostile `process.env`), P34 plus the
+`secrets-single-source` WRITE arm (A5), P38's negative control (A7's arm `retired-leaves-are-a-closed-list`
+on the existing `config-snapshot-generations` entry). **Order:** wave 2, peer 2.
+
+- [ ] The catalog, the `.tracker/settings/` root with two documents and one lock, the two CAS arms,
+  write-only protected values with presence/revision readback (§D331.1–§D331.6; P1, P2, P5–P12, P21–P32).
+- [ ] The environment leaves the resolver and the accessors in THIS task — A4 and A5 are deleted with the
+  catalog, not carried; every migrated key is `RETIRED_ENVIRONMENT_KEYS`; provider API keys alone stay in
+  `.env` (§D331.8; P3, P4, P34, P35).
+- [ ] Host-derived display as the catalogued default (P36), credentials and canary references in the
+  store (P32), permissions/symlink/redaction/restart-scope/concurrent-update proofs (P13–P15, P17–P19,
+  P22–P25, P33 protected half, P37), generation 5's retirement (P38), P39's deliberate edits, P41.
 
 ### Task 3 · Cut over executor and worker lifecycle writers
 <!-- roadmap: p1f-run-writers -->
 
-- [ ] Route start/fan-out publication, claim, heartbeat, executor transitions, retry scheduling, and
+**Seam:** `src/core/worker-loop.ts`, `src/core/worker-sessions.ts` and `src/server/worker/compose.ts`
+(claim, heartbeat, worker transitions, terminalize and the recovery sweep's `requeue` through the
+service; the worker holds no repository mutator); the executor / write-sequencer terminal path
+(`terminalize` through the worker under the claim fence; the 2026-08-25 fenced-write lesson and
+`retainAfterFence()` unchanged; `span.ended` after commit); the start/fan-out publication — `create`
+then the write-once `run.queued` root through the shared queue-root builder — in
+`src/server/dry-run-scenario/runtime.ts` and the dashboard start/intake fan-out services;
+`tests/unit/worker-composition.test.ts`, `tests/unit/dry-run-scenario-composition.test.ts`. **Does not
+touch:** the command kernel's operator verbs (Task 4), config consumers (Task 5), any schema. **Owes:**
+§D330.11 #4–#7, #9, #10 re-run THROUGH the real worker composition (the service proved them; this proves
+the wiring); the existing worker/dry-run suites re-pointed with identities byte-identical. **Gate:** base +
+those. **Deletion test:** `worker-loop-writes-only-through-the-service` — a spy adapter whose lifecycle
+mutators the loop must never call directly; red while any direct call survives. **Order:** third, after
+the wave merges.
+
+- [ ] Route start/fan-out publication, claim, heartbeat, executor transitions, retry scheduling and
   terminal publication through the run service without changing stable run/session/evidence identity.
-- [ ] Guard or remove direct core-runtime lifecycle writes outside the service.
+- [ ] Guard or remove direct core-runtime lifecycle writes outside the service: the loop and the sweep
+  hold no mutator; `span.ended` only after the terminal commit (§D330.4, §D330.9).
 
 ### Task 4 · Cut over operator run commands and archive/delete writers
 <!-- roadmap: p1f-run-commands -->
 
+**Seam:** `src/core/command-kernel.ts` (the run family and the version-archive family through the
+service: start, retry, restart, cancel, bump, rename, archive, relaunch, `delete` / `delete-archived-run`
+with the D308 member tree, bulk as N children, purge as evidence retention; the typed settlement
+vocabulary with the one new code `target-deleted`, §D330.5's wire mapping),
+`src/server/dashboard/commands/command-service.ts`, the `cli` run verbs, `tests/unit/command-kernel.test.ts`;
+`tests/unit/architecture/no-lifecycle-sql-outside-the-adapter.test.ts` lands HERE with its entry flipped
+`planned → active` in the commit that removes the last direct mutator import, carrying the
+`runs-view-has-no-reader` arm and its stub-throws negative control (ref guards-and-tests §5.2 A3). **Does
+not touch:** `deriveRunStatus` and its two callers (A2, 2.6), the projector's `runs_view` writes (A3, 2.6),
+any schema. **Owes:** §D330.11 #24; the kernel suites re-pointed; every command's idempotence, stale CAS
+and worker-race arms through the real kernel. **Gate:** base + `npm run test:architecture` with the guard
+active. **Deletion test:** the guard itself (#24) — red on any lifecycle SQL or mutator import outside
+the two-module literal allowlist. **Order:** fourth. **Cancel of a claimed run:** the coordinator ruled
+option A on 2026-09-04 and it is landed in §D330.5 (the request arm), §D330.3 (self-edge and tree sentence),
+§D330.11 #27 and the `cancelling` served status — an operator `cancel` on a `claimed`/`validating`/`running`
+row sets `cancelRequested` under CAS and the worker settles `terminal/cancelled` at its next non-fenced
+boundary; this task implements exactly that arm and owes #27.
+
 - [ ] Route CLI/dashboard start, retry, cancel, rename, archive, relaunch, D308 terminal-only
-  delete/tombstone, bulk, and purge commands through the run service.
-- [ ] Prove typed settlements, idempotence, stale CAS, worker races, and relaunch lineage.
+  delete/tombstone, bulk and purge commands through the run service; one typed settlement/conflict
+  vocabulary with actor/version attribution (§D330.5, §D330.8, D233, D235, D308).
+- [ ] Prove typed settlements, idempotence, stale CAS, worker races and relaunch lineage through the
+  real kernel; activate `no-lifecycle-sql-outside-the-adapter` (#24) in the same commit.
 
 ### Task 5 · Cut over settings mutation and runtime resolution
 <!-- roadmap: p1f-settings-consumers -->
 
-- [ ] Route secure bootstrap, workers, browser/login, workflow defaults, and preflight inputs through
-  the catalog; leave Settings UI behavior to 3.1.
-- [ ] Add revision/CAS updates, validation, restart-required reporting, and protected write-only input.
+**Seam:** `src/server/dashboard/compose.ts`, `src/server/worker/compose.ts`,
+`src/server/dry-run-scenario/runtime.ts` (every composition reads the catalog + protected store; boot
+activation from the ordinary document; the `restartRequired` / `runtimeStatus` reporting);
+`src/server/dashboard/worker-supervisor.ts` (a value-free spawn environment, P20); the browser/login
+credential accessors under `src/infra/browser/**` (`next-use`: read the store at each use, nothing cached);
+workflow defaults; `src/domain/preflight.ts` + `src/server/preflight/**` (settings inputs by name, P16); the
+settings-editor query keeps the eight-leaf inventory (A8). **Does not touch:** schema, the run service,
+the kernel's run verbs, the Settings surface. **Owes:** §D331.11 P16, P20, P33's composition half, P4 at
+composition level. **Gate:** base + `npm run test:parity` UNCHANGED + those. **Deletion test:**
+`composition-reads-no-environment-leaf` — boot each composition root under a hostile `process.env`
+populated for every retired key and assert byte-identical `Config`, zero accessor reads and a refusal by
+key name; red while any composition still reads the environment. **Order:** fifth.
+
+- [ ] Route secure bootstrap, workers, browser/login, workflow defaults and preflight inputs through the
+  catalog and the protected store; leave Settings UI behaviour to 3.1 (§D331.7, §D331.8, §D331.10).
+- [ ] Revision/CAS updates, validation, restart-required reporting and protected write-only input reach
+  every composition; every setting resolves from exactly one catalog leaf and one persisted authority.
 
 ### Task 6 · Prove upgrade, rollback, recovery, and compatibility deletion
 <!-- roadmap: p1f-migration-proof -->
 
-- [ ] Require an explicit verified `cli storage backup`, then run the idempotent transactional
-  migration with journal, rollback, mixed-generation refusal, and representative evidence checks.
-- [ ] Import non-provider-key local configuration once, refuse ambiguous duplicates, and delete
-  compatibility paths only when their deletion tests turn green.
+**Seam:** `src/cli.ts` (`storage upgrade [--plan] [--json]`, the fourth `storage` subcommand); NEW
+`src/infra/compat/pre-floor-upgrade-readers.ts` (A0: frozen pre-floor copies of
+`SettingsFileRecordSchema`, `EditableSettingsOverrideSchema` and the pre-floor `SETTINGS_SCHEMA_HASH`
+literal, the widened `.env` admission as a parameter of the command, the tombstone backfill, the
+orphan-gate sweep) and `old-pathname-reconciler.ts` (A1); the upgrade module (the 15-step preflight,
+`upgrades/<id>.prepare.json` / `.rollback.json` under the private-file protocol, the ONE exclusive
+transaction with the two journaled commands, settle, the §D332.5 arms); the boot matrix completed in the
+open/interlock (`upgrade-unsettled`, `mixed-generation`, `authority-deleted { settings/ }`); the backup
+READ-path widening — three schemas, the inspector, `manifestVersion` 1 and 2 — plus the observed-version
+WRITE in `recovery-contracts.ts` / `backup-service.ts`, and `offline-restore.ts`'s rollback pairing
+(`rollback-evidence-missing`, `protected-entries-written` against the journal's `protectedRevisionAfter`);
+the doctor lines (`authority_upgrades` by basename, `tombstone-ordinal-unknown`, `possibleExternalWrite`);
+the DCC2 preflight's `storage-authority` check with its six literals (§D332.6 wire mapping);
+`guard-inventory.json`: `authority-upgrade-adapters-isolated` (`active`), `authority-upgrade-adapters-retired`
+and `settings-root-single-pathname` (`planned`, 2.6). Then the command is RUN on the operator's real root after an explicit `cli storage backup`, and
+the plan's remove-list is announced: the first post-upgrade boot refuses `migrated-refused { key }` until
+those `.env` lines are gone (§D332.S5). **Owes:** §D332.11 M1–M27 (M3, M9, M21, M14 re-run here over the
+real command), §D332.S1–S6's import rules, the A0/A1 rows of ref guards-and-tests §5.2. **Gate:** base +
+M1–M27 + `npm run cli -- storage upgrade --plan` and the full upgrade over a v29 fixture COPY + `npm run
+cli -- storage doctor` green + `npm run test:architecture` with the three new entries. **Deletion tests:**
+`authority-upgrade-adapters-isolated` (red while A0/A1 are reachable from any composition root); nothing is
+DELETED in this task — A4/A5 left in 2-2, A0–A3 expire at 2.6 (A0/A1 in 2.6 Task 4, A2/A3 in 2.6 Task 3),
+A6/A7 are permanent read-forward, A8 expires at 3.1 Task 9-2. **Order:** sixth.
+
+- [ ] Require an explicit verified `cli storage backup`, then run the idempotent transactional migration
+  with journal, rollback, mixed-generation refusal and representative evidence checks (§D332.1–§D332.8;
+  M1–M27).
+- [ ] Import non-provider-key local configuration once, refuse ambiguous duplicates, never read a
+  provider value (§D332.S1–S6; M6, M15, M20, M24); land A0/A1 with their `active`/`planned` entries and
+  delete nothing — every remaining adapter's deletion task is named above.
 
 ### Task 7 · Close the rebuilt foundation
 <!-- roadmap: p1f-close -->
 
-- [ ] Pass targeted, full, generated, storage, live-dry-run, and adversarial authority gates.
-- [ ] Record the migration and hand 2.6 only verified contracts, fixtures, residuals, and commands.
+**Seam:** no product code beyond fixes the gates demand; `docs/rebuild/01` §1.6 (this section's
+`log:`/status), the roadmap nodes, ref lessons, the 2.6 handoff. **Gate:** base + `npm run test:parity`
++ `npm run stores:catalog:check` + `npm run test:architecture` + `npm run cli -- storage doctor` on the
+upgraded operator root + both workflows' T1b live manifests (`dry-run-scenario person-lookup` `live-read`,
+`dry-run-scenario separations` `dry-run-preview`, exact zero write-authority deltas) + one adversarial
+review that finds no second run/settings lifecycle authority, no secret value on any sink and the
+`no-lifecycle-sql` negative control intact. **Hands 2.6:** the migrated fixture pair (a v29→floor copy and
+a fresh root); A0/A1 → 2.6 Task 4, A2 with `run-status-fold-contributes-no-lifecycle-arm` landing in the
+deletion commit → 2.6 Task 3, A3's table removal → 2.6 Task 3, A8/P40 → 3.1 Task 9-2; the D183
+disposition table; the operator-visible `migrated-refused` note; the `checkpoint_payloads` single-writer
+fact §D330.11 #22 / M23 guard; any residual as a named defect, never absorbed.
+
+- [ ] Pass targeted, full, generated, storage, live-dry-run and adversarial authority gates.
+- [ ] Record the migration in this section's `log:` and hand 2.6 only verified contracts, fixtures,
+  residuals and exact commands.
 
 ## Integration amendment — Phase 1's share
 

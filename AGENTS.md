@@ -51,7 +51,7 @@ admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phas
   knowledge, the explorer) · `frontend-backend-integration` (the BFF, the wire, the parity lane) ·
   `foundation-gap-audit` (frozen — a design input, owns nothing) · `stores` (the DERIVED store
   catalog — read it before authoring a task, and remember the code wins over it).
-- `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`): 78 entries of
+- `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`): 79 entries of
   "X looked safe and did Y", each naming its decision. Read it before kernel / driver / dashboard /
   write-safety work; add new root-level lessons THERE (module lessons stay in the module's AGENTS.md).
 - `docs/rebuild/00`–`06` — active plan-document paths. D323 maps their owning work into the visible
@@ -223,12 +223,22 @@ exported direct-`const` `defineRuntimeIsolation` call that `src/cli.ts` consumes
 exported `runCli` runner. The secure environment bootstrap is that runner's sole production invoker;
 an identifier mention, another function, or direct module execution is not proof.
 
-D327 plans the replacement without claiming it built: 0.3 must design one run-record lifecycle
-service and one settings catalog/protected `.tracker/settings/` root; 1.6 implements them, 2.6
-revalidates downstream consumers, and 3.1 finishes the dashboard. Provider API keys remain the sole
-`.env` class; credentials and local canary inputs move under the protected settings root; D324's
-host display stays a derived default. The D321 state-root/journal coupling, D308 terminal-only
-delete/tombstone semantics, and D322 explicit-only backup rule remain binding.
+D327 plans the replacement without claiming it built, and 0.3 designed it (closed 2026-09-04) as three
+contracts 1.6 implements EXACTLY, without redesign: **D330** the run-record lifecycle service (ref
+dashboard-surfaces §D330.1–§D330.12: identity tuple, three-way existence, the seven-state machine,
+`version` CAS + `claimGeneration` fence, one total queue order, D308 delete behind the tombstone, the
+adapter boundary and its guard), **D331** the settings catalog and protected `.tracker/settings/` root
+(ref clock-config-secrets §D331.1–§D331.12: the closed 88-row catalog, five source classes, two CAS
+arms, write-only protected values, `settings > default` with the environment gone as a resolver input),
+and **D332** the one stopped-system `cli storage upgrade` with its preflight, journal, rollback, boot
+matrix and adapter roster A0–A8 (ref dashboard-surfaces §2.5 D332, its settings half in
+clock-config-secrets §D332, the deletion tests in ref guards-and-tests §5.2). Until 1.6 lands, the
+as-built authorities described above stay in force. Doc 01 §1.6 binds each 1.6 task to one seam, gate,
+integration order and deletion test; 2.6 revalidates downstream consumers, and 3.1 finishes the
+dashboard. Provider API keys remain the sole `.env` class; credentials and local canary inputs move
+under the protected settings root; D324's host display stays a derived default. The D321
+state-root/journal coupling, D308 terminal-only delete/tombstone semantics, and D322 explicit-only
+backup rule remain binding.
 
 ## Live verification — standing pre-authorization (always available, never ask)
 
