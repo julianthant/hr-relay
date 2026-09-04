@@ -9,14 +9,14 @@
 **Integration target:** `master`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-04 at `436bf4a8` (root tree: only the foreign session's four uncommitted deletions of the old `platform-authority-reset-cd8c37470` workspace remain; untouched)
+**Last verified:** 2026-09-04 at `629a166a` (root tree clean; the foreign session committed its deletions at `f1ab64c9`)
 
 ## Facts every run needs
 
 - Authorities: profile §Canonical authorities. The primary run contract is now **D330** = ref
   dashboard-surfaces §D327 → §D330.1–§D330.12 (merged `1a04d565`); the primary settings contract is
-  ref clock-config-secrets §D327 (line ~464), to be written by R02.
-- Decision numbering: master holds D1–D330. D329 is the foreign Phase 3 chronology decision
+  **D331** = ref clock-config-secrets §D327 → §D331.1–§D331.12 (merged `63f6da4f`).
+- Decision numbering: master holds D1–D331 (D332 next). D329 is the foreign Phase 3 chronology decision
   (`188e2137`), NOT the run-record contract; R01 renumbered after a collision. Every minting commit
   must prove the next number free against `master` in the same command.
 - The foreign restructuring landed on master (`188e2137`, `132003c1`): phase docs are now
@@ -54,14 +54,23 @@
   archive/purge/delete with D308 verbatim, evidence linkage, adapter boundary, 26 proofs for 1.6.
   Coordinator accepted the D268 partial supersession, `runs_view` retirement as a state read, and the
   gate-records-leave-with-the-run ruling as applications of D327's letter.
+- 2026-09-04 · D331 (`63f6da4f`, round 137) → the settings catalog and protected root contract:
+  closed catalog (88 rows frozen), five source classes with one authority each, `.tracker/settings/`
+  root layout/permissions, revision + journal coupling, one update command family (two arms),
+  write-only protected values with presence/revision readback, restart scope and the D330 claim
+  token's provenance, one-source precedence, 3.1 edit contract, 40 proofs for 1.6. Coordinator
+  accepted: roster URL + D288 pseudonym pair as `protected-store`; `personLookupCanaryEid` as the
+  class's second member (already as-built in `src/domain/secrets.ts`; dated note scopes D300 to
+  Separations); protected revision outside the claim token. `SETTINGS_SCHEMA_HASH` rewrite routed
+  to R03.
 
 ## Unit ledger
 
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
 | U01 | R01 | closed | merge `1a04d565` (--no-ff, branch head `e953de9d`, 8 commits from `26c70b9b`) + reconcile `436bf4a8`; worktree removed, branch deleted, session `d02757ca` stopped | integrated: roadmap:check fresh · typecheck 0 · lint 0 · test:coverage 411/411 files, 5019 tests (exit 0) | supervisor + sup-analyst adversarial review, 15 scenarios, 8 holes fixed in `9bdcf667` | report `reports/r01.md`; D329→D330 renumber `e953de9d` |
-| U02 | R02 | reserved | — | — | security/config | Task 2 · settings catalog + protected root contract |
-| U03 | R03 | planned | — | — | migration/recovery | Task 3 · upgrade, compatibility, recovery design |
+| U02 | R02 | closed | merge `63f6da4f` (--no-ff, branch head `fa160fbf`, 8 commits from `da870d2d`) + reconcile `629a166a`; worktree removed, branch deleted, session `3700aeea` stopped | integrated: roadmap:check fresh · typecheck 0 · lint 0 · test:coverage 411/411 files, 5019 tests (exit 0) | supervisor + sup-analyst adversarial review, 23 findings, 6 blockers + 11 should-fix closed in `6c10b57f` | report `reports/r02.md`; research under `research/r02-*.md`; lesson in ref lessons (`7869ad1e`) |
+| U03 | R03 | reserved | — | — | migration/recovery | Task 3 · upgrade, compatibility, recovery design |
 | U04 | R04 | planned | — | — | consequential | Task 4 · adversarial close + 1.6/2.6/3.1 briefs |
 
 ## Residue
@@ -73,14 +82,21 @@
   watermark); `authority-unknown` re-admission after restore; §2.5 item 6 "park external writes" on
   runs the service calls `absent`; §2.5 items 3–4 still carry the D322-retired backup cadence inline;
   schema additions (`checkpoint_payloads` trigger + tally column; `deleted_runs` three columns).
+- R02 → R03: `SETTINGS_SCHEMA_HASH` journaled rewrite after a verified D322 backup; old-pathname
+  `.prepare.json`/`.rollback.json` refusal; seven dual-source leaves' import tie-break; `protected.json`
+  vs `protected_settings_current` restore semantics; `snapshot-generations` retirement arm for
+  `operator.timekeeperName`; pre-migration backup plaintext exposure (record, never claim erased);
+  `migrated-refused` first-boot experience.
+- R02 → R04: §D331.11's 40 proofs (new `settings-catalog` guard + inventory entry; proof-file
+  pinning; ~9 unit files); eleven `settings.json: not set` parity references re-frozen by 3.1; the
+  served observed/active `display` pair for 3.1's Settings surface; per-name protected value schemas.
 - R01 → R04: §D330.11's 26 proofs 1.6 owes; group/tree path unexercised as-built (every enqueue
   stamps `shape: "single"`); two projector outcome enums disagree on `skipped`
   (`run-queue-projection.ts:110` vs `:133`, unowned); `remove-queue-surface` /
   `tombstone-queue-surface` wire events have no producer.
 
-- Prior coordinator workspace `docs/coordinator/platform-authority-reset-cd8c37470/` (incl. its
-  handoff `handoffs/2026-09-03-phase-0-3-start.md`) is deleted-uncommitted by a foreign session.
-  Consumed as input here; its disposition belongs to that session. Parked.
+- Prior coordinator workspace `platform-authority-reset-cd8c37470/` and its handoff: RESOLVED — the
+  foreign session committed the deletion at `f1ab64c9`; nothing of it is still needed here.
 
 ## Questions for the operator
 
