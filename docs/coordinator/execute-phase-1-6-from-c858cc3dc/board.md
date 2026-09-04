@@ -11,7 +11,7 @@
 
 | Run | Phase task | State | Evidence / residue |
 |---|---|---|---|
-| R01 | 1.6.1 | residue | R01 report committed; M9/M21 proof gaps verified; task-ID hook blocks continuation; final base and parity gates green |
+| R01 | 1.6.1 | active | Baseline verification green; M9/M21 proof remediation brief ready; approved identity repair applied and normal wait_threads passed |
 | R02 | 1.6.2-1 | planned | Dependencies in run plan |
 | R03 | 1.6.2-2 | planned | Dependencies in run plan |
 | R04 | 1.6.3 | planned | Dependencies in run plan |
@@ -41,3 +41,7 @@ Handoff: `handoffs/2026-09-04-phase-1-6-verified-id-repair.md`. R01 has no worke
 ## Admission repair proposal
 
 Exact old/proposed records and authenticated launch linkage: `evidence/task-identity-repair-proposal.json` (2bba9c34). Operator approval requested explicitly after the hook rejection; no response yet. Ready R01 proof continuation: `briefs/r01-proof-amendment.md` (3dfcf704). Previous parity text normalization independently proved in `evidence/inherited-parity-verification.json` (bd243209).
+
+## Approved admission repair applied
+
+2026-09-04 user answered yes to the exact proposed repair. Original launch, metadata, branch, base and envelope revalidated; runtime address replaced and original enrollment restored atomically. Audit: `evidence/task-identity-repair-result.json`. Normal `wait_threads` accepted the permanent task id. No hook files, scope or cleanup checks changed by the repair. R01 will continue its existing task with the bounded generated proof amendment.

@@ -19,24 +19,24 @@
       "branch": "feature/execute-phase-1-6-from-c858cc3dc-r01-verify-schema-floor",
       "allowance": 2,
       "order": 1,
-      "state": "residue",
+      "state": "active",
       "report": "/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r01.md",
       "gate": "npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check",
       "needs_first": "none (existing merged implementation)",
-      "cursor": null,
+      "cursor": "0f0762eb-1bba-4876-ba57-d3884925fabd:1",
       "reservation": 2,
       "clientThreadId": "client-new-thread:a6e2f58d-eaff-402c-a4fc-1623650b9a1f",
       "launch_base": "99c9ed51882a4e53069d18cf0e890c98f9810be2",
       "launch_time": "2026-09-04",
       "launch_status": "ready",
       "identity_evidence": "Unique exact-worktree task metadata and original create_thread delegation output verified full UUID, R01 report, parent, launch time and assigned feature branch; retained client id",
-      "transport_blocker": "PreToolUse rejected permanent task id absent from runtime address book; runtime retained client id; child not enrolled",
+      "transport_blocker": null,
       "proof_residue": [
         "G1 M9 exact downgrade spies",
         "G2 M21 full ladder proof"
       ],
       "last_verified_commit": "1638c9736f9f9ac03c63aab359a24a08e47179af",
-      "cleanup": "not admitted: acceptance proof gaps, active gate collection, runtime task-id rejection; worktree and branch retained",
+      "cleanup": "pending proof remediation, integration and full lifecycle closure",
       "observed_gates": [
         {
           "command": "npm run typecheck",
@@ -74,7 +74,8 @@
           "elapsed_seconds": 62.047,
           "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/test-parity.log"
         }
-      ]
+      ],
+      "identity_repair": "operator-approved, applied; normal wait_threads succeeded"
     },
     {
       "run": "R02",
