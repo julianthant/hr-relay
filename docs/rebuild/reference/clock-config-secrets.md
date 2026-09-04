@@ -1438,6 +1438,11 @@ So the record is **read forward**, and the tolerance is registered rather than a
   tolerated: an unverifiable historical shape gets a loud refusal, not a guess.
 - `StoredConfigSchema` permits exactly the registered post-baseline leaves to be ABSENT and nothing
   else (today: `timeouts` is `.partial({ sessionAcquireMs: true })`, every other group whole).
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R03 | D332 §D332.7 item 4 adds the registry's
+> first RETIREMENT arm (owed by 1.6): a generation may retire a leaf (`operator.timekeeperName`, D331)
+> by name and decision id in a closed literal list; rows at or after that generation must lack it,
+> older rows keep it, no row is rewritten and every stored `fingerprint` still verifies. A vanished
+> leaf that is NOT on the list still refuses — the three reasons above are unchanged.
   `configSnapshotAbsentLeaves(config)` reports which — **"this leaf did not exist at capture" is a
   different fact from "this leaf was set to 60000", and only the former is true of an old row.** No
   value is substituted, so the stored fingerprint keeps hashing exactly what it hashed at capture,
