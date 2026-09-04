@@ -541,7 +541,7 @@ A row carries these columns, every one a closed enum or a literal — never free
 | `restartScope` | `generation` · `next-start` · `next-use` · `process` | when a change takes effect (§D331.7) |
 | `sourceClass` | `ordinary-settings` · `protected-store` · `provider-env` · `derived-host` · `runtime-isolation` | the ONE active authority the value comes from (§D331.2) |
 | `consumers` | one or more `{ module, purpose }` literals | who reads it; the guard proves every consumer listed exists and every reader of the key is listed |
-| `currentSource` / `targetSource` | closed `{ kind, name }` pairs (`env:UCPATH_PASSWORD`, `settings.json`, `registry`, `probe`) | the migration edge 0.3 Task 3 consumes; identical on both sides for an unmoved leaf |
+| `currentSource` / `targetSource` | closed `{ kind, name }` pairs (`env:UCPATH_PASSWORD`, `settings.json`, `protected.json`, `.env`, `probe`, `code`); a leaf with two live sources today carries BOTH pairs as a `currentSource` ARRAY — never a compound string, never a parenthetical | the migration edge 0.3 Task 3 consumes; identical on both sides for an unmoved leaf. Where the two current sources disagree at import, Task 3 refuses the upgrade by key name (D327's ambiguous-duplicate rule) and imports only when they are byte-equal or one is absent |
 
 Two consequences the columns force. **`sensitivity` decides storage, not the operator's taste**: a
 `protected-*` row can only have `sourceClass: protected-store`, a `provider-key` row only
@@ -560,7 +560,7 @@ in the catalog's type — that is how §D331.8's precedence rule is enforced rat
 
 | Source class | Members (§D331.9 is exhaustive) | The ONE active authority | Read through |
 |---|---|---|---|
-| `ordinary-settings` | every `Config` leaf with `editability: operator` — exactly the set the ordinary document may hold: actor label, the nine `urls.<system>.test` overrides, every `timeouts.*`, the four operator paths (`reportsDir`, `downloadsDir`, `onboardingDocsDir`, `i9CheckTrackerPath`), `annualDates`, `display` (as an explicit override only), `performance.*`, `ocr.*`, `browserHealth.*`, `browser.*`, `concurrency.*`, `daemon.*`, `features.*`, `providers.<capability>.*` budgets, and the five provider MODEL CHAINS (model ids are not secrets; §6 kept them in the secrets module only because it was the sole environment reader — that reason expires with the environment layer) | `.tracker/settings/settings.json`, revisioned (§D331.4) | the resolver, into `Config`; provenance `settings` or `default` |
+| `ordinary-settings` | every `Config` leaf with `editability: operator` — exactly the set the ordinary document may hold: actor label, the nine `urls.<system>.test` overrides, every `timeouts.*`, the four operator paths (`reportsDir`, `downloadsDir`, `onboardingDocsDir`, `i9CheckTrackerPath`), `annualDates`, `display` (as an explicit override only), `performance.*`, `ocr.*`, `browserHealth.*`, `browser.*`, `concurrency.*`, `daemon.*`, `features.*`, `providers.<capability>.*` budgets, and the five provider MODEL CHAINS (model ids are not secrets; §6 kept them in the secrets module only because it was the sole environment reader — that reason expires with the environment layer; 1.6 deletes `providerModelChain`'s environment reads outright, both the `modelsEnv` chain and the `legacyModelEnv` singular fallback, so the five `OCR_*_MODEL` spellings retire with the five `OCR_*_MODELS` keys) | `.tracker/settings/settings.json`, revisioned (§D331.4) | the resolver, into `Config`; provenance `settings` or `default` |
 | `protected-store` | `ucpathUserId`, `ucpathPassword`, `timekeeperName` (it leaves `operator.timekeeperName` and `Config` entirely — its dual `config-and-secret` channel is retired), `sharepointOnboardingRosterUrl`, the D288 pseudonym HMAC key and its public generation id (stored as one pair so a rotation cannot split them), and the local canary/test inputs (`separationsKualiFinalizationCanaryDocumentNumber`, `personLookupCanaryEid`) | `.tracker/settings/protected.json`, separately revisioned, write-only (§D331.6) | the secrets accessor (`requireSecret` / `optionalSecret` / `inspectSecret` / `optionalTestTargetSecret`), whose SOURCE becomes the protected store; the resolver never sees these |
 | `provider-env` | the five `SECRET_FAMILY_SPECS` key pools (`GEMINI_API_KEY{,2..8}`, `GROQ_…`, `MISTRAL_…`, `OPEN_ROUTER_…`, `SAMBANOVA_…`) — API KEYS ONLY | the repository's fixed `.env`, admitted by the secure bootstrap (unchanged) | `requireSecretFamily` / `optionalSecretFamily` |
 | `derived-host` | `HRAUTO_HOST_PRIMARY_DISPLAY` (D324) — the probed primary display | the once-per-process-tree probe, published on the `config-default` channel | the resolver's DEFAULT layer for `display`, beneath an explicit ordinary override |
@@ -596,8 +596,11 @@ production leaf). The registry's `retired-in-target` list is the third non-catal
 D321 put `settings.json` and five siblings directly in the state root (as built:
 `join(stateRoot, "settings.json")` plus `.lock`, `.lock.reaper`, `.authority.json`,
 `.prepare.json`, `.rollback.json`). D331 moves that whole family one level down into ONE directory
-and adds the protected store beside it. Nothing else may live in the directory; an unlisted entry
-is an integrity refusal by basename, never ignored.
+and adds the protected store beside it. Nothing else may live in the directory: the six listed
+entries, plus the lock's acquisition-named hard-link twin and at most one stale-reaper recovery
+barrier matching `.settings.lock.reaper.<uuid>` (the as-built protocol's own transient names,
+`settings-file.ts` `recoveryPath`). Any other entry is an integrity refusal by basename, never
+ignored; a second barrier is the as-built multiple-barrier refusal, not an integrity refusal.
 
 ```
 <stateRoot>/settings/            directory · mode 0700 · owner = runtime UID · every ancestor verified
@@ -613,6 +616,11 @@ is an integrity refusal by basename, never ignored.
 ├── authority.json               the initialization sidecar for BOTH documents: `{ schemaVersion,
                                  rootFingerprint, settingsSchemaHash, protectedSchemaHash,
                                  ordinary: "virgin" | "initialized", protected: "virgin" | "initialized" }`
+                                 — `rootFingerprint` is SHA-256 over the canonical `{ schemaVersion,
+                                 settingsSchemaHash, protectedSchemaHash, ordinary, protected }` tuple
+                                 ONLY: never a function of either document's contents and never of a
+                                 protected value (the sidecar is backed up; a digest of a value would
+                                 leave the root inside it)
 ├── prepare.json                 transient · at most one · names its `target: "ordinary" | "protected"`
 ├── rollback.json                transient · at most one · names its `target`
 ├── settings.lock                ONE lock for the whole root (the atomic hard-link claim, its
@@ -624,7 +632,15 @@ there is no lock ordering, no cross-document race, and one reaper. The prepare/r
 the as-built one (root CLAUDE.md lessons 2026-08-28/08-30, lifted verbatim into 1.6's brief), applied
 per target: a prepare record holds the exact prior and next bytes of the target document AND of
 `authority.json`, and settlement/rollback restores or keeps them as one unit. The two documents are
-never written in one command; a command names exactly one target.
+never written in one command; a command names exactly one target. A prepare or rollback record
+whose `target` is `protected` carries protected VALUE bytes and is therefore itself a
+protected-class artifact: never backed up, never served on any wire, never named in a doctor or
+preflight report beyond its existence and `target`, and removed as part of settlement (P15/P16).
+Because every prepare/rollback/authority/lock record is bound to the exact settings PATHNAME
+(`settingsPathFingerprint`), the move to `.tracker/settings/` invalidates all of them by
+construction: 0.3 Task 3 must refuse the upgrade BY NAME while any `.prepare.json` or
+`.rollback.json` survives at the old pathname, reconcile the old authority first, and never carry
+a path-bound record across the move.
 
 **Every file is a private regular file read through one no-follow descriptor** (`readPrivateRegularFile`
 semantics: `O_NOFOLLOW`, fstat that descriptor, regular, nlink in the allowed set, owner = runtime
@@ -659,7 +675,18 @@ and audit rows; boot reconciliation keeps next bytes only for that exact committ
 
 The protected store gets the SAME protocol under a second singleton, `protected_settings_current`:
 `{ revision ≥ 2, commandId, commandFingerprint, auditId, committedAt, entries: [{ name, valueId,
-updatedAt }] }`. It holds NAMES and write identities only — no value, no digest, no MAC, no length.
+updatedAt }] }`. It holds NAMES and write identities only — no value, no digest, no length.
+Because the protected store has no value fingerprint, its boot predicate is stated explicitly
+rather than inherited from the settings-shaped one (which compares `settingsFingerprint`, requires
+`restartRequired` and a `family: "settings"` target): the file's `revision` equals
+`protected_settings_current.revision`; its `lastApplied.commandId` / `commandFingerprint` equal the
+singleton's; the audit exists with `restartRequired: false` and `affectedTargets = [{ family:
+"protected-settings", revision }]`; and the file's `{ name, valueId, updatedAt }` set is byte-equal
+to the singleton's `entries`. A file ABOVE the singleton's revision refuses `authority-unjournaled`
+by document name; a file BELOW it, or with a divergent `valueId` set (a database restored in place
+under a surviving newer store, or an operator-restored foreign copy), refuses `authority-uncertain`
+by document name with the remedy "delete `protected.json` and re-enter every entry" — never a
+silent adoption and never a regeneration.
 `settings_current` and `protected_settings_current` are independent: advancing one never touches
 the other, and only the ordinary one participates in the runtime generation (§D331.7).
 
@@ -676,7 +703,7 @@ command id from acceptance to settlement, bulk parents unchanged):
 
 | Command | Target | Payload | Result |
 |---|---|---|---|
-| `apply-settings` (exists) | `{ expectedRevision }` of `settings.json` | `{ settingsSchemaHash, patchFingerprint, patch }` — `patch` is the closed editable schema, which under D331 equals the `ordinary-settings` class EXACTLY (every row with `editability: operator`; §D331.9 is the list). DCC3's eight-leaf allowlist is therefore superseded as a boundary — it becomes the first eight rows of a longer closed list, not a second list | `{ revision, settingsFingerprint, restartRequired: true }` |
+| `apply-settings` (exists) | `{ expectedRevision }` of `settings.json` | `{ settingsSchemaHash, patchFingerprint, patch }` — `patch` is a strict object over the closed editable schema's leaf paths whose entries are `{ set: <value> }` or `{ clear: true }`, exactly as arm 2 (the as-built `mergeSettingsPatch` MERGE cannot express an unset, so `clear` is the ONE way an ordinary leaf returns to its default: a cleared leaf is absent from the persisted document and resolves `default`); the editable schema under D331 equals the `ordinary-settings` class EXACTLY (every row with `editability: operator`; §D331.9 is the list). DCC3's eight-leaf allowlist is therefore superseded as a boundary — it becomes the first eight rows of a longer closed list, not a second list | `{ revision, settingsFingerprint, restartRequired: true }` |
 | `apply-protected-settings` (new) | `{ expectedRevision }` of `protected.json` | `{ protectedSchemaHash, writeId, entries }` — `entries` is a closed strict object keyed by protected NAME whose values are `{ set: <value> }` or `{ clear: true }`; `writeId` is a client-minted UUID naming this write | `{ revision, entries: { <name>: { present, valueId?, updatedAt? } } , restartRequired: false }` |
 
 **The two envelope fingerprints differ in what they cover, and that difference is the design.** The
@@ -689,12 +716,15 @@ guessing oracle, and the journal is not 0600). The durable command row and its a
 envelope — never the submitted one — and boot re-authentication (today a byte comparison of
 `canonicalJsonStringify(audit.request)`) compares marked bytes to marked bytes, so the journal's
 authentication protocol works without ever retaining a value. Divergence of a VALUE under an exact
-replay is detected inside the executor, under the lock, against the store's own keyed MAC
-(§D331.6) — the journal never learns it. (A journaled per-value digest was considered and rejected:
+replay is detected inside the executor, under the lock, by a constant-time comparison of the
+replayed `set` value against the stored value (§D331.6 rule 4) — the journal never learns it. (A journaled per-value digest was considered and rejected:
 a salted or unsalted hash of a password in a non-`0600` table is an offline guessing oracle, and the
 random `valueId` already gives the journal a stable write identity without one.)
 
-**Refusal arms** (closed; every arm names the key or document, never a value):
+**Refusal arms** (closed; every arm names the key or document, never a value). The table order IS
+the evaluation order: the first failing arm names the refusal, so `write-id-reused` is judged after
+`revision-conflict`. Setting the SAME value again under a DIFFERENT command id is a normal
+revision-advancing apply (new `valueId`, new `updatedAt`), never `already-applied`.
 
 | Arm | When | Before authority access? |
 |---|---|---|
@@ -707,8 +737,8 @@ random `valueId` already gives the journal a stable write identity without one.)
 | `document-too-large` | the canonical next bytes exceed the target's bound; the prior file is untouched | no |
 | `authority-unjournaled` / `authority-uncertain` | D321 rule; surviving prepare/rollback evidence | no — refuses restart reconciliation and any apply by name |
 | `directory-integrity` / `lock-unavailable` | §D331.3 checks; the reaper protocol's refusals | no |
-| `already-applied { revision }` | byte-exact envelope replay under the same command id (protected: same fingerprint AND every `set` value's MAC matches) | no |
-| `command-divergent` | same command id, different fingerprint — or, protected arm only, same fingerprint and a `set` value whose MAC differs | no |
+| `already-applied { revision }` | byte-exact envelope replay under the same command id (protected: same marked fingerprint AND every `set` value byte-equal to the stored value) | no |
+| `command-divergent` | same command id, different fingerprint — or, protected arm only, same marked fingerprint and a `set` value that differs from the stored value | no |
 | `write-id-reused { writeId }` | protected arm only: a `writeId` the journal already holds under a DIFFERENT command id (`writeId`s are unique per store; a reuse is a client bug, never a second apply) | no |
 
 **Wire mapping.** One bootstrap/readback wire (`settings-runtime.ts`'s successor) serves, per
@@ -726,9 +756,7 @@ read-only. The browser never reads a file or a table and never reconstructs eith
 
 ```
 { schemaVersion: 1, revision, protectedSchemaHash,
-  storeKey: <32 random bytes, base64>,                 // minted at store creation, rotated never; MAC key only
-  entries: { <name>: { valueId: uuid, value: <the exact string>, updatedAt: iso,
-                       mac: HMAC-SHA256(storeKey, name ‖ valueId ‖ value) } },
+  entries: { <name>: { valueId: uuid, value: <the exact string>, updatedAt: iso } },
   lastApplied?: { commandId, commandFingerprint, expectedRevision, protectedSchemaHash, writeId } }
 ```
 
@@ -752,10 +780,14 @@ The rules, each a proof 1.6 owes (§D331.11):
    `secrets-single-source` guard extends to forbid any `process.env` WRITE of a catalogued protected
    name, and the environment registry lists every migrated name as `retired-in-target` so a stale
    shell export is a boot refusal by name (§D331.8), never a silent shadow.
-4. **The MAC never leaves the file.** It exists for one purpose: under the lock, an exact replay of
-   `apply-protected-settings` proves its `set` values are the values the first apply stored
-   (`already-applied`) or are not (`command-divergent`). It is not journaled, not served, not
-   logged, and not a password-verification oracle (there is no "check this password" command).
+4. **Replay divergence is judged inside the file's own lock, by direct comparison.** An exact
+   replay of `apply-protected-settings` proves its `set` values are the values the first apply
+   stored (`already-applied`) or are not (`command-divergent`) by a constant-time byte comparison
+   against the stored value under the lock. Nothing derived from a value — no MAC, no digest, no
+   key — is stored beside it, journaled, served or logged, and there is no password-verification
+   oracle (no "check this password" command). A keyed MAC was considered and rejected: its key would
+   live in the same `0600` file as the plaintext it authenticates, adding no property a direct
+   comparison lacks while creating undefined rotation and restore semantics.
 5. **Absent is a valid state, and it is distinguishable.** An entry that was never set or was
    cleared is `present: false`; the accessor's `requireSecret` throws `SecretMissingError` naming the
    KEY; `inspectSecret` answers `missing`; a store that cannot be read (mode, owner, size, parse)
@@ -787,10 +819,10 @@ The rules, each a proof 1.6 owes (§D331.11):
 
 | `restartScope` | Rows | Takes effect | Mechanism |
 |---|---|---|---|
-| `generation` | every `ordinary-settings` row; the `derived-host` display default | at the next dashboard boot, for every process the dashboard then spawns | `apply-settings` advances `settings_current`; the dashboard's boot activates a new runtime generation with the resolved config; workers compare the token on every claim |
-| `next-use` | every `protected-store` CREDENTIAL row (`ucpathUserId`, `ucpathPassword`, `timekeeperName`, `sharepointOnboardingRosterUrl`, the pseudonym pair) | at the next accessor call | the accessor reads the store at each use; nothing caches a credential across uses; a run that already holds a browser session keeps it |
+| `generation` | every `ordinary-settings` row (the host display VALUE reaches `Config` only through the next activation, which is the `generation` scope of the `display.*` ordinary rows) | at the next dashboard boot, for every process the dashboard then spawns | `apply-settings` advances `settings_current`; the dashboard's boot activates a new runtime generation with the resolved config; workers compare the token on every claim |
+| `next-use` | every `protected-store` CREDENTIAL row (`ucpathUserId`, `ucpathPassword`, `timekeeperName`, `sharepointOnboardingRosterUrl`, the pseudonym pair) | at the next accessor call | the accessor reads the store at each use; nothing caches a credential across uses; a run that already holds a browser session keeps it. Each of these is ALSO a blocking enqueue-time dependency (`src/domain/runtime-dependencies.ts` `secret.ucpath-sso` / `secret.timekeeper` / `secret.sharepoint-roster`), so a cleared entry blocks new enqueues immediately while an already queued run keeps the canonical input it was enqueued with; `timekeeperName`'s filed value is run INPUT, never re-read at use. `sharepointOnboardingRosterUrl` is the one `next-use` leaf whose value selects DATA rather than authenticating: it is read at most once per run, at first use, and held in process memory for that run — never in canonical input or evidence — so a mid-run change cannot move the source a started download reads |
 | `next-start` | the canary/test-input rows | at the next dry-run start admission | admission reads the store once and retains the reference NAME (never the value) in the run's start record |
-| `process` | `runtime-isolation` rows; the launch nonce; the host display PROBE | at the next process start | code / launcher / once-per-process-tree probe (D324: a child never re-probes) |
+| `process` | `runtime-isolation` rows; the `derived-host` row (the host display PROBE); the five `provider-env` families (`.env` is admitted once per process by the bootstrap) | at the next process start | code / once-per-process-tree probe (D324: a child never re-probes) / the bootstrap |
 
 **The claim token's four fields, by provenance** (R01 residue, closed here):
 
@@ -836,9 +868,13 @@ NOT AN INPUT to it.
   `config-and-secret` dual channel is deleted with its leaf.
 - Every migrated environment key (the 32 config bindings, `UCPATH_USER_ID`, `UCPATH_PASSWORD`,
   `TIMEKEEPER_NAME`, `ONBOARDING_ROSTER_URL`, the two pseudonym keys, the two canary keys, the five
-  `OCR_*_MODELS` chain keys) moves to `RETIRED_ENVIRONMENT_KEYS`. A retired key PRESENT in the
-  admitted `.env` refuses at bootstrap by key name with the remedy ("set it in Settings, then remove
-  it from `.env`"); a retired key present in the parent process environment is reported by the
+  `OCR_*_MODELS` chain keys, and the five legacy singular `OCR_*_MODEL` spellings once
+  `providerModelChain`'s fallback arm is deleted) takes a NEW registry disposition,
+  `migrated-refused`. The pre-existing `retired-in-target` disposition keeps its inert meaning
+  ("not read by the rebuild runtime"; `DEBUG`, `PLAYWRIGHT_BROWSERS_PATH` and the rest stay
+  documented, unread and never a boot refusal). A `migrated-refused` key PRESENT in the admitted
+  `.env` refuses at bootstrap by key name with the remedy ("set it in Settings, then remove it from
+  `.env`"); a `migrated-refused` key present in the parent process environment is reported by the
   environment doctor (§6.2) and refuses dashboard and worker boot by key name. Neither is ever read
   as a value. This is the "stale `.env` leaf shadowing a migrated value" case closed at the door: a
   value that cannot be read cannot shadow.
@@ -866,7 +902,11 @@ NOT AN INPUT to it.
   string is an `invalid-value` refusal wherever the leaf's schema does not admit it; (iii) no
   document input can move a production endpoint — the ordinary document schema has NO
   `urls.<system>.prod` member at all, so "production is the code default" (§4) stays a property of
-  the schema rather than of the layer that was removed.
+  the schema rather than of the layer that was removed; (iv) `display` is group-valid: both
+  `screenWidth` and `screenHeight` are present or the group is absent — a half override is a
+  document-schema refusal and a `cross-field-invalid { keys }` arm, never a hybrid of the saved
+  width and the probed height (a plausible-but-wrong browser geometry is the fail-loud rule's
+  cardinal case).
 
 **What still comes from the environment, and why each is not a duplicate:** provider API keys
 (secrets accessor, never the resolver — one authority, `.env`); the host display publication (a
@@ -898,10 +938,10 @@ row per leaf.
 | `urls.sharepoint.prod.entry` | `SharePointRoutesSchema` | `contract` | `deployment` (`schema.ts`) | `ordinary` | `process` | `runtime-isolation` | `config/resolve.ts: contract route set` · `server/settings-runtime.ts: readback` | `code → code` |
 | `urls.kuali.test.entry` | `KualiRoutesSchema.partial()` | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: test-override merge` · `server/settings-runtime.ts: readback` | `env:HRAUTO_KUALI_TEST_URL → settings.json` |
 | `urls.newKronos.test.entry` | `NewKronosRoutesSchema.partial()` | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: test-override merge` · `server/settings-runtime.ts: readback` | `env:HRAUTO_NEW_KRONOS_TEST_URL → settings.json` |
-| `urls.crm.test.{entry,onboardingSearch,ucPathEntrySheet,onboardingHistory,idocsViewer}` | `CrmRoutesSchema.partial()` | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: test-override merge` · `server/settings-runtime.ts: readback` | `registry+env:HRAUTO_CRM_TEST_URL (entry only) → settings.json` |
+| `urls.crm.test.{entry,onboardingSearch,ucPathEntrySheet,onboardingHistory,idocsViewer}` | `CrmRoutesSchema.partial()` | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: test-override merge` · `server/settings-runtime.ts: readback` | `[settings.json, env:HRAUTO_CRM_TEST_URL] → settings.json` |
 | `urls.onbase.test.entry` | `OnBaseRoutesSchema.partial()` | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: test-override merge` · `server/settings-runtime.ts: readback` | `env:HRAUTO_ONBASE_TEST_URL → settings.json` |
-| `urls.ucpath.test.{login,smartHr,jobSummary,personalData,personProfile}` | `UcpathRoutesSchema.partial()` | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: test-override merge` · `server/settings-runtime.ts: readback` | `registry+env:HRAUTO_UCPATH_TEST_URL (smartHr only) → settings.json` |
-| `urls.i9.test.{entry,app}` | `I9RoutesSchema.partial()` | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: test-override merge` · `server/settings-runtime.ts: readback` | `registry+env:HRAUTO_I9_TEST_URL (entry only) → settings.json` |
+| `urls.ucpath.test.{login,smartHr,jobSummary,personalData,personProfile}` | `UcpathRoutesSchema.partial()` | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: test-override merge` · `server/settings-runtime.ts: readback` | `[settings.json, env:HRAUTO_UCPATH_TEST_URL] → settings.json` |
+| `urls.i9.test.{entry,app}` | `I9RoutesSchema.partial()` | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: test-override merge` · `server/settings-runtime.ts: readback` | `[settings.json, env:HRAUTO_I9_TEST_URL] → settings.json` |
 | `urls.oldKronos.test.entry` | `OldKronosRoutesSchema.partial()` | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: test-override merge` · `server/settings-runtime.ts: readback` | `env:HRAUTO_OLD_KRONOS_TEST_URL → settings.json` |
 | `urls.servicenow.test.entry` | `ServiceNowRoutesSchema.partial()` | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: test-override merge` · `server/settings-runtime.ts: readback` | `env:HRAUTO_SERVICENOW_TEST_URL → settings.json` |
 | `urls.sharepoint.test.entry` | `SharePointRoutesSchema.partial()` | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: test-override merge` · `server/settings-runtime.ts: readback` | `env:HRAUTO_SHAREPOINT_TEST_URL → settings.json` |
@@ -929,18 +969,18 @@ row per leaf.
 | `ocr.secondOpinionMax` | `z.number().int().positive()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `env:OCR_SECOND_OPINION_MAX → settings.json` |
 | `ocr.pageMaxWaitMs` | `z.number().int().positive()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `env:OCR_PAGE_MAX_WAIT_MS → settings.json` |
 | `ocr.tier1PatienceMs` | `z.number().int().positive()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `env:OCR_TIER1_PATIENCE_MS → settings.json` |
-| `ocr.pageConcurrency` | `z.number().int().nonnegative()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `registry+env:OCR_PAGE_CONCURRENCY → settings.json` |
+| `ocr.pageConcurrency` | `z.number().int().nonnegative()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `[settings.json, env:OCR_PAGE_CONCURRENCY] → settings.json` |
 | `ocr.disambigConcurrency` | `z.number().int().positive()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `env:OCR_DISAMBIG_CONCURRENCY → settings.json` |
 | `ocr.suggestConcurrency` | `z.number().int().positive()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `env:OCR_SUGGEST_CONCURRENCY → settings.json` |
 | `ocr.backoffBaseMs` | `z.number().int().positive()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `env:OCR_BACKOFF_BASE_MS → settings.json` |
 | `ocr.backoffCapMs` | `z.number().int().positive()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `env:OCR_BACKOFF_CAP_MS → settings.json` |
-| `ocr.maxValidationRetries` | `z.number().int().nonnegative()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `registry+env:OCR_MAX_VALIDATION_RETRIES → settings.json` |
+| `ocr.maxValidationRetries` | `z.number().int().nonnegative()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `[settings.json, env:OCR_MAX_VALIDATION_RETRIES] → settings.json` |
 | `browserHealth.monitorTickMs` | `z.number().int().positive()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `env:HRAUTO_HEALTH_MONITOR_TICK_MS → settings.json` |
 | `browserHealth.maxAutoRefresh` | `z.number().int().nonnegative()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `env:HRAUTO_HEALTH_MONITOR_MAX_REFRESH → settings.json` |
 | `browserHealth.maxReopen` | `z.number().int().nonnegative()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `env:HRAUTO_HEALTH_MONITOR_MAX_REOPEN → settings.json` |
 | `browser.headless` | `z.boolean()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `settings.json → settings.json` |
 | `browser.closeProofMs` | `z.number().int().positive()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `settings.json → settings.json` |
-| `concurrency.defaultWorkers` | `z.number().int().positive()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `registry+env:HRAUTO_DEFAULT_WORKERS → settings.json` |
+| `concurrency.defaultWorkers` | `z.number().int().positive()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `[settings.json, env:HRAUTO_DEFAULT_WORKERS] → settings.json` |
 | `daemon.idleMs` | `z.number().int().positive()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `env:HRAUTO_DAEMON_IDLE_MS → settings.json` |
 | `daemon.idleRepollMs` | `z.number().int().positive()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `env:HRAUTO_DAEMON_IDLE_REPOLL_MS → settings.json` |
 | `features.debugScreenshots` | `z.boolean()` | `contract` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `config/resolve.ts: leaf composition` · `server/settings-runtime.ts: readback` | `env:DEBUG_SCREENSHOTS → settings.json` |
@@ -954,19 +994,19 @@ row per leaf.
 | `providers.mistral.models` | model-chain list schema — 1.6 | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `domain/secrets.ts: providerModelChain` · `server/settings-runtime.ts: readback` | `env:OCR_MISTRAL_MODELS → settings.json` |
 | `providers.openRouter.models` | model-chain list schema — 1.6 | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `domain/secrets.ts: providerModelChain` · `server/settings-runtime.ts: readback` | `env:OCR_OPENROUTER_MODELS → settings.json` |
 | `providers.sambanova.models` | model-chain list schema — 1.6 | `none` | `operator` | `ordinary` | `generation` | `ordinary-settings` | `domain/secrets.ts: providerModelChain` · `server/settings-runtime.ts: readback` | `env:OCR_SAMBANOVA_MODELS → settings.json` |
-| `ucpathUserId` | `SECRET_SPECS` entry; per-name value schema owed by 1.6 (non-empty string today) | `required` | `operator` | `protected-identifier` | `next-use` | `protected-store` | `domain/secrets.ts: requireSecret/optionalSecret` · `server/settings-runtime.ts: presence readback` | `env:UCPATH_USER_ID → protected.json` |
-| `ucpathPassword` | `SECRET_SPECS` entry; per-name value schema owed by 1.6 | `required` | `operator` | `protected-secret` | `next-use` | `protected-store` | `domain/secrets.ts: requireSecret` · `server/settings-runtime.ts: presence readback` | `env:UCPATH_PASSWORD → protected.json` |
-| `timekeeperName` | `SECRET_SPECS` entry; per-name value schema owed by 1.6 | `required` | `operator` | `protected-identifier` | `next-use` | `protected-store` | `domain/secrets.ts: requireSecret` · `server/settings-runtime.ts: presence readback` | `registry+env:TIMEKEEPER_NAME → protected.json` |
-| `sharepointOnboardingRosterUrl` | `SECRET_SPECS` entry; per-name value schema owed by 1.6 | `required` | `operator` | `protected-secret` | `next-use` | `protected-store` | `domain/secrets.ts: requireSecret/optionalSecret` · `server/settings-runtime.ts: presence readback` | `env:ONBOARDING_ROSTER_URL → protected.json` |
+| `ucpathUserId` | `SECRET_SPECS` entry; per-name value schema owed by 1.6 (non-empty string today) | `required` | `operator` | `protected-identifier` | `next-use` | `protected-store` | `domain/secrets.ts: requireSecret/optionalSecret` · `server/settings-runtime.ts: presence readback` · `domain/runtime-dependencies.ts: blocking enqueue preflight` | `env:UCPATH_USER_ID → protected.json` |
+| `ucpathPassword` | `SECRET_SPECS` entry; per-name value schema owed by 1.6 | `required` | `operator` | `protected-secret` | `next-use` | `protected-store` | `domain/secrets.ts: requireSecret` · `server/settings-runtime.ts: presence readback` · `domain/runtime-dependencies.ts: blocking enqueue preflight` | `env:UCPATH_PASSWORD → protected.json` |
+| `timekeeperName` | `SECRET_SPECS` entry; per-name value schema owed by 1.6 | `required` | `operator` | `protected-identifier` | `next-use` | `protected-store` | `domain/secrets.ts: requireSecret` · `server/settings-runtime.ts: presence readback` · `domain/runtime-dependencies.ts: blocking enqueue preflight` | `[settings.json, env:TIMEKEEPER_NAME] → protected.json` |
+| `sharepointOnboardingRosterUrl` | `SECRET_SPECS` entry; per-name value schema owed by 1.6 | `required` | `operator` | `protected-secret` | `next-use` | `protected-store` | `domain/secrets.ts: requireSecret/optionalSecret` · `server/settings-runtime.ts: presence readback` · `domain/runtime-dependencies.ts: blocking enqueue preflight` | `env:ONBOARDING_ROSTER_URL → protected.json` |
 | `activityPersonPseudonym` (HMAC key + public generation id, one pair) | 64-hex key shape + generation-id shape (`requireActivityPersonPseudonymDomain`) | `required` | `operator` | `protected-secret` | `next-use` | `protected-store` | `domain/secrets.ts: requireActivityPersonPseudonymDomain` · `server/settings-runtime.ts: presence readback` | `env:HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY + env:HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION → protected.json` |
 | `separationsKualiFinalizationCanaryDocumentNumber` | `KualiDocumentNumberSchema` (`TEST_TARGET_SECRET_SPECS`) | `none` | `operator` | `protected-identifier` | `next-start` | `protected-store` | `domain/secrets.ts: optionalTestTargetSecret` · `dry-run start admission: retains the reference NAME only` | `env:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER → protected.json` |
 | `personLookupCanaryEid` | `EidSchema` (`TEST_TARGET_SECRET_SPECS`) | `none` | `operator` | `protected-identifier` | `next-start` | `protected-store` | `domain/secrets.ts: optionalTestTargetSecret` · `dry-run start admission: retains the reference NAME only` | `env:HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID → protected.json` |
-| `geminiApiKeys` (pool, ≤8 cells) | `SecretFamilySpecSchema` (`SECRET_FAMILY_SPECS`) | `none` | `operator` | `provider-key` | `next-use` | `provider-env` | `domain/secrets.ts: requireSecretFamily/optionalSecretFamily` · `server/settings-runtime.ts: inspectSecret-shaped availability` | `env:GEMINI_API_KEY{,2..8} → .env` |
-| `groqApiKeys` (pool, ≤8 cells) | `SecretFamilySpecSchema` | `none` | `operator` | `provider-key` | `next-use` | `provider-env` | `domain/secrets.ts: requireSecretFamily/optionalSecretFamily` · `server/settings-runtime.ts: availability only` | `env:GROQ_API_KEY{,2..8} → .env` |
-| `mistralApiKeys` (pool, ≤8 cells) | `SecretFamilySpecSchema` | `none` | `operator` | `provider-key` | `next-use` | `provider-env` | `domain/secrets.ts: requireSecretFamily/optionalSecretFamily` · `server/settings-runtime.ts: availability only` | `env:MISTRAL_API_KEY{,2..8} → .env` |
-| `openRouterApiKeys` (pool, ≤8 cells) | `SecretFamilySpecSchema` | `none` | `operator` | `provider-key` | `next-use` | `provider-env` | `domain/secrets.ts: requireSecretFamily/optionalSecretFamily` · `server/settings-runtime.ts: availability only` | `env:OPEN_ROUTER_API_KEY{,2..8} → .env` |
-| `sambaNovaApiKeys` (pool, ≤8 cells) | `SecretFamilySpecSchema` | `none` | `operator` | `provider-key` | `next-use` | `provider-env` | `domain/secrets.ts: requireSecretFamily/optionalSecretFamily` · `server/settings-runtime.ts: availability only` | `env:SAMBANOVA_API_KEY{,2..8} → .env` |
-| `display` (host primary-display publication, `HRAUTO_HOST_PRIMARY_DISPLAY`) | `DEFAULT_DISPLAY` shape (`screenWidth`/`screenHeight`, int positive) | `host-derived` | `derived` | `derived-host` | `generation` | `derived-host` | `config/host-display.ts: probe once per process tree and publish` · `config/resolve.ts: DEFAULT layer for the display group` | `probe → probe` |
+| `geminiApiKeys` (pool, ≤8 cells) | `SecretFamilySpecSchema` (`SECRET_FAMILY_SPECS`) | `none` | `operator` | `provider-key` | `process` | `provider-env` | `domain/secrets.ts: requireSecretFamily/optionalSecretFamily` · `server/settings-runtime.ts: inspectSecret-shaped availability` | `env:GEMINI_API_KEY{,2..8} → .env` |
+| `groqApiKeys` (pool, ≤8 cells) | `SecretFamilySpecSchema` | `none` | `operator` | `provider-key` | `process` | `provider-env` | `domain/secrets.ts: requireSecretFamily/optionalSecretFamily` · `server/settings-runtime.ts: availability only` | `env:GROQ_API_KEY{,2..8} → .env` |
+| `mistralApiKeys` (pool, ≤8 cells) | `SecretFamilySpecSchema` | `none` | `operator` | `provider-key` | `process` | `provider-env` | `domain/secrets.ts: requireSecretFamily/optionalSecretFamily` · `server/settings-runtime.ts: availability only` | `env:MISTRAL_API_KEY{,2..8} → .env` |
+| `openRouterApiKeys` (pool, ≤8 cells) | `SecretFamilySpecSchema` | `none` | `operator` | `provider-key` | `process` | `provider-env` | `domain/secrets.ts: requireSecretFamily/optionalSecretFamily` · `server/settings-runtime.ts: availability only` | `env:OPEN_ROUTER_API_KEY{,2..8} → .env` |
+| `sambaNovaApiKeys` (pool, ≤8 cells) | `SecretFamilySpecSchema` | `none` | `operator` | `provider-key` | `process` | `provider-env` | `domain/secrets.ts: requireSecretFamily/optionalSecretFamily` · `server/settings-runtime.ts: availability only` | `env:SAMBANOVA_API_KEY{,2..8} → .env` |
+| `display` (host primary-display publication, `HRAUTO_HOST_PRIMARY_DISPLAY`) | `DEFAULT_DISPLAY` shape (`screenWidth`/`screenHeight`, int positive) | `host-derived` | `derived` | `derived-host` | `process` | `derived-host` | `config/host-display.ts: probe once per process tree and publish` · `config/resolve.ts: DEFAULT layer for the display group` | `probe → probe` |
 | `paths.stateRoot` | `AbsolutePathSchema` | `runtime-path` | `deployment` (`config/runtime-isolation.json` + `config/runtime-paths.ts`) | `ordinary` | `process` | `runtime-isolation` | `config/runtime-paths.ts: isolation default composition` · `config/resolve.ts: leaf supply (not overridable)` | `code → code` |
 | `paths.artifactRoot` | `AbsolutePathSchema` | `runtime-path` | `deployment` (same files) | `ordinary` | `process` | `runtime-isolation` | `config/runtime-paths.ts: isolation default composition` · `config/resolve.ts: leaf supply` | `code → code` |
 | `paths.browserProfileRoot` | `AbsolutePathSchema` | `runtime-path` | `deployment` (same files) | `ordinary` | `process` | `runtime-isolation` | `config/runtime-paths.ts: isolation default composition` · `config/resolve.ts: leaf supply` | `code → code` |
@@ -1007,7 +1047,9 @@ forbidden; §D331.4 has no "latest wins"). Each of the closed refusal arms in §
 (`schema-mismatch`, `patch-fingerprint-mismatch` / `envelope-fingerprint-mismatch`,
 `not-editable { key }`, `invalid-value { key }`, `revision-conflict`, `cross-field-invalid { keys }`,
 `document-too-large`, `authority-unjournaled` / `authority-uncertain`, `directory-integrity` /
-`lock-unavailable`, `command-divergent`) maps to one fixed sentence that names the KEY or the
+`lock-unavailable`, `command-divergent`, and `write-id-reused { writeId }` — a client bug, never a
+second apply: the surface mints a fresh `writeId` and re-submits without asking the operator to
+retype the value) maps to one fixed sentence that names the KEY or the
 DOCUMENT and never the value — the surface never composes a message from a server string that could
 carry one, and a protected refusal names the protected NAME only. `already-applied { revision }` is
 presented as SUCCESS (the exact-replay arm; the copy says the values were ALREADY stored — never "your new
@@ -1034,8 +1076,8 @@ component.
 **What 3.1 must NOT build.** No settings or catalog dump inside a diagnostic bundle, an export or a
 support archive (§D331.6 rule 1). No password reveal, no masked-value echo, no `last4`, no
 "copy value" affordance. No digest comparator, no "does this match?" control, no offline check of a
-served hash against a typed value — the MAC exists only inside the executor under the lock
-(§D331.6 rule 4). No export of protected presence beyond the served tuple (no CSV, no XLSX column,
+served hash against a typed value — replay divergence is judged only inside the executor under
+the lock (§D331.6 rule 4). No export of protected presence beyond the served tuple (no CSV, no XLSX column,
 no clipboard bundle of names and `updatedAt`). No client-side merge of two drafts, no optimistic
 "latest wins" retry after a `revision-conflict`, and no client-composed patch for a key the wire did
 not serve as editable.
@@ -1046,7 +1088,9 @@ Each row is one owed proof: the invariant, the oracle that makes it red-capable,
 carries it. 1.6 writes them; this list is the obligation, not the code. `settings-catalog` is a NEW
 architecture guard and lands with its `docs/rebuild/guard-inventory.json` entry in the same commit
 (`guard-manifest.test.ts` checks both directions, and the arm is executed against a violating
-fixture like every mechanical arm).
+fixture like every mechanical arm). P23–P30 live in unit tests by nature, so the `settings-catalog`
+guard also asserts that every proof row's named test file exists and references its `P<n>` id — a
+deleted or renamed proof is a red guard, not silent drift.
 
 | # | Invariant | Proven by | Where (guard/test/file) |
 |---|---|---|---|
@@ -1064,21 +1108,21 @@ fixture like every mechanical arm).
 | P12 | L8 — the protected readback wire is exactly `{ present, valueId?, updatedAt? }` per name plus the store `revision`; the strict schema admits no extra key | round-trip a populated store through the wire schema and assert the exact key set; add `effectiveValue`/`defaultValue`/`last4`/any digest and the parse refuses | `tests/unit/server/settings-runtime-reader.test.ts`, `strict-boundary-schemas.test.ts` |
 | P13 | L9 — the settings FACTS wire is not widened by the catalog (system hosts and workflow capabilities only) | assert the served fact keys against the frozen list with a populated protected store | `tests/unit/server/bff-flow.test.ts`, `src/server/dashboard/queries/settings.ts` |
 | P14 | L10 — the bootstrap wire serves SCHEMA hashes (ordinary and protected) and never a value fingerprint of either document's contents | assert the served fields and that the protected hash is a function of the schema alone (identical across two stores with different values) | `tests/unit/server/bff-flow.test.ts`, `src/server/dashboard/queries/bootstrap.ts` |
-| P15 | L11 — `cli storage backup` copies `settings.json` and `authority.json`, NEVER `protected.json`, and records the protected store's revision plus `{ name, valueId, updatedAt }` per entry | back up a root with a populated store, assert the manifest's file list excludes `protected.json`, grep the whole backup for the canary value, and assert the presence metadata is present and value-free | `tests/unit/storage-backup.test.ts`, `src/infra/sqlite/backup-service.ts`, `recovery-contracts.ts` |
+| P15 | L11 — `cli storage backup` copies `settings.json` and `authority.json`, NEVER `protected.json`, and records the protected store's revision plus `{ name, valueId, updatedAt }` per entry | back up a root with a populated store, assert the manifest's file list excludes `protected.json`, grep the whole backup for the canary value, and assert the presence metadata is present and value-free; assert `authority.json`'s `rootFingerprint` is identical across two stores holding different protected values, and that no protected-target prepare/rollback record is ever in the manifest | `tests/unit/storage-backup.test.ts`, `src/infra/sqlite/backup-service.ts`, `recovery-contracts.ts` |
 | P16 | L12 — storage doctor and preflight report a protected leaf by NAME and presence only, inside the existing closed reason-code policy | run the doctor and preflight over a populated root and assert no value and no path beyond the configured root's basename | `tests/unit/storage-doctor.test.ts`, `tests/unit/preflight.test.ts` |
 | P17 | L13 — a diagnostic bundle carries `configFingerprint` and no settings/catalog dump | build a bundle with the store populated and assert the canary value and every catalog value are absent from bundle bytes | `tests/unit/server/diagnostic-bundle.test.ts` |
 | P18 | L14 — spans, logs, receipts, failure records and every settings/secrets refusal name key, document or leaf id and never a value | drive each refusal arm with a canary value and assert the sinks; the existing family guard covers the mechanical half | `tests/unit/architecture/no-secret-values-in-logs.test.ts`, `tests/unit/architecture/secrets-single-source.test.ts` |
 | P19 | L15 — XLSX exports remain free of any config/settings/protected reference | assert the composed workbook cells and metadata against a populated store; a new settings column is red | `tests/unit/server/activity-export.test.ts` |
 | P20 | L16 — no protected value is published into `process.env` for a child; each process reads the store itself, and the parent's spawn environment is value-free | assert `secrets-single-source`'s new WRITE arm refuses a `process.env` write of a catalogued protected name, and inspect the worker supervisor's spawn environment for the canary | `secrets-single-source.test.ts`, `tests/unit/worker-composition.test.ts`, `src/server/dashboard/worker-supervisor.ts` |
 | P21 | The protected envelope is canonicalized with every `set` value replaced by `"<set>"`, and boot re-authentication compares MARKED bytes to MARKED bytes | re-authenticate a stored command after restart with the value re-supplied and with a different value: both authenticate, because the journal never saw either | `tests/unit/server/settings-runtime-reader.test.ts`, `src/server/settings-runtime.ts` |
-| P22 | The MAC never leaves `protected.json`: not journaled, not served, not logged, and there is no value-verification command | grep every wire/journal/log sink for the `mac`/`storeKey` fields; assert the command family has exactly the two arms of §D331.5 | `settings-catalog.test.ts`, `tests/unit/settings-file-service.test.ts` |
+| P22 | Nothing derived from a protected value (no MAC, digest or key) is stored beside it, journaled, served or logged; replay divergence is a constant-time comparison under the lock, and there is no value-verification command | assert the store record schema has exactly `{ valueId, value, updatedAt }` per entry; grep every wire/journal/log sink for any digest of a canary value; assert the command family has exactly the two arms of §D331.5 | `settings-catalog.test.ts`, `tests/unit/settings-file-service.test.ts` |
 | P23 | Both documents pass the private-file protocol: directory mode `0700`, runtime UID owner, full verified ancestry, no-follow open, regular file, `nlink` 1, mode exactly `0600`, size bound by stat AND bytes read, post-read fstat identical; an unlisted entry in the root is an integrity refusal by basename | drive each violation (group-readable `protected.json`, symlinked ancestor, raw `..` symlink target, replaced directory inode, extra file) and assert a named refusal with nothing written | `tests/unit/settings-file-service.test.ts`, `src/infra/config/settings-file.ts` |
 | P24 | ONE lock serializes both documents, with one reaper and one acquisition twin; there is no second lock and no lock ordering | run concurrent ordinary and protected applies and assert serialization plus exactly one lock pathname; assert the stale-reaper protocol still holds for the shared lock | `tests/unit/settings-file-service.test.ts` |
 | P25 | `prepare.json` / `rollback.json` name their `target` and hold the exact prior and next bytes of THAT document and of `authority.json`; at most one of each exists; settlement and rollback move both as a unit | crash-inject after each step of both arms and assert the reconciled bytes and the surviving evidence's `target` | `tests/unit/settings-file-service.test.ts` |
 | P26 | `settings_current` and `protected_settings_current` are independent: advancing one never writes the other, and only the ordinary one participates in the runtime generation | apply each arm and assert the other singleton is byte-identical and the generation moved only for the ordinary arm | `tests/unit/command-kernel.test.ts`, `src/infra/sqlite/authority-database.ts` |
 | P27 | The D321 coupling holds per document: a document whose revision exceeds 1 with no matching journal row refuses BY DOCUMENT NAME ("no durable command journal for protected.json" / "... for settings.json"), and a fresh state root regenerates the root, a migrated database, the never-applied revision-1 ordinary baseline and an EMPTY revision-1 protected store | delete the database beside each document in turn and assert the exact named refusal; boot a fresh root and assert both revision-1 baselines and that every protected entry reads `present: false` | `tests/unit/server/settings-runtime-reader.test.ts`, `src/server/settings-runtime.ts` |
 | P28 | CAS is the only mutation protocol for both documents, and the request-only refusals (`schema-mismatch`, `patch-fingerprint-mismatch`/`envelope-fingerprint-mismatch`, `not-editable`, `invalid-value`) happen BEFORE any authority access | drive each request-only arm against pristine paths and assert zero lock acquisitions, zero `readState`, and absent settings/initialization bytes afterwards (never pre-initialize the fixture); then assert `revision-conflict { currentRevision }` writes nothing under the lock | `tests/unit/settings-file-service.test.ts` |
-| P29 | `already-applied` / `command-divergent` for BOTH arms, including the protected MAC case: same command id + same marked fingerprint + every `set` value's MAC matching is `already-applied`; a differing `set` value under the same id and fingerprint is `command-divergent` | replay each combination and assert the result plus a byte-identical store on both refusal paths | `tests/unit/settings-file-service.test.ts`, `tests/unit/command-kernel.test.ts` |
+| P29 | `already-applied` / `command-divergent` for BOTH arms, including the protected value case: same command id + same marked fingerprint + every `set` value byte-equal to the stored value is `already-applied`; a differing `set` value under the same id and fingerprint is `command-divergent`; the same value under a NEW command id is an ordinary revision-advancing apply | replay each combination and assert the result plus a byte-identical store on both refusal paths | `tests/unit/settings-file-service.test.ts`, `tests/unit/command-kernel.test.ts` |
 | P30 | The remaining refusal arms hold: `cross-field-invalid { keys }` on a fully merged candidate the composition's resolver rejects, `document-too-large` leaving the prior file untouched, `authority-unjournaled` / `authority-uncertain` and `directory-integrity` / `lock-unavailable` by name | submit individually valid leaves that break a cross-field invariant; submit a schema-valid oversized leaf; plant surviving prepare/rollback evidence; assert prior bytes unchanged in each | `tests/unit/settings-file-service.test.ts`, `tests/unit/config.test.ts` |
 | P31 | `{ clear: true }` is a journaled, CAS-fenced, revision-advancing write that retires the `valueId`; afterwards the entry is `present: false`, `requireSecret` throws `SecretMissingError` naming the KEY, `inspectSecret` answers `missing`, and an unreadable store answers `unknown` (never `missing`) | clear an entry and assert the revision, journal row and readback; corrupt the store's mode/size/parse and assert `unknown` with the underlying error re-thrown | `tests/unit/settings-file-service.test.ts`, `tests/unit/secrets.test.ts` |
 | P32 | D300 semantics survive the source move: `config/test-subjects.json` stays public (label → workflow, kind, availability, `lastObserved`, reference NAME), `optionalTestTargetSecret` reads the protected store by that name under the same per-kind schema, unset is `blocked` BY KEY before any read, malformed is a registry defect BY KEY, and no canary value reaches a name or EID field | drive unset/malformed/valid through the real admission path and assert the blocked arm precedes any store or browser access; assert the bootstrap's two-arm import allowlist and the document-number smoke read the store, not `.env` | `tests/unit/architecture/test-target-registry.test.ts`, `tests/unit/dry-run-scenario-composition.test.ts`, `scripts/secure-env-bootstrap.ts` |
@@ -1094,8 +1138,8 @@ fixture like every mechanical arm).
 ###### D331.12 — what this contract supersedes (dated 2026-09-04)
 
 Each item is also carried as a dated note beside the superseded text, so a reader of that section
-meets the supersession where the old rule stood; the ledger row (`reference/decisions.md`) points
-here.
+meets the supersession where the old rule stood (the §0 ownership-header row carries a
+parenthetical pointer too); the ledger row (`reference/decisions.md`) points here.
 
 1. **§3 "One resolver implements `env > settings.json > default` exactly once"** — the "exactly
    once" half stands; the precedence becomes `settings > default` and the environment is not a
@@ -1138,6 +1182,7 @@ here.
    sentence is read as "the only test-target secret OF SEPARATIONS": the person-lookup
    `live-read` canary (`personLookupCanaryEid`, `docs/migrations/person-lookup.md` §T1b, D318's arm)
    is the second member of the class, registered per workflow label exactly as D284/D300 require.
+   The D300 ledger row carries the same dated note.
 7. **ref dashboard-surfaces §2.1** — the state-root tree still says `.tracker-rebuild/` (stale since
    D321, noted by R01); the dated note there names `.tracker/` and adds the `settings/` subtree.
 8. **What is NOT superseded, and is cited rather than restated:** ref frontend-backend-integration
@@ -1627,6 +1672,7 @@ to mutate `process.env`.
   target execution is unrepresentable. Every refusal names only the public `.env` label and failure
   category, never an absolute path, binding or value. Tests may inject descriptor access into this
   same admission function; production callers receive no skip, alternate path or permissive mode.
+  > 2026-09-04 | D331 | the two-arm selector stands; at 1.6 the D300 smoke reads its document number from `.tracker/settings/protected.json` through `optionalTestTargetSecret`, and the admitted `.env` key set shrinks to the five provider families (§D331.6 item 6, §D331.8).
 - **Never logged.** The accessor is the only function permitted to read a secret's raw value; every
   other module receives it as an opaque string to hand to a login or fill call. Note that the
   accessor's own refusals name the KEY and never the value — `${name} is missing from registered
