@@ -621,10 +621,25 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     { processLockRoot: join(repoRoot, input.isolation.processLockRoot), name: "server", pid: process.pid },
     clock,
   );
-  const database = AuthorityDatabase.open(
-    { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
-    clock,
-  );
+  const database = (() => {
+    try {
+      return AuthorityDatabase.open(
+        { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
+        clock,
+      );
+    } catch (openError) {
+      try {
+        processLock.release();
+      } catch (releaseError) {
+        throw new AggregateError(
+          [openError, releaseError],
+          "dashboard authority open failed and its process record could not release",
+          { cause: releaseError },
+        );
+      }
+      throw openError;
+    }
+  })();
   const bootConfig = (() => {
     try {
       const explorerOverrides = createExplorerOverrideStore(join(stateRoot, "explorer-overrides.json"));

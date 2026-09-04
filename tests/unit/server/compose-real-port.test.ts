@@ -57,6 +57,7 @@ import {
 } from "../../../src/domain/dashboard/explorer.js";
 import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
 import {
   createExplorerOverrideStore,
   explorerEditCommandFingerprint,
@@ -344,6 +345,58 @@ function journalExplorer(
 }
 
 describe("composed dashboard runtime over an owned loopback socket", () => {
+  it.each([
+    { version: 29, refusal: /upgrade-required \{ schemaVersion: 29, floor: 30 \}/u },
+    { version: 31, refusal: /authority schema 31 is newer than supported 30/u },
+  ])("releases its acquired server process record when authority v$version refuses open", async ({
+    version,
+    refusal,
+  }) => {
+    const repoRoot = mkdtempSync(join(tmpdir(), `hrauto-compose-open-v${String(version)}-`));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
+    mkdirSync(stateRoot, { recursive: true });
+    const path = join(stateRoot, "state.db");
+    const legacy = new DatabaseSync(path);
+    legacy.exec("BEGIN EXCLUSIVE");
+    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 29)) {
+      for (const statement of migration.statements) legacy.exec(statement);
+    }
+    legacy.prepare(`
+      INSERT INTO authority_meta (
+        singleton_id, schema_version, authority_generation, updated_at,
+        migration_owner, migration_started_at
+      ) VALUES (1, ?, 0, ?, NULL, NULL)
+    `).run(version, "2026-08-28T12:00:00.000Z");
+    legacy.exec("PRAGMA application_id = 1217249861");
+    legacy.exec(`PRAGMA user_version = ${String(version)}`);
+    legacy.exec("COMMIT");
+    legacy.close();
+
+    await assert.rejects(
+      composeDashboardRuntime({
+        isolation: rebuildRuntimeIsolation,
+        backendPortOverride: 0,
+        env: {},
+        clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
+        repoRoot,
+      }),
+      refusal,
+    );
+    const releasedRecord = JSON.parse(readFileSync(
+      join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json"),
+      "utf8",
+    )) as Record<string, unknown>;
+    assert.equal(releasedRecord.releasedAt, "2026-08-28T12:00:00.000Z");
+    const unchanged = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), version);
+    } finally {
+      unchanged.close();
+    }
+  });
+
   describe.each(["require", "read", "recover"] as const)("%s diagnostic precedence", (entry) => {
     it.each([
       {
