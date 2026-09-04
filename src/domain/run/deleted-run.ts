@@ -23,7 +23,15 @@
  *    write key was released is visible in authority even though the key is not.
  */
 import { z } from "zod";
-import { CommandIdSchema, IsoInstantSchema, RunIdSchema, TraceIdSchema, WorkflowIdSchema } from "../ids.js";
+import {
+  CommandIdSchema,
+  IsoInstantSchema,
+  ItemIdSchema,
+  PositiveIntSchema,
+  RunIdSchema,
+  TraceIdSchema,
+  WorkflowIdSchema,
+} from "../ids.js";
 
 /** Which door the operator used. The cascade is the same; the admission is not. */
 export const DeletedRunOriginSchema = z.enum(["queue", "archive"]);
@@ -44,6 +52,7 @@ export const DeletedRunTableSchema = z.enum([
   "run_terminal_outbox",
   "run_results",
   "run_terminal_authorizations",
+  "checkpoint_payloads",
   "run_checkpoints",
   "notifications",
   "dependencies",
@@ -57,10 +66,16 @@ export const DeletedRunRecordSchema = z.strictObject({
   runId: RunIdSchema,
   workflow: WorkflowIdSchema,
   traceId: TraceIdSchema,
+  itemId: ItemIdSchema.nullable().default(null),
+  attempt: PositiveIntSchema.nullable().default(null),
+  runNumber: PositiveIntSchema.nullable().default(null),
+  ordinalSource: z.enum(["tombstone", "span-root-backfill", "unknown"]).default("unknown"),
   origin: DeletedRunOriginSchema,
   /** the journaled command that performed the delete — the tombstone's provenance */
   commandId: CommandIdSchema,
   deletedAt: IsoInstantSchema,
+  /** v1 predates checkpoint_payloads in the tally; v2 includes it. */
+  tallyVersion: z.union([z.literal(1), z.literal(2)]).default(1),
   /** rows removed per table, in cascade order; a table absent here removed nothing */
   removed: z.array(z.strictObject({
     table: DeletedRunTableSchema,

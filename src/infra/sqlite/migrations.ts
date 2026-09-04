@@ -3,7 +3,12 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 29;
+export const UPGRADE_FLOOR_SCHEMA_VERSION = 30;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = UPGRADE_FLOOR_SCHEMA_VERSION;
+
+export function requiresStoppedSystemAuthorityUpgrade(schemaVersion: number): boolean {
+  return schemaVersion > 0 && schemaVersion < UPGRADE_FLOOR_SCHEMA_VERSION;
+}
 
 /**
  * Tables created by the immutable v1 migration and retired by v28. They stay
@@ -428,6 +433,15 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
+  authority_upgrades: `
+    CREATE TABLE authority_upgrades (
+      record_key TEXT PRIMARY KEY,
+      upgrade_id TEXT NOT NULL,
+      phase TEXT NOT NULL CHECK (phase IN ('baseline','planned','committed','settled')),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
   /**
    * Ref data-intake-and-edit-data §2.2's in-progress upload → map → validate session (2i-E1). The
    * operator's decisions plus the immutable source identity — rows and
@@ -613,6 +627,17 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
+  protected_settings_current: `
+    CREATE TABLE protected_settings_current (
+      record_key TEXT PRIMARY KEY CHECK (record_key = 'current'),
+      revision INTEGER NOT NULL CHECK (revision >= 2),
+      command_id TEXT NOT NULL REFERENCES commands(record_key) ON DELETE RESTRICT,
+      command_fingerprint TEXT NOT NULL,
+      audit_id TEXT NOT NULL REFERENCES command_audits(record_key) ON DELETE RESTRICT,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
   spans: jsonRecordTable("spans"),
   gates: jsonRecordTable("gates"),
   notes: jsonRecordTable("notes"),
@@ -681,9 +706,62 @@ const POST_V1_TABLE_ORDER = [
   "settings_current",
   "bulk_command_acceptances",
   "deleted_runs",
+  "protected_settings_current",
+  "authority_upgrades",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly MigrationTableName[];
+
+/**
+ * D290/D332 — immutable released-layout admission. These are deliberately
+ * literal: growing today's DDL must never rewrite what an integrated v27,
+ * v28, or v29 authority meant.
+ */
+export const INTEGRATED_AUTHORITY_TABLES_BY_VERSION = deepFreeze({
+  27: [
+    "activity_person_pseudonym_generations", "activity_person_pseudonyms", "archive_relaunches",
+    "archived_runs", "artifact_outbox", "artifact_sink_heads", "authority_meta",
+    "bulk_command_acceptances", "capture_finalization_outboxes", "capture_photo_order",
+    "capture_sessions", "checkpoint_payloads", "command_audits", "commands", "config_snapshots",
+    "delegation_manifests", "dependencies", "diagnostic_attachments", "diagnostic_bundles",
+    "dry_run_scenario_results", "duo_ceremony_leases", "durable_outbox", "evidence_receipts",
+    "failures", "fix_records", "gates", "intake_manifests", "intake_sessions", "knowledge_records",
+    "leases", "ledger_partitions", "ledger_projections", "notes", "notifications", "ocr_approvals",
+    "ocr_extractions", "operator_xlsx_exports", "provider_admissions", "provider_budget_counters",
+    "run_checkpoints", "run_results", "run_sessions", "run_terminal_authorizations",
+    "run_terminal_outbox", "runs_view", "runtime_config", "settings_current", "spans", "start_plans",
+    "tasks", "version_bump_applications", "version_plans", "worker_pools", "write_attempts",
+    "write_intents",
+  ],
+  28: [
+    "activity_person_pseudonym_generations", "activity_person_pseudonyms", "archive_relaunches",
+    "archived_runs", "artifact_outbox", "artifact_sink_heads", "authority_meta",
+    "bulk_command_acceptances", "checkpoint_payloads", "command_audits", "commands",
+    "config_snapshots", "delegation_manifests", "dependencies", "diagnostic_attachments",
+    "diagnostic_bundles", "dry_run_scenario_results", "duo_ceremony_leases", "durable_outbox",
+    "evidence_receipts", "failures", "fix_records", "gates", "intake_manifests", "intake_sessions",
+    "knowledge_records", "leases", "ledger_partitions", "ledger_projections", "notes", "notifications",
+    "ocr_approvals", "ocr_extractions", "operator_xlsx_exports", "provider_admissions",
+    "provider_budget_counters", "run_checkpoints", "run_results", "run_sessions",
+    "run_terminal_authorizations", "run_terminal_outbox", "runs_view", "runtime_config",
+    "settings_current", "spans", "start_plans", "tasks", "version_bump_applications",
+    "version_plans", "worker_pools", "write_attempts", "write_intents",
+  ],
+  29: [
+    "activity_person_pseudonym_generations", "activity_person_pseudonyms", "archive_relaunches",
+    "archived_runs", "artifact_outbox", "artifact_sink_heads", "authority_meta",
+    "bulk_command_acceptances", "checkpoint_payloads", "command_audits", "commands",
+    "config_snapshots", "delegation_manifests", "deleted_runs", "dependencies",
+    "diagnostic_attachments", "diagnostic_bundles", "dry_run_scenario_results", "duo_ceremony_leases",
+    "durable_outbox", "evidence_receipts", "failures", "fix_records", "gates", "intake_manifests",
+    "intake_sessions", "knowledge_records", "leases", "ledger_partitions", "ledger_projections",
+    "notes", "notifications", "ocr_approvals", "ocr_extractions", "operator_xlsx_exports",
+    "provider_admissions", "provider_budget_counters", "run_checkpoints", "run_results",
+    "run_sessions", "run_terminal_authorizations", "run_terminal_outbox", "runs_view",
+    "runtime_config", "settings_current", "spans", "start_plans", "tasks",
+    "version_bump_applications", "version_plans", "worker_pools", "write_attempts", "write_intents",
+  ],
+} as const satisfies Readonly<Record<27 | 28 | 29, readonly string[]>>);
 
 export const SQLITE_MIGRATIONS = deepFreeze([
   {
@@ -1582,6 +1660,65 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEGIN
           SELECT RAISE(ABORT, 'ledger projections are never deleted outside a D308 deleted_runs tombstone');
         END`,
+    ],
+  },
+  {
+    // D332 — the one stopped-system authority upgrade journal. Every append
+    // has its own opaque key; planned attempts may repeat, while the three
+    // decisive phases are unique per upgrade identity.
+    version: 30,
+    statements: [
+      "ALTER TABLE deleted_runs ADD COLUMN item_id TEXT",
+      "ALTER TABLE deleted_runs ADD COLUMN attempt INTEGER CHECK (attempt IS NULL OR attempt >= 1)",
+      "ALTER TABLE deleted_runs ADD COLUMN run_number INTEGER CHECK (run_number IS NULL OR run_number >= 1)",
+      "ALTER TABLE deleted_runs ADD COLUMN ordinal_source TEXT CHECK (ordinal_source IS NULL OR ordinal_source IN ('tombstone','span-root-backfill','unknown'))",
+      "DROP TRIGGER deleted_runs_immutable_update",
+      `CREATE TRIGGER deleted_runs_immutable_update
+        BEFORE UPDATE ON deleted_runs
+        WHEN NOT (
+          NEW.record_key = OLD.record_key
+          AND NEW.workflow = OLD.workflow
+          AND NEW.trace_id = OLD.trace_id
+          AND NEW.item_id IS OLD.item_id
+          AND NEW.attempt IS OLD.attempt
+          AND NEW.run_number IS OLD.run_number
+          AND NEW.ordinal_source IS OLD.ordinal_source
+          AND NEW.origin = OLD.origin
+          AND NEW.command_id = OLD.command_id
+          AND NEW.deleted_at = OLD.deleted_at
+          AND NEW.created_at = OLD.created_at
+          AND json_array_length(OLD.record_json, '$.removed') = 0
+          AND json_array_length(NEW.record_json, '$.removed') > 0
+        )
+        BEGIN SELECT RAISE(ABORT, 'deleted run tombstones are immutable once their tally is settled'); END`,
+      `CREATE TRIGGER checkpoint_payloads_never_deleted
+        BEFORE DELETE ON checkpoint_payloads
+        WHEN substr(OLD.record_key, 37, 1) <> ':'
+          OR NOT EXISTS (
+            SELECT 1 FROM deleted_runs
+            WHERE record_key = substr(OLD.record_key, 1, 36)
+          )
+        BEGIN
+          SELECT RAISE(ABORT, 'checkpoint payloads are never deleted outside a D308 deleted_runs tombstone');
+        END`,
+      SQLITE_TABLE_DDL.protected_settings_current,
+      `CREATE TRIGGER protected_settings_current_never_deleted
+        BEFORE DELETE ON protected_settings_current
+        BEGIN SELECT RAISE(ABORT, 'protected settings current authority is never deleted'); END`,
+      `CREATE TRIGGER protected_settings_current_revision_advances
+        BEFORE UPDATE ON protected_settings_current
+        WHEN NEW.revision <> OLD.revision + 1
+        BEGIN SELECT RAISE(ABORT, 'protected settings current revision must advance exactly once'); END`,
+      SQLITE_TABLE_DDL.authority_upgrades,
+      "CREATE UNIQUE INDEX authority_upgrades_baseline_unique ON authority_upgrades(upgrade_id) WHERE phase = 'baseline'",
+      "CREATE UNIQUE INDEX authority_upgrades_committed_unique ON authority_upgrades(upgrade_id) WHERE phase = 'committed'",
+      "CREATE UNIQUE INDEX authority_upgrades_settled_unique ON authority_upgrades(upgrade_id) WHERE phase = 'settled'",
+      `CREATE TRIGGER authority_upgrades_immutable_update
+        BEFORE UPDATE ON authority_upgrades
+        BEGIN SELECT RAISE(ABORT, 'authority upgrade journal rows are immutable'); END`,
+      `CREATE TRIGGER authority_upgrades_never_deleted
+        BEFORE DELETE ON authority_upgrades
+        BEGIN SELECT RAISE(ABORT, 'authority upgrade journal rows are never deleted'); END`,
     ],
   },
 ] as const);

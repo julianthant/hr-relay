@@ -354,6 +354,12 @@ environment-supplied.
 
 ## Conventions
 
+- **2026-09-04 — boot never crosses the v30 authority floor.** A missing authority regenerates fresh
+  at the current schema with a `baseline` upgrade-journal row, but every ordinary open of an existing
+  pre-floor database refuses `upgrade-required { schemaVersion, floor }` before migration. Only the
+  named backup, doctor and upgrade-preflight read-only/no-migrate modes may admit the frozen v27–v29
+  layouts; the stopped-system `storage upgrade` owns the eventual crossing and backup compatibility.
+
 - **2026-09-04 — roadmap task names are full hierarchy paths in the UI.** The generator derives visible
   task labels from the plan hierarchy (`0.3.1`, `1.6.4`, `3.1.9-1`) instead of exposing a mix of local,
   legacy and absent prefixes. Source headings, node ids, anchors and D326/D328 execution labels remain the

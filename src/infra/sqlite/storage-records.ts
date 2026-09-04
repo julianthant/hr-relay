@@ -4,7 +4,11 @@ import { DuoCeremonyLeaseRecordSchema } from "../../domain/duo-ceremony-lease.js
 import { RunSessionRecordSchema } from "../../domain/run/session.js";
 import { DeletedRunRecordSchema } from "../../domain/run/deleted-run.js";
 import { WorkerPoolRecordSchema } from "../../domain/run/worker-pool.js";
-import type { AuthorityTableName } from "../../domain/authority.js";
+import {
+  AuthorityUpgradeRecordSchema,
+  ProtectedSettingsCurrentRecordSchema,
+  type AuthorityTableName,
+} from "../../domain/authority.js";
 import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
 import { IntakeSessionSchema } from "../../domain/intake/session.js";
 import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
@@ -291,6 +295,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   run_sessions: RunSessionRecordSchema,
   /** D308 — the delete tombstone: the one row a deleted run leaves behind. */
   deleted_runs: DeletedRunRecordSchema,
+  protected_settings_current: ProtectedSettingsCurrentRecordSchema,
+  authority_upgrades: AuthorityUpgradeRecordSchema,
 } satisfies Record<AuthorityRecordTableName, z.ZodType>);
 
 export type DiagnosticAttachmentStorageRecord = z.infer<typeof DiagnosticAttachmentStorageRecordSchema>;

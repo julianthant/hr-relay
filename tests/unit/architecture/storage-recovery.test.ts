@@ -622,7 +622,7 @@ afterEach(() => {
 });
 
 describe("verified native online backups", () => {
-  it("backs up and restores an exact v7 authority only after its immutable v8 upgrade", async () => {
+  it("backs up and restores an exact v7 authority only after the immutable released migration chain", async () => {
     const root = testRoot();
     const authorityPath = join(root, "released-v7.sqlite");
     const legacy = new DatabaseSync(authorityPath);
@@ -647,6 +647,27 @@ describe("verified native online backups", () => {
       0,
     );
     legacy.close();
+
+    // Production open no longer crosses the v30 floor. Preserve this backup
+    // regression over the immutable SQL bytes; Task 6 owns their stopped-system
+    // execution through `storage upgrade`.
+    const migrationHarness = new DatabaseSync(authorityPath);
+    migrationHarness.exec("BEGIN EXCLUSIVE");
+    try {
+      for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > 7)) {
+        for (const statement of migration.statements) migrationHarness.exec(statement);
+        migrationHarness.prepare(`
+          UPDATE authority_meta SET schema_version = ?, updated_at = ? WHERE singleton_id = 1
+        `).run(migration.version, NOW);
+        migrationHarness.exec(`PRAGMA user_version = ${String(migration.version)}`);
+      }
+      migrationHarness.exec("COMMIT");
+    } catch (error) {
+      migrationHarness.exec("ROLLBACK");
+      throw error;
+    } finally {
+      migrationHarness.close();
+    }
 
     const database = openDatabase(authorityPath);
     assert.equal(database.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);

@@ -21,7 +21,11 @@ import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
+import {
+  CURRENT_AUTHORITY_SCHEMA_VERSION,
+  SQLITE_MIGRATIONS,
+  requiresStoppedSystemAuthorityUpgrade,
+} from "../../src/infra/sqlite/migrations.js";
 import {
   COMMAND_FIXTURES,
   ATOMIC_WRITE_COMMIT,
@@ -377,6 +381,51 @@ function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityData
   return database;
 }
 
+function openDatabaseWithoutMigration(
+  path: string,
+  openMode:
+    | "storage-backup-read-only-no-migrate"
+    | "storage-doctor-read-only-no-migrate"
+    | "storage-upgrade-preflight-read-only-no-migrate",
+): AuthorityDatabase {
+  const database = AuthorityDatabase.open({
+    path,
+    busyTimeoutMs: 250,
+    migrationOwner: "unit-test",
+    openMode,
+  }, CLOCK);
+  openDatabases.push(database);
+  databasePaths.set(database, path);
+  return database;
+}
+
+/**
+ * Historical migration tests exercise the immutable SQL bytes directly now
+ * that production open is forbidden from crossing the v30 floor. Task 6's
+ * stopped-system upgrade is the production owner of this same chain.
+ */
+function applyReleasedMigrationChainForTest(path: string, fromVersion: number): void {
+  const database = new DatabaseSync(path);
+  database.exec("BEGIN EXCLUSIVE");
+  try {
+    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > fromVersion)) {
+      for (const statement of migration.statements) database.exec(statement);
+      database.prepare(`
+        UPDATE authority_meta
+        SET schema_version = ?, updated_at = ?
+        WHERE singleton_id = 1
+      `).run(migration.version, NOW);
+      database.exec(`PRAGMA user_version = ${String(migration.version)}`);
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  } finally {
+    database.close();
+  }
+}
+
 function createExactV18Database(path: string): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
@@ -421,6 +470,24 @@ function createExactIntegratedSuffixDatabase(
 
 function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
+}
+
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30): void {
+  const source = new DatabaseSync(path);
+  source.exec("BEGIN EXCLUSIVE");
+  for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
+    for (const statement of migration.statements) source.exec(statement);
+  }
+  source.prepare(`
+    INSERT INTO authority_meta (
+      singleton_id, schema_version, authority_generation, updated_at,
+      migration_owner, migration_started_at
+    ) VALUES (1, ?, 0, ?, NULL, NULL)
+  `).run(version, NOW);
+  source.exec("PRAGMA application_id = 1217249861");
+  source.exec(`PRAGMA user_version = ${String(version)}`);
+  source.exec("COMMIT");
+  source.close();
 }
 
 function createExactDcc4SourceDatabase(path: string): void {
@@ -499,7 +566,7 @@ function seedRetiredPhoneCaptureDependency(path: string, dependency: RetiredPhon
 
 function assertD294RefusalWithoutMutation(path: string, dependency: RetiredPhoneCaptureDependency): void {
   assert.throws(
-    () => openDatabase(path),
+    () => applyReleasedMigrationChainForTest(path, 27),
     /phone capture retirement refuses a database containing capture authority/u,
   );
   // SQLite may advance a file-header change counter while rolling back the
@@ -816,6 +883,173 @@ afterEach(() => {
 });
 
 describe("native SQLite authority schema", () => {
+  it("keeps the stopped-system gate below the floor so later additive migrations remain automatic", () => {
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(29), true);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(30), false);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(31), false);
+  });
+
+  it("creates a fresh authority at the v30 floor with one baseline journal row", () => {
+    const path = databasePath("fresh-v30.sqlite");
+    openDatabase(path).close();
+
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 30);
+      const row = raw.prepare(`
+        SELECT record_key, upgrade_id, phase, record_json
+        FROM authority_upgrades
+      `).get() ?? {};
+      const record = JSON.parse(String(Reflect.get(row, "record_json"))) as Record<string, unknown>;
+      assert.deepEqual({
+        recordKey: record.recordKey,
+        upgradeId: record.upgradeId,
+        phase: record.phase,
+        fromSchemaVersion: record.fromSchemaVersion,
+        toSchemaVersion: record.toSchemaVersion,
+        by: record.by,
+        recordedAt: record.recordedAt,
+      }, {
+        recordKey: Reflect.get(row, "record_key"),
+        upgradeId: "fresh",
+        phase: "baseline",
+        fromSchemaVersion: 0,
+        toSchemaVersion: 30,
+        by: "local-operator",
+        recordedAt: NOW,
+      });
+      assert.equal(Reflect.get(row, "upgrade_id"), "fresh");
+      assert.equal(Reflect.get(row, "phase"), "baseline");
+    } finally {
+      raw.close();
+    }
+  });
+
+  it("refuses an at-floor authority whose immutable baseline claims another target", () => {
+    const path = databasePath("invalid-baseline-target.sqlite");
+    createExactReleasedDatabase(path, 30);
+    const raw = new DatabaseSync(path);
+    raw.prepare(`
+      INSERT INTO authority_upgrades (
+        record_key, upgrade_id, phase, record_json, created_at
+      ) VALUES (?, 'fresh', 'baseline', ?, ?)
+    `).run(UUID_1, JSON.stringify({
+      recordKey: UUID_1,
+      upgradeId: "fresh",
+      phase: "baseline",
+      fromSchemaVersion: 0,
+      toSchemaVersion: 1,
+      by: "local-operator",
+      recordedAt: NOW,
+    }), NOW);
+    raw.close();
+
+    assert.throws(
+      () => openDatabase(path),
+      /authority table authority_upgrades record .* failed strict record schema validation/u,
+    );
+  });
+
+  it.each([
+    "storage-backup-read-only-no-migrate",
+    "storage-doctor-read-only-no-migrate",
+    "storage-upgrade-preflight-read-only-no-migrate",
+  ] as const)("admits v29 through %s without migrating or changing its bytes", (openMode) => {
+    const path = databasePath(`${openMode}.sqlite`);
+    createExactReleasedDatabase(path, 29);
+    const before = readFileSync(path);
+
+    const database = openDatabaseWithoutMigration(path, openMode);
+    assert.equal(database.getMeta().schemaVersion, 29);
+    database.close();
+
+    assert.deepEqual(readFileSync(path), before);
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 29);
+      assert.equal(raw.prepare(`
+        SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'authority_upgrades'
+      `).get(), undefined);
+    } finally {
+      raw.close();
+    }
+  });
+
+  it("refuses an ordinary v29 open with upgrade-required before any migration", () => {
+    const path = databasePath("ordinary-v29.sqlite");
+    createExactReleasedDatabase(path, 29);
+    const before = readFileSync(path);
+
+    assert.throws(
+      () => openDatabase(path),
+      /upgrade-required \{ schemaVersion: 29, floor: 30 \}/u,
+    );
+    assert.deepEqual(readFileSync(path), before);
+  });
+
+  it.each([27, 28, 29] as const)("admits the frozen integrated v%s layout for upgrade preflight", (version) => {
+    const path = databasePath(`integrated-v${String(version)}.sqlite`);
+    createExactReleasedDatabase(path, version);
+    const before = readFileSync(path);
+
+    const database = openDatabaseWithoutMigration(path, "storage-upgrade-preflight-read-only-no-migrate");
+    assert.equal(database.getMeta().schemaVersion, version);
+    database.close();
+    assert.deepEqual(readFileSync(path), before);
+  });
+
+  it("creates the complete v30 schema floor and preserves journal append semantics", () => {
+    const path = databasePath("v30-schema-floor.sqlite");
+    openDatabase(path).close();
+    const raw = new DatabaseSync(path);
+    try {
+      const deletedColumns = (raw.prepare("PRAGMA table_info(deleted_runs)").all() as Array<{ name: string }>)
+        .map(({ name }) => name);
+      for (const column of ["item_id", "attempt", "run_number", "ordinal_source"]) {
+        assert.equal(deletedColumns.includes(column), true, column);
+      }
+      const immutableSql = String(Reflect.get(raw.prepare(`
+        SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'deleted_runs_immutable_update'
+      `).get() ?? {}, "sql"));
+      for (const column of ["item_id", "attempt", "run_number", "ordinal_source"]) {
+        assert.match(immutableSql, new RegExp(`NEW\\.${column} IS OLD\\.${column}`, "u"));
+      }
+      const checkpointTriggerSql = String(Reflect.get(raw.prepare(`
+        SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'checkpoint_payloads_never_deleted'
+      `).get() ?? {}, "sql"));
+      assert.match(checkpointTriggerSql, /substr\(OLD\.record_key, 1, 36\)/u);
+      assert.match(checkpointTriggerSql, /substr\(OLD\.record_key, 37, 1\) <> ':'/u);
+      assert.notEqual(raw.prepare(`
+        SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'protected_settings_current'
+      `).get(), undefined);
+
+      const planned = (recordKey: string) => ({
+        record_key: recordKey,
+        upgrade_id: HASH_A,
+        phase: "planned",
+        record_json: "{}",
+        created_at: NOW,
+      });
+      for (const row of [planned(UUID_1), planned(UUID_2)]) {
+        raw.prepare(`
+          INSERT INTO authority_upgrades
+            (record_key, upgrade_id, phase, record_json, created_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(row.record_key, row.upgrade_id, row.phase, row.record_json, row.created_at);
+      }
+      assert.equal(Reflect.get(raw.prepare(`
+        SELECT count(*) AS count FROM authority_upgrades WHERE upgrade_id = ? AND phase = 'planned'
+      `).get(HASH_A) ?? {}, "count"), 2);
+      assert.throws(() => raw.prepare(`
+        INSERT INTO authority_upgrades
+          (record_key, upgrade_id, phase, record_json, created_at)
+        VALUES (?, 'fresh', 'baseline', '{}', ?)
+      `).run(UUID_3, NOW), /UNIQUE constraint failed/u);
+    } finally {
+      raw.close();
+    }
+  });
+
   it("creates every registered table with its exact authority classification and required pragmas", () => {
     const database = openDatabase();
     const inspection = database.inspectSchema();
@@ -832,10 +1066,11 @@ describe("native SQLite authority schema", () => {
     });
   });
 
-  it("upgrades the exact common v18 authority to the integrated schema", () => {
+  it("keeps the released migration chain from the exact common v18 authority", () => {
     const path = databasePath("common-v18.sqlite");
     createExactV18Database(path);
 
+    applyReleasedMigrationChainForTest(path, 18);
     const upgraded = openDatabase(path);
 
     assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
@@ -845,10 +1080,11 @@ describe("native SQLite authority schema", () => {
     assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "bulk_command_acceptances"), true);
   });
 
-  it("upgrades an empty exact v27 authority and removes its retired phone-capture tables", () => {
+  it("keeps the released v28 phone-capture retirement over an empty exact v27 authority", () => {
     const path = databasePath("phone-capture-empty-v27.sqlite");
     createExactV27Database(path);
 
+    applyReleasedMigrationChainForTest(path, 27);
     const upgraded = openDatabase(path);
 
     assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
@@ -1062,7 +1298,7 @@ describe("native SQLite authority schema", () => {
     }
   });
 
-  it("upgrades the exact committed Stage-B v1 shape and preserves read/write authority", () => {
+  it("keeps the released migration chain over the exact committed Stage-B v1 shape", () => {
     const path = databasePath("stage-b-v1.sqlite");
     const legacy = new DatabaseSync(path);
     legacy.exec("BEGIN EXCLUSIVE");
@@ -1097,6 +1333,7 @@ describe("native SQLite authority schema", () => {
     );
     legacy.close();
 
+    applyReleasedMigrationChainForTest(path, 1);
     const upgraded = openDatabase(path);
     assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(upgraded.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
@@ -1150,6 +1387,7 @@ describe("native SQLite authority schema", () => {
     );
     legacy.close();
 
+    applyReleasedMigrationChainForTest(path, 5);
     const upgraded = openDatabase(path);
     assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(upgraded.authority.startPlans.get(LEGACY_V5_START_PLAN.startPlanId), undefined);
@@ -1170,7 +1408,7 @@ describe("native SQLite authority schema", () => {
     );
   });
 
-  it("upgrades the exact committed v6 shape through v7 and v8 without changing existing authority", () => {
+  it("keeps the released chain from v6 without changing existing authority", () => {
     const path = databasePath("d110-d114-v6.sqlite");
     const legacy = new DatabaseSync(path);
     legacy.exec("BEGIN EXCLUSIVE");
@@ -1206,6 +1444,7 @@ describe("native SQLite authority schema", () => {
     assert.equal(beforeTables.includes("run_terminal_outbox"), false);
     legacy.close();
 
+    applyReleasedMigrationChainForTest(path, 6);
     const upgraded = openDatabase(path);
     assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(upgraded.authority.startPlans.get(START_PLAN.startPlanId), START_PLAN);
@@ -1215,7 +1454,7 @@ describe("native SQLite authority schema", () => {
     assert.equal(upgraded.authority.terminalAuthorizations.get(RUN_ID), undefined);
   });
 
-  it("upgrades the exact released v7 shape through v8 and v9, reopens, and validates read-only", () => {
+  it("keeps the released chain from v7, reopens, and validates read-only", () => {
     const path = databasePath("d110-d114-v7.sqlite");
     const releasedV7 = SQLITE_MIGRATIONS.find(({ version }) => version === 7);
     assert.notEqual(releasedV7, undefined);
@@ -1250,6 +1489,7 @@ describe("native SQLite authority schema", () => {
     assert.equal(v7Tables.includes("run_terminal_authorizations"), false);
     legacy.close();
 
+    applyReleasedMigrationChainForTest(path, 7);
     const upgraded = openDatabase(path);
     assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(upgraded.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
@@ -1735,7 +1975,8 @@ describe("authority generation accounting", () => {
 
   it("accounts for every authority table and increments once per outer authority mutation", () => {
     assert.deepEqual(cases.map(({ table }) => table).sort(), AUTHORITY_TABLE_REGISTRY
-      .filter(({ classification, name }) => classification === "authority" && name !== "authority_meta")
+      .filter(({ classification, name }) => classification === "authority"
+        && !["authority_meta", "authority_upgrades", "protected_settings_current"].includes(name))
       .map(({ name }) => name)
       .sort());
     for (const mutation of cases) {
