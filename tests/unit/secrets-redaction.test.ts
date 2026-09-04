@@ -335,22 +335,27 @@ describe("closed secret access", () => {
     }).success, false);
   });
 
-  it("blocks the gone committed canary before reading its document-number reference", async () => {
+  it("admits the available committed canary without printing its document number", async () => {
     const privateValue = "8675309";
     const output: string[] = [];
+    let reads = 0;
     const exitCode = await runTestTargetDocumentNumberSmoke({
       env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: privateValue },
-      readDocumentNumber: () => {
-        throw new Error("a gone canary must not read its document number");
+      readDocumentNumber: (reference, env) => {
+        reads += 1;
+        assert.equal(reference.name, "separationsKualiFinalizationCanaryDocumentNumber");
+        assert.equal(env?.HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER, privateValue);
+        return privateValue;
       },
       writeLine: (line) => output.push(line),
     });
 
-    assert.equal(exitCode, 1);
+    assert.equal(exitCode, 0);
+    assert.equal(reads, 1);
     assert.deepEqual(output, [
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=not-attempted",
-      "workflow=separations label=finalization-canary resolution=blocked",
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=present",
+      "workflow=separations label=finalization-canary resolution=ready",
     ]);
     assert.equal(output.some((line) => line.includes(privateValue)), false);
   });
