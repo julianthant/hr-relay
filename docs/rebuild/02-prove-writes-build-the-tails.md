@@ -1,7 +1,8 @@
 # 02 · Phase 2 — prove writes, build the tails
 
-This doc is the dedicated home of **Phase 2**, tree node `{#phase-2}`: its tasks, what is done and
-what is left, its exit criteria; contracts it built live in `reference/`.
+This doc is the dedicated home of **Phase 2**, tree node `{#phase-2}`: what historical Parts 2.1–2.5
+proved and built, what they left by explicit disposition, and reopened 2.6 downstream revalidation
+after 1.6; contracts it built live in `reference/`.
 
 ## Phase summary
 <!-- roadmap: phase-2 -->
@@ -11,7 +12,10 @@ what is left, its exit criteria; contracts it built live in `reference/`.
 - [x] the four tails landed in order against a proven spine — **2g** D134–D145 · **2h** D146–D167 · **2i** D168–D180 · **2j** D181–D190
 - [x] the exit gate is CLOSED: every hard criterion MET 2026-08-09, with ONE criterion REASSIGNED (D186) and ONE NAMED GAP carried out (D189), each with a written trigger and an owner (§Left Phase 2 by explicit disposition, §Exit criteria)
 - [x] 2j did its job as a gate — four defects every earlier green gate missed, all fixed: the unreachable restore path (D181), the dark `paper-ink` corpus, the two-pixel run-detail panel, the underivable receipt (D187)
+- [x] historical Parts **2.1–2.5** are complete and retain their evidence
+- [ ] **2.6** waits for 1.6, then migrates/re-proves downstream read models, joins, and operator services without redesigning or rewriting append-only evidence
 - [ ] seven residuals ship WITH the phase, each owned by a later node — the notes emitter and the ledger drain, five unpublished notification arms, the knowledge projection, the retention sweep, the phone's delivery path, the empty capture bindings (see *What Phase 2 left standing*)
+> 2026-09-03 | D326/D327 authority reset | 1.6 owns stores, lifecycle/configuration writers, and core resolution; 2.6 owns downstream consumers and non-mutating revalidation only
 > 2026-08-21 | docs-cohesion 02 | verified against the five reference docs' own `p2-*` status blocks (`reference/{operator-trust,dashboard-surfaces,data-intake-and-edit-data,frontend-backend-integration,guards-and-tests}.md`) and spot-checked in `src/core/{write-sequencer,evidence-receipt}.ts`, `src/services/notifications/**`, `src/infra/ledger/**`, `src/infra/sqlite/migrations.ts` (v10–v13); left: the seven residuals below, each attributed
 
 <!-- /roadmap-status -->
@@ -66,8 +70,17 @@ gate, park and resolve, end to end on the new base), and the **first workflow-sp
 write checkpoint** at order 6, which validates that workflow's receipt/probe policy on top of the
 already-proven transaction kernel.
 
-## Transaction proof — the first real write
+## 2.1 · Controlled write proof
 <!-- roadmap: p2-proof -->
+
+### Task 1 · Build the proving transaction
+<!-- roadmap: p2a-transaction -->
+
+### Task 2 · Execute and record the controlled proof
+<!-- roadmap: p2a-proof -->
+
+The historical record below covers both tasks together: the minimal proving workflow and the live
+dry-run/mismatch/commit/read-back/idempotent-repeat evidence.
 
 <!-- roadmap-status: p2-proof -->
 - [x] `kuali/save-timekeeper-annotation` is the one-transaction-node proving workflow — one benign, restorable field on a real Kuali RRSS document, with a reload read-back verifier because Kuali's save is UI-silent (D122; `src/domain/contracts/kuali/save-timekeeper-annotation.ts`)
@@ -127,8 +140,17 @@ receipt/probe policy is not. UCPath and ServiceNow targets are named per migrati
 on the next real upload. Full evidence, measured numbers and durable row ids:
 `ref write-safety` §Phase-2 controlled-commit as-built.
 
-## 2g — event / trust layer
+## 2.2 · Evidence and operator trust
 <!-- roadmap: p2-2g -->
+
+### Task 1 · Build durable trust records and diagnostic capture
+<!-- roadmap: p2b-evidence -->
+
+### Task 2 · Derive receipts and wire notification, knowledge, and ledger services
+<!-- roadmap: p2b-services -->
+
+The historical status block records the combined delivery; later uncomposed producer/projector
+residuals remain assigned to their actual later owners.
 
 <!-- roadmap-status: p2-2g -->
 - [x] **schema v10** — the five durable trust tables plus the indexed `failures.fingerprint` (D134; `src/infra/sqlite/migrations.ts`)
@@ -180,8 +202,19 @@ until 2j found it (D187), so the acceptance bar was unmet ON SCREEN through a do
 fix and its lesson belong to §2j below; what belongs here is that a derivation being correct is not
 the same claim as an operator being able to read it.
 
-## 2h — data / intake foundation
+## 2.3 · Data and intake foundation
 <!-- roadmap: p2-2h -->
+
+### Task 1 · Build canonical fields, mappings, validation, and manifests
+<!-- roadmap: p2c-intake -->
+
+### Task 2 · Build extraction, OCR, roster, normalization, and scanner services
+<!-- roadmap: p2c-services -->
+
+### Task 3 · Wire providers, artifacts, capture authority, and Edit Data
+<!-- roadmap: p2c-wiring -->
+
+The historical status block below is the combined evidence for these three delivery seams.
 
 <!-- roadmap-status: p2-2h -->
 - [x] the **canonical field registry** is closed at 47 ids and frozen against the RECORDED D58/D68 scan, checked in both directions (D146; `src/domain/fields/registry.ts:56-110`, `config/canonical-field-inventory.json` at legacy `4deabc5a`)
@@ -239,8 +272,26 @@ them, they simply have no consumer yet, which is why every intake upload re-maps
 Both are named in place in the owning doc rather than left to be discovered; neither has a node, and
 both are reported.
 
-## 2i — the operator surface (A–G)
+## 2.4 · Operator services and read models
 <!-- roadmap: p2-2i -->
+
+### Task 1 · Build trust and Edit Data surfaces
+<!-- roadmap: p2d-operator-services -->
+
+### Task 2 · Build Settings and storage doctor
+<!-- roadmap: p2d-settings-doctor -->
+
+### Task 3 · Build intake and historical Capture surfaces
+<!-- roadmap: p2d-intake-surfaces -->
+
+### Task 4 · Build Explorer, UI catalog, and advisories
+<!-- roadmap: p2d-explorer -->
+
+### Task 5 · Build archive, version, and Activity surfaces
+<!-- roadmap: p2d-archive-activity -->
+
+The historical status block below records the combined A–G delivery. Mobile Capture Mode is retained
+only as history because D294 retired it; diagnostic captures and archive evidence remain.
 
 <!-- roadmap-status: p2-2i -->
 - [x] **2i-A/B, the trust surfaces + the bell** — the receipt and the failure record render from authority (`trust.tsx` over `queries/run-detail.ts`, D140/D142), and the durable inbox has a bell (D138; `ref frontend-backend-integration` §5.1.6)
@@ -293,8 +344,17 @@ until D187, and the accessibility tree reported every word of it. That is why th
 date and D82's acceptance date differ, and it is the reason the parity corpus exists in the form it
 does — see §2j.
 
-## 2j — the closing gate
+## 2.5 · Closing verification
 <!-- roadmap: p2-2j -->
+
+### Task 1 · Audit the scenario corpus and capability inventory
+<!-- roadmap: p2e-close -->
+
+### Task 2 · Prove restore, concurrency, and redaction
+<!-- roadmap: p2e-recovery-proof -->
+
+### Task 3 · Repair gate-found defects and reconcile owning docs
+<!-- roadmap: p2e-repair -->
 
 <!-- roadmap-status: p2-2j -->
 - [x] the **executable scenario corpus** and `scenario-coverage`, audited in BOTH directions, plus D185's corpus-layout audit — a file of neither kind, an unregistered claim and a manifest row nothing executes all fail (`ref operator-trust` §3/§3.1, `ref guards-and-tests` §3.10)
@@ -367,7 +427,7 @@ the receipt derived fine for every run whose nodes all had checkpoints. **When a
 one representation of a surface, something must assert the other** — and a reference corpus nobody
 looks at records defects instead of catching them.
 
-## Left Phase 2 by explicit disposition
+### Task 4 · Record explicit dispositions
 <!-- roadmap: phase2-dispositions -->
 
 <!-- roadmap-status: phase2-dispositions -->
@@ -421,6 +481,44 @@ first migration that needs the phone in production, building both halves plus th
 `{#def-byte-path}`, 04 §Run the dashboard without the dev server / use the phone page in production.
 `ref frontend-backend-integration` §6.9 is the normative record, and
 `config/legacy-capabilities.json`'s `legacy-route-static` stays honestly **open**.
+
+## 2.6 · Revalidate tails against canonical authorities
+<!-- roadmap: p2-authority-revalidation -->
+
+This reopened part starts only after 1.6 closes. It changes downstream read models, joins, and
+operator services that consume run/settings authority; it does not change the canonical stores,
+rewrite append-only evidence, repeat D135's controlled write, or improvise a new contract.
+
+### Task 1 · Revalidate trust and evidence consumers
+<!-- roadmap: p2f-trust -->
+
+- [ ] Rewire notification, receipt, failure, capture, log, gate, and parked-write run joins.
+- [ ] Prove durable linkage through retry, archive, and tombstone without rewriting evidence.
+
+### Task 2 · Revalidate data, intake, and Edit Data consumers
+<!-- roadmap: p2f-data -->
+
+- [ ] Rewire only actual run/settings dependencies across intake, OCR, manifests, mappings, and edits.
+- [ ] Preserve artifact readability; missing canonical linkage fails loud.
+
+### Task 3 · Revalidate operator read models
+<!-- roadmap: p2f-operator -->
+
+- [ ] Rewire archive, Activity, Explorer, doctor, preflight, and settings-status reads.
+- [ ] Prove current/queue/archive/delete counts converge and protected settings never read back.
+
+### Task 4 · Run the non-mutating migration and recovery proof
+<!-- roadmap: p2f-proof -->
+
+- [ ] Run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation
+  gates; cite D135 rather than performing a second controlled write.
+- [ ] Prove displaced sources cannot alter a response.
+
+### Task 5 · Close tail revalidation and hand fixtures to 3.1
+<!-- roadmap: p2f-close -->
+
+- [ ] Pass targeted/full/generated/production-route gates and an adversarial deletion-test review.
+- [ ] Hand 3.1 stable contracts, representative fixtures, and an unresolved-defect ledger.
 
 ## Integration amendment — Phase 2's share
 

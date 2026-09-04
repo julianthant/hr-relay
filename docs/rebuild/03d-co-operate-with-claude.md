@@ -1,6 +1,6 @@
-# Phase 3D · Codex and Claude cooperation
+# Phase 3.4 · Codex and Claude cooperation
 
-This stable-path doc is the dedicated home of Phase 3D tree node `{#claude-operator}`, the part that gives
+This stable-path doc is the dedicated home of Phase 3.4 tree node `{#claude-operator}`, the part that gives
 the dashboard a **second actor**. The operator's instruction (2026-08-21, plan ruling **R15**) is one
 paragraph: *"I want to duo-operate this with Claude. Claude can invoke the same things I do and
 operate the dashboard, and monitor the entire dashboard. All of this local — expose a local port for
@@ -15,9 +15,9 @@ settled with the words *"reachable only if a second actor ever exists"*. Those s
 here, all at once. Each is named below with the file that proves it. Contracts belong to `reference/`
 as always; this doc owns the track, not the contracts.
 
-**D325 execution note (2026-09-03).** This is the fourth and final Phase 3 part. Its coordinator
-starts only after 3C closes. Tasks 1 and 2 are sequential, Tasks 3A/3B are an independent
-dedicated-worktree wave, and Task 4 integrates them into the attributed cooperation proof that
+**D326 execution note (2026-09-03).** This is the fourth and final Phase 3 part. Its coordinator
+starts only after 3.3 closes. Tasks 1 and 2 are sequential, Tasks 3 and 4 may run in parallel only
+when the coordinator records their independent worktrees and integration order, and Task 5 integrates them into the attributed cooperation proof that
 closes Phase 3.
 
 ## Track summary
@@ -32,7 +32,7 @@ closes Phase 3.
 - [ ] a Claude-driven separations dry run, every action attributed, one gate resolved by claude and confirmed by the operator
 - [ ] nothing is built at HEAD — there is no MCP server in this repository and the BFF has no actor model beyond one literal
 > 2026-08-21 | docs-cohesion R15 | phase drawn from the operator's instruction; verified UNBUILT — `grep -rn mcp package.json src` matches nothing, there is no `.mcp.json`, and `.claude/` holds only `agents/` and `skills/`; the one-actor facts read out of `src/domain/ids.ts:134-138`, `src/server/dashboard/queries/bootstrap.ts:90` and `src/server/dashboard/projectors/run-queue-projection.ts:1518`; left: all of it
-> 2026-09-03 | D325 task reshape | 3D follows closed 3C; Tasks 3A/3B are the only parallel wave, and Task 4 owns T4 plus Phase 3 close
+> 2026-09-03 | D326 decimal hierarchy | 3.4 follows closed 3.3; Tasks 3 and 4 are the only parallel-capable pair, and Task 5 owns T4 plus Phase 3 close
 <!-- /roadmap-status -->
 
 ### What the cooperation track is
@@ -51,9 +51,9 @@ value that is not `127.0.0.1` or `localhost`, and the port is pinned at 3938 by
 `config/runtime-isolation.json`. What is missing is not a port, and not an API: it is a client Claude
 Code can speak to, and an actor model that can tell the two clients apart once it has one.
 
-**Four chronological task numbers, with one parallel wave.** Task 1 (`{#claude-actor}`) builds the
-actor model and two-actor rule. Task 2 (`{#claude-mcp}`) builds the MCP client surface. Tasks 3A
-(`{#claude-monitor}`) and 3B (`{#claude-clients}`) then run in parallel dedicated worktrees. Task 4
+**Five chronological task numbers, with one parallel-capable pair.** Task 1 (`{#claude-actor}`) builds the
+actor model and two-actor rule. Task 2 (`{#claude-mcp}`) builds the MCP client surface. Tasks 3
+(`{#claude-monitor}`) and 4 (`{#claude-clients}`) may then run in parallel dedicated worktrees. Task 5
 (`{#claude-proof}`) integrates them in a Claude-driven dry run and the first T4 journey. Task 1 is
 first for a reason: an MCP server built before the actor model would stamp
 `local-operator` on everything Claude does, and every durable record it touched would then be a lie
@@ -74,7 +74,7 @@ tenancy problem, and none of the second is designed here.
 | 1 | **The ONE command protocol** (`ref frontend-backend-integration` §3.4) | Nine families × 36 actions through `POST /api/v1/commands`, one journal, one kernel. Claude does not get a second route, a second envelope or a "agent mode" flag — it composes the same `CommandEnvelope` the dashboard composes, with a different `requestedBy`. Anything Claude can do that the dashboard cannot would be a second product |
 | 2 | **CAS on every arm** (`ref frontend-backend-integration` §3.4; D253) | Every arm carries a required `expectedVersion` and the kernel revalidates the row inside its own transaction. Two operators acting on one run therefore get D253's named `conflict` carrying the server's `currentVersion` — never a silent overwrite. This is the single most important inheritance: **the protocol was designed for one actor and is already correct for two**, and what changes is that the conflict arm stops being a rare race and becomes ordinary traffic |
 | 3 | **D75's one solo request-identity checkpoint** (`doc 01` §1f; `ref frontend-backend-integration` §3.4) | Every BFF request already crosses one checkpoint, and every schema-valid command claim must match its strict configured `local-operator` before effects. This track extends that adapter with a second credential-derived actor; it does not create another admission path |
-| 4 | **D181's `server` role lock** (`src/server/dashboard/compose.ts:346-356`) | One BFF per machine, enforced before the authority database opens. Phase 3D proves the web dashboard, a second browser client and Claude against that one host. Phase 6 later proves the desktop attachment without reopening the topology. |
+| 4 | **D181's `server` role lock** (`src/server/dashboard/compose.ts:346-356`) | One BFF per machine, enforced before the authority database opens. Phase 3.4 proves the web dashboard, a second browser client and Claude against that one host. Phase 6 later proves the desktop attachment without reopening the topology. |
 | 5 | **The ALWAYS-GATE** (`ref write-safety` §14) | §14.6 risk 1 names rubber-stamping as the dominant risk of a gate that fires on every run, and risk 6 says *who approved* may never be lost. An agent that can approve a wrong-person gate is rubber-stamping with a machine — so the operator's ruling is a **two-actor rule**, and §14's human control survives it intact rather than being widened |
 | 6 | **`{#observed-logs}`** (`doc 03a` §Observed logs — the log carries what the page said) | Monitoring is only worth having if the log carries what the PAGE said rather than which step ran. An agent reading step names learns nothing it could not have predicted; an agent reading the recorded provenance points — field, value, system, observed-at — can tell the operator that UCPath returned four people. It is a `needs:`, not a nice-to-have |
 
@@ -86,17 +86,17 @@ there either.
 
 ### Where it sits in the order
 
-**The cooperation track follows closed 3C.** D325 makes the part order 3A, 3B, 3C, 3D. The generic
+**The cooperation track follows closed 3.3.** D326 makes the part order 3.1, 3.2, 3.3, 3.4. The generic
 surfaces, closed Separations authority and accepted workflow compiler must all be reconciled before a
 second actor becomes Phase 3's final proof client.
 
 **Before the migrations lean on it.** R10's end-to-end tier (T4) is defined as *"an agent-operated run
 of MANY dry-run scenarios in parallel"* — the agent in that sentence is this track's, and the tool
 surface it drives is `{#claude-mcp}`'s. `{#test-tiers}`' T4 line names this node for that reason.
-There is no circularity: 3C Task 4 owns only T1–T3 and the coverage floor. 3D Task 4 owns T4 after
+There is no circularity: 3.3 Task 6 owns only T1–T3 and the coverage floor. 3.4 Task 5 owns T4 after
 the MCP, monitoring and multi-client seams exist.
 
-**It is an organizational prerequisite, not a new write-safety gate.** D325 places it before Phase 4
+**It is an organizational prerequisite, not a new write-safety gate.** D326 places it before Phase 4
 and makes its proof the Phase 3 close. The runtime remains safe without a Claude client; this part
 proves the promised cooperation surface and attribution before later workflow coordinators rely on it.
 
@@ -287,7 +287,7 @@ drives a browser — Claude already has `playwright-cli` for live verification, 
 put a second, unattributed path to a real HR system beside the one this whole program exists to make
 safe.
 
-## Task 3A · Add cursor-based monitoring and the actor inbox
+## Task 3 · Add cursor-based monitoring and the actor inbox
 <!-- roadmap: claude-monitor -->
 
 <!-- roadmap-status: claude-monitor -->
@@ -335,7 +335,7 @@ report and an agent that can help.
 gap will summarize a degraded stream as a healthy one, and the operator's whole reason for having a
 second watcher is that it tells them when watching stopped working.
 
-## Task 3B · Make existing clients actor-aware
+## Task 4 · Make existing clients actor-aware
 <!-- roadmap: claude-clients -->
 
 <!-- roadmap-status: claude-clients -->
@@ -380,7 +380,7 @@ here is how to start one. In a checkout that sentence names `npm run dashboard`;
 must not, for `doc 06`'s reason — telling an operator to run npm inside an app with no terminal is
 telling them to do something they cannot do.
 
-## Task 4 · Prove attributed cooperation and close Phase 3
+## Task 5 · Prove attributed cooperation and close Phase 3
 <!-- roadmap: claude-proof -->
 
 <!-- roadmap-status: claude-proof -->
@@ -390,7 +390,7 @@ telling them to do something they cannot do.
 - [ ] a deliberate conflict — operator and claude acting on one run version — refused by name on both sides, with neither client reporting success
 - [ ] the web dashboard, a second browser tab and Claude are attached during the run; one BFF and one journal are proved from the lock files
 - [ ] the result recorded durably the way every dry-run scenario is (R10) — an evidence row plus a dated line here
-- [ ] T4's first agent-operated journey is green, Phase 3 authorities are reconciled, and every 3D worktree/branch/task row is closed
+- [ ] T4's first agent-operated journey is green, Phase 3 authorities are reconciled, and every 3.4 worktree/branch/task row is closed
 > 2026-08-21 | docs-cohesion R15 | nothing built; the T4 runner this becomes is `{#test-tiers}`' and no workflow has a T1 pair at HEAD, so the first proof is ONE scenario rather than the parallel tier
 <!-- /roadmap-status -->
 

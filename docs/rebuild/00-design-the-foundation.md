@@ -1,8 +1,8 @@
 # 00 · Phase 0 — design the foundation
 
-This doc is the dedicated home of **Phase 0**, tree node `{#phase-0}`: what it designed, how it
-ended, and which of its contracts no longer bind. Phase 0 wrote no runtime code by policy — its
-product is the design every later phase implements — so the contracts themselves live in
+This doc is the dedicated home of **Phase 0**, tree node `{#phase-0}`: what historical Parts 0.1–0.2
+designed, which contracts no longer bind, and the reopened 0.3 authority-design work. Phase 0 writes
+no runtime code by policy — its product is the design every later phase implements — so the contracts themselves live in
 `reference/` and this doc is the record of the design ACT, never a second copy of them.
 
 ## Phase summary
@@ -16,7 +16,9 @@ product is the design every later phase implements — so the contracts themselv
 - [x] the **size model + MUST / SHOULD / LATER delivery tiers** (**D76**), which the tree's `size:` attribute still carries item for item (§Size model + delivery tiers)
 - [x] the operator ratified isolated coexistence (**D88**), **ONE all-at-once cutover** (**D89**), legacy change accounting (**D90**/**D94**), the testing policy (**D91**) and the deferred probe gates (**D92**)
 - [x] the rebuild's ADDRESS settled (**D93**): its own repository, seeded 2026-07-31 from `hr-automation@5879004`
-- [x] Phase 0 is DONE and nothing inside it is open; **six** of its contracts have since been amended and **two** of its promises are still unbuilt — both lists are below, with owners
+- [x] historical Parts **0.1–0.2** are complete; their evidence and later amendments remain intact
+- [ ] **0.3** is reopened by D326/D327: design one run-record authority, one settings catalog/root, their migration and recovery rules, and exact implementation briefs before 1.6 changes code
+> 2026-09-03 | D326/D327 authority reset | 0.3 is the earliest active part. This planning reconciliation did not implement either authority; the runtime phase marker therefore remains historical until the 0.3→1.6→2.6→3.1 chain completes
 > 2026-08-21 | docs-cohesion 00 | verified against reference/decisions.md rounds 1–12, reference/charter.md items 1–27, reference/write-safety.md §14, src/cli.ts, vitest.config.ts:39-43, config/legacy-capabilities.json (78 entries) and every size attribute in docs/roadmap/roadmap.md; left: nothing in Phase 0 itself — the amendments and the two unbuilt promises are recorded below and every one of them is owned elsewhere
 <!-- /roadmap-status -->
 
@@ -93,7 +95,11 @@ does not have to discover it in Phase 3.
 | **`scaffold new-task` / `scaffold new-workflow` are part of the base** — contract skeleton, impl stub, example, scenario stubs and store registration, each with `TODO` markers that fail their guards until filled, because *"the declaration toil is only acceptable if the boilerplate is generated"* | **D79**'s ratified trims; normative text `ref:task-contract` §2.7 | **Not built.** No scaffold command, generator or flow exists in this tree — `src/cli.ts` registers exactly five composers (dashboard · worker · explain · ocr · storage) and there is no code-emitting path anywhere else. The **`new-workflow`** half IS owned: the operator's 2026-08-20 ruling folds the authoring path into `{#def-explorer-edit}` (`04-close-the-deferrals.md`). The **`new-task`** half has **no node owner today** — reported here, not assigned by this doc |
 | **`cli test workflow <id> --dry-run` through the real kernel, plus a typed `TestTargetRegistry`** of test employees, files and sacrificial documents with usage rules | **D85** (round 8); normative text `ref:guards-and-tests` §10 | **Built under R10's ratified names.** `config/test-subjects.json` is the typed label registry (sensitive EIDs resolve only through `src/domain/secrets.ts`), `dry_run_scenario_results` is the insert-only authority evidence, and `npm run cli -- dry-run-scenario <workflow> --subject <label>` is the real-kernel entry point. A gone/unknown subject records `blocked` before browser composition; the first honest finalization canary is date-blocked until 2026-08-28 |
 
-## The base's dependency graph
+## 0.1 · Product charter and safety boundaries
+<!-- roadmap: phase0-charter -->
+
+### Task 1 · Fix the charter and authority boundary
+<!-- roadmap: phase0-charter-boundary -->
 
 This section is a **design artifact**, not a node: it is the picture Phase 0 drew of the build
 order, and it carries no `<!-- roadmap: -->` tag because no single tree node owns it. `{#phase-1}`
@@ -212,7 +218,7 @@ Review, and Edit Data surfaces land in the same end-to-end slice, so Phase 3 wor
 proven ingest contract rather than inventing one mid-migration. _As built: all four stores exist at
 `src/stores/{extraction,normalization,ocr,roster}/` and 2h closed 2026-08-09._
 
-## ALWAYS-GATE identity approval
+### Task 2 · Design separation identity authority
 <!-- roadmap: phase0-always-gate -->
 
 <!-- roadmap-status: phase0-always-gate -->
@@ -271,7 +277,31 @@ gate has no checkpoint, so a task declaring one as a dependency was structurally
 **D203** taught the reader to resolve a `gate_results` row, and the receipt kept saying `unknown`
 until **D204** did the same one surface further out.
 
-## Size model + delivery tiers
+## 0.2 · Delivery governance and plan structure
+<!-- roadmap: phase0-governance -->
+
+### Task 1 · Establish the one-plan and ownership rules
+<!-- roadmap: phase0-plan-governance -->
+
+The roadmap tree, admitted phase docs, reference specs, and decision pointer form one plan with
+non-overlapping ownership. A decision lands in its owning contract in the same commit as its pointer,
+and `npm run roadmap:check` proves the generated site is not a second editable plan.
+
+### Task 2 · Fix the spine order and deferred proof gates
+<!-- roadmap: phase0-build-order -->
+
+D74 narrowed the spine to the minimum base plus a real live exit and retained the omitted work as
+Phase-2 tails. D92 requires every deferred live probe to keep an owner, its required evidence, and
+the point that resolves it.
+
+### Task 3 · Prove executable feasibility and record the gate baseline
+<!-- roadmap: phase0-feasibility -->
+
+The feasibility spike tested the highest-risk type/storage assumptions without pretending to be
+implementation. The historical gate baseline recorded every failure honestly and later decisions
+name each changed gate.
+
+### Task 4 · Fix the size model and delivery tiers
 <!-- roadmap: phase0-size-model -->
 
 <!-- roadmap-status: phase0-size-model -->
@@ -371,6 +401,57 @@ _As built: every trim above held, and the last sentence did not. The generators 
 also outlived its own phase — **D186** reassigned the workflow editor's edit half on D79a's argument
 one level down, and `{#deferred}`'s standing "never, by design" list still names DSL/codegen workflow
 authoring._
+
+## 0.3 · Redesign single-source runtime authority
+<!-- roadmap: phase0-authority-reset -->
+
+This is the reopened design part and the next-session starting point. It changes no runtime code.
+Its job is to finish the contracts that 1.6 will implement: one SQLite-backed run-record service is
+the lifecycle authority for queued, current, terminal, archived, and tombstoned runs; one catalog
+and one protected `.tracker/settings/` root own operator-managed local configuration. Provider API
+keys remain the sole `.env` class. Host observations such as D324's primary-display probe remain
+catalogued defaults rather than being copied into a second persisted authority.
+
+### Task 1 · Define the canonical run-record authority
+<!-- roadmap: phase0-run-authority-design -->
+
+- [ ] Define stable run identity and typed create/read/update/delete, claim, retry, archive, relaunch,
+  purge, and compare-and-swap transitions.
+- [ ] Keep spans, logs, receipts, captures, and artifacts append-only evidence linked to the run;
+  none may decide whether the run exists or what lifecycle state it occupies.
+- [ ] Adopt D308's terminal-only physical deletion behind an insert-only tombstone; define queue
+  ordering, first-eligible claim, evidence retention, and direct-table adapter boundaries.
+
+### Task 2 · Define the canonical settings catalog and root
+<!-- roadmap: phase0-settings-authority-design -->
+
+- [ ] Enumerate every leaf once with schema, default, editability, sensitivity, restart scope, and
+  owning consumer.
+- [ ] Supersede D321's single-file layout with one protected `.tracker/settings/` directory while
+  retaining its state-root/database-journal coupling; move username, password, timekeeper identity,
+  local canary inputs, overrides, timeouts, paths, and worker defaults there.
+- [ ] Keep only provider API keys in `.env`; preserve D324's host-derived display as a catalogued
+  default; expose protected values through write-only inputs and presence/revision readback.
+
+### Task 3 · Design migration, compatibility, and recovery
+<!-- roadmap: phase0-authority-migration-design -->
+
+- [ ] Define an idempotent upgrade from existing SQLite rows, `settings.json` sidecars, `.env`
+  leaves, and local canary inputs without copying provider API keys or erasing run evidence.
+- [ ] Require an explicit verified `cli storage backup` before the upgrade, then use a transactional
+  migration journal and rollback; do not restore the automatic backup cadence retired by D322.
+- [ ] Name temporary adapters, mixed-generation refusals, read-forward rules, and deletion tests.
+
+### Task 4 · Close design and issue implementation briefs
+<!-- roadmap: phase0-authority-design-close -->
+
+- [ ] Adversarially review identity, concurrency, recovery, redaction, permissions, and migration.
+- [ ] Land every decision in its owning reference contract and `reference/decisions.md` pointer.
+- [ ] Bind each 1.6 task to one implementation seam and gate; prove 2.6 and 3.1 consume the contracts
+  without redesigning them.
+
+0.3 closes only when every checkbox above has durable evidence. The execution order after it is
+**1.6 implementation → 2.6 downstream revalidation → reopened 3.1 dashboard completion**.
 
 ## Decisions this phase ratified
 

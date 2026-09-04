@@ -1,11 +1,11 @@
-# 03b · Phase 3b — finish separations
+# 03.2 · Phase 3.2 — finish separations
 
 Phase 3 proves the reusable dashboard/workflow platform with Person Lookup and Separations.
-**Phase 3b is the first write workflow**: Separations, former order 8, chosen deliberately as the
+**Phase 3.2 is the first write workflow**: Separations, former order 8, chosen deliberately as the
 hard entry because a large multi-system workflow forces the store task libraries into existence
 for later admitted workflows (D193). This doc carries Phase 3's own tree node `{#phase-3}` and the
-whole Separations subtree. Under D325, **3A** closes first, this **3B** coordinator then owns the
-numbered Separations tasks, **3C** follows with authoring and acceptance, and **3D** closes Phase 3
+whole Separations subtree. Under D326, **3.1** closes first, this **3.2** coordinator then owns the
+numbered Separations tasks, **3.3** follows with authoring and acceptance, and **3.4** closes Phase 3
 with Codex/Claude cooperation. D319 leaves every other workflow unnumbered until the operator
 verifies and approves its admission packet.
 
@@ -56,13 +56,13 @@ saw. The decisions live in `reference/decisions.md`.
 > 2026-09-01 | R1 u1 stop | D300 admission green; current Action List search for 4537 failed `DOCUMENT_NOT_IN_ACTION_LIST` before S7/gate/write. Run `325cd998…` / trace `sp-142939-325c`, failure `b5f34a55…`, exact-run 0/0/0, write state not-attempted (§9.33). Registry row now `gone`; no replacement chosen; all three commits remain open
 <!-- /roadmap-status -->
 
-**D325 execution shape.** Tasks 1A–1C are the independent read-store wave, Tasks 2A–2B are the
-independent write-store wave, Tasks 3–6 compose, preview, and repair the workflow in order, Tasks
-7A–7C close the backend, dashboard, and workflow-layout seams in dedicated worktrees, and Task 8
-consumes the operator's live-write prerequisites and records the final Separations evidence. A
-same-number letter suffix means parallel supervisor sessions, not sub-steps inside one session.
+**D326 execution shape.** Tasks 1–5 build the independent read/write store seams, Tasks 6–9
+compose, preview, and repair the workflow in order, Tasks 10–12 close the backend, dashboard, and
+workflow-layout seams, and Task 13 consumes the operator's live-write prerequisites and records the
+final Separations evidence. Any parallelism is recorded with exact isolation and integration order
+in the coordinator run plan; task labels remain plain consecutive numbers.
 
-### What Phase 3b is, and why separations went first
+### What Phase 3.2 is, and why separations went first
 
 **The entry was an operator choice, made 2026-08-12 and ratified as D193.** The seven-step loop has
 always left *which workflow goes first* to the operator, and the reasoning behind this answer is the
@@ -426,7 +426,7 @@ read-back.
 Kuali action list's person column; that column is the SUBMITTER, and the document's own subject is a
 different person (§9.19 §1). A record that names the wrong person is one nobody can act on.
 
-### Task 1A · Build the New Kronos timecard read
+### Task 1 · Build the New Kronos timecard read
 <!-- roadmap: sep-1 -->
 
 <!-- roadmap-status: sep-1 -->
@@ -462,7 +462,7 @@ were unreachable by any fixture and are the reason the rules exist:
 **What is left.** Nothing for the migration. One recorded observation stays open: §9.20 item 7's
 cold-profile first-search refusal, which is a driver-owner question rather than a separations one.
 
-### Task 1B · Build the Kuali separation-document read
+### Task 2 · Build the Kuali separation-document read
 <!-- roadmap: sep-2 -->
 
 <!-- roadmap-status: sep-2 -->
@@ -493,7 +493,7 @@ name. The two runs that FOUND the defect are permanently frozen at their pre-fix
 are left as they are, and the fix was re-proved on three fresh runs rather than by rewriting
 authority. That trade is what D199 later generalized.
 
-### Task 1C · Build UCPath employment and identity reads
+### Task 3 · Build UCPath employment and identity reads
 <!-- roadmap: sep-3 -->
 
 <!-- roadmap-status: sep-3 -->
@@ -531,7 +531,7 @@ two-candidate presentation existing on every run.
 with *"declared dependency `identity-approval` has no checkpoint record"*. The message was TRUE about
 a record that cannot exist. The fix moves the READER, never fabricates the row.
 
-### Task 2A · Build the UCPath termination write
+### Task 4 · Build the UCPath termination write
 <!-- roadmap: sep-4 -->
 
 <!-- roadmap-status: sep-4 -->
@@ -557,7 +557,7 @@ unmeasured is worth reading once: it was recorded twice as riding on the preview
 settled preview emits ONE event with no beat decomposition and **has no fence at all**, so reaching
 it could never have produced the number. It rides with the controlled commits (§9.17 item 4).
 
-### Task 2B · Build the Kuali finalization write
+### Task 5 · Build the Kuali finalization write
 <!-- roadmap: sep-5 -->
 
 <!-- roadmap-status: sep-5 -->
@@ -600,7 +600,7 @@ Under one-pass staging a conditional field would need an expectation composed fr
 prior value, which is the re-read the model forbids — so unconditional staging is the simpler AND the
 more honest form.
 
-### Task 3 · Compose the Separations workflow
+### Task 6 · Compose the Separations workflow
 <!-- roadmap: sep-6a -->
 
 <!-- roadmap-status: sep-6a -->
@@ -626,7 +626,7 @@ lets the human decide, which is right for a workflow whose product is an approve
 composition FILES a termination, so a grid it cannot reduce to ONE row is a run that cannot compute
 what it is about to write, and it refuses before the gate opens.
 
-### Task 4 · Run the composed live dry-run pass
+### Task 7 · Run the composed live dry-run pass
 <!-- roadmap: sep-6b -->
 
 <!-- roadmap-status: sep-6b -->
@@ -662,7 +662,7 @@ in the right place having started in the wrong one. Where the real path refuses 
 parked, mid-submit — the preview refuses too: *a preview that answered where the real run stops is
 the same defect from the other side.*
 
-### Task 5 · Reach and verify preview terminal
+### Task 8 · Reach and verify preview terminal
 <!-- roadmap: sep-6c -->
 
 <!-- roadmap-status: sep-6c -->
@@ -692,7 +692,7 @@ released the orphaned claim on the next boot, after which the run finished.
 measurement does not ride on the preview terminal and never could: a preview has no fence. It rides
 with the controlled commits.
 
-## Task 6 · Repair defects exposed by the live pass
+## Task 9 · Repair defects exposed by the live pass
 <!-- roadmap: platform-fixes -->
 
 <!-- roadmap-status: platform-fixes -->
@@ -735,7 +735,7 @@ none could see another's copy. The pin lives in THIS repository's gate rather th
 own lane, because `duo-autopilot/` is a hard runtime dependency and a rule pinned where
 `npm run test:coverage` cannot see it is a rule no per-commit gate checks.
 
-### Task 7A · Finish backend recovery and evidence
+### Task 10 · Finish backend recovery and evidence
 <!-- roadmap: track-a -->
 
 <!-- roadmap-status: track-a -->
@@ -813,7 +813,7 @@ profile's device binding permanently. The presented value is now `max(stored + 1
 (`duo-autopilot/src/sign-count.js`), and the runtime refuses on Duo's own rendered refusal in 9.52 s
 naming the real cause instead of burning the bound and blaming Duo hand-approval.
 
-### Task 7B · Finish Separations dashboard scenarios
+### Task 11 · Finish Separations dashboard scenarios
 <!-- roadmap: sep-dash -->
 
 <!-- roadmap-status: sep-dash -->
@@ -855,7 +855,7 @@ against the whole eight-workflow SET hash); the open run-detail panel did not fo
 evidence receipt was unreachable from a panel you had open; and one poisoned 2026-08-14 run was
 blocking every archive. None was reachable without connecting the two halves.
 
-## Task 7C · Finalize the workflow tree and T1 scaffold
+## Task 12 · Finalize the workflow tree and T1 scaffold
 <!-- roadmap: workflow-tree -->
 
 <!-- roadmap-status: workflow-tree -->
@@ -917,7 +917,7 @@ Separations, including the Kronos harness whose own HR category remains `timekee
 copy of the identity-gate nodes and import `identity-check/`'s — the functional simplification that
 required `build:manifest` regeneration.
 
-## Task 8 · Record live acceptance and close Separations
+## Task 13 · Record live acceptance and close Separations
 <!-- roadmap: operator-calls -->
 
 <!-- roadmap-status: operator-calls -->
@@ -979,17 +979,17 @@ roadmap. The bounded compiler conversion is also integrated: `d4204106` routes S
 the transitional compiler and `a40276b6` brings its equivalence/conformance proof onto the Phase 3c
 integration branch. It is intentionally not the final acceptance: doc 03c
 `{#workflow-authoring-model}` still owns D312–D317's final API/direct entries, D313 omission, D314
-recovery, four-artifact deletion, guide and T1 proof. Likewise Phase 3b remains **8 of 9** until
+recovery, four-artifact deletion, guide and T1 proof. Likewise Phase 3.2 remains **8 of 9** until
 criterion 5's controlled-write evidence is either produced or explicitly superseded by a separate
 operator decision; the compiler work does neither.
 
-**D312–D316 sharpen that handoff without reopening Phase 3b.** Separations must prove the exact
+**D312–D316 sharpen that handoff without reopening Phase 3.2.** Separations must prove the exact
 four-artifact reuse-only budget and the explicit task/parallel/delegate/gate/transaction workflow
 algebra. Its run modal must collect the complete values for a whole-step omission before start, with
 no mid-run prompt, while any separate mandatory verifier remains selected. Its failed runs expose
 checkpoint resume and root restart; root restart reruns reads/computations but validates and reuses
 completed write proof without another prepare/commit. These are Phase 3c implementation obligations.
-They neither supply nor waive Phase 3b criterion 5's controlled-write evidence.
+They neither supply nor waive Phase 3.2 criterion 5's controlled-write evidence.
 
 ## Decisions this phase ratified
 
@@ -1055,7 +1055,7 @@ write-backs' WIRE SHAPES (their `formKey`s are captured, but a `Date` gadget's m
 milliseconds, so only the real payload settles them). §4f3's `probeToFenceMaxMs` per-beat measurement
 rides with them for the reason §9.17 item 4 established: a preview has no fence.
 
-### What Phase 3c reads from this phase as met
+### What Phase 3.3 reads from this phase as met
 
 The second migration is entitled to assume all of the following, none of which depends on criterion
 5. This is the reuse D193 bought.

@@ -461,6 +461,34 @@ selected file/current/runtime authorities; no separate mutable runtime-generatio
 The previous broad-hash envelope without `lastApplied` is incompatible and refuses by contract;
 there is no implicit data conversion. Runtime-state migration needs separate authorization.
 
+### D327 — one settings catalog and protected root (planned in 0.3, implemented in 1.6)
+
+D327 supersedes the current single-file/sidecar layout and the blanket `env > settings > default`
+precedence for operator-managed non-provider-key values. One closed catalog must enumerate every
+local configuration leaf exactly once with its schema, default kind, editability, sensitivity,
+restart scope and owning consumers. One protected `.tracker/settings/` root holds its revisioned
+ordinary settings, protected credentials/local canary inputs, authority metadata, prepare/rollback
+evidence and lock/journal material. The directory remains inside the D321 state root and remains
+bound to the durable SQLite command journal; deleting `.tracker` still removes both halves.
+
+The catalog distinguishes sources rather than flattening them:
+
+- ordinary operator-managed settings persist under `.tracker/settings/` and have revision/CAS
+  updates;
+- usernames, passwords and local canary/test inputs also live there under stricter protected,
+  write-only storage and return only presence/revision metadata;
+- provider API keys are the sole values left in `.env` and retain the secure-bootstrap boundary;
+- host observations such as D324's probed primary display remain derived defaults, not persisted
+  settings, unless the operator saves an explicit override.
+
+No migrated leaf retains environment precedence as a shadow authority. Phase 0.3 must define the
+exact catalog, file split, permission/redaction model, source transition, restart semantics and
+failure recovery before implementation. The upgrade imports current admitted non-provider-key
+values once, refuses ambiguous duplicates and preserves provider API keys in place. It requires an
+explicit verified D322 `cli storage backup`; a transactional migration journal is not an automatic
+backup cadence. Phase 1.6 owns the repository, writers and core runtime resolution, Phase 2.6 owns
+downstream consumers, and Phase 3.1 owns the Settings/Setup interface.
+
 ## 4. Immutable per-run config and instance snapshot — required in Phase 1
 
 <!-- roadmap: p1-base -->

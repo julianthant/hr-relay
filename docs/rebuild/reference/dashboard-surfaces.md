@@ -3192,6 +3192,27 @@ twice. An error run that never wrote has nothing to lose.
 archived detail's 🗑 sits beside Relaunch with the same confirm. Neither is offered where the
 kernel would refuse; a refusal that reaches the wire anyway prints the kernel's own sentence.
 
+#### D327 — one canonical run-record lifecycle authority (planned in 0.3, implemented in 1.6)
+
+Every queue, current, terminal, archive, relaunch and deleted-run surface or command must resolve
+through one SQLite-backed run-record lifecycle service. That service alone decides whether a run
+exists and which lifecycle state/revision it occupies, and it alone exposes typed create/read/update/
+delete plus claim, retry, archive, relaunch, purge and compare-and-swap transitions. Direct table
+access is an infrastructure adapter detail, never an alternate application authority.
+
+D308 remains the deletion contract: physical deletion is terminal-only, journaled, tree-safe, and
+occurs behind one insert-only tombstone. Spans, notes, receipts, failures, captures, ledger facts and
+artifacts remain immutable evidence linked to stable run/session identity. They may qualify or explain
+a lifecycle state but may never reconstruct a missing lifecycle row as though that made the run
+current, archived, or deleted. A missing/malformed join fails loud or becomes an explicit doctor
+finding.
+
+This section fixes the architectural outcome, not the final schema. Phase 0.3 must still specify
+identity, ordering, CRUD/CAS semantics, projection boundaries, migration/read-forward/recovery, and
+compatibility deletion tests. Phase 1.6 implements stores, lifecycle writers and core transitions;
+Phase 2.6 migrates downstream read models and joins; Phase 3.1 consumes the service in dashboard
+journeys. None of those later parts may create a second lifecycle authority to get a surface green.
+
 #### D235 — a bulk command is N children and one vector
 
 **Operator ruling, dated 2026-08-18:** bulk commands are BUILT, and the two batch verbs are `cancel`

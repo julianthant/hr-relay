@@ -25,15 +25,17 @@ admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phas
 - The **phase docs** under `docs/rebuild/` record tasks, evidence, decisions and exit criteria.
   Phases 0-3 are `00-design-the-foundation` · `01-build-the-spine` ·
   `02-prove-writes-build-the-tails` · `03a-finish-the-dashboard` · `03b-finish-separations` ·
-  `03c-migrate-the-remaining-workflows`. D323/D325 fix the visible hierarchy and execution order: numbered phases run down
-  the roadmap spine, lettered parts run horizontally, and each part's tasks run vertically. Phase 3
-  is 3A dashboard, then 3B Separations, then 3C authoring/acceptance, then 3D Codex/Claude
-  cooperation. One coordinator owns each lettered part; each numbered task is one supervisor
-  session, and same-number lettered tasks are a parallel wave with one dedicated worktree per task.
+  `03c-migrate-the-remaining-workflows`. D326 supersedes D323/D325's split naming grammar for
+  Phases 0–3: numbered phases contain decimal parts, each part contains numbered supervisor tasks,
+  and each task contains checklist subtasks. The active order is 0.3 authority design, 1.6 authority
+  implementation, 2.6 downstream revalidation, 3.1 dashboard, 3.2 Separations, 3.3
+  authoring/acceptance, then 3.4 Codex/Claude cooperation. One coordinator owns each decimal part;
+  each numbered task is one supervisor session. Parallelism is recorded in the coordinator run plan,
+  not encoded by letter-suffixed task labels.
   Phase 4
   admits later workflows as 4A/4B/4C only after D319 verification and operator approval; Phase 5 is
   readiness plus the one cutover, and Phase 6 is the desktop app. Stable filenames stay unchanged.
-- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D264; **D131 is a retired gap —
+- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D327; **D131 is a retired gap —
   never reuse it**). A **pointer index**, not a spec: it tells you which doc owns a contract. Never
   implement from it.
 - `docs/rebuild/reference/` — the contracts, each doc owning its own; in prose **`ref <slug>`**:
@@ -206,7 +208,7 @@ checkout starts that checkout's dashboard on its own port under its own roots an
 rows above make legible and harmless. The state root NAME is not one either (D321, 2026-09-03): both
 repos use `.tracker`, a repo-relative root that never collides across checkouts, exactly as D216
 argued for `.auth`; the artifact root, lock root, ports and session namespace still differ. The
-settings authority (`settings.json` + its `.authority.json` / `.prepare.json` / `.rollback.json` /
+as-built settings authority (`settings.json` + its `.authority.json` / `.prepare.json` / `.rollback.json` /
 lock siblings) lives INSIDE the state root since D321, beside the database whose command journal
 proves it, so deleting `.tracker` removes both halves together and the next `npm run dashboard`
 regenerates the root, a fresh migrated database and the never-applied revision-1 settings baseline.
@@ -217,6 +219,13 @@ backup` (D322 — no start/interval/drain cadence, no stale-backup alert). Isola
 exported direct-`const` `defineRuntimeIsolation` call that `src/cli.ts` consumes in the declared
 exported `runCli` runner. The secure environment bootstrap is that runner's sole production invoker;
 an identifier mention, another function, or direct module execution is not proof.
+
+D327 plans the replacement without claiming it built: 0.3 must design one run-record lifecycle
+service and one settings catalog/protected `.tracker/settings/` root; 1.6 implements them, 2.6
+revalidates downstream consumers, and 3.1 finishes the dashboard. Provider API keys remain the sole
+`.env` class; credentials and local canary inputs move under the protected settings root; D324's
+host display stays a derived default. The D321 state-root/journal coupling, D308 terminal-only
+delete/tombstone semantics, and D322 explicit-only backup rule remain binding.
 
 ## Live verification — standing pre-authorization (always available, never ask)
 
@@ -333,8 +342,8 @@ environment-supplied.
 ## Conventions
 
 - **2026-09-03 — roadmap task names are full hierarchy paths in the UI.** The generator derives visible
-  task labels from the plan hierarchy (`3A.1`, `3B.1A`, `3C.3A.1`) instead of exposing a mix of local,
-  legacy and absent prefixes. Source headings, node ids, anchors and D325 execution labels remain the
+  task labels from the plan hierarchy (`0.3.1`, `1.6.4`, `3.1.15`) instead of exposing a mix of local,
+  legacy and absent prefixes. Source headings, node ids, anchors and D326 execution labels remain the
   authority; this is a deterministic presentation name only.
 
 - **2026-09-03 — the roadmap site is a desktop master-detail operations map.**
@@ -347,17 +356,16 @@ environment-supplied.
   `tests/unit/roadmap/roadmap-ui.test.ts`, then run `npm run roadmap` and `npm run roadmap:check` after
   every renderer change.
 
-- **2026-09-03 — Phase 3 task labels are execution authority, not decoration (D325).** Run 3A, then
-  3B, then 3C, then 3D; one coordinator owns each part, and every immediate numbered task is one
-  supervisor session. Same-number lettered tasks are one parallel wave only when they are genuinely
-  independent. Before dispatch, bind every parallel task to its own exact branch and absolute
-  worktree and record integration order in the coordinator ledger; the roadmap carries the portable
-  wave label, not a guessed machine path. Operator choices and live authorization remain `needs:`
-  on the task they unblock.
+- **2026-09-03 — Phases 0–3 share one decimal execution hierarchy (D326).** Run 0.3, 1.6, 2.6,
+  3.1, 3.2, 3.3, then 3.4; one coordinator owns each part, and every immediate numbered task is one
+  supervisor session. Before parallel dispatch, bind each independent task to its own exact branch
+  and absolute worktree and record integration order in the coordinator ledger; parallelism is an
+  execution fact, not a second label grammar. Operator choices and live authorization remain
+  `needs:` on the task they unblock.
 
-- **2026-09-03 — the roadmap is an outcome hierarchy, not a session journal (D323).** Only numbered
-  phases sit on the vertical spine; each phase's lettered parts run horizontally and each part's
-  concrete tasks run vertically beneath it. Phase 4 holds admitted workflow migrations as
+- **2026-09-03 — the roadmap is an outcome hierarchy, not a session journal (D323/D326).** Only numbered
+  phases sit on the vertical spine; Phases 0–3 use decimal parts and numbered tasks beneath them.
+  Phase 4 retains admitted workflow migrations as
   4A/4B/4C, Phase 5 holds readiness and cutover, and Phase 6 holds desktop delivery. Working-session
   history belongs in node `log:` drawers and never becomes a spine marker.
 

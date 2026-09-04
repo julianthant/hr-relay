@@ -11,7 +11,9 @@ what is left, its exit criteria; contracts it built live in `reference/`.
 - [x] all five work-item nodes landed and are still the shape the code has: `p1-base` (07-31) · `p1-authority` (08-01) · `p1-kernel` (08-02→03) · `p1-spine` (08-04) · `p1-exit` (08-04)
 - [x] the three presentation defects the live run exposed were closed the SAME day — D123 skipped-arm, D124 terminal duration, D126 accessible-name channel
 - [x] the one liveness defect it exposed was root-caused and fixed — a dead CRM session cost 262.9 s to surface → `timeouts.sessionAcquireMs` (D125)
-- [x] every Phase-1 hard exit criterion is MET (§Exit criteria), and no later phase re-opened a Phase-1 contract — later work AMENDED spine surfaces (D144, D214, D218, D253) without moving the contracts
+- [x] historical Parts **1.1–1.5** and their original exit criteria remain evidenced
+- [ ] **1.6** waits for 0.3, then implements the canonical run/settings authorities and migrates only lifecycle/configuration writers plus core runtime consumers; 2.6 owns downstream read models and 3.1 owns dashboard behavior
+> 2026-09-03 | D326/D327 authority reset | reopening 1.6 does not invalidate the live spine proof; it prevents Phase 2/3 consumers from continuing on authorities 0.3 is about to supersede
 - [ ] residuals that trace back to spine contracts, all owned in LATER nodes — `src/dashboard/state/` never built its cache half (Track D row D6) · five of six stream topics have no producer and the notes stream has no emitter (`{#track-c}` / `{#observed-logs}`) · `ref:dashboard-surfaces` §3.2's three declaration shapes unimplemented · D71's type BUDGET unmeasured
 > 2026-08-29 | D75 authority close | verified one BFF request-identity checkpoint and pre-effect command attribution matching; left: nothing IN this phase — every open line above is a named residual whose owner is a later node
 <!-- /roadmap-status -->
@@ -86,7 +88,7 @@ should not have to discover them in Phase 3:
 
 None of these blocks a phase, and none is a waiver: each names where it is owned.
 
-## 1a · 1b — guards, baselines, the strict domain leaf
+## 1.1 · Guardrails and strict domain
 <!-- roadmap: p1-base -->
 
 <!-- roadmap-status: p1-base -->
@@ -103,7 +105,8 @@ None of these blocks a phase, and none is a waiver: each names where it is owned
 
 <!-- /roadmap-status -->
 
-### 1a — the guard lane lands before the source it guards (COMPLETE 2026-07-31)
+### Task 1 · Land guardrails and baselines (COMPLETE 2026-07-31)
+<!-- roadmap: p1a-guards -->
 
 **The order is the point.** With no rebuild source yet, 1a extracted the shared walk/allowlist
 helpers as a zero-count-change commit, then landed the reviewed guard inventory, the D58 capability
@@ -136,7 +139,8 @@ simplified by **D191** — `npm run test:coverage` is a strict superset of the e
 with D93, the `rebuild:` runtime prefix with D247. Those are command-name changes; the lane itself
 is 1a's.
 
-### 1b — the strict domain leaf, and full coverage activation (COMPLETE 2026-07-31)
+### Task 2 · Build the strict domain leaf (COMPLETE 2026-07-31)
+<!-- roadmap: p1a-domain -->
 
 **What landed.** Closed and branded ids; canonical JSON, absence and boundary types; the injectable
 `Clock`; strict config resolution over `env > settings.json > default` with provenance and a
@@ -178,7 +182,7 @@ and secret prerequisite coverage; adversarial ratchet fixtures; and no open deci
 `vitest.config.ts:40-41` is still the 1a value (60 global / 80 safety-critical); R10's raise to a
 global 80 is planned under `{#test-tiers}` and is not landed.
 
-## 1c · 1d · 1e — authority storage, UI registry + drivers, the workflow DAG
+## 1.2 · Durable authority and workflow model
 <!-- roadmap: p1-authority -->
 
 <!-- roadmap-status: p1-authority -->
@@ -199,7 +203,8 @@ global 80 is planned under `{#test-tiers}` and is not landed.
 
 <!-- /roadmap-status -->
 
-### 1c — authority storage, recovery, and the command/write type shell (COMPLETE 2026-08-01)
+### Task 1 · Build durable storage and recovery (COMPLETE 2026-08-01)
+<!-- roadmap: p1b-storage -->
 
 **What landed.** The private native `node:sqlite` authority adapter; the exact authority/projection
 registry and the immutable migration chain; savepoint-correct generation accounting; a
@@ -235,7 +240,8 @@ back all rows and the generation; no untyped command / proof / gate / notificati
 and the active `storage-recovery`, `permanent-key-dedupe`, `recovery-negative-proof-settlement` and
 `atomic-write-outbox` guards.
 
-### 1d — the semantic UI registry, typed drivers, task and store contracts (COMPLETE 2026-08-01)
+### Task 2 · Build store, task, and driver contracts (COMPLETE 2026-08-01)
+<!-- roadmap: p1b-contracts -->
 
 **What landed.** The full legacy selector port map with pinned commit and blob provenance; the
 server-only closed recipe registry; the recipe-free generated `ui-catalog.json` and per-system
@@ -260,7 +266,8 @@ requiring a provider declaration and an infra adapter; the effect / capability /
 observation or recipe carrying both a fixture and a read-only live evidence ref bound to the same
 port-map row.
 
-### 1e — the workflow DAG, delegation, completion and the descriptor (COMPLETE 2026-08-01)
+### Task 3 · Build the workflow definition model (COMPLETE 2026-08-01)
+<!-- roadmap: p1b-workflow-model -->
 
 **It began with a real-scale type-inference proof, deliberately.** The deleted spike covered two
 effects and three linear steps. The replacement compiles a representative 15–25-node graph with
@@ -302,8 +309,21 @@ pairing MET; the descriptor projection matrix MET; and the executable per-branch
 scenarios MET — with `dry-run` and `subject-mismatch` correctly booked as executor behaviours,
 pinned as 1f obligations and re-pointed at a real run there.
 
-## 1f — registry, workers, commands, the write sequencer
+## 1.3 · Execution kernel and write safety
 <!-- roadmap: p1-kernel -->
+
+### Task 1 · Build registry, workers, and command admission
+<!-- roadmap: p1c-execution -->
+
+Owns the workflow composition root, plan admission, queue claim/heartbeat/retry, provider budgets,
+failure/result authority, and exhaustive command dispatch.
+
+### Task 2 · Build sequenced write authority
+<!-- roadmap: p1c-write-safety -->
+
+Owns probe → prepare → binding proof → fence → commit → proof → atomic authority publication.
+
+### Historical combined implementation record
 
 <!-- roadmap-status: p1-kernel -->
 - [x] the ONE `WORKFLOW_MODULES` composition root above workflows — every registry derives from that single tuple (`src/control/workflow-registry.ts`)
@@ -386,7 +406,7 @@ answers `capability-unavailable` (D235). And
 the planner, reported to the operator as unimplemented — filed in `ref:dashboard-surfaces` §2.4
 rather than fixed in a docs pass.
 
-## 1g-spine · 1i-spine — spans, the ONE projection, the BFF, the Person Lookup shell
+## 1.4 · Projection, BFF, and operator shell
 <!-- roadmap: p1-spine -->
 
 <!-- roadmap-status: p1-spine -->
@@ -407,7 +427,8 @@ rather than fixed in a docs pass.
 
 <!-- /roadmap-status -->
 
-### 1g-spine — span emission and the ONE projection (COMPLETE 2026-08-04)
+### Task 1 · Build spans and the shared projection (COMPLETE 2026-08-04)
+<!-- roadmap: p1d-projection -->
 
 **Only the slice the queue surface reads.** Strict spans and notes on the executor's paths, and the
 single server-side run/queue projection every surface renders from, served by the in-process typed
@@ -443,7 +464,8 @@ structural.
 the one-projection guard; and the run/task identity `(runId, attempt, spanPath)` plus worker/browser
 identity `(workerId, spanPath)`.
 
-### 1i-spine — the four parity surfaces (COMPLETE 2026-08-04)
+### Task 2 · Build the BFF and first operator shell (COMPLETE 2026-08-04)
+<!-- roadmap: p1d-shell -->
 
 **The exact Person Lookup capability slice inside the approved full shell** — not four approximate
 legacy components. Queue Panel rows with their three row types and eight statuses; run and member
@@ -493,8 +515,11 @@ and three surfaces bypass it. And the artifact resource schemas have no route se
 owned: `{#observed-logs}`, `{#track-c}`, `ref:dashboard-surfaces` §1.3, **Track D row D6**, and
 `{#def-byte-path}` respectively.
 
-## Phase 1 exit — the live run
+## 1.5 · Live foundation proof
 <!-- roadmap: p1-exit -->
+
+### Task 1 · Prove one real workflow on the spine
+<!-- roadmap: p1e-live-proof -->
 
 <!-- roadmap-status: p1-exit -->
 - [x] the exit test RAN and passed (D74, 2026-08-04): `person-lookup` against real UCPath + CRM on the new executor — run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, EID `10873698`, terminal `done` at attempt 2
@@ -523,6 +548,64 @@ loud and never retrying.
 speed and wall-clock observations and the failure-latency root cause are the first bullet of
 §Exit criteria below, where the plan wrote them. `ref:workflow-model` §8 is the person-lookup worked
 example and §8.1 is its as-built, recording the five deltas this run forced.
+
+## 1.6 · Implement canonical run and settings authorities
+<!-- roadmap: p1-authority-implementation -->
+
+This reopened implementation part waits for 0.3's approved contracts. It does not redesign the
+authority model and does not own Phase-2 downstream read models or Phase-3 dashboard presentation.
+Its scope is the stores, migrations, lifecycle/configuration writers, core runtime consumers, and
+their deletion tests.
+
+### Task 1 · Implement the canonical run-record service
+<!-- roadmap: p1f-run-store -->
+
+- [ ] Add the canonical schema/migration and one repository API for lifecycle CRUD/CAS operations.
+- [ ] Prove concurrent ordering, claim, retry, archive, relaunch, and tombstone invariants.
+- [ ] Pin contract/property tests that fail against each displaced lifecycle authority.
+
+### Task 2 · Implement the settings catalog and protected root
+<!-- roadmap: p1f-settings-store -->
+
+- [ ] Add the one leaf catalog and revisioned protected repository under `.tracker/settings/`.
+- [ ] Move operator-managed local configuration out of `.env`; leave provider API keys there.
+- [ ] Preserve host-derived defaults, protect credentials/local canary inputs, and prove permissions,
+  symlink refusal, redaction, restart scope, and concurrent updates.
+
+### Task 3 · Cut over executor and worker lifecycle writers
+<!-- roadmap: p1f-run-writers -->
+
+- [ ] Route start/fan-out publication, claim, heartbeat, executor transitions, retry scheduling, and
+  terminal publication through the run service without changing stable run/session/evidence identity.
+- [ ] Guard or remove direct core-runtime lifecycle writes outside the service.
+
+### Task 4 · Cut over operator run commands and archive/delete writers
+<!-- roadmap: p1f-run-commands -->
+
+- [ ] Route CLI/dashboard start, retry, cancel, rename, archive, relaunch, D308 terminal-only
+  delete/tombstone, bulk, and purge commands through the run service.
+- [ ] Prove typed settlements, idempotence, stale CAS, worker races, and relaunch lineage.
+
+### Task 5 · Cut over settings mutation and runtime resolution
+<!-- roadmap: p1f-settings-consumers -->
+
+- [ ] Route secure bootstrap, workers, browser/login, workflow defaults, and preflight inputs through
+  the catalog; leave Settings UI behavior to 3.1.
+- [ ] Add revision/CAS updates, validation, restart-required reporting, and protected write-only input.
+
+### Task 6 · Prove upgrade, rollback, recovery, and compatibility deletion
+<!-- roadmap: p1f-migration-proof -->
+
+- [ ] Require an explicit verified `cli storage backup`, then run the idempotent transactional
+  migration with journal, rollback, mixed-generation refusal, and representative evidence checks.
+- [ ] Import non-provider-key local configuration once, refuse ambiguous duplicates, and delete
+  compatibility paths only when their deletion tests turn green.
+
+### Task 7 · Close the rebuilt foundation
+<!-- roadmap: p1f-close -->
+
+- [ ] Pass targeted, full, generated, storage, live-dry-run, and adversarial authority gates.
+- [ ] Record the migration and hand 2.6 only verified contracts, fixtures, residuals, and commands.
 
 ## Integration amendment — Phase 1's share
 

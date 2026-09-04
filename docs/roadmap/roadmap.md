@@ -1,34 +1,34 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only history kept in the detail drawer rather than on the phase spine. -->
 asOf: 2026-09-03
-head: 15fe9c34
+head: 1e02b2cb
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, D323 phase hierarchy, `00`'s size model)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
 source: `docs/plans/2026-08-20-dashboard-architecture-audit.md` (Track D) · the phase docs win on any disagreement
 footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; plan, site and owning docs move together — notation: `docs/roadmap/notation.md`.
-> The ground-up rebuild of UCSD's UCPath HR automation, as a tree. **Phases 0–2 are complete**. **Phase 3** finishes one platform through four lettered parts. **Phase 4** migrates the remaining workflows one lettered workflow at a time. **Phase 5** prepares and performs the all-at-once cutover. **Phase 6** ships the desktop application. Legacy stays the sole production authority until Phase 5's switch.
+> The ground-up rebuild of UCSD's UCPath HR automation, as a tree. Historical Phases 0–2 remain evidenced, but the authority model is deliberately reopened at **0.3** before **1.6** implements it, **2.6** revalidates the tails, and **3.1** completes every generic dashboard function. Phase 4 migrates the remaining workflows one part at a time. Phase 5 prepares and performs the all-at-once cutover. Phase 6 ships the desktop application. Legacy stays the sole production authority until Phase 5's switch.
 
 tiles:
-- Phases complete | 0 · 1 · 2 | runtime marker `completedThrough: 2j`
-- Active | Phase 3B | finish Separations, then run 3C and 3D in order
+- Historical completion | 0.1–0.2 · 1.1–1.5 · 2.1–2.5 | evidence retained; runtime marker still reports `completedThrough: 2j`
+- Active | Phase 0.3 | redesign run and settings authority before implementation starts in 1.6
 - Next | Phase 4A | verify and approve the next workflow before migration work starts
-- Decisions | D1–D325 | D325 fixes 3A → 3B → 3C → 3D and supervisor-sized numbered tasks · D131 retired, never reused
+- Decisions | D1–D327 | D326 normalizes Phases 0–3 and reopens 0.3 → 1.6 → 2.6 → 3.1 · D327 fixes the one-source run/settings outcomes · D131 retired, never reused
 - Gates | current source authority | open the active part for exact completion evidence and remaining gates
 - !Critical-path blocker | Separations controlled proof | 2026-09-02: D310 implements exact-set deletion authority and requires the real filing to survive through finalization. Historical 4589 remains inspection-only; select the independent disposable target and restoration/retention disposition, then rehearse and obtain explicit live-run authorization
 
 <!-- roadmap:start -->
 
-## Foundation design {#phase-0}
+## Phase 0 · Design the foundation {#phase-0}
 phase: Phase 0
-status: done
-when: 2026-07-31 | seeded from legacy @5879004
+status: active
+when: 2026-07-31 historical · reopened 2026-09-03 at 0.3
 size: M
-chip: complete
+chip: 0.1–0.2 evidenced · 0.3 active
 doc: 00 §Phase summary · 05 §Stage summary · ref:charter · ref:decisions
-open: no
+open: yes
 
-> Every reference spec reconciled through Round 12 (D1–D94); testing policy ratified; the all-at-once cutover (D89/D93) and the two-repo model ratified; the separations identity gate designed here, not at order 8 (D77).
+> Historical Phase 0 fixed the charter, safety boundary, plan ownership, delivery model, and cutover shape. D326 reopens design only at 0.3 so the run and settings authority model is decided before implementation work can override Phase 1 and Phase 2 foundations.
 
 builds:
 - [x] DOCS the plan SSOT — fourteen reconciled design docs, each owning its contracts (the shelf is now `00`–`05` + `reference/`, D263)
@@ -38,13 +38,36 @@ builds:
 - [x] DOCS two-repo coexistence + one cutover (D88–D94)
 
 log:
+- 2026-09-03 | D326/D327 authority reset | 0.1–0.2 keep their completed evidence. 0.3 is the earliest active subphase and owns the run-record and settings authority contracts, migration boundary, recovery model, and implementation briefs; no runtime code changes until it closes
 - 2026-08-25 | test-tiers | Phase 0 remains DONE; of its two later-unbuilt promises, D85 is now built under R10's `cli dry-run-scenario` + `config/test-subjects.json` + durable-result names. D79's scaffold generators are the one remaining promise (new-workflow owned by `def-explorer-edit`, new-task unowned and reported)
 - 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
 
-### Separation identity authority {#phase0-always-gate}
+### 0.1 · Product charter and safety boundaries {#phase0-charter}
+status: done
+date: 2026-07-31
+doc: 00 §Phase summary · 00 §0.1 · Product charter and safety boundaries · ref:charter · ref:write-safety §1
+
+> Fix the product purpose, fail-loud safety boundary, one-cutover rule, repository isolation, and the identity-authority model before implementation.
+
+builds:
+- [x] DOCS product charter and operator non-negotiables
+- [x] DOCS fail-loud write-safety boundary and one all-at-once cutover
+- [x] DOCS two-repository coexistence and rollback authority
+- [x] DOCS separation identity authority
+
+#### 1 · Fix the charter and authority boundary {#phase0-charter-boundary}
+status: done
+doc: 00 §Phase summary · ref:charter · ref:write-safety §1
+
+builds:
+- [x] DOCS name the legacy runtime as sole production authority until cutover
+- [x] DOCS require failures and unknown outcomes to remain visible rather than defaulted
+- [x] DOCS keep design, implementation, proof, and operator authorization distinct
+
+#### 2 · Design separation identity authority {#phase0-always-gate}
 status: done
 date: D77 → D309 · ref write-safety §14
-doc: 00 §ALWAYS-GATE identity approval · ref:write-safety §14 · ref:write-safety §14.1 · ref:write-safety §14.3 · ref:write-safety §14.9 · ref:workflow-model §4
+doc: 00 §Task 2 · Design separation identity authority · ref:write-safety §14 · ref:write-safety §14.1 · ref:write-safety §14.3 · ref:write-safety §14.9 · ref:workflow-model §4
 
 > Current D309: an independently supplied EID proceeds only after exact UCPath read-back; any name-resolved EID requires the real operator gate regardless of similarity. Historical D77 designed the unconditional predecessor.
 
@@ -52,42 +75,150 @@ log:
 - 2026-09-02 | D309 | operator correction ratified in ref write-safety §14.12: source-conditioned authority supersedes D77's trigger; machine verification creates no human result, while every name-resolved identity uses the existing typed gate
 - 2026-08-21 | docs-cohesion 00 | the design D77 wrote here is BUILT and live-proved (D202, separations chunk 3, first live gated run 2026-08-12) and four decisions have moved it since — D203 a gate row IS a dependency's evidence, D204 the receipt derives from it, D211 the packet carries the write plan so a date that moves re-opens the gate, D226 all three ceremonies exist. §14.7's two deferred values were ANSWERED at the separations questionnaire on 2026-08-12 (freshness 4 hours; the I-9 packet question out of scope) while `ref write-safety` §14.7 still reads as open — a finding for that doc's unit, not fixed here. Left: §14.4's manual-EID arm is built narrower than designed (no second live read in that chunk)
 
-### Size model + delivery tiers {#phase0-size-model}
+### 0.2 · Delivery governance and plan structure {#phase0-governance}
 status: done
-date: D76 · doc 00 §Size model + delivery tiers
-doc: 00 §Size model + delivery tiers · ref:task-contract §2.7
+date: 2026-07-31 → 2026-09-03
+doc: 00 §0.2 · Delivery governance and plan structure · ref:task-contract §2.7
+
+needs:
+- phase0-charter
+
+> Fix the one-plan rule, ownership boundaries, phase order, delivery tiers, and the unit by which work may be dispatched and proven.
+
+builds:
+- [x] DOCS one-plan rule and contract ownership map
+- [x] DOCS size model and delivery tiers
+- [x] DOCS visible phase/part/task hierarchy and supervisor-sized execution units
+
+#### 1 · Establish the one-plan and ownership rules {#phase0-plan-governance}
+status: done
+doc: 00 §0.2 · Delivery governance and plan structure · ref:decisions
+
+builds:
+- [x] DOCS roadmap tree, admitted phase docs, and reference specs have non-overlapping authority
+- [x] DOCS decisions land in their owning contract with a pointer in the decision changelog
+- [x] DOCS generated roadmap site is checked against its source
+
+#### 2 · Fix the spine order and deferred proof gates {#phase0-build-order}
+status: done
+doc: 00 §0.2 · Delivery governance and plan structure · 00 §Exit criteria · ref:charter §Process
+
+builds:
+- [x] DOCS D74's narrow spine plus live exit, with the deferred tails preserved
+- [x] DOCS D92's owner, evidence, and resolution-point rule for deferred live probes
+- [x] PROOF later phases executed the order without silently dropping a deferred capability
+
+#### 3 · Prove executable feasibility and record the gate baseline {#phase0-feasibility}
+status: done
+doc: 00 §Exit criteria · ref:guards-and-tests §1
+
+builds:
+- [x] PROOF executable feasibility spike over the highest-risk type and storage assumptions
+- [x] DOCS keep feasibility evidence distinct from implementation evidence
+- [x] DOCS record the honest lint/test baseline and its later dispositions
+
+#### 4 · Fix the size model and delivery tiers {#phase0-size-model}
+status: done
+date: D76 · doc 00 §Task 4 · Fix the size model and delivery tiers
+doc: 00 §Task 4 · Fix the size model and delivery tiers · ref:task-contract §2.7
 
 > MUST (the spine) · SHOULD (Phase-2 tails) · LATER (explorer, advisories, catalog) — what may slip without invalidating the base.
 
 log:
 - 2026-08-21 | docs-cohesion 00 | D76's model is LIVE, not history — all 24 items it sized carry the same `size:` on their node today, unchanged and never re-estimated, and the five phase-level sizes agree with §Phases at a glance. All three tiers shipped whole (MUST in phases 1–2, SHOULD in 2g/2h, LATER all five in 2i BEFORE Phase 3), so the fallback shape the tiers define has never been exercised. D79's trims all held except its last sentence: the `scaffold` generators the lightweight tier was ratified with do not exist. Five nodes minted since D76 are sized in its unit and were never in its table — `dash-defaults` `duo-lease` `parallel-runs` `observed-logs` `test-tiers`
 
-## The SPINE {#phase-1}
-phase: Phase 1
-status: done
-when: 07-31 → 08-04 | five days
-size: XL
-chip: complete 2026-08-04
-doc: 01 §Phase summary · 00 §The base's dependency graph · ref:operator-trust §0 · ref:frontend-backend-integration §0 · ref:write-safety §1 · ref:write-safety §7 · ref:clock-config-secrets §5
-open: no
+### 0.3 · Redesign single-source runtime authority {#phase0-authority-reset}
+status: active
+date: 2026-09-03 → next session
+size: M
+chip: earliest start
+doc: 00 §0.3 · Redesign single-source runtime authority · ref:dashboard-surfaces §2.3 · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
 
-> The minimum base that carries one workflow end to end. **Exit (D74): person-lookup ran LIVE** against real UCPath + CRM on the new executor — run `4ebf7275` / trace `pl-000619-4ebf`, recovered a dead CRM session mid-run, terminal `done` at attempt 2, all four parity surfaces from the ONE projection.
+> Design, but do not yet implement, one CRUD-capable run-record authority for every current, queued, terminal, archived, and deleted run, plus one settings catalog and protected local settings root for every non-provider-key setting. The design must make existing authorities migratable without erasing evidence.
+
+builds:
+- [ ] DOCS canonical run-record identity, lifecycle, typed CRUD/CAS operations, deletion semantics, and projection contract
+- [ ] DOCS one settings catalog/root, leaf classification, validation, revision/CAS, secret-return policy, and UI edit contract
+- [ ] DOCS migration/read-forward/rollback/recovery rules for the existing SQLite, span, environment, and settings authorities
+- [ ] DOCS deletion tests, proof ladder, implementation seams, and exact 1.6/2.6/3.1 handoff briefs
+
+needs:
+- phase0-governance
+
+#### 1 · Define the canonical run-record authority {#phase0-run-authority-design}
+status: planned
+doc: ref:dashboard-surfaces §2.3 · ref:execution-and-sessions §3 · ref:operator-trust §1
+
+builds:
+- [ ] DOCS make one SQLite-backed run-record service the existence and lifecycle authority for queue, current, terminal, archive, and tombstone states
+- [ ] DOCS expose typed create/read/update/delete and compare-and-swap transitions; keep tables private to adapters
+- [ ] DOCS retain spans, logs, receipts, and artifacts as append-only evidence linked to the run, never competing lifecycle authorities
+- [ ] DOCS specify queue ordering, first-eligible claim, retry/relaunch, archive, purge, and D308's terminal-only physical deletion behind an insert-only tombstone
+
+#### 2 · Define the canonical settings catalog and root {#phase0-settings-authority-design}
+status: planned
+doc: ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+
+builds:
+- [ ] DOCS enumerate every setting once with schema, default, editability, sensitivity, restart scope, and owning consumer
+- [ ] DOCS place all operator-managed local configuration under one gitignored `.tracker/settings/` root; provider API keys alone remain in `.env`, while runtime observations such as the host-derived display remain catalogued defaults rather than competing persisted settings
+- [ ] DOCS give Settings one revisioned update API and never return protected values after write
+- [ ] DOCS remove environment precedence for migrated non-provider-key leaves and forbid duplicate fallback authorities
+
+#### 3 · Design migration, compatibility, and recovery {#phase0-authority-migration-design}
+status: planned
+doc: ref:dashboard-surfaces §2.3 · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4 · ref:guards-and-tests
+
+builds:
+- [ ] DOCS define an idempotent upgrade from existing rows/files with preflight, backup, journal, rollback, and mixed-generation refusal
+- [ ] DOCS preserve historical run evidence, stable run ids, and archive visibility through migration
+- [ ] DOCS specify settings import from current `.env`/`settings.json` and local canary inputs without copying provider API keys
+- [ ] DOCS name compatibility adapters and their deletion tests so transitional paths cannot become permanent authorities
+
+needs:
+- phase0-run-authority-design
+- phase0-settings-authority-design
+
+#### 4 · Close design and issue implementation briefs {#phase0-authority-design-close}
+status: planned
+doc: 00 §0.3 · Redesign single-source runtime authority · 01 §1.6 · 02 §2.6 · 03a §Reopened completion tasks
+
+builds:
+- [ ] PROOF adversarially review run identity, concurrent queue mutation, settings revision conflicts, recovery, and redaction
+- [ ] DOCS resolve every open authority decision in its owning reference spec and decision pointer
+- [ ] DOCS bind each 1.6 task to one implementation seam, gate, integration order, and deletion test
+- [ ] DOCS confirm 2.6 and 3.1 consume the new contracts without redesigning them
+
+needs:
+- phase0-authority-migration-design
+
+## Phase 1 · Build the platform spine {#phase-1}
+phase: Phase 1
+status: planned
+when: 07-31 → 08-04 historical · reopened 2026-09-03 at 1.6
+size: XL
+chip: 1.1–1.5 evidenced · 1.6 waits for 0.3
+doc: 01 §Phase summary · 00 §0.1 · Product charter and safety boundaries · ref:operator-trust §0 · ref:frontend-backend-integration §0 · ref:write-safety §1 · ref:write-safety §7 · ref:clock-config-secrets §5
+open: yes
+
+> The minimum base that carries one workflow end to end. **Historical exit (D74): person-lookup ran LIVE** against real UCPath + CRM on the new executor. D326 reopens only the foundation boundary: after 0.3 closes, 1.6 gives runs and settings one authority each before later tails and dashboard work continue.
 
 needs:
 - phase-0
 
 log:
+- 2026-09-03 | D326/D327 authority reset | 1.1–1.5 keep their completed evidence; 1.6 waits for 0.3. It owns one canonical CRUD-capable run-record authority and one settings catalog/root, then proves migration and recovery before 2.6 starts
 - 2026-08-29 | D75 authority close | the former unowned `requestedBy` residual is closed by one BFF admission checkpoint, strict configured solo derivation and pre-effect command-claim matching; the cooperation track still owns only the future second actor and credential extension
 - 2026-08-21 | docs-cohesion 01 | doc 01 rewritten as-built and all six status blocks filled; every `[x]` in this subtree re-verified against the code and NONE had to be corrected — the phase is DONE and stayed done. What the rewrite adds is a residuals table: five findings that trace back to a spine contract and are owned in LATER nodes (`track-c`, `observed-logs`, Track D rows D6 and D11, `def-byte-path`, `test-tiers`) plus ONE with no owner — `requestedBy` is stamped on every command envelope and never checked, with no D-number and no `pending-wire-bindings` entry, reported rather than assigned
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §0
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
-### 1a · 1b — guards, baselines, the strict domain leaf {#p1-base}
+### 1.1 · Guardrails and strict domain {#p1-base}
 status: done
 date: 2026-07-31
 size: L
-doc: 01 §1a · 1b — guards, baselines, the strict domain leaf · ref:guards-and-tests §2 · ref:guards-and-tests §1.1 · ref:clock-config-secrets §2 · ref:clock-config-secrets §3 · ref:clock-config-secrets §6 · ref:task-contract §2.1.1 · ref:dashboard-surfaces §5 · ref:operator-trust §2 · ref:frontend-backend-integration §3
+doc: 01 §1.1 · Guardrails and strict domain · ref:guards-and-tests §2 · ref:guards-and-tests §1.1 · ref:clock-config-secrets §2 · ref:clock-config-secrets §3 · ref:clock-config-secrets §6 · ref:task-contract §2.1.1 · ref:dashboard-surfaces §5 · ref:operator-trust §2 · ref:frontend-backend-integration §3
 
 builds:
 - [x] BE guard plumbing + the reviewed guard inventory
@@ -101,11 +232,29 @@ log:
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §2
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
-### 1c · 1d · 1e — authority storage, UI registry + drivers, the workflow DAG {#p1-authority}
+#### 1 · Land guardrails and baselines {#p1a-guards}
+status: done
+doc: 01 §Task 1 · Land guardrails and baselines (COMPLETE 2026-07-31) · ref:guards-and-tests §2
+
+builds:
+- [x] BE guard plumbing and reviewed guard inventory
+- [x] DOCS capability, provenance, and coverage baselines
+- [x] PROOF every guard arm fails on its violating fixture
+
+#### 2 · Build the strict domain leaf {#p1a-domain}
+status: done
+doc: 01 §Task 2 · Build the strict domain leaf (COMPLETE 2026-07-31) · ref:task-contract §2.1.1 · ref:clock-config-secrets §2
+
+builds:
+- [x] BE strict schemas and branded ids at every authority boundary
+- [x] BE clock, configuration, secrets, paths, and runtime isolation foundations
+- [x] PROOF typecheck, lint, unit, architecture, and coverage gates
+
+### 1.2 · Durable authority and workflow model {#p1-authority}
 status: done
 date: 2026-08-01
 size: XL
-doc: 01 §1c · 1d · 1e — authority storage, UI registry + drivers, the workflow DAG · ref:dashboard-surfaces §2.3 · ref:dashboard-surfaces §2.4 · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §4 · ref:operator-trust §1 · ref:task-contract §2 · ref:task-contract §2.7 · ref:workflow-model §3 · ref:operator-trust §1.7 · ref:dashboard-surfaces §2 · ref:write-safety §2 · ref:clock-config-secrets §4 · ref:clock-config-secrets §6.2
+doc: 01 §1.2 · Durable authority and workflow model · ref:dashboard-surfaces §2.3 · ref:dashboard-surfaces §2.4 · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §4 · ref:operator-trust §1 · ref:task-contract §2 · ref:task-contract §2.7 · ref:workflow-model §3 · ref:operator-trust §1.7 · ref:dashboard-surfaces §2 · ref:write-safety §2 · ref:clock-config-secrets §4 · ref:clock-config-secrets §6.2
 
 builds:
 - [x] BE authority SQLite + backup / doctor / degraded mode / restore interlock
@@ -130,11 +279,38 @@ log:
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
-### 1f — registry, workers, commands, the write sequencer {#p1-kernel}
+#### 1 · Build durable storage and recovery {#p1b-storage}
+status: done
+doc: 01 §Task 1 · Build durable storage and recovery (COMPLETE 2026-08-01) · ref:operator-trust §1
+
+builds:
+- [x] BE SQLite authority, migrations, backup, doctor, degraded mode, and restore interlock
+- [x] BE command and proof union type shells
+- [x] PROOF corruption, recovery, and stopped-system constraints
+
+#### 2 · Build store, task, and driver contracts {#p1b-contracts}
+status: done
+doc: 01 §Task 2 · Build store, task, and driver contracts (COMPLETE 2026-08-01) · ref:task-contract §2
+
+builds:
+- [x] BE semantic UI registry and typed system drivers
+- [x] BE task/store contracts and authoring tiers
+- [x] PROOF selector provenance and contract validation
+
+#### 3 · Build the workflow definition model {#p1b-workflow-model}
+status: done
+doc: 01 §Task 3 · Build the workflow definition model (COMPLETE 2026-08-01) · ref:workflow-model §3
+
+builds:
+- [x] BE workflow DAG, delegation, completion program, and descriptor
+- [x] BE compile-time graph and mini-store checks
+- [x] PROOF descriptor fingerprints and type-level workflow cases
+
+### 1.3 · Execution kernel and write safety {#p1-kernel}
 status: done
 date: 2026-08-02 → 03
 size: XL
-doc: 01 §1f — registry, workers, commands, the write sequencer · ref:workflow-model §1.3 · ref:workflow-model §2 · ref:workflow-model §4 · ref:dashboard-surfaces §2.4 · ref:execution-and-sessions §3 · ref:execution-and-sessions §4 · ref:execution-and-sessions §4.1 · ref:write-safety §3 · ref:operator-trust §2.1 · ref:frontend-backend-integration §3.4 · ref:write-safety §3.3
+doc: 01 §1.3 · Execution kernel and write safety · ref:workflow-model §1.3 · ref:workflow-model §2 · ref:workflow-model §4 · ref:dashboard-surfaces §2.4 · ref:execution-and-sessions §3 · ref:execution-and-sessions §4 · ref:execution-and-sessions §4.1 · ref:write-safety §3 · ref:operator-trust §2.1 · ref:frontend-backend-integration §3.4 · ref:write-safety §3.3
 
 builds:
 - [x] BE the ONE `WORKFLOW_MODULES` composition root
@@ -154,11 +330,29 @@ log:
 - 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
-### 1g-spine · 1i-spine — spans, the ONE projection, the BFF, the Person Lookup shell {#p1-spine}
+#### 1 · Build registry, workers, and command admission {#p1c-execution}
+status: done
+doc: 01 §1.3 · Execution kernel and write safety · ref:workflow-model §2 · ref:execution-and-sessions §3
+
+builds:
+- [x] BE one workflow-module composition root
+- [x] BE queue claim, heartbeat, lease, retry, and terminal transitions
+- [x] BE start-plan, provider, and actor admission
+
+#### 2 · Build sequenced write authority {#p1c-write-safety}
+status: done
+doc: 01 §1.3 · Execution kernel and write safety · ref:write-safety §3
+
+builds:
+- [x] BE probe, prepare, binding proof, fence, commit, verification, and outbox sequence
+- [x] BE content-proven authenticated sessions and Duo handling
+- [x] PROOF no write-capable callback can bypass the sequencer
+
+### 1.4 · Projection, BFF, and operator shell {#p1-spine}
 status: done
 date: 2026-08-04
 size: M
-doc: 01 §1g-spine · 1i-spine — spans, the ONE projection, the BFF, the Person Lookup shell · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.2 · ref:dashboard-surfaces §9.5.2 · ref:frontend-backend-integration §3 · ref:frontend-backend-integration §6.2 · ref:frontend-backend-integration §6.3 · ref:frontend-backend-integration §7.1 · ref:dashboard-surfaces §1 · ref:frontend-backend-integration §3 · ref:clock-config-secrets §3
+doc: 01 §1.4 · Projection, BFF, and operator shell · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.2 · ref:dashboard-surfaces §9.5.2 · ref:frontend-backend-integration §3 · ref:frontend-backend-integration §6.2 · ref:frontend-backend-integration §6.3 · ref:frontend-backend-integration §7.1 · ref:dashboard-surfaces §1 · ref:frontend-backend-integration §3 · ref:clock-config-secrets §3
 
 builds:
 - [x] BE span emission + the one run/queue projection
@@ -175,10 +369,28 @@ log:
 - 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
-### Phase 1 exit — the live run {#p1-exit}
+#### 1 · Build spans and the shared projection {#p1d-projection}
+status: done
+doc: 01 §Task 1 · Build spans and the shared projection (COMPLETE 2026-08-04) · ref:dashboard-surfaces §1
+
+builds:
+- [x] BE append-only span emission and reducer
+- [x] BE one day/run projection for every dashboard consumer
+- [x] PROOF cross-process replay and resumable cursor behavior
+
+#### 2 · Build the BFF and first operator shell {#p1d-shell}
+status: done
+doc: 01 §Task 2 · Build the BFF and first operator shell (COMPLETE 2026-08-04) · ref:frontend-backend-integration §3
+
+builds:
+- [x] BOTH bootstrap, day, run-detail, command, and event routes over one typed client
+- [x] FE Person Lookup shell in both themes
+- [x] PROOF accessibility and screenshot parity
+
+### 1.5 · Live foundation proof {#p1-exit}
 status: done
 date: D74 · 2026-08-04
-doc: 01 §Phase 1 exit — the live run · 01 §Exit criteria · ref:workflow-model §8 · ref:workflow-model §8.1
+doc: 01 §1.5 · Live foundation proof · 01 §Exit criteria · ref:workflow-model §8 · ref:workflow-model §8.1
 
 > Found three presentation defects no fixture could — skipped-arm (D123), terminal duration (D124), accessible-name collision (D126) — all fixed the same day. Open item it left: a dead CRM session cost **262.9 s** to surface → `sessionAcquireMs` (D125).
 
@@ -192,29 +404,138 @@ log:
 - 2026-08-21 | docs-cohesion 01 | the proof stands and its full record is doc 01 §Exit criteria — run `4ebf7275-0158-49af-a78f-1f37948efb27`, EID `10873698`, terminal `done` at attempt 2, `sleepMs` absent on every task span, projection counts agreeing across all four surfaces. The node's own residual became a decision: 262.9 s to surface a dead CRM session → D125's separate `sessionAcquireMs`. A later correction worth carrying — `describeStalledLanding` is unreachable at the shipped defaults (180 s Duo bound inside a 60 s acquisition envelope), which D244 answers by refusing on Duo's own content in 9.52 s · left: nothing on this node
 - 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 
-## Transaction proof, then the deferred base tails {#phase-2}
-phase: Phase 2
+#### 1 · Prove one real workflow on the spine {#p1e-live-proof}
 status: done
-when: 08-04 → 08-09 | six days
-size: XL
-chip: complete 2026-08-09
-doc: 02 §Phase summary · ref:write-safety §3.4
-open: no
+doc: 01 §1.5 · Live foundation proof · 01 §Exit criteria
 
-> **The controlled commit is MET live (D135):** one real Kuali write on doc `4489` — dry run zero durable rows · forced mismatch refused pre-fence · commit 16.45 s with reload read-back proof · idempotent re-run `already-present` in 2 ms · both docs restored. Then four tails landed against a proven spine.
+builds:
+- [x] PROOF Person Lookup against live UCPath and CRM
+- [x] PROOF dead-session recovery and terminal completion at attempt two
+- [x] PROOF all four surfaces agree from one projection
+
+### 1.6 · Implement canonical run and settings authorities {#p1-authority-implementation}
+status: planned
+date: after 0.3
+size: XL
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.3 · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+
+> Implement the exact 0.3 contracts without redesigning them. Every task is one supervisor seam; Tasks 1 and 2 may run in parallel only after the 0.3 coordinator proves their schemas and migration boundaries independent and records the isolation in its run plan.
+
+builds:
+- [ ] BE one canonical SQLite-backed run-record service with typed CRUD/CAS lifecycle operations
+- [ ] BE one settings catalog and protected `.tracker/settings/` root for every non-provider-key setting
+- [ ] BE migrate lifecycle/configuration writers and core runtime consumers; Phase 2.6 owns downstream read models and Phase 3.1 owns Settings UI behavior
+- [ ] PROOF upgrade, rollback, recovery, compatibility deletion, and full foundation regression
 
 needs:
+- phase0-authority-design-close
 - p1-exit
 
+#### 1 · Implement the canonical run-record service {#p1f-run-store}
+status: planned
+doc: ref:dashboard-surfaces §2.3 · ref:execution-and-sessions §3
+
+builds:
+- [ ] BE schema/migration plus a single repository API for create, read, update, delete/tombstone, claim, retry, archive, and purge
+- [ ] BE atomic ordering and compare-and-swap invariants for concurrent workers and operator commands
+- [ ] PROOF contract, migration, concurrency, and property tests that fail against each displaced authority
+
+#### 2 · Implement the settings catalog and protected root {#p1f-settings-store}
+status: planned
+doc: ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+
+builds:
+- [ ] BE one leaf catalog and revisioned repository under `.tracker/settings/`
+- [ ] BE move username, password, timekeeper identity, local canary inputs, display overrides, timeouts, paths, worker defaults, and all other operator-managed non-provider-key configuration out of `.env`
+- [ ] BE leave only provider API keys in `.env`; keep D324's probed host display as the catalogued default when no override exists; expose protected settings as presence/revision, never plaintext readback
+- [ ] PROOF permissions, symlink refusal, redaction, restart-scope, and concurrent update tests
+
+#### 3 · Cut over executor and worker lifecycle writers {#p1f-run-writers}
+status: planned
+doc: ref:workflow-model §4 · ref:execution-and-sessions §3 · ref:frontend-backend-integration §3.4
+
+builds:
+- [ ] BE route start/fan-out publication, queue claim, heartbeat, executor transition, retry scheduling, and terminal publication through the run service
+- [ ] BE preserve stable run/session ids and append-only evidence links
+- [ ] PROOF remove or guard every core-runtime lifecycle write outside the service
+
+needs:
+- p1f-run-store
+
+#### 4 · Cut over operator run commands and archive/delete writers {#p1f-run-commands}
+status: planned
+doc: ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §2.3 · ref:operator-trust §5.7
+
+builds:
+- [ ] BE route CLI/dashboard start, retry, cancel, rename, archive, relaunch, terminal-only delete/tombstone, bulk, and purge commands through the run service
+- [ ] BE return one typed settlement/conflict vocabulary and preserve command actor/version attribution
+- [ ] PROOF idempotence, stale CAS, concurrent-worker, archive/relaunch lineage, and D308 deletion semantics
+
+needs:
+- p1f-run-writers
+
+#### 5 · Cut over settings mutation and runtime resolution {#p1f-settings-consumers}
+status: planned
+doc: ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+
+builds:
+- [ ] BE route secure bootstrap, worker composition, browser/login, workflow defaults, and preflight inputs through the catalog; dashboard presentation remains 3.1 work
+- [ ] BE add revision/CAS update, validation, restart-required reporting, and protected write-only inputs
+- [ ] PROOF every setting resolves from exactly one catalog leaf and one persisted authority
+
+needs:
+- p1f-settings-store
+
+#### 6 · Prove upgrade, rollback, recovery, and compatibility deletion {#p1f-migration-proof}
+status: planned
+doc: ref:operator-trust §1 · ref:guards-and-tests · ref:clock-config-secrets §3
+
+builds:
+- [ ] BE idempotent preflighted upgrade that requires an explicit verified `cli storage backup`, plus its own transactional journal, rollback, and mixed-generation refusal; do not add an automatic backup cadence
+- [ ] PROOF migrate representative current, terminal, archived, and malformed authorities without losing evidence
+- [ ] PROOF import operator-managed non-provider-key configuration once, retain provider keys in `.env`, preserve derived defaults, and refuse ambiguous duplicates
+- [ ] BE delete transitional readers/writers when their deletion tests turn green
+
+needs:
+- p1f-run-commands
+- p1f-settings-consumers
+
+#### 7 · Close the rebuilt foundation {#p1f-close}
+status: planned
+doc: 01 §1.6 · Implement canonical run and settings authorities · 02 §2.6 · 03a §Reopened completion tasks
+
+builds:
+- [ ] PROOF typecheck, lint, coverage, architecture, manifest, storage-doctor, and targeted live dry-run gates
+- [ ] PROOF adversarial review finds no second run/settings lifecycle authority or secret-value leak
+- [ ] DOCS record migrations and hand 2.6 only verified contracts, residuals, and exact gates
+
+needs:
+- p1f-migration-proof
+
+## Phase 2 · Prove writes and build the platform tails {#phase-2}
+phase: Phase 2
+status: planned
+when: 08-04 → 08-09 historical · reopened after 1.6 at 2.6
+size: XL
+chip: 2.1–2.5 evidenced · 2.6 waits for 1.6
+doc: 02 §Phase summary · ref:write-safety §3.4
+open: yes
+
+> **The historical controlled commit remains MET live (D135):** one real Kuali write on doc `4489`, followed by four platform tails. D326 reopens only 2.6, after 1.6, to migrate and re-prove every downstream tail consumer of run or settings authority.
+
+needs:
+- p1f-close
+
 log:
+- 2026-09-03 | D326/D327 authority reset | 2.1–2.5 keep their evidence; 2.6 waits for 1.6 and owns downstream migration plus regression proof, not another authority redesign
 - 2026-08-21 | docs-cohesion 02 | doc 02 rewritten as-built — the phase reads DONE-with-named-residuals: nine mechanisms with no production caller or delivery path, each attributed to the node that owns the fix, plus four test-lane gaps owned by `{#test-tiers}`; the 23 `_phase: 2_` rounds in `reference/decisions.md` all indexed
 
 
-### Transaction proof — the first real write {#p2-proof}
+### 2.1 · Controlled write proof {#p2-proof}
 status: done
 date: D128–D135 · 2026-08-04
 size: L
-doc: 02 §Transaction proof — the first real write · ref:write-safety §2.1 · ref:write-safety §3 · ref:write-safety §3.1 · ref:write-safety §5 · ref:guards-and-tests §3.6 · ref:frontend-backend-integration §6.4 · ref:write-safety §3.3 · ref:write-safety §3.4 · ref:clock-config-secrets §4.1 · ref:charter §13
+doc: 02 §2.1 · Controlled write proof · ref:write-safety §2.1 · ref:write-safety §3 · ref:write-safety §3.1 · ref:write-safety §5 · ref:guards-and-tests §3.6 · ref:frontend-backend-integration §6.4 · ref:write-safety §3.3 · ref:write-safety §3.4 · ref:clock-config-secrets §4.1 · ref:charter §13
 
 > Same-day withdrawal of the wrong D128 conclusion: the two real causes were driver defects in THIS tree (a ~700 ms gadget debounce, a `commit` returning at request time). Write-heavy migration unblocked.
 
@@ -234,11 +555,29 @@ log:
 - 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
 
 
-### 2g — event / trust layer {#p2-2g}
+#### 1 · Build the proving transaction {#p2a-transaction}
+status: done
+doc: 02 §2.1 · Controlled write proof · ref:write-safety §3
+
+builds:
+- [x] BE one minimal Kuali proving transaction under the write sequencer
+- [x] PROOF dry run, pre-fence refusal, commit, reload read-back, and idempotent repeat
+- [x] PROOF restore the live test documents after verification
+
+#### 2 · Execute and record the controlled proof {#p2a-proof}
+status: done
+doc: 02 §2.1 · Controlled write proof · ref:write-safety §3.4
+
+builds:
+- [x] PROOF dry run, forced mismatch, one controlled commit, reload read-back, and idempotent repeat
+- [x] PROOF restore both live test documents and preserve durable evidence ids
+- [x] DOCS retain per-workflow controlled proof as a later migration obligation
+
+### 2.2 · Evidence and operator trust {#p2-2g}
 status: done
 date: D134–D145
 size: L
-doc: 02 §2g — event / trust layer · ref:operator-trust §2 · ref:operator-trust §2.2 · ref:operator-trust §2.3 · ref:operator-trust §4 · ref:operator-trust §6 · ref:operator-trust §6.1 · ref:operator-trust §6.3 · ref:dashboard-surfaces §2.6 · ref:write-safety §6.1 · ref:frontend-backend-integration §6.5 · ref:write-safety §3.1
+doc: 02 §2.2 · Evidence and operator trust · ref:operator-trust §2 · ref:operator-trust §2.2 · ref:operator-trust §2.3 · ref:operator-trust §4 · ref:operator-trust §6 · ref:operator-trust §6.1 · ref:operator-trust §6.3 · ref:dashboard-surfaces §2.6 · ref:write-safety §6.1 · ref:frontend-backend-integration §6.5 · ref:write-safety §3.1
 
 builds:
 - [x] BE schema v10
@@ -258,11 +597,29 @@ log:
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 
-### 2h — data / intake foundation {#p2-2h}
+#### 1 · Build diagnostics, notifications, and receipts {#p2b-evidence}
+status: done
+doc: 02 §2.2 · Evidence and operator trust · ref:operator-trust §2 · ref:dashboard-surfaces §2.6
+
+builds:
+- [x] BE redacted diagnostic capture and actor-keyed notification inbox
+- [x] BE derived evidence receipts and ordered ledger projection contracts
+- [x] BE knowledge/fix admission and its audited zero-authority boundary
+
+#### 2 · Derive receipts and wire trust services {#p2b-services}
+status: done
+doc: 02 §2.2 · Evidence and operator trust · ref:operator-trust §4 · ref:write-safety §6
+
+builds:
+- [x] BE derive receipts from authority rather than caller claims
+- [x] BE notification, knowledge/fix, and ledger service contracts
+- [x] DOCS record missing production producers/projectors under later owners
+
+### 2.3 · Data and intake foundation {#p2-2h}
 status: done
 date: D146–D167
 size: XL
-doc: 02 §2h — data / intake foundation · ref:data-intake-and-edit-data §1 · ref:data-intake-and-edit-data §2 · ref:data-intake-and-edit-data §3 · ref:data-intake-and-edit-data §4 · ref:data-intake-and-edit-data §5 · ref:data-intake-and-edit-data §6 · ref:frontend-backend-integration §6.6
+doc: 02 §2.3 · Data and intake foundation · ref:data-intake-and-edit-data §1 · ref:data-intake-and-edit-data §2 · ref:data-intake-and-edit-data §3 · ref:data-intake-and-edit-data §4 · ref:data-intake-and-edit-data §5 · ref:data-intake-and-edit-data §6 · ref:frontend-backend-integration §6.6
 
 builds:
 - [x] BE canonical field registry + column mapping
@@ -276,17 +633,45 @@ builds:
 
 needs:
 - p2-proof
+- p2-2g
 
 log:
 - 2026-08-21 | docs-cohesion 02 | doc 02 §2h separates unwired-BY-DESIGN (the retention projection, D164) from unwired-by-omission (the saved-mapping store, an artifact-projection-declaring descriptor — both unowned and reported) and from waiting-on-an-admitted-workflow (the start-method kinds and Review surface → `{#migrations}`)
 - 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
 
 
-### 2i — the operator surface (A–G) {#p2-2i}
+#### 1 · Build canonical intake and Edit Data services {#p2c-intake}
+status: done
+doc: 02 §2.3 · Data and intake foundation · ref:data-intake-and-edit-data
+
+builds:
+- [x] BE field registry, mappings, validation, immutable manifests, and rerun diff
+- [x] BE extraction, OCR, roster, normalization, capture-session, and Edit Data cores
+- [x] BOTH production routes and live scanner proof
+
+#### 2 · Build extraction and scanner services {#p2c-services}
+status: done
+doc: 02 §2.3 · Data and intake foundation · ref:data-intake-and-edit-data §3
+
+builds:
+- [x] BE extraction, OCR, roster, and normalization stores
+- [x] BOTH scanner classification/grouping and real 44-page proof
+- [x] PROOF strict producer outputs and artifact identities
+
+#### 3 · Wire providers, artifacts, capture authority, and Edit Data {#p2c-wiring}
+status: done
+doc: 02 §2.3 · Data and intake foundation · ref:data-intake-and-edit-data §5
+
+builds:
+- [x] WIRE executor/worker providers and artifact delivery
+- [x] BE durable capture sessions and Edit Data core
+- [x] PROOF immutable manifests and rerun-diff behavior
+
+### 2.4 · Operator services and read models {#p2-2i}
 status: done
 date: D168–D180
 size: L
-doc: 02 §2i — the operator surface (A–G) · ref:operator-trust §1.3 · ref:data-intake-and-edit-data §2.7 · ref:data-intake-and-edit-data §5.1 · ref:data-intake-and-edit-data §5.2 · ref:frontend-backend-integration §6.7 · ref:dashboard-surfaces §9.5.1 · ref:dashboard-surfaces §9.7.1 · ref:dashboard-surfaces §9.7.2 · ref:dashboard-surfaces §9.5.3 · ref:operator-trust §5.7 · ref:operator-trust §5.8 · ref:data-intake-and-edit-data §6.4.1 · ref:charter §25
+doc: 02 §2.4 · Operator services and read models · ref:operator-trust §1.3 · ref:data-intake-and-edit-data §2.7 · ref:data-intake-and-edit-data §5.1 · ref:data-intake-and-edit-data §5.2 · ref:frontend-backend-integration §6.7 · ref:dashboard-surfaces §9.5.1 · ref:dashboard-surfaces §9.7.1 · ref:dashboard-surfaces §9.7.2 · ref:dashboard-surfaces §9.5.3 · ref:operator-trust §5.7 · ref:operator-trust §5.8 · ref:data-intake-and-edit-data §6.4.1 · ref:charter §25
 
 builds:
 - [x] BOTH trust surfaces + notification bell over the durable inbox
@@ -310,11 +695,52 @@ log:
 - 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
 
 
-### 2j — the closing gate {#p2-2j}
+#### 1 · Build trust, configuration, intake, and archive surfaces {#p2d-operator-services}
+status: done
+doc: 02 §2.4 · Operator services and read models · ref:operator-trust §1.3 · ref:dashboard-surfaces §9
+
+builds:
+- [x] BOTH notification, Edit Data, settings/doctor, intake, Explorer, advisory, archive, version, and Activity services
+- [x] DOCS retire mobile Capture Mode without removing diagnostic captures or archive evidence
+- [x] PROOF strict schemas and bounded production routes for every delivered service
+
+#### 2 · Build Settings and storage doctor {#p2d-settings-doctor}
+status: done
+doc: 02 §2.4 · Operator services and read models · ref:clock-config-secrets §3 · ref:operator-trust §1
+
+builds:
+- [x] BOTH historical settings/preflight and storage-health/doctor services
+- [x] DOCS retain later settings-authority gaps under 0.3/1.6/3.1
+
+#### 3 · Build intake and historical Capture surfaces {#p2d-intake-surfaces}
+status: done
+doc: 02 §2.4 · Operator services and read models · ref:data-intake-and-edit-data §2.7
+
+builds:
+- [x] BOTH intake surface over schema v12
+- [x] DOCS retain phone Capture only as history after D294 retirement
+
+#### 4 · Build Explorer, UI catalog, and advisories {#p2d-explorer}
+status: done
+doc: 02 §2.4 · Operator services and read models · ref:operator-trust §5.9
+
+builds:
+- [x] BOTH read-only workflow Explorer and UI catalog
+- [x] BOTH redacted, strict-output, exhaustion-bounded, zero-authority advisories
+
+#### 5 · Build archive, version, and Activity surfaces {#p2d-archive-activity}
+status: done
+doc: 02 §2.4 · Operator services and read models · ref:operator-trust §5.7 · ref:operator-trust §5.8
+
+builds:
+- [x] BOTH append-only archive model, version bump, and Activity report
+- [x] PROOF historical rows remain immutable and attributable
+
+### 2.5 · Closing verification {#p2-2j}
 status: done
 date: D181–D190 · 2026-08-09
 size: M
-doc: 02 §2j — the closing gate · 03c §Non-workflow capability closure inventory (D58) · ref:execution-and-sessions §7.1 · ref:guards-and-tests §3.11 · ref:guards-and-tests §3.15 · ref:operator-trust §3 · ref:operator-trust §3.1 · ref:dashboard-surfaces §2.5
+doc: 02 §2.5 · Closing verification · 03c §Non-workflow capability closure inventory (D58) · ref:execution-and-sessions §7.1 · ref:guards-and-tests §3.11 · ref:guards-and-tests §3.15 · ref:operator-trust §3 · ref:operator-trust §3.1 · ref:dashboard-surfaces §2.5
 
 > **Found four real defects every earlier green gate missed:** `cli storage restore` could never have worked (D181); every `paper-ink` parity reference had been photographed dark; the run-detail trust panel was **2 px wide** since 1i-spine (D187); the receipt builder 500'd on a reachable path.
 
@@ -334,9 +760,113 @@ log:
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 
 
-### Left Phase 2 by explicit disposition {#phase2-dispositions}
+#### 1 · Run the closing proof ladder {#p2e-close}
+status: done
+doc: 02 §2.5 · Closing verification · 02 §Exit criteria
+
+builds:
+- [x] PROOF scenario coverage, real-copy restore drill, three-worker soak, and redaction scan
+- [x] DOCS validate the capability inventory and reconcile owning specifications
+- [x] PROOF repair the four defects found only by the closing gate
+
+#### 2 · Prove restore, concurrency, and redaction {#p2e-recovery-proof}
+status: done
+doc: 02 §2.5 · Closing verification · 02 §Exit criteria
+
+builds:
+- [x] PROOF real-copy corrupt/doctor/restore drill
+- [x] PROOF three-worker soak and redaction scan
+
+#### 3 · Repair gate-found defects and reconcile owning docs {#p2e-repair}
+status: done
+doc: 02 §2.5 · Closing verification · 02 §What 2j found, because that is what a gate is for
+
+builds:
+- [x] BE repair the unreachable restore, parity-theme, two-pixel panel, and receipt defects
+- [x] DOCS reconcile every owning specification to the repaired behavior
+
+#### 4 · Record explicit dispositions {#phase2-dispositions}
+status: done
+doc: 02 §Task 4 · Record explicit dispositions · ref:operator-trust §5.3 · ref:frontend-backend-integration §6.9
+
+builds:
+- [x] DOCS give Explorer authoring and production serving named later owners/triggers
+- [x] DOCS retain every residual without mislabeling historical delivery incomplete
+
+### 2.6 · Revalidate tails against canonical authorities {#p2-authority-revalidation}
+status: planned
+date: after 1.6
+size: L
+doc: 02 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust · ref:data-intake-and-edit-data · ref:frontend-backend-integration
+
+> Migrate and prove the downstream read models, joins, and operator services after 1.6 has changed the stores and core writers. This part may expose implementation defects, but any proposed contract redesign returns to 0.3 authority rather than being improvised here.
+
+builds:
+- [ ] BOTH every Phase 2 downstream read model, join, and operator service reads run/settings state only through the 1.6 authorities
+- [ ] PROOF notification, archive, Activity, Explorer, intake, Edit Data, receipts, captures, doctor, and preflight keep their behavior and evidence
+- [ ] PROOF delete stale adapters and demonstrate that no displaced lifecycle/configuration source can affect a response
+- [ ] DOCS hand reopened 3.1 stable contracts, representative fixtures, and exact acceptance gates
+
+needs:
+- p1f-close
+- p2-2j
+
+#### 1 · Revalidate trust and evidence consumers {#p2f-trust}
+status: planned
+doc: ref:operator-trust · ref:dashboard-surfaces §2.6
+
+builds:
+- [ ] BOTH migrate notifications, receipts, failures, captures, logs, gates, and parked-write views
+- [ ] PROOF every row remains linked to the canonical run id through retry, archive, and tombstone
+- [ ] PROOF notification delivery never races ahead of the durable run-linked inbox row
+
+#### 2 · Revalidate data, intake, and Edit Data consumers {#p2f-data}
+status: planned
+doc: ref:data-intake-and-edit-data · ref:dashboard-surfaces §9.7
+
+builds:
+- [ ] BOTH migrate intake, OCR, Edit Data, manifests, mappings, and capture evidence
+- [ ] PROOF existing artifacts remain readable across authority migration and missing links fail loud
+- [ ] PROOF no intake/edit path writes run lifecycle or settings state directly
+
+#### 3 · Revalidate operator read models {#p2f-operator}
+status: planned
+doc: ref:frontend-backend-integration §6 · ref:dashboard-surfaces §9
+
+builds:
+- [ ] BOTH migrate archive, Activity, Explorer, storage doctor, setup/preflight, and generic read models
+- [ ] PROOF archive/current/queue counts converge from one run authority under create, update, archive, relaunch, delete, and restore
+- [ ] PROOF settings status and preflight resolve from one catalog without returning protected values
+
+#### 4 · Run the non-mutating migration and recovery proof {#p2f-proof}
+status: planned
+doc: 02 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust §1 · ref:guards-and-tests
+
+builds:
+- [ ] PROOF run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation gates
+- [ ] PROOF cite historical D135 and perform no second controlled write
+- [ ] PROOF displaced sources and compatibility adapters cannot affect a response
+
+needs:
+- p2f-trust
+- p2f-data
+- p2f-operator
+
+#### 5 · Close tail revalidation and hand fixtures to 3.1 {#p2f-close}
+status: planned
+doc: 02 §2.6 · Revalidate tails against canonical authorities · 03a §Reopened completion tasks
+
+builds:
+- [ ] PROOF run targeted suites, full coverage/lint/typecheck, architecture guards, generated checks, and production-route smoke
+- [ ] PROOF adversarial review and deletion tests find no stale authority path
+- [ ] DOCS issue the 3.1 stable-contract fixture matrix and unresolved-defect ledger; do not silently absorb dashboard work
+
+needs:
+- p2f-proof
+
+### Historical disposition record after 2E
 status: never
-doc: 02 §Left Phase 2 by explicit disposition · ref:operator-trust §5.3 · ref:frontend-backend-integration §6.9
+doc: 02 §Task 4 · Record explicit dispositions · ref:operator-trust §5.3 · ref:frontend-backend-integration §6.9
 
 > Workflow Explorer broad authoring/edit half — D186, trigger: the *second* production workflow whose policy you want to change; D283/DCC4–DCC5 complete existing-workflow authority: label/icon/category hot apply, named unavailable timeline/grouping/notification, strict policy/Edit Data source briefs; new-workflow authoring remains absent · BFF serves no frontend bytes / no working `dashboard:prod` — D189, retained by D294 as an independent local operator-dashboard completion item.
 
@@ -347,31 +877,32 @@ log:
 
 ## Phase 3 · Shared platform and acceptance {#phase-3}
 phase: Phase 3
-status: active
-when: 08-12 → today | nine days so far
+status: planned
+when: historical work retained · reopened 3.1 after 2.6
 size: XL
-chip: active
+chip: 3.1 reopened · waits for 2.6
 doc: 03b §Phase summary · 03c §Phase summary · 03d §Track summary · 03c §Unverified candidate evidence - not a phase order
 open: yes
 
-> Phase 3 finishes one shared platform through four ordered parts: **3A Shared dashboard**, **3B Separations**, **3C Workflow authoring and acceptance**, and **3D Codex and Claude cooperation**. It adds no third workflow. Remaining workflows begin in Phase 4 only after their admission packet is verified and approved.
+> Phase 3 finishes one shared platform through four ordered parts: **3.1 Shared dashboard**, **3.2 Separations**, **3.3 Workflow authoring and acceptance**, and **3.4 Codex and Claude cooperation**. D326 reopens 3.1 after 2.6 so every generic dashboard journey works before workflow-specific execution resumes. It adds no third workflow.
 
 needs:
-- p2-2j
+- p2f-close
 
 log:
-- 2026-09-03 | D325 task reshape | 3A → 3B → 3C → 3D is now the execution order; one coordinator owns each part, numbered cards are one supervisor session, and same-number lettered cards are dedicated-worktree parallel waves · left: 3B live acceptance, then 3C and 3D
+- 2026-09-03 | D326/D327 dashboard reset | 3.1 Tasks 1–7 keep their evidence but no longer close the part; focused Tasks 8 onward own every generic operator journey after 2.6. Parts 3.2–3.4 wait
+- 2026-09-03 | D326 decimal hierarchy | 3.1 → 3.2 → 3.3 → 3.4 is now the execution order; one coordinator owns each part, numbered cards are one supervisor session, and parallelism is recorded in the coordinator run plan · left: reopened 3.1, then 3.2–3.4
 - 2026-08-20 | docs-cohesion step 5.0 | every node in the tree now carries `doc:` — its phase-doc home section plus the reference specs that own its contracts (`81bf48dd`); `test-tiers` drawn as this phase's testing spine (R10) · left: step 4b's binding guard, then the per-doc rewrites
 - 2026-08-20 | docs-cohesion 03b | doc 03b rewritten as-built, all fourteen status blocks filled and the whole separations subtree re-bound to its headings; the phase stands at separations **8 of 9**, step 5 open on a calendar date · left: the three controlled commits from 08-28, then rebuild-ready and close-out
 - 2026-08-30 | R2 observed status | supersedes the calendar-only status above: parent `54060ded` passed 341 files / 3,761 tests and 239/239 assert-mode parity; reviewed child `7b05b057` merged `--no-ff` and swept. Assigned `.env`, `.tracker-rebuild` and locks absent; admission smoke exited 1 before runner import or person-field inspection. No fresh subject/S7 observation, rehearsal, exact-run 0/0/0 evidence, approval or write; A2–A5/A8 remain open and R3 obligations remain separate. Evidence: `docs/coordinator/worktree-completion/reports/r2-gates.md`, `r2-p3.md`, `r2-p4.md`, and `docs/migrations/separations.md` §9.32
 
-### 3A · Shared dashboard {#dash-defaults}
-status: done
-chip: closed · Tasks 1–7
-size: L
+### 3.1 · Shared dashboard {#dash-defaults}
+status: planned
+chip: Tasks 1–7 evidenced · Tasks 8–32 wait for 2.6
+size: XL
 doc: 03a §Phase summary · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §6.8 · ref:dashboard-surfaces §1.2
 
-> The 3A coordinator's seven supervisor tasks built the shared surfaces, proved the real connection, hardened the common paths, closed fidelity by disposition, serialized Duo, added managed worker sessions and recorded observed page facts. D279/D283 carry later workflow-specific Review/People and fidelity residue out of this closed part; those are not hidden 3A tasks.
+> Historical Tasks 1–7 built and proved important shared seams, but operator review found incomplete and broken generic journeys. Tasks 8–32 reopen the part around those journeys: a real modal-to-queue-to-worker path, one CRUD run authority, one settings authority, reliable date/session/notification/queue controls, and complete logs/archive/explorer/intake/trust surfaces. Workflow-specific content still belongs to 3.2/3.3.
 
 builds:
 - [ ] BE the per-run stream topics — five of six declared TopicKeys have no producer, so run detail, logs, review, people and artifact updates arrive by re-read, not by patch (ref frontend-backend-integration §3.5)
@@ -402,10 +933,11 @@ builds:
 - [ ] BE the resolved host per `(system, instance)` on `SystemInstancePrimitive`, so Destination names the machine the run is about to touch instead of reassuring the operator (fidelity-1 C91)
 
 needs:
-- p2-2i
+- p2f-close
 
 log:
-- 2026-09-03 | D325 task reshape | closed 3A is expressed as seven chronological supervisor tasks; `test-tiers` moves to 3C where its T1–T3 acceptance work belongs · later workflow-specific Review/People and fidelity deltas remain assigned by D279/D283
+- 2026-09-03 | D326/D327 reopened scope | Tasks 8–32 supersede the false part closure without invalidating Tasks 1–7 evidence. Each new task is one supervisor session; the final acceptance task audits only and opens focused remediation tasks rather than absorbing broad fixes
+- 2026-09-03 | D326 decimal hierarchy | historical 3.1 work is expressed as seven chronological supervisor tasks; `test-tiers` lives in 3.3 where its T1–T3 acceptance work belongs · later workflow-specific Review/People and fidelity deltas remain assigned by D279/D283
 - 2026-08-20 | docs-cohesion step 5.0 | `duo-lease` · `parallel-runs` · `observed-logs` drawn under this node (R11/R12 and the operator's observed-logs ruling), each with its own section in doc 03a · left: 5.3a builds the lease, 5.3b the pool and the session view
 - 2026-08-20 | docs-cohesion 03a | doc 03a written to the phase-doc contract — every surface verified against `src/dashboard/**` and `src/server/dashboard/**`, four of nine exit criteria MET; two honest gaps recorded rather than assumed built: the run-detail Review and People bodies have no producer (`availableSections` cannot return them) and belong to the OCR and group migrations
 - 2026-08-20 | docs-cohesion frontend-backend-integration | ref frontend-backend-integration rewritten as-built; §5.1 split into seven wire squares (5.1.1 run modal … 5.1.7 intake/capture/Edit Data), each separately citable and tagged; §1.1 and §5 gained a Built column · left: the per-run stream topics, the Review and People panel kinds, six Session-Panel controls
@@ -630,7 +1162,262 @@ log:
 - 2026-08-25 | observed-logs FE adversarial repair | exact run+cursor+snapshot ownership ignores a delayed stale continuation without changing current rows/loading/error; live notes-only pages fail with run+cursor; ARIA names served observation system/directions and no fence defaults; computed read/write token assertions, named server errors, 44×44 mobile continuation geometry and the complete/searchable/no-eager-fetch 200-row bound are pinned. D9 still owns the triggered shared queue/log/archive virtualization primitive; this node claims none · left: live separations proof
 - 2026-08-25 | observed-logs live proof | §9.25 records the dashboard/composed run: document 4502, plan `479f9f1e-83b3-4157-915b-2794bcf61ab0`, run `25d90c9d-72bf-4fa4-bcea-116665f22790` / `sp-143516-25d9`, `parked-gate` v52; 13 observed rows in sequences 0..12, no notes and 0 / 0 / 0 run-scoped write evidence. The service-origin row at `separations-2026-08-25.jsonl:12` has no browser-system declaration; `17468e60` repaired the false API-500 invariant, so the API answered 200 and UI omitted the system claim. Processes and browser sessions stopped after collection · left: notes emitter and fidelity extras
 
-### 3B · Separations {#order-8}
+#### 8 · Re-baseline dashboard truth and acceptance {#dash-truth-reset}
+status: planned
+doc: 03a §Task 8 · Re-baseline dashboard truth and acceptance · ref:dashboard-surfaces · ref:frontend-backend-integration
+
+builds:
+- [ ] PROOF inventory every visible control, route, served field, command arm, producer, and current defect against production code
+- [ ] DOCS map each generic operator journey to one owner, red/green gate, fixture, live proof need, and later workflow-specific boundary
+- [ ] DOCS turn every historical unchecked 3.1 line into a current task, explicit disposition, or superseded record
+- [ ] PROOF publish the acceptance matrix that Task 32 will execute unchanged
+
+#### 9 · Finish the shell, navigation, and accessibility baseline {#dash-shell}
+status: planned
+doc: 03a §Task 9 · Finish the shell, navigation, and accessibility baseline · ref:dashboard-surfaces §3 · ref:frontend-backend-integration §7
+
+builds:
+- [ ] FE finish top bar, workflow rail, route state, status/help/theme controls, responsive containment, and empty/error states
+- [ ] FE make every action keyboard/touch reachable with truthful names, focus return, reduced motion, and both-theme contrast
+- [ ] PROOF component plus production-bundle desktop/mobile accessibility and parity coverage
+
+#### 10 · Repair date navigation and the date picker {#dash-date-navigation}
+status: planned
+doc: 03a §Task 10 · Repair date navigation and the date picker · ref:clock-config-secrets §1 · ref:dashboard-surfaces §3
+
+builds:
+- [ ] BOTH make selected date, URL, loaded day snapshot, timezone, Today, next/previous, keyboard input, and browser history one coherent state machine
+- [ ] FE handle month/year boundaries, invalid input, loading races, disabled dates, focus/escape/outside-click, and mobile geometry
+- [ ] PROOF timezone/DST matrix plus browser tests for direct links, rapid changes, refresh, Back/Forward, and stale-response rejection
+
+#### 11 · Finish Settings over the canonical settings authority {#dash-settings}
+status: planned
+doc: 03a §Task 11 · Finish Settings over the canonical settings authority · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+
+builds:
+- [ ] BOTH render every catalog leaf in one Settings information architecture with source, validity, editability, sensitivity, and restart scope
+- [ ] BOTH support revisioned edit/save/conflict/reset flows; protected values are write-only and display presence, never plaintext
+- [ ] PROOF invalid, stale, partial, interrupted, restart-required, and redaction paths against persisted readback
+
+#### 12 · Finish Setup and preflight {#dash-setup}
+status: planned
+doc: 03a §Task 12 · Finish Setup and preflight · ref:frontend-backend-integration §5.1 · ref:operator-trust §3
+
+builds:
+- [ ] BOTH derive setup state from the settings catalog, storage, workers, browsers, and workflow prerequisites
+- [ ] BOTH make every fix action real, idempotent, attributable, and followed by authoritative re-check
+- [ ] PROOF execute the declared preflight fault corpus and restart/recovery cases from a fresh local state root
+
+#### 13 · Finish storage doctor, backup, and recovery controls {#dash-storage}
+status: planned
+doc: 03a §Task 13 · Finish storage doctor, backup, and recovery controls · ref:operator-trust §1 · ref:frontend-backend-integration §6
+
+builds:
+- [ ] BOTH expose health, doctor evidence, backup creation, restore admission, degradation, and actionable refusals without overstating safety
+- [ ] BOTH keep destructive/recovery commands revision-bound and stopped-system gated
+- [ ] PROOF corrupt-copy doctor, verified backup/restore, interrupted recovery, stale command, and settings/run consistency cases
+
+#### 14 · Finish sessions, worker pools, and browser lifecycle {#dash-sessions}
+status: planned
+doc: 03a §Task 14 · Finish sessions, worker pools, and browser lifecycle · ref:execution-and-sessions §3 · ref:execution-and-sessions §11
+
+builds:
+- [ ] BOTH make plan/spawn/pause/resume/stop/refresh/reopen controls execute real worker-supervisor effects
+- [ ] BOTH show durable session membership, worker state, current claim, browser profile instance, health, and refusal reason without inference
+- [ ] PROOF crash/restart, stale CAS, duplicate ownership, pool resize, orphan cleanup, and two-run parallel dry-run behavior
+
+#### 15 · Make the Run modal enqueue and start real work {#dash-run-modal}
+status: planned
+doc: 03a §Task 15 · Make the Run modal enqueue and start real work · ref:workflow-model §4 · ref:frontend-backend-integration §5.1.1
+
+builds:
+- [ ] BOTH plan against the served descriptor, validate exact inputs/options, and submit one authoritative start command
+- [ ] BOTH create rows in the selected workflow's queue and let the first eligible row be claimed automatically when an eligible worker is available
+- [ ] BOTH show created rows, warnings, decisions, conflicts, actor, settlement time, and unavailable-worker state from the server response
+- [ ] PROOF single, batch, dry-run, validation, conflict, no-worker, delayed-worker, reload, and exactly-once enqueue/claim paths
+
+#### 16 · Finish queue rows, commands, and deletion {#dash-queue}
+status: planned
+doc: 03a §Task 16 · Finish queue rows, commands, and deletion · ref:dashboard-surfaces §4 · ref:frontend-backend-integration §5.1
+
+builds:
+- [ ] BOTH render ordering, status, identity, session, worker, progress, outcome, constraints, evidence, and group/member facts from the canonical run record
+- [ ] BOTH make retry/cancel/rename/archive/relaunch/delete/bulk commands real, revision-bound, and reconciled to one response vocabulary
+- [ ] BOTH define delete as an idempotent lifecycle/tombstone operation with explicit evidence-retention and visible result
+- [ ] PROOF command matrix, stale conflicts, double-clicks, concurrent worker transitions, and queue/current/archive convergence
+
+#### 17 · Finish notifications and delivery behavior {#dash-notifications}
+status: planned
+doc: 03a §Task 17 · Finish notifications and delivery behavior · ref:operator-trust §4 · ref:dashboard-surfaces §2.6
+
+builds:
+- [ ] BE publish every declared trigger, including run-failed, subject-mismatch, write-parked, repeating-failure, verified-done, storage, and backfill-gap
+- [ ] BOTH implement pinned/read/snooze/dismiss/filter/open-target behavior from durable actor-keyed rows
+- [ ] PROOF row-before-OS-delivery, dedupe, restart, reconnect-gap, permission-denied, stale command, and target-link cases
+
+#### 18 · Finish run detail and the live timeline {#dash-run-detail}
+status: planned
+doc: 03a §Task 18 · Finish run detail and the live timeline · ref:dashboard-surfaces §5
+
+builds:
+- [ ] BOTH render task groups, attempts, replay/skipped/blocked arms, live duration, systems, provenance, and focusable timeline segments
+- [ ] BOTH follow the selected run live without losing expansion, focus, scroll, or exact attempt identity
+- [ ] PROOF refresh/reconnect, replay, retry, archive, out-of-order patch, and terminal convergence against direct authority checks
+
+#### 19 · Finish Context, Data, Attempts, and Edit readback {#dash-context-data}
+status: planned
+doc: 03a §Task 19 · Finish Context, Data, Attempts, and Edit readback · ref:dashboard-surfaces §5 · ref:data-intake-and-edit-data §6
+
+builds:
+- [ ] BOTH render declared inputs, origins, directions, redaction, checkpoint provenance, attempt history, edits, and validation state
+- [ ] BOTH submit edits through the authoritative command path and show exact persisted readback/conflict results
+- [ ] PROOF empty, redacted, malformed, stale, cross-attempt, archived, and edit-rerun cases
+
+#### 20 · Finish logs, observations, and captures {#dash-logs}
+status: planned
+doc: 03a §Task 20 · Finish logs, observations, and captures · ref:operator-trust §2.3 · ref:dashboard-surfaces §5
+
+builds:
+- [ ] BE compose the missing production note and line-kind producers without inventing page facts
+- [ ] BOTH render bounded searchable note/observed/fence/navigation/pause/event rows plus diagnostic captures and bundles
+- [ ] PROOF pagination snapshots, stale-response isolation, archive read-forward, redaction, artifact absence, and large-log behavior
+
+#### 21 · Finish receipts and failure records {#dash-receipts-failures}
+status: planned
+doc: 03a §Task 21 · Finish receipts and failure records · ref:operator-trust §5 · ref:write-safety §6
+
+builds:
+- [ ] BOTH render derived receipt identity, action evidence, write-state proof, failure fingerprint, causal record, recovery, and unknown outcomes
+- [ ] BOTH connect explain/retry/open-evidence actions to authoritative commands and immutable evidence
+- [ ] PROOF success, verified no-op, refusal, failed, unknown-submit, recovered, retried, archived, and tamper cases
+
+#### 22 · Finish gates and parked-write resolution {#dash-gates}
+status: planned
+doc: 03a §Task 22 · Finish gates and parked-write resolution · ref:write-safety §14 · ref:dashboard-surfaces §5
+
+builds:
+- [ ] BOTH render active and settled gate evidence, freshness, actor, command version, write plan, conflict, rejection, and machine-verified absence of gate
+- [ ] BOTH make approve/reject/reopen and parked-write resolution real, attributable, revision-bound commands
+- [ ] PROOF stale, expired, changed-plan, skipped-condition, resumed, rejected, archived, and unauthorized paths
+
+#### 23 · Finish Archive, versions, relaunch, and deletion {#dash-archive}
+status: planned
+doc: 03a §Task 23 · Finish Archive, versions, relaunch, and deletion · ref:dashboard-surfaces §9.5 · ref:operator-trust §5.7
+
+builds:
+- [ ] BOTH derive terminal/archive/tombstone lists and frozen sections from the same canonical run authority
+- [ ] BOTH implement view, compare, version bump, export, relaunch, archive, and delete with explicit evidence-retention results
+- [ ] PROOF historical-generation read-forward, stale commands, relaunch lineage, storage delta, delete idempotence, and current/archive convergence
+
+#### 24 · Finish Activity, search, and export {#dash-activity}
+status: planned
+doc: 03a §Task 24 · Finish Activity, search, and export · ref:operator-trust §5.8 · ref:dashboard-surfaces §9.8
+
+builds:
+- [ ] BOTH search/filter across dates, workflows, subjects, statuses, actors, versions, failures, and evidence without scanning unbounded state
+- [ ] BOTH produce truthful summaries and spreadsheet/diagnostic exports from stable result snapshots
+- [ ] PROOF pagination, cancellation, stale responses, redaction, large history, empty/error cases, and exported-row reconciliation
+
+#### 25 · Finish Workflow Explorer and catalog editing {#dash-explorer}
+status: planned
+doc: 03a §Task 25 · Finish Workflow Explorer and catalog editing · ref:workflow-model §1 · ref:operator-trust §5.9
+
+builds:
+- [ ] BOTH show the compiled graph, tasks, stores, fields, origins, selectors, conditions, omissions, presentation, versions, and scenario source authority
+- [ ] BOTH support allowed presentation/policy edits through validated overlays with preview, diff, versioning, hot-apply/restart truth, and rollback
+- [ ] PROOF invalid/cyclic/stale overlays, generated-manifest drift, version bump, reload, and clean-context authoring guidance
+
+#### 26 · Finish Intake and Edit Data surfaces {#dash-intake-edit}
+status: planned
+doc: 03a §Task 26 · Finish Intake and Edit Data surfaces · ref:data-intake-and-edit-data · ref:frontend-backend-integration §5.1
+
+builds:
+- [ ] BOTH complete upload/classify/OCR/map/validate/reject/prepare/manifest/rerun-diff and Edit Data flows over existing services
+- [ ] BOTH show producer progress, records, blocked reasons, mappings, validation, provenance, and exact workflow handoff availability
+- [ ] PROOF real representative files plus malformed, partial, canceled, stale, redacted, duplicate, and archived cases
+
+#### 27 · Finish generic Review and People contracts {#dash-review-people}
+status: planned
+doc: 03a §Task 27 · Finish generic Review and People contracts · ref:dashboard-surfaces §5 · ref:frontend-backend-integration §5
+
+builds:
+- [ ] BOTH implement the generic panel/page kinds, routing, empty/error/loading states, group rollups, member outcomes, and declared labels
+- [ ] BOTH require workflow descriptors to provide workflow-specific fields/actions later; 3.1 supplies no invented Separations/OCR policy
+- [ ] PROOF generic fixtures, direct/deep links, accessibility, large groups, partial members, and unavailable workflow-specific content
+
+#### 28 · Prove realtime convergence and reconnect {#dash-realtime}
+status: planned
+doc: 03a §Task 28 · Prove realtime convergence and reconnect · ref:frontend-backend-integration §3.5 · ref:dashboard-surfaces §1
+
+builds:
+- [ ] BE publish every declared run-detail/log/review/people/artifact topic or remove the false declaration
+- [ ] BOTH converge create/update/archive/delete and settings/worker changes without full-day reparsing or stale UI state
+- [ ] PROOF ordering, duplicate, missed cursor, restart generation, offline/reconnect, selected-run switch, and permanent backfill-gap behavior
+
+#### 29 · Meet large-data and responsiveness budgets {#dash-performance}
+status: planned
+doc: 03a §Task 29 · Meet large-data and responsiveness budgets · ref:frontend-backend-integration §7.4
+
+builds:
+- [ ] BOTH bound database, filesystem, projection, serialization, render, and memory work for large queues, logs, archives, groups, and search
+- [ ] FE add shared virtualization/pagination primitives only where measurement crosses the recorded trigger
+- [ ] PROOF preserve the recorded performance fixture and fail on structural counter regressions; keep host timing observational
+
+#### 30 · Finish production startup, serving, and shutdown {#dash-production-runtime}
+status: planned
+doc: 03a §Task 30 · Finish production startup, serving, and shutdown · ref:frontend-backend-integration §6.9 · ref:execution-and-sessions
+
+builds:
+- [ ] BOTH serve the production bundle, admit one runtime, report startup failures, and expose truthful readiness
+- [ ] BE stop signals, workers, browsers, writers, projections, locks, and backups in the declared order without abandoned authority
+- [ ] PROOF clean start, duplicate start, missing bundle/settings, signal drain, second signal, crash recovery, and orphan sweep
+
+#### 31 · Build the complete dashboard proof infrastructure {#dash-proof-infrastructure}
+status: planned
+doc: 03a §Task 31 · Build the complete dashboard proof infrastructure · ref:guards-and-tests §3 · ref:frontend-backend-integration §7
+
+builds:
+- [ ] PROOF T2 component/feature scenarios cover every generic surface, state arm, command result, and accessibility invariant
+- [ ] PROOF T3 production-bundle browser journeys cover every route/control on desktop/mobile, both themes, keyboard, and reduced motion
+- [ ] PROOF T4 live dry-run journeys bind assertions to direct SQLite/evidence checks without authorizing writes
+- [ ] PROOF parity references include Settings, sessions, setup, dialogs, and the DS specimen; update only through the deliberate lane
+
+#### 32 · Execute integrated dashboard acceptance and close 3.1 {#dash-acceptance}
+status: planned
+doc: 03a §Task 32 · Execute integrated dashboard acceptance and close 3.1 · 03a §Exit criteria
+
+builds:
+- [ ] PROOF execute Task 8's unchanged acceptance matrix across run, queue, settings, setup, session, notification, date, trust, archive, Explorer, intake, and recovery journeys
+- [ ] PROOF typecheck, lint, coverage, architecture, generated checks, parity, production smoke, performance, storage recovery, and live dry-run gates are green together
+- [ ] PROOF direct authority reconciliation finds no ghost, duplicate, stale, or orphaned run/settings state and no protected-value exposure
+- [ ] DOCS open focused remediation tasks for any failure; this supervisor audits and closes only after every row has independent evidence
+
+needs:
+- dash-shell
+- dash-date-navigation
+- dash-settings
+- dash-setup
+- dash-storage
+- dash-sessions
+- dash-run-modal
+- dash-queue
+- dash-notifications
+- dash-run-detail
+- dash-context-data
+- dash-logs
+- dash-receipts-failures
+- dash-gates
+- dash-archive
+- dash-activity
+- dash-explorer
+- dash-intake-edit
+- dash-review-people
+- dash-realtime
+- dash-performance
+- dash-production-runtime
+- dash-proof-infrastructure
+
+### 3.2 · Separations {#order-8}
 status: you
 size: XL
 chip: controlled proof needs you
@@ -642,7 +1429,7 @@ needs:
 - dash-defaults
 
 log:
-- 2026-09-03 | D325 task reshape | 3B follows closed 3A; read Tasks 1A–1C and write Tasks 2A–2B are dedicated-worktree waves, Tasks 3–6 are sequential, Tasks 7A–7C are the final parallel preparation wave, and Task 8 owns operator-gated live acceptance
+- 2026-09-03 | D326 decimal hierarchy | 3.2 follows closed 3.1; Tasks 1–5 build the store reads/writes, Tasks 6–9 compose and repair the workflow, Tasks 10–12 close independent preparation seams under coordinator-recorded isolation, and Task 13 owns operator-gated live acceptance
 - 2026-09-02 | D309 identity authority | supplied/read-back EID now proceeds with explicit machine provenance and no gate row; name-only still parks for the actual operator command; D287 extra workflow approvals are superseded; deletion/finalization protocol remains pending (§9.38)
 - 2026-09-02 | D310 exact-set and filing survival | pending deletion now binds a canonical stable-T-ID eligible/protected set and refuses immutable person-only intents; Kuali finalization always re-verifies the exact filing still exists. No live target, target disposition or controlled-write proof is inferred (§9.39)
 - 2026-09-02 | coordinator readiness correction | §§9.33–9.36 supersede the old runtime-only blocker: gone 4537, historical green 4589 preview, then unsupported approval sequencing/sweep identity and a deleted-receipt protocol conflict. All controlled writes remain open; no protocol amendment or write approval inferred
@@ -650,10 +1437,10 @@ log:
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 - 2026-08-30 | R2 observed status | D284's sole identity remains `finalization-canary` / 4537. Parent software gates passed at `54060ded`; assigned admission refused with `.env` unavailable, so no new live observation or write proof exists (§9.32; `r2-p3.md` / `r2-p4.md`). Step 5 and A2–A5/A8 remain open; R3 residue stays separately owned
 
-#### 1A · Build the New Kronos timecard read {#sep-1}
+#### 1 · Build the New Kronos timecard read {#sep-1}
 status: done
 date: parallel wave 1 · dedicated worktree
-doc: 03b §Task 1A · Build the New Kronos timecard read · ref:task-contract §2.8 · ref:task-contract §2.9
+doc: 03b §Task 1 · Build the New Kronos timecard read · ref:task-contract §2.8 · ref:task-contract §2.9
 
 > Live proof took 17 attempts and ten defects — the last two (pinned-viewport scroll, header/cell column offset) unreachable by any fixture.
 
@@ -670,11 +1457,11 @@ needs:
 log:
 - 2026-08-20 | docs-cohesion 03b | verified against `src/stores/new-kronos/{driver,tasks,session.ts}` and separations §9.1/§9.2/§9.2a — nothing left for the migration itself · left: the cold-profile first-search observation, a driver-owner call rather than a separations one
 
-#### 1B · Build the Kuali separation-document read {#sep-2}
+#### 2 · Build the Kuali separation-document read {#sep-2}
 status: done
 date: D197 · live 08-12
 date: parallel wave 1 · dedicated worktree
-doc: 03b §Task 1B · Build the Kuali separation-document read · ref:task-contract §2.8 · ref:task-contract §2.10 · ref:operator-trust §2.3.3
+doc: 03b §Task 2 · Build the Kuali separation-document read · ref:task-contract §2.8 · ref:task-contract §2.10 · ref:operator-trust §2.3.3
 
 > Five real runs `done`, three with `verified` receipts over real documents.
 
@@ -688,11 +1475,11 @@ log:
 - 2026-08-20 | docs-cohesion 03b | verified against `src/stores/kuali/tasks/read-separation-document.ts`, `src/stores/separations/tasks/` and `src/domain/separations/termination-type.ts`; the two platform items this chunk surfaced (D199, D200) both landed · left: S2's refusal arm against a real non-separation document
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 
-#### 1C · Build UCPath employment and identity reads {#sep-3}
+#### 3 · Build UCPath employment and identity reads {#sep-3}
 status: done
 date: D201–D203 · live 08-12
 date: parallel wave 1 · dedicated worktree
-doc: 03b §Task 1C · Build UCPath employment and identity reads · ref:task-contract §2.11 · ref:write-safety §14.3 · ref:write-safety §14.9 · ref:workflow-model §5.5 · ref:operator-trust §2.3.4
+doc: 03b §Task 3 · Build UCPath employment and identity reads · ref:task-contract §2.11 · ref:write-safety §14.3 · ref:write-safety §14.9 · ref:workflow-model §5.5 · ref:operator-trust §2.3.4
 
 > The first live gated run: parked, a real approval through the real command endpoint, resumed — and it found that a gate's durable record is not a checkpoint (D203).
 
@@ -708,11 +1495,11 @@ log:
 - 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
-#### 2A · Build the UCPath termination write {#sep-4}
+#### 4 · Build the UCPath termination write {#sep-4}
 status: done
 date: D206 · prepare live 08-14
 date: parallel wave 2 · dedicated worktree
-doc: 03b §Task 2A · Build the UCPath termination write · ref:task-contract §2.12 · ref:write-safety §3 · ref:write-safety §5 · ref:write-safety §3.2
+doc: 03b §Task 4 · Build the UCPath termination write · ref:task-contract §2.12 · ref:write-safety §3 · ref:write-safety §5 · ref:write-safety §3.2
 
 builds:
 - [x] BE two fenced transactions: the pending sweep + the filing
@@ -729,11 +1516,11 @@ log:
 - 2026-08-20 | docs-cohesion 03b | verified against `src/stores/ucpath/tasks/` and separations §9.7–§9.9 — the PREPARE arm is live-proven and commit-freedom is proved from durable state (zero intents, zero checkpoints, five refusals for five) · left: the COMMIT arm (Track A ②, 08-28), `clear-pending`'s COMMITTED arm (no mapped witness — `operator-calls`), and the two unmeasured UCPath facts
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
-#### 2B · Build the Kuali finalization write {#sep-5}
+#### 5 · Build the Kuali finalization write {#sep-5}
 status: done
 date: D207 · D217 · prepare live on doc 4524
 date: parallel wave 2 · dedicated worktree
-doc: 03b §Task 2B · Build the Kuali finalization write · ref:write-safety §2.2 · ref:write-safety §3 · ref:write-safety §4.2
+doc: 03b §Task 5 · Build the Kuali finalization write · ref:write-safety §2.2 · ref:write-safety §3 · ref:write-safety §4.2
 
 builds:
 - [x] BE ONE transaction node behind the same gate
@@ -749,10 +1536,10 @@ log:
 - 2026-08-20 | docs-cohesion 03b | verified against `src/stores/kuali/tasks/*separation-finalization.ts` and separations §9.10–§9.12/§9.15/§9.16; §4e's section-ownership caveat is DISCHARGED for all twelve fields across three documents, and `exactly-one-editable` proved on three open documents · left: the seven wire-payload shapes (RECORDED, not asserted) and D207's provisional `stabilized` window — both commit-only, tracked on `track-a`
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
-#### 3 · Compose the Separations workflow {#sep-6a}
+#### 6 · Compose the Separations workflow {#sep-6a}
 status: done
 date: D211
-doc: 03b §Task 3 · Compose the Separations workflow · ref:workflow-model §3 · ref:write-safety §14.10 · ref:write-safety §12
+doc: 03b §Task 6 · Compose the Separations workflow · ref:workflow-model §3 · ref:write-safety §14.10 · ref:write-safety §12
 
 > Identity authority covers the whole packet: machine verification or operator approval binds the exact write-plan digest.
 
@@ -770,10 +1557,10 @@ log:
 - 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
-#### 4 · Run the composed live dry-run pass {#sep-6b}
+#### 7 · Run the composed live dry-run pass {#sep-6b}
 status: done
 date: D212–D215
-doc: 03b §Task 4 · Run the composed live dry-run pass · ref:workflow-model §5.7 · ref:task-contract §6.2 · ref:write-safety §3
+doc: 03b §Task 7 · Run the composed live dry-run pass · ref:workflow-model §5.7 · ref:task-contract §6.2 · ref:write-safety §3
 
 builds:
 - [x] PROOF whole read chain on two real subjects in 82 s, parked, approved, resumed — zero durable write rows
@@ -788,10 +1575,10 @@ log:
 - 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
-#### 5 · Reach and verify preview terminal {#sep-6c}
+#### 8 · Reach and verify preview terminal {#sep-6c}
 status: done
 date: doc 4502 · canary 4510 refused pre-gate
-doc: 03b §Task 5 · Reach and verify preview terminal · ref:workflow-model §2.1 · ref:operator-trust §2.3 · ref:operator-trust §2.3.7
+doc: 03b §Task 8 · Reach and verify preview terminal · ref:workflow-model §2.1 · ref:operator-trust §2.3 · ref:operator-trust §2.3.7
 
 > Still zero write rows beyond 2026-08-04's proof.
 
@@ -807,10 +1594,10 @@ log:
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 
-#### 6 · Repair defects exposed by the live pass {#platform-fixes}
+#### 9 · Repair defects exposed by the live pass {#platform-fixes}
 status: done
 date: 2026-08-14 → 19
-doc: 03b §Task 6 · Repair defects exposed by the live pass · ref:workflow-model §1.2.1 · ref:workflow-model §4 · ref:dashboard-surfaces §2.3 · ref:dashboard-surfaces §2.6 · ref:execution-and-sessions §4.2
+doc: 03b §Task 9 · Repair defects exposed by the live pass · ref:workflow-model §1.2.1 · ref:workflow-model §4 · ref:dashboard-surfaces §2.3 · ref:dashboard-surfaces §2.6 · ref:execution-and-sessions §4.2
 
 builds:
 - [x] BE D218 the projector tails the span stream FROM DISK, cross-process
@@ -828,11 +1615,11 @@ log:
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 - 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 
-#### 7A · Finish backend recovery and evidence {#track-a}
+#### 10 · Finish backend recovery and evidence {#track-a}
 status: planned
 date: parallel wave 7 · dedicated worktree
 chip: backend readiness before live acceptance
-doc: 03b §Task 7A · Finish backend recovery and evidence · 03b §Exit criteria · ref:write-safety §3 · ref:write-safety §4.2 · ref:write-safety §5 · 03c §Exit criteria · 03c §Non-workflow capability closure inventory (D58) · ref:operator-trust §3.2 · ref:operator-trust §4 · ref:operator-trust §4.1 · ref:operator-trust §4.3 · ref:write-safety §3.2
+doc: 03b §Task 10 · Finish backend recovery and evidence · 03b §Exit criteria · ref:write-safety §3 · ref:write-safety §4.2 · ref:write-safety §5 · 03c §Exit criteria · 03c §Non-workflow capability closure inventory (D58) · ref:operator-trust §3.2 · ref:operator-trust §4 · ref:operator-trust §4.1 · ref:operator-trust §4.3 · ref:write-safety §3.2
 
 > Separations has historical proof for 8 of 9 exit criteria; criterion 5 remains open. §9.34’s 4589 preview and exact-run 0/0/0 are inspectable history, not fresh admission. D309 removes approval sequencing from the blocker set; §§9.35–9.36 still block D287 on sweep identity and the deleted-filing reference. A proposed independent disposable-target deletion proof is pending operator judgment; implementation/test seams are already authorized. After that decision: implement and prove, freeze current source/input after a fresh rehearsal, obtain explicit live-run authorization, measure A5 and close A8. Gone registry canary 4537 is not silently replaced; UNKNOWN stops without retry.
 
@@ -864,11 +1651,11 @@ log:
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 - 2026-08-30 | R2 observed status | A2–A5/A8 remain open after assigned-runtime admission refused before runner import. No browser, run, authority creation, person-field inspection, approval, write or UNKNOWN retry occurred; no current subject/S7, rehearsal or 0/0/0 proof exists. Software gates and child cleanup are complete; R3 live-derived obligations remain separate (§9.32; `r2-gates.md`, `r2-p3.md`, `r2-p4.md`)
-#### 7B · Finish Separations dashboard scenarios {#sep-dash}
+#### 11 · Finish Separations dashboard scenarios {#sep-dash}
 status: active
 date: parallel wave 7 · dedicated worktree
 chip: generic wire done · scenario closure open
-doc: 03b §Task 7B · Finish Separations dashboard scenarios · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.4 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §9.5.2 · ref:dashboard-surfaces §9.5.1 · ref:operator-trust §5.9 · ref:write-safety §14.11 · ref:operator-trust §6.3
+doc: 03b §Task 11 · Finish Separations dashboard scenarios · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.4 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §9.5.2 · ref:dashboard-surfaces §9.5.1 · ref:operator-trust §5.9 · ref:write-safety §14.11 · ref:operator-trust §6.3
 
 > What the generic surfaces learned about separations, and the two separations-specific things no default covers (the name-only gate ceremonies, the three commit contracts' ledger lines). Built with Track B as the forcing function, so most squares are already filled; the empty ones are wires not yet run — not sloppy surfaces.
 
@@ -895,12 +1682,12 @@ log:
 - 2026-08-21 | docs-dash-surfaces 5.1c | §9.1–§9.4, §9.9, §9.10 written as-built (`bbdf59b3`)
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
-#### 7C · Finalize the workflow tree and T1 scaffold {#workflow-tree}
+#### 12 · Finalize the workflow tree and T1 scaffold {#workflow-tree}
 status: active
 date: parallel wave 7 · dedicated worktree
 size: M
 chip: live finalization proof open — protocol blocked
-doc: 03b §Task 7C · Finalize the workflow tree and T1 scaffold · ref:workflow-model §1.2.2 · ref:dashboard-surfaces §9.3 · ref:dashboard-surfaces §9.9 · 03c §The seven-step migration playbook
+doc: 03b §Task 12 · Finalize the workflow tree and T1 scaffold · ref:workflow-model §1.2.2 · ref:dashboard-surfaces §9.3 · ref:dashboard-surfaces §9.9 · 03c §The seven-step migration playbook
 
 > Your ruling: `src/workflows/` is organized down to the folder level — one top-level folder per workflow the RAIL lists and one sub-folder per TIMELINE step. Separations becomes `separations/` with `kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction` · `kuali-finalization` inside (D225's six categories, as folders); the five harnesses move INTO the step they prove; `kuali-timekeeper-annotation` is DISMANTLED into the testing framework as the Kuali finalization step's first T1 pair (D266) — there is no `proving/`. IDs and run identity are unchanged. Visible deltas: the obsolete `Test equipment` group disappears, and picker/Explorer place all five harnesses under Separations (including the timekeeping-category Kronos harness). The `workflow-layout` guard pins role ↔ path so the folder view and the dashboard view cannot disagree.
 
@@ -925,16 +1712,16 @@ log:
 - 2026-08-25 | test-tiers | source/test retirement, first T1 pair, subject registry, durable row and CLI runner complete; role/grouping mutations are red-capable and parity asserts the hierarchy; production result `d0a75e7f-b021-4e9e-a288-a8e6266fe2b4` proves the unavailable target is `blocked` / `not-started`, not silently failed or fabricated · left: only the date-gated live `met` result on 2026-08-28
 - 2026-08-30 | R2 observed status | the earlier date wait is superseded by assigned-runtime admission refusal. No new live finalization `met`, rehearsal, run/trace or exact-run write-count proof was produced; D284 keeps 4537 as the sole subject. Software/parity and child cleanup passed independently of this open live proof (§9.32; `r2-gates.md`, `r2-p3.md`, `r2-p4.md`)
 
-#### 8 · Record live acceptance and close Separations {#operator-calls}
+#### 13 · Record live acceptance and close Separations {#operator-calls}
 status: you
 chip: needs you
-doc: 03b §Task 8 · Record live acceptance and close Separations · ref:dashboard-surfaces §9.10 · 03c §Non-workflow capability closure inventory (D58) · ref:guards-and-tests §3.11 · ref:operator-trust §10 · ref:write-safety §13
+doc: 03b §Task 13 · Record live acceptance and close Separations · ref:dashboard-surfaces §9.10 · 03c §Non-workflow capability closure inventory (D58) · ref:guards-and-tests §3.11 · ref:operator-trust §10 · ref:write-safety §13
 
 > The pending-sweep witness remains open. D310 replaces §9.36’s invalid post-filing deletion with an independent exact-set disposable-target proof while preserving the real filing through Kuali finalization. The mechanics are built; the target and restoration/retention disposition remain operator-owned. D309 supersedes extra per-write workflow gates; explicit operational authorization remains mandatory before a real run. The gate-age pill, D192, A6, D239, D223/D240 and D254 remain settled.
 
 builds:
 - [!] PROOF ① UCPath pending sweep’s COMMITTED arm needs a valid live witness; D310 supplies the exact-set protocol, but the independent disposable target and restoration/retention disposition must be fixed before any deletion
-- [ ] PROOF after the operator prerequisites are met, record the fresh rehearsal, controlled-write evidence, T1b `met`, rebuild-ready close-out and exact 3B worktree/branch/task cleanup
+- [ ] PROOF after the operator prerequisites are met, record the fresh rehearsal, controlled-write evidence, T1b `met`, rebuild-ready close-out and exact 3.2 worktree/branch/task cleanup
 - [x] DOCS keep or retire `kuali-timekeeper-annotation` — ANSWERED 2026-08-21: RETIRE (D266), dismantled into the testing framework as the Kuali finalization step's T1 pair (`workflow-tree`)
 - [x] FE the gate-age pill — ANSWERED 2026-08-18: the status pill carries NO age (*the word names the work, not the wait*); the age renders in the row's footer meta and in the log panel (`ref dashboard-surfaces` amended; `src/dashboard/surfaces/queue.tsx:281`)
 - [x] DOCS D192's re-disposition of `legacy-tool-ops-sanity-check-record` — ANSWERED 2026-08-18: no AI feature; §14.2's server-computed `comparisons` array IS the sanity check, deterministically. The register entry is `retired` with the ruling's own words (`config/legacy-capabilities.json`)
@@ -955,25 +1742,25 @@ log:
 - 2026-08-21 | workflow-tree ruling | a second call opened — keep or retire `kuali-timekeeper-annotation` (recommendation: keep, under `proving/`); doc 03b §Smaller operator calls open carries the reasoning
 - 2026-08-21 | workflow-tree ruling | answered the same session: RETIRE (D266)
 
-### 3C · Workflow authoring and acceptance {#workflow-authoring-model}
+### 3.3 · Workflow authoring and acceptance {#workflow-authoring-model}
 status: planned
-chip: waits for 3B close · core already landed
+chip: waits for 3.2 close · core already landed
 doc: 03c §Workflow authoring model - Phase 3 acceptance foundation · ref:workflow-model §1.6 · ref:operator-trust §5.2.3 · ref:frontend-backend-integration §6.8 · ref:guards-and-tests §10.11
 open: yes
 
-> After 3B closes, the 3C coordinator verifies the already-landed workflow-definition core, runs the runtime-inheritance and clean-context guide proofs in parallel, accepts Person Lookup and Separations in a second parallel wave, then finishes T1–T3, coverage and lifecycle close. 3C unlocks 3D; it no longer closes Phase 3.
+> After 3.2 closes, the 3.3 coordinator verifies the already-landed workflow-definition core, may run the runtime-inheritance and clean-context guide proofs in parallel, may then accept Person Lookup and Separations in parallel, and finally finishes T1–T3, coverage and lifecycle close. 3.3 unlocks 3.4; it no longer closes Phase 3.
 
 builds:
 - [x] BOTH Task 1 workflow-definition/compiler core, direct entries, omissions, recovery and four-artifact enforcement landed through R3/R3c (`ab04231c`)
-- [ ] PROOF Tasks 2A/2B prove automatic runtime inheritance and the author guide from clean contexts
-- [ ] BOTH Tasks 3A/3B accept Person Lookup and Separations through the final compiled workflow
-- [ ] PROOF Task 4 finishes T1–T3, the 80/80/80 floor, integrated gates and exact 3C lifecycle close
+- [ ] PROOF Tasks 2 and 3 prove automatic runtime inheritance and the author guide from clean contexts
+- [ ] BOTH Tasks 4 and 5 accept Person Lookup and Separations through the final compiled workflow
+- [ ] PROOF Task 6 finishes T1–T3, the 80/80/80 floor, integrated gates and exact 3.3 lifecycle close
 
 needs:
 - order-8
 
 log:
-- 2026-09-03 | D325 task reshape | 3C starts only after 3B closes; Task 1 is the landed core, Tasks 2A/2B and 3A/3B are dedicated-worktree waves, Task 4 closes 3C and unlocks 3D · T4 moves to 3D Task 4
+- 2026-09-03 | D326 decimal hierarchy | 3.3 starts only after 3.2 closes; Task 1 is the landed core, Tasks 2/3 and 4/5 are parallel-capable only through the coordinator run plan, and Task 6 closes 3.3 and unlocks 3.4 · T4 moves to 3.4 Task 5
 - 2026-09-02 | D311 | owner-first architecture recorded; documentation only, no compiler or conversion claimed
 - 2026-09-02 | D312–D316 | measurable simplicity and recovery boundaries recorded; documentation only, no implementation claimed
 - 2026-09-02 | D317 | Phase 3c originally split into authoring-platform 3c-A and a later migration batch; D319 narrows 3c-B to Person Lookup/Separations acceptance and Phase 3 close
@@ -994,13 +1781,13 @@ builds:
 - [x] DOCS author guide and agent pointers (`9ec2e269`, `b61d12c6`, `eec628aa`)
 
 log:
-- 2026-09-03 | D325 task reshape | the completed 3C platform work is one chronological supervisor-task card · left: Tasks 2A–4
+- 2026-09-03 | D326 decimal hierarchy | the completed 3.3 platform work is one chronological supervisor-task card · left: Tasks 2–6
 
-#### 2A · Prove automatic runtime inheritance {#workflow-runtime-inheritance}
+#### 2 · Prove automatic runtime inheritance {#workflow-runtime-inheritance}
 status: planned
 date: parallel wave 2 · dedicated worktree
 size: S
-doc: 03c §Task 2A · Prove automatic runtime inheritance · ref:workflow-model §1.6 · ref:guards-and-tests §10.11
+doc: 03c §Task 2 · Prove automatic runtime inheritance · ref:workflow-model §1.6 · ref:guards-and-tests §10.11
 
 > One red-capable proof that a compiled workflow inherits worker/session acquisition, authentication, checkpoints, semantic logs, screenshots, receipts, notifications and Archive without workflow-specific glue.
 
@@ -1011,11 +1798,11 @@ builds:
 needs:
 - workflow-authoring-core
 
-#### 2B · Prove the author guide from a clean context {#workflow-guide-proof}
+#### 3 · Prove the author guide from a clean context {#workflow-guide-proof}
 status: planned
 date: parallel wave 2 · dedicated worktree
 size: S
-doc: 03c §Task 2B · Prove the author guide from a clean context · ref:workflow-model §1.6 · ref:guards-and-tests §10.11
+doc: 03c §Task 3 · Prove the author guide from a clean context · ref:workflow-model §1.6 · ref:guards-and-tests §10.11
 
 > Follow the canonical guide for both acceptance workflows without compiler/runtime changes. Any undocumented step, extra authored file or required escape hatch is a defect to correct in the guide or authoring contract.
 
@@ -1026,12 +1813,12 @@ builds:
 needs:
 - workflow-authoring-core
 
-#### 3A · Accept Person Lookup {#order-0}
+#### 4 · Accept Person Lookup {#order-0}
 status: planned
 date: parallel wave 3 · dedicated worktree
 size: M
 chip: conversion landed · final acceptance waits
-doc: 03c §Task 3A · Accept Person Lookup · 03c §Unverified candidate evidence - not a phase order · ref:workflow-model §8 · ref:workflow-model §8.1 · ref:task-contract §9.1 · ref:task-contract §9.1.1
+doc: 03c §Task 4 · Accept Person Lookup · 03c §Unverified candidate evidence - not a phase order · ref:workflow-model §8 · ref:workflow-model §8.1 · ref:task-contract §9.1 · ref:task-contract §9.1.1
 
 builds:
 - [x] BOTH resolve a person by name / EID against real UCPath + CRM
@@ -1068,30 +1855,30 @@ needs:
 log:
 - 2026-08-20 | docs-cohesion 03c | verified: four squares, and four is right — person-lookup does not gate, raises no park notification and consumes no intake, so §5.1.4/§5.1.6/§5.1.7 have nothing to declare. Left: the T2 scenario
 
-#### 3B · Accept Separations through the compiled workflow {#separations-acceptance}
+#### 5 · Accept Separations through the compiled workflow {#separations-acceptance}
 status: planned
 date: parallel wave 3 · dedicated worktree
 size: M
-chip: waits for 3B close and Task 2 proofs
-doc: 03c §Task 3B · Accept Separations through the compiled workflow · ref:workflow-model §1.6 · ref:guards-and-tests §10.11 · ref:write-safety §12
+chip: waits for 3.2 close and Tasks 2–3 proofs
+doc: 03c §Task 5 · Accept Separations through the compiled workflow · ref:workflow-model §1.6 · ref:guards-and-tests §10.11 · ref:write-safety §12
 
-> Re-run complete compiler equivalence and T1 acceptance over the closed 3B workflow. Preserve omissions, the conditional identity gate, transaction fences, checkpoints, screenshots, observed logs, receipts and generic projections without turning structural equivalence into a false completed-write claim.
+> Re-run complete compiler equivalence and T1 acceptance over the closed 3.2 workflow. Preserve omissions, the conditional identity gate, transaction fences, checkpoints, screenshots, observed logs, receipts and generic projections without turning structural equivalence into a false completed-write claim.
 
 builds:
 - [x] BOTH final one-file workflow conversion and public-identifier equivalence (`ab04231c`)
-- [ ] PROOF final compiler/equivalence/T1 acceptance after Tasks 2A/2B integrate
+- [ ] PROOF final compiler/equivalence/T1 acceptance after Tasks 2 and 3 integrate
 - [ ] DOCS reconcile the compiled workflow with doc 03b's closed Separations authority
 
 needs:
 - workflow-runtime-inheritance
 - workflow-guide-proof
 
-#### 4 · Finish T1–T3 and close 3C {#test-tiers}
+#### 6 · Finish T1–T3 and close 3.3 {#test-tiers}
 status: planned
 size: M
-doc: 03c §Task 4 · Finish T1–T3 and close 3C · ref:guards-and-tests §10
+doc: 03c §Task 6 · Finish T1–T3 and close 3.3 · ref:guards-and-tests §10
 
-> Complete the acceptance suite at the boundary 3C actually owns: canonical T1 pairs for both workflows, T2/T3 only for genuinely new dashboard behavior, the 80/80/80 coverage floor, integrated gates and exact lifecycle cleanup. T4 belongs to 3D Task 4.
+> Complete the acceptance suite at the boundary 3.3 actually owns: canonical T1 pairs for both workflows, T2/T3 only for genuinely new dashboard behavior, the 80/80/80 coverage floor, integrated gates and exact lifecycle cleanup. T4 belongs to 3.4 Task 5.
 
 builds:
 - [x] DOCS tier contract, subject registry, durable result row, production runner and first structural pair (R10/D266)
@@ -1099,29 +1886,29 @@ builds:
 - [ ] BE T2/T3 scenarios for the remaining new interaction and combined dashboard path
 - [ ] BE coverage floor 80/80/80 global with every retained suite collected exactly once
 - [ ] PROOF integrated typecheck, lint, coverage, architecture, parity and workflow evidence green
-- [ ] DOCS 3C authority reconciliation and exact worktree/branch/task cleanup; 3D unlocked
+- [ ] DOCS 3.3 authority reconciliation and exact worktree/branch/task cleanup; 3.4 unlocked
 
 needs:
 - order-0
 - separations-acceptance
 
 log:
-- 2026-09-03 | D325 task reshape | moved from 3A; Task 4 owns T1–T3 and 3C close, while agent-operated T4 moves to 3D Task 4
+- 2026-09-03 | D326 decimal hierarchy | moved from 3.1; Task 6 owns T1–T3 and 3.3 close, while agent-operated T4 moves to 3.4 Task 5
 
-### 3D · Codex and Claude cooperation {#claude-operator}
+### 3.4 · Codex and Claude cooperation {#claude-operator}
 status: planned
 date: R15 · 2026-08-21
 size: L
 chip: not started
 doc: 03d §Track summary · ref:frontend-backend-integration §3.4 · ref:write-safety §14
 
-> After 3C closes, Claude Code becomes the second attributed actor on the one local BFF. Task 1 establishes derived actor identity and the two-actor rule; Task 2 adds the loopback MCP client surface; Tasks 3A/3B add monitoring and actor-aware clients in parallel dedicated worktrees; Task 4 records the attributed dry-run/T4 proof and closes Phase 3. Desktop attachment remains Phase 6.
+> After 3.3 closes, Claude Code becomes the second attributed actor on the one local BFF. Task 1 establishes derived actor identity and the two-actor rule; Task 2 adds the loopback MCP client surface; Tasks 3 and 4 add monitoring and actor-aware clients and may run in parallel under the coordinator plan; Task 5 records the attributed dry-run/T4 proof and closes Phase 3. Desktop attachment remains Phase 6.
 
 needs:
 - workflow-authoring-model
 
 log:
-- 2026-09-03 | D325 task reshape | 3D now starts after closed 3C; Tasks 3A/3B are one dedicated-worktree wave and Task 4 owns the T4 journey plus Phase 3 close · desktop attachment remains Phase 6
+- 2026-09-03 | D326 decimal hierarchy | 3.4 starts after closed 3.3; Tasks 3 and 4 are parallel-capable only through the coordinator plan, and Task 5 owns the T4 journey plus Phase 3 close · desktop attachment remains Phase 6
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
 
 #### 1 · Derive actor identity and enforce the two-actor rule {#claude-actor}
@@ -1169,11 +1956,11 @@ needs:
 log:
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
 
-#### 3A · Add cursor-based monitoring and the actor inbox {#claude-monitor}
+#### 3 · Add cursor-based monitoring and the actor inbox {#claude-monitor}
 status: planned
 date: parallel wave 3 · dedicated worktree
 size: M
-doc: 03d §Task 3A · Add cursor-based monitoring and the actor inbox · ref:operator-trust §6 · ref:frontend-backend-integration §3.5
+doc: 03d §Task 3 · Add cursor-based monitoring and the actor inbox · ref:operator-trust §6 · ref:frontend-backend-integration §3.5
 
 > The stream is already cursor-resumable and the projector is already fed by a disk tail, so a second reader is nearly free. The hole is per-actor: the inbox is read for ONE hardcoded id and rides the day wire with no route of its own. And a log of step names teaches an agent nothing — `{#observed-logs}` is what turns monitoring into something worth handing to a second watcher.
 
@@ -1192,11 +1979,11 @@ needs:
 log:
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
 
-#### 3B · Make existing clients actor-aware {#claude-clients}
+#### 4 · Make existing clients actor-aware {#claude-clients}
 status: planned
 date: parallel wave 3 · dedicated worktree
 size: M
-doc: 03d §Task 3B · Make existing clients actor-aware · ref:frontend-backend-integration §6.9 · ref:clock-config-secrets §3
+doc: 03d §Task 4 · Make existing clients actor-aware · ref:frontend-backend-integration §6.9 · ref:clock-config-secrets §3
 
 > "What happens if the user has both open" was answered by D181 before anyone asked it: the `server` role lock is taken before the authority database opens, so there is never more than one BFF on the machine. The web dashboard, the desktop app and Claude's MCP server are three clients of one port, one journal and one projection — which is what makes two actors safe rather than merely convenient.
 
@@ -1213,11 +2000,11 @@ needs:
 log:
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
 
-#### 4 · Prove attributed cooperation and close Phase 3 {#claude-proof}
+#### 5 · Prove attributed cooperation and close Phase 3 {#claude-proof}
 status: planned
 date: R15 · 2026-08-21
 size: M
-doc: 03d §Task 4 · Prove attributed cooperation and close Phase 3 · ref:guards-and-tests §10
+doc: 03d §Task 5 · Prove attributed cooperation and close Phase 3 · ref:guards-and-tests §10
 
 > R10's T1 shape driven from a different client. Separations is the subject because its name-resolved arm carries the identity gate and a transaction node, so the two-actor rule is exercised on the arm it was written for. One agent, one scenario — the parallel T4 tier comes later, after `{#parallel-runs}` and `{#duo-lease}`.
 
@@ -1247,7 +2034,7 @@ open: yes
 > Phase 4 is the workflow-migration program. Each approved workflow becomes one lettered part: **4A**, then **4B**, **4C**, and so on. The next letter is created only after that workflow's current behavior, proposed definition, proof target, and migration boundary are verified and approved.
 
 builds:
-- [ ] DOCS Phase 3 stops only after 3D's attributed cooperation proof (D325)
+- [ ] DOCS Phase 3 stops only after 3.4's attributed cooperation proof (D326)
 - [ ] DOCS record the operator's selected candidate after Phase 3 closes
 - [ ] DOCS verify its complete admission packet with no guessed workflow boundary or hidden open choice
 - [ ] DOCS record the operator's approval of the exact workflow definition and scope
@@ -1309,7 +2096,7 @@ phase: Phase 5
 status: planned
 when: after Phase 4 | readiness before the one authority switch
 chip: close readiness, then switch once
-doc: 04 §Shelf summary · 00 §Size model + delivery tiers · 03c §Live probe status (the design assumptions still unproven) · 05 §Risk register (top sequencing risks)
+doc: 04 §Shelf summary · 00 §Task 4 · Fix the size model and delivery tiers · 03c §Live probe status (the design assumptions still unproven) · 05 §Risk register (top sequencing risks)
 open: no
 
 > Phase 5 closes every cutover-relevant readiness gap, then performs one all-at-once authority switch. Nothing is silently dropped: every deferred item has a named disposition, and desktop-only update work is carried forward to Phase 6.
@@ -1698,7 +2485,8 @@ log:
 _Lifted from the master plan's §0 on 2026-08-20 (cohesion step 3a) — verbatim except
 where a name moved: the design docs are now cited by slug under `docs/rebuild/reference/`. D323
 restores one stable Phase 0–6 hierarchy while preserving existing doc filenames as stable paths;
-D325 makes Phase 3's part and task order executable.
+D326 supersedes D323/D325's split lettered grammar with one decimal execution hierarchy for Phases
+0–3.
 The master plan itself was dissolved into those docs on the same day
 (step 3b); its as-written record, with a section-by-section table of where everything went, is
 `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`._
@@ -1727,12 +2515,12 @@ section that describes a node carries `<!-- roadmap: <id> -->` under its heading
 side fails the gate instead of rotting. Three rules bind the tree itself. A `builds:` box is `[x]`
 **only** for what is landed at HEAD, with its commit or D-number cited in the line — never pre-marked.
 The tree never invents scope: an unplanned feature is a finding for `docs/findings/`, not a roadmap
-line. D323 adds the visible hierarchy rule: numbered phases are the only spine nodes, lettered parts
-run horizontally, and their concrete tasks run vertically. D325 makes Phase 3 strict: 3A → 3B → 3C
-→ 3D; one coordinator owns each part; every immediate numbered task is one supervisor session; and
-same-number lettered tasks are one parallel wave, shown at the same depth. Before dispatch, each
-parallel task receives its exact feature branch, absolute worktree, artifact scope, gate and
-integration order in the coordinator ledger. Session work is recorded only where it happened in
+line. D326 makes the hierarchy uniform: numbered phases are the only spine nodes; Phases 0–3 use
+decimal parts; each part has one coordinator; each immediate numbered task is one supervisor
+session; and checklist lines are that task's proof-bearing subtasks. The strict active order is
+0.3 → 1.6 → 2.6 → 3.1 → 3.2 → 3.3 → 3.4. Parallelism is recorded only after genuinely independent
+tasks receive exact feature branches, absolute worktrees, artifact scopes, gates and integration
+order in the coordinator ledger; it does not create a second task-label grammar. Session work is recorded only where it happened in
 append-only per-node `log:` blocks, so history never competes with the plan on the spine.
 
 ### D1 ownership map — the quick index (concept → owning doc)
@@ -1744,14 +2532,14 @@ The rows below are the same map the master plan's §0.2 carried, re-pointed to t
 |---|---|
 | Task contract (`defineTaskContract`/`defineTask`), contract/impl split (D3), task-namespace grammar + closed `SystemId` union (D2), error taxonomy, three effects/dry-run mechanics, retry, decoration, system/service stores + pure workflow mini-stores, session providers + login signature, `stores/common/` leaf homes | **`reference/task-contract`** (was doc 01) |
 | Workflow builder API (single), descriptor shape, `RunEnvelope`, run-state machine incl. gates/parks (D5), checkpoint/resume + freshness walk (D8), label precedence (D16) | **`reference/workflow-model`** (was doc 02) |
-| Span/event wire schema (D10), notes stream, storage layout, SQLite projection role (D14), SSE wire shapes, completion (fan-out/approval) union (D11), cross-repo runtime boundary + one-time import rules (D88/D89/D93), the ONE run/queue projection every count reads (D81), run versioning + major-only archive-on-bump (D80/D274), run display names (D83) | **`reference/dashboard-surfaces`** (was doc 03) |
+| Span/event wire schema (D10), notes stream, storage layout, SQLite projection role (D14), SSE wire shapes, completion (fan-out/approval) union (D11), cross-repo runtime boundary + one-time import rules (D88/D89/D93), the ONE run lifecycle authority and run/queue projection every count reads (D81/D327), run versioning + major-only archive-on-bump (D80/D274), run display names (D83) | **`reference/dashboard-surfaces`** (was doc 03) |
 | Binding cross-doc reconciliation (D1–D118, through 2026-08-02 Round 18) | **`reference/decisions`** (was doc 04) |
 | One-item workers, queue dispatch/backpressure, explicit browser-session boundaries + driver leases, speed/sleep-tax contract, page/subject-isolation invariant | **`reference/execution-and-sessions`** (was doc 05) |
 | Data-service systems: CSV/PDF extraction, typed contact/address normalization, roster matching, operator column mapping, immutable intake manifest/rerun, Edit Data checkpoint UI | **`reference/data-intake-and-edit-data`** (was doc 06) |
 | Cross-cutting gap findings memo (owns nothing — a design input) | **`reference/foundation-gap-audit`** (was doc 08) |
 | Write-safety contract, permanent-key intents, typed proof, atomic outboxes/recovery, serialized anchored ledger | **`reference/write-safety`** (was doc 09) |
 | Guard/test architecture suite: ratchet port map, safety guards, descriptor-coverage crosswalk, guard-of-guards manifest, TDD tiers, stub + live lanes | **`reference/guards-and-tests`** (was doc 10) |
-| The Clock (sole time source), config resolver (env>settings>default), per-run prod/test instance (D6-adjacent), fiscal-year rollover, secrets accessor, environment/preflight registry | **`reference/clock-config-secrets`** (was doc 11) |
+| The Clock (sole time source), config/settings/source catalog and protected local root (D327; exact design active in 0.3), per-run prod/test instance (D6-adjacent), fiscal-year rollover, secrets accessor, environment/preflight registry | **`reference/clock-config-secrets`** (was doc 11) |
 | Semantic UI vocabulary + typed drivers, failures/diagnostic bundles/evidence receipts, scenario corpus, structured knowledge/fix history, durable trust/explain surfaces, workflow explorer/editor, local-first seams/safety floor, base capability inventory | **`reference/operator-trust`** (was doc 12) |
 | Production dashboard composition boundary: bootstrap/day/detail resources, one typed client, cursor-based SSE, product command-family coverage, surface-to-authority matrix, visual-parity harness | **`reference/frontend-backend-integration`** (was doc 13) |
 
@@ -1780,18 +2568,17 @@ re-verifies it, and its four internal §-refs are repointed to the phase docs th
 sections. Each phase's detail — its work items, what is done, its exit criteria — is its own doc
 under `docs/rebuild/`; the tree above is the same set of phases as nodes._
 
-_D323 (2026-09-03) fixes one visible hierarchy: numbered phases 0–6, lettered parts within each
-phase, and vertical tasks within each part. D325 makes Phase 3 execute 3A → 3B → 3C → 3D with one
-coordinator per part, one supervisor session per numbered task and same-number lettered tasks as a
-dedicated-worktree parallel wave. D319 still requires verification and operator approval before a
+_D326 (2026-09-03) fixes one visible hierarchy for Phases 0–3: numbered phases, decimal parts,
+numbered supervisor tasks, and checklist subtasks. Their strict active order is 0.3 → 1.6 → 2.6 →
+3.1 → 3.2 → 3.3 → 3.4. D319 still requires verification and operator approval before a
 candidate receives its next Phase 4 letter._
 
 | Phase | Headline deliverable | Gate to exit | Size |
 |---|---|---|---|
-| **0** | Corrected foundation design approved; empty rebuild repo | **COMPLETE 2026-07-31:** decisions reconciled through Round 12; testing policy ratified; executable feasibility + honest gate baseline recorded; write-proof probes carry explicit later milestone gates (`doc 03c` §Live probe status) | **M** |
-| **1** | **The SPINE** — the minimum base that can carry one workflow end to end (1a–1f + the span/projection slice + the queue-surface slice) | **COMPLETE 2026-08-04.** 1a + 1b COMPLETE 2026-07-31; 1c + 1d + 1e COMPLETE 2026-08-01; **1f + 1g-spine + 1i-spine COMPLETE 2026-08-04**. The phase exit — **person-lookup ran LIVE on the spine** (D74) against real UCPath + CRM, run `4ebf7275-0158-49af-a78f-1f37948efb27` / trace `pl-000619-4ebf` — is **MET**; full gates green; strict/subject/control/delegation/recovery/scenario fixtures pinned. Evidence and the carried-forward presentation defects are recorded under §Phase 1's exit criteria | **XL** |
-| **2** | **Transaction proof, then the deferred base tails** — controlled real commit + crash/recovery, *then* trust tails, data services/intake/capture, explorer | subject-bound dry-run and controlled commit/crash/outbox/ledger proof green; then evidence/notification/knowledge, intake/capture/Edit-Data, and read-only explorer land against a proven spine | **XL** |
-| **3** | 3A shared dashboard · 3B Separations · 3C workflow authoring and acceptance · 3D Codex/Claude cooperation | each part closes and reconciles before the next starts; 3D's attributed cooperation/T4 proof closes Phase 3 | **XL** |
+| **0** | 0.1 charter/safety · 0.2 governance · **0.3 canonical authority design** | 0.1–0.2 historical evidence retained; **0.3 active** until run/settings contracts, migration/recovery and 1.6 briefs close | **M** |
+| **1** | 1.1–1.5 historical spine · **1.6 canonical authority implementation** | historical live spine proof remains MET; 1.6 waits for 0.3, then stores/writers/core resolution and compatibility deletion must pass | **XL** |
+| **2** | 2.1–2.5 historical write/tails proof · **2.6 downstream revalidation** | D135 remains the controlled-write evidence; 2.6 waits for 1.6, then read models/joins/services must reconcile without rewriting evidence | **XL** |
+| **3** | 3.1 shared dashboard · 3.2 Separations · 3.3 workflow authoring and acceptance · 3.4 Codex/Claude cooperation | 3.1 waits for 2.6 and closes every generic journey; each later part closes/reconciles before the next; 3.4 closes Phase 3 | **XL** |
 | **4** | Remaining workflow migrations, one verified workflow per lettered part: 4A, 4B, 4C and onward | each candidate's current behavior and proposed workflow are verified; operator approves the D319 packet before implementation scope is assigned | **per workflow** |
 | **5** | 5A cutover readiness · 5B one all-at-once production authority switch (D89) | every admitted workflow/shared capability ready; legacy enqueues stopped; active/uncertain work reconciled; both states backed up; launcher switches atomically; rollback verified | **L** |
 | **6** | Ship the rebuild as a Mac and Windows desktop application (`doc 06`) | installable on both systems; signed upgrade preserves state; installed-app live proof; credentials remain protected | **L** |

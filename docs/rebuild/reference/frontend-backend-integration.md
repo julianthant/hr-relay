@@ -962,6 +962,14 @@ builder or literal, is the proof required for route connectivity. No new produce
 Pure presentation helpers may map a closed enum to an icon, token, tab order, or explanatory copy.
 They may not decide whether a run is safe, complete, startable, reviewable, or actionable.
 
+**D327 planned ownership cut.** The table's broad SQLite row is narrowed for the authority reset:
+the canonical run-record lifecycle service owns run existence/state and all lifecycle CRUD/CAS;
+append-only evidence services only qualify or explain those records. The canonical settings catalog
+and protected `.tracker/settings/` repository own operator-managed local configuration; provider API
+keys remain the sole `.env` class and derived host facts remain defaults. Phase 1.6 changes stores,
+writers and core resolution, Phase 2.6 rewires downstream queries/joins, and Phase 3.1 changes the
+operator journeys. The browser never reads files/tables or reconstructs either authority.
+
 **Where the frontend keeps its half is not `state/`, and the folder name over-promises.** As built,
 `src/dashboard/state/**` is six small modules: a four-arm `AsyncResource` union, the React context
 holding the one client, the served clock (D256), and three resource hooks. There is **no cache** —

@@ -82,3 +82,23 @@ On 2026-09-03 the operator made D323's visual hierarchy executable:
 
 Normative owners: roadmap §Governance and docs 03a–03d. The existing parallel-work lifecycle owns
 dispatch-time branch, worktree, integration and cleanup records.
+
+## D326 — One decimal execution hierarchy across Phases 0–3
+
+On 2026-09-03 the operator corrected the remaining split grammar: if Phase 1 uses 1.1-style parts,
+Phase 3 must use 3.1-style parts rather than A/B/C/D. The same hierarchy now governs every
+foundational phase:
+
+- Phase 0 uses 0.1–0.3, Phase 1 uses 1.1–1.6, Phase 2 uses 2.1–2.6, and Phase 3 uses 3.1–3.4;
+- each decimal part has one coordinator, each immediate numbered task has one supervisor, and each
+  task's checklist lines are its proof-bearing subtasks;
+- parallel execution is recorded in the coordinator run plan with exact independent scopes,
+  worktrees/branches and integration order, not encoded through letter-suffixed task labels;
+- historical labels remain in dated logs/evidence only and stable roadmap ids do not change;
+- historical evidence stays valid for 0.1–0.2, 1.1–1.5 and 2.1–2.5;
+- the strict active order is 0.3 → 1.6 → 2.6 → reopened 3.1 → 3.2 → 3.3 → 3.4.
+
+D326 supersedes D323/D325's lettered naming and parallel-wave labels, not their one-plan,
+coordinator ownership, isolation, integration, or close-before-next-part rules.
+
+Normative owners: roadmap §Governance, docs 00–03d, and the canonical decision ledger D326.

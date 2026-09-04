@@ -43,11 +43,11 @@
  *       negative control is the `builds-without-layer` fixture, which proves
  *       the refusal happens at all (a `Feature` may be a bare string in the
  *       schema, so the check is not vacuous at the type level).
- *   (f) D325's Phase 3 execution grammar is structural: the parts are exactly
- *       3A → 3B → 3C → 3D, each part requires the preceding part, immediate
- *       tasks are consecutive numbered supervisor sessions, and same-number
- *       lettered tasks are one dependency-complete parallel wave whose cards
- *       explicitly name dedicated worktrees.
+ *   (f) D326's Phase 0–3 execution grammar is structural: every part uses the
+ *       same decimal label (`0.1`, `1.1`, `2.1`, `3.1`), each part requires the
+ *       preceding part, and immediate tasks are consecutive plain-numbered
+ *       supervisor sessions. Parallelism belongs to the coordinator run plan,
+ *       never to letter suffixes in the durable outcome hierarchy.
  *
  * Arms (c) and (d) ship as RATCHETS, because at HEAD the `doc:` column has been
  * pasted onto exactly one node (step 2b's dogfood) and step 5.0 of
@@ -249,106 +249,76 @@ function flattenPlan(roadmap: Roadmap): PlanNode[] {
   return nodes;
 }
 
-const PHASE_THREE_PARTS = [
-  { id: "dash-defaults", label: "3A" },
-  { id: "order-8", label: "3B" },
-  { id: "workflow-authoring-model", label: "3C" },
-  { id: "claude-operator", label: "3D" },
+const FOUNDATIONAL_PHASE_PARTS = [
+  { phaseId: "phase-0", phaseNumber: 0, parts: ["phase0-charter", "phase0-governance", "phase0-authority-reset"] },
+  {
+    phaseId: "phase-1",
+    phaseNumber: 1,
+    parts: ["p1-base", "p1-authority", "p1-kernel", "p1-spine", "p1-exit", "p1-authority-implementation"],
+  },
+  {
+    phaseId: "phase-2",
+    phaseNumber: 2,
+    parts: ["p2-proof", "p2-2g", "p2-2h", "p2-2i", "p2-2j", "p2-authority-revalidation"],
+  },
+  {
+    phaseId: "phase-3",
+    phaseNumber: 3,
+    parts: ["dash-defaults", "order-8", "workflow-authoring-model", "claude-operator"],
+  },
 ] as const;
-const PHASE_THREE_TASK_RE = /^(\d+)([A-Z]?) · /;
+const SUPERVISOR_TASK_RE = /^(\d+) · /;
 
-/** D325's execution grammar over the immediate Phase 3 part/task hierarchy. */
+/** D326's shared grammar over the immediate Phase 0–3 part/task hierarchy. */
 export function auditPhaseThreeExecutionOrder(roadmap: Roadmap): string[] {
-  const phase = roadmap.spine.find((entry) => entry.kind === "phase" && entry.id === "phase-3");
-  if (phase === undefined || phase.kind !== "phase") return [];
-
   const violations: string[] = [];
-  const actualPartIds = phase.items.map((part) => part.id ?? "<missing-id>");
-  const expectedPartIds = PHASE_THREE_PARTS.map((part) => part.id);
-  if (actualPartIds.join("\u001f") !== expectedPartIds.join("\u001f")) {
-    violations.push(
-      `Phase 3 parts must be exactly ${expectedPartIds.join(" → ")}; found ${actualPartIds.join(" → ")}`,
-    );
-  }
-
-  for (const [partIndex, expectedPart] of PHASE_THREE_PARTS.entries()) {
-    const part = phase.items.find((candidate) => candidate.id === expectedPart.id);
-    if (part === undefined) continue;
-    if (!part.title.startsWith(`${expectedPart.label} · `)) {
-      violations.push(`Phase 3 part {#${expectedPart.id}} must start with "${expectedPart.label} · "; found "${part.title}"`);
-    }
-    if (partIndex > 0) {
-      const previousPartId = PHASE_THREE_PARTS[partIndex - 1]?.id;
-      const requirements = new Set(
-        (part.requires ?? []).flatMap((requirement) => (requirement.kind === "node" ? [requirement.ref] : [])),
+  for (const expectedPhase of FOUNDATIONAL_PHASE_PARTS) {
+    const phase = roadmap.spine.find((entry) => entry.kind === "phase" && entry.id === expectedPhase.phaseId);
+    if (phase === undefined || phase.kind !== "phase") continue;
+    const decimalPrefix = `${String(expectedPhase.phaseNumber)}.`;
+    const parts = phase.items.filter((part) => part.title.startsWith(decimalPrefix));
+    const actualPartIds = parts.map((part) => part.id ?? "<missing-id>");
+    if (actualPartIds.join("\u001f") !== expectedPhase.parts.join("\u001f")) {
+      violations.push(
+        `Phase ${String(expectedPhase.phaseNumber)} decimal parts must be exactly ${expectedPhase.parts.join(" → ")}; found ${actualPartIds.join(" → ")}`,
       );
-      if (previousPartId !== undefined && !requirements.has(previousPartId)) {
-        violations.push(`Phase 3 part {#${expectedPart.id}} must require preceding part {#${previousPartId}}`);
-      }
     }
 
-    const groups = new Map<number, Array<{ item: Item; suffix: string }>>();
-    for (const task of part.items ?? []) {
-      const match = PHASE_THREE_TASK_RE.exec(task.title);
-      if (match === null) {
+    for (const [partIndex, expectedPartId] of expectedPhase.parts.entries()) {
+      const part = parts.find((candidate) => candidate.id === expectedPartId);
+      if (part === undefined) continue;
+      const expectedLabel = `${String(expectedPhase.phaseNumber)}.${String(partIndex + 1)}`;
+      if (!part.title.startsWith(`${expectedLabel} · `)) {
         violations.push(
-          `Phase 3 part {#${expectedPart.id}} immediate task {#${task.id ?? "missing-id"}} must start with a number or parallel-wave label such as "2A · "; found "${task.title}"`,
-        );
-        continue;
-      }
-      const number = Number(match[1]);
-      const suffix = match[2] ?? "";
-      const group = groups.get(number) ?? [];
-      group.push({ item: task, suffix });
-      groups.set(number, group);
-    }
-
-    const numberedGroups = [...groups.entries()];
-    for (const [groupIndex, [number, tasks]] of numberedGroups.entries()) {
-      const expectedNumber = groupIndex + 1;
-      if (number !== expectedNumber) {
-        violations.push(
-          `Phase 3 part {#${expectedPart.id}} task groups must be consecutive and chronological from 1; position ${String(groupIndex + 1)} is ${String(number)}`,
+          `Phase ${String(expectedPhase.phaseNumber)} part {#${expectedPartId}} must start with "${expectedLabel} · "; found "${part.title}"`,
         );
       }
-
-      if (tasks.length === 1) {
-        const onlyTask = tasks[0];
-        if (onlyTask !== undefined && onlyTask.suffix !== "") {
+      if (partIndex > 0) {
+        const previousPartId = expectedPhase.parts[partIndex - 1];
+        const requirements = new Set(
+          (part.requires ?? []).flatMap((requirement) => (requirement.kind === "node" ? [requirement.ref] : [])),
+        );
+        if (previousPartId !== undefined && !requirements.has(previousPartId)) {
           violations.push(
-            `Phase 3 part {#${expectedPart.id}} Task ${String(number)} has only one card, so it must use plain "${String(number)}", not "${String(number)}${onlyTask.suffix}"`,
+            `Phase ${String(expectedPhase.phaseNumber)} part {#${expectedPartId}} must require preceding part {#${previousPartId}}`,
           );
         }
-      } else {
-        for (const [taskIndex, task] of tasks.entries()) {
-          const expectedSuffix = String.fromCharCode("A".charCodeAt(0) + taskIndex);
-          if (task.suffix !== expectedSuffix) {
-            violations.push(
-              `Phase 3 part {#${expectedPart.id}} parallel wave ${String(number)} must be lettered A, B, C in order; position ${String(taskIndex + 1)} is "${task.suffix || "plain"}"`,
-            );
-          }
-          const expectedDate = `parallel wave ${String(number)} · dedicated worktree`;
-          if (task.item.date !== expectedDate) {
-            violations.push(
-              `Phase 3 part {#${expectedPart.id}} Task ${String(number)}${task.suffix} must declare "${expectedDate}"; found "${task.item.date ?? "no date"}"`,
-            );
-          }
-        }
       }
 
-      if (groupIndex === 0) continue;
-      const priorTasks = numberedGroups[groupIndex - 1]?.[1] ?? [];
-      const priorIds = priorTasks.flatMap(({ item }) => (item.id === undefined ? [] : [item.id]));
-      for (const task of tasks) {
-        const requirements = new Set(
-          (task.item.requires ?? []).flatMap((requirement) => (requirement.kind === "node" ? [requirement.ref] : [])),
-        );
-        for (const priorId of priorIds) {
-          if (!requirements.has(priorId)) {
-            violations.push(
-              `Phase 3 part {#${expectedPart.id}} Task ${String(number)}${task.suffix} must require prior-wave task {#${priorId}}`,
-            );
-          }
+      for (const [taskIndex, task] of (part.items ?? []).entries()) {
+        const match = SUPERVISOR_TASK_RE.exec(task.title);
+        if (match === null) {
+          violations.push(
+            `Phase ${String(expectedPhase.phaseNumber)} part {#${expectedPartId}} immediate task {#${task.id ?? "missing-id"}} must start with a plain number such as "2 · "; found "${task.title}"`,
+          );
+          continue;
+        }
+        const number = Number(match[1]);
+        const expectedNumber = taskIndex + 1;
+        if (number !== expectedNumber) {
+          violations.push(
+            `Phase ${String(expectedPhase.phaseNumber)} part {#${expectedPartId}} tasks must be consecutive and chronological from 1; position ${String(expectedNumber)} is ${String(number)}`,
+          );
         }
       }
     }
@@ -491,7 +461,7 @@ export function auditRoadmapDocBinding(
     }
   }
 
-  // (f) — D325's strict part order and supervisor-session task grammar.
+  // (f) — D326's shared decimal part order and supervisor-session task grammar.
   violations.push(...auditPhaseThreeExecutionOrder(roadmap));
 
   return {
@@ -698,28 +668,28 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     expect(() => parsePlan(withSessionMarker)).toThrow(/phase .* needs an \{#id\}/);
   });
 
-  it("refuses Phase 3 parts or supervisor tasks that leave D325's chronological execution grammar", () => {
+  it("refuses Phase 0–3 parts or supervisor tasks that leave D326's shared decimal execution grammar", () => {
     const reordered = RoadmapSchema.parse(parsePlan(tree.planText));
     const phase = reordered.spine.find((entry) => entry.kind === "phase" && entry.id === "phase-3");
     expect(phase?.kind).toBe("phase");
     if (phase === undefined || phase.kind !== "phase") throw new Error("test fixture has no Phase 3");
     const part = phase.items.find((item) => item.id === "order-8");
-    if (part?.items === undefined) throw new Error("test fixture has no Phase 3B tasks");
+    if (part?.items === undefined) throw new Error("test fixture has no Phase 3.2 tasks");
     [part.items[0], part.items[3]] = [part.items[3], part.items[0]];
     expect(auditPhaseThreeExecutionOrder(reordered).join("\n")).toContain(
-      "task groups must be consecutive and chronological from 1",
+      "tasks must be consecutive and chronological from 1",
     );
 
-    const noWorktree = RoadmapSchema.parse(parsePlan(tree.planText));
-    const noWorktreePhase = noWorktree.spine.find((entry) => entry.kind === "phase" && entry.id === "phase-3");
-    if (noWorktreePhase === undefined || noWorktreePhase.kind !== "phase") throw new Error("test fixture has no Phase 3");
-    const parallelTask = noWorktreePhase.items
+    const lettered = RoadmapSchema.parse(parsePlan(tree.planText));
+    const letteredPhase = lettered.spine.find((entry) => entry.kind === "phase" && entry.id === "phase-3");
+    if (letteredPhase === undefined || letteredPhase.kind !== "phase") throw new Error("test fixture has no Phase 3");
+    const task = letteredPhase.items
       .find((item) => item.id === "order-8")
-      ?.items?.find((item) => item.title.startsWith("1A · "));
-    if (parallelTask === undefined) throw new Error("test fixture has no Phase 3B Task 1A");
-    delete parallelTask.date;
-    expect(auditPhaseThreeExecutionOrder(noWorktree).join("\n")).toContain(
-      'Task 1A must declare "parallel wave 1 · dedicated worktree"',
+      ?.items?.find((item) => item.title.startsWith("1 · "));
+    if (task === undefined) throw new Error("test fixture has no Phase 3.2 Task 1");
+    task.title = task.title.replace(/^1 · /, "1A · ");
+    expect(auditPhaseThreeExecutionOrder(lettered).join("\n")).toContain(
+      'must start with a plain number such as "2 · "',
     );
   });
 });

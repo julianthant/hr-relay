@@ -1977,3 +1977,25 @@ and stable node ids remain intact._
 | # | Decision | Owning doc |
 |---|---|---|
 | **D325** | **PHASE 3 RUNS 3A, THEN 3B, THEN 3C, THEN 3D; EACH LETTERED PART HAS ONE COORDINATOR, AND EACH NUMBERED TASK IS ONE SUPERVISOR SESSION.** A later part may not start merely because one of its prerequisites happened to land early: the preceding part must close and reconcile its authority first. Task numbers are chronological. Tasks that are genuinely independent share one number and receive letter suffixes (`2A`, `2B`, `2C`); they form one parallel supervisor wave, render at the same task depth, and each receives its own exact branch and absolute worktree binding in the coordinator ledger before dispatch. The coordinator records integration order before launch and closes every worktree, branch and task row after verified integration. Operator choices and live authorizations are `needs:` for a supervisor task, never free-standing implementation tasks. Phase 3 closes only after 3D's attributed cooperation proof; D320's 3C acceptance authorization remains, but its statement that 3C closes Phase 3 is superseded. | roadmap §Governance (primary) · `docs/decisions/phase-governance.md` §D325 · docs 03a–03d |
+
+## Reconciliation round 132 (2026-09-03) — one decimal execution hierarchy across Phases 0–3
+
+_phase: program planning_
+_D326 records the operator's correction that the same hierarchy must apply to every foundational
+phase, including Phase 0, and that Phase 3 must not use an A/B/C/D scheme when earlier phases use
+decimal parts. It changes planning authority only; historical node ids and evidence remain stable._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D326** | **PHASES 0–3 USE ONE DECIMAL HIERARCHY: NUMBERED PHASE → DECIMAL PART → NUMBERED SUPERVISOR TASK → CHECKLIST SUBTASK.** The parts are 0.1–0.3, 1.1–1.6, 2.1–2.6, and 3.1–3.4. Lettered Phase-3 parts and letter-suffixed task waves are superseded; any safe parallelism is recorded in the coordinator run plan with exact isolated scopes, branches/worktrees and integration order, not encoded by a second naming grammar. Historical labels remain only inside dated logs/evidence. Completed evidence for 0.1–0.2, 1.1–1.5 and 2.1–2.5 remains valid. The strict next order is **0.3 authority design → 1.6 authority implementation → 2.6 downstream revalidation → reopened 3.1 dashboard completion → 3.2 Separations → 3.3 workflow authoring/acceptance → 3.4 cooperation**. Each part has one coordinator; each immediate numbered task is one supervisor session. | roadmap §Governance (primary) · docs 00–03d · `docs/decisions/phase-governance.md` §D326 |
+
+## Reconciliation round 133 (2026-09-03) — one run authority and one settings authority
+
+_phase: 0.3_
+_D327 records the operator's required architecture outcomes before 0.3 works out their exact schemas,
+migration, recovery, and deletion tests. It authorizes planning, not implementation; 1.6 cannot start
+until 0.3's contract tasks close._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D327** | **EVERY QUEUE, CURRENT-RUN, TERMINAL, ARCHIVE, RELAUNCH AND DELETED-RUN VIEW OR COMMAND USES ONE SQLITE-BACKED RUN-RECORD LIFECYCLE SERVICE; EVERY OPERATOR-MANAGED LOCAL SETTING IS ENUMERATED BY ONE CATALOG AND LIVES UNDER ONE PROTECTED `.tracker/settings/` ROOT.** The run service alone exposes typed CRUD/CAS lifecycle operations and is the source of truth for run existence/state. D308's terminal-only physical deletion behind an insert-only tombstone remains the deletion contract. Spans, logs, receipts, captures and artifacts remain append-only evidence linked by stable run/session identity and never become a competing lifecycle authority. The settings catalog classifies ordinary configuration, protected credentials, local canary/test inputs, provider API keys and derived host facts: operator-managed non-provider-key values move under `.tracker/settings/`; protected values are write-only with presence/revision readback; provider API keys alone remain in `.env`; D324's probed host display remains a derived default unless an override is saved. This supersedes D321's single `settings.json` plus sibling-file layout while preserving its state-root/database-journal coupling. Upgrade requires an explicit D322 `cli storage backup` and may use a transactional migration journal; no automatic backup cadence returns. 0.3 owns exact contracts and migration design, 1.6 owns stores/writers/core resolution, 2.6 owns downstream read models/joins and non-mutating revalidation, and 3.1 owns dashboard behavior. | ref dashboard-surfaces §2.3 / §D327 run authority (primary run contract) · ref clock-config-secrets §3 / §D327 settings catalog and root (primary settings contract) · ref frontend-backend-integration §4 · docs 00–03a |
