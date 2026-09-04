@@ -788,7 +788,7 @@ real command), §D332.S1–S6's import rules, the A0/A1 rows of ref guards-and-t
 M1–M27 + `npm run cli -- storage upgrade --plan` and the full upgrade over a v29 fixture COPY + `npm run
 cli -- storage doctor` green + `npm run test:architecture` with the three new entries. **Deletion tests:**
 `authority-upgrade-adapters-isolated` (red while A0/A1 are reachable from any composition root); nothing is
-DELETED in this task — A4/A5 left in 2-2, A0–A3 expire at 2.6 (A0/A1 in 2.6 Task 4, A2/A3 in 2.6 Task 3),
+DELETED in this task — A4/A5 left in 2-2, A0–A3 expire at 2.6 (A0/A1 in 2.6 Task 2, A2/A3 in 2.6 Task 1-3),
 A6/A7 are permanent read-forward, A8 expires at 3.1 Task 9-2. **Order:** sixth.
 
 - [ ] Require an explicit verified `cli storage backup`, then run the idempotent transactional migration
@@ -808,8 +808,8 @@ upgraded operator root + both workflows' T1b live manifests (`dry-run-scenario p
 `dry-run-scenario separations` `dry-run-preview`, exact zero write-authority deltas) + one adversarial
 review that finds no second run/settings lifecycle authority, no secret value on any sink and the
 `no-lifecycle-sql` negative control intact. **Hands 2.6:** the migrated fixture pair (a v29→floor copy and
-a fresh root); A0/A1 → 2.6 Task 4, A2 with `run-status-fold-contributes-no-lifecycle-arm` landing in the
-deletion commit → 2.6 Task 3, A3's table removal → 2.6 Task 3, A8/P40 → 3.1 Task 9-2; the D183
+a fresh root); A0/A1 → 2.6 Task 2, A2 with `run-status-fold-contributes-no-lifecycle-arm` landing in the
+deletion commit → 2.6 Task 1-3, A3's table removal → 2.6 Task 1-3, A8/P40 → 3.1 Task 9-2; the D183
 disposition table; the operator-visible `migrated-refused` note; the `checkpoint_payloads` single-writer
 fact §D330.11 #22 / M23 guard; any residual as a named defect, never absorbed.
 

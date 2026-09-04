@@ -487,17 +487,36 @@ This reopened part starts only after 1.6 closes. It changes downstream read mode
 operator services that consume run/settings authority; it does not change the canonical stores,
 rewrite append-only evidence, repeat D135's controlled write, or improvise a new contract.
 
+**Execution order and wave ruling (2026-09-04).** The part runs as wave 1
+(`1-1` ∥ `1-2` ∥ `1-3`) → Task 2 → Task 3. The three wave members consume the same frozen
+1.6 authorities but own disjoint downstream seams: trust/evidence projections, intake/data
+projections, and generic lifecycle/operator read models. Diagnostic capture belongs to 1-1;
+intake/OCR/manifest/Edit Data belongs to 1-2; archive/current/queue lifecycle status and counts
+belong to 1-3. A wave member may test another seam's stable `runId` contract, but may not edit that
+seam. Shared composition roots, served aggregate contracts, guard inventory, generated artifacts,
+and phase-close docs receive one owner in the coordinator run plan before dispatch; if a newly found
+dependency requires two members to edit one file or contract, it becomes a serial prerequisite or a
+new remediation task rather than an overlapping change.
+
+Each member branches from the same master commit containing 1.6's verified close and runs in a
+dedicated worktree. Before dispatch, the 2.6 coordinator records the exact base SHA, task/agent,
+branch, absolute worktree, file and artifact scope, red-capable gate, and peer integration order.
+Task 2 starts only after all three wave branches are verified, integrated `--no-ff`, and fully
+closed. This is scheduling under D328, not authority redesign.
+
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 (`ref dashboard-surfaces` §9.2), D331
 > plus D332's settings half (`ref clock-config-secrets` §3), D332 (`ref dashboard-surfaces` §2.5) and
 > the adapter roster (`ref guards-and-tests` §5.2) exactly as 0.3 landed them. This part READS those
 > contracts; it amends none of them. A proposed contract change returns to a newly numbered 0.3 task
 > and is never improvised here.
 
-### Task 1 · Revalidate trust and evidence consumers
+### Task 1-1 · Revalidate trust and evidence consumers
 <!-- roadmap: p2f-trust -->
 
 - [ ] Rewire notification, receipt, failure, capture, log, gate, and parked-write run joins.
 - [ ] Prove durable linkage through retry, archive, and tombstone without rewriting evidence.
+- [ ] Stay behind the stable run/evidence boundary; do not edit intake data projections or generic
+  lifecycle status/count/archive projections owned by Tasks 1-2 and 1-3.
 
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes §D330.9's evidence-linkage invariants:
 > spans/logs, receipts, failures, captures and gate records are evidence ABOUT a run and link to it by
@@ -507,11 +526,13 @@ rewrite append-only evidence, repeat D135's controlled write, or improvise a new
 > deleted run's gate records leave WITH the run. The notification inbox row stays run-linked. No
 > redesign.
 
-### Task 2 · Revalidate data, intake, and Edit Data consumers
+### Task 1-2 · Revalidate data, intake, and Edit Data consumers
 <!-- roadmap: p2f-data -->
 
 - [ ] Rewire only actual run/settings dependencies across intake, OCR, manifests, mappings, and edits.
 - [ ] Preserve artifact readability; missing canonical linkage fails loud.
+- [ ] Treat diagnostic capture projection as Task 1-1's seam and generic lifecycle/operator reads as
+  Task 1-3's seam; consume their stable contracts without editing them.
 
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes §D330.9 — intake, OCR, manifest, mapping
 > and Edit Data rows are evidence linked by `runId` and decide no lifecycle fact — together with
@@ -519,11 +540,13 @@ rewrite append-only evidence, repeat D135's controlled write, or improvise a new
 > writes settings or a lifecycle row) and §D332.7 item 4 (the upgrade leaves evidence and its
 > immutability rules untouched, so existing artifacts stay readable across it). No redesign.
 
-### Task 3 · Revalidate operator read models
+### Task 1-3 · Revalidate operator read models
 <!-- roadmap: p2f-operator -->
 
 - [ ] Rewire archive, Activity, Explorer, doctor, preflight, and settings-status reads.
 - [ ] Prove current/queue/archive/delete counts converge and protected settings never read back.
+- [ ] Own shared lifecycle status/count envelopes and the A2/A3 deletions; do not edit the trust
+  evidence or intake data projections owned by Tasks 1-1 and 1-2.
 
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes §D330.5: `read` and `list` are the ONLY
 > lifecycle reads — never a span fold, never `runs_view`. This task lands adapter A2's deletion, so the
@@ -534,7 +557,7 @@ rewrite append-only evidence, repeat D135's controlled write, or improvise a new
 > preflight follow §D331.11 P16 and report the `authority_upgrades` phases (§D332.5/§D332.6). No
 > redesign.
 
-### Task 4 · Run the non-mutating migration and recovery proof
+### Task 2 · Run the non-mutating migration and recovery proof
 <!-- roadmap: p2f-proof -->
 
 - [ ] Run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation
@@ -551,7 +574,7 @@ rewrite append-only evidence, repeat D135's controlled write, or improvise a new
 > refusal is what a pre-floor artifact meets afterwards. D135 is cited; no second controlled write. No
 > redesign.
 
-### Task 5 · Close tail revalidation and hand fixtures to 3.1
+### Task 3 · Close tail revalidation and hand fixtures to 3.1
 <!-- roadmap: p2f-close -->
 
 - [ ] Pass targeted/full/generated/production-route gates and an adversarial deletion-test review.

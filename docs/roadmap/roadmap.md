@@ -568,7 +568,7 @@ doc: 01 §1.6 · Implement canonical run and settings authorities · 02 §2.6 ·
 builds:
 - [ ] PROOF typecheck, lint, coverage, architecture, manifest, stores-catalog, parity (unchanged), storage-doctor on the upgraded root, and both workflows' T1b live manifests with exact zero write-authority deltas
 - [ ] PROOF adversarial review finds no second run/settings lifecycle authority or secret-value leak, and the `no-lifecycle-sql` negative control intact
-- [ ] DOCS record the migration and hand 2.6 only verified contracts, the migrated fixture pair, the named adapter deletions (A0/A1 → 2.6 Task 4; A2 + its unit test and A3 → 2.6 Task 3; A8/P40 → 3.1 Task 9-2), residuals, and exact gates
+- [ ] DOCS record the migration and hand 2.6 only verified contracts, the migrated fixture pair, the named adapter deletions (A0/A1 → 2.6 Task 2; A2 + its unit test and A3 → 2.6 Task 1-3; A8/P40 → 3.1 Task 9-2), residuals, and exact gates
 
 needs:
 - p1f-migration-proof
@@ -877,9 +877,11 @@ needs:
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330/D331/D332 as landed — `ref:dashboard-surfaces` §9.2 and §2.5, `ref:clock-config-secrets` §3, `ref:guards-and-tests` §5.2 (no redesign) · left: a proposed contract change returns to a newly numbered 0.3 task
+- 2026-09-04 | 2.6 parallelism ruling | wave 1 is `1-1` trust/evidence ∥ `1-2` intake/data ∥ `1-3` operator read models, each from the same verified 1.6-close base in a dedicated worktree; serial Task 2 converges the migration/recovery proof and Task 3 closes · left: coordinator ledger binds exact paths, gates and peer integration order before dispatch
 
-#### 1 · Revalidate trust and evidence consumers {#p2f-trust}
+#### 1-1 · Revalidate trust and evidence consumers {#p2f-trust}
 status: planned
+date: parallel wave 1 · dedicated worktree
 doc: ref:operator-trust · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §9.2
 
 builds:
@@ -887,23 +889,33 @@ builds:
 - [ ] PROOF every row remains linked to the canonical run id through retry, archive, and tombstone
 - [ ] PROOF notification delivery never races ahead of the durable run-linked inbox row
 
+needs:
+- p1f-close
+- p2-2j
+
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.9 evidence linkage by stable `runId`, §D330.2 existence, §D330.8 tombstone (no redesign) · left: the notification inbox row stays run-linked
 
-#### 2 · Revalidate data, intake, and Edit Data consumers {#p2f-data}
+#### 1-2 · Revalidate data, intake, and Edit Data consumers {#p2f-data}
 status: planned
+date: parallel wave 1 · dedicated worktree
 doc: ref:data-intake-and-edit-data · ref:dashboard-surfaces §9.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3
 
 builds:
-- [ ] BOTH migrate intake, OCR, Edit Data, manifests, mappings, and capture evidence
+- [ ] BOTH migrate intake, OCR, Edit Data, manifests, and mappings; diagnostic capture projection stays with `1-1`
 - [ ] PROOF existing artifacts remain readable across authority migration and missing links fail loud
 - [ ] PROOF no intake/edit path writes run lifecycle or settings state directly
+
+needs:
+- p1f-close
+- p2-2j
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.9, D331 §D331.8 (one source per leaf) and D332 §D332.7 item 4 (no redesign) · left: no intake or Edit Data path writes settings or a lifecycle row
 
-#### 3 · Revalidate operator read models {#p2f-operator}
+#### 1-3 · Revalidate operator read models {#p2f-operator}
 status: planned
+date: parallel wave 1 · dedicated worktree
 doc: ref:frontend-backend-integration §6 · ref:dashboard-surfaces §9 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
 
 builds:
@@ -911,10 +923,14 @@ builds:
 - [ ] PROOF archive/current/queue counts converge from one run authority under create, update, archive, relaunch, delete, and restore
 - [ ] PROOF settings status and preflight resolve from one catalog without returning protected values
 
+needs:
+- p1f-close
+- p2-2j
+
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 (`read`/`list` are the only lifecycle reads), D331 §D331.6/§D331.11 P16 and D332 §D332.5/§D332.6 (no redesign) · left: adapters A2 and A3 are deleted here with their tests
 
-#### 4 · Run the non-mutating migration and recovery proof {#p2f-proof}
+#### 2 · Run the non-mutating migration and recovery proof {#p2f-proof}
 status: planned
 doc: 02 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust §1 · ref:guards-and-tests · ref:dashboard-surfaces §2.5 · ref:guards-and-tests §5.2
 
@@ -931,7 +947,7 @@ needs:
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D332 §D332.4 with M17/M22 over a migrated copy and §D332.7 item 6 (no redesign) · left: A0/A1 deleted and their two inventory entries flipped to `active` in that commit
 
-#### 5 · Close tail revalidation and hand fixtures to 3.1 {#p2f-close}
+#### 3 · Close tail revalidation and hand fixtures to 3.1 {#p2f-close}
 status: planned
 doc: 02 §2.6 · Revalidate tails against canonical authorities · 03.1 §Reopened completion tasks · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
 
