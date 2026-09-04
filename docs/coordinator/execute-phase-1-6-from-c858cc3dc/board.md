@@ -6,11 +6,11 @@
 **Integration checkout:** /Users/julianhein/Projects/hr-automation-rebuild · master
 **Board owner:** this coordinator only; supervisors and workers read only.
 **Profile / plan / exact address book:** project-profile.md / run-plan.md / supervisors.json
-**Current integration HEAD verified:** f1c1ae8f27b29706446b490d65efaf99e5756f70; unrelated instruction-review file remains dirty and is preserved.
+**Earlier integration HEAD verified:** f1c1ae8f27b29706446b490d65efaf99e5756f70; unrelated instruction-review file remains dirty and is preserved.
 
 | Run | Phase task | State | Evidence / residue |
 |---|---|---|---|
-| R01 | 1.6.1 | integrated | Verified report df41e0b5; merged 5b1fb626; integrated gate green; worktree/ref removed; runtime cleanup and archive pending |
+| R01 | 1.6.1 | closed | Verified df41e0b5, merged 5b1fb626; integrated/runtime gates green; worktree/ref removed and exact task archived |
 | R02 | 1.6.2-1 | planned | Wait for R01 closure; wave with R03, integrate first |
 | R03 | 1.6.2-2 | planned | Same verified base as R02; integrate second |
 | R04 | 1.6.3 | planned | Wait for both wave peers closed |
@@ -27,9 +27,9 @@ The operator stopped the previous coordinator and assigned this coordinator sole
 
 Initial report commit 1638c973 passed typecheck, lint, coverage (411 files / 5,032 tests), manifest and assertion parity (269 tests). Coordinator independently found two remaining proof gaps against D332.11: M9's exact older-build refusal with zero settings filesystem/resolver access, and M21's complete v27/v28/v29 traversal and DDL-derived-list negative control. The bounded `briefs/r01-proof-amendment.md` assigned these to the existing supervisor.
 
-Test commit d650a43b adds these proofs without production changes. The two full affected files pass 132 tests and the seven retained mutation controls fail at their behavioral assertions. First amended coverage failed on the evidence harness's unregistered environment selector and an unchanged performance fixture's 30-second hook. The supervisor removed that selector in favor of closed explicit configurations; focused environment guard and fixture rechecks passed. Amended full gate passes all five commands, including 411 files / 5,040 tests and 269 assertion-only parity tests. Final clean report/evidence commit df41e0b5 verified and merged --no-ff at 5b1fb626. Evidence now lives in this workspace under `evidence/r01/`. The integrated gate passes (411 files / 5,040 tests plus typecheck/lint/manifest); `evidence/r01-integrated/` retains output. Registered and physical worktree removed and local branch deleted. Runtime cleanup verification is running before exact task archival.
+Test commit d650a43b adds these proofs without production changes. The two full affected files pass 132 tests and the seven retained mutation controls fail at their behavioral assertions. First amended coverage failed on the evidence harness's unregistered environment selector and an unchanged performance fixture's 30-second hook. The supervisor removed that selector in favor of closed explicit configurations; focused environment guard and fixture rechecks passed. Amended full gate passes all five commands, including 411 files / 5,040 tests and 269 assertion-only parity tests. Final clean report/evidence commit df41e0b5 verified and merged --no-ff at 5b1fb626. Evidence now lives in this workspace under `evidence/r01/`. The integrated gate passes (411 files / 5,040 tests plus typecheck/lint/manifest); `evidence/r01-integrated/` retains output. Registered and physical worktree removed and local branch deleted. Runtime cleanup verification passed and the exact task was archived; evidence/r01-runtime-cleanup.json and evidence/r01-archive.json prove both.
 
-R01 has no worker rows; its branch and worktree are gone; the exact sidebar task remains open until runtime cleanup verification succeeds. R02–R08 remain unlaunched. No current-program supervisor row is closed.
+R01 is fully closed with zero worker rows and its allowance released. R02/R03 are ready for the declared wave; R04–R08 remain blocked by the declared serial dependencies. No other task is launched.
 
 ## Inherited lifecycle closed
 

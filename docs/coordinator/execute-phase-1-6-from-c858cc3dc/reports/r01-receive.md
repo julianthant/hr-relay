@@ -10,8 +10,8 @@ Coordination 858cc3dc-8536-4077-8049-34b76cc31baf; parent 01a06e8e-d1fc-7260-9fc
 | Full gate and unchanged parity | proved | df41e0b5 amended-gates.json: five exit-zero commands; 411 files/5,040 tests; 269 parity tests; no src or reference diff | Supervisor accepted |
 | Git identity and worker cleanup | proved | Exact recorded branch/worktree, base ancestor, clean tree at df41e0b502d435fe4492b46a5c06f221f1de2129, runtime zero worker rows | No worker cleanup needed |
 | Integration | proved | --no-ff merge 5b1fb626b5be63dac6e39fb9e747f113247a7484 into bound master | Integrated gate green; evidence/r01-integrated/gates.json |
-| Supervisor resource closure | residue | Worktree registration/directory and branch removed; exact sidebar task awaits runtime verifier | Coordinator owns remaining cleanup |
+| Supervisor resource closure | proved | Worktree registration/directory and branch absent; runtime cleanup gate green; exact task archived (evidence/r01-runtime-cleanup.json, evidence/r01-archive.json) | Closed; allowance released |
 
 The initial amended coverage failures are retained and resolved: evidence harness environment ingress removed; isolated fixture and subsequent full coverage pass under unchanged bounds. No unregistered key exemption, timeout change or production workaround was added. The coordinator independently inspected test and harness diffs, source ownership, retained logs and exact report identity. No contract redesign or operator judgment is needed.
 
-Next: runtime cleanup verifier → exact task archival. Only then R02/R03 may branch concurrently from the same recorded master base.
+R01 is fully closed. R02/R03 may now branch concurrently from the same recorded master base.

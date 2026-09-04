@@ -1,0 +1,24 @@
+{
+  "command": [
+    "python3",
+    "/Users/julianhein/.agents/skill-library/orchestration-runtime/scripts/orchestrate.py",
+    "mark-cleanup",
+    "--coordination-uuid",
+    "858cc3dc-8536-4077-8049-34b76cc31baf",
+    "--task-id",
+    "01a06e90-ea8a-7f72-8559-e9c1829a0ec6",
+    "--repo",
+    "/Users/julianhein/Projects/hr-automation-rebuild",
+    "--worktree",
+    "/Users/julianhein/.codex/worktrees/aeb2/hr-automation-rebuild",
+    "--branch",
+    "feature/execute-phase-1-6-from-c858cc3dc-r01-verify-schema-floor",
+    "--merge-sha",
+    "5b1fb626b5be63dac6e39fb9e747f113247a7484",
+    "--gate-command",
+    "npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check"
+  ],
+  "exit_code": 0,
+  "seconds": 184.186,
+  "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01-runtime-cleanup.log"
+}

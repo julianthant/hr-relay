@@ -19,12 +19,12 @@
       "branch": "feature/execute-phase-1-6-from-c858cc3dc-r01-verify-schema-floor",
       "allowance": 2,
       "order": 1,
-      "state": "integrated",
+      "state": "closed",
       "report": "/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r01.md",
       "gate": "npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check",
       "needs_first": "none (existing merged implementation)",
       "cursor": "0f0762eb-1bba-4876-ba57-d3884925fabd:40",
-      "reservation": 2,
+      "reservation": 0,
       "clientThreadId": "client-new-thread:a6e2f58d-eaff-402c-a4fc-1623650b9a1f",
       "launch_base": "99c9ed51882a4e53069d18cf0e890c98f9810be2",
       "launch_time": "2026-09-04",
@@ -33,7 +33,7 @@
       "transport_blocker": null,
       "proof_residue": [],
       "last_verified_commit": "df41e0b502d435fe4492b46a5c06f221f1de2129",
-      "cleanup": "worktree registration/directory and branch absent; runtime verifier running before archive",
+      "cleanup": "closed: integrated gate and runtime verifier green; worktree registration/directory and branch absent; exact task archived",
       "observed_gates": [
         {
           "command": "npm run typecheck",
@@ -95,7 +95,14 @@
         }
       ],
       "worktree_removed": true,
-      "branch_deleted": true
+      "branch_deleted": true,
+      "archived": true,
+      "cleanup_evidence": [
+        "evidence/r01-cleanup-audit.json",
+        "evidence/r01-integrated/gates.json",
+        "evidence/r01-runtime-cleanup.json",
+        "evidence/r01-archive.json"
+      ]
     },
     {
       "run": "R02",
@@ -112,10 +119,10 @@
       "branch": null,
       "allowance": 2,
       "order": 2,
-      "state": "planned",
+      "state": "parallel-ready",
       "report": "/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r02.md",
       "gate": "npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check",
-      "needs_first": "R01 closed; baseline parity green",
+      "needs_first": "none (R01 closed; assertion parity green)",
       "cursor": null
     },
     {
@@ -133,10 +140,10 @@
       "branch": null,
       "allowance": 2,
       "order": 3,
-      "state": "planned",
+      "state": "parallel-ready",
       "report": "/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r03.md",
       "gate": "npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check",
-      "needs_first": "R01 closed; baseline parity green",
+      "needs_first": "none (R01 closed; assertion parity green)",
       "cursor": null
     },
     {
