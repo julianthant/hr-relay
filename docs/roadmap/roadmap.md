@@ -139,7 +139,7 @@ doc: 00 §0.3 · Redesign single-source runtime authority · ref:dashboard-surfa
 builds:
 - [x] DOCS canonical run-record identity, lifecycle, typed CRUD/CAS operations, deletion semantics, and projection contract — D330 (0.3 Task 1)
 - [x] DOCS one settings catalog/root, leaf classification, validation, revision/CAS, secret-return policy, and UI edit contract — D331 (0.3 Task 2)
-- [ ] DOCS migration/read-forward/rollback/recovery rules for the existing SQLite, span, environment, and settings authorities
+- [x] DOCS migration/read-forward/rollback/recovery rules for the existing SQLite, span, environment, and settings authorities — D332 (0.3 Task 3)
 - [ ] DOCS deletion tests, proof ladder, implementation seams, and exact 1.6/2.6/3.1 handoff briefs
 
 needs:
@@ -172,14 +172,17 @@ log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R02 | D331 landed in ref clock-config-secrets §D327 → §D331.1–§D331.12 (7869ad1e + follow-ups); §3 precedence/binding sentences, DCC3's eight-leaf boundary, D321's layout sentence, §6's `source: environment` and D300's `.env` source superseded by dated notes · left: 0.3 Tasks 3–4; 1.6 implements the catalog/root, 2.6 migrates consumers, 3.1 builds the surface
 
 #### 3 · Design migration, compatibility, and recovery {#phase0-authority-migration-design}
-status: planned
+status: done
 doc: ref:dashboard-surfaces §2.3 · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4 · ref:guards-and-tests
 
 builds:
-- [ ] DOCS define an idempotent upgrade from existing rows/files with preflight, backup, journal, rollback, and mixed-generation refusal
-- [ ] DOCS preserve historical run evidence, stable run ids, and archive visibility through migration
-- [ ] DOCS specify settings import from current `.env`/`settings.json` and local canary inputs without copying provider API keys
-- [ ] DOCS name compatibility adapters and their deletion tests so transitional paths cannot become permanent authorities
+- [x] DOCS define an idempotent upgrade from existing rows/files with preflight, backup, journal, rollback, and mixed-generation refusal — D332 §D332.1 (one stopped-system command, never at boot), §D332.2 (the ordered preflight incl. the generation-bound D322 backup), §D332.3 (prepare → one exclusive transaction → settle), §D332.4 (rollback), §D332.5 (journal, idempotence, replay), §D332.6 (the closed mixed-generation boot matrix)
+- [x] DOCS preserve historical run evidence, stable run ids, and archive visibility through migration — D332 §D332.7 (identity and bytes untouched, ordinal backfill with provenance, tallies read forward, evidence/snapshots never rewritten, exposure recorded, `authority-unknown` never re-admitted, archive digests unchanged), §D332.8 (read-forward table)
+- [x] DOCS specify settings import from current `.env`/`settings.json` and local canary inputs without copying provider API keys — D332 settings half in ref clock-config-secrets (§D332.S1–§D332.S6: what imports where, the `settings.json` carry, the seven dual-source tie-breaks, canary references, the `migrated-refused` first boot, what is never claimed)
+- [x] DOCS name compatibility adapters and their deletion tests so transitional paths cannot become permanent authorities — D332 §D332.9 (the five-rule expiry policy and roster A0–A8), ref guards-and-tests §5.2 (per-adapter deletion test and intended inventory entries), §D332.11 (24 migration proofs)
+
+log:
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R03 | D332 landed in ref dashboard-surfaces §2.5 (ea6985b9 + follow-ups): `cli storage upgrade`, preflight, journal, rollback, the boot matrix, preservation, read-forward, adapter policy; settings half in ref clock-config-secrets §D332; adapter roster in ref guards-and-tests §5.2; §2.5 items 3–4/6, D181, D330.8 and §4.1 superseded by dated notes · left: 0.3 Task 4; 1.6 implements the command and proofs, 2.6 deletes A0–A3
 
 needs:
 - phase0-run-authority-design
