@@ -669,7 +669,8 @@ five provider families); `src/domain/runtime-dependencies.ts`; `src/infra/sqlite
 `recovery-contracts.ts` for the `manifestVersion` 2 WRITE shape only (the two ordinary documents plus
 protected presence metadata, P15 — the READ widening is Task 6's); the nine `resolveConfigWithProvenance`
 call sites, minimally (the `env` argument drops); `tests/unit/architecture/settings-catalog.test.ts` with
-its `active` inventory entry; P39's sixteen deliberately edited files. **Does not touch:** `migrations.ts`,
+its `active` inventory entry and the `config-snapshot-generations` entry's invariant text extended for the
+`retired-leaves-are-a-closed-list` arm (same commit as P38); P39's sixteen deliberately edited files. **Does not touch:** `migrations.ts`,
 `authority-database.ts` (Task 1 landed the singleton), the run-record service, the worker loop, the
 Settings SURFACE (3.1) — the settings-editor query keeps serving DCC3's eight-leaf inventory derived from
 the catalog until 3.1 (A8). **Owes:** §D331.11 P1–P15, P17–P19, P21–P32, P33's protected half, P34–P39,
@@ -777,8 +778,7 @@ WRITE in `recovery-contracts.ts` / `backup-service.ts`, and `offline-restore.ts`
 the doctor lines (`authority_upgrades` by basename, `tombstone-ordinal-unknown`, `possibleExternalWrite`);
 the DCC2 preflight's `storage-authority` check with its six literals (§D332.6 wire mapping);
 `guard-inventory.json`: `authority-upgrade-adapters-isolated` (`active`), `authority-upgrade-adapters-retired`
-and `settings-root-single-pathname` (`planned`, 2.6), the `config-snapshot-generations` invariant text
-extended. Then the command is RUN on the operator's real root after an explicit `cli storage backup`, and
+and `settings-root-single-pathname` (`planned`, 2.6). Then the command is RUN on the operator's real root after an explicit `cli storage backup`, and
 the plan's remove-list is announced: the first post-upgrade boot refuses `migrated-refused { key }` until
 those `.env` lines are gone (§D332.S5). **Owes:** §D332.11 M1–M27 (M3, M9, M21, M14 re-run here over the
 real command), §D332.S1–S6's import rules, the A0/A1 rows of ref guards-and-tests §5.2. **Gate:** base +
