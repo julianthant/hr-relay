@@ -84,7 +84,8 @@ import {
   type Fingerprint,
 } from "../../domain/ids.js";
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
-import { configResolutionEnvironment } from "../../domain/secrets.js";
+import { hostAwareResolutionEnvironment } from "../../domain/secrets.js";
+import { probePrimaryDisplay } from "../../infra/host/primary-display.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import { createPreflightAuthority } from "../../domain/preflight.js";
 import {
@@ -599,7 +600,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     ? await openStaticBundle(join(repoRoot, "dist", "dashboard"))
     : undefined;
 
-  const env = input.env ?? configResolutionEnvironment();
+  // D324: the production environment carries the host's primary display as the `display` default.
+  const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   const settingsAuthority = createSettingsFileAuthority({
     path: join(stateRoot, "settings.json"),
     validateCandidate: (settings) => {

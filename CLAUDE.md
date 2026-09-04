@@ -260,7 +260,11 @@ repo's registry; port what you verify with provenance (see cross-repo rules abov
 go through `scripts/secure-env-bootstrap.ts`: it opens the fixed path with no symlink following,
 fstats and validates that descriptor, reads/parses those exact bytes, preserves an explicit parent
 environment, and only then imports the allowlisted CLI or smoke entrypoint. `src/domain/config/resolve.ts`
-implements `env > settings.json > default` exactly once;
+implements `env > settings.json > default` exactly once; the `display` DEFAULT is the host's primary
+display (D324, 2026-09-03): `src/infra/host/primary-display.ts` probes it once per process tree,
+`hostAwareResolutionEnvironment` in `src/domain/secrets.ts` publishes it as
+`HRAUTO_HOST_PRIMARY_DISPLAY` for every child process, and 2560×1440 remains only the headless
+fallback — never re-probe in a child, never guess on an unrecognized OS answer;
 `src/domain/secrets.ts` is the **only** module permitted to read a credential from `process.env`
 (`secrets-single-source.test.ts` enforces it). A credential must never be interpolated into a
 message — `no-secret-values-in-logs.test.ts` enforces that half.

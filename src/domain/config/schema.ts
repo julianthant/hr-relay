@@ -129,6 +129,9 @@ export const ConfigPathsSchema = z.strictObject({
   duoExtensionDir: AbsolutePathSchema,
 });
 
+/** D324: the headless fallback viewport — a host that reports a primary display never sees it. */
+export const DEFAULT_DISPLAY = Object.freeze({ screenWidth: 2560, screenHeight: 1440 });
+
 export const ConfigSchema = z.strictObject({
   actor: LocalOperatorActorSchema
     .default({ id: LOCAL_OPERATOR_ACTOR_ID, label: "Local operator" }),
@@ -225,8 +228,10 @@ export const ConfigSchema = z.strictObject({
   paths: ConfigPathsSchema,
   annualDates: z.record(FiscalYearKeySchema, AnnualDateEntrySchema).default({}),
   operator: z.strictObject({ timekeeperName: z.string() }).default({ timekeeperName: "" }),
+  // The CONTRACT default, used only for a host with no display to report; the
+  // runtime default is the host's primary display (D324, `./host-display.ts`).
   display: z.strictObject({ screenWidth: z.number().int().positive(), screenHeight: z.number().int().positive() })
-    .default({ screenWidth: 2560, screenHeight: 1440 }),
+    .default(DEFAULT_DISPLAY),
   performance: z.strictObject({
     navigationRetries: z.number().int().positive(),
     separationTerminationWindowDays: z.number().int().positive(),

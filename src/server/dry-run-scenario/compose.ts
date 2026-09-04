@@ -22,7 +22,8 @@ import {
 } from "../../control/test-target-registry.js";
 import { systemClock, type Clock } from "../../domain/clock.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
-import { configResolutionEnvironment } from "../../domain/secrets.js";
+import { hostAwareResolutionEnvironment } from "../../domain/secrets.js";
+import { probePrimaryDisplay } from "../../infra/host/primary-display.js";
 import {
   parseDryRunScenarioManifest,
   type DryRunScenarioManifest,
@@ -77,7 +78,8 @@ export async function composeDryRunScenarioCommand(
 ): Promise<{ readonly output: string; readonly exitCode: 0 | 1 | 2 }> {
   const args = parseDryRunScenarioArguments(input.args);
   const repoRoot = input.repoRoot ?? process.cwd();
-  const env = input.env ?? configResolutionEnvironment();
+  // D324: the production environment carries the host's primary display as the `display` default.
+  const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
   const manifestInput = parseDryRunScenarioManifest(await input.loadManifest(args.workflow));

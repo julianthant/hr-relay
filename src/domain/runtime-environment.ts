@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CONFIG_ENV_BINDINGS } from "./config/resolve.js";
+import { HOST_PRIMARY_DISPLAY_ENV } from "./config/host-display.js";
 import { deepFreeze } from "./immutability.js";
 import {
   ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
@@ -23,7 +24,7 @@ export const RuntimeEnvironmentExactSpecSchema = z.discriminatedUnion("dispositi
     key: EnvironmentKeySchema,
     classification: z.enum(["secret", "direct-identifier", "non-secret-config"]),
     disposition: z.literal("active"),
-    channel: z.enum(["config", "secret", "config-and-secret", "provider-model", "process-ownership"]),
+    channel: z.enum(["config", "config-default", "secret", "config-and-secret", "provider-model", "process-ownership"]),
     owner: z.string().regex(/^src\/[a-z0-9/_-]+\.ts$/),
     documented: z.boolean(),
   }),
@@ -240,6 +241,16 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
     owner: "src/domain/dashboard-frontend-owner.ts",
     documented: false,
   },
+  {
+    // D324: the host's primary display, published once per process tree by the
+    // composition that first resolves config and inherited by every child.
+    key: HOST_PRIMARY_DISPLAY_ENV,
+    classification: "non-secret-config",
+    disposition: "active",
+    channel: "config-default",
+    owner: "src/domain/config/host-display.ts",
+    documented: false,
+  },
   ...TEST_TARGET_SECRET_SPECS.map((spec) => ({
     key: spec.env,
     classification: spec.classification,
@@ -421,6 +432,7 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   // where a composition root obtains that value, so no module outside the
   // secrets owner ever touches process.env.
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "configResolutionEnvironment", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [...CONFIG_ENVIRONMENT_KEYS], families: [] } }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "hostAwareResolutionEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [HOST_PRIMARY_DISPLAY_ENV, ...CONFIG_ENVIRONMENT_KEYS], families: [] } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "requireSecret", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: secretTargets }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalSecretFamily", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "72b51583d255ce06b58a1fb09a91cfed0e89cd4cf7406fc6dea176093c81757c", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
   // D161: providerModelChain reads the family's `modelsEnv` chain and its
@@ -489,6 +501,10 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
       ? "src/domain/runtime-dependencies.ts"
       : spec.channel === "process-ownership"
         ? "src/domain/dashboard-frontend-owner.ts"
+      // D324: a runtime-published input to the resolver's DEFAULT layer — not an
+      // env-layer override, so it has no CONFIG_ENV_BINDINGS entry by design.
+      : spec.channel === "config-default"
+        ? "src/domain/config/host-display.ts"
       : spec.channel === "secret"
         ? "src/domain/secrets.ts"
         : "src/domain/config/resolve.ts";

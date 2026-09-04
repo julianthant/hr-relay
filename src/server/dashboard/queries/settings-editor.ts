@@ -3,6 +3,7 @@ import {
   CONFIG_ENV_BINDINGS,
   resolveConfigWithProvenance,
 } from "../../../domain/config/resolve.js";
+import { hostPrimaryDisplayEnvironment } from "../../../domain/config/host-display.js";
 import { SettingsRuntimeStatusSchema, type SettingsFileRecord } from "../../../domain/config/settings.js";
 import type { Config, SettingsOverride } from "../../../domain/config/schema.js";
 import {
@@ -108,7 +109,8 @@ function environmentVariable(path: EditableSettingsPath): string | undefined {
 
 function buildLeaf(spec: LeafSpec, record: SettingsFileRecord, deps: SettingsEditorQueryDeps) {
   const resolved = resolveConfigWithProvenance(deps.environment, record.settings, deps.clock);
-  const defaults = resolveConfigWithProvenance({}, {}, deps.clock);
+  // D324: the "default" column shows the host display default, never the headless fallback.
+  const defaults = resolveConfigWithProvenance(hostPrimaryDisplayEnvironment(deps.environment), {}, deps.clock);
   const source = resolved.provenance[spec.path];
   if (source === undefined) throw new Error(`settings editor leaf ${spec.path} has no resolver provenance`);
   const environment = source === "env" ? environmentVariable(spec.path) : undefined;

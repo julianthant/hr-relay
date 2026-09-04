@@ -6,6 +6,7 @@ import { systemClock } from "../clock.js";
 import { deepFreeze } from "../immutability.js";
 import { FingerprintSchema } from "../ids.js";
 import { defaultRuntimePaths } from "./runtime-paths.js";
+import { hostDisplayDefault } from "./host-display.js";
 import {
   ConfigLeafPathSchema,
   ConfigProvenanceSchema,
@@ -352,8 +353,9 @@ function resolveInternal(env: NodeJS.ProcessEnv, settingsInput: unknown, clock: 
   const settings = SettingsOverrideInputSchema.parse(settingsInput);
   // `paths` has no schema default on purpose — the filesystem defaults are a
   // server concern the browser-reachable contract cannot carry. See
-  // `./runtime-paths.ts`.
-  const defaults = ConfigSchema.parse({ paths: defaultRuntimePaths() });
+  // `./runtime-paths.ts`. `display` likewise defaults to the host's primary
+  // display when the process tree published one (D324, `./host-display.ts`).
+  const defaults = ConfigSchema.parse({ paths: defaultRuntimePaths(), display: hostDisplayDefault(env) });
   let config = mergeSettings(defaults, settings);
   const fiscalYear = `FY${String(clock.fiscalYear())}`;
   const appliedEnvPaths: string[] = [];

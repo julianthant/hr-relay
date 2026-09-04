@@ -13,6 +13,7 @@ import { parseEnv } from "node:util";
 import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Config } from "./config/schema.js";
+import { establishHostPrimaryDisplay, type HostDisplayProbe } from "./config/host-display.js";
 import { EidSchema, FingerprintSchema, type Fingerprint } from "./ids.js";
 import { deepFreeze } from "./immutability.js";
 import { KualiDocumentNumberSchema } from "./ui/kuali-document-identity.js";
@@ -567,6 +568,22 @@ export function optionalSecret(
  */
 export function configResolutionEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   return env;
+}
+
+/**
+ * D324: the production resolution environment for a composition that resolves
+ * config — the ONE sanctioned environment after the host's primary display has
+ * been established in it (`establishHostPrimaryDisplay`: a parent's published
+ * value is kept, otherwise the injected probe runs once and its encoding is
+ * published for every child process). This is the only environment WRITE in
+ * the tree, and it lives here because this file is its only permitted owner.
+ */
+export function hostAwareResolutionEnvironment(
+  probe: HostDisplayProbe,
+  env: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  establishHostPrimaryDisplay(probe, env);
+  return configResolutionEnvironment(env);
 }
 
 export function requireSecret(

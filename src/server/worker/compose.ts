@@ -75,10 +75,11 @@ import type { PositiveInt } from "../../domain/ids.js";
 import type { WorkerId, WorkflowId } from "../../domain/ids.js";
 import type { WorkerDirective, WorkerLeaseRecord } from "../../domain/run/worker.js";
 import {
-  configResolutionEnvironment,
   optionalSecretFamily,
   providerModelChain,
 } from "../../domain/secrets.js";
+import { hostAwareResolutionEnvironment } from "../../domain/secrets.js";
+import { probePrimaryDisplay } from "../../infra/host/primary-display.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
 import { createDiagnosticCaptureService } from "../../services/trust/diagnostic-capture.js";
 import {
@@ -406,7 +407,8 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const descriptor = module.descriptor;
   const workerId = poolWorkerId(workflowId, poolIndex);
 
-  const env = input.env ?? configResolutionEnvironment();
+  // D324: the production environment carries the host's primary display as the `display` default.
+  const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
   const settingsAuthority = createSettingsFileAuthority({
