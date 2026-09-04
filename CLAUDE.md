@@ -38,7 +38,7 @@ admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phas
   admits later workflows as 4A/4B/4C only after D319 verification and operator approval; Phase 5 is
   readiness plus the one cutover, and Phase 6 is the desktop app. D329 retires the old 03a–03d
   filenames and active 3c-A/3c-B labels; their historical evidence lives under `history/superseded/`.
-- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D329; **D131 is a retired gap —
+- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D330; **D131 is a retired gap —
   never reuse it**). A **pointer index**, not a spec: it tells you which doc owns a contract. Never
   implement from it.
 - `docs/rebuild/reference/` — the contracts, each doc owning its own; in prose **`ref <slug>`**:
