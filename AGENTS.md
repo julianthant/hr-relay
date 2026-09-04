@@ -38,7 +38,7 @@ admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phas
   admits later workflows as 4A/4B/4C only after D319 verification and operator approval; Phase 5 is
   readiness plus the one cutover, and Phase 6 is the desktop app. D329 retires the old 03a–03d
   filenames and active 3c-A/3c-B labels; their historical evidence lives under `history/superseded/`.
-- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D331; **D131 is a retired gap —
+- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D332; **D131 is a retired gap —
   never reuse it**). A **pointer index**, not a spec: it tells you which doc owns a contract. Never
   implement from it.
 - `docs/rebuild/reference/` — the contracts, each doc owning its own; in prose **`ref <slug>`**:
@@ -51,7 +51,7 @@ admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phas
   knowledge, the explorer) · `frontend-backend-integration` (the BFF, the wire, the parity lane) ·
   `foundation-gap-audit` (frozen — a design input, owns nothing) · `stores` (the DERIVED store
   catalog — read it before authoring a task, and remember the code wins over it).
-- `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`): 60 entries of
+- `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`): 78 entries of
   "X looked safe and did Y", each naming its decision. Read it before kernel / driver / dashboard /
   write-safety work; add new root-level lessons THERE (module lessons stay in the module's AGENTS.md).
 - `docs/rebuild/00`–`06` — active plan-document paths. D323 maps their owning work into the visible
