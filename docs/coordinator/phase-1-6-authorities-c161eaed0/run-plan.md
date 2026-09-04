@@ -35,13 +35,13 @@
 - Operator choice 3 A; serial after R01 and before wave 2. Existing run ids remain unchanged.
 - Launch: compact nested `sup_supervisor`, because this is one bounded reference repair; no concurrent supervisor.
 - Parent: `/root`, coordinator task `01a06d9c-1667-7451-a022-5f661d373703` / `local`; coordination UUID `161eaed0-8809-4a38-b11b-fcd85b727f86`.
-- Exact agent id: reserved pending dispatch; allowance 2 auxiliary worktrees, within budget 4.
+- Exact agent identity: `/root/sup_supervisor_phase_1_6_c161eaed0_r09_parity_baseline` returned by native dispatch; allowance 2 auxiliary worktrees, within budget 4.
 - Branch: `feature/phase-1-6-authorities-c161eaed0-r09-parity-baseline`.
 - Worktree: `/Users/julianhein/Projects/hr-automation-rebuild-r09-parity-baseline`.
-- Base: ratification commit immediately preceding worktree creation; exact SHA recorded before dispatch.
+- Base: `3d9c7917f7db8b83edb473582840ed595353ee4e`, verified at worktree creation and supplied verbatim at dispatch.
 - Scope/gate/report: `briefs/r09.md`; `reports/r09.md`; metadata-only diff proof, parity assertion pass, lint, full profile base gate.
 - R02/R03 consume the same R09 integrated baseline; their earlier `ebc41c45` base reservations are superseded.
-- Status: reserved. Cleanup pending; nested agent has no separate sidebar archival.
+- Status: active. Cleanup pending; nested agent has no separate sidebar archival.
 
 ### U01 — Land the singleton v30 schema floor
 - Scope: doc 01 §1.6 Task 1 exact seam.
