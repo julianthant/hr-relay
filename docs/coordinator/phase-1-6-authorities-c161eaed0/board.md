@@ -9,7 +9,7 @@
 **Integration target:** `master`
 **Board owner:** coordinator
 **Write rule:** coordinator only; supervisors and workers read only
-**Last verified:** 2026-09-04T18:10:12Z at coordination commit `dfd73b638bdd1bd49c7e4df91cbca5797ec12ebe`
+**Last verified:** 2026-09-04T18:16:09Z at coordinator commit `7b173e9c3f7c3cb709b6a66e78be4dfd257b7f12`
 
 ## Facts every run needs
 
@@ -27,7 +27,7 @@
 
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
-| U01 · Task 1 schema floor | R01 | reserved | pending | pending | supervisor-owned consequential review | Serial prerequisite for wave 2; launch reserved from `dfd73b63`. |
+| U01 · Task 1 schema floor | R01 | active | pending | pending | supervisor-owned consequential review | Serial prerequisite for wave 2; exact task/worktree active from `dfd73b63`. |
 | U02 · Task 2-1 run-record service | R02 | blocked on U01 | pending | pending | supervisor-owned consequential review | Wave 2 peer 1. |
 | U03 · Task 2-2 settings catalog/root | R03 | blocked on U01 | pending | pending | supervisor-owned consequential review | Wave 2 peer 2. |
 | U04 · Task 3 runtime lifecycle writers | R04 | blocked on U02+U03 | pending | pending | supervisor-owned consequential review | Serial after both wave merges. |
