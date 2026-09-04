@@ -32,8 +32,12 @@
 
 ## Resume boundary
 
-Handoff: `handoffs/2026-09-04-phase-1-6-identity-and-ownership.md`. R01 has no worker rows. Its supervisor worktree, branch and task remain open deliberately. R02–R08 were never launched. Zero lifecycle rows are claimed closed.
+Handoff: `handoffs/2026-09-04-phase-1-6-verified-id-repair.md`. R01 has no worker rows. Its supervisor worktree, branch and task remain open deliberately. R02–R08 were never launched. Zero lifecycle rows are claimed closed.
 
 ## Resumed verification
 
 - R01 final commit `1638c9736f9f9ac03c63aab359a24a08e47179af`: clean supervisor worktree; 411 files / 5,032 tests and 269 assert-mode parity tests passed; typecheck, lint and manifest check passed. G1/G2 remain open, and no supervisor lifecycle closure is claimed.
+
+## Admission repair proposal
+
+Exact old/proposed records and authenticated launch linkage: `evidence/task-identity-repair-proposal.json` (2bba9c34). Operator approval requested explicitly after the hook rejection; no response yet. Ready R01 proof continuation: `briefs/r01-proof-amendment.md` (3dfcf704). Previous parity text normalization independently proved in `evidence/inherited-parity-verification.json` (bd243209).
