@@ -1,0 +1,82 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/8da1/hr-automation-rebuild
+
+ ↓ |unit| tests/unit/run-record-service/service.test.ts > canonical run-record service > #1 reserves distinct monotonically increasing item and workflow ordinals
+ ↓ |unit| tests/unit/run-record-service/service.test.ts > canonical run-record service > #3 refuses a missing parent and retry source without reserving ordinals
+ ↓ |unit| tests/unit/run-record-service/service.test.ts > canonical run-record service > P33 refuses an absent runtime token and preserves queued authority
+ ↓ |unit| tests/unit/run-record-service/service.test.ts > canonical run-record service > #4 grants a queued row once and refuses a busy worker
+ ↓ |unit| tests/unit/run-record-service/service.test.ts > canonical run-record service > #25 preserves spent attempt and run number after deleting the highest row
+ ↓ |unit| tests/unit/run-record-service/service.test.ts > canonical run-record service > persists a cancellation request without changing the claimed lifecycle or fence
+ × |unit| tests/unit/run-record-service/service.test.ts > canonical run-record service > D330.9 floor permits source deletion while relaunch lineage remains 38ms
+   → D330.9 requires archived source removal with descendant lineage retained; the source FK prevents it
++ actual - expected
+
++ [
++   {
++     from: 'archived_run_id',
++     id: 0,
++     match: 'NONE',
++     on_delete: 'RESTRICT',
++     on_update: 'NO ACTION',
++     seq: 0,
++     table: 'archived_runs',
++     to: 'record_key'
++   }
++ ]
+- []
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/run-record-service/service.test.ts > canonical run-record service > D330.9 floor permits source deletion while relaunch lineage remains
+AssertionError: D330.9 requires archived source removal with descendant lineage retained; the source FK prevents it
++ actual - expected
+
++ [
++   {
++     from: 'archived_run_id',
++     id: 0,
++     match: 'NONE',
++     on_delete: 'RESTRICT',
++     on_update: 'NO ACTION',
++     seq: 0,
++     table: 'archived_runs',
++     to: 'record_key'
++   }
++ ]
+- []
+
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "from": "archived_run_id",
++     "id": 0,
++     "match": "NONE",
++     "on_delete": "RESTRICT",
++     "on_update": "NO ACTION",
++     "seq": 0,
++     "table": "archived_runs",
++     "to": "record_key",
++   },
++ ]
+
+ ❯ tests/unit/run-record-service/service.test.ts:157:14
+    155|         from: z.string(), to: z.string(), on_update: z.string(), on_de…
+    156|       })).parse(raw.prepare("PRAGMA foreign_key_list(archive_relaunche…
+    157|       assert.deepEqual(rows.filter((row) => row.from === "archived_run…
+       |              ^
+    158|         "D330.9 requires archived source removal with descendant linea…
+    159|     } finally { raw.close(); }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 skipped (7)
+   Start at  16:46:53
+   Duration  694ms (transform 404ms, setup 0ms, import 579ms, tests 38ms, environment 0ms)
+
