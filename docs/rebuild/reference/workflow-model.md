@@ -1210,11 +1210,12 @@ compatibility products during conversion, but neither is an authored workflow. `
 `WorkflowRecipe`, `defineWorkflowRecipe` and `recipe.ts` are forbidden names for this seam; they
 describe the analogy, not the model.
 
-#### 1.6.2 Workflow admission before a numbered phase (D319, 2026-09-02)
+#### 1.6.2 Workflow admission before a Phase 4 part (D319/D323, 2026-09-03)
 
 A legacy workflow name, old implementation folder, proposed order row, or partially verified intake
-record is a **workflow candidate**, not a rebuilt workflow and not a numbered phase. Candidates stay
-outside the active phase sequence until the operator approves one complete admission packet.
+record is a **workflow candidate**, not a rebuilt workflow and not an admitted Phase 4 part.
+Candidates stay outside Phase 4's active lettered sequence until the operator approves one complete
+admission packet.
 
 The packet must establish, from current legacy code and live verification:
 
@@ -1230,10 +1231,13 @@ The packet must establish, from current legacy code and live verification:
 
 Missing or uncertain facts remain named in the candidate packet. They are not filled from an old
 order label or treated as implementation details. The operator approves the exact boundary and tuple
-model before promotion. Promotion then creates the next numbered phase, its phase doc, a new or
-ratified migration doc and its coordinator plan. The phase owns only that approved workflow or
-explicitly approved workflow family plus shared task-store or generic-surface work it is the first
-verified consumer to require.
+model before promotion. Promotion then creates the next lettered Phase 4 part, its migration doc and
+its coordinator plan. That part owns only the approved workflow or explicitly approved workflow
+family plus shared task-store or generic-surface work it is the first verified consumer to require.
+
+**D323 numbering amendment.** D319's verification and operator-approval gate is unchanged. What
+changes is the container: remaining migrations all belong to Phase 4, admitted in order as 4A, 4B,
+4C and onward rather than consuming a new numbered phase per workflow.
 
 Admission verification and phase completion are different gates. Admission proves that the planned
 workflow is understood well enough to build. Phase completion proves that the rebuilt workflow works

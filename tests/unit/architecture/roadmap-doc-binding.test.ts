@@ -572,4 +572,13 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     expect(clean.featureCount).toBeGreaterThan(0);
     expect(clean.violations).toEqual([]);
   });
+
+  it("refuses working-session markers on the phase spine", () => {
+    const fixture = readFileSync(join(REPO_ROOT, FIXTURE_ROOT, "clean", "docs/roadmap/roadmap.md"), "utf8");
+    const withSessionMarker = fixture.replace(
+      "<!-- roadmap:end -->",
+      "## session: 2026-09-03 | roadmap-redesign | history does not belong on the phase spine\n\n<!-- roadmap:end -->",
+    );
+    expect(() => parsePlan(withSessionMarker)).toThrow(/phase .* needs an \{#id\}/);
+  });
 });

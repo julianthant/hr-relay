@@ -1945,3 +1945,13 @@ ref dashboard-surfaces §2.5 in this same commit._
 | # | Decision | Owning doc |
 |---|---|---|
 | **D322** | **AN AUTHORITY BACKUP IS WRITTEN ONLY BY `cli storage backup`; THE DASHBOARD RUNS NO BACKUP CADENCE, NO GRACEFUL-DRAIN BACKUP AND NO BACKUP-HEALTH INBOX ALERT.** 2i-D's start/15-minute/drain triggers and the D222 stale/missing storage notification producer are retired; the `AuthorityBackupService` and its verified manifest, `storage doctor`'s backup report, the bootstrap `storage.backup` indicator and `storage restore --from <manifest>` are unchanged. Freshness is judged by authority generation alone (`current` when the newest verified backup captured the live generation, `stale` when the authority moved past it, `missing` when none exists); the 45-minute age bound is gone and `maxBackupAgeMs` is an optional policy no production composition sets. `storage doctor` exits 0 on healthy authority plus reconciled span authority and reports the backup arm without gating on it. The dashboard's doctor-wire `service` arm is the fixed `never-run` reading naming the command. | ref dashboard-surfaces §2.5 (primary) · `src/server/storage/compose.ts` · `src/server/dashboard/compose.ts` |
+
+## Reconciliation round 129 (2026-09-03) — one visible phase hierarchy
+
+_phase: program planning_
+_D323 records the operator's correction to the roadmap's phase structure. It changes planning and
+presentation authority, not runtime behavior, and preserves D319's workflow-admission safety gate._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D323** | **THE ROADMAP HAS ONE VISIBLE HIERARCHY: NUMBERED PHASES DOWN THE VERTICAL SPINE, LETTERED PARTS HORIZONTALLY FROM EACH PHASE, AND CONCRETE TASKS VERTICALLY BENEATH THEIR PART.** Phase 3 is 3A Shared dashboard, 3B Separations, 3C Workflow authoring and acceptance, and 3D Codex and Claude cooperation. Phase 4 is the workflow-migration program: approved workflows become 4A, 4B, 4C and onward. Phase 5 owns cutover readiness and the one authority switch. Phase 6 owns the desktop app. Every planned node belongs to one of those phases; working sessions live only in node logs and never on the spine. This supersedes D319 only where D319 allocated a new numbered phase per workflow. D319's admission boundary remains: no workflow implementation starts before its current behavior and proposed workflow are verified and operator-approved. | `docs/decisions/phase-governance.md` §D323 (context) · ref workflow-model §1.6.2 · roadmap §Governance · docs 03c–06 |

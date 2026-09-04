@@ -361,7 +361,7 @@ function renderFromDocs(rows: DocSectionRow[], rollup: DocProgress | undefined):
   return `<div class="fdocs"><div class="dl">From the docs</div>${roll}${body}</div>`;
 }
 
-// ─── the tree: every phase is a root on the time spine; its items branch right ─
+// ─── the tree: phases run down the spine; phase parts run across; tasks run down ─
 
 interface TreeNode {
   key: string;
@@ -393,19 +393,14 @@ interface TreeNode {
 const NODE_W = 224;
 const NODE_H = 72;
 const PHASE_H = 88;
-const COL_STEP = 244;   // one top-level task column (NODE_W + 20)
-const MAX_COLS = 5;     // top-level tasks wrap into rows of this many, to save width
-const PHASE_DROP = 44;  // phase box bottom → first task row top
-const ROW_GAP = 40;     // between wrapped task rows
+const COL_STEP = 244;   // one phase-part column (NODE_W + 20)
 const SUB_GAP = 10;     // between stacked sub-tasks
 const INDENT = 18;      // each nesting level steps right and narrows by this
 const PAD = 28;
-const BAND_GAP = 52;    // between phase bands
+const BAND_GAP = 72;    // between phase bands
 const FLAG_H = 44;
-const SESSION_H = 52; // a flag's pill plus the "SESSION" eyebrow above it
 const TODAY_H = 40;
 const CHILD_X = PAD + NODE_W + 64; // tasks start to the right of the phase column
-const TRUNK_X = CHILD_X - 30;      // the bus line the task rows hang from
 
 function buildItemNode(item: Item, parentKey: string, index: number, registry: Map<string, Registered>): TreeNode {
   const key = item.id ?? `${parentKey}-${String(index + 1)}`;
@@ -442,6 +437,16 @@ function buildItemNode(item: Item, parentKey: string, index: number, registry: M
 
 function buildPhaseNode(node: PhaseNode, registry: Map<string, Registered>): TreeNode {
   const features = resolveFeatures(node.features, node.status);
+  const parts = node.items.map((item, i) => buildItemNode(item, node.id, i, registry));
+  parts.sort((left, right) => {
+    const leftCode = /^(\d+)([a-z])\b/i.exec(left.title);
+    const rightCode = /^(\d+)([a-z])\b/i.exec(right.title);
+    if (leftCode === null || rightCode === null) return 0;
+    const phaseDifference = Number(leftCode[1]) - Number(rightCode[1]);
+    return phaseDifference !== 0
+      ? phaseDifference
+      : (leftCode[2] ?? "").localeCompare(rightCode[2] ?? "", "en", { sensitivity: "base" });
+  });
   const detail = [
     `<p class="desc">${inline(node.summary)}</p>`,
     renderFeatures(features, node.status),
@@ -466,7 +471,7 @@ function buildPhaseNode(node: PhaseNode, registry: Map<string, Registered>): Tre
     detail,
     docHtml: "",
     docProgress: NO_DOC_PROGRESS,
-    children: node.items.map((item, i) => buildItemNode(item, node.id, i, registry)),
+    children: parts,
     depth: 0, x: 0, y: 0, w: NODE_W, h: PHASE_H, rowCenter: 0,
   };
 }
@@ -488,7 +493,7 @@ function attachDocs(node: TreeNode, docs: DocBindingIndex): DocProgress {
   return progress;
 }
 
-/** Stack a node's descendants beneath it, indented and narrowed one step per level; returns the y below the last one. */
+/** Stack a phase part's tasks beneath it; deeper detail stays in the same readable column. */
 function stack(node: TreeNode, depth: number, yCursor: number): number {
   let y = yCursor;
   for (const child of node.children) {
@@ -502,24 +507,25 @@ function stack(node: TreeNode, depth: number, yCursor: number): number {
   return y;
 }
 
-/** A phase band: the phase box at the left; its tasks in rows of MAX_COLS to the right, each task's sub-tasks stacked beneath it. Returns the band height. */
+/**
+ * A phase band follows one grammar at every scale: the phase sits on the left
+ * spine, its named parts form one horizontal row, and each part owns one
+ * vertical task list. Parts never wrap into an ambiguous second row.
+ */
 function layoutPhase(root: TreeNode, bandTop: number): number {
   root.depth = 0;
   root.x = PAD;
   root.y = bandTop;
   root.w = NODE_W;
   root.h = PHASE_H;
-  let rowTop = bandTop + PHASE_H + PHASE_DROP;
   let bottom = bandTop + PHASE_H;
   root.children.forEach((task, index) => {
-    const col = index % MAX_COLS;
-    if (col === 0 && index > 0) rowTop = bottom + ROW_GAP;
     task.depth = 1;
     task.w = NODE_W;
     task.h = NODE_H;
-    task.x = CHILD_X + col * COL_STEP;
-    task.y = rowTop;
-    const end = stack(task, 2, rowTop + NODE_H + SUB_GAP) - SUB_GAP;
+    task.x = CHILD_X + index * COL_STEP;
+    task.y = bandTop + (PHASE_H - NODE_H) / 2;
+    const end = stack(task, 2, task.y + NODE_H + SUB_GAP) - SUB_GAP;
     bottom = Math.max(bottom, end);
   });
   return bottom - bandTop;
@@ -556,31 +562,16 @@ function wrapTitle(title: string, width: number, maxLines: number): string[] {
 
 const N = (value: number): string => String(Math.round(value * 10) / 10);
 
-/** The phase's bus: out of the phase box's right side to a trunk, down the trunk, a rail per task row, a stub into each task. */
+/** The phase's rail: one straight reading line from the phase into its ordered parts. */
 function busConnector(root: TreeNode): string {
   if (root.children.length === 0) return "";
   const py = root.y + root.h / 2;
-  const parts: string[] = [`M${N(root.x + root.w)},${N(py)} H${N(TRUNK_X)}`];
-  let lastRail = py;
-  const rows = new Map<number, TreeNode[]>();
-  root.children.forEach((task, index) => {
-    const row = Math.floor(index / MAX_COLS);
-    rows.set(row, [...(rows.get(row) ?? []), task]);
-  });
-  for (const tasks of rows.values()) {
-    const first = tasks[0];
-    const last = tasks[tasks.length - 1];
-    if (first === undefined || last === undefined) continue;
-    const railY = first.y - PHASE_DROP / 2;
-    lastRail = Math.max(lastRail, railY);
-    parts.push(`M${N(TRUNK_X)},${N(railY)} H${N(last.x + last.w / 2)}`);
-    for (const task of tasks) parts.push(`M${N(task.x + task.w / 2)},${N(railY)} V${N(task.y)}`);
-  }
-  parts.splice(1, 0, `M${N(TRUNK_X)},${N(py)} V${N(lastRail)}`);
-  return parts.join(" ");
+  const last = root.children[root.children.length - 1];
+  if (last === undefined) return "";
+  return `M${N(root.x + root.w)},${N(py)} H${N(last.x)}`;
 }
 
-/** A stacked list: a line down from the parent's left edge, a stub into each child. */
+/** A task list: one vertical rail down from its phase part, with short stubs into each task. */
 function stackConnector(parent: TreeNode): string {
   if (parent.children.length === 0) return "";
   const x = parent.x + 10;
@@ -591,14 +582,11 @@ function stackConnector(parent: TreeNode): string {
 }
 
 interface Band {
-  kind: "flag" | "session" | "today";
+  kind: "flag" | "today";
   top: number;
   status: Status;
   key: string;
   text: string;
-  /** `session` only: the day it landed and who was working. */
-  date?: string;
-  session?: string;
 }
 
 function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs: DocBindingIndex): { svg: string; data: Record<string, { title: string; html: string; requires: string[]; unlocks: string[]; parent: string | null; children: string[] }> } {
@@ -606,7 +594,6 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
   const bands: Band[] = [];
   let cursor = PAD;
   let flagIndex = 0;
-  let sessionIndex = 0;
   for (const node of roadmap.spine) {
     if (node.kind === "phase") {
       const root = buildPhaseNode(node, registry);
@@ -618,18 +605,6 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
       flagIndex += 1;
       bands.push({ kind: "flag", top: cursor, status: node.status, key: `flag-${String(flagIndex)}`, text: node.text });
       cursor += FLAG_H + BAND_GAP / 2;
-    } else if (node.kind === "session") {
-      sessionIndex += 1;
-      bands.push({
-        kind: "session",
-        top: cursor,
-        status: "done",
-        key: `session-${String(sessionIndex)}`,
-        text: node.text,
-        date: node.date,
-        session: node.session,
-      });
-      cursor += SESSION_H + BAND_GAP / 2;
     } else {
       bands.push({ kind: "today", top: cursor, status: "active", key: "today", text: node.text });
       cursor += TODAY_H + BAND_GAP / 2;
@@ -679,7 +654,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
     )
     .join("");
 
-  // the spine through every phase root, plus flag / session / today bands
+  // the spine through every phase root, plus milestone and today bands
   const firstRoot = roots[0];
   const lastRoot = roots[roots.length - 1];
   const spine = firstRoot === undefined || lastRoot === undefined
@@ -692,13 +667,6 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
         return `<g class="today"><line x1="${N(PAD)}" y1="${N(y)}" x2="${N(width - PAD)}" y2="${N(y)}"/><circle cx="${N(spineX)}" cy="${N(y)}" r="7"/><text x="${N(spineX + 16)}" y="${N(y - 8)}">TODAY · ${escapeHtml(band.text)}</text></g>`;
       }
       const pillW = N(Math.min(width - spineX - 14 - PAD, 760));
-      if (band.kind === "session") {
-        // a hollow dot and a SESSION eyebrow: a working session is not a
-        // ratified milestone, and the two must never read alike on the spine
-        const y = band.top + SESSION_H - FLAG_H / 2;
-        const label = wrapTitle(`${band.date ?? ""} · ${band.session ?? ""} — ${band.text.replace(/\*\*/g, "").replace(/`/g, "")}`, 110, 1)[0] ?? "";
-        return `<a class="nd sess" href="#${band.key}" data-key="${band.key}" aria-label="${escapeHtml(`Session — ${label}`)}"><g><circle cx="${N(spineX)}" cy="${N(y)}" r="6"/><text class="se" x="${N(spineX + 16)}" y="${N(band.top + 10)}">SESSION</text><rect x="${N(spineX + 14)}" y="${N(y - 14)}" width="${pillW}" height="28" rx="14"/><text x="${N(spineX + 28)}" y="${N(y)}" dy="0.35em">${escapeHtml(label)}</text></g></a>`;
-      }
       const y = band.top + FLAG_H / 2;
       const label = wrapTitle(band.text.replace(/\*\*/g, "").replace(/`/g, ""), 110, 1)[0] ?? "";
       return `<a class="nd flag ${band.status}" href="#${band.key}" data-key="${band.key}" aria-label="${escapeHtml(label)}"><g><circle cx="${N(spineX)}" cy="${N(y)}" r="6"/><rect x="${N(spineX + 14)}" y="${N(y - 14)}" width="${pillW}" height="28" rx="14"/><text x="${N(spineX + 28)}" y="${N(y)}" dy="0.35em">${escapeHtml(label)}</text></g></a>`;
@@ -782,9 +750,6 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs:
       data[band.key] = { title: "Milestone", html: `<p class="desc">${inline(band.text)}</p>`, requires: [], unlocks: [], parent: null, children: [] };
       continue;
     }
-    if (band.kind !== "session") continue;
-    const header = `<div class="dh"><span class="chip planned">session</span><span class="eb2">${escapeHtml(band.date ?? "")} · ${escapeHtml(band.session ?? "")}</span></div>`;
-    data[band.key] = { title: "Session", html: `${header}<p class="desc">${inline(band.text)}</p>`, requires: [], unlocks: [], parent: null, children: [] };
   }
   return { svg, data };
 }
@@ -888,10 +853,6 @@ const CSS = String.raw`
   /* the doc-progress tick: a hairline, muted in both themes — it must read as a hint, never as a second status */
   .tree .dpt{fill:var(--line-strong)} .tree .dpt.on{fill:var(--fg-3)}
   .tree .flag rect{fill:var(--well);stroke:var(--line)} .tree .flag circle{fill:var(--ok-mark)} .tree .flag text{fill:var(--fg-2);font-size:11.5px}
-  /* a session is a working day, not a ratified milestone: hollow dot, dashed pill, its own eyebrow */
-  .tree .sess rect{fill:transparent;stroke:var(--line-strong);stroke-dasharray:4 3} .tree .sess circle{fill:var(--card);stroke:var(--fg-3);stroke-width:2}
-  .tree .sess text{fill:var(--fg-3);font-size:11.5px} .tree .sess .se{fill:var(--fg-4);font-family:var(--mono);font-size:9px;letter-spacing:.09em}
-  .tree .sess:hover rect{stroke:var(--fg-4)}
   .tree .today line{stroke:var(--accent);stroke-width:2;stroke-dasharray:6 5} .tree .today circle{fill:var(--accent)} .tree .today text{fill:var(--accent);font-family:var(--mono);font-size:10.5px;letter-spacing:.06em}
 
   /* ─ drawer fragments ─ */
@@ -1041,7 +1002,7 @@ function renderPage(roadmap: Roadmap, docs: DocBindingIndex): string {
 <div class="legend" aria-label="Legend">
 <span><i class="sw done"></i>complete</span><span><i class="sw active"></i>active</span><span><i class="sw you"></i>needs you</span><span><i class="sw avail"></i>available next</span><span><i class="sw locked"></i>locked</span><span><i class="sw proposed"></i>proposed</span><span><i class="sw never"></i>won't build / deferred</span>
 </div>
-<p class="hint">Phases stack on the time spine at the left; each phase's tasks fan out to its right, sub-tasks beneath their parent. The squares inside a box are its features — one per feature, coloured by layer, filled when built — so a box reads "3 of 5 built, the missing two are wiring": <span class="lay frontend">FE</span>React only · <span class="lay backend">BE</span>BFF / kernel · <span class="lay both">BOTH</span>vertical slice · <span class="lay wiring">WIRE</span>connecting two halves that exist · <span class="lay docs">DOCS</span> · <span class="lay proof">PROOF</span>live run / measurement.</p>
+<p class="hint">Read the plan in one direction: numbered phases run down the spine at the left, lettered parts run horizontally from each phase, and the tasks for each part run vertically beneath it. Session history stays inside each box's detail drawer. The squares inside a box are its features — one per feature, coloured by layer, filled when built — so a box reads "3 of 5 built, the missing two are wiring": <span class="lay frontend">FE</span>React only · <span class="lay backend">BE</span>BFF / kernel · <span class="lay both">BOTH</span>vertical slice · <span class="lay wiring">WIRE</span>connecting two halves that exist · <span class="lay docs">DOCS</span> · <span class="lay proof">PROOF</span>live run / measurement.</p>
 <p class="hint">Click a box for its detail; hover to light up what it <b>needs</b> and what it <b>unlocks</b> (green when the prerequisite is met, dashed when open; amber = an act only you can take). Drag to pan; zoom with the controls; <code>Esc</code> closes this panel.</p>`;
   return `<meta charset="utf-8">
 <title>${escapeHtml(roadmap.meta.title)}</title>

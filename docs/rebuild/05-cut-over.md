@@ -1,4 +1,4 @@
-# Cutover stage · switch production authority once
+# Phase 5B · Switch production authority once
 
 This stable-path doc is the dedicated home of tree node `{#cutover}`, the one all-at-once authority
 switch, its rollback window, the risks that decide whether the switch is safe, and **the program's
@@ -6,11 +6,11 @@ definition of done**. If you open one list to decide whether this rebuild is fin
 §Exit criteria below: nothing else in `docs/rebuild/` claims to be that list. Contracts the cutover
 reads live in `reference/`.
 
-**D319 numbering note (2026-09-02).** Cutover remains the final authority-switch stage but does not
-reserve a phase number while workflow phases are admitted one at a time.
+**D323 numbering note (2026-09-03).** This is Phase 5B, following Phase 5A readiness closure. It is
+the single authority-switch part on the numbered phase spine, not a floating later stage.
 
 **Nothing here has been built.** The cutover stage has zero landed work at HEAD, and that is
-by design — every item is an act performed once, on a day the operator chooses, after Phase 3 closes.
+by design — every item is an act performed once, on a day the operator chooses, after Phase 4 closes.
 What exists today is the *design* of the switch (ratified in Phase 0, D88–D94) and the *conditions*
 that must hold before it happens. This doc's job is to keep those conditions honest.
 

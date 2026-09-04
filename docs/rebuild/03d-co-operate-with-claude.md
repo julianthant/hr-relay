@@ -1,7 +1,6 @@
-# Later track · co-operate with Codex and Claude
+# Phase 3D · Codex and Claude cooperation
 
-This stable-path doc is the dedicated home of tree node `{#claude-operator}`, the separately
-triggered track that gives
+This stable-path doc is the dedicated home of Phase 3D tree node `{#claude-operator}`, the part that gives
 the dashboard a **second actor**. The operator's instruction (2026-08-21, plan ruling **R15**) is one
 paragraph: *"I want to duo-operate this with Claude. Claude can invoke the same things I do and
 operate the dashboard, and monitor the entire dashboard. All of this local — expose a local port for
@@ -16,9 +15,9 @@ settled with the words *"reachable only if a second actor ever exists"*. Those s
 here, all at once. Each is named below with the file that proves it. Contracts belong to `reference/`
 as always; this doc owns the track, not the contracts.
 
-**D319 numbering note (2026-09-02).** This is not part of Phase 3 and does not reserve Phase 4 or any
-later phase number. Future workflow phases are admitted and numbered first; this track remains
-separately schedulable because it is not a cutover prerequisite.
+**D323 numbering note (2026-09-03).** This is Phase 3D. It follows the same visible hierarchy as
+every other phase part: 3D sits horizontally beside 3A–3C and its implementation/proof tasks run
+vertically beneath it. It remains separately schedulable and is not a cutover prerequisite.
 
 ## Track summary
 <!-- roadmap: claude-operator -->

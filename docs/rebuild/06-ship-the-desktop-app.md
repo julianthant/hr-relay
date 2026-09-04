@@ -1,4 +1,4 @@
-# Desktop stage · ship the application
+# Phase 6 · Ship the desktop application
 
 This stable-path doc is the dedicated home of tree node `{#desktop-app}`, the later stage that turns the
 rebuild from *a repository you run* into *an application you install*. The operator's instruction
@@ -7,8 +7,8 @@ as a **Mac and Windows desktop app**. D297 (2026-09-01) keeps Electron as that a
 the initial update policy: signed, in-place manual installers first; a controlled updater only after
 the app can prove it is safe to stop. Nothing in this stage is built.
 
-**D319 numbering note (2026-09-02).** This stage does not reserve Phase 6 or any other number while
-workflow phases are admitted one at a time.
+**D323 numbering note (2026-09-03).** This is Phase 6. Its lettered parts sit horizontally from the
+Phase 6 spine node, with their concrete acceptance work recorded beneath each part.
 
 **Why the doc exists before the code does.** Every admitted phase doc records what was decided and what
 is left; this one records what the stage INHERITS, so the first agent to open it does not rediscover

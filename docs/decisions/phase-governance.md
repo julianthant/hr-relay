@@ -36,3 +36,24 @@ result remains open. No gate was waived, no external write was authorized, and n
 was admitted.
 
 Normative owner: doc 03c §3c-A exit gate and §3c-B.
+
+## D323 — One visible phase hierarchy
+
+On 2026-09-03 the operator replaced the just-in-time phase numbering introduced by D319 with one
+stable roadmap hierarchy:
+
+- numbered phases are the only nodes on the vertical roadmap spine;
+- every phase contains lettered parts arranged horizontally, and each part's concrete tasks run
+  vertically beneath it;
+- Phase 3 contains 3A Shared dashboard, 3B Separations, 3C Workflow authoring and acceptance, and
+  3D Codex and Claude cooperation;
+- Phase 4 is the remaining workflow-migration program: the next approved workflow is 4A, followed
+  by 4B, 4C and onward as each admission packet is verified and approved;
+- Phase 5 owns cutover readiness and the single authority switch; Phase 6 owns the desktop app;
+- working-session history remains in each node's `log:` drawer and never appears on the phase spine.
+
+D323 supersedes only D319's phase-number allocation. D319's safety boundary remains: an individual
+workflow receives no implementation scope until its current behavior and proposed definition are
+verified and approved.
+
+Normative owners: roadmap §Governance, ref workflow-model §1.6.2, and the phase docs 03c–06.

@@ -1,14 +1,15 @@
 # 03c · Phase 3c - finish workflow authoring and acceptance
 
-This doc is the dedicated home of **Phase 3c**, tree node `{#migrations}`. It finishes the shared
+This doc is the dedicated home of **Phase 3C**, tree node `{#workflow-authoring-model}`, and the
+admission contract for **Phase 4**, tree node `{#migrations}`. Phase 3C finishes the shared
 workflow-authoring platform and proves it with the two workflows already admitted to Phase 3:
 **Person Lookup** and **Separations**. It does not authorize or schedule another legacy workflow.
 The old order 1-7 and 9 material later in this file is retained only as unverified candidate evidence
 until it is extracted or deleted during Phase 3 close; it is not Phase 3 scope.
 
-Phase 3 has three delivery parts: **3a** finished the shared dashboard, **3b** finishes Separations,
-and **3c** finishes workflow authoring plus Person Lookup/Separations acceptance. The file named
-`03d` is a separately triggered second-actor track, not another Phase 3 workflow. Contracts live in
+Phase 3 has four delivery parts: **3A** shared dashboard, **3B** Separations, **3C** workflow
+authoring plus Person Lookup/Separations acceptance, and **3D** Codex and Claude cooperation.
+Contracts live in
 `reference/`. This doc also hosts **§Testing tiers**, whose normative spec is
 `reference/guards-and-tests.md`.
 
@@ -36,7 +37,7 @@ to call the model complete.
 - [ ] 3c-A exit — author guide and agent rules landed, task reuse is discoverable, both acceptance conversions are green, and the old authoring path is deleted
 - [ ] 3c-B exit — Person Lookup and Separations acceptance reconciled, Phase 3 authorities current, integrated gates green and Phase 3 worktree/task residue closed
 - [x] D319 removes every not-yet-admitted workflow from Phase 3 implementation scope; old order labels are candidate evidence only
-- [ ] `{#workflow-admission}` — after Phase 3, verify one candidate's complete admission packet with the operator before creating Phase 4
+- [ ] `{#workflow-admission}` — after Phase 3, verify one candidate's complete admission packet with the operator before defining Phase 4A's migration tasks
 - [ ] the legacy capability register — **46 open · 19 replaced · 6 native · 7 retired** of 78 (recounted from `config/legacy-capabilities.json`, 2026-09-02); open entries remain backlog obligations, not Phase 3 completion criteria
 - [x] generic workflow-to-dashboard conformance for the two transitional compiler-backed workflows; the same registry-wide suite must admit each later migration
 - [ ] the T1 proof for each admitted workflow, plus T2/T3 only when that admitted phase introduces a new dashboard behavior
@@ -46,13 +47,13 @@ to call the model complete.
 > 2026-08-25 | D266 | the test-only Kuali annotation workflow retired; the registry now holds seven modules and the Kuali finalization T1 pair carries its reusable proof shape
 > 2026-09-02 | D317 execution plan | 3c split internally into blocking 3c-A authoring-platform proof and a later migration batch; D319 supersedes only that later-batch assignment
 > 2026-09-02 | baseline `b1b36349` verification | bounded D311 compiler and candidate intake are integrated; D312–D318 final authoring/runtime acceptance remains; R1/R2 owned worktrees are closed
-> 2026-09-02 | D319 | Phase 3 now stops after Person Lookup/Separations acceptance; every other workflow requires admission verification and operator approval before receiving the next phase number
+> 2026-09-03 | D323 | Phase 3 now reads as 3A–3D; every later workflow remains verification-gated but enters the standing Phase 4 sequence as 4A, 4B, 4C and onward
 <!-- /roadmap-status -->
 
 **Phase 3c is the end of Phase 3, not the rest of the migration program.** Phase 3a built the
 dashboard every workflow inherits, 3b takes Separations through the safety loop, and 3c builds one
 workflow-definition/compiler seam so Person Lookup and Separations can prove the complete authoring
-model. Phase 3 then closes. Later workflow phases are created one at a time through D319 admission.
+model. Phase 3 then closes. Later workflows are admitted one at a time as lettered Phase 4 parts.
 
 **What it reads as met before it starts.** From **03a**: the generic surfaces — run modal, queue
 row, run detail + timeline, gate ceremony, notifications, archive · activity · explorer, intake and
@@ -343,7 +344,7 @@ its Person Lookup facts may support 3c-B, while its I-9 material returns to the 
 <!-- roadmap: workflow-admission -->
 
 After Phase 3 closes, the operator selects one candidate for admission verification. No candidate
-has a reserved position, assumed boundary or phase number. Its admission packet must verify the
+has a reserved letter or assumed boundary. Its admission packet must verify the
 current legacy and live behavior, then propose the exact workflow definition required by
 `ref workflow-model` §1.6.2:
 
@@ -356,14 +357,14 @@ current legacy and live behavior, then propose the exact workflow definition req
 - checkpoint/restart behavior and no-repeat-write obligations; and
 - structural/live proof plus an approved controlled-commit target for each write.
 
-The operator reviews that packet. Approval creates the next numbered phase and its phase doc,
-migration doc and coordinator plan. Rejection or missing evidence leaves the candidate unnumbered.
-Only the approved workflow or explicitly approved workflow family enters that phase. Shared task-store
+The operator reviews that packet. Approval creates the next lettered Phase 4 part, migration doc
+and coordinator plan. Rejection or missing evidence leaves the candidate unassigned. Only the
+approved workflow or explicitly approved workflow family enters that part. Shared task-store
 or dashboard work belongs there only when it is the first verified consumer.
 
 ## The seven-step migration playbook
 
-This is the safety loop an agent follows only after D319 admission creates a numbered workflow phase.
+This is the safety loop an agent follows only after D319/D323 admission creates a lettered Phase 4 part.
 Separations
 ran its pre-D311 form; the business and safety obligations remain, while workflow compilation replaces
 the manual descriptor/module/dashboard assembly described by the older wording. Steps run in order;
@@ -1216,7 +1217,8 @@ traceback that names each one's trigger.
 **D311-D320 are this phase's workflow-authoring, proof and boundary decisions.** D311-D318 ratify
 the workflow/compiler and its measurable simplicity, omission, recovery, entry-algebra and deletion
 boundaries. D319 ends Phase 3 after Person Lookup/Separations acceptance and requires a verified,
-operator-approved admission packet before another workflow receives a numbered phase. D320 keeps
+operator-approved admission packet before another workflow is admitted. D323 places every admitted
+later workflow in Phase 4 as a lettered part. D320 keeps
 the strict Separations T1b exit and conditionally authorizes 3c-B. The bounded compiler is integrated
 and final acceptance remains open at `{#workflow-authoring-model}`.
 
@@ -1236,6 +1238,7 @@ and final acceptance remains open at `{#workflow-authoring-model}`.
 | D318 (round 124, 2026-09-02) | transaction-free workflows satisfy T1b through the explicit `live-read` arm with `dryRun=false`, zero transaction nodes and exact zero write-authority deltas; D209 preview semantics remain unchanged |
 | D319 (round 125, 2026-09-02) | Phase 3 stops after Person Lookup/Separations acceptance; every other workflow stays unnumbered until its admission packet is verified and operator-approved |
 | D320 (round 126, 2026-09-03) | Separations still needs a fresh `met` T1b result on a newly vetted closed Kuali document; once every 3c-A exit condition is green, 3c-B is already authorized to reconcile and close Phase 3 |
+| D323 (round 129, 2026-09-03) | numbered phases form the roadmap spine; Phase 3 is 3A–3D; verified later workflows enter Phase 4 as 4A, 4B, 4C and onward |
 | R10 (operator, 2026-08-20; amended D311) | T1 behavior per workflow, T2/T3 per new dashboard capability, the 80 % floor |
 
 A round ratified by a future migration is added here in the same commit that records it, with its
@@ -1256,7 +1259,7 @@ remains below for phases created after admission._
 | 3 | Separations compiles through the same authoring seam without weakening its existing gates, transactions, receipts or recovery contracts | **partial** - transitional equivalence is green; R3 owns final conversion. Unfinished controlled-live proof remains doc 03b work |
 | 4 | Generic dashboard and Explorer conformance is green for both acceptance workflows; T2/T3 is added only for a genuinely new behavior | **partial** - transitional conformance is green; final entry kinds and omission/recovery surfaces remain |
 | 5 | The author guide, paired root instructions and internal agent pointer all describe the one final authoring path | **open** - R3 work |
-| 6 | D319 admission is visible in the roadmap: no unverified workflow is a numbered phase or authorized implementation run | **MET in docs when this change lands** - the former rows remain evidence-only until Phase 3 close removes or extracts them |
+| 6 | D319/D323 admission is visible in the roadmap: unverified workflows have no Phase 4 letter or authorized implementation run | **MET in docs when this change lands** - the former rows remain evidence-only until Phase 3 close removes or extracts them |
 | 7 | Nothing in the legacy repository has been deleted, and Person Lookup/Separations legacy paths remain runnable | **MET, and standing** - the legacy repository remains the D89 rollback asset |
 | 8 | Every Phase 3c run is integrated and closed: gates green, worktrees removed, local branches deleted, exact tasks archived and residue recorded | **partial** - R1/R2 are closed; R3 and final reconciliation/close remain |
 

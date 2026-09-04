@@ -1,17 +1,18 @@
-# Deferred shelf · close each item at its trigger
+# Phase 5A · Close cutover-readiness gaps
 
-This doc is the dedicated home of **the deferred shelf**, tree node `{#deferred}` — every "I want to do X; the
-plan said build Y; Y is deferred" answer, and the **trigger** that ends each one. The deferred shelf is not a
-block of work with a start date: it is nine named absences, each waiting on an event somebody can
-recognize or carrying a decided stance. Nothing here blocks the cutover unless `05-cut-over.md` §Exit criteria names it — and it
-names none of them. Contracts these deferrals belong to live in `reference/`.
+This doc is the dedicated home of Phase 5A, tree nodes `{#deferred}` and `{#cutover-readiness}` —
+every "I want to do X; the plan said build Y; Y is deferred" answer, and the **disposition** that
+ends each one. It is the readiness inventory before Phase 5B's authority switch. An item may be
+completed, retired, or explicitly carried to its owning later part; none may float outside a phase.
+Contracts these items belong to live in `reference/`.
 
-**D319 numbering note (2026-09-02).** This stable-path file is not Phase 4. Phase 4 remains unassigned
-until the operator approves one verified workflow admission packet. The items here remain an
-unnumbered shelf and close only when their own trigger fires.
+**D323 numbering note (2026-09-03).** The stable filename remains `04-...` for links, but this work
+is Phase 5A. Phase 4 is the workflow-migration program; Phase 5A closes or assigns readiness gaps
+before Phase 5B switches production authority.
 
 ## Shelf summary
 <!-- roadmap: deferred -->
+<!-- roadmap: cutover-readiness -->
 
 <!-- roadmap-status: deferred -->
 - [x] every deferral names its trigger, and none is a silent drop — nine nodes, each with a trigger, decided stance or retirement

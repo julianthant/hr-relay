@@ -151,23 +151,12 @@ export const FlagNodeSchema = z
   .strict();
 export type FlagNode = z.infer<typeof FlagNodeSchema>;
 
-/**
- * A dated session milestone on the spine — what one working session landed,
- * as opposed to a `flag`, which is a ratified project milestone. Rendered
- * distinctly (hollow dot, dashed pill) so the two are never confused.
- */
-export const SessionNodeSchema = z
-  .object({ kind: z.literal("session"), date: IsoDateSchema, session: z.string().min(1), text: z.string().min(1) })
-  .strict();
-export type SessionNode = z.infer<typeof SessionNodeSchema>;
-
 export const TodayNodeSchema = z.object({ kind: z.literal("today"), text: z.string().min(1) }).strict();
 export type TodayNode = z.infer<typeof TodayNodeSchema>;
 
 export const SpineEntrySchema = z.discriminatedUnion("kind", [
   PhaseNodeSchema,
   FlagNodeSchema,
-  SessionNodeSchema,
   TodayNodeSchema,
 ]);
 export type SpineEntry = z.infer<typeof SpineEntrySchema>;

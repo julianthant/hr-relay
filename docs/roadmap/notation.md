@@ -45,7 +45,7 @@ note: text                                 ← a note block; note!: an amber (op
 log:                                       ← the node's session journal, newest-first in the drawer
 - 2026-08-20 | docs-cohesion step 2b | what landed (`ea7704e0`) · what is left
 
-### Track A · separations backend completion {#track-a}     ← a TASK under the phase: "### Title {#id}" (id optional; needed for needs:/links)
+### 3A · Shared dashboard {#track-a}        ← a LETTERED PART under the phase: "### Title {#id}"
 status: you
 date: D196 · D205 live 08-13               ← the item's info line (dates, decisions)
 size: L
@@ -58,16 +58,15 @@ builds: … / needs: … / log: … / note: …
 |---|---|---|
 | !A1 | You name the canary | **YOU** |
 
-#### 1 · new-kronos timecard read {#sep-1}   ← a SUB-TASK (#### and ##### nest one level each)
+#### 1 · new-kronos timecard read {#sep-1}   ← a TASK in that part (#### and ##### nest one level each)
 
 ## flag: 2026-08-12 | D193 — scope and entry …   ← a dated RATIFIED milestone on the spine
-## session: 2026-08-20 | docs-cohesion steps 1–2 | the plan moved …   ← a dated WORKING session on the spine
 ## today: 2026-08-20 · HEAD 5f6713f · …          ← the TODAY rule
 
 <!-- roadmap:end -->
 ```
 
-### The three binding / journal shapes, in full
+### The two binding / journal shapes, in full
 
 Verbatim from the parser's own banner (`scripts/roadmap/parse-plan.ts`) — the grammar is what the parser enforces, line by line:
 
@@ -99,27 +98,23 @@ log:
   session name, and non-empty text (inline markup and D-numbers allowed).
   Rendered newest-first as the drawer's last section, "Session log".
 
-## session: YYYY-MM-DD | <session> | <text>
-  A spine marker, like `## flag:` but for a working session rather than a
-  ratified milestone — same three fields as a `log:` line, drawn with a
-  hollow dot and a "SESSION" eyebrow so the two never read alike.
 ```
 
 - **`doc:`** — WHERE this node's contracts are written; the tree's half of the two-way binding below. One line per node; a second is refused.
 - **`log:`** — WHAT each session did to this node, so the next agent reads the node's own history instead of `git log`.
-- **`## session:`** — the same for the program: one dated marker per working session, on the spine beside the ratified `## flag:`s.
 
 Rules that keep the tree honest:
 - **Every `builds:` line carries a layer tag** — it is how the operator tells "not built yet" from "built and sloppy".
 - **A feature marked `[x]` must be landed at HEAD**; cite the commit/decision in its text. Never pre-mark.
 - **`you:` items are the operator's** — switch to `you(met):` only on their explicit answer.
 - **Ids are stable anchors** (`order-3`, `track-a`, `sep-6c`) — never rename one; links and deep links bind to them. `needs:` refs must resolve; cycles fail loud.
+- **The visible hierarchy is fixed:** numbered phases are the only spine nodes; lettered parts (`3A`, `3B`, `4A`) are the phase's horizontal children; concrete tasks are vertical children beneath their part. Every planned node belongs to a numbered phase. Session history lives only in node `log:` drawers.
 - **The doc binding is two-way** (D263, `docs/roadmap/roadmap.md` §Governance) — every node carries a `doc:` line naming the phase-doc (`03a §2.1`) and reference (`ref:write-safety §5`) sections that OWN its contracts, and every doc section that describes a node carries `<!-- roadmap: <id> -->` on the line directly under its heading. The phase docs stay normative: where the tree and the doc disagree, the doc is right and the tree is corrected. The `roadmap-doc-binding` guard (landing as step 3 of `docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md`) refuses a `doc:` ref that resolves to no such section and a `<!-- roadmap: id -->` tag that names no such node — so a rename on either side fails the gate instead of rotting.
 - **`log:` lines are append-only.** Never edit or delete another session's line; a wrong one is corrected by a NEW line that says so. The block is a journal, not a status field.
 - Inline markup in any text: `` `code` ``, `**bold**`; D-numbers are auto-highlighted. No other markdown inside the region.
 - The plan records **what is built and what is required**; it does not invent scope. An unplanned feature is a finding for `docs/findings/`, not a roadmap line.
 
-Also bump `asOf:` and `head:` (the HEAD you are updating FROM), the `## today:` line, and any tile the change moves.
+Also bump `asOf:` and `head:` (the HEAD you are updating FROM), the `## today:` line when one is intentionally used, and any tile the change moves.
 
 ### The doc-side status block
 
@@ -140,7 +135,7 @@ Lines are `- [x| |~|?|-|!] text` (the same boxes as `builds:`, **no layer tag** 
 - **Notes are append-only**, like `log:` lines: correct a wrong one with a new one.
 - **`npm run roadmap -- --check` goes stale when a doc's status moves**, because the drawer renders these blocks ("From the docs", with a per-phase roll-up). Ticking a box in a doc and not regenerating fails the gate — which is the point.
 
-## Step 1b — the `session` class (end-of-session procedure)
+## Step 1b — end-of-session roadmap procedure
 
 Run this when a working session is ending — yours or a subagent's you are closing out. It is the whole class; the steps below replace nothing above, they order it.
 
@@ -149,10 +144,8 @@ Run this when a working session is ending — yours or a subagent's you are clos
 2. **One `log:` line per touched node**, appended to that node's `log:` block (create the block if the node has none):
    `- YYYY-MM-DD | <session> | what landed (commit) · what is left`
    The `<session>` name is the slug somebody can find later — the plan or handoff slug, or the dispatch unit (`docs-cohesion step 2b`, `separations 6c`, `track-d ratified`). Say what is LEFT as well as what landed; a line that only celebrates is a line the next agent cannot use.
-3. **One `## session:` spine marker for the whole session** — placed after the last `## flag:` / `## session:` and before `## today:`, one line, naming the nodes touched:
-   `## session: YYYY-MM-DD | <session> | <what moved, node ids named>`
-   One per session, not one per commit.
-4. **Bump the facts** — `asOf:`, `head:` (the HEAD you are updating FROM), the `## today:` line, and any tile the session moved (decisions range, guard/test counts, workflows migrated, the critical-path blocker).
+3. **Keep history inside the work.** Do not add session markers to the phase spine. The touched nodes' `log:` entries are the complete roadmap history.
+4. **Bump the facts** — `asOf:`, `head:` (the HEAD you are updating FROM), an intentional `## today:` line if present, and any tile the session moved (decisions range, guard/test counts, workflows migrated, the critical-path blocker).
 5. **Regenerate and check** — Step 2 below (`npm run roadmap` then `npm run roadmap -- --check` printing `fresh`).
 6. **Commit** — `docs(roadmap): session <name> — plan + site`, staging only `docs/roadmap/roadmap.md`, `docs/roadmap/index.html` and any owning docs the session ratified. Never `git add -A`; never push.
 7. **Republish** the hosted copy to the existing URL — Step 5 below.
@@ -160,5 +153,5 @@ Run this when a working session is ending — yours or a subagent's you are clos
 Three standing rules for this class:
 
 - **`log:` lines are append-only.** A prior session's line is history: never edit it, never delete it. Correct it with a new line that names what the old one got wrong.
-- **A session that changed nothing on the tree still leaves its `## session:` marker if it touched the docs.** "The docs moved and the tree did not" is a fact worth being able to read; silence is indistinguishable from a session that never happened.
+- **A session that changed no roadmap node leaves no roadmap marker.** Its durable evidence belongs in the document or code it changed; the phase spine is reserved for the plan.
 - **The next agent reads first.** Before starting, read the newest `log:` lines of the nodes it is assigned (`npm run roadmap -- --json` if you want them structured) — the node's own journal is where the last agent said what is left.

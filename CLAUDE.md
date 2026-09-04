@@ -25,11 +25,11 @@ admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phas
 - The **phase docs** under `docs/rebuild/` record tasks, evidence, decisions and exit criteria.
   Phases 0-3 are `00-design-the-foundation` · `01-build-the-spine` ·
   `02-prove-writes-build-the-tails` · `03a-finish-the-dashboard` · `03b-finish-separations` ·
-  `03c-migrate-the-remaining-workflows`. D319 ends Phase 3 with the shared authoring platform,
-  Person Lookup and Separations. Every later workflow remains an unnumbered candidate until its
-  admission packet is live-verified and operator-approved; approval creates the next numbered phase
-  and phase doc. The stable-path `03d`/`04`/`05`/`06` files now hold unnumbered second-actor,
-  deferred, cutover and desktop stages; their filename numbers do not reserve phase numbers.
+  `03c-migrate-the-remaining-workflows`. D323 fixes the visible hierarchy: numbered phases run down
+  the roadmap spine, lettered parts run horizontally, and each part's tasks run vertically. Phase 3
+  is 3A dashboard, 3B Separations, 3C authoring/acceptance and 3D Codex/Claude cooperation. Phase 4
+  admits later workflows as 4A/4B/4C only after D319 verification and operator approval; Phase 5 is
+  readiness plus the one cutover, and Phase 6 is the desktop app. Stable filenames stay unchanged.
 - `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D264; **D131 is a retired gap —
   never reuse it**). A **pointer index**, not a spec: it tells you which doc owns a contract. Never
   implement from it.
@@ -46,9 +46,9 @@ admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phas
 - `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`): 60 entries of
   "X looked safe and did Y", each naming its decision. Read it before kernel / driver / dashboard /
   write-safety work; add new root-level lessons THERE (module lessons stay in the module's AGENTS.md).
-- `docs/rebuild/00`–`06` — stable plan-document paths. `00`–`03c` are the admitted phase sequence;
-  D319 makes the later `03d`/`04`/`05`/`06` files unnumbered track/stage authorities despite their
-  preserved filenames. Each admitted phase owns its tasks, decisions and **exit criteria**;
+- `docs/rebuild/00`–`06` — stable plan-document paths. D323 maps their owning work into the visible
+  Phase 0–6 hierarchy even where a preserved filename predates that mapping. Each phase owns its
+  tasks, decisions and **exit criteria**;
   `docs/roadmap/roadmap.md` is the summary. The old `07-master-plan.md` was dissolved into them on
   2026-08-20 and is preserved, with a section-by-section table of where everything went, at
   `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`.
@@ -324,6 +324,12 @@ environment-supplied.
 > every ordinary validator; unmarked late roots remain malformed and an exact repeat writes nothing.
 
 ## Conventions
+
+- **2026-09-03 — the roadmap is an outcome hierarchy, not a session journal (D323).** Only numbered
+  phases sit on the vertical spine; each phase's lettered parts run horizontally and each part's
+  concrete tasks run vertically beneath it. Phase 4 holds admitted workflow migrations as
+  4A/4B/4C, Phase 5 holds readiness and cutover, and Phase 6 holds desktop delivery. Working-session
+  history belongs in node `log:` drawers and never becomes a spine marker.
 
 - **2026-09-02 — a workflow's T1a source path is operator-visible authority.** Every registered
   workflow owns exactly one `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts`;

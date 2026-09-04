@@ -17,7 +17,6 @@ import type { Layer, Status } from "./schema.js";
  *   ### Task title {#id}         status: / date: / size: / chip: / chip-tone: / doc:     (#### and ##### nest further)
  *   > desc · builds: · needs: · log: · note: text · note!: text · a markdown table whose first cell may start with ! (you) or ✓ (done)
  *   ## flag: when | text         a ratified milestone on the spine
- *   ## session: YYYY-MM-DD | session | text   a dated session milestone on the spine
  *   ## today: text               the TODAY rule
  *   <!-- roadmap:end -->         everything after is prose and is not rendered
  *
@@ -49,11 +48,6 @@ import type { Layer, Status } from "./schema.js";
  *     Exactly two " | " separators per line: a real ISO date, a non-empty
  *     session name, and non-empty text (inline markup and D-numbers allowed).
  *     Rendered newest-first as the drawer's last section, "Session log".
- *
- *   ## session: YYYY-MM-DD | <session> | <text>
- *     A spine marker, like `## flag:` but for a working session rather than a
- *     ratified milestone — same three fields as a `log:` line, drawn with a
- *     hollow dot and a "SESSION" eyebrow so the two never read alike.
  *
  * Every line inside the region must be one of those shapes — anything else
  * fails loud with its line number.
@@ -208,13 +202,6 @@ export function parsePlan(text: string): unknown {
         const [when, ...rest] = title.slice(6).split(" | ");
         if (rest.length === 0) fail(lineNo, "flag needs `when | text`");
         spine.push({ kind: "flag", status: "done", when: (when ?? "").trim(), text: rest.join(" | ").trim() });
-        current = undefined;
-        stack.length = 0;
-        continue;
-      }
-      if (level === 2 && title.startsWith("session: ")) {
-        const entry = parseDatedEntry(title.slice(9).trim(), lineNo, "a session marker", '"## session: YYYY-MM-DD | <session> | <text>"');
-        spine.push({ kind: "session", ...entry });
         current = undefined;
         stack.length = 0;
         continue;
