@@ -29,7 +29,12 @@
       "launch_base": "99c9ed51882a4e53069d18cf0e890c98f9810be2",
       "launch_time": "2026-09-04",
       "launch_status": "ready",
-      "identity_evidence": "Unique exact-worktree task metadata and original create_thread delegation output verified full UUID, R01 report, parent, launch time and assigned feature branch; retained client id"
+      "identity_evidence": "Unique exact-worktree task metadata and original create_thread delegation output verified full UUID, R01 report, parent, launch time and assigned feature branch; retained client id",
+      "transport_blocker": "PreToolUse rejected permanent task id absent from runtime address book; runtime retained client id; child not enrolled",
+      "proof_residue": [
+        "G1 M9 exact downgrade spies",
+        "G2 M21 full ladder proof"
+      ]
     },
     {
       "run": "R02",
