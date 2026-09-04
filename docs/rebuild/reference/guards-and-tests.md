@@ -1521,6 +1521,8 @@ composition root that imports the compat module transitively through one hop; `g
 arm against it so a deleted arm cannot stand in for enforcement. The two arms answer differently, so a
 test that passed before and after deletion — §D332.9 rule 2's stated failure — is impossible here.
 
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (cross-contract close) | the reachability arm cannot live inside a `planned` entry — §5.1's walk rule says a planned entry's `.test.ts` must not exist until activation, and a guard whose arm changes by phase would need a phase input, which is a flag §D332.9 rule 4 forbids. So A0/A1 carry TWO entries: **`authority-upgrade-adapters-isolated`** (`tests/unit/architecture/authority-upgrade-adapters-isolated.test.ts`, `active` from 1.6 Task 6's commit that lands the compat modules; invariant: the A0/A1 modules are unreachable from every production composition root and from `scripts/secure-env-bootstrap.ts`; violating fixture: a composition root importing the compat module through one hop) and **`authority-upgrade-adapters-retired`** (`planned` from that same commit, `activationMilestone` 2.6; invariant: the module paths do not exist). At 2.6 Task 4 the deletion commit flips `-retired` to `active` and marks `-isolated` `retired`, naming that decision and `-retired` as where the invariant went, exactly as §5's retirement rule requires. Intended entry 2 below is read with this split (two entries, six in all).
+
 #### A1 — the old-pathname prepare/rollback reconciler
 
 *Name* `authority-upgrade-adapters-retired` (arm 2), plus the separate `settings-root-single-pathname`.
@@ -1580,7 +1582,7 @@ removing it is red at every one of the nine composition call sites — no silent
 Runtime: P4 resolves with a hostile `process.env` populated for every retired key and asserts
 byte-identical output and no `"env"` value anywhere; P3 asserts `CONFIG_ENV_BINDINGS` (`resolve.ts:241`)
 is empty and `runtime-environment.ts`'s `config` channel has zero members. Note for 1.6: `resolveConfig`
-has zero `src/` callers today but five test files import it, so its deletion is a test edit too —
+has zero `src/` callers today but THIRTEEN files import it (ten under `tests/unit/**`, two under `tests/parity/helpers/**`, and `scripts/live-browser-login-smoke.ts:57`, inside the `typecheck` program — corrected 2026-09-04 by R04 from "five test files"), so its deletion is a test AND scripts edit too —
 §D331.11 P39's "changed deliberately in the same commit" rule covers exactly this.
 
 #### A5 — `secrets.ts`'s migrated `process.env` reads
@@ -1595,6 +1597,9 @@ the migrated names must be readable only from the protected store, so a restored
 inside `secrets.ts` is red at the guard, not merely at a unit test. `optionalTestTargetSecret`
 (`src/domain/secrets.ts:470`) is the D300 document-number reference this moves, and it keeps its
 two-arm selector.
+That set includes `providerModelChain`'s `legacyModelEnv` fallback (`src/domain/secrets.ts:666–667`; the five
+singular `OCR_*_MODEL` names are already `retired-in-target`): model chains become ordinary catalog rows
+(§D331.2) and the fallback is deleted with the accessor, never kept as a second source (R04, 2026-09-04).
 
 #### A6 — the pre-floor tombstone reader (permanent read-forward, never an adapter)
 

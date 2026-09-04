@@ -7,6 +7,18 @@ lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/store
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
 
+- **2026-09-04: a read-path widening is half a fix when the write path still asserts the same literal, and a
+  file-shape change needs its own version widening (D332; ref dashboard-surfaces §D332.4 as amended by R04).**
+  R03 widened the backup READ schemas to admit a pre-floor `schemaVersion` and left every WRITE path at the
+  literal `CURRENT` — but the manifest's `superRefine` binds the written `schemaVersion` to the version OBSERVED
+  in the verified copy, so a 1.6 build could never have written the pre-upgrade backup of a v29 root that the
+  upgrade's own preflight requires; and the widening named only `schemaVersion`, while §D331.3's multi-file
+  manifest changes `manifestVersion`, which would have made every pre-floor manifest unparseable the day 1.6
+  landed. The write path records the observed version; the read path admits the OPEN's lineage rule (D290's
+  frozen sets for `18 < v < floor`) and every manifest version ever written. The same review found that a
+  guard arm whose behaviour must differ before and after a deletion cannot live in one `planned` inventory
+  entry (its file may not exist): it is two entries, one `active` now and `retired` at expiry, one `planned`
+  now and `active` at expiry (ref guards-and-tests §5.2 A0).
 - **2026-09-04: a schema-version literal in the backup contract and an unconditional at-open
   migration each looked like strictness and together make the pre-upgrade backup worthless (D332;
   ref dashboard-surfaces §D332.1, §D332.4).** `AuthorityBackupManifestSchema`, `BackupVerificationSchema`

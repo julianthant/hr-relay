@@ -666,6 +666,8 @@ re-entered. What a restore does with that is 0.3 Task 3's; D331 fixes only that 
 reports those entries `absent`, never regenerates them, and never treats their absence as "not
 configured by choice".
 
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (cross-contract close) | the paragraph above describes the 1.6 TARGET, not the as-built backup: today `AuthorityBackupManifestSchema` (`src/infra/sqlite/recovery-contracts.ts:70–84`) is `manifestVersion: 1` — one `backupFileName`/`sha256`, no file list, no settings copy (`backup-service.ts` names no settings file). 1.6 Task 2-2 lands the multi-file `manifestVersion` 2 manifest carrying the two ordinary documents and the protected presence metadata (§D331.11 P15), and ref dashboard-surfaces §D332.4 (as amended) keeps `manifestVersion` 1 readable so every pre-floor backup stays restorable.
+
 ###### D331.4 — revision, journal coupling and the two singletons
 
 Each document has its own monotonic `revision` (1 = the never-applied baseline). The as-built
@@ -772,6 +774,11 @@ The rules, each a proof 1.6 owes (§D331.11):
    receipt may still carry the `last4` §6 already permits for a `direct-identifier` observed during
    a run — that is evidence redaction, not a Settings readback, and it is produced by the run, not
    by the store.)
+   (`activityPersonPseudonym`, R04 2026-09-04: D288's PUBLIC generation id is served — on Activity and in
+   `activity_person_pseudonyms.keyGeneration` — from the durable key-commitment binding and the evidence rows,
+   never from this store's readback; the store entry's VALUE is the key plus that label as one pair and stays
+   write-only, and D288's reviewed batch comparison is what proves the two agree. The public label is
+   evidence, not a setting, so rule 1 and D288 do not collide.)
 2. **Never in a fingerprint or a snapshot.** A protected value is not a `Config` leaf, so it is not
    in `configFingerprint`, not in `settingsFingerprint`, not in the provenance map, not in a
    per-run config snapshot, not in the D330 claim token. `timekeeperName` leaves `ConfigSchema`
@@ -1138,6 +1145,7 @@ deleted or renamed proof is a red guard, not silent drift.
 | P38 | `snapshot-generations.ts` gains an explicit RETIREMENT arm so `operator.timekeeperName` may vanish from `ConfigSchema` without a released generation being rewritten; an unretired vanished leaf still refuses | retire the leaf and assert the audit passes; vanish a different leaf without a retirement entry and assert the existing refusal | `tests/unit/architecture/config-snapshot-generations.test.ts`, `src/domain/config/snapshot-generations.ts` |
 | P39 | Every existing guard/test the migration invalidates is changed deliberately in the same commit, not deleted | update and re-run: `runtime-environment-coverage.test.ts`, `secrets-single-source.test.ts` (the `CONFIG_OWNER_PREFIX` env-read permission and the new WRITE arm), `strict-boundary-schemas.test.ts` (catalog + protected schemas join the inventory), `config-snapshot-generations.test.ts`, `test-target-registry.test.ts`, `evidence-receipt.test.ts`; and the non-guard set `config.test.ts`, `settings-file-service.test.ts`, `settings-runtime-reader.test.ts`, `command-kernel.test.ts`, `worker-composition.test.ts`, `dry-run-scenario-composition.test.ts`, `compose-real-port.test.ts`, `bff-flow.test.ts`, `fixtures/settings-runtime-corruption-fixtures.ts`, `fixtures/dry-run-admission-fixtures.ts` | the named files, each with its `guard-inventory.json` row where it has one |
 | P40 | The eleven frozen parity references containing the Settings surface's `settings.json: not set` line are re-frozen DELIBERATELY, never tolerated as drift | run `npm run test:parity` to see the eleven fail, re-freeze with `npm run test:parity:update`, and review the diff as bytes | `tests/parity/references/{settings,storage-settings}--*.yml` |
+| P41 | (R04, 2026-09-04) Every leaf D331 adds to a served contract is dispositioned under D183 by name in the commit that adds it: the presence tuple `{ present, valueId, updatedAt }` and store `revision`, the protected schema hash, `restartRequired` + `runtimeStatus`, the observed/active `display` pair, `revision-conflict { currentRevision }` and every §D331.5 refusal literal | the schema-driven `redaction-surface-scan` is red on an undispositioned leaf; a disposition naming a value class other than closed-literal/identifier-free is red at review | `tests/unit/architecture/redaction-surface-scan.test.ts` and its disposition table |
 
 ###### D331.12 — what this contract supersedes (dated 2026-09-04)
 
