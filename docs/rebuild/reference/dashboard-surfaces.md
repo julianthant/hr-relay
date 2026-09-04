@@ -3973,7 +3973,7 @@ The legal edges are exactly these (ref workflow-model §4; as-built in `LEGAL_RU
 | `terminal` | `queued` | ONLY for outcome `interrupted` (recovery requeue). Every other outcome is final. |
 
 Every non-terminal state has a self-edge for in-place updates (heartbeat, `currentNodeId`, backoff,
-rename); `terminal` has no self-edge — a settled outcome is settled. `terminal` carries the closed
+rename, and — on the three claimed states only — the operator's `cancelRequested` (amended 2026-09-04, coordinator ruling on R04 item 1 — option A)); `terminal` has no self-edge — a settled outcome is settled. `terminal` carries the closed
 outcome union `done · failed · cancelled · discarded · interrupted · superseded`; a `failed` row must
 name its `failureId` and no other outcome may. The three claimed states (`claimed`, `validating`,
 `running`) are the only states in which exactly one worker owns the row, and a parked or queued row
@@ -3990,8 +3990,8 @@ never a derived `awaiting-approval`.
 (§D330.1) — D14's operation/operation-member shape — never the `sessionId` group. A member's
 lifecycle is its own row's state; there is no rollup state. Three edges are constrained by the tree:
 (1) an anchor may not settle `terminal` while any member is non-terminal — its `done`/`failed`
-waits, and `cancel` on an anchor first cancels every non-terminal member as N CAS transitions
-(`cancel-tree`), then the anchor; (2) `terminal/interrupted → queued` refuses on a member whose
+waits, and `cancel` on an anchor first cancels every non-terminal member as N CAS transitions —
+direct edges for queued/parked members, cancel REQUESTS for claimed ones (amended 2026-09-04, coordinator ruling on R04 item 1 — option A) — (`cancel-tree`), then the anchor's own request or edge, and the anchor settles only after every member has; (2) `terminal/interrupted → queued` refuses on a member whose
 anchor is already `terminal`; (3) `delete` refuses a member alone and an anchor cascades its members
 (§D330.8). No state of a member is derived from the anchor or vice-versa; the dependency edge lives
 in `dependencies` and is consulted by claim eligibility only. A projection may SUMMARIZE a tree,
@@ -4052,7 +4052,7 @@ every refusal names the field or state that refused.
 | `create` | identities available (§D330.1); `runId` not tombstoned; runtime generation active (§D330.6) | insert row at `version 1`, state `queued`; reserve `attempt`, `runNumber`; AFTER commit, publish the write-once `run.queued` span root through the shared queue-root builder (lesson 2026-09-01) — a failed publish leaves a valid run with a rootless span file, a doctor finding repaired only by D301, never a rollback of the run | `identity-conflict{field}` · `parent-missing` · `retry-of-missing` · `tombstoned` · `runtime-stale` |
 | `read` | — | §D330.2 three-way answer with the full record and `version` | none (total) |
 | `list` | — | ordered page over `live`/`archived` rows by the §D330.6 order; never over evidence | `cursor-stale` |
-| `transition` | `expectedVersion`; edge legal (§D330.3); non-claimed states only | self-edge or operator edge (`cancel`, `bump`, `rename`, `resolve-write-*`, gate resolution → `queued`) | `conflict{currentVersion}` · `illegal-transition{from,to}` · `owned-by-worker` |
+| `transition` | `expectedVersion`; edge legal (§D330.3); non-claimed states only — EXCEPT the cancel request (amended 2026-09-04, coordinator ruling on R04 item 1 — option A): `cancel` on a `claimed`/`validating`/`running` row is a self-edge that sets `cancelRequested` (`version+1`, no state/worker/claim change), never a settle; the worker honours it at its next non-fenced boundary by settling `terminal/cancelled` through `terminalize` under its claim fence (a sequencer inside `retainAfterFence()` finishes its write first — lesson 2026-08-25); a lost claim's recovery `requeue` of a row carrying the request settles it `terminal/cancelled` in the sweep's transaction instead of re-queuing it; `cancel` on a non-claimed row is the ordinary direct edge; a second `cancel` on a row already carrying the request is an exact replay (`applied-already`) | self-edge or operator edge (`cancel`, `bump`, `rename`, `resolve-write-*`, gate resolution → `queued`); the cancel REQUEST on a claimed row | `conflict{currentVersion}` · `illegal-transition{from,to}` · `owned-by-worker` (every other operator edge over a claimed row) |
 | `claimNext` | worker token = (`workerId`, runtime generation tuple); worker holds no active row | first-eligible row → `claimed`, `claimGeneration+1`, `version+1`, heartbeat set (§D330.6) | `none-eligible{notBefore?}` · `runtime-stale` · `worker-busy{runId}` |
 | `renewClaim` | claim fence | `heartbeatAt`, `version+1` | `lost` |
 | `workerTransition` | claim fence; edge legal | `claimed→validating→running`, `running→parked-*`, `running→queued`(release) | `lost` · `illegal-transition` |
@@ -4076,6 +4076,7 @@ widens that union by exactly one code so §D330.2's three-way answer survives th
 |---|---|
 | `conflict{currentVersion}` | result state `conflict` (D233), not a code |
 | `not-terminal` · `illegal-transition` · `owned-by-worker` · `is-member` · `tree-non-terminal` · `use-archive-door` · `already-archived` · `heartbeat-live` | `invalid-state`, with the service's sentence |
+| `cancelRequested` set on a claimed row (amended 2026-09-04, coordinator ruling on R04 item 1 — option A) | result state `applied` with the row's new `version`; the served lifecycle status is **`cancelling`** (the ONE derivation's arm for a claimed row carrying the request, §D330.12 item 1) until the worker settles `terminal/cancelled` — one new served status literal, dispositioned under D183 with it |
 | `schema-mismatch{digest}` | `schema-mismatch` |
 | `tombstoned` · `source-deleted` | **`target-deleted`** (new; `target-not-found` must not collapse `deleted` into `absent`) |
 | `parent-missing` · `retry-of-missing` · `workflow-unregistered` | `target-not-found` |
@@ -4386,6 +4387,15 @@ list is the obligation, not the code.
     tombstone per run before that run's own cascade, and every member's `read` answers `deleted`;
     a member alone still refuses `is-member`, and an anchor with a non-terminal member refuses
     `tree-non-terminal{runId}` with no tombstone written.
+27. `cancel-of-a-claimed-run-is-a-request` → §D330.5 (amended 2026-09-04, coordinator ruling on R04 item 1 — option A) → `cancel` under `expectedVersion` on a
+    `claimed`/`validating`/`running` row sets `cancelRequested` with `version+1` and changes no state, worker
+    or claim generation (byte-identical otherwise); the worker's next non-fenced boundary settles
+    `terminal/cancelled` through `terminalize` under its claim fence; a worker inside `retainAfterFence()`
+    settles the write first (spy the sequencer: zero interruptions); the queue projection answers
+    `cancelling` in between; a lost claim's recovery `requeue` of a row carrying the request lands
+    `terminal/cancelled` in the sweep's own transaction, never `queued`; a second `cancel` on a row already
+    carrying the request replays `applied-already`; and `cancel-tree` on an anchor with one running member
+    is N requests plus the anchor's own request, with no member settled by the operator's transaction.
 
 ###### D330.12 — what this contract supersedes (dated 2026-09-04)
 
@@ -4395,8 +4405,8 @@ Each item is also marked in place with a dated note; the owning section keeps it
    running lifecycle or a folded `claimedBy` → `running`" let a span fold answer a lifecycle
    question the row had already answered non-terminally. From D327/D330 the ONE derivation keeps
    its module and its precedence for everything the service serves (`terminal` + outcome,
-   `parked-write` → `blocked`, `parked-gate` → `awaiting-approval`, claimed states → `running`,
-   else `queued`), and the fold contributes no lifecycle arm. D268 kept the arms "rather than
+   `parked-write` → `blocked`, `parked-gate` → `awaiting-approval`, claimed states → `running` (or
+   `cancelling` when the row carries `cancelRequested`, §D330.5 (amended 2026-09-04, coordinator ruling on R04 item 1 — option A)), else `queued`), and the fold contributes no lifecycle arm. D268 kept the arms "rather than
    dropping the fold arms" so a fold could never outrank authority; §D330.4 (`span.ended` is
    emitted only after the terminal commit) and §D330.9 invariant 3 make a fold that disagrees with
    authority impossible by construction rather than merely outranked, so the arms now protect
