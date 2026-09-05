@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The composed dashboard runtime over a REAL loopback socket:
  * composeDashboardRuntime opens authority under a temp state root, folds
@@ -1369,7 +1370,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const outcome = createSettingsFileAuthority({
       path: join(repoRoot, ".tracker", "settings.json"),
       validateCandidate: (settings) => {
-        resolveConfigWithProvenance({}, settings, clock);
+        resolveConfigWithProvenance(settings, hostConfigFacts({}), clock);
       },
     }).apply({
       commandId: command.commandId,
@@ -1572,7 +1573,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.equal(plan.workflowId, "person-lookup");
     assert.equal(
       plan.fingerprints.configFingerprint,
-      resolveConfigWithProvenance({}, persisted.settings, clock).fingerprint,
+      resolveConfigWithProvenance(persisted.settings, hostConfigFacts({}), clock).fingerprint,
       "the restarted plan must bind the config resolved from the exact persisted settings generation",
     );
     assert.equal(plan.planned.length, 1);

@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../domain/config/host-display.js";
 /**
  * The 1g-spine dashboard composition value: open authority, wire the span
  * writers into THE run/queue projection, stand up the command kernel behind
@@ -605,7 +606,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const settingsAuthority = createSettingsFileAuthority({
     path: join(stateRoot, "settings.json"),
     validateCandidate: (settings) => {
-      resolveConfigWithProvenance(env, settings, clock);
+      resolveConfigWithProvenance(settings, hostConfigFacts(env), clock);
     },
   });
   mkdirSync(stateRoot, { recursive: true });
@@ -661,7 +662,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       return Object.freeze({
         explorerOverrides,
         persistedSettings,
-        resolved: resolveConfigWithProvenance(env, persistedSettings.settings, clock),
+        resolved: resolveConfigWithProvenance(persistedSettings.settings, hostConfigFacts(env), clock),
       });
     } catch (bootError) {
       try {

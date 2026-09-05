@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock, type Clock } from "../../../src/domain/clock.js";
+import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import {
   SETTINGS_SCHEMA_HASH,
@@ -28,7 +29,7 @@ function activate(
   clock: Clock,
   configSnapshotId: string,
 ) {
-  const resolved = resolveConfigWithProvenance({}, record.settings, clock);
+  const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock);
   database.withAuthorityTransaction((repositories) => {
     repositories.configSnapshots.insert({
       configSnapshotId,
@@ -63,7 +64,7 @@ function fixture(afterLockLinked: () => void = () => undefined) {
   const path = join(root, ".tracker", "settings.json");
   const file = createSettingsFileAuthority({
     path,
-    validateCandidate: (settings) => { resolveConfigWithProvenance({}, settings, clock); },
+    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); },
     hooks: { afterLockLinked: () => { lockAcquisitions += 1; afterLockLinked(); } },
   });
   const initial = file.read();
@@ -134,7 +135,7 @@ describe("verified Settings reader snapshot", () => {
       record: f.initial, runtimeStatus: { state: "current", identity: f.active },
     });
     const record = persistSettings(f, true);
-    const persisted = settingsRuntimeIdentity(record, resolveConfigWithProvenance({}, record.settings, f.clock).fingerprint);
+    const persisted = settingsRuntimeIdentity(record, resolveConfigWithProvenance(record.settings, hostConfigFacts({}), f.clock).fingerprint);
     const expectedStatus = { state: "restart-required", active: f.active, persisted };
     const before = f.locks();
 

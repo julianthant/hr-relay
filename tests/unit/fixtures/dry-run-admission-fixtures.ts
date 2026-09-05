@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The dry-run admission fixture every T1b composition proof shares: a selected
  * `.tracker/settings.json` journaled through the REAL settings kernel arm and
@@ -31,7 +32,7 @@ export function selectedSettingsFixture(
   databases.push(database);
   const file = createSettingsFileAuthority({
     path: join(root, ".tracker", "settings.json"),
-    validateCandidate: (settings) => { resolveConfigWithProvenance(env, settings, clock); },
+    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts(env), clock); },
   });
   const ids = sequentialIdFactory("b");
   const unused = (): never => { throw new Error("Settings setup reached an unrelated kernel arm"); };
@@ -64,7 +65,7 @@ export function selectedSettingsFixture(
     },
     activate: () => database.withAuthorityTransaction((repositories) => {
       const record = readJournaledSettings(file, repositories);
-      const resolved = resolveConfigWithProvenance(env, record.settings, clock);
+      const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts(env), clock);
       const configSnapshotId = ids.uuid();
       // The existing dashboard activation contract, not an alternate runtime writer.
       const snapshot = repositories.configSnapshots.insert({
@@ -93,4 +94,3 @@ export function startEffects(path: string) {
     raw.close();
   }
 }
-

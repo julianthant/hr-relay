@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -1334,7 +1335,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "Config", schema: ConfigSchema, fixtures: [ConfigSchema.parse({ paths: defaultRuntimePaths() })] },
   { name: "SettingsOverride", schema: SettingsOverrideSchema, fixtures: [{}] },
   { name: "EditableSettingsOverride", schema: EditableSettingsOverrideSchema, fixtures: [{}] },
-  { name: "ResolvedConfig", schema: ResolvedConfigSchema, fixtures: [resolveConfigWithProvenance({}, {}, CLOCK)] },
+  { name: "ResolvedConfig", schema: ResolvedConfigSchema, fixtures: [resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK)] },
   { name: "ConfigEnvBindings", schema: ConfigEnvBindingRegistrySchema, fixtures: [CONFIG_ENV_BINDINGS] },
   { name: "ClassifiedDiagnosticValue", schema: ClassifiedDiagnosticValueSchema, fixtures: [{ key: "state", classification: "safe-diagnostic", transform: "allow", value: "healthy" }] },
   { name: "RedactionResult", schema: RedactionResultSchema, fixtures: [{ fields: [], warnings: [] }] },

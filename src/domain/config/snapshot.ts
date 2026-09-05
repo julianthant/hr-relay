@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ActorIdSchema, ConfigSnapshotIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../ids.js";
-import { ConfigProvenanceSchema, ConfigLeafPathSchema } from "./resolve.js";
+import { ConfigLeafPathSchema } from "./resolve.js";
 import {
   StoredConfigSchema,
   configSnapshotAbsentLeaves,
@@ -18,7 +18,8 @@ export const ConfigSnapshotRecordSchema = z.strictObject({
   capturedAt: IsoInstantSchema,
   capturedBy: ActorIdSchema,
   config: StoredConfigSchema,
-  provenance: z.record(ConfigLeafPathSchema, ConfigProvenanceSchema),
+  // Read-forward only: immutable pre-floor evidence may retain environment provenance.
+  provenance: z.record(ConfigLeafPathSchema, z.enum(["env", "settings", "default"])),
 });
 
 /**
@@ -28,6 +29,12 @@ export const ConfigSnapshotRecordSchema = z.strictObject({
  * would quietly become a licence to persist a hole.
  */
 export const ConfigSnapshotWriteSchema = ConfigSnapshotRecordSchema.superRefine((record, context) => {
+  if (Object.hasOwn(record.config, "operator")) {
+    context.addIssue({ code: "custom", path: ["config", "operator"], message: "new config snapshots cannot mint retired operator.timekeeperName" });
+  }
+  if (Object.values(record.provenance).includes("env")) {
+    context.addIssue({ code: "custom", path: ["provenance"], message: "new config snapshots cannot mint retired environment provenance" });
+  }
   if (Object.hasOwn(record.config, "capture")) {
     context.addIssue({
       code: "custom",

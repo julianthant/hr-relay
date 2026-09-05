@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -178,7 +179,7 @@ export function persistCorruptJournaledSettings(input: Readonly<{
   const authority = createSettingsFileAuthority({
     path: settingsPath,
     validateCandidate: (settings) => {
-      resolveConfigWithProvenance({}, settings, input.clock);
+      resolveConfigWithProvenance(settings, hostConfigFacts({}), input.clock);
     },
   });
   const outcome = authority.apply({
@@ -230,7 +231,7 @@ export function persistCorruptJournaledSettings(input: Readonly<{
         committedAt: command.requestedAt,
       });
       if (input.activateRuntime) {
-        const resolved = resolveConfigWithProvenance({}, outcome.record.settings, input.clock);
+        const resolved = resolveConfigWithProvenance(outcome.record.settings, hostConfigFacts({}), input.clock);
         repositories.configSnapshots.insert({
           configSnapshotId: CONFIG_SNAPSHOT_ID,
           revision: 1,

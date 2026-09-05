@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../domain/config/host-display.js";
 /**
  * The Phase-1f worker composition value: one workflow-scoped browser worker
  * (ref execution-and-sessions §3) assembled from the landed seams and run to a report.
@@ -414,7 +415,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const settingsAuthority = createSettingsFileAuthority({
     path: join(stateRoot, "settings.json"),
     validateCandidate: (settings) => {
-      resolveConfigWithProvenance(env, settings, clock);
+      resolveConfigWithProvenance(settings, hostConfigFacts(env), clock);
     },
     hooks: input.settingsFileHooks,
   });
@@ -462,7 +463,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   try {
     const persistedSettings = database.withAuthorityTransaction((repositories) =>
       readJournaledSettings(settingsAuthority, repositories));
-    resolved = resolveConfigWithProvenance(env, persistedSettings.settings, clock);
+    resolved = resolveConfigWithProvenance(persistedSettings.settings, hostConfigFacts(env), clock);
 
     const settingsExpectation = Object.freeze({
       revision: persistedSettings.revision,

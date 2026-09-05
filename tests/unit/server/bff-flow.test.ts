@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The BFF spine end-to-end over REAL machinery: the D109 planner + a real
  * authority database + the D113 kernel behind POST /api/v1/start-plans and
@@ -117,7 +118,7 @@ import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
 import { AT, DAY, traceOf, uuidOf } from "./helpers/dashboard-harness.js";
 import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
-import { resolveConfig } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
@@ -322,7 +323,7 @@ function harness(options: {
   const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), HASH_B);
   const settingsAuthority = createSettingsFileAuthority({
     path: settingsPath,
-    validateCandidate: (settings) => { resolveConfig({}, settings, clock); },
+    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); },
   });
   const settingsFile = {
     read: () => {
@@ -475,7 +476,7 @@ function harness(options: {
     // D274 item 6 — the read-only Settings status sections read the SAME
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
-    settings: { config: resolveConfig({}, {}, clock), descriptors: [fixtureDescriptor] },
+    settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [fixtureDescriptor] },
     settingsEditor: { settings: settingsFile, environment: {}, clock },
     storage: {
       doctorOptions: {

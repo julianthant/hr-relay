@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../domain/config/host-display.js";
 /** Real-service runtime behind `cli dry-run-scenario`. */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -207,7 +208,7 @@ export function createProductionDryRunScenarioRuntime(
   const databasePath = join(stateRoot, "state.db");
   const settingsAuthority = createSettingsFileAuthority({
     path: join(stateRoot, "settings.json"),
-    validateCandidate: (settings) => { resolveConfigWithProvenance(input.env, settings, input.clock); },
+    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts(input.env), input.clock); },
   });
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(input.repoRoot, "package.json"), "utf8")),
@@ -305,7 +306,7 @@ export function createProductionDryRunScenarioRuntime(
       try {
         const persistedSettings = database.withAuthorityTransaction((repositories) =>
           readJournaledSettings(settingsAuthority, repositories));
-        const resolved = resolveConfigWithProvenance(input.env, persistedSettings.settings, input.clock);
+        const resolved = resolveConfigWithProvenance(persistedSettings.settings, hostConfigFacts(input.env), input.clock);
         admitted = database.withAuthorityTransaction((repositories) => settingsAuthority.withExactRecord({
           revision: persistedSettings.revision,
           settingsFingerprint: persistedSettings.settingsFingerprint,

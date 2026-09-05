@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../domain/config/host-display.js";
 import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import {
   SettingsRuntimeStatusSchema,
@@ -186,7 +187,7 @@ export function createSettingsRuntimeReader(input: Readonly<{
         configFingerprint: input.active.configFingerprint,
       });
       const record = readJournaledSettings(input.file, repositories);
-      const resolved = resolveConfigWithProvenance(input.environment, record.settings, input.clock);
+      const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts(input.environment), input.clock);
       const persisted = settingsRuntimeIdentity(record, resolved.fingerprint);
       const runtimeStatus = SettingsRuntimeStatusSchema.parse(
         canonicalJsonStringify(persisted) === canonicalJsonStringify(input.active)

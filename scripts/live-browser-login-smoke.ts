@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../src/domain/config/host-display.js";
 /**
  * Live login smoke for the worker browser-session factory.
  *
@@ -54,7 +55,7 @@ import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";
 import { composeDuoCeremonyGateFactory } from "../src/core/duo-ceremony-gate.js";
 import { WorkerSessionManager } from "../src/core/worker-sessions.js";
 import { systemClock } from "../src/domain/clock.js";
-import { resolveConfig } from "../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../src/domain/config/resolve.js";
 import { RuntimeInstanceSchema } from "../src/domain/config/instance.js";
 import {
   BrowserSystemIdSchema,
@@ -103,7 +104,7 @@ async function main(): Promise<void> {
     throw new Error(`usage: live-browser-login-smoke <${[...SUPPORTED].join("|")}> [--headed] [--cold] [--reuse]`);
   }
   const system = BrowserSystemIdSchema.parse(requested);
-  const config = resolveConfig({}, {}, systemClock);
+  const config = resolveConfigWithProvenance({}, hostConfigFacts({}), systemClock).config;
   const headed = process.argv.includes("--headed");
   // `--worker <id>` lets two smokes run side by side on distinct profiles —
   // the D267 live two-worker cold start (ref execution-and-sessions §10.8).

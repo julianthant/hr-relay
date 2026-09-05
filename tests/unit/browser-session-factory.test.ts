@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 /**
  * The real worker browser-session factory (ref execution-and-sessions §4 · ref clock-config-secrets §4).
  *
@@ -25,7 +26,7 @@ import {
 } from "../../src/infra/browser/browser-session-factory.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { resolveConfig } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import type { Config } from "../../src/domain/config/schema.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { WorkerSessionManager } from "../../src/core/worker-sessions.js";
@@ -202,7 +203,7 @@ function withTempRuntime(body: (input: Readonly<{ config: Config; root: string }
   writeFileSync(join(extensionDir, "manifest.json"), "{}\n");
   writeFileSync(credential, "{\"credentials\":[]}\n");
   chmodSync(credential, 0o600);
-  const base = resolveConfig({}, {}, CLOCK);
+  const base = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config;
   const config: Config = {
     ...base,
     paths: { ...base.paths, browserProfileRoot: profileRoot, duoExtensionDir: extensionDir, duoCredential: credential },
@@ -248,7 +249,7 @@ describe("worker browser session factory", () => {
     // The production derivation is proven as a STRING: the default profile
     // root is the isolation contract's root, resolved once and absolutely, and
     // the credential home sits inside it. Nothing here reads or writes it.
-    const production = resolveConfig({}, {}, CLOCK).paths;
+    const production = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config.paths;
     assert.equal(production.browserProfileRoot, resolvePath(rebuildRuntimeIsolation.browserProfileRoot));
     assert.equal(production.duoCredential, join(production.browserProfileRoot, "duo-webauthn.json"));
 

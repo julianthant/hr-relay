@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 /**
  * The Phase-1f worker composition (`src/server/worker/compose.ts`) and the
  * command kernel's worker-browser arms as the DASHBOARD process composes them.
@@ -85,7 +86,7 @@ function seedQueuedRun(
   stateRoot: string,
   clock: TestClock,
   run: Record<string, unknown>,
-  resolved = resolveConfigWithProvenance({}, {}, clock),
+  resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock),
 ): void {
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
@@ -145,7 +146,7 @@ function ensureBaselineRuntimeConfig(repoRoot: string, clock: TestClock): void {
   try {
     database.withAuthorityTransaction((repositories) => {
       if (repositories.runtimeConfig.get() !== undefined) return;
-      const resolved = resolveConfigWithProvenance({}, {}, clock);
+      const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock);
       const baseline = initialSettingsFileRecord();
       const configSnapshotId = "66666666-6666-4666-8666-666666666666";
       repositories.configSnapshots.insert({
@@ -185,7 +186,7 @@ function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, pa
   const authority = createSettingsFileAuthority({
     path: join(repoRoot, ".tracker", "settings.json"),
     validateCandidate: (settings) => {
-      resolveConfigWithProvenance({}, settings, clock);
+      resolveConfigWithProvenance(settings, hostConfigFacts({}), clock);
     },
   });
   const outcome = authority.apply({
@@ -219,11 +220,11 @@ function persistJournaledWorkerSettings(
     const authority = createSettingsFileAuthority({
       path: join(repoRoot, ".tracker", "settings.json"),
       validateCandidate: (settings) => {
-        resolveConfigWithProvenance({}, settings, clock);
+        resolveConfigWithProvenance(settings, hostConfigFacts({}), clock);
       },
     });
     const record = authority.read();
-    const resolved = resolveConfigWithProvenance({}, record.settings, clock);
+    const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock);
     database.withAuthorityTransaction((repositories) => {
       const configSnapshotId = "55555555-5555-4555-8555-555555555555";
       repositories.configSnapshots.insert({
@@ -455,7 +456,7 @@ describe("composed worker runtime", () => {
         stateRoot,
         clock,
         personLookupQueuedRun(),
-        resolveConfigWithProvenance({}, { browser: { headless: false } }, clock),
+        resolveConfigWithProvenance({ browser: { headless: false } }, hostConfigFacts({}), clock),
       );
 
       await assert.rejects(
@@ -486,7 +487,7 @@ describe("composed worker runtime", () => {
       stateRoot,
       clock,
       personLookupQueuedRun(),
-      resolveConfigWithProvenance({}, { timeouts: { sessionAcquireMs: 1 } }, clock),
+      resolveConfigWithProvenance({ timeouts: { sessionAcquireMs: 1 } }, hostConfigFacts({}), clock),
     );
     const neverOpeningSessions: SessionFactoryHarness = {
       ...happySessionHarness(),

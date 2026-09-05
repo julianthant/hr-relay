@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 import assert from "node:assert/strict";
 import {
   closeSync,
@@ -37,7 +38,7 @@ import {
   RedactionResultSchema,
 } from "../../src/domain/redaction.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { resolveConfig } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { runTestTargetDocumentNumberSmoke } from "../../scripts/smoke-test-target-document-number.js";
 
@@ -545,11 +546,11 @@ describe("closed secret access", () => {
     // machine that had actually enrolled Duo it started finding the real
     // credential and stopped asserting anything. A guard whose outcome depends
     // on the developer's filesystem is not a guard.
-    const config = resolveConfig(
-      {},
-      { paths: { duoCredential: "/nonexistent-rebuild-secret-root/duo-webauthn.json" } },
-      manualClock(new Date("2026-08-10T12:00:00-07:00")),
-    );
+    const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date("2026-08-10T12:00:00-07:00"))).config;
+    const config = {
+      ...resolved,
+      paths: { ...resolved.paths, duoCredential: "/nonexistent-rebuild-secret-root/duo-webauthn.json" },
+    };
     assert.equal(requireSecretFile.length, 2);
     assert.throws(() => requireSecretFile("duoWebauthnCredential", config), /registered rebuild credential path/);
   });
