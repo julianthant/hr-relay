@@ -76,6 +76,7 @@ import type { PositiveInt } from "../../domain/ids.js";
 import type { WorkerId, WorkflowId } from "../../domain/ids.js";
 import type { WorkerDirective, WorkerLeaseRecord } from "../../domain/run/worker.js";
 import {
+  assertNoMigratedEnvironmentKeys,
   optionalSecretFamily,
   providerModelChain,
 } from "../../domain/secrets.js";
@@ -89,9 +90,11 @@ import {
 } from "../../services/trust/run-diagnostic-capture.js";
 import { PlaywrightWorkerSessionFactory } from "../../infra/browser/browser-session-factory.js";
 import {
+  createProtectedSettingsFileAuthority,
   createSettingsFileAuthority,
   type SettingsFileAuthorityHooks,
 } from "../../infra/config/settings-file.js";
+import { settingsRootPaths } from "../../domain/config/settings-root.js";
 import { readJournaledSettings, requireJournaledSettings } from "../settings-runtime.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import {
@@ -134,7 +137,6 @@ export const WORKER_SWEEP_INTERVAL_MS = 30_000;
  * inside the secrets reader. An operator `OCR_GEMINI_MODELS` chain, when
  * present, takes precedence below.
  */
-export const OCR_GEMINI_MODEL_ID = "gemini-3-flash-preview";
 
 /**
  * The one real timer behind the kernel's scheduler port. It MOVED to
@@ -410,15 +412,21 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
 
   // D324: the production environment carries the host's primary display as the `display` default.
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
+  assertNoMigratedEnvironmentKeys(env);
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
   const settingsAuthority = createSettingsFileAuthority({
-    path: join(stateRoot, "settings.json"),
+    path: settingsRootPaths(stateRoot).ordinary,
     validateCandidate: (settings) => {
       resolveConfigWithProvenance(settings, hostConfigFacts(env), clock);
     },
     hooks: input.settingsFileHooks,
   });
+  const protectedAuthority = createProtectedSettingsFileAuthority({
+    path: settingsRootPaths(stateRoot).ordinary,
+    assertWriteIdAvailable: () => undefined,
+  });
+  const protectedSecrets = { read: () => protectedAuthority.read() };
   /**
    * D181: the `workers` role lock, taken before the database opens. The
    * authority worker LEASE is the richer fence and stays the one that decides
@@ -507,6 +515,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const scheduler = createTimeoutDeadlineScheduler(clock);
   const sessionFactory = input.sessionFactory ?? new PlaywrightWorkerSessionFactory({
     config: resolved.config,
+    protectedSecrets,
     isolation: input.isolation,
     clock,
     scheduler,
@@ -547,8 +556,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   // a declaring run `adapter-unavailable` loudly instead of this root
   // guessing. The keyless public geocoders always compose.
   const geminiKeys = optionalSecretFamily("geminiApiKeys", env);
-  const chain = providerModelChain("geminiApiKeys", env);
-  const ocrModels = chain.length > 0 ? chain : [OCR_GEMINI_MODEL_ID];
+  const ocrModels = providerModelChain("geminiApiKeys", resolved.config);
   const ocrChildren = ocrModels.flatMap((modelId) =>
     geminiKeys.map((apiKey, keyIndex) => ({
       label: `gemini-key${String(keyIndex + 1)}/${modelId}`,
@@ -560,10 +568,10 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     "geocode.nominatim": createNominatimGeocodeAdapter({ clock }),
   });
   if (ocrChildren.length === 0) {
-    log.warn(
-      "no GEMINI_API_KEY in the environment: the ocr.extract pool is not composed, and a run "
-      + "declaring that capability is denied adapter-unavailable by admission",
-    );
+    const missing = geminiKeys.length === 0
+      ? "no GEMINI_API_KEY in the environment"
+      : "no providers.gemini.models in Settings";
+    log.warn(`${missing}: the ocr.extract pool is not composed, and a run declaring that capability is denied adapter-unavailable by admission`);
   }
   const providers: RunProviderWiring = Object.freeze({
     adapters,

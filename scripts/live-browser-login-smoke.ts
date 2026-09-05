@@ -2,11 +2,11 @@ import { hostConfigFacts } from "../src/domain/config/host-display.js";
 /**
  * Live login smoke for the worker browser-session factory.
  *
- *   npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath
- *   npx tsx --env-file=.env scripts/live-browser-login-smoke.ts crm
- *   npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath --headed
- *   npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath --cold
- *   npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath --reuse
+ *   npx tsx scripts/live-browser-login-smoke.ts ucpath
+ *   npx tsx scripts/live-browser-login-smoke.ts crm
+ *   npx tsx scripts/live-browser-login-smoke.ts ucpath --headed
+ *   npx tsx scripts/live-browser-login-smoke.ts ucpath --cold
+ *   npx tsx scripts/live-browser-login-smoke.ts ucpath --reuse
  *
  * It drives the REAL factory, the REAL store login recipe, and the REAL
  * `WorkerSessionManager` lease against production SSO — the only pieces that
@@ -34,7 +34,7 @@ import { hostConfigFacts } from "../src/domain/config/host-display.js";
  * this smoke's OWN profile directory first so the question does not arise.
  *
  * Preconditions (all fail loud, individually, before a browser opens):
- *   - `.env` with `UCPATH_USER_ID` / `UCPATH_PASSWORD`;
+ *   - protected Settings with `ucpathUserId` / `ucpathPassword`;
  *   - the unpacked Duo Autopilot extension at `config.paths.duoExtensionDir`
  *     (default `<repo>/duo-autopilot`, must contain `manifest.json`);
  *   - the Duo credential at `config.paths.duoCredential`
@@ -43,10 +43,8 @@ import { hostConfigFacts } from "../src/domain/config/host-display.js";
  *     (`npx playwright install chromium`) — the headless shell cannot load an
  *     extension.
  *
- * Config comes from settings + schema defaults, NOT from environment overrides:
- * the runtime environment registry is a closed inventory, and a smoke has no
- * business widening it. Credentials still arrive through `domain/secrets.ts`,
- * which is the registered reader, so `--env-file=.env` is still required.
+ * Config comes from settings + schema defaults, NOT from environment overrides.
+ * Credentials arrive through `domain/secrets.ts` from protected Settings.
  */
 import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync } from "node:fs";
@@ -57,6 +55,8 @@ import { WorkerSessionManager } from "../src/core/worker-sessions.js";
 import { systemClock } from "../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../src/domain/config/resolve.js";
 import { RuntimeInstanceSchema } from "../src/domain/config/instance.js";
+import { settingsRootPaths } from "../src/domain/config/settings-root.js";
+import { assertNoMigratedEnvironmentKeys } from "../src/domain/secrets.js";
 import {
   BrowserSystemIdSchema,
   FingerprintSchema,
@@ -68,6 +68,7 @@ import {
   workerProfileDirectory,
 } from "../src/infra/browser/browser-session-factory.js";
 import type { BrowserDeadlineScheduler } from "../src/infra/browser/browser-session-factory.js";
+import { createProtectedSettingsFileAuthority } from "../src/infra/config/settings-file.js";
 import type { AuthenticatedApplicationEvidence } from "../src/infra/browser/login-contract.js";
 import { AuthorityDatabase } from "../src/infra/sqlite/authority-database.js";
 import { acquireRuntimeProcessLock } from "../src/infra/sqlite/runtime-process-locks.js";
@@ -99,6 +100,7 @@ function hostOf(url: string): string {
 }
 
 async function main(): Promise<void> {
+  assertNoMigratedEnvironmentKeys();
   const requested = process.argv[2];
   if (requested === undefined || !SUPPORTED.has(requested)) {
     throw new Error(`usage: live-browser-login-smoke <${[...SUPPORTED].join("|")}> [--headed] [--cold] [--reuse]`);
@@ -148,8 +150,15 @@ async function main(): Promise<void> {
 
   const evidence: AuthenticatedApplicationEvidence[] = [];
   const hops: string[] = [];
+  const stateRoot = join(process.cwd(), rebuildRuntimeIsolation.stateRoot);
+  mkdirSync(stateRoot, { recursive: true });
+  const protectedAuthority = createProtectedSettingsFileAuthority({
+    path: settingsRootPaths(stateRoot).ordinary,
+    assertWriteIdAvailable: () => undefined,
+  });
   const factory = new PlaywrightWorkerSessionFactory({
     config: { ...config, browser: { ...config.browser, headless: !headed } },
+    protectedSecrets: { read: () => protectedAuthority.read() },
     isolation: rebuildRuntimeIsolation,
     clock: systemClock,
     scheduler: realScheduler,
@@ -194,8 +203,6 @@ async function main(): Promise<void> {
 
   // D267: the Duo ceremony lease lives in the REAL authority database, so two
   // smokes (or a smoke beside a worker) serialize their ceremonies for real.
-  const stateRoot = join(process.cwd(), rebuildRuntimeIsolation.stateRoot);
-  mkdirSync(stateRoot, { recursive: true });
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "live-smoke" },
     systemClock,

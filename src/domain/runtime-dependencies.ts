@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SETTINGS_CATALOG } from "./config/catalog.js";
 import { CONFIG_ROUTE_KEYS } from "./config/schema.js";
 import { deepFreeze } from "./immutability.js";
 import {
@@ -132,23 +133,23 @@ export const SYSTEM_RUNTIME_SPECS = deepFreeze(SystemRuntimeSpecSchema.array().p
 ]));
 
 export const ProviderIdSchema = z.enum(["gemini", "groq", "mistral", "openrouter", "sambanova", "census", "nominatim"]);
+const ProviderModelsConfigKeySchema = z.enum(["gemini", "groq", "mistral", "openRouter", "sambanova"]);
 
 export const ProviderAdapterSpecSchema = z.strictObject({
   provider: ProviderIdSchema,
   capabilities: z.array(ProviderCapabilityIdSchema).min(1),
   endpoint: z.url(),
   secretFamily: SecretFamilyNameSchema.optional(),
-  modelsEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),
-  legacyModelEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),
+  modelsConfigKey: ProviderModelsConfigKeySchema.optional(),
   consumer: RuntimeConsumerIdSchema,
 });
 
 export const PROVIDER_ADAPTER_SPECS = deepFreeze(ProviderAdapterSpecSchema.array().parse([
-  { provider: "gemini", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://generativelanguage.googleapis.com/v1beta", secretFamily: "geminiApiKeys", modelsEnv: "OCR_GEMINI_MODELS", legacyModelEnv: "OCR_GEMINI_MODEL", consumer: "provider-adapter" },
-  { provider: "groq", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://api.groq.com/openai/v1/chat/completions", secretFamily: "groqApiKeys", modelsEnv: "OCR_GROQ_MODELS", legacyModelEnv: "OCR_GROQ_MODEL", consumer: "provider-adapter" },
-  { provider: "mistral", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://api.mistral.ai/v1/chat/completions", secretFamily: "mistralApiKeys", modelsEnv: "OCR_MISTRAL_MODELS", legacyModelEnv: "OCR_MISTRAL_MODEL", consumer: "provider-adapter" },
-  { provider: "openrouter", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://openrouter.ai/api/v1/chat/completions", secretFamily: "openRouterApiKeys", modelsEnv: "OCR_OPENROUTER_MODELS", legacyModelEnv: "OCR_OPENROUTER_MODEL", consumer: "provider-adapter" },
-  { provider: "sambanova", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://api.sambanova.ai/v1/chat/completions", secretFamily: "sambaNovaApiKeys", modelsEnv: "OCR_SAMBANOVA_MODELS", legacyModelEnv: "OCR_SAMBANOVA_MODEL", consumer: "provider-adapter" },
+  { provider: "gemini", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://generativelanguage.googleapis.com/v1beta", secretFamily: "geminiApiKeys", modelsConfigKey: "gemini", consumer: "provider-adapter" },
+  { provider: "groq", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://api.groq.com/openai/v1/chat/completions", secretFamily: "groqApiKeys", modelsConfigKey: "groq", consumer: "provider-adapter" },
+  { provider: "mistral", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://api.mistral.ai/v1/chat/completions", secretFamily: "mistralApiKeys", modelsConfigKey: "mistral", consumer: "provider-adapter" },
+  { provider: "openrouter", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://openrouter.ai/api/v1/chat/completions", secretFamily: "openRouterApiKeys", modelsConfigKey: "openRouter", consumer: "provider-adapter" },
+  { provider: "sambanova", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://api.sambanova.ai/v1/chat/completions", secretFamily: "sambaNovaApiKeys", modelsConfigKey: "sambanova", consumer: "provider-adapter" },
   { provider: "census", capabilities: ["geocode.census"], endpoint: "https://geocoding.geo.census.gov/geocoder/locations", consumer: "provider-adapter" },
   { provider: "nominatim", capabilities: ["geocode.nominatim"], endpoint: "https://nominatim.openstreetmap.org/search", consumer: "provider-adapter" },
 ]));
@@ -354,9 +355,9 @@ export const PREFLIGHT_CHECKS = deepFreeze(PreflightCheckSpecSchema.array().pars
   { id: "authority.health", scope: "dashboard", severity: "error", runner: "io", dependencies: ["storage.sqlite", "storage.backup"], capabilities: ["dashboard.serve", "executor.run"], consumer: "authority-storage", scenarios: ["preflight/corrupt-db"], timeoutMs: 10_000, redaction: "path-basename", remediation: "run the explicit authority recovery procedure" },
   { id: "ports.available", scope: "dashboard", severity: "error", runner: "io", dependencies: ["port.backend", "port.frontend"], capabilities: ["dashboard.serve"], consumer: "dashboard-startup", scenarios: ["preflight/port-busy"], timeoutMs: 1_000, redaction: "safe-summary", remediation: "free the reserved rebuild ports" },
   { id: "fiscal.current", scope: "workflow", severity: "error", runner: "pure", dependencies: ["fiscal.current"], capabilities: ["workflow.kuali-fill"], consumer: "workflow-enqueue", scenarios: ["preflight/fiscal-stale"], timeoutMs: 1_000, redaction: "safe-summary", remediation: "configure a non-stale current-fiscal-year entry" },
-  { id: "secrets.ucpath-sso", scope: "system", severity: "error", runner: "pure", dependencies: ["secret.ucpath-sso"], capabilities: ["system.ucpath.prod", "system.ucpath.test", "system.crm.prod", "system.crm.test", "system.onbase.prod", "system.onbase.test", "system.kuali.prod", "system.kuali.test", "system.servicenow.prod", "system.servicenow.test", "system.i9.prod", "system.i9.test", "system.new-kronos.prod", "system.new-kronos.test", "system.old-kronos.prod", "system.old-kronos.test"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure UCPATH_USER_ID and UCPATH_PASSWORD" },
-  { id: "secrets.timekeeper", scope: "workflow", severity: "error", runner: "pure", dependencies: ["secret.timekeeper"], capabilities: ["workflow.kuali-fill"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure TIMEKEEPER_NAME" },
-  { id: "secrets.sharepoint-roster", scope: "workflow", severity: "error", runner: "pure", dependencies: ["secret.sharepoint-roster"], capabilities: ["workflow.sharepoint-download", "system.sharepoint.prod", "system.sharepoint.test"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure ONBOARDING_ROSTER_URL" },
+  { id: "secrets.ucpath-sso", scope: "system", severity: "error", runner: "pure", dependencies: ["secret.ucpath-sso"], capabilities: ["system.ucpath.prod", "system.ucpath.test", "system.crm.prod", "system.crm.test", "system.onbase.prod", "system.onbase.test", "system.kuali.prod", "system.kuali.test", "system.servicenow.prod", "system.servicenow.test", "system.i9.prod", "system.i9.test", "system.new-kronos.prod", "system.new-kronos.test", "system.old-kronos.prod", "system.old-kronos.test"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure ucpathUserId and ucpathPassword in protected Settings" },
+  { id: "secrets.timekeeper", scope: "workflow", severity: "error", runner: "pure", dependencies: ["secret.timekeeper"], capabilities: ["workflow.kuali-fill"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure timekeeperName in protected Settings" },
+  { id: "secrets.sharepoint-roster", scope: "workflow", severity: "error", runner: "pure", dependencies: ["secret.sharepoint-roster"], capabilities: ["workflow.sharepoint-download", "system.sharepoint.prod", "system.sharepoint.test"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure sharepointOnboardingRosterUrl in protected Settings" },
   { id: "process.orphans", scope: "dashboard", severity: "warning", runner: "io", dependencies: ["process.orphans"], capabilities: ["dashboard.serve"], consumer: "cli-doctor", scenarios: ["preflight/orphan-process"], timeoutMs: 2_000, redaction: "safe-summary", remediation: "review and explicitly clear stale rebuild processes or leases" },
   ...featureChecks(),
   ...endpointChecks(),
@@ -490,21 +491,27 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
     if (family === undefined && provider.secretFamily !== undefined) {
       violations.push(`provider ${provider.provider} names unknown secret family ${provider.secretFamily}`);
     } else if (family !== undefined) {
-      if (provider.modelsEnv !== family.modelsEnv) {
-        violations.push(`provider ${provider.provider} models env ${String(provider.modelsEnv)} does not match secret inventory ${family.modelsEnv}`);
+      if (provider.modelsConfigKey !== family.modelsConfigKey) {
+        violations.push(`provider ${provider.provider} models config key ${String(provider.modelsConfigKey)} does not match secret inventory ${family.modelsConfigKey}`);
       }
-      if (provider.legacyModelEnv !== family.legacyModelEnv) {
-        violations.push(`provider ${provider.provider} legacy model env ${String(provider.legacyModelEnv)} does not match secret inventory ${family.legacyModelEnv}`);
+      const catalogKey = `providers.${family.modelsConfigKey}.models`;
+      if (!SETTINGS_CATALOG.some((row) => row.key === catalogKey
+        && row.sourceClass === "ordinary-settings")) {
+        violations.push(`provider ${provider.provider} models config ${catalogKey} has no ordinary settings catalog row`);
       }
     }
     const needsModelInventory = provider.capabilities.some((capability) => capability === "ocr.extract" || capability === "ai.advisory");
-    if (needsModelInventory && family === undefined) violations.push(`provider ${provider.provider} has no key-family/model-env inventory`);
-    if (!needsModelInventory && (provider.secretFamily !== undefined || provider.modelsEnv !== undefined || provider.legacyModelEnv !== undefined)) {
-      violations.push(`provider ${provider.provider} has unexpected keyed-model environment metadata`);
+    if (needsModelInventory && (family === undefined || provider.modelsConfigKey === undefined)) {
+      violations.push(`provider ${provider.provider} has no key-family/models-config inventory`);
+    }
+    if (!needsModelInventory && (provider.secretFamily !== undefined || provider.modelsConfigKey !== undefined)) {
+      violations.push(`provider ${provider.provider} has unexpected keyed-model metadata`);
     }
   }
-  unique(registry.providers.flatMap(({ modelsEnv }) => modelsEnv === undefined ? [] : [modelsEnv]), "provider model env inventory");
-  unique(registry.providers.flatMap(({ legacyModelEnv }) => legacyModelEnv === undefined ? [] : [legacyModelEnv]), "provider legacy model env inventory");
+  unique(
+    registry.providers.flatMap(({ modelsConfigKey }) => modelsConfigKey === undefined ? [] : [modelsConfigKey]),
+    "provider models config inventory",
+  );
 
   const featureByCapability = new Map(registry.features.map((feature) => [feature.feature, feature]));
   for (const feature of ProviderBackedFeatureCapabilitySchema.options) {

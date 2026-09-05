@@ -76,6 +76,7 @@ import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, settingsRuntimeIdentity } from "../../domain/config/settings.js";
+import { settingsRootPaths } from "../../domain/config/settings-root.js";
 import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
@@ -85,7 +86,10 @@ import {
   type Fingerprint,
 } from "../../domain/ids.js";
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
-import { hostAwareResolutionEnvironment } from "../../domain/secrets.js";
+import {
+  assertNoMigratedEnvironmentKeys,
+  hostAwareResolutionEnvironment,
+} from "../../domain/secrets.js";
 import { probePrimaryDisplay } from "../../infra/host/primary-display.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import { createPreflightAuthority } from "../../domain/preflight.js";
@@ -362,7 +366,6 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
  * (legacy `provider-limits.ts` priority-1 tier-1), never a default minted
  * inside the secrets reader.
  */
-const ADVISORY_GEMINI_MODEL_ID = "gemini-3-flash-preview";
 
 /**
  * D218: how often the dashboard tails `spans/*.jsonl` for lines other
@@ -603,8 +606,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
 
   // D324: the production environment carries the host's primary display as the `display` default.
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
+  assertNoMigratedEnvironmentKeys(env);
   const settingsAuthority = createSettingsFileAuthority({
-    path: join(stateRoot, "settings.json"),
+    path: settingsRootPaths(stateRoot).ordinary,
     validateCandidate: (settings) => {
       resolveConfigWithProvenance(settings, hostConfigFacts(env), clock);
     },
@@ -1126,8 +1130,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
    * variable to set. A composed-but-empty advisory would be worse than none.
    */
   const advisoryKeys = optionalSecretFamily("geminiApiKeys", env);
-  const advisoryModels = providerModelChain("geminiApiKeys", env);
-  const advisoryChildren = (advisoryModels.length > 0 ? advisoryModels : [ADVISORY_GEMINI_MODEL_ID])
+  const advisoryModels = providerModelChain("geminiApiKeys", resolved.config);
+  const advisoryChildren = advisoryModels
     .flatMap((modelId) => advisoryKeys.map((apiKey, keyIndex) => ({
       label: `gemini-key${String(keyIndex + 1)}/${modelId}`,
       adapter: createGeminiAdvisoryAdapter({ apiKey, modelId, clock }),

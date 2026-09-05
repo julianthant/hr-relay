@@ -455,17 +455,10 @@ const CANARIES = Object.freeze({
 });
 
 describe("evidence receipt — redaction", () => {
-  it("never lets a real receipt carry an env, cookie, storage-state, or SSN value", () => {
+  it("never lets a real receipt carry a secret, cookie, storage-state, or SSN value", () => {
     const serialized = JSON.stringify(kualiReceipt());
     for (const [name, canary] of Object.entries(CANARIES)) {
       assert.ok(!serialized.includes(canary), `receipt leaked the ${name} canary`);
-    }
-    // Every SCREAMING_SNAKE value in the secret registry is an env key name.
-    const envKeys = SECRET_SPECS.flatMap((secret) => Object.values(secret)
-      .filter((value): value is string => typeof value === "string" && /^[A-Z][A-Z0-9_]{3,}$/.test(value)));
-    assert.ok(envKeys.length > 0, "the secret registry must contribute env key names to check");
-    for (const key of envKeys) {
-      assert.ok(!serialized.includes(key), `receipt named the ${key} environment variable`);
     }
   });
 
