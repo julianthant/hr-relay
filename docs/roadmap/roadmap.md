@@ -514,8 +514,10 @@ doc: 01 §1.6 · Implement canonical run and settings authorities · ref:workflo
 
 builds:
 - [ ] BE route queue claim, heartbeat, executor transition, recovery requeue, cancellation settlement and terminal publication through the run service (`run-record-service`, `worker-loop`, `run-executor`, `write-sequencer`, `worker/compose`); the worker side holds no lifecycle repository mutator
+- [ ] BE adapt the shared sequenced-settlement helper and its positive-recovery/operator-present callers: worker `advance-running` uses `workerTransition`; `resume-queued` uses a separate command/recovery port backed by existing `transition`, preserving CAS, `writeResolution`, `startAt` and one outer transaction; narrowly wire dashboard composition
 - [ ] BE preserve stable run/session ids and append-only evidence links; `span.ended` only after the terminal commit
 - [ ] PROOF #4–#7, #9, #10 and the worker/recovery half of #27 through the real worker composition; D118 attempting-write admission preserved; deletion test `worker-loop-writes-only-through-the-service`
+- [ ] PROOF both shared-helper arms and their real callers preserve atomic evidence, continuation and exact/divergent replay; outer rollback/refusal publishes nothing; lifecycle command ids cannot collide with kernel commands; deletion oracle also covers both helper arms and admitted continuation adapters
 
 needs:
 - p1f-run-store
@@ -524,6 +526,7 @@ needs:
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate/deletion test (doc 01 §1.6 Task 3); serial after wave 2 · left: implementation
 - 2026-09-05 | operator-approved direct phase plan | reconciled D330.10 ownership: Task 3 keeps the worker lifecycle seam and Task 4 owns command-kernel start/intake/capture creation plus `run.queued`; Task 3 owns the worker/recovery half of #27. Restored Task 2-2 code/evidence and full gates on master; Task 2-2 prerequisite satisfied · left: Task 3 implementation
+- 2026-09-05 | operator-approved shared-settlement amendment | Task-3 inspection at `e8d0fd54` found `resume-queued` also serves positive recovery/operator resolution. Admit only the shared helper, its two `write-recovery` continuation callers and narrow dashboard service-port injection; use existing command-owned `transition`, preserve the worker port boundary and full deletion oracle, add atomicity/continuation/replay proofs. Untouched initial worktree/ref removed; no implementation or acceptance claimed · left: implement the amended six-step plan
 
 #### 4 · Cut over operator run commands and archive/delete writers {#p1f-run-commands}
 status: planned
@@ -541,6 +544,7 @@ log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate (doc 01 §1.6 Task 4); needs the coordinator's ruling on operator `cancel` of a claimed/running run in §D330.5 before start · left: that ruling, then implementation
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the coordinator ruled option A; the `cancelRequested` arm is in §D330.5 and this task owes §D330.11 #27 — the earlier `left:` is closed · left: implementation
 - 2026-09-05 | operator-approved 1.6.3 feasibility correction | D330.10 keeps lifecycle `create` with the command kernel, so Task 4 also owns start/intake/capture fan-out creation and the shared post-commit `run.queued`; Task 3 supplies the worker/recovery half of #27 before this task starts · left: Task 3, then implementation and complete #27 proof
+- 2026-09-05 | shared-settlement ownership | Task 3 supplies the service-backed positive-recovery/operator-present `resume-queued` helper and narrow composition injection. Task 4 retains command dispatch/admission, other write-resolution paths and the remaining command cutover; preserve Task 3's atomicity, continuation and replay proofs · left: Task 3, then implementation
 
 #### 5 · Cut over settings mutation and runtime resolution {#p1f-settings-consumers}
 status: planned
