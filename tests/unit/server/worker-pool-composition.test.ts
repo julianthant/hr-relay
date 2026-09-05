@@ -210,6 +210,7 @@ function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
     // plus the test-only alias-breaking clock advance around the seam.
     workerRuntime: { pool },
     settings: {
+      reconcilePending: () => undefined,
       reconcileReplay: () => {
         throw new Error("worker-pool fixture has no persisted settings replay authority");
       },

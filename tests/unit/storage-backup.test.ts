@@ -211,7 +211,7 @@ describe("D331 P15 settings-aware authority backups", () => {
 
     await assert.rejects(
       backup(w),
-      /no durable command journal for settings\.json/u,
+      /settings revision 2 has no durable command journal/u,
     );
     assert.deepEqual(readdirSync(w.backupDirectory), []);
   });
@@ -359,7 +359,7 @@ describe("D331 P15 settings-aware authority backups", () => {
 
     await assert.rejects(
       verifyBackupManifestAtPath(manifestPath),
-      /settings\.json revision 2 is not its authenticated current journal result/u,
+      /settings revision 2 command .* has a mismatched durable audit/u,
     );
   });
 

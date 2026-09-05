@@ -150,7 +150,19 @@ export function createSettingsApplicationExecutor(
   };
 
   return Object.freeze({
-    apply(command: SettingsCommand, repositories: AuthorityRepositories) {
+    reconcilePending(repositories: AuthorityRepositories, command: SettingsCommand) {
+      if (command.type !== "apply-protected-settings") return undefined;
+      if (protectedAuthority === undefined) {
+        throw new Error(
+          "settings/apply-protected-settings reached a composition with no protected settings authority",
+        );
+      }
+      return applySettingsAuthority(command, () => {
+        readJournaledProtectedSettings(protectedAuthority, repositories);
+        return undefined;
+      });
+    },
+    apply(command: SettingsCommand, _repositories: AuthorityRepositories) {
       if (command.type === "apply-protected-settings") {
         if (protectedAuthority === undefined) {
           throw new Error(
@@ -159,9 +171,7 @@ export function createSettingsApplicationExecutor(
         }
         const admitted = ProtectedSettingsCommandRequestSchema.parse(command);
         const commandFingerprint = deriveSettingsCommandFingerprint(admitted);
-        const outcome = applySettingsAuthority(admitted, () => {
-          readJournaledProtectedSettings(protectedAuthority, repositories);
-          return protectedAuthority.apply({
+        const outcome = applySettingsAuthority(admitted, () => protectedAuthority.apply({
             commandId: admitted.commandId,
             commandFingerprint,
             expectedRevision: admitted.target.expectedRevision,
@@ -169,8 +179,7 @@ export function createSettingsApplicationExecutor(
             writeId: admitted.payload.writeId,
             entries: admitted.payload.entries,
             updatedAt: admitted.requestedAt,
-          });
-        });
+          }));
         if (outcome.state !== "applied") return outcome;
         const settlement = Object.freeze({
           commandFingerprint,

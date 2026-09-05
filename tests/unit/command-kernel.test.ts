@@ -8,9 +8,11 @@
  * pure typed rejection that provably changes no authority row.
  */
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { flow } from "../../src/base/flow.js";
@@ -284,6 +286,7 @@ function createHarness(
     writeResolution: requeueingWriteResolution(writeCalls),
     workerRuntime: acceptingWorkerRuntime(workerCalls),
     settings: settingsOverride ?? {
+      reconcilePending: () => undefined,
       reconcileReplay: () => {
         throw new Error("fake settings executor has no persisted replay authority");
       },
@@ -1615,6 +1618,7 @@ describe("apply-settings authority", () => {
     "preserves the closed %s rejection code and rolls back the command journal",
     (code) => {
       const settings: SettingsApplicationExecutor = {
+        reconcilePending: () => undefined,
         reconcileReplay: () => {
           throw new Error("rejected settings fixture has no replay authority");
         },
@@ -1929,6 +1933,7 @@ describe("apply-settings authority", () => {
     const rollbacks: string[] = [];
     const commits: string[] = [];
     const settings: SettingsApplicationExecutor = {
+      reconcilePending: () => undefined,
       reconcileReplay: () => {
         throw new Error("wrong-revision fixture has no replay authority");
       },
@@ -2057,6 +2062,67 @@ describe("apply-settings authority", () => {
 });
 
 describe("apply-protected-settings authority", () => {
+  it("reconciles a crash-left protected prepare before journaling the exact retry", () => {
+    const settingsPath = databasePath("settings/settings.json");
+    const command = ProtectedSettingsCommandRequestSchema.parse({
+      commandId: nextCommandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      family: "settings",
+      type: "apply-protected-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+        writeId: UUID_7,
+        entries: { ucpathPassword: { set: "crash-left-protected-value" } },
+      },
+    });
+    const moduleUrl = pathToFileURL(join(process.cwd(), "src/infra/config/settings-file.ts")).href;
+    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
+      import { createProtectedSettingsFileAuthority } from ${JSON.stringify(moduleUrl)};
+      const authority = createProtectedSettingsFileAuthority({
+        path: ${JSON.stringify(settingsPath)},
+        assertWriteIdAvailable: () => undefined,
+      });
+      const command = ${JSON.stringify(command)};
+      const result = authority.apply({
+        commandId: command.commandId,
+        commandFingerprint: ${JSON.stringify(deriveSettingsCommandFingerprint(command))},
+        expectedRevision: command.target.expectedRevision,
+        protectedSchemaHash: command.payload.protectedSchemaHash,
+        writeId: command.payload.writeId,
+        entries: command.payload.entries,
+        updatedAt: command.requestedAt,
+      });
+      if (result.state !== "applied") process.exit(2);
+      process.kill(process.pid, "SIGKILL");
+    `], { encoding: "utf8" });
+    assert.equal(child.signal, "SIGKILL", child.stderr);
+    assert.equal(existsSync(join(settingsPath, "..", "prepare.json")), true);
+
+    const protectedStore = createProtectedSettingsFileAuthority({
+      path: settingsPath,
+      assertWriteIdAvailable: () => undefined,
+    });
+    const harness = createHarness(undefined, createSettingsApplicationExecutor(
+      createSettingsFileAuthority({ path: settingsPath, validateCandidate: () => undefined }),
+      protectedStore,
+    ));
+
+    const result = harness.kernel.execute(command);
+
+    assert.equal(result.state, "applied");
+    if (result.state !== "applied") return;
+    assert.equal(result.revision, 2);
+    assert.equal(result.entries?.ucpathPassword.present, true);
+    assert.equal(existsSync(join(settingsPath, "..", "prepare.json")), false);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "applied");
+    assert.equal(harness.database.authority.protectedSettingsCurrent.get()?.commandId, command.commandId);
+    assert.deepEqual(harness.kernel.execute(command), { ...result, state: "already-applied" });
+  });
+
   it("refuses unjournaled protected bytes before starting another file mutation", () => {
     const settingsPath = databasePath("settings/settings.json");
     const protectedStore = createProtectedSettingsFileAuthority({

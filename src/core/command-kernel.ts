@@ -268,6 +268,10 @@ export const ProtectedSettingsApplicationOutcomeSchema = z.union([
 ]);
 
 export interface SettingsApplicationExecutor {
+  reconcilePending(
+    repositories: AuthorityRepositories,
+    command: SettingsCommand,
+  ): z.infer<typeof SettingsApplyRefusalSchema> | undefined;
   apply(command: SettingsCommand, repositories: AuthorityRepositories): unknown;
   reconcileReplay(repositories: AuthorityRepositories, command: SettingsCommand): unknown;
 }
@@ -3487,6 +3491,21 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
               request,
               createExplorerCommandJournal(repositories).findOutcome,
             );
+          }
+          if (request.family === "settings") {
+            const executor = dependencies.settings;
+            if (executor === undefined) {
+              throw new Error(
+                `settings/${request.type} reached a composition with no settings application executor`,
+              );
+            }
+            const refusal = executor.reconcilePending(repositories, request);
+            if (refusal !== undefined) {
+              return CommandResultSchema.parse({
+                ...SettingsApplyRefusalSchema.parse(refusal),
+                commandId: request.commandId,
+              });
+            }
           }
           const journalRequest = request.family === "settings" ? markSettingsCommand(request) : request;
           const journal = repositories.commands.insert(journalRequest);
