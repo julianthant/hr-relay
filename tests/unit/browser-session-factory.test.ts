@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 /**
  * The real worker browser-session factory (ref execution-and-sessions §4 · ref clock-config-secrets §4).
  *
@@ -25,7 +26,7 @@ import {
 } from "../../src/infra/browser/browser-session-factory.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { resolveConfig } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import type { Config } from "../../src/domain/config/schema.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { WorkerSessionManager } from "../../src/core/worker-sessions.js";
@@ -38,6 +39,8 @@ import type {
   AuthenticationProbe,
   AuthenticationVerificationContext,
 } from "../../src/infra/browser/login-contract.js";
+import type { ProtectedSecretSource } from "../../src/domain/secrets.js";
+import { protectedSecretSource } from "./helpers/protected-secret-source.js";
 
 const CLOCK = manualClock(new Date("2026-08-03T09:00:00.000Z"));
 const WORKER_ID = WorkerIdSchema.parse("person-lookup-worker-1");
@@ -202,7 +205,7 @@ function withTempRuntime(body: (input: Readonly<{ config: Config; root: string }
   writeFileSync(join(extensionDir, "manifest.json"), "{}\n");
   writeFileSync(credential, "{\"credentials\":[]}\n");
   chmodSync(credential, 0o600);
-  const base = resolveConfig({}, {}, CLOCK);
+  const base = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config;
   const config: Config = {
     ...base,
     paths: { ...base.paths, browserProfileRoot: profileRoot, duoExtensionDir: extensionDir, duoCredential: credential },
@@ -217,9 +220,14 @@ function factoryFor(
   harness: FakeContextHarness,
   bindings: BrowserSystemBindings,
   scheduler: BrowserDeadlineScheduler = NEVER_SCHEDULER,
+  protectedSecrets: ProtectedSecretSource = protectedSecretSource({
+    ucpathUserId: "fixture-user",
+    ucpathPassword: "fixture-value",
+  }),
 ): PlaywrightWorkerSessionFactory {
   return new PlaywrightWorkerSessionFactory({
     config,
+    protectedSecrets,
     isolation: rebuildRuntimeIsolation,
     clock: CLOCK,
     scheduler,
@@ -248,7 +256,7 @@ describe("worker browser session factory", () => {
     // The production derivation is proven as a STRING: the default profile
     // root is the isolation contract's root, resolved once and absolutely, and
     // the credential home sits inside it. Nothing here reads or writes it.
-    const production = resolveConfig({}, {}, CLOCK).paths;
+    const production = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config.paths;
     assert.equal(production.browserProfileRoot, resolvePath(rebuildRuntimeIsolation.browserProfileRoot));
     assert.equal(production.duoCredential, join(production.browserProfileRoot, "duo-webauthn.json"));
 
@@ -414,18 +422,7 @@ describe("worker browser session factory", () => {
         onLogin: (context) => seen.push({ ...context.credentials, label: context.label, instance: context.instance }),
       }));
       const resource = await factory.open(OPEN_INPUT);
-      const previousUser = process.env.UCPATH_USER_ID;
-      const previousSecret = process.env.UCPATH_PASSWORD;
-      process.env.UCPATH_USER_ID = "fixture-user";
-      process.env.UCPATH_PASSWORD = "fixture-value";
-      try {
-        assert.equal(await resource.authentication.authenticate("ucpath", {}), "logged-in");
-      } finally {
-        if (previousUser === undefined) delete process.env.UCPATH_USER_ID;
-        else process.env.UCPATH_USER_ID = previousUser;
-        if (previousSecret === undefined) delete process.env.UCPATH_PASSWORD;
-        else process.env.UCPATH_PASSWORD = previousSecret;
-      }
+      assert.equal(await resource.authentication.authenticate("ucpath", {}), "logged-in");
       assert.deepEqual(seen, [{
         userId: "fixture-user",
         password: "fixture-value",
@@ -449,22 +446,19 @@ describe("worker browser session factory", () => {
   it("fails loud when a secret is missing rather than logging in blank", async () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher();
-      const factory = factoryFor(config, harness, recordingBindings());
+      const factory = factoryFor(
+        config,
+        harness,
+        recordingBindings(),
+        NEVER_SCHEDULER,
+        protectedSecretSource(),
+      );
       const resource = await factory.open(OPEN_INPUT);
-      const previousUser = process.env.UCPATH_USER_ID;
-      const previousSecret = process.env.UCPATH_PASSWORD;
-      delete process.env.UCPATH_USER_ID;
-      delete process.env.UCPATH_PASSWORD;
-      try {
-        await assert.rejects(
-          resource.authentication.authenticate("ucpath", {}),
-          (error: unknown) => error instanceof Error
-            && /ucpathUserId is missing from registered source environment UCPATH_USER_ID/.test(error.message),
-        );
-      } finally {
-        if (previousUser !== undefined) process.env.UCPATH_USER_ID = previousUser;
-        if (previousSecret !== undefined) process.env.UCPATH_PASSWORD = previousSecret;
-      }
+      await assert.rejects(
+        resource.authentication.authenticate("ucpath", {}),
+        (error: unknown) => error instanceof Error
+          && /ucpathUserId is missing from registered source protected-store/.test(error.message),
+      );
       await resource.close({ reason: "login-failed" });
     });
   });
@@ -477,6 +471,7 @@ describe("worker browser session factory", () => {
       const evidence: AuthenticatedApplicationEvidence[] = [];
       const factory = new PlaywrightWorkerSessionFactory({
         config,
+        protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-value" }),
         isolation: rebuildRuntimeIsolation,
         clock: CLOCK,
         scheduler: NEVER_SCHEDULER,
@@ -569,7 +564,13 @@ describe("worker browser session factory", () => {
   it("refuses a system with no landed binding and an exclusive lease it cannot honor", async () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher();
-      const factory = factoryFor(config, harness, recordingBindings());
+      const factory = factoryFor(
+        config,
+        harness,
+        recordingBindings(),
+        NEVER_SCHEDULER,
+        protectedSecretSource(),
+      );
       await assert.rejects(
         factory.open({ ...OPEN_INPUT, system: "onbase" }),
         /onbase has no landed browser-session binding/,
@@ -585,7 +586,13 @@ describe("worker browser session factory", () => {
   it("poisons the manager's ownership when a failed setup cannot prove closure", async () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher({ emitCloseEvent: false });
-      const factory = factoryFor(config, harness, recordingBindings());
+      const factory = factoryFor(
+        config,
+        harness,
+        recordingBindings(),
+        NEVER_SCHEDULER,
+        protectedSecretSource(),
+      );
       const manager = new WorkerSessionManager({
         workerId: WORKER_ID,
         workflowId: WORKFLOW_ID,
@@ -599,25 +606,19 @@ describe("worker browser session factory", () => {
         duoCeremony: fixtureDuoCeremonyGates(CLOCK),
       });
       manager.bindRunConfigFingerprint(FINGERPRINT);
-      const previousUser = process.env.UCPATH_USER_ID;
-      delete process.env.UCPATH_USER_ID;
-      try {
-        await assert.rejects(
-          manager.withDriver(
-            { system: "ucpath", access: "read", session: "reuse-worker" },
-            "prod",
-            new AbortController().signal,
-            async () => "must not run",
-          ),
-          (error: unknown) => error instanceof AggregateError
-            && error.errors.some((failure: unknown) => failure instanceof Error
-              && /ucpathUserId is missing/.test(failure.message))
-            && error.errors.some((failure: unknown) => failure instanceof Error
-              && /never emitted its context close event/.test(failure.message)),
-        );
-      } finally {
-        if (previousUser !== undefined) process.env.UCPATH_USER_ID = previousUser;
-      }
+      await assert.rejects(
+        manager.withDriver(
+          { system: "ucpath", access: "read", session: "reuse-worker" },
+          "prod",
+          new AbortController().signal,
+          async () => "must not run",
+        ),
+        (error: unknown) => error instanceof AggregateError
+          && error.errors.some((failure: unknown) => failure instanceof Error
+            && /ucpathUserId is missing/.test(failure.message))
+          && error.errors.some((failure: unknown) => failure instanceof Error
+            && /never emitted its context close event/.test(failure.message)),
+      );
       assert.deepEqual(manager.activeSystems(), ["ucpath"], "an unprovable cleanup stays owned");
       await assert.rejects(
         manager.withDriver(

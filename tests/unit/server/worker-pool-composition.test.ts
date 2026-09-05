@@ -210,6 +210,7 @@ function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
     // plus the test-only alias-breaking clock advance around the seam.
     workerRuntime: { pool },
     settings: {
+      reconcilePending: () => undefined,
       reconcileReplay: () => {
         throw new Error("worker-pool fixture has no persisted settings replay authority");
       },
@@ -243,7 +244,7 @@ function envelope(harness: ControlHarness, commandId = nextCommandId()) {
 }
 
 function applySettingsRequiringRestart(harness: ControlHarness): void {
-  const patch = { browser: { headless: false } } as const;
+  const patch = { "browser.headless": { set: false } } as const;
   harness.kernel.execute({
     commandId: nextCommandId(),
     requestedAt: harness.clock.now().toISOString(),

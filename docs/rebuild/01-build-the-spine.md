@@ -841,12 +841,12 @@ compile-time red at every caller, runtime red under a hostile `process.env`), P3
 `secrets-single-source` WRITE arm (A5), P38's negative control (A7's arm `retired-leaves-are-a-closed-list`
 on the existing `config-snapshot-generations` entry). **Order:** wave 2, peer 2.
 
-- [ ] The catalog, the `.tracker/settings/` root with two documents and one lock, the two CAS arms,
+- [x] The catalog, the `.tracker/settings/` root with two documents and one lock, the two CAS arms,
   write-only protected values with presence/revision readback (§D331.1–§D331.6; P1, P2, P5–P12, P21–P32).
-- [ ] The environment leaves the resolver and the accessors in THIS task — A4 and A5 are deleted with the
+- [x] The environment leaves the resolver and the accessors in THIS task — A4 and A5 are deleted with the
   catalog, not carried; every migrated key is `RETIRED_ENVIRONMENT_KEYS`; provider API keys alone stay in
   `.env` (§D331.8; P3, P4, P34, P35).
-- [ ] Host-derived display as the catalogued default (P36), credentials and canary references in the
+- [x] Host-derived display as the catalogued default (P36), credentials and canary references in the
   store (P32), permissions/symlink/redaction/restart-scope/concurrent-update proofs (P13–P15, P17–P19,
   P22–P25, P33 protected half, P37), generation 5's retirement (P38), P39's deliberate edits, P41.
 
@@ -916,6 +916,47 @@ two peers serialize full coverage, architecture and parity runs.
 |---|---|---|---|---|---|---|
 | `1.6.2-2` | `codex/phase-1-6-settings` | `/Users/julianhein/Projects/hr-worktree-settings` | Verified common `master` SHA containing Task 1 and both approved wave plans; record it before either peer starts | Task-2-2 seam above; synthetic settings roots only; no real runtime or live state | Assigned proof matrix; focused suites; full gate, architecture and unchanged parity | Freeze the independently reviewed candidate. Task 2-1 receives PASS and merges first. The 2-2 supervisor then merges `--no-ff` to `master`; behavior-changing conflict fixes require renewed review. Run integration gates, remove this worktree and local branch, record review/merge/gate/cleanup evidence, then mark only Task 2-2 complete. |
 
+#### Task 2-2 completed (2026-09-05)
+
+Task 2-2 is implemented on `codex/phase-1-6-settings` at final revised immutable implementation
+candidate `0e38b82f`. The first fresh independent review returned `CHANGES REQUIRED`; all six findings
+have regression proofs and fixes. Its renewed review closed those six findings and returned
+`CHANGES_REQUIRED` for two newly exposed issues; both have fixes and proof. Its second renewed review
+closed those eight findings and exposed one request-admission ordering defect; that finding now has a
+pristine-root kernel proof and fix. Its third renewed review closed those nine findings and exposed one
+mixed-failure ingress-precedence defect; that finding now has BFF proofs and a fix. The final renewed
+review accepted the immutable candidate. It merged without a behavior-changing conflict and passed the
+required integration gates. The planned candidate worktree and branch are removed; the temporary
+integration worktree and branch remain only until `master` advances to this completion record.
+
+| Evidence | Result |
+|---|---|
+| Plan and common base | PASS — approved Task-2-2 plan `0d2520f7`; common wave base `aaffe367`, containing Task 1 and both approved wave plans |
+| Required peer order | PASS — accepted Task 2-1 completed on `master` at `a5afdb07`; merged into this branch as `57ad0653` before the combined gates |
+| Initial candidate commits | `8c9cedd7`, `2945cfea`, `e874505c`, `87118792`, `fa93a623`, `2cd0029f`, `a3305537`, `4fe9c24d`, `4016e2af`, `15bb3c2b`, `01385201`, `f944a2ab`, `fd5f860c`, `d3ac830c`, `e1d9f008`, `8f8777e4` |
+| First independent review | `CHANGES REQUIRED` — fresh read-only reviewer `/root/sup_review_settings_2_2` (`sup_review`) reviewed plan `0d2520f7`, base `aaffe367`, Task-2-1 merge `57ad0653`, implementation `8f8777e4` and evidence `5a48faf6` |
+| Finding dispositions | `f8ea3551` authenticates protected authority before mutation; `1b877014` returns the assigned value-free settings ingress refusals; `866cbf1f` makes the settings-consumer guard bidirectional; `595647fb` binds backup files to one authenticated SQLite snapshot, materializes both revision-1 files, validates patch leaves and maps merged cross-field failures |
+| First renewed review | `CHANGES_REQUIRED` — the same read-only reviewer reviewed implementation `595647fb` and evidence `d0a39d86`; all six prior findings closed, but an exact crash-left protected retry journaled before reconciliation and backup added a second unapproved `AuthorityDatabase` lookup seam |
+| Renewed-review dispositions | `711ea001` adds a real child-process `SIGKILL`/kernel-retry regression and reconciles the protected prepare before journal insertion; `54a2f5ed` removes the extra database method, uses three explicit read-only copied-backup audit checks, and pins those checks without weakening the command-write or layering guards |
+| Second renewed review | `CHANGES_REQUIRED` — the same read-only reviewer reviewed implementation `54a2f5ed` and evidence `3664b01a`; all eight prior findings closed, but stale protected schema input reached reconciliation before pure request admission and could materialize a pristine settings root |
+| Second renewed-review disposition | `28109529` exposes and reuses the protected authority's pure admission before reconciliation; its kernel regression proves exact `schema-mismatch`, zero authority reads, no pristine-root materialization and no SQLite command/audit/current mutation |
+| Third renewed review | `CHANGES_REQUIRED` — the same read-only reviewer reviewed implementation `28109529` and evidence `39aedaeb`; all nine prior findings closed, but mixed invalid leaf requests could outrank stale schema or ordinary patch-fingerprint refusals at BFF ingress |
+| Third renewed-review disposition | `0e38b82f` centralizes raw ordinary patch fingerprint derivation and applies schema/fingerprint precedence before leaf classification; three BFF regressions prove the ordered refusal and zero authority effects for mixed failures |
+| Accepted review | PASS — the same fresh read-only `sup_review` reviewer reviewed immutable implementation `0e38b82f` and evidence `a2f19bd0`; no findings and all ten prior findings closed |
+| Final revised candidate commits | `f8ea3551`, `1b877014`, `866cbf1f`, `595647fb`, `711ea001`, `54a2f5ed`, `28109529`, `0e38b82f`; final implementation head `0e38b82f` |
+| Authorized ownership amendment | Operator selected option A: Task 2-2 may add the transaction-safe, read-only historical protected-command `writeId` lookup in `src/infra/sqlite/authority-database.ts`. `d3ac830c` supplies it, strict request validation, restart/non-adjacent reuse proof and production dashboard composition; no other Task-1/Task-2-1 ownership moved. |
+| Full revised gate | PASS — typecheck; lint; coverage 5,178 tests with all ratified floors passing; build-manifest check |
+| Supplemental gates | PASS — architecture 74 files / 754 tests; parity 269/269 |
+| Focused revised proof | PASS — combined settings, backup, config, command, ingress, catalog, composition and recovery suites: 10 files / 503 tests; exact lint, typecheck and `git diff --check` clean |
+| Parity provenance | The combined manifest changed descriptor and implementation fingerprints. `8f8777e4` refreshes only the resulting hash/provenance fields and hash pixels: 210 accessibility references, 210 metadata references and 31 PNGs. Audit found no DOM, copy, control, layout or style change. |
+| Isolation | PASS — synthetic empty ignored mode-0600 `.env`; no real `.env`, `.tracker`, live state, browser transaction, submit or push touched |
+| Integration | PASS — accepted evidence head `e1cfb9bd` merged `--no-ff` as `33d6a6e9`; merge parents are prior `master` `fbc23dc1` and accepted candidate `e1cfb9bd`; no behavior-changing conflict |
+| Integration gates | PASS — typecheck; lint; coverage 5,178 tests with every ratified floor passing; build-manifest check; architecture 74 files / 754 tests; unchanged parity 269/269; roadmap current |
+| Cleanup and preservation | PASS — `codex/phase-1-6-settings`, `/Users/julianhein/Projects/hr-worktree-settings` and the temporary integration worktree were removed; the dirty primary checkout retained its exact pre-integration status and unstaged/staged content hashes; no push |
+
+Status is `complete`. Fresh independent review accepted the candidate after all ten findings were
+resolved; the required merge, integration gates and cleanup are complete. Task 3 integrates afterward.
+
 ### Task 3 · Cut over executor and worker lifecycle writers
 <!-- roadmap: p1f-run-writers -->
 
@@ -955,14 +996,11 @@ Task 4 owns start/intake/capture fan-out creation and the shared `run.queued` pu
 implements the worker/recovery half of #27 so Task 4 can prove the complete operator-command/tree/
 projection behaviour without reopening the worker seam. No reference contract changes.
 
-**Verified prerequisite and current state.** Accepted Task 2-1 remains an ancestor. The earlier Task-2-2
-integration/completion commit `0a8173e0` was also an ancestor, but current `master` `46f95aa0` includes
-`7414548f`, which removed the effective settings authority and reopened Task 2-2. Therefore this
-assignment is **WAITING ON 1.6.2-2**: before creating its implementation worktree, resolve and verify a
-new `master` SHA whose code and phase/roadmap evidence restore Task 2-2, then verify that the approved
-plan commit is in that creation base. Current worktree inventory is one primary checkout; the proposed
-branch/path were absent when planned. Recheck SHA ancestry, path/ref availability and the four-worktree
-budget at supervisor start. Never recover Task 2-2 inside this assignment.
+**Verified prerequisite and current state.** Accepted Task 2-1 and completed Task 2-2 are both ancestors
+of `master`. Task 2-2 was restored on `master` with full integration gates passing. The approved Task 3
+plan commit `f34c9021` is an ancestor of `master`. Current worktree inventory is one primary checkout;
+the proposed branch/path were absent when planned. Recheck SHA ancestry, path/ref availability and the
+four-worktree budget at supervisor start. Never recover Task 2-2 inside this assignment.
 
 **Implementation sequence.** One supervisor performs these stable steps in order:
 
@@ -1016,7 +1054,7 @@ This is serial work, not a parallel wave.
 
 | Assignment | Branch | Absolute worktree | Base / start prerequisite | Owned files and resources | Acceptance gates | Merge condition |
 |---|---|---|---|---|---|---|
-| `1.6.3` | `codex/phase-1-6-run-writers` | `/Users/julianhein/Projects/hr-worktree-run-writers` | **WAITING ON 1.6.2-2:** create from the resolved latest `master` SHA that restores Task 2-2 and contains this approved plan commit; verify both before the first edit | Task-3 seam and tests above; synthetic authority/runtime roots only; no real state, browser or fixed port | Assigned proof matrix, focused suites, full coverage gate, manifest check, architecture | Freeze the exact candidate; record evidence and obtain fresh independent `sup_review` PASS. Then, against latest local `master` still containing restored Task 2-2 and the approved plan, integrate without a behavior-changing conflict, or re-review such a fix; run integration gates, record review/merge/gate evidence, remove only owned worktree/ref, and mark only Task 3 complete. No push. |
+| `1.6.3` | `codex/phase-1-6-run-writers` | `/Users/julianhein/Projects/hr-worktree-run-writers` | Verified latest local `master` SHA containing restored Task 2-2 and approved plan commit `f34c9021`; verify both before the first edit | Task-3 seam and tests above; synthetic authority/runtime roots only; no real state, browser or fixed port | Assigned proof matrix, focused suites, full coverage gate, manifest check, architecture | Freeze the exact candidate; record evidence and obtain fresh independent `sup_review` PASS. Then, against latest local `master` still containing restored Task 2-2 and the approved plan, integrate without a behavior-changing conflict, or re-review such a fix; run integration gates, record review/merge/gate evidence, remove only owned worktree/ref, and mark only Task 3 complete. No push. |
 
 ### Task 4 · Cut over operator run commands and archive/delete writers
 <!-- roadmap: p1f-run-commands -->

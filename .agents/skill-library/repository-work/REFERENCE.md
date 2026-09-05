@@ -307,21 +307,17 @@ environment-supplied.
 
 For roadmap work read [roadmap §Plan, implement, review](../../../docs/roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04).
 The operator opens planning and supervisor sessions. Skills use the exact phase task and approved
-plan commit. The supervisor dispatches a fresh dedicated read-only reviewer using /review with no implementation
+plan commit. The supervisor dispatches a fresh read-only analyst using /review with no implementation
 history, waits for its verdict, fixes/re-reviews and finalizes in the same session. Completion remains
 open until independent review, required gates, integration and cleanup pass.
 
 Before authorized worker dispatch, read the active platform's
 `~/.agents/skill-library/parallel-agent-work/REFERENCE.md` (Codex) or
 `~/.claude/skill-library/parallel-agent-work/REFERENCE.md` (Claude). Codex uses native `sup_scout`,
-`sup_analyst`, `sup_terra`, `sup_sol` and `sup_review`; Claude uses `sup-scout`, `sup-analyst`,
-`sup-sonnet`, `sup-opus` and `sup-review`. Sol/Opus owns substantive supporting work; Terra/Sonnet execution is exact mechanical
+`sup_analyst`, `sup_terra` and `sup_sol`; Claude uses `sup-scout`, `sup-analyst`, `sup-sonnet` and
+`sup-opus`. Sol/Opus owns substantive supporting work; Terra/Sonnet execution is exact mechanical
 work only. The Astra/Fable supervisor retains the hardest seam and consequential judgment.
-Use `sup_review` / `sup-review` for new final-review dispatches; keep already running reviewers.
 Validate native role definitions before dispatch; never substitute generic roles or model overrides.
-
-Use the worktree location and short task naming rule in root `AGENTS.md` / `CLAUDE.md`;
-worktree directory names are independent of branch names.
 
 Sequential implementation uses a dedicated non-`master` branch in an exclusively available checkout;
 shared, dirty, uncertain or integration-only checkouts require an owned worktree instead. Preserve

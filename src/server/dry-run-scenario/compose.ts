@@ -22,13 +22,19 @@ import {
 } from "../../control/test-target-registry.js";
 import { systemClock, type Clock } from "../../domain/clock.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
-import { hostAwareResolutionEnvironment } from "../../domain/secrets.js";
+import {
+  assertNoMigratedEnvironmentKeys,
+  hostAwareResolutionEnvironment,
+  type ProtectedSecretSource,
+} from "../../domain/secrets.js";
+import { settingsRootPaths } from "../../domain/config/settings-root.js";
 import { probePrimaryDisplay } from "../../infra/host/primary-display.js";
 import {
   parseDryRunScenarioManifest,
   type DryRunScenarioManifest,
 } from "../../domain/trust/dry-run-scenario.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
+import { createProtectedSettingsFileAuthority } from "../../infra/config/settings-file.js";
 
 /**
  * One workflow, one resolver. The runner itself is workflow-generic — it reads
@@ -42,15 +48,15 @@ export function resolveDryRunScenarioTarget(
   registry: TestTargetRegistry,
   manifest: DryRunScenarioManifest,
   subjectLabel: string,
-  env: NodeJS.ProcessEnv,
+  protectedSecrets: ProtectedSecretSource,
 ): DryRunScenarioTargetResolution {
   switch (manifest.workflow) {
     case "separations-kuali-finalization":
       return resolveSeparationsKualiFinalizationTestTarget(registry, subjectLabel);
     case "separations":
-      return resolveSeparationsTestTarget(registry, subjectLabel, env);
+      return resolveSeparationsTestTarget(registry, subjectLabel, protectedSecrets);
     case "person-lookup":
-      return resolvePersonLookupTestTarget(registry, subjectLabel, env);
+      return resolvePersonLookupTestTarget(registry, subjectLabel, protectedSecrets);
     default:
       throw new Error(`dry-run target resolution does not support workflow ${manifest.workflow}`);
   }
@@ -69,6 +75,7 @@ export interface DryRunScenarioComposeInput {
   }>) => DryRunScenarioRuntime;
   readonly repoRoot?: string;
   readonly env?: NodeJS.ProcessEnv;
+  readonly protectedSecrets?: ProtectedSecretSource;
   readonly clock?: Clock;
   readonly ids?: IdFactory;
 }
@@ -80,12 +87,18 @@ export async function composeDryRunScenarioCommand(
   const repoRoot = input.repoRoot ?? process.cwd();
   // D324: the production environment carries the host's primary display as the `display` default.
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
+  assertNoMigratedEnvironmentKeys(env);
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
   const manifestInput = parseDryRunScenarioManifest(await input.loadManifest(args.workflow));
   const registry = readTestTargetRegistry(repoRoot, [manifestInput]);
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
+  const protectedAuthority = createProtectedSettingsFileAuthority({
+    path: settingsRootPaths(stateRoot).ordinary,
+    assertWriteIdAvailable: () => undefined,
+  });
+  const protectedSecrets = input.protectedSecrets ?? { read: () => protectedAuthority.read() };
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "dry-run-scenario" },
     clock,
@@ -95,7 +108,7 @@ export async function composeDryRunScenarioCommand(
       args,
       loadManifest: () => Promise.resolve(manifestInput),
       resolveTarget: (manifest, subjectLabel) =>
-        resolveDryRunScenarioTarget(registry, manifest, subjectLabel, env),
+        resolveDryRunScenarioTarget(registry, manifest, subjectLabel, protectedSecrets),
       persistResult: (result) => {
         database.authority.dryRunScenarioResults.insert(result);
       },

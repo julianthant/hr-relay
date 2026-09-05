@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { CONFIG_ENV_BINDINGS } from "./config/resolve.js";
+import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS } from "./config/catalog.js";
 import { HOST_PRIMARY_DISPLAY_ENV } from "./config/host-display.js";
 import { deepFreeze } from "./immutability.js";
 import {
-  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
   TEST_TARGET_SECRET_SPECS,
@@ -26,6 +26,13 @@ export const RuntimeEnvironmentExactSpecSchema = z.discriminatedUnion("dispositi
     disposition: z.literal("active"),
     channel: z.enum(["config", "config-default", "secret", "config-and-secret", "provider-model", "process-ownership"]),
     owner: z.string().regex(/^src\/[a-z0-9/_-]+\.ts$/),
+    documented: z.boolean(),
+  }),
+  z.strictObject({
+    key: EnvironmentKeySchema,
+    classification: z.enum(["secret", "direct-identifier", "non-secret-config"]),
+    disposition: z.literal("migrated-refused"),
+    reason: z.string().min(1),
     documented: z.boolean(),
   }),
   z.strictObject({
@@ -137,22 +144,20 @@ const CONFIG_ENVIRONMENT_KEYS = [
 ] as const;
 
 const SECRET_ENVIRONMENT_SPECS = [
-  { key: "UCPATH_USER_ID", classification: "direct-identifier", channel: "secret" },
-  { key: "UCPATH_PASSWORD", classification: "secret", channel: "secret" },
-  { key: "ONBOARDING_ROSTER_URL", classification: "secret", channel: "secret" },
-  {
-    key: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.key.env,
-    classification: "secret",
-    channel: "secret",
-  },
-  {
-    key: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.generation.env,
-    classification: "non-secret-config",
-    channel: "secret",
-  },
+  { key: "UCPATH_USER_ID", classification: "direct-identifier" },
+  { key: "UCPATH_PASSWORD", classification: "secret" },
+  { key: "ONBOARDING_ROSTER_URL", classification: "secret" },
+  { key: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY", classification: "secret" },
+  { key: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION", classification: "non-secret-config" },
 ] as const;
 
-const TEST_TARGET_SECRET_ENVIRONMENT_KEYS = TEST_TARGET_SECRET_SPECS.map(({ env }) => env);
+const TEST_TARGET_SECRET_ENVIRONMENT_KEYS = [
+  "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
+  "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
+] as const;
+const TEST_TARGET_SECRET_ENVIRONMENT_KEY_SET: ReadonlySet<string> = new Set(
+  TEST_TARGET_SECRET_ENVIRONMENT_KEYS,
+);
 
 const PROVIDER_MODEL_ENVIRONMENT_KEYS = [
   "OCR_GEMINI_MODELS", "OCR_GROQ_MODELS", "OCR_MISTRAL_MODELS",
@@ -169,7 +174,7 @@ const TEST_ONLY_ENVIRONMENT_KEYS = [
   "__NUMENV_TEST__",
 ] as const;
 
-const RETIRED_ENVIRONMENT_KEYS = [
+const INERT_RETIRED_ENVIRONMENT_KEYS = [
   "CAPTURE_NGROK", "CAPTURE_NGROK_URL", "CAPTURE_PUBLIC_URL",
   "DEBUG", "E2E_DEBUG",
   "HRAUTO_DASHBOARD_ALLOWED_ORIGINS", "HRAUTO_DASHBOARD_ALLOW_LAN",
@@ -183,22 +188,14 @@ const RETIRED_ENVIRONMENT_KEYS = [
   "KRONOS_PICKER_RANGE_MS", "KRONOS_RANGE_READBACK_POLL_MS", "KRONOS_RANGE_READBACK_TIMEOUT_MS",
   "OCR_PROVIDER_ATTEMPT_TIMEOUT_MS", "OCR_SQLITE_DEPENDENCIES", "OCR_VERIFY_WATCH_TIMEOUT_MS",
   "PLAYWRIGHT_BROWSERS_PATH", "SEPARATIONS_ROSTER_URL",
-  ...LEGACY_PROVIDER_MODEL_ENVIRONMENT_KEYS,
 ] as const;
 
-const DOCUMENTED_ENVIRONMENT_KEYS = new Set([
-  "UCPATH_USER_ID", "UCPATH_PASSWORD", "TIMEKEEPER_NAME",
-  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.key.env,
-  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.generation.env,
-  ...TEST_TARGET_SECRET_ENVIRONMENT_KEYS,
-  "ANNUAL_DATES_END", "KRONOS_DEFAULT_END_DATE", "KRONOS_DEFAULT_START_DATE",
-  "ONBOARDING_ROSTER_URL", "HR_AUTOMATION_DUO_WEBAUTHN",
-  "DEBUG_SCREENSHOTS",
-  "HRAUTO_NAVIGATION_RETRIES", "HRAUTO_SEPARATION_TERMINATION_WINDOW_DAYS",
-  "HRAUTO_UKG_NAVIGATION_MS",
-  "OCR_SECOND_OPINION_MAX", "OCR_PAGE_MAX_WAIT_MS", "OCR_PAGE_CONCURRENCY",
-  "OCR_DISAMBIG_CONCURRENCY", "OCR_SUGGEST_CONCURRENCY",
-]);
+/** D331: names whose values moved to settings/protected authority and now refuse boot. */
+export const RETIRED_ENVIRONMENT_KEYS = deepFreeze(
+  [...MIGRATED_SETTINGS_ENVIRONMENT_KEYS],
+);
+
+const DOCUMENTED_ENVIRONMENT_KEYS: ReadonlySet<string> = new Set();
 
 const TEST_ONLY_ENVIRONMENT_OWNERS = {
   // D93: the guard lane locates the legacy repo it audits. Test-lane only —
@@ -220,20 +217,6 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
 } as const satisfies Record<(typeof TEST_ONLY_ENVIRONMENT_KEYS)[number], readonly string[]>;
 
 export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecSchema.array().parse([
-  ...CONFIG_ENVIRONMENT_KEYS.map((key) => ({
-    key,
-    classification: key === "TIMEKEEPER_NAME" ? "direct-identifier" : "non-secret-config",
-    disposition: "active",
-    channel: key === "TIMEKEEPER_NAME" ? "config-and-secret" : "config",
-    owner: "src/domain/config/resolve.ts",
-    documented: DOCUMENTED_ENVIRONMENT_KEYS.has(key),
-  })),
-  ...SECRET_ENVIRONMENT_SPECS.map((spec) => ({
-    ...spec,
-    disposition: "active",
-    owner: "src/domain/secrets.ts",
-    documented: DOCUMENTED_ENVIRONMENT_KEYS.has(spec.key),
-  })),
   {
     key: "HRAUTO_DASHBOARD_LAUNCH_NONCE",
     classification: "direct-identifier",
@@ -252,21 +235,14 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
     owner: "src/domain/config/host-display.ts",
     documented: false,
   },
-  ...TEST_TARGET_SECRET_SPECS.map((spec) => ({
-    key: spec.env,
-    classification: spec.classification,
-    disposition: "active" as const,
-    channel: "secret" as const,
-    owner: "src/domain/secrets.ts",
-    documented: DOCUMENTED_ENVIRONMENT_KEYS.has(spec.env),
-  })),
-  ...PROVIDER_MODEL_ENVIRONMENT_KEYS.map((key) => ({
+  ...RETIRED_ENVIRONMENT_KEYS.map((key) => ({
     key,
-    classification: "non-secret-config",
-    disposition: "active",
-    channel: "provider-model",
-    owner: "src/domain/runtime-dependencies.ts",
-    documented: DOCUMENTED_ENVIRONMENT_KEYS.has(key),
+    classification: SECRET_ENVIRONMENT_SPECS.find((spec) => spec.key === key)?.classification
+      ?? (key === "TIMEKEEPER_NAME" || TEST_TARGET_SECRET_ENVIRONMENT_KEY_SET.has(key)
+        ? "direct-identifier" : "non-secret-config"),
+    disposition: "migrated-refused",
+    reason: "setting moved to the settings authority; set it in Settings, then remove it",
+    documented: false,
   })),
   ...TEST_ONLY_ENVIRONMENT_KEYS.map((key) => ({
     key,
@@ -275,7 +251,7 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
     owners: TEST_ONLY_ENVIRONMENT_OWNERS[key],
     documented: DOCUMENTED_ENVIRONMENT_KEYS.has(key),
   })),
-  ...RETIRED_ENVIRONMENT_KEYS.map((key) => ({
+  ...INERT_RETIRED_ENVIRONMENT_KEYS.map((key) => ({
     key,
     classification: "retired-in-target",
     disposition: "retired-in-target",
@@ -299,14 +275,6 @@ export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilyS
 ]));
 
 export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([
-  {
-    key: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.key.env,
-    paths: ["src/domain/secrets.ts"],
-  },
-  {
-    key: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.generation.env,
-    paths: ["src/domain/secrets.ts"],
-  },
   { key: "ANNUAL_DATES_END", paths: ["legacy:src/config.ts"] },
   { key: "CAPTURE_NGROK", paths: ["legacy:src/cli.ts"] },
   { key: "CAPTURE_NGROK_URL", paths: ["legacy:src/cli.ts"] },
@@ -403,7 +371,6 @@ function computedReader(input: ComputedReaderInput): z.input<typeof ComputedEnvi
 
 const keyPoolTargets = { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } as const;
 const probePoolTargets = { kind: "closed-targets", exact: [], families: PROBE_PROVIDER_FAMILIES } as const;
-const secretTargets = { kind: "closed-targets", exact: SECRET_EXACT_TARGETS, families: ACTIVE_PROVIDER_FAMILIES } as const;
 
 export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReaderSchema.array().parse([
   computedReader({ path: "legacy:scripts/ocr/probe-providers.ts", enclosingSymbol: "readKeys", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "b4215dca8be6208439605ebf023b0d99c8edd39bbc4e770ea89d2f8996b187b9", classification: "legacy-production", targets: probePoolTargets }),
@@ -420,31 +387,18 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "legacy:src/services/ocr/provider-limits.ts", enclosingSymbol: "resolveModelChain", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "0dab717481bea1e33b1fc7c3fd365e3ff2cd4abe9bc81fa35e6667fba7ebafab", classification: "legacy-production", targets: { kind: "closed-targets", exact: LEGACY_PROVIDER_MODEL_ENVIRONMENT_KEYS, families: [] } }),
   computedReader({ path: "legacy:src/tracker/dashboard/hono/routes/settings.ts", enclosingSymbol: "has", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "a867d2208d468f7a765a91bf4f0e8e80a42cf8ad76951a648d0452a61ff40f86", classification: "legacy-production", targets: { kind: "closed-targets", exact: SECRET_EXACT_TARGETS, families: [] } }),
   computedReader({ path: "legacy:src/tracker/settings/store.ts", enclosingSymbol: "applyOperatorSettingsToEnv", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "legacy-production", targets: { kind: "bulk-pass-through", boundary: "legacy-settings-projection", reason: "legacy settings projects its closed override schema into the same-runtime environment" } }),
-  computedReader({ path: "legacy:src/utils/env.ts", enclosingSymbol: "numEnv", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "a867d2208d468f7a765a91bf4f0e8e80a42cf8ad76951a648d0452a61ff40f86", classification: "legacy-production", targets: { kind: "closed-targets", exact: [...CONFIG_ENVIRONMENT_KEYS, ...RETIRED_ENVIRONMENT_KEYS], families: [] } }),
+  computedReader({ path: "legacy:src/utils/env.ts", enclosingSymbol: "numEnv", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "a867d2208d468f7a765a91bf4f0e8e80a42cf8ad76951a648d0452a61ff40f86", classification: "legacy-production", targets: { kind: "closed-targets", exact: [...CONFIG_ENVIRONMENT_KEYS, ...INERT_RETIRED_ENVIRONMENT_KEYS], families: [] } }),
   computedReader({ path: "legacy:src/utils/log.ts", enclosingSymbol: "envBool", accessKind: "unresolved", occurrenceCount: 2, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["DEBUG", "E2E_DEBUG"], families: [] } }),
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "buildSharePointListHandler", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "queueSharePointDownloadJob", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "buildSharePointRosterDownloadHandler", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
-  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "admitLocalEnvironmentFile", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "bulk-pass-through", boundary: "secure-local-environment-admission", reason: "the validated and exactly parsed local source fills only bindings absent from the inherited parent environment" } }),
-  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "inspectSecret", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: SECRET_EXACT_TARGETS, families: [] } }),
-  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalSecret", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: SECRET_EXACT_TARGETS, families: [] } }),
-  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalTestTargetSecret", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "631a29fcc2465c1dc0a0e9d09d6ce9f9c51b624b3e7d5d2dd19bdb9b68efa39b", classification: "target-accessor", targets: { kind: "closed-targets", exact: TEST_TARGET_SECRET_ENVIRONMENT_KEYS, families: [] } }),
-  // Ref clock-config-secrets: the config resolver takes the environment as a VALUE and reads
-  // only its statically-declared CONFIG_ENV_BINDINGS keys; this accessor is
-  // where a composition root obtains that value, so no module outside the
-  // secrets owner ever touches process.env.
-  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "configResolutionEnvironment", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [...CONFIG_ENVIRONMENT_KEYS], families: [] } }),
-  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "hostAwareResolutionEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [HOST_PRIMARY_DISPLAY_ENV, ...CONFIG_ENVIRONMENT_KEYS], families: [] } }),
-  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "requireSecret", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: secretTargets }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "admitLocalEnvironmentFile", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "bulk-pass-through", boundary: "secure-local-environment-admission", reason: "the validated and exactly parsed local source fills only bindings absent from the inherited parent environment" } }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "assertNoMigratedEnvironmentKeys", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: RETIRED_ENVIRONMENT_KEYS, families: [] } }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "hostAwareResolutionEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalSecretFamily", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "72b51583d255ce06b58a1fb09a91cfed0e89cd4cf7406fc6dea176093c81757c", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
-  // D161: providerModelChain reads the family's `modelsEnv` chain and its
-  // single-model legacy spelling; both dynamic keys resolve only into the
-  // registered provider-model target set.
-  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "providerModelChain", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "4e1462e06eb808e0e0248225f2e039640bd9c00421d1404351bf48ffd280d4de", classification: "target-accessor", targets: { kind: "closed-targets", exact: PROVIDER_MODEL_TARGETS, families: [] } }),
-  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "providerModelChain", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "7c167b1839ff9416f38fd09168d6ac7d0f9dedf84e6bc44a2df92f0d428569ea", classification: "target-accessor", targets: { kind: "closed-targets", exact: PROVIDER_MODEL_TARGETS, families: [] } }),
-  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "requireSecretFamily", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: secretTargets }),
-  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "validateBootSecrets", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: secretTargets }),
-  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "validateDescriptorSecrets", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: secretTargets }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "requireSecretFamily", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "validateBootSecrets", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "validateDescriptorSecrets", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
   computedReader({ path: "scripts/dev-dashboard.ts", enclosingSymbol: "<module>", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "target-bootstrap", targets: { kind: "bulk-pass-through", boundary: "dashboard-child-processes", reason: "the dashboard launcher forwards its inherited environment plus one owned nonce to the two same-runtime child processes" } }),
   computedReader({ path: "scripts/verify-parity-json.ts", enclosingSymbol: "main", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "parity-command-child", reason: "the parity wrapper forwards its inherited environment to its same-checkout Playwright child" } }),
   computedReader({ path: "scripts/test-runner.ts", enclosingSymbol: "main", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "test-command-child", reason: "the batch test wrapper forwards its inherited environment with owned scratch paths to the installed Vitest child" } }),
@@ -494,23 +448,17 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
   }
 
   const exact = new Map(registry.exact.map((spec) => [spec.key, spec]));
-  const dualChannelKeys = registry.exact.filter((spec) => spec.disposition === "active" && spec.channel === "config-and-secret");
-  if (dualChannelKeys.length !== 1 || dualChannelKeys[0]?.key !== "TIMEKEEPER_NAME") {
-    violations.push("TIMEKEEPER_NAME must be the sole config-and-secret environment channel overlap");
-  }
   for (const spec of registry.exact) {
     if (spec.disposition !== "active") continue;
-    const expectedOwner = spec.channel === "provider-model"
-      ? "src/domain/runtime-dependencies.ts"
-      : spec.channel === "process-ownership"
-        ? "src/domain/dashboard-frontend-owner.ts"
-      // D324: a runtime-published input to the resolver's DEFAULT layer — not an
-      // env-layer override, so it has no CONFIG_ENV_BINDINGS entry by design.
+    const expectedOwner = spec.channel === "process-ownership"
+      ? "src/domain/dashboard-frontend-owner.ts"
       : spec.channel === "config-default"
         ? "src/domain/config/host-display.ts"
-      : spec.channel === "secret"
-        ? "src/domain/secrets.ts"
-        : "src/domain/config/resolve.ts";
+        : undefined;
+    if (expectedOwner === undefined) {
+      violations.push(`${spec.key} retains forbidden active ${spec.channel} environment ownership`);
+      continue;
+    }
     if (spec.owner !== expectedOwner) violations.push(`${spec.key} is owned by ${spec.owner}; expected ${expectedOwner}`);
   }
   for (const family of registry.families) {
@@ -520,44 +468,33 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
       violations.push(`active secret family ${family.prefix} must be owned solely by src/domain/secrets.ts`);
     }
   }
-  const configKeys = new Set(CONFIG_ENV_BINDINGS.map(({ env }) => env));
-  for (const key of configKeys) {
-    const spec = exact.get(key);
-    if (spec?.disposition !== "active" || (spec.channel !== "config" && spec.channel !== "config-and-secret")) {
-      violations.push(`config binding ${key} has no active config environment inventory entry`);
+  if (CONFIG_ENV_BINDINGS.length !== 0) {
+    violations.push("CONFIG_ENV_BINDINGS must be empty after settings authority migration");
+  }
+  const migratedKeys = new Set(MIGRATED_SETTINGS_ENVIRONMENT_KEYS);
+  for (const key of migratedKeys) {
+    if (exact.get(key)?.disposition !== "migrated-refused") {
+      violations.push(`migrated settings environment ${key} is not explicitly refused`);
     }
   }
   for (const spec of registry.exact) {
-    if (spec.disposition === "active" && (spec.channel === "config" || spec.channel === "config-and-secret") && !configKeys.has(spec.key)) {
-      violations.push(`active config environment ${spec.key} has no CONFIG_ENV_BINDINGS entry`);
+    if (spec.disposition === "migrated-refused" && !migratedKeys.has(spec.key)) {
+      violations.push(`migrated-refused environment ${spec.key} has no settings catalog migration edge`);
     }
   }
 
   for (const secret of SECRET_SPECS) {
-    if (secret.source !== "environment") continue;
-    const spec = exact.get(secret.env);
-    if (spec?.disposition !== "active" || (spec.channel !== "secret" && spec.channel !== "config-and-secret")) {
-      violations.push(`secret environment ${secret.env} has no active secret inventory entry`);
+    if (secret.source !== "protected-store") {
+      violations.push(`secret ${secret.name} must use protected-store`);
     }
   }
-  for (const secret of TEST_TARGET_SECRET_SPECS) {
-    const spec = exact.get(secret.env);
-    if (spec?.disposition !== "active" || spec.channel !== "secret") {
-      violations.push(`test-target person-secret environment ${secret.env} has no active secret inventory entry`);
-    }
+  if (TEST_TARGET_SECRET_SPECS.length !== 2) {
+    violations.push("test-target protected-secret inventory must retain exactly two named canaries");
   }
   for (const family of SECRET_FAMILY_SPECS) {
     const spec = registry.families.find(({ prefix }) => prefix === family.envPrefix);
     if (spec?.disposition !== "active" || spec.classification !== "secret" || spec.maximum !== family.maximum) {
       violations.push(`secret family ${family.envPrefix} does not match environment inventory`);
-    }
-    const models = exact.get(family.modelsEnv);
-    if (models?.disposition !== "active" || models.channel !== "provider-model") {
-      violations.push(`provider model environment ${family.modelsEnv} has no active provider-model entry`);
-    }
-    const legacy = exact.get(family.legacyModelEnv);
-    if (legacy?.disposition !== "retired-in-target") {
-      violations.push(`legacy provider model environment ${family.legacyModelEnv} lacks target retirement`);
     }
   }
 

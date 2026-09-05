@@ -39,6 +39,7 @@ function currentConfig() {
 function legacyPhoneCaptureConfig() {
   return {
     ...currentConfig(),
+    operator: { timekeeperName: "synthetic historical value" },
     capture: {
       ingress: "disabled",
       preConnectTtlMs: 120_000,
@@ -167,6 +168,27 @@ describe("pre-D125 config snapshots are read forward", () => {
     });
     assert.deepEqual(configSnapshotAbsentLeaves(record.config), []);
     assert.equal(configSnapshotGeneration(record.config), CURRENT_CONFIG_SNAPSHOT_GENERATION);
+  });
+
+  it("reads a pre-floor timekeeper snapshot but refuses to mint the retired leaf", () => {
+    const historicalRecord = {
+      configSnapshotId: SNAPSHOT_ID,
+      revision: 1,
+      fingerprint: HASH_B,
+      capturedAt: NOW,
+      capturedBy: "local-operator",
+      config: { ...currentConfig(), operator: { timekeeperName: "synthetic historical value" } },
+      provenance: { "operator.timekeeperName": "env" },
+    };
+    const read = ConfigSnapshotRecordSchema.parse(historicalRecord);
+    assert.equal("operator" in read.config, true);
+    if ("operator" in read.config) {
+      assert.equal(read.config.operator.timekeeperName, "synthetic historical value");
+    }
+    assert.equal(configSnapshotGeneration(read.config), 4);
+    const write = ConfigSnapshotWriteSchema.safeParse(historicalRecord);
+    assert.equal(write.success, false);
+    if (!write.success) assert.match(write.error.message, /cannot mint retired operator\.timekeeperName/u);
   });
 
   it("reads an immutable pre-D294 capture snapshot but refuses to mint one", () => {

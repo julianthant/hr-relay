@@ -22,6 +22,7 @@ import {
   TERMINAL_SEPARATIONS_RUN,
 } from "./fixtures/activity-person-pseudonym-fixtures.js";
 import { COMPOSITION_EID } from "./fixtures/separations-composition-fixtures.js";
+import { protectedSecretSource } from "./helpers/protected-secret-source.js";
 
 const RUN_ID = TERMINAL_SEPARATIONS_RUN.envelope.runId;
 const KEY_HEX = ACTIVITY_PERSON_PSEUDONYM_KEY_HEX;
@@ -61,10 +62,9 @@ describe("activity person pseudonym domain", () => {
   });
 
   it("composes the HMAC domain from its exact secret reference and public generation", () => {
-    const domain = requireActivityPersonPseudonymDomain({
-      HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY: KEY_HEX,
-      HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION: "activity-person-g1",
-    });
+    const domain = requireActivityPersonPseudonymDomain(protectedSecretSource({
+      activityPersonPseudonym: { keyHex: KEY_HEX, keyGeneration: "activity-person-g1" },
+    }));
 
     assert.deepEqual({
       reference: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
@@ -75,15 +75,7 @@ describe("activity person pseudonym domain", () => {
         canonicalSubject: "10873698",
       }).pseudonym,
     }, {
-      reference: {
-        key: {
-          name: "activityPersonPseudonymHmacKey",
-          env: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY",
-        },
-        generation: {
-          env: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION",
-        },
-      },
+      reference: { name: "activityPersonPseudonym" },
       generation: "activity-person-g1",
       pseudonym: "010d6acdd7e42d681de6849d727d0afca66a6a0f8ce82b8df48fd768b3f9d8f2",
     });
@@ -91,26 +83,23 @@ describe("activity person pseudonym domain", () => {
 
   it("fails loud for missing or invalid key material without echoing supplied secrets", () => {
     assert.throws(
-      () => requireActivityPersonPseudonymDomain({
-        HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY: KEY_HEX,
-      }),
-      /HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION/u,
-    );
-    assert.throws(
-      () => requireActivityPersonPseudonymDomain({
-        HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION: "activity-person-g1",
-      }),
-      /HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY/u,
+      () => requireActivityPersonPseudonymDomain(protectedSecretSource()),
+      /activityPersonPseudonym is missing from registered source protected-store/u,
     );
     const invalidKey = "invalid-key-material-must-not-escape";
     assert.throws(
-      () => requireActivityPersonPseudonymDomain({
-        HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY: invalidKey,
-        HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION: "activity-person-g1",
-      }),
+      () => requireActivityPersonPseudonymDomain({ read: () => ({
+        schemaVersion: 1,
+        revision: 2,
+        protectedSchemaHash: "0".repeat(64),
+        entries: { activityPersonPseudonym: { value: {
+          keyHex: invalidKey,
+          keyGeneration: "activity-person-g1",
+        } } },
+      }) }),
       (error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
-        return message.includes("32 bytes encoded as lowercase hex") && !message.includes(invalidKey);
+        return message.includes("could not be read from protected-store") && !message.includes(invalidKey);
       },
     );
   });

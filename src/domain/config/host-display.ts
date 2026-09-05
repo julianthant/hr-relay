@@ -2,8 +2,8 @@
  * The `display` default is the host's primary display (D324) — a runtime value,
  * not a contract value, exactly as D121 made the path defaults.
  *
- * Precedence does not change: `env > settings > default`. What changes is
- * where the DEFAULT comes from. A composition establishes the host's primary
+ * Precedence is `settings > default`; the environment is not a resolver input.
+ * A composition establishes the host's primary
  * display once, through an injected probe (`src/infra/host/primary-display.ts`
  * in production), and publishes it as ONE runtime-owned environment value so
  * every child process the dashboard spawns (browser workers, launched with the
@@ -30,6 +30,22 @@ import { DEFAULT_DISPLAY, type Config } from "./schema.js";
 export const HOST_PRIMARY_DISPLAY_ENV = "HRAUTO_HOST_PRIMARY_DISPLAY";
 
 const HostDisplayDimensionSchema = z.number().int().positive().max(65_535);
+
+/** Decoded host facts, never an environment-shaped override input. */
+export const HostConfigFactsSchema = z.strictObject({
+  primaryDisplay: z.strictObject({
+    screenWidth: HostDisplayDimensionSchema,
+    screenHeight: HostDisplayDimensionSchema,
+  }).nullable(),
+});
+export type HostConfigFacts = z.infer<typeof HostConfigFactsSchema>;
+
+export function hostConfigFacts(environment: NodeJS.ProcessEnv): HostConfigFacts {
+  const published = readPublishedValue(environment);
+  return HostConfigFactsSchema.parse({
+    primaryDisplay: published === undefined || published === "none" ? null : hostDisplayDefault(environment),
+  });
+}
 
 export const HostPrimaryDisplayObservationSchema = z.discriminatedUnion("state", [
   z.strictObject({

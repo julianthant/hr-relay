@@ -478,14 +478,17 @@ read while still permitting replay-safe browser downloads.
   a fail-both-ways allowlisted reason and exact staged-page-state `UnscopedBindingProof`; every
   mutation capability is bound to one `WriteBindingProof` digest, never an empty subject placeholder.
 - **`control-command-single-path.test.ts`.** Dashboard/CLI/gate/recovery/notification/capture
-  modules can mutate authority only through ref dashboard-surfaces's D67 command family. Command ids are idempotent
-  and target versions are carried on every wire arm; CAS is checked only for cancel-tree,
-  edit-vs-resume, gate resolution, and write-recovery races. Hide is presentation-only; runtime
-  physical deletes and UI label `Delete` fail. Enqueue
-  policies get transaction/concurrency fixtures, including an injected active-run lookup error that
-  must create zero new runs. Coverage is bidirectional over every mutating route/action; typed gate
-  results parse the descriptor result schema and store a checkpoint/ref, notification commands are
-  limited to read/unread/snooze, and capture mutation cannot target a run id.
+modules can mutate authority only through ref dashboard-surfaces's D67 command family. Command ids are idempotent
+and target versions are carried on every wire arm; CAS is checked only for cancel-tree,
+edit-vs-resume, gate resolution, and write-recovery races. Hide is presentation-only; runtime
+physical deletes and UI label `Delete` fail. Enqueue
+policies get transaction/concurrency fixtures, including an injected active-run lookup error that
+must create zero new runs. Coverage is bidirectional over every mutating route/action; typed gate
+results parse the descriptor result schema and store a checkpoint/ref, notification commands are
+limited to read/unread/snooze, and capture mutation cannot target a run id.
+Journal and audit writes remain kernel-only. D331's settings-runtime and copied-backup authenticators
+may only perform their exact registered `commandAudits.findByCommand` reads (two and three respectively);
+new readers, any other audit method, or any write outside the kernel fails the guard.
   The runtime dispatcher is exhaustive across family **and action**. In Phase 1f the active
   start/worker-browser/run/gate/write-resolution actions execute, `run/edit-checkpoint` and every
   later family/action return `rejected:capability-unavailable` with zero authority-generation

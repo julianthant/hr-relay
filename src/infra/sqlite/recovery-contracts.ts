@@ -17,6 +17,9 @@ import {
   RunPrioritySchema,
   RunShapeSchema,
 } from "../../domain/run/envelope.js";
+import {
+  ProtectedSettingsNameSchema,
+} from "../../domain/config/protected-settings.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
@@ -68,9 +71,8 @@ export const BackupVerificationSchema = z.strictObject({
   exactTableRegistry: z.literal(true),
 });
 
-export const AuthorityBackupManifestSchema = z.strictObject({
+const AuthorityBackupManifestBaseSchema = z.strictObject({
   kind: z.literal("hrauto-authority-backup"),
-  manifestVersion: z.literal(1),
   backupFileName: SafeFileNameSchema,
   sourceDatabaseIdentity: FingerprintSchema,
   applicationId: z.literal(AUTHORITY_APPLICATION_ID),
@@ -82,13 +84,92 @@ export const AuthorityBackupManifestSchema = z.strictObject({
   byteSize: PositiveIntSchema,
   sha256: FingerprintSchema,
   verification: BackupVerificationSchema,
-}).superRefine((manifest, context) => {
+});
+
+function requireObservedBackupIdentity(
+  manifest: z.infer<typeof AuthorityBackupManifestBaseSchema>,
+  context: z.RefinementCtx,
+): void {
   for (const field of ["applicationId", "schemaVersion", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
     if (manifest[field] !== manifest.verification[field]) {
       context.addIssue({ code: "custom", path: ["verification", field], message: `${field} must equal the value observed from the backup copy` });
     }
   }
+}
+
+export const AuthorityBackupManifestV1Schema = AuthorityBackupManifestBaseSchema.extend({
+  manifestVersion: z.literal(1),
+}).superRefine(requireObservedBackupIdentity);
+
+const BackupFileIdentitySchema = z.strictObject({
+  backupFileName: SafeFileNameSchema,
+  byteSize: PositiveIntSchema,
+  sha256: FingerprintSchema,
 });
+
+export const AuthorityDatabaseBackupFileSchema = BackupFileIdentitySchema.extend({
+  role: z.literal("authority-database"),
+  sourceFileName: z.literal("state.db"),
+});
+
+export const OrdinarySettingsBackupFileSchema = BackupFileIdentitySchema.extend({
+  role: z.literal("ordinary-settings"),
+  sourceFileName: z.literal("settings.json"),
+});
+
+export const SettingsRootAuthorityBackupFileSchema = BackupFileIdentitySchema.extend({
+  role: z.literal("settings-root-authority"),
+  sourceFileName: z.literal("authority.json"),
+});
+
+export const ProtectedSettingsBackupPresenceSchema = z.strictObject({
+  revision: PositiveIntSchema,
+  entries: z.array(z.strictObject({
+    name: ProtectedSettingsNameSchema,
+    valueId: z.uuid(),
+    updatedAt: IsoInstantSchema,
+  })),
+}).superRefine((metadata, context) => {
+  const names = metadata.entries.map(({ name }) => name);
+  if (new Set(names).size !== names.length) {
+    context.addIssue({ code: "custom", path: ["entries"], message: "protected presence names must be unique" });
+  }
+  if (names.join("\0") !== names.toSorted().join("\0")) {
+    context.addIssue({ code: "custom", path: ["entries"], message: "protected presence names must be sorted" });
+  }
+});
+
+export const AuthorityBackupManifestV2Schema = AuthorityBackupManifestBaseSchema.extend({
+  manifestVersion: z.literal(2),
+  files: z.tuple([
+    AuthorityDatabaseBackupFileSchema,
+    OrdinarySettingsBackupFileSchema,
+    SettingsRootAuthorityBackupFileSchema,
+  ]),
+  protectedSettings: ProtectedSettingsBackupPresenceSchema,
+}).superRefine((manifest, context) => {
+  requireObservedBackupIdentity(manifest, context);
+  const database = manifest.files[0];
+  for (const field of ["backupFileName", "byteSize", "sha256"] as const) {
+    if (manifest[field] !== database[field]) {
+      context.addIssue({
+        code: "custom",
+        path: ["files", 0, field],
+        message: `${field} must equal the primary authority-database identity`,
+      });
+    }
+  }
+  const names = manifest.files.map(({ backupFileName }) => backupFileName);
+  if (new Set(names).size !== names.length) {
+    context.addIssue({ code: "custom", path: ["files"], message: "backup file names must be unique" });
+  }
+});
+
+/** Strict legacy read plus current multi-file write/read shape. Writers emit v2 only. */
+export const AuthorityBackupManifestSchema = z.discriminatedUnion("manifestVersion", [
+  AuthorityBackupManifestV1Schema,
+  AuthorityBackupManifestV2Schema,
+]);
 
 export const AuthorityBackupRequestSchema = z.strictObject({
   trigger: z.enum(["interval", "schema-migration", "external-write", "graceful-drain", "operator"]),
@@ -369,6 +450,9 @@ export const OfflineRestoreReportSchema = z.strictObject({
 export type AuthorityPendingCounts = z.infer<typeof AuthorityPendingCountsSchema>;
 export type AuthorityCopyInspection = z.infer<typeof AuthorityCopyInspectionSchema>;
 export type AuthorityBackupManifest = z.infer<typeof AuthorityBackupManifestSchema>;
+export type AuthorityBackupManifestV1 = z.infer<typeof AuthorityBackupManifestV1Schema>;
+export type AuthorityBackupManifestV2 = z.infer<typeof AuthorityBackupManifestV2Schema>;
+export type ProtectedSettingsBackupPresence = z.infer<typeof ProtectedSettingsBackupPresenceSchema>;
 export type AuthorityBackupRequest = z.infer<typeof AuthorityBackupRequestSchema>;
 export type AuthorityBackupRunReport = z.infer<typeof AuthorityBackupRunReportSchema>;
 export type StorageHealthCause = z.infer<typeof StorageHealthCauseSchema>;
