@@ -988,9 +988,9 @@ repository mutator directly, including either arm of the shared settlement helpe
 continuation adapters. Moving the direct call to another helper does not satisfy the oracle.
 **Order:** third, after both wave-2 peers are effectively integrated.
 
-- [ ] Route claim, heartbeat, executor transitions, recovery requeue, cancellation settlement and
+- [x] Route claim, heartbeat, executor transitions, recovery requeue, cancellation settlement and
   terminal publication through the run service without changing stable run/session/evidence identity.
-- [ ] Guard or remove direct core-runtime lifecycle writes outside the service; preserve D118's
+- [x] Guard or remove direct core-runtime lifecycle writes outside the service; preserve D118's
   attempting-write recovery admission, immutable attempt/claim-generation identity,
   `retainAfterFence()` and `span.ended` only after terminal commit (§D330.4, §D330.9).
 
@@ -1116,7 +1116,7 @@ Do not run Playwright parity or live-browser verification. A required UI/browser
 contract, new-operation or other excluded-scope change stops this assignment for operator resolution.
 No live HR write or push is authorized.
 
-**Task 3 candidate — awaiting independent review (2026-09-05).** Implementation
+**Initial Task 3 candidate evidence (2026-09-05; originally awaiting independent review).** Implementation
 `20715548d08325e67ca2070131c5bc7aeb219594` on `codex/phase-1-6-run-writers`, based on
 `7e2b76076e0542c2f40c6ea4be5c3a61252cb061`, follows the original plan `f34c9021` and
 approved amended plan `7e2b7607`, plus the operator-approved recovery-read amendment above.
@@ -1130,7 +1130,7 @@ production claim/heartbeat/sweep composition, service cancellation settlement, a
 and shared-write composites. The executor retains its original claim across diagnostic capture;
 all terminal publication uses after-outermost-commit callbacks. D118 enumeration includes attempts
 whose run row is absent, and sweep recovery preserves the run attempt and claim generation.
-Task 3 remains open pending independent review, integration gates and owned cleanup.
+At this candidate stage, Task 3 remained open pending independent review, integration gates and owned cleanup.
 
 | Proof boundary | Candidate evidence and forbidden effects |
 |---|---|
@@ -1194,8 +1194,8 @@ Coverage ran after compiler/linter completion with at most four file workers. Re
 
 The correction and this evidence are committed together on the assigned branch; their immutable
 commit is the commit adding this paragraph, based on reviewed head `49670b65`. The supervisor
-supplies that full SHA for renewed review. Task 3 remains **awaiting independent review** of the
-corrected candidate; no acceptance or integration is claimed by these finding dispositions.
+supplies that full SHA for renewed review. The corrected candidate was then submitted for renewed independent review; these finding
+dispositions alone did not claim acceptance or integration. Final acceptance follows below.
 
 **Supervisor sizing and assignment.** One supervisor fits: the worker port, service composition,
 terminal atomicity and recovery proofs are one coupled seam; a split would overlap every hard boundary.
@@ -1204,6 +1204,42 @@ This is serial work, not a parallel wave.
 | Assignment | Branch | Absolute worktree | Base / start prerequisite | Owned files and resources | Acceptance gates | Merge condition |
 |---|---|---|---|---|---|---|
 | `1.6.3` | `codex/phase-1-6-run-writers` | `/Users/julianhein/Projects/hr-worktree-run-writers` | Verified latest local `master` SHA containing restored Task 2-2, original plan `f34c9021` and the committed shared-settlement amendment; record the amendment SHA and verify all before the first edit | Task-3 seam, the bounded shared-helper/recovery continuation adaptation and tests above; synthetic authority/runtime roots only; no real state, browser or fixed port | Assigned proof matrix, focused suites, full coverage gate, manifest check, architecture | Freeze the exact candidate; record evidence and obtain fresh independent `sup_review` PASS. Then, against latest local `master` still containing restored Task 2-2 and the approved plan, integrate without a behavior-changing conflict, or re-review such a fix; run integration gates, record review/merge/gate evidence, remove only owned worktree/ref, and mark only Task 3 complete. No push. |
+
+#### Task 3 completed (2026-09-05)
+
+**COMPLETE.** The same independent reviewer, `/root/sup_review_run_writers` (`sup_review`,
+Sol 5.6/high), returned **PASS** on corrected candidate
+`a2c37bbada408e693cdd89415749f08e46478b65`, against approved plan/base
+`7e2b76076e0542c2f40c6ea4be5c3a61252cb061` (original plan `f34c9021`). All three findings
+above are resolved; no acceptance or evidence gaps remain. The reviewer inspected code, regression
+red/green logs and gate evidence, and reran read-only Git identity/diff checks only.
+
+The candidate was integrated into local `master` as
+`2c4e1af69fc8d5d97e38a3a4d14db4423ce51786`, without conflicts or any change to the reviewed
+tree. Required integration gates ran on that exact merge commit in the owned worktree's private test
+environment: typecheck, root lint, full coverage **416 files / 5,211 tests**, all ratified floors,
+suite-size check, manifest check (current), standalone architecture **75 files / 758 tests**, and
+`git diff --check` all passed. Integration global statements/branches/functions/lines were
+**85.57/76.75/89.73/87.64%**; core **87.73/78.30/93.02/90.20%**. Coverage used at most four
+file workers with no concurrent compiler/linter. Log: `/tmp/hr-run-writers-integration-gates.log`.
+The earlier observed intended-red deletion oracle and its restored passing proof remain applicable
+to this unchanged integrated guard.
+
+The final documentation gate first exposed an existing primary-environment refusal: secure bootstrap
+rejects a retired environment key. No environment/configuration change was made. The exact completion
+files were validated in the recreated assigned worktree with an empty private `.env`; its tree was
+compared byte-for-byte with the primary completion tree before that validation worktree/ref was
+removed again. The isolated gate preserves the assignment's test-environment requirement rather
+than changing primary credentials or weakening the lifecycle test. Logs:
+`/tmp/hr-run-writers-completion-gates.log` (environment refusal) and
+`/tmp/hr-run-writers-completion-isolated-gates.log` (final isolated validation).
+
+
+Cleanup was verified before this completion record: reviewer completed; no owned gate remained
+active; `/Users/julianhein/Projects/hr-worktree-run-writers`, its Git worktree registration and
+`codex/phase-1-6-run-writers` were removed. The primary checkout's environment was never copied or
+overwritten. No browser/parity/live verification or push occurred. This closes only Task 1.6.3;
+Task 4 and the rest of §1.6 retain their existing scope and remain unstarted by this session.
 
 ### Task 4 · Cut over operator run commands and archive/delete writers
 <!-- roadmap: p1f-run-commands -->

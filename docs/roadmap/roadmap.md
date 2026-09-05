@@ -509,15 +509,15 @@ log:
 - 2026-09-05 | direct supervisor close | accepted candidate `0e38b82f` after 5 independent review rounds and fixes, merged as `33d6a6e9` / `0a8173e0`, restored to master with full gates passing; Task 2-2 complete · next: Task 3
 
 #### 3 · Cut over executor and worker lifecycle writers {#p1f-run-writers}
-status: planned
+status: done
 doc: 01 §1.6 · Implement canonical run and settings authorities · ref:workflow-model §4 · ref:execution-and-sessions §3 · ref:frontend-backend-integration §3.4
 
 builds:
-- [ ] BE route queue claim, heartbeat, executor transition, recovery requeue, cancellation settlement and terminal publication through the run service (`run-record-service`, `worker-loop`, `run-executor`, `write-sequencer`, `worker/compose`); the worker side holds no lifecycle repository mutator
-- [ ] BE adapt the shared sequenced-settlement helper and its positive-recovery/operator-present callers: worker `advance-running` uses `workerTransition`; `resume-queued` uses a separate command/recovery port backed by existing `transition`, preserving CAS, `writeResolution`, `startAt` and one outer transaction; narrowly wire dashboard composition
-- [ ] BE preserve stable run/session ids and append-only evidence links; `span.ended` only after the terminal commit
-- [ ] PROOF #4–#7, #9, #10 and the worker/recovery half of #27 through the real worker composition; D118 attempting-write admission preserved; deletion test `worker-loop-writes-only-through-the-service`
-- [ ] PROOF both shared-helper arms and their real callers preserve atomic evidence, continuation and exact/divergent replay; outer rollback/refusal publishes nothing; lifecycle command ids cannot collide with kernel commands; deletion oracle also covers both helper arms and admitted continuation adapters
+- [x] BE route queue claim, heartbeat, executor transition, recovery requeue, cancellation settlement and terminal publication through the run service (`run-record-service`, `worker-loop`, `run-executor`, `write-sequencer`, `worker/compose`); the worker side holds no lifecycle repository mutator
+- [x] BE adapt the shared sequenced-settlement helper and its positive-recovery/operator-present callers: worker `advance-running` uses `workerTransition`; `resume-queued` uses a separate command/recovery port backed by existing `transition`, preserving CAS, `writeResolution`, `startAt` and one outer transaction; narrowly wire dashboard composition
+- [x] BE preserve stable run/session ids and append-only evidence links; `span.ended` only after the terminal commit
+- [x] PROOF #4–#7, #9, #10 and the worker/recovery half of #27 through the real worker composition; D118 attempting-write admission preserved; deletion test `worker-loop-writes-only-through-the-service`
+- [x] PROOF both shared-helper arms and their real callers preserve atomic evidence, continuation and exact/divergent replay; outer rollback/refusal publishes nothing; lifecycle command ids cannot collide with kernel commands; deletion oracle also covers both helper arms and admitted continuation adapters
 
 needs:
 - p1f-run-store
@@ -527,6 +527,7 @@ log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate/deletion test (doc 01 §1.6 Task 3); serial after wave 2 · left: implementation
 - 2026-09-05 | operator-approved direct phase plan | reconciled D330.10 ownership: Task 3 keeps the worker lifecycle seam and Task 4 owns command-kernel start/intake/capture creation plus `run.queued`; Task 3 owns the worker/recovery half of #27. Restored Task 2-2 code/evidence and full gates on master; Task 2-2 prerequisite satisfied · left: Task 3 implementation
 - 2026-09-05 | operator-approved shared-settlement amendment | Task-3 inspection at `e8d0fd54` found `resume-queued` also serves positive recovery/operator resolution. Admit only the shared helper, its two `write-recovery` continuation callers and narrow dashboard service-port injection; use existing command-owned `transition`, preserve the worker port boundary and full deletion oracle, add atomicity/continuation/replay proofs. Untouched initial worktree/ref removed; no implementation or acceptance claimed · left: implement the amended six-step plan
+- 2026-09-05 | direct supervisor close | candidate `a2c37bba` passed fresh independent `sup_review` after resolving cancellation admission, recovery publication and indexed recovery-selection findings; integrated as `2c4e1af6` with typecheck/lint, 5,211 coverage tests, 758 architecture tests, manifest and diff checks passing. Owned worktree/ref removed; Task 3 complete. No push or next-task dispatch.
 
 #### 4 · Cut over operator run commands and archive/delete writers {#p1f-run-commands}
 status: planned
