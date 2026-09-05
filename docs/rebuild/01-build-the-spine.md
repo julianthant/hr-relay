@@ -919,11 +919,12 @@ two peers serialize full coverage, architecture and parity runs.
 #### Final revised implementation candidate awaiting renewed independent review (2026-09-05)
 
 Task 2-2 is implemented on `codex/phase-1-6-settings` at final revised immutable implementation
-candidate `28109529`. The first fresh independent review returned `CHANGES REQUIRED`; all six findings
+candidate `0e38b82f`. The first fresh independent review returned `CHANGES REQUIRED`; all six findings
 have regression proofs and fixes. Its renewed review closed those six findings and returned
 `CHANGES_REQUIRED` for two newly exposed issues; both have fixes and proof. Its second renewed review
 closed those eight findings and exposed one request-admission ordering defect; that finding now has a
-pristine-root kernel proof and fix. The task remains
+pristine-root kernel proof and fix. Its third renewed review closed those nine findings and exposed one
+mixed-failure ingress-precedence defect; that finding now has BFF proofs and a fix. The task remains
 incomplete and unmerged pending renewed independent acceptance, integration gates and cleanup.
 
 | Evidence | Result |
@@ -937,14 +938,16 @@ incomplete and unmerged pending renewed independent acceptance, integration gate
 | Renewed-review dispositions | `711ea001` adds a real child-process `SIGKILL`/kernel-retry regression and reconciles the protected prepare before journal insertion; `54a2f5ed` removes the extra database method, uses three explicit read-only copied-backup audit checks, and pins those checks without weakening the command-write or layering guards |
 | Second renewed review | `CHANGES_REQUIRED` — the same read-only reviewer reviewed implementation `54a2f5ed` and evidence `3664b01a`; all eight prior findings closed, but stale protected schema input reached reconciliation before pure request admission and could materialize a pristine settings root |
 | Second renewed-review disposition | `28109529` exposes and reuses the protected authority's pure admission before reconciliation; its kernel regression proves exact `schema-mismatch`, zero authority reads, no pristine-root materialization and no SQLite command/audit/current mutation |
-| Final revised candidate commits | `f8ea3551`, `1b877014`, `866cbf1f`, `595647fb`, `711ea001`, `54a2f5ed`, `28109529`; final implementation head `28109529` |
+| Third renewed review | `CHANGES_REQUIRED` — the same read-only reviewer reviewed implementation `28109529` and evidence `39aedaeb`; all nine prior findings closed, but mixed invalid leaf requests could outrank stale schema or ordinary patch-fingerprint refusals at BFF ingress |
+| Third renewed-review disposition | `0e38b82f` centralizes raw ordinary patch fingerprint derivation and applies schema/fingerprint precedence before leaf classification; three BFF regressions prove the ordered refusal and zero authority effects for mixed failures |
+| Final revised candidate commits | `f8ea3551`, `1b877014`, `866cbf1f`, `595647fb`, `711ea001`, `54a2f5ed`, `28109529`, `0e38b82f`; final implementation head `0e38b82f` |
 | Authorized ownership amendment | Operator selected option A: Task 2-2 may add the transaction-safe, read-only historical protected-command `writeId` lookup in `src/infra/sqlite/authority-database.ts`. `d3ac830c` supplies it, strict request validation, restart/non-adjacent reuse proof and production dashboard composition; no other Task-1/Task-2-1 ownership moved. |
-| Full revised gate | PASS — typecheck; lint; coverage 5,175 tests with all ratified floors passing; build-manifest check |
+| Full revised gate | PASS — typecheck; lint; coverage 5,178 tests with all ratified floors passing; build-manifest check |
 | Supplemental gates | PASS — architecture 74 files / 754 tests; parity 269/269 |
 | Focused revised proof | PASS — combined settings, backup, config, command, ingress, catalog, composition and recovery suites: 10 files / 503 tests; exact lint, typecheck and `git diff --check` clean |
 | Parity provenance | The combined manifest changed descriptor and implementation fingerprints. `8f8777e4` refreshes only the resulting hash/provenance fields and hash pixels: 210 accessibility references, 210 metadata references and 31 PNGs. Audit found no DOM, copy, control, layout or style change. |
 | Isolation | PASS — synthetic empty ignored mode-0600 `.env`; no real `.env`, `.tracker`, live state, browser transaction, submit or push touched |
-| Review state | `awaiting renewed independent review`; all nine findings across three reviews are fixed, but no acceptance is claimed and the task remains unchecked/unmerged |
+| Review state | `awaiting renewed independent review`; all ten findings across four reviews are fixed, but no acceptance is claimed and the task remains unchecked/unmerged |
 
 ### Task 3 · Cut over executor and worker lifecycle writers
 <!-- roadmap: p1f-run-writers -->
