@@ -48,8 +48,8 @@ const rootTypeScriptConfigFiles = tsconfig.include
 const EXACT_GATE_COMMANDS = {
   typecheck: "tsc --noEmit",
   lint: "eslint src tests scripts vitest.config.ts vite.dashboard.config.ts playwright.parity.config.ts --max-warnings 0",
-  test: "vitest run",
-  "test:coverage": "vitest run --coverage && tsx scripts/suite-size.ts",
+  test: "tsx scripts/test-runner.ts run",
+  "test:coverage": "tsx scripts/test-runner.ts run --coverage && tsx scripts/suite-size.ts",
 } as const;
 
 export function gateCommandViolations(scripts: Readonly<Record<string, string>>): string[] {

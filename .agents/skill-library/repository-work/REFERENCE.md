@@ -74,6 +74,7 @@ npm run test               # every vitest project (unit + architecture + scenari
 npm run test:architecture  # the guard suite alone
 npm run test:coverage      # 60/80 lines/statements/functions floors + the suite-size report
 npm run test:watch
+npm run test:reap          # reclaim only validated inactive owned test-run roots; retain live/unknown runs
 
 npm run test:parity        # ref frontend-backend-integration §7 visual/a11y parity lane — builds the bundle, ASSERTS every reference
 npm run test:parity:update # the ONE deliberate way to re-freeze a reference (PARITY_UPDATE=1)

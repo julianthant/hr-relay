@@ -1,3 +1,4 @@
+import { runTestProcess, testRunsDirectory } from "./test-runner.js";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -161,6 +162,7 @@ export interface RunParityOptions {
   readonly commandArgs?: readonly string[];
   readonly lockCommand?: string;
   readonly expectedUid?: number;
+  readonly inactivityTimeoutMs?: number;
   readonly writeError?: (message: string) => void;
   readonly afterReportRead?: (path: string) => void;
 }
@@ -619,24 +621,8 @@ export function prepareParityReportLifecycle(cwd: string, expectedUid?: number):
   return readParityReportOnce(cwd, uid).identity;
 }
 
-async function runChild(command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv): Promise<ChildResult> {
-  return await new Promise((resolveChild) => {
-    const previousUmask = process.umask(0o077);
-    const child = (() => {
-      try {
-        return spawn(command, args, { cwd, env, stdio: "inherit" });
-      } finally {
-        process.umask(previousUmask);
-      }
-    })();
-    let spawnError: Error | undefined;
-    child.once("error", (error) => { spawnError = error; });
-    child.once("close", (code, signal) => {
-      if (spawnError !== undefined) resolveChild({ code: 1, detail: `could not start: ${spawnError.message}` });
-      else if (code !== null) resolveChild({ code, detail: `exit ${String(code)}` });
-      else resolveChild({ code: 1, detail: `signal ${signal ?? "unknown"}` });
-    });
-  });
+async function runChild(command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv, idleTimeoutMs = 180_000): Promise<ChildResult> {
+  return await runTestProcess({ command, args, cwd, env, rootDirectory: testRunsDirectory(), idleTimeoutMs });
 }
 
 function prepareCommandLockFile(cwd: string): string {
@@ -760,7 +746,7 @@ export async function runParityAndVerify(
   try {
     const before = prepareParityReportLifecycle(options.cwd, options.expectedUid);
     const runStartedAtMs = systemClock.nowMs();
-    child = await (dependencies.runChild ?? runChild)(
+    child = await (dependencies.runChild ?? ((command, args, cwd, env) => runChild(command, args, cwd, env, options.inactivityTimeoutMs)))(
       options.command ?? PARITY_PLAYWRIGHT_COMMAND,
       [...(options.commandArgs ?? PARITY_PLAYWRIGHT_ARGS), ...options.args],
       options.cwd,

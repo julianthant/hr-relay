@@ -114,7 +114,7 @@ export function architectureProjectViolations({
   const violations: string[] = [];
   const normalized = command.trim().replace(/\s+/g, " ");
   const exactCommand =
-    "vitest run --project architecture --passWithNoTests=false";
+    "tsx scripts/test-runner.ts run --project architecture --passWithNoTests=false";
   if (normalized !== exactCommand) {
     violations.push(
       `test:architecture must select only the named architecture project; expected '${exactCommand}'`,

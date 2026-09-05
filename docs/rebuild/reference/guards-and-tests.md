@@ -1156,6 +1156,38 @@ all-project targeted convenience and `test:architecture` is the guard-only targe
 neither is an additional per-commit obligation. The 2026-08-12 timings above remain the historical
 evidence that adopted D191, not a claim about today's topology or runtime.
 
+**2026-09-05 test-run reliability amendment (operator-approved maintenance).** The npm gate
+names, test membership, four-worker ceiling, timeouts, suite-size assertion and coverage floors stay
+unchanged. Batch Vitest entrypoints now execute through `scripts/test-runner.ts`, which launches
+the installed Vitest CLI with the original arguments and preserves its failure exit. Full coverage
+already proves the architecture project; the standalone command is a targeted convenience unless
+an admitted assignment explicitly requires it. Do not append duplicate suite runs to unchanged
+coverage evidence, or change an existing assignment's gate schedule implicitly.
+
+Interactive `test:watch` retains its direct Vitest entrypoint and terminal controls; its scratch
+is outside this batch-run ownership scheme. Child processes retain a private file-creation mask.
+
+Each invocation receives a private temporary root in the short canonical `/tmp/hrt-<uid>` namespace
+(to preserve macOS UNIX socket path limits). Workers inherit its `TMPDIR`, `TMP` and `TEMP`. The
+runner removes successful scratch only after its process group is gone. Failures retain their root,
+exit/signal and bounded output tail; `npm run test:reap` explicitly reclaims only validated private
+run directories whose recorded process group is absent. Active groups, incomplete startup records,
+unknown paths, symlinks, malformed ownership and uncertain liveness never authorize deletion. A
+parent SIGKILL leaves the child group protected until it exits. Darwin's empty orphaned group may
+return EPERM to a signal probe; in that case an independently validated process-group listing must
+prove absence. No cleanup is based on age and no legacy scratch directories are swept.
+
+The parity wrapper uses the same containment and fails after 180 seconds without child output,
+retaining diagnostics and terminating its owned group (TERM, then KILL if needed). This is an outer
+runner failure, never a passed/skipped test or a retry; existing per-test deadlines, exact reference
+checks and zero counted pixel-difference allowance are unchanged. Child progress and final duration
+remain visible. This bounds silent hangs; sustained output from a stuck child is not proof of
+progress and is not detected by this inactivity bound.
+
+Regression evidence lives in `tests/unit/scripts/test-runner.test.ts` and the existing parity JSON
+and gate-manifest suites: real child success/failure, silent stall, worker/parent SIGKILL, live-group
+preservation, safe reclamation, path/ownership refusal and actual failing Vitest CLI execution.
+
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
 <!-- roadmap: p2-2j -->

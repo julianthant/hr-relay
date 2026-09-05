@@ -1320,3 +1320,19 @@ describe("parity JSON evidence verifier", () => {
     }
   });
 });
+
+
+it("fails a silent parity child without accepting its empty or stale JSON report", async () => {
+  const root = temporaryRepo();
+  const failures: string[] = [];
+  try {
+    const code = await runParityAndVerify({
+      cwd: root, env: process.env, args: [], mode: "assert",
+      command: process.execPath, commandArgs: ["-e", "setInterval(()=>{},1000)"],
+      inactivityTimeoutMs: 200, writeError: (message) => { failures.push(message); },
+    });
+    assert.equal(code, 1);
+    assert.match(failures.join("\n"), /no test output for 200ms/);
+    assert.match(failures.join("\n"), /JSON evidence verification also failed/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
