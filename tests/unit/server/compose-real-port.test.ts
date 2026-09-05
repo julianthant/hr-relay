@@ -354,8 +354,8 @@ function journalExplorer(
 }
 
 describe("composed dashboard runtime over an owned loopback socket", () => {
-  it("M9 refuses a real v30 authority under CURRENT29 before settings opens or config resolution", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-downgrade-v30-"));
+  it("M9 refuses a real v31 authority under CURRENT29 before settings opens or config resolution", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-downgrade-v31-"));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
@@ -367,7 +367,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const before = readFileSync(path);
     const raw = new DatabaseSync(path, { readOnly: true });
     try {
-      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 30);
+      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 31);
       assert.notEqual(raw.prepare("SELECT name FROM sqlite_master WHERE name = 'authority_upgrades'").get(), undefined);
     } finally {
       raw.close();
@@ -389,7 +389,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         await assert.rejects(composeOlderBuild({
           isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0,
           env: {}, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")), repoRoot,
-        }), /authority schema 30 is newer than supported 29/u);
+        }), /authority schema 31 is newer than supported 29/u);
 
         const isSettingsPath = (value: unknown): boolean => typeof value === "string"
           && (value.startsWith(join(stateRoot, "settings.json"))
@@ -412,12 +412,12 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         resolveSpy.mockRestore();
       }
     });
-    assert.equal((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 30);
+    assert.equal((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 31);
   });
 
   it.each([
     { version: 29, refusal: /upgrade-required \{ schemaVersion: 29, floor: 30 \}/u },
-    { version: 31, refusal: /authority schema 31 is newer than supported 30/u },
+    { version: 32, refusal: /authority schema 32 is newer than supported 31/u },
   ])("releases its acquired server process record when authority v$version refuses open", async ({
     version,
     refusal,

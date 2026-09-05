@@ -1,4 +1,4 @@
-# `reference/decisions.md` — the decision ledger (D1–D332, 2026-07-17 → 2026-09-04)
+# `reference/decisions.md` — the decision ledger (D1–D333, 2026-07-17 → 2026-09-04)
 
 **D325/D326 session-workflow amendment (2026-09-04):** the operator opens planning and supervisor
 sessions; supervision includes a fresh read-only reviewer subagent, fixes and finalization. Task
@@ -2069,3 +2069,14 @@ import, adapter expiry policy and deletion tests. It changes no runtime code; 1.
 | # | Decision | Owning doc |
 |---|---|---|
 | **D332** | **THE AUTHORITY UPGRADE IS ONE STOPPED-SYSTEM COMMAND (`cli storage upgrade [--plan]`), NEVER A BOOT-TIME MIGRATION: A TOTAL ORDERED READ-ONLY PREFLIGHT (D181 ADMISSION, HEALTH, SCHEMA/D290 LINEAGE, LAYOUT, OLD-PATHNAME SETTLEMENT, D321 JOURNAL AGREEMENT, A VERIFIED D322 BACKUP BOUND TO THE LIVE GENERATION, `.env` CLASSIFICATION, DUAL-SOURCE AGREEMENT, CANARY REFERENCES, TOMBSTONE EVIDENCE), THEN PREPARE → ONE EXCLUSIVE SQLITE TRANSACTION (ORDINARY CHAIN + D332 SCHEMA STEPS + TOMBSTONE ORDINAL BACKFILL WITH PROVENANCE + THE JOURNALED SETTINGS REWRITE UNDER THE NEW `SETTINGS_SCHEMA_HASH` + THE MARKED PROTECTED IMPORT + ONE `authority_upgrades` ROW) → SETTLE; ONE JOURNAL INSIDE THE DATABASE, A CLOSED MIXED-GENERATION BOOT MATRIX, ROLLBACK = THE PRE-UPGRADE BACKUP PLUS RETAINED ROLLBACK EVIDENCE, EVIDENCE/SNAPSHOTS/SPANS/ARCHIVE DIGESTS BYTE-IDENTICAL, `authority-unknown` NEVER RE-ADMITTED, EVERY ADAPTER NAMED WITH AN EXPIRY PHASE AND A RED-CAPABLE DELETION TEST, PROVIDER KEYS NEVER COPIED, HISTORICAL EXPOSURE RECORDED NEVER CLAIMED ERASED (0.3 Task 3, 2026-09-04).** Amended 2026-09-04 by the Phase 1.6 operator ruling: every journal append has its own opaque `record_key`/`recordKey`; partial uniqueness applies per `upgradeId` to `baseline`, `committed`, and `settled`, while repeated `planned` rows remain distinct evidence. Design only (D326): 1.6 implements the command, the schema steps, the `settings-upgrade`/adapter guards and the proofs; 2.6 deletes A0–A3; 3.1 re-freezes the parity references. | ref dashboard-surfaces §2.5 D332 (primary: §D332.1–§D332.12 — the command, preflight, execution, rollback, journal/idempotence, the boot matrix, preservation, read-forward, adapter expiry policy, proofs, supersessions) · ref clock-config-secrets §D332 (settings half: the import, tie-break, `migrated-refused` first boot, canary references, historical exposure) and §4.1 dated note (the retirement arm) · ref guards-and-tests §5.2 (the adapter roster A0–A8 and each deletion test) · doc 00 §0.3 Task 3 · roadmap `phase0-authority-migration-design` |
+
+## Reconciliation round 139 (2026-09-04) — lifecycle replay uses the existing authority journal
+
+_phase: 1_
+_D333 records the operator's Task 1.6.2-1 ruling after implementation intake exposed that D330.4's
+mandatory replay could not fit the product-only command validators. Its normative text lands in ref
+dashboard-surfaces §D330.4/§D330.10 in this same commit. It adds no table or migration._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D333** | **RUN-LIFECYCLE COMMAND REPLAY USES ONE STRICT INTERNAL ARM OF THE EXISTING `commands` / `command_audits` AUTHORITY JOURNAL.** The arm commits the canonical request fingerprint, exact original fence and affected result identity without copying run input; exact replay is read-only, divergent or cross-kind command-id reuse refuses, partial journal pairs fail loud, and the first applied mutation plus both journal rows remain one authority transaction/generation. Product command schemas stay closed. No DDL is authorized: v31 remains lineage-only. | ref dashboard-surfaces §D330.4 / §D330.10 (primary) · doc 01 Task 2-1 |

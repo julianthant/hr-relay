@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { deepFreeze } from "./immutability.js";
+import { RunRecordSchema, RunStateSchema } from "./run/record.js";
+import { DeletedRunRecordSchema } from "./run/deleted-run.js";
 import {
   CommandAuditIdSchema,
   CommandIdSchema,
@@ -8,6 +10,7 @@ import {
   LOCAL_OPERATOR_ACTOR_ID,
   NonNegativeIntSchema,
   PositiveIntSchema,
+  RunIdSchema,
 } from "./ids.js";
 
 export const AuthorityTableNameSchema = z.enum([
@@ -229,3 +232,33 @@ export const ProtectedSettingsCurrentRecordSchema = z.strictObject({
   }
 });
 export type ProtectedSettingsCurrentRecord = z.infer<typeof ProtectedSettingsCurrentRecordSchema>;
+
+/** D330.2: evidence cannot manufacture a lifecycle row. */
+export const RunExistenceSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("absent"), runId: RunIdSchema }),
+  z.strictObject({
+    state: z.literal("present"),
+    disposition: z.enum(["live", "archived"]),
+    run: RunRecordSchema,
+  }),
+  z.strictObject({ state: z.literal("deleted"), tombstone: DeletedRunRecordSchema }),
+]);
+export type RunExistence = z.infer<typeof RunExistenceSchema>;
+
+/** D330.5: expected refusals are data; storage failures still propagate. */
+export const RunRecordRefusalSchema = z.discriminatedUnion("reason", [
+  z.strictObject({ reason: z.literal("conflict"), currentVersion: PositiveIntSchema }),
+  z.strictObject({ reason: z.literal("identity-conflict"), field: z.enum(["runId", "attempt", "runNumber", "itemId", "sessionId"]) }),
+  z.strictObject({ reason: z.literal("illegal-transition"), from: RunStateSchema, to: RunStateSchema, message: z.string().min(1) }),
+  z.strictObject({ reason: z.literal("worker-busy"), runId: RunIdSchema }),
+  z.strictObject({ reason: z.literal("none-eligible"), notBefore: IsoInstantSchema.optional() }),
+  z.strictObject({ reason: z.literal("tree-non-terminal"), runId: RunIdSchema }),
+  z.strictObject({ reason: z.literal("schema-mismatch"), digest: FingerprintSchema }),
+  z.strictObject({ reason: z.enum([
+    "parent-missing", "retry-of-missing", "tombstoned", "runtime-stale", "cursor-stale",
+    "owned-by-worker", "lost", "replay-divergent", "heartbeat-live", "invalid-state",
+    "source-deleted", "not-terminal", "already-archived", "workflow-unregistered",
+    "is-member", "use-archive-door", "retention-not-due", "policy-refused",
+  ]) }),
+]);
+export type RunRecordRefusal = z.infer<typeof RunRecordRefusalSchema>;

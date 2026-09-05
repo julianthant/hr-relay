@@ -4046,6 +4046,21 @@ replay of an already-applied command returns `applied-already` with the current 
 nothing; a divergent replay under the same command id refuses. `expectedVersion` on a replay is
 compared against the version the ORIGINAL apply saw, so a replay never conflicts with itself.
 
+**Lifecycle journal arm (D333, 2026-09-04).** The existing `commands` / `command_audits` tables also
+admit one strict, discriminated `run-lifecycle` record family. It stores the command id, closed
+operation name, a SHA-256 commitment to the canonical parsed request, the exact original CAS or claim
+fence when one exists, and only the affected run/tombstone identity plus the applied run version needed
+to reproduce the result (an exact replay after later deletion returns that immutable version with the
+tombstone rather than inventing absence);
+it never copies the run input or another secret-bearing payload into the journal. Product command
+schemas remain closed and unchanged. A lifecycle replay reads both rows inside the same authority
+transaction: an exact family/operation/fingerprint/fence match returns the recorded result identity
+without a write; any same-id product command or mismatched lifecycle record is `replay-divergent`;
+one row without its peer is corruption and fails loud. The first successful lifecycle mutation writes
+both journal rows in the mutation's transaction, so the whole operation advances authority generation
+once. Refusals write neither row. No DDL is added: schema v31 remains solely the relaunch-lineage
+migration in §D330.9.
+
 ###### D330.5 — the typed operation set and its failure modes
 
 The service exposes exactly this closed set. Every operation is a total function returning a closed
@@ -4299,6 +4314,11 @@ is a literal list, not a path prefix. The existing table-class registry coverage
 mutate each authority repository and prove `authority_generation` advances) extend to cover the
 service: a lifecycle operation that commits without advancing the generation, or a service method
 with no coverage row, fails the guard.
+
+D333's lifecycle-journal adapter is part of this same boundary. Its strict durable schemas live in
+`src/domain/commands.ts`, the authority table registry admits their union in
+`src/infra/sqlite/storage-records.ts`, and only the run-record service may call the adapter's
+lifecycle-journal repository. This is not a second command kernel or another lifecycle writer.
 
 **A test may not bypass the service to make a surface green.** Fixtures compose the real service over
 a real temporary database; inserting a `tasks` row by hand to reach a state the operation set refuses

@@ -4,7 +4,7 @@ import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
 export const UPGRADE_FLOOR_SCHEMA_VERSION = 30;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = UPGRADE_FLOOR_SCHEMA_VERSION;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 31;
 
 export function requiresStoppedSystemAuthorityUpgrade(schemaVersion: number): boolean {
   return schemaVersion > 0 && schemaVersion < UPGRADE_FLOOR_SCHEMA_VERSION;
@@ -1719,6 +1719,41 @@ export const SQLITE_MIGRATIONS = deepFreeze([
       `CREATE TRIGGER authority_upgrades_never_deleted
         BEFORE DELETE ON authority_upgrades
         BEGIN SELECT RAISE(ABORT, 'authority upgrade journal rows are never deleted'); END`,
+    ],
+  },
+  {
+    // D330.9 / Task 1.6.2-1: relaunch provenance belongs to the NEW run.
+    // Removing an archived source therefore preserves every live descendant's
+    // lineage; deleting the new run still removes its row behind that run's
+    // own D308 tombstone. No other authority shape changes in v31.
+    version: 31,
+    statements: [
+      "DROP TRIGGER archive_relaunches_immutable_update",
+      "DROP TRIGGER archive_relaunches_never_deleted",
+      "DROP INDEX archive_relaunches_source_idx",
+      `CREATE TABLE archive_relaunches_v31 (
+        record_key TEXT PRIMARY KEY REFERENCES tasks(record_key) ON DELETE RESTRICT,
+        archived_run_id TEXT NOT NULL,
+        record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+        created_at TEXT NOT NULL
+      ) STRICT`,
+      `INSERT INTO archive_relaunches_v31
+        (record_key, archived_run_id, record_json, created_at)
+        SELECT record_key, archived_run_id, record_json, created_at FROM archive_relaunches`,
+      "DROP TABLE archive_relaunches",
+      "ALTER TABLE archive_relaunches_v31 RENAME TO archive_relaunches",
+      "CREATE INDEX archive_relaunches_source_idx ON archive_relaunches(archived_run_id, created_at)",
+      `CREATE TRIGGER archive_relaunches_immutable_update
+        BEFORE UPDATE ON archive_relaunches
+        BEGIN
+          SELECT RAISE(ABORT, 'relaunch provenance is immutable; a second relaunch is a second row');
+        END`,
+      `CREATE TRIGGER archive_relaunches_never_deleted
+        BEFORE DELETE ON archive_relaunches
+        WHEN NOT EXISTS (SELECT 1 FROM deleted_runs WHERE record_key = OLD.record_key)
+        BEGIN
+          SELECT RAISE(ABORT, 'relaunch provenance is never deleted outside its new run D308 tombstone');
+        END`,
     ],
   },
 ] as const);
