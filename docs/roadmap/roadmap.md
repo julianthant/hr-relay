@@ -502,6 +502,7 @@ needs:
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | relabelled 2-2 (wave 2 peer) and bound to its seam; never edits `migrations.ts` or `authority-database.ts` (Task 1 landed the singleton) · left: implementation
 - 2026-09-04 | execute-phase-1-6-from C858cc3dc R03 | started the declared wave from common verified base `d2fe05dd`; exact task/worktree/branch and allowance in docs/coordinator/execute-phase-1-6-from-c858cc3dc/supervisors.json · left: implementation, assigned proofs and complete lifecycle
+- 2026-09-04 | direct phase plan | approved one-supervisor focused plan in doc 01 §1.6 Task 2-2: `codex/phase-1-6-settings` at `/Users/julianhein/Projects/hr-worktree-settings`; the minimal Settings producer adaptation preserves the eight-leaf surface and unchanged parity while implementing D331.5's leaf-operation wire; start waits for one recorded common wave SHA containing both approved peer plans · left: implementation from that verified base
 
 #### 3 · Cut over executor and worker lifecycle writers {#p1f-run-writers}
 status: planned

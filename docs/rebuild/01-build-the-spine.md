@@ -706,10 +706,15 @@ five provider families); `src/domain/runtime-dependencies.ts`; `src/infra/sqlite
 protected presence metadata, P15 — the READ widening is Task 6's); the nine `resolveConfigWithProvenance`
 call sites, minimally (the `env` argument drops); `tests/unit/architecture/settings-catalog.test.ts` with
 its `active` inventory entry and the `config-snapshot-generations` entry's invariant text extended for the
-`retired-leaves-are-a-closed-list` arm (same commit as P38); P39's sixteen deliberately edited files. **Does not touch:** `migrations.ts`,
-`authority-database.ts` (Task 1 landed the singleton), the run-record service, the worker loop, the
-Settings SURFACE (3.1) — the settings-editor query keeps serving DCC3's eight-leaf inventory derived from
-the catalog until 3.1 (A8). **Owes:** §D331.11 P1–P15, P17–P19, P21–P32, P33's protected half, P34–P39,
+`retired-leaves-are-a-closed-list` arm (same commit as P38); P39's sixteen deliberately edited files;
+`src/dashboard/surfaces/settings-model.ts`, `src/dashboard/surfaces/settings.tsx` and their focused tests
+only for the D331.5 request-shape transition below. **Does not touch:** `migrations.ts`,
+`authority-database.ts` (Task 1 landed the singleton), the run-record service, the worker loop, or the
+Settings SURFACE beyond the approved producer-only exception: translate the existing draft to D331.5's
+leaf operations and remove the impossible `env` provenance branch, with no DOM, copy, style, served
+inventory or parity-reference change. The full Settings/Setup interface remains 3.1; the settings-editor
+query keeps serving DCC3's eight-leaf inventory derived from the catalog until then (A8). **Owes:**
+§D331.11 P1–P15, P17–P19, P21–P32, P33's protected half, P34–P39,
 P41; §D332.11 M14's schema half (generation 5 registered; a pre-floor snapshot with the leaf parses).
 **Gate:** base + those proofs + `npm run test:parity` green UNCHANGED. **Deletion tests:** P3/P4 (A4 —
 compile-time red at every caller, runtime red under a hostile `process.env`), P34 plus the
@@ -724,6 +729,72 @@ on the existing `config-snapshot-generations` entry). **Order:** wave 2, peer 2.
 - [ ] Host-derived display as the catalogued default (P36), credentials and canary references in the
   store (P32), permissions/symlink/redaction/restart-scope/concurrent-update proofs (P13–P15, P17–P19,
   P22–P25, P33 protected half, P37), generation 5's retirement (P38), P39's deliberate edits, P41.
+
+#### Approved focused-session plan (2026-09-04)
+
+**Outcome and exclusions.** One supervisor implements the complete D331 settings authority and the
+Task-2-2 portions of D332 without redesign: the 88-row catalog; catalog-derived ordinary schema;
+environment-free resolver; generation-5 retirement; the two-document `.tracker/settings/` repository;
+ordinary/protected CAS commands and presence-only readback; A4/A5 retirement; provider-only `.env`;
+backup-manifest-v2 write/verification; and D183 dispositions for every new served leaf. The narrow `/ui`
+Operate-mode exception above keeps the existing eight-leaf page functional while the wire changes. It
+does not implement 3.1's expanded Settings interface. Task 5 still owns full composition/runtime
+consumer cutover; Task 6 owns pre-floor upgrade/read widening; no real `.env`, `.tracker`, browser or live
+system is touched.
+
+**Verified prerequisites.** Task 1's schema-floor proof merge `5b1fb626` is an ancestor of the current
+integration line; `d2fe05dd` was the prior common wave baseline, and runtime source has not changed since
+that baseline. Snapshot `02942b40` is incomplete historical implementation evidence only: inspect and
+reuse reviewed current-contract hunks, never cherry-pick it wholesale or import its deleted coordinator
+artifacts. Before either wave peer starts, integrate the approved 2-1 and 2-2 plans on `master`, record
+that exact common SHA, and recheck the worktree path, branch and four-worktree repository budget.
+
+**Implementation sequence.** The supervisor keeps the cross-layer judgment and performs these steps in
+order:
+
+1. Verify the common wave base, Task 1 floor/singleton, exact owned paths, proof ledger and snapshot
+   limits. Establish synthetic private roots only.
+2. Land the catalog, generated ordinary schema, host-display fact input, settings-over-default resolver,
+   and generation-5 retirement. Remove the resolver's environment parameter and adapt every compiler-
+   discovered caller in the same change.
+3. Land the protected schemas and shared settings root: two documents, one lock/reaper, per-target
+   prepare/rollback, private-file admission, independent revisions, D321 journal coupling and both CAS
+   arms. Add the marked protected command, presence-only readback and schema hashes.
+4. Move migrated credentials, canaries, model chains and other operator-managed leaves to their single
+   catalogued authorities. Refuse every migrated environment name before value access and retain only
+   the five provider-key families in `.env`.
+5. Add manifest-v2 write and current-v2 verification for the two ordinary files plus protected presence
+   metadata. Preserve manifest-v1 and pre-floor compatibility for Task 6's bounded read widening. Add
+   every required D183 disposition.
+6. Apply the producer-only UI adaptation with no rendered/reference change. Complete the assigned proof
+   and intended-red matrix, regenerate the build manifest, run the gates, commit the exact candidate and
+   record `awaiting independent review` without marking the task complete.
+
+**Acceptance.** Map §D331.11 P1–P15, P17–P19, P21–P32, P33's protected half, P34–P39 and P41, plus
+§D332.11 M14's schema half, to a real test and intended-red oracle. P16/P20 remain Task 5; P40 remains
+3.1; Task 6 retains full upgrade and pre-floor manifest reading. Run the focused settings/config,
+command, bootstrap, backup, redaction, activity-export, diagnostic, worker/dry-run and snapshot tests,
+then:
+
+```text
+npm run typecheck && npm run lint && npm run test:coverage && npm run build:manifest:check
+npm run test:architecture
+npm run test:parity
+```
+
+Parity must pass unchanged. Any needed contract change returns to a newly numbered 0.3 task. Any test
+run is paired with lint, and generated descriptor closure changes use `npm run build:manifest` before
+the check.
+
+**Supervisor sizing and wave assignment.** One supervisor fits because the catalog, file authority,
+command schemas and proof matrix form one coupled authority seam; a second supervisor would overlap the
+central schemas, settings repository and acceptance tests. Task 2-1 remains an independently planned
+peer, not part of this assignment. File isolation does not isolate fixed ports or test artifacts, so the
+two peers serialize full coverage, architecture and parity runs.
+
+| Assignment | Branch | Absolute worktree | Base / start prerequisite | Owned files and resources | Acceptance gates | Merge condition |
+|---|---|---|---|---|---|---|
+| `1.6.2-2` | `codex/phase-1-6-settings` | `/Users/julianhein/Projects/hr-worktree-settings` | Verified common `master` SHA containing Task 1 and both approved wave plans; record it before either peer starts | Task-2-2 seam above; synthetic settings roots only; no real runtime or live state | Assigned proof matrix; focused suites; full gate, architecture and unchanged parity | Freeze the independently reviewed candidate. Task 2-1 receives PASS and merges first. The 2-2 supervisor then merges `--no-ff` to `master`; behavior-changing conflict fixes require renewed review. Run integration gates, remove this worktree and local branch, record review/merge/gate/cleanup evidence, then mark only Task 2-2 complete. |
 
 ### Task 3 · Cut over executor and worker lifecycle writers
 <!-- roadmap: p1f-run-writers -->
