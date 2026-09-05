@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import {
   closeSync,
   constants,
@@ -24,12 +24,30 @@ import {
   SettingsApplyRefusalSchema,
   SettingsFileRecordSchema,
   derivePersistedSettingsFingerprint,
-  deriveSettingsPatchFingerprint,
   initialSettingsFileRecord,
   mergeSettingsPatch,
+  type SettingsApplyInput,
   type SettingsApplyRefusal,
   type SettingsFileRecord,
 } from "../../domain/config/settings.js";
+import {
+  PROTECTED_SETTINGS_SCHEMA_HASH,
+  ProtectedSettingsApplyInputSchema,
+  ProtectedSettingsLastAppliedSchema,
+  ProtectedStoreRecordSchema,
+  ProtectedSettingsNameSchema,
+  initialProtectedStoreRecord,
+  type ProtectedSettingsApplyInput,
+  type ProtectedStoreRecord,
+} from "../../domain/config/protected-settings.js";
+import {
+  SettingsDocumentTargetSchema,
+  SettingsRootAuthoritySchema,
+  settingsRootAuthority,
+  settingsRootPathsFromOrdinaryPath,
+  type SettingsDocumentTarget,
+  type SettingsRootAuthority,
+} from "../../domain/config/settings-root.js";
 import { deepFreeze } from "../../domain/immutability.js";
 import { FingerprintSchema, PositiveIntSchema } from "../../domain/ids.js";
 import { sha256Hex } from "../../domain/sha256.js";
@@ -91,6 +109,7 @@ export type SettingsPrepareResolution = "committed" | "rollback";
 
 export interface SettingsFileAuthority {
   read(): SettingsFileRecord;
+  pendingTarget(): SettingsDocumentTarget | undefined;
   reconcile(resolve: (prepared: SettingsPreparedUpdate) => SettingsPrepareResolution): SettingsFileRecord;
   /** Hold exclusive settings authority while work atomically consumes this exact boot identity. */
   withExactRecord<Result>(expected: unknown, work: () => Result): Result;
@@ -99,7 +118,7 @@ export interface SettingsFileAuthority {
 
 export interface SettingsFileAuthorityOptions {
   readonly path: string;
-  /** Resolve the complete candidate through the composition's exact env/clock precedence. */
+  /** Resolve the complete candidate through the composition's exact settings/host facts. */
   readonly validateCandidate: (settings: SettingsFileRecord["settings"]) => void;
   readonly operations?: SettingsFileOperations;
   readonly hooks?: SettingsFileAuthorityHooks;
@@ -109,8 +128,12 @@ let temporarySequence = 0;
 export const MAX_SETTINGS_FILE_BYTES = 1_048_576;
 const MAX_SETTINGS_LOCK_BYTES = 16_384;
 const MAX_SETTINGS_INITIALIZATION_BYTES = 16_384;
-const MAX_SETTINGS_ROLLBACK_BYTES = 16_384;
+const MAX_SETTINGS_ROLLBACK_BYTES = MAX_SETTINGS_FILE_BYTES * 3;
 const MAX_SETTINGS_PREPARE_BYTES = MAX_SETTINGS_FILE_BYTES * 3;
+export const MAX_PROTECTED_SETTINGS_BYTES = 64_000;
+
+const SettingsApplyPreflightSchema = SettingsApplyInputSchema.extend({ patch: z.unknown() });
+const ProtectedSettingsApplyPreflightSchema = ProtectedSettingsApplyInputSchema.extend({ entries: z.unknown() });
 
 const SettingsFileExpectationSchema = z.strictObject({
   revision: PositiveIntSchema,
@@ -135,53 +158,72 @@ const SettingsStaleReaperRecordSchema = z.strictObject({
 });
 type SettingsStaleReaperRecord = z.infer<typeof SettingsStaleReaperRecordSchema>;
 
-const SettingsInitializationRecordSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  settingsPathFingerprint: FingerprintSchema,
-  settingsSchemaHash: FingerprintSchema,
-  state: z.enum(["virgin", "initialized"]),
-});
-type SettingsInitializationRecord = z.infer<typeof SettingsInitializationRecordSchema>;
+const SettingsInitializationRecordSchema = SettingsRootAuthoritySchema;
+type SettingsInitializationRecord = SettingsRootAuthority;
 
-const SettingsRollbackRecordSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  rollbackId: z.uuid(),
-  settingsPathFingerprint: FingerprintSchema,
-  commandId: z.uuid(),
-  appliedRevision: PositiveIntSchema,
-  priorRevision: PositiveIntSchema,
-  appliedSettingsBytesFingerprint: FingerprintSchema,
-  priorSettingsBytesFingerprint: FingerprintSchema.nullable(),
-  priorInitializationBytesFingerprint: FingerprintSchema,
-}).superRefine((record, context) => {
-  if (record.priorRevision + 1 !== record.appliedRevision) {
-    context.addIssue({
-      code: "custom",
-      path: ["priorRevision"],
-      message: "settings rollback must reverse exactly one applied revision",
-    });
-  }
-});
-type SettingsRollbackRecord = z.infer<typeof SettingsRollbackRecordSchema>;
-
-const Base64BytesSchema = z.string().regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u);
-const SettingsPrepareRecordSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  prepareId: z.uuid(),
-  settingsPathFingerprint: FingerprintSchema,
-  command: z.strictObject({
-    commandId: z.uuid(),
-    commandFingerprint: FingerprintSchema,
-    expectedRevision: PositiveIntSchema,
-    settingsSchemaHash: FingerprintSchema,
+const SettingsCommandIdentitySchema = z.union([
+  z.strictObject({
+    commandId: z.uuid(), commandFingerprint: FingerprintSchema,
+    expectedRevision: PositiveIntSchema, settingsSchemaHash: FingerprintSchema,
     patchFingerprint: FingerprintSchema,
   }),
+  ProtectedSettingsLastAppliedSchema,
+]);
+type SettingsCommandIdentity = z.infer<typeof SettingsCommandIdentitySchema>;
+const Base64BytesSchema = z.string().regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u);
+const SettingsRecoveryBytesSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  target: SettingsDocumentTargetSchema,
+  settingsPathFingerprint: FingerprintSchema,
+  command: SettingsCommandIdentitySchema,
   priorSettingsBytesBase64: Base64BytesSchema.nullable(),
   nextSettingsBytesBase64: Base64BytesSchema,
   priorInitializationBytesBase64: Base64BytesSchema,
   nextInitializationBytesBase64: Base64BytesSchema,
+}).superRefine((record, context) => {
+  if ((record.target === "ordinary") !== ("settingsSchemaHash" in record.command)) {
+    context.addIssue({ code: "custom", message: "recovery target does not match its command arm" });
+  }
 });
+const SettingsPrepareRecordSchema = SettingsRecoveryBytesSchema.safeExtend({ prepareId: z.uuid() });
 type SettingsPrepareRecord = z.infer<typeof SettingsPrepareRecordSchema>;
+const SettingsRollbackRecordSchema = SettingsRecoveryBytesSchema.safeExtend({ rollbackId: z.uuid() });
+type SettingsRollbackRecord = z.infer<typeof SettingsRollbackRecordSchema>;
+
+type DocumentRecord = Readonly<{ revision: number; lastApplied?: SettingsCommandIdentity }>;
+type DocumentRequest = Readonly<{ commandId: string; commandFingerprint: string; expectedRevision: number }>;
+interface DocumentUpdate<Record> {
+  readonly state: "applied";
+  readonly record: Record;
+  rollback(): void;
+  commit(): void;
+}
+interface PreparedDocument<Record> {
+  readonly prepareId: string;
+  readonly target: SettingsDocumentTarget;
+  readonly command: SettingsCommandIdentity;
+  readonly prior: Record;
+  readonly next: Record;
+}
+interface DocumentAuthority<Record> {
+  read(this: void): Record;
+  pendingTarget(this: void): SettingsDocumentTarget | undefined;
+  reconcile(resolve: (prepared: PreparedDocument<Record>) => SettingsPrepareResolution): Record;
+  withExactRecord<Result>(this: void, expected: unknown, work: () => Result): Result;
+  withCurrentRecord<Result>(work: (record: Record) => Result): Result;
+  apply(this: void, input: unknown): DocumentUpdate<Record> | SettingsApplyRefusal;
+}
+interface DocumentCodec<Record extends DocumentRecord, Request extends DocumentRequest> {
+  readonly target: SettingsDocumentTarget;
+  readonly maximumBytes: number;
+  readonly schema: z.ZodType<Record>;
+  initial(): Record;
+  admit(input: unknown): Readonly<{ state: "admitted"; request: Request }> | SettingsApplyRefusal;
+  command(request: Request): SettingsCommandIdentity;
+  next(current: Record, request: Request): Record;
+  verifyReplay(current: Record, request: Request): boolean;
+  verifyExact(current: Record, expected: unknown): void;
+}
 
 function isMissing(error: unknown): boolean {
   return error instanceof Error && Reflect.get(error, "code") === "ENOENT";
@@ -249,7 +291,7 @@ function readPrivateRegularFile(
         `${label} ${path} is owned by uid ${String(status.uid)}, not runtime uid ${String(currentUid)}`,
       );
     }
-    const permissions = status.mode & 0o777;
+    const permissions = status.mode & 0o7777;
     if (permissions !== 0o600) {
       throw new Error(
         `${label} ${path} permissions are ${permissions.toString(8)}; exactly 600 is required`,
@@ -257,7 +299,7 @@ function readPrivateRegularFile(
     }
     if (status.size > maximumBytes) {
       throw new Error(
-        `${label} ${path} is ${String(status.size)} bytes; maximum is ${String(maximumBytes)}`,
+        `${label} ${path} exceeds maximum ${String(maximumBytes)} bytes`,
       );
     }
     const bytes = readFileSync(descriptor);
@@ -293,14 +335,36 @@ function readPrivateRegularBytes(
   return readPrivateRegularFile(path, label, maximumBytes)?.bytes;
 }
 
-function readBytes(path: string): Uint8Array | undefined {
-  return readPrivateRegularBytes(path, "settings file", MAX_SETTINGS_FILE_BYTES);
-}
-
 function equalBytes(left: Uint8Array | undefined, right: Uint8Array | undefined): boolean {
   if (left === undefined || right === undefined) return left === right;
   if (left.byteLength !== right.byteLength) return false;
   return left.every((value, index) => value === right[index]);
+}
+
+function invalidRequest(message: string): never {
+  throw new Error(message);
+}
+
+function rawSettingsPatchFingerprint(patch: unknown): string {
+  return FingerprintSchema.parse(sha256Hex(
+    `hrauto:settings-patch:v1\0${canonicalJsonStringify(patch)}`,
+  ));
+}
+
+function issuePath(issue: z.core.$ZodIssue): string {
+  const path = issue.path.filter((part) => part !== "patch" && part !== "entries").join(".");
+  return path === "" ? "document" : path;
+}
+
+function firstUnrecognizedKey(error: z.ZodError): string | undefined {
+  for (const issue of error.issues) {
+    if (issue.code !== "unrecognized_keys") continue;
+    const [key] = issue.keys;
+    if (key === undefined) continue;
+    const prefix = issuePath(issue);
+    return prefix === "document" ? key : `${prefix}.${key}`;
+  }
+  return undefined;
 }
 
 function withClosedDescriptor<Result>(
@@ -392,8 +456,8 @@ function parseSettingsInitialization(
 function parseSettingsRollback(path: string, bytes: Uint8Array): SettingsRollbackRecord {
   try {
     return SettingsRollbackRecordSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
-  } catch (error) {
-    throw new Error(`settings rollback evidence ${path} is malformed`, { cause: error });
+  } catch {
+    throw new Error(`settings rollback evidence ${path} is malformed`);
   }
 }
 
@@ -412,27 +476,17 @@ function decodeBase64(value: string, label: string): Uint8Array {
 function parseSettingsPrepare(path: string, bytes: Uint8Array): SettingsPrepareRecord {
   try {
     return SettingsPrepareRecordSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
-  } catch (error) {
-    throw new Error(`settings prepare evidence ${path} is malformed`, { cause: error });
+  } catch {
+    throw new Error(`settings prepare evidence ${path} is malformed`);
   }
-}
-
-function bytesFingerprint(bytes: Uint8Array): string {
-  return FingerprintSchema.parse(createHash("sha256").update(bytes).digest("hex"));
 }
 
 function settingsPathFingerprint(path: string): string {
   return FingerprintSchema.parse(sha256Hex(path));
 }
 
-function initializationBytes(path: string, state: "virgin" | "initialized"): Uint8Array {
-  const record = SettingsInitializationRecordSchema.parse({
-    schemaVersion: 1,
-    settingsPathFingerprint: settingsPathFingerprint(path),
-    settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-    state,
-  });
-  return new TextEncoder().encode(`${canonicalJsonStringify(record)}\n`);
+function initializationBytes(ordinary: SettingsRootAuthority["ordinary"], protectedState: SettingsRootAuthority["protected"]): Uint8Array {
+  return new TextEncoder().encode(`${canonicalJsonStringify(settingsRootAuthority(ordinary, protectedState))}\n`);
 }
 
 type SettingsDirectoryIdentity = ReadonlyMap<string, Readonly<{ device: number; inode: number }>>;
@@ -500,6 +554,9 @@ function verifySettingsDirectory(
     if (!status.isDirectory()) throw new Error(`settings directory ${path} is not a directory`);
     if (status.uid !== uid && (authority || status.uid !== 0)) {
       throw new Error(`settings directory ${path} has untrusted owner uid ${String(status.uid)}; runtime uid is ${String(uid)}`);
+    }
+    if (authority && (status.mode & 0o7777) !== 0o700) {
+      throw new Error(`directory-integrity: settings directory ${path} must have mode 0700`);
     }
     const writable = (status.mode & 0o022) !== 0;
     const stickyAncestor = !authority && (status.mode & 0o1000) !== 0;
@@ -574,7 +631,7 @@ function acquireSettingsAuthorityLock(
 ): SettingsAuthorityLockHandle {
   assertDirectory();
   const directory = dirname(settingsPath);
-  const lockPath = `${settingsPath}.lock`;
+  const lockPath = join(directory, "settings.lock");
   const reaperPath = `${lockPath}.reaper`;
   const pathFingerprint = settingsPathFingerprint(settingsPath);
   const observation = observeProcessIdentity(process.pid);
@@ -621,16 +678,15 @@ function acquireSettingsAuthorityLock(
     file: PrivateRegularFileRead;
   }>;
   const recoveryPrefix = `.${basename(reaperPath)}.`;
-  const recoverySuffix = ".recovery";
 
   function recoveryPath(reaperId: string): string {
-    return join(directory, `${recoveryPrefix}${reaperId}${recoverySuffix}`);
+    return join(directory, `${recoveryPrefix}${reaperId}`);
   }
 
   function readRecoveryBarrier(): DeadReaperRecoveryBarrier | undefined {
     assertDirectory();
     const entryNames = readdirSync(directory)
-      .filter((name) => name.startsWith(recoveryPrefix) && name.endsWith(recoverySuffix))
+      .filter((name) => name.startsWith(recoveryPrefix))
       .sort();
     if (entryNames.length > 1) {
       throw new Error(
@@ -640,7 +696,7 @@ function acquireSettingsAuthorityLock(
     const entryName = entryNames[0];
     if (entryName === undefined) return undefined;
     const reaperId = z.uuid().parse(
-      entryName.slice(recoveryPrefix.length, -recoverySuffix.length),
+      entryName.slice(recoveryPrefix.length),
     );
     const path = join(directory, entryName);
     const file = readPrivateRegularFile(
@@ -1081,35 +1137,67 @@ function throwWithCleanup(primary: Error, temporaryPath: string, remove: (path: 
   throw primary;
 }
 
-function parseRecord(path: string, bytes: Uint8Array): SettingsFileRecord {
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(new TextDecoder().decode(bytes));
-  } catch (error) {
-    throw new Error(`settings file ${path} is not valid JSON`, { cause: error });
+function createDocumentAuthority<Record extends DocumentRecord, Request extends DocumentRequest>(
+  options: Pick<SettingsFileAuthorityOptions, "path" | "operations" | "hooks">,
+  codec: DocumentCodec<Record, Request>,
+): DocumentAuthority<Record> {
+  const paths = settingsRootPathsFromOrdinaryPath(options.path);
+  const ordinaryPath = paths.ordinary;
+  const directory = paths.root;
+  const path = codec.target === "ordinary" ? paths.ordinary : paths.protected;
+  const initializationPath = paths.authority;
+  const rollbackPath = paths.rollback;
+  const preparePath = paths.prepare;
+  const ownTemporaryPaths = new Set<string>();
+  function parseRecord(recordPath: string, bytes: Uint8Array): Record {
+    let value: unknown;
+    try {
+      value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    } catch {
+      throw new Error(`invalid-value: ${basename(recordPath)} is malformed JSON`);
+    }
+    const parsed = codec.schema.safeParse(value);
+    if (!parsed.success) {
+      const fields = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ");
+      // Only field names escape this boundary, never submitted values or parser causes.
+      throw new Error(`invalid-value: ${basename(recordPath)} ${fields} is malformed`);
+    }
+    return deepFreeze(parsed.data);
   }
-  try {
-    return deepFreeze(SettingsFileRecordSchema.parse(decoded));
-  } catch (error) {
-    throw new Error(`settings file ${path} does not satisfy the strict persisted settings contract; `
-      + "this build requires its editable schema and exact lastApplied command evidence; no automatic conversion is supported", {
-      cause: error,
-    });
-  }
-}
 
-export function createSettingsFileAuthority(options: SettingsFileAuthorityOptions): SettingsFileAuthority {
-  const path = resolve(options.path);
-  const directory = dirname(path);
-  const initializationPath = `${path}.authority.json`;
-  const rollbackPath = `${path}.rollback.json`;
-  const preparePath = `${path}.prepare.json`;
-  const validateCandidate = options.validateCandidate;
+  function readDocumentBytes(): Uint8Array | undefined {
+    assertDirectory();
+    return readPrivateRegularBytes(path, basename(path), codec.maximumBytes);
+  }
   const operations = options.operations ?? {};
   const hooks = options.hooks ?? {};
   let directoryIdentity: SettingsDirectoryIdentity | undefined;
   function assertDirectory(): void {
     directoryIdentity = verifySettingsDirectory(directory, directoryIdentity);
+    const permitted = new Set(["settings.json", "protected.json", "authority.json", "prepare.json", "rollback.json", "settings.lock", "settings.lock.reaper"]);
+    const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+    const transient = new RegExp(`^\\.settings\\.lock(?:\\.${uuid}\\.tmp|\\.reaper\\.${uuid})$`, "u");
+    const documentTemporary = /^\.(?:settings|protected|authority|prepare|rollback)\.json\.\d+\.\d+\.tmp$/u;
+    const names = readdirSync(directory);
+    let liveLockOwner: boolean | undefined;
+    function lockIsLive(): boolean {
+      if (liveLockOwner !== undefined) return liveLockOwner;
+      const bytes = readPrivateRegularFile(
+        paths.lock,
+        "settings authority lock",
+        MAX_SETTINGS_LOCK_BYTES,
+        [1, 2],
+      )?.bytes;
+      liveLockOwner = bytes !== undefined && processRecordOwnerIsAlive(parseSettingsLock(paths.lock, bytes));
+      return liveLockOwner;
+    }
+    for (const name of names) {
+      const ownTemporary = ownTemporaryPaths.has(join(directory, name));
+      const activeDocumentTemporary = documentTemporary.test(name) && names.includes("settings.lock") && lockIsLive();
+      if (!permitted.has(name) && !transient.test(name) && !ownTemporary && !activeDocumentTemporary) {
+        throw new Error(`directory-integrity: unexpected settings entry ${name}`);
+      }
+    }
   }
   const write = (target: string, bytes: Uint8Array): void => {
     assertDirectory();
@@ -1157,7 +1245,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
 
   function readDestinationBytes(destinationPath: string): Uint8Array | undefined {
     assertDirectory();
-    if (destinationPath === path) return readBytes(path);
+    if (destinationPath === path) return readDocumentBytes();
     if (destinationPath === initializationPath) return readInitializationBytes();
     if (destinationPath === rollbackPath) return readRollbackBytes();
     if (destinationPath === preparePath) return readPrepareBytes();
@@ -1165,7 +1253,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
   }
 
   function readState(): Readonly<{
-    record: SettingsFileRecord;
+    record: Record;
     bytes: Uint8Array | undefined;
     initializationBytes: Uint8Array;
     initializationState: "virgin" | "initialized";
@@ -1173,12 +1261,12 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     const rollbackBytes = readRollbackBytes();
     if (rollbackBytes !== undefined) {
       const rollback = parseSettingsRollback(rollbackPath, rollbackBytes);
-      if (rollback.settingsPathFingerprint !== settingsPathFingerprint(path)) {
+      if (rollback.settingsPathFingerprint !== settingsPathFingerprint(ordinaryPath)) {
         throw new Error(`settings rollback evidence ${rollbackPath} belongs to another path`);
       }
       throw new Error(
-        `interrupted settings rollback ${rollback.rollbackId} for command ${rollback.commandId} `
-        + `left revision ${String(rollback.appliedRevision)} recovery evidence at ${rollbackPath}; `
+        `interrupted settings rollback ${rollback.rollbackId} for command ${rollback.command.commandId} `
+        + `left ${rollback.target} recovery evidence at ${rollbackPath}; `
         + `automatic settings reconciliation is refused`,
       );
     }
@@ -1190,44 +1278,34 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
         + `requires exclusive journal reconciliation`,
       );
     }
-    const bytes = readBytes(path);
+    const bytes = readDocumentBytes();
+    const record = bytes === undefined ? codec.initial() : parseRecord(path, bytes);
+    const ordinaryBytes = codec.target === "ordinary" ? bytes : readPrivateRegularBytes(ordinaryPath, "settings.json", MAX_SETTINGS_FILE_BYTES);
+    const protectedBytes = codec.target === "protected" ? bytes : readPrivateRegularBytes(join(directory, "protected.json"), "protected.json", MAX_PROTECTED_SETTINGS_BYTES);
     let evidenceBytes = readInitializationBytes();
-    let evidence: SettingsInitializationRecord;
     if (evidenceBytes === undefined) {
-      evidenceBytes = initializationBytes(path, bytes === undefined ? "virgin" : "initialized");
+      if (ordinaryBytes !== undefined || protectedBytes !== undefined) {
+        throw new Error("authority-unjournaled: settings documents exist without authority.json");
+      }
+      evidenceBytes = initializationBytes("virgin", "virgin");
       replaceExactBytes(initializationPath, evidenceBytes, undefined);
-      evidence = parseSettingsInitialization(initializationPath, evidenceBytes);
-    } else {
-      evidence = parseSettingsInitialization(initializationPath, evidenceBytes);
-      if (evidence.settingsPathFingerprint !== settingsPathFingerprint(path)) {
-        throw new Error(`settings initialization evidence ${initializationPath} belongs to another path`);
-      }
-      if (evidence.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) {
-        throw new Error(
-          `settings initialization evidence ${initializationPath} names schema ${evidence.settingsSchemaHash}, `
-          + `not this build's ${SETTINGS_SCHEMA_HASH}`,
-        );
-      }
     }
-    if (bytes === undefined && evidence.state === "initialized") {
-      throw new Error(`settings file ${path} is missing after settings authority was initialized`);
-    }
-    if (bytes !== undefined && evidence.state === "virgin") {
-      const reconciledBytes = initializationBytes(path, "initialized");
-      replaceExactBytes(initializationPath, reconciledBytes, evidenceBytes);
-      evidenceBytes = reconciledBytes;
-      evidence = parseSettingsInitialization(initializationPath, evidenceBytes);
+    const evidence = parseSettingsInitialization(initializationPath, evidenceBytes);
+    for (const [target, present] of [["ordinary", ordinaryBytes !== undefined], ["protected", protectedBytes !== undefined]] as const) {
+      if (present !== (evidence[target] === "initialized")) {
+        throw new Error(`authority-uncertain: ${target === "ordinary" ? "settings.json" : "protected.json"} presence does not match authority.json`);
+      }
     }
     return Object.freeze({
-      record: bytes === undefined ? initialSettingsFileRecord() : parseRecord(path, bytes),
+      record,
       bytes,
       initializationBytes: evidenceBytes,
-      initializationState: evidence.state,
+      initializationState: evidence[codec.target],
     });
   }
 
-  function read(): SettingsFileRecord {
-    const lock = acquireSettingsAuthorityLock(path, hooks, assertDirectory);
+  function read(): Record {
+    const lock = acquireSettingsAuthorityLock(ordinaryPath, hooks, assertDirectory);
     return releaseAfter(lock, () => readState().record, `settings read for ${path}`);
   }
 
@@ -1246,74 +1324,79 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
   ): void {
     assertDirectory();
     const temporaryPath = nextTemporaryPath(destinationPath);
+    ownTemporaryPaths.add(temporaryPath);
     try {
-      write(temporaryPath, bytes);
-      sync(temporaryPath);
-    } catch (error) {
-      throwWithCleanup(
-        new Error(`${destinationPath} could not stage a complete durable replacement`, { cause: error }),
-        temporaryPath,
-        remove,
-      );
-    }
-
-    let liveBeforeReplace: Uint8Array | undefined;
-    try {
-      liveBeforeReplace = readDestinationBytes(destinationPath);
-    } catch (error) {
-      throwWithCleanup(
-        new Error(`${destinationPath} live bytes could not be verified before replacement`, { cause: error }),
-        temporaryPath,
-        remove,
-      );
-    }
-    if (!equalBytes(liveBeforeReplace, priorBytes)) {
-      throwWithCleanup(
-        new Error(`${destinationPath} live bytes changed before replacement; refusing to overwrite concurrent evidence`),
-        temporaryPath,
-        remove,
-      );
-    }
-    try {
-      replace(temporaryPath, destinationPath);
-    } catch (error) {
-      const liveBytes = readDestinationBytes(destinationPath);
-      if (equalBytes(liveBytes, priorBytes)) {
+      try {
+        write(temporaryPath, bytes);
+        sync(temporaryPath);
+      } catch (error) {
         throwWithCleanup(
-          new Error(`atomic settings replacement failed before changing ${destinationPath}`, { cause: error }),
+          new Error(`${destinationPath} could not stage a complete durable replacement`, { cause: error }),
           temporaryPath,
           remove,
         );
       }
-      if (!equalBytes(liveBytes, bytes)) {
+
+      let liveBeforeReplace: Uint8Array | undefined;
+      try {
+        liveBeforeReplace = readDestinationBytes(destinationPath);
+      } catch (error) {
         throwWithCleanup(
-          new Error(
-            `atomic settings replacement failed and ${destinationPath} matches neither the prior nor staged bytes; outcome is uncertain`,
-            { cause: error },
-          ),
+          new Error(`${destinationPath} live bytes could not be verified before replacement`, { cause: error }),
           temporaryPath,
           remove,
         );
       }
-      // The replace took effect despite throwing; exact byte reconciliation is
-      // the transition proof, so continue through the same directory fsync.
-    }
+      if (!equalBytes(liveBeforeReplace, priorBytes)) {
+        throwWithCleanup(
+          new Error(`${destinationPath} live bytes changed before replacement; refusing to overwrite concurrent evidence`),
+          temporaryPath,
+          remove,
+        );
+      }
+      try {
+        replace(temporaryPath, destinationPath);
+      } catch (error) {
+        const liveBytes = readDestinationBytes(destinationPath);
+        if (equalBytes(liveBytes, priorBytes)) {
+          throwWithCleanup(
+            new Error(`atomic settings replacement failed before changing ${destinationPath}`, { cause: error }),
+            temporaryPath,
+            remove,
+          );
+        }
+        if (!equalBytes(liveBytes, bytes)) {
+          throwWithCleanup(
+            new Error(
+              `atomic settings replacement failed and ${destinationPath} matches neither the prior nor staged bytes; outcome is uncertain`,
+              { cause: error },
+            ),
+            temporaryPath,
+            remove,
+          );
+        }
+        // The replace took effect despite throwing; exact byte reconciliation is
+        // the transition proof, so continue through the same directory fsync.
+      }
 
-    try {
-      sync(directory);
-    } catch (error) {
-      throw new Error(
-        `settings replacement reached ${destinationPath}, but its directory fsync failed; durability is uncertain`,
-        { cause: error },
-      );
-    }
-    if (!equalBytes(readDestinationBytes(destinationPath), bytes)) {
-      throw new Error(`settings readback for ${destinationPath} differs from the exact bytes atomically replaced`);
+      try {
+        sync(directory);
+      } catch (error) {
+        throw new Error(
+          `settings replacement reached ${destinationPath}, but its directory fsync failed; durability is uncertain`,
+          { cause: error },
+        );
+      }
+      if (!equalBytes(readDestinationBytes(destinationPath), bytes)) {
+        throw new Error(`settings readback for ${destinationPath} differs from the exact bytes atomically replaced`);
+      }
+    } finally {
+      ownTemporaryPaths.delete(temporaryPath);
     }
   }
 
   function restoreAbsence(expectedLiveBytes: Uint8Array): void {
-    const liveBytes = readBytes(path);
+    const liveBytes = readDocumentBytes();
     if (!equalBytes(liveBytes, expectedLiveBytes)) {
       throw new Error(`settings rollback refused because ${path} no longer contains the update being rolled back`);
     }
@@ -1323,7 +1406,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
       if (!isMissing(error)) throw error;
     }
     sync(directory);
-    if (readBytes(path) !== undefined) {
+    if (readDocumentBytes() !== undefined) {
       throw new Error(`settings rollback could not restore the valid absent-file baseline at ${path}`);
     }
   }
@@ -1365,14 +1448,14 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
 
   function inspectPreparedUpdate(prepareBytes: Uint8Array): Readonly<{
     record: SettingsPrepareRecord;
-    publicUpdate: SettingsPreparedUpdate;
+    publicUpdate: PreparedDocument<Record>;
     priorSettingsBytes: Uint8Array | undefined;
     nextSettingsBytes: Uint8Array;
     priorInitializationBytes: Uint8Array;
     nextInitializationBytes: Uint8Array;
   }> {
     const record = parseSettingsPrepare(preparePath, prepareBytes);
-    if (record.settingsPathFingerprint !== settingsPathFingerprint(path)) {
+    if (record.target !== codec.target || record.settingsPathFingerprint !== settingsPathFingerprint(ordinaryPath)) {
       throw new Error(`settings prepare evidence ${preparePath} belongs to another path`);
     }
     const priorSettingsBytes = record.priorSettingsBytesBase64 === null
@@ -1391,7 +1474,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
       "prepared next initialization bytes",
     );
     const prior = priorSettingsBytes === undefined
-      ? initialSettingsFileRecord()
+      ? codec.initial()
       : parseRecord(path, priorSettingsBytes);
     const next = parseRecord(path, nextSettingsBytes);
     const priorInitialization = parseSettingsInitialization(
@@ -1402,28 +1485,24 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
       initializationPath,
       nextInitializationBytes,
     );
-    if (priorInitialization.settingsPathFingerprint !== record.settingsPathFingerprint
-      || nextInitialization.settingsPathFingerprint !== record.settingsPathFingerprint
-      || priorInitialization.settingsSchemaHash !== SETTINGS_SCHEMA_HASH
-      || nextInitialization.settingsSchemaHash !== SETTINGS_SCHEMA_HASH
-      || nextInitialization.state !== "initialized") {
+    const otherTarget = codec.target === "ordinary" ? "protected" : "ordinary";
+    if (nextInitialization[codec.target] !== "initialized"
+      || priorInitialization[otherTarget] !== nextInitialization[otherTarget]
+      || (priorSettingsBytes !== undefined) !== (priorInitialization[codec.target] === "initialized")) {
       throw new Error(`settings prepare evidence ${preparePath} has invalid initialization authority`);
     }
     const applied = next.lastApplied;
     if (prior.revision !== record.command.expectedRevision
       || next.revision !== prior.revision + 1
       || applied === undefined
-      || applied.commandId !== record.command.commandId
-      || applied.commandFingerprint !== record.command.commandFingerprint
-      || applied.expectedRevision !== record.command.expectedRevision
-      || applied.settingsSchemaHash !== record.command.settingsSchemaHash
-      || applied.patchFingerprint !== record.command.patchFingerprint) {
+      || canonicalJsonStringify(applied) !== canonicalJsonStringify(record.command)) {
       throw new Error(`settings prepare evidence ${preparePath} does not bind its exact prior, next, and command`);
     }
     return Object.freeze({
       record,
       publicUpdate: Object.freeze({
         prepareId: record.prepareId,
+        target: codec.target,
         command: Object.freeze({ ...record.command }),
         prior,
         next,
@@ -1450,17 +1529,36 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
 
   return Object.freeze({
     read,
+    pendingTarget(): SettingsDocumentTarget | undefined {
+      const lock = acquireSettingsAuthorityLock(ordinaryPath, hooks, assertDirectory);
+      return releaseAfter(lock, () => {
+        const prepareBytes = readPrepareBytes();
+        const rollbackBytes = readRollbackBytes();
+        if (prepareBytes === undefined) {
+          if (rollbackBytes !== undefined) throw new Error("authority-uncertain: rollback.json has no prepare.json");
+          return undefined;
+        }
+        const prepared = parseSettingsPrepare(preparePath, prepareBytes);
+        if (prepared.settingsPathFingerprint !== settingsPathFingerprint(ordinaryPath)) {
+          throw new Error("authority-uncertain: prepare.json belongs to another root");
+        }
+        return prepared.target;
+      }, `settings recovery target for ${ordinaryPath}`);
+    },
     reconcile(
-      resolvePrepared: (prepared: SettingsPreparedUpdate) => SettingsPrepareResolution,
-    ): SettingsFileRecord {
-      const lock = acquireSettingsAuthorityLock(path, hooks, assertDirectory);
+      resolvePrepared: (prepared: PreparedDocument<Record>) => SettingsPrepareResolution,
+    ): Record {
+      const lock = acquireSettingsAuthorityLock(ordinaryPath, hooks, assertDirectory);
       return releaseAfter(lock, () => {
         const prepareBytes = readPrepareBytes();
         if (prepareBytes === undefined) return readState().record;
         const prepared = inspectPreparedUpdate(prepareBytes);
         const resolution = resolvePrepared(prepared.publicUpdate);
         if (resolution === "committed") {
-          const liveSettingsBytes = readBytes(path);
+          if (readRollbackBytes() !== undefined) {
+            throw new Error(`committed settings prepare ${prepared.record.prepareId} also has rollback evidence`);
+          }
+          const liveSettingsBytes = readDocumentBytes();
           if (!equalBytes(liveSettingsBytes, prepared.nextSettingsBytes)) {
             throw new Error(
               `committed settings prepare ${prepared.record.prepareId} does not have its exact next bytes live`,
@@ -1485,36 +1583,32 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
             );
           }
         } else if (resolution === "rollback") {
-          restorePreparedSettings(
-            readBytes(path),
-            prepared.priorSettingsBytes,
-            prepared.nextSettingsBytes,
-          );
+          const { prepareId: _prepareId, ...prepareBody } = prepared.record;
+          let rollbackBytes = readRollbackBytes();
+          if (rollbackBytes !== undefined) {
+            const rollback = parseSettingsRollback(rollbackPath, rollbackBytes);
+            const { rollbackId: _rollbackId, ...rollbackBody } = rollback;
+            if (canonicalJsonStringify(rollbackBody) !== canonicalJsonStringify(prepareBody)) {
+              throw new Error(`settings rollback evidence ${rollbackPath} does not bind prepare ${prepared.record.prepareId}`);
+            }
+          } else {
+            rollbackBytes = new TextEncoder().encode(`${canonicalJsonStringify(SettingsRollbackRecordSchema.parse({
+              ...prepareBody, rollbackId: randomUUID(),
+            }))}\n`);
+            replaceExactBytes(rollbackPath, rollbackBytes, undefined);
+          }
+          hooks.afterRollbackPrepared?.();
+          restorePreparedSettings(readDocumentBytes(), prepared.priorSettingsBytes, prepared.nextSettingsBytes);
+          hooks.afterRollbackSettingsRestored?.();
           const liveInitializationBytes = readInitializationBytes();
           if (!equalBytes(liveInitializationBytes, prepared.priorInitializationBytes)) {
             if (!equalBytes(liveInitializationBytes, prepared.nextInitializationBytes)) {
-              throw new Error(
-                `settings prepare ${prepared.record.prepareId} has divergent initialization evidence`,
-              );
+              throw new Error(`settings prepare ${prepared.record.prepareId} has divergent initialization evidence`);
             }
-            replaceExactBytes(
-              initializationPath,
-              prepared.priorInitializationBytes,
-              liveInitializationBytes,
-            );
+            replaceExactBytes(initializationPath, prepared.priorInitializationBytes, liveInitializationBytes);
           }
-          const rollbackBytes = readRollbackBytes();
-          if (rollbackBytes !== undefined) {
-            const rollback = parseSettingsRollback(rollbackPath, rollbackBytes);
-            if (rollback.commandId !== prepared.record.command.commandId
-              || rollback.appliedRevision !== prepared.publicUpdate.next.revision
-              || rollback.priorRevision !== prepared.publicUpdate.prior.revision) {
-              throw new Error(
-                `settings rollback evidence ${rollbackPath} does not bind prepare ${prepared.record.prepareId}`,
-              );
-            }
-            removeRollbackEvidence(rollbackBytes);
-          }
+          hooks.afterRollbackInitializationRestored?.();
+          removeRollbackEvidence(rollbackBytes);
         } else {
           throw new Error(`settings prepare resolver returned invalid resolution ${String(resolution)}`);
         }
@@ -1522,7 +1616,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
         const record = resolution === "committed"
           ? prepared.publicUpdate.next
           : prepared.publicUpdate.prior;
-        const exactLive = readBytes(path);
+        const exactLive = readDocumentBytes();
         const expectedLive = resolution === "committed"
           ? prepared.nextSettingsBytes
           : prepared.priorSettingsBytes;
@@ -1532,40 +1626,22 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
         return record;
       }, `settings prepare reconciliation for ${path}`);
     },
+    withCurrentRecord<Result>(work: (record: Record) => Result): Result {
+      const lock = acquireSettingsAuthorityLock(ordinaryPath, hooks, assertDirectory);
+      return releaseAfter(lock, () => work(readState().record), `settings record read for ${path}`);
+    },
     withExactRecord<Result>(expectedInput: unknown, work: () => Result): Result {
-      const expected = SettingsFileExpectationSchema.parse(expectedInput);
-      const lock = acquireSettingsAuthorityLock(path, hooks, assertDirectory);
+      const lock = acquireSettingsAuthorityLock(ordinaryPath, hooks, assertDirectory);
       return releaseAfter(lock, () => {
-        const current = readState().record;
-        if (current.revision !== expected.revision
-          || current.settingsFingerprint !== expected.settingsFingerprint) {
-          throw new Error(
-            `settings changed after worker boot; restart activation is required `
-            + `(boot revision ${String(expected.revision)} at ${expected.settingsFingerprint}, `
-            + `current revision ${String(current.revision)} at ${current.settingsFingerprint})`,
-          );
-        }
+        codec.verifyExact(readState().record, expectedInput);
         return work();
       }, `exact settings fence for ${path}`);
     },
-    apply(input: unknown): SettingsFileApplyOutcome {
-      const request = SettingsApplyInputSchema.parse(input);
-      if (request.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) {
-        return deepFreeze(SettingsApplyRefusalSchema.parse({
-          state: "rejected",
-          code: "schema-mismatch",
-          message: `settings schema ${request.settingsSchemaHash} does not match this build's ${SETTINGS_SCHEMA_HASH}`,
-        }));
-      }
-      const expectedPatchFingerprint = deriveSettingsPatchFingerprint(request.patch);
-      if (request.patchFingerprint !== expectedPatchFingerprint) {
-        return deepFreeze(SettingsApplyRefusalSchema.parse({
-          state: "rejected",
-          code: "schema-mismatch",
-          message: `settings patch fingerprint ${request.patchFingerprint} does not match its strict patch value`,
-        }));
-      }
-      const lock = acquireSettingsAuthorityLock(path, hooks, assertDirectory);
+    apply(input: unknown): DocumentUpdate<Record> | SettingsApplyRefusal {
+      const admission = codec.admit(input);
+      if (admission.state !== "admitted") return admission;
+      const request = admission.request;
+      const lock = acquireSettingsAuthorityLock(ordinaryPath, hooks, assertDirectory);
       let priorBytes: Uint8Array | undefined;
       let priorInitializationBytes: Uint8Array | undefined;
       let replacementAttempted = false;
@@ -1575,14 +1651,12 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
         priorInitializationBytes = currentState.initializationBytes;
         const current = currentState.record;
         if (current.lastApplied?.commandId === request.commandId) {
-          const isExactReplay = current.lastApplied.commandFingerprint === request.commandFingerprint
-            && current.lastApplied.expectedRevision === request.expectedRevision
-            && current.lastApplied.settingsSchemaHash === request.settingsSchemaHash
-            && current.lastApplied.patchFingerprint === request.patchFingerprint
-            && current.revision === request.expectedRevision + 1;
+          const isExactReplay = canonicalJsonStringify(current.lastApplied) === canonicalJsonStringify(codec.command(request))
+            && current.revision === request.expectedRevision + 1
+            && codec.verifyReplay(current, request);
           if (!isExactReplay) {
             throw new Error(
-              `settings command ${request.commandId} is already persisted with a different full canonical command envelope`,
+              `command-divergent: settings command ${request.commandId} differs from its persisted canonical envelope`,
             );
           }
           const settlement = settingsSettlement(lock, () => undefined);
@@ -1604,37 +1678,19 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
           })), `settings revision refusal for ${path}`);
         }
 
-        const settings = mergeSettingsPatch(current.settings, request.patch);
-        try {
-          validateCandidate(settings);
-        } catch (error) {
-          throw new Error(
-            `settings candidate for ${path} does not satisfy the fully merged config contract`,
-            { cause: error },
-          );
-        }
-        const record = deepFreeze(SettingsFileRecordSchema.parse({
-          revision: current.revision + 1,
-          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-          settingsFingerprint: derivePersistedSettingsFingerprint(settings),
-          settings,
-          lastApplied: {
-            commandId: request.commandId,
-            commandFingerprint: request.commandFingerprint,
-            expectedRevision: request.expectedRevision,
-            settingsSchemaHash: request.settingsSchemaHash,
-            patchFingerprint: request.patchFingerprint,
-          },
-        }));
+        const record = codec.next(current, request);
         priorBytes = currentState.bytes;
         const nextBytes = new TextEncoder().encode(`${canonicalJsonStringify(record)}\n`);
-        if (nextBytes.byteLength > MAX_SETTINGS_FILE_BYTES) {
+        if (nextBytes.byteLength > codec.maximumBytes) {
           throw new Error(
-            `settings candidate is ${String(nextBytes.byteLength)} bytes; `
-            + `maximum is ${String(MAX_SETTINGS_FILE_BYTES)} before replacement`,
+            `document-too-large: ${basename(path)} exceeds its maximum before replacement`,
           );
         }
-        const nextInitializationBytes = initializationBytes(path, "initialized");
+        const priorAuthority = parseSettingsInitialization(initializationPath, currentState.initializationBytes);
+        const nextInitializationBytes = initializationBytes(
+          codec.target === "ordinary" ? "initialized" : priorAuthority.ordinary,
+          codec.target === "protected" ? "initialized" : priorAuthority.protected,
+        );
         if (priorInitializationBytes === undefined) {
           throw new Error(`settings apply for ${path} has no initialization evidence snapshot`);
         }
@@ -1642,14 +1698,9 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
         const prepareRecord = SettingsPrepareRecordSchema.parse({
           schemaVersion: 1,
           prepareId: randomUUID(),
-          settingsPathFingerprint: settingsPathFingerprint(path),
-          command: {
-            commandId: request.commandId,
-            commandFingerprint: request.commandFingerprint,
-            expectedRevision: request.expectedRevision,
-            settingsSchemaHash: request.settingsSchemaHash,
-            patchFingerprint: request.patchFingerprint,
-          },
+          settingsPathFingerprint: settingsPathFingerprint(ordinaryPath),
+          target: codec.target,
+          command: codec.command(request),
           priorSettingsBytesBase64: priorBytes === undefined ? null : encodeBase64(priorBytes),
           nextSettingsBytesBase64: encodeBase64(nextBytes),
           priorInitializationBytesBase64: encodeBase64(initializationSnapshot),
@@ -1659,19 +1710,8 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
           `${canonicalJsonStringify(prepareRecord)}\n`,
         );
         replaceExactBytes(preparePath, prepareBytes, undefined);
-        const rollbackRecord = SettingsRollbackRecordSchema.parse({
-          schemaVersion: 1,
-          rollbackId: randomUUID(),
-          settingsPathFingerprint: settingsPathFingerprint(path),
-          commandId: request.commandId,
-          appliedRevision: record.revision,
-          priorRevision: current.revision,
-          appliedSettingsBytesFingerprint: bytesFingerprint(nextBytes),
-          priorSettingsBytesFingerprint: priorBytes === undefined
-            ? null
-            : bytesFingerprint(priorBytes),
-          priorInitializationBytesFingerprint: bytesFingerprint(initializationSnapshot),
-        });
+        const { prepareId: _prepareId, ...recoveryBody } = prepareRecord;
+        const rollbackRecord = SettingsRollbackRecordSchema.parse({ ...recoveryBody, rollbackId: randomUUID() });
         const rollbackBytes = new TextEncoder().encode(
           `${canonicalJsonStringify(rollbackRecord)}\n`,
         );
@@ -1751,7 +1791,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
             inspection = Object.freeze({
               state: "verified",
               safeToRelease: rollbackFailure === undefined
-                && equalBytes(readBytes(path), priorBytes)
+                && equalBytes(readDocumentBytes(), priorBytes)
                 && priorInitializationBytes !== undefined
                 && equalBytes(readInitializationBytes(), priorInitializationBytes)
                 && readRollbackBytes() === undefined,
@@ -1784,4 +1824,179 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
       }
     },
   });
+}
+
+/** The ordinary and protected adapters share the exact same root protocol and lock pathname. */
+export function createSettingsFileAuthority(options: SettingsFileAuthorityOptions): SettingsFileAuthority {
+  const codec: DocumentCodec<SettingsFileRecord, SettingsApplyInput> = {
+    target: "ordinary",
+    maximumBytes: MAX_SETTINGS_FILE_BYTES,
+    schema: SettingsFileRecordSchema,
+    initial: initialSettingsFileRecord,
+    admit(input) {
+      const preflight = SettingsApplyPreflightSchema.safeParse(input);
+      if (!preflight.success) {
+        return invalidRequest(`invalid-value: settings request ${issuePath(preflight.error.issues[0])}`);
+      }
+      if (preflight.data.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) {
+        return deepFreeze(SettingsApplyRefusalSchema.parse({
+          state: "rejected", code: "schema-mismatch", message: "settings.json schema-mismatch",
+        }));
+      }
+      let expectedPatchFingerprint: string;
+      try {
+        expectedPatchFingerprint = rawSettingsPatchFingerprint(preflight.data.patch);
+      } catch {
+        return invalidRequest("invalid-value: settings patch is not canonical JSON");
+      }
+      if (preflight.data.patchFingerprint !== expectedPatchFingerprint) {
+        return deepFreeze(SettingsApplyRefusalSchema.parse({
+          state: "rejected", code: "schema-mismatch", message: "patch-fingerprint-mismatch: settings patch fingerprint does not match its canonical value",
+        }));
+      }
+      const parsed = SettingsApplyInputSchema.safeParse(input);
+      if (!parsed.success) {
+        const notEditable = firstUnrecognizedKey(parsed.error);
+        if (notEditable !== undefined) return invalidRequest(`not-editable { key: ${notEditable} }`);
+        return invalidRequest(`invalid-value { key: ${issuePath(parsed.error.issues[0])} }`);
+      }
+      return { state: "admitted", request: parsed.data };
+    },
+    command(request) {
+      return SettingsCommandIdentitySchema.options[0].parse({
+        commandId: request.commandId, commandFingerprint: request.commandFingerprint,
+        expectedRevision: request.expectedRevision, settingsSchemaHash: request.settingsSchemaHash,
+        patchFingerprint: request.patchFingerprint,
+      });
+    },
+    next(current, request) {
+      const settings = mergeSettingsPatch(current.settings, request.patch);
+      try {
+        options.validateCandidate(settings);
+      } catch (error) {
+        const keys = error instanceof z.ZodError
+          ? [...new Set(error.issues.map(issuePath))].sort().join(",")
+          : "settings";
+        throw new Error(`cross-field-invalid { keys: ${keys} }`, { cause: error });
+      }
+      return deepFreeze(SettingsFileRecordSchema.parse({
+        revision: current.revision + 1, settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        settingsFingerprint: derivePersistedSettingsFingerprint(settings), settings,
+        lastApplied: codec.command(request),
+      }));
+    },
+    verifyReplay: () => true,
+    verifyExact(current, expectedInput) {
+      const expected = SettingsFileExpectationSchema.parse(expectedInput);
+      if (current.revision !== expected.revision || current.settingsFingerprint !== expected.settingsFingerprint) {
+        throw new Error("settings changed after worker boot; restart activation is required");
+      }
+    },
+  };
+  const authority = createDocumentAuthority(options, codec);
+  return Object.freeze({
+    read: authority.read,
+    pendingTarget: authority.pendingTarget,
+    apply: authority.apply,
+    withExactRecord: authority.withExactRecord,
+    reconcile(resolvePrepared: (prepared: SettingsPreparedUpdate) => SettingsPrepareResolution) {
+      return authority.reconcile((prepared) => resolvePrepared({
+        ...prepared,
+        command: SettingsCommandIdentitySchema.options[0].parse(prepared.command),
+      }));
+    },
+  });
+}
+
+export interface ProtectedSettingsFileAuthorityOptions extends Pick<SettingsFileAuthorityOptions, "path" | "operations" | "hooks"> {
+  /** Journal-backed uniqueness check, called only after revision CAS and while the shared lock is held. */
+  readonly assertWriteIdAvailable: (writeId: string, commandId: string) => void;
+}
+export type ProtectedSettingsFileAuthority = DocumentAuthority<ProtectedStoreRecord>;
+
+/** Fixed-size direct byte comparison; no value-derived surrogate leaves this stack frame. */
+function protectedValueEquals(left: unknown, right: unknown): boolean {
+  const leftBytes = Buffer.from(canonicalJsonStringify(left));
+  const rightBytes = Buffer.from(canonicalJsonStringify(right));
+  if (leftBytes.byteLength > MAX_PROTECTED_SETTINGS_BYTES || rightBytes.byteLength > MAX_PROTECTED_SETTINGS_BYTES) {
+    throw new Error("invalid-value: protected entry exceeds its private comparison bound");
+  }
+  const leftPadded = Buffer.alloc(MAX_PROTECTED_SETTINGS_BYTES + 4);
+  const rightPadded = Buffer.alloc(MAX_PROTECTED_SETTINGS_BYTES + 4);
+  leftPadded.writeUInt32BE(leftBytes.byteLength);
+  rightPadded.writeUInt32BE(rightBytes.byteLength);
+  leftPadded.set(leftBytes, 4);
+  rightPadded.set(rightBytes, 4);
+  return timingSafeEqual(leftPadded, rightPadded);
+}
+
+export function createProtectedSettingsFileAuthority(options: ProtectedSettingsFileAuthorityOptions): ProtectedSettingsFileAuthority {
+  const codec: DocumentCodec<ProtectedStoreRecord, ProtectedSettingsApplyInput> = {
+    target: "protected",
+    maximumBytes: MAX_PROTECTED_SETTINGS_BYTES,
+    schema: ProtectedStoreRecordSchema,
+    initial: initialProtectedStoreRecord,
+    admit(input) {
+      const preflight = ProtectedSettingsApplyPreflightSchema.safeParse(input);
+      if (!preflight.success) {
+        return invalidRequest(`invalid-value: protected request ${issuePath(preflight.error.issues[0])}`);
+      }
+      if (preflight.data.protectedSchemaHash !== PROTECTED_SETTINGS_SCHEMA_HASH) {
+        return deepFreeze(SettingsApplyRefusalSchema.parse({
+          state: "rejected", code: "schema-mismatch", message: "protected.json schema-mismatch",
+        }));
+      }
+      const parsed = ProtectedSettingsApplyInputSchema.safeParse(input);
+      if (!parsed.success) {
+        const notEditable = firstUnrecognizedKey(parsed.error);
+        if (notEditable !== undefined) return invalidRequest(`not-editable { key: ${notEditable} }`);
+        return invalidRequest(`invalid-value { key: ${issuePath(parsed.error.issues[0])} }`);
+      }
+      return { state: "admitted", request: parsed.data };
+    },
+    command(request) {
+      return ProtectedSettingsLastAppliedSchema.parse({
+        commandId: request.commandId, commandFingerprint: request.commandFingerprint,
+        expectedRevision: request.expectedRevision, protectedSchemaHash: request.protectedSchemaHash,
+        writeId: request.writeId,
+      });
+    },
+    next(current, request) {
+      options.assertWriteIdAvailable(request.writeId, request.commandId);
+      const entries = new Map<string, unknown>(Object.entries(current.entries));
+      for (const name of ProtectedSettingsNameSchema.options) {
+        const operation = request.entries[name];
+        if (operation === undefined) continue;
+        if ("clear" in operation) entries.delete(name);
+        else entries.set(name, { valueId: randomUUID(), value: operation.set, updatedAt: request.updatedAt });
+      }
+      return deepFreeze(ProtectedStoreRecordSchema.parse({
+        schemaVersion: 1, revision: current.revision + 1,
+        protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+        entries: Object.fromEntries(entries), lastApplied: codec.command(request),
+      }));
+    },
+    verifyReplay(current, request) {
+      let equal = true;
+      for (const name of ProtectedSettingsNameSchema.options) {
+        const operation = request.entries[name];
+        if (operation === undefined) continue;
+        const stored = current.entries[name];
+        if ("clear" in operation) equal = (stored === undefined) && equal;
+        else {
+          // Compare even when an earlier entry diverged. Presence itself is public metadata.
+          const matches = protectedValueEquals(operation.set, stored === undefined ? null : stored.value);
+          equal = matches && stored !== undefined && equal;
+        }
+      }
+      return equal;
+    },
+    verifyExact(current, expectedInput) {
+      const expected = ProtectedStoreRecordSchema.parse(expectedInput);
+      if (!protectedValueEquals(current, expected)) {
+        throw new Error("authority-uncertain: protected.json changed before its exact record fence");
+      }
+    },
+  };
+  return createDocumentAuthority(options, codec);
 }
