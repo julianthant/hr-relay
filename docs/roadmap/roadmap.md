@@ -2615,6 +2615,21 @@ the next task. A separately opened review session is an explicit operator option
 Explicit operator overrides take precedence. This rule governs future task execution, not a
 retroactive reopening of completed tasks.
 
+**Implementation isolation.** Every phase/task implements on a dedicated non-`master` branch.
+Sequential work may check out its task branch in an exclusively available existing directory;
+parallel writing tasks each require their own branch/worktree. Shared directories, unrelated dirty
+work, uncertain ownership or integration-only checkouts require a worktree even for sequential work.
+Preserve stricter admitted phase isolation, including 3.1's integration-only primary checkout. Do
+not switch another session's checkout or stash/reset its edits. The planner records exact mode,
+branch/path/base, plan availability, scope and target/owner/order/merge conditions for every task.
+The supervisor rechecks ownership and creates/checks out the binding before implementation edits;
+an absent planned branch is expected. Correct an old `master` implementation binding under this
+policy without reopening unchanged scope. Integrate only after independent PASS and required gates;
+run integration gates and re-review behavior-changing conflicts before cleanup. Never delete an
+active branch or primary checkout; preserve and report unresolved residue. Approved planning and
+completion records retain their existing documentation rules. This is local workflow protection,
+not a remote branch-protection setting or push authorization.
+
 1. **Plan — `/phase-plan`.** Verify the exact roadmap node, owning phase section, current code and
    prerequisite evidence. Preserve parallel suffixes such as `2-1` and `2-2`. Propose outcome/scope,
    implementation sequence, acceptance tests and required gates in native Plan Mode. After approval

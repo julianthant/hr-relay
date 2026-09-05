@@ -7,6 +7,10 @@ asset until the single all-at-once cutover (D89/D93). This rebuild is not produc
 
 - Never push without explicit instruction. Commit by logical category, stage exact paths (never
   `git add -A` / `git add .`), and preserve other sessions' edits.
+- Phase/task implementation uses a dedicated branch, never `master`. Sequential work can use an
+  exclusively available checkout; parallel tasks each need a branch and worktree. Shared, dirty or
+  integration-only checkouts require a worktree even for sequential work. Preserve stricter phase
+  isolation rules; bind branch/base/path and merge conditions before edits, then review and gate integration.
 - Keep existing `AGENTS.md` / `CLAUDE.md` pairs byte-identical. Write one shared text; update both.
   Change instructions when their rules change, not after every feature edit. Put requested lessons
   in the module's linked ledger. Use `/docs` for broader documentation cleanup; `/docs audit` is read-only.
