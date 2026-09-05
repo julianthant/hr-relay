@@ -916,12 +916,13 @@ two peers serialize full coverage, architecture and parity runs.
 |---|---|---|---|---|---|---|
 | `1.6.2-2` | `codex/phase-1-6-settings` | `/Users/julianhein/Projects/hr-worktree-settings` | Verified common `master` SHA containing Task 1 and both approved wave plans; record it before either peer starts | Task-2-2 seam above; synthetic settings roots only; no real runtime or live state | Assigned proof matrix; focused suites; full gate, architecture and unchanged parity | Freeze the independently reviewed candidate. Task 2-1 receives PASS and merges first. The 2-2 supervisor then merges `--no-ff` to `master`; behavior-changing conflict fixes require renewed review. Run integration gates, remove this worktree and local branch, record review/merge/gate/cleanup evidence, then mark only Task 2-2 complete. |
 
-#### Revised implementation candidate awaiting renewed independent review (2026-09-05)
+#### Final revised implementation candidate awaiting renewed independent review (2026-09-05)
 
-Task 2-2 is implemented on `codex/phase-1-6-settings` at revised immutable implementation candidate
-`595647fb`. The first fresh independent review returned `CHANGES REQUIRED`; all six findings now have
-regression proofs and fixes. The task remains incomplete and unmerged pending renewed independent
-acceptance, integration gates and cleanup.
+Task 2-2 is implemented on `codex/phase-1-6-settings` at final revised immutable implementation
+candidate `54a2f5ed`. The first fresh independent review returned `CHANGES REQUIRED`; all six findings
+have regression proofs and fixes. Its renewed review closed those six findings and returned
+`CHANGES_REQUIRED` for two newly exposed issues; both now have fixes and proof. The task remains
+incomplete and unmerged pending renewed independent acceptance, integration gates and cleanup.
 
 | Evidence | Result |
 |---|---|
@@ -930,14 +931,16 @@ acceptance, integration gates and cleanup.
 | Initial candidate commits | `8c9cedd7`, `2945cfea`, `e874505c`, `87118792`, `fa93a623`, `2cd0029f`, `a3305537`, `4fe9c24d`, `4016e2af`, `15bb3c2b`, `01385201`, `f944a2ab`, `fd5f860c`, `d3ac830c`, `e1d9f008`, `8f8777e4` |
 | First independent review | `CHANGES REQUIRED` — fresh read-only reviewer `/root/sup_review_settings_2_2` (`sup_review`) reviewed plan `0d2520f7`, base `aaffe367`, Task-2-1 merge `57ad0653`, implementation `8f8777e4` and evidence `5a48faf6` |
 | Finding dispositions | `f8ea3551` authenticates protected authority before mutation; `1b877014` returns the assigned value-free settings ingress refusals; `866cbf1f` makes the settings-consumer guard bidirectional; `595647fb` binds backup files to one authenticated SQLite snapshot, materializes both revision-1 files, validates patch leaves and maps merged cross-field failures |
-| Revised candidate commits | `f8ea3551`, `1b877014`, `866cbf1f`, `595647fb`; revised implementation head `595647fb` |
+| First renewed review | `CHANGES_REQUIRED` — the same read-only reviewer reviewed implementation `595647fb` and evidence `d0a39d86`; all six prior findings closed, but an exact crash-left protected retry journaled before reconciliation and backup added a second unapproved `AuthorityDatabase` lookup seam |
+| Renewed-review dispositions | `711ea001` adds a real child-process `SIGKILL`/kernel-retry regression and reconciles the protected prepare before journal insertion; `54a2f5ed` removes the extra database method, uses three explicit read-only copied-backup audit checks, and pins those checks without weakening the command-write or layering guards |
+| Final revised candidate commits | `f8ea3551`, `1b877014`, `866cbf1f`, `595647fb`, `711ea001`, `54a2f5ed`; final implementation head `54a2f5ed` |
 | Authorized ownership amendment | Operator selected option A: Task 2-2 may add the transaction-safe, read-only historical protected-command `writeId` lookup in `src/infra/sqlite/authority-database.ts`. `d3ac830c` supplies it, strict request validation, restart/non-adjacent reuse proof and production dashboard composition; no other Task-1/Task-2-1 ownership moved. |
-| Full revised gate | PASS — typecheck; lint; coverage 5,173 tests, 85.51% statements / 76.53% branches / 89.70% functions / 87.58% lines; build-manifest check |
+| Full revised gate | PASS — typecheck; lint; coverage 5,174 tests, 85.52% statements / 76.57% branches / 89.70% functions / 87.58% lines; build-manifest check |
 | Supplemental gates | PASS — architecture 74 files / 754 tests; parity 269/269 |
 | Focused revised proof | PASS — combined settings, backup, config, command, ingress, catalog, composition and recovery suites: 10 files / 503 tests; exact lint, typecheck and `git diff --check` clean |
 | Parity provenance | The combined manifest changed descriptor and implementation fingerprints. `8f8777e4` refreshes only the resulting hash/provenance fields and hash pixels: 210 accessibility references, 210 metadata references and 31 PNGs. Audit found no DOM, copy, control, layout or style change. |
 | Isolation | PASS — synthetic empty ignored mode-0600 `.env`; no real `.env`, `.tracker`, live state, browser transaction, submit or push touched |
-| Review state | `awaiting renewed independent review`; first review findings are fixed, but no acceptance is claimed and the task remains unchecked/unmerged |
+| Review state | `awaiting renewed independent review`; all eight findings across two reviews are fixed, but no acceptance is claimed and the task remains unchecked/unmerged |
 
 ### Task 3 · Cut over executor and worker lifecycle writers
 <!-- roadmap: p1f-run-writers -->
