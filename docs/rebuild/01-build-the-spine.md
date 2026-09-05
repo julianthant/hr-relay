@@ -841,12 +841,12 @@ compile-time red at every caller, runtime red under a hostile `process.env`), P3
 `secrets-single-source` WRITE arm (A5), P38's negative control (A7's arm `retired-leaves-are-a-closed-list`
 on the existing `config-snapshot-generations` entry). **Order:** wave 2, peer 2.
 
-- [ ] The catalog, the `.tracker/settings/` root with two documents and one lock, the two CAS arms,
+- [x] The catalog, the `.tracker/settings/` root with two documents and one lock, the two CAS arms,
   write-only protected values with presence/revision readback (§D331.1–§D331.6; P1, P2, P5–P12, P21–P32).
-- [ ] The environment leaves the resolver and the accessors in THIS task — A4 and A5 are deleted with the
+- [x] The environment leaves the resolver and the accessors in THIS task — A4 and A5 are deleted with the
   catalog, not carried; every migrated key is `RETIRED_ENVIRONMENT_KEYS`; provider API keys alone stay in
   `.env` (§D331.8; P3, P4, P34, P35).
-- [ ] Host-derived display as the catalogued default (P36), credentials and canary references in the
+- [x] Host-derived display as the catalogued default (P36), credentials and canary references in the
   store (P32), permissions/symlink/redaction/restart-scope/concurrent-update proofs (P13–P15, P17–P19,
   P22–P25, P33 protected half, P37), generation 5's retirement (P38), P39's deliberate edits, P41.
 
@@ -916,7 +916,7 @@ two peers serialize full coverage, architecture and parity runs.
 |---|---|---|---|---|---|---|
 | `1.6.2-2` | `codex/phase-1-6-settings` | `/Users/julianhein/Projects/hr-worktree-settings` | Verified common `master` SHA containing Task 1 and both approved wave plans; record it before either peer starts | Task-2-2 seam above; synthetic settings roots only; no real runtime or live state | Assigned proof matrix; focused suites; full gate, architecture and unchanged parity | Freeze the independently reviewed candidate. Task 2-1 receives PASS and merges first. The 2-2 supervisor then merges `--no-ff` to `master`; behavior-changing conflict fixes require renewed review. Run integration gates, remove this worktree and local branch, record review/merge/gate/cleanup evidence, then mark only Task 2-2 complete. |
 
-#### Accepted implementation candidate awaiting integration (2026-09-05)
+#### Task 2-2 completed (2026-09-05)
 
 Task 2-2 is implemented on `codex/phase-1-6-settings` at final revised immutable implementation
 candidate `0e38b82f`. The first fresh independent review returned `CHANGES REQUIRED`; all six findings
@@ -925,8 +925,9 @@ have regression proofs and fixes. Its renewed review closed those six findings a
 closed those eight findings and exposed one request-admission ordering defect; that finding now has a
 pristine-root kernel proof and fix. Its third renewed review closed those nine findings and exposed one
 mixed-failure ingress-precedence defect; that finding now has BFF proofs and a fix. The final renewed
-review accepted the immutable candidate. The task remains incomplete and unmerged pending integration
-gates and cleanup.
+review accepted the immutable candidate. It merged without a behavior-changing conflict and passed the
+required integration gates. The planned candidate worktree and branch are removed; the temporary
+integration worktree and branch remain only until `master` advances to this completion record.
 
 | Evidence | Result |
 |---|---|
@@ -949,7 +950,13 @@ gates and cleanup.
 | Focused revised proof | PASS — combined settings, backup, config, command, ingress, catalog, composition and recovery suites: 10 files / 503 tests; exact lint, typecheck and `git diff --check` clean |
 | Parity provenance | The combined manifest changed descriptor and implementation fingerprints. `8f8777e4` refreshes only the resulting hash/provenance fields and hash pixels: 210 accessibility references, 210 metadata references and 31 PNGs. Audit found no DOM, copy, control, layout or style change. |
 | Isolation | PASS — synthetic empty ignored mode-0600 `.env`; no real `.env`, `.tracker`, live state, browser transaction, submit or push touched |
-| Review state | `accepted`; immutable implementation `0e38b82f` awaits the required isolated merge, integration gates, cleanup and Task-2-2 completion record |
+| Integration | PASS — accepted evidence head `e1cfb9bd` merged `--no-ff` as `33d6a6e9`; merge parents are prior `master` `fbc23dc1` and accepted candidate `e1cfb9bd`; no behavior-changing conflict |
+| Integration gates | PASS — typecheck; lint; coverage 5,178 tests with every ratified floor passing; build-manifest check; architecture 74 files / 754 tests; unchanged parity 269/269; roadmap current |
+| Cleanup and preservation | PASS — the planned candidate worktree and branch plus both temporary review-fix worktrees and branches were removed; the isolated integration worktree is retained only to commit this record and advance `master`, then is removed; the dirty primary checkout and index remain untouched; no push |
+| Review state | `accepted and integrated`; immutable implementation `0e38b82f` passed fresh independent review and the required integration gates |
+
+Status is `complete`. Fresh independent review accepted the final behavior-changing correction before
+integration; the required ordered merge, integration gates and planned-candidate cleanup are complete.
 
 ### Task 3 · Cut over executor and worker lifecycle writers
 <!-- roadmap: p1f-run-writers -->
