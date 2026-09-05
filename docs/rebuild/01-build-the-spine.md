@@ -916,6 +916,24 @@ two peers serialize full coverage, architecture and parity runs.
 |---|---|---|---|---|---|---|
 | `1.6.2-2` | `codex/phase-1-6-settings` | `/Users/julianhein/Projects/hr-worktree-settings` | Verified common `master` SHA containing Task 1 and both approved wave plans; record it before either peer starts | Task-2-2 seam above; synthetic settings roots only; no real runtime or live state | Assigned proof matrix; focused suites; full gate, architecture and unchanged parity | Freeze the independently reviewed candidate. Task 2-1 receives PASS and merges first. The 2-2 supervisor then merges `--no-ff` to `master`; behavior-changing conflict fixes require renewed review. Run integration gates, remove this worktree and local branch, record review/merge/gate/cleanup evidence, then mark only Task 2-2 complete. |
 
+#### Implementation candidate awaiting independent review (2026-09-05)
+
+Task 2-2 is implemented on `codex/phase-1-6-settings` at immutable implementation candidate
+`8f8777e4`. It remains incomplete and unmerged pending the required fresh independent review,
+acceptance, integration gates and cleanup.
+
+| Evidence | Result |
+|---|---|
+| Plan and common base | PASS — approved Task-2-2 plan `0d2520f7`; common wave base `aaffe367`, containing Task 1 and both approved wave plans |
+| Required peer order | PASS — accepted Task 2-1 completed on `master` at `a5afdb07`; merged into this branch as `57ad0653` before the combined gates |
+| Candidate commits | `8c9cedd7`, `2945cfea`, `e874505c`, `87118792`, `fa93a623`, `2cd0029f`, `a3305537`, `4fe9c24d`, `4016e2af`, `15bb3c2b`, `01385201`, `f944a2ab`, `fd5f860c`, `d3ac830c`, `e1d9f008`, `8f8777e4` |
+| Authorized ownership amendment | Operator selected option A: Task 2-2 may add the transaction-safe, read-only historical protected-command `writeId` lookup in `src/infra/sqlite/authority-database.ts`. `d3ac830c` supplies it, strict request validation, restart/non-adjacent reuse proof and production dashboard composition; no other Task-1/Task-2-1 ownership moved. |
+| Full gate | PASS — typecheck; lint; coverage 5,085 tests, 85.55% statements / 76.59% branches / 89.68% functions / 87.61% lines; build-manifest check |
+| Supplemental gates | PASS — architecture 74 files / 754 tests; parity 269/269 |
+| Parity provenance | The combined manifest changed descriptor and implementation fingerprints. `8f8777e4` refreshes only the resulting hash/provenance fields and hash pixels: 210 accessibility references, 210 metadata references and 31 PNGs. Audit found no DOM, copy, control, layout or style change. |
+| Isolation | PASS — synthetic empty ignored mode-0600 `.env`; no real `.env`, `.tracker`, live state, browser transaction, submit or push touched |
+| Review state | `awaiting independent review`; no reviewer dispatched in this session, per the requested stop boundary |
+
 ### Task 3 · Cut over executor and worker lifecycle writers
 <!-- roadmap: p1f-run-writers -->
 
