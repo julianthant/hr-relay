@@ -2,7 +2,10 @@ import { z } from "zod";
 import type { Clock } from "../../../domain/clock.js";
 import {
   BulkRunCommandRequestSchema,
+  CommandResultSchema,
   CommandRequestSchema,
+  ProtectedSettingsCommandRequestSchema,
+  SettingsCommandRequestSchema,
   deriveBulkRunCommandFingerprint,
   type BulkRunCommandAcceptanceRecord,
   type BulkRunCommandRequest,
@@ -38,6 +41,78 @@ function withOperatorProvenance(input: unknown, clock: Clock): unknown {
 type CommandJournalRead = Readonly<{
   get(commandId: string): CommandRequest | undefined;
 }>;
+
+const OrdinarySettingsIngressRequestSchema = SettingsCommandRequestSchema.extend({
+  payload: SettingsCommandRequestSchema.shape.payload.extend({ patch: z.unknown() }),
+});
+const ProtectedSettingsIngressRequestSchema = ProtectedSettingsCommandRequestSchema.extend({
+  payload: ProtectedSettingsCommandRequestSchema.shape.payload.extend({ entries: z.unknown() }),
+});
+
+type CommandIngressDecision =
+  | Readonly<{ state: "accepted"; request: CommandRequest }>
+  | Readonly<{ state: "refused"; response: CommandResult }>;
+
+function settingsLeafIssueKey(issue: z.core.$ZodIssue, member: "patch" | "entries"): string {
+  const memberIndex = issue.path.indexOf(member);
+  const path = (memberIndex < 0 ? issue.path : issue.path.slice(memberIndex + 1)).map(String);
+  if (issue.code === "unrecognized_keys" && path.length === 0) return issue.keys[0] ?? "document";
+  if (path.at(-1) === "set" || path.at(-1) === "clear") path.pop();
+  return path.join(".") || "document";
+}
+
+function isUnknownSettingsKey(issue: z.core.$ZodIssue, member: "patch" | "entries"): boolean {
+  const memberIndex = issue.path.indexOf(member);
+  const leafPath = memberIndex < 0 ? issue.path : issue.path.slice(memberIndex + 1);
+  return issue.code === "unrecognized_keys" && leafPath.length === 0;
+}
+
+function settingsLeafRefusal(
+  commandId: string,
+  error: z.ZodError,
+  member: "patch" | "entries",
+): CommandResult {
+  const issue = error.issues[0];
+  if (issue === undefined) throw error;
+  const key = settingsLeafIssueKey(issue, member);
+  const code = isUnknownSettingsKey(issue, member)
+    || issue.message.includes("is not an editable ordinary setting")
+    ? "not-editable"
+    : "invalid-value";
+  return CommandResultSchema.parse({
+    state: "rejected",
+    commandId,
+    code,
+    message: `${code} { key: ${key} }`,
+  });
+}
+
+/** Admit the strict command shell before classifying request-only ordinary leaf failures. */
+function parseOperatorCommand(input: unknown, clock: Clock): CommandIngressDecision {
+  const stamped = withOperatorProvenance(input, clock);
+  const parsed = CommandRequestSchema.safeParse(stamped);
+  if (parsed.success) return Object.freeze({ state: "accepted", request: parsed.data });
+
+  const ordinary = OrdinarySettingsIngressRequestSchema.safeParse(stamped);
+  if (ordinary.success) {
+    const strict = SettingsCommandRequestSchema.safeParse(ordinary.data);
+    if (strict.success) throw parsed.error;
+    return Object.freeze({
+      state: "refused",
+      response: settingsLeafRefusal(ordinary.data.commandId, strict.error, "patch"),
+    });
+  }
+  const protectedSettings = ProtectedSettingsIngressRequestSchema.safeParse(stamped);
+  if (protectedSettings.success) {
+    const strict = ProtectedSettingsCommandRequestSchema.safeParse(protectedSettings.data);
+    if (strict.success) throw parsed.error;
+    return Object.freeze({
+      state: "refused",
+      response: settingsLeafRefusal(protectedSettings.data.commandId, strict.error, "entries"),
+    });
+  }
+  throw parsed.error;
+}
 
 type BulkCommandAcceptanceRepository = Readonly<{
   get(bulkCommandId: string): BulkRunCommandAcceptanceRecord | undefined;
@@ -162,9 +237,10 @@ export function createOperatorCommandIngress(input: Readonly<{
       command: unknown,
       execute: (accepted: CommandRequest) => Promise<CommandResult>,
     ): Promise<CommandResult> {
-      const intent = CommandRequestSchema.parse(withOperatorProvenance(command, input.clock));
-      return serialize(`command:${intent.commandId}`, () =>
-        execute(stampOperatorCommand(intent, input.clock, input.journal)));
+      const ingress = parseOperatorCommand(command, input.clock);
+      if (ingress.state === "refused") return Promise.resolve(ingress.response);
+      return serialize(`command:${ingress.request.commandId}`, () =>
+        execute(stampOperatorCommand(ingress.request, input.clock, input.journal)));
     },
     executeBulk(
       command: unknown,
