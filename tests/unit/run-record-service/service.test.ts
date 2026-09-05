@@ -608,6 +608,127 @@ describe("canonical run-record service", () => {
     assert.equal(resumed.run.envelope.startAt, "crm-dates");
   });
 
+  it("re-enqueues an operator-confirmed-absent write at its mandatory continuation node", () => {
+    const { service, request, runtimeConfig } = fixture();
+    const running = runningRun(service, request, runtimeConfig);
+    const parked = service.workerTransition({
+      commandId: "83000000-0000-4000-8000-000000000009",
+      runId: running.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: {
+        state: "parked-write",
+        writeIntentId: "83000000-0000-4000-8000-000000000099",
+        intentGeneration: 1,
+        parkedAt: NOW,
+        code: "operator-required",
+        message: "check whether the external write landed",
+      },
+    });
+    assert.equal(parked.state, "applied");
+    if (parked.state !== "applied") throw new Error("write park refused");
+
+    const resumed = service.transition({
+      commandId: "83000000-0000-4000-8000-000000000010",
+      runId: running.envelope.runId,
+      expectedVersion: parked.run.version,
+      lifecycle: { state: "queued" },
+      writeResolution: "resolve-write-absent",
+      startAt: "commit-person",
+    });
+
+    assert.equal(resumed.state, "applied");
+    if (resumed.state !== "applied") throw new Error("confirmed-absent resume refused");
+    assert.equal(resumed.run.lifecycle.state, "queued");
+    assert.equal(resumed.run.envelope.startAt, "commit-person");
+    assert.equal(resumed.run.version, parked.run.version + 1);
+  });
+
+  it("re-enqueues an operator-confirmed-present write at its mandatory continuation node", () => {
+    const { service, request, runtimeConfig } = fixture();
+    const running = runningRun(service, request, runtimeConfig);
+    const parked = service.workerTransition({
+      commandId: "83000000-0000-4000-8000-000000000011",
+      runId: running.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: {
+        state: "parked-write",
+        writeIntentId: "83000000-0000-4000-8000-000000000098",
+        intentGeneration: 1,
+        parkedAt: NOW,
+        code: "operator-required",
+        message: "check whether the external write landed",
+      },
+    });
+    assert.equal(parked.state, "applied");
+    if (parked.state !== "applied") throw new Error("write park refused");
+    const resolution = {
+      commandId: "83000000-0000-4000-8000-000000000012",
+      runId: running.envelope.runId,
+      expectedVersion: parked.run.version,
+      lifecycle: { state: "queued" as const },
+      writeResolution: "resolve-write-present" as const,
+      startAt: "verify-person",
+    };
+
+    const resumed = service.transition(resolution);
+
+    assert.equal(resumed.state, "applied");
+    if (resumed.state !== "applied") throw new Error("confirmed-present resume refused");
+    assert.equal(resumed.run.lifecycle.state, "queued");
+    assert.equal(resumed.run.envelope.startAt, "verify-person");
+    assert.equal(resumed.run.version, parked.run.version + 1);
+    const replay = service.transition(resolution);
+    assert.equal(replay.state, "applied-already");
+    if (replay.state !== "applied-already" || !("run" in replay)) throw new Error("write resolution did not replay");
+    assert.equal(replay.run.version, resumed.run.version);
+    assert.deepEqual(service.transition({ ...resolution, startAt: "commit-person" }), {
+      state: "refused",
+      refusal: { reason: "replay-divergent" },
+    });
+  });
+
+  it("refuses to re-enqueue a parked write without a resolution continuation", () => {
+    const { service, request, runtimeConfig, database } = fixture();
+    const running = runningRun(service, request, runtimeConfig);
+    const parked = service.workerTransition({
+      commandId: "83000000-0000-4000-8000-000000000013",
+      runId: running.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: {
+        state: "parked-write",
+        writeIntentId: "83000000-0000-4000-8000-000000000097",
+        intentGeneration: 1,
+        parkedAt: NOW,
+        code: "operator-required",
+        message: "check whether the external write landed",
+      },
+    });
+    assert.equal(parked.state, "applied");
+    if (parked.state !== "applied") throw new Error("write park refused");
+    const generation = database.getMeta().authorityGeneration;
+
+    assert.deepEqual(service.transition({
+      commandId: "83000000-0000-4000-8000-000000000014",
+      runId: running.envelope.runId,
+      expectedVersion: parked.run.version,
+      lifecycle: { state: "queued" },
+    }), {
+      state: "refused",
+      refusal: {
+        reason: "illegal-transition",
+        from: "parked-write",
+        to: "queued",
+        message: "write resolution requires its continuation node",
+      },
+    });
+    assert.equal(database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(service.read(running.envelope.runId), {
+      state: "present",
+      disposition: "live",
+      run: parked.run,
+    });
+  });
+
   it("#9/#10 terminalize is atomic and command replay is exact or divergent", () => {
     const interrupted = fixture({
       afterFailureStorageStep: (step) => {

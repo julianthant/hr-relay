@@ -301,7 +301,15 @@ const CanonicalVersionIdentityFields = {
   expectedVersion: PositiveIntSchema,
 } as const;
 
+export const CanonicalWriteResolutionTransitionRequestSchema = z.strictObject({
+  ...CanonicalVersionIdentityFields,
+  lifecycle: z.strictObject({ state: z.literal("queued") }),
+  writeResolution: z.enum(["resolve-write-present", "resolve-write-absent"]),
+  startAt: NodeIdSchema,
+});
+
 export const CanonicalTransitionRequestSchema = z.union([
+  CanonicalWriteResolutionTransitionRequestSchema,
   z.strictObject({ ...CanonicalVersionIdentityFields, lifecycle: RunLifecycleSchema }),
   z.strictObject({ ...CanonicalVersionIdentityFields, displayName: RunDisplayNameSchema }),
   z.strictObject({ ...CanonicalVersionIdentityFields, priority: z.literal("interactive") }),

@@ -322,6 +322,16 @@ export class RunRecordService {
         this.recordJournal(repositories, journal.command, journalRun(requested.run));
         return { state: "applied" as const, run: requested.run };
       }
+      const isWriteResolution = "writeResolution" in request;
+      if (isWriteResolution && current.run.lifecycle.state !== "parked-write") {
+        return refused({ reason: "illegal-transition", from: current.run.lifecycle.state,
+          to: request.lifecycle.state, message: "only a parked-write run has a write to resolve" });
+      }
+      if (!isWriteResolution && current.run.lifecycle.state === "parked-write"
+        && request.lifecycle.state === "queued") {
+        return refused({ reason: "illegal-transition", from: current.run.lifecycle.state,
+          to: request.lifecycle.state, message: "write resolution requires its continuation node" });
+      }
       const violation = current.run.lifecycle.state === "terminal"
         && canonicalJsonStringify(current.run.lifecycle) === canonicalJsonStringify(request.lifecycle)
         ? TERMINAL_SELF_EDGE_REFUSAL
@@ -338,7 +348,14 @@ export class RunRecordService {
         }
       }
       const now = this.dependencies.clock.now().toISOString();
-      const result = current.run.lifecycle.state === "parked-gate" && request.lifecycle.state === "queued"
+      const result = isWriteResolution
+        ? repositories.runs.resume({
+            runId: request.runId,
+            expectedVersion: request.expectedVersion,
+            startAt: request.startAt,
+            now,
+          })
+        : current.run.lifecycle.state === "parked-gate" && request.lifecycle.state === "queued"
         ? repositories.runs.resume({
             runId: request.runId,
             expectedVersion: request.expectedVersion,
