@@ -2,10 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
   closeSync,
-  constants,
   createReadStream,
   existsSync,
-  fstatSync,
   fsyncSync,
   lstatSync,
   mkdirSync,
@@ -23,14 +21,22 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import {
+  deriveSettingsCommandFingerprint,
+  markSettingsCommand,
+} from "../../domain/commands.js";
+import {
   ProtectedSettingsNameSchema,
-  ProtectedStoreRecordSchema,
+  protectedSettingsReadback,
+  type ProtectedStoreRecord,
 } from "../../domain/config/protected-settings.js";
-import { SettingsFileRecordSchema } from "../../domain/config/settings.js";
+import {
+  SettingsFileRecordSchema,
+  type SettingsFileRecord,
+} from "../../domain/config/settings.js";
 import { SettingsRootAuthoritySchema } from "../../domain/config/settings-root.js";
 import {
-  MAX_PROTECTED_SETTINGS_BYTES,
-  MAX_SETTINGS_FILE_BYTES,
+  createSettingsFileAuthority,
+  type SettingsRootBackupSnapshot,
 } from "../config/settings-file.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import {
@@ -112,42 +118,6 @@ function inferredSettingsRoot(backupDirectory: string): string {
     : join(parent, "settings");
 }
 
-function readPrivateBackupSource(pathInput: string, label: string, maximumBytes: number): Buffer {
-  const path = resolve(pathInput);
-  let descriptor: number;
-  try {
-    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  } catch (error) {
-    throw new Error(`${label} is unavailable for verified backup`, { cause: error });
-  }
-  try {
-    const before = fstatSync(descriptor);
-    const expectedUid = typeof process.getuid === "function" ? process.getuid() : before.uid;
-    if (!before.isFile() || before.nlink !== 1 || before.uid !== expectedUid
-      || (before.mode & 0o777) !== 0o600) {
-      throw new Error(`${label} is not a private regular file owned by the runtime user`);
-    }
-    if (before.size <= 0 || before.size > maximumBytes) {
-      throw new Error(`${label} exceeds its verified backup byte bound`);
-    }
-    const bytes = readFileSync(descriptor);
-    const after = fstatSync(descriptor);
-    if (bytes.byteLength !== before.size
-      || after.dev !== before.dev
-      || after.ino !== before.ino
-      || after.size !== before.size
-      || after.mtimeMs !== before.mtimeMs
-      || after.mode !== before.mode
-      || after.uid !== before.uid
-      || after.nlink !== before.nlink) {
-      throw new Error(`${label} changed while its verified backup bytes were read`);
-    }
-    return bytes;
-  } finally {
-    closeSync(descriptor);
-  }
-}
-
 function assertPrivateSettingsRoot(settingsRoot: string): void {
   let stats;
   try {
@@ -163,42 +133,231 @@ function assertPrivateSettingsRoot(settingsRoot: string): void {
 }
 
 type SettingsBackupCapture = Readonly<{
-  ordinaryBytes: Buffer;
-  authorityBytes: Buffer;
+  ordinaryBytes: Uint8Array;
+  authorityBytes: Uint8Array;
   protectedSettings: z.infer<typeof ProtectedSettingsBackupPresenceSchema>;
 }>;
 
-function captureSettingsBackup(settingsRoot: string): SettingsBackupCapture {
-  assertPrivateSettingsRoot(settingsRoot);
-  const ordinaryBytes = readPrivateBackupSource(
-    join(settingsRoot, "settings.json"),
-    "settings.json",
-    MAX_SETTINGS_FILE_BYTES,
-  );
-  const authorityBytes = readPrivateBackupSource(
-    join(settingsRoot, "authority.json"),
-    "authority.json",
-    16_384,
-  );
-  const protectedBytes = readPrivateBackupSource(
-    join(settingsRoot, "protected.json"),
-    "protected.json",
-    MAX_PROTECTED_SETTINGS_BYTES,
-  );
-  SettingsFileRecordSchema.parse(JSON.parse(ordinaryBytes.toString("utf8")));
-  const authority = SettingsRootAuthoritySchema.parse(JSON.parse(authorityBytes.toString("utf8")));
-  const protectedRecord = ProtectedStoreRecordSchema.parse(JSON.parse(protectedBytes.toString("utf8")));
+function captureSettingsBackup(snapshot: SettingsRootBackupSnapshot): SettingsBackupCapture {
+  const authority = SettingsRootAuthoritySchema.parse(JSON.parse(new TextDecoder().decode(snapshot.authorityBytes)));
   if (authority.ordinary !== "initialized" || authority.protected !== "initialized") {
     throw new Error("authority.json does not bind initialized settings.json and protected.json documents");
   }
   const protectedSettings = ProtectedSettingsBackupPresenceSchema.parse({
-    revision: protectedRecord.revision,
+    revision: snapshot.protected.revision,
     entries: ProtectedSettingsNameSchema.options.flatMap((name) => {
-      const entry = protectedRecord.entries[name];
+      const entry = snapshot.protected.entries[name];
       return entry === undefined ? [] : [{ name, valueId: entry.valueId, updatedAt: entry.updatedAt }];
     }).toSorted((left, right) => left.name.localeCompare(right.name)),
   });
-  return Object.freeze({ ordinaryBytes, authorityBytes, protectedSettings });
+  return Object.freeze({
+    ordinaryBytes: snapshot.ordinaryBytes,
+    authorityBytes: snapshot.authorityBytes,
+    protectedSettings,
+  });
+}
+
+function authenticateOrdinarySettingsBackup(
+  record: SettingsFileRecord,
+  database: AuthorityDatabase,
+): void {
+  const repositories = database.authority;
+  const current = repositories.settingsCurrent.get();
+  if (record.revision === 1) {
+    if (current !== undefined) {
+      throw new Error(`authority-uncertain: baseline settings.json is behind canonical revision ${String(current.revision)}`);
+    }
+    return;
+  }
+  const applied = record.lastApplied;
+  if (applied === undefined) throw new Error(`authority-uncertain: settings.json revision ${String(record.revision)} has no last command`);
+  const command = repositories.commands.get(applied.commandId);
+  if (command === undefined) {
+    throw new Error(`authority-unjournaled: settings revision ${String(record.revision)} has no durable command journal for settings.json`);
+  }
+  if (command.family !== "settings" || command.type !== "apply-settings"
+    || deriveSettingsCommandFingerprint(command) !== applied.commandFingerprint
+    || command.target.expectedRevision !== applied.expectedRevision
+    || command.payload.settingsSchemaHash !== applied.settingsSchemaHash
+    || command.payload.patchFingerprint !== applied.patchFingerprint) {
+    throw new Error(`authority-uncertain: settings.json revision ${String(record.revision)} does not match its command identity`);
+  }
+  const audit = database.findSettingsBackupCommandAudit(applied.commandId);
+  const target = { family: "settings" as const, revision: record.revision };
+  if (audit === undefined
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+    || audit.result.state !== "applied"
+    || audit.result.commandId !== applied.commandId
+    || audit.result.restartRequired !== true
+    || audit.result.settingsRevision !== record.revision
+    || audit.result.settingsFingerprint !== record.settingsFingerprint
+    || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])
+    || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{
+      target,
+      before: applied.expectedRevision,
+      after: record.revision,
+    }])
+    || audit.affectedDependencyIds.length !== 0
+    || current === undefined
+    || current.revision !== record.revision
+    || current.settingsFingerprint !== record.settingsFingerprint
+    || current.commandId !== applied.commandId
+    || current.commandFingerprint !== applied.commandFingerprint
+    || current.auditId !== audit.auditId
+    || current.committedAt !== audit.completedAt) {
+    throw new Error(`authority-uncertain: settings.json revision ${String(record.revision)} is not its authenticated current journal result`);
+  }
+}
+
+function protectedCurrentEntries(record: ProtectedStoreRecord) {
+  return ProtectedSettingsNameSchema.options.flatMap((name) => {
+    const entry = record.entries[name];
+    return entry === undefined ? [] : [{ name, valueId: entry.valueId, updatedAt: entry.updatedAt }];
+  });
+}
+
+function authenticateProtectedSettingsBackup(
+  record: ProtectedStoreRecord,
+  database: AuthorityDatabase,
+): void {
+  const repositories = database.authority;
+  const current = repositories.protectedSettingsCurrent.get();
+  if (record.revision === 1) {
+    if (current !== undefined) {
+      throw new Error(`authority-uncertain: baseline protected.json is behind canonical revision ${String(current.revision)}`);
+    }
+    return;
+  }
+  const applied = record.lastApplied;
+  if (applied === undefined) throw new Error(`authority-uncertain: protected.json revision ${String(record.revision)} has no last command`);
+  const command = repositories.commands.get(applied.commandId);
+  if (command === undefined) {
+    throw new Error(`authority-unjournaled: protected settings revision ${String(record.revision)} has no durable command journal for protected.json`);
+  }
+  if (command.family !== "settings" || command.type !== "apply-protected-settings"
+    || deriveSettingsCommandFingerprint(command) !== applied.commandFingerprint
+    || command.target.expectedRevision !== applied.expectedRevision
+    || command.payload.protectedSchemaHash !== applied.protectedSchemaHash
+    || command.payload.writeId !== applied.writeId) {
+    throw new Error(`authority-uncertain: protected.json revision ${String(record.revision)} does not match its marked command identity`);
+  }
+  const audit = database.findSettingsBackupCommandAudit(applied.commandId);
+  const target = { family: "protected-settings" as const, revision: record.revision };
+  const readback = protectedSettingsReadback(record);
+  if (audit === undefined
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(markSettingsCommand(command))
+    || audit.result.state !== "applied"
+    || audit.result.commandId !== applied.commandId
+    || audit.result.restartRequired !== false
+    || audit.result.revision !== record.revision
+    || canonicalJsonStringify(audit.result.entries) !== canonicalJsonStringify(readback.entries)
+    || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])
+    || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{
+      target,
+      before: applied.expectedRevision,
+      after: record.revision,
+    }])
+    || audit.affectedDependencyIds.length !== 0
+    || current === undefined
+    || current.revision !== record.revision
+    || current.commandId !== applied.commandId
+    || current.commandFingerprint !== applied.commandFingerprint
+    || current.auditId !== audit.auditId
+    || current.committedAt !== audit.completedAt
+    || canonicalJsonStringify(current.entries) !== canonicalJsonStringify(protectedCurrentEntries(record))) {
+    throw new Error(`authority-uncertain: protected.json revision ${String(record.revision)} is not its authenticated current journal result`);
+  }
+}
+
+function authenticateSettingsBackup(
+  snapshot: SettingsRootBackupSnapshot,
+  backupPath: string,
+): void {
+  const database = AuthorityDatabase.open({
+    path: backupPath,
+    busyTimeoutMs: 250,
+    migrationOwner: "settings-backup-verifier",
+    openMode: "storage-backup-read-only-no-migrate",
+  });
+  try {
+    authenticateOrdinarySettingsBackup(snapshot.ordinary, database);
+    authenticateProtectedSettingsBackup(snapshot.protected, database);
+  } finally {
+    database.close();
+    removeReadOnlyInspectionCompanions(backupPath);
+  }
+}
+
+function authenticateProtectedSettingsPresenceBackup(
+  presence: z.infer<typeof ProtectedSettingsBackupPresenceSchema>,
+  database: AuthorityDatabase,
+): void {
+  const repositories = database.authority;
+  const current = repositories.protectedSettingsCurrent.get();
+  if (presence.revision === 1) {
+    if (presence.entries.length !== 0 || current !== undefined) {
+      throw new Error("authority-uncertain: baseline protected settings backup does not match copied authority");
+    }
+    return;
+  }
+  const sortedCurrentEntries = current?.entries.toSorted((left, right) => left.name.localeCompare(right.name));
+  if (current === undefined
+    || current.revision !== presence.revision
+    || canonicalJsonStringify(sortedCurrentEntries) !== canonicalJsonStringify(presence.entries)) {
+    throw new Error(`authority-uncertain: protected settings backup revision ${String(presence.revision)} does not match its copied singleton`);
+  }
+  const command = repositories.commands.get(current.commandId);
+  const audit = database.findSettingsBackupCommandAudit(current.commandId);
+  const target = { family: "protected-settings" as const, revision: presence.revision };
+  const entries = Object.fromEntries(ProtectedSettingsNameSchema.options.map((name) => {
+    const entry = presence.entries.find((candidate) => candidate.name === name);
+    return [name, entry === undefined
+      ? { present: false }
+      : { present: true, valueId: entry.valueId, updatedAt: entry.updatedAt }];
+  }));
+  if (command === undefined
+    || command.family !== "settings"
+    || command.type !== "apply-protected-settings"
+    || command.target.expectedRevision !== presence.revision - 1
+    || deriveSettingsCommandFingerprint(command) !== current.commandFingerprint
+    || audit === undefined
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(markSettingsCommand(command))
+    || audit.result.state !== "applied"
+    || audit.result.commandId !== current.commandId
+    || audit.result.restartRequired !== false
+    || audit.result.revision !== presence.revision
+    || canonicalJsonStringify(audit.result.entries) !== canonicalJsonStringify(entries)
+    || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])
+    || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{
+      target,
+      before: presence.revision - 1,
+      after: presence.revision,
+    }])
+    || audit.affectedDependencyIds.length !== 0
+    || current.auditId !== audit.auditId
+    || current.committedAt !== audit.completedAt) {
+    throw new Error(`authority-uncertain: protected settings backup revision ${String(presence.revision)} is not authenticated by its copied journal`);
+  }
+}
+
+function authenticateManifestSettingsBackup(
+  ordinary: SettingsFileRecord,
+  protectedSettings: z.infer<typeof ProtectedSettingsBackupPresenceSchema>,
+  backupPath: string,
+): void {
+  const database = AuthorityDatabase.open({
+    path: backupPath,
+    busyTimeoutMs: 250,
+    migrationOwner: "settings-backup-verifier",
+    openMode: "storage-backup-read-only-no-migrate",
+  });
+  try {
+    authenticateOrdinarySettingsBackup(ordinary, database);
+    authenticateProtectedSettingsPresenceBackup(protectedSettings, database);
+  } finally {
+    database.close();
+    removeReadOnlyInspectionCompanions(backupPath);
+  }
 }
 
 async function persistBackupArtifact(
@@ -276,7 +435,7 @@ export async function verifyBackupManifestAtPath(
   if (manifest.manifestVersion === 2) {
     const ordinary = manifest.files[1];
     const authority = manifest.files[2];
-    SettingsFileRecordSchema.parse(JSON.parse(readFileSync(
+    const ordinaryRecord = SettingsFileRecordSchema.parse(JSON.parse(readFileSync(
       join(dirname(manifestPath), ordinary.backupFileName),
       "utf8",
     )));
@@ -287,6 +446,7 @@ export async function verifyBackupManifestAtPath(
     if (settingsAuthority.ordinary !== "initialized" || settingsAuthority.protected !== "initialized") {
       throw new Error("backup authority.json does not bind initialized settings documents");
     }
+    authenticateManifestSettingsBackup(ordinaryRecord, manifest.protectedSettings, backupPath);
   }
   return Object.freeze({ manifestPath, backupPath, manifest });
 }
@@ -379,9 +539,19 @@ export class AuthorityBackupService {
     const finalPaths: string[] = [];
     let finalManifestPath: string | undefined;
     try {
-      await this.#source.onlineBackupTo(temporaryBackupPath);
-      const inspection = AuthorityDatabase.inspectExistingReadOnly(temporaryBackupPath);
-      removeReadOnlyInspectionCompanions(temporaryBackupPath);
+      assertPrivateSettingsRoot(this.#settingsRoot);
+      const settingsAuthority = createSettingsFileAuthority({
+        path: join(this.#settingsRoot, "settings.json"),
+        validateCandidate: () => undefined,
+      });
+      const captured = await settingsAuthority.withRootBackupSnapshot(async (snapshot) => {
+        await this.#source.onlineBackupTo(temporaryBackupPath);
+        const inspection = AuthorityDatabase.inspectExistingReadOnly(temporaryBackupPath);
+        removeReadOnlyInspectionCompanions(temporaryBackupPath);
+        authenticateSettingsBackup(snapshot, temporaryBackupPath);
+        return Object.freeze({ inspection, settings: captureSettingsBackup(snapshot) });
+      });
+      const { inspection, settings } = captured;
       chmodSync(temporaryBackupPath, 0o600);
       fsyncPath(temporaryBackupPath);
       const createdAt = this.#clock.now().toISOString();
@@ -393,7 +563,6 @@ export class AuthorityBackupService {
       finalPaths.push(finalBackupPath);
       const stats = statSync(finalBackupPath);
       const digest = await sha256File(finalBackupPath);
-      const settings = captureSettingsBackup(this.#settingsRoot);
       const ordinaryIdentity = await persistBackupArtifact(
         temporarySettingsPath,
         join(this.#directory, `${stem}.settings.json`),

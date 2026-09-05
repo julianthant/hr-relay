@@ -758,6 +758,7 @@ describe("verified native online backups", () => {
     const authorityPath = join(root, "state.sqlite");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
+    initializeSyntheticSettingsBackupRoot(root);
     const failingSource = {
       getMeta: () => database.getMeta(),
       getSourceDatabaseIdentity: () => database.getSourceDatabaseIdentity(),

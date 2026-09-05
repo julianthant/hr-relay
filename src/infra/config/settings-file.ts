@@ -113,7 +113,19 @@ export interface SettingsFileAuthority {
   reconcile(resolve: (prepared: SettingsPreparedUpdate) => SettingsPrepareResolution): SettingsFileRecord;
   /** Hold exclusive settings authority while work atomically consumes this exact boot identity. */
   withExactRecord<Result>(expected: unknown, work: () => Result): Result;
+  /** Hold the shared lock while a backup consumer copies and authenticates this exact root snapshot. */
+  withRootBackupSnapshot<Result>(
+    this: void,
+    work: (snapshot: SettingsRootBackupSnapshot) => Promise<Result>,
+  ): Promise<Result>;
   apply(input: unknown): SettingsFileApplyOutcome;
+}
+
+export interface SettingsRootBackupSnapshot {
+  readonly ordinaryBytes: Uint8Array;
+  readonly authorityBytes: Uint8Array;
+  readonly ordinary: SettingsFileRecord;
+  readonly protected: ProtectedStoreRecord;
 }
 
 export interface SettingsFileAuthorityOptions {
@@ -211,6 +223,10 @@ interface DocumentAuthority<Record> {
   pendingTarget(this: void): SettingsDocumentTarget | undefined;
   reconcile(resolve: (prepared: PreparedDocument<Record>) => SettingsPrepareResolution): Record;
   withExactRecord<Result>(this: void, expected: unknown, work: () => Result): Result;
+  withRootBackupSnapshot<Result>(
+    this: void,
+    work: (snapshot: SettingsRootBackupSnapshot) => Promise<Result>,
+  ): Promise<Result>;
   withCurrentRecord<Result>(work: (record: Record) => Result): Result;
   apply(this: void, input: unknown): DocumentUpdate<Record> | SettingsApplyRefusal;
 }
@@ -594,6 +610,30 @@ function releaseAfter<T>(
   let result: T;
   try {
     result = work();
+  } catch (error) {
+    try {
+      lock.release();
+    } catch (releaseError) {
+      throw new AggregateError(
+        [error, releaseError],
+        `${context} failed and its exclusive settings authority could not release`,
+        { cause: releaseError },
+      );
+    }
+    throw error;
+  }
+  lock.release();
+  return result;
+}
+
+async function releaseAfterAsync<T>(
+  lock: SettingsAuthorityLockHandle,
+  work: () => Promise<T>,
+  context: string,
+): Promise<T> {
+  let result: T;
+  try {
+    result = await work();
   } catch (error) {
     try {
       lock.release();
@@ -1155,6 +1195,7 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
 ): DocumentAuthority<Record> {
   const paths = settingsRootPathsFromOrdinaryPath(options.path);
   const ordinaryPath = paths.ordinary;
+  const protectedPath = paths.protected;
   const directory = paths.root;
   const path = codec.target === "ordinary" ? paths.ordinary : paths.protected;
   const initializationPath = paths.authority;
@@ -1569,7 +1610,12 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
 
   function readDestinationBytes(destinationPath: string): Uint8Array | undefined {
     assertDirectory();
-    if (destinationPath === path) return readDocumentBytes();
+    if (destinationPath === ordinaryPath) {
+      return readPrivateRegularBytes(ordinaryPath, "settings.json", MAX_SETTINGS_FILE_BYTES);
+    }
+    if (destinationPath === protectedPath) {
+      return readPrivateRegularBytes(protectedPath, "protected.json", MAX_PROTECTED_SETTINGS_BYTES);
+    }
     if (destinationPath === initializationPath) return readInitializationBytes();
     if (destinationPath === rollbackPath) return readRollbackBytes();
     if (destinationPath === preparePath) return readPrepareBytes();
@@ -1602,10 +1648,8 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
         + `requires exclusive journal reconciliation`,
       );
     }
-    const bytes = readDocumentBytes();
-    const record = bytes === undefined ? codec.initial() : parseRecord(path, bytes);
-    const ordinaryBytes = codec.target === "ordinary" ? bytes : readPrivateRegularBytes(ordinaryPath, "settings.json", MAX_SETTINGS_FILE_BYTES);
-    const protectedBytes = codec.target === "protected" ? bytes : readPrivateRegularBytes(join(directory, "protected.json"), "protected.json", MAX_PROTECTED_SETTINGS_BYTES);
+    let ordinaryBytes = readPrivateRegularBytes(ordinaryPath, "settings.json", MAX_SETTINGS_FILE_BYTES);
+    let protectedBytes = readPrivateRegularBytes(protectedPath, "protected.json", MAX_PROTECTED_SETTINGS_BYTES);
     let evidenceBytes = readInitializationBytes();
     if (evidenceBytes === undefined) {
       if (ordinaryBytes !== undefined || protectedBytes !== undefined) {
@@ -1614,12 +1658,45 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
       evidenceBytes = initializationBytes("virgin", "virgin");
       replaceExactBytes(initializationPath, evidenceBytes, undefined);
     }
-    const evidence = parseSettingsInitialization(initializationPath, evidenceBytes);
-    for (const [target, present] of [["ordinary", ordinaryBytes !== undefined], ["protected", protectedBytes !== undefined]] as const) {
-      if (present !== (evidence[target] === "initialized")) {
-        throw new Error(`authority-uncertain: ${target === "ordinary" ? "settings.json" : "protected.json"} presence does not match authority.json`);
+    let evidence = parseSettingsInitialization(initializationPath, evidenceBytes);
+    const baselines = [
+      {
+        target: "ordinary" as const,
+        path: ordinaryPath,
+        bytes: new TextEncoder().encode(`${canonicalJsonStringify(initialSettingsFileRecord())}\n`),
+      },
+      {
+        target: "protected" as const,
+        path: protectedPath,
+        bytes: new TextEncoder().encode(`${canonicalJsonStringify(initialProtectedStoreRecord())}\n`),
+      },
+    ];
+    for (const baseline of baselines) {
+      const liveBytes = baseline.target === "ordinary" ? ordinaryBytes : protectedBytes;
+      if (evidence[baseline.target] === "virgin") {
+        if (liveBytes !== undefined && !equalBytes(liveBytes, baseline.bytes)) {
+          throw new Error(
+            `authority-uncertain: ${baseline.target === "ordinary" ? "settings.json" : "protected.json"} `
+            + "exists before its revision-1 baseline was initialized",
+          );
+        }
+        if (liveBytes === undefined) replaceExactBytes(baseline.path, baseline.bytes, undefined);
+        const nextEvidenceBytes = initializationBytes(
+          baseline.target === "ordinary" ? "initialized" : evidence.ordinary,
+          baseline.target === "protected" ? "initialized" : evidence.protected,
+        );
+        replaceExactBytes(initializationPath, nextEvidenceBytes, evidenceBytes);
+        evidenceBytes = nextEvidenceBytes;
+        evidence = parseSettingsInitialization(initializationPath, evidenceBytes);
+        if (baseline.target === "ordinary") ordinaryBytes = baseline.bytes;
+        else protectedBytes = baseline.bytes;
+      } else if (liveBytes === undefined) {
+        throw new Error(`authority-uncertain: ${baseline.target === "ordinary" ? "settings.json" : "protected.json"} presence does not match authority.json`);
       }
     }
+    const bytes = codec.target === "ordinary" ? ordinaryBytes : protectedBytes;
+    if (bytes === undefined) throw new Error(`authority-uncertain: ${basename(path)} baseline is absent after initialization`);
+    const record = parseRecord(path, bytes);
     return Object.freeze({
       record,
       bytes,
@@ -1961,6 +2038,41 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
         return work();
       }, `exact settings fence for ${path}`);
     },
+    withRootBackupSnapshot<Result>(
+      work: (snapshot: SettingsRootBackupSnapshot) => Promise<Result>,
+    ): Promise<Result> {
+      const lock = acquireDocumentAuthorityLock();
+      return releaseAfterAsync(lock, async () => {
+        if (readPrepareBytes() !== undefined || readRollbackBytes() !== undefined) {
+          throw new Error("authority-uncertain: settings recovery evidence blocks verified backup");
+        }
+        const ordinaryBytes = readPrivateRegularBytes(
+          ordinaryPath,
+          "settings.json",
+          MAX_SETTINGS_FILE_BYTES,
+        );
+        const protectedBytes = readPrivateRegularBytes(
+          protectedPath,
+          "protected.json",
+          MAX_PROTECTED_SETTINGS_BYTES,
+        );
+        const authorityBytes = readInitializationBytes();
+        if (ordinaryBytes === undefined || protectedBytes === undefined || authorityBytes === undefined) {
+          throw new Error("authority-unjournaled: verified backup requires both settings documents and authority.json");
+        }
+        const authority = parseSettingsInitialization(initializationPath, authorityBytes);
+        if (authority.ordinary !== "initialized" || authority.protected !== "initialized") {
+          throw new Error("authority.json does not bind initialized settings.json and protected.json documents");
+        }
+        const snapshot = Object.freeze({
+          ordinaryBytes,
+          authorityBytes,
+          ordinary: SettingsFileRecordSchema.parse(JSON.parse(new TextDecoder().decode(ordinaryBytes))),
+          protected: ProtectedStoreRecordSchema.parse(JSON.parse(new TextDecoder().decode(protectedBytes))),
+        });
+        return work(snapshot);
+      }, `settings backup snapshot for ${ordinaryPath}`);
+    },
     apply(input: unknown): DocumentUpdate<Record> | SettingsApplyRefusal {
       const admission = codec.admit(input);
       if (admission.state !== "admitted") return admission;
@@ -2194,20 +2306,20 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
       });
     },
     next(current, request) {
-      const settings = mergeSettingsPatch(current.settings, request.patch);
       try {
+        const settings = mergeSettingsPatch(current.settings, request.patch);
         options.validateCandidate(settings);
+        return deepFreeze(SettingsFileRecordSchema.parse({
+          revision: current.revision + 1, settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          settingsFingerprint: derivePersistedSettingsFingerprint(settings), settings,
+          lastApplied: codec.command(request),
+        }));
       } catch (error) {
         const keys = error instanceof z.ZodError
           ? [...new Set(error.issues.map(issuePath))].sort().join(",")
           : "settings";
         throw new Error(`cross-field-invalid { keys: ${keys} }`, { cause: error });
       }
-      return deepFreeze(SettingsFileRecordSchema.parse({
-        revision: current.revision + 1, settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-        settingsFingerprint: derivePersistedSettingsFingerprint(settings), settings,
-        lastApplied: codec.command(request),
-      }));
     },
     verifyReplay: () => true,
     verifyExact(current, expectedInput) {
@@ -2223,6 +2335,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     pendingTarget: authority.pendingTarget,
     apply: authority.apply,
     withExactRecord: authority.withExactRecord,
+    withRootBackupSnapshot: authority.withRootBackupSnapshot,
     reconcile(resolvePrepared: (prepared: SettingsPreparedUpdate) => SettingsPrepareResolution) {
       return authority.reconcile((prepared) => resolvePrepared({
         ...prepared,

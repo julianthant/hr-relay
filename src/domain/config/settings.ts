@@ -37,6 +37,37 @@ function isOrdinarySettingsPath(path: string): boolean {
   return SETTINGS_CATALOG.some((row) => row.key === key && row.sourceClass === "ordinary-settings");
 }
 
+function unwrappedSchema(schema: z.core.$ZodType): z.core.$ZodType {
+  let current = schema;
+  while (current instanceof z.ZodOptional
+    || current instanceof z.ZodDefault
+    || current instanceof z.ZodReadonly) {
+    current = current.unwrap();
+  }
+  return current;
+}
+
+/** Resolve the executable schema behind one catalogued ordinary leaf. */
+function ordinarySettingsLeafSchema(path: string): z.core.$ZodType | undefined {
+  let schema: z.core.$ZodType = EditableSettingsOverrideSchema;
+  for (const part of path.split(".")) {
+    schema = unwrappedSchema(schema);
+    if (schema instanceof z.ZodObject) {
+      const next: unknown = Reflect.get(schema.shape, part);
+      if (!(next instanceof z.ZodType)) return undefined;
+      schema = next;
+      continue;
+    }
+    if (schema instanceof z.ZodRecord) {
+      if (!z.safeParse(schema.keyType, part).success) return undefined;
+      schema = schema.valueType;
+      continue;
+    }
+    return undefined;
+  }
+  return unwrappedSchema(schema);
+}
+
 function setNestedLeaf(target: MutableSettingsObject, path: string, value: unknown): void {
   const parts = path.split(".");
   let cursor = target;
@@ -87,24 +118,15 @@ function deleteNestedLeaf(target: MutableSettingsObject, path: string): void {
 export const SettingsPatchSchema = z.record(z.string().min(1), SettingsLeafOperationSchema)
   .refine((patch) => Object.keys(patch).length > 0, "settings patch must contain at least one leaf operation")
   .superRefine((patch, context) => {
-    const setValues = MutableSettingsObjectSchema.parse({});
     for (const [path, operation] of Object.entries(patch)) {
       if (!isOrdinarySettingsPath(path)) {
         context.addIssue({ code: "custom", path: [path], message: `settings path ${path} is not an editable ordinary setting` });
         continue;
       }
-      if ("set" in operation) setNestedLeaf(setValues, path, operation.set);
-    }
-    const displayPaths = ["display.screenWidth", "display.screenHeight"] as const;
-    if (displayPaths.some((path) => Object.hasOwn(patch, path))
-      && !displayPaths.every((path) => Object.hasOwn(patch, path))) {
-      context.addIssue({ code: "custom", path: ["display"], message: "display updates must include both screenWidth and screenHeight operations" });
-    }
-    if (Object.keys(setValues).length > 0) {
-      const parsed = EditableSettingsOverrideSchema.safeParse(setValues);
-      if (!parsed.success) {
-        for (const issue of parsed.error.issues) {
-          context.addIssue({ ...issue, path: issue.path.map(String) });
+      if ("set" in operation) {
+        const leafSchema = ordinarySettingsLeafSchema(path);
+        if (leafSchema === undefined || !z.safeParse(leafSchema, operation.set).success) {
+          context.addIssue({ code: "custom", path: [path], message: `settings path ${path} has an invalid value` });
         }
       }
     }

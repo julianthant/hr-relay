@@ -245,6 +245,7 @@ function crashSettingsReplacement(
   input: unknown,
   phase: "before-live-rename" | "after-live-rename",
 ) {
+  createSettingsFileAuthority({ path, validateCandidate: () => undefined }).read();
   const moduleUrl = pathToFileURL(join(
     process.cwd(),
     "src",
@@ -1042,7 +1043,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       patch: command.payload.patch,
     }, "before-live-rename");
     assert.equal(child.signal, "SIGKILL", child.stderr);
-    assert.equal(existsSync(path), false);
+    assert.equal(SettingsFileRecordSchema.parse(JSON.parse(readFileSync(path, "utf8"))).revision, 1);
     assert.equal(existsSync(settingsPreparePath(path)), true);
 
     const runtime = await composeDashboardRuntime({
@@ -1054,7 +1055,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     });
     cleanups.push(() => runtime.stop());
 
-    assert.equal(existsSync(path), false);
+    assert.equal(SettingsFileRecordSchema.parse(JSON.parse(readFileSync(path, "utf8"))).revision, 1);
     assert.equal(existsSync(settingsPreparePath(path)), false);
   });
 
@@ -1089,7 +1090,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     });
     cleanups.push(() => runtime.stop());
 
-    assert.equal(existsSync(path), false);
+    assert.equal(SettingsFileRecordSchema.parse(JSON.parse(readFileSync(path, "utf8"))).revision, 1);
     assert.equal(existsSync(settingsPreparePath(path)), false);
   });
 

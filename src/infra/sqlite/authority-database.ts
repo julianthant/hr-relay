@@ -2671,6 +2671,12 @@ export class AuthorityDatabase implements Disposable {
     return sqliteBackup(this.#database, destination, { rate: 100 });
   }
 
+  /** Narrow read used only to authenticate copied settings authority during backup verification. */
+  findSettingsBackupCommandAudit(commandId: string): z.infer<typeof CommandAuditRecordSchema> | undefined {
+    this.#assertOpen();
+    return this.authority.commandAudits.findByCommand(commandId);
+  }
+
   close(): void {
     if (this.#closed) return;
     if (this.#transactionDepth !== 0) throw new Error("cannot close authority database during a transaction");

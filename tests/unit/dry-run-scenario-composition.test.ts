@@ -419,7 +419,7 @@ describe("dry-run scenario production composition boundary", () => {
     assert.equal(runEvents[0]?.configSnapshotId, active.configSnapshotId);
   });
 
-  it("refuses absent activation before any start effects while allowing virgin Settings initialization", async () => {
+  it("refuses absent activation before any start effects while allowing baseline Settings initialization", async () => {
     const fixture = admissionFixture();
     const before = startEffects(fixture.path);
     await assert.rejects(fixture.runtime.start(fixture.request), /runtime config has no dashboard-activated generation/);
@@ -430,8 +430,10 @@ describe("dry-run scenario production composition boundary", () => {
       join(fixture.root, ".tracker", "settings", "authority.json"),
       "utf8",
     ));
-    assert.ok(typeof initialization === "object" && initialization !== null && "ordinary" in initialization);
-    assert.equal(initialization.ordinary, "virgin");
+    assert.ok(typeof initialization === "object" && initialization !== null
+      && "ordinary" in initialization && "protected" in initialization);
+    assert.equal(initialization.ordinary, "initialized");
+    assert.equal(initialization.protected, "initialized");
     await assert.rejects(fixture.runtime.collectEvidence("11111111-1111-4111-8111-111111111111"),
       /dry-run evidence collection ran before start/);
   });

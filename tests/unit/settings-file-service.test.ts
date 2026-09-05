@@ -36,6 +36,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import {
   CURRENT_SETTINGS_SCHEMA_HASH,
+  SettingsFileRecordSchema,
   SettingsApplyRejectionCodeSchema,
   deriveSettingsPatchFingerprint,
 } from "../../src/domain/config/settings.js";
@@ -97,15 +98,16 @@ afterEach(() => {
 });
 
 describe("baseline atomic Settings invariants on the single file authority", () => {
-  it("refuses an incomplete annual-date candidate before creating the settings authority", () => {
+  it("classifies an incomplete annual-date candidate as cross-field-invalid over the baseline", () => {
     const path = settingsPath();
     const service = createTestService({ path });
 
     assert.throws(
       () => apply(service, 1, { annualDates: { FY2027: { jobEndDate: "06/30/2027" } } }),
-      /annualDates/,
+      (error: unknown) => error instanceof Error
+        && error.message === "cross-field-invalid { keys: annualDates.FY2027.kronosDefaultEndDate,annualDates.FY2027.kronosDefaultStartDate }",
     );
-    assert.equal(existsSync(path), false);
+    assert.deepEqual(service.read().settings, {});
     assert.equal(service.read().revision, 1);
   });
 
@@ -130,6 +132,71 @@ describe("baseline atomic Settings invariants on the single file authority", () 
       } } },
     });
     assert.equal(service.read().revision, 3);
+  });
+
+  it("sets one annual-date leaf after the fiscal year is complete", () => {
+    const path = settingsPath();
+    const service = createTestService({ path });
+    assert.equal(apply(service, 1, { annualDates: { FY2027: {
+      jobEndDate: "06/30/2027",
+      kronosDefaultEndDate: "06/29/2027",
+      kronosDefaultStartDate: "07/01/2026",
+    } } }).state, "applied");
+
+    const changed = apply(service, 2, {
+      "annualDates.FY2027.jobEndDate": { set: "06/28/2027" },
+    });
+
+    assert.equal(changed.state, "applied");
+    assert.deepEqual(service.read().settings.annualDates?.FY2027, {
+      jobEndDate: "06/28/2027",
+      kronosDefaultEndDate: "06/29/2027",
+      kronosDefaultStartDate: "07/01/2026",
+    });
+  });
+
+  it("refuses an invalid annual-date leaf before materializing the settings root", () => {
+    const path = settingsPath();
+    const service = createTestService({ path });
+    const patch = {
+      "annualDates.FY2027.jobEndDate": { set: "not-a-date" },
+    };
+
+    assert.throws(
+      () => service.apply({
+        commandId: "99999999-9999-4999-8999-999999999999",
+        commandFingerprint: "9".repeat(64),
+        expectedRevision: 1,
+        settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+        patchFingerprint: rawPatchFingerprint(patch),
+        patch,
+      }),
+      (error: unknown) => error instanceof Error
+        && error.message === "invalid-value { key: annualDates.FY2027.jobEndDate }",
+    );
+    assert.equal(existsSync(dirname(path)), false);
+  });
+
+  it("refuses clearing one annual-date leaf without changing the complete year", () => {
+    const path = settingsPath();
+    const service = createTestService({ path });
+    assert.equal(apply(service, 1, { annualDates: { FY2027: {
+      jobEndDate: "06/30/2027",
+      kronosDefaultEndDate: "06/29/2027",
+      kronosDefaultStartDate: "07/01/2026",
+    } } }).state, "applied");
+    const before = readFileSync(path);
+
+    assert.throws(
+      () => apply(service, 2, {
+        "annualDates.FY2027.jobEndDate": { clear: true },
+      }),
+      (error: unknown) => error instanceof Error
+        && error.message === "cross-field-invalid { keys: annualDates.FY2027.jobEndDate }",
+    );
+
+    assert.deepEqual(readFileSync(path), before);
+    assert.equal(service.read().revision, 2);
   });
 
   it("refuses a stale revision without changing the persisted bytes", () => {
@@ -236,12 +303,16 @@ describe("baseline atomic Settings invariants on the single file authority", () 
   it("retains exclusive recovery evidence when directory fsync fails after replacement", () => {
     const path = settingsPath();
     const directory = dirname(path);
+    createTestService({ path }).read();
     let failedDirectorySync = false;
     const service = createTestService({
       path,
       operations: {
         syncPath: (candidate) => {
-          if (candidate === directory && existsSync(path) && !failedDirectorySync) {
+          const revision = existsSync(path)
+            ? SettingsFileRecordSchema.parse(JSON.parse(readFileSync(path, "utf8"))).revision
+            : undefined;
+          if (candidate === directory && revision === 2 && !failedDirectorySync) {
             failedDirectorySync = true;
             throw new Error("injected directory fsync failure");
           }
@@ -411,6 +482,46 @@ describe("D331 shared settings root", () => {
     assert.deepEqual(protectedSettingsReadback(protectedStore.read()).entries.ucpathPassword, { present: false });
   });
 
+  it("P27 resumes exact revision-1 baseline materialization after a durability interruption", () => {
+    const path = settingsPath();
+    const root = dirname(path);
+    let interrupted = false;
+    const first = createTestService({
+      path,
+      operations: {
+        syncPath: (candidate) => {
+          if (candidate === root
+            && existsSync(path)
+            && !existsSync(join(root, "protected.json"))
+            && !interrupted) {
+            interrupted = true;
+            throw new Error("injected baseline durability interruption");
+          }
+        },
+      },
+    });
+
+    assert.throws(() => first.read(), /directory fsync failed; durability is uncertain/u);
+    const interruptedAuthority = SettingsRootAuthoritySchema.parse(JSON.parse(
+      readFileSync(join(root, "authority.json"), "utf8"),
+    ));
+    assert.deepEqual({
+      ordinary: interruptedAuthority.ordinary,
+      protected: interruptedAuthority.protected,
+    }, { ordinary: "virgin", protected: "virgin" });
+
+    const recovered = createTestService({ path });
+    assert.equal(recovered.read().revision, 1);
+    assert.deepEqual(readdirSync(root).sort(), ["authority.json", "protected.json", "settings.json"]);
+    const settledAuthority = SettingsRootAuthoritySchema.parse(JSON.parse(
+      readFileSync(join(root, "authority.json"), "utf8"),
+    ));
+    assert.deepEqual({
+      ordinary: settledAuthority.ordinary,
+      protected: settledAuthority.protected,
+    }, { ordinary: "initialized", protected: "initialized" });
+  });
+
   it("P28 performs request-only schema, fingerprint, and value refusals before authority access", () => {
     const schemaPath = settingsPath();
     const ordinary = createTestService({ path: schemaPath });
@@ -526,6 +637,7 @@ describe("D331 shared settings root", () => {
     const store = createProtectedSettingsFileAuthority({ path, assertWriteIdAvailable: () => undefined });
     store.read();
     const prior = readFileSync(join(dirname(path), "authority.json"));
+    const priorProtected = readFileSync(join(dirname(path), "protected.json"));
     const result = store.apply(protectedRequest());
     if (result.state !== "applied") assert.fail("expected update");
     const prepare = z.strictObject({
@@ -538,11 +650,11 @@ describe("D331 shared settings root", () => {
     assert.equal(prepare.target, "protected");
     assert.deepEqual(Buffer.from(prepare.priorInitializationBytesBase64, "base64"), prior);
     assert.deepEqual(Buffer.from(prepare.nextSettingsBytesBase64, "base64"), readFileSync(join(dirname(path), "protected.json")));
-    assert.equal(prepare.priorSettingsBytesBase64, null);
+    assert.deepEqual(Buffer.from(prepare.priorSettingsBytesBase64 ?? "", "base64"), priorProtected);
     result.rollback();
     assert.deepEqual(readFileSync(join(dirname(path), "authority.json")), prior);
-    assert.equal(existsSync(join(dirname(path), "protected.json")), false);
-    assert.deepEqual(readdirSync(dirname(path)), ["authority.json"]);
+    assert.deepEqual(readFileSync(join(dirname(path), "protected.json")), priorProtected);
+    assert.deepEqual(readdirSync(dirname(path)).sort(), ["authority.json", "protected.json", "settings.json"]);
     assert.equal(store.read().revision, 1);
   });
 
@@ -603,6 +715,7 @@ describe("D331 shared settings root", () => {
     const oversized = createTestService({ path: oversizedPath });
     oversized.read();
     const authorityBefore = readFileSync(join(dirname(oversizedPath), "authority.json"));
+    const settingsBefore = readFileSync(oversizedPath);
     const patch = {
       urls: { kuali: { test: { entry: `https://example.test/${"a".repeat(1_048_576)}` } } },
     };
@@ -613,7 +726,7 @@ describe("D331 shared settings root", () => {
       patchFingerprint: rawPatchFingerprint(operations),
       patch: operations,
     }), /document-too-large: settings\.json/u);
-    assert.equal(existsSync(oversizedPath), false);
+    assert.deepEqual(readFileSync(oversizedPath), settingsBefore);
     assert.deepEqual(readFileSync(join(dirname(oversizedPath), "authority.json")), authorityBefore);
 
     const unjournaledPath = settingsPath();
@@ -690,7 +803,7 @@ describe("D331 process-loss recovery for both document targets", () => {
     );
 
     assert.equal(createTestService({ path }).read().revision, 1);
-    assert.deepEqual(readdirSync(dirname(path)), ["authority.json"]);
+    assert.deepEqual(readdirSync(dirname(path)).sort(), ["authority.json", "protected.json", "settings.json"]);
   });
 
   it("P23 refuses a crash-left temporary whose exact staged bytes changed", () => {
@@ -719,9 +832,7 @@ describe("D331 process-loss recovery for both document targets", () => {
     for (const scenario of [
       { destination: "prepare.json", occurrence: 1, action: "apply", seeded: false },
       { destination: target === "ordinary" ? "settings.json" : "protected.json", occurrence: 1, action: "apply", seeded: false },
-      { destination: "authority.json", occurrence: 1, action: "apply", seeded: false },
       { destination: "rollback.json", occurrence: 1, action: "rollback", seeded: false },
-      { destination: "authority.json", occurrence: 2, action: "rollback", seeded: false },
       { destination: target === "ordinary" ? "settings.json" : "protected.json", occurrence: 2, action: "rollback", seeded: true },
     ] as const) {
       it(`P25 ${target} recovers its exact ${scenario.destination} temporary before rename (${scenario.action} ${String(scenario.occurrence)})`, () => {
@@ -771,7 +882,7 @@ describe("D331 process-loss recovery for both document targets", () => {
   }
 
   for (const target of ["ordinary", "protected"] as const) {
-    for (const crashStage of ["prepare.json", "document", "authority.json", "afterRollbackPrepared", "afterRollbackSettingsRestored", "afterRollbackInitializationRestored"] as const) {
+    for (const crashStage of ["prepare.json", "document", "afterRollbackPrepared", "afterRollbackSettingsRestored", "afterRollbackInitializationRestored"] as const) {
       it(`P25 ${target} preserves exact prior bytes after death at ${crashStage}`, () => {
         const path = settingsPath();
         const ordinary = createTestService({ path });
@@ -789,6 +900,7 @@ describe("D331 process-loss recovery for both document targets", () => {
           entries: { ucpathPassword: { set: "synthetic-crash-proof" } }, updatedAt: "2026-09-04T12:00:00.000Z",
         };
         const fileName = target === "ordinary" ? "settings.json" : "protected.json";
+        const documentBefore = readFileSync(join(dirname(path), fileName));
         const killDestination = crashStage === "document" ? fileName : crashStage;
         const moduleUrl = pathToFileURL(join(process.cwd(), "src/infra/config/settings-file.ts")).href;
         const factory = target === "ordinary" ? "createSettingsFileAuthority" : "createProtectedSettingsFileAuthority";
@@ -816,8 +928,8 @@ describe("D331 process-loss recovery for both document targets", () => {
           : createProtectedSettingsFileAuthority({ path, assertWriteIdAvailable: () => undefined }).reconcile(() => "rollback");
         assert.equal(recovered.revision, 1);
         assert.deepEqual(readFileSync(join(dirname(path), "authority.json")), authorityBefore);
-        assert.equal(existsSync(join(dirname(path), fileName)), false);
-        assert.deepEqual(readdirSync(dirname(path)), ["authority.json"]);
+        assert.deepEqual(readFileSync(join(dirname(path), fileName)), documentBefore);
+        assert.deepEqual(readdirSync(dirname(path)).sort(), ["authority.json", "protected.json", "settings.json"]);
         assert.equal(ordinary.pendingTarget(), undefined);
       });
     }

@@ -1671,7 +1671,7 @@ describe("apply-settings authority", () => {
     });
     assert.equal(JSON.stringify(result).includes("private candidate diagnostic"), false);
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(existsSync(settingsPath), false);
+    assert.equal(SettingsFileRecordSchema.parse(JSON.parse(readFileSync(settingsPath, "utf8"))).revision, 1);
   });
 
   it("reconciles an ambiguous post-COMMIT exception without rolling back committed settings", () => {
