@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "reviewedAt": "2026-08-09",
+  "reviewedAt": "2026-09-04",
   "architectureRoot": "tests/unit/architecture",
   "testScript": "test:architecture",
   "coveragePolicy": {
@@ -102,7 +102,15 @@
       "file": "tests/unit/architecture/config-snapshot-generations.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/clock-config-secrets.md",
-      "invariant": "The durable config leaf set is SHA-256 pinned per generation: adding or tightening a required config leaf without registering it in CONFIG_SNAPSHOT_GENERATIONS and bumping CURRENT_CONFIG_SNAPSHOT_GENERATION fails here, and a stored snapshot tolerates exactly the registered post-baseline leaves being absent — every other missing leaf, missing group, or unknown key still fails loud rather than being defaulted.",
+      "invariant": "The durable config leaf set is SHA-256 pinned per generation: adding or tightening a required config leaf without registering it in CONFIG_SNAPSHOT_GENERATIONS and bumping CURRENT_CONFIG_SNAPSHOT_GENERATION fails here. D331 P38/M14 adds the permanent retired-leaves-are-a-closed-list arm: operator.timekeeperName is retired only in generation 5, pre-floor snapshots retain it, current snapshots reject it, and any other vanished or unregistered leaf still fails loud rather than being defaulted.",
+      "replacementRequired": true
+    },
+    {
+      "name": "settings-catalog",
+      "file": "tests/unit/architecture/settings-catalog.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/clock-config-secrets.md",
+      "invariant": "D331 P1/P2/P5/P8/P33: the closed 88-row settings registry covers every ordinary config leaf, protected entry, provider-key family, host-derived publication and runtime-isolation channel in both directions; each row has one legal sensitivity/source-class pairing, only existing named consumers, and one contract-owned restart scope. The ordinary schema is generated only from ordinary-settings rows and therefore cannot admit a protected name, production-only route or deployment-owned path. Red-capable controls remove and duplicate real rows, add an uncatalogued leaf, corrupt each sensitivity/source pairing, name a missing consumer, and restore protected members to the ordinary document.",
       "replacementRequired": true
     },
     {
@@ -649,8 +657,8 @@
       "name": "redaction-surface-scan",
       "file": "tests/unit/architecture/redaction-surface-scan.test.ts",
       "status": "active",
-      "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "D183/D283 (ref guards-and-tests §3.15): the sweep proving no classified value reaches a wire, durable row/file, notification or provider unreviewed. The declaration audit walks each registered schema through z.toJSONSchema and demands an origin — repository-authored, operator-authored, declared-redacted, local-filesystem-name, captured-hr-value or external-text — for every free-text/open-JSON leaf, then holds it against the egress matrix. Explorer validation, apply and durable override documents are explicit surfaces; their labels are operator-authored, never repository-authored-safe, and the strict label schema rejects every universal password/cookie/storage-state/private-key/credential-path/SSN/DOB canary before file persistence. Redacted subtrees are recognised structurally, new leaves/modules/wire schemas fail undispositioned, and `*Redacted` producer writes are scanned. The producer canary sweep still drives failure advisory, all notification triggers, ledger projection, the real evidence receipt and diagnostic redaction, with negative controls for every mechanical arm.",
+      "owner": "docs/rebuild/reference/guards-and-tests.md; docs/rebuild/reference/clock-config-secrets.md",
+      "invariant": "D183/D283 (ref guards-and-tests §3.15): the sweep proving no classified value reaches a wire, durable row/file, notification or provider unreviewed. The declaration audit walks each registered schema through z.toJSONSchema and demands an origin — repository-authored, operator-authored, declared-redacted, local-filesystem-name, captured-hr-value or external-text — for every free-text/open-JSON leaf, then holds it against the egress matrix. D331 P41 additionally names every settings-authority leaf added to a served contract and permits only closed-literal or identifier-free dispositions. Its deciding evidence is the exact current ProtectedSettingsNameSchema × ProtectedSettingsPresenceSchema readback, FrontendBootstrapWireSchema protected schema hash, CommandResultSchema restart/revision fields, every SettingsRuntimeStatusSchema leaf, EditableSettingsPathSchema display defaultValue/effectiveValue pair, and SettingsApplyRefusalSchema plus every SettingsApplyRejectionCodeSchema literal; adding or omitting a named leaf, naming no current leaf, or changing its reviewed value class is red. Explorer validation, apply and durable override documents are explicit surfaces; their labels are operator-authored, never repository-authored-safe, and the strict label schema rejects every universal password/cookie/storage-state/private-key/credential-path/SSN/DOB canary before file persistence. Redacted subtrees are recognised structurally, new leaves/modules/wire schemas fail undispositioned, and `*Redacted` producer writes are scanned. The producer canary sweep still drives failure advisory, all notification triggers, ledger projection, the real evidence receipt and diagnostic redaction, with negative controls for every mechanical arm.",
       "replacementRequired": true
     },
     {

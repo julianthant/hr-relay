@@ -62,6 +62,17 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { z } from "zod";
+import { CommandResultSchema } from "../../../../src/domain/commands.js";
+import {
+  ProtectedSettingsNameSchema,
+  ProtectedSettingsPresenceSchema,
+  ProtectedSettingsReadbackSchema,
+} from "../../../../src/domain/config/protected-settings.js";
+import {
+  SettingsApplyRefusalSchema,
+  SettingsApplyRejectionCodeSchema,
+  SettingsRuntimeStatusSchema,
+} from "../../../../src/domain/config/settings.js";
 import {
   ActionDescriptorWireSchema,
 } from "../../../../src/domain/dashboard/actions.js";
@@ -96,7 +107,10 @@ import {
 } from "../../../../src/domain/dashboard/run-detail.js";
 import { CrossDateSearchPageSchema } from "../../../../src/domain/dashboard/search.js";
 import { SettingsFactsWireSchema } from "../../../../src/domain/dashboard/settings.js";
-import { EditableSettingsWireSchema } from "../../../../src/domain/dashboard/settings-editor.js";
+import {
+  EditableSettingsPathSchema,
+  EditableSettingsWireSchema,
+} from "../../../../src/domain/dashboard/settings-editor.js";
 import { StorageDoctorWireSchema } from "../../../../src/domain/dashboard/storage.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../src/domain/dashboard/subscription.js";
 import { OperatorXlsxExportEvidenceSchema } from "../../../../src/domain/dashboard/xlsx-export.js";
@@ -477,6 +491,269 @@ export function auditSurfaceOrigins(
     }
   }
   return violations;
+}
+
+/* ── 3a. D331's newly served closed/identifier-free settings fields ─────── */
+
+/**
+ * D331 P41 is narrower and stricter than the general origin audit above. Its
+ * settings additions are deliberately value-free, so each named field must be
+ * either a closed schema vocabulary or a dynamic identity/fact that cannot
+ * contain a classified HR value. Keeping this as a separate schema-derived
+ * table prevents generic `closed` leaf handling from silently skipping a new
+ * presence field, runtime identity, display fact, or refusal literal.
+ */
+export const D331ServedValueClassSchema = z.enum(["closed-literal", "identifier-free"]);
+export type D331ServedValueClass = z.infer<typeof D331ServedValueClassSchema>;
+
+export const D331ServedSurfaceSchema = z.enum([
+  "protected-settings-readback",
+  "frontend-bootstrap",
+  "settings-command-result",
+  "settings-runtime-status",
+  "host-display",
+  "settings-apply-refusal",
+]);
+export type D331ServedSurface = z.infer<typeof D331ServedSurfaceSchema>;
+
+export const D331ServedLeafDispositionSchema = z.strictObject({
+  surface: D331ServedSurfaceSchema,
+  path: z.string().min(1),
+  valueClass: D331ServedValueClassSchema,
+});
+export type D331ServedLeafDisposition = z.infer<typeof D331ServedLeafDispositionSchema>;
+
+interface ExpectedD331ServedLeaf extends D331ServedLeafDisposition {
+  readonly evidence: string;
+}
+
+function d331DispositionKey(entry: Pick<D331ServedLeafDisposition, "surface" | "path">): string {
+  return `${entry.surface}|${entry.path}`;
+}
+
+function expectedD331ServedLeaves(): readonly ExpectedD331ServedLeaf[] {
+  const expected: ExpectedD331ServedLeaf[] = [];
+  const add = (
+    surface: D331ServedSurface,
+    path: string,
+    valueClass: D331ServedValueClass,
+    evidence: string,
+  ): void => {
+    expected.push({ surface, path, valueClass, evidence });
+  };
+
+  for (const name of ProtectedSettingsNameSchema.options) {
+    for (const leaf of surfaceLeaves(ProtectedSettingsPresenceSchema)) {
+      add(
+        "protected-settings-readback",
+        `entries.${name}.${leaf.path}`,
+        leaf.path === "present" ? "closed-literal" : "identifier-free",
+        "ProtectedSettingsNameSchema × ProtectedSettingsPresenceSchema",
+      );
+    }
+  }
+  add(
+    "protected-settings-readback",
+    "revision",
+    "identifier-free",
+    "ProtectedSettingsReadbackSchema.revision",
+  );
+  add(
+    "frontend-bootstrap",
+    "protectedSchemaHash",
+    "identifier-free",
+    "FrontendBootstrapWireSchema.protectedSchemaHash",
+  );
+  add(
+    "settings-command-result",
+    "restartRequired",
+    "closed-literal",
+    "CommandResultSchema.restartRequired",
+  );
+  add(
+    "settings-command-result",
+    "revision",
+    "identifier-free",
+    "CommandResultSchema protected-settings revision",
+  );
+  for (const leaf of surfaceLeaves(SettingsRuntimeStatusSchema)) {
+    add(
+      "settings-runtime-status",
+      leaf.path,
+      leaf.path === "state" ? "closed-literal" : "identifier-free",
+      "SettingsRuntimeStatusSchema",
+    );
+  }
+  for (const path of EditableSettingsPathSchema.options.filter((candidate) => candidate.startsWith("display."))) {
+    add(
+      "host-display",
+      `${path}.defaultValue`,
+      "identifier-free",
+      "EditableSettingsWireSchema defaultValue is the probed host display fact",
+    );
+    add(
+      "host-display",
+      `${path}.effectiveValue`,
+      "identifier-free",
+      "EditableSettingsWireSchema effectiveValue is the active resolved display fact",
+    );
+  }
+  add(
+    "settings-apply-refusal",
+    "state.conflict",
+    "closed-literal",
+    "SettingsApplyRefusalSchema conflict discriminator",
+  );
+  add(
+    "settings-apply-refusal",
+    "currentRevision",
+    "identifier-free",
+    "SettingsApplyRefusalSchema.currentRevision",
+  );
+  for (const code of SettingsApplyRejectionCodeSchema.options) {
+    add(
+      "settings-apply-refusal",
+      `code.${code}`,
+      "closed-literal",
+      "SettingsApplyRejectionCodeSchema",
+    );
+  }
+  return Object.freeze(expected);
+}
+
+function schemaLeafPaths(schema: z.ZodType): ReadonlySet<string> {
+  return new Set(surfaceLeaves(schema).map(({ path }) => path));
+}
+
+/**
+ * P41's reviewed table. Rows stay literal: generating them from the schemas
+ * would let a newly added name/code approve itself without review. The audit's
+ * expected side is schema-derived, so additions, removals, and wrong classes
+ * all make the guard red.
+ */
+export const D331_SERVED_LEAF_DISPOSITIONS: readonly D331ServedLeafDisposition[] = Object.freeze(
+  D331ServedLeafDispositionSchema.array().parse([
+    { surface: "protected-settings-readback", path: "entries.ucpathUserId.present", valueClass: "closed-literal" },
+    { surface: "protected-settings-readback", path: "entries.ucpathUserId.updatedAt", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "entries.ucpathUserId.valueId", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "entries.ucpathPassword.present", valueClass: "closed-literal" },
+    { surface: "protected-settings-readback", path: "entries.ucpathPassword.updatedAt", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "entries.ucpathPassword.valueId", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "entries.timekeeperName.present", valueClass: "closed-literal" },
+    { surface: "protected-settings-readback", path: "entries.timekeeperName.updatedAt", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "entries.timekeeperName.valueId", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "entries.sharepointOnboardingRosterUrl.present", valueClass: "closed-literal" },
+    { surface: "protected-settings-readback", path: "entries.sharepointOnboardingRosterUrl.updatedAt", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "entries.sharepointOnboardingRosterUrl.valueId", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "entries.activityPersonPseudonym.present", valueClass: "closed-literal" },
+    { surface: "protected-settings-readback", path: "entries.activityPersonPseudonym.updatedAt", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "entries.activityPersonPseudonym.valueId", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "entries.separationsKualiFinalizationCanaryDocumentNumber.present", valueClass: "closed-literal" },
+    { surface: "protected-settings-readback", path: "entries.separationsKualiFinalizationCanaryDocumentNumber.updatedAt", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "entries.separationsKualiFinalizationCanaryDocumentNumber.valueId", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "entries.personLookupCanaryEid.present", valueClass: "closed-literal" },
+    { surface: "protected-settings-readback", path: "entries.personLookupCanaryEid.updatedAt", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "entries.personLookupCanaryEid.valueId", valueClass: "identifier-free" },
+    { surface: "protected-settings-readback", path: "revision", valueClass: "identifier-free" },
+    { surface: "frontend-bootstrap", path: "protectedSchemaHash", valueClass: "identifier-free" },
+    { surface: "settings-command-result", path: "restartRequired", valueClass: "closed-literal" },
+    { surface: "settings-command-result", path: "revision", valueClass: "identifier-free" },
+    { surface: "settings-runtime-status", path: "active.configFingerprint", valueClass: "identifier-free" },
+    { surface: "settings-runtime-status", path: "active.settingsFingerprint", valueClass: "identifier-free" },
+    { surface: "settings-runtime-status", path: "active.settingsRevision", valueClass: "identifier-free" },
+    { surface: "settings-runtime-status", path: "active.settingsSchemaHash", valueClass: "identifier-free" },
+    { surface: "settings-runtime-status", path: "identity.configFingerprint", valueClass: "identifier-free" },
+    { surface: "settings-runtime-status", path: "identity.settingsFingerprint", valueClass: "identifier-free" },
+    { surface: "settings-runtime-status", path: "identity.settingsRevision", valueClass: "identifier-free" },
+    { surface: "settings-runtime-status", path: "identity.settingsSchemaHash", valueClass: "identifier-free" },
+    { surface: "settings-runtime-status", path: "persisted.configFingerprint", valueClass: "identifier-free" },
+    { surface: "settings-runtime-status", path: "persisted.settingsFingerprint", valueClass: "identifier-free" },
+    { surface: "settings-runtime-status", path: "persisted.settingsRevision", valueClass: "identifier-free" },
+    { surface: "settings-runtime-status", path: "persisted.settingsSchemaHash", valueClass: "identifier-free" },
+    { surface: "settings-runtime-status", path: "state", valueClass: "closed-literal" },
+    { surface: "host-display", path: "display.screenWidth.defaultValue", valueClass: "identifier-free" },
+    { surface: "host-display", path: "display.screenWidth.effectiveValue", valueClass: "identifier-free" },
+    { surface: "host-display", path: "display.screenHeight.defaultValue", valueClass: "identifier-free" },
+    { surface: "host-display", path: "display.screenHeight.effectiveValue", valueClass: "identifier-free" },
+    { surface: "settings-apply-refusal", path: "state.conflict", valueClass: "closed-literal" },
+    { surface: "settings-apply-refusal", path: "currentRevision", valueClass: "identifier-free" },
+    { surface: "settings-apply-refusal", path: "code.schema-mismatch", valueClass: "closed-literal" },
+    { surface: "settings-apply-refusal", path: "code.patch-fingerprint-mismatch", valueClass: "closed-literal" },
+    { surface: "settings-apply-refusal", path: "code.envelope-fingerprint-mismatch", valueClass: "closed-literal" },
+    { surface: "settings-apply-refusal", path: "code.not-editable", valueClass: "closed-literal" },
+    { surface: "settings-apply-refusal", path: "code.invalid-value", valueClass: "closed-literal" },
+    { surface: "settings-apply-refusal", path: "code.cross-field-invalid", valueClass: "closed-literal" },
+    { surface: "settings-apply-refusal", path: "code.document-too-large", valueClass: "closed-literal" },
+    { surface: "settings-apply-refusal", path: "code.authority-unjournaled", valueClass: "closed-literal" },
+    { surface: "settings-apply-refusal", path: "code.authority-uncertain", valueClass: "closed-literal" },
+    { surface: "settings-apply-refusal", path: "code.directory-integrity", valueClass: "closed-literal" },
+    { surface: "settings-apply-refusal", path: "code.lock-unavailable", valueClass: "closed-literal" },
+    { surface: "settings-apply-refusal", path: "code.command-divergent", valueClass: "closed-literal" },
+    { surface: "settings-apply-refusal", path: "code.write-id-reused", valueClass: "closed-literal" },
+  ]),
+);
+
+export function auditD331ServedLeafDispositions(
+  input: readonly unknown[],
+): readonly string[] {
+  const violations: string[] = [];
+  const readbackLeaves = schemaLeafPaths(ProtectedSettingsReadbackSchema);
+  const bootstrapLeaves = schemaLeafPaths(FrontendBootstrapWireSchema);
+  const commandLeaves = schemaLeafPaths(CommandResultSchema);
+  const refusalLeaves = schemaLeafPaths(SettingsApplyRefusalSchema);
+  const editorLeaves = schemaLeafPaths(EditableSettingsWireSchema);
+  const requiredAnchors: readonly [string, ReadonlySet<string>, string][] = [
+    ["ProtectedSettingsReadbackSchema", readbackLeaves, "entries"],
+    ["ProtectedSettingsReadbackSchema", readbackLeaves, "revision"],
+    ["FrontendBootstrapWireSchema", bootstrapLeaves, "protectedSchemaHash"],
+    ["CommandResultSchema", commandLeaves, "restartRequired"],
+    ["CommandResultSchema", commandLeaves, "revision"],
+    ["SettingsApplyRefusalSchema", refusalLeaves, "state"],
+    ["SettingsApplyRefusalSchema", refusalLeaves, "currentRevision"],
+    ["SettingsApplyRefusalSchema", refusalLeaves, "code"],
+    ["EditableSettingsWireSchema", editorLeaves, "sections[].leaves[].defaultValue"],
+    ["EditableSettingsWireSchema", editorLeaves, "sections[].leaves[].effectiveValue"],
+  ];
+  for (const [schema, leaves, path] of requiredAnchors) {
+    if (!leaves.has(path)) violations.push(`${schema} no longer carries required P41 leaf "${path}"`);
+  }
+
+  const parsed: D331ServedLeafDisposition[] = [];
+  for (const [index, value] of input.entries()) {
+    const result = D331ServedLeafDispositionSchema.safeParse(value);
+    if (!result.success) {
+      violations.push(`D331 disposition row ${String(index)} is invalid: ${result.error.issues[0]?.message ?? "invalid row"}`);
+      continue;
+    }
+    parsed.push(result.data);
+  }
+  const declared = new Map<string, D331ServedLeafDisposition>();
+  for (const entry of parsed) {
+    const key = d331DispositionKey(entry);
+    if (declared.has(key)) {
+      violations.push(`${key}: declared twice`);
+    } else {
+      declared.set(key, entry);
+    }
+  }
+  const expected = expectedD331ServedLeaves();
+  const expectedKeys = new Set(expected.map(d331DispositionKey));
+  for (const entry of expected) {
+    const key = d331DispositionKey(entry);
+    const disposition = declared.get(key);
+    if (disposition === undefined) {
+      violations.push(`${key}: carries no D331 P41 disposition (${entry.evidence})`);
+    } else if (disposition.valueClass !== entry.valueClass) {
+      violations.push(
+        `${key}: ${disposition.valueClass} contradicts ${entry.valueClass} (${entry.evidence})`,
+      );
+    }
+  }
+  for (const entry of declared.values()) {
+    const key = d331DispositionKey(entry);
+    if (!expectedKeys.has(key)) violations.push(`${key}: disposition names no current D331 served leaf`);
+  }
+  return Object.freeze(violations);
 }
 
 /* ── 4. the module ratchet ────────────────────────────────────────────────── */
