@@ -40,7 +40,7 @@ the two-letter `code` stays with the taxonomy question.
 **Date:** 2026-08-14 · **Status:** OPEN — triaged 2026-08-14, **re-affirmed 2026-08-19** while the
 other three records settled. Blocked on a person axis existing in the projection corpus at all:
 today no row (or member) carries an EID or subject identity (the same absence
-`docs/findings/queue-rows.md` records for titles and the subtitle slot). **The trigger is exact:**
+`docs/rebuild/findings/queue-rows.md` records for titles and the subtitle slot). **The trigger is exact:**
 the commit that puts subject identity on queue rows AND on members. At that point this becomes the
 same-pass count described below and nothing else about it needs deciding; counting before then would
 have nothing true to count. It is deliberately NOT bundled with D236/D239/D240 — those were rulings

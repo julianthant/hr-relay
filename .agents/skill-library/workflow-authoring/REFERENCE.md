@@ -1,7 +1,7 @@
 # workflow-authoring — the checklist for adding or changing a workflow
 
 > Internal repository checklist. It adds **no operator command and no policy of its own**: every
-> rule it points at is owned by `docs/guides/workflow-authoring.md` (practical) and
+> rule it points at is owned by `docs/rebuild/guides/workflow-authoring.md` (practical) and
 > `docs/rebuild/reference/workflow-model.md` §§1.6, 5.6, 5.8 (normative). Where this file and the
 > guide/spec disagree, **the guide and the spec win** — fix this file.
 
@@ -14,7 +14,7 @@
    capability, effect, inputs and outputs, then classify each operation against the reuse table —
    guide §2. "Similar" is not permission to copy a task; a read task's identity is a page visit.
 3. **Know your artifacts.** A reuse-only workflow authors exactly four files (`workflow.ts`,
-   `structural.scenario.test.ts`, `dry-run.scenario.ts`, `docs/migrations/<id>.md`) plus the two
+   `structural.scenario.test.ts`, `dry-run.scenario.ts`, `docs/rebuild/migrations/<id>.md`) plus the two
    registration edits (five lines across the two registry files) and `npm run build:manifest` — guide §3. The T1b loader/resolver/registry-arm
    entries, the cited `GENERIC_WORKFLOW_ID_ALLOWLIST` / `ARTIFACT_EXEMPTIONS` lists and a harness's smaller budget are the separate documented surfaces in guide §3 and §6.4.
 4. **Write `workflow.ts`.** One `defineWorkflow` call: identity/presentation, typed input/result,
@@ -33,7 +33,7 @@
    `config/pending-impl-bindings.json` (D107).
 8. **Prove it.** The T1 pair, `config/test-subjects.json` labels, the live
    `npm run cli -- dry-run-scenario <workflow> --subject <label>`, and the dated
-   `docs/migrations/<id>.md` record — guide §10 / `ref guards-and-tests` §10.11. Live verification is
+   `docs/rebuild/migrations/<id>.md` record — guide §10 / `ref guards-and-tests` §10.11. Live verification is
    pre-authorized: run it, never ask.
 9. **Read the gates.** Guide §10's red-gate table says what each failure means
    (`descriptor-coverage`, `descriptor-registry`, `scenario-coverage`, `test-target-registry`,

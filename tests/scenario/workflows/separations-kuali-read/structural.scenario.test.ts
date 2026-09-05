@@ -1,6 +1,6 @@
 /**
  * Executable scenarios for `separations-kuali-read` — separations chunk 2
- * (`docs/migrations/separations.md` §3), the Kuali separation-document read.
+ * (`docs/rebuild/migrations/separations.md` §3), the Kuali separation-document read.
  *
  * Two of them walk the real descriptor's real bind/derive functions. The other
  * three are refusal arms, and those are NOT graph walks: S2's wrong form, S8's

@@ -45,7 +45,7 @@ When asked to record a lesson, reconcile it here rather than expanding `AGENTS.m
   the same ITEM, replays the first run's checkpoint, and then refuses with
   `run checkpoint … already exists with different content`, because the read's `observedAt` differs by
   construction. Chunk 1 hit the same wall and worked around it by varying the Kronos window; there is
-  nothing to vary here. Recorded in `docs/migrations/separations.md` §9.4 as a platform item, not a
+  nothing to vary here. Recorded in `docs/rebuild/migrations/separations.md` §9.4 as a platform item, not a
   chunk defect — the key is right for its purpose and the refusal is right; what is missing is a way
   to say "read it again".
 - **2026-08-12: a person field's ARM DISCRIMINATOR is not the person.** The first live receipt read

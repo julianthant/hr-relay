@@ -7,7 +7,7 @@ every claim is traced to source, and every citation is a `legacy:<path>:<line>` 
 
 **What this doc is.** A scenario-by-scenario account of what the **old** separations workflow actually
 does — the traced control flow, not the intended one — written to be walked through with the operator
-and mined for the rebuild's scenario inventory (`docs/migrations/separations.md` §b question 9). It is
+and mined for the rebuild's scenario inventory (`docs/rebuild/migrations/separations.md` §b question 9). It is
 deliberately **unflattering where legacy deserves it**: the silent fallbacks, swallowed errors and
 ambiguous states below are the exact cases the rebuild must convert into fail-closed behavior. It is a
 **sibling** of `separations.md` (the migration plan) and duplicates none of its planning; where the two

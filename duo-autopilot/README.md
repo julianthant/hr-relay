@@ -203,7 +203,7 @@ minute earlier.
 
 `src/sign-count.js` now floors every ceremony at wall-clock seconds
 (`max(stored + 1, nowSec)`), which is monotonic across profiles because they all
-read the same clock. See `docs/migrations/separations.md` §9.21 for the
+read the same clock. See `docs/rebuild/migrations/separations.md` §9.21 for the
 bisection and the measured numbers.
 
 ---

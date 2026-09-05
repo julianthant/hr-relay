@@ -1,6 +1,6 @@
 /**
  * Executable scenarios for `separations-kronos-timecard` — separations chunk 1
- * (`docs/migrations/separations.md` §3), the New Kronos passage.
+ * (`docs/rebuild/migrations/separations.md` §3), the New Kronos passage.
  *
  * Two of them walk the real descriptor's real bind/derive functions along the
  * happy path and the S38 empty-card path. The other three are the §4b arms, and

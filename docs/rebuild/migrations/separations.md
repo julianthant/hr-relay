@@ -1788,7 +1788,7 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 ## 8. Cross-references
 | Document | What it owns, relative to this doc |
 |---|---|
-| `docs/migrations/separations-legacy-behavior.md` | The traced legacy account: the happy path end to end, the **S1–S63 scenario table** (§2), per-scenario detail with source quotations (§3), the eleven dangerous patterns (§4), and the `unknown — needs live observation` list (§5). Every S-number cited above resolves there. |
+| `docs/rebuild/migrations/separations-legacy-behavior.md` | The traced legacy account: the happy path end to end, the **S1–S63 scenario table** (§2), per-scenario detail with source quotations (§3), the eleven dangerous patterns (§4), and the `unknown — needs live observation` list (§5). Every S-number cited above resolves there. |
 | `ref stores` | The derived catalog of what every store has today — §1 "How stores work" (the REUSE/CUSTOMIZE/BUILD rule that §2.6's convention would amend), §2 per-store tables, §3 the two shipped workflows' consumption, §4 the gaps this migration closes. Code wins over that file wherever they disagree. |
 | `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md` | §3.1 the Phase-3 entry block, §3.2 exit criteria (§6 above), §3.3 the migration order, **§3.4 the questionnaire template §5 above instantiates**. |
 | `docs/rebuild/reference/write-safety.md` | §2 completion arms, §4/§4.1 recovery and operator resolutions, §5 probe policy, §12 the worked two-transaction separations example, §13 the beat structure, **§14 the ALWAYS-GATE** (and §14.7's two values left to this questionnaire). |
@@ -3817,7 +3817,7 @@ and it is the surface an operator uses — but both are false statements on a tr
 - While run `00419600` sat `parked-gate` with `identity-gate` serving the whole packet, run-detail's
   generic `gate` section answered `{state: "absent", reason: "this run declares no operator gate"}`.
   The panel's `status` read `awaiting-approval` off the authority lifecycle, so the two halves of one
-  response disagreed. **Explained, and not by this workflow:** `docs/findings/dashboard-projection.md`
+  response disagreed. **Explained, and not by this workflow:** `docs/rebuild/findings/dashboard-projection.md`
   (diagnosed the same day, in parallel) shows the BFF's queue projection folds only spans emitted by
   its OWN process, so `gate.opened` — emitted by the WORKER — is never seen, while `gate.resolved`
   from its own command endpoint is. `openGates` therefore stays empty for every run enqueued after the

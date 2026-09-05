@@ -1,6 +1,6 @@
 /**
  * Executable scenarios for `separations-kuali-finalization` — separations
- * chunk 5 (`docs/migrations/separations.md` §4e), the Kuali finalization write.
+ * chunk 5 (`docs/rebuild/migrations/separations.md` §4e), the Kuali finalization write.
  *
  * The corpus is split by what each arm falsifies, exactly as chunk 4's is:
  *
@@ -129,7 +129,7 @@ const DOCUMENT_NUMBER = "4444";
 /**
  * Synthetic, and schema-shaped so the ingress still parses it (§10.3). This
  * file used to hardcode a real subject's EID — the same id, with a name beside
- * it, in `docs/migrations/separations.md` §9.3 — which is exactly the "fixture
+ * it, in `docs/rebuild/migrations/separations.md` §9.3 — which is exactly the "fixture
  * scenario that pretends" R10 exists to end: a structural walk over fake stores
  * can never assert anything about the person that id names, so naming them buys
  * nothing and commits a real identifier to git.

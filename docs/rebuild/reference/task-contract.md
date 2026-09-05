@@ -671,7 +671,7 @@ the toil was acceptable, because nobody measured it.
 §2.7 answers *how much a task owes*. This answers the neighbouring question the store libraries
 forced open at the order-8 separations migration: **how wide a read task's output should be.** The
 operator ratified the rich-extraction convention on 2026-08-12; the options it was chosen from, and
-the measured duplication that motivated it, are recorded in `docs/migrations/separations.md` §2.6.
+the measured duplication that motivated it, are recorded in `docs/rebuild/migrations/separations.md` §2.6.
 
 **The convention.** A read task's identity is **"I visited this page and read what it has"** — not
 "a caller asked me for these fields."
@@ -726,7 +726,7 @@ CRM **history** page is a second visit and stays its own task under this convent
 
 - [ ] BE the `new-kronos` store gains its pay-rule write family: a `commit` contract with `writeSafety`, a `CommitCapableSystemDriver` operation, and the `external-commit` element the registry audit refuses today — the capability is added deliberately by that slice and cannot be inherited (§2.9)
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified: `src/stores/new-kronos/` has read tasks only and its driver declares no commit operation; the rest of order 6 (the canonical-EID audit gate, work-study) is owned by 03c and ref data-intake-and-edit-data §1
-Separations chunk 1 (`docs/migrations/separations.md` §3) is the first slice authored under the
+Separations chunk 1 (`docs/rebuild/migrations/separations.md` §3) is the first slice authored under the
 rich-extraction convention and the first new browser store since the platform was built, so what it
 settled is normative for every store slice after it.
 

@@ -38,7 +38,7 @@ generic surfaces, exactly three more files (§3). Everything else a workflow nee
 | `src/workflows/<id>/workflow.ts`: one `defineWorkflow({...})` — identity, presentation, typed input/result, `role`, `scenarios`, and the ordered `[timeline group, entries[]]` tuples with their typed binds | the `WorkflowDescriptor` (`compileWorkflow(definition).descriptor`), its `flow`, `timeline`, node graph and `contractFingerprint` |
 | `tests/scenario/workflows/<id>/structural.scenario.test.ts` (T1a) | the `WorkflowModule` (`composeWorkflowModule`): which task stores and browser sessions the workflow needs, resolved from the contracts the entries name |
 | `tests/scenario/workflows/<id>/dry-run.scenario.ts` (T1b manifest) | every generic dashboard/Explorer projection: rail entry, picker, start box and run modal, timeline/detail, Steps (omission) screen, Explorer graph and source links |
-| `docs/migrations/<id>.md` (the dated record) | `src/domain/workflow/generated-build-manifest.ts` (`npm run build:manifest`) and the `ref stores` §2 task catalog (`npm run stores:catalog`) |
+| `docs/rebuild/migrations/<id>.md` (the dated record) | `src/domain/workflow/generated-build-manifest.ts` (`npm run build:manifest`) and the `ref stores` §2 task catalog (`npm run stores:catalog`) |
 | a new reusable **task** (contract + implementation in the owning store) only when §2's table says BUILD | checkpoints, replay, retry, recovery (resume / restart), gate parking, the write sequencer's fences, receipts, semantic logs, screenshots, notifications, Archive — inherited by every compiled workflow with no per-workflow glue |
 
 **There is no other authoring path.** `src/base/workflow-definition.ts` is the one seam. A
@@ -87,7 +87,7 @@ workflow-model` §1.6.1):
 | 1 | `src/workflows/<id>/workflow.ts` — for a chunk harness, `src/workflows/<composition-id>/<step-key>/workflow.ts` (`src/domain/workflow/source-layout.ts`) | one `defineWorkflow(...)` call (§4) |
 | 2 | `tests/scenario/workflows/<id>/structural.scenario.test.ts` | the ONE collected structural scenario (§10) |
 | 3 | `tests/scenario/workflows/<id>/dry-run.scenario.ts` | the T1b live manifest — NOT a vitest file (§10) |
-| 4 | `docs/migrations/<id>.md` | the dated migration record (§10) |
+| 4 | `docs/rebuild/migrations/<id>.md` | the dated migration record (§10) |
 
 A workflow folder holds **only** `workflow.ts`. A step sub-folder exists only when the step carries
 a chunk harness (its own `workflow.ts`, §6.4); a declared timeline group needs no folder.
@@ -123,7 +123,7 @@ item (coordinator sheet `docs/coordinator/phase-3c-migration/decisions/2026-09-0
 item 4); until it is decided, this is the documented registration step.
 
 **The two closed lists beside the budget.** A legitimately extra file — a migration-doc supplement
-(`docs/migrations/separations-legacy-behavior.md`) or a T2/T3 `tests/scenario/dashboard/<id>/`
+(`docs/rebuild/migrations/separations-legacy-behavior.md`) or a T2/T3 `tests/scenario/dashboard/<id>/`
 folder — is admitted only through a cited `ARTIFACT_EXEMPTIONS` entry in the same guard. A generic
 server/dashboard file that must branch on a workflow id under a ratified decision (today D288's
 person-pseudonym fold and backfill, both `separations`) is admitted only
@@ -408,7 +408,7 @@ recovers the definition; `workflowEntryKinds(definition)` lists the entry kinds 
 `person-lookup` is the smallest real workflow: four `task` entries over three stores, one
 conditional node, no gate, no transaction. It is exactly the four artifacts of §3
 (`src/workflows/person-lookup/workflow.ts`, `tests/scenario/workflows/person-lookup/{structural.scenario.test.ts,dry-run.scenario.ts}`,
-`docs/migrations/person-lookup.md`) and nothing else. Its head shows the imports a bundle-safe
+`docs/rebuild/migrations/person-lookup.md`) and nothing else. Its head shows the imports a bundle-safe
 `workflow.ts` is allowed (zod, `src/domain/**`, the audited `src/base/**` builders — never a store,
 never Playwright):
 
@@ -987,7 +987,7 @@ compares the manifest exactly. Run it on a fresh authority root when the item al
 there: a re-run of a completed item is attempt 2 and a first-attempt manifest fails `checkpoints`
 only (recorded, coordinator sheet item 5).
 
-**`docs/migrations/<id>.md`.** The dated record: the reuse map (REUSE / CUSTOMIZE / BUILD per
+**`docs/rebuild/migrations/<id>.md`.** The dated record: the reuse map (REUSE / CUSTOMIZE / BUILD per
 operation, with legacy commit + path provenance for anything ported), the scenario inventory, the
 T1b result ids (`dry_run_scenario_results` row, run and trace id, attempt, verdict) and the
 capability close. It is what a `PROOF` tick in doc 03.2 or controlled result in doc 03.3 cites.

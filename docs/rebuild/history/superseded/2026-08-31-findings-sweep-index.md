@@ -1,3 +1,5 @@
+_History — superseded by [the findings index](../../findings/README.md) and its category records; kept verbatim as last updated on 2026-08-31. See [history/README.md](../README.md)._
+
 # Frontend/backend findings ledger (non-normative)
 
 Session-recorded mismatches between the dashboard frontend, the served wire, and the plan

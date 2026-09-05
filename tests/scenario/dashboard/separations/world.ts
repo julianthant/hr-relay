@@ -17,7 +17,7 @@
  * those three is wired to THROW rather than to no-op — a seam that quietly
  * answered would let a test claim a path it never walked.
  *
- * The §9.22 Track C proof (`docs/migrations/separations.md`, D256–D259) remains
+ * The §9.22 Track C proof (`docs/rebuild/migrations/separations.md`, D256–D259) remains
  * the live evidence. This world replays only the same contract SHAPE with
  * reserved synthetic identifiers; it makes no current-world claim.
  *

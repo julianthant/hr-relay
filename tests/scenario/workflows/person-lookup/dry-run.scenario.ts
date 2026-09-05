@@ -7,7 +7,7 @@
  * browser and reaches live UCPath and the live CRM. It is executed by
  * `npm run cli -- dry-run-scenario person-lookup --subject <label>`, once per
  * case, and each run writes a `dry_run_scenario_results` row plus a dated line
- * in `docs/migrations/person-lookup.md`. Its sibling
+ * in `docs/rebuild/migrations/person-lookup.md`. Its sibling
  * `structural.scenario.test.ts` is the T1a half.
  *
  * **Why `live-read` and not `dry-run-preview`.** Person Lookup's compiled

@@ -383,7 +383,7 @@ here rather than in a dated block at the top of the file._
 
   As-built: nine of the ten separations-finalization controls in
   `evidence/ui/kuali/separation-document.live.json` at `verifiedAt: 2026-08-14`
-  (`docs/migrations/separations.md` §9.12 item 3).
+  (`docs/rebuild/migrations/separations.md` §9.12 item 3).
 
   **Enforcement status, stated rather than assumed.** The schema arm exists and
   `semantic-ui-registry` resolves every manifest assertion against the registry as before; rule 1 is
@@ -916,7 +916,7 @@ five live-proof `separations-kuali-read` receipts (`sd-140241-ca44`, `sd-140505-
 raw-control-byte fix that changed no semantics at all, and `explain run` answered
 `evidence receipt … already exists with different content` for all five. Re-running the documents was
 not available either: a read workflow whose identity is the thing it reads runs once per subject
-(`docs/migrations/separations.md` §"the re-run wall").
+(`docs/rebuild/migrations/separations.md` §"the re-run wall").
 
 Stamping the current build was also a **false statement** in its own right — the receipt claimed the
 run executed under whatever tree happened to be checked out. `descriptorFingerprint` is now the run's

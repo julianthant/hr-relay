@@ -16,7 +16,7 @@
  *   - the four-artifact budget is paid in a fifth artifact — a generic surface
  *     that branches on a workflow id (D316), a descriptor/module/flow builder
  *     hand-authored beside `workflow.ts`, or one more file per workflow under
- *     `tests/scenario/` or `docs/migrations/`.
+ *     `tests/scenario/` or `docs/rebuild/migrations/`.
  *
  * The four arms, in the order they run:
  *
@@ -60,8 +60,8 @@
  *       derivation, D265 arm d — never rebuilt here by interpolation), at most
  *       one structural scenario, at most one
  *       `tests/scenario/workflows/<id>/dry-run.scenario.ts`, and at most one
- *       `docs/migrations/<id>.md`. Any other repository-visible file under
- *       `src/workflows/`, `tests/scenario/` or `docs/migrations/` ATTRIBUTED to
+ *       `docs/rebuild/migrations/<id>.md`. Any other repository-visible file under
+ *       `src/workflows/`, `tests/scenario/` or `docs/rebuild/migrations/` ATTRIBUTED to
  *       a registered workflow is refused by path. Attribution has two rules,
  *       because a harness id is never a path segment (D265 rule 3): UNDER
  *       `src/workflows/` a file belongs to the registered FOLDER it sits in
@@ -104,11 +104,11 @@ import { gitVisibleFilesIn, REPO_ROOT } from "./helpers/guard-files.js";
 // ---------------------------------------------------------------------------
 
 /** Everything the collector lists, in one `git ls-files` call. */
-const SCAN_ROOTS = ["src", "tests", "scripts", "docs/migrations"] as const;
+const SCAN_ROOTS = ["src", "tests", "scripts", "docs/rebuild/migrations"] as const;
 /** Roots whose `.ts`/`.tsx` text arms (a)-(c) read. */
 const SOURCE_ROOTS = ["src/", "tests/", "scripts/"] as const;
 /** Roots arm (d) counts authored artifacts in. */
-const ARTIFACT_ROOTS = ["src/workflows/", "tests/scenario/", "docs/migrations/"] as const;
+const ARTIFACT_ROOTS = ["src/workflows/", "tests/scenario/", "docs/rebuild/migrations/"] as const;
 
 /** This guard's fixtures must be able to spell the forbidden names. */
 const GUARD_FILE = "tests/unit/architecture/workflow-authoring-budget.test.ts";
@@ -335,7 +335,7 @@ function literalContext(literal: ts.StringLiteralLike): string {
  *     The LONGEST such id wins — `separations` is a prefix of five harness ids,
  *     so `tests/scenario/separations-kuali-read.scenario.test.ts` belongs to
  *     the harness, while `tests/scenario/separations-extra/foo.ts` and
- *     `docs/migrations/separations_extra.md` belong to `separations` instead of
+ *     `docs/rebuild/migrations/separations_extra.md` belong to `separations` instead of
  *     leaving the budget by suffixing an unregistered word.
  */
 export function attributeWorkflowArtifact(
@@ -488,7 +488,7 @@ export function auditWorkflowAuthoringBudget(
     allowedArtifacts.add(sourcePath);
     allowedArtifacts.add(`tests/scenario/workflows/${id}/structural.scenario.test.ts`);
     allowedArtifacts.add(`tests/scenario/workflows/${id}/dry-run.scenario.ts`);
-    allowedArtifacts.add(`docs/migrations/${id}.md`);
+    allowedArtifacts.add(`docs/rebuild/migrations/${id}.md`);
   }
   for (const entry of inputs.preCanonicalScenarios) {
     allowedArtifacts.add(entry.file);
@@ -532,7 +532,7 @@ export function auditWorkflowAuthoringBudget(
     violations.push(
       `${file} is a fifth authored artifact for workflow ${owner}; D312 §1.6.1's budget is exactly `
       + `${workflow.sourcePath}, tests/scenario/workflows/${owner}/structural.scenario.test.ts, `
-      + `tests/scenario/workflows/${owner}/dry-run.scenario.ts and docs/migrations/${owner}.md`,
+      + `tests/scenario/workflows/${owner}/dry-run.scenario.ts and docs/rebuild/migrations/${owner}.md`,
     );
   }
 
@@ -593,9 +593,9 @@ const PRE_CANONICAL_SCENARIOS: readonly PreCanonicalScenarioEntry[] = [];
 
 const ARTIFACT_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [
   {
-    path: "docs/migrations/separations-legacy-behavior.md",
+    path: "docs/rebuild/migrations/separations-legacy-behavior.md",
     reason:
-      "D312 — a supplement to docs/migrations/separations.md rather than a second migration doc; the budget item "
+      "D312 — a supplement to docs/rebuild/migrations/separations.md rather than a second migration doc; the budget item "
       + "is the migration record, and this is the same record's overflow.",
   },
   {
@@ -683,10 +683,10 @@ function cleanFixtureFiles(): Record<string, string> {
     "tests/scenario/combo-harness.scenario.test.ts": "export const COMBO_HARNESS = 1;\n",
     "tests/scenario/dashboard/combo/world.ts": "export const WORLD = 1;\n",
     "tests/scenario/intake-extraction.scenario.test.ts": "export const INTAKE = 1;\n",
-    "docs/migrations/solo.md": "# solo\n",
-    "docs/migrations/combo.md": "# combo\n",
-    "docs/migrations/combo-legacy-behavior.md": "# combo, as legacy did it\n",
-    "docs/migrations/i9-lookup.md": "# an unregistered candidate\n",
+    "docs/rebuild/migrations/solo.md": "# solo\n",
+    "docs/rebuild/migrations/combo.md": "# combo\n",
+    "docs/rebuild/migrations/combo-legacy-behavior.md": "# combo, as legacy did it\n",
+    "docs/rebuild/migrations/i9-lookup.md": "# an unregistered candidate\n",
   };
 }
 
@@ -697,7 +697,7 @@ const CLEAN_PRE_CANONICAL: readonly PreCanonicalScenarioEntry[] = [{
 }] as const;
 
 const CLEAN_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [
-  { path: "docs/migrations/combo-legacy-behavior.md", reason: "D312 — the migration record's overflow." },
+  { path: "docs/rebuild/migrations/combo-legacy-behavior.md", reason: "D312 — the migration record's overflow." },
   { path: "tests/scenario/dashboard/combo/", reason: "ref guards-and-tests §10.12 — a T2/T3 dashboard proof." },
 ] as const;
 
@@ -898,8 +898,8 @@ const FIXTURES: readonly BudgetFixture[] = [
   {
     name: "fifth-authored-artifact-for-a-workflow",
     arm: "d",
-    files: withFiles((files) => { files["docs/migrations/combo-appendix.md"] = "# one more file\n"; }),
-    expected: /docs\/migrations\/combo-appendix\.md is a fifth authored artifact for workflow combo; D312 .* budget is exactly src\/workflows\/combo\/workflow\.ts/,
+    files: withFiles((files) => { files["docs/rebuild/migrations/combo-appendix.md"] = "# one more file\n"; }),
+    expected: /docs\/rebuild\/migrations\/combo-appendix\.md is a fifth authored artifact for workflow combo; D312 .* budget is exactly src\/workflows\/combo\/workflow\.ts/,
   },
   {
     name: "fifth-artifact-under-tests-scenario",
@@ -927,8 +927,8 @@ const FIXTURES: readonly BudgetFixture[] = [
   {
     name: "fifth-artifact-whose-stem-suffixes-a-registered-id-with-an-underscore",
     arm: "d",
-    files: withFiles((files) => { files["docs/migrations/combo_extra.md"] = "# one more file\n"; }),
-    expected: /docs\/migrations\/combo_extra\.md is a fifth authored artifact for workflow combo;/,
+    files: withFiles((files) => { files["docs/rebuild/migrations/combo_extra.md"] = "# one more file\n"; }),
+    expected: /docs\/rebuild\/migrations\/combo_extra\.md is a fifth authored artifact for workflow combo;/,
   },
   {
     name: "two-structural-scenarios-for-one-workflow",
@@ -944,9 +944,9 @@ const FIXTURES: readonly BudgetFixture[] = [
     files: cleanFixtureFiles(),
     artifactExemptions: [
       ...CLEAN_EXEMPTIONS,
-      { path: "docs/migrations/combo-gone.md", reason: "D312 — removed long ago." },
+      { path: "docs/rebuild/migrations/combo-gone.md", reason: "D312 — removed long ago." },
     ],
-    expected: /docs\/migrations\/combo-gone\.md: stale D312 artifact exemption — it matches no repository-visible file/,
+    expected: /docs\/rebuild\/migrations\/combo-gone\.md: stale D312 artifact exemption — it matches no repository-visible file/,
   },
   {
     name: "stale-pre-canonical-structural-scenario",
@@ -1054,10 +1054,10 @@ describe("workflow-authoring-budget — the retired path stays dead and D312's b
       "separations-kuali-finalization",
     );
     assert.equal(
-      attributeWorkflowArtifact("docs/migrations/separations-legacy-behavior.md", workflows),
+      attributeWorkflowArtifact("docs/rebuild/migrations/separations-legacy-behavior.md", workflows),
       "separations",
     );
-    assert.equal(attributeWorkflowArtifact("docs/migrations/i9-lookup.md", workflows), undefined);
+    assert.equal(attributeWorkflowArtifact("docs/rebuild/migrations/i9-lookup.md", workflows), undefined);
     assert.equal(attributeWorkflowArtifact("src/workflows/descriptor-registry.ts", workflows), undefined);
     // Inside `src/workflows/` the harness id is NOT in the path: only the
     // registered FOLDER can say whose budget a file beside its workflow.ts is.
@@ -1069,7 +1069,7 @@ describe("workflow-authoring-budget — the retired path stays dead and D312's b
     // Outside it, a longer word built on a registered id stays that workflow's
     // budget rather than attributing to nothing and escaping the arm.
     assert.equal(attributeWorkflowArtifact("tests/scenario/separations-extra/foo.ts", workflows), "separations");
-    assert.equal(attributeWorkflowArtifact("docs/migrations/separations_extra.md", workflows), "separations");
+    assert.equal(attributeWorkflowArtifact("docs/rebuild/migrations/separations_extra.md", workflows), "separations");
   });
 
   it("arm (c): the reviewed (file, workflow id) pair itself passes, so the allowlist is pair-EXACT", () => {

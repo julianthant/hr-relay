@@ -1,5 +1,5 @@
 /**
- * The archive's ledger READ-THROUGH (`docs/findings/archive.md`, "Write-ledger
+ * The archive's ledger READ-THROUGH (`docs/rebuild/findings/archive.md`, "Write-ledger
  * action and confirmation number").
  *
  * D179's rule is that the ledger is never archived, so the archived record

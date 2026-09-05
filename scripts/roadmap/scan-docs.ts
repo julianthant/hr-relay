@@ -22,8 +22,8 @@ import {
  * `parseDocBindings` is a pure `(path, text) → DocBindings`; `scanDocs` is the
  * one entry that touches the filesystem (`readdir` + `readFile`, nothing else).
  * The scan is PATH-AGNOSTIC on purpose — it walks `docs/rebuild/**` recursively
- * (skipping the superseded-history folders named in `DOC_SCAN_SKIP_DIRS`) plus
- * `docs/migrations/**`, so renaming, renumbering or re-foldering a doc changes
+ * (including `docs/rebuild/migrations/**`, skipping the non-binding
+ * folders named in `DOC_SCAN_SKIP_DIRS`), so renaming or re-foldering a doc changes
  * nothing here. No filename is hardcoded, and the plan source is not read from
  * this module at all.
  *
@@ -60,14 +60,13 @@ import {
  */
 
 /** Scanned recursively, relative to the repo root. A missing directory fails loud. */
-export const DOC_SCAN_DIRS = ["docs/rebuild", "docs/migrations"] as const;
+export const DOC_SCAN_DIRS = ["docs/rebuild"] as const;
 /**
- * Skipped by DIRECTORY NAME at any depth: superseded narrative describes what a
- * doc USED to say, so a tag inside it would bind the wrong section to a node.
- * Two names because the folder is mid-rename — matching the name rather than a
- * path means neither spelling can slip through.
+ * Skipped by DIRECTORY NAME at any depth. History/reviews retain superseded
+ * narrative; findings and guides supply diagnoses and practical instructions.
+ * Their move under rebuild must not make their tags authoritative plan bindings.
  */
-export const DOC_SCAN_SKIP_DIRS: readonly string[] = ["reviews", "history"];
+export const DOC_SCAN_SKIP_DIRS: readonly string[] = ["reviews", "history", "findings", "guides"];
 
 const TAG_RE = /^<!--\s+roadmap:\s+([a-z0-9][a-z0-9-]*)\s+-->$/;
 const STATUS_OPEN_RE = /^<!--\s+roadmap-status:\s+([a-z0-9][a-z0-9-]*)\s+-->$/;

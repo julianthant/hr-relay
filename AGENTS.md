@@ -26,6 +26,8 @@ asset until the single all-at-once cutover (D89/D93). This rebuild is not produc
 
 ## Find the owner before changing a contract
 
+Start at [docs/README.md](docs/README.md) for folder purposes and document routing.
+
 The [roadmap](docs/roadmap/roadmap.md), admitted phase docs under `docs/rebuild/`, and contracts under
 `docs/rebuild/reference/` are the one plan. Read the relevant phase/contract; never invent another plan
 or infer implementation from design. Roadmap §Governance owns D1/D263. Decisions are ratified in the
@@ -43,7 +45,7 @@ the task started at the root. Both agents use the same module instructions and r
 
 | Work | Read before changing it |
 | --- | --- |
-| Tasks / workflows | `ref task-contract`, `ref workflow-model`, `ref stores` (derived; code wins), `docs/guides/workflow-authoring.md` |
+| Tasks / workflows | `ref task-contract`, `ref workflow-model`, `ref stores` (derived; code wins), `docs/rebuild/guides/workflow-authoring.md` |
 | Run / settings / upgrade | `ref dashboard-surfaces` D330/D332, `ref clock-config-secrets` D331/D332, `ref guards-and-tests` §5.2, active phase bindings |
 | Workers / browser / writes | `ref execution-and-sessions`, `ref write-safety`, relevant store instructions |
 | Dashboard / BFF / CLI | `src/dashboard/AGENTS.md`, `src/server/AGENTS.md`, `ref frontend-backend-integration`, `ref dashboard-surfaces`, `ref operator-trust` |

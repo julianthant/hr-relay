@@ -815,7 +815,7 @@ When asked to record a lesson, reconcile it here rather than expanding `AGENTS.m
   moved, and its emptiness was invisible in the diff. And, at the bottom of the same frame,
   `result partial` under a band reading a green `verified-done`: the run outcome and the receipt
   derive the same verdict two ways and disagree, which is D268's defect one level further out and is
-  now `docs/findings/dashboard-projection.md`. That divergence is also why the receipt's own `result`
+  now `docs/rebuild/findings/dashboard-projection.md`. That divergence is also why the receipt's own `result`
   deliberately STAYS on the trailing line instead of being suppressed as a duplicate of the band —
   **before you delete a fact as redundant, check that the two sources actually agree.**
 

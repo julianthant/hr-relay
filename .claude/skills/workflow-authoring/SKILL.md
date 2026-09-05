@@ -8,7 +8,7 @@ user-invocable: false
 
 Internal repository helper, not an operator command. It adds no policy: the canonical sources are
 
-- `docs/guides/workflow-authoring.md` — the practical guide (API, examples, gate table, routing).
+- `docs/rebuild/guides/workflow-authoring.md` — the practical guide (API, examples, gate table, routing).
 - `docs/rebuild/reference/workflow-model.md` §§1.6, 5.6, 5.8 — normative.
 - `docs/rebuild/03c-migrate-the-remaining-workflows.md` `{#workflow-authoring-model}` — routing.
 
