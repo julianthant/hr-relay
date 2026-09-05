@@ -332,6 +332,12 @@ export class RunRecordService {
         return refused({ reason: "illegal-transition", from: current.run.lifecycle.state,
           to: request.lifecycle.state, message: "write resolution requires its continuation node" });
       }
+      if (!isWriteResolution && current.run.lifecycle.state === "parked-gate"
+        && request.lifecycle.state === "queued"
+        && (request.lifecycle.requeuedFrom !== undefined || request.lifecycle.notBefore !== undefined)) {
+        return refused({ reason: "illegal-transition", from: current.run.lifecycle.state,
+          to: request.lifecycle.state, message: "gate resolution cannot add queued metadata" });
+      }
       const violation = current.run.lifecycle.state === "terminal"
         && canonicalJsonStringify(current.run.lifecycle) === canonicalJsonStringify(request.lifecycle)
         ? TERMINAL_SELF_EDGE_REFUSAL

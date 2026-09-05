@@ -608,6 +608,46 @@ describe("canonical run-record service", () => {
     assert.equal(resumed.run.envelope.startAt, "crm-dates");
   });
 
+  it("refuses queued metadata that gate resolution cannot preserve", () => {
+    const { service, request, runtimeConfig, database } = fixture();
+    const running = runningRun(service, request, runtimeConfig);
+    const parked = service.workerTransition({
+      commandId: "83000000-0000-4000-8000-000000000015",
+      runId: running.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: {
+        state: "parked-gate",
+        gateId: GATE_RESULT.gateId,
+        parkedAt: NOW,
+        resumeAt: "crm-dates",
+      },
+    });
+    assert.equal(parked.state, "applied");
+    if (parked.state !== "applied") throw new Error("gate park refused");
+    const generation = database.getMeta().authorityGeneration;
+
+    assert.deepEqual(service.transition({
+      commandId: "83000000-0000-4000-8000-000000000016",
+      runId: running.envelope.runId,
+      expectedVersion: parked.run.version,
+      lifecycle: { state: "queued", requeuedFrom: "recovery", notBefore: LATER },
+    }), {
+      state: "refused",
+      refusal: {
+        reason: "illegal-transition",
+        from: "parked-gate",
+        to: "queued",
+        message: "gate resolution cannot add queued metadata",
+      },
+    });
+    assert.equal(database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(service.read(running.envelope.runId), {
+      state: "present",
+      disposition: "live",
+      run: parked.run,
+    });
+  });
+
   it("re-enqueues an operator-confirmed-absent write at its mandatory continuation node", () => {
     const { service, request, runtimeConfig } = fixture();
     const running = runningRun(service, request, runtimeConfig);
