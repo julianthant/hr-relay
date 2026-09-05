@@ -179,8 +179,8 @@ const LEGAL_RUN_TRANSITIONS: ReadonlyMap<RunState, readonly RunState[]> = new Ma
  * call site, which is the whole point of refusing.
  */
 export function runTransitionViolation(from: RunLifecycle, to: RunLifecycle): string | undefined {
-  // No state change at all — a rename, a hide — is legal from anywhere,
-  // including a terminal run, which is the one state with no self-edge.
+  // Lifecycle equality is not itself a lifecycle edge. Callers separately
+  // authorize in-place mutations such as rename or archive revision advance.
   if (canonicalJsonStringify(from) === canonicalJsonStringify(to)) return undefined;
   const allowed = LEGAL_RUN_TRANSITIONS.get(from.state);
   if (allowed === undefined) return `unknown run state ${from.state}`;

@@ -46,6 +46,8 @@ import {
 import { ArchiveRelaunchStorageRecordSchema } from "../infra/sqlite/storage-records.js";
 import type { AuthorityDatabase, AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 
+const TERMINAL_SELF_EDGE_REFUSAL = "terminal has no self-edge; a settled outcome is settled";
+
 /** Identity and counters are minted inside the service's create transaction. */
 export const CreateRunRequestSchema = CanonicalCreateRunRequestSchema;
 export type CreateRunRequest = z.input<typeof CreateRunRequestSchema>;
@@ -288,6 +290,14 @@ export class RunRecordService {
       }
       if (!("lifecycle" in request)) {
         if (runClaim(current.run) !== undefined) return refused({ reason: "owned-by-worker" });
+        if (current.run.lifecycle.state === "terminal") {
+          return refused({
+            reason: "illegal-transition",
+            from: current.run.lifecycle.state,
+            to: current.run.lifecycle.state,
+            message: TERMINAL_SELF_EDGE_REFUSAL,
+          });
+        }
         const now = this.dependencies.clock.now().toISOString();
         if ("priority" in request && current.run.lifecycle.state !== "queued") return refused({ reason: "invalid-state" });
         if ("priority" in request && current.run.envelope.priority === "interactive") {
@@ -312,20 +322,35 @@ export class RunRecordService {
         this.recordJournal(repositories, journal.command, journalRun(requested.run));
         return { state: "applied" as const, run: requested.run };
       }
-      const violation = runTransitionViolation(current.run.lifecycle, request.lifecycle);
+      const violation = current.run.lifecycle.state === "terminal"
+        && canonicalJsonStringify(current.run.lifecycle) === canonicalJsonStringify(request.lifecycle)
+        ? TERMINAL_SELF_EDGE_REFUSAL
+        : runTransitionViolation(current.run.lifecycle, request.lifecycle);
       if (violation !== undefined || request.lifecycle.state === "claimed"
         || (request.lifecycle.state === "terminal" && (request.lifecycle.outcome === "done" || request.lifecycle.outcome === "failed"))) {
         return refused({ reason: "illegal-transition", from: current.run.lifecycle.state,
           to: request.lifecycle.state, message: violation === undefined ? "transition requires the worker door" : violation });
       }
       if (request.lifecycle.state === "terminal") {
-        const child = repositories.runs.listChildren(request.runId).find((run) => run.lifecycle.state !== "terminal");
-        if (child !== undefined) return refused({ reason: "tree-non-terminal", runId: child.envelope.runId });
+        const activeMember = findNonTerminalTreeMember(repositories, request.runId);
+        if (activeMember !== undefined) {
+          return refused({ reason: "tree-non-terminal", runId: activeMember.envelope.runId });
+        }
       }
-      const result = repositories.runs.transition({
-        runId: request.runId, expectedVersion: request.expectedVersion, lifecycle: request.lifecycle,
-        now: this.dependencies.clock.now().toISOString(),
-      });
+      const now = this.dependencies.clock.now().toISOString();
+      const result = current.run.lifecycle.state === "parked-gate" && request.lifecycle.state === "queued"
+        ? repositories.runs.resume({
+            runId: request.runId,
+            expectedVersion: request.expectedVersion,
+            startAt: current.run.lifecycle.resumeAt,
+            now,
+          })
+        : repositories.runs.transition({
+            runId: request.runId,
+            expectedVersion: request.expectedVersion,
+            lifecycle: request.lifecycle,
+            now,
+          });
       if (result.state === "conflict") return refused({ reason: "conflict", currentVersion: result.currentVersion });
       this.recordJournal(repositories, journal.command, journalRun(result.run));
       return { state: "applied" as const, run: result.run };
@@ -425,6 +450,10 @@ export class RunRecordService {
           message: "only a claim-holding run may settle failed",
         });
       }
+      const activeMember = findNonTerminalTreeMember(repositories, authorization.runId);
+      if (activeMember !== undefined) {
+        return refused({ reason: "tree-non-terminal", runId: activeMember.envelope.runId });
+      }
       const report = this.dependencies.database.terminalizeFailure(descriptor, request.terminal);
       this.recordJournal(repositories, journal.command, journalRun(report.run));
       return { state: report.state === "replayed" ? "applied-already" : "applied", run: report.run };
@@ -462,6 +491,10 @@ export class RunRecordService {
           to: "terminal",
           message: "only a running run may settle done",
         });
+      }
+      const activeMember = findNonTerminalTreeMember(repositories, authorization.runId);
+      if (activeMember !== undefined) {
+        return refused({ reason: "tree-non-terminal", runId: activeMember.envelope.runId });
       }
       const report = this.dependencies.database.terminalizeSuccess(request.terminal, factoryAuthorization);
       this.recordJournal(repositories, journal.command, journalRun(report.run));
@@ -960,6 +993,24 @@ function refused(refusal: RunRecordRefusal): Readonly<{ state: "refused"; refusa
 
 function journalRun(run: RunRecord) {
   return { kind: "run" as const, runId: run.envelope.runId, appliedVersion: run.version };
+}
+
+function findNonTerminalTreeMember(
+  repositories: AuthorityRepositories,
+  rootRunId: string,
+): RunRecord | undefined {
+  const visited = new Set<string>();
+  const visit = (parentRunId: string): RunRecord | undefined => {
+    if (visited.has(parentRunId)) throw new Error(`cycle in run parent tree ${parentRunId}`);
+    visited.add(parentRunId);
+    for (const child of repositories.runs.listChildren(parentRunId)) {
+      if (child.lifecycle.state !== "terminal") return child;
+      const nested = visit(child.envelope.runId);
+      if (nested !== undefined) return nested;
+    }
+    return undefined;
+  };
+  return visit(rootRunId);
 }
 
 function compareRuns(left: RunRecord, right: RunRecord): number {

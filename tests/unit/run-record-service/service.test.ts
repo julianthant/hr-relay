@@ -579,6 +579,35 @@ describe("canonical run-record service", () => {
     ), { state: "refused", refusal: { reason: "lost" } });
   });
 
+  it("re-enqueues a resolved gate at its durable continuation node", () => {
+    const { service, request, runtimeConfig } = fixture();
+    const running = runningRun(service, request, runtimeConfig);
+    const parked = service.workerTransition({
+      commandId: "83000000-0000-4000-8000-000000000007",
+      runId: running.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: {
+        state: "parked-gate",
+        gateId: GATE_RESULT.gateId,
+        parkedAt: NOW,
+        resumeAt: "crm-dates",
+      },
+    });
+    assert.equal(parked.state, "applied");
+    if (parked.state !== "applied") throw new Error("gate park refused");
+
+    const resumed = service.transition({
+      commandId: "83000000-0000-4000-8000-000000000008",
+      runId: running.envelope.runId,
+      expectedVersion: parked.run.version,
+      lifecycle: { state: "queued" },
+    });
+
+    assert.equal(resumed.state, "applied");
+    if (resumed.state !== "applied") throw new Error("gate resume refused");
+    assert.equal(resumed.run.envelope.startAt, "crm-dates");
+  });
+
   it("#9/#10 terminalize is atomic and command replay is exact or divergent", () => {
     const interrupted = fixture({
       afterFailureStorageStep: (step) => {
@@ -643,6 +672,129 @@ describe("canonical run-record service", () => {
     if (!("tombstone" in replayAfterDelete)) throw new Error("deleted terminal replay lost its tombstone");
     assert.equal(replayAfterDelete.tombstone.runId, running.envelope.runId);
     assert.equal(replayAfterDelete.appliedVersion, applied.run.version);
+  });
+
+  it("refuses failure terminalization while a direct tree member is non-terminal", () => {
+    const { service, request, runtimeConfig } = fixture();
+    const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
+    const member = created(service, {
+      ...request,
+      commandId: "84000000-0000-4000-8000-000000000007",
+      matchKey: "terminalize-active-member",
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+      shape: "operation-member",
+      parent: {
+        runId: anchor.envelope.runId,
+        tracePrefix: anchor.envelope.traceId,
+        edgeId: "active-member",
+      },
+    });
+
+    assert.deepEqual(service.terminalize(
+      failureTerminalRequest(anchor, "84000000-0000-4000-8000-000000000008"),
+      personLookupDescriptor,
+    ), { state: "refused", refusal: { reason: "tree-non-terminal", runId: member.envelope.runId } });
+  });
+
+  it("refuses failure terminalization while a nested tree member is non-terminal", () => {
+    const { service, request, runtimeConfig } = fixture();
+    const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
+    const member = created(service, {
+      ...request,
+      commandId: "84000000-0000-4000-8000-000000000009",
+      matchKey: "terminalize-terminal-member",
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+      shape: "operation-member",
+      parent: {
+        runId: anchor.envelope.runId,
+        tracePrefix: anchor.envelope.traceId,
+        edgeId: "terminal-member",
+      },
+    });
+    const terminalMember = service.transition({
+      commandId: "84000000-0000-4000-8000-000000000010",
+      runId: member.envelope.runId,
+      expectedVersion: member.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    assert.equal(terminalMember.state, "applied");
+    const grandchild = created(service, {
+      ...request,
+      commandId: "84000000-0000-4000-8000-000000000011",
+      matchKey: "terminalize-active-grandchild",
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+      shape: "operation-member",
+      parent: {
+        runId: member.envelope.runId,
+        tracePrefix: member.envelope.traceId,
+        edgeId: "active-grandchild",
+      },
+    });
+
+    assert.deepEqual(service.terminalize(
+      failureTerminalRequest(anchor, "84000000-0000-4000-8000-000000000012"),
+      personLookupDescriptor,
+    ), { state: "refused", refusal: { reason: "tree-non-terminal", runId: grandchild.envelope.runId } });
+  });
+
+  it("refuses a distinct terminal lifecycle self-edge", () => {
+    const { service, request } = fixture();
+    const run = created(service, request);
+    const lifecycle = { state: "terminal" as const, outcome: "cancelled" as const, endedAt: NOW };
+    const settled = service.transition({
+      commandId: "84000000-0000-4000-8000-000000000013",
+      runId: run.envelope.runId,
+      expectedVersion: run.version,
+      lifecycle,
+    });
+    assert.equal(settled.state, "applied");
+    if (settled.state !== "applied") throw new Error("settlement refused");
+
+    assert.deepEqual(service.transition({
+      commandId: "84000000-0000-4000-8000-000000000014",
+      runId: run.envelope.runId,
+      expectedVersion: settled.run.version,
+      lifecycle,
+    }), {
+      state: "refused",
+      refusal: {
+        reason: "illegal-transition",
+        from: "terminal",
+        to: "terminal",
+        message: "terminal has no self-edge; a settled outcome is settled",
+      },
+    });
+  });
+
+  it("refuses a display-name self-edge on a terminal run", () => {
+    const { service, request } = fixture();
+    const run = created(service, request);
+    const settled = service.transition({
+      commandId: "84000000-0000-4000-8000-000000000015",
+      runId: run.envelope.runId,
+      expectedVersion: run.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    assert.equal(settled.state, "applied");
+    if (settled.state !== "applied") throw new Error("settlement refused");
+
+    assert.deepEqual(service.transition({
+      commandId: "84000000-0000-4000-8000-000000000016",
+      runId: run.envelope.runId,
+      expectedVersion: settled.run.version,
+      displayName: "Late rename",
+    }), {
+      state: "refused",
+      refusal: {
+        reason: "illegal-transition",
+        from: "terminal",
+        to: "terminal",
+        message: "terminal has no self-edge; a settled outcome is settled",
+      },
+    });
   });
 
   it("#10 journals only request commitments and returns the current version on exact replay", () => {
