@@ -493,6 +493,13 @@ new readers, any other audit method, or any write outside the kernel fails the g
   start/worker-browser/run/gate/write-resolution actions execute, `run/edit-checkpoint` and every
   later family/action return `rejected:capability-unavailable` with zero authority-generation
   advance, and an unhandled/throwing “not implemented” arm fails the guard.
+  **D334 successor, assigned to 1.6.4:** `run/edit-checkpoint` leaves the product command registry
+  entirely; source-bound Retry/Rerun may only produce a confirmed start plan and a new service-owned
+  run. The implementation candidate retires `edit-data-field-policy` in
+  `guard-inventory.json` with `retiredBy: D334`, replaces it with the active
+  `rerun-prefill-boundary` guard, and proves both the retired command's absence and the replacement's
+  descriptor/source/version/value-provenance closure against violating fixtures. The manifest change
+  and deciding red/green evidence land with the code, not in this documentation-only decision commit.
 - **`authority-target-no-fallback` — RETIRED 2026-08-09 (D188), replaced by `storage-recovery`.**
   The invariant is unchanged and is held one layer down: `open` REFUSES an existing-but-empty file by
   name, read-only inspect refuses any non-exact schema, and the corrupt / truncated / newer /

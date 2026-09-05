@@ -2260,7 +2260,8 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
    probe-then-park auto-resolves only the cases the target can prove, while every unproven absence
    still parks. Read nodes auto-resume. Commit intent, checkpoint, ledger outbox, and
    terminal-span outbox are one SQLite transaction (ref write-safety); JSONL emission may lag but is repaired.
-3. **Operator-forced start-at-N with declared corrections.** Pick a resumable graph node and supply
+3. **Operator-forced start-at-N with declared corrections — superseded by D334.** The former path
+   picked a resumable graph node and supplied
    patches only for descriptor-allowlisted upstream fields. Missing/noneditable ancestors must rerun;
    no arbitrary substitute-output surface exists. `injected` rides the RunEnvelope
    as `CheckpointPatch[]`; the post-patch value is parsed with the **full output schema of the
@@ -2269,7 +2270,7 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
    Each changed field receives `{ source:"operator", correctedAt, supersedes }`; untouched fields
    retain their original source and `observedAt`. An edit NEVER refreshes live-source facts.
 
-   **Live Edit Data over checkpoints (operator directive, charter §12).** This is not only a
+   **Historical Live Edit Data over checkpoints (superseded by D334).** This was not only a
    start-anywhere affordance: for ANY stopped or parked run, the Context rail's merged Data section
    shows the run's current checkpoint state **live** — every accumulated task output, keyed by step,
    as it exists in SQLite right now. Only descriptor-allowlisted node+field paths are editable;
@@ -2278,11 +2279,13 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
    schema—a bad edit is rejected loudly at save time; a good edit becomes a typed patch with
    field-level operator provenance). Editing checkpoint data in this Context section is the supported way
    to correct a run's data mid-way; hand-editing SQLite or JSONL is not.
-4. **Rerun with different input.** A new logical item ⇒ new `(workflow, item_id)` ⇒ **zero
-   checkpoints by construction**. `injected` is rejected on a new-input run — the two affordances
-   are separate endpoints so changed input can never silently ride stale context.
+4. **Retry/Rerun through the Run modal (D334).** The source run supplies completed-step values as
+   optional editable prefill only. The operator selects/omits steps and submits authoritative typed
+   input/assertions through a new start plan; no source checkpoint is inherited and the source run
+   remains unchanged. A changed match key derives a new logical item. An unchanged item may retain
+   retry lineage, but either path gets its own service-minted run identity only on Confirm.
 
-#### 5.6.1 Two operator recovery choices (D314, 2026-09-02)
+#### 5.6.1 Former two operator recovery choices (D314, 2026-09-02; superseded by D334)
 
 A failed run exposes exactly two ordinary recovery choices when no unknown write is parked:
 
@@ -2308,6 +2311,15 @@ only its evidence-resolution actions; these two choices do not bypass write reco
 > `person-lookup/resume-from-checkpoints` and `person-lookup/restart-from-start`, exercised through the
 > real executor over real run authority in `tests/scenario/workflows/person-lookup/structural.scenario.test.ts`
 > (T1a); D318's `live-read` T1b arm (ref guards-and-tests §10.4) is the live half of that same T1 pair.
+
+**Current operator recovery contract — D334 (2026-09-05).** Retry and Rerun are labels for the same
+source-bound Run modal, not direct recovery mutations. Retry defaults the selection to the
+failed/incomplete step and downstream work; Rerun defaults to the source's prior selected-step set.
+The operator may change every eligible selection and any offered value. Submitted modal values and
+omission facts are typed operator assertions for the new run. An unselected transaction does not
+execute and contributes no new proof; an unknown write remains blocked on its evidence-resolution
+door. D314's scenarios remain historical evidence for the service's internal compatibility
+`retry`/`restart` operations until Task 1.6.4 repoints them; they no longer define the dashboard.
 
 ### 5.7 The checkpoint store — and resume scope (D9)
 

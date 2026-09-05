@@ -569,7 +569,7 @@ dashboard-surfaces §2.5 D332.1–D332.12, its settings half ref clock-config-se
 adapter roster ref guards-and-tests §5.2) verbatim; a task that needs a contract change returns it to
 a newly numbered 0.3 task and does not improvise. Every task below is one supervisor session (D326)
 bound to ONE seam (the files it may touch), ONE gate, its place in the integration order, the proofs
-it owes from the three ladders (§D330.11's 26, §D331.11's 41, §D332.11's 27 — 94 rows, each assigned
+it owes from the three ladders (§D330.11's 27, §D331.11's 41, §D332.11's 27 — 95 rows, each assigned
 exactly once below, plus the guard entries and the one unit test ref guards-and-tests §5.2 names),
 and ONE deletion test — the red-capable proof that the displaced authority is gone, never a switch.
 The **base gate** every task runs before its own row is
@@ -587,6 +587,14 @@ general reference refreeze.
 Both wave peers branch from the same integrated repaired baseline. Every leaf a task adds to a served contract is dispositioned under D183 in the same commit
 (§D331.11 P41, §D332.11 M26). **Integration order:** Task 1 → wave 2 (`2-1` ∥ `2-2`) → 3 → 4 → 5 →
 6 → 7, each merged `--no-ff` onto master with the base gate green before the next branches.
+
+**Operator-ratified Task-4 amendment (D334, 2026-09-05).** Feasibility inspection found D109's
+pre-minted plan identities and D166's direct `edit-checkpoint` writer contradicted D330.1/D330.10.
+The operator resolved both and approved updating every affected phase plan: identities are minted
+only when Confirm creates the run; Retry/Rerun are source-bound presets of the ordinary new-run
+modal; completed-step values are editable prefill only; submitted values/omissions are authoritative;
+the source is immutable. This is the approved contract correction the rule above requires, not a
+Task-4 improvisation. D334's owner and decision-index pointer land with this plan commit.
 
 **The wave ruling.** The roadmap admitted Tasks "1 and 2" as a wave only after 0.3 proved their
 schemas and migration boundaries independent. R04's cross-contract review proved they are NOT
@@ -1241,22 +1249,27 @@ active; `/Users/julianhein/Projects/hr-worktree-run-writers`, its Git worktree r
 overwritten. No browser/parity/live verification or push occurred. This closes only Task 1.6.3;
 Task 4 and the rest of §1.6 retain their existing scope and remain unstarted by this session.
 
-### Task 4 · Cut over operator run commands and archive/delete writers
+### Task 4 · Cut over operator run commands, Rerun planning, and archive/delete writers
 <!-- roadmap: p1f-run-commands -->
 
-**Seam:** `src/core/command-kernel.ts` (the run family and the version-archive family through the
-service: start/intake/capture fan-out `create`, retry, restart, cancel, bump, rename, archive, relaunch,
-`delete` / `delete-archived-run`
-with the D308 member tree, bulk as N children, purge as evidence retention; the typed settlement
-vocabulary with the one new code `target-deleted`, §D330.5's wire mapping),
-`src/core/run-fan-out.ts`, `src/server/dashboard/commands/command-service.ts`, the shared post-commit
-`run.queued` builder/publication used by dashboard, intake, capture and dry-run starts, the `cli` run
-verbs, `tests/unit/command-kernel.test.ts`;
+**Seam:** `src/core/command-kernel.ts` (the run family and version-archive family through the service:
+start/intake fan-out `create`, internal compatibility retry/restart, cancel, bump, rename, gate/write
+continuations, archive, relaunch, `delete` / `delete-archived-run` with the D308 member tree, bulk as N
+children, purge as evidence retention; D334 source-bound Retry/Rerun planning; the typed settlement
+vocabulary with `target-deleted` and §D330.5's wire mapping), `src/core/run-fan-out.ts`,
+`src/core/run-record-service.ts`, `src/core/write-recovery.ts`, `src/domain/{commands,run/start-plan}.ts`,
+`src/services/{start/plan,trust/diagnostic-retention}.ts`,
+`src/server/dashboard/{compose,commands/command-service}.ts`, the dry-run-scenario enqueue composition,
+the shared post-commit `run.queued` builder/publication used by dashboard, intake and dry-run starts,
+and their focused tests;
 `tests/unit/architecture/no-lifecycle-sql-outside-the-adapter.test.ts` lands HERE with its entry flipped
 `planned → active` in the commit that removes the last direct mutator import, carrying the
-`runs-view-has-no-reader` arm and its stub-throws negative control (ref guards-and-tests §5.2 A3). **Does
+`runs-view-has-no-reader` arm and its stub-throws negative control (ref guards-and-tests §5.2 A3).
+`edit-data-field-policy` retires in that implementation commit under D334 and is replaced by the
+active `rerun-prefill-boundary` guard with its own violating fixtures. **Does
 not touch:** `deriveRunStatus` and its two callers (A2, 2.6), the projector's `runs_view` writes (A3, 2.6),
-any schema. **Owes:** §D330.11 #24; the kernel suites re-pointed; every command's idempotence, stale CAS
+SQL schema/migrations, frontend/modal rendering, browser controls, or retired Capture. Strict persisted
+request/plan JSON schemas may change only for D334; no DDL. **Owes:** §D330.11 #24; the kernel suites re-pointed; every command's idempotence, stale CAS
 and worker-race arms through the real kernel. **Gate:** base + `npm run test:architecture` with the guard
 active. **Deletion test:** the guard itself (#24) — red on any lifecycle SQL or mutator import outside
 the two-module literal allowlist. **Order:** fourth. **Cancel of a claimed run:** the coordinator ruled
@@ -1269,12 +1282,148 @@ used by positive recovery and operator `resolve-write-present`, with its narrow 
 Task 4 retains command dispatch/admission, remaining write-resolution paths and the full command-family
 cutover; it must preserve Task 3's atomic settlement, continuation, refusal and replay proofs.
 
-- [ ] Route CLI/dashboard start, retry, cancel, rename, archive, relaunch, D308 terminal-only
-  delete/tombstone, bulk and purge commands through the run service; route start/intake/capture fan-out
-  creation through `create` and its one post-commit `run.queued` publication; one typed settlement/
+- [ ] Route dashboard/dry-run start, internal retry/restart compatibility, cancel, rename, gate/write
+  continuation, archive, relaunch, D308 terminal-only delete/tombstone, bulk and retention purge through
+  the run service; route start/intake fan-out creation through `create` and its one post-commit `run.queued` publication; one typed settlement/
   conflict vocabulary with actor/version attribution (§D330.5, §D330.8, D233, D235, D308).
+- [ ] Implement D334's backend boundary: plans carry logical runs and optional source/prefill provenance
+  but no `runId`/`traceId`; Confirm mints identities in the create transaction; retire the in-place
+  `edit-checkpoint` writer; source-bound Retry/Rerun submissions create a new authoritative run and
+  never mutate or silently replay the source.
 - [ ] Prove typed settlements, idempotence, stale CAS, worker races and relaunch lineage through the
   real kernel; activate `no-lifecycle-sql-outside-the-adapter` (#24) in the same commit.
+
+#### Approved focused-session plan (2026-09-05)
+
+**Approval and resolved decisions.** The operator approved D334 in chat on 2026-09-05: run identity is
+created when Confirm actually queues the run; Retry (failed/interrupted) and Rerun (completed) open the
+same Run modal at Steps; completed-step values are optional editable prefill; the operator controls
+steps and values independently; submitted modal values/omissions are authoritative; and the source run
+never changes. D334 is normative in `ref dashboard-surfaces` §2.4/§9.1/§9.3.1 and
+`ref data-intake-and-edit-data` §6. It supersedes D166's in-place checkpoint edit and D314's direct
+no-input/no-omission recovery surface while preserving D313 and every uncertain-write fence.
+
+**Feasibility corrections.** Four contradictions are resolved in scope rather than deferred:
+
+1. D109 start plans currently pre-mint `runId`/`traceId`, contrary to D330.1. New plans retain the
+   exact logical run/input/item/step/omission set but no lifecycle identity. The service mints identity
+   inside create; exact replay returns the originally journaled ids without calling the id factory.
+   Existing short-lived plans with reserved ids remain readable only to refuse consumption and require
+   replanning. This is a strict persisted-JSON/type change, not SQL DDL.
+2. The current `run.edit-checkpoint` arm directly changes `tasks.envelope.injected`, so the Task-4
+   guard cannot activate while it survives. Remove that product mutation. A D334 source-bound start
+   plan carries the source id/version, contextual intent, effective step selection, authoritative
+   values/omissions and optional copied-from coordinates. Same derived item may retain `retryOf`; a
+   changed item is fresh and may not claim retry lineage.
+3. D294 retired Capture Mode and its command family. Task-4's stale capture-fan-out wording is deleted;
+   no capture module, route, fixture or UI may return.
+4. The current CLI has no generic run verbs, and D330.10 lists only `phase`, `dry-run-scenario` and
+   `storage`. This task cuts over the existing dry-run-scenario enqueue composition; it adds no CLI
+   grammar. D330's `retry`/`restart` service operations remain compatibility operations and are proved
+   through the kernel, but 3.1 Task 11-2 replaces direct dashboard Retry/Restart controls with the
+   source-bound plan flow.
+
+**Verified prerequisite and current state.** Task 1.6.3's reviewed worker lifecycle cutover is
+integrated on local `master` at `2c4e1af69fc8d5d97e38a3a4d14db4423ce51786`; its completion record is
+`e29dd119c92bd44356d50927380595b6d8838a2d`. The primary checkout was clean at planning time, with no
+auxiliary worktree and no `codex/phase-1-6-run-commands` ref or
+`/Users/julianhein/Projects/hr-worktree-run-commands` path. Recheck the exact plan commit, prerequisite
+ancestry, branch/path availability and four-worktree budget before the first edit. The primary checkout
+is integration-only; implementation uses the assigned worktree.
+
+**Implementation sequence.** One supervisor performs these stable steps in order:
+
+1. Reverify the approved plan/contract, Task-3 ancestry, clean integration target and assigned
+   worktree/ref. Inventory every remaining production lifecycle repository mutation/read reached by
+   command, start/intake/dry-run fan-out, gate/write resolution, version archive and retention sweep.
+   Freeze the proof matrix below before changing code; use only synthetic authority/runtime roots.
+2. Land D334's strict domain boundary. Make new start plans source-aware when entered by Retry/Rerun,
+   remove proposed `runId`/`traceId`, bind source id/version, intent, effective selected/omitted steps,
+   submitted values and optional copied-from coordinates into the request fingerprint, and ensure old
+   identity-bearing plans parse only to a named replan refusal. Retire `run/edit-checkpoint` as a
+   product mutation. Do not add a lifecycle operation or SQL migration.
+3. Inject one `RunRecordService` capability into the kernel over the same `AuthorityDatabase` and
+   replace `fanOutQueuedRuns`' lifecycle writes with service calls. Preserve one outer product-command
+   transaction across plan consumption, enqueue policy/supersession, session creation and N creates.
+   Give each nested lifecycle call a stable domain-separated command id. Pass title/subtitle/actor only
+   as after-commit publication context, never into the lifecycle journal; publish exactly one shared
+   `run.queued` root per newly applied run after the outermost commit and none on refusal/rollback/replay.
+4. Cut over every remaining command-side lifecycle write: compatibility retry/restart; cancel tree and
+   claimed cancellation request; bump/rename; gate and absent-write continuations; version-bump archive;
+   relaunch; queue/archive D308 delete; and diagnostic evidence purge. Map service refusals exhaustively
+   to product results, including `target-deleted`, without converting lost/replay/cursor/identity or
+   retention faults into plausible operator answers. Preserve Task 3's positive write-resolution
+   settlement and atomicity. Correct the service's cancel-tree arm if needed so running members and the
+   anchor each receive their own cancellation request and no operator transaction settles a claimed row.
+5. Recompose dashboard, intake and dry-run-scenario callers. Remove duplicate command-service
+   publication and projection-derived queue-root titles. Keep best-effort bulk as deterministic N child
+   commands and retain the explicit all-or-none refusal. Do not add Capture or generic CLI commands.
+6. Activate `no-lifecycle-sql-outside-the-adapter` and its guard-inventory entry only after the final
+   direct mutator/import is gone. Its literal allowlist is the SQLite adapter plus run service; prove
+   SQL, mutator-import and `runs_view`-reader arms against checked-in violating fixtures. Repoint kernel,
+   start-plan, intake, archive, recovery, retention and BFF suites through real service composition.
+   Retire `edit-data-field-policy` with `retiredBy: D334` and `replacedBy: rerun-prefill-boundary`;
+   activate that replacement only with its descriptor/source/version/provenance negative controls.
+7. Run focused checks during implementation, then the full candidate gates below without compiler/
+   linter contention with coverage. Commit the exact candidate and evidence, record `awaiting independent
+   review`, dispatch `/supervise`'s fresh read-only `sup_review`, fix tactical findings in this worktree
+   with focused red/green proof, and renew review until PASS. Integrate only the accepted candidate,
+   run integration gates, record evidence/cleanup and mark only Task 4 complete. No push.
+
+**Acceptance and disproof matrix.** These are production-composed boundaries, not direct-repository
+fixtures:
+
+| Boundary | Required result | Forbidden effect / disproof |
+|---|---|---|
+| Plan → Confirm → N create | Proposal contains exact logical entries but no run/trace ids; Confirm returns N service-minted identities in one applied product result | Any id exists before Confirm; a kth-create refusal leaves a consumed plan, earlier row or queued publication |
+| Exact/divergent replay | Exact product/lifecycle replay returns the original ids/versions and publishes nothing; divergent reuse refuses | Id factory runs again, a second row/root appears, or replay becomes conflict/success |
+| Retry/Rerun source plan | Source id/version is revalidated; submitted modal input/omissions alone shape the new run; source row stays byte-identical | Old checkpoint is inherited without submission, source envelope changes, or stale/deleted source queues work |
+| Step/value customization | Any descriptor-eligible step may be selected/omitted and any offered value copied/changed/cleared; omitted transaction emits no new intent/attempt/proof | UI prefill becomes execution authority, an unselected step runs, or assertion provenance claims observation/write proof |
+| Item lineage | Same derived item may cite `retryOf`; changed match key creates a fresh item without false retry lineage | Different item is forced under source item or loses authoritative submitted input |
+| Queue-root publication | Dashboard, intake and dry-run use one builder after outermost commit, once per applied run | Direct kernel call produces a rootless committed run; rollback/replay publishes; command service emits a duplicate |
+| Cancel tree / worker race | Queued/parked members settle; claimed members and claimed anchor receive CAS requests; worker settles outside retained fence | Operator settles a claimed row, omits the anchor request, or loses Task-3 fence/atomicity |
+| Archive/relaunch/delete | Version CAS and digest/refusal mapping are typed; D308 tree deletes leaves-first behind one tombstone per run; relaunch lineage is exact | Member-alone/nonterminal/digest mismatch removes anything; deleted target maps to not-found; spent identity returns |
+| Gate/write/retention | Gate and absent-write resume plus evidence purge use service operations and preserve outer transaction semantics | Any non-allowlisted module imports/calls a lifecycle mutator; retention-not-due becomes operator success |
+| Architecture guard | Real tree passes; each SQL/mutator/runs-view violating fixture fails for its intended reason | Literal allowlist expands, a dead walker passes, or the planned inventory entry is marked active without the guard |
+
+**Gate cadence and verification scope.** Use focused TDD after each related step:
+
+```text
+npm run test -- --project unit tests/unit/run-record-service/service.test.ts tests/unit/start-plan.test.ts tests/unit/server/start-plan-omissions.test.ts tests/unit/command-kernel.test.ts tests/unit/command-kernel-restart.test.ts tests/unit/retry-item-attempt.test.ts tests/unit/command-kernel-step-omission-carry.test.ts tests/unit/intake-command-arms.test.ts tests/unit/edit-data.test.ts tests/unit/archive-model.test.ts tests/unit/write-recovery.test.ts tests/unit/run-fan-out-step-omission.test.ts tests/unit/diagnostic-capture.test.ts tests/unit/server/bff-flow.test.ts tests/unit/server/intake-surface.test.ts
+npm run test -- --project architecture tests/unit/architecture/no-lifecycle-sql-outside-the-adapter.test.ts tests/unit/architecture/rerun-prefill-boundary.test.ts tests/unit/architecture/worker-loop-writes-only-through-the-service.test.ts tests/unit/architecture/control-command-single-path.test.ts tests/unit/architecture/command-result-exhaustive.test.ts tests/unit/architecture/guard-manifest.test.ts
+```
+
+Before the implementation commit and again on the integrated candidate, run serially:
+
+```text
+npm run typecheck
+npm run lint
+npm run test:coverage
+npm run build:manifest:check
+npm run roadmap:check
+npm run test:architecture
+npm run test:parity
+git diff --check
+```
+
+Coverage uses at most four file workers and runs after compiler/linter completion. Parity is assertion
+only: this task changes no frontend or reference image. Any intended rendered change returns to 3.1
+Task 11-2 rather than refreezing here. No live HR run, controlled write, manual browser session,
+performance lane, real `.tracker` state or fixed port is required; all behavioral proof uses temporary
+authority/runtime roots. A material SQL/DDL need, new lifecycle operation, frontend change, Capture/CLI
+resurrection, edit to 2.6/3.1 implementation ownership, or Task-3 worker redesign stops the assignment
+for operator scope review. Tactical review fixes stay with this supervisor; behavior-changing scope
+changes do not.
+
+**Supervisor sizing and assignment.** One supervisor fits under the roadmap's one-task/one-supervisor
+rule: the kernel/service transaction boundary, D334 plan identity, queue-root publication and writer
+deletion guard are one coupled seam. Splitting would make both supervisors edit the command schemas,
+kernel/service composition and acceptance fixtures, so it would not produce independently mergeable
+candidates.
+
+| Assignment | Branch | Absolute worktree | Base / start prerequisite | Owned files and resources | Acceptance gates | Merge condition |
+|---|---|---|---|---|---|---|
+| `1.6.4` | `codex/phase-1-6-run-commands` | `/Users/julianhein/Projects/hr-worktree-run-commands` | Verified full approved-plan commit on local `master`, containing Task 1.6.3 completion `e29dd119c92bd44356d50927380595b6d8838a2d`; recheck ancestry/path/ref/capacity before creation | Task-4 seam, D334 backend schemas/composition and focused tests above; synthetic authority/runtime roots only; no UI, DDL, Capture, live state, browser session or fixed port | Acceptance matrix, focused unit/architecture suites, typecheck, lint, full coverage, manifest/roadmap checks, standalone architecture, unchanged parity, diff check | Freeze exact candidate and obtain fresh `sup_review` PASS. Against latest local `master` still containing the approved plan and Task-3 prerequisite, integrate without a behavior-changing conflict or renew review; run integration gates, record review/merge/gate evidence, remove only owned worktree/ref, and mark only Task 4 complete. No push. |
 
 ### Task 5 · Cut over settings mutation and runtime resolution
 <!-- roadmap: p1f-settings-consumers -->

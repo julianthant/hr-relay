@@ -1194,7 +1194,8 @@ descriptors. What follows is what they MEAN; the schemas are the contract.
 command arm carries exactly one closed target family; an id valid for one family cannot be erased
 to a generic string target. The registry is a frozen `Record<family, actions>` whose refinement
 refuses a family that is missing, duplicated or carries a different action set —
-`COMMAND_FAMILY_REGISTRY`, ten families over 37 actions:
+`COMMAND_FAMILY_REGISTRY`, currently ten families over 37 actions; D334's Task-1.6.4 target is 36
+after the one `edit-checkpoint` removal below:
 
 | Target family | Actions | Authoritative target |
 |---|---|---|
@@ -1208,6 +1209,12 @@ refuses a family that is missing, duplicated or carries a different action set �
 | `notification` | `notification-read`, `notification-unread`, `notification-snooze` | one exact actor-owned notification + observed version |
 | `capture` | `capture-upload`, `capture-replace`, `capture-reorder`, `capture-delete`, `capture-finalize`, `capture-retry-finalize`, `capture-discard` | exact capture session/photo ids + observed version (`ref data-intake-and-edit-data`) |
 | `explorer` | `apply-explorer-edit` | one strict command envelope bound to descriptor version/fingerprint and exact override revision; only workflow label/icon/category may hot-apply (D283, ref operator-trust §5.3–§5.4) |
+
+**D334 command amendment (assigned to 1.6.4).** The `run` family drops `edit-checkpoint`; the closed
+registry therefore loses exactly that mutation. `retry` remains an internal compatibility command
+during the lifecycle cutover, but the dashboard no longer invokes it directly after 3.1 Task 11-2.
+Rerun is not a new mutation verb: Retry/Rerun launch the `start` family's server-plan flow, whose
+Confirm issues `start-run`. D294's separate capture-family retirement remains unchanged.
 
 The string **`bump` is permanently reserved for run priority/claim order.** Descriptor and app
 version work uses `plan-version-bump` then `apply-version-bump`: the plan is reviewable and
@@ -1297,16 +1304,17 @@ Command semantics are binding:
 | Operation | Standard behavior |
 |---|---|
 | Enqueue | Validate raw input once, derive the stable item id, then apply the descriptor's policy in ONE transaction. `reject-active` returns the existing active run; `supersede-active` terminalizes every active generation as `superseded` and creates the new run in the same transaction (`fanOutQueuedRuns`, `src/core/run-fan-out.ts`); `allow-parallel` still requires a distinct stable item/variant key. An authority read error aborts — never "continue and enqueue anyway". |
-| Retry | Creates a new run linked by `retryOf`, reuses the immutable parsed input/config, validates checkpoints and freshness, and preserves the logical item — taking the item's next unspent attempt from authority (D221). A parked unknown write uses the resolution actions, never generic retry. |
+| Retry / Rerun | **D334.** These are contextual labels for one Run-modal launcher, not immediate mutations. Retry is offered for a failed/interrupted source; Rerun for a completed source. Either opens Steps with completed-step values available as editable prefill. The confirmed server plan creates the new run; the source remains unchanged. A parked unknown write uses the resolution actions, never this launcher. |
 | Cancel | Resolves the full dependency tree from authoritative SQLite, applies every edge's `ref workflow-model` cancel policy, and commits the transitions together. If the tree is unavailable or inconsistent, no target is cancelled. Visible queue roots are never an authority fallback. |
 | Bump | **Run-family only:** changes priority/claim order through an idempotent transactional command; it does not fabricate a requeue, mutate business input, change a descriptor version, or archive anything. Only a `queued` run can be bumped — the scheduler supports no cooperative yield, so a running run is a typed `invalid-state` rejection — and an already-`interactive` run is idempotently `applied` with no version change. |
 | Rename | Replaces only the operator-visible run display name with a strict `RunDisplayName`: NFC-normalized, already trimmed, 1–120 Unicode code points, no control characters. Empty, whitespace-padded, overlong, non-normalized or unknown-key payloads fail boundary parsing. Identity and trace id never change. |
 | ~~Hide / Unhide~~ | **RETIRED (D234.)** The queue's model is runs and archived runs; there is no third hidden class. `ActionCommandKeySchema` carries neither key and `RunRecord.hidden` is a parse-tolerated vestige nothing writes. |
 | Delete | **D308.** `delete` on a terminal, non-member queue row and `delete-archived-run` on an archived detail (citing the record's `contentDigest`). One journaled transaction removes the run and every row it owns — write ledger included — behind an insert-only `deleted_runs` tombstone; the tree goes leaves-first and refuses while any member is non-terminal. Confirm, destructive; the copy names the released idempotency key. See §"D308 — delete means delete". |
 | Purge | Not a row action. `cli purge-run <exact-run-id> --backup <path>` is an offline maintenance command requiring a fresh verified backup and refusing any active/dependency/write-authority reference. It writes a purge receipt. **Superseded 2026-09-04 (D327/D330):** never built; D308 `delete` / `delete-archived-run` is the one authority-removal door, and "purge" now names only retention of evidence classes (§D330.8). |
-| Edit checkpoint | Uses `ref data-intake-and-edit-data`'s field-level patch/provenance model (D166), creates a new run/attempt as specified there, and never mutates original input or a completed proof. |
+| ~~Edit checkpoint~~ | **RETIRED by D334.** Editing fields belongs to the Retry/Rerun Run modal and creates a new run. No operator command patches an existing run's envelope or checkpoints. |
 
-**D314 amendment — recovery has two named choices (2026-09-02; declared, unbuilt).** The current
+**D314 amendment — recovery has two named choices (2026-09-02; superseded by D334 for operator
+recovery).** The current
 Retry control becomes **Resume from checkpoints**: it starts at the failed node, reuses valid
 ancestors and retries failed parallel leaves independently. Its sibling, **Restart from start**,
 mints the same logical item's next attempt and reruns every read/computation from the graph root,
@@ -1314,6 +1322,9 @@ while a completed transaction reconstructs from validated durable proof and neve
 commits again. Confirmation names what will rerun and which completed writes will be reused. A
 fresh-fact mismatch against a completed write refuses/parks, and an unknown write exposes only its
 evidence-resolution actions. Neither choice changes business input or the admitted omission bundle.
+D334 replaces those two direct operator commands with one editable plan-backed modal. The lifecycle
+service's narrow `retry` and `restart` operations remain internal compatibility operations during
+the 1.6 cutover; no dashboard control may invoke them directly after 3.1 Task 11-2.
 
 **D289 amendment — attempts are separate, and the dashboard does not compare them (2026-09-03).**
 A retry remains under the same logical item. One queue row must contain its separately selectable
@@ -1366,7 +1377,7 @@ only through a `start_plan`: the command target carries the plan id and its pre-
 never mutable input. The plan retains, per entry, the exact strict-JSON RAW submission beside the
 once-parsed canonical snapshot and its digest — accepted AND refused entries both — plus separate
 ingress and canonical schema hashes, the descriptor/version/contract/config fingerprints, the config
-snapshot, resolved instances, the match key and item id, the proposed run set, expiry, revision and
+snapshot, resolved instances, the match key and item id, the proposed logical run set, expiry, revision and
 consumption state. `start-run` revalidates every binding, then in ONE authority transaction records
 the command outcome, applies the descriptor's active-run policy, marks the plan consumed and creates
 every accepted run with its immutable envelope and input snapshot. Any drift, expiry, spent-plan
@@ -1374,7 +1385,11 @@ conflict, target lookup failure or run insert failure rolls back plan consumptio
 application, supersession and every proposed run. A replay of the same `commandId` returns the
 recorded result only after every binding has revalidated, and another command cannot consume a spent
 plan. "Plan consumed but no run" and "run created from an unconsumed or stale plan" are both invalid
-states.
+states. **D334 removes `runId` and `traceId` from a proposal:** those identities do not exist while
+the operator is reviewing the modal. The run service mints them inside each create transaction when
+the confirmed plan is consumed, and the applied command result returns the committed identities.
+Legacy short-lived plans that carry proposed identities remain parseable only to refuse consumption
+and require replanning; their reserved ids are never adopted.
 
 #### Phase 1f — the authority and command ratification (2026-08-02)
 
@@ -3376,6 +3391,27 @@ identifies omitted steps and assertion provenance, never the entered values. Thi
 D307 same-step-gate exception for compiled workflows; D307 remains the current built behavior until
 the conversion lands.
 
+**D334 — Retry and Rerun are presets of this same modal (2026-09-05, operator approved).** A failed
+or interrupted row labels the launcher **Retry**; a completed row labels it **Rerun**. Both open at
+Steps and create a new run only after Confirm. Retry initially selects the failed/incomplete step and
+its downstream work; Rerun initially repeats the source run's selected-step set. These are defaults,
+never restrictions: the operator may select or omit any eligible step and copy, change or clear any
+completed-step value the source offers. The source supplies prefill and coordinates only. On submit,
+the modal's raw input plus omission facts are the new plan's sole authoritative values; every value
+is an operator assertion, while optional `copiedFrom` provenance may cite the source run/step/value
+without turning that old value into authority or a replayed checkpoint. An omitted transaction runs
+no prepare/commit and contributes no new write proof. Unknown/parked writes still expose only their
+evidence-resolution actions.
+
+The plan records the exact source run id and observed version, the contextual intent, effective step
+selection, typed values and prefill provenance. Planning and consumption both revalidate that source;
+a stale, deleted or ineligible source refuses before any run or publication exists. The source row is
+byte-identical before/after. The submitted match key decides lineage: the same item may retain
+`retryOf`; a changed item is a fresh item and may not misuse `retryOf`. `runId`/`traceId` are absent
+from the proposal and minted by the run service only when Confirm consumes it. This supersedes
+D166's in-place checkpoint patch and D314's two no-input/no-omission recovery commands while
+preserving D313's modal authority, D308 deletion, and every write-safety fence.
+
 1. **The parser sentence is derived, never authored.** `inputRunValueNoun`,
    `inputRunSeparatorLabel` and `inputRunParserLabel` (`src/domain/workflow/ingress.ts`) read a
    legend declared beside `ENTRY_PATTERNS`, so a pattern whose regex moves has its words in the same
@@ -3924,6 +3960,11 @@ same (`workflow`,`itemId`). A create that would violate any of these refuses by 
 writes nothing. The as-built store already enforces the first three (`tasks` PK,
 `nextItemAttempt` refusal, `tasks_run_number_idx`); the parent/retryOf existence checks are 1.6 work.
 
+**D334 closes the start-plan boundary around this rule.** A start plan proposes logical entries and
+their exact inputs/omissions, not lifecycle identities. It carries no `runId` or `traceId`; those are
+minted only here when the confirmed plan creates the row. Exact product-command replay returns the
+identities journaled by the original apply and never runs the id factory again.
+
 **A spent ordinal stays spent after delete.** `attempt` and `runNumber` are one past the highest
 value in `tasks` OR in any `deleted_runs` tombstone for that (`workflow`,`itemId`) / `workflow`.
 The tombstone therefore carries the deleted run's `itemId`, `attempt` and `runNumber` (§D330.8);
@@ -4078,7 +4119,7 @@ every refusal names the field or state that refused.
 | `workerTransition` | claim fence; edge legal | `claimed→validating→running`, `running→parked-*`, `running→queued`(release) | `lost` · `illegal-transition` |
 | `terminalize` | claim fence; state claimed/validating/running; result or failure payload present | write result/failure/authorization rows and `terminal` in ONE transaction; emit `span.ended` only after commit (D268) | `lost` · `illegal-transition` · `replay-divergent` |
 | `requeue` | `expectedVersion` or recovery admission; state claimed/validating/running with expired heartbeat, or `terminal/interrupted` | `→ queued` with `requeuedFrom ∈ {reassign, bump, recovery, provider-capacity}`; `claimGeneration` untouched | `conflict` · `illegal-transition` · `heartbeat-live` |
-| `retry` / `restart` | `expectedVersion`; source `terminal` and not `parked-write`-derived; source not `deleted` | `create` of the SAME item's next attempt with `retryOf` (§D330.7) | `conflict` · `invalid-state` · `source-deleted` |
+| `retry` / `restart` | `expectedVersion`; source `terminal` and not `parked-write`-derived; source not `deleted` | internal compatibility operations during the 1.6 cutover: `create` of the SAME item's next attempt with `retryOf` (§D330.7). D334's operator Retry/Rerun surface instead confirms a source-bound start plan, allowing authoritative input/omission changes before `create`; 3.1 exposes no direct dashboard call to these operations | `conflict` · `invalid-state` · `source-deleted` |
 | `archive` | `expectedVersion`; state `terminal`; disposition `live` | insert `archived_runs` bound to the row with `contentDigest`; `version+1` | `conflict` · `not-terminal` · `already-archived` |
 | `relaunch` | archive `contentDigest` cited exactly; workflow still registered | `create` of a FRESH run on the current descriptor (§D330.7); `archive_relaunches` lineage row | `schema-mismatch{digest}` · `workflow-unregistered` |
 | `delete` | `expectedVersion`; `terminal`; disposition `live`; not a member; every tree member `terminal` | D308 cascade behind the tombstone (§D330.8) | `conflict` · `not-terminal` · `is-member` · `tree-non-terminal{runId}` · `use-archive-door` |
@@ -4913,6 +4954,13 @@ follow key on the day wire and the parity references.
 A sub-square of run detail rather than a square of its own: the tree's `WIRE run detail` line names
 the data rail, and the rail has no life apart from the run whose panel it rides. Its `track-b`
 checklist lives in §9.2's status block; this section adds no second one.
+
+**Current decision — D334 (2026-09-05).** The rail remains the read-only ledger of what the source
+run read, asserted and wrote. It no longer edits that run in place. Its contextual action is
+**Retry** on failed/interrupted runs and **Rerun** on completed runs; either opens §9.1's ordinary
+Run modal at Steps, carrying completed-step values only as optional prefill. The historical
+in-place editor below remains as-built evidence until 1.6.4 removes its mutation path and 3.1 Task
+11-2 replaces the surface. It is not current product authority.
 
 **What it is.** The right-hand column of the run-detail panel, and the ONE place where a run's data
 ledger is both READ and CORRECTED. That merge is the decision: Logs and Data were mutually exclusive
@@ -6190,18 +6238,13 @@ serving requirement remains in ref frontend-backend-integration §6.9.
 
 #### 9.7.3 Edit Data — the rail is the place, the policy is elsewhere
 
-Edit Data has no takeover and no surface of its own, deliberately: a correction is made where the
-value is READ, which is the run's own Context rail (§9.3.1). That is the whole surface decision, and
-the two halves it implies are recorded where they belong — the rail's ledger presentation, its
-direction and freshness bound (D252) and its two refusal arms (D253) are §9.3.1's; the field policy,
-the checkpoint-edit command, the concurrency rule and what is editable at all are
-`ref data-intake-and-edit-data` §6's, and `editPolicyFor`'s composition stays with the rail because
-it is presentation over that policy rather than a second copy of it.
-
-What is NOT built is named there too and not re-argued here: the rail's `Load a prior run` /
-`Start a run from this data` footer, and `actions[]` gating at the `data` placement — the served
-actions projection for that placement is empty today and the wire's `editing` union carries the gate
-meanwhile (§9.3.1, `{#track-b}`).
+**D334 retires the name and the in-place edit.** The Context rail remains where completed-step
+values and provenance are read. The action beside them is **Retry** or **Rerun**, according to the
+source run's outcome, and it opens the shared Run modal. There is no Edit Data takeover, checkpoint
+patch command, or mutable editor on the source run. `ref data-intake-and-edit-data` §6 owns which
+completed values can be offered as prefill and how their coordinates/provenance travel; §9.1 owns
+step/value choice and confirmation. Task 3.1.10-4 now owns intake only; Task 3.1.11-2 owns this
+launcher and shared modal.
 
 ### 9.8 Settings and the storage doctor
 

@@ -2080,3 +2080,16 @@ dashboard-surfaces §D330.4/§D330.10 in this same commit. It adds no table or m
 | # | Decision | Owning doc |
 |---|---|---|
 | **D333** | **RUN-LIFECYCLE COMMAND REPLAY USES ONE STRICT INTERNAL ARM OF THE EXISTING `commands` / `command_audits` AUTHORITY JOURNAL.** The arm commits the canonical request fingerprint, exact original fence and affected result identity without copying run input; exact replay is read-only, divergent or cross-kind command-id reuse refuses, partial journal pairs fail loud, and the first applied mutation plus both journal rows remain one authority transaction/generation. Product command schemas stay closed. No DDL is authorized: v31 remains lineage-only. | ref dashboard-surfaces §D330.4 / §D330.10 (primary) · doc 01 Task 2-1 |
+
+## Reconciliation round 140 (2026-09-05) — Retry and Rerun use one authoritative new-run modal
+
+_phase: 1.6_
+_D334 records the operator's Task 1.6.4 correction after feasibility inspection exposed that the
+current Edit Data command mutates an existing run while the new lifecycle boundary permits only the
+service to write it. The decision also resolves the older start-plan/run-identity contradiction. Its
+normative behavior lands in ref dashboard-surfaces and ref data-intake-and-edit-data in this same
+commit; later consumer and dashboard tasks are rebound, but no product implementation is claimed._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D334** | **RETRY AND RERUN ARE TWO CONTEXTUAL LABELS FOR ONE NEW-RUN MODAL, NEVER COMMANDS THAT EDIT THE SOURCE RUN.** A failed or interrupted run offers **Retry**; a completed run offers **Rerun**. Either opens the ordinary Run modal at Steps. Values from completed steps are available as editable prefill only: the operator may copy, change or clear any value and may select or omit any eligible step. The submitted modal values and omissions are the new run's authoritative typed input/assertions; no prior checkpoint or transaction result is silently inherited, and an omitted completed transaction does not run again or become proof that it ran in the new attempt. The source run remains byte-identical. Confirming the modal consumes one server plan and creates a new queued run; `runId` and `traceId` are minted only in that create transaction, never in the proposal. A parked or uncertain write still exposes only its evidence-resolution actions. D334 supersedes D166's in-place `edit-checkpoint` mutation and D314's no-input/no-omission dual recovery commands, preserves D313's complete modal authority and every write-safety fence, and assigns the backend command/service cutover to 1.6.4, completed-value/provenance reads to 2.6 Task 1-2, and the shared Retry/Rerun modal to 3.1 Task 11-2; 3.1 Task 10-4 retains intake only. | ref dashboard-surfaces §2.4 / §9.1 / §9.3.1 (primary) · ref data-intake-and-edit-data §6 · ref frontend-backend-integration §5.1.1 / §5.1.7 · docs 01 Task 4 · 02 Task 1-2 · 03.1 Tasks 10-4/11-2 |

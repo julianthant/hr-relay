@@ -392,7 +392,7 @@
       "file": "tests/unit/architecture/no-lifecycle-sql-outside-the-adapter.test.ts",
       "status": "planned",
       "owner": "docs/rebuild/reference/guards-and-tests.md; docs/rebuild/reference/dashboard-surfaces.md",
-      "invariant": "PLANNED for 1.6 Task 4 (D330.10/D332.9): lifecycle mutation and lifecycle-authoritative reads route only through the run-record service adapter; no dashboard, worker, command, executor, or projection seam writes tasks/leases directly or treats evidence and runs_view as lifecycle authority. The guard and its violating fixture activate together only after Task 4 has displaced the existing writers.",
+      "invariant": "PLANNED for 1.6 Task 4 (D330.10/D332.9/D334): lifecycle mutation and lifecycle-authoritative reads route only through the run-record service adapter; no dashboard, worker, command, executor, or projection seam writes tasks/leases directly or treats evidence and runs_view as lifecycle authority. The D334 source run is read-only: the former edit-checkpoint mutator is absent, and Retry/Rerun creates a new service-owned row from a confirmed source-bound start plan. The guard and its violating fixtures activate together only after Task 4 has displaced the existing writers.",
       "replacementRequired": true,
       "activationMilestone": "phase-1.6-task-4"
     },

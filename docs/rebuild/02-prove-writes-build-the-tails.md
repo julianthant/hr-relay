@@ -16,6 +16,7 @@ after 1.6; contracts it built live in `reference/`.
 - [ ] **2.6** waits for 1.6, then migrates/re-proves downstream read models, joins, and operator services without redesigning or rewriting append-only evidence
 - [ ] seven residuals ship WITH the phase, each owned by a later node — the notes emitter and the ledger drain, five unpublished notification arms, the knowledge projection, the retention sweep, the phone's delivery path, the empty capture bindings (see *What Phase 2 left standing*)
 > 2026-09-03 | D326/D327 authority reset | 1.6 owns stores, lifecycle/configuration writers, and core resolution; 2.6 owns downstream consumers and non-mutating revalidation only
+> 2026-09-05 | D334 operator correction | historical Edit Data checkpoint mutation is superseded; 1.6.4 removes the writer, 2.6 Task 1-2 serves read-only completed-value/provenance candidates, and 3.1 Task 11-2 owns the source-bound Retry/Rerun modal
 > 2026-08-21 | docs-cohesion 02 | verified against the five reference docs' own `p2-*` status blocks (`reference/{operator-trust,dashboard-surfaces,data-intake-and-edit-data,frontend-backend-integration,guards-and-tests}.md`) and spot-checked in `src/core/{write-sequencer,evidence-receipt}.ts`, `src/services/notifications/**`, `src/infra/ledger/**`, `src/infra/sqlite/migrations.ts` (v10–v13); left: the seven residuals below, each attributed
 
 <!-- /roadmap-status -->
@@ -491,7 +492,7 @@ rewrite append-only evidence, repeat D135's controlled write, or improvise a new
 (`1-1` ∥ `1-2` ∥ `1-3`) → Task 2 → Task 3. The three wave members consume the same frozen
 1.6 authorities but own disjoint downstream seams: trust/evidence projections, intake/data
 projections, and generic lifecycle/operator read models. Diagnostic capture belongs to 1-1;
-intake/OCR/manifest/Edit Data belongs to 1-2; archive/current/queue lifecycle status and counts
+intake/OCR/manifest/prior-run value projection belongs to 1-2; archive/current/queue lifecycle status and counts
 belong to 1-3. A wave member may test another seam's stable `runId` contract, but may not edit that
 seam. Shared composition roots, served aggregate contracts, guard inventory, generated artifacts,
 and phase-close docs receive one owner in the coordinator run plan before dispatch; if a newly found
@@ -526,11 +527,16 @@ closed. This is scheduling under D328, not authority redesign.
 > deleted run's gate records leave WITH the run. The notification inbox row stays run-linked. No
 > redesign.
 
-### Task 1-2 · Revalidate data, intake, and Edit Data consumers
+### Task 1-2 · Revalidate data, intake, and prior-run value consumers
 <!-- roadmap: p2f-data -->
 
-- [ ] Rewire only actual run/settings dependencies across intake, OCR, manifests, mappings, and edits.
-- [ ] Preserve artifact readability; missing canonical linkage fails loud.
+- [ ] Rewire only actual run/settings dependencies across intake, OCR, manifests, mappings, and the
+  D334 Retry/Rerun prefill source.
+- [ ] Serve every descriptor-allowed completed-step value with exact source run/version, step/node,
+  field path and provenance; preserve artifact readability and fail loud on missing canonical linkage.
+- [ ] Keep the projection read-only: it offers prefill candidates and never writes a lifecycle row,
+  checkpoint, start plan or modal value. Redact/withhold any value the ordinary operator-suppliable
+  schema does not admit.
 - [ ] Treat diagnostic capture projection as Task 1-1's seam and generic lifecycle/operator reads as
   Task 1-3's seam; consume their stable contracts without editing them.
 
@@ -539,6 +545,12 @@ closed. This is scheduling under D328, not authority redesign.
 > `ref clock-config-secrets` §D331.8 (a leaf has exactly one source, so no intake or Edit Data path
 > writes settings or a lifecycle row) and §D332.7 item 4 (the upgrade leaves evidence and its
 > immutability rules untouched, so existing artifacts stay readable across it). No redesign.
+>
+> 2026-09-05 | D334 operator correction | the old `run.edit-checkpoint` consumer is retired by 1.6.4.
+> This task owns only the replacement READ: completed-step values and their exact provenance for the
+> source-bound Retry/Rerun modal. Prove partial/missing/malformed/deleted/archived sources, copied
+> versus operator-entered provenance, transaction outputs represented as assertions rather than new
+> write proof, and a byte-identical source run. Task 3.1.11-2 owns all modal state and submission.
 
 ### Task 1-3 · Revalidate operator read models
 <!-- roadmap: p2f-operator -->

@@ -529,14 +529,15 @@ log:
 - 2026-09-05 | operator-approved shared-settlement amendment | Task-3 inspection at `e8d0fd54` found `resume-queued` also serves positive recovery/operator resolution. Admit only the shared helper, its two `write-recovery` continuation callers and narrow dashboard service-port injection; use existing command-owned `transition`, preserve the worker port boundary and full deletion oracle, add atomicity/continuation/replay proofs. Untouched initial worktree/ref removed; no implementation or acceptance claimed · left: implement the amended six-step plan
 - 2026-09-05 | direct supervisor close | candidate `a2c37bba` passed fresh independent `sup_review` after resolving cancellation admission, recovery publication and indexed recovery-selection findings; integrated as `2c4e1af6` with typecheck/lint, 5,211 coverage tests, 758 architecture tests, manifest and diff checks passing. Owned worktree/ref removed; Task 3 complete. No push or next-task dispatch.
 
-#### 4 · Cut over operator run commands and archive/delete writers {#p1f-run-commands}
+#### 4 · Cut over operator run commands, Rerun planning, and archive/delete writers {#p1f-run-commands}
 status: planned
-doc: 01 §1.6 · Implement canonical run and settings authorities · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.3 · ref:operator-trust §5.7
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §9.1 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.4 · ref:data-intake-and-edit-data §6 · ref:operator-trust §5.7
 
 builds:
-- [ ] BE route CLI/dashboard start, intake/capture fan-out creation, retry, cancel, rename, archive, relaunch, terminal-only delete/tombstone, bulk, and purge through the run service (`command-kernel`, `run-fan-out`, `command-service`, the shared post-commit `run.queued` publication, and the `cli` run verbs)
+- [ ] BE route dashboard/dry-run start, intake fan-out creation, internal retry/restart compatibility, cancel, rename, gate/write continuation, archive, relaunch, terminal-only delete/tombstone, bulk, and evidence retention through the run service (`command-kernel`, `run-fan-out`, `command-service`, and the shared post-commit `run.queued` publication)
+- [ ] BE make D334 source-bound Retry/Rerun plans carry logical entries, selected/omitted steps, submitted values and prefill provenance but no `runId`/`traceId`; Confirm creates the new run and the source stays byte-identical; remove `run.edit-checkpoint`
 - [ ] BE return one typed settlement/conflict vocabulary (`target-deleted` is the one new code) and preserve command actor/version attribution
-- [ ] PROOF idempotence, stale CAS, concurrent-worker, archive/relaunch lineage, and D308 deletion semantics through the real kernel; `no-lifecycle-sql-outside-the-adapter` (#24) activated with its `runs-view-has-no-reader` arm in the same commit
+- [ ] PROOF plan/confirm identity timing, exact replay, source/value/step customization, idempotence, stale CAS, concurrent-worker, archive/relaunch lineage, and D308 deletion semantics through the real kernel; `no-lifecycle-sql-outside-the-adapter` (#24) and replacement `rerun-prefill-boundary` activate in the same commit
 
 needs:
 - p1f-run-writers
@@ -546,6 +547,7 @@ log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the coordinator ruled option A; the `cancelRequested` arm is in §D330.5 and this task owes §D330.11 #27 — the earlier `left:` is closed · left: implementation
 - 2026-09-05 | operator-approved 1.6.3 feasibility correction | D330.10 keeps lifecycle `create` with the command kernel, so Task 4 also owns start/intake/capture fan-out creation and the shared post-commit `run.queued`; Task 3 supplies the worker/recovery half of #27 before this task starts · left: Task 3, then implementation and complete #27 proof
 - 2026-09-05 | shared-settlement ownership | Task 3 supplies the service-backed positive-recovery/operator-present `resume-queued` helper and narrow composition injection. Task 4 retains command dispatch/admission, other write-resolution paths and the remaining command cutover; preserve Task 3's atomicity, continuation and replay proofs · left: Task 3, then implementation
+- 2026-09-05 | D334 operator-approved focused plan | Task 3 is integrated. Run identities now mint only when Confirm consumes a plan. Retry/Rerun are contextual presets of the ordinary new-run modal; completed-step values are optional editable prefill, submitted values/omissions are authoritative, the source is immutable, and unknown writes remain evidence-resolution only. 1.6.4 removes the Edit Data writer and owns this backend boundary; no Capture or generic CLI surface returns · left: implement the approved Task-4 plan in doc 01
 
 #### 5 · Cut over settings mutation and runtime resolution {#p1f-settings-consumers}
 status: planned
@@ -914,15 +916,15 @@ needs:
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.9 evidence linkage by stable `runId`, §D330.2 existence, §D330.8 tombstone (no redesign) · left: the notification inbox row stays run-linked
 
-#### 1-2 · Revalidate data, intake, and Edit Data consumers {#p2f-data}
+#### 1-2 · Revalidate data, intake, and prior-run value consumers {#p2f-data}
 status: planned
 date: parallel wave 1 · dedicated worktree
 doc: ref:data-intake-and-edit-data · ref:dashboard-surfaces §9.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3
 
 builds:
-- [ ] BOTH migrate intake, OCR, Edit Data, manifests, and mappings; diagnostic capture projection stays with `1-1`
-- [ ] PROOF existing artifacts remain readable across authority migration and missing links fail loud
-- [ ] PROOF no intake/edit path writes run lifecycle or settings state directly
+- [ ] BOTH migrate intake, OCR, manifests, mappings, and D334's read-only prior-run value/provenance projection; diagnostic capture projection stays with `1-1`
+- [ ] BOTH serve only descriptor-allowed completed-step values with exact source run/version, step/node, field path and provenance; withhold values the ordinary operator-suppliable schema does not admit
+- [ ] PROOF existing artifacts remain readable, missing/malformed/deleted/archived source links fail loud, and no intake/prefill path writes run lifecycle, checkpoints, plans, modal values, or settings state
 
 needs:
 - p1f-close
@@ -930,6 +932,7 @@ needs:
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.9, D331 §D331.8 (one source per leaf) and D332 §D332.7 item 4 (no redesign) · left: no intake or Edit Data path writes settings or a lifecycle row
+- 2026-09-05 | D334 operator correction | the old `run.edit-checkpoint` consumer retires in 1.6.4. This task owns only completed-value/provenance reads for 3.1 Task 11-2's source-bound Retry/Rerun modal; the source remains immutable · left: implementation after 1.6 closes
 
 #### 1-3 · Revalidate operator read models {#p2f-operator}
 status: planned
@@ -1410,21 +1413,23 @@ needs:
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 2 notification seam in `phase-3-1-dashboard-c21194e18-r17-notifications`, parallel with Tasks 10, 14 and 26 · left: Task 8 ownership freeze
 
-#### 10-4 · Finish Intake and Edit Data surfaces {#dash-intake-edit}
+#### 10-4 · Finish Intake surfaces {#dash-intake-edit}
 status: planned
-date: parallel wave 10 · worktree r10-4-intake-edit
-doc: 03.1 §Task 10-4 · Finish Intake and Edit Data surfaces · ref:data-intake-and-edit-data · ref:frontend-backend-integration §5.1
+date: parallel wave 10 · worktree r10-4-intake
+doc: 03.1 §Task 10-4 · Finish Intake surfaces · ref:data-intake-and-edit-data · ref:frontend-backend-integration §5.1.7
 
 builds:
-- [ ] BOTH complete upload/classify/OCR/map/validate/reject/prepare/manifest/rerun-diff and Edit Data flows over existing services
+- [ ] BOTH complete upload/classify/OCR/map/validate/reject/prepare/manifest/rerun-diff flows over existing services
 - [ ] BOTH show producer progress, records, blocked reasons, mappings, validation, provenance, and exact workflow handoff availability
 - [ ] PROOF real representative files plus malformed, partial, canceled, stale, redacted, duplicate, and archived cases
+- [ ] PROOF this task does not edit the Run modal, Retry/Rerun launchers, or 2.6's prior-run value projection
 
 needs:
 - dash-truth-reset
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 2 Intake/Edit Data seam in `phase-3-1-dashboard-c21194e18-r26-intake-edit`, parallel with Tasks 10, 14 and 17 · left: Task 8 ownership freeze
+- 2026-09-05 | D334 ownership correction | this task now owns Intake only; Retry/Rerun and prior-run value consumption move to Task 11-2, preserving independent wave ownership · left: Task 8 ownership freeze
 
 #### 11-1 · Finish Setup and preflight {#dash-setup}
 status: planned
@@ -1445,16 +1450,16 @@ log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 composed-preflight seam in `phase-3-1-dashboard-c21194e18-r12-setup`, parallel with Tasks 15 and 23 only after settings, storage and sessions merge · left: Tasks 11, 13 and 14
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 and §D331.11 P16 (no redesign) · left: the first post-upgrade boot's `migrated-refused { key }` is a setup fault with the `.env` remove-list (§D332.S5)
 
-#### 11-2 · Make the Run modal enqueue and start real work {#dash-run-modal}
+#### 11-2 · Make Run, Retry, and Rerun enqueue real work {#dash-run-modal}
 status: planned
 date: parallel wave 11 · worktree r11-2-run-start
-doc: 03.1 §Task 11-2 · Make the Run modal enqueue and start real work · ref:workflow-model §4 · ref:frontend-backend-integration §5.1.1 · ref:dashboard-surfaces §9.2
+doc: 03.1 §Task 11-2 · Make Run, Retry, and Rerun enqueue real work · ref:workflow-model §5.6 · ref:frontend-backend-integration §5.1.1 · ref:data-intake-and-edit-data §6 · ref:dashboard-surfaces §9.1 · ref:dashboard-surfaces §9.2
 
 builds:
-- [ ] BOTH plan against the served descriptor, validate exact inputs/options, and submit one authoritative start command
-- [ ] BOTH create rows in the selected workflow's queue and let the first eligible row be claimed automatically when an eligible worker is available
-- [ ] BOTH show created rows, warnings, decisions, conflicts, actor, settlement time, and unavailable-worker state from the server response
-- [ ] PROOF single, batch, dry-run, validation, conflict, no-worker, delayed-worker, reload, and exactly-once enqueue/claim paths
+- [ ] BOTH make ordinary Run plus contextual Retry (failed/interrupted) and Rerun (completed) use one modal and one source-bound server plan/confirm/enqueue path; Retry/Rerun open at Steps
+- [ ] BOTH offer descriptor-allowed completed-step values as optional editable prefill and let the operator independently copy/change/clear values and select/omit eligible steps; submitted values/omissions alone are authoritative
+- [ ] BOTH create and reveal a new queued run identity only on Confirm; keep the source byte-identical, never replay an unselected step, and never fabricate proof for an omitted transaction
+- [ ] PROOF ordinary/single/batch/dry-run, Retry/Rerun defaults and customization, stale/deleted/archived source, malformed/partial prefill, changed item, unknown-write refusal, conflict, no-worker, delayed-worker, reload, and exactly-once paths
 
 needs:
 - dash-sessions
@@ -1462,6 +1467,7 @@ needs:
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 run-start seam in `phase-3-1-dashboard-c21194e18-r15-run-start`, parallel with Tasks 12 and 23 after the session supervisor is real · left: Task 14
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 `create`, §D330.6 first-eligible claim in one transaction with `runtime-stale`, and §D330.4's served `version` as the one CAS token (no redesign) · left: a bulk start is D235's N children and one vector
+- 2026-09-05 | D334 operator correction | Retry/Rerun are labels for the ordinary Run modal, not direct recovery commands. This task consumes 2.6 Task 1-2's read-only prefill projection; Task 10-4 retains Intake only · left: implementation after 2.6
 
 #### 11-3 · Finish Archive, versions, relaunch, and deletion {#dash-archive}
 status: planned
@@ -1487,7 +1493,7 @@ doc: 03.1 §Task 12-1 · Finish queue rows, commands, and deletion · ref:dashbo
 
 builds:
 - [ ] BOTH render ordering, status, identity, session, worker, progress, outcome, constraints, evidence, and group/member facts from the canonical run record
-- [ ] BOTH make retry/cancel/rename/archive/relaunch/delete/bulk commands real, revision-bound, and reconciled to one response vocabulary
+- [ ] BOTH make cancel/rename/archive/relaunch/delete/bulk commands real, revision-bound, and reconciled to one response vocabulary; Retry/Rerun launchers remain Task 11-2's plan-backed modal
 - [ ] BOTH define delete as an idempotent lifecycle/tombstone operation with explicit evidence-retention and visible result
 - [ ] PROOF command matrix, stale conflicts, double-clicks, concurrent worker transitions, and queue/current/archive convergence
 
@@ -1550,15 +1556,15 @@ needs:
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 4 production-runtime seam in `phase-3-1-dashboard-c21194e18-r30-production-runtime`, parallel with Tasks 16, 18 and 24 after setup/storage/session authority is integrated · left: Tasks 12–14
 
-#### 13-1 · Finish Context, Data, Attempts, and Edit readback {#dash-context-data}
+#### 13-1 · Finish Context, Data, Attempts, and provenance readback {#dash-context-data}
 status: planned
 date: parallel wave 13 · worktree r13-1-context-data
-doc: 03.1 §Task 13-1 · Finish Context, Data, Attempts, and Edit readback · ref:dashboard-surfaces §5 · ref:data-intake-and-edit-data §6
+doc: 03.1 §Task 13-1 · Finish Context, Data, Attempts, and provenance readback · ref:dashboard-surfaces §5 · ref:data-intake-and-edit-data §6
 
 builds:
-- [ ] BOTH render declared inputs, origins, directions, redaction, checkpoint provenance, attempt history, edits, and validation state
-- [ ] BOTH submit edits through the authoritative command path and show exact persisted readback/conflict results
-- [ ] PROOF empty, redacted, malformed, stale, cross-attempt, archived, and edit-rerun cases
+- [ ] BOTH render declared inputs, origins, directions, redaction, checkpoint provenance, attempt history, and D334 prior-run value coordinates without a mutable source editor
+- [ ] BOTH link eligible rows to Task 11-2's Retry/Rerun modal while keeping the Context/Data rail read-only
+- [ ] PROOF empty, redacted, malformed, stale, cross-attempt, archived, and prior-run prefill/readback cases
 
 needs:
 - dash-queue
@@ -1591,7 +1597,7 @@ doc: 03.1 §Task 13-3 · Finish receipts and failure records · ref:operator-tru
 
 builds:
 - [ ] BOTH render derived receipt identity, action evidence, write-state proof, failure fingerprint, causal record, recovery, and unknown outcomes
-- [ ] BOTH connect explain/retry/open-evidence actions to authoritative commands and immutable evidence
+- [ ] BOTH connect explain/open-evidence actions to immutable evidence and eligible Retry launches to Task 11-2's source-bound Run modal; unknown writes never expose Retry
 - [ ] PROOF success, verified no-op, refusal, failed, unknown-submit, recovered, retried, archived, and tamper cases
 
 needs:
@@ -2029,7 +2035,7 @@ doc: 03.4 §Task 2 · Build the local MCP client surface · ref:frontend-backend
 
 builds:
 - [ ] BE the loopback MCP server over `/api/v1/**`, started from the CLI and registered in a project-scoped `.mcp.json` so the capability travels with the checkout
-- [ ] BE a write tool per command family — start plan + confirm, gate resolve, run retry/cancel/bump/rename, edit data, archive, settings, intake, notifications, capture, bulk
+- [ ] BE a write tool per command family — ordinary/source-bound Run plan + confirm (including Retry/Rerun presets), gate resolve, run cancel/bump/rename, archive, settings, intake, notifications, bulk; no source-run edit command and no retired Capture family
 - [ ] BE a read tool per read model — bootstrap, the day wire, run detail and every lazy section, the evidence receipt, archive, explorer, the activity report, the storage doctor, the UI catalog
 - [ ] BE a `tail` tool over the SSE stream — `Last-Event-ID` resume, `reset-required` reported rather than swallowed
 - [ ] BE actor `claude`, and the CAS `expectedVersion` passed through from the read that produced it — never cached across turns

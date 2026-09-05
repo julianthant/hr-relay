@@ -1076,7 +1076,7 @@ until every cell in its row has an implementation and a test. The **Built** colu
 - [x] archive · activity · explorer — frozen archived detail, the aggregate + ledger block + CSV, the read-only graph (D179/D223/D236/D240/D227–D229, §5.1.5)
 - [x] notifications — the bell, its filters, and read/unread/snooze CASed on the row's own revision (D222/D253, §5.1.6)
 - [x] intake — upload → mapping → validate → manifest → fan-out (2h/2i-E, §5.1.7); the phone session it used to name was retired by D294
-- [~] Edit Data — the checkpoint-edit command is wired and only `person-lookup` declares the capability (§5.1.7)
+- [~] Retry/Rerun prefill — D334 supersedes the wired checkpoint-edit command; 1.6.4 removes its writer, 2.6 Task 1-2 serves completed values/provenance, and 3.1 Task 11-2 lands the shared modal (§5.1.7)
 - [ ] Group People and OCR Review — both matrix rows have NO surface; `people` and `review` are declared-unserved (D184)
 - [ ] the live half of every square except the queue row — five of six stream topics have no producer, so a panel follows the day cursor and re-reads (§3.5)
 - [ ] the Session Panel's other six commands — kernel arms exist, controls do not
@@ -1266,13 +1266,25 @@ is no running-worker request/response command for omitted values. The response c
 only step/field keys and assertion provenance, never values. A mandatory verifier is an ordinary
 selected workflow entry outside the omitted step, not a hidden continuation of that step.
 
-**D314 amendment — two recovery commands, one immutable admission (2026-09-02; declared, unbuilt).**
+**D314 amendment — two recovery commands, one immutable admission (2026-09-02; superseded by D334
+for the operator surface).**
 The run command family gains `resume-from-checkpoints` and `restart-from-start`, each naming the
 exact terminal run and observed version and each minting the logical item's next attempt. The first
 serves a failed-node replay plan. The second serves a root fresh-read plan plus stable transaction
 ids whose completed proofs will be validated and reused without prepare/commit. Neither accepts an
 input, omission or checkpoint patch. A parked unknown write exposes neither command. Until this
 amendment is implemented, the existing `retry` command remains the only built recovery verb.
+
+**D334 — Retry/Rerun enter this modal (2026-09-05, operator approved).** A failed/interrupted source
+labels the launcher Retry; a completed source labels it Rerun. Both open at Steps. The source detail
+serves descriptor-allowed completed-step values with coordinates and provenance; the client may copy,
+change or clear any offered value and select or omit any eligible step. Submission is an ordinary
+source-bound start-plan request: raw input and typed omission facts are authoritative, while prior
+values are prefill only. The plan carries the source run id/version and intent but no proposed
+`runId`/`traceId`; Confirm creates the new run and returns its committed identity. The source remains
+unchanged, unselected steps do not replay, and an omitted transaction produces no new write proof.
+Unknown writes keep only their evidence-resolution actions. Task 1.6.4 lands the backend contract;
+2.6 Task 1-2 serves the source values; 3.1 Task 11-2 owns the shared modal and launchers.
 
 ##### D250 — the typed box DESCRIBES itself, and its examples are proved typeable (2026-08-20)
 
@@ -1558,7 +1570,7 @@ remains reachable.
 snooze has no inverse because the kernel serves none; and the OS-delivery half belongs to the
 notification service, not this surface.
 
-#### 5.1.7 Intake and Edit Data
+#### 5.1.7 Intake and prior-run value projection
 
 <!-- roadmap: dash-defaults -->
 
@@ -1569,19 +1581,20 @@ notification service, not this surface.
 5. The final command atomically stores the immutable manifest, coordinator, members and dependencies.
 6. Group/member queue patches then follow the ordinary projection path.
 
-**Implemented:** all six. `surfaces/intake.tsx` over `POST /api/v1/intake/files` +
+**Implemented:** all six intake steps. `surfaces/intake.tsx` over `POST /api/v1/intake/files` +
 `GET /api/v1/intake/:sessionId` and the six `intake` command verbs; the fan-out emits a `run.queued`
-span per member, so the rows arrive through §5.1.2's ordinary path. Edit Data is the Context rail's
-`run.edit-checkpoint`, gated on `capabilities.editData` — declared today by `person-lookup` alone —
-and held by the `edit-data-field-policy` guard.
+span per member, so the rows arrive through §5.1.2's ordinary path. The former Context-rail
+`run.edit-checkpoint` path is superseded by D334 and is now historical implementation evidence.
+2.6 Task 1-2 replaces it with a read-only completed-value/provenance projection; 3.1 Task 11-2
+consumes that projection in the shared Retry/Rerun Run modal.
 
 **Mobile capture is retired, not deferred (D294, 2026-08-31).** `surfaces/capture-start.tsx`, the
 second browser bundle under `src/dashboard/phone/**` (`capture.html`), the nine bespoke REST routes,
 the `capture` command family and its inert phone-host gate are all gone from this tree, and none of
 them may be reintroduced. What this section still describes is the spreadsheet pipeline alone.
 
-**Generic:** the intake pipeline. **Per-workflow:** the intake projection each workflow declares,
-and the Edit Data field list on its descriptor.
+**Generic:** the intake pipeline and prior-run value coordinates/provenance. **Per-workflow:** the
+intake projection and operator-suppliable omission/value schemas each workflow declares.
 
 **Left:** the `intake.prepare` envelope parse that repeats the kernel's own (row **D10**). The two
 capture items this list used to carry — the operator-side capture-session poll (D175) and the
@@ -1700,13 +1713,13 @@ placement and the Context data ledger are part of this slice, not optional polis
 
 <!-- roadmap: p2-2h -->
 
-Wired the mapping/validation/manifest flow, operator correction evidence, Edit Data checkpoint
-commands, and mobile capture authority/outbox recovery — the capture half of which D294 retired on
-2026-08-31.
+Wired the mapping/validation/manifest flow, operator correction evidence, the now-superseded D166
+Edit Data checkpoint commands, and mobile capture authority/outbox recovery — the capture half of
+which D294 retired on 2026-08-31 and the Edit Data writer of which D334 assigns to 1.6.4 for removal.
 
 <!-- roadmap-status: p2-2h -->
 - [x] spreadsheet intake end to end — upload, header choice, explicit mapping, validation, immutable manifest, fan-out (§5.1.7)
-- [x] Edit Data over checkpoints — `run.edit-checkpoint`, declaration-gated by `capabilities.editData`
+- [x] historical Edit Data over checkpoints — `run.edit-checkpoint`, declaration-gated by `capabilities.editData`; **superseded by D334**, replacement split across 1.6.4, 2.6 Task 1-2 and 3.1 Task 11-2
 - [x] mobile capture authority and its outbox — the phone bundle, the session, the ordered photo refs (2i-F). **RETIRED by D294 (2026-08-31)**: none of it survives in this tree
 - [ ] descriptor-driven upload / capture / spreadsheet / bare START methods — no registered workflow declares one, so the run modal has one method kind (D251, §5.1.1)
 - [ ] progressive OCR Review records — the store exists; the `review` panel kind and its section are declared-unserved (D184)
