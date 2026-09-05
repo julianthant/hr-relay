@@ -484,6 +484,7 @@ needs:
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | relabelled 2-1 (wave 2 peer) and bound to its seam; owes 25 of §D330.11's 26 proofs (#24 is Task 4's) · left: implementation
 - 2026-09-04 | execute-phase-1-6-from C858cc3dc R02 | started the declared wave from common verified base `d2fe05dd`; exact task/worktree/branch and allowance in docs/coordinator/execute-phase-1-6-from-c858cc3dc/supervisors.json · left: implementation, assigned proofs and complete lifecycle
+- 2026-09-04 | direct phase plan | prior R02 stopped during intake with no candidate and its temporary evidence was removed; approved one-supervisor focused plan in doc 01 §1.6 Task 2-1: `codex/phase-1-6-run-record` at `/Users/julianhein/Projects/hr-worktree-run-record`; operator-approved feasibility correction adds only `v31` so deleting an archived source retains the live descendant's relaunch lineage; start waits for one recorded common wave SHA containing both approved peer plans · left: implementation from that verified base
 
 #### 2-2 · Implement the settings catalog and protected root {#p1f-settings-store}
 status: active
