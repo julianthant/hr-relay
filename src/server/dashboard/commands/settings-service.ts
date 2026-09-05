@@ -157,7 +157,18 @@ export function createSettingsApplicationExecutor(
           "settings/apply-protected-settings reached a composition with no protected settings authority",
         );
       }
-      return applySettingsAuthority(command, () => {
+      const admitted = ProtectedSettingsCommandRequestSchema.parse(command);
+      const admission = protectedAuthority.admit({
+        commandId: admitted.commandId,
+        commandFingerprint: deriveSettingsCommandFingerprint(admitted),
+        expectedRevision: admitted.target.expectedRevision,
+        protectedSchemaHash: admitted.payload.protectedSchemaHash,
+        writeId: admitted.payload.writeId,
+        entries: admitted.payload.entries,
+        updatedAt: admitted.requestedAt,
+      });
+      if (admission.state === "rejected") return admission;
+      return applySettingsAuthority(admitted, () => {
         readJournaledProtectedSettings(protectedAuthority, repositories);
         return undefined;
       });

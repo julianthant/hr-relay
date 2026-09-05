@@ -2349,7 +2349,13 @@ export interface ProtectedSettingsFileAuthorityOptions extends Pick<SettingsFile
   /** Journal-backed uniqueness check, called only after revision CAS and while the shared lock is held. */
   readonly assertWriteIdAvailable: (writeId: string, commandId: string) => void;
 }
-export type ProtectedSettingsFileAuthority = DocumentAuthority<ProtectedStoreRecord>;
+export type ProtectedSettingsAdmissionOutcome =
+  | Readonly<{ state: "admitted"; request: ProtectedSettingsApplyInput }>
+  | SettingsApplyRefusal;
+export type ProtectedSettingsFileAuthority = DocumentAuthority<ProtectedStoreRecord> & Readonly<{
+  /** Pure request admission: performs no authority read, lock acquisition, or materialization. */
+  admit(input: unknown): ProtectedSettingsAdmissionOutcome;
+}>;
 
 /** Fixed-size direct byte comparison; no value-derived surrogate leaves this stack frame. */
 function protectedValueEquals(left: unknown, right: unknown): boolean {
@@ -2435,5 +2441,9 @@ export function createProtectedSettingsFileAuthority(options: ProtectedSettingsF
       }
     },
   };
-  return createDocumentAuthority(options, codec);
+  const authority = createDocumentAuthority(options, codec);
+  return Object.freeze({
+    ...authority,
+    admit: (input: unknown) => codec.admit(input),
+  });
 }

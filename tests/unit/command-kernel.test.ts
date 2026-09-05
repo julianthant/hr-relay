@@ -47,6 +47,7 @@ import {
   PROTECTED_SETTINGS_SCHEMA_HASH,
   initialProtectedStoreRecord,
   protectedSettingsReadback,
+  type ProtectedStoreRecord,
 } from "../../src/domain/config/protected-settings.js";
 import {
   createProtectedSettingsFileAuthority,
@@ -2062,6 +2063,61 @@ describe("apply-settings authority", () => {
 });
 
 describe("apply-protected-settings authority", () => {
+  it("refuses a stale protected schema before reading or materializing a pristine authority", () => {
+    assert.notEqual(HASH_A, PROTECTED_SETTINGS_SCHEMA_HASH);
+    const settingsPath = databasePath("settings/settings.json");
+    const protectedStore = createProtectedSettingsFileAuthority({
+      path: settingsPath,
+      assertWriteIdAvailable: () => undefined,
+    });
+    let authorityReads = 0;
+    const protectedAuthority = {
+      read: protectedStore.read,
+      pendingTarget: protectedStore.pendingTarget,
+      reconcile(resolve: Parameters<typeof protectedStore.reconcile>[0]) {
+        authorityReads += 1;
+        return protectedStore.reconcile(resolve);
+      },
+      withExactRecord: protectedStore.withExactRecord,
+      withRootBackupSnapshot: protectedStore.withRootBackupSnapshot,
+      withCurrentRecord<Result>(work: (record: ProtectedStoreRecord) => Result) {
+        return protectedStore.withCurrentRecord(work);
+      },
+      apply: protectedStore.apply,
+      admit: (input: unknown) => protectedStore.admit(input),
+    };
+    const harness = createHarness(undefined, createSettingsApplicationExecutor(
+      createSettingsFileAuthority({ path: settingsPath, validateCandidate: () => undefined }),
+      protectedAuthority,
+    ));
+    const command = ProtectedSettingsCommandRequestSchema.parse({
+      commandId: nextCommandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      family: "settings",
+      type: "apply-protected-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        protectedSchemaHash: HASH_A,
+        writeId: UUID_7,
+        entries: { ucpathPassword: { set: "must-not-reach-authority" } },
+      },
+    });
+
+    assert.deepEqual(harness.kernel.execute(command), {
+      state: "rejected",
+      commandId: command.commandId,
+      code: "schema-mismatch",
+      message: "protected.json schema-mismatch",
+    });
+    assert.equal(authorityReads, 0);
+    assert.equal(existsSync(join(settingsPath, "..")), false);
+    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.equal(harness.database.authority.protectedSettingsCurrent.get(), undefined);
+  });
+
   it("reconciles a crash-left protected prepare before journaling the exact retry", () => {
     const settingsPath = databasePath("settings/settings.json");
     const command = ProtectedSettingsCommandRequestSchema.parse({
