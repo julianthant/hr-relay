@@ -2606,12 +2606,29 @@ append-only per-node `log:` blocks, so history never competes with the plan on t
 
 ### Plan, implement, review (operator amendment, 2026-09-04)
 
-The operator coordinates three fresh sessions for an exact roadmap task. Codex uses GPT-5.6 Sol
-(high) to plan, GPT-6 Astra (high) to implement, and a fresh GPT-5.6 Sol (high) to review. Claude uses
-Opus 5 (high), Fable 5.1 (high), and a fresh Opus 5 (high), respectively. The operator selects the
-model and opens each session; skills neither switch models nor launch the next stage automatically.
+The operator opens planning and supervisor sessions for an exact roadmap task. Codex uses GPT-5.6
+Sol (high) to plan and GPT-6 Astra (high) to supervise; Claude uses Opus 5 (high) and Fable 5.1 (high).
+The supervisor dispatches one fresh read-only reviewer subagent at the end of implementation:
+Codex `sup_analyst` (Sol, high) or Claude `sup-analyst` (Opus, high). Review, fixes and finalization
+continue in the same supervisor session. Skills do not switch the current session model or start
+the next task. A separately opened review session is an explicit operator option.
 Explicit operator overrides take precedence. This rule governs future task execution, not a
 retroactive reopening of completed tasks.
+
+**Implementation isolation.** Every phase/task implements on a dedicated non-`master` branch.
+Sequential work may check out its task branch in an exclusively available existing directory;
+parallel writing tasks each require their own branch/worktree. Shared directories, unrelated dirty
+work, uncertain ownership or integration-only checkouts require a worktree even for sequential work.
+Preserve stricter admitted phase isolation, including 3.1's integration-only primary checkout. Do
+not switch another session's checkout or stash/reset its edits. The planner records exact mode,
+branch/path/base, plan availability, scope and target/owner/order/merge conditions for every task.
+The supervisor rechecks ownership and creates/checks out the binding before implementation edits;
+an absent planned branch is expected. Correct an old `master` implementation binding under this
+policy without reopening unchanged scope. Integrate only after independent PASS and required gates;
+run integration gates and re-review behavior-changing conflicts before cleanup. Never delete an
+active branch or primary checkout; preserve and report unresolved residue. Approved planning and
+completion records retain their existing documentation rules. This is local workflow protection,
+not a remote branch-protection setting or push authorization.
 
 1. **Plan — `/phase-plan`.** Verify the exact roadmap node, owning phase section, current code and
    prerequisite evidence. Preserve parallel suffixes such as `2-1` and `2-2`. Propose outcome/scope,
@@ -2627,13 +2644,18 @@ retroactive reopening of completed tasks.
    plan reference, candidate base/head, gate evidence and exclusions in the existing phase section;
    leave task completion open. Preserve other sessions' edits and keep the candidate stable during
    review. Do not start another task or create an agent coordinator.
-3. **Review — fresh `/review`.** Inspect the pinned candidate against the approved phase section,
-   relevant contracts, surrounding code and tests. Review in the current session by default;
-   delegation needs an explicit request. Report PASS, CHANGES REQUIRED or BLOCKED with exact reviewed
-   commits, findings and evidence limits. Missing mandatory proof is BLOCKED. Review is read-only
-   unless separately authorized to fix or record its result; it does not mark roadmap completion.
-4. **Finalize — original supervisor.** The operator returns the independent verdict. Fix required
-   findings and obtain renewed review of changed code or consequential requirement changes. After
+3. **Review — fresh subagent using `/review`.** After committing the candidate and evidence, pause
+   owned writers and dispatch the native read-only analyst with no inherited implementation history.
+   Give exact task, approved phase/plan commit, checkout, candidate base/head, authority paths and
+   gate evidence. The reviewer must not have implemented this candidate, edit files or delegate.
+   Inspect the pinned candidate against contracts, surrounding code and tests. Report PASS, CHANGES
+   REQUIRED or BLOCKED with exact commits, findings and evidence limits. The supervisor runs any
+   needed write-producing validation on pinned state for the reviewer to assess. Missing mandatory
+   proof or an unavailable reviewer is BLOCKED, never self-review or PASS. Wait for the verdict here;
+   `awaiting independent review` is not a routine session stop. Standalone `/review` stays inline.
+4. **Finalize — original supervisor.** Verify the returned verdict and unchanged reviewed state. Fix required
+   findings and obtain renewed review of changed code or consequential requirement changes. Preserve
+   unresolved findings; never replace a reviewer to evade them. After
    PASS, integrate locally onto the required target, resolve shared-target drift, run all required
    integration gates and clean up owned worker worktrees/branches. Behavior-changing merge conflict
    resolutions need renewed review. Mark complete in BOTH phase and roadmap only with integrated
@@ -2649,8 +2671,13 @@ independent candidate freezes, and live-write/cutover approvals remain binding.
 
 Transfer only task, phase path/section, plan commit, checkout/branch, candidate range, gate evidence
 bound to tested state, and unresolved issues. The phase record and commits are durable authority;
-no coordinator board, dispatch envelope, routine handoff/report file or repeated progress footer is
-required. Use `/handoff` only for interrupted work whose unique state is not already preserved.
+no coordinator board, dispatch envelope or routine handoff/report file is required. Progress updates
+are mandatory: at start/resume and after every verified task/step completion, before the next tool
+call, send Done (completed item and evidence), Now (current action or wait/blocker), and Remaining
+(every unfinished item including active work, gates, review, fixes, integration and cleanup). Use
+stable IDs and readable labels. Tool output and native plan UI do not replace this chat update.
+During long steps update the current action at least every 60 seconds using bounded waits.
+Use `/handoff` only for interrupted work whose unique state is not already preserved.
 Keep exact ids, scopes, bases, worktrees and integration order for owned workers; historical
 coordination records do not enroll new work. This amendment supersedes D325/D326 and older direct-
 assignment text only for session orchestration and completion timing.

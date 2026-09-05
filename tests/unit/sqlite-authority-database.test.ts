@@ -890,13 +890,13 @@ describe("native SQLite authority schema", () => {
     assert.equal(requiresStoppedSystemAuthorityUpgrade(31), false);
   });
 
-  it("creates a fresh authority at the v30 floor with one baseline journal row", () => {
-    const path = databasePath("fresh-v30.sqlite");
+  it("creates a fresh authority at v31 with one v30-floor baseline journal row", () => {
+    const path = databasePath("fresh-v31.sqlite");
     openDatabase(path).close();
 
     const raw = new DatabaseSync(path, { readOnly: true });
     try {
-      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 30);
+      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 31);
       const row = raw.prepare(`
         SELECT record_key, upgrade_id, phase, record_json
         FROM authority_upgrades
@@ -923,6 +923,97 @@ describe("native SQLite authority schema", () => {
       assert.equal(Reflect.get(row, "phase"), "baseline");
     } finally {
       raw.close();
+    }
+  });
+
+  it("upgrades v30 lineage so source deletion preserves it and only the new run tombstone removes it", () => {
+    const path = databasePath("v30-lineage-to-v31.sqlite");
+    createExactReleasedDatabase(path, 30);
+    const source = QUEUED_RUN;
+    const relaunched = {
+      ...QUEUED_RUN,
+      envelope: {
+        ...QUEUED_RUN.envelope,
+        runId: ARCHIVE_RELAUNCH.runId,
+        itemId: RELAUNCH_ITEM_ID,
+        traceId: "pl-170001-3333",
+      },
+    };
+    const seed = new DatabaseSync(path, { enableForeignKeyConstraints: true });
+    const insertRun = seed.prepare(`
+      INSERT INTO tasks (
+        record_key, workflow, item_id, state, priority, attempt, not_before,
+        owner_worker_id, claim_generation, heartbeat_at, parent_run_id, run_number, session_id, version,
+        record_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, NULL, NULL, ?, NULL, ?, ?, ?)
+    `);
+    for (const run of [source, relaunched]) {
+      insertRun.run(
+        run.envelope.runId, run.envelope.workflow, run.envelope.itemId, run.lifecycle.state,
+        run.envelope.priority, run.envelope.attempt, run.claimGeneration, null,
+        run.version, JSON.stringify(run), run.createdAt,
+      );
+    }
+    seed.prepare("INSERT INTO version_plans (record_key, record_json, created_at) VALUES (?, ?, ?)")
+      .run(VERSION_PLAN_ROW.versionPlanId, JSON.stringify(VERSION_PLAN_ROW), VERSION_PLAN_ROW.createdAt);
+    seed.prepare(`
+      INSERT INTO version_bump_applications
+        (record_key, version_plan_id, scope_kind, target_version, applied_app_version, archived_count, record_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      VERSION_BUMP_APPLICATION.applicationId, VERSION_BUMP_APPLICATION.versionPlanId,
+      VERSION_BUMP_APPLICATION.scope.kind, VERSION_BUMP_APPLICATION.targetVersion,
+      VERSION_BUMP_APPLICATION.appliedAppVersion, VERSION_BUMP_APPLICATION.archivedRunIds.length,
+      JSON.stringify(VERSION_BUMP_APPLICATION), VERSION_BUMP_APPLICATION.appliedAt,
+    );
+    seed.prepare(`
+      INSERT INTO archived_runs
+        (record_key, application_id, workflow, descriptor_version, contract_fingerprint, app_version,
+         content_digest, record_json, created_at)
+      VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)
+    `).run(
+      ARCHIVED_RUN.runId, ARCHIVED_RUN.applicationId, ARCHIVED_RUN.workflowId,
+      ARCHIVED_RUN.archivedIdentity.descriptorVersion, ARCHIVED_RUN.archivedIdentity.contractFingerprint,
+      ARCHIVED_RUN.contentDigest, JSON.stringify(ARCHIVED_RUN), ARCHIVED_RUN.archivedAt,
+    );
+    seed.prepare(`
+      INSERT INTO archive_relaunches (record_key, archived_run_id, record_json, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      ARCHIVE_RELAUNCH.runId, ARCHIVE_RELAUNCH.archivedRunId,
+      JSON.stringify(ARCHIVE_RELAUNCH), ARCHIVE_RELAUNCH.relaunchedAt,
+    );
+    seed.close();
+
+    applyReleasedMigrationChainForTest(path, 30);
+    const upgraded = new DatabaseSync(path, { enableForeignKeyConstraints: true });
+    try {
+      assert.equal(Reflect.get(upgraded.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 31);
+      const foreignKeys = upgraded.prepare("PRAGMA foreign_key_list(archive_relaunches)").all() as Array<{ from: string; table: string }>;
+      assert.deepEqual(foreignKeys.map(({ from, table }) => ({ from, table })), [{ from: "record_key", table: "tasks" }]);
+      const tombstone = (run: typeof source) => upgraded.prepare(`
+        INSERT INTO deleted_runs
+          (record_key, workflow, trace_id, origin, command_id, deleted_at, record_json, created_at,
+           item_id, attempt, run_number, ordinal_source)
+        VALUES (?, ?, ?, 'archive', ?, ?, '{}', ?, ?, ?, ?, 'tombstone')
+      `).run(
+        run.envelope.runId, run.envelope.workflow, run.envelope.traceId, UUID_7, NOW, NOW,
+        run.envelope.itemId, run.envelope.attempt, null,
+      );
+      tombstone(source);
+      upgraded.prepare("DELETE FROM archived_runs WHERE record_key = ?").run(source.envelope.runId);
+      assert.equal(Reflect.get(upgraded.prepare(
+        "SELECT count(*) AS count FROM archive_relaunches WHERE archived_run_id = ?",
+      ).get(source.envelope.runId) ?? {}, "count"), 1);
+      assert.throws(
+        () => upgraded.prepare("DELETE FROM archive_relaunches WHERE record_key = ?").run(relaunched.envelope.runId),
+        /outside its new run D308 tombstone/u,
+      );
+      tombstone(relaunched);
+      assert.equal(upgraded.prepare("DELETE FROM archive_relaunches WHERE record_key = ?")
+        .run(relaunched.envelope.runId).changes, 1);
+    } finally {
+      upgraded.close();
     }
   });
 
@@ -1012,7 +1103,7 @@ describe("native SQLite authority schema", () => {
     // the ordinary immutable chain only AFTER real read-only admission.
     applyReleasedMigrationChainForTest(path, version);
     const upgraded = openDatabase(path);
-    assert.equal(upgraded.getMeta().schemaVersion, 30);
+    assert.equal(upgraded.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(upgraded.inspectSchema().tables.map(({ name }) => name),
       AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort());
   });
@@ -2036,6 +2127,61 @@ describe("authority generation accounting", () => {
       mutation.mutate(database);
       assert.equal(database.getMeta().authorityGeneration, before + 1, mutation.table);
       database.close();
+    }
+  });
+
+  it("#16 enumerates every current never-delete trigger and each aborts without a tombstone", () => {
+    const expectedTriggerNames = [...new Set(SQLITE_MIGRATIONS.flatMap(({ statements }) => statements
+      .flatMap((statement) => [...statement.matchAll(/CREATE TRIGGER\s+([a-z0-9_]+_never_deleted)\b/gu)]
+        .map((match) => match[1]))))].sort();
+    const inventoryDatabase = openDatabase();
+    const inventoryPath = databasePaths.get(inventoryDatabase);
+    if (inventoryPath === undefined) throw new Error("never-delete inventory fixture lost its path");
+    const inventorySqlite = new DatabaseSync(inventoryPath);
+    const triggers = inventorySqlite.prepare(`
+      SELECT name, tbl_name AS tableName
+      FROM sqlite_master
+      WHERE type = 'trigger' AND name GLOB '*_never_deleted'
+      ORDER BY name
+    `).all() as { name: string; tableName: string }[];
+    inventorySqlite.close();
+    assert.deepEqual(triggers.map(({ name }) => name), expectedTriggerNames);
+
+    for (const trigger of triggers) {
+      assert.match(trigger.tableName, /^[a-z0-9_]+$/u);
+      const database = openDatabase();
+      const path = databasePaths.get(database);
+      if (path === undefined) throw new Error(`${trigger.name} fixture lost its path`);
+      const mutation = cases.find(({ table }) => table === trigger.tableName);
+      if (mutation !== undefined) {
+        mutation.prepare?.(database);
+        mutation.mutate(database);
+      } else {
+        assert.ok(
+          trigger.tableName === "authority_upgrades" || trigger.tableName === "protected_settings_current",
+          `${trigger.name} has no fixture`,
+        );
+        if (trigger.tableName === "protected_settings_current") {
+          database.authority.commands.insert(COMMAND_FIXTURES[0]);
+          database.authority.commandAudits.insert(COMMAND_AUDIT);
+          const seed = new DatabaseSync(path);
+          seed.prepare(`
+            INSERT INTO protected_settings_current
+              (record_key, revision, command_id, command_fingerprint, audit_id, record_json, created_at)
+            VALUES ('current', 2, ?, ?, ?, '{}', ?)
+          `).run(UUID_1, HASH_A, UUID_2, NOW);
+          seed.close();
+        }
+      }
+      const sqlite = new DatabaseSync(path);
+      const count = sqlite.prepare(`SELECT count(*) AS count FROM "${trigger.tableName}"`).get() as { count: number };
+      assert.ok(count.count > 0, `${trigger.name} must be driven against a real row`);
+      assert.throws(
+        () => sqlite.exec(`DELETE FROM "${trigger.tableName}"`),
+        /never deleted/u,
+        trigger.name,
+      );
+      sqlite.close();
     }
   });
 

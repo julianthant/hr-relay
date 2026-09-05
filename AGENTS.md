@@ -7,6 +7,10 @@ asset until the single all-at-once cutover (D89/D93). This rebuild is not produc
 
 - Never push without explicit instruction. Commit by logical category, stage exact paths (never
   `git add -A` / `git add .`), and preserve other sessions' edits.
+- Phase/task implementation uses a dedicated branch, never `master`. Sequential work can use an
+  exclusively available checkout; parallel tasks each need a branch and worktree. Shared, dirty or
+  integration-only checkouts require a worktree even for sequential work. Preserve stricter phase
+  isolation rules; bind branch/base/path and merge conditions before edits, then review and gate integration.
 - Keep existing `AGENTS.md` / `CLAUDE.md` pairs byte-identical. Write one shared text; update both.
   Change instructions when their rules change, not after every feature edit. Put requested lessons
   in the module's linked ledger. Use `/docs` for broader documentation cleanup; `/docs audit` is read-only.
@@ -99,10 +103,15 @@ when their full explanation is not repeated in this entry point.
 
 ## Roadmap task sessions
 
-The operator opens fresh `/phase-plan` → `/supervise` → `/review` sessions: Sol 5.6 → Astra → Sol 5.6
-on Codex; Opus 5 → Fable 5.1 → Opus 5 on Claude, all at high effort. Read roadmap §Governance's
+The operator opens `/phase-plan` → `/supervise`: Sol 5.6 → Astra on Codex; Opus 5 → Fable 5.1 on
+Claude, all at high effort. `/supervise` dispatches a fresh read-only `/review` subagent (Codex
+`sup_analyst`, Sol; Claude `sup-analyst`, Opus, both high), then fixes and finalizes in the same
+session. Separate review sessions remain an explicit operator option. Read roadmap §Governance's
 **Plan, implement, review** amendment for stage boundaries, plan approval, commit-bound review and
 finalization. The supervisor records the candidate as awaiting independent review and marks the
 phase/roadmap task complete only after accepted review, required integration gates and cleanup.
 Use the exact assigned task including parallel suffixes; no agent coordinator or next-task dispatch.
+At start/resume and after every verified task/step completion, send Done / Now / Remaining in chat
+before the next tool call: completed work with evidence, current action, and all unfinished items.
+Keep review, integration and cleanup visible; tool logs or plan UI never replace this update.
 Routine stage transfers use the existing phase record; interrupted unique state uses `/handoff`.

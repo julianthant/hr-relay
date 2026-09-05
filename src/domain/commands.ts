@@ -512,6 +512,81 @@ export const CommandAuditRecordSchema = z.strictObject({
   affectedDependencyIds: z.array(DependencyIdSchema),
 });
 
+/**
+ * D333: internal persistence for D330 lifecycle idempotency. This is deliberately
+ * separate from the product command union: it cannot be submitted through the
+ * command kernel and carries no run input or other secret-bearing payload.
+ */
+export const RunLifecycleCommandOperationSchema = z.enum([
+  "create",
+  "claim-next",
+  "transition",
+  "renew-claim",
+  "worker-transition",
+  "terminalize",
+  "requeue",
+  "retry",
+  "restart",
+  "relaunch",
+  "archive",
+  "delete",
+  "delete-archived",
+  "purge",
+]);
+
+export const RunLifecycleCommandFenceSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("none") }),
+  z.strictObject({ kind: z.literal("version"), expectedVersion: PositiveIntSchema }),
+  z.strictObject({
+    kind: z.literal("claim"),
+    workerId: WorkerIdSchema,
+    claimGeneration: PositiveIntSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("terminal"),
+    expectedVersion: PositiveIntSchema,
+    workerId: WorkerIdSchema,
+    claimGeneration: PositiveIntSchema,
+  }),
+]);
+
+export const RunLifecycleCommandRecordSchema = z.strictObject({
+  kind: z.literal("run-lifecycle"),
+  commandId: CommandIdSchema,
+  operation: RunLifecycleCommandOperationSchema,
+  requestFingerprint: FingerprintSchema,
+  fence: RunLifecycleCommandFenceSchema,
+  recordedAt: IsoInstantSchema,
+});
+
+export const RunLifecycleCommandResultIdentitySchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("run"), runId: RunIdSchema, appliedVersion: PositiveIntSchema }),
+  z.strictObject({ kind: z.literal("deletion"), runIds: z.array(RunIdSchema).min(1) }),
+  z.strictObject({
+    kind: z.literal("purge"),
+    evidenceClass: z.string().min(1),
+    purged: NonNegativeIntSchema,
+  }),
+]);
+
+export const RunLifecycleCommandAuditRecordSchema = z.strictObject({
+  kind: z.literal("run-lifecycle"),
+  auditId: CommandAuditIdSchema,
+  request: RunLifecycleCommandRecordSchema,
+  result: RunLifecycleCommandResultIdentitySchema,
+  completedAt: IsoInstantSchema,
+});
+
+export const AuthorityCommandRecordSchema = z.union([
+  CommandRequestSchema,
+  RunLifecycleCommandRecordSchema,
+]);
+
+export const AuthorityCommandAuditRecordSchema = z.union([
+  CommandAuditRecordSchema,
+  RunLifecycleCommandAuditRecordSchema,
+]);
+
 export const BulkRunCommandRequestSchema = z.strictObject({
   ...CommandEnvelopeFields,
   family: z.literal("run"),

@@ -1,0 +1,1860 @@
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { on } from "node:events";
+import { Worker } from "node:worker_threads";
+import { DatabaseSync } from "node:sqlite";
+import ts from "typescript";
+import { z } from "zod";
+import { afterEach, describe, it } from "vitest";
+import { RunRecordService, type CreateRunRequest } from "../../../src/core/run-record-service.js";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { manualClock } from "../../../src/domain/clock.js";
+import {
+  RunLifecycleCommandAuditRecordSchema,
+  RunLifecycleCommandOperationSchema,
+  RunLifecycleCommandRecordSchema,
+} from "../../../src/domain/commands.js";
+import { RuntimeConfigClaimTokenSchema } from "../../../src/domain/config/runtime-generation.js";
+import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
+import { sha256Hex } from "../../../src/domain/sha256.js";
+import {
+  archivedRunContentDigest,
+  ArchivedRunContentSchema,
+  ArchivedRunRecordSchema,
+  CURRENT_ARCHIVE_SCHEMA_GENERATION,
+  VersionBumpApplicationSchema,
+} from "../../../src/domain/archive/model.js";
+import {
+  AuthorityDatabase,
+  type AuthorityLifecycleHooks,
+  type AuthorityTerminalizationHooks,
+} from "../../../src/infra/sqlite/authority-database.js";
+import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
+import { doctorAuthorityStorage } from "../../../src/infra/sqlite/storage-doctor.js";
+import { COMMAND_FIXTURES, CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, HASH_C, LATER, NOW, UUID_1, UUID_5, UUID_6 } from "../fixtures/phase1c-contract-fixtures.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+import { QUEUED_RUN, RUN_SESSION, RUN_SESSION_ID, WORKER_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
+import { ARCHIVED_RUN, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "../fixtures/archive-fixtures.js";
+
+const cleanups: (() => void)[] = [];
+afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+
+function fixture(
+  terminalizationHooks?: AuthorityTerminalizationHooks,
+  lifecycleHooks?: AuthorityLifecycleHooks,
+) {
+  const root = mkdtempSync(join(tmpdir(), "run-record-service-"));
+  cleanups.push(() => rmSync(root, { recursive: true }));
+  const clock = manualClock(new Date(NOW));
+  const database = AuthorityDatabase.open(
+    { path: join(root, "authority.sqlite"), migrationOwner: "unit-test", busyTimeoutMs: 250 },
+    clock,
+    undefined,
+    terminalizationHooks,
+    lifecycleHooks,
+  );
+  cleanups.push(() => database.close());
+  database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);
+  const active = database.authority.runtimeConfig.activate({
+    settingsRevision: 1, settingsFingerprint: HASH_A,
+    configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
+    configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+    activatedAt: NOW,
+  });
+  const runtimeConfig = RuntimeConfigClaimTokenSchema.parse({
+    generation: active.generation, settingsRevision: active.settingsRevision,
+    settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint,
+  });
+  let next = 100;
+  const published: RunRecord[] = [];
+  const service = new RunRecordService({ database, clock,
+    ids: { uuid: () => `10000000-0000-4000-8000-${String(next++).padStart(12, "0")}` },
+    publishQueued: (run) => {
+      assert.equal(database.authority.runs.get(run.envelope.runId)?.version, 1);
+      published.push(run);
+    },
+  });
+  const request: CreateRunRequest = {
+    commandId: UUID_1, code: "pl", matchKey: "synthetic-item", workflow: WORKFLOW_ID,
+    descriptorVersion: QUEUED_RUN.envelope.descriptorVersion,
+    contractFingerprint: QUEUED_RUN.envelope.contractFingerprint,
+    configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+    configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
+    resolvedInstance: RunRecordSchema.parse(QUEUED_RUN).envelope.resolvedInstance,
+    priority: "bulk", shape: "single", dryRun: true,
+    input: QUEUED_RUN.input, runtimeConfig,
+  };
+  return { database, service, clock, request, runtimeConfig, published, root };
+}
+
+function created(service: RunRecordService, request: CreateRunRequest) {
+  const outcome = service.create(request);
+  assert.equal(outcome.state, "applied");
+  if (outcome.state !== "applied") throw new Error("create did not apply");
+  return outcome.run;
+}
+
+function archivedRecord(run: RunRecord) {
+  if (run.lifecycle.state !== "terminal") throw new Error("archive fixture requires a terminal run");
+  const { contentDigest: _digest, ...template } = ARCHIVED_RUN;
+  const status = run.lifecycle.outcome === "interrupted" ? "blocked"
+    : run.lifecycle.outcome === "failed" ? "failed"
+      : run.lifecycle.outcome === "done" ? "done" : "cancelled";
+  const detailOutcome = run.lifecycle.outcome === "interrupted"
+    ? { state: "absent" as const, reason: "run interrupted; ref write-safety recovery will requeue or settle it" }
+    : {
+        state: "terminal" as const,
+        result: run.lifecycle.outcome === "done" ? run.envelope.dryRun ? "partial" as const : "verified-done" as const
+          : run.lifecycle.outcome === "failed" ? "failed" as const : "cancelled" as const,
+        completedAt: run.lifecycle.endedAt,
+        ...(run.lifecycle.outcome === "done" && run.envelope.dryRun ? { rehearsal: true as const } : {}),
+      };
+  const content = ArchivedRunContentSchema.parse({
+    ...template,
+    runId: run.envelope.runId,
+    workflowId: run.envelope.workflow,
+    traceId: run.envelope.traceId,
+    archivedIdentity: {
+      workflowId: run.envelope.workflow,
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+    },
+    input: run.input,
+    row: {
+      ...template.row,
+      runId: run.envelope.runId,
+      itemId: run.envelope.itemId,
+      workflowId: run.envelope.workflow,
+      traceId: run.envelope.traceId,
+      attempt: run.envelope.attempt,
+      descriptorVersion: run.envelope.descriptorVersion,
+      descriptorHash: run.envelope.contractFingerprint,
+      configFingerprint: run.envelope.configFingerprint,
+      dryRun: run.envelope.dryRun,
+      priority: run.envelope.priority,
+      runNumber: run.runNumber === undefined
+        ? { state: "absent", reason: "historical run had no ordinal" }
+        : { state: "present", value: run.runNumber },
+      rowRevision: run.version,
+      status,
+      endedAt: { state: "present", value: run.lifecycle.endedAt },
+    },
+    detail: {
+      ...template.detail,
+      runId: run.envelope.runId,
+      rowRevision: run.version,
+      header: {
+        ...template.detail.header,
+        runId: run.envelope.runId,
+        traceId: run.envelope.traceId,
+        workflowId: run.envelope.workflow,
+        status,
+        attempt: run.envelope.attempt,
+      },
+      outcome: detailOutcome,
+    },
+  });
+  return ArchivedRunRecordSchema.parse({
+    ...content,
+    contentDigest: archivedRunContentDigest(content),
+  });
+}
+
+function archiveRun(service: RunRecordService, database: AuthorityDatabase, run: RunRecord, commandId: string) {
+  database.authority.versionPlans.insert(VERSION_PLAN_ROW);
+  database.authority.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({
+    ...VERSION_BUMP_APPLICATION,
+    archivedRunIds: [run.envelope.runId],
+  }));
+  const archive = archivedRecord(run);
+  const outcome = service.archive({ commandId, expectedVersion: run.version, archive });
+  assert.equal(outcome.state, "applied");
+  if (outcome.state !== "applied") throw new Error("archive refused");
+  return { archive, run: outcome.run };
+}
+
+function runningRun(service: RunRecordService, request: CreateRunRequest, runtimeConfig: unknown) {
+  const run = created(service, {
+    ...request,
+    descriptorVersion: personLookupDescriptor.version,
+    contractFingerprint: personLookupDescriptor.contractFingerprint,
+  });
+  const claim = service.claimNext({
+    commandId: "82000000-0000-4000-8000-000000000001",
+    workflow: WORKFLOW_ID,
+    workerId: WORKER_ID,
+    runtimeConfig,
+  });
+  if (claim.state !== "applied") throw new Error("claim refused");
+  const validating = service.workerTransition({
+    commandId: "82000000-0000-4000-8000-000000000002",
+    runId: run.envelope.runId,
+    claim: { workerId: WORKER_ID, claimGeneration: 1 },
+    lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
+  });
+  if (validating.state !== "applied") throw new Error("validating transition refused");
+  const running = service.workerTransition({
+    commandId: "82000000-0000-4000-8000-000000000003",
+    runId: run.envelope.runId,
+    claim: { workerId: WORKER_ID, claimGeneration: 1 },
+    lifecycle: {
+      state: "running",
+      workerId: WORKER_ID,
+      claimedAt: NOW,
+      heartbeatAt: NOW,
+      currentNodeId: "crm-dates",
+    },
+  });
+  if (running.state !== "applied") throw new Error("running transition refused");
+  return running.run;
+}
+
+function failureTerminalRequest(run: RunRecord, commandId: string) {
+  return {
+    kind: "failure" as const,
+    commandId,
+    terminal: {
+      failure: {
+        failureId: UUID_6,
+        fingerprint: HASH_C,
+        runId: run.envelope.runId,
+        traceId: run.envelope.traceId,
+        attempt: run.envelope.attempt,
+        workflowId: run.envelope.workflow,
+        nodeId: "crm-dates",
+        taskId: "crm/read-onboarding-dates",
+        code: "CRM_UNAVAILABLE",
+        summary: "CRM onboarding dates were unavailable",
+        transient: true,
+        writeState: "not-attempted",
+        causeChain: [{
+          code: "CRM_UNAVAILABLE",
+          summary: "CRM returned an unavailable response",
+          role: "primary",
+          transient: true,
+        }],
+        remediation: [{ kind: "retry-when-served", message: "Retry after CRM is available" }],
+        occurredAt: LATER,
+      },
+      authorization: {
+        kind: "failed" as const,
+        runId: run.envelope.runId,
+        workflowId: run.envelope.workflow,
+        attempt: run.envelope.attempt,
+        descriptorVersion: run.envelope.descriptorVersion,
+        contractFingerprint: run.envelope.contractFingerprint,
+        expectedVersion: run.version,
+        claim: { workerId: WORKER_ID, claimGeneration: 1 },
+        authorizedAt: LATER,
+        failureId: UUID_6,
+      },
+    },
+  };
+}
+
+function lifecycleCommand(
+  request: unknown,
+  operation: z.input<typeof RunLifecycleCommandOperationSchema>,
+  fence: z.input<typeof RunLifecycleCommandRecordSchema>["fence"] = { kind: "none" },
+) {
+  const commandId = z.object({ commandId: z.string() }).parse(request).commandId;
+  return RunLifecycleCommandRecordSchema.parse({
+    kind: "run-lifecycle",
+    commandId,
+    operation,
+    requestFingerprint: sha256Hex(
+      `hrauto:run-lifecycle-command:v1\0${operation}\0${canonicalJsonStringify(request)}`,
+    ),
+    fence,
+    recordedAt: NOW,
+  });
+}
+
+const RaceEventSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.enum(["ready", "reserved"]) }),
+  z.strictObject({ type: z.literal("error"), message: z.string() }),
+  z.strictObject({ type: z.literal("result"), outcome: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.enum(["applied", "applied-already"]), run: RunRecordSchema }),
+    z.strictObject({ state: z.literal("refused"), refusal: z.strictObject({ reason: z.literal("none-eligible") }) }),
+  ]) }),
+]);
+
+function raceConnection(data: unknown) {
+  const worker = new Worker(new URL("./race-worker.ts", import.meta.url), { workerData: data, execArgv: ["--import", "tsx"] });
+  const events = on(worker, "message");
+  return {
+    worker,
+    next: async () => {
+      const event = await events.next();
+      if (event.done) throw new Error("race worker ended before its expected event");
+      return RaceEventSchema.parse(event.value[0]);
+    },
+  };
+}
+
+describe("canonical run-record service", () => {
+  it("#1 reserves distinct monotonically increasing item and workflow ordinals", () => {
+    const { service, request, database, published } = fixture();
+    const before = database.getMeta().authorityGeneration;
+    const runs = Array.from({ length: 5 }, (_, index) => created(service, {
+      ...request, commandId: `20000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    }));
+    assert.deepEqual(runs.map((run) => run.envelope.attempt), [1, 2, 3, 4, 5]);
+    assert.deepEqual(runs.map((run) => run.runNumber), [1, 2, 3, 4, 5]);
+    assert.equal(new Set(runs.map((run) => run.envelope.runId)).size, 5);
+    assert.equal(database.getMeta().authorityGeneration, before + 5);
+    assert.equal(published.length, 5);
+  });
+
+  it("#3 refuses a missing parent and retry source without reserving ordinals", () => {
+    const { service, request, database } = fixture();
+    const before = database.getMeta().authorityGeneration;
+    assert.deepEqual(service.create({ ...request, parent: { runId: UUID_5, tracePrefix: "pl-170000-5555", edgeId: "member" } }),
+      { state: "refused", refusal: { reason: "parent-missing" } });
+    assert.deepEqual(service.create({ ...request, retryOf: UUID_5 }),
+      { state: "refused", refusal: { reason: "retry-of-missing" } });
+    assert.equal(database.getMeta().authorityGeneration, before);
+    assert.equal(created(service, request).envelope.attempt, 1);
+  });
+
+  it("P33 refuses an absent runtime token and preserves queued authority", () => {
+    const { service, request, database } = fixture();
+    const run = created(service, request);
+    const before = database.getMeta().authorityGeneration;
+    assert.deepEqual(service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID }),
+      { state: "refused", refusal: { reason: "runtime-stale" } });
+    assert.deepEqual(service.read(run.envelope.runId), { state: "present", disposition: "live", run });
+    assert.equal(database.getMeta().authorityGeneration, before);
+  });
+
+  it("#4 grants a queued row once and refuses a busy worker", () => {
+    const { service, request, runtimeConfig } = fixture();
+    const run = created(service, request);
+    const first = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
+    assert.equal(first.state, "applied");
+    if (first.state !== "applied") throw new Error("claim refused");
+    assert.equal(first.run.envelope.runId, run.envelope.runId);
+    assert.equal(first.run.claimGeneration, 1);
+    assert.equal(first.run.version, 2);
+    assert.deepEqual(service.claimNext({ commandId: "50000000-0000-4000-8000-000000000010", workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig }),
+      { state: "refused", refusal: { reason: "worker-busy", runId: run.envelope.runId } });
+  });
+
+  it("#4 claims the first eligible row after dependency filtering and total ordering", () => {
+    const { service, request, runtimeConfig, database } = fixture();
+    const blocked = created(service, {
+      ...request,
+      commandId: "51000000-0000-4000-8000-000000000001",
+      matchKey: "claim-blocked-parent",
+      priority: "interactive",
+    });
+    const child = created(service, {
+      ...request,
+      commandId: "51000000-0000-4000-8000-000000000002",
+      matchKey: "claim-blocking-child",
+    });
+    const childTerminal = service.transition({
+      commandId: "51000000-0000-4000-8000-000000000003",
+      runId: child.envelope.runId,
+      expectedVersion: child.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    if (childTerminal.state !== "applied") throw new Error("dependency child setup refused");
+    const policy = {
+      onChildFailed: "fail-parent" as const,
+      cascadeCancel: "cascade" as const,
+      afterChildRetry: "resume-parent" as const,
+      visibility: "inline" as const,
+    };
+    const manifestId = "51000000-0000-4000-8000-000000000004";
+    const dependencyId = "51000000-0000-4000-8000-000000000005";
+    database.authority.delegationManifests.insert({
+      manifestId,
+      parentRunId: blocked.envelope.runId,
+      edgeId: "claim-dependency",
+      inputSchemaHash: HASH_A,
+      resultSchemaHash: HASH_C,
+      cardinality: "one",
+      join: "one",
+      policy,
+      children: [{
+        dependencyId,
+        childRunId: child.envelope.runId,
+        childItemId: child.envelope.itemId,
+        canonicalInputFingerprint: HASH_A,
+      }],
+      createdAt: NOW,
+      manifestFingerprint: HASH_C,
+    });
+    database.authority.dependencies.insert({
+      dependencyId,
+      manifestId,
+      edgeId: "claim-dependency",
+      parentRunId: blocked.envelope.runId,
+      childRunId: child.envelope.runId,
+      childItemId: child.envelope.itemId,
+      policy,
+      state: "active",
+      version: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const olderBulk = created(service, {
+      ...request,
+      commandId: "51000000-0000-4000-8000-000000000006",
+      matchKey: "claim-older-bulk",
+      priority: "bulk",
+    });
+    const newerInteractive = created(service, {
+      ...request,
+      commandId: "51000000-0000-4000-8000-000000000007",
+      matchKey: "claim-newer-interactive",
+      priority: "interactive",
+    });
+
+    const claim = service.claimNext({
+      commandId: "51000000-0000-4000-8000-000000000008",
+      workflow: WORKFLOW_ID,
+      workerId: WORKER_ID,
+      runtimeConfig,
+    });
+    assert.equal(claim.state, "applied");
+    if (claim.state !== "applied") throw new Error("eligible claim refused");
+    assert.equal(claim.run.envelope.runId, newerInteractive.envelope.runId);
+    assert.equal(service.read(blocked.envelope.runId).state, "present");
+    assert.equal(service.read(olderBulk.envelope.runId).state, "present");
+  });
+
+  it("#25 preserves spent attempt and run number after deleting the highest row", () => {
+    const { service, request, database, runtimeConfig } = fixture();
+    const source = created(service, {
+      ...request,
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+    });
+    const settledSource = service.transition({ commandId: UUID_5, runId: source.envelope.runId, expectedVersion: 1,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+    assert.equal(settledSource.state, "applied");
+    const highest = created(service, {
+      ...request,
+      commandId: "30000000-0000-4000-8000-000000000001",
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+    });
+    assert.equal(highest.envelope.attempt, 2);
+    assert.equal(highest.runNumber, 2);
+    const settledHighest = service.transition({
+      commandId: "30000000-0000-4000-8000-000000000002",
+      runId: highest.envelope.runId,
+      expectedVersion: highest.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    assert.equal(settledHighest.state, "applied");
+    const deleted = service.delete({ commandId: "30000000-0000-4000-8000-000000000003",
+      runId: highest.envelope.runId, expectedVersion: 2 });
+    assert.equal(deleted.state, "deleted");
+    const tombstone = database.authority.deletedRuns.get(highest.envelope.runId);
+    assert.equal(tombstone?.attempt, 2);
+    assert.equal(tombstone?.runNumber, 2);
+    assert.equal(tombstone?.ordinalSource, "tombstone");
+    const next = service.retry({
+      commandId: "30000000-0000-4000-8000-000000000004",
+      runId: source.envelope.runId,
+      expectedVersion: 2,
+      runtimeConfig,
+    }, personLookupDescriptor);
+    assert.equal(next.state, "applied");
+    if (next.state !== "applied") throw new Error("retry after highest tombstone refused");
+    assert.equal(next.run.envelope.attempt, 3);
+    assert.equal(next.run.runNumber, 3);
+    assert.equal(service.read(highest.envelope.runId).state, "deleted");
+  });
+
+  it("persists a cancellation request without changing the claimed lifecycle or fence", () => {
+    const { service, request, runtimeConfig } = fixture();
+    const run = created(service, request);
+    const claim = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
+    if (claim.state !== "applied") throw new Error("claim refused");
+    const cancelled = service.transition({ commandId: "40000000-0000-4000-8000-000000000001",
+      runId: run.envelope.runId, expectedVersion: claim.run.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+    assert.equal(cancelled.state, "applied");
+    if (cancelled.state !== "applied") throw new Error("cancel request refused");
+    assert.deepEqual(cancelled.run, { ...claim.run, cancelRequested: true, version: claim.run.version + 1 });
+    const renewed = service.renewClaim({ commandId: "40000000-0000-4000-8000-000000000002",
+      runId: run.envelope.runId, claim: { workerId: WORKER_ID, claimGeneration: 1 } });
+    assert.equal(renewed.state, "applied");
+    if (renewed.state !== "applied") throw new Error("renew refused");
+    assert.equal(renewed.run.cancelRequested, true);
+    assert.equal(renewed.run.lifecycle.state, "claimed");
+  });
+
+  it("D330.9 floor permits source deletion while relaunch lineage remains", () => {
+    const { root } = fixture();
+    const raw = new DatabaseSync(join(root, "authority.sqlite"), { readOnly: true });
+    try {
+      const rows = z.array(z.strictObject({ id: z.number(), seq: z.number(), table: z.string(),
+        from: z.string(), to: z.string(), on_update: z.string(), on_delete: z.string(), match: z.string(),
+      })).parse(raw.prepare("PRAGMA foreign_key_list(archive_relaunches)").all());
+      assert.deepEqual(rows.filter((row) => row.from === "archived_run_id"), [],
+        "D330.9 requires archived source removal with descendant lineage retained; the source FK prevents it");
+    } finally { raw.close(); }
+  });
+
+  it("#5 a generation advance refuses the next claim without invalidating the held claim", () => {
+    const { service, request, runtimeConfig, database, clock } = fixture();
+    const run = created(service, request);
+    const queued = created(service, {
+      ...request,
+      commandId: "50000000-0000-4000-8000-000000000009",
+      matchKey: "stale-runtime-queued",
+    });
+    const claim = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
+    if (claim.state !== "applied") throw new Error("claim refused");
+    database.authority.runtimeConfig.activate({ settingsRevision: 2, settingsFingerprint: HASH_A,
+      configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+      activatedAt: NOW });
+    const before = database.getMeta().authorityGeneration;
+    assert.deepEqual(service.claimNext({ commandId: "50000000-0000-4000-8000-000000000001",
+      workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig }),
+    { state: "refused", refusal: { reason: "runtime-stale" } });
+    assert.equal(database.getMeta().authorityGeneration, before);
+    assert.deepEqual(service.read(run.envelope.runId), { state: "present", disposition: "live", run: claim.run });
+    assert.deepEqual(service.read(queued.envelope.runId), { state: "present", disposition: "live", run: queued });
+    clock.advanceWall(1000);
+    const renewed = service.renewClaim({ commandId: "50000000-0000-4000-8000-000000000002",
+      runId: run.envelope.runId, claim: { workerId: WORKER_ID, claimGeneration: 1 } });
+    assert.equal(renewed.state, "applied");
+  });
+
+  it("#6/#7 requeues only an expired claim, preserves its attempt/fence, and rejects the zombie", () => {
+    const { service, request, runtimeConfig, database } = fixture();
+    const run = created(service, request);
+    const claim = service.claimNext({
+      commandId: "83000000-0000-4000-8000-000000000001",
+      workflow: WORKFLOW_ID,
+      workerId: WORKER_ID,
+      runtimeConfig,
+    });
+    if (claim.state !== "applied") throw new Error("claim refused");
+    const beforeLive = database.getMeta().authorityGeneration;
+    assert.deepEqual(service.requeue({
+      commandId: "83000000-0000-4000-8000-000000000002",
+      runId: run.envelope.runId,
+      expectedVersion: claim.run.version,
+      cause: "recovery",
+      staleBefore: NOW,
+    }), { state: "refused", refusal: { reason: "heartbeat-live" } });
+    assert.equal(database.getMeta().authorityGeneration, beforeLive);
+    const requeued = service.requeue({
+      commandId: "83000000-0000-4000-8000-000000000003",
+      runId: run.envelope.runId,
+      expectedVersion: claim.run.version,
+      cause: "recovery",
+      staleBefore: LATER,
+    });
+    assert.equal(requeued.state, "applied");
+    if (requeued.state !== "applied") throw new Error("expired claim did not requeue");
+    assert.equal(requeued.run.lifecycle.state, "queued");
+    assert.equal(requeued.run.envelope.attempt, run.envelope.attempt);
+    assert.equal(requeued.run.claimGeneration, claim.run.claimGeneration);
+    assert.equal(requeued.run.version, claim.run.version + 1);
+    const zombieClaim = { workerId: WORKER_ID, claimGeneration: claim.run.claimGeneration };
+    assert.deepEqual(service.renewClaim({
+      commandId: "83000000-0000-4000-8000-000000000004",
+      runId: run.envelope.runId,
+      claim: zombieClaim,
+    }), { state: "refused", refusal: { reason: "lost" } });
+    assert.deepEqual(service.workerTransition({
+      commandId: "83000000-0000-4000-8000-000000000005",
+      runId: run.envelope.runId,
+      claim: zombieClaim,
+      lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
+    }), { state: "refused", refusal: { reason: "lost" } });
+    assert.deepEqual(service.terminalize(
+      failureTerminalRequest(claim.run, "83000000-0000-4000-8000-000000000006"),
+      personLookupDescriptor,
+    ), { state: "refused", refusal: { reason: "lost" } });
+  });
+
+  it("re-enqueues a resolved gate at its durable continuation node", () => {
+    const { service, request, runtimeConfig } = fixture();
+    const running = runningRun(service, request, runtimeConfig);
+    const parked = service.workerTransition({
+      commandId: "83000000-0000-4000-8000-000000000007",
+      runId: running.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: {
+        state: "parked-gate",
+        gateId: GATE_RESULT.gateId,
+        parkedAt: NOW,
+        resumeAt: "crm-dates",
+      },
+    });
+    assert.equal(parked.state, "applied");
+    if (parked.state !== "applied") throw new Error("gate park refused");
+
+    const resumed = service.transition({
+      commandId: "83000000-0000-4000-8000-000000000008",
+      runId: running.envelope.runId,
+      expectedVersion: parked.run.version,
+      lifecycle: { state: "queued" },
+    });
+
+    assert.equal(resumed.state, "applied");
+    if (resumed.state !== "applied") throw new Error("gate resume refused");
+    assert.equal(resumed.run.envelope.startAt, "crm-dates");
+  });
+
+  it("refuses queued metadata that gate resolution cannot preserve", () => {
+    const { service, request, runtimeConfig, database } = fixture();
+    const running = runningRun(service, request, runtimeConfig);
+    const parked = service.workerTransition({
+      commandId: "83000000-0000-4000-8000-000000000015",
+      runId: running.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: {
+        state: "parked-gate",
+        gateId: GATE_RESULT.gateId,
+        parkedAt: NOW,
+        resumeAt: "crm-dates",
+      },
+    });
+    assert.equal(parked.state, "applied");
+    if (parked.state !== "applied") throw new Error("gate park refused");
+    const generation = database.getMeta().authorityGeneration;
+
+    assert.deepEqual(service.transition({
+      commandId: "83000000-0000-4000-8000-000000000016",
+      runId: running.envelope.runId,
+      expectedVersion: parked.run.version,
+      lifecycle: { state: "queued", requeuedFrom: "recovery", notBefore: LATER },
+    }), {
+      state: "refused",
+      refusal: {
+        reason: "illegal-transition",
+        from: "parked-gate",
+        to: "queued",
+        message: "gate resolution cannot add queued metadata",
+      },
+    });
+    assert.equal(database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(service.read(running.envelope.runId), {
+      state: "present",
+      disposition: "live",
+      run: parked.run,
+    });
+  });
+
+  it("re-enqueues an operator-confirmed-absent write at its mandatory continuation node", () => {
+    const { service, request, runtimeConfig } = fixture();
+    const running = runningRun(service, request, runtimeConfig);
+    const parked = service.workerTransition({
+      commandId: "83000000-0000-4000-8000-000000000009",
+      runId: running.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: {
+        state: "parked-write",
+        writeIntentId: "83000000-0000-4000-8000-000000000099",
+        intentGeneration: 1,
+        parkedAt: NOW,
+        code: "operator-required",
+        message: "check whether the external write landed",
+      },
+    });
+    assert.equal(parked.state, "applied");
+    if (parked.state !== "applied") throw new Error("write park refused");
+
+    const resumed = service.transition({
+      commandId: "83000000-0000-4000-8000-000000000010",
+      runId: running.envelope.runId,
+      expectedVersion: parked.run.version,
+      lifecycle: { state: "queued" },
+      writeResolution: "resolve-write-absent",
+      startAt: "commit-person",
+    });
+
+    assert.equal(resumed.state, "applied");
+    if (resumed.state !== "applied") throw new Error("confirmed-absent resume refused");
+    assert.equal(resumed.run.lifecycle.state, "queued");
+    assert.equal(resumed.run.envelope.startAt, "commit-person");
+    assert.equal(resumed.run.version, parked.run.version + 1);
+  });
+
+  it("re-enqueues an operator-confirmed-present write at its mandatory continuation node", () => {
+    const { service, request, runtimeConfig } = fixture();
+    const running = runningRun(service, request, runtimeConfig);
+    const parked = service.workerTransition({
+      commandId: "83000000-0000-4000-8000-000000000011",
+      runId: running.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: {
+        state: "parked-write",
+        writeIntentId: "83000000-0000-4000-8000-000000000098",
+        intentGeneration: 1,
+        parkedAt: NOW,
+        code: "operator-required",
+        message: "check whether the external write landed",
+      },
+    });
+    assert.equal(parked.state, "applied");
+    if (parked.state !== "applied") throw new Error("write park refused");
+    const resolution = {
+      commandId: "83000000-0000-4000-8000-000000000012",
+      runId: running.envelope.runId,
+      expectedVersion: parked.run.version,
+      lifecycle: { state: "queued" as const },
+      writeResolution: "resolve-write-present" as const,
+      startAt: "verify-person",
+    };
+
+    const resumed = service.transition(resolution);
+
+    assert.equal(resumed.state, "applied");
+    if (resumed.state !== "applied") throw new Error("confirmed-present resume refused");
+    assert.equal(resumed.run.lifecycle.state, "queued");
+    assert.equal(resumed.run.envelope.startAt, "verify-person");
+    assert.equal(resumed.run.version, parked.run.version + 1);
+    const replay = service.transition(resolution);
+    assert.equal(replay.state, "applied-already");
+    if (replay.state !== "applied-already" || !("run" in replay)) throw new Error("write resolution did not replay");
+    assert.equal(replay.run.version, resumed.run.version);
+    assert.deepEqual(service.transition({ ...resolution, startAt: "commit-person" }), {
+      state: "refused",
+      refusal: { reason: "replay-divergent" },
+    });
+  });
+
+  it("refuses to re-enqueue a parked write without a resolution continuation", () => {
+    const { service, request, runtimeConfig, database } = fixture();
+    const running = runningRun(service, request, runtimeConfig);
+    const parked = service.workerTransition({
+      commandId: "83000000-0000-4000-8000-000000000013",
+      runId: running.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: {
+        state: "parked-write",
+        writeIntentId: "83000000-0000-4000-8000-000000000097",
+        intentGeneration: 1,
+        parkedAt: NOW,
+        code: "operator-required",
+        message: "check whether the external write landed",
+      },
+    });
+    assert.equal(parked.state, "applied");
+    if (parked.state !== "applied") throw new Error("write park refused");
+    const generation = database.getMeta().authorityGeneration;
+
+    assert.deepEqual(service.transition({
+      commandId: "83000000-0000-4000-8000-000000000014",
+      runId: running.envelope.runId,
+      expectedVersion: parked.run.version,
+      lifecycle: { state: "queued" },
+    }), {
+      state: "refused",
+      refusal: {
+        reason: "illegal-transition",
+        from: "parked-write",
+        to: "queued",
+        message: "write resolution requires its continuation node",
+      },
+    });
+    assert.equal(database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(service.read(running.envelope.runId), {
+      state: "present",
+      disposition: "live",
+      run: parked.run,
+    });
+  });
+
+  it("#9/#10 terminalize is atomic and command replay is exact or divergent", () => {
+    const interrupted = fixture({
+      afterFailureStorageStep: (step) => {
+        if (step === "failure") throw new Error("injected terminal settlement failure");
+      },
+    });
+    const interruptedRun = runningRun(interrupted.service, interrupted.request, interrupted.runtimeConfig);
+    const interruptedRequest = failureTerminalRequest(
+      interruptedRun,
+      "84000000-0000-4000-8000-000000000001",
+    );
+    const before = interrupted.database.getMeta().authorityGeneration;
+    assert.throws(
+      () => interrupted.service.terminalize(interruptedRequest, personLookupDescriptor),
+      /injected terminal settlement failure/,
+    );
+    assert.equal(interrupted.database.getMeta().authorityGeneration, before);
+    assert.equal(interrupted.database.authority.failures.get(UUID_6), undefined);
+    assert.equal(interrupted.database.authority.runResults.get(interruptedRun.envelope.runId), undefined);
+    assert.equal(interrupted.database.authority.terminalAuthorizations.get(interruptedRun.envelope.runId), undefined);
+    assert.deepEqual(interrupted.service.read(interruptedRun.envelope.runId), {
+      state: "present",
+      disposition: "live",
+      run: interruptedRun,
+    });
+
+    const normal = fixture();
+    const running = runningRun(normal.service, normal.request, normal.runtimeConfig);
+    const request = failureTerminalRequest(running, "84000000-0000-4000-8000-000000000002");
+    const applied = normal.service.terminalize(request, personLookupDescriptor);
+    assert.equal(applied.state, "applied");
+    if (applied.state !== "applied") throw new Error("terminalize refused");
+    assert.equal(applied.run.version, running.version + 1);
+    assert.equal(normal.database.authority.failures.listByRun(running.envelope.runId).length, 1);
+    assert.equal(normal.database.authority.runResults.get(running.envelope.runId), undefined);
+    assert.ok(normal.database.authority.terminalAuthorizations.get(running.envelope.runId));
+    const replayGeneration = normal.database.getMeta().authorityGeneration;
+    const replay = normal.service.terminalize(request, personLookupDescriptor);
+    assert.equal(replay.state, "applied-already");
+    if (replay.state !== "applied-already" || !("run" in replay)) throw new Error("terminalize did not replay");
+    assert.equal(replay.run.version, applied.run.version);
+    assert.equal(normal.database.getMeta().authorityGeneration, replayGeneration);
+    assert.deepEqual(normal.service.terminalize({
+      ...request,
+      terminal: {
+        ...request.terminal,
+        failure: { ...request.terminal.failure, summary: "Different safe failure summary" },
+      },
+    }, personLookupDescriptor), {
+      state: "refused",
+      refusal: { reason: "replay-divergent" },
+    });
+    assert.equal(normal.database.getMeta().authorityGeneration, replayGeneration);
+    assert.equal(normal.service.delete({
+      commandId: "84000000-0000-4000-8000-000000000003",
+      runId: running.envelope.runId,
+      expectedVersion: applied.run.version,
+    }).state, "deleted");
+    const replayAfterDelete = normal.service.terminalize(request, personLookupDescriptor);
+    assert.equal(replayAfterDelete.state, "applied-already");
+    assert.ok("tombstone" in replayAfterDelete);
+    if (!("tombstone" in replayAfterDelete)) throw new Error("deleted terminal replay lost its tombstone");
+    assert.equal(replayAfterDelete.tombstone.runId, running.envelope.runId);
+    assert.equal(replayAfterDelete.appliedVersion, applied.run.version);
+  });
+
+  it("refuses failure terminalization while a direct tree member is non-terminal", () => {
+    const { service, request, runtimeConfig } = fixture();
+    const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
+    const member = created(service, {
+      ...request,
+      commandId: "84000000-0000-4000-8000-000000000007",
+      matchKey: "terminalize-active-member",
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+      shape: "operation-member",
+      parent: {
+        runId: anchor.envelope.runId,
+        tracePrefix: anchor.envelope.traceId,
+        edgeId: "active-member",
+      },
+    });
+
+    assert.deepEqual(service.terminalize(
+      failureTerminalRequest(anchor, "84000000-0000-4000-8000-000000000008"),
+      personLookupDescriptor,
+    ), { state: "refused", refusal: { reason: "tree-non-terminal", runId: member.envelope.runId } });
+  });
+
+  it("refuses failure terminalization while a nested tree member is non-terminal", () => {
+    const { service, request, runtimeConfig } = fixture();
+    const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
+    const member = created(service, {
+      ...request,
+      commandId: "84000000-0000-4000-8000-000000000009",
+      matchKey: "terminalize-terminal-member",
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+      shape: "operation-member",
+      parent: {
+        runId: anchor.envelope.runId,
+        tracePrefix: anchor.envelope.traceId,
+        edgeId: "terminal-member",
+      },
+    });
+    const terminalMember = service.transition({
+      commandId: "84000000-0000-4000-8000-000000000010",
+      runId: member.envelope.runId,
+      expectedVersion: member.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    assert.equal(terminalMember.state, "applied");
+    const grandchild = created(service, {
+      ...request,
+      commandId: "84000000-0000-4000-8000-000000000011",
+      matchKey: "terminalize-active-grandchild",
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+      shape: "operation-member",
+      parent: {
+        runId: member.envelope.runId,
+        tracePrefix: member.envelope.traceId,
+        edgeId: "active-grandchild",
+      },
+    });
+
+    assert.deepEqual(service.terminalize(
+      failureTerminalRequest(anchor, "84000000-0000-4000-8000-000000000012"),
+      personLookupDescriptor,
+    ), { state: "refused", refusal: { reason: "tree-non-terminal", runId: grandchild.envelope.runId } });
+  });
+
+  it("refuses a distinct terminal lifecycle self-edge", () => {
+    const { service, request } = fixture();
+    const run = created(service, request);
+    const lifecycle = { state: "terminal" as const, outcome: "cancelled" as const, endedAt: NOW };
+    const settled = service.transition({
+      commandId: "84000000-0000-4000-8000-000000000013",
+      runId: run.envelope.runId,
+      expectedVersion: run.version,
+      lifecycle,
+    });
+    assert.equal(settled.state, "applied");
+    if (settled.state !== "applied") throw new Error("settlement refused");
+
+    assert.deepEqual(service.transition({
+      commandId: "84000000-0000-4000-8000-000000000014",
+      runId: run.envelope.runId,
+      expectedVersion: settled.run.version,
+      lifecycle,
+    }), {
+      state: "refused",
+      refusal: {
+        reason: "illegal-transition",
+        from: "terminal",
+        to: "terminal",
+        message: "terminal has no self-edge; a settled outcome is settled",
+      },
+    });
+  });
+
+  it("refuses a display-name self-edge on a terminal run", () => {
+    const { service, request } = fixture();
+    const run = created(service, request);
+    const settled = service.transition({
+      commandId: "84000000-0000-4000-8000-000000000015",
+      runId: run.envelope.runId,
+      expectedVersion: run.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    assert.equal(settled.state, "applied");
+    if (settled.state !== "applied") throw new Error("settlement refused");
+
+    assert.deepEqual(service.transition({
+      commandId: "84000000-0000-4000-8000-000000000016",
+      runId: run.envelope.runId,
+      expectedVersion: settled.run.version,
+      displayName: "Late rename",
+    }), {
+      state: "refused",
+      refusal: {
+        reason: "illegal-transition",
+        from: "terminal",
+        to: "terminal",
+        message: "terminal has no self-edge; a settled outcome is settled",
+      },
+    });
+  });
+
+  it("#10 journals only request commitments and returns the current version on exact replay", () => {
+    const { service, request, database } = fixture();
+    const run = created(service, request);
+    const first = service.transition({
+      commandId: "85000000-0000-4000-8000-000000000001",
+      runId: run.envelope.runId,
+      expectedVersion: run.version,
+      displayName: "Reviewed name",
+    });
+    if (first.state !== "applied") throw new Error("rename refused");
+    const second = service.transition({
+      commandId: "85000000-0000-4000-8000-000000000002",
+      runId: run.envelope.runId,
+      expectedVersion: first.run.version,
+      priority: "interactive",
+    });
+    if (second.state !== "applied") throw new Error("bump refused");
+    const generation = database.getMeta().authorityGeneration;
+    const replay = service.transition({
+      commandId: "85000000-0000-4000-8000-000000000001",
+      runId: run.envelope.runId,
+      expectedVersion: run.version,
+      displayName: "Reviewed name",
+    });
+    assert.equal(replay.state, "applied-already");
+    if (replay.state !== "applied-already" || !("run" in replay)) throw new Error("rename did not replay");
+    assert.equal(replay.run.version, second.run.version);
+    assert.equal(database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(service.transition({
+      commandId: "85000000-0000-4000-8000-000000000001",
+      runId: run.envelope.runId,
+      expectedVersion: run.version,
+      displayName: "Divergent name",
+    }), { state: "refused", refusal: { reason: "replay-divergent" } });
+    const journal = database.authority.lifecycleJournal.getCommand(request.commandId);
+    assert.ok(journal !== undefined && "kind" in journal);
+    if (!("kind" in journal)) throw new Error("create journal used the product command arm");
+    assert.equal(journal.kind, "run-lifecycle");
+    assert.equal(JSON.stringify(journal).includes("10873698"), false);
+  });
+
+  it("D333 refuses cross-kind ids and fails loud for every partial or mismatched journal pair", () => {
+    const crossKind = fixture();
+    crossKind.database.withAuthorityTransaction(({ commands }) => {
+      commands.insert(COMMAND_FIXTURES[0]);
+    });
+    const crossKindGeneration = crossKind.database.getMeta().authorityGeneration;
+    assert.deepEqual(crossKind.service.create(crossKind.request), {
+      state: "refused",
+      refusal: { reason: "replay-divergent" },
+    });
+    assert.equal(crossKind.database.getMeta().authorityGeneration, crossKindGeneration);
+
+    const commandOnly = fixture();
+    const commandOnlyRecord = lifecycleCommand(commandOnly.request, "create");
+    commandOnly.database.withAuthorityTransaction(({ lifecycleJournal }) => {
+      lifecycleJournal.insertCommand(commandOnlyRecord);
+    });
+    const commandOnlyGeneration = commandOnly.database.getMeta().authorityGeneration;
+    assert.throws(() => commandOnly.service.create(commandOnly.request), /has no audit/u);
+    assert.equal(commandOnly.database.getMeta().authorityGeneration, commandOnlyGeneration);
+
+    const auditOnly = fixture();
+    const auditOnlyRecord = lifecycleCommand(auditOnly.request, "create");
+    const audit = RunLifecycleCommandAuditRecordSchema.parse({
+      kind: "run-lifecycle",
+      auditId: auditOnlyRecord.commandId,
+      request: auditOnlyRecord,
+      result: { kind: "run", runId: UUID_5, appliedVersion: 1 },
+      completedAt: NOW,
+    });
+    const auditOnlySqlite = new DatabaseSync(join(auditOnly.root, "authority.sqlite"));
+    try {
+      auditOnlySqlite.exec("PRAGMA foreign_keys = OFF");
+      auditOnlySqlite.prepare(`
+        INSERT INTO command_audits (record_key, command_id, record_json, created_at)
+        VALUES (?, ?, ?, ?)
+      `).run(audit.auditId, audit.request.commandId, canonicalJsonStringify(audit), audit.completedAt);
+    } finally {
+      auditOnlySqlite.close();
+    }
+    const auditOnlyGeneration = auditOnly.database.getMeta().authorityGeneration;
+    assert.throws(() => auditOnly.service.create(auditOnly.request), /has an audit without its command/u);
+    assert.equal(auditOnly.database.getMeta().authorityGeneration, auditOnlyGeneration);
+
+    const mismatched = fixture();
+    const matchedCommand = lifecycleCommand(mismatched.request, "create");
+    const mismatchedRequest = RunLifecycleCommandRecordSchema.parse({
+      ...matchedCommand,
+      operation: "claim-next",
+      requestFingerprint: HASH_A,
+    });
+    mismatched.database.withAuthorityTransaction(({ lifecycleJournal }) => {
+      lifecycleJournal.insertCommand(matchedCommand);
+      lifecycleJournal.insertAudit({
+        kind: "run-lifecycle",
+        auditId: matchedCommand.commandId,
+        request: mismatchedRequest,
+        result: { kind: "run", runId: UUID_5, appliedVersion: 1 },
+        completedAt: NOW,
+      });
+    });
+    const mismatchedGeneration = mismatched.database.getMeta().authorityGeneration;
+    assert.throws(() => mismatched.service.create(mismatched.request), /has a mismatched audit/u);
+    assert.equal(mismatched.database.getMeta().authorityGeneration, mismatchedGeneration);
+  });
+
+  it("#8 stale CAS reports the current version and writes nothing", () => {
+    const { service, request, runtimeConfig, database } = fixture();
+    const run = created(service, request);
+    service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
+    const before = database.getMeta().authorityGeneration;
+    const bytes = service.read(run.envelope.runId);
+    assert.deepEqual(service.transition({ commandId: "60000000-0000-4000-8000-000000000001",
+      runId: run.envelope.runId, expectedVersion: 1,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } }),
+    { state: "refused", refusal: { reason: "conflict", currentVersion: 2 } });
+    assert.deepEqual(service.read(run.envelope.runId), bytes);
+    assert.equal(database.getMeta().authorityGeneration, before);
+  });
+
+  it("list uses priority, enqueue time and run id, and refuses a stale cursor", () => {
+    const { service, request } = fixture();
+    const bulk = created(service, request);
+    const interactive = created(service, { ...request, commandId: UUID_5, priority: "interactive" });
+    const page = service.list({ disposition: "live", limit: 1 });
+    if (page.state !== "listed") throw new Error("list refused");
+    assert.deepEqual(page.rows.map((run) => run.envelope.runId), [interactive.envelope.runId]);
+    assert.ok(page.cursor);
+    const second = service.list({ disposition: "live", limit: 1, cursor: page.cursor });
+    if (second.state !== "listed") throw new Error("second page refused");
+    assert.deepEqual(second.rows.map((run) => run.envelope.runId), [bulk.envelope.runId]);
+    created(service, { ...request, commandId: "70000000-0000-4000-8000-000000000001" });
+    assert.deepEqual(service.list({ disposition: "live", limit: 1, cursor: page.cursor }),
+      { state: "refused", refusal: { reason: "cursor-stale" } });
+  });
+
+  it("queue-root publication waits for the outer transaction and disappears on rollback", () => {
+    const { service, request, database, published } = fixture();
+    let rolledBack: RunRecord | undefined;
+    assert.throws(() => database.withAuthorityTransaction(() => {
+      rolledBack = created(service, request);
+      assert.equal(published.length, 0);
+      throw new Error("outer command refused");
+    }), /outer command refused/);
+    assert.equal(published.length, 0);
+    assert.ok(rolledBack);
+    assert.equal(service.read(rolledBack.envelope.runId).state, "absent");
+    database.withAuthorityTransaction(() => {
+      created(service, { ...request, commandId: UUID_5 });
+      assert.equal(published.length, 0);
+    });
+    assert.equal(published.length, 1);
+  });
+
+  it("#11 retry and restart create new attempts and preserve source identity", () => {
+    const { service, request, runtimeConfig, database } = fixture();
+    database.authority.runSessions.insert(RUN_SESSION);
+    const run = created(service, { ...request, sessionId: RUN_SESSION_ID, descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint });
+    service.transition({ commandId: UUID_5, runId: run.envelope.runId, expectedVersion: 1,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+    const source = service.read(run.envelope.runId);
+    const retry = service.retry({ commandId: "80000000-0000-4000-8000-000000000001",
+      runId: run.envelope.runId, expectedVersion: 2, runtimeConfig }, personLookupDescriptor);
+    assert.equal(retry.state, "applied");
+    if (retry.state !== "applied") throw new Error("retry refused");
+    assert.equal(retry.run.envelope.itemId, run.envelope.itemId);
+    assert.equal(retry.run.envelope.attempt, 2);
+    assert.equal(retry.run.envelope.retryOf, run.envelope.runId);
+    assert.equal(retry.run.envelope.recovery, undefined);
+    assert.equal(retry.run.sessionId, RUN_SESSION_ID);
+    assert.deepEqual(retry.run.input, run.input);
+    service.transition({ commandId: "80000000-0000-4000-8000-000000000002",
+      runId: retry.run.envelope.runId, expectedVersion: 1,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+    const restart = service.restart({ commandId: "80000000-0000-4000-8000-000000000003",
+      runId: run.envelope.runId, expectedVersion: 2, runtimeConfig }, personLookupDescriptor);
+    assert.equal(restart.state, "applied");
+    if (restart.state !== "applied") throw new Error("restart refused");
+    assert.equal(restart.run.envelope.attempt, 3);
+    assert.equal(restart.run.sessionId, RUN_SESSION_ID);
+    assert.equal(restart.run.envelope.recovery, "restart-from-start");
+    assert.equal(restart.run.envelope.retryOf, run.envelope.runId);
+    assert.deepEqual(service.read(run.envelope.runId), source);
+  });
+
+  it("#12 refuses retry from deleted and unresolved-write sources without minting a run", () => {
+    const deletedWorld = fixture();
+    const deleted = created(deletedWorld.service, {
+      ...deletedWorld.request,
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+    });
+    deletedWorld.service.transition({
+      commandId: "86000000-0000-4000-8000-000000000001",
+      runId: deleted.envelope.runId,
+      expectedVersion: deleted.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    deletedWorld.service.delete({
+      commandId: "86000000-0000-4000-8000-000000000002",
+      runId: deleted.envelope.runId,
+      expectedVersion: 2,
+    });
+    const deletedGeneration = deletedWorld.database.getMeta().authorityGeneration;
+    assert.deepEqual(deletedWorld.service.retry({
+      commandId: "86000000-0000-4000-8000-000000000003",
+      runId: deleted.envelope.runId,
+      expectedVersion: 2,
+      runtimeConfig: deletedWorld.runtimeConfig,
+    }, personLookupDescriptor), { state: "refused", refusal: { reason: "source-deleted" } });
+    assert.equal(deletedWorld.database.getMeta().authorityGeneration, deletedGeneration);
+
+    const parkedWorld = fixture();
+    const running = runningRun(parkedWorld.service, parkedWorld.request, parkedWorld.runtimeConfig);
+    const parked = parkedWorld.service.workerTransition({
+      commandId: "86000000-0000-4000-8000-000000000004",
+      runId: running.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: {
+        state: "parked-write",
+        writeIntentId: "86000000-0000-4000-8000-000000000099",
+        intentGeneration: 1,
+        parkedAt: NOW,
+        code: "unknown",
+        message: "external outcome is unknown",
+      },
+    });
+    assert.equal(parked.state, "applied");
+    if (parked.state !== "applied") throw new Error("parked transition refused");
+    const parkedGeneration = parkedWorld.database.getMeta().authorityGeneration;
+    assert.deepEqual(parkedWorld.service.retry({
+      commandId: "86000000-0000-4000-8000-000000000005",
+      runId: running.envelope.runId,
+      expectedVersion: parked.run.version,
+      runtimeConfig: parkedWorld.runtimeConfig,
+    }, personLookupDescriptor), { state: "refused", refusal: { reason: "invalid-state" } });
+    assert.equal(parkedWorld.database.getMeta().authorityGeneration, parkedGeneration);
+    assert.equal(parkedWorld.database.authority.runs.listByItem({
+      workflow: running.envelope.workflow,
+      itemId: running.envelope.itemId,
+    }).length, 1);
+  });
+
+  it("#13/#14/#18/#19/#20 relaunches freshly and preserves lineage when the archived source is deleted", () => {
+    const { service, request, database, runtimeConfig } = fixture();
+    const source = created(service, {
+      ...request,
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+    });
+    const terminal = service.transition({
+      commandId: "81000000-0000-4000-8000-000000000001",
+      runId: source.envelope.runId,
+      expectedVersion: source.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    assert.equal(terminal.state, "applied");
+    if (terminal.state !== "applied") throw new Error("terminal transition refused");
+    const archived = archiveRun(
+      service,
+      database,
+      terminal.run,
+      "81000000-0000-4000-8000-000000000002",
+    );
+    const archivedBytes = database.authority.archivedRuns.get(source.envelope.runId);
+    assert.ok(archivedBytes !== undefined);
+    const generation = database.getMeta().authorityGeneration;
+    assert.equal(service.archive({
+      commandId: "81000000-0000-4000-8000-000000000003",
+      expectedVersion: terminal.run.version,
+      archive: archived.archive,
+    }).state, "applied-already");
+    assert.equal(database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(database.authority.archivedRuns.get(source.envelope.runId), archivedBytes);
+    assert.deepEqual(service.archive({
+      commandId: "81000000-0000-4000-8000-000000000004",
+      expectedVersion: terminal.run.version,
+      archive: { ...archived.archive, archivedAt: "2026-01-02T00:00:00.000Z" },
+    }), { state: "refused", refusal: { reason: "already-archived" } });
+    assert.deepEqual(database.authority.archivedRuns.get(source.envelope.runId), archivedBytes);
+
+    const { commandId: _createCommandId, ...relaunchCreate } = {
+      ...request,
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+      runtimeConfig,
+    };
+    const mismatchGeneration = database.getMeta().authorityGeneration;
+    assert.deepEqual(service.relaunch({
+      commandId: "81000000-0000-4000-8000-000000000005",
+      archivedRunId: source.envelope.runId,
+      contentDigest: HASH_A,
+      relaunchedBy: "local-operator",
+      create: relaunchCreate,
+    }, personLookupDescriptor), {
+      state: "refused",
+      refusal: { reason: "schema-mismatch", digest: HASH_A },
+    });
+    assert.equal(database.getMeta().authorityGeneration, mismatchGeneration);
+
+    const relaunched = service.relaunch({
+      commandId: "81000000-0000-4000-8000-000000000006",
+      archivedRunId: source.envelope.runId,
+      contentDigest: archived.archive.contentDigest,
+      relaunchedBy: "local-operator",
+      create: relaunchCreate,
+    }, personLookupDescriptor);
+    assert.equal(relaunched.state, "applied");
+    if (relaunched.state !== "applied") throw new Error("relaunch refused");
+    assert.equal(relaunched.run.envelope.retryOf, undefined);
+    assert.equal(relaunched.run.envelope.itemId, source.envelope.itemId);
+    assert.deepEqual(database.authority.archiveRelaunches.listByArchivedRun(source.envelope.runId), [{
+      archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
+      runId: relaunched.run.envelope.runId,
+      archivedRunId: source.envelope.runId,
+      relaunchedIdentity: {
+        workflowId: personLookupDescriptor.id,
+        descriptorVersion: personLookupDescriptor.version,
+        contractFingerprint: personLookupDescriptor.contractFingerprint,
+      },
+      relaunchedBy: "local-operator",
+      relaunchedAt: NOW,
+    }]);
+
+    const wrongDeleteGeneration = database.getMeta().authorityGeneration;
+    assert.deepEqual(service.deleteArchived({
+      commandId: "81000000-0000-4000-8000-000000000007",
+      runId: source.envelope.runId,
+      contentDigest: HASH_A,
+    }), { state: "refused", refusal: { reason: "schema-mismatch", digest: HASH_A } });
+    assert.equal(database.getMeta().authorityGeneration, wrongDeleteGeneration);
+    const deleteRequest = {
+      commandId: "81000000-0000-4000-8000-000000000008",
+      runId: source.envelope.runId,
+      contentDigest: archived.archive.contentDigest,
+    };
+    assert.equal(service.deleteArchived(deleteRequest).state, "deleted");
+    assert.equal(service.read(source.envelope.runId).state, "deleted");
+    assert.equal(service.deleteArchived(deleteRequest).state, "applied-already");
+    assert.deepEqual(service.deleteArchived({
+      ...deleteRequest,
+      commandId: "81000000-0000-4000-8000-000000000011",
+    }), { state: "refused", refusal: { reason: "tombstoned" } });
+    assert.equal(database.authority.archiveRelaunches.listByArchivedRun(source.envelope.runId).length, 1);
+
+    const relaunchedTerminal = service.transition({
+      commandId: "81000000-0000-4000-8000-000000000009",
+      runId: relaunched.run.envelope.runId,
+      expectedVersion: relaunched.run.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    assert.equal(relaunchedTerminal.state, "applied");
+    if (relaunchedTerminal.state !== "applied") throw new Error("relaunch settle refused");
+    assert.equal(service.delete({
+      commandId: "81000000-0000-4000-8000-000000000010",
+      runId: relaunched.run.envelope.runId,
+      expectedVersion: relaunchedTerminal.run.version,
+    }).state, "deleted");
+    const replayedRelaunch = service.relaunch({
+      commandId: "81000000-0000-4000-8000-000000000006",
+      archivedRunId: source.envelope.runId,
+      contentDigest: archived.archive.contentDigest,
+      relaunchedBy: "local-operator",
+      create: relaunchCreate,
+    }, personLookupDescriptor);
+    assert.equal(replayedRelaunch.state, "applied-already");
+    assert.ok("tombstone" in replayedRelaunch);
+    if (!("tombstone" in replayedRelaunch)) throw new Error("relaunch replay lost the deleted target tombstone");
+    assert.equal(replayedRelaunch.tombstone.runId, relaunched.run.envelope.runId);
+    assert.equal(replayedRelaunch.appliedVersion, relaunched.run.version);
+    assert.deepEqual(database.authority.archiveRelaunches.listByArchivedRun(source.envelope.runId), []);
+    assert.deepEqual(service.read("81000000-0000-4000-8000-000000000099"), {
+      state: "absent",
+      runId: "81000000-0000-4000-8000-000000000099",
+    });
+  });
+
+  it("#20 returns every closed existence arm", () => {
+    const { service, request, database } = fixture();
+    const live = created(service, request);
+    const archiveSource = created(service, {
+      ...request,
+      commandId: "88000000-0000-4000-8000-000000000001",
+      matchKey: "existence-archived",
+    });
+    const archiveTerminal = service.transition({
+      commandId: "88000000-0000-4000-8000-000000000002",
+      runId: archiveSource.envelope.runId,
+      expectedVersion: archiveSource.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    if (archiveTerminal.state !== "applied") throw new Error("existence archive setup refused");
+    const archived = archiveRun(
+      service,
+      database,
+      archiveTerminal.run,
+      "88000000-0000-4000-8000-000000000003",
+    );
+    const deletedSource = created(service, {
+      ...request,
+      commandId: "88000000-0000-4000-8000-000000000004",
+      matchKey: "existence-deleted",
+    });
+    const deleteTerminal = service.transition({
+      commandId: "88000000-0000-4000-8000-000000000005",
+      runId: deletedSource.envelope.runId,
+      expectedVersion: deletedSource.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    if (deleteTerminal.state !== "applied") throw new Error("existence delete setup refused");
+    const deleted = service.delete({
+      commandId: "88000000-0000-4000-8000-000000000006",
+      runId: deletedSource.envelope.runId,
+      expectedVersion: deleteTerminal.run.version,
+    });
+    if (deleted.state !== "deleted" || !("tombstones" in deleted)) throw new Error("existence delete refused");
+    const tombstone = deleted.tombstones[0];
+    assert.ok(tombstone !== undefined);
+
+    assert.deepEqual(service.read("88000000-0000-4000-8000-000000000099"), {
+      state: "absent",
+      runId: "88000000-0000-4000-8000-000000000099",
+    });
+    assert.deepEqual(service.read(live.envelope.runId), { state: "present", disposition: "live", run: live });
+    assert.deepEqual(service.read(archiveSource.envelope.runId), {
+      state: "present",
+      disposition: "archived",
+      run: archived.run,
+    });
+    assert.deepEqual(service.read(deletedSource.envelope.runId), { state: "deleted", tombstone });
+  });
+
+  it("#17 refuses a non-terminal root without writing a tombstone", () => {
+    const { service, request, database } = fixture();
+    const run = created(service, request);
+    const before = database.getMeta().authorityGeneration;
+    assert.deepEqual(service.delete({
+      commandId: "89000000-0000-4000-8000-000000000001",
+      runId: run.envelope.runId,
+      expectedVersion: run.version,
+    }), { state: "refused", refusal: { reason: "not-terminal" } });
+    assert.equal(database.authority.deletedRuns.get(run.envelope.runId), undefined);
+    assert.deepEqual(service.read(run.envelope.runId), { state: "present", disposition: "live", run });
+    assert.equal(database.getMeta().authorityGeneration, before);
+  });
+
+  it("#15/#17/#26 delete writes each tombstone first, removes leaves first, and settles each tally once", () => {
+    const deleteSteps: { runId: string; step: string }[] = [];
+    const { service, request, database } = fixture(undefined, {
+      afterDeleteStep: (event) => deleteSteps.push(event),
+    });
+    const anchor = created(service, { ...request, shape: "operation" });
+    const terminalAnchor = service.transition({
+      commandId: "90000000-0000-4000-8000-000000000003",
+      runId: anchor.envelope.runId,
+      expectedVersion: anchor.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    assert.equal(terminalAnchor.state, "applied");
+    if (terminalAnchor.state !== "applied") throw new Error("anchor settle refused");
+    const members = [1, 2].map((n) => created(service, { ...request,
+      commandId: `90000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+      matchKey: `synthetic-member-${String(n)}`, shape: "operation-member",
+      parent: { runId: anchor.envelope.runId, tracePrefix: anchor.envelope.traceId, edgeId: "members" },
+    }));
+    const before = database.getMeta().authorityGeneration;
+    assert.deepEqual(service.delete({ commandId: "90000000-0000-4000-8000-000000000004",
+      runId: anchor.envelope.runId, expectedVersion: terminalAnchor.run.version }),
+    { state: "refused", refusal: { reason: "tree-non-terminal", runId: members[0].envelope.runId } });
+    assert.equal(database.getMeta().authorityGeneration, before);
+    for (const [index, member] of members.entries()) {
+      service.transition({ commandId: `a0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        runId: member.envelope.runId, expectedVersion: 1,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+      assert.deepEqual(service.delete({ commandId: `b0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        runId: member.envelope.runId, expectedVersion: 2 }),
+      { state: "refused", refusal: { reason: "is-member" } });
+    }
+    const beforeDelete = database.getMeta().authorityGeneration;
+    const outcome = service.delete({ commandId: "90000000-0000-4000-8000-000000000005",
+      runId: anchor.envelope.runId, expectedVersion: terminalAnchor.run.version });
+    assert.equal(outcome.state, "deleted");
+    if (outcome.state !== "deleted" || !("tombstones" in outcome)) throw new Error("tree delete refused");
+    assert.deepEqual(outcome.tombstones.map((entry) => entry.runId),
+      [...members.map((member) => member.envelope.runId), anchor.envelope.runId]);
+    assert.deepEqual(deleteSteps, [...members, anchor].flatMap((run) => [
+      { runId: run.envelope.runId, step: "tombstone" },
+      { runId: run.envelope.runId, step: "cascade-complete" },
+      { runId: run.envelope.runId, step: "tally-settled" },
+    ]));
+    for (const tombstone of outcome.tombstones) {
+      assert.deepEqual(database.authority.deletedRuns.get(tombstone.runId), tombstone);
+      assert.deepEqual(tombstone.removed, [{ table: "tasks", rows: 1 }]);
+    }
+    assert.equal(database.getMeta().authorityGeneration, beforeDelete + 1);
+    for (const run of [...members, anchor]) assert.equal(service.read(run.envelope.runId).state, "deleted");
+  });
+
+  it("#23 runs a multi-member group through cancel-tree and leaves-first deletion", () => {
+    const writes: RunRecord[] = [];
+    const { service, request } = fixture(undefined, {
+      afterRunWrite: (run) => writes.push(run),
+    });
+    const anchor = created(service, { ...request, shape: "operation" });
+    const members = [1, 2].map((index) => created(service, {
+      ...request,
+      commandId: `87000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      matchKey: `group-member-${String(index)}`,
+      shape: "operation-member",
+      parent: {
+        runId: anchor.envelope.runId,
+        tracePrefix: anchor.envelope.traceId,
+        edgeId: `member-${String(index)}`,
+      },
+    }));
+    writes.length = 0;
+    const cancelled = service.transition({
+      commandId: "87000000-0000-4000-8000-000000000003",
+      runId: anchor.envelope.runId,
+      expectedVersion: anchor.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    assert.equal(cancelled.state, "applied");
+    if (cancelled.state !== "applied") throw new Error("group cancel refused");
+    assert.deepEqual(writes.map(({ envelope }) => envelope.runId), [
+      ...members.map(({ envelope }) => envelope.runId),
+      anchor.envelope.runId,
+    ]);
+    assert.equal(cancelled.run.lifecycle.state, "terminal");
+    for (const member of members) {
+      const existence = service.read(member.envelope.runId);
+      assert.equal(existence.state, "present");
+      if (existence.state !== "present") throw new Error("group member disappeared");
+      assert.equal(existence.run.lifecycle.state, "terminal");
+      assert.deepEqual(service.delete({
+        commandId: `87000000-0000-4000-8000-${String(member.envelope.attempt + 20).padStart(12, "0")}`,
+        runId: member.envelope.runId,
+        expectedVersion: existence.run.version,
+      }), { state: "refused", refusal: { reason: "is-member" } });
+    }
+    const deleted = service.delete({
+      commandId: "87000000-0000-4000-8000-000000000099",
+      runId: anchor.envelope.runId,
+      expectedVersion: cancelled.run.version,
+    });
+    assert.equal(deleted.state, "deleted");
+    if (deleted.state !== "deleted" || !("tombstones" in deleted)) throw new Error("group delete refused");
+    assert.deepEqual(deleted.tombstones.map(({ runId }) => runId), [
+      ...members.map(({ envelope }) => envelope.runId),
+      anchor.envelope.runId,
+    ]);
+  });
+
+  for (const kind of ["create", "claim"] as const) {
+    it(`${kind === "create" ? "#1" : "#4"} ${kind} serializes independent connections across a held reservation`, async () => {
+      const { root, request, service, runtimeConfig } = fixture();
+      if (kind === "claim") created(service, request);
+      const releases = [new SharedArrayBuffer(4), new SharedArrayBuffer(4)];
+      const connections = releases.map((release, index) => raceConnection({
+        path: join(root, "authority.sqlite"), now: NOW, release,
+        runId: `c0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        operation: kind === "create" ? { kind, request: { ...request,
+          commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        } } : { kind, request: { runtimeConfig, workflow: WORKFLOW_ID,
+          workerId: `race-worker-${String(index)}`,
+          commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        } },
+      }));
+      try {
+        const [first, second] = connections;
+        assert.deepEqual(await first.next(), { type: "ready" });
+        assert.deepEqual(await second.next(), { type: "ready" });
+        first.worker.postMessage("run");
+        assert.deepEqual(await first.next(), { type: "reserved" });
+        second.worker.postMessage("run");
+        const blocked = await second.next();
+        assert.equal(blocked.type, "error", "second connection crossed the reservation before first commit");
+        if (blocked.type !== "error") throw new Error("second connection did not block");
+        assert.match(blocked.message, /database is locked/);
+        Atomics.store(new Int32Array(releases[0]), 0, 1);
+        Atomics.notify(new Int32Array(releases[0]), 0);
+        const firstResult = await first.next();
+        assert.equal(firstResult.type, "result");
+        if (firstResult.type !== "result") throw new Error("first connection did not finish");
+        assert.equal(firstResult.outcome.state, "applied");
+        Atomics.store(new Int32Array(releases[1]), 0, 1);
+        second.worker.postMessage("run");
+        if (kind === "create") assert.deepEqual(await second.next(), { type: "reserved" });
+        const secondResult = await second.next();
+        assert.equal(secondResult.type, "result");
+        if (secondResult.type !== "result") throw new Error("second connection did not finish");
+        if (kind === "claim") {
+          assert.deepEqual(secondResult.outcome, { state: "refused", refusal: { reason: "none-eligible" } });
+        } else {
+          assert.equal(secondResult.outcome.state, "applied");
+          assert.deepEqual([firstResult.outcome.run.envelope.attempt, secondResult.outcome.run.envelope.attempt], [1, 2]);
+          assert.deepEqual([firstResult.outcome.run.runNumber, secondResult.outcome.run.runNumber], [1, 2]);
+        }
+      } finally {
+        await Promise.all(connections.map(({ worker }) => worker.terminate()));
+      }
+    });
+  }
+
+  it("#22 removes only the deleted run's gate records and tallies them", () => {
+    const { service, request, database } = fixture();
+    const source = created(service, request);
+    const peer = created(service, { ...request, commandId: UUID_5, matchKey: "synthetic-peer" });
+    const sourceGate = { ...GATE_RESULT, runId: source.envelope.runId };
+    const peerGate = { ...GATE_RESULT, runId: peer.envelope.runId };
+    database.authority.gateResults.insert(sourceGate);
+    database.authority.gateResults.insert(peerGate);
+    service.transition({ commandId: "e0000000-0000-4000-8000-000000000001",
+      runId: source.envelope.runId, expectedVersion: 1,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+    const deleted = service.delete({ commandId: "e0000000-0000-4000-8000-000000000002",
+      runId: source.envelope.runId, expectedVersion: 2 });
+    assert.equal(deleted.state, "deleted");
+    assert.deepEqual(database.authority.gateResults.listByRun(source.envelope.runId), []);
+    assert.deepEqual(database.authority.gateResults.listByRun(peer.envelope.runId), [peerGate]);
+    assert.deepEqual(database.authority.deletedRuns.get(source.envelope.runId)?.removed
+      .filter((entry) => entry.table === "checkpoint_payloads"), [{ table: "checkpoint_payloads", rows: 1 }]);
+    assert.equal(service.transition({
+      commandId: "e0000000-0000-4000-8000-000000000003",
+      runId: source.envelope.runId,
+      expectedVersion: 2,
+      lifecycle: { state: "queued" },
+    }).state, "deleted", "a tombstoned gate target cannot re-enter the lifecycle");
+    assert.deepEqual(database.authority.gateResults.listByRun(source.envelope.runId), []);
+  });
+
+  it("#2 refuses a minted id already held by a tombstone without touching authority", () => {
+    const { service, request, database, clock } = fixture();
+    const run = created(service, request);
+    service.transition({ commandId: UUID_5, runId: run.envelope.runId, expectedVersion: 1,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+    service.delete({ commandId: "f0000000-0000-4000-8000-000000000001",
+      runId: run.envelope.runId, expectedVersion: 2 });
+    const collision = new RunRecordService({ database, clock, ids: { uuid: () => run.envelope.runId },
+      publishQueued: () => assert.fail("tombstoned id must never publish a new queue root") });
+    const before = database.getMeta().authorityGeneration;
+    assert.deepEqual(collision.create({ ...request, commandId: "f0000000-0000-4000-8000-000000000002" }),
+      { state: "refused", refusal: { reason: "tombstoned" } });
+    assert.equal(database.getMeta().authorityGeneration, before);
+    assert.equal(service.read(run.envelope.runId).state, "deleted");
+  });
+
+  it("#25 reads historical NULL ordinals without inventing a spent value", () => {
+    const { service, request, database, root } = fixture();
+    // Reproduce the old cascade's retained shape, with no recovered span-root
+    // ordinals. The run originates in the service; all protective triggers stay.
+    const run = created(service, request);
+    service.transition({ commandId: UUID_5, runId: run.envelope.runId, expectedVersion: 1,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+    const historical = {
+      runId: run.envelope.runId, workflow: WORKFLOW_ID, traceId: run.envelope.traceId,
+      origin: "queue", commandId: UUID_1, deletedAt: NOW, removed: [{ table: "tasks", rows: 1 }],
+    };
+    const raw = new DatabaseSync(join(root, "authority.sqlite"));
+    try {
+      raw.prepare(`INSERT INTO deleted_runs
+        (record_key, workflow, trace_id, origin, command_id, deleted_at, record_json, created_at,
+         item_id, attempt, run_number, ordinal_source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 'unknown')`)
+        .run(historical.runId, WORKFLOW_ID, historical.traceId, "queue", UUID_1, NOW, JSON.stringify(historical), NOW);
+      raw.prepare("DELETE FROM tasks WHERE record_key = ?").run(historical.runId);
+    } finally { raw.close(); }
+    const before = database.getMeta().authorityGeneration;
+    const answer = service.read(historical.runId);
+    assert.equal(answer.state, "deleted");
+    if (answer.state !== "deleted") throw new Error("historical tombstone did not read forward");
+    assert.equal(answer.tombstone.attempt, null);
+    assert.equal(answer.tombstone.runNumber, null);
+    assert.equal(answer.tombstone.itemId, null);
+    assert.equal(answer.tombstone.ordinalSource, "unknown");
+    assert.equal(database.getMeta().authorityGeneration, before);
+    const next = created(service, { ...request, commandId: "f0000000-0000-4000-8000-000000000003" });
+    assert.equal(next.envelope.attempt, 1);
+    assert.equal(next.runNumber, 1);
+    assert.deepEqual(service.read(historical.runId), answer);
+  });
+
+  it("#17 session membership alone permits deletion and preserves the session", () => {
+    const { service, request, database } = fixture();
+    database.authority.runSessions.insert(RUN_SESSION);
+    const run = created(service, { ...request, sessionId: RUN_SESSION_ID });
+    service.transition({ commandId: UUID_5, runId: run.envelope.runId, expectedVersion: 1,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+    const session = database.authority.runSessions.get(RUN_SESSION_ID);
+    const deleted = service.delete({ commandId: "90000000-0000-4000-8000-000000000001",
+      runId: run.envelope.runId, expectedVersion: 2 });
+    assert.equal(deleted.state, "deleted");
+    assert.equal(service.read(run.envelope.runId).state, "deleted");
+    assert.deepEqual(database.authority.runSessions.get(RUN_SESSION_ID), session);
+  });
+
+  it("#21 answers absent for a span-only root while the doctor emits a missing finding", async () => {
+    const { service, request, root, clock } = fixture();
+    const runId = UUID_5;
+    const traceId = "pl-120021-0000";
+    const authorityPath = join(root, "authority.sqlite");
+    const countTasks = () => {
+      const sqlite = new DatabaseSync(authorityPath, { readOnly: true });
+      try {
+        return (sqlite.prepare("SELECT count(*) AS count FROM tasks").get() as { count: number }).count;
+      } finally {
+        sqlite.close();
+      }
+    };
+    assert.equal(countTasks(), 0);
+    assert.deepEqual(service.read(runId), { state: "absent", runId });
+    createSpanJsonlWriter({ stateRoot: root, clock, pid: 4242 }).emit({
+      t: "run.queued", kind: "run", ts: NOW,
+      workflow: request.workflow, runId, attempt: 1, traceId, spanPath: traceId,
+      itemId: UUID_6, shape: request.shape, priority: request.priority, dryRun: request.dryRun,
+      actorId: "local-operator", title: "Redacted span-only run",
+      descriptorVersion: request.descriptorVersion,
+      contractFingerprint: request.contractFingerprint,
+      resolvedInstance: request.resolvedInstance,
+      configFingerprint: request.configFingerprint,
+      configSnapshotId: request.configSnapshotId,
+    });
+    const doctor = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: join(root, "backups"),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 250,
+    }, clock);
+    assert.equal(doctor.spanAuthority.state, "degraded");
+    if (doctor.spanAuthority.state !== "degraded") throw new Error("span-only root must degrade storage health");
+    assert.deepEqual(doctor.spanAuthority.problems, [{ state: "missing", runId }]);
+    assert.equal(countTasks(), 0);
+  });
+
+  it("D330.10 table-class coverage drives every public service method and its generation class", () => {
+    const { service, request, runtimeConfig, database } = fixture();
+    const covered = new Set<string>();
+    let commandSequence = 100;
+    const commandId = () => `99000000-0000-4000-8000-${String(commandSequence++).padStart(12, "0")}`;
+    const measure = <T,>(method: string, delta: 0 | 1, call: () => T): T => {
+      const before = database.getMeta().authorityGeneration;
+      const result = call();
+      assert.equal(database.getMeta().authorityGeneration, before + delta, method);
+      covered.add(method);
+      return result;
+    };
+
+    const sourceResult = measure("create", 1, () => service.create({
+      ...request,
+      commandId: commandId(),
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+    }));
+    if (sourceResult.state !== "applied") throw new Error("coverage create refused");
+    const source = sourceResult.run;
+    measure("read", 0, () => service.read(source.envelope.runId));
+    measure("list", 0, () => service.list({ disposition: "live", limit: 10 }));
+    const terminal = measure("transition", 1, () => service.transition({
+      commandId: commandId(), runId: source.envelope.runId, expectedVersion: source.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    }));
+    if (terminal.state !== "applied") throw new Error("coverage transition refused");
+    const retry = measure("retry", 1, () => service.retry({
+      commandId: commandId(), runId: source.envelope.runId,
+      expectedVersion: terminal.run.version, runtimeConfig,
+    }, personLookupDescriptor));
+    if (retry.state !== "applied") throw new Error("coverage retry refused");
+    const settledRetry = service.transition({
+      commandId: commandId(), runId: retry.run.envelope.runId, expectedVersion: retry.run.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    if (settledRetry.state !== "applied") throw new Error("coverage retry setup refused");
+    const restart = measure("restart", 1, () => service.restart({
+      commandId: commandId(), runId: source.envelope.runId,
+      expectedVersion: terminal.run.version, runtimeConfig,
+    }, personLookupDescriptor));
+    if (restart.state !== "applied") throw new Error("coverage restart refused");
+    const settledRestart = service.transition({
+      commandId: commandId(), runId: restart.run.envelope.runId, expectedVersion: restart.run.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    if (settledRestart.state !== "applied") throw new Error("coverage restart setup refused");
+
+    database.authority.versionPlans.insert(VERSION_PLAN_ROW);
+    database.authority.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({
+      ...VERSION_BUMP_APPLICATION,
+      archivedRunIds: [source.envelope.runId],
+    }));
+    const archive = archivedRecord(terminal.run);
+    const archived = measure("archive", 1, () => service.archive({
+      commandId: commandId(), expectedVersion: terminal.run.version, archive,
+    }));
+    if (archived.state !== "applied") throw new Error("coverage archive refused");
+    const { commandId: _ignored, ...relaunchCreate } = {
+      ...request,
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+    };
+    const relaunched = measure("relaunch", 1, () => service.relaunch({
+      commandId: commandId(), archivedRunId: source.envelope.runId,
+      contentDigest: archive.contentDigest, relaunchedBy: "local-operator",
+      create: relaunchCreate,
+    }, personLookupDescriptor));
+    if (relaunched.state !== "applied") throw new Error("coverage relaunch refused");
+    const settledRelaunch = service.transition({
+      commandId: commandId(), runId: relaunched.run.envelope.runId,
+      expectedVersion: relaunched.run.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    if (settledRelaunch.state !== "applied") throw new Error("coverage delete setup refused");
+    const deletedArchive = measure("deleteArchived", 1, () => service.deleteArchived({
+      commandId: commandId(), runId: source.envelope.runId, contentDigest: archive.contentDigest,
+    }));
+    assert.equal(deletedArchive.state, "deleted");
+
+    const workerRun = created(service, {
+      ...request,
+      commandId: commandId(),
+      matchKey: "coverage-worker",
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+    });
+    const claim = measure("claimNext", 1, () => service.claimNext({
+      commandId: commandId(), workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig,
+    }));
+    if (claim.state !== "applied" || claim.run.envelope.runId !== workerRun.envelope.runId) {
+      throw new Error("coverage claim refused or selected the wrong run");
+    }
+    const renewed = measure("renewClaim", 1, () => service.renewClaim({
+      commandId: commandId(), runId: workerRun.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: claim.run.claimGeneration },
+    }));
+    if (renewed.state !== "applied") throw new Error("coverage renew refused");
+    const validating = measure("workerTransition", 1, () => service.workerTransition({
+      commandId: commandId(), runId: workerRun.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: claim.run.claimGeneration },
+      lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
+    }));
+    if (validating.state !== "applied") throw new Error("coverage worker transition refused");
+    const running = service.workerTransition({
+      commandId: commandId(), runId: workerRun.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: claim.run.claimGeneration },
+      lifecycle: {
+        state: "running", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW,
+        currentNodeId: "crm-dates",
+      },
+    });
+    if (running.state !== "applied") throw new Error("coverage running transition refused");
+    const terminalized = measure("terminalize", 1, () => service.terminalize(
+      failureTerminalRequest(running.run, commandId()),
+      personLookupDescriptor,
+    ));
+    if (terminalized.state !== "applied") throw new Error("coverage terminalize refused");
+
+    const recoverable = created(service, { ...request, commandId: commandId(), matchKey: "coverage-requeue" });
+    const recoveryClaim = service.claimNext({
+      commandId: commandId(), workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig,
+    });
+    if (recoveryClaim.state !== "applied" || recoveryClaim.run.envelope.runId !== recoverable.envelope.runId) {
+      throw new Error("coverage recovery claim refused or selected the wrong run");
+    }
+    const requeued = measure("requeue", 1, () => service.requeue({
+      commandId: commandId(), runId: recoverable.envelope.runId,
+      expectedVersion: recoveryClaim.run.version,
+      claim: { workerId: WORKER_ID, claimGeneration: recoveryClaim.run.claimGeneration },
+      cause: "recovery",
+    }));
+    if (requeued.state !== "applied") throw new Error("coverage requeue refused");
+
+    const deleted = measure("delete", 1, () => service.delete({
+      commandId: commandId(), runId: relaunched.run.envelope.runId,
+      expectedVersion: settledRelaunch.run.version,
+    }));
+    assert.equal(deleted.state, "deleted");
+    const purged = measure("purge", 1, () => service.purge({
+      commandId: commandId(), evidenceClass: "diagnostic-bundle", bundleId: UUID_6,
+    }));
+    assert.deepEqual(purged, { state: "purged", evidenceClass: "diagnostic-bundle", purged: 0 });
+
+    const sourceText = readFileSync(join(process.cwd(), "src/core/run-record-service.ts"), "utf8");
+    const sourceFile = ts.createSourceFile("run-record-service.ts", sourceText, ts.ScriptTarget.Latest, true);
+    const serviceClass = sourceFile.statements.find((statement): statement is ts.ClassDeclaration =>
+      ts.isClassDeclaration(statement) && statement.name?.text === "RunRecordService");
+    assert.ok(serviceClass !== undefined);
+    const publicMethods = serviceClass.members
+      .filter((member): member is ts.MethodDeclaration => ts.isMethodDeclaration(member)
+        && !member.modifiers?.some(({ kind }) => kind === ts.SyntaxKind.PrivateKeyword))
+      .map((method) => {
+        assert.ok(ts.isIdentifier(method.name), "service public method names remain static identifiers");
+        return method.name.text;
+      })
+      .sort();
+    assert.deepEqual([...covered].sort(), publicMethods);
+  });
+
+});

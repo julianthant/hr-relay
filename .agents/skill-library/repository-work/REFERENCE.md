@@ -305,8 +305,10 @@ environment-supplied.
 ## Authorized orchestration
 
 For roadmap work read [roadmap §Plan, implement, review](../../../docs/roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04).
-The operator opens the three sessions. Skills use the exact phase task and approved plan commit;
-implementation remains awaiting review until the independent verdict and required gates pass.
+The operator opens planning and supervisor sessions. Skills use the exact phase task and approved
+plan commit. The supervisor dispatches a fresh read-only analyst using /review with no implementation
+history, waits for its verdict, fixes/re-reviews and finalizes in the same session. Completion remains
+open until independent review, required gates, integration and cleanup pass.
 
 Before authorized worker dispatch, read the active platform's
 `~/.agents/skill-library/parallel-agent-work/REFERENCE.md` (Codex) or
@@ -316,13 +318,20 @@ Before authorized worker dispatch, read the active platform's
 work only. The Astra/Fable supervisor retains the hardest seam and consequential judgment.
 Validate native role definitions before dispatch; never substitute generic roles or model overrides.
 
+Sequential implementation uses a dedicated non-`master` branch in an exclusively available checkout;
+shared, dirty, uncertain or integration-only checkouts require an owned worktree instead. Preserve
+stricter phase isolation. Verify branch/path/base before edits and record a merge condition for both
+sequential and parallel work. Never switch another session's checkout or stash/reset its changes.
+
 Each parallel writer has an isolated worktree/branch and non-overlapping scope/artifacts. Record
 its exact returned id, base, branch, absolute worktree, gate and integration order. Verify its diff,
 ancestry and gate evidence before integrating under the repository's merge policy. After required
 integration gates pass, remove only its owned worktree and integrated local branch and verify both
 registration and physical cleanup. Nested agents have no sidebar task; any separately assigned task
 is associated by exact recorded id, never title or recency. Preserve unrelated sessions and record
-cleanup failures as residue. No coordinator runtime, UUID, board or progress footer is required.
+cleanup failures as residue. No coordinator runtime, UUID or board is required. After every verified
+task/step completion, the supervisor sends Done / Now / Remaining in chat before its next tool call;
+name the current action and all unfinished items, including review, integration and cleanup.
 
 ## Fail loud — no unverified silent fallbacks
 
