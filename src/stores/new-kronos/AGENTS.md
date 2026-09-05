@@ -24,6 +24,6 @@ another. Do not split one inseparable visit into tasks that assume an unproven b
 
 Before driver changes, read the relevant `driver/` source and search [LESSONS.md](LESSONS.md),
 including its Live map and Provenance sections. Those dated measurements are evidence, not current
-availability or timing guarantees. Read `docs/migrations/separations.md` §4b for workflow behavior;
+availability or timing guarantees. Read `docs/rebuild/migrations/separations.md` §4b for workflow behavior;
 use `docs/rebuild/reference/stores.md` and source contracts for the current task/output inventory.
 Requested lessons go in the ledger. Keep this file and `CLAUDE.md` identical; root rules apply.

@@ -570,8 +570,8 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
         `docs/rebuild/${number}-*.md must be scanned`,
       ).toHaveLength(1);
     }
-    expect(audit.scannedDocs.some((path) => path.startsWith("docs/migrations/"))).toBe(true);
-    expect(audit.scannedDocs.filter((path) => /\/(?:history|reviews)\//.test(path))).toEqual([]);
+    expect(audit.scannedDocs.some((path) => path.startsWith("docs/rebuild/migrations/"))).toBe(true);
+    expect(audit.scannedDocs.filter((path) => /\/(?:history|reviews|findings|guides)\//.test(path))).toEqual([]);
     expect(audit.nodeIds.length, "the plan must declare nodes").toBeGreaterThan(0);
     expect(audit.tags.length, "the docs must carry tags").toBeGreaterThan(0);
     expect(audit.statuses.length, "the docs must carry status blocks").toBeGreaterThan(0);
@@ -606,10 +606,25 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     expect(clean.docRefCount).toBe(4);
     expect(clean.tags.length).toBeGreaterThanOrEqual(4);
     expect(clean.statuses).toHaveLength(1);
-    // The mini tree carries a dangling tag under BOTH superseded folder names;
-    // neither may be read, or the guard would bind a node to what a doc used to say.
-    expect(clean.scannedDocs.some((path) => path.includes("/history/") || path.includes("/reviews/"))).toBe(false);
-    expect(clean.scannedDocs.some((path) => path.startsWith("docs/migrations/"))).toBe(true);
+    // Non-binding folders carry dangling tags. Reading them would promote
+    // historical text, findings, or guide examples into the plan's authority.
+    expect(clean.scannedDocs.some((path) => /\/(?:history|reviews|findings|guides)\//.test(path))).toBe(false);
+    expect(clean.scannedDocs.some((path) => path.startsWith("docs/rebuild/migrations/"))).toBe(true);
+  });
+
+  it("binds a nested migration once without importing findings or guide tags", async () => {
+    const fixtureRoot = join(REPO_ROOT, FIXTURE_ROOT, "clean");
+    const bindings = await scanDocs(fixtureRoot);
+    const migrationPath = "docs/rebuild/migrations/fixture-workflow.md";
+    expect(bindings.tags.filter((tag) => tag.doc === migrationPath)).toEqual([
+      { id: "fx-task", doc: migrationPath, heading: { text: "What the migration did" }, line: 7 },
+    ]);
+    expect([...bindings.tags, ...bindings.statuses].filter(
+      (entry) => /\/(?:history|reviews|findings|guides)\//.test(entry.doc),
+    )).toEqual([]);
+    const clean = auditFixture("clean");
+    expect(sortBindings(bindings.tags)).toEqual(sortBindings(clean.tags));
+    expect(sortBindings(bindings.statuses)).toEqual(sortBindings(clean.statuses));
   });
 
   it("refuses a doc: ref that names no phase doc", () => {

@@ -1999,7 +1999,7 @@ status and retired mechanisms. Operational details are in
   restart, and a root restart reruns reads/computes but never re-executes a completed transaction
   (D314). D265 folders stay organization/audit structure, not semantic timeline order; T1 stays per
   workflow and T2/T3 is added only for a genuinely new dashboard capability; "recipe" is analogy
-  only. See docs/guides/workflow-authoring.md (practical), ref workflow-model §§1.6, 5.6 and 5.8
+  only. See docs/rebuild/guides/workflow-authoring.md (practical), ref workflow-model §§1.6, 5.6 and 5.8
   (normative), doc 03.2 `{#workflow-authoring-model}` (routing).
 - **2026-08-25 — dashboard session joins stay authority-shaped (P4; the grouped list is retired by
   D305, the per-card join stays).** Join a worker only by exact `currentRun.runId`, and retain an

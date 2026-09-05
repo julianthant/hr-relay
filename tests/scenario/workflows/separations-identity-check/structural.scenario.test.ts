@@ -1,6 +1,6 @@
 /**
  * Executable scenarios for `separations-identity-check` — separations chunk 3
- * (`docs/migrations/separations.md` §3), the UCPath identity passage and ref write-safety
+ * (`docs/rebuild/migrations/separations.md` §3), the UCPath identity passage and ref write-safety
  * §14's supplied-EID machine authority and name-only operator gate.
  *
  * The corpus covers every identity scenario the behaviour review names

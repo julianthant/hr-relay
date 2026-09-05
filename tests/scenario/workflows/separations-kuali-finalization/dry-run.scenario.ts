@@ -7,7 +7,7 @@
  * browser and reaches live UCPath and live Kuali. It is executed by
  * `npm run cli -- dry-run-scenario separations-kuali-finalization --subject <label>`,
  * once per case, and each run writes a `dry_run_scenario_results` row plus a
- * dated line in `docs/migrations/separations.md` — the line a `PROOF` tick on
+ * dated line in `docs/rebuild/migrations/separations.md` — the line a `PROOF` tick on
  * the tree cites. Its sibling `structural.scenario.test.ts` is the T1a half and
  * asserts nothing about the world; everything here is a world fact and can only
  * be settled by a live rehearsal.
@@ -156,7 +156,7 @@ const MANIFEST = {
   // D318 — the transaction-bearing graph declares the preview arm explicitly.
   arm: "dry-run-preview",
   transactionNode: TRANSACTION_NODE,
-  recordedBy: "docs/migrations/separations.md §9.22 (the hand-run double-entry this file replaces)",
+  recordedBy: "docs/rebuild/migrations/separations.md §9.22 (the hand-run double-entry this file replaces)",
   cases: [
     {
       caseId: "ordinary",

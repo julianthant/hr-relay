@@ -1837,7 +1837,7 @@ consumer, so the exception cannot spread by precedent.
 **A decision, not a deferral, and there is no code to point at because the tile was never rendered.**
 The demo's fifth headline tile reads `HOURS SAVED ≈ 3.5` with an `estimate` badge; its whole input is
 `MANUAL_MINUTES`, a hand-kept minutes-per-workflow constant compiled into the demo's own wire module.
-`docs/findings/activity.md` recorded it as decide-first with three questions attached — where the
+`docs/rebuild/findings/activity.md` recorded it as decide-first with three questions attached — where the
 minutes live, who may change them and whether changes are versioned, and the wire shape. **The
 operator's answer is that none of those get answered: no operator-entered minutes store is built and
 the report keeps its measured tiles.**
@@ -1853,7 +1853,7 @@ never traced back to the constant it came from. `ActivityWorkflowTotal` therefor
 **What would re-open it:** a REAL minutes source — a measured baseline of the manual process, or a
 durable operator-owned store with an owner, an edit path and versioning so a re-run of an old range
 cannot silently restate history. Until one of those exists there is nothing true to multiply, and the
-tile stays out. The record in `docs/findings/activity.md` closes with this decision rather than being
+tile stays out. The record in `docs/rebuild/findings/activity.md` closes with this decision rather than being
 deleted, so the argument survives the next person who notices the demo has five tiles and the product
 has four.
 
@@ -2133,7 +2133,7 @@ of a surface, something must assert the other** — and a screenshot corpus nobo
 defects rather than catching them.
 
 <!-- roadmap-status: track-c -->
-- [x] the connection proof ran against the REAL composed separations dry run, every UI assertion paired with a direct authority check (`docs/migrations/separations.md` §9.22 items 1–8)
+- [x] the connection proof ran against the REAL composed separations dry run, every UI assertion paired with a direct authority check (`docs/rebuild/migrations/separations.md` §9.22 items 1–8)
 - [x] the five defects it found were fixed the same day — the ticking served clock (D256), the SSE-followed panel (D257), the honest shape hazard, the replayed timeline arm (D259), the unblocked archive (D258)
 - [x] the ONE deliberate re-freeze — every drift mapped to a ratified decision (D226–D261), asserted green
 - [ ] the states the proof could not reach because the harness cannot route to them: Settings and the Session Panel

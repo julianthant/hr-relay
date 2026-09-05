@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "vitest";
 
-const MIGRATION_PATH = resolve(process.cwd(), "docs/migrations/separations.md");
+const MIGRATION_PATH = resolve(process.cwd(), "docs/rebuild/migrations/separations.md");
 const CURRENT_CANARY_HEADING = "### 9.19 The 4537 canary mapping pass";
 const NEXT_HEADING = "\n### ";
 

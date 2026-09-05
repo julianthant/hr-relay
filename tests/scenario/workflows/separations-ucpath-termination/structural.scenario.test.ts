@@ -1,6 +1,6 @@
 /**
  * Executable scenarios for `separations-ucpath-termination` — separations
- * chunk 4 (`docs/migrations/separations.md` §3, §9.7): the UCPath termination
+ * chunk 4 (`docs/rebuild/migrations/separations.md` §3, §9.7): the UCPath termination
  * write and the pending sweep that precedes it.
  *
  * The corpus is split by what each arm falsifies:

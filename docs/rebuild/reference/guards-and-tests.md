@@ -1873,7 +1873,7 @@ guards—one contract change, and the compiler plus ratchets force the rest.
 - [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded — needs `{#parallel-runs}` and `{#duo-lease}` first (§10.8)
 - [ ] BE coverage floor 80/80/80 global, with D91's 50 % global branch gate adopted alongside it (§10.10)
 - [x] BE the FIRST T1 pair in the tree — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the valid proof contracts/helpers of the dismantled annotation workflow (D266; ref workflow-model §1.2.2)
-> 2026-08-20 | docs-cohesion ref guards-and-tests | the spec is written against the code (`vitest.config.ts`, `src/core/run-executor.ts`, `src/core/write-sequencer.ts`, `tests/scenario/**`, `tests/parity/**`, `docs/migrations/separations.md` §9.22); left: the four code units 5.2b–5.2d. Two as-built findings recorded rather than assumed: `TransactionDryRunPreviewSchema`'s `mismatch` subject arm is unreachable, and a real subject's EID is hardcoded across seven tracked files
+> 2026-08-20 | docs-cohesion ref guards-and-tests | the spec is written against the code (`vitest.config.ts`, `src/core/run-executor.ts`, `src/core/write-sequencer.ts`, `tests/scenario/**`, `tests/parity/**`, `docs/rebuild/migrations/separations.md` §9.22); left: the four code units 5.2b–5.2d. Two as-built findings recorded rather than assumed: `TransactionDryRunPreviewSchema`'s `mismatch` subject arm is unreachable, and a real subject's EID is hardcoded across seven tracked files
 > 2026-08-25 | test-tiers | registry, authority row and CLI runner built; the finalization canary now records `blocked`/`not-started` before browser composition because its honest subject is unavailable until 2026-08-28. The T1 PROOF remains open until that manifest records `met`
 > 2026-09-02 | test-suite-rationalization R5a | the T1a structural half is complete for all seven registered workflows: each owns exactly one `workflows/<workflow-id>/structural.scenario.test.ts`, the architecture lane refuses split/flat ownership, and all structural person/document identities are synthetic. The overall T1 item remains open: only `separations` and `separations-kuali-finalization` have T1b manifests, and their sole retained canary is honestly `gone`/blocked rather than `met`.
 
@@ -1997,7 +1997,7 @@ run is a transaction preview or a transaction-free live read.
 
 #### Transaction-preview arm
 
-**What the manifest declares.** This is `docs/migrations/separations.md` §9.22's hand-run
+**What the manifest declares.** This is `docs/rebuild/migrations/separations.md` §9.22's hand-run
 double-entry, as a file — the pass that proved Track C, written down so it can be re-run instead of
 re-typed:
 
@@ -2098,7 +2098,7 @@ registry resolves it.
   workflows can drive is ONE row with two arms — never two entries and never an alias, because an
   alias puts the workflow choice back into a name. **Today the registry holds exactly one subject** —
   `finalization-canary` — with both arms; doc 03.3 Tasks 1–3 own its current admission and
-  `docs/migrations/separations.md` §9.31 tabulates the eight labels that retired into history. This
+  `docs/rebuild/migrations/separations.md` §9.31 tabulates the eight labels that retired into history. This
   is D85 part 3's `TestTargetRegistry`, built.
 - **`pending` — how the registry says "true, and not ready".** An arm may DECLARE the canonical
   leaves a live read cannot supply, each with its reason (the finalization arm's `transactionNumber`
@@ -2119,7 +2119,7 @@ registry resolves it.
   the composed `separations` chain derives them live, so `separations-kuali-finalization`'s own
   resolver can only ever answer `blocked`.
 - **A missing subject reports `blocked: needs <label>`, never `failed`.** This is the load-bearing
-  rule. A canary is a live thing and it decays: `docs/migrations/separations.md` §9.16 records doc
+  rule. A canary is a live thing and it decays: `docs/rebuild/migrations/separations.md` §9.16 records doc
   4524 — the best-mapped Kuali candidate — having its action COMPLETED between two passes, after
   which the read task that made it a candidate could no longer read it, and §9.16 records clearing a
   pending transaction deleting the only witness for another arm. A suite that reports `failed`
@@ -2146,7 +2146,7 @@ registry resolves it.
   measured wall time, and the instant. It is insert-only for the same reason every other evidence
   table is: a result that can be rewritten is not evidence. The row is what makes a green from last
   week citable this week.
-- **a dated line in the workflow's migration record** (`docs/migrations/<workflow>.md`) — one line
+- **a dated line in the workflow's migration record** (`docs/rebuild/migrations/<workflow>.md`) — one line
   per run, naming the date, the subject label, the verdict and the durable row. **This is what the
   tree's `PROOF` tick cites.** A `- [x] PROOF` line on a migration node with no such line behind it
   is an unsupported claim, and the reviewer's question is always the same one: *which recorded run?*
@@ -2415,7 +2415,7 @@ can execute a second time.
    The manifest arm determines transaction preview versus transaction-free read; the command name
    does not authorize `dryRun` on a zero-transaction graph.
    Record the result — the `dry_run_scenario_results` row is automatic; the dated line in
-   `docs/migrations/<workflow>.md` is yours to write, and it is what the tree's `PROOF` tick cites.
+   `docs/rebuild/migrations/<workflow>.md` is yours to write, and it is what the tree's `PROOF` tick cites.
 6. **Which T3 pairs it must add.** One per dashboard surface this workflow is the FIRST to exercise
    in a new way: a gate ceremony if it is the first gated workflow of its shape, a parked-write panel
    if it can park, a member/group view if it fans out, an archive/receipt read if its receipt has an

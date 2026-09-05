@@ -8,7 +8,7 @@
  * browser and reaches live Kuali, live UCPath and live New Kronos. It is
  * executed by `npm run cli -- dry-run-scenario separations --subject <label>`,
  * once per case, and each run writes a `dry_run_scenario_results` row plus a
- * dated line in `docs/migrations/separations.md` — the line a `PROOF` tick on
+ * dated line in `docs/rebuild/migrations/separations.md` — the line a `PROOF` tick on
  * the tree cites. Its sibling `structural.scenario.test.ts` is the T1a half and
  * asserts nothing about the world; everything here is a world fact and can only
  * be settled by a live rehearsal.
@@ -50,7 +50,7 @@
  *   nodes per `descriptorRuntimeNodes`, re-checked 2026-09-02). The earlier
  *   ALWAYS-GATE path was TRANSCRIBED from the 2026-08-27
  *   `dryRun=true` full-chain proof on document 4502 recorded at
- *   `docs/migrations/separations.md` §9.27 addendum 7 — run
+ *   `docs/rebuild/migrations/separations.md` §9.27 addendum 7 — run
  *   `fd415e49-54bb-4ccd-bec4-ad1cba94a4f6`, trace `sp-053429-fd41`, terminal
  *   `done` at the D215 preview terminal stopped at `clear-pending`, and
  *   `write_intents` 0 / `write_attempts` 0 / `durable_outbox` 0 read over the
@@ -210,7 +210,7 @@ const MANIFEST = {
   arm: "dry-run-preview",
   transactionNode: TRANSACTION_NODE,
   recordedBy: "the 2026-09-02 supplied-EID policy correction and current separations graph; "
-    + "docs/migrations/separations.md §9.27 addendum 7 remains the historical dryRun=true subject "
+    + "docs/rebuild/migrations/separations.md §9.27 addendum 7 remains the historical dryRun=true subject "
     + "evidence from doc 4502, while D284's closed doc 4537 reference remains the registered subject",
   cases: [
     {

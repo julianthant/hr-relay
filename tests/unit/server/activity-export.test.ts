@@ -1,7 +1,7 @@
 /**
  * D240 — the Activity report's CSV export.
  *
- * The recorded condition on building it (`docs/findings/activity.md`) was that
+ * The recorded condition on building it (`docs/rebuild/findings/activity.md`) was that
  * an export carrying the numbers without the rules is the lying artifact this
  * surface's design exists to prevent, so the load-bearing assertions here are
  * about what travels WITH the numbers: the named window, every caveat sentence

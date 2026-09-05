@@ -722,7 +722,7 @@ risk register those guards answer.
 - [x] the standing rule's §11 pool row: C12, the W5 two-child parallel proof over the composed kernel pool door, with REAL child processes (`tests/unit/server/worker-pool-parallel-proof.test.ts`)
 > 2026-08-25 | parallel-runs P3 follow-up | `composeWorkerRuntime` now requires a pool index and derives a distinct stable worker id; concurrent process admission is per worker process and duplicate identity reaches the authority lease. `createPhase1WorkerRuntimeExecutor` remains the explicitly one-worker compatibility arm
 > 2026-08-26 | W5 parallel proof | C12 landed: two real spawned worker children prove birth via their own durable leases under their own OS pids, the W3b per-workflow mutex is observed at the door (same workflow serializes, different workflows interleave), locks release at shutdown with close() evidence on the fault sink, and spawn ENOENT / undelivered signal / stop-channel throw each surface typed — never as an applied ack. Measured numbers in this section's 2026-08-26 as-built note
-> 2026-08-26 | C12 live extension (W6) | the same door driven LIVE: two panel-spawned separations workers ran two composed dry runs concurrently against real Kuali/UCPath/New Kronos — simultaneously `running` 19:32:18→19:32:48Z, C11's lease serializing ceremony generations g1…g8 across both workers with one by-name waiter refusal and no counter burn, the identity gate approved through the ceremony and its resume claimed by the OTHER member, 0/0/0 write rows. Evidence: docs/migrations/separations.md §9.27
+> 2026-08-26 | C12 live extension (W6) | the same door driven LIVE: two panel-spawned separations workers ran two composed dry runs concurrently against real Kuali/UCPath/New Kronos — simultaneously `running` 19:32:18→19:32:48Z, C11's lease serializing ceremony generations g1…g8 across both workers with one by-name waiter refusal and no counter burn, the identity gate approved through the ceremony and its resume claimed by the OTHER member, 0/0/0 write rows. Evidence: docs/rebuild/migrations/separations.md §9.27
 <!-- /roadmap-status -->
 
 The table above names *risks*. This one names **cases**, and every row names the exact test that
@@ -1099,12 +1099,12 @@ advances across profiles.
 <!-- roadmap: parallel-runs -->
 
 <!-- roadmap-status: parallel-runs -->
-- [x] BE the worker pool — N workers per workflow, spawned and stopped from the dashboard: the W4 Session Panel controls (`b45431db`) over the W3 supervisor's real `child_process` spawn (`src/server/dashboard/compose.ts`), live-exercised end to end 2026-08-26 (plan 2 → spawn ×2 → D271 replacement spawn ×2 → stop ×2, all from the panel — `docs/migrations/separations.md` §9.27)
+- [x] BE the worker pool — N workers per workflow, spawned and stopped from the dashboard: the W4 Session Panel controls (`b45431db`) over the W3 supervisor's real `child_process` spawn (`src/server/dashboard/compose.ts`), live-exercised end to end 2026-08-26 (plan 2 → spawn ×2 → D271 replacement spawn ×2 → stop ×2, all from the panel — `docs/rebuild/migrations/separations.md` §9.27)
 - [x] BE pool-indexed worker ids: the CLI requires a positive pool index and composition carries `<workflow>-worker-<index>` into the authority lease; distinct indices retain distinct rows and duplicate ownership is refused
 - [x] BE the projection serves a worker-POOL version — `worker_pools` (schema v17) is the CAS basis: `plan-worker-count` and `spawn-worker` target `{workflowId, expectedVersion}` where `expectedVersion` is the POOL row's version (0 for an unplanned workflow), the kernel refuses a stale one with `conflict` naming the current version BEFORE the runtime seam, and the day wire serves `workerPools[]` (`93b7b18e` store · `b4f30ea0` kernel · `24b04dfa` wire — D269)
 - [x] BE a durable session record and its grouping, membership derived from authority — `run_sessions` (schema v17, insert-only, member-less) written by `fanOutQueuedRuns` BEFORE its first member; every run row carries `sessionId` (`tasks.session_id`, read forward) and `runs.listBySession` IS the membership; a retry inherits its session; the queue row serves `session` (`93b7b18e` · `57f2bb9c` · `24b04dfa` — D269)
 - [x] FE the session view — worker cards show authority membership and what each worker is doing; groups exact queue-row session ids, joins the claiming card by exact `runId`, preserves absent reasons and distinguishes declared pool size from non-terminal authority worker cards (`97a55b07`)
-- [x] PROOF two separations dry-run scenarios in parallel, recorded; plus a §7.1 row in the same commit — LIVE 2026-08-26: docs 4502 (preview terminal, gate approved through the ceremony) and 4495 (the genuine S7 refusal) simultaneously `running` 19:32:18.305→19:32:48.009Z on `separations-worker-1`/`-2` under one D269 session, ceremonies serialized g1…g8 with no overlap and no counter burn; the §7.1 row is C12 (W5), whose live extension note cites the same evidence (`docs/migrations/separations.md` §9.27)
+- [x] PROOF two separations dry-run scenarios in parallel, recorded; plus a §7.1 row in the same commit — LIVE 2026-08-26: docs 4502 (preview terminal, gate approved through the ceremony) and 4495 (the genuine S7 refusal) simultaneously `running` 19:32:18.305→19:32:48.009Z on `separations-worker-1`/`-2` under one D269 session, ceremonies serialized g1…g8 with no overlap and no counter burn; the §7.1 row is C12 (W5), whose live extension note cites the same evidence (`docs/rebuild/migrations/separations.md` §9.27)
 - [x] needs §10 first — the pool multiplies the hazard the lease removes (§10 landed, D267)
 > 2026-08-21 | docs-cohesion execution-and-sessions | DESIGNED, NOT BUILT — verified the five kernel command arms exist and validate (src/domain/commands.ts:181), createDashboardWorkerSupervisor refuses spawn BY NAME (src/server/dashboard/compose.ts:322) and createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:379)
 > 2026-08-21 | parallel-runs P12 | the AUTHORITY half is built (D269): schema v17 `worker_pools` + `run_sessions` + `tasks.session_id` (93b7b18e), the pool CAS in the kernel (b4f30ea0), the session written at every fan-out and inherited by retry (57f2bb9c), the day wire's `workerPools[]` block and the row's `session` (24b04dfa); left: the pool PROCESS (spawn + pool-indexed ids, P3), the FE session view (P4), the parallel PROOF
@@ -1116,7 +1116,7 @@ advances across profiles.
 
 **AUTHORITY HALF AS-BUILT (D269, 2026-08-21); POOL-INDEXED IDENTITY AND FE VIEW AS-BUILT
 (P3/P4, 2026-08-25); the dashboard process supervisor AS-BUILT and the parallel PROOF RECORDED
-(W3–W5 + the 2026-08-26 live pass, `docs/migrations/separations.md` §9.27).** This section is the
+(W3–W5 + the 2026-08-26 live pass, `docs/rebuild/migrations/separations.md` §9.27).** This section is the
 owning contract for the tree's `{#parallel-runs}` node and the normative text of D269. Points 1, 4,
 5 and 6 carry the built authority, identity and view; the supervisor and its panel controls carry
 points 2 and 8 as built and live-proved.
@@ -1250,7 +1250,7 @@ and shipping it in the other order would make the first parallel cold start the 
 profile.
 
 _Recorded (2026-08-26):_ the §7.1 row is C12 (W5, real child processes over the composed pool
-door); the live half is `docs/migrations/separations.md` §9.27 — docs 4502 and 4495 concurrently
+door); the live half is `docs/rebuild/migrations/separations.md` §9.27 — docs 4502 and 4495 concurrently
 `running` for 29.7 s on `separations-worker-1`/`-2` under one D269 session, started, gated,
 approved and stopped entirely through the dashboard, with the §10 lease serializing all eight
 ceremony generations and 0/0/0 write rows. §10 first was the RIGHT order, proved the hard way: the

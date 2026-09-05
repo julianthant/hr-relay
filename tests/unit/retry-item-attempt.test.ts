@@ -14,7 +14,7 @@
  * Run `555ba4b4` died that way in 1.89 s retrying `12a5cd3e`, having replayed the
  * whole read chain from the first run's checkpoints — so a separations run that
  * failed at or after `timecard-search` could not be retried at all
- * (`docs/migrations/separations.md` §9.17 item 8).
+ * (`docs/rebuild/migrations/separations.md` §9.17 item 8).
  *
  * This file is that exact shape as a fixture walk — a read → an `always-rerun`
  * node → a node that FAILS on the first run and succeeds on the retry — over the

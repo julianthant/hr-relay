@@ -47,7 +47,7 @@ The "Where" column read `§§1–5, §9–10` until 2026-08-20 and had been wron
 
 Section numbers are load-bearing: 33 tree nodes carry a `ref:dashboard-surfaces §N` ref that the
 `roadmap-doc-binding` guard resolves against a real heading, ~150 code comments cite one, and
-`history/` plus `docs/migrations/separations.md` cite the OLD numbers and are deliberately not
+`history/` plus `docs/rebuild/migrations/separations.md` cite the OLD numbers and are deliberately not
 swept. So the numbering moved as little as it could (cohesion plan §6.2, option B): **§1–§8 keep
 their numbers and their meanings**, and §9 becomes the operator-surface shelf that §10–§13 fold
 into.
@@ -64,7 +64,7 @@ into.
 **Folded into §9 — every row below has landed, and on 2026-08-21 `docs/roadmap/roadmap.md`'s `doc:`
 refs were retargeted to the right-hand column, so the transitional alias headings that used to sit
 at the foot of this doc are DELETED. The numbers in the left column no longer resolve to a heading:
-this table is the permanent record for the `history/`, `docs/migrations/separations.md` and code
+this table is the permanent record for the `history/`, `docs/rebuild/migrations/separations.md` and code
 comments that still cite them.**
 
 | was | is now | unit |
@@ -215,7 +215,7 @@ re-books it. Merged at `a3683bf3`.
 
 Standing from the same receive (summarized in `docs/decisions/dashboard.md` §D281, all recommended, no D-number — run-plan
 matters): intake and the UI catalog adopt `TakeoverFrame` (UF-FU-1 → UI-2 U7); fidelity ledger 1's Region A
-counts are recounted (U8); the G1 finding (`docs/findings/activity.md`) is diagnosed as the one backend unit
+counts are recounted (U8); the G1 finding (`docs/rebuild/findings/activity.md`) is diagnosed as the one backend unit
 inside UI-2 (U9) and Activity's populated body is audited after it (U10); UI-2 started after the former Phase 3b R2 closed.
 
 ### D282 — finish the dashboard; retain truthful current-only evidence (2026-08-28)
@@ -484,7 +484,7 @@ parse and visible quarantine contract; it is not a runtime boundary.
 only producers that ever existed were test fixtures; and `.tracker-rebuild/spans` — every real run
 this program has ever executed — holds no such line. Every surface fed by the channel therefore
 rendered its empty state permanently, through every green gate, since 1g-spine. The gap was recorded
-in `docs/findings/dashboard-projection.md` on 2026-08-14 (found while building the subject title,
+in `docs/rebuild/findings/dashboard-projection.md` on 2026-08-14 (found while building the subject title,
 which reads a CHECKPOINT for exactly this reason — §1.2 above).
 
 **The ruling is to remove, not to build.** An arm nothing can emit is not "unused", it is
@@ -3393,7 +3393,7 @@ the conversion lands.
    named the two shapes; D261 built the second — `separations` types a document number and DERIVES
    the Kuali action id one node past the ingress parse, off the Action-List row's `href`. The modal
    is unchanged by that; what changed is that a workflow needing two identifiers is now a graph
-   problem rather than a second box. `ref workflow-model` and `docs/migrations/separations.md` own
+   problem rather than a second box. `ref workflow-model` and `docs/rebuild/migrations/separations.md` own
    the derivation; this section owns only the consequence for the box.
 
 **D296 — the launcher has TWO methods, and the second one is the intake's only door
@@ -3650,7 +3650,7 @@ the moment it arrived and a projection serving none of them.
 verb, a route. Every field above is SERVED, and its absence is a union whose reason the operator
 reads, which is a stronger record than a manifest line nobody sees. The facts with no producer at
 all were never added to the schema, so there is no orphan arm to declare either; they are restated
-in `docs/findings/queue-rows.md` with the producer each one waits on.
+in `docs/rebuild/findings/queue-rows.md` with the producer each one waits on.
 
 #### The subject-title seam is a DECLARATION
 
@@ -4663,7 +4663,7 @@ registered descriptor to group by. Both serve no `steps` and the client renders 
 which is the same picture it drew before. The `events` array is **unchanged and still served in
 full** — the categorical strip is a presentation of that history, never a replacement for it.
 
-**Separations' six categories, as approved** (`docs/migrations/separations.md` §9.18): Kuali
+**Separations' six categories, as approved** (`docs/rebuild/migrations/separations.md` §9.18): Kuali
 extraction · Identity check · Job summary · Kronos timecard · UCPath transaction · Kuali
 finalization. Legacy's seventh step, `transaction-check`, folds into *UCPath transaction* rather than
 standing alone, because in this tree the pending check IS the sweep transaction plus the write
@@ -6524,7 +6524,7 @@ its `steps[]` pipeline dots and each OPEN tile's health word (`Ready` / `Refresh
 the card is folded from the worker lease plus browser child spans, which carry no node, no step
 vector and no health observation. The slots are reserved (the pipeline row keeps its height, the
 step slot is `flex-1`, an open tile prints the demo's `unknown` tone word `Not checked`) and the gap is
-recorded in `docs/findings/dashboard-projection.md` ("The worker card's step, pipeline and browser
+recorded in `docs/rebuild/findings/dashboard-projection.md` ("The worker card's step, pipeline and browser
 health have no producer") with the fold that would serve it. The tally vocabulary is the served
 lease state (`starting`, not the demo's `authenticating` — R7's ruling).
 

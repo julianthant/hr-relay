@@ -121,7 +121,7 @@ which store you are in, this decides how wide the new read task is:
 Generated from the live task-store registry: every registered store, its declaration status, and
 every task's contract shape — the index to search BEFORE writing a task. This catalog is the D312 /
 doc 03.2 Task 2's "find before you build" surface: an author decides REUSE / CUSTOMIZE / BUILD here, and
-`docs/guides/workflow-authoring.md` §2 is the author's entry point into it. Run
+`docs/rebuild/guides/workflow-authoring.md` §2 is the author's entry point into it. Run
 `npm run stores:catalog` after any store change; `npm run stores:catalog:check` fails on stale
 bytes. Hand-written provenance, live-verification dates and reuse guidance live in §2b below.
 
@@ -376,7 +376,7 @@ buttons that actually advance a real separation — are **not addressable throug
 (see §4, kuali separation family). Live-proven end-to-end 2026-08-04 on real doc 4489: fence → click →
 reload read-back → settle in 16.45s, idempotent re-run 2ms with no browser. The read family was
 live-proven 2026-08-12 on real documents 4510 / 4502 / 4495 — five runs, all terminal `done` on
-attempt 1, three with verified receipts (`docs/migrations/separations.md` §9.4).
+attempt 1, three with verified receipts (`docs/rebuild/migrations/separations.md` §9.4).
 
 **The finalization family (chunk 5a) is BUILT, not yet live-verified.** Its permanent key is
 `kuali:<documentNumber>|finalization|<transactionNumber>` (§5 item 1C) — the action id is excluded
@@ -432,7 +432,7 @@ start, not retrofit it. See §4 for migration order.
 `src/domain/ui/new-kronos-timecard.ts`) · real login recipe (`newKronosLoginRecipe`,
 `src/stores/new-kronos/session.ts`) · `system-bindings.ts` entry · **2 tasks**. Wired into
 `separations-kronos-timecard` (separations chunk 1). Selectors and login live-verified read-only
-**2026-08-12**; the full observation record is `docs/migrations/separations.md` §9.1 and the store's
+**2026-08-12**; the full observation record is `docs/rebuild/migrations/separations.md` §9.1 and the store's
 own `CLAUDE.md`. **The end-to-end live dry-run is NOT met** — §9.2 records all thirteen attempts,
 the seven defects they found, and the one test-pinned fix still awaiting a live run.
 

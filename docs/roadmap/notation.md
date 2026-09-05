@@ -113,7 +113,7 @@ Rules that keep the tree honest:
 - **The doc binding is two-way** (D263, `docs/roadmap/roadmap.md` §Governance) — every node carries a `doc:` line naming the phase-doc (`03.1 §2.1`) and reference (`ref:write-safety §5`) sections that OWN its contracts, and every doc section that describes a node carries `<!-- roadmap: <id> -->` on the line directly under its heading. The phase docs stay normative: where the tree and the doc disagree, the doc is right and the tree is corrected. The `roadmap-doc-binding` guard (landing as step 3 of `docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md`) refuses a `doc:` ref that resolves to no such section and a `<!-- roadmap: id -->` tag that names no such node — so a rename on either side fails the gate instead of rotting.
 - **`log:` lines are append-only.** Never edit or delete another session's line; a wrong one is corrected by a NEW line that says so. The block is a journal, not a status field.
 - Inline markup in any text: `` `code` ``, `**bold**`; D-numbers are auto-highlighted. No other markdown inside the region.
-- The plan records **what is built and what is required**; it does not invent scope. An unplanned feature is a finding for `docs/findings/`, not a roadmap line.
+- The plan records **what is built and what is required**; it does not invent scope. An unplanned feature is a finding for `docs/rebuild/findings/`, not a roadmap line.
 
 Also bump `asOf:` and `head:` (the HEAD you are updating FROM), the `## today:` line when one is intentionally used, and any tile the change moves.
 

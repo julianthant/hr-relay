@@ -16,7 +16,7 @@ preserving hand-maintained Known failure modes and Live record sections.
 1. `src/workflows/<id>/descriptor.ts` — nodes, `when`, gates, transaction nodes, `surfaces.inputRun` (what the operator types), result shape. Bundle-safe: zod + `src/domain/**` + `src/base/**` (D106).
 2. `src/workflows/<id>/module.ts` + `src/control/workflow-registry.ts` — which store tasks bind which contracts.
 3. Each store it binds — `src/stores/<system>/AGENTS.md` (invariants, provenance, lessons) then the task files. `docs/rebuild/reference/stores.md` is the derived catalog; code wins.
-4. `docs/migrations/<id>.md` if present (separations is the worked example — §1 questionnaire, §9 live records) and the workflow's node in `docs/roadmap/roadmap.md` (status, `you:` lines, `log:` lines).
+4. `docs/rebuild/migrations/<id>.md` if present (separations is the worked example — §1 questionnaire, §9 live records) and the workflow's node in `docs/roadmap/roadmap.md` (status, `you:` lines, `log:` lines).
 5. The reference docs it cites: `workflow-model` (run state machine, §5.4 validation/resume), `write-safety` (beats ①–⑦, §3.2 controlled-commit proof, §14 gate), `execution-and-sessions`, `guards-and-tests` §10 (test tiers), `dashboard-surfaces`.
 6. `docs/rebuild/reference/lessons.md` — grep the workflow id and each system; every hit becomes a line in "Known failure modes".
 7. `config/test-subjects.json` (when it exists) and `tests/scenario/*<id>*` — canary labels and what the existing scenarios assert.
@@ -72,10 +72,10 @@ Stop when you can fill every template section from evidence. A section you canno
   selector-repair loop; never "add a longer wait" first.
 
 ## Live record
-- <dated lines: run/trace ids, subject label, dry/controlled, durable counts, result — copied from docs/migrations/<id>.md §9, newest first>
+- <dated lines: run/trace ids, subject label, dry/controlled, durable counts, result — copied from docs/rebuild/migrations/<id>.md §9, newest first>
 
 ## Record when you are done
-- dated line in `docs/migrations/<id>.md`; tree node status block + `npm run roadmap` (notation: `docs/roadmap/notation.md`) in the same commit; store/dashboard AGENTS.md only for invariants; lesson-worthy findings → tell the operator ("this looks lesson-worthy: …") — `/hr-lesson` is theirs to invoke.
+- dated line in `docs/rebuild/migrations/<id>.md`; tree node status block + `npm run roadmap` (notation: `docs/roadmap/notation.md`) in the same commit; store/dashboard AGENTS.md only for invariants; lesson-worthy findings → tell the operator ("this looks lesson-worthy: …") — `/hr-lesson` is theirs to invoke.
 ```
 
 ## 4 · Verify the generated resource

@@ -878,7 +878,7 @@ describe("the D80 archive model", () => {
 
   it("archives a run that FILED a ledger line, and resolves it back from the archive", () => {
     /*
-     * The end-to-end shape `docs/findings/archive.md` was missing: a REAL
+     * The end-to-end shape `docs/rebuild/findings/archive.md` was missing: a REAL
      * fenced-and-committed write intent, a REAL projected ledger line on disk,
      * and an archived record that names it by `(system, date, sequence)` and
      * copies nothing. Everything below is durable state or bytes on disk.

@@ -11,7 +11,7 @@
  * The live data is chunk 1's proven read: EID `10776990` over `06/10/2026 –
  * 08/12/2026`, `lastPunchDate 06/12/2026`, `holidayDates ["06/19/2026"]`,
  * `unclassifiedPayCodes ["Independence Day Observed", "Juneteenth Observed"]`
- * (`docs/migrations/separations.md` §9.2).
+ * (`docs/rebuild/migrations/separations.md` §9.2).
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";

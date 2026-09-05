@@ -1000,7 +1000,7 @@ log:
 - 2026-09-03 | D326 decimal hierarchy | 3.1 → 3.2 → 3.3 → 3.4 is now the execution order; one coordinator owns each part, numbered cards are one supervisor session, and parallelism is recorded in the coordinator run plan · left: reopened 3.1, then 3.2–3.4
 - 2026-08-20 | docs-cohesion step 5.0 | every node in the tree now carries `doc:` — its phase-doc home section plus the reference specs that own its contracts (`81bf48dd`); `test-tiers` drawn as this phase's testing spine (R10) · left: step 4b's binding guard, then the per-doc rewrites
 - 2026-08-20 | docs-cohesion 03b | doc 03b rewritten as-built, all fourteen status blocks filled and the whole separations subtree re-bound to its headings; the phase stands at separations **8 of 9**, step 5 open on a calendar date · left: the three controlled commits from 08-28, then rebuild-ready and close-out
-- 2026-08-30 | R2 observed status | supersedes the calendar-only status above: parent `54060ded` passed 341 files / 3,761 tests and 239/239 assert-mode parity; reviewed child `7b05b057` merged `--no-ff` and swept. Assigned `.env`, `.tracker-rebuild` and locks absent; admission smoke exited 1 before runner import or person-field inspection. No fresh subject/S7 observation, rehearsal, exact-run 0/0/0 evidence, approval or write; A2–A5/A8 remain open and R3 obligations remain separate. Evidence: `docs/coordinator/worktree-completion/reports/r2-gates.md`, `r2-p3.md`, `r2-p4.md`, and `docs/migrations/separations.md` §9.32
+- 2026-08-30 | R2 observed status | supersedes the calendar-only status above: parent `54060ded` passed 341 files / 3,761 tests and 239/239 assert-mode parity; reviewed child `7b05b057` merged `--no-ff` and swept. Assigned `.env`, `.tracker-rebuild` and locks absent; admission smoke exited 1 before runner import or person-field inspection. No fresh subject/S7 observation, rehearsal, exact-run 0/0/0 evidence, approval or write; A2–A5/A8 remain open and R3 obligations remain separate. Evidence: `docs/coordinator/worktree-completion/reports/r2-gates.md`, `r2-p3.md`, `r2-p4.md`, and `docs/rebuild/migrations/separations.md` §9.32
 
 ### 3.1 · Shared dashboard {#dash-defaults}
 status: planned
@@ -1088,7 +1088,7 @@ doc: 03.1 §Task 2 · Prove the dashboard against a real run · ref:workflow-mod
 > One pass: the REAL dashboard drives a REAL composed separations dry run — plan → start → gate parks → approve through the B1 ceremony → resume → preview terminal → archive — every UI assertion paired against a direct authority-database check. Closes with the ONE deliberate parity re-freeze. Re-runs over the real commits as Track A's final evidence. Already found and fixed two projection defects on the real run (D258/D259).
 
 builds:
-- [x] PROOF `docs/migrations/separations.md` §9.22 — items 1–8 recorded
+- [x] PROOF `docs/rebuild/migrations/separations.md` §9.22 — items 1–8 recorded
 - [x] BE D258 a timeline event id carries its occurrence ordinal, read forward — the one pre-D214 run that was refusing every archive reads again
 - [x] BOTH D259 a replayed step is its own timeline arm (`replayed`, with `replayedFrom`), never `pending`
 - [x] PROOF every surface's assertion paired against a direct authority check over the ONE run (§9.22 items 1–8)
@@ -2591,7 +2591,7 @@ section that describes a node carries `<!-- roadmap: <id> -->` under its heading
 `roadmap-doc-binding` guard refuses a ref or a tag that resolves to nothing — so a rename on either
 side fails the gate instead of rotting. Three rules bind the tree itself. A `builds:` box is `[x]`
 **only** for what is landed at HEAD, with its commit or D-number cited in the line — never pre-marked.
-The tree never invents scope: an unplanned feature is a finding for `docs/findings/`, not a roadmap
+The tree never invents scope: an unplanned feature is a finding for `docs/rebuild/findings/`, not a roadmap
 line. D326 makes the hierarchy uniform: numbered phases are the only spine nodes; Phases 0–3 use
 decimal parts; the operator coordinates each part; each immediate numbered task is one supervisor
 session; and checklist lines are that task's proof-bearing subtasks. The strict active order is
