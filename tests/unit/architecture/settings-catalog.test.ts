@@ -1,11 +1,24 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import ts from "typescript";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import type { JSONSchema } from "zod/v4/core";
-import { ConfigSchema, SettingsOverrideSchema } from "../../../src/domain/config/schema.js";
+import {
+  ConfigSchema,
+  PROVIDER_CAPABILITY_CONFIG_KEYS,
+  SettingsOverrideSchema,
+} from "../../../src/domain/config/schema.js";
 import { ProtectedValueSchemas } from "../../../src/domain/config/protected-settings.js";
-import { SECRET_FAMILY_SPECS, SECRET_FILE_SPECS, SECRET_SPECS, TEST_TARGET_SECRET_SPECS } from "../../../src/domain/secrets.js";
+import {
+  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
+  SECRET_FAMILY_SPECS,
+  SECRET_FILE_SPECS,
+  SECRET_SPECS,
+  TEST_TARGET_SECRET_SPECS,
+} from "../../../src/domain/secrets.js";
+import { RUNTIME_DEPENDENCY_REGISTRY } from "../../../src/domain/runtime-dependencies.js";
 import {
   SETTINGS_CATALOG,
   SettingsCatalogRowSchema,
@@ -13,6 +26,138 @@ import {
   settingsCatalogRow,
   ordinarySettingsObject,
 } from "../../../src/domain/config/catalog.js";
+import { gitVisibleFiles, REPO_ROOT, repoRelative } from "./helpers/guard-files.js";
+
+interface ReaderCatalogRow {
+  readonly key: string;
+  readonly sourceClass: string;
+  readonly defaultKind: string;
+  readonly restartScope: string;
+  readonly sensitivity: string;
+  readonly consumers: readonly Readonly<{ module: string }>[];
+}
+
+type ReaderInventory = ReadonlyMap<string, ReadonlySet<string>>;
+
+interface ReaderRule {
+  readonly declaration: string;
+  readonly keys: readonly string[];
+}
+
+function productionDeclarations(): ReadonlyMap<string, readonly string[]> {
+  const modulesByDeclaration = new Map<string, Set<string>>();
+  for (const relative of gitVisibleFiles(["src"]).filter((path) => /\.tsx?$/u.test(path))) {
+    const absolute = resolve(REPO_ROOT, relative);
+    const source = ts.createSourceFile(
+      absolute,
+      readFileSync(absolute, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      relative.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    );
+    function add(name: ts.BindingName | ts.DeclarationName | undefined): void {
+      if (name === undefined || !ts.isIdentifier(name)) return;
+      const modules = modulesByDeclaration.get(name.text) ?? new Set<string>();
+      modules.add(repoRelative(absolute));
+      modulesByDeclaration.set(name.text, modules);
+    }
+    function visit(node: ts.Node): void {
+      if (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node) || ts.isVariableDeclaration(node)) {
+        add(node.name);
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+  }
+  return new Map([...modulesByDeclaration].map(([name, modules]) => [name, [...modules].sort()]));
+}
+
+/**
+ * D331 `consumers` means readers that establish or directly read a settings
+ * SOURCE. A module that receives an already-resolved Config is downstream of
+ * that boundary and is deliberately not a second settings-source reader.
+ *
+ * Each rule is anchored to a production declaration discovered by scanning
+ * every git-visible TS source. Keys come from the production schemas and
+ * registries, or from the catalog's closed source-class metadata where the
+ * accessor operates on a whole document. There is no parallel key→module list.
+ */
+function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
+  const secretFileConfigPaths = new Set<string>(SECRET_FILE_SPECS.map(({ configPath }) => configPath));
+  const ordinaryComposition = rows.filter((row) =>
+    (row.sourceClass === "ordinary-settings" && !row.key.startsWith("providers."))
+    || (row.sourceClass === "runtime-isolation" && row.sensitivity === "ordinary"
+      && !secretFileConfigPaths.has(row.key))
+    || row.sourceClass === "derived-host"
+  ).map(({ key }) => key);
+  // Runtime-path defaults and provider accessors have their own direct source
+  // owners below; the resolver's structural Config pass is not double-counted.
+  const settingsReadback = rows.filter((row) =>
+    (row.sourceClass === "ordinary-settings" && row.defaultKind !== "runtime-path")
+    || (row.sourceClass === "runtime-isolation" && row.defaultKind === "contract")
+    || row.sourceClass === "provider-env"
+  ).map(({ key }) => key);
+  // next-start canaries are retained by the dry-run composition root; the
+  // protected runtime reader owns the next-use presence/readback surface.
+  const protectedReadback = rows.filter((row) =>
+    row.sourceClass === "protected-store" && row.restartScope === "next-use"
+  ).map(({ key }) => key);
+  const dependencySecretNames = RUNTIME_DEPENDENCY_REGISTRY.dependencies
+    .flatMap(({ secretNames }) => secretNames ?? []);
+
+  return [
+    { declaration: "resolveConfigWithProvenance", keys: ordinaryComposition },
+    { declaration: "createSettingsRuntimeReader", keys: settingsReadback },
+    { declaration: "createProtectedSettingsRuntimeReader", keys: protectedReadback },
+    { declaration: "defaultRuntimePaths", keys: rows.filter(({ defaultKind }) => defaultKind === "runtime-path").map(({ key }) => key) },
+    { declaration: "providerBudget", keys: Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS).map((key) => `providers.${key}`) },
+    { declaration: "optionalSecret", keys: SECRET_SPECS.map(({ name }) => name) },
+    { declaration: "requireActivityPersonPseudonymDomain", keys: [ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.name] },
+    { declaration: "optionalTestTargetSecret", keys: TEST_TARGET_SECRET_SPECS.map(({ name }) => name) },
+    { declaration: "optionalSecretFamily", keys: SECRET_FAMILY_SPECS.map(({ name }) => name) },
+    { declaration: "providerModelChain", keys: SECRET_FAMILY_SPECS.map(({ modelsConfigKey }) => `providers.${modelsConfigKey}.models`) },
+    { declaration: "requireSecretFile", keys: SECRET_FILE_SPECS.flatMap(({ name, configPath }) => [name, configPath]) },
+    { declaration: "RUNTIME_DEPENDENCY_REGISTRY", keys: dependencySecretNames },
+    { declaration: "createProductionDryRunScenarioRuntime", keys: TEST_TARGET_SECRET_SPECS.map(({ name }) => name) },
+    { declaration: "establishHostPrimaryDisplay", keys: rows.filter(({ sourceClass }) => sourceClass === "derived-host").map(({ key }) => key) },
+  ];
+}
+
+function deriveSettingsReaderInventory(rows: readonly ReaderCatalogRow[]): ReaderInventory {
+  const declarations = productionDeclarations();
+  const readers = new Map<string, Set<string>>();
+  for (const rule of readerRules(rows)) {
+    const modules = declarations.get(rule.declaration) ?? [];
+    if (modules.length !== 1) {
+      throw new Error(`settings reader declaration ${rule.declaration} resolved ${String(modules.length)} production modules`);
+    }
+    const module = modules[0];
+    if (module === undefined) throw new Error(`settings reader declaration ${rule.declaration} has no module`);
+    for (const key of rule.keys) {
+      const keyReaders = readers.get(key) ?? new Set<string>();
+      keyReaders.add(module);
+      readers.set(key, keyReaders);
+    }
+  }
+  return readers;
+}
+
+function readerInventoryViolations(rows: readonly ReaderCatalogRow[], readers: ReaderInventory): readonly string[] {
+  const violations: string[] = [];
+  const declared = new Map(rows.map((row) => [row.key, new Set(row.consumers.map(({ module }) => module))]));
+  for (const row of rows) {
+    const actual = readers.get(row.key) ?? new Set<string>();
+    for (const module of declared.get(row.key) ?? []) {
+      if (!actual.has(module)) violations.push(`${row.key}: catalog consumer ${module} has no reader evidence`);
+    }
+  }
+  for (const [key, modules] of readers) {
+    for (const module of modules) {
+      if (!declared.get(key)?.has(module)) violations.push(`${key}: source reader ${module} is missing from consumers`);
+    }
+  }
+  return violations.sort();
+}
 
 function schemaLeaves(schema: JSONSchema.JSONSchema | boolean, prefix = ""): string[] {
   if (typeof schema === "boolean") throw new Error(`unexpected boolean schema at ${prefix}`);
@@ -101,12 +246,16 @@ describe("D331 settings catalog", () => {
       && row.sourceClass === "runtime-isolation").map((row) => row.key), ["duoWebauthnCredential"]);
   });
 
-  it("P2 names only existing consumer modules", () => {
-    for (const row of SETTINGS_CATALOG) {
-      for (const consumer of row.consumers) {
-        assert.equal(existsSync(consumer.module), true, `${row.key}: ${consumer.module}`);
-      }
-    }
+  it("P2 matches the production settings-source reader inventory in both directions", () => {
+    const readers = deriveSettingsReaderInventory(SETTINGS_CATALOG);
+    assert.deepEqual(readerInventoryViolations(SETTINGS_CATALOG, readers), []);
+
+    const dropped = SETTINGS_CATALOG.map((row) => row.key === "actor.label"
+      ? { ...row, consumers: row.consumers.filter(({ module }) => module !== "src/domain/config/resolve.ts") }
+      : row);
+    assert.deepEqual(readerInventoryViolations(dropped, readers), [
+      "actor.label: source reader src/domain/config/resolve.ts is missing from consumers",
+    ]);
   });
 
   it("P33 assigns protected credentials next-use and canaries next-start", () => {
