@@ -49,9 +49,11 @@ import {
 import {
   CommandAuditRecordSchema,
   CommandResultSchema,
+  ProtectedSettingsCommandRequestSchema,
   SettingsCommandRequestSchema,
   deriveSettingsCommandFingerprint,
 } from "../../../src/domain/commands.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/domain/config/protected-settings.js";
 import {
   ExplorerEditApplyRequestSchema,
   ExplorerWorkflowOverrideSchema,
@@ -133,6 +135,29 @@ function settingsCommand(
       settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       patchFingerprint: deriveSettingsPatchFingerprint(patch),
       patch,
+    },
+  });
+}
+
+function protectedSettingsCommand(
+  commandId: string,
+  requestedAt: string,
+  expectedRevision: number,
+  writeId: string,
+  value: string,
+) {
+  return ProtectedSettingsCommandRequestSchema.parse({
+    commandId,
+    requestedAt,
+    requestedBy: "local-operator",
+    source: "settings-surface",
+    family: "settings",
+    type: "apply-protected-settings",
+    target: { expectedRevision },
+    payload: {
+      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+      writeId,
+      entries: { ucpathPassword: { set: value } },
     },
   });
 }
@@ -1593,6 +1618,61 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     );
     assert.equal(plan.planned.length, 1);
     assert.deepEqual(plan.refused, []);
+  });
+
+  it("refuses historical protected write-id reuse after a dashboard restart", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-protected-write-id-"));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    const writeId = "77777777-7777-4777-8777-777777777777";
+    let runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock,
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+    const firstClient = createDashboardClient({
+      baseUrl: `http://127.0.0.1:${String(runtime.port)}`,
+    });
+    const first = await firstClient.executeCommand(protectedSettingsCommand(
+      "33333333-3333-4333-8333-333333333333",
+      clock.now().toISOString(),
+      1,
+      writeId,
+      "first-synthetic-protected-value",
+    ));
+    assert.equal(first.state, "applied");
+    const protectedPath = join(repoRoot, ".tracker", "settings", "protected.json");
+    const committedBytes = readFileSync(protectedPath);
+
+    await runtime.stop();
+    runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock,
+      repoRoot,
+    });
+    const restartedClient = createDashboardClient({
+      baseUrl: `http://127.0.0.1:${String(runtime.port)}`,
+    });
+    const reused = await restartedClient.executeCommand(protectedSettingsCommand(
+      "55555555-5555-4555-8555-555555555555",
+      clock.now().toISOString(),
+      2,
+      writeId,
+      "second-synthetic-protected-value",
+    ));
+
+    assert.equal(reused.state, "rejected");
+    if (reused.state === "rejected") {
+      assert.equal(reused.code, "write-id-reused");
+      assert.equal(reused.message, `write-id-reused { writeId: ${writeId} }`);
+    }
+    assert.deepEqual(readFileSync(protectedPath), committedBytes);
   });
 
   it("creates the artifact root as an owner-only directory", async () => {

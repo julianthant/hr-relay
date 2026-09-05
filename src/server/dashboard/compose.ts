@@ -77,7 +77,10 @@ import { systemClock } from "../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, settingsRuntimeIdentity } from "../../domain/config/settings.js";
 import { settingsRootPaths } from "../../domain/config/settings-root.js";
-import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
+import {
+  createProtectedSettingsFileAuthority,
+  createSettingsFileAuthority,
+} from "../../infra/config/settings-file.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   FingerprintSchema,
@@ -645,6 +648,16 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       throw openError;
     }
   })();
+  const protectedSettingsAuthority = createProtectedSettingsFileAuthority({
+    path: settingsRootPaths(stateRoot).ordinary,
+    assertWriteIdAvailable: (writeId, commandId) => {
+      const ownerCommandId = database.authority.commands.findProtectedSettingsCommandIdByWriteId({
+        writeId,
+        excludingCommandId: commandId,
+      });
+      if (ownerCommandId !== undefined) throw new Error("write-id-reused");
+    },
+  });
   const bootConfig = (() => {
     try {
       const explorerOverrides = createExplorerOverrideStore(join(stateRoot, "explorer-overrides.json"));
@@ -1073,7 +1086,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     // resolved config and stored snapshot the start planner uses, so a run born
     // from a spreadsheet and one born from the run surface are comparable.
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
-    settings: createSettingsApplicationExecutor(settingsAuthority),
+    settings: createSettingsApplicationExecutor(settingsAuthority, protectedSettingsAuthority),
     archiveSnapshots: createArchiveSnapshotSource(runDetailDeps),
     explorerEdits,
   });
