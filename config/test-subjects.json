@@ -6,7 +6,7 @@
       "availability": {
         "state": "available",
         "lastObserved": "2026-09-03",
-        "reason": "The operator selected the replacement on 2026-09-03 and live dry-run 5c9e0c34-f507-48fe-b59b-8c75b9c0051a verified the Kuali document and UCPath subject reads before New Kronos returned EMPLOYEE_NOT_FOUND; exact-run write intents, attempts and outbox were 0/0/0. The document number remains only in ignored local configuration."
+        "reason": "The operator selected the replacement on 2026-09-03 and live dry-run 5c9e0c34-f507-48fe-b59b-8c75b9c0051a verified the Kuali document and UCPath subject reads before New Kronos returned EMPLOYEE_NOT_FOUND; exact-run write intents, attempts and outbox were 0/0/0. The document number remains only in protected Settings."
       },
       "provenance": {
         "document": "docs/rebuild/03.2-finish-workflow-authoring.md",
@@ -15,7 +15,7 @@
       "usagePolicy": "read-only",
       "cleanupObligation": "Do not save or finalize the Kuali document; a dry-run rehearsal must leave its form unchanged.",
       "owner": "HR automation operator",
-      "purpose": "The one active separations read-only test subject (D284), selected as ONE Kuali document number in ignored local configuration (D300): the composed chain rehearses from that number, reads the employee name and document EID from Kuali, resolves the UCPath subject through its identity gate, and carries its declared timekeeper constant to the preview terminal. This registry entry authorizes no write. Under D329, Phase 3.3 separately admits an independent disposable pending-sweep target and a real filing/finalization target against the frozen candidate. The standalone separations-kuali-finalization arm remains a blocked manifest witness and commits no facts from a prior document; its person leaves are never registry- or environment-supplied.",
+      "purpose": "The one active separations read-only test subject (D284), selected as ONE Kuali document number in protected Settings (D300): the composed chain rehearses from that number, reads the employee name and document EID from Kuali, resolves the UCPath subject through its identity gate, and carries its declared timekeeper constant to the preview terminal. This registry entry authorizes no write. Under D329, Phase 3.3 separately admits an independent disposable pending-sweep target and a real filing/finalization target against the frozen candidate. The standalone separations-kuali-finalization arm remains a blocked manifest witness and commits no facts from a prior document; its person leaves are never registry- or protected-settings-supplied.",
       "workflows": {
         "separations": {
           "kind": "full-chain-dry-run",
@@ -23,8 +23,7 @@
             "document": {
               "state": "configured",
               "reference": {
-                "name": "separationsKualiFinalizationCanaryDocumentNumber",
-                "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER"
+                "name": "separationsKualiFinalizationCanaryDocumentNumber"
               }
             }
           }
@@ -54,7 +53,7 @@
       "usagePolicy": "read-only",
       "cleanupObligation": "A live read changes nothing; the run reads UCPath Person Org and the CRM onboarding record and writes no external system.",
       "owner": "HR automation operator",
-      "purpose": "The person-lookup live-read canary (D318): ONE UCPath employee id selected in ignored local configuration, searched by EID through the person-lookup start box. Its run proves the transaction-free T1b arm \u2014 zero transaction nodes at admission and exact zero deltas in write_intents, write_attempts and durable_outbox \u2014 and records the ordinary workflow result, never a preview.",
+      "purpose": "The person-lookup live-read canary (D318): ONE UCPath employee id selected in protected Settings, searched by EID through the person-lookup start box. Its run proves the transaction-free T1b arm \u2014 zero transaction nodes at admission and exact zero deltas in write_intents, write_attempts and durable_outbox \u2014 and records the ordinary workflow result, never a preview.",
       "workflows": {
         "person-lookup": {
           "kind": "search-by-eid",
@@ -62,8 +61,7 @@
             "subject": {
               "state": "configured",
               "reference": {
-                "name": "personLookupCanaryEid",
-                "env": "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID"
+                "name": "personLookupCanaryEid"
               }
             }
           }

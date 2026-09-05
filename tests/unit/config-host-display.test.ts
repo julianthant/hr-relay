@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 /**
  * D324: the `display` default is the host's primary display, published once per
  * process tree and read back as the resolver's DEFAULT layer — beneath a
@@ -26,24 +27,24 @@ const NONE: HostPrimaryDisplayObservation = { state: "unavailable", reason: "no-
 describe("host display default (D324)", () => {
   it("resolves the published host display as the `display` DEFAULT, beneath a Settings override", () => {
     const env = { [HOST_PRIMARY_DISPLAY_ENV]: "1512x982" };
-    const detected = resolveConfigWithProvenance(env, {}, CLOCK);
+    const detected = resolveConfigWithProvenance({}, hostConfigFacts(env), CLOCK);
     assert.deepEqual(detected.config.display, { screenWidth: 1512, screenHeight: 982 });
     assert.equal(detected.provenance["display.screenWidth"], "default");
     assert.equal(detected.provenance["display.screenHeight"], "default");
 
-    const overridden = resolveConfigWithProvenance(env, { display: { screenWidth: 1440 } }, CLOCK);
-    assert.deepEqual(overridden.config.display, { screenWidth: 1440, screenHeight: 982 });
+    const overridden = resolveConfigWithProvenance({ display: { screenWidth: 1440, screenHeight: 900 } }, hostConfigFacts(env), CLOCK);
+    assert.deepEqual(overridden.config.display, { screenWidth: 1440, screenHeight: 900 });
     assert.equal(overridden.provenance["display.screenWidth"], "settings");
-    assert.equal(overridden.provenance["display.screenHeight"], "default");
+    assert.equal(overridden.provenance["display.screenHeight"], "settings");
 
-    assert.notEqual(detected.fingerprint, resolveConfigWithProvenance({}, {}, CLOCK).fingerprint,
+    assert.notEqual(detected.fingerprint, resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).fingerprint,
       "the host default is part of the config fingerprint, exactly like every other default");
   });
 
   it("falls back to the contract default only for an unpublished or displayless host, and refuses a malformed value", () => {
     assert.deepEqual(hostDisplayDefault({}), DEFAULT_DISPLAY);
     assert.deepEqual(hostDisplayDefault({ [HOST_PRIMARY_DISPLAY_ENV]: "none" }), DEFAULT_DISPLAY);
-    assert.deepEqual(resolveConfigWithProvenance({}, {}, CLOCK).config.display, DEFAULT_DISPLAY);
+    assert.deepEqual(resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config.display, DEFAULT_DISPLAY);
     for (const bad of ["1512", "1512 x 982", "0x982", "1512x982x60", "auto", ""]) {
       if (bad === "") {
         // An empty publication is still a publication, and a malformed one.
@@ -51,7 +52,7 @@ describe("host display default (D324)", () => {
         continue;
       }
       assert.throws(
-        () => resolveConfigWithProvenance({ [HOST_PRIMARY_DISPLAY_ENV]: bad }, {}, CLOCK),
+        () => resolveConfigWithProvenance({}, hostConfigFacts({ [HOST_PRIMARY_DISPLAY_ENV]: bad }), CLOCK),
         /HRAUTO_HOST_PRIMARY_DISPLAY is not a host display value; expected <width>x<height> or none/u,
         bad,
       );
@@ -90,7 +91,7 @@ describe("host display default (D324)", () => {
   it("narrows an environment to the host display leaf for a defaults-only resolution", () => {
     assert.deepEqual(hostPrimaryDisplayEnvironment({ [HOST_PRIMARY_DISPLAY_ENV]: "1512x982", UCPATH_USER_ID: "x" }), { [HOST_PRIMARY_DISPLAY_ENV]: "1512x982" });
     assert.deepEqual(hostPrimaryDisplayEnvironment({ UCPATH_USER_ID: "x" }), {});
-    const defaults = resolveConfigWithProvenance(hostPrimaryDisplayEnvironment({ [HOST_PRIMARY_DISPLAY_ENV]: "1512x982" }), {}, CLOCK);
+    const defaults = resolveConfigWithProvenance({}, hostConfigFacts(hostPrimaryDisplayEnvironment({ [HOST_PRIMARY_DISPLAY_ENV]: "1512x982" })), CLOCK);
     assert.deepEqual(defaults.config.display, { screenWidth: 1512, screenHeight: 982 });
   });
 });

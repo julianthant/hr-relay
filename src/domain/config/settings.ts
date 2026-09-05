@@ -4,6 +4,7 @@ import { CommandIdSchema, FingerprintSchema, PositiveIntSchema } from "../ids.js
 import { deepFreeze } from "../immutability.js";
 import { deriveSchemaHash } from "../schema-bound-value.js";
 import { sha256Hex } from "../sha256.js";
+import { SETTINGS_CATALOG } from "./catalog.js";
 import {
   EditableSettingsOverrideSchema,
   type EditableSettingsOverride,
@@ -14,11 +15,131 @@ export const SETTINGS_SCHEMA_HASH = deriveSchemaHash(EditableSettingsOverrideSch
 /** Existing editor consumers share the same closed command schema identity. */
 export const CURRENT_SETTINGS_SCHEMA_HASH = SETTINGS_SCHEMA_HASH;
 
-export function deriveSettingsPatchFingerprint(patch: unknown): string {
-  const parsed = EditableSettingsOverrideSchema.parse(patch);
+export const SettingsLeafOperationSchema = z.union([
+  z.strictObject({ set: z.unknown() }),
+  z.strictObject({ clear: z.literal(true) }),
+]);
+
+/** Schema-checked mutable staging object; final values still pass the generated override schema. */
+const MutableSettingsObjectSchema = z.record(z.string(), z.unknown());
+type MutableSettingsObject = z.infer<typeof MutableSettingsObjectSchema>;
+
+function catalogKeyForPath(path: string): string {
+  const parts = path.split(".");
+  if (parts[0] === "annualDates" && parts.length === 3 && /^FY\d{4}$/u.test(parts[1] ?? "")) {
+    return `annualDates.*.${String(parts[2])}`;
+  }
+  return path;
+}
+
+function isOrdinarySettingsPath(path: string): boolean {
+  const key = catalogKeyForPath(path);
+  return SETTINGS_CATALOG.some((row) => row.key === key && row.sourceClass === "ordinary-settings");
+}
+
+function unwrappedSchema(schema: z.core.$ZodType): z.core.$ZodType {
+  let current = schema;
+  while (current instanceof z.ZodOptional
+    || current instanceof z.ZodDefault
+    || current instanceof z.ZodReadonly) {
+    current = current.unwrap();
+  }
+  return current;
+}
+
+/** Resolve the executable schema behind one catalogued ordinary leaf. */
+function ordinarySettingsLeafSchema(path: string): z.core.$ZodType | undefined {
+  let schema: z.core.$ZodType = EditableSettingsOverrideSchema;
+  for (const part of path.split(".")) {
+    schema = unwrappedSchema(schema);
+    if (schema instanceof z.ZodObject) {
+      const next: unknown = Reflect.get(schema.shape, part);
+      if (!(next instanceof z.ZodType)) return undefined;
+      schema = next;
+      continue;
+    }
+    if (schema instanceof z.ZodRecord) {
+      if (!z.safeParse(schema.keyType, part).success) return undefined;
+      schema = schema.valueType;
+      continue;
+    }
+    return undefined;
+  }
+  return unwrappedSchema(schema);
+}
+
+function setNestedLeaf(target: MutableSettingsObject, path: string, value: unknown): void {
+  const parts = path.split(".");
+  let cursor = target;
+  for (const part of parts.slice(0, -1)) {
+    const existing = cursor[part];
+    let nested: MutableSettingsObject;
+    if (existing === undefined) {
+      nested = MutableSettingsObjectSchema.parse({});
+    } else {
+      const parsed = MutableSettingsObjectSchema.safeParse(existing);
+      if (!parsed.success) {
+        throw new Error(`settings path ${path} collides with a non-object member`);
+      }
+      nested = parsed.data;
+    }
+    cursor[part] = nested;
+    cursor = nested;
+  }
+  const leaf = parts.at(-1);
+  if (leaf === undefined) throw new Error("settings path cannot be empty");
+  cursor[leaf] = value;
+}
+
+function deleteNestedLeaf(target: MutableSettingsObject, path: string): void {
+  const parts = path.split(".");
+  const parents: Array<{ readonly value: MutableSettingsObject; readonly key: string }> = [];
+  let cursor = target;
+  for (const part of parts.slice(0, -1)) {
+    const next = cursor[part];
+    const nested = MutableSettingsObjectSchema.safeParse(next);
+    if (!nested.success) return;
+    cursor[part] = nested.data;
+    parents.push({ value: cursor, key: part });
+    cursor = nested.data;
+  }
+  const leaf = parts.at(-1);
+  if (leaf === undefined) return;
+  delete cursor[leaf];
+  for (const parent of parents.reverse()) {
+    const child = parent.value[parent.key];
+    if (child !== null && !Array.isArray(child) && typeof child === "object"
+      && Object.keys(child).length === 0) {
+      delete parent.value[parent.key];
+    }
+  }
+}
+
+export const SettingsPatchSchema = z.record(z.string().min(1), SettingsLeafOperationSchema)
+  .refine((patch) => Object.keys(patch).length > 0, "settings patch must contain at least one leaf operation")
+  .superRefine((patch, context) => {
+    for (const [path, operation] of Object.entries(patch)) {
+      if (!isOrdinarySettingsPath(path)) {
+        context.addIssue({ code: "custom", path: [path], message: `settings path ${path} is not an editable ordinary setting` });
+        continue;
+      }
+      if ("set" in operation) {
+        const leafSchema = ordinarySettingsLeafSchema(path);
+        if (leafSchema === undefined || !z.safeParse(leafSchema, operation.set).success) {
+          context.addIssue({ code: "custom", path: [path], message: `settings path ${path} has an invalid value` });
+        }
+      }
+    }
+  });
+
+export function deriveRawSettingsPatchFingerprint(patch: unknown): string {
   return FingerprintSchema.parse(sha256Hex(
-    `hrauto:settings-patch:v1\0${canonicalJsonStringify(parsed)}`,
+    `hrauto:settings-patch:v2\0${canonicalJsonStringify(patch)}`,
   ));
+}
+
+export function deriveSettingsPatchFingerprint(patch: unknown): string {
+  return deriveRawSettingsPatchFingerprint(SettingsPatchSchema.parse(patch));
 }
 
 export function derivePersistedSettingsFingerprint(settings: unknown): string {
@@ -107,8 +228,25 @@ export const SettingsApplyInputSchema = z.strictObject({
   expectedRevision: PositiveIntSchema,
   settingsSchemaHash: FingerprintSchema,
   patchFingerprint: FingerprintSchema,
-  patch: EditableSettingsOverrideSchema,
+  patch: SettingsPatchSchema,
 });
+
+/** D331.5's complete caller-actionable settings refusal vocabulary. */
+export const SettingsApplyRejectionCodeSchema = z.enum([
+  "schema-mismatch",
+  "patch-fingerprint-mismatch",
+  "envelope-fingerprint-mismatch",
+  "not-editable",
+  "invalid-value",
+  "cross-field-invalid",
+  "document-too-large",
+  "authority-unjournaled",
+  "authority-uncertain",
+  "directory-integrity",
+  "lock-unavailable",
+  "command-divergent",
+  "write-id-reused",
+]);
 
 export const SettingsApplyRefusalSchema = z.discriminatedUnion("state", [
   z.strictObject({
@@ -118,14 +256,16 @@ export const SettingsApplyRefusalSchema = z.discriminatedUnion("state", [
   }),
   z.strictObject({
     state: z.literal("rejected"),
-    code: z.literal("schema-mismatch"),
+    code: SettingsApplyRejectionCodeSchema,
     message: z.string().min(1),
   }),
 ]);
 
 export type SettingsFileRecord = z.infer<typeof SettingsFileRecordSchema>;
 export type SettingsApplyInput = z.infer<typeof SettingsApplyInputSchema>;
+export type SettingsApplyRejectionCode = z.infer<typeof SettingsApplyRejectionCodeSchema>;
 export type SettingsApplyRefusal = z.infer<typeof SettingsApplyRefusalSchema>;
+export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
 
 export const SettingsRuntimeIdentitySchema = z.strictObject({
   settingsRevision: PositiveIntSchema,
@@ -168,24 +308,16 @@ export function initialSettingsFileRecord(): SettingsFileRecord {
   }));
 }
 
-function mergeObjects(base: unknown, patch: unknown): unknown {
-  if (base === null || patch === null || Array.isArray(base) || Array.isArray(patch)
-    || typeof base !== "object" || typeof patch !== "object") {
-    return patch;
-  }
-  const baseRecord = z.record(z.string(), z.unknown()).parse(base);
-  const patchRecord = z.record(z.string(), z.unknown()).parse(patch);
-  const merged = new Map(Object.entries(baseRecord));
-  for (const [key, value] of Object.entries(patchRecord)) {
-    merged.set(key, Object.hasOwn(baseRecord, key) ? mergeObjects(baseRecord[key], value) : value);
-  }
-  return Object.fromEntries(merged);
-}
-
-/** Deep merge preserves untouched sparse leaves while applying one atomic N-leaf patch. */
+/** Leaf operations preserve untouched leaves and make omission/return-to-default explicit. */
 export function mergeSettingsPatch(
   current: EditableSettingsOverride,
-  patch: EditableSettingsOverride,
+  patchInput: SettingsPatch,
 ): EditableSettingsOverride {
-  return EditableSettingsOverrideSchema.parse(mergeObjects(current, patch));
+  const patch = SettingsPatchSchema.parse(patchInput);
+  const candidate = MutableSettingsObjectSchema.parse(structuredClone(current));
+  for (const [path, operation] of Object.entries(patch)) {
+    if ("set" in operation) setNestedLeaf(candidate, path, operation.set);
+    else deleteNestedLeaf(candidate, path);
+  }
+  return EditableSettingsOverrideSchema.parse(candidate);
 }

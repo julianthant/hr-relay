@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The deterministic parity fixture corpus (ref frontend-backend-integration §7.2, test-only adapter #1).
  *
@@ -55,7 +56,7 @@ import {
 import { buildSettingsFacts } from "../../../src/server/dashboard/queries/settings.js";
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
-import { resolveConfig } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { idempotencyKeyDigestReference } from "../../../src/domain/redaction.js";
 import { buildFixtureIdentityGate } from "./fixture-gate.js";
@@ -1415,6 +1416,7 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
   appVersion: FIXTURE_APP_VERSION,
   descriptorHash: FIXTURE_DESCRIPTOR_HASH,
   settingsSchemaHash: descriptorSetHash(["settings-schema"]),
+  protectedSchemaHash: descriptorSetHash(["protected-settings-schema"]),
   projectionGeneration: 1,
   actor: { id: "local-operator", label: "Local operator" },
   serverClock: { now: FIXTURE_NOW, zone: "America/Los_Angeles" },
@@ -1579,7 +1581,7 @@ export const FIXTURE_STORAGE_DOCTOR = StorageDoctorWireSchema.parse({
  * dated by the wall clock.
  */
 export const FIXTURE_SETTINGS_FACTS: SettingsFactsWire = buildSettingsFacts({
-  config: resolveConfig({}, {}, manualClock(new Date(FIXTURE_NOW))),
+  config: resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date(FIXTURE_NOW))).config,
   descriptors: [personLookupDescriptor],
 });
 

@@ -6,7 +6,7 @@ import { systemClock } from "../clock.js";
 import { deepFreeze } from "../immutability.js";
 import { FingerprintSchema } from "../ids.js";
 import { defaultRuntimePaths } from "./runtime-paths.js";
-import { hostDisplayDefault } from "./host-display.js";
+import { HostConfigFactsSchema, type HostConfigFacts } from "./host-display.js";
 import {
   ConfigLeafPathSchema,
   ConfigProvenanceSchema,
@@ -15,7 +15,7 @@ import {
 import {
   ConfigSchema,
   SettingsOverrideInputSchema,
-  UsDateSchema,
+  DEFAULT_DISPLAY,
   type Config,
   type SettingsOverride,
 } from "./schema.js";
@@ -38,207 +38,13 @@ export const ConfigEnvBindingSchema = z.strictObject({
 });
 export type ConfigEnvBinding = z.infer<typeof ConfigEnvBindingSchema>;
 
-const PositiveIntegerTextSchema = z.string().regex(/^\d+$/).transform((value) => Number(value)).pipe(z.number().int().positive());
-const NonNegativeIntegerTextSchema = z.string().regex(/^\d+$/).transform((value) => Number(value)).pipe(z.number().int().nonnegative());
-const BooleanFlagSchema = z.enum(["0", "1"]).transform((value) => value === "1");
+/** A4 is retired. The retained type/empty registry are a deletion-test boundary only. */
+export const ConfigEnvBindingRegistrySchema = ConfigEnvBindingSchema.array().length(0);
+export const CONFIG_ENV_BINDINGS = deepFreeze(ConfigEnvBindingRegistrySchema.parse([]));
 
 function parsed(config: unknown): Config {
   return ConfigSchema.parse(config);
 }
-
-function integer(raw: string): number {
-  return PositiveIntegerTextSchema.parse(raw);
-}
-
-function nonNegativeInteger(raw: string): number {
-  return NonNegativeIntegerTextSchema.parse(raw);
-}
-
-function flag(raw: string): boolean {
-  return BooleanFlagSchema.parse(raw);
-}
-
-function testEntryBinding(
-  env: string,
-  system: "kuali" | "newKronos" | "crm" | "onbase" | "i9" | "oldKronos" | "servicenow" | "sharepoint",
-): ConfigEnvBinding {
-  return {
-    env,
-    path: `urls.${system}.test.entry`,
-    apply(config, raw) {
-      const url = z.url().parse(raw);
-      switch (system) {
-        case "kuali": return parsed({ ...config, urls: { ...config.urls, kuali: { ...config.urls.kuali, test: { ...config.urls.kuali.test, entry: url } } } });
-        case "newKronos": return parsed({ ...config, urls: { ...config.urls, newKronos: { ...config.urls.newKronos, test: { ...config.urls.newKronos.test, entry: url } } } });
-        case "crm": return parsed({ ...config, urls: { ...config.urls, crm: { ...config.urls.crm, test: { ...config.urls.crm.test, entry: url } } } });
-        case "onbase": return parsed({ ...config, urls: { ...config.urls, onbase: { ...config.urls.onbase, test: { ...config.urls.onbase.test, entry: url } } } });
-        case "i9": return parsed({ ...config, urls: { ...config.urls, i9: { ...config.urls.i9, test: { ...config.urls.i9.test, entry: url } } } });
-        case "oldKronos": return parsed({ ...config, urls: { ...config.urls, oldKronos: { ...config.urls.oldKronos, test: { ...config.urls.oldKronos.test, entry: url } } } });
-        case "servicenow": return parsed({ ...config, urls: { ...config.urls, servicenow: { ...config.urls.servicenow, test: { ...config.urls.servicenow.test, entry: url } } } });
-        case "sharepoint": return parsed({ ...config, urls: { ...config.urls, sharepoint: { ...config.urls.sharepoint, test: { ...config.urls.sharepoint.test, entry: url } } } });
-      }
-    },
-  };
-}
-
-const CONFIG_ENV_BINDING_INPUTS: readonly ConfigEnvBinding[] = [
-  testEntryBinding("HRAUTO_KUALI_TEST_URL", "kuali"),
-  testEntryBinding("HRAUTO_NEW_KRONOS_TEST_URL", "newKronos"),
-  testEntryBinding("HRAUTO_CRM_TEST_URL", "crm"),
-  testEntryBinding("HRAUTO_ONBASE_TEST_URL", "onbase"),
-  testEntryBinding("HRAUTO_I9_TEST_URL", "i9"),
-  testEntryBinding("HRAUTO_OLD_KRONOS_TEST_URL", "oldKronos"),
-  testEntryBinding("HRAUTO_SERVICENOW_TEST_URL", "servicenow"),
-  testEntryBinding("HRAUTO_SHAREPOINT_TEST_URL", "sharepoint"),
-  {
-    env: "HRAUTO_UCPATH_TEST_URL",
-    path: "urls.ucpath.test.smartHr",
-    apply: (config, raw) => parsed({
-      ...config,
-      urls: { ...config.urls, ucpath: { ...config.urls.ucpath, test: { ...config.urls.ucpath.test, smartHr: z.url().parse(raw) } } },
-    }),
-  },
-  {
-    env: "TIMEKEEPER_NAME",
-    path: "operator.timekeeperName",
-    apply: (config, raw) => parsed({ ...config, operator: { ...config.operator, timekeeperName: z.string().min(1).parse(raw) } }),
-  },
-  {
-    env: "ANNUAL_DATES_END",
-    path: "annualDates.*.jobEndDate",
-    apply: (config, raw, fiscalYear) => parsed({
-      ...config,
-      annualDates: { ...config.annualDates, [fiscalYear]: { ...config.annualDates[fiscalYear], jobEndDate: raw } },
-    }),
-  },
-  {
-    env: "KRONOS_DEFAULT_END_DATE",
-    path: "annualDates.*.kronosDefaultEndDate",
-    apply: (config, raw, fiscalYear) => parsed({
-      ...config,
-      annualDates: { ...config.annualDates, [fiscalYear]: { ...config.annualDates[fiscalYear], kronosDefaultEndDate: raw } },
-    }),
-  },
-  {
-    env: "KRONOS_DEFAULT_START_DATE",
-    path: "annualDates.*.kronosDefaultStartDate",
-    apply: (config, raw, fiscalYear) => parsed({
-      ...config,
-      annualDates: { ...config.annualDates, [fiscalYear]: { ...config.annualDates[fiscalYear], kronosDefaultStartDate: raw } },
-    }),
-  },
-  {
-    env: "HRAUTO_NAVIGATION_RETRIES",
-    path: "performance.navigationRetries",
-    apply: (config, raw) => parsed({ ...config, performance: { ...config.performance, navigationRetries: integer(raw) } }),
-  },
-  {
-    env: "HRAUTO_UKG_NAVIGATION_MS",
-    path: "timeouts.ukgNavigationMs",
-    apply: (config, raw) => parsed({ ...config, timeouts: { ...config.timeouts, ukgNavigationMs: integer(raw) } }),
-  },
-  {
-    env: "HRAUTO_SEPARATION_TERMINATION_WINDOW_DAYS",
-    path: "performance.separationTerminationWindowDays",
-    apply: (config, raw) => parsed({ ...config, performance: { ...config.performance, separationTerminationWindowDays: integer(raw) } }),
-  },
-  {
-    env: "OCR_SECOND_OPINION_MAX",
-    path: "ocr.secondOpinionMax",
-    apply: (config, raw) => parsed({ ...config, ocr: { ...config.ocr, secondOpinionMax: integer(raw) } }),
-  },
-  {
-    env: "OCR_PAGE_MAX_WAIT_MS",
-    path: "ocr.pageMaxWaitMs",
-    apply: (config, raw) => parsed({ ...config, ocr: { ...config.ocr, pageMaxWaitMs: integer(raw) } }),
-  },
-  {
-    env: "OCR_TIER1_PATIENCE_MS",
-    path: "ocr.tier1PatienceMs",
-    apply: (config, raw) => parsed({ ...config, ocr: { ...config.ocr, tier1PatienceMs: integer(raw) } }),
-  },
-  {
-    env: "OCR_PAGE_CONCURRENCY",
-    path: "ocr.pageConcurrency",
-    apply: (config, raw) => parsed({ ...config, ocr: { ...config.ocr, pageConcurrency: nonNegativeInteger(raw) } }),
-  },
-  {
-    env: "OCR_DISAMBIG_CONCURRENCY",
-    path: "ocr.disambigConcurrency",
-    apply: (config, raw) => parsed({ ...config, ocr: { ...config.ocr, disambigConcurrency: integer(raw) } }),
-  },
-  {
-    env: "OCR_SUGGEST_CONCURRENCY",
-    path: "ocr.suggestConcurrency",
-    apply: (config, raw) => parsed({ ...config, ocr: { ...config.ocr, suggestConcurrency: integer(raw) } }),
-  },
-  {
-    env: "OCR_BACKOFF_BASE_MS",
-    path: "ocr.backoffBaseMs",
-    apply: (config, raw) => parsed({ ...config, ocr: { ...config.ocr, backoffBaseMs: integer(raw) } }),
-  },
-  {
-    env: "OCR_BACKOFF_CAP_MS",
-    path: "ocr.backoffCapMs",
-    apply: (config, raw) => parsed({ ...config, ocr: { ...config.ocr, backoffCapMs: integer(raw) } }),
-  },
-  {
-    env: "OCR_MAX_VALIDATION_RETRIES",
-    path: "ocr.maxValidationRetries",
-    apply: (config, raw) => parsed({ ...config, ocr: { ...config.ocr, maxValidationRetries: nonNegativeInteger(raw) } }),
-  },
-  {
-    env: "HRAUTO_HEALTH_MONITOR_TICK_MS",
-    path: "browserHealth.monitorTickMs",
-    apply: (config, raw) => parsed({ ...config, browserHealth: { ...config.browserHealth, monitorTickMs: integer(raw) } }),
-  },
-  {
-    env: "HRAUTO_HEALTH_MONITOR_MAX_REFRESH",
-    path: "browserHealth.maxAutoRefresh",
-    apply: (config, raw) => parsed({ ...config, browserHealth: { ...config.browserHealth, maxAutoRefresh: nonNegativeInteger(raw) } }),
-  },
-  {
-    env: "HRAUTO_HEALTH_MONITOR_MAX_REOPEN",
-    path: "browserHealth.maxReopen",
-    apply: (config, raw) => parsed({ ...config, browserHealth: { ...config.browserHealth, maxReopen: nonNegativeInteger(raw) } }),
-  },
-  {
-    env: "HRAUTO_DEFAULT_WORKERS",
-    path: "concurrency.defaultWorkers",
-    apply: (config, raw) => parsed({ ...config, concurrency: { defaultWorkers: integer(raw) } }),
-  },
-  {
-    env: "HRAUTO_DAEMON_IDLE_MS",
-    path: "daemon.idleMs",
-    apply: (config, raw) => parsed({ ...config, daemon: { ...config.daemon, idleMs: integer(raw) } }),
-  },
-  {
-    env: "HRAUTO_DAEMON_IDLE_REPOLL_MS",
-    path: "daemon.idleRepollMs",
-    apply: (config, raw) => parsed({ ...config, daemon: { ...config.daemon, idleRepollMs: integer(raw) } }),
-  },
-  {
-    env: "DEBUG_SCREENSHOTS",
-    path: "features.debugScreenshots",
-    apply: (config, raw) => parsed({ ...config, features: { ...config.features, debugScreenshots: flag(raw) } }),
-  },
-  {
-    env: "HR_AUTOMATION_DUO_WEBAUTHN",
-    path: "features.duoWebAuthn",
-    apply: (config, raw) => parsed({ ...config, features: { ...config.features, duoWebAuthn: flag(raw) } }),
-  },
-];
-
-export const ConfigEnvBindingRegistrySchema = ConfigEnvBindingSchema.array().min(1).superRefine((bindings, context) => {
-  for (const field of ["env", "path"] as const) {
-    const values = bindings.map((binding) => binding[field]);
-    if (new Set(values).size !== values.length) {
-      context.addIssue({ code: "custom", message: `config environment binding ${field} values must be unique` });
-    }
-  }
-});
-
-export const CONFIG_ENV_BINDINGS = deepFreeze(ConfigEnvBindingRegistrySchema.parse(CONFIG_ENV_BINDING_INPUTS));
 
 function mergeOptional<Base extends object>(base: Partial<Base> | undefined, override: Partial<Base> | undefined): Partial<Base> | undefined {
   if (base === undefined && override === undefined) return undefined;
@@ -283,7 +89,6 @@ function settingsOverrideByConfigGroup(override: SettingsOverride): SettingsOver
     timeouts: override.timeouts,
     paths: override.paths,
     annualDates: override.annualDates,
-    operator: override.operator,
     display: override.display,
     performance: override.performance,
     ocr: override.ocr,
@@ -315,7 +120,6 @@ function mergeSettings(defaults: Config, override: SettingsOverride): Config {
     timeouts: { ...defaults.timeouts, ...groups.timeouts },
     paths: { ...defaults.paths, ...groups.paths },
     annualDates: mergeAnnualDates(defaults.annualDates, groups.annualDates),
-    operator: { ...defaults.operator, ...groups.operator },
     display: { ...defaults.display, ...groups.display },
     performance: { ...defaults.performance, ...groups.performance },
     ocr: { ...defaults.ocr, ...groups.ocr },
@@ -343,62 +147,19 @@ export function configLeafPaths(config: unknown): readonly string[] {
   return Object.freeze(collectLeafPaths(config));
 }
 
-function environmentValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
-  const raw = env[key];
-  if (raw === undefined || raw.trim() === "") return undefined;
-  return raw.trim();
-}
-
-function resolveInternal(env: NodeJS.ProcessEnv, settingsInput: unknown, clock: Clock): ResolvedConfig {
+function resolveInternal(settingsInput: unknown, hostFactsInput: HostConfigFacts): ResolvedConfig {
   const settings = SettingsOverrideInputSchema.parse(settingsInput);
-  // `paths` has no schema default on purpose — the filesystem defaults are a
-  // server concern the browser-reachable contract cannot carry. See
-  // `./runtime-paths.ts`. `display` likewise defaults to the host's primary
-  // display when the process tree published one (D324, `./host-display.ts`).
-  const defaults = ConfigSchema.parse({ paths: defaultRuntimePaths(), display: hostDisplayDefault(env) });
-  let config = mergeSettings(defaults, settings);
-  const fiscalYear = `FY${String(clock.fiscalYear())}`;
-  const appliedEnvPaths: string[] = [];
-
-  const annualBindings = CONFIG_ENV_BINDINGS.filter(({ path }) => path.startsWith("annualDates.*."));
-  const annualValues = annualBindings.map((binding) => ({ binding, raw: environmentValue(env, binding.env) }))
-    .filter((entry): entry is { binding: ConfigEnvBinding; raw: string } => entry.raw !== undefined);
-  if (annualValues.length > 0 && config.annualDates[fiscalYear] === undefined && annualValues.length !== annualBindings.length) {
-    throw new Error(`environment overrides for ${fiscalYear} are incomplete; set all three annual-date variables`);
-  }
-  if (annualValues.length > 0) {
-    const current = config.annualDates[fiscalYear];
-    const jobEndDate = environmentValue(env, "ANNUAL_DATES_END") ?? current?.jobEndDate;
-    const kronosDefaultEndDate = environmentValue(env, "KRONOS_DEFAULT_END_DATE") ?? current?.kronosDefaultEndDate;
-    const kronosDefaultStartDate = environmentValue(env, "KRONOS_DEFAULT_START_DATE") ?? current?.kronosDefaultStartDate;
-    config = parsed({
-      ...config,
-      annualDates: {
-        ...config.annualDates,
-        [fiscalYear]: {
-          jobEndDate: UsDateSchema.parse(jobEndDate),
-          kronosDefaultEndDate: UsDateSchema.parse(kronosDefaultEndDate),
-          kronosDefaultStartDate: UsDateSchema.parse(kronosDefaultStartDate),
-        },
-      },
-    });
-    appliedEnvPaths.push(...annualValues.map(({ binding }) => binding.path.replace("*", fiscalYear)));
-  }
-
-  for (const binding of CONFIG_ENV_BINDINGS) {
-    if (binding.path.startsWith("annualDates.*.")) continue;
-    const raw = environmentValue(env, binding.env);
-    if (raw === undefined) continue;
-    config = binding.apply(config, raw, fiscalYear);
-    appliedEnvPaths.push(binding.path.replace("*", fiscalYear));
-  }
+  const hostFacts = HostConfigFactsSchema.parse(hostFactsInput);
+  const defaults = ConfigSchema.parse({
+    paths: defaultRuntimePaths(), display: hostFacts.primaryDisplay ?? DEFAULT_DISPLAY,
+  });
+  const config = mergeSettings(defaults, settings);
 
   const settingsPaths = new Set(collectLeafPaths(settings));
-  const envPaths = new Set(appliedEnvPaths);
   const effectivePaths = collectLeafPaths(config);
   const provenance = Object.fromEntries(effectivePaths.map((path): readonly [string, ConfigProvenance] => [
     path,
-    envPaths.has(path) ? "env" : settingsPaths.has(path) ? "settings" : "default",
+    settingsPaths.has(path) ? "settings" : "default",
   ]));
 
   const provenancePaths = Object.keys(provenance).sort();
@@ -412,14 +173,11 @@ function resolveInternal(env: NodeJS.ProcessEnv, settingsInput: unknown, clock: 
   return ResolvedConfigSchema.parse({ config, provenance, fingerprint });
 }
 
-export function resolveConfig(env: NodeJS.ProcessEnv, settingsInput: unknown, clock: Clock = systemClock): Config {
-  return resolveInternal(env, settingsInput, clock).config;
-}
-
+/** Ordinary document > host/contract defaults. No environment override parameter exists. */
 export function resolveConfigWithProvenance(
-  env: NodeJS.ProcessEnv,
   settingsInput: unknown,
-  clock: Clock = systemClock,
+  hostFacts: HostConfigFacts,
+  _clock: Clock = systemClock,
 ): ResolvedConfig {
-  return resolveInternal(env, settingsInput, clock);
+  return resolveInternal(settingsInput, hostFacts);
 }

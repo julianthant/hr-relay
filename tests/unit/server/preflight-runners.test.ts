@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -14,7 +15,7 @@ import { createPreflightAuthority } from "../../../src/domain/preflight.js";
 import { createDashboardPreflightRunners as composeRunners, type DashboardPreflightRunnerInput } from "../../../src/server/preflight/dashboard-runners.js";
 import { DASHBOARD_FRONTEND_OWNER_PATH } from "../../../src/server/dashboard/frontend-owner.js";
 import { probeOwnedViteServer } from "../../../src/infra/providers/local-vite-probe.js";
-import { resolveConfig } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import { AuthorityHealthPreflightRunner } from "../../../src/infra/sqlite/authority-health-runner.js";
 
 const roots: string[] = [];
@@ -31,7 +32,7 @@ function createDashboardPreflightRunners(input: Omit<DashboardPreflightRunnerInp
   & { configFingerprint: string; authorityDoctorOptions: unknown; backendOwned: () => boolean }) {
   const composed = composeRunners({
     ...input,
-    config: resolveConfig({}, {}, input.clock),
+    config: resolveConfigWithProvenance({}, hostConfigFacts({}), input.clock).config,
     authorityHealth: new AuthorityHealthPreflightRunner(input.authorityDoctorOptions, input.clock),
     listLiveWorkerProcesses: () => [],
   });
