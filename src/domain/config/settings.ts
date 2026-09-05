@@ -20,6 +20,10 @@ export const SettingsLeafOperationSchema = z.union([
   z.strictObject({ clear: z.literal(true) }),
 ]);
 
+/** Schema-checked mutable staging object; final values still pass the generated override schema. */
+const MutableSettingsObjectSchema = z.record(z.string(), z.unknown());
+type MutableSettingsObject = z.infer<typeof MutableSettingsObjectSchema>;
+
 function catalogKeyForPath(path: string): string {
   const parts = path.split(".");
   if (parts[0] === "annualDates" && parts.length === 3 && /^FY\d{4}$/u.test(parts[1] ?? "")) {
@@ -33,32 +37,40 @@ function isOrdinarySettingsPath(path: string): boolean {
   return SETTINGS_CATALOG.some((row) => row.key === key && row.sourceClass === "ordinary-settings");
 }
 
-function setNestedLeaf(target: Record<string, unknown>, path: string, value: unknown): void {
+function setNestedLeaf(target: MutableSettingsObject, path: string, value: unknown): void {
   const parts = path.split(".");
   let cursor = target;
   for (const part of parts.slice(0, -1)) {
     const existing = cursor[part];
+    let nested: MutableSettingsObject;
     if (existing === undefined) {
-      cursor[part] = {};
-    } else if (existing === null || Array.isArray(existing) || typeof existing !== "object") {
-      throw new Error(`settings path ${path} collides with a non-object member`);
+      nested = MutableSettingsObjectSchema.parse({});
+    } else {
+      const parsed = MutableSettingsObjectSchema.safeParse(existing);
+      if (!parsed.success) {
+        throw new Error(`settings path ${path} collides with a non-object member`);
+      }
+      nested = parsed.data;
     }
-    cursor = cursor[part] as Record<string, unknown>;
+    cursor[part] = nested;
+    cursor = nested;
   }
   const leaf = parts.at(-1);
   if (leaf === undefined) throw new Error("settings path cannot be empty");
   cursor[leaf] = value;
 }
 
-function deleteNestedLeaf(target: Record<string, unknown>, path: string): void {
+function deleteNestedLeaf(target: MutableSettingsObject, path: string): void {
   const parts = path.split(".");
-  const parents: Array<{ readonly value: Record<string, unknown>; readonly key: string }> = [];
+  const parents: Array<{ readonly value: MutableSettingsObject; readonly key: string }> = [];
   let cursor = target;
   for (const part of parts.slice(0, -1)) {
     const next = cursor[part];
-    if (next === null || Array.isArray(next) || typeof next !== "object") return;
+    const nested = MutableSettingsObjectSchema.safeParse(next);
+    if (!nested.success) return;
+    cursor[part] = nested.data;
     parents.push({ value: cursor, key: part });
-    cursor = next as Record<string, unknown>;
+    cursor = nested.data;
   }
   const leaf = parts.at(-1);
   if (leaf === undefined) return;
@@ -75,7 +87,7 @@ function deleteNestedLeaf(target: Record<string, unknown>, path: string): void {
 export const SettingsPatchSchema = z.record(z.string().min(1), SettingsLeafOperationSchema)
   .refine((patch) => Object.keys(patch).length > 0, "settings patch must contain at least one leaf operation")
   .superRefine((patch, context) => {
-    const setValues: Record<string, unknown> = {};
+    const setValues = MutableSettingsObjectSchema.parse({});
     for (const [path, operation] of Object.entries(patch)) {
       if (!isOrdinarySettingsPath(path)) {
         context.addIssue({ code: "custom", path: [path], message: `settings path ${path} is not an editable ordinary setting` });
@@ -277,7 +289,7 @@ export function mergeSettingsPatch(
   patchInput: SettingsPatch,
 ): EditableSettingsOverride {
   const patch = SettingsPatchSchema.parse(patchInput);
-  const candidate = structuredClone(current) as Record<string, unknown>;
+  const candidate = MutableSettingsObjectSchema.parse(structuredClone(current));
   for (const [path, operation] of Object.entries(patch)) {
     if ("set" in operation) setNestedLeaf(candidate, path, operation.set);
     else deleteNestedLeaf(candidate, path);

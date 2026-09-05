@@ -154,6 +154,9 @@ const TEST_TARGET_SECRET_ENVIRONMENT_KEYS = [
   "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
   "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
 ] as const;
+const TEST_TARGET_SECRET_ENVIRONMENT_KEY_SET: ReadonlySet<string> = new Set(
+  TEST_TARGET_SECRET_ENVIRONMENT_KEYS,
+);
 
 const PROVIDER_MODEL_ENVIRONMENT_KEYS = [
   "OCR_GEMINI_MODELS", "OCR_GROQ_MODELS", "OCR_MISTRAL_MODELS",
@@ -234,7 +237,7 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
   ...RETIRED_ENVIRONMENT_KEYS.map((key) => ({
     key,
     classification: SECRET_ENVIRONMENT_SPECS.find((spec) => spec.key === key)?.classification
-      ?? (key === "TIMEKEEPER_NAME" || TEST_TARGET_SECRET_ENVIRONMENT_KEYS.includes(key as never)
+      ?? (key === "TIMEKEEPER_NAME" || TEST_TARGET_SECRET_ENVIRONMENT_KEY_SET.has(key)
         ? "direct-identifier" : "non-secret-config"),
     disposition: "migrated-refused",
     reason: "setting moved to the settings authority; set it in Settings, then remove it",

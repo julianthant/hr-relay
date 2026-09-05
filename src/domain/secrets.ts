@@ -202,9 +202,10 @@ const DEFAULT_SECRET_FILE_ACCESS: SecretFileAccess = {
 };
 
 /** Every accessor invocation calls this source; no protected value is cached or published. */
-export interface ProtectedSecretSource {
-  read(): unknown;
-}
+export const ProtectedSecretSourceSchema = z.strictObject({
+  read: z.function({ input: [], output: z.unknown() }),
+});
+export type ProtectedSecretSource = z.infer<typeof ProtectedSecretSourceSchema>;
 
 export class SecretMissingError extends Error {
   constructor(message: string) {
@@ -541,7 +542,7 @@ function readProtectedStore(
   source: ProtectedSecretSource,
 ): ProtectedStoreRecord {
   try {
-    return ProtectedStoreRecordSchema.parse(source.read());
+    return ProtectedStoreRecordSchema.parse(ProtectedSecretSourceSchema.parse(source).read());
   } catch (error) {
     throw new SecretSourceError(`${name} could not be read from protected-store`, { cause: error });
   }
