@@ -1416,6 +1416,7 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
   appVersion: FIXTURE_APP_VERSION,
   descriptorHash: FIXTURE_DESCRIPTOR_HASH,
   settingsSchemaHash: descriptorSetHash(["settings-schema"]),
+  protectedSchemaHash: descriptorSetHash(["protected-settings-schema"]),
   projectionGeneration: 1,
   actor: { id: "local-operator", label: "Local operator" },
   serverClock: { now: FIXTURE_NOW, zone: "America/Los_Angeles" },
