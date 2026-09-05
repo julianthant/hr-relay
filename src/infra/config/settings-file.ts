@@ -189,6 +189,7 @@ const SettingsPrepareRecordSchema = SettingsRecoveryBytesSchema.safeExtend({ pre
 type SettingsPrepareRecord = z.infer<typeof SettingsPrepareRecordSchema>;
 const SettingsRollbackRecordSchema = SettingsRecoveryBytesSchema.safeExtend({ rollbackId: z.uuid() });
 type SettingsRollbackRecord = z.infer<typeof SettingsRollbackRecordSchema>;
+type SettingsRecoveryRecord = z.infer<typeof SettingsRecoveryBytesSchema>;
 
 type DocumentRecord = Readonly<{ revision: number; lastApplied?: SettingsCommandIdentity }>;
 type DocumentRequest = Readonly<{ commandId: string; commandFingerprint: string; expectedRevision: number }>;
@@ -1160,6 +1161,10 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
   const rollbackPath = paths.rollback;
   const preparePath = paths.prepare;
   const ownTemporaryPaths = new Set<string>();
+  const recoverableTemporaryPaths = new Map<string, Readonly<{
+    bytes: Uint8Array;
+    maximumBytes: number;
+  }>>();
   function parseRecord(recordPath: string, bytes: Uint8Array): Record {
     let value: unknown;
     try {
@@ -1176,6 +1181,91 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
     return deepFreeze(parsed.data);
   }
 
+  function inspectRecoveryRecord(record: SettingsRecoveryRecord): Readonly<{
+    target: SettingsDocumentTarget;
+    documentPath: string;
+    maximumBytes: number;
+    priorDocumentBytes: Uint8Array | undefined;
+    nextDocumentBytes: Uint8Array;
+    priorInitializationBytes: Uint8Array;
+    nextInitializationBytes: Uint8Array;
+    priorInitialization: SettingsInitializationRecord;
+  }> {
+    const target = record.target;
+    const documentPath = target === "ordinary" ? paths.ordinary : paths.protected;
+    const maximumBytes = target === "ordinary" ? MAX_SETTINGS_FILE_BYTES : MAX_PROTECTED_SETTINGS_BYTES;
+    const priorDocumentBytes = record.priorSettingsBytesBase64 === null
+      ? undefined
+      : decodeBase64(record.priorSettingsBytesBase64, "prepared prior settings bytes");
+    const nextDocumentBytes = decodeBase64(record.nextSettingsBytesBase64, "prepared next settings bytes");
+    const priorInitializationBytes = decodeBase64(
+      record.priorInitializationBytesBase64,
+      "prepared prior initialization bytes",
+    );
+    const nextInitializationBytes = decodeBase64(
+      record.nextInitializationBytesBase64,
+      "prepared next initialization bytes",
+    );
+    if ((priorDocumentBytes?.byteLength ?? 0) > maximumBytes
+      || nextDocumentBytes.byteLength > maximumBytes
+      || priorInitializationBytes.byteLength > MAX_SETTINGS_INITIALIZATION_BYTES
+      || nextInitializationBytes.byteLength > MAX_SETTINGS_INITIALIZATION_BYTES) {
+      throw new Error(`settings ${target} recovery evidence exceeds its target byte bound`);
+    }
+
+    function parseRecoveryDocument(bytes: Uint8Array | undefined): DocumentRecord {
+      if (bytes === undefined) {
+        return target === "ordinary" ? initialSettingsFileRecord() : initialProtectedStoreRecord();
+      }
+      let value: unknown;
+      try {
+        value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+      } catch {
+        throw new Error(`settings ${target} recovery document is malformed`);
+      }
+      const parsed = (target === "ordinary" ? SettingsFileRecordSchema : ProtectedStoreRecordSchema).safeParse(value);
+      if (!parsed.success) throw new Error(`settings ${target} recovery document is malformed`);
+      return parsed.data;
+    }
+
+    const prior = parseRecoveryDocument(priorDocumentBytes);
+    const next = parseRecoveryDocument(nextDocumentBytes);
+    const priorInitialization = parseSettingsInitialization(initializationPath, priorInitializationBytes);
+    const nextInitialization = parseSettingsInitialization(initializationPath, nextInitializationBytes);
+    const otherTarget = target === "ordinary" ? "protected" : "ordinary";
+    if (nextInitialization[target] !== "initialized"
+      || priorInitialization[otherTarget] !== nextInitialization[otherTarget]
+      || (priorDocumentBytes !== undefined) !== (priorInitialization[target] === "initialized")
+      || prior.revision !== record.command.expectedRevision
+      || next.revision !== prior.revision + 1
+      || next.lastApplied === undefined
+      || canonicalJsonStringify(next.lastApplied) !== canonicalJsonStringify(record.command)
+      || !equalBytes(
+        nextDocumentBytes,
+        new TextEncoder().encode(`${canonicalJsonStringify(next)}\n`),
+      )
+      || !equalBytes(
+        priorInitializationBytes,
+        initializationBytes(priorInitialization.ordinary, priorInitialization.protected),
+      )
+      || !equalBytes(
+        nextInitializationBytes,
+        initializationBytes(nextInitialization.ordinary, nextInitialization.protected),
+      )) {
+      throw new Error(`settings ${target} recovery evidence does not bind its exact transition`);
+    }
+    return Object.freeze({
+      target,
+      documentPath,
+      maximumBytes,
+      priorDocumentBytes,
+      nextDocumentBytes,
+      priorInitializationBytes,
+      nextInitializationBytes,
+      priorInitialization,
+    });
+  }
+
   function readDocumentBytes(): Uint8Array | undefined {
     assertDirectory();
     return readPrivateRegularBytes(path, basename(path), codec.maximumBytes);
@@ -1188,26 +1278,246 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
     const permitted = new Set(["settings.json", "protected.json", "authority.json", "prepare.json", "rollback.json", "settings.lock", "settings.lock.reaper"]);
     const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
     const transient = new RegExp(`^\\.settings\\.lock(?:\\.${uuid}\\.tmp|\\.reaper\\.${uuid})$`, "u");
-    const documentTemporary = /^\.(?:settings|protected|authority|prepare|rollback)\.json\.\d+\.\d+\.tmp$/u;
+    const documentTemporary = /^\.(settings|protected|authority|prepare|rollback)\.json\.([1-9]\d*)\.([1-9]\d*)\.tmp$/u;
     const names = readdirSync(directory);
-    let liveLockOwner: boolean | undefined;
-    function lockIsLive(): boolean {
-      if (liveLockOwner !== undefined) return liveLockOwner;
+    let observedLock: SettingsAuthorityLockRecord | null | undefined;
+    function lockRecord(): SettingsAuthorityLockRecord | undefined {
+      if (observedLock !== undefined) return observedLock ?? undefined;
       const bytes = readPrivateRegularFile(
         paths.lock,
         "settings authority lock",
         MAX_SETTINGS_LOCK_BYTES,
         [1, 2],
       )?.bytes;
-      liveLockOwner = bytes !== undefined && processRecordOwnerIsAlive(parseSettingsLock(paths.lock, bytes));
-      return liveLockOwner;
+      observedLock = bytes === undefined ? null : parseSettingsLock(paths.lock, bytes);
+      if (observedLock !== null
+        && observedLock.settingsPathFingerprint !== settingsPathFingerprint(ordinaryPath)) {
+        throw new Error(`settings authority lock ${paths.lock} belongs to another settings path`);
+      }
+      return observedLock ?? undefined;
+    }
+    const documentTemporaryNames = names.filter((name) => documentTemporary.test(name));
+    function admitCrashedDocumentTemporary(
+      temporaryPath: string,
+      document: string,
+      owner: SettingsAuthorityLockRecord,
+    ): boolean {
+      if (processRecordOwnerIsAlive(owner) || documentTemporaryNames.length !== 1) return false;
+      try {
+        const prepareBytes = readPrivateRegularBytes(
+          preparePath,
+          "settings prepare evidence",
+          MAX_SETTINGS_PREPARE_BYTES,
+        );
+        const rollbackBytes = readPrivateRegularBytes(
+          rollbackPath,
+          "settings rollback evidence",
+          MAX_SETTINGS_ROLLBACK_BYTES,
+        );
+        const liveInitializationBytes = readPrivateRegularBytes(
+          initializationPath,
+          "settings initialization evidence",
+          MAX_SETTINGS_INITIALIZATION_BYTES,
+        );
+        const otherDocumentIsPresent = (target: SettingsDocumentTarget): boolean => readPrivateRegularBytes(
+          target === "ordinary" ? paths.protected : paths.ordinary,
+          target === "ordinary" ? "protected.json" : "settings.json",
+          target === "ordinary" ? MAX_PROTECTED_SETTINGS_BYTES : MAX_SETTINGS_FILE_BYTES,
+        ) !== undefined;
+        const bindRollback = (
+          rollback: SettingsRollbackRecord,
+          prepare: SettingsPrepareRecord,
+        ): boolean => {
+          const { rollbackId: _rollbackId, ...rollbackBody } = rollback;
+          const { prepareId: _prepareId, ...prepareBody } = prepare;
+          return canonicalJsonStringify(rollbackBody) === canonicalJsonStringify(prepareBody);
+        };
+        const admit = (bytes: Uint8Array, maximumBytes: number): true => {
+          recoverableTemporaryPaths.set(temporaryPath, { bytes, maximumBytes });
+          return true;
+        };
+
+        if (document === "prepare") {
+          if (prepareBytes !== undefined || rollbackBytes !== undefined) return false;
+          const staged = readPrivateRegularBytes(temporaryPath, "settings prepare temporary", MAX_SETTINGS_PREPARE_BYTES);
+          if (staged === undefined) return false;
+          const prepare = parseSettingsPrepare(temporaryPath, staged);
+          const recovery = inspectRecoveryRecord(prepare);
+          const liveDocument = readPrivateRegularBytes(
+            recovery.documentPath,
+            basename(recovery.documentPath),
+            recovery.maximumBytes,
+          );
+          if (prepare.settingsPathFingerprint !== settingsPathFingerprint(ordinaryPath)
+            || !equalBytes(staged, new TextEncoder().encode(`${canonicalJsonStringify(prepare)}\n`))
+            || !equalBytes(liveDocument, recovery.priorDocumentBytes)
+            || !equalBytes(liveInitializationBytes, recovery.priorInitializationBytes)
+            || otherDocumentIsPresent(recovery.target)
+              !== (recovery.priorInitialization[recovery.target === "ordinary" ? "protected" : "ordinary"] === "initialized")) {
+            return false;
+          }
+          return admit(staged, MAX_SETTINGS_PREPARE_BYTES);
+        }
+
+        if (prepareBytes === undefined) {
+          if (document !== "authority" || rollbackBytes !== undefined) return false;
+          const staged = readPrivateRegularBytes(
+            temporaryPath,
+            "settings initialization temporary",
+            MAX_SETTINGS_INITIALIZATION_BYTES,
+          );
+          const virgin = initializationBytes("virgin", "virgin");
+          if (!equalBytes(staged, virgin)
+            || liveInitializationBytes !== undefined
+            || readPrivateRegularBytes(paths.ordinary, "settings.json", MAX_SETTINGS_FILE_BYTES) !== undefined
+            || readPrivateRegularBytes(paths.protected, "protected.json", MAX_PROTECTED_SETTINGS_BYTES) !== undefined) {
+            return false;
+          }
+          return admit(virgin, MAX_SETTINGS_INITIALIZATION_BYTES);
+        }
+
+        const prepare = parseSettingsPrepare(preparePath, prepareBytes);
+        const recovery = inspectRecoveryRecord(prepare);
+        if (prepare.settingsPathFingerprint !== settingsPathFingerprint(ordinaryPath)
+          || !equalBytes(prepareBytes, new TextEncoder().encode(`${canonicalJsonStringify(prepare)}\n`))
+          || otherDocumentIsPresent(recovery.target)
+            !== (recovery.priorInitialization[recovery.target === "ordinary" ? "protected" : "ordinary"] === "initialized")) {
+          return false;
+        }
+        const liveDocument = readPrivateRegularBytes(
+          recovery.documentPath,
+          basename(recovery.documentPath),
+          recovery.maximumBytes,
+        );
+        let rollback: SettingsRollbackRecord | undefined;
+        if (rollbackBytes !== undefined) {
+          rollback = parseSettingsRollback(rollbackPath, rollbackBytes);
+          if (!bindRollback(rollback, prepare)
+            || !equalBytes(rollbackBytes, new TextEncoder().encode(`${canonicalJsonStringify(rollback)}\n`))) {
+            return false;
+          }
+        }
+
+        if (document === "rollback") {
+          if (rollback !== undefined) return false;
+          const staged = readPrivateRegularBytes(temporaryPath, "settings rollback temporary", MAX_SETTINGS_ROLLBACK_BYTES);
+          if (staged === undefined) return false;
+          const stagedRollback = parseSettingsRollback(temporaryPath, staged);
+          if (!bindRollback(stagedRollback, prepare)
+            || !equalBytes(staged, new TextEncoder().encode(`${canonicalJsonStringify(stagedRollback)}\n`))
+            || (!equalBytes(liveDocument, recovery.priorDocumentBytes)
+              && !equalBytes(liveDocument, recovery.nextDocumentBytes))
+            || (!equalBytes(liveInitializationBytes, recovery.priorInitializationBytes)
+              && !equalBytes(liveInitializationBytes, recovery.nextInitializationBytes))) {
+            return false;
+          }
+          return admit(staged, MAX_SETTINGS_ROLLBACK_BYTES);
+        }
+
+        if (document === "settings" || document === "protected") {
+          const expectedTarget = document === "settings" ? "ordinary" : "protected";
+          if (recovery.target !== expectedTarget) return false;
+          const staged = readPrivateRegularBytes(
+            temporaryPath,
+            "settings document temporary",
+            recovery.maximumBytes,
+          );
+          if (staged === undefined) return false;
+          const forward = rollback === undefined
+            && equalBytes(staged, recovery.nextDocumentBytes)
+            && equalBytes(liveDocument, recovery.priorDocumentBytes)
+            && equalBytes(liveInitializationBytes, recovery.priorInitializationBytes);
+          const restoring = rollback !== undefined
+            && recovery.priorDocumentBytes !== undefined
+            && equalBytes(staged, recovery.priorDocumentBytes)
+            && equalBytes(liveDocument, recovery.nextDocumentBytes)
+            && (equalBytes(liveInitializationBytes, recovery.priorInitializationBytes)
+              || equalBytes(liveInitializationBytes, recovery.nextInitializationBytes));
+          return forward || restoring ? admit(staged, recovery.maximumBytes) : false;
+        }
+
+        if (document === "authority") {
+          const staged = readPrivateRegularBytes(
+            temporaryPath,
+            "settings initialization temporary",
+            MAX_SETTINGS_INITIALIZATION_BYTES,
+          );
+          if (staged === undefined) return false;
+          const advancing = rollback === undefined
+            && equalBytes(staged, recovery.nextInitializationBytes)
+            && equalBytes(liveInitializationBytes, recovery.priorInitializationBytes)
+            && equalBytes(liveDocument, recovery.nextDocumentBytes);
+          const restoring = rollback !== undefined
+            && equalBytes(staged, recovery.priorInitializationBytes)
+            && equalBytes(liveInitializationBytes, recovery.nextInitializationBytes)
+            && equalBytes(liveDocument, recovery.priorDocumentBytes);
+          return advancing || restoring ? admit(staged, MAX_SETTINGS_INITIALIZATION_BYTES) : false;
+        }
+        return false;
+      } catch {
+        return false;
+      }
     }
     for (const name of names) {
-      const ownTemporary = ownTemporaryPaths.has(join(directory, name));
-      const activeDocumentTemporary = documentTemporary.test(name) && names.includes("settings.lock") && lockIsLive();
-      if (!permitted.has(name) && !transient.test(name) && !ownTemporary && !activeDocumentTemporary) {
+      const entryPath = join(directory, name);
+      const ownTemporary = ownTemporaryPaths.has(entryPath);
+      const admittedRecovery = recoverableTemporaryPaths.get(entryPath);
+      const recoveryStillExact = admittedRecovery !== undefined
+        && equalBytes(
+          readPrivateRegularBytes(entryPath, "settings atomic temporary", admittedRecovery.maximumBytes),
+          admittedRecovery.bytes,
+        );
+      const match = documentTemporary.exec(name);
+      const owner = match === null ? undefined : lockRecord();
+      const ownerTemporary = match !== null
+        && documentTemporaryNames.length === 1
+        && owner !== undefined
+        && match[2] === String(owner.pid)
+        && (processRecordOwnerIsAlive(owner)
+          || admitCrashedDocumentTemporary(entryPath, match[1] ?? "", owner));
+      if (!permitted.has(name) && !transient.test(name) && !ownTemporary && !recoveryStillExact && !ownerTemporary) {
         throw new Error(`directory-integrity: unexpected settings entry ${name}`);
       }
+    }
+  }
+
+  function cleanupRecoverableTemporaries(): void {
+    for (const [temporaryPath, expected] of recoverableTemporaryPaths) {
+      const live = readPrivateRegularBytes(
+        temporaryPath,
+        "settings atomic temporary",
+        expected.maximumBytes,
+      );
+      if (live === undefined) {
+        recoverableTemporaryPaths.delete(temporaryPath);
+        continue;
+      }
+      if (!equalBytes(live, expected.bytes)) {
+        throw new Error(`directory-integrity: crashed settings temporary ${basename(temporaryPath)} changed before cleanup`);
+      }
+      unlinkSync(temporaryPath);
+      syncPath(directory);
+      recoverableTemporaryPaths.delete(temporaryPath);
+    }
+    assertDirectory();
+  }
+
+  function acquireDocumentAuthorityLock(): SettingsAuthorityLockHandle {
+    const lock = acquireSettingsAuthorityLock(ordinaryPath, hooks, assertDirectory);
+    try {
+      cleanupRecoverableTemporaries();
+      return lock;
+    } catch (error) {
+      try {
+        lock.release();
+      } catch (releaseError) {
+        throw new AggregateError(
+          [error, releaseError],
+          "settings crashed-temporary cleanup failed and its authority lock could not release",
+          { cause: releaseError },
+        );
+      }
+      throw error;
     }
   }
   const write = (target: string, bytes: Uint8Array): void => {
@@ -1316,7 +1626,7 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
   }
 
   function read(): Record {
-    const lock = acquireSettingsAuthorityLock(ordinaryPath, hooks, assertDirectory);
+    const lock = acquireDocumentAuthorityLock();
     return releaseAfter(lock, () => readState().record, `settings read for ${path}`);
   }
 
@@ -1541,7 +1851,7 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
   return Object.freeze({
     read,
     pendingTarget(): SettingsDocumentTarget | undefined {
-      const lock = acquireSettingsAuthorityLock(ordinaryPath, hooks, assertDirectory);
+      const lock = acquireDocumentAuthorityLock();
       return releaseAfter(lock, () => {
         const prepareBytes = readPrepareBytes();
         const rollbackBytes = readRollbackBytes();
@@ -1559,7 +1869,7 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
     reconcile(
       resolvePrepared: (prepared: PreparedDocument<Record>) => SettingsPrepareResolution,
     ): Record {
-      const lock = acquireSettingsAuthorityLock(ordinaryPath, hooks, assertDirectory);
+      const lock = acquireDocumentAuthorityLock();
       return releaseAfter(lock, () => {
         const prepareBytes = readPrepareBytes();
         if (prepareBytes === undefined) return readState().record;
@@ -1638,11 +1948,11 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
       }, `settings prepare reconciliation for ${path}`);
     },
     withCurrentRecord<Result>(work: (record: Record) => Result): Result {
-      const lock = acquireSettingsAuthorityLock(ordinaryPath, hooks, assertDirectory);
+      const lock = acquireDocumentAuthorityLock();
       return releaseAfter(lock, () => work(readState().record), `settings record read for ${path}`);
     },
     withExactRecord<Result>(expectedInput: unknown, work: () => Result): Result {
-      const lock = acquireSettingsAuthorityLock(ordinaryPath, hooks, assertDirectory);
+      const lock = acquireDocumentAuthorityLock();
       return releaseAfter(lock, () => {
         codec.verifyExact(readState().record, expectedInput);
         return work();
@@ -1652,7 +1962,7 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
       const admission = codec.admit(input);
       if (admission.state !== "admitted") return admission;
       const request = admission.request;
-      const lock = acquireSettingsAuthorityLock(ordinaryPath, hooks, assertDirectory);
+      const lock = acquireDocumentAuthorityLock();
       let priorBytes: Uint8Array | undefined;
       let priorInitializationBytes: Uint8Array | undefined;
       let replacementAttempted = false;

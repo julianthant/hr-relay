@@ -626,6 +626,150 @@ describe("D331 shared settings root", () => {
 
 
 describe("D331 process-loss recovery for both document targets", () => {
+  function crashRequest(target: "ordinary" | "protected", expectedRevision: number): unknown {
+    if (target === "ordinary") {
+      const patch = settingsSetOperations({ browser: { headless: expectedRevision === 1 ? false : true } });
+      return {
+        commandId: randomUUID(), commandFingerprint: "d".repeat(64), expectedRevision,
+        settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch), patch,
+      };
+    }
+    return {
+      commandId: randomUUID(), commandFingerprint: "e".repeat(64), expectedRevision,
+      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(),
+      entries: { ucpathPassword: { set: `synthetic-crash-proof-${String(expectedRevision)}` } },
+      updatedAt: "2026-09-04T12:00:00.000Z",
+    };
+  }
+
+  function crashBeforeAtomicReplace(options: Readonly<{
+    path: string;
+    target: "ordinary" | "protected";
+    request?: unknown;
+    destination: "authority.json" | "prepare.json" | "rollback.json" | "settings.json" | "protected.json";
+    occurrence?: number;
+    action: "read" | "apply" | "rollback";
+  }>) {
+    const moduleUrl = pathToFileURL(join(process.cwd(), "src/infra/config/settings-file.ts")).href;
+    const factory = options.target === "ordinary" ? "createSettingsFileAuthority" : "createProtectedSettingsFileAuthority";
+    return spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
+      import { writeFileSync } from "node:fs";
+      import { basename } from "node:path";
+      import { ${factory} } from ${JSON.stringify(moduleUrl)};
+      let matchingWrites = 0;
+      const authority = ${factory}({
+        path: ${JSON.stringify(options.path)}, validateCandidate: () => undefined, assertWriteIdAvailable: () => undefined,
+        operations: { writeExclusive: (destination, bytes) => {
+          writeFileSync(destination, bytes, { flag: "wx", mode: 0o600 });
+          if (basename(destination).startsWith(${JSON.stringify(`.${options.destination}.`)})) {
+            matchingWrites += 1;
+            if (matchingWrites === ${String(options.occurrence ?? 1)}) process.kill(process.pid, "SIGKILL");
+          }
+        } },
+      });
+      if (${JSON.stringify(options.action)} === "read") authority.read();
+      else {
+        const result = authority.apply(${JSON.stringify(options.request)});
+        if (result.state !== "applied") process.exit(2);
+        if (${JSON.stringify(options.action)} === "rollback") result.rollback();
+      }
+      process.exit(3);
+    `], { encoding: "utf8" });
+  }
+
+  it("P25 removes an exact crash-left virgin authority temporary only after stale-lock recovery", () => {
+    const path = settingsPath();
+    const child = crashBeforeAtomicReplace({
+      path, target: "ordinary", destination: "authority.json", action: "read",
+    });
+    assert.equal(child.signal, "SIGKILL", child.stderr);
+    assert.match(
+      readdirSync(dirname(path)).find((name) => name.startsWith(".authority.json.")) ?? "",
+      /^\.authority\.json\.\d+\.\d+\.tmp$/u,
+    );
+
+    assert.equal(createTestService({ path }).read().revision, 1);
+    assert.deepEqual(readdirSync(dirname(path)), ["authority.json"]);
+  });
+
+  it("P23 refuses a crash-left temporary whose exact staged bytes changed", () => {
+    const path = settingsPath();
+    const authority = createTestService({ path });
+    authority.read();
+    const child = crashBeforeAtomicReplace({
+      path,
+      target: "ordinary",
+      request: crashRequest("ordinary", 1),
+      destination: "settings.json",
+      action: "apply",
+    });
+    assert.equal(child.signal, "SIGKILL", child.stderr);
+    const temporaryName = readdirSync(dirname(path)).find((name) => name.startsWith(".settings.json."));
+    if (temporaryName === undefined) assert.fail("expected crash-left settings temporary");
+    writeFileSync(join(dirname(path), temporaryName), "changed", { mode: 0o600 });
+
+    assert.throws(
+      () => authority.pendingTarget(),
+      new RegExp(`directory-integrity: unexpected settings entry ${temporaryName}`, "u"),
+    );
+  });
+
+  for (const target of ["ordinary", "protected"] as const) {
+    for (const scenario of [
+      { destination: "prepare.json", occurrence: 1, action: "apply", seeded: false },
+      { destination: target === "ordinary" ? "settings.json" : "protected.json", occurrence: 1, action: "apply", seeded: false },
+      { destination: "authority.json", occurrence: 1, action: "apply", seeded: false },
+      { destination: "rollback.json", occurrence: 1, action: "rollback", seeded: false },
+      { destination: "authority.json", occurrence: 2, action: "rollback", seeded: false },
+      { destination: target === "ordinary" ? "settings.json" : "protected.json", occurrence: 2, action: "rollback", seeded: true },
+    ] as const) {
+      it(`P25 ${target} recovers its exact ${scenario.destination} temporary before rename (${scenario.action} ${String(scenario.occurrence)})`, () => {
+        const path = settingsPath();
+        const ordinary = createTestService({ path });
+        ordinary.read();
+        const targetAuthority = target === "ordinary"
+          ? ordinary
+          : createProtectedSettingsFileAuthority({ path, assertWriteIdAvailable: () => undefined });
+        if (scenario.seeded) {
+          const seeded = targetAuthority.apply(crashRequest(target, 1));
+          if (seeded.state !== "applied") assert.fail("expected seed update");
+          seeded.commit();
+        }
+        const root = dirname(path);
+        const authorityBefore = readFileSync(join(root, "authority.json"));
+        const targetPath = join(root, target === "ordinary" ? "settings.json" : "protected.json");
+        const documentBefore = existsSync(targetPath) ? readFileSync(targetPath) : undefined;
+        const child = crashBeforeAtomicReplace({
+          path,
+          target,
+          request: crashRequest(target, scenario.seeded ? 2 : 1),
+          destination: scenario.destination,
+          occurrence: scenario.occurrence,
+          action: scenario.action,
+        });
+        assert.equal(child.signal, "SIGKILL", child.stderr);
+        assert.equal(
+          readdirSync(root).filter((name) => /^\.(?:settings|protected|authority|prepare|rollback)\.json\.\d+\.\d+\.tmp$/u.test(name)).length,
+          1,
+        );
+
+        const pending = ordinary.pendingTarget();
+        assert.equal(pending, scenario.destination === "prepare.json" ? undefined : target);
+        const recovered = pending === undefined
+          ? targetAuthority.read()
+          : targetAuthority.reconcile(() => "rollback");
+        assert.equal(recovered.revision, scenario.seeded ? 2 : 1);
+        assert.deepEqual(readFileSync(join(root, "authority.json")), authorityBefore);
+        assert.deepEqual(existsSync(targetPath) ? readFileSync(targetPath) : undefined, documentBefore);
+        assert.deepEqual(
+          readdirSync(root).filter((name) => name.endsWith(".tmp") || name === "settings.lock" || name === "prepare.json" || name === "rollback.json"),
+          [],
+        );
+      });
+    }
+  }
+
   for (const target of ["ordinary", "protected"] as const) {
     for (const crashStage of ["prepare.json", "document", "authority.json", "afterRollbackPrepared", "afterRollbackSettingsRestored", "afterRollbackInitializationRestored"] as const) {
       it(`P25 ${target} preserves exact prior bytes after death at ${crashStage}`, () => {
