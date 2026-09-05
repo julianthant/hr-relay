@@ -324,7 +324,9 @@ ancestry and gate evidence before integrating under the repository's merge polic
 integration gates pass, remove only its owned worktree and integrated local branch and verify both
 registration and physical cleanup. Nested agents have no sidebar task; any separately assigned task
 is associated by exact recorded id, never title or recency. Preserve unrelated sessions and record
-cleanup failures as residue. No coordinator runtime, UUID, board or progress footer is required.
+cleanup failures as residue. No coordinator runtime, UUID or board is required. After every verified
+task/step completion, the supervisor sends Done / Now / Remaining in chat before its next tool call;
+name the current action and all unfinished items, including review, integration and cleanup.
 
 ## Fail loud — no unverified silent fallbacks
 

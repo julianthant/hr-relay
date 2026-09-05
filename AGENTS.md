@@ -107,4 +107,7 @@ session. Separate review sessions remain an explicit operator option. Read roadm
 finalization. The supervisor records the candidate as awaiting independent review and marks the
 phase/roadmap task complete only after accepted review, required integration gates and cleanup.
 Use the exact assigned task including parallel suffixes; no agent coordinator or next-task dispatch.
+At start/resume and after every verified task/step completion, send Done / Now / Remaining in chat
+before the next tool call: completed work with evidence, current action, and all unfinished items.
+Keep review, integration and cleanup visible; tool logs or plan UI never replace this update.
 Routine stage transfers use the existing phase record; interrupted unique state uses `/handoff`.

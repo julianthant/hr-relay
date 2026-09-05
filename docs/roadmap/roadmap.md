@@ -2656,8 +2656,13 @@ independent candidate freezes, and live-write/cutover approvals remain binding.
 
 Transfer only task, phase path/section, plan commit, checkout/branch, candidate range, gate evidence
 bound to tested state, and unresolved issues. The phase record and commits are durable authority;
-no coordinator board, dispatch envelope, routine handoff/report file or repeated progress footer is
-required. Use `/handoff` only for interrupted work whose unique state is not already preserved.
+no coordinator board, dispatch envelope or routine handoff/report file is required. Progress updates
+are mandatory: at start/resume and after every verified task/step completion, before the next tool
+call, send Done (completed item and evidence), Now (current action or wait/blocker), and Remaining
+(every unfinished item including active work, gates, review, fixes, integration and cleanup). Use
+stable IDs and readable labels. Tool output and native plan UI do not replace this chat update.
+During long steps update the current action at least every 60 seconds using bounded waits.
+Use `/handoff` only for interrupted work whose unique state is not already preserved.
 Keep exact ids, scopes, bases, worktrees and integration order for owned workers; historical
 coordination records do not enroll new work. This amendment supersedes D325/D326 and older direct-
 assignment text only for session orchestration and completion timing.
