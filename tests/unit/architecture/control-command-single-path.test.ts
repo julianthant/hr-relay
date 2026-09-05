@@ -270,7 +270,10 @@ describe("control-command-single-path", () => {
       "src/infra/sqlite/authority-database.ts",
     ]);
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
-    const settingsVerifier = "src/server/settings-runtime.ts";
+    const settingsAuditReaders = new Map([
+      ["src/server/settings-runtime.ts", 2],
+      ["src/infra/sqlite/backup-service.ts", 3],
+    ]);
     const violations: string[] = [];
     let kernelDefinitions = 0;
     for (const file of walkFiles(join(REPO_ROOT, "src"), { extensions: [".ts", ".tsx"] })) {
@@ -279,12 +282,14 @@ describe("control-command-single-path", () => {
       if (content.includes("export function createCommandKernel")) kernelDefinitions += 1;
       if (allowed.has(path)) continue;
       for (const token of tokens) {
-        if (path === settingsVerifier && token === "commandAudits") {
+        const expectedSettingsAuditReads = settingsAuditReaders.get(path);
+        if (expectedSettingsAuditReads !== undefined && token === "commandAudits") {
           const auditUses = content.match(/\bcommandAudits\.[A-Za-z]+/gu) ?? [];
-          if (auditUses.length !== 2
+          if (auditUses.length !== expectedSettingsAuditReads
             || auditUses.some((use) => use !== "commandAudits.findByCommand")) {
             violations.push(
-              `${path} may only authenticate ordinary and protected settings through exactly two commandAudits.findByCommand reads`,
+              `${path} may only authenticate settings through exactly ${String(expectedSettingsAuditReads)} `
+              + "commandAudits.findByCommand reads",
             );
           }
           continue;

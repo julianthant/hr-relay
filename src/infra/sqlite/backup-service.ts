@@ -21,7 +21,13 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import {
+  deriveSettingsCommandFingerprint,
+  markSettingsCommand,
+} from "../../domain/commands.js";
+import {
   ProtectedSettingsNameSchema,
+  protectedSettingsReadback,
+  type ProtectedStoreRecord,
 } from "../../domain/config/protected-settings.js";
 import {
   SettingsFileRecordSchema,
@@ -32,11 +38,6 @@ import {
   createSettingsFileAuthority,
   type SettingsRootBackupSnapshot,
 } from "../config/settings-file.js";
-import {
-  requireJournaledProtectedSettings,
-  requireJournaledProtectedSettingsPresence,
-  requireJournaledSettings,
-} from "../../server/settings-runtime.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import {
   AuthorityBackupManifestSchema,
@@ -156,6 +157,118 @@ function captureSettingsBackup(snapshot: SettingsRootBackupSnapshot): SettingsBa
   });
 }
 
+function authenticateOrdinarySettingsBackup(
+  record: SettingsFileRecord,
+  database: AuthorityDatabase,
+): void {
+  const repositories = database.authority;
+  const current = repositories.settingsCurrent.get();
+  if (record.revision === 1) {
+    if (current !== undefined) {
+      throw new Error(`authority-uncertain: baseline settings.json is behind canonical revision ${String(current.revision)}`);
+    }
+    return;
+  }
+  const applied = record.lastApplied;
+  if (applied === undefined) throw new Error(`authority-uncertain: settings.json revision ${String(record.revision)} has no last command`);
+  const command = repositories.commands.get(applied.commandId);
+  if (command === undefined) {
+    throw new Error(`authority-unjournaled: settings revision ${String(record.revision)} has no durable command journal for settings.json`);
+  }
+  if (command.family !== "settings" || command.type !== "apply-settings"
+    || deriveSettingsCommandFingerprint(command) !== applied.commandFingerprint
+    || command.target.expectedRevision !== applied.expectedRevision
+    || command.payload.settingsSchemaHash !== applied.settingsSchemaHash
+    || command.payload.patchFingerprint !== applied.patchFingerprint) {
+    throw new Error(`authority-uncertain: settings.json revision ${String(record.revision)} does not match its command identity`);
+  }
+  const audit = repositories.commandAudits.findByCommand(applied.commandId);
+  const target = { family: "settings" as const, revision: record.revision };
+  if (audit === undefined
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+    || audit.result.state !== "applied"
+    || audit.result.commandId !== applied.commandId
+    || audit.result.restartRequired !== true
+    || audit.result.settingsRevision !== record.revision
+    || audit.result.settingsFingerprint !== record.settingsFingerprint
+    || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])
+    || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{
+      target,
+      before: applied.expectedRevision,
+      after: record.revision,
+    }])
+    || audit.affectedDependencyIds.length !== 0
+    || current === undefined
+    || current.revision !== record.revision
+    || current.settingsFingerprint !== record.settingsFingerprint
+    || current.commandId !== applied.commandId
+    || current.commandFingerprint !== applied.commandFingerprint
+    || current.auditId !== audit.auditId
+    || current.committedAt !== audit.completedAt) {
+    throw new Error(`authority-uncertain: settings.json revision ${String(record.revision)} is not its authenticated current journal result`);
+  }
+}
+
+function protectedCurrentEntries(record: ProtectedStoreRecord) {
+  return ProtectedSettingsNameSchema.options.flatMap((name) => {
+    const entry = record.entries[name];
+    return entry === undefined ? [] : [{ name, valueId: entry.valueId, updatedAt: entry.updatedAt }];
+  });
+}
+
+function authenticateProtectedSettingsBackup(
+  record: ProtectedStoreRecord,
+  database: AuthorityDatabase,
+): void {
+  const repositories = database.authority;
+  const current = repositories.protectedSettingsCurrent.get();
+  if (record.revision === 1) {
+    if (current !== undefined) {
+      throw new Error(`authority-uncertain: baseline protected.json is behind canonical revision ${String(current.revision)}`);
+    }
+    return;
+  }
+  const applied = record.lastApplied;
+  if (applied === undefined) throw new Error(`authority-uncertain: protected.json revision ${String(record.revision)} has no last command`);
+  const command = repositories.commands.get(applied.commandId);
+  if (command === undefined) {
+    throw new Error(`authority-unjournaled: protected settings revision ${String(record.revision)} has no durable command journal for protected.json`);
+  }
+  if (command.family !== "settings" || command.type !== "apply-protected-settings"
+    || deriveSettingsCommandFingerprint(command) !== applied.commandFingerprint
+    || command.target.expectedRevision !== applied.expectedRevision
+    || command.payload.protectedSchemaHash !== applied.protectedSchemaHash
+    || command.payload.writeId !== applied.writeId) {
+    throw new Error(`authority-uncertain: protected.json revision ${String(record.revision)} does not match its marked command identity`);
+  }
+  const audit = repositories.commandAudits.findByCommand(applied.commandId);
+  const target = { family: "protected-settings" as const, revision: record.revision };
+  const readback = protectedSettingsReadback(record);
+  if (audit === undefined
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(markSettingsCommand(command))
+    || audit.result.state !== "applied"
+    || audit.result.commandId !== applied.commandId
+    || audit.result.restartRequired !== false
+    || audit.result.revision !== record.revision
+    || canonicalJsonStringify(audit.result.entries) !== canonicalJsonStringify(readback.entries)
+    || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])
+    || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{
+      target,
+      before: applied.expectedRevision,
+      after: record.revision,
+    }])
+    || audit.affectedDependencyIds.length !== 0
+    || current === undefined
+    || current.revision !== record.revision
+    || current.commandId !== applied.commandId
+    || current.commandFingerprint !== applied.commandFingerprint
+    || current.auditId !== audit.auditId
+    || current.committedAt !== audit.completedAt
+    || canonicalJsonStringify(current.entries) !== canonicalJsonStringify(protectedCurrentEntries(record))) {
+    throw new Error(`authority-uncertain: protected.json revision ${String(record.revision)} is not its authenticated current journal result`);
+  }
+}
+
 function authenticateSettingsBackup(
   snapshot: SettingsRootBackupSnapshot,
   backupPath: string,
@@ -167,11 +280,63 @@ function authenticateSettingsBackup(
     openMode: "storage-backup-read-only-no-migrate",
   });
   try {
-    requireJournaledSettings(snapshot.ordinary, database.authority);
-    requireJournaledProtectedSettings(snapshot.protected, database.authority);
+    authenticateOrdinarySettingsBackup(snapshot.ordinary, database);
+    authenticateProtectedSettingsBackup(snapshot.protected, database);
   } finally {
     database.close();
     removeReadOnlyInspectionCompanions(backupPath);
+  }
+}
+
+function authenticateProtectedSettingsPresenceBackup(
+  presence: z.infer<typeof ProtectedSettingsBackupPresenceSchema>,
+  database: AuthorityDatabase,
+): void {
+  const repositories = database.authority;
+  const current = repositories.protectedSettingsCurrent.get();
+  if (presence.revision === 1) {
+    if (presence.entries.length !== 0 || current !== undefined) {
+      throw new Error("authority-uncertain: baseline protected settings backup does not match copied authority");
+    }
+    return;
+  }
+  const sortedCurrentEntries = current?.entries.toSorted((left, right) => left.name.localeCompare(right.name));
+  if (current === undefined
+    || current.revision !== presence.revision
+    || canonicalJsonStringify(sortedCurrentEntries) !== canonicalJsonStringify(presence.entries)) {
+    throw new Error(`authority-uncertain: protected settings backup revision ${String(presence.revision)} does not match its copied singleton`);
+  }
+  const command = repositories.commands.get(current.commandId);
+  const audit = repositories.commandAudits.findByCommand(current.commandId);
+  const target = { family: "protected-settings" as const, revision: presence.revision };
+  const entries = Object.fromEntries(ProtectedSettingsNameSchema.options.map((name) => {
+    const entry = presence.entries.find((candidate) => candidate.name === name);
+    return [name, entry === undefined
+      ? { present: false }
+      : { present: true, valueId: entry.valueId, updatedAt: entry.updatedAt }];
+  }));
+  if (command === undefined
+    || command.family !== "settings"
+    || command.type !== "apply-protected-settings"
+    || command.target.expectedRevision !== presence.revision - 1
+    || deriveSettingsCommandFingerprint(command) !== current.commandFingerprint
+    || audit === undefined
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(markSettingsCommand(command))
+    || audit.result.state !== "applied"
+    || audit.result.commandId !== current.commandId
+    || audit.result.restartRequired !== false
+    || audit.result.revision !== presence.revision
+    || canonicalJsonStringify(audit.result.entries) !== canonicalJsonStringify(entries)
+    || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])
+    || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{
+      target,
+      before: presence.revision - 1,
+      after: presence.revision,
+    }])
+    || audit.affectedDependencyIds.length !== 0
+    || current.auditId !== audit.auditId
+    || current.committedAt !== audit.completedAt) {
+    throw new Error(`authority-uncertain: protected settings backup revision ${String(presence.revision)} is not authenticated by its copied journal`);
   }
 }
 
@@ -187,8 +352,8 @@ function authenticateManifestSettingsBackup(
     openMode: "storage-backup-read-only-no-migrate",
   });
   try {
-    requireJournaledSettings(ordinary, database.authority);
-    requireJournaledProtectedSettingsPresence(protectedSettings, database.authority);
+    authenticateOrdinarySettingsBackup(ordinary, database);
+    authenticateProtectedSettingsPresenceBackup(protectedSettings, database);
   } finally {
     database.close();
     removeReadOnlyInspectionCompanions(backupPath);

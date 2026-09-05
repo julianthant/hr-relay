@@ -359,7 +359,7 @@ describe("D331 P15 settings-aware authority backups", () => {
 
     await assert.rejects(
       verifyBackupManifestAtPath(manifestPath),
-      /settings revision 2 command .* has a mismatched durable audit/u,
+      /settings\.json revision 2 is not its authenticated current journal result/u,
     );
   });
 
