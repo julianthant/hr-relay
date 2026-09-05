@@ -1454,8 +1454,11 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
           return advancing || restoring ? admit(staged, MAX_SETTINGS_INITIALIZATION_BYTES) : false;
         }
         return false;
-      } catch {
-        return false;
+      } catch (error) {
+        throw new Error(
+          `directory-integrity: crashed settings temporary ${basename(temporaryPath)} could not authenticate its recovery evidence`,
+          { cause: error },
+        );
       }
     }
     for (const name of names) {
