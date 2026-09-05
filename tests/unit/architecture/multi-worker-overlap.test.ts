@@ -1,3 +1,4 @@
+import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D182 — ref execution-and-sessions §7.1 rows C1–C4: the OVERLAP half of the 2j concurrency matrix.
  *
@@ -168,6 +169,7 @@ function workerHarness(
     stop,
     events: () => Object.freeze([...events]),
     deps: {
+      ...testWorkerPorts(authority.database, authority.clock),
       workflowId: WorkflowIdSchema.parse(WORKFLOW_ID),
       workerId: WorkerIdSchema.parse(`person-lookup-worker-${workerSuffix}`),
       descriptor: personLookupDescriptor,

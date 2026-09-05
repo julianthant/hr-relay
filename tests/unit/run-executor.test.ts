@@ -1,3 +1,6 @@
+import { DiagnosticBundleSchema } from "../../src/domain/trust/diagnostic.js";
+import { RunRecordSchema } from "../../src/domain/run/record.js";
+import { testRunLifecycle, testRunService } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * Phase-1f interpreter behavior over the REAL person-lookup descriptor,
  * stores, claim authority, and worker session manager — only the process
@@ -70,6 +73,7 @@ function executorHarness(options: Readonly<{
   const scheduler = new ManualScheduler(authority.clock, options.autoFireAtOrBelowMs ?? 0);
   const emitter = recordingEmitter();
   const deps: RunExecutorDependencies = {
+    lifecycle: testRunLifecycle(authority.database, authority.clock),
     descriptor: personLookupDescriptor,
     stores: options.stores ?? taskStoreRegistry,
     authority: authority.database,
@@ -392,6 +396,7 @@ describe("failure, retry, and resume", () => {
     // Reuse the FIRST authority database — the checkpoints live there.
     const secondDeps: RunExecutorDependencies = {
       ...second.deps,
+      lifecycle: testRunLifecycle(database, clock),
       authority: database,
       clock,
     };
@@ -713,5 +718,90 @@ describe("terminal identity binding", () => {
       }),
       /the worker is miswired/,
     );
+  });
+});
+
+
+describe("worker terminal service boundary", () => {
+  it("honours an admitted cancellation before the next non-fenced operation", async () => {
+    const h = executorHarness();
+    const { database, clock } = h.authority;
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+    assert.equal(testRunService(database, clock).transition({
+      commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", runId: RUN_ID,
+      expectedVersion: claimed.run.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() },
+    }).state, "applied");
+    const outcome = await executeClaimedRun(h.deps, { ...claimed, signal: SIGNAL });
+    assert.equal(outcome.state, "abandoned");
+    const settled = database.authority.runs.get(RUN_ID);
+    assert.ok(settled?.lifecycle.state === "terminal");
+    assert.equal(settled.lifecycle.outcome, "cancelled");
+    assert.equal(h.sessions.opens("ucpath"), 0);
+    assert.equal(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run"
+      && event.outcome === "cancelled").length, 1);
+  });
+
+  for (const failure of ["refusal", "outer-rollback"] as const) {
+    it(`never publishes run end after terminal ${failure}`, async () => {
+      const h = executorHarness();
+      const { database, clock } = h.authority;
+      const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+      const lifecycle = h.deps.lifecycle;
+      const deps: RunExecutorDependencies = { ...h.deps, lifecycle: { ...lifecycle,
+        terminalize: (...args) => database.withAuthorityTransaction(() => {
+          if (failure === "refusal") return { state: "refused", refusal: { reason: "lost" } };
+          const result = lifecycle.terminalize(...args);
+          assert.equal(result.state, "applied");
+          assert.equal(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run").length, 0);
+          throw new Error("outer terminal rollback");
+        }),
+      } };
+      if (failure === "refusal") assert.equal((await executeClaimedRun(deps, { ...claimed, signal: SIGNAL })).state, "abandoned");
+      else await assert.rejects(executeClaimedRun(deps, { ...claimed, signal: SIGNAL }), /outer terminal rollback/);
+      assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "running");
+      assert.equal(database.authority.runResults.get(RUN_ID), undefined);
+      assert.equal(database.authority.terminalAuthorizations.get(RUN_ID), undefined);
+      assert.deepEqual(database.authority.failures.listByRun(RUN_ID), []);
+      assert.equal(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run").length, 0);
+    });
+  }
+});
+
+
+describe("original claim at failure terminalization", () => {
+  it("cannot borrow a replacement worker claim after awaiting diagnostic capture", async () => {
+    const h = executorHarness();
+    const { database, clock } = h.authority;
+    const invalid = RunRecordSchema.parse(personLookupQueuedRun());
+    const claimed = enqueueAndClaim(database, { ...invalid, input: {
+      ...invalid.input, parsed: { schemaHash: "a".repeat(64), value: {} },
+    } }, clock.now().toISOString());
+    const lifecycle = h.deps.lifecycle;
+    const deps: RunExecutorDependencies = { ...h.deps, diagnostics: {
+      captureForFailure: async (context) => {
+        const current = database.authority.runs.get(RUN_ID);
+        assert.ok(current);
+        assert.equal(lifecycle.requeue({ commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", runId: RUN_ID,
+          expectedVersion: current.version, claim: claimed.claim, cause: "recovery" }).state, "applied");
+        const replacement = database.authority.runs.claimNext({ workflow: WORKFLOW_ID,
+          workerId: "replacement-worker", now: clock.now().toISOString() });
+        assert.equal(replacement.state, "claimed");
+        return DiagnosticBundleSchema.parse({ bundleId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          runId: RUN_ID, origin: { kind: "failure", failureId: context.failure.failureId },
+          createdAt: clock.now().toISOString(), contentDigest: "a".repeat(64),
+          configFingerprint: context.configFingerprint, descriptorFingerprint: context.descriptorFingerprint,
+          redaction: { fields: [], warnings: [] }, attachments: [],
+          retention: { kind: "pinned", reason: "write-recovery" },
+        });
+      },
+      persist: () => { throw new Error("lost claimant must never persist the prepared bundle"); },
+    } };
+    const result = await executeClaimedRun(deps, { ...claimed, signal: SIGNAL });
+    assert.equal(result.state, "abandoned");
+    assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "claimed");
+    assert.deepEqual(database.authority.failures.listByRun(RUN_ID), []);
+    assert.equal(database.authority.terminalAuthorizations.get(RUN_ID), undefined);
+    assert.equal(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run").length, 0);
   });
 });

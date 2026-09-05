@@ -462,6 +462,8 @@ type DependencyRepository = Readonly<{
 }>;
 
 type WriteIntentRepository = Readonly<{
+  /** D118 recovery admission includes intents from earlier or missing run rows. */
+  listAttemptingByItem(input: unknown): readonly z.infer<typeof WriteIntentRecordSchema>[];
   recordObservedPresent(input: unknown): PermanentWriteResolution;
   fenceAttempt(input: unknown): PermanentWriteResolution;
   /** D111: CAS a `retryable` permanent row to `attempting` generation+1 with a FRESH binding proof. */
@@ -5738,6 +5740,21 @@ export class AuthorityDatabase implements Disposable {
           BrowserSystemIdSchema.parse(system),
           IdempotencyKeySchema.parse(idempotencyKey),
         ),
+        listAttemptingByItem: (input: unknown) => {
+          const request = z.strictObject({ workflowId: WorkflowIdSchema, itemId: ItemIdSchema }).parse(input);
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM write_intents
+            WHERE status = 'attempting'
+              AND json_extract(record_json, '$.workflowId') = ?
+              AND json_extract(record_json, '$.itemId') = ?
+            ORDER BY record_key
+          `).all(request.workflowId, request.itemId);
+          return Object.freeze(rows.map((row) => {
+            const intent = parseJsonRecord(WriteIntentRecordSchema, JsonRowSchema.parse(row).record_json);
+            if (intent.status !== "attempting") throw new Error("attempting intent index disagrees with its record");
+            return intent;
+          }));
+        },
         listByRun: (runId: string) => {
           const rows = this.#database.prepare(`
             SELECT record_json FROM write_intents

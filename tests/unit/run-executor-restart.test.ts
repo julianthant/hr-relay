@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * D314 — Restart from start reruns every read and computation.
  *
@@ -57,6 +58,7 @@ const ids = sequentialIdFactory("e");
 
 function depsFor(authority: AuthorityHarness, sessions: ReturnType<typeof sessionFactoryHarness>): RunExecutorDependencies {
   return {
+    lifecycle: testRunLifecycle(authority.database, authority.clock),
     descriptor: personLookupDescriptor,
     stores: taskStoreRegistry,
     authority: authority.database,

@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "./run-lifecycle-fixtures.js";
 /**
  * The separations chunk-4 UCPath transaction harness.
  *
@@ -255,6 +256,7 @@ export function terminationHarness(options: Readonly<{
   const emitter = recordingEmitter();
   const ids = sequentialIdFactory("f");
   const sequencer = createWriteSequencer({
+    lifecycle: testRunLifecycle(database, clock),
     stores: taskStoreRegistry,
     authority: database,
     sessions: manager,

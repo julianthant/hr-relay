@@ -1,3 +1,4 @@
+import { testRunService } from "./fixtures/run-lifecycle-fixtures.js";
 import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 /**
  * The Phase-1f worker composition (`src/server/worker/compose.ts`) and the
@@ -545,7 +546,7 @@ describe("composed worker runtime", () => {
     assert.equal(sessions.opens("crm"), 0);
     assert.match(
       refusal instanceof Error ? refusal.message : String(refusal),
-      /queued run .* config fingerprint .* worker boot/u,
+      /run lifecycle runtime-stale/u,
     );
     assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
   });
@@ -596,7 +597,7 @@ describe("composed worker runtime", () => {
     assert.equal(sessions.opens("crm"), 0);
     assert.match(
       refusal instanceof Error ? refusal.message : String(refusal),
-      /dashboard runtime settings are stale; restart activation is required/u,
+      /run lifecycle runtime-stale/u,
     );
     assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
     assert.equal(database.authority.commands.get("33333333-3333-4333-8333-333333333333"), undefined);
@@ -819,7 +820,7 @@ describe("composed worker runtime", () => {
     const run = crashed.authority.runs.get(RUN_ID);
     assert.ok(run && run.lifecycle.state === "terminal");
     assert.equal(run.lifecycle.outcome, "done");
-    assert.equal(run.envelope.attempt, 2, "a swept claim takes a fresh attempt");
+    assert.equal(run.envelope.attempt, 1, "recovery preserves the immutable item attempt");
   });
 
   /**
@@ -829,6 +830,30 @@ describe("composed worker runtime", () => {
    * reimplemented "release my own rows" would have handed a possibly-landed
    * real HR write straight back to the executor.
    */
+  it("startup recovery settles admitted cancellation without claiming or opening browsers", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const workerId = phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID));
+    const database = reopen(stateRoot, clock);
+    const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: NOW });
+    assert.ok(claimed.state === "claimed");
+    const service = testRunService(database, clock);
+    assert.equal(service.transition({ commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      runId: RUN_ID, expectedVersion: claimed.run.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } }).state, "applied");
+    const sessions = happySessionHarness();
+    const report = await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 }));
+    assert.deepEqual(report.outcomes, []);
+    assert.equal(sessions.opens("ucpath"), 0);
+    assert.equal(sessions.opens("crm"), 0);
+    const settled = database.authority.runs.get(RUN_ID);
+    assert.ok(settled);
+    assert.deepEqual(settled.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: NOW });
+    assert.equal(settled.envelope.attempt, claimed.run.envelope.attempt);
+    assert.equal(settled.claimGeneration, claimed.run.claimGeneration);
+  });
+
   it("parks — never requeues — its own orphaned claim that holds an attempting write intent", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));

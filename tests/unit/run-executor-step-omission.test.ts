@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * D307 — the executor under step omission.
  *
@@ -222,6 +223,7 @@ function harnessFor(descriptor: AnyWorkflowDescriptor) {
   disposers.push(authority.dispose);
   const emitter = recordingEmitter();
   const deps: RunExecutorDependencies = {
+    lifecycle: testRunLifecycle(authority.database, authority.clock),
     descriptor,
     stores: registry,
     authority: authority.database,

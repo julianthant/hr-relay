@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref guards-and-tests §3.9 — subject binding before the fence (ref write-safety beat ③, ref execution-and-sessions §6.1).
  *
@@ -179,6 +180,7 @@ function orderingHarness(): OrderingHarness {
   const sessions = writeFixtureSessions(world);
   const manager = writeFixtureSessionManager(sessions, registry, clock);
   const sequencer = createWriteSequencer({
+    lifecycle: testRunLifecycle(database, clock),
     stores: registry,
     authority: database,
     sessions: manager,

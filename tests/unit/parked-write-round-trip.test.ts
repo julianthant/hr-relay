@@ -1,3 +1,5 @@
+import { lifecycleCommandId } from "../../src/core/run-record-service.js";
+import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * The full parked-write round trip across every landed seam, with nothing
  * faked but the browser, clock, ids, timers, and span sink:
@@ -23,7 +25,7 @@ import { afterEach, describe, it } from "vitest";
 import { createCommandKernel, type CommandKernel } from "../../src/core/command-kernel.js";
 import { runWorkerLoop, type WorkerLoopReport } from "../../src/core/worker-loop.js";
 import { createWriteResolutionExecutor } from "../../src/core/write-recovery.js";
-import { createWriteSequencer } from "../../src/core/write-sequencer.js";
+import { createWriteSequencer, type WriteSequencerHooks } from "../../src/core/write-sequencer.js";
 import type { AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
@@ -75,7 +77,7 @@ interface RoundTrip {
  * necessarily the build the run parked under: a parked write waits for a human,
  * and the tree moves meanwhile (D136).
  */
-function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDescriptor): RoundTrip {
+function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, resolutionHooks?: WriteSequencerHooks): RoundTrip {
   const root = mkdtempSync(join(tmpdir(), "hrauto-parked-write-"));
   roots.push(root);
   const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
@@ -108,6 +110,8 @@ function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDes
     // The deliverable's exact requirement: the SAME AuthorityDatabase instance
     // the kernel transacts on, so `commitWriteAttempt` nests as a savepoint.
     writeResolution: createWriteResolutionExecutor({
+      hooks: resolutionHooks,
+      continuation: testRunContinuation(database, clock),
       descriptors: {
         resolve: (workflowId) => (workflowId === WRITE_FIXTURE_WORKFLOW_ID ? resolutionDescriptor : undefined),
       },
@@ -138,6 +142,7 @@ function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDes
     world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     world.commitThrows = new Error("browser crashed mid-click");
     return runWorkerLoop({
+      ...testWorkerPorts(database, clock),
       workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
       workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
       descriptor: writeFixtureDescriptor,
@@ -157,6 +162,7 @@ function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDes
       stopSignal: new AbortController().signal,
       exitWhenIdle: true,
       writeSequencerFor: (manager) => createWriteSequencer({
+        lifecycle: testRunLifecycle(database, clock),
         stores,
         authority: database,
         sessions: manager,
@@ -269,7 +275,7 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(parked);
 
-    const result = harness.kernel.execute(resolutionCommand("resolve-write-present", {
+    const command = resolutionCommand("resolve-write-present", {
       runId: WRITE_FIXTURE_RUN_ID,
       expectedVersion: parked.version,
       writeIntentId: intent.writeIntentId,
@@ -280,7 +286,8 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
         value: { transactionId: "T998877" },
       },
       evidenceNote: "receipt T998877 is visible in UCPath",
-    }));
+    });
+    const result = harness.kernel.execute(command);
     assert.equal(result.state, "applied");
 
     const settled = harness.database.authority.writeIntents.get(intent.writeIntentId);
@@ -295,6 +302,16 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
       WRITE_FIXTURE_NODE_ID,
     );
     assert.ok(checkpoint);
+    const nestedId = lifecycleCommandId("write-resume-queued", { runId: WRITE_FIXTURE_RUN_ID,
+      expectedVersion: parked.version, writeIntentId: intent.writeIntentId, generation: intent.generation,
+      sourceCommandId: command.commandId });
+    assert.notEqual(nestedId, command.commandId);
+    assert.ok(harness.database.authority.commands.get(command.commandId));
+    const nested = harness.database.authority.lifecycleJournal.getCommand(nestedId);
+    assert.ok(nested && "kind" in nested && nested.kind === "run-lifecycle");
+    const generation = harness.database.getMeta().authorityGeneration;
+    assert.equal(harness.kernel.execute(command).state, "already-applied");
+    assert.equal(harness.database.getMeta().authorityGeneration, generation);
   });
 
   /*
@@ -615,5 +632,29 @@ describe("cancel over an unresolved fenced write (ref write-safety §4.1, D246)"
     const cancelled = harness.kernel.execute(cancelCommand(WRITE_FIXTURE_RUN_ID, resumed.version));
     assert.equal(cancelled.state, "applied");
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "committed");
+  });
+});
+
+
+describe("kernel outer resolution rollback", () => {
+  it("unwinds product/lifecycle journals and all write evidence after inner lifecycle settlement", async () => {
+    const h = roundTrip(writeFixtureDescriptor, { afterSequencedStep: (step) => {
+      if (step === "run-transition") throw new Error("kernel outer resolution rollback");
+    } });
+    await h.park();
+    const intent = parkedIntent(h.database);
+    const run = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(run);
+    const command = resolutionCommand("resolve-write-present", { runId: WRITE_FIXTURE_RUN_ID,
+      expectedVersion: run.version, writeIntentId: intent.writeIntentId, intentGeneration: intent.generation },
+      { proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T998877" } },
+        evidenceNote: "synthetic confirmed receipt" });
+    const generation = h.database.getMeta().authorityGeneration;
+    assert.throws(() => h.kernel.execute(command), /kernel outer resolution rollback/);
+    assert.deepEqual(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID), run);
+    assert.deepEqual(h.database.authority.writeIntents.get(intent.writeIntentId), intent);
+    assert.equal(h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, run.envelope.itemId, WRITE_FIXTURE_NODE_ID), undefined);
+    assert.equal(h.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(h.database.getMeta().authorityGeneration, generation);
   });
 });

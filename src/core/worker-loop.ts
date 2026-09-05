@@ -72,7 +72,10 @@ import {
 } from "./worker-sessions.js";
 import type { DuoCeremonyGateFactory } from "./duo-ceremony-gate.js";
 
+import { lifecycleCommandId, requireLifecycleApplied, type WorkerRunLifecyclePort, type RunMutationOutcome } from "./run-record-service.js";
+
 type WorkerClaimRequest = Readonly<{
+  commandId: string;
   workflow: WorkflowId;
   workerId: WorkerId;
   now: string;
@@ -85,6 +88,7 @@ export interface WorkerLoopDependencies {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly stores: TaskStoreRegistry;
   readonly authority: RunExecutionAuthority;
+  readonly lifecycle: WorkerRunLifecyclePort;
   readonly sessionFactory: WorkerBrowserSessionFactory;
   readonly emitter: SpanEmitter;
   readonly clock: Clock;
@@ -152,9 +156,9 @@ export interface WorkerLoopDependencies {
    */
   readonly configFingerprint?: string;
   /** Production claim gate comparing the exact boot/current epochs inside one SQLite transaction. */
-  readonly claimNext?: (
+  readonly claimNext: (
     input: WorkerClaimRequest,
-  ) => ReturnType<RunExecutionAuthority["authority"]["runs"]["claimNext"]>;
+  ) => RunMutationOutcome;
 }
 
 export const WorkerLoopReportSchema = z.strictObject({
@@ -168,7 +172,8 @@ export type WorkerLoopReport = z.infer<typeof WorkerLoopReportSchema>;
 
 /** Renew exactly one claim on a fixed cadence; a lost claim aborts the run. */
 function startHeartbeat(input: Readonly<{
-  authority: RunExecutionAuthority;
+  lifecycle: WorkerRunLifecyclePort;
+  ids: IdFactory;
   runId: string;
   claim: Readonly<{ workerId: string; claimGeneration: number }>;
   clock: Clock;
@@ -180,16 +185,17 @@ function startHeartbeat(input: Readonly<{
   let handle = { cancel: (): void => undefined };
   const tick = (): void => {
     if (stopped) return;
-    const outcome = input.authority.authority.runs.renewClaim({
+    const outcome = input.lifecycle.renewClaim({
+      commandId: lifecycleCommandId("heartbeat", { runId: input.runId, claim: input.claim, nonce: input.ids.uuid() }),
       runId: input.runId,
       claim: input.claim,
-      now: input.clock.now().toISOString(),
     });
-    if (outcome.state === "lost") {
+    if (outcome.state === "refused" && outcome.refusal.reason === "lost") {
       stopped = true;
-      input.onLost(outcome.message);
+      input.onLost("lost");
       return;
     }
+    requireLifecycleApplied(outcome);
     handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
   };
   handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
@@ -303,15 +309,15 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         continue;
       }
       const claimRequest = {
+        commandId: lifecycleCommandId("claim", { workerId, nonce: deps.ids.uuid() }),
         workflow: workflowId,
         workerId,
         now: instant(),
         ...(configFingerprint === undefined ? {} : { configFingerprint }),
       };
-      const claimed = deps.claimNext === undefined
-        ? deps.authority.authority.runs.claimNext(claimRequest)
-        : deps.claimNext(claimRequest);
-      if (claimed.state === "idle") {
+      const claimed = deps.claimNext(claimRequest);
+      if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible"
+        && claimed.refusal.notBefore === undefined) {
         if (deps.exitWhenIdle) {
           stopped = "idle";
           break;
@@ -319,17 +325,18 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
         continue;
       }
-      if (claimed.state === "deferred") {
+      if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible"
+        && claimed.refusal.notBefore !== undefined) {
         if (deps.exitWhenIdle) {
           stopped = "idle";
           break;
         }
-        const untilMs = Math.max(0, Date.parse(claimed.nextEligibleAt) - clock.nowMs());
+        const untilMs = Math.max(0, Date.parse(claimed.refusal.notBefore) - clock.nowMs());
         await boundedWait(deps.scheduler, clock, Math.min(untilMs, deps.idleRepollMs), deps.stopSignal);
         continue;
       }
 
-      const run = claimed.run;
+      const run = requireLifecycleApplied(claimed);
       const claim = {
         workerId,
         claimGeneration: run.claimGeneration,
@@ -349,7 +356,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       };
       deps.stopSignal.addEventListener("abort", onStop, { once: true });
       const heartbeat = startHeartbeat({
-        authority: deps.authority,
+        lifecycle: deps.lifecycle,
+        ids: deps.ids,
         runId: run.envelope.runId,
         claim,
         clock,
@@ -370,6 +378,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             descriptor: deps.descriptor,
             stores: deps.stores,
             authority: deps.authority,
+            lifecycle: deps.lifecycle,
             sessions,
             emitter,
             clock,

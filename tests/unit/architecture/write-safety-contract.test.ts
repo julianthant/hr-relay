@@ -1,3 +1,4 @@
+import { testRunContinuation } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref guards-and-tests §3.3 — the write-safety contract guard (HOSTS ref write-safety's guard).
  *
@@ -142,6 +143,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
     const world = createWriteFixtureWorld();
     const registry = buildWriteFixtureRegistry(world);
     const recovery = createWriteRecoveryService({
+      continuation: testRunContinuation(database, clock),
       stores: registry,
       authority: database,
       sessions: writeFixtureSessionManager(writeFixtureSessions(world), registry, clock),

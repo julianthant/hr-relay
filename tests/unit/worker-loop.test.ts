@@ -1,3 +1,4 @@
+import { testWorkerPorts } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref execution-and-sessions §3 worker loop: claim → execute → next, one active item, heartbeat
  * renewal during long operations, claim-loss abort, and worker-stop session
@@ -53,6 +54,7 @@ function loopHarness(options: Readonly<{
   const emitter = recordingEmitter();
   const stop = new AbortController();
   const deps: WorkerLoopDependencies = {
+    ...testWorkerPorts(authority.database, authority.clock),
     workflowId: WorkflowIdSchema.parse(WORKFLOW_ID),
     workerId: EXECUTOR_WORKER_ID,
     descriptor: personLookupDescriptor,

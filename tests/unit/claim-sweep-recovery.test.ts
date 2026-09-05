@@ -1,3 +1,5 @@
+import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { sweepWorkerClaims } from "../../src/core/run-record-service.js";
 /**
  * D118 (ref execution-and-sessions §3): an expired claim is not ordinary requeue authority. An
  * unfinished `attempting` write intent on the run's logical item routes the
@@ -112,7 +114,7 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
       attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
     });
 
-    const swept = database.authority.runs.sweepExpiredClaims({ staleBefore: MUCH_LATER, now: MUCH_LATER });
+    const swept = sweepWorkerClaims(database, testRunLifecycle(database, manualClock(new Date(MUCH_LATER))), { staleBefore: MUCH_LATER, now: MUCH_LATER });
     assert.equal(swept.length, 1);
     const outcome = swept[0];
     assert.ok(outcome);
@@ -148,7 +150,7 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
       attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
     });
 
-    const swept = database.authority.runs.sweepExpiredClaims({ staleBefore: MUCH_LATER, now: MUCH_LATER });
+    const swept = sweepWorkerClaims(database, testRunLifecycle(database, manualClock(new Date(MUCH_LATER))), { staleBefore: MUCH_LATER, now: MUCH_LATER });
     assert.equal(swept.length, 1);
     const outcome = swept[0];
     assert.ok(outcome && outcome.state === "recovery-required");
@@ -176,13 +178,13 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
       itemId: ITEM_ID,
     });
 
-    const swept = database.authority.runs.sweepExpiredClaims({ staleBefore: MUCH_LATER, now: MUCH_LATER });
+    const swept = sweepWorkerClaims(database, testRunLifecycle(database, manualClock(new Date(MUCH_LATER))), { staleBefore: MUCH_LATER, now: MUCH_LATER });
     assert.equal(swept.length, 1);
     const outcome = swept[0];
-    assert.ok(outcome && outcome.state === "requeued");
-    if (outcome.state !== "requeued") return;
+    assert.ok(outcome && outcome.state === "applied");
+    if (outcome.state !== "applied") return;
     assert.equal(outcome.run.lifecycle.state, "queued");
-    assert.equal(outcome.run.envelope.attempt, 2);
+    assert.equal(outcome.run.envelope.attempt, 1, "recovery retains the item attempt");
     const requeuedFrom = outcome.run.lifecycle.state === "queued"
       ? outcome.run.lifecycle.requeuedFrom
       : undefined;
@@ -225,12 +227,12 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
      * heartbeat. Widening `staleBefore` globally instead would have swept
      * worker-2's live claim, which is why the scope is the worker id.
      */
-    const swept = database.authority.runs.sweepExpiredClaims({
+    const swept = sweepWorkerClaims(database, testRunLifecycle(database, manualClock(new Date(MUCH_LATER))), {
       workerId: WORKER_ID,
       now: NOW,
     });
     assert.equal(swept.length, 1);
-    assert.equal(swept[0]?.state, "requeued");
+    assert.equal(swept[0]?.state, "applied");
     assert.equal(swept[0]?.run.envelope.runId, RUN_ID);
 
     const siblingRun = database.authority.runs.get(SIBLING_RUN.envelope.runId);
@@ -247,7 +249,7 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
 
     // The D118 gate is the sweeper's, so scoping to a worker id cannot bypass
     // it: this is the SAME code path, pointed at one owner.
-    const swept = database.authority.runs.sweepExpiredClaims({
+    const swept = sweepWorkerClaims(database, testRunLifecycle(database, manualClock(new Date(MUCH_LATER))), {
       workerId: WORKER_ID,
       now: NOW,
     });
@@ -275,7 +277,7 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
       attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
     });
 
-    const swept = database.authority.runs.sweepExpiredClaims({
+    const swept = sweepWorkerClaims(database, testRunLifecycle(database, manualClock(new Date(MUCH_LATER))), {
       workerId: WORKER_ID,
       now: NOW,
     });
@@ -300,8 +302,8 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
       attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
     });
 
-    const swept = database.authority.runs.sweepExpiredClaims({ staleBefore: MUCH_LATER, now: MUCH_LATER });
+    const swept = sweepWorkerClaims(database, testRunLifecycle(database, manualClock(new Date(MUCH_LATER))), { staleBefore: MUCH_LATER, now: MUCH_LATER });
     assert.equal(swept.length, 1);
-    assert.equal(swept[0]?.state, "requeued");
+    assert.equal(swept[0]?.state, "applied");
   });
 });

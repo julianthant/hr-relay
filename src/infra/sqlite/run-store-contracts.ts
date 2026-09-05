@@ -305,6 +305,7 @@ export const CanonicalWriteResolutionTransitionRequestSchema = z.strictObject({
   ...CanonicalVersionIdentityFields,
   lifecycle: z.strictObject({ state: z.literal("queued") }),
   writeResolution: z.enum(["resolve-write-present", "resolve-write-absent"]),
+  evidenceFingerprint: FingerprintSchema.optional(),
   startAt: NodeIdSchema,
 });
 
@@ -323,6 +324,8 @@ export const CanonicalRenewClaimRequestSchema = z.strictObject({
 
 export const CanonicalWorkerTransitionRequestSchema = z.strictObject({
   commandId: CommandIdSchema,
+  expectedVersion: PositiveIntSchema.optional(),
+  evidenceFingerprint: FingerprintSchema.optional(),
   runId: RunIdSchema,
   claim: RunClaimTokenSchema,
   lifecycle: RunLifecycleSchema,
@@ -338,7 +341,17 @@ export const CanonicalSuccessTerminalizeRequestSchema = z.strictObject({
   terminal: SuccessTerminalizationRequestSchema,
 });
 
+export const CanonicalCancellationTerminalizeRequestSchema = z.strictObject({
+  kind: z.literal("cancelled"),
+  commandId: CommandIdSchema,
+  runId: RunIdSchema,
+  expectedVersion: PositiveIntSchema,
+  claim: RunClaimTokenSchema,
+  endedAt: IsoInstantSchema,
+});
+
 export const CanonicalTerminalizeRequestSchema = z.discriminatedUnion("kind", [
+  CanonicalCancellationTerminalizeRequestSchema,
   z.strictObject({
     kind: z.literal("failure"),
     commandId: CommandIdSchema,

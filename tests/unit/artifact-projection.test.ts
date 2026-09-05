@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref data-intake-and-edit-data §4.1 / ref dashboard-surfaces §2.1 (D45, D164): the stable-keyed local artifact
  * projector, in three layers.
@@ -411,6 +412,7 @@ function executorHarness(descriptor: AnyWorkflowDescriptor, root: string | undef
     tasks: [{ id: projectionContract.id, effect: projectionContract.effect }],
   });
   const deps: RunExecutorDependencies = {
+    lifecycle: testRunLifecycle(authority.database, authority.clock),
     descriptor,
     stores,
     authority: authority.database,

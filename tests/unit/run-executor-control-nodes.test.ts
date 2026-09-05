@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * Generic node dispatch for the control kinds person-lookup does not use:
  * branch selection and exclusion, gate park/resume over the stored gate
@@ -192,6 +193,7 @@ function controlHarness(descriptor: AnyWorkflowDescriptor, childRuns?: ChildRunE
   const sessions = happySessionHarness();
   const emitter = recordingEmitter();
   const deps: RunExecutorDependencies = {
+    lifecycle: testRunLifecycle(authority.database, authority.clock),
     descriptor,
     stores: taskStoreRegistry,
     authority: authority.database,

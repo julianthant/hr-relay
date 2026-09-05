@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * D315 — a parallel entry's leaves checkpoint independently, so a failed leaf
  * retries on the item's next attempt while its successful sibling replays.
@@ -59,6 +60,7 @@ function depsFor(
   return {
     emitter,
     deps: {
+      lifecycle: testRunLifecycle(authority.database, authority.clock),
       descriptor,
       stores: taskStoreRegistry,
       authority: authority.database,

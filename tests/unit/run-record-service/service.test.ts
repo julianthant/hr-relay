@@ -8,7 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import ts from "typescript";
 import { z } from "zod";
 import { afterEach, describe, it } from "vitest";
-import { RunRecordService, type CreateRunRequest } from "../../../src/core/run-record-service.js";
+import { RunRecordService, lifecycleCommandId, workerRunLifecyclePort, runContinuationPort, requireLifecycleApplied, type CreateRunRequest } from "../../../src/core/run-record-service.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
@@ -18,6 +18,7 @@ import {
 } from "../../../src/domain/commands.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../src/domain/config/runtime-generation.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
+import { deriveWriteBindingProofDigest } from "../../../src/domain/write-safety.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import {
   archivedRunContentDigest,
@@ -33,7 +34,7 @@ import {
 } from "../../../src/infra/sqlite/authority-database.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { doctorAuthorityStorage } from "../../../src/infra/sqlite/storage-doctor.js";
-import { COMMAND_FIXTURES, CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, HASH_C, LATER, NOW, UUID_1, UUID_5, UUID_6 } from "../fixtures/phase1c-contract-fixtures.js";
+import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, COMMAND_FIXTURES, CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, HASH_C, LATER, NOW, UUID_1, UUID_5, UUID_6 } from "../fixtures/phase1c-contract-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { QUEUED_RUN, RUN_SESSION, RUN_SESSION_ID, WORKER_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
 import { ARCHIVED_RUN, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "../fixtures/archive-fixtures.js";
@@ -1857,4 +1858,77 @@ describe("canonical run-record service", () => {
     assert.deepEqual([...covered].sort(), publicMethods);
   });
 
+});
+
+
+describe("worker lifecycle service capability", () => {
+  it("separates command authority and stable nested identities", () => {
+    const { service } = fixture();
+    assert.deepEqual(Object.keys(workerRunLifecyclePort(service)).sort(),
+      ["claimNext", "renewClaim", "requeue", "terminalize", "workerTransition"].sort());
+    assert.deepEqual(Object.keys(runContinuationPort(service)), ["transition"]);
+    assert.equal(lifecycleCommandId("worker", UUID_1), lifecycleCommandId("worker", UUID_1));
+    assert.notEqual(lifecycleCommandId("worker", UUID_1), lifecycleCommandId("continuation", UUID_1));
+    assert.notEqual(lifecycleCommandId("continuation", UUID_1), UUID_1);
+  });
+
+  it("settles admitted cancellation under both fences; outer rollback removes journal and lifecycle", () => {
+    const { database, service, request, runtimeConfig } = fixture();
+    const run = created(service, request);
+    const claimed = requireLifecycleApplied(service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID,
+      workerId: WORKER_ID, runtimeConfig }));
+    const requested = requireLifecycleApplied(service.transition({ commandId: UUID_6,
+      runId: run.envelope.runId, expectedVersion: claimed.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } }));
+    const terminal = { kind: "cancelled", commandId: lifecycleCommandId("cancel", run.envelope.runId),
+      runId: run.envelope.runId, expectedVersion: requested.version,
+      claim: { workerId: WORKER_ID, claimGeneration: claimed.claimGeneration }, endedAt: NOW };
+    const generation = database.getMeta().authorityGeneration;
+    assert.throws(() => database.withAuthorityTransaction(() => {
+      assert.equal(service.terminalize(terminal, personLookupDescriptor).state, "applied");
+      throw new Error("outer cancellation rollback");
+    }), /outer cancellation rollback/);
+    assert.equal(database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(database.authority.runs.get(run.envelope.runId), requested);
+    const settled = requireLifecycleApplied(service.terminalize(terminal, personLookupDescriptor));
+    assert.deepEqual(settled.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: NOW });
+    const after = database.getMeta().authorityGeneration;
+    assert.equal(service.terminalize(terminal, personLookupDescriptor).state, "applied-already");
+    assert.deepEqual(service.terminalize({ ...terminal, endedAt: LATER }, personLookupDescriptor),
+      { state: "refused", refusal: { reason: "replay-divergent" } });
+    assert.equal(database.getMeta().authorityGeneration, after);
+  });
+
+  it("D118 finds attempting evidence from an absent run before releasing or cancelling the same item", () => {
+    const { database, service, request, runtimeConfig } = fixture();
+    const run = created(service, request);
+    const claimed = requireLifecycleApplied(service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID,
+      workerId: WORKER_ID, runtimeConfig }));
+    const requested = requireLifecycleApplied(service.transition({ commandId: UUID_6,
+      runId: run.envelope.runId, expectedVersion: claimed.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } }));
+    const absentRunId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const bindingProof = { ...WRITE_INTENT_ATTEMPTING.bindingProof, runId: absentRunId };
+    const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
+    database.authority.writeIntents.fenceAttempt({
+      intent: { ...WRITE_INTENT_ATTEMPTING, workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
+        runId: absentRunId, bindingProof, bindingProofDigest },
+      attempt: { ...WRITE_ATTEMPT, runId: absentRunId, bindingProof, bindingProofDigest },
+    });
+    assert.equal(database.authority.writeIntents.listByRun(run.envelope.runId).length, 0);
+    const generation = database.getMeta().authorityGeneration;
+    assert.equal(database.authority.writeIntents.listAttemptingByItem({
+      workflowId: run.envelope.workflow, itemId: run.envelope.itemId }).length, 1);
+    assert.equal(database.authority.writeIntents.listAttemptingByItem({
+      workflowId: run.envelope.workflow, itemId: UUID_1 }).length, 0);
+    assert.throws(() => database.authority.writeIntents.listAttemptingByItem({
+      workflowId: run.envelope.workflow, itemId: run.envelope.itemId, extra: true }));
+    const result = service.requeue({ commandId: lifecycleCommandId("recovery", run.envelope.runId),
+      runId: run.envelope.runId, expectedVersion: requested.version, cause: "recovery", staleBefore: LATER });
+    assert.equal(result.state, "recovery-required");
+    if (result.state !== "recovery-required") throw new Error("D118 did not refuse release");
+    assert.equal(result.parked, false);
+    assert.deepEqual(result.run, requested);
+    assert.equal(database.getMeta().authorityGeneration, generation);
+  });
 });
