@@ -2591,13 +2591,13 @@ side fails the gate instead of rotting. Three rules bind the tree itself. A `bui
 **only** for what is landed at HEAD, with its commit or D-number cited in the line — never pre-marked.
 The tree never invents scope: an unplanned feature is a finding for `docs/findings/`, not a roadmap
 line. D326 makes the hierarchy uniform: numbered phases are the only spine nodes; Phases 0–3 use
-decimal parts; each part has one coordinator; each immediate numbered task is one supervisor
+decimal parts; the operator coordinates each part; each immediate numbered task is one supervisor
 session; and checklist lines are that task's proof-bearing subtasks. The strict active order is
 0.3 → 1.6 → 2.6 → 3.1 → 3.2 → 3.3 → 3.4. D328 gives admitted parallel peers one shared ordinal
 and consecutive numeric members (`N-1`, `N-2`, ...); a serial task remains `N`, and the hyphen is
 part of one task identity rather than another hierarchy level. Parallel execution begins only after
 each member receives its exact feature branch, absolute worktree, artifact scope, gate and
-integration order in the coordinator ledger. D329 makes 3.2 the last mutable workflow part and its
+integration order in the supervising session's working record. D329 makes 3.2 the last mutable workflow part and its
 final task an independent exact-candidate freeze; 3.3 performs no development and may exercise
 controlled writes only against that unchanged candidate. Session work is recorded only where it happened in
 append-only per-node `log:` blocks, so history never competes with the plan on the spine.

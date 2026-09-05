@@ -1,8 +1,0 @@
-[
-  {
-    "command": "npm run typecheck",
-    "exit_code": 2,
-    "elapsed_seconds": 4.691,
-    "output": "docs/coordinator/execute-phase-1-6-from-c858cc3dc/evidence/r01/typecheck.log"
-  }
-]
