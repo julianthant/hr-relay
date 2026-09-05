@@ -97,11 +97,12 @@ For coding conventions, driver bindings, workflow layout, omission, gates, prove
 read the operating reference and owning contract before changing that seam. Those rules apply even
 when their full explanation is not repeated in this entry point.
 
-## Direct roadmap assignments
+## Roadmap task sessions
 
-The user is the coordinator. “You are a supervisor; complete 1.6.1” assigns exactly that task:
-verify prerequisites, implement, test, commit/integrate locally, update its owning phase and
-roadmap with completion evidence, regenerate/check the roadmap, and stop. No agent coordinator,
-separate coordination paperwork, or next-task dispatch is required. Read roadmap §Governance's
-Direct supervisor assignments amendment; it supersedes older coordinator ceremony while retaining
-scope, gates, isolation, and live approvals. Preserve ownership of already enrolled work.
+The operator opens fresh `/phase-plan` → `/supervise` → `/review` sessions: Sol 5.6 → Astra → Sol 5.6
+on Codex; Opus 5 → Fable 5.1 → Opus 5 on Claude, all at high effort. Read roadmap §Governance's
+**Plan, implement, review** amendment for stage boundaries, plan approval, commit-bound review and
+finalization. The supervisor records the candidate as awaiting independent review and marks the
+phase/roadmap task complete only after accepted review, required integration gates and cleanup.
+Use the exact assigned task including parallel suffixes; no agent coordinator or next-task dispatch.
+Routine stage transfers use the existing phase record; interrupted unique state uses `/handoff`.

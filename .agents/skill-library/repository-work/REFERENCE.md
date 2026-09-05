@@ -304,44 +304,25 @@ environment-supplied.
 
 ## Authorized orchestration
 
-Only read/apply this section after explicit authorization for supervision or coordination.
+For roadmap work read [roadmap §Plan, implement, review](../../../docs/roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04).
+The operator opens the three sessions. Skills use the exact phase task and approved plan commit;
+implementation remains awaiting review until the independent verdict and required gates pass.
 
-- **2026-08-27 — supervised delegation must prove its native role (retiered 2026-09-04).** Codex
-  supervised tasks use only `sup_scout`, `sup_analyst`, `sup_terra`, or `sup_sol`; pass the exact
-  native `agent_type` and begin `task_name` with that same role. Claude uses only its native
-  `sup-scout` / `sup-analyst` research roles and `sup-sonnet` / `sup-opus` execution roles, with the
-  role at the start of the visible description. `sup-opus` / `sup_sol` is the default for every
-  small-to-medium seam; `sup-sonnet` / `sup_terra` is trivial-only (a review-skippable mechanical edit
-  whose gate proves it). `sup-fable` remains retired on Claude. Codex coordinators and supervisors use
-  `gpt-6-astra`; Scout and trivial execution use `gpt-5.6-terra`, and Analyst and default execution
-  use `gpt-5.6-sol`, all at high reasoning. The deepest work stays supervisor-owned. Never substitute
-  a generic/default/worker/explorer agent or a bare model override. If the
-  required role is unavailable, fail loud instead of silently downgrading it. A
-  new coordinator owns `docs/coordinator/<task>/` for every task-scoped coordination artifact:
-  `project-profile.md`, board, run plan, briefs, research, reports, decisions, evidence, and partial
-  handoffs. The profile records this repository's plan authorities (`docs/roadmap/roadmap.md` and the
-  active `docs/rebuild/` phase docs), owning references/decisions, gates, permissions, and the
-  worktree + `feature/<unit>` + `--no-ff` integration rules above. Product code, tests, fixtures, and
-  canonical docs stay in their owning paths. Prompts supply the exact profile/workspace paths and one
-  unique artifact path per writer; parallel workers use that relative path in their own worktrees,
-  while read-only agents return findings for the supervisor to persist. Existing coordination files
-  stay at established paths unless the operator requests migration. Board writes must name the exact absolute path. An authorized coordination run includes
-  its evidence-backed reconciliation and close-out; do not ask again for that same authorization. Once every run closes, the coordinator
-  reconciles verified outcomes into only the necessary roadmap, rebuild/phase plan, owning
-  spec/decision, and applicable `AGENTS.md`, commits those updates, and closes the board with
-  pointers. The workspace is retained unless the operator explicitly requests archival or removal;
-  successful close never auto-handoffs. A coordinator enters stateless discussion or grilling only
-  when explicitly asked and writes none of it until the operator says to record it.
-- **Parallel work has one recorded lifecycle.** Follow the active platform's
-  `skill-library/parallel-agent-work/REFERENCE.md`: supervisors own worker rows and coordinators own
-  supervisor-task/session rows. Before dispatch, every writable row records the exact task/agent id,
-  base SHA, `feature/<unit>` branch, absolute worktree, non-overlapping scope/artifact, gate,
-  integration order and state; read-only agents need no worktree. A row is not closed by merging.
-  After verified integration and a green gate, remove it with `git worktree remove`, verify both its
-  Git registration and physical worktree directory are absent, delete/prune its branch, and record
-  residue for any failure. For a separate Codex task, the coordinator then archives that exact
-  recorded task from the active sidebar; nested agents have no sidebar step. Never associate or
-  archive a task by title or recency.
+Before authorized worker dispatch, read the active platform's
+`~/.agents/skill-library/parallel-agent-work/REFERENCE.md` (Codex) or
+`~/.claude/skill-library/parallel-agent-work/REFERENCE.md` (Claude). Codex uses native `sup_scout`,
+`sup_analyst`, `sup_terra` and `sup_sol`; Claude uses `sup-scout`, `sup-analyst`, `sup-sonnet` and
+`sup-opus`. Sol/Opus owns substantive supporting work; Terra/Sonnet execution is exact mechanical
+work only. The Astra/Fable supervisor retains the hardest seam and consequential judgment.
+Validate native role definitions before dispatch; never substitute generic roles or model overrides.
+
+Each parallel writer has an isolated worktree/branch and non-overlapping scope/artifacts. Record
+its exact returned id, base, branch, absolute worktree, gate and integration order. Verify its diff,
+ancestry and gate evidence before integrating under the repository's merge policy. After required
+integration gates pass, remove only its owned worktree and integrated local branch and verify both
+registration and physical cleanup. Nested agents have no sidebar task; any separately assigned task
+is associated by exact recorded id, never title or recency. Preserve unrelated sessions and record
+cleanup failures as residue. No coordinator runtime, UUID, board or progress footer is required.
 
 ## Fail loud — no unverified silent fallbacks
 

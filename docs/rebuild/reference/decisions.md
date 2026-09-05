@@ -1,5 +1,9 @@
 # `reference/decisions.md` — the decision ledger (D1–D332, 2026-07-17 → 2026-09-04)
 
+**D325/D326 session-workflow amendment (2026-09-04):** the operator opens separate planning,
+implementation and independent review sessions; task completion requires accepted review plus
+integrated implementation, gates and cleanup. Owner: [roadmap §Plan, implement, review](../../roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04).
+
 **This is the POINTER INDEX, not a spec.** One line per decision saying what was decided, when, and
 **which doc owns it** — never the contract itself. Implement from the owning doc; a decision is not
 ratified until its normative text lands there in the same commit that records it. Refs read

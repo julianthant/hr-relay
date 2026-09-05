@@ -2602,6 +2602,57 @@ final task an independent exact-candidate freeze; 3.3 performs no development an
 controlled writes only against that unchanged candidate. Session work is recorded only where it happened in
 append-only per-node `log:` blocks, so history never competes with the plan on the spine.
 
+### Plan, implement, review (operator amendment, 2026-09-04)
+
+The operator coordinates three fresh sessions for an exact roadmap task. Codex uses GPT-5.6 Sol
+(high) to plan, GPT-6 Astra (high) to implement, and a fresh GPT-5.6 Sol (high) to review. Claude uses
+Opus 5 (high), Fable 5.1 (high), and a fresh Opus 5 (high), respectively. The operator selects the
+model and opens each session; skills neither switch models nor launch the next stage automatically.
+Explicit operator overrides take precedence. This rule governs future task execution, not a
+retroactive reopening of completed tasks.
+
+1. **Plan — `/phase-plan`.** Verify the exact roadmap node, owning phase section, current code and
+   prerequisite evidence. Preserve parallel suffixes such as `2-1` and `2-2`. Propose outcome/scope,
+   implementation sequence, acceptance tests and required gates in native Plan Mode. After approval
+   and leaving Plan Mode, the same planner updates only the owning phase and necessary roadmap or
+   explicitly approved contract/index changes, validates and commits them, then stops. Planning is
+   not implementation, and an approved implementation plan cannot silently redesign an admitted
+   contract. Existing phase boundaries and proof obligations remain binding.
+2. **Implement — `/supervise`.** Consume the approved phase-plan commit, verify prerequisites and
+   current checkout, implement and test the assigned outcome, and commit the candidate. Supporting
+   agents are optional, bounded and governed by native role/isolation rules. The supervisor retains
+   the central hard work and consequential judgment. Record `awaiting independent review` with the
+   plan reference, candidate base/head, gate evidence and exclusions in the existing phase section;
+   leave task completion open. Preserve other sessions' edits and keep the candidate stable during
+   review. Do not start another task or create an agent coordinator.
+3. **Review — fresh `/review`.** Inspect the pinned candidate against the approved phase section,
+   relevant contracts, surrounding code and tests. Review in the current session by default;
+   delegation needs an explicit request. Report PASS, CHANGES REQUIRED or BLOCKED with exact reviewed
+   commits, findings and evidence limits. Missing mandatory proof is BLOCKED. Review is read-only
+   unless separately authorized to fix or record its result; it does not mark roadmap completion.
+4. **Finalize — original supervisor.** The operator returns the independent verdict. Fix required
+   findings and obtain renewed review of changed code or consequential requirement changes. After
+   PASS, integrate locally onto the required target, resolve shared-target drift, run all required
+   integration gates and clean up owned worker worktrees/branches. Behavior-changing merge conflict
+   resolutions need renewed review. Mark complete in BOTH phase and roadmap only with integrated
+   implementation, green required gates, accepted review and verified cleanup. Record candidate and
+   integration commits, review provenance and gates; regenerate/check the roadmap and commit the
+   completion update. Mechanical evidence-only recording does not invalidate review of unchanged
+   implementation. Stop after that task; no automatic phase closure or next-task assignment.
+
+A plain direct task assignment uses its existing approved phase section as the brief; it never
+waives prerequisites or authorizes unrelated scope. Retain the repo's local integration policy and
+never push without explicit instruction. All mandatory gates, coverage/assertions, phase ordering,
+independent candidate freezes, and live-write/cutover approvals remain binding.
+
+Transfer only task, phase path/section, plan commit, checkout/branch, candidate range, gate evidence
+bound to tested state, and unresolved issues. The phase record and commits are durable authority;
+no coordinator board, dispatch envelope, routine handoff/report file or repeated progress footer is
+required. Use `/handoff` only for interrupted work whose unique state is not already preserved.
+Keep exact ids, scopes, bases, worktrees and integration order for owned workers; historical
+coordination records do not enroll new work. This amendment supersedes D325/D326 and older direct-
+assignment text only for session orchestration and completion timing.
+
 ### D1 ownership map — the quick index (concept → owning doc)
 
 Every concept has exactly one owner (`reference/decisions` D1). Reference the owner; never redefine.

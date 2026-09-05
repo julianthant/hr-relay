@@ -552,6 +552,12 @@ example and §8.1 is its as-built, recording the five deltas this run forced.
 ## 1.6 · Implement canonical run and settings authorities
 <!-- roadmap: p1-authority-implementation -->
 
+**Session workflow (operator amendment, 2026-09-04):** use roadmap §Governance's
+[Plan, implement, review](../roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04) rule.
+The approved phase section is the executor's brief. A candidate stays awaiting independent review;
+only the original supervisor finalizes after accepted review, required integration gates and cleanup.
+Existing task seams, dependency order, contracts and proof obligations remain unchanged.
+
 This reopened implementation part waits for 0.3's approved contracts. It does not redesign the
 authority model and does not own Phase-2 downstream read models or Phase-3 dashboard presentation.
 Its scope is the stores, migrations, lifecycle/configuration writers, core runtime consumers, and
