@@ -65,6 +65,7 @@ import type { Fingerprint, IsoInstant, NodeId, ProviderCapabilityId } from "../d
 import {
   RunLifecycleSchema,
   RunRecordSchema,
+  runClaim,
   type RunLifecycle,
   type RunRecord,
 } from "../domain/run/record.js";
@@ -104,10 +105,6 @@ import { planStepOmissions } from "../domain/workflow/step-omission.js";
 import { jsonLeafPaths } from "./task-provenance.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { RunClaimTokenSchema, type RunClaimToken } from "../infra/sqlite/run-store-contracts.js";
-import type {
-  FailureTerminalizationReport,
-  SuccessTerminalizationReport,
-} from "../infra/sqlite/run-terminal-contracts.js";
 import {
   WriteIntentParkCodeSchema,
   type WriteIntentParkCode,
@@ -133,15 +130,16 @@ import {
 import { redactObservedDataPoints } from "./observed-data.js";
 import { createTaskProvenanceCollector } from "./task-provenance.js";
 import { buildTerminalAuthorization } from "./terminal-authorization.js";
+import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type WorkerRunLifecyclePort } from "./run-record-service.js";
 import type { WorkerSessionManager } from "./worker-sessions.js";
 
 /* ── injected seams ──────────────────────────────────────────────────────── */
 
 /** The authority surface a run execution needs; `AuthorityDatabase` satisfies it. */
 export interface RunExecutionAuthority {
-  readonly authority: Pick<AuthorityRepositories, "runs" | "runCheckpoints" | "gateResults" | "artifactOutbox">;
-  terminalizeFailure(descriptor: AnyWorkflowDescriptor, input: unknown): FailureTerminalizationReport;
-  terminalizeSuccess(input: unknown, factoryAuthorization?: object): SuccessTerminalizationReport;
+  readonly authority: Pick<AuthorityRepositories, "runCheckpoints" | "gateResults" | "artifactOutbox">
+    & { readonly runs: Pick<AuthorityRepositories["runs"], "get"> };
+  afterAuthorityCommit(publish: () => void): void;
   /**
    * Required only when a `RunDiagnosticCapture` port is injected: the bundle
    * row and the failure terminalization have to land together or the failure's
@@ -284,6 +282,7 @@ function admittedClientFor(
 }
 
 export interface RunExecutorDependencies {
+  readonly lifecycle: WorkerRunLifecyclePort;
   readonly descriptor: AnyWorkflowDescriptor;
   readonly stores: TaskStoreRegistry;
   readonly authority: RunExecutionAuthority;
@@ -485,17 +484,23 @@ export async function executeClaimedRun(
     return current;
   };
 
+  const requireOriginalClaim = (current: RunRecord): void => {
+    const held = runClaim(current);
+    if (held === undefined || held.workerId !== claim.workerId || held.claimGeneration !== claim.claimGeneration) {
+      throw new RunAbandonedError("lost original execution claim");
+    }
+  };
+
   const transitionTo = (lifecycle: RunLifecycle): RunRecord => {
     const current = getRun();
-    const outcome = runs.transition({
+    checkCancellation();
+    const outcome = deps.lifecycle.workerTransition({
+      commandId: lifecycleCommandId("executor-transition", { runId, generation: claim.claimGeneration, version: current.version }),
       runId,
-      expectedVersion: current.version,
       claim,
       lifecycle,
-      now: instant(),
     });
-    if (outcome.state !== "applied") throw new RunAbandonedError(outcome.message);
-    return outcome.run;
+    return requireLifecycleApplied(outcome);
   };
 
   const runningLifecycle = (currentNodeId?: NodeId): RunLifecycle => RunLifecycleSchema.parse({
@@ -519,6 +524,17 @@ export async function executeClaimedRun(
       workflow: descriptor.id,
       ...event,
     }));
+  };
+
+  const checkCancellation = (): void => {
+    const current = getRun();
+    if (current.cancelRequested !== true) return;
+    requireLifecycleApplied(deps.lifecycle.terminalize({
+      kind: "cancelled", commandId: lifecycleCommandId("cancel", { runId, generation: claim.claimGeneration }),
+      runId, expectedVersion: current.version, claim, endedAt: instant(),
+    }, descriptor));
+    deps.authority.afterAuthorityCommit(() => emit({ t: "span.ended", kind: "run", ...runSpanIdentity, outcome: "cancelled" }));
+    throw new RunAbandonedError("cancelled");
   };
 
   /**
@@ -546,25 +562,34 @@ export async function executeClaimedRun(
     const bound = prepared === undefined
       ? failure
       : FailureRecordSchema.parse({ ...failure, diagnosticBundleId: prepared.bundleId });
+    checkCancellation();
     const current = getRun();
+    requireOriginalClaim(current);
     const authorization = buildTerminalAuthorization({
       run: current,
       authorizedAt: instant(),
       consequence: { kind: "failed", failure: bound },
     });
     if (prepared === undefined || capture === undefined) {
-      deps.authority.terminalizeFailure(descriptor, { failure: bound, authorization });
+      requireLifecycleApplied(deps.lifecycle.terminalize({ kind: "failure",
+        commandId: lifecycleCommandId("failure", { runId, failureId: bound.failureId }),
+        terminal: { failure: bound, authorization },
+      }, descriptor));
     } else if (deps.authority.withAuthorityTransaction === undefined) {
       throw new Error(
         `run ${runId} has a diagnostic capture port but no authority transaction to settle its bundle with the failure`,
       );
     } else {
       deps.authority.withAuthorityTransaction(() => {
-        deps.authority.terminalizeFailure(descriptor, { failure: bound, authorization });
+        requireLifecycleApplied(deps.lifecycle.terminalize({ kind: "failure",
+          commandId: lifecycleCommandId("failure", { runId, failureId: bound.failureId }),
+          terminal: { failure: bound, authorization },
+        }, descriptor));
         capture.persist(prepared);
       });
     }
-    emit({ t: "span.ended", kind: "run", ...runSpanIdentity, outcome: "failed", failureId: bound.failureId });
+    deps.authority.afterAuthorityCommit(() => emit({ t: "span.ended", kind: "run", ...runSpanIdentity,
+      outcome: "failed", failureId: bound.failureId }));
     return RunExecutionOutcomeSchema.parse({ state: "failed", runId, failureId: bound.failureId });
   };
 
@@ -643,6 +668,8 @@ export async function executeClaimedRun(
       current: RunRecord,
       built: Readonly<{ record: RunResultRecord; authorization: object }>,
     ): RunExecutionOutcome => {
+      checkCancellation();
+      requireOriginalClaim(current);
       const outboxId = OutboxIdSchema.parse(deps.ids.uuid());
       const outbox = RunTerminalOutboxRecordSchema.parse({
         outboxId,
@@ -661,11 +688,11 @@ export async function executeClaimedRun(
         authorizedAt: built.record.createdAt,
         consequence: { kind: "done", result: built.record, outboxId },
       });
-      deps.authority.terminalizeSuccess(
-        { result: built.record, outbox, authorization },
-        built.authorization,
-      );
-      emit({ t: "span.ended", kind: "run", ...runSpanIdentity, outcome: "done" });
+      requireLifecycleApplied(deps.lifecycle.terminalize({ kind: "success",
+        commandId: lifecycleCommandId("success", { runId, resultDigest: built.record.resultDigest }),
+        terminal: { result: built.record, outbox, authorization },
+      }, descriptor, built.authorization));
+      deps.authority.afterAuthorityCommit(() => emit({ t: "span.ended", kind: "run", ...runSpanIdentity, outcome: "done" }));
       return RunExecutionOutcomeSchema.parse({ state: "done", runId });
     };
 
@@ -1421,6 +1448,7 @@ export async function executeClaimedRun(
     };
 
     for (const [index, node] of nodes.entries()) {
+      checkCancellation();
       if (input.signal.aborted) throw abortReason(`run ${runId} execution was aborted`);
       const entry = plan.get(String(node.id));
       if (entry === undefined) throw new Error(`node "${node.id}" has no execution plan entry`);
@@ -1835,9 +1863,16 @@ export async function executeClaimedRun(
   try {
     return await interpret();
   } catch (error) {
-    if (error instanceof RunAbandonedError) {
-      return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: error.message });
+    // A command can commit cancellation between a boundary read and terminal admission.
+    // Settle it here, after any enclosing evidence transaction has unwound.
+    let failure = error;
+    if (failure instanceof RunLifecycleRefusedError) {
+      try { checkCancellation(); } catch (cancellation) { failure = cancellation; }
     }
-    throw error;
+    if (failure instanceof RunAbandonedError || (failure instanceof RunLifecycleRefusedError
+      && failure.outcome.state === "refused" && failure.outcome.refusal.reason === "lost")) {
+      return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: failure.message });
+    }
+    throw failure;
   }
 }

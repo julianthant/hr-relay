@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * D313 — the run modal is the complete omission authority.
  *
@@ -240,6 +241,7 @@ describe("D313 — the executor runs no entry of an omitted step and never asks 
     const sessions = sessionFactoryHarness({ ucpath: () => healthyUcpathDriver(), crm: () => healthyCrmDriver() });
     const emitter = recordingEmitter();
     const deps: RunExecutorDependencies = {
+      lifecycle: testRunLifecycle(authority.database, authority.clock),
       descriptor,
       stores: taskStoreRegistry,
       authority: authority.database,

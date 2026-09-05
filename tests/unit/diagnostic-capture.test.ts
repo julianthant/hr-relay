@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref operator-trust §2.2, executed: the closed trigger set, redaction AT capture, the
  * two-phase failure↔bundle binding over the real interpreter and authority, and
@@ -211,7 +213,7 @@ describe("redaction happens at capture", () => {
 });
 
 describe("the failure and its bundle land together", () => {
-  it("binds diagnosticBundleId on the failure and stores the bundle naming that failure", async () => {
+  for (const rollback of [false, true]) it(`settles diagnostic bundle with failure (rollback=${String(rollback)})`, async () => {
     const authority = openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
@@ -235,6 +237,7 @@ describe("the failure and its bundle land together", () => {
       ids: sequentialIdFactory("d"),
     });
     const deps: RunExecutorDependencies = {
+      lifecycle: testRunLifecycle(database, clock),
       descriptor: personLookupDescriptor,
       stores: taskStoreRegistry,
       authority: database,
@@ -265,6 +268,34 @@ describe("the failure and its bundle land together", () => {
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") return;
 
+    if (rollback) {
+      const capture = deps.diagnostics;
+      assert.ok(capture);
+      const emitter = recordingEmitter();
+      let terminalCommandId: string | undefined;
+      const lifecycle = deps.lifecycle;
+      await assert.rejects(executeClaimedRun({ ...deps, emitter: emitter.emitter,
+        lifecycle: { ...lifecycle, terminalize: (input, descriptor, factoryAuthorization) => {
+          const parsed = z.object({ commandId: z.string() }).parse(input);
+          terminalCommandId = parsed.commandId;
+          return lifecycle.terminalize(input, descriptor, factoryAuthorization);
+        } },
+        diagnostics: { ...capture, persist: (prepared) => {
+          capture.persist(prepared);
+          assert.ok(database.authority.diagnosticBundles.get(prepared.bundleId));
+          throw new Error("after diagnostic persistence");
+        } },
+      }, { run: claimed.run, claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration },
+        signal: new AbortController().signal }), /after diagnostic persistence/);
+      assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "running");
+      assert.deepEqual(database.authority.failures.listByRun(RUN_ID), []);
+      assert.deepEqual(database.authority.diagnosticBundles.listByRun(RUN_ID), []);
+      assert.equal(database.authority.terminalAuthorizations.get(RUN_ID), undefined);
+      assert.ok(terminalCommandId);
+      assert.equal(database.authority.lifecycleJournal.getCommand(terminalCommandId), undefined);
+      assert.equal(emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run").length, 0);
+      return;
+    }
     const outcome = await executeClaimedRun(deps, {
       run: claimed.run,
       claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration },
@@ -307,10 +338,12 @@ describe("the failure and its bundle land together", () => {
     const { service } = captureService(database);
     const transactionless = {
       authority: database.authority,
+      afterAuthorityCommit: database.afterAuthorityCommit.bind(database),
       terminalizeFailure: database.terminalizeFailure.bind(database),
       terminalizeSuccess: database.terminalizeSuccess.bind(database),
     };
     const deps: RunExecutorDependencies = {
+      lifecycle: testRunLifecycle(database, clock),
       descriptor: personLookupDescriptor,
       stores: taskStoreRegistry,
       authority: transactionless,

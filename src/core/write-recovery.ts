@@ -118,9 +118,17 @@ export const WriteRecoveryDecisionSchema = z.discriminatedUnion("state", [
 ]);
 export type WriteRecoveryDecision = z.infer<typeof WriteRecoveryDecisionSchema>;
 
+import { lifecycleCommandId, type RunContinuationPort } from "./run-record-service.js";
+
+export type WriteRecoveryAuthority = Omit<WriteSequencerAuthority, "authority" | "withAuthorityTransaction"> & {
+  readonly authority: AuthorityRepositories;
+  withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
+};
+
 export interface WriteRecoveryDependencies {
+  readonly continuation: RunContinuationPort;
   readonly stores: TaskStoreRegistry;
-  readonly authority: WriteSequencerAuthority;
+  readonly authority: WriteRecoveryAuthority;
   /**
    * D116 (ref clock-config-secrets §4): the recovery probe leases a driver OUTSIDE any worker
    * loop's claimed-run binding window, so the host must also expose the
@@ -331,7 +339,8 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
           checkpoint: settlement.checkpoint,
           commit: settlement.commit,
         },
-        { kind: "resume-queued", startAt: String(node.id) },
+        { kind: "resume-queued", startAt: String(node.id), port: deps.continuation,
+          commandId: lifecycleCommandId("positive-recovery", { writeIntentId: intent.writeIntentId, generation: intent.generation }) },
         deps.hooks,
       );
       return WriteRecoveryDecisionSchema.parse({
@@ -439,13 +448,14 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
 /* ── the kernel's typed operator resolutions (ref write-safety §4.1) ───────────────── */
 
 export interface WriteResolutionDependencies {
+  readonly continuation: RunContinuationPort;
   readonly descriptors: WorkflowDescriptorResolver;
   /**
    * MUST be the same `AuthorityDatabase` the kernel's `withAuthorityTransaction`
    * runs on: the resolution executes INSIDE the kernel's transaction, and
    * `commitWriteAttempt` composes as a nested savepoint on that connection.
    */
-  readonly authority: WriteSequencerAuthority;
+  readonly authority: WriteRecoveryAuthority;
   readonly ids: IdFactory;
   readonly resolveImplFingerprint?: (taskId: TaskId) => Fingerprint;
   readonly hooks?: WriteSequencerHooks;
@@ -581,7 +591,8 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
           checkpoint: settlement.checkpoint,
           commit: settlement.commit,
         },
-        { kind: "resume-queued", startAt: String(node.id) },
+        { kind: "resume-queued", startAt: String(node.id), port: deps.continuation,
+          commandId: context.command.commandId },
         deps.hooks,
       );
       return { run: result.run };

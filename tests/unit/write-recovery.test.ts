@@ -1,3 +1,7 @@
+import { lifecycleCommandId } from "../../src/core/run-record-service.js";
+import { executeSequencedWriteCommit } from "../../src/core/write-sequencer.js";
+import { PositiveIntSchema } from "../../src/domain/ids.js";
+import { testRunContinuation } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref write-safety §4 recovery matrix (D118) and the §4.1 typed operator resolutions
  * over the REAL authority database — probe-first routing, D64/D69-qualified
@@ -80,7 +84,7 @@ interface Harness {
   readonly openedFingerprints: () => readonly string[];
 }
 
-function harness(): Harness {
+function harness(refuseContinuation = false): Harness {
   const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
   const root = mkdtempSync(join(tmpdir(), "hrauto-write-recovery-"));
   const database = AuthorityDatabase.open(
@@ -110,6 +114,13 @@ function harness(): Harness {
   const manager = writeFixtureSessionManager(spied, registry, clock);
   const ids = sequentialIdFactory("c");
   const recovery = createWriteRecoveryService({
+    continuation: { transition: (input) => {
+      if (refuseContinuation) {
+        assert.ok(database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID));
+        return { state: "refused", refusal: { reason: "conflict", currentVersion: PositiveIntSchema.parse(input.expectedVersion + 1) } };
+      }
+      return testRunContinuation(database, clock).transition(input);
+    } },
     stores: registry,
     authority: database,
     sessions: manager,
@@ -505,6 +516,7 @@ describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", 
   function resolutionHarness() {
     const h = harness();
     const executor = createWriteResolutionExecutor({
+      continuation: testRunContinuation(h.database, h.clock),
       descriptors: {
         resolve: (workflowId) =>
           [writeFixtureDescriptor, writeFixtureSaveDescriptor]
@@ -642,5 +654,55 @@ describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", 
         );
         assert.equal(h.database.authority.writeIntents.get(writeIntentId)?.status, "committed");
       });
+  });
+});
+
+
+describe("positive recovery composite refusal", () => {
+  it("unwinds evidence inserted before continuation refuses", async () => {
+    const h = harness(true);
+    const { run, writeIntentId } = parkedAttemptingWrite(h);
+    const intent = intentByKey(h.database);
+    const generation = h.database.getMeta().authorityGeneration;
+    h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
+    await assert.rejects(h.recovery.recover({ descriptor: writeFixtureDescriptor, writeIntentId, signal: SIGNAL }),
+      /run lifecycle conflict/);
+    assert.deepEqual(h.database.authority.runs.get(run.envelope.runId), run);
+    assert.deepEqual(intentByKey(h.database), intent);
+    assert.equal(h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID,
+      WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID), undefined);
+    assert.equal(h.database.getMeta().authorityGeneration, generation);
+    assert.ok(h.ids.minted().every((id) => h.database.authority.durableOutbox.get(id) === undefined));
+  });
+});
+
+
+describe("resume-queued helper replay", () => {
+  it("preserves continuation on exact replay and refuses a changed continuation", async () => {
+    const h = harness();
+    const { run, writeIntentId } = parkedAttemptingWrite(h);
+    h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
+    await h.recovery.recover({ descriptor: writeFixtureDescriptor, writeIntentId, signal: SIGNAL });
+    const intent = intentByKey(h.database);
+    assert.ok(intent?.status === "committed");
+    const checkpoint = h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID,
+      WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID);
+    assert.ok(checkpoint);
+    const outboxes = h.ids.minted().map((id) => h.database.authority.durableOutbox.get(id));
+    const ledgerOutbox = outboxes.find((entry) => entry?.payload.kind === "ledger-entry");
+    const terminalSpanOutbox = outboxes.find((entry) => entry?.payload.kind === "write-committed-span");
+    assert.ok(ledgerOutbox && terminalSpanOutbox);
+    const input = { run: { runId: run.envelope.runId, expectedVersion: run.version }, checkpoint,
+      commit: { writeIntentId, generation: intent.generation, completionProof: intent.completionProof,
+        confirmedAt: intent.confirmedAt, outcome: checkpoint.output.value, ledgerOutbox, terminalSpanOutbox } };
+    const transition = { kind: "resume-queued" as const, startAt: WRITE_FIXTURE_NODE_ID,
+      port: testRunContinuation(h.database, h.clock),
+      commandId: lifecycleCommandId("positive-recovery", { writeIntentId, generation: intent.generation }) };
+    const generation = h.database.getMeta().authorityGeneration;
+    const replay = executeSequencedWriteCommit(h.database, input, transition);
+    assert.equal(replay.run.envelope.startAt, WRITE_FIXTURE_NODE_ID);
+    assert.equal(h.database.getMeta().authorityGeneration, generation);
+    assert.throws(() => executeSequencedWriteCommit(h.database, input, { ...transition, startAt: "other-node" }), /replay-divergent/);
+    assert.equal(h.database.getMeta().authorityGeneration, generation);
   });
 });

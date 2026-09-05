@@ -462,6 +462,8 @@ type DependencyRepository = Readonly<{
 }>;
 
 type WriteIntentRepository = Readonly<{
+  /** D118 recovery admission includes intents from earlier or missing run rows. */
+  listAttemptingByItem(input: unknown): readonly z.infer<typeof WriteIntentRecordSchema>[];
   recordObservedPresent(input: unknown): PermanentWriteResolution;
   fenceAttempt(input: unknown): PermanentWriteResolution;
   /** D111: CAS a `retryable` permanent row to `attempting` generation+1 with a FRESH binding proof. */
@@ -595,6 +597,8 @@ type RunRepository = Readonly<{
    */
   nextWorkflowRunNumber(workflow: string): number;
   listByWorker(workerId: string): readonly RunRecord[];
+  /** Indexed D118/D200 read; the run service owns every resulting mutation. */
+  listClaimRecoveryCandidates(input: unknown): readonly RunRecord[];
   /**
    * D269 — the MEMBERSHIP of a run session, derived from the run rows that
    * carry the id (`tasks.session_id`). There is no stored member list to
@@ -5738,6 +5742,21 @@ export class AuthorityDatabase implements Disposable {
           BrowserSystemIdSchema.parse(system),
           IdempotencyKeySchema.parse(idempotencyKey),
         ),
+        listAttemptingByItem: (input: unknown) => {
+          const request = z.strictObject({ workflowId: WorkflowIdSchema, itemId: ItemIdSchema }).parse(input);
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM write_intents
+            WHERE status = 'attempting'
+              AND json_extract(record_json, '$.workflowId') = ?
+              AND json_extract(record_json, '$.itemId') = ?
+            ORDER BY record_key
+          `).all(request.workflowId, request.itemId);
+          return Object.freeze(rows.map((row) => {
+            const intent = parseJsonRecord(WriteIntentRecordSchema, JsonRowSchema.parse(row).record_json);
+            if (intent.status !== "attempting") throw new Error("attempting intent index disagrees with its record");
+            return intent;
+          }));
+        },
         listByRun: (runId: string) => {
           const rows = this.#database.prepare(`
             SELECT record_json FROM write_intents
@@ -6391,6 +6410,40 @@ export class AuthorityDatabase implements Disposable {
         return this.#nextItemAttempt(query.workflow, query.itemId);
       },
       nextWorkflowRunNumber: (workflow: string) => this.#nextWorkflowRunNumber(workflow),
+      listClaimRecoveryCandidates: (input: unknown) => {
+        const request = RunClaimSweepRequestSchema.parse(input);
+        const clauses: string[] = [];
+        const bindings: string[] = [];
+        if (request.staleBefore !== undefined) {
+          clauses.push("heartbeat_at < ?");
+          bindings.push(request.staleBefore);
+        }
+        if (request.workerId !== undefined) {
+          clauses.push("owner_worker_id = ?");
+          bindings.push(request.workerId);
+        }
+        if (request.workflow !== undefined) {
+          clauses.push("workflow = ?");
+          bindings.push(request.workflow);
+        }
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM tasks
+          WHERE state IN ('claimed', 'validating', 'running')
+            ${clauses.map((clause) => `AND ${clause}`).join(" ")}
+          ORDER BY heartbeat_at, record_key
+        `).all(...bindings);
+        return Object.freeze(rows.map((row) => {
+          const run = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+          const claim = runClaim(run);
+          if (claim === undefined
+            || (request.workerId !== undefined && claim.workerId !== request.workerId)
+            || (request.workflow !== undefined && run.envelope.workflow !== request.workflow)
+            || (request.staleBefore !== undefined && Date.parse(claim.heartbeatAt) >= Date.parse(request.staleBefore))) {
+            throw new Error("claim recovery index disagrees with its run record");
+          }
+          return run;
+        }));
+      },
       listByWorker: (workerId: string) => {
         const rows = this.#database.prepare(`
           SELECT record_json FROM tasks WHERE owner_worker_id = ? ORDER BY created_at, record_key

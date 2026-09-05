@@ -1,3 +1,5 @@
+import { runSpanPath } from "../../core/span-emitter.js";
+import type { RunRecord } from "../../domain/run/record.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
 /**
  * The Phase-1f worker composition value: one workflow-scoped browser worker
@@ -42,6 +44,7 @@ import { hostConfigFacts } from "../../domain/config/host-display.js";
  *   state and reports it; the typed §4.1 operator resolutions (command kernel)
  *   remain the only release paths in this process.
  */
+import { RunRecordService, workerRunLifecyclePort, requireLifecycleApplied, sweepWorkerClaims, type WorkerRunLifecyclePort } from "../../core/run-record-service.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { TaskLogger } from "../../base/task.js";
@@ -271,6 +274,8 @@ interface WorkerMaintenance {
  */
 function startWorkerMaintenance(input: Readonly<{
   database: AuthorityDatabase;
+  lifecycle: WorkerRunLifecyclePort;
+  publishCancelled: (run: RunRecord) => void;
   scheduler: MonotonicDeadlineScheduler;
   clock: Clock;
   workerId: WorkerId;
@@ -311,7 +316,7 @@ function startWorkerMaintenance(input: Readonly<{
     const staleBefore = new Date(clock.nowMs() - input.claimStaleAfterMs).toISOString();
     // Recovery is not workflow-scoped by nature (ref execution-and-sessions §3): sweep every
     // workflow's expired claims, not just this worker's.
-    const outcomes = database.authority.runs.sweepExpiredClaims({ staleBefore, now });
+    const outcomes = sweepWorkerClaims(database, input.lifecycle, { staleBefore, now }, input.publishCancelled);
     for (const outcome of outcomes) {
       if (outcome.state === "recovery-required") {
         log.warn(
@@ -326,9 +331,11 @@ function startWorkerMaintenance(input: Readonly<{
         );
         continue;
       }
-      log.info("expired claim requeued", {
-        runId: outcome.run.envelope.runId,
-        workflow: outcome.run.envelope.workflow,
+      const run = requireLifecycleApplied(outcome);
+      log.info("expired claim settled", {
+        runId: run.envelope.runId,
+        workflow: run.envelope.workflow,
+        state: run.lifecycle.state,
       });
     }
     for (const expired of database.authority.workerLeases.sweepExpired({ staleBefore, now })) {
@@ -466,6 +473,9 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     throw openError;
   }
 
+  const lifecycle = workerRunLifecyclePort(new RunRecordService({ database, clock, ids,
+    publishQueued: () => { throw new Error("worker port cannot create runs"); },
+  }));
   let resolved: ReturnType<typeof resolveConfigWithProvenance>;
   let runtimeConfig: ReturnType<AuthorityDatabase["authority"]["runtimeConfig"]["requireActive"]>;
   try {
@@ -522,6 +532,15 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     newSessionId: () => ids.uuid(),
   });
   const emitter = createSpanJsonlWriter({ stateRoot, clock });
+  const publishCancelled = (run: RunRecord): void => {
+    if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "cancelled") {
+      throw new Error("recovery cancellation publication requires a cancelled run");
+    }
+    emitter.emit({ t: "span.ended", kind: "run", outcome: "cancelled",
+      ts: run.lifecycle.endedAt, workflow: run.envelope.workflow, runId: run.envelope.runId,
+      attempt: run.envelope.attempt, traceId: run.envelope.traceId,
+      spanPath: runSpanPath(run.envelope.traceId) });
+  };
   // D267 (ref execution-and-sessions §10): the per-credential Duo ceremony
   // lease, keyed on the credential identity resolved ONCE here — an
   // unresolvable identity refuses the whole worker at boot.
@@ -665,12 +684,13 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
      * an unfinished `attempting` write intent parks (`parked-write`) or stays
      * unclaimable, and NEVER requeues.
      */
-    for (const outcome of database.authority.runs.sweepExpiredClaims({ workerId, now })) {
-      if (outcome.state === "requeued") {
+    for (const outcome of sweepWorkerClaims(database, lifecycle, { workerId, now }, publishCancelled)) {
+      if (outcome.state !== "recovery-required") {
+        const run = requireLifecycleApplied(outcome);
         log.warn("orphaned claim released before the first poll; its worker never settled", {
           workerId,
-          runId: outcome.run.envelope.runId,
-          workflow: outcome.run.envelope.workflow,
+          runId: run.envelope.runId,
+          workflow: run.envelope.workflow,
         });
         continue;
       }
@@ -710,6 +730,8 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     // D118-aware sweep runs BEFORE the first claim, then rides the cadence.
     const maintenance = startWorkerMaintenance({
       database,
+      lifecycle,
+      publishCancelled,
       scheduler,
       clock,
       workerId,
@@ -742,6 +764,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         descriptor,
         stores: taskStoreRegistry,
         authority: database,
+        lifecycle,
         sessionFactory,
         emitter,
         clock,
@@ -761,19 +784,23 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         // claimNext owns the one SQLite write transaction that compares the active
         // runtime token, settings epoch and queued snapshot before changing the run.
         // The filesystem authority is needed at boot and apply, not on every poll.
-        claimNext: (request) => database.withAuthorityTransaction((repositories) => {
+        claimNext: (request) => database.withAuthorityTransaction(() => {
           const directive = controlPoll();
           if (directive !== "run") {
             throw new Error(`worker ${workerId} directive changed to ${directive} during claim admission`);
           }
           input.afterClaimAdmissionCheck?.();
-          return repositories.runs.claimNext({ ...request, runtimeConfig });
+          const outcome = lifecycle.claimNext({ commandId: request.commandId,
+            workflow: request.workflow, workerId: request.workerId, runtimeConfig });
+          if (outcome.state === "refused" && outcome.refusal.reason !== "none-eligible") requireLifecycleApplied(outcome);
+          return outcome;
         }),
         providers,
         artifacts,
         writeSequencerFor: (sessions) => createWriteSequencer({
           stores: taskStoreRegistry,
           authority: database,
+        lifecycle,
           sessions,
           emitter,
           clock,

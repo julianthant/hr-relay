@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "./run-lifecycle-fixtures.js";
 /**
  * The chunk-6 COMPOSITION harness — one authority database, one write
  * sequencer, and BOTH deterministic browsers the composed graph's three
@@ -415,6 +416,7 @@ export function compositionHarness(options: Readonly<{
   const emitter = recordingEmitter();
   const ids = sequentialIdFactory("d");
   const sequencer = createWriteSequencer({
+    lifecycle: testRunLifecycle(database, clock),
     stores: taskStoreRegistry,
     authority: database,
     sessions: manager,

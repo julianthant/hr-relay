@@ -27,6 +27,9 @@ import { sha256Hex } from "../domain/sha256.js";
 import type { DeletedRunRecord } from "../domain/run/deleted-run.js";
 import {
   CanonicalArchiveRequestSchema,
+  CanonicalCancellationTerminalizeRequestSchema,
+  CanonicalWriteResolutionTransitionRequestSchema,
+  RunClaimSweepRequestSchema,
   CanonicalClaimNextRequestSchema,
   CanonicalCreateRunRequestSchema,
   CanonicalDeleteArchivedRequestSchema,
@@ -66,6 +69,77 @@ export type RunDeletionOutcome =
 export type RunPurgeOutcome =
   | Readonly<{ state: "purged" | "applied-already"; evidenceClass: "diagnostic-bundle"; purged: number }>
   | Readonly<{ state: "refused"; refusal: RunRecordRefusal }>;
+
+/** Worker capability never includes command-family transition. */
+export type WorkerRunLifecyclePort = Pick<RunRecordService,
+  "claimNext" | "renewClaim" | "workerTransition" | "terminalize" | "requeue">;
+
+export interface RunContinuationPort {
+  transition(input: z.input<typeof CanonicalWriteResolutionTransitionRequestSchema>): RunMutationOutcome | RunExistence;
+}
+
+export function workerRunLifecyclePort(service: RunRecordService): WorkerRunLifecyclePort {
+  return Object.freeze({
+    claimNext: service.claimNext.bind(service), renewClaim: service.renewClaim.bind(service),
+    workerTransition: service.workerTransition.bind(service), terminalize: service.terminalize.bind(service),
+    requeue: service.requeue.bind(service),
+  });
+}
+
+export function runContinuationPort(service: RunRecordService): RunContinuationPort {
+  return Object.freeze({ transition: (input: z.input<typeof CanonicalWriteResolutionTransitionRequestSchema>) =>
+    service.transition(CanonicalWriteResolutionTransitionRequestSchema.parse(input)) });
+}
+
+/** Domain separation keeps nested lifecycle entries distinct from product commands. */
+export function lifecycleCommandId(operation: string, identity: unknown) {
+  const hash = sha256Hex(`hrauto:worker-lifecycle:v1\0${operation}\0${canonicalJsonStringify(identity)}`);
+  return CommandIdSchema.parse(`${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`);
+}
+
+export class RunLifecycleRefusedError extends Error {
+  constructor(readonly outcome: RunMutationOutcome | RunExistence) {
+    super(`run lifecycle ${outcome.state === "refused" ? outcome.refusal.reason : outcome.state}`);
+    this.name = "RunLifecycleRefusedError";
+  }
+}
+
+export function requireLifecycleApplied(outcome: RunMutationOutcome | RunExistence): RunRecord {
+  if ((outcome.state === "applied" || outcome.state === "applied-already") && "run" in outcome) return outcome.run;
+  throw new RunLifecycleRefusedError(outcome);
+}
+
+export type RunRecoveryOutcome = RunMutationOutcome | RunExistence | Readonly<{
+  state: "recovery-required"; run: RunRecord; writeIntentId: string; intentGeneration: number;
+  parked: boolean; message: string;
+}>;
+
+/** Both sweep predicates feed the same service requeue admission. */
+export function sweepWorkerClaims(database: AuthorityDatabase, lifecycle: WorkerRunLifecyclePort, input: unknown,
+  publishCancelled: (run: RunRecord) => void) {
+  const request = RunClaimSweepRequestSchema.parse(input);
+  return database.withAuthorityTransaction((repositories) => {
+    return repositories.runs.listClaimRecoveryCandidates(request).map((run) => {
+      const held = runClaim(run);
+      if (held === undefined) throw new Error("sweep selected an unclaimed run");
+      const outcome = lifecycle.requeue({
+        commandId: lifecycleCommandId("recovery", { runId: run.envelope.runId, version: run.version }),
+        runId: run.envelope.runId, expectedVersion: run.version, cause: "recovery",
+        ...(request.staleBefore === undefined
+          ? { claim: { workerId: held.workerId, claimGeneration: held.claimGeneration } }
+          : { staleBefore: request.staleBefore }),
+      });
+      if (outcome.state !== "recovery-required") {
+        const settled = requireLifecycleApplied(outcome);
+        if (outcome.state === "applied" && settled.lifecycle.state === "terminal"
+          && settled.lifecycle.outcome === "cancelled") {
+          database.afterAuthorityCommit(() => publishCancelled(settled));
+        }
+      }
+      return outcome;
+    });
+  });
+}
 
 type LifecycleOperation = z.infer<typeof RunLifecycleCommandOperationSchema>;
 type LifecycleFence = z.input<typeof RunLifecycleCommandFenceSchema>;
@@ -412,6 +486,7 @@ export class RunRecordService {
       if (journal.state === "replay") return this.replayRun(journal.result);
       const current = this.read(request.runId);
       if (current.state !== "present") return refused({ reason: "lost" });
+      if (request.expectedVersion !== undefined && current.run.version !== request.expectedVersion) return refused({ reason: "lost" });
       const held = runClaim(current.run);
       if (held === undefined || held.workerId !== request.claim.workerId
         || held.claimGeneration !== request.claim.claimGeneration) return refused({ reason: "lost" });
@@ -436,12 +511,46 @@ export class RunRecordService {
     factoryAuthorization?: object,
   ): RunMutationOutcome {
     const request = CanonicalTerminalizeRequestSchema.parse(input);
+    if (request.kind === "cancelled") return this.terminalizeCancellation(request);
     return request.kind === "failure"
       ? this.terminalizeFailure({ commandId: request.commandId, terminal: request.terminal }, descriptor)
       : this.terminalizeSuccess(
           { commandId: request.commandId, terminal: request.terminal },
           factoryAuthorization,
         );
+  }
+
+  private terminalizeCancellation(request: z.infer<typeof CanonicalCancellationTerminalizeRequestSchema>): RunMutationOutcome {
+    return this.dependencies.database.withAuthorityTransaction((repositories) => {
+      const journal = this.inspectJournal(repositories, "terminalize", request, {
+        kind: "terminal", expectedVersion: request.expectedVersion,
+        workerId: request.claim.workerId, claimGeneration: request.claim.claimGeneration,
+      });
+      if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
+      if (journal.state === "replay") return this.replayRun(journal.result);
+      const current = this.read(request.runId);
+      if (current.state !== "present") return refused({ reason: "lost" });
+      const held = runClaim(current.run);
+      if (held === undefined || held.workerId !== request.claim.workerId
+        || held.claimGeneration !== request.claim.claimGeneration || current.run.version !== request.expectedVersion) {
+        return refused({ reason: "lost" });
+      }
+      if (current.run.cancelRequested !== true
+        || !["claimed", "validating", "running"].includes(current.run.lifecycle.state)
+        || repositories.writeIntents.listAttemptingByItem({ workflowId: current.run.envelope.workflow,
+          itemId: current.run.envelope.itemId }).length > 0) {
+        return refused({ reason: "illegal-transition", from: current.run.lifecycle.state, to: "terminal",
+          message: "cancellation requires admitted intent outside an unfinished write" });
+      }
+      const activeMember = findNonTerminalTreeMember(repositories, request.runId);
+      if (activeMember !== undefined) return refused({ reason: "tree-non-terminal", runId: activeMember.envelope.runId });
+      const outcome = repositories.runs.transition({ runId: request.runId, expectedVersion: request.expectedVersion,
+        claim: request.claim, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: request.endedAt },
+        now: this.dependencies.clock.now().toISOString() });
+      if (outcome.state !== "applied") return refused({ reason: "lost" });
+      this.recordJournal(repositories, journal.command, journalRun(outcome.run));
+      return { state: "applied", run: outcome.run };
+    });
   }
 
   private terminalizeFailure(input: unknown, descriptor: AnyWorkflowDescriptor): RunMutationOutcome {
@@ -472,6 +581,10 @@ export class RunRecordService {
           to: "terminal",
           message: "only a claim-holding run may settle failed",
         });
+      }
+      if (existence.run.cancelRequested === true) {
+        return refused({ reason: "illegal-transition", from: existence.run.lifecycle.state, to: "terminal",
+          message: "an admitted cancellation must settle cancelled" });
       }
       const activeMember = findNonTerminalTreeMember(repositories, authorization.runId);
       if (activeMember !== undefined) {
@@ -515,6 +628,10 @@ export class RunRecordService {
           message: "only a running run may settle done",
         });
       }
+      if (existence.run.cancelRequested === true) {
+        return refused({ reason: "illegal-transition", from: existence.run.lifecycle.state, to: "terminal",
+          message: "an admitted cancellation must settle cancelled" });
+      }
       const activeMember = findNonTerminalTreeMember(repositories, authorization.runId);
       if (activeMember !== undefined) {
         return refused({ reason: "tree-non-terminal", runId: activeMember.envelope.runId });
@@ -525,9 +642,9 @@ export class RunRecordService {
     });
   }
 
-  requeue(input: unknown): RunMutationOutcome | RunExistence {
+  requeue(input: unknown): RunRecoveryOutcome {
     const request = CanonicalRequeueRequestSchema.parse(input);
-    return this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome | RunExistence => {
+    return this.dependencies.database.withAuthorityTransaction((repositories): RunRecoveryOutcome => {
       const journal = this.inspectJournal(repositories, "requeue", request, {
         kind: "version",
         expectedVersion: request.expectedVersion,
@@ -569,6 +686,24 @@ export class RunRecordService {
         });
       }
       const now = this.dependencies.clock.now().toISOString();
+      const unfinished = repositories.writeIntents.listAttemptingByItem({
+        workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
+      })[0];
+      if (unfinished !== undefined) {
+        const message = `run ${request.runId} has an unfinished attempting write intent ${unfinished.writeIntentId}; recovery must settle it before release`;
+        if (run.lifecycle.state !== "running" || held === undefined) return {
+          state: "recovery-required", run, writeIntentId: unfinished.writeIntentId,
+          intentGeneration: unfinished.generation, parked: false, message,
+        };
+        const parked = repositories.runs.transition({ runId: request.runId, expectedVersion: request.expectedVersion,
+          claim: { workerId: held.workerId, claimGeneration: held.claimGeneration },
+          lifecycle: { state: "parked-write", writeIntentId: unfinished.writeIntentId,
+            intentGeneration: unfinished.generation, parkedAt: now, code: "unknown", message }, now });
+        if (parked.state !== "applied") return refused({ reason: "lost" });
+        this.recordJournal(repositories, journal.command, journalRun(parked.run));
+        return { state: "recovery-required", run: parked.run, writeIntentId: unfinished.writeIntentId,
+          intentGeneration: unfinished.generation, parked: true, message };
+      }
       const result = run.cancelRequested === true && held !== undefined
         ? repositories.runs.transition({
             runId: request.runId,

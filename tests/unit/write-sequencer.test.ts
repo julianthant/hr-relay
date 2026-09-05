@@ -1,3 +1,5 @@
+import { RunClaimTokenSchema } from "../../src/infra/sqlite/run-store-contracts.js";
+import { testRunLifecycle, testRunService } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref write-safety §3 beats ①–⑦ over the REAL authority database, worker session
  * manager, and a sealed synthetic transaction corpus — only the process edges
@@ -13,6 +15,7 @@ import { TaskError } from "../../src/base/errors.js";
 import type { WriteSequencerContext } from "../../src/core/run-executor.js";
 import {
   createWriteSequencer,
+  executeSequencedWriteCommit,
   invokeBoundedTask,
   StagedPageDiscardedError,
   WriteParkedError,
@@ -206,6 +209,7 @@ function harness(options: Readonly<{
   const ids = sequentialIdFactory("c");
   const scheduler = new ManualScheduler(clock);
   const sequencer = createWriteSequencer({
+    lifecycle: testRunLifecycle(database, clock),
     stores: registry,
     authority: database,
     sessions: manager,
@@ -1387,5 +1391,77 @@ describe("D116 — a driver lease without the claimed run's bound fingerprint re
       },
     );
     assert.deepEqual(h.world.events, [], "no prepare or observation ran");
+  });
+});
+
+
+describe("service-backed shared settlement", () => {
+  it("replays the exact worker bundle without writes and refuses changed evidence", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    await h.execute(contextFor(run, claim));
+    const intent = intentByKey(h.database);
+    assert.ok(intent?.status === "committed");
+    const checkpoint = h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID,
+      WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID);
+    assert.ok(checkpoint);
+    const outboxes = h.ids.minted().map((id) => h.database.authority.durableOutbox.get(id));
+    const ledgerOutbox = outboxes.find((entry) => entry?.payload.kind === "ledger-entry");
+    const terminalSpanOutbox = outboxes.find((entry) => entry?.payload.kind === "write-committed-span");
+    assert.ok(ledgerOutbox && terminalSpanOutbox);
+    const input = { run: { runId: run.envelope.runId, expectedVersion: run.version, claim }, checkpoint,
+      commit: { writeIntentId: intent.writeIntentId, generation: intent.generation,
+        completionProof: intent.completionProof, confirmedAt: intent.confirmedAt,
+        outcome: checkpoint.output.value, ledgerOutbox, terminalSpanOutbox } };
+    const transition = { kind: "advance-running" as const, claim: RunClaimTokenSchema.parse(claim), claimedAt: WRITE_FIXTURE_NOW,
+      port: testRunLifecycle(h.database, h.clock) };
+    const generation = h.database.getMeta().authorityGeneration;
+    const before = h.database.authority.runs.get(run.envelope.runId);
+    assert.deepEqual(executeSequencedWriteCommit(h.database, input, transition).run, before);
+    assert.equal(h.database.getMeta().authorityGeneration, generation);
+    assert.throws(() => executeSequencedWriteCommit(h.database, { ...input,
+      checkpoint: { ...checkpoint, implFingerprint: "f".repeat(64) } }, transition), /replay-divergent/);
+    assert.equal(h.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(h.database.authority.runs.get(run.envelope.runId), before);
+  });
+});
+
+
+describe("durable cancellation at a retained write fence", () => {
+  it("lets the callback and write settlement finish before cancellation can terminalize", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    let release = (): void => undefined;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    let entered = (): void => undefined;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    h.world.afterCommitClickBeforeTaskSettlement = async () => { entered(); await pending; };
+    let finished = false;
+    const execution = h.execute(contextFor(run, claim)).finally(() => { finished = true; });
+    await started;
+    const service = testRunService(h.database, h.clock);
+    const current = h.database.authority.runs.get(run.envelope.runId);
+    assert.ok(current);
+    const request = service.transition({ commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      runId: run.envelope.runId, expectedVersion: current.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: WRITE_FIXTURE_NOW } });
+    assert.equal(request.state, "applied");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(finished, false);
+    assert.equal(intentByKey(h.database)?.status, "attempting");
+    assert.deepEqual(h.sessions.closeReasons(), []);
+    assert.deepEqual(h.emitter.events().filter((event) => event.spanPath.endsWith("/commit")).map((event) => event.t), ["span.started"]);
+    release();
+    await execution;
+    assert.equal(intentByKey(h.database)?.status, "committed");
+    const settled = h.database.authority.runs.get(run.envelope.runId);
+    assert.ok(settled && settled.cancelRequested === true && settled.lifecycle.state === "running");
+    assert.equal(service.terminalize({ kind: "cancelled", commandId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      runId: settled.envelope.runId, expectedVersion: settled.version, claim, endedAt: WRITE_FIXTURE_NOW },
+    writeFixtureDescriptor).state, "applied");
+    const cancelled = h.database.authority.runs.get(run.envelope.runId);
+    assert.ok(cancelled?.lifecycle.state === "terminal" && cancelled.lifecycle.outcome === "cancelled");
   });
 });

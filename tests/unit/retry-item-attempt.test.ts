@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * D221 — a RETRY of a failed item re-executes its `always-rerun` nodes without
  * colliding with the run it retries.
@@ -191,6 +192,7 @@ function harness(): Readonly<{
   });
   const emitter = recordingEmitter();
   const deps: RunExecutorDependencies = {
+    lifecycle: testRunLifecycle(authority.database, authority.clock),
     descriptor: retryDescriptor,
     stores: taskStoreRegistry,
     authority: authority.database,

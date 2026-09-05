@@ -1,3 +1,4 @@
+import { testRunLifecycle, testWorkerPorts } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * D210 — a previewed run through the REAL pipeline, end to end, with nothing
  * faked but the browser, clock, ids, timers, and span sink:
@@ -108,6 +109,7 @@ function harness(): Harness {
     // probe answers; the default is the ordinary absent read.
     world.probeResults.push(options.probe ?? absentProbeEvidence(WRITE_FIXTURE_NOW));
     await runWorkerLoop({
+      ...testWorkerPorts(database, clock),
       workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
       workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
       descriptor: writeFixtureDescriptor,
@@ -127,6 +129,7 @@ function harness(): Harness {
       stopSignal: new AbortController().signal,
       exitWhenIdle: true,
       writeSequencerFor: (manager) => createWriteSequencer({
+        lifecycle: testRunLifecycle(database, clock),
         stores,
         authority: database,
         sessions: manager,

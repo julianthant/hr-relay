@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * D162 executor capability wiring (ref data-intake-and-edit-data §4.11): the run executor mints
  * admitted provider clients per task invocation over the run's RETAINED
@@ -269,6 +270,7 @@ function wiringHarness(
   const sessions = happySessionHarness();
   const emitter = recordingEmitter();
   const deps: RunExecutorDependencies = {
+    lifecycle: testRunLifecycle(authority.database, authority.clock),
     descriptor,
     stores,
     authority: authority.database,

@@ -99,6 +99,7 @@ import type { AuthorityRepositories } from "../infra/sqlite/authority-database.j
 import type { RunClaimToken } from "../infra/sqlite/run-store-contracts.js";
 import {
   SequencedWriteCommitInputSchema,
+  AtomicWriteCommitReportSchema,
   type AtomicWriteCommitReport,
   type SequencedWriteCommitStep,
   type WriteIntentParkCode,
@@ -219,9 +220,13 @@ class PostFenceWriteFailure extends Error {
 /* ── injected seams ──────────────────────────────────────────────────────── */
 
 /** The authority surface the sequencer needs; `AuthorityDatabase` satisfies it. */
+export type WriteSequencerRepositories = Omit<AuthorityRepositories, "runs"> & {
+  readonly runs: Pick<AuthorityRepositories["runs"], "get">;
+};
+
 export interface WriteSequencerAuthority {
-  readonly authority: AuthorityRepositories;
-  withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
+  readonly authority: WriteSequencerRepositories;
+  withAuthorityTransaction<Result>(work: (repositories: WriteSequencerRepositories) => Result): Result;
   commitWriteAttempt(input: unknown): AtomicWriteCommitReport;
 }
 
@@ -261,7 +266,10 @@ export interface WriteSequencerHooks {
   afterSequencedStep?(step: SequencedWriteCommitStep): void;
 }
 
+import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type RunContinuationPort, type WorkerRunLifecyclePort } from "./run-record-service.js";
+
 export interface WriteSequencerDependencies {
+  readonly lifecycle: Pick<WorkerRunLifecyclePort, "workerTransition">;
   readonly stores: TaskStoreRegistry;
   readonly authority: WriteSequencerAuthority;
   readonly sessions: TransactionSessionHost;
@@ -602,18 +610,12 @@ export async function executeIdempotencyProbe(
   }
 }
 
-function requireApplied(outcome: { state: string; [key: string]: unknown }, what: string): void {
-  if (outcome.state !== "applied") {
-    const message = typeof outcome.message === "string" ? outcome.message : outcome.state;
-    throw new Error(`${what} was not applied: ${message}`);
-  }
-}
-
 /* ── the beat-⑦ outer bundle executor (ref dashboard-surfaces Phase-1f; D111) ────────────── */
 
 export type SequencedRunTransition =
-  | Readonly<{ kind: "advance-running"; claim: RunClaimToken }>
-  | Readonly<{ kind: "resume-queued"; startAt: string }>;
+  | Readonly<{ kind: "advance-running"; claim: RunClaimToken; claimedAt: string;
+      port: Pick<WorkerRunLifecyclePort, "workerTransition"> }>
+  | Readonly<{ kind: "resume-queued"; startAt: string; commandId: string; port: RunContinuationPort }>;
 
 export interface SequencedWriteCommitResult {
   readonly report: AtomicWriteCommitReport;
@@ -634,15 +636,47 @@ export function executeSequencedWriteCommit(
   hooks?: WriteSequencerHooks,
 ): SequencedWriteCommitResult {
   const parsed = SequencedWriteCommitInputSchema.parse(input);
-  const now = parsed.commit.confirmedAt;
+  const evidenceFingerprint = FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(parsed)));
+  const commandId = lifecycleCommandId(`write-${transition.kind}`, {
+    runId: parsed.run.runId, expectedVersion: parsed.run.expectedVersion,
+    writeIntentId: parsed.commit.writeIntentId, generation: parsed.commit.generation,
+    ...(transition.kind === "resume-queued" ? { sourceCommandId: transition.commandId } : {}),
+  });
+  const advance = () => transition.kind === "advance-running"
+    ? transition.port.workerTransition({ commandId, ...parsed.run, claim: transition.claim, evidenceFingerprint,
+        lifecycle: { state: "running", workerId: transition.claim.workerId, claimedAt: transition.claimedAt,
+          heartbeatAt: parsed.commit.confirmedAt, currentNodeId: NodeIdSchema.parse(parsed.checkpoint.nodeId) } })
+    : transition.port.transition({ commandId, runId: parsed.run.runId, expectedVersion: parsed.run.expectedVersion,
+        evidenceFingerprint, lifecycle: { state: "queued" }, writeResolution: "resolve-write-present",
+        startAt: NodeIdSchema.parse(transition.startAt) });
   return authority.withAuthorityTransaction((repositories) => {
+    const intent = repositories.writeIntents.get(parsed.commit.writeIntentId);
+    if (intent?.status === "committed") {
+      const outcome = advance();
+      const run = requireLifecycleApplied(outcome);
+      if (outcome.state !== "applied-already") throw new Error("committed write has no exact lifecycle settlement replay");
+      const report = AtomicWriteCommitReportSchema.parse({ state: "committed", intent,
+        attempt: repositories.writeAttempts.get(intent.currentAttemptId),
+        ledgerOutbox: repositories.durableOutbox.get(parsed.commit.ledgerOutbox.outboxId),
+        terminalSpanOutbox: repositories.durableOutbox.get(parsed.commit.terminalSpanOutbox.outboxId),
+      });
+      const checkpoint = repositories.runCheckpoints.get(parsed.checkpoint.workflowId, parsed.checkpoint.itemId,
+        parsed.checkpoint.nodeId, parsed.checkpoint.attempt, parsed.checkpoint.claimGeneration);
+      if (canonicalJsonStringify(checkpoint) !== canonicalJsonStringify(parsed.checkpoint)
+        || canonicalJsonStringify(report.ledgerOutbox) !== canonicalJsonStringify(parsed.commit.ledgerOutbox)
+        || canonicalJsonStringify(report.terminalSpanOutbox) !== canonicalJsonStringify(parsed.commit.terminalSpanOutbox)
+        || canonicalJsonStringify(intent.completionProof) !== canonicalJsonStringify(parsed.commit.completionProof)
+        || intent.confirmedAt !== parsed.commit.confirmedAt || intent.generation !== parsed.commit.generation) {
+        throw new Error("write settlement replay differs from its durable evidence");
+      }
+      return Object.freeze({ report, run });
+    }
     const current = repositories.runs.get(parsed.run.runId);
     if (current === undefined) throw new Error(`run ${parsed.run.runId} does not exist`);
     if (current.version !== parsed.run.expectedVersion) {
-      throw new Error(
-        `run ${parsed.run.runId} is at version ${String(current.version)}, not `
-        + `${String(parsed.run.expectedVersion)}; the beat-⑦ bundle is stale`,
-      );
+      throw new RunLifecycleRefusedError({ state: "refused", refusal: {
+        reason: "conflict", currentVersion: current.version,
+      } });
     }
     if (transition.kind === "advance-running") {
       if (parsed.run.claim !== undefined
@@ -651,67 +685,23 @@ export function executeSequencedWriteCommit(
         throw new Error(`run ${parsed.run.runId} beat-⑦ bundle claim disagrees with the transition claim`);
       }
       const held = runClaim(current);
-      if (held === undefined
-        || held.workerId !== transition.claim.workerId
+      if (held === undefined || held.workerId !== transition.claim.workerId
         || held.claimGeneration !== transition.claim.claimGeneration) {
-        throw new Error(
-          `run ${parsed.run.runId} is no longer claimed by ${transition.claim.workerId} `
-          + `at generation ${String(transition.claim.claimGeneration)}; refusing the beat-⑦ commit`,
-        );
+        throw new RunLifecycleRefusedError({ state: "refused", refusal: { reason: "lost" } });
       }
-      if (current.lifecycle.state !== "running") {
-        throw new Error(`run ${parsed.run.runId} is ${current.lifecycle.state}; beat ⑦ requires a running claim holder`);
+      if (current.lifecycle.state !== "running" || current.lifecycle.claimedAt !== transition.claimedAt) {
+        throw new Error("beat ⑦ requires the exact running claim holder");
       }
-    } else if (current.lifecycle.state !== "parked-write") {
-      throw new Error(
-        `run ${parsed.run.runId} is ${current.lifecycle.state}; a resume-queued beat-⑦ settlement `
-        + "requires a parked-write run",
-      );
-    } else if (current.lifecycle.writeIntentId !== parsed.commit.writeIntentId
+    } else if (current.lifecycle.state !== "parked-write"
+      || current.lifecycle.writeIntentId !== parsed.commit.writeIntentId
       || current.lifecycle.intentGeneration !== parsed.commit.generation) {
-      throw new Error(
-        `run ${parsed.run.runId} is parked on intent ${current.lifecycle.writeIntentId} `
-        + `generation ${String(current.lifecycle.intentGeneration)}, not the settled `
-        + `${parsed.commit.writeIntentId} generation ${String(parsed.commit.generation)}`,
-      );
+      throw new Error("resume-queued settlement requires the exact parked write intent and generation");
     }
-
     const report = authority.commitWriteAttempt(parsed.commit);
     hooks?.afterSequencedStep?.("commit-write-attempt");
-
     repositories.runCheckpoints.insert(parsed.checkpoint);
     hooks?.afterSequencedStep?.("transaction-checkpoint");
-
-    let run: RunRecord;
-    if (transition.kind === "advance-running") {
-      if (current.lifecycle.state !== "running") throw new Error("unreachable: running was validated above");
-      const outcome = repositories.runs.transition({
-        runId: parsed.run.runId,
-        expectedVersion: parsed.run.expectedVersion,
-        claim: transition.claim,
-        lifecycle: {
-          state: "running",
-          workerId: current.lifecycle.workerId,
-          claimedAt: current.lifecycle.claimedAt,
-          heartbeatAt: now,
-          currentNodeId: NodeIdSchema.parse(parsed.checkpoint.nodeId),
-        },
-        now,
-      });
-      requireApplied(outcome, `beat-⑦ run advance for ${parsed.run.runId}`);
-      if (outcome.state !== "applied") throw new Error("unreachable");
-      run = outcome.run;
-    } else {
-      const outcome = repositories.runs.resume({
-        runId: parsed.run.runId,
-        expectedVersion: parsed.run.expectedVersion,
-        startAt: NodeIdSchema.parse(transition.startAt),
-        now,
-      });
-      requireApplied(outcome, `beat-⑦ run resume for ${parsed.run.runId}`);
-      if (outcome.state !== "applied") throw new Error("unreachable");
-      run = outcome.run;
-    }
+    const run = requireLifecycleApplied(advance());
     hooks?.afterSequencedStep?.("run-transition");
     return Object.freeze({ report, run });
   });
@@ -1214,7 +1204,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       if (current.lifecycle.state !== "running") {
         throw new Error(`run ${envelope.runId} is ${current.lifecycle.state}; an already-present settlement requires a running claim`);
       }
-      const applied = repositories.runs.transition({
+      const applied = deps.lifecycle.workerTransition({
+        commandId: lifecycleCommandId("sequencer-transition", { runId: envelope.runId,
+          generation: context.claim.claimGeneration, version: current.version }),
         runId: envelope.runId,
         expectedVersion: current.version,
         claim: context.claim,
@@ -1225,9 +1217,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           heartbeatAt: now,
           currentNodeId: context.node.id,
         },
-        now,
       });
-      requireApplied(applied, `already-present settlement for run ${envelope.runId}`);
+      requireLifecycleApplied(applied);
     });
     return {
       disposition: "already-present",
@@ -1378,6 +1369,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       });
     }
     const now = instant();
+    const envelope = context.run.envelope;
     deps.authority.withAuthorityTransaction((repositories) => {
       repositories.writeIntents.parkAttempt({
         writeIntentId: failure.writeIntentId,
@@ -1388,9 +1380,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         authorityReason: failure.authorityReason,
         now,
       });
-    });
-    const envelope = context.run.envelope;
-    deps.authority.withAuthorityTransaction((repositories) => {
       const current = repositories.runs.get(envelope.runId);
       if (current === undefined) throw new Error(`run ${envelope.runId} disappeared while parking`);
       if (current.lifecycle.state !== "running") {
@@ -1399,7 +1388,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           + "transition to parked-write from here",
         );
       }
-      const applied = repositories.runs.transition({
+      const applied = deps.lifecycle.workerTransition({
+        commandId: lifecycleCommandId("sequencer-transition", { runId: envelope.runId,
+          generation: context.claim.claimGeneration, version: current.version }),
         runId: envelope.runId,
         expectedVersion: current.version,
         claim: context.claim,
@@ -1411,9 +1402,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           code: failure.parkCode,
           message: failure.operatorMessage,
         },
-        now,
       });
-      requireApplied(applied, `parking run ${envelope.runId} on write intent ${failure.writeIntentId}`);
+      requireLifecycleApplied(applied);
     });
   }
 
@@ -1643,7 +1633,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           checkpoint: settlement.checkpoint,
           commit: settlement.commit,
         },
-        { kind: "advance-running", claim: context.claim },
+        { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
         deps.hooks,
       );
       return {
@@ -1683,6 +1673,18 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       message: failure.message,
       cause: failure,
     });
+  }
+
+  function claimedAtFor(context: WriteSequencerContext): string {
+    const lifecycle = context.run.lifecycle;
+    if (!("claimedAt" in lifecycle)) throw new Error("sequencer context has no original claim");
+    return lifecycle.claimedAt;
+  }
+
+  function refuseRequestedCancellation(context: WriteSequencerContext): void {
+    const current = deps.authority.authority.runs.get(context.run.envelope.runId);
+    if (current === undefined) throw new Error("run disappeared before write fence");
+    if (current.cancelRequested === true) throw new Error("run cancellation requested before write fence");
   }
 
   function currentRunVersion(context: WriteSequencerContext): number {
@@ -1725,6 +1727,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   }
 
   async function executeTransaction(context: WriteSequencerContext): Promise<unknown> {
+    refuseRequestedCancellation(context);
     const run = RunRecordSchema.parse(context.run);
     const node: TransactionRuntimeNode = context.node;
     const commitContract = node.commit.uses;
@@ -2038,6 +2041,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             ? context.signal.reason
             : new Error(`${commitContract.id} was cancelled before its write fence`);
         }
+        refuseRequestedCancellation(context);
         try {
           const resolution = refenceExpectedVersion === undefined
             ? deps.authority.authority.writeIntents.fenceAttempt({ intent: intentRecord, attempt: attemptRecord })
@@ -2268,7 +2272,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         checkpoint: settlement.checkpoint,
         commit: settlement.commit,
       },
-      { kind: "advance-running", claim: context.claim },
+      { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
       deps.hooks,
     );
     return {

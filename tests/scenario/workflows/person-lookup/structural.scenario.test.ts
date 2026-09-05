@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "../../../unit/fixtures/run-lifecycle-fixtures.js";
 /**
  * Executable scenarios for `person-lookup` — the T1a half of this workflow's
  * canonical pair (ref guards-and-tests §10.3 · §10.9).
@@ -374,6 +375,7 @@ function depsFor(
   sessions: ReturnType<typeof sessionFactoryHarness>,
 ): RunExecutorDependencies {
   return {
+    lifecycle: testRunLifecycle(authority.database, authority.clock),
     descriptor: personLookupDescriptor,
     stores: taskStoreRegistry,
     authority: authority.database,

@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * D214 — a run ATTEMPT is not one execution of its graph, and the composed
  * separations graph is the proof: chunk 6b's run `00419600` read thirteen nodes
@@ -169,6 +170,7 @@ function harness(): Readonly<{
   disposers.push(authority.dispose);
   const emitter = recordingEmitter();
   const deps: RunExecutorDependencies = {
+    lifecycle: testRunLifecycle(authority.database, authority.clock),
     descriptor: gateResumeDescriptor,
     stores: taskStoreRegistry,
     authority: authority.database,

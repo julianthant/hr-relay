@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "./run-lifecycle-fixtures.js";
 /**
  * The separations chunk-5 Kuali finalization harness.
  *
@@ -400,6 +401,7 @@ export function finalizationHarness(options: Readonly<{
   const emitter = recordingEmitter();
   const ids = sequentialIdFactory("b");
   const sequencer = createWriteSequencer({
+    lifecycle: testRunLifecycle(database, clock),
     stores: taskStoreRegistry,
     authority: database,
     sessions: manager,

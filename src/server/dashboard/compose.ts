@@ -71,6 +71,7 @@ import {
   type WorkerCliLaunchSpec,
   type WorkerProcessSpawner,
 } from "./worker-supervisor.js";
+import { RunRecordService, runContinuationPort } from "../../core/run-record-service.js";
 import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
@@ -962,6 +963,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   // Ref write-safety §4.1's typed operator resolutions, over the SAME AuthorityDatabase
   // instance as the kernel transaction (the executor's documented requirement).
   const writeResolution: WriteResolutionExecutor = createWriteResolutionExecutor({
+    continuation: runContinuationPort(new RunRecordService({ database, clock, ids,
+      publishQueued: () => { throw new Error("write continuation cannot create runs"); },
+    })),
     descriptors,
     authority: database,
     ids,

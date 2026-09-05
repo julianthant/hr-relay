@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref execution-and-sessions §5.5: tasks and transactions run under immutable, abortable
  * deadlines — a service or driver call that ignores its abort signal cannot
@@ -87,6 +88,7 @@ describe("bounded task deadline", () => {
     if (claimed.state !== "claimed") return;
 
     const executing = executeClaimedRun({
+      lifecycle: testRunLifecycle(database, authority.clock),
       descriptor: personLookupDescriptor,
       stores: taskStoreRegistry,
       authority: database,

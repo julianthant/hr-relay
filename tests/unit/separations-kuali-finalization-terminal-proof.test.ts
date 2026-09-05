@@ -1,3 +1,4 @@
+import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * D144's current end-to-end proof.
  *
@@ -85,6 +86,7 @@ function executorDependencies(
   authority: RunExecutionAuthority = value.database,
 ): RunExecutorDependencies {
   return {
+    lifecycle: testRunLifecycle(value.database, value.clock),
     descriptor: separationsKualiFinalizationDescriptor,
     stores: taskStoreRegistry,
     authority,
@@ -282,9 +284,7 @@ function authorityWithoutFinalizationCheckpoint(
         listByItem: (workflowId, itemId) => authority.runCheckpoints.listByItem(workflowId, itemId),
       },
     },
-    terminalizeFailure: (descriptor, input) => value.database.terminalizeFailure(descriptor, input),
-    terminalizeSuccess: (input, factoryAuthorization) =>
-      value.database.terminalizeSuccess(input, factoryAuthorization),
+    afterAuthorityCommit: (publish) => value.database.afterAuthorityCommit(publish),
   };
 }
 
