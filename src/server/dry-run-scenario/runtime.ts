@@ -19,6 +19,7 @@ import type {
 } from "../../core/dry-run-scenario-runner.js";
 import type { Clock } from "../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
+import { settingsRootPaths } from "../../domain/config/settings-root.js";
 import { MatchIdentityOutputSchema } from "../../domain/contracts/separations/match-identity.js";
 import type { IdFactory } from "../../domain/identifiers.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../domain/ids.js";
@@ -207,7 +208,7 @@ export function createProductionDryRunScenarioRuntime(
   const stateRoot = join(input.repoRoot, input.isolation.stateRoot);
   const databasePath = join(stateRoot, "state.db");
   const settingsAuthority = createSettingsFileAuthority({
-    path: join(stateRoot, "settings.json"),
+    path: settingsRootPaths(stateRoot).ordinary,
     validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts(input.env), input.clock); },
   });
   const appVersion = PackageVersionSchema.parse(

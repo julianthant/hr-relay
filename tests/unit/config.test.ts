@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, it, vi } from "vitest";
-import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS } from "../../src/domain/config/catalog.js";
+import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, SETTINGS_CATALOG } from "../../src/domain/config/catalog.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { assertNotPast, requireAnnualDates } from "../../src/domain/config/fiscal-year.js";
 import { resolveInstances, resolveSystemEntryUrl } from "../../src/domain/config/instance.js";
@@ -31,10 +31,12 @@ import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, SettingsOverrideSchema } from "../../src/domain/config/schema.js";
 import {
   SETTINGS_SCHEMA_HASH,
+  SettingsPatchSchema,
   SettingsApplyInputSchema,
   SettingsFileRecordSchema,
   derivePersistedSettingsFingerprint,
   deriveSettingsPatchFingerprint,
+  mergeSettingsPatch,
 } from "../../src/domain/config/settings.js";
 import {
   SettingsCommandRequestSchema,
@@ -67,7 +69,28 @@ function createSettingsFileAuthority(options: TestSettingsFileAuthorityOptions) 
   });
 }
 
-function settingsApplyRequest(commandId: string, expectedRevision: number, patch: unknown): unknown {
+function settingsOperations(settings: Record<string, unknown>): Record<string, { set: unknown }> {
+  const operations: Record<string, { set: unknown }> = {};
+  const walk = (value: unknown, path: string): void => {
+    const catalogKey = path.replace(/^annualDates\.FY\d{4}\./u, "annualDates.*.");
+    if (SETTINGS_CATALOG.some((row) => row.key === catalogKey && row.sourceClass === "ordinary-settings")) {
+      operations[path] = { set: value };
+      return;
+    }
+    if (value === null || Array.isArray(value) || typeof value !== "object") {
+      operations[path] = { set: value };
+      return;
+    }
+    for (const [key, nested] of Object.entries(value)) walk(nested, path.length === 0 ? key : `${path}.${key}`);
+  };
+  walk(settings, "");
+  delete operations[""];
+  return operations;
+}
+
+function settingsApplyRequest(commandId: string, expectedRevision: number, settings: Record<string, unknown>): unknown {
+  const parsedPatch = SettingsPatchSchema.safeParse(settings);
+  const patch = parsedPatch.success ? parsedPatch.data : settingsOperations(settings);
   const patchFingerprint = deriveSettingsPatchFingerprint(patch);
   const command = {
     commandId,
@@ -488,14 +511,15 @@ describe("strict config resolution", () => {
       browser: { headless: false },
     };
     const parsed = SettingsApplyInputSchema.parse(settingsApplyRequest(SETTINGS_COMMAND_1, 1, patch));
-    assert.deepEqual(parsed.patch, patch);
-    const resolved = resolveConfigWithProvenance(parsed.patch, hostConfigFacts({}), CLOCK);
+    assert.deepEqual(parsed.patch, settingsOperations(patch));
+    const persisted = mergeSettingsPatch({}, parsed.patch);
+    const resolved = resolveConfigWithProvenance(persisted, hostConfigFacts({}), CLOCK);
     assert.equal(resolved.config.ocr.pageConcurrency, 3);
     assert.equal(resolved.config.ocr.maxValidationRetries, 0);
     assert.equal(resolved.config.concurrency.defaultWorkers, 2);
     assert.equal(resolved.config.paths.reportsDir, "/tmp/reviewed-reports");
-    assert.throws(() => deriveSettingsPatchFingerprint({ paths: { reportsDir: "relative" } }));
-    assert.throws(() => deriveSettingsPatchFingerprint({ ocr: { pageConcurrency: -1 } }));
+    assert.throws(() => deriveSettingsPatchFingerprint({ "paths.reportsDir": { set: "relative" } }));
+    assert.throws(() => deriveSettingsPatchFingerprint({ "ocr.pageConcurrency": { set: -1 } }));
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-dcc3-roundtrip-"));
     try {
       const authority = createSettingsFileAuthority({ path: ordinarySettingsPath(root) });
@@ -503,6 +527,46 @@ describe("strict config resolution", () => {
       if (applied.state !== "applied") assert.fail("DCC3 leaves must apply");
       applied.commit();
       assert.deepEqual(authority.read().settings, patch);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("applies closed leaf operations and clears persisted overrides back to defaults", () => {
+    assert.throws(() => deriveSettingsPatchFingerprint({ "paths.stateRoot": { set: "/tmp/forbidden" } }));
+    assert.throws(() => deriveSettingsPatchFingerprint({ "display.screenWidth": { set: 1920 } }));
+    assert.doesNotThrow(() => deriveSettingsPatchFingerprint({
+      "display.screenWidth": { set: 1920 },
+      "display.screenHeight": { set: 1080 },
+    }));
+
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-clear-"));
+    try {
+      const authority = createSettingsFileAuthority({ path: ordinarySettingsPath(root) });
+      const first = authority.apply(settingsApplyRequest(
+        SETTINGS_COMMAND_1,
+        1,
+        { "actor.label": { set: "Temporary operator" } },
+      ));
+      assert.equal(first.state, "applied");
+      if (first.state !== "applied") return;
+      first.commit();
+      assert.deepEqual(authority.read().settings, { actor: { label: "Temporary operator" } });
+
+      const clearRequest = settingsApplyRequest(
+        SETTINGS_COMMAND_2,
+        2,
+        { "actor.label": { clear: true } },
+      );
+      const cleared = authority.apply(clearRequest);
+      assert.equal(cleared.state, "applied");
+      if (cleared.state !== "applied") return;
+      cleared.commit();
+      assert.deepEqual(authority.read().settings, {});
+      const replay = authority.apply(clearRequest);
+      assert.equal(replay.state, "applied");
+      assert.equal(replay.record.revision, 3);
+      if (replay.state === "applied") replay.rollback();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -522,7 +586,7 @@ describe("strict config resolution", () => {
           commandFingerprint: "a".repeat(64),
           expectedRevision: 1,
           settingsSchemaHash,
-          patchFingerprint: deriveSettingsPatchFingerprint(settings),
+          patchFingerprint: deriveSettingsPatchFingerprint(settingsOperations(settings)),
         };
         const bytes = JSON.stringify({ revision: 2, settingsSchemaHash,
           settingsFingerprint: derivePersistedSettingsFingerprint(settings), settings, lastApplied });
@@ -582,7 +646,7 @@ describe("strict config resolution", () => {
         ));
         const mismatch = field === "settingsSchemaHash"
           ? "a".repeat(64)
-          : deriveSettingsPatchFingerprint({ browser: { headless: true } });
+          : deriveSettingsPatchFingerprint({ "browser.headless": { set: true } });
         assert.notEqual(mismatch, request[field]);
         const snapshot = () => ({
           entries: readdirSync(root),
@@ -602,7 +666,7 @@ describe("strict config resolution", () => {
 
         assert.deepEqual(outcome, {
           state: "rejected",
-          code: "schema-mismatch",
+          code: field === "settingsSchemaHash" ? "schema-mismatch" : "patch-fingerprint-mismatch",
           message: field === "settingsSchemaHash"
             ? "settings.json schema-mismatch"
             : "patch-fingerprint-mismatch: settings patch fingerprint does not match its canonical value",
@@ -620,7 +684,7 @@ describe("strict config resolution", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-command-envelope-"));
     try {
       const path = ordinarySettingsPath(join(root, ".tracker"));
-      const patch = { browser: { headless: false } } as const;
+      const patch = { "browser.headless": { set: false } } as const;
       const command = {
         commandId: SETTINGS_COMMAND_1,
         requestedAt: "2026-08-28T12:00:00.000Z",
@@ -857,7 +921,7 @@ describe("strict config resolution", () => {
         commandFingerprint: (request as { commandFingerprint: string }).commandFingerprint,
         expectedRevision: 1,
         settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-        patchFingerprint: deriveSettingsPatchFingerprint({ browser: { headless: false } }),
+        patchFingerprint: deriveSettingsPatchFingerprint({ "browser.headless": { set: false } }),
       });
       assert.equal(prepare.priorSettingsBytesBase64, null);
       assert.equal(

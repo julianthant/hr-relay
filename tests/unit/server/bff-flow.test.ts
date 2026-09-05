@@ -234,7 +234,7 @@ function harness(options: {
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker");
-  const settingsPath = join(root, ".tracker", "settings.json");
+  const settingsPath = join(root, ".tracker", "settings", "settings.json");
   const clock = manualClock(AT);
   const ids = sequentialIdFactory("c");
   const database = AuthorityDatabase.open(
@@ -2515,7 +2515,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("refuses a foreign-origin settings command before any authority effect", async () => {
     const h = harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b79";
-    const patch = { browser: { headless: false } } as const;
+    const patch = { "browser.headless": { set: false } } as const;
     const command = {
       commandId,
       requestedAt: "2020-01-01T00:00:00.000Z",
@@ -2555,7 +2555,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b74";
     const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b73";
-    const patch = { browser: { headless: false } };
+    const patch = { "browser.headless": { set: false } } as const;
     h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
     const snapshot = () => ({
       settings: settingsAuthoritySnapshot(h, commandId),
@@ -2604,7 +2604,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b72";
     const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b71";
-    const patch = { browser: { headless: false } };
+    const patch = { "browser.headless": { set: false } } as const;
     h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
     const snapshot = () => ({
       settings: settingsAuthoritySnapshot(h, commandId),
@@ -2655,7 +2655,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("stamps accepted command provenance from the server-owned operator session", async () => {
     const h = harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b78";
-    const patch = { browser: { headless: false } } as const;
+    const patch = { "browser.headless": { set: false } } as const;
     const acceptedAt = h.clock.now().toISOString();
 
     const response = await h.app.request("http://localhost/api/v1/commands", {
@@ -2715,7 +2715,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b77";
     const acceptedAt = h.clock.now().toISOString();
-    const patch = { browser: { headless: false } } as const;
+    const patch = { "browser.headless": { set: false } } as const;
     const command = {
       commandId,
       requestedAt: "2020-01-01T00:00:00.000Z",
@@ -2779,7 +2779,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness({ intake });
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b75";
     const acceptedAt = h.clock.now().toISOString();
-    const patch = { browser: { headless: false } } as const;
+    const patch = { "browser.headless": { set: false } } as const;
     const command = {
       commandId,
       requestedAt: "2020-01-01T00:00:00.000Z",
@@ -2832,7 +2832,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(badCommand.status, 400);
 
     const settingsCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7b";
-    const settingsPatch = {};
+    const settingsPatch = { "browser.headless": { set: false } } as const;
     const mismatchedCommand = {
       commandId: settingsCommandId,
       requestedAt: h.clock.now().toISOString(),
@@ -2912,7 +2912,10 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("refuses a command whose requested actor disagrees with BFF admission before authority changes", async () => {
     const h = harness();
     const commandId = "00000000-0000-4000-8000-000000000095";
-    const patch = { display: { screenWidth: 1980 } };
+    const patch = {
+      "display.screenWidth": { set: 1980 },
+      "display.screenHeight": { set: 1080 },
+    } as const;
 
     const response = await h.app.request("/api/v1/commands", {
       method: "POST",
@@ -3140,7 +3143,10 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const initialWidth = initial.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
     assert.equal(initialWidth?.source, "default");
 
-    const patch = { display: { screenWidth: 1980 } };
+    const patch = {
+      "display.screenWidth": { set: 1980 },
+      "display.screenHeight": { set: 1080 },
+    } as const;
     const applied = await h.app.request("/api/v1/commands", {
       method: "POST",
       headers: OPERATOR_JSON_HEADERS,

@@ -160,8 +160,8 @@ export function persistCorruptJournaledSettings(input: Readonly<{
   activateRuntime: boolean;
 }>): Readonly<{ settingsPath: string; settingsBytes: Buffer }> {
   mkdirSync(input.stateRoot, { recursive: true });
-  const settingsPath = join(input.repoRoot, ".tracker", "settings.json");
-  const patch = { browser: { headless: false } } as const;
+  const settingsPath = join(input.repoRoot, ".tracker", "settings", "settings.json");
+  const patch = { "browser.headless": { set: false } } as const;
   const command = SettingsCommandRequestSchema.parse({
     commandId: COMMAND_ID,
     requestedAt: input.clock.now().toISOString(),
