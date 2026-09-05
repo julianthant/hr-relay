@@ -7,10 +7,10 @@ when creating or updating a record.
 
 | Record | Purpose |
 | --- | --- |
-| [Person Lookup](person-lookup.md) | Search and Match acceptance, with phase owners named in the record |
-| [Separations](separations.md) | Workflow behavior, scenario obligations, and dated live verification |
+| [Person Lookup](person-lookup.md) | Historical Search evidence plus the current Phase 3.2 Task 5-1 Search/Match acceptance contract |
+| [Separations](separations.md) | Historical build/live evidence; Phase 3.2 owns current no-write acceptance and Phase 3.3 owns controlled commits |
 | [Separations legacy behavior](separations-legacy-behavior.md) | Source-pinned legacy scenario evidence supporting the Separations record |
-| [I-9 signer lookup](i9-lookup.md) | Unnumbered candidate evidence; its admission owner and limitations are explicit in the record |
+| [I-9 signer lookup](i9-lookup.md) | Unnumbered future candidate evidence; Phase 4 admission is required before implementation |
 
 Use `docs/rebuild/migrations/<workflow-id>.md` for the migration artifact required by the
 authoring contract. The Separations legacy supplement is the existing reviewed exception.

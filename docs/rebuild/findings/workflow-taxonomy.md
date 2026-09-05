@@ -8,10 +8,10 @@ Records about how workflows, compositions and chunk harnesses are modeled and pr
 **Recorded:** 2026-08-14 · **Status:** RESOLVED 2026-08-14 — ratified as **D219** (ref workflow-model §1.2.1
 owns the module `role`; ref dashboard-surfaces §Shell owns the presentation) and implemented the same day
 (`c7486f6` module roles + registry validation + guard arm, `a631231` bootstrap/explorer wires,
-`b42f46f`/`0d64441` rail/picker/explorer nesting). The parity re-freeze this forces is sequenced
-into `docs/handoffs/2026-08-14-parity-refreeze.md`, which recorded D219's isolated expected
-diffs (three fixtures: `explorer-graph`, `explorer-transaction`, `start-run`). _(That re-freeze
-landed as `bd1d4b6`; the handoff briefs were removed 2026-08-18 and live in git history.)_
+`b42f46f`/`0d64441` rail/picker/explorer nesting). The isolated parity re-freeze landed as
+`bd1d4b6` over three fixtures (`explorer-graph`, `explorer-transaction`, `start-run`); its fulfilled
+brief is source-pinned at `130b9a70^:docs/handoffs/2026-08-14-parity-refreeze.md` and was removed
+2026-08-18.
 
 **The design's answers to the open questions below:** no phase-doc conflict (no current Phase 3 exit criterion names
 rail presence; chunks stay registered and start through the start-plan lane), and the composition's

@@ -1,11 +1,11 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only history kept in the detail drawer rather than on the phase spine. -->
-asOf: 2026-09-04
-head: 5dcdd112
+asOf: 2026-09-05
+head: fbc23dc1
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, D323 phase hierarchy, `00`'s size model)
-source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
-source: `docs/plans/2026-08-20-dashboard-architecture-audit.md` (Track D) · the phase docs win on any disagreement
+source: `9993ab39^:docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (historical Tracks 0/A/B/C)
+source: `9993ab39^:docs/plans/2026-08-20-dashboard-architecture-audit.md` (historical Track D) · the phase docs win on any disagreement
 footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; plan, site and owning docs move together — notation: `docs/roadmap/notation.md`.
 > The ground-up rebuild of UCSD's UCPath HR automation, as a tree. Historical Phases 0–2 remain evidenced, but the authority model is deliberately reopened at **0.3** before **1.6** implements it, **2.6** revalidates the tails, and **3.1** completes every generic dashboard function. **3.2** then finishes workflow authoring and freezes one audited candidate, **3.3** accepts Person Lookup and Separations against that exact candidate, and **3.4** finishes Codex/Claude cooperation. Phase 4 migrates the remaining workflows one part at a time. Phase 5 prepares and performs the all-at-once cutover. Phase 6 ships the desktop application. Legacy stays the sole production authority until Phase 5's switch.
 
@@ -440,7 +440,7 @@ doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboa
 > Implement the exact 0.3 contracts — D330, D331, D332 — without redesigning them. Every task is one supervisor seam bound in doc 01 §1.6 to its files, gate, proofs and deletion test. R04 (0.3 Task 4) ruled the original Tasks 1 and 2 NOT independent as written — both add schema steps and would bump `CURRENT` twice — so the part is re-sliced: Task 1 lands the one serial schema floor, and Tasks 2-1 (run-record service) and 2-2 (settings catalog/root) run as a D328 wave from the master that contains Task 1's merge; the 1.6 coordinator records that base SHA and both worktrees before dispatch. Tasks 3–7 run serially in order. No other pair is a wave.
 
 builds:
-- [ ] BE one canonical SQLite-backed run-record service with typed CRUD/CAS lifecycle operations
+- [x] BE one canonical SQLite-backed run-record service with typed CRUD/CAS lifecycle operations
 - [ ] BE one settings catalog and protected `.tracker/settings/` root for every non-provider-key setting
 - [ ] BE migrate lifecycle/configuration writers and core runtime consumers; Phase 2.6 owns downstream read models and Phase 3.1 owns Settings UI behavior
 - [ ] PROOF upgrade, rollback, recovery, compatibility deletion, and full foundation regression
@@ -452,6 +452,7 @@ needs:
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound every task to one seam/gate/order/proof set/deletion test in doc 01 §1.6; re-sliced into serial floor + wave 2 (`2-1`/`2-2`) + serial 3–7 after the cross-contract review proved the schema coupling · left: the coordinator's `cancel`-of-a-running-run ruling before Task 4 (R04 report, NEEDS COORDINATOR)
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the `cancel`-of-a-claimed-run ruling landed (option A, §D330.5 request arm, §D330.11 #27); no open ruling remains before Task 4 · left: implementation from Task 1
+- 2026-09-04 | phase-1-6 run-record Task 2-1 | canonical service candidate `bc82fe47` accepted, evidence commit `bb98dabc` merged `--no-ff` as `49120609`, and integration gates/cleanup passed; v31 preserves relaunch lineage across archived-source deletion · left: Task 2-2 and serial Tasks 3–7
 
 #### 1 · Land the schema floor {#p1f-floor}
 status: done
@@ -466,25 +467,26 @@ builds:
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | node created: the serial floor the wave branches from (doc 01 §1.6 Task 1) · left: everything
 - 2026-09-04 | phase-1-6-authorities C161eaed0 R01 | merged the v30 floor, no-migrate preflight modes, baseline journal, protected singleton, tombstone forward shape and dashboard lock-release wrapper at `ebc41c45`; integrated typecheck/lint/coverage/manifest gate green, supervisor worktree/ref/task closed · left: wave 2 and serial Tasks 3–7
-- 2026-09-04 | execute-phase-1-6-from C858cc3dc R01 | independently verified inherited work and closed M9/M21 proof gaps at `5b1fb626`; 411 files / 5,040 tests and 269 assertion-only parity tests pass with unchanged references; supervisor lifecycle fully closed; receive proof in docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r01-receive.md · left: wave 2 and Tasks 3–7
+- 2026-09-04 | execute-phase-1-6-from C858cc3dc R01 | independently verified inherited work and closed M9/M21 proof gaps at `5b1fb626`; 411 files / 5,040 tests and 269 assertion-only parity tests pass with unchanged references; supervisor lifecycle fully closed; receive proof source-pinned at `c77d2b76^:docs/coordinator/execute-phase-1-6-from-c858cc3dc/reports/r01-receive.md` · left: wave 2 and Tasks 3–7
 
 #### 2-1 · Implement the canonical run-record service {#p1f-run-store}
-status: active
-date: wave 2 peer · branches from the master holding Task 1's merge
+status: done
+date: 2026-09-04
 doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.3 · ref:execution-and-sessions §3
 
 builds:
-- [ ] BE `src/core/run-record-service.ts` + the lifecycle repositories: the §D330.5 operation set with named refusals, three-way `read`, ordered `list`, the two-source watermark
-- [ ] BE one-transaction first-eligible claim with the full token, claim fence vs. operator CAS, composite terminalize, D308 tree delete behind the tombstone with gate records and `ordinal_source = tombstone`
-- [ ] PROOF §D330.11 #1–#23, #25, #26 and P33's claim half over the real service; deletion tests #16 and #25
+- [x] BE `src/core/run-record-service.ts` + the lifecycle repositories: the §D330.5 operation set with named refusals, three-way `read`, ordered `list`, the two-source watermark
+- [x] BE one-transaction first-eligible claim with the full token, claim fence vs. operator CAS, composite terminalize, D308 tree delete behind the tombstone with gate records and `ordinal_source = tombstone`
+- [x] PROOF §D330.11 #1–#23, #25, #26 and P33's claim half over the real service; deletion tests #16 and #25
 
 needs:
 - p1f-floor
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | relabelled 2-1 (wave 2 peer) and bound to its seam; owes 25 of §D330.11's 26 proofs (#24 is Task 4's) · left: implementation
-- 2026-09-04 | execute-phase-1-6-from C858cc3dc R02 | started the declared wave from common verified base `d2fe05dd`; exact task/worktree/branch and allowance in docs/coordinator/execute-phase-1-6-from-c858cc3dc/supervisors.json · left: implementation, assigned proofs and complete lifecycle
+- 2026-09-04 | execute-phase-1-6-from C858cc3dc R02 | started the declared wave from common verified base `d2fe05dd`; exact task/worktree/branch and allowance source-pinned at `c77d2b76^:docs/coordinator/execute-phase-1-6-from-c858cc3dc/supervisors.json` · left: implementation, assigned proofs and complete lifecycle
 - 2026-09-04 | direct phase plan | prior R02 stopped during intake with no candidate and its temporary evidence was removed; approved one-supervisor focused plan in doc 01 §1.6 Task 2-1: `codex/phase-1-6-run-record` at `/Users/julianhein/Projects/hr-worktree-run-record`; operator-approved feasibility correction adds only `v31` so deleting an archived source retains the live descendant's relaunch lineage; start waits for one recorded common wave SHA containing both approved peer plans · left: implementation from that verified base
+- 2026-09-04 | direct supervisor close | accepted candidate `bc82fe47` after independent review and corrections, merged evidence commit `bb98dabc` as `49120609`, then passed typecheck, lint, 5,082 coverage tests, manifest, 745 architecture tests and 269 unchanged parity tests; branch/worktrees removed, no push · left: Task 2-2 integrates next
 
 #### 2-2 · Implement the settings catalog and protected root {#p1f-settings-store}
 status: active
@@ -502,7 +504,7 @@ needs:
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | relabelled 2-2 (wave 2 peer) and bound to its seam; never edits `migrations.ts` or `authority-database.ts` (Task 1 landed the singleton) · left: implementation
-- 2026-09-04 | execute-phase-1-6-from C858cc3dc R03 | started the declared wave from common verified base `d2fe05dd`; exact task/worktree/branch and allowance in docs/coordinator/execute-phase-1-6-from-c858cc3dc/supervisors.json · left: implementation, assigned proofs and complete lifecycle
+- 2026-09-04 | execute-phase-1-6-from C858cc3dc R03 | started the declared wave from common verified base `d2fe05dd`; exact task/worktree/branch and allowance source-pinned at `c77d2b76^:docs/coordinator/execute-phase-1-6-from-c858cc3dc/supervisors.json` · left: implementation, assigned proofs and complete lifecycle
 - 2026-09-04 | direct phase plan | approved one-supervisor focused plan in doc 01 §1.6 Task 2-2: `codex/phase-1-6-settings` at `/Users/julianhein/Projects/hr-worktree-settings`; the minimal Settings producer adaptation preserves the eight-leaf surface and unchanged parity while implementing D331.5's leaf-operation wire; start waits for one recorded common wave SHA containing both approved peer plans · left: implementation from that verified base
 
 #### 3 · Cut over executor and worker lifecycle writers {#p1f-run-writers}
@@ -1000,7 +1002,7 @@ log:
 - 2026-09-03 | D326 decimal hierarchy | 3.1 → 3.2 → 3.3 → 3.4 is now the execution order; one coordinator owns each part, numbered cards are one supervisor session, and parallelism is recorded in the coordinator run plan · left: reopened 3.1, then 3.2–3.4
 - 2026-08-20 | docs-cohesion step 5.0 | every node in the tree now carries `doc:` — its phase-doc home section plus the reference specs that own its contracts (`81bf48dd`); `test-tiers` drawn as this phase's testing spine (R10) · left: step 4b's binding guard, then the per-doc rewrites
 - 2026-08-20 | docs-cohesion 03b | doc 03b rewritten as-built, all fourteen status blocks filled and the whole separations subtree re-bound to its headings; the phase stands at separations **8 of 9**, step 5 open on a calendar date · left: the three controlled commits from 08-28, then rebuild-ready and close-out
-- 2026-08-30 | R2 observed status | supersedes the calendar-only status above: parent `54060ded` passed 341 files / 3,761 tests and 239/239 assert-mode parity; reviewed child `7b05b057` merged `--no-ff` and swept. Assigned `.env`, `.tracker-rebuild` and locks absent; admission smoke exited 1 before runner import or person-field inspection. No fresh subject/S7 observation, rehearsal, exact-run 0/0/0 evidence, approval or write; A2–A5/A8 remain open and R3 obligations remain separate. Evidence: `docs/coordinator/worktree-completion/reports/r2-gates.md`, `r2-p3.md`, `r2-p4.md`, and `docs/rebuild/migrations/separations.md` §9.32
+- 2026-08-30 | R2 observed status | supersedes the calendar-only status above: parent `54060ded` passed 341 files / 3,761 tests and 239/239 assert-mode parity; reviewed child `7b05b057` merged `--no-ff` and swept. Assigned `.env`, `.tracker-rebuild` and locks absent; admission smoke exited 1 before runner import or person-field inspection. No fresh subject/S7 observation, rehearsal, exact-run 0/0/0 evidence, approval or write; A2–A5/A8 remain open and R3 obligations remain separate. Evidence source-pinned under `a2b6df38^:docs/coordinator/worktree-completion/reports/` (`r2-gates.md`, `r2-p3.md`, `r2-p4.md`) and retained in `docs/rebuild/migrations/separations.md` §9.32
 
 ### 3.1 · Shared dashboard {#dash-defaults}
 status: planned
@@ -1110,7 +1112,7 @@ date: D264 · audit 2026-08-20
 chip: D1–D5 + D11 landed · D4/D5 measured · D6–D10 proposed
 doc: 03.1 §Task 3 · Harden shared status, commands, and read budgets · ref:frontend-backend-integration §2 · ref:frontend-backend-integration §4 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §7.4 · ref:workflow-model §1.2
 
-> From the 2026-08-20 architecture audit (`docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Eleven ordered moves, none a rewrite, sequenced after Track C and before the next workflow leans on the dashboard. **Ruled by D264:** the track sits here under the dashboard defaults; D1–D5 are planned; D6–D10 stay proposed behind one named trigger; and §3.5 is answered — the descriptor registry LEAVES the browser bundle as row D11, amending D251. D4 and D5 double as the FIRST measurement of ref frontend-backend-integration §7.4's performance budgets, whose recorded numbers become the non-regression gates for every later workflow.
+> From the source-pinned 2026-08-20 architecture audit (`9993ab39^:docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Eleven ordered moves, none a rewrite, sequenced after Track C and before the next workflow leans on the dashboard. **Ruled by D264:** the track sits here under the dashboard defaults; D1–D5 are planned; D6–D10 stay proposed behind one named trigger; and §3.5 is answered — the descriptor registry LEAVES the browser bundle as row D11, amending D251. D4 and D5 double as the FIRST measurement of ref frontend-backend-integration §7.4's performance budgets, whose recorded numbers become the non-regression gates for every later workflow.
 
 builds:
 - [x] BE D1 one status/outcome derivation — exported `deriveRunStatus`, ONE task-outcome vocabulary, ONE `panelKindOf`; the detail panel stops disagreeing with the queue row (D268, `81bfed73`; closes C1/C2, part of M3)
@@ -1160,7 +1162,7 @@ size: L
 chip: D272–D276 ratified · implementations/proofs open
 doc: 03.1 §Task 4 · Close demo fidelity and parity
 
-> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN in the historical audit — nothing is dismissed or "modified" without a citation. Three ledgers audited exactly 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119); a mechanical recount after the current ports, Activity AC24, Explorer EX5 and shell A46 gives 775 exact rows. The six sheets' 49 choices are ratified as D272–D276; ledger 3's 238 OPEN row marks / 30 groups remain historical audit counts, while their resulting implementations and proofs are current work.
+> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN in the historical audit — nothing is dismissed or "modified" without a citation. Three source-pinned ledgers audited exactly 1,956 elements/rows at HEAD on 2026-08-21 (`9993ab39^:docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `9993ab39^:docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` 348 · `9993ab39^:docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` 1,119); a mechanical recount after the current ports, Activity AC24, Explorer EX5 and shell A46 gives 775 exact rows. The six sheets' 49 choices are ratified as D272–D276; ledger 3's 238 OPEN row marks / 30 groups remain historical audit counts, while their resulting implementations and proofs are current work.
 
 builds:
 - [x] DOCS D272 ratifies the shell / queue / run-start choices (ledger 1's 37 OPEN rows / 28 questions remain the exact historical audit count)

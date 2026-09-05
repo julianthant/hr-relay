@@ -7,6 +7,8 @@ asset until the single all-at-once cutover (D89/D93). This rebuild is not produc
 
 - Never push without explicit instruction. Commit by logical category, stage exact paths (never
   `git add -A` / `git add .`), and preserve other sessions' edits.
+- Create worktrees directly under `/Users/julianhein/Projects/` as `hr-worktree-<task>`, using
+  one or two lowercase, hyphen-separated task words (for example, `hr-worktree-run-detail`).
 - Phase/task implementation uses a dedicated branch, never `master`. Sequential work can use an
   exclusively available checkout; parallel tasks each need a branch and worktree. Shared, dirty or
   integration-only checkouts require a worktree even for sequential work. Preserve stricter phase

@@ -3,10 +3,11 @@
 Records about the BFF's span-fold/projection layer — cases where a served surface
 disagrees with what the on-disk streams and authority actually hold.
 
-No open record demands work. All three records below carry a dated decision: the `span.patched`
-channel was RETIRED (D254), the span-fold duplicate was FIXED at the fold (D255) with its one
-remaining half — the write sequencer's beat-span identity — deferred against a named trigger, and
-the run-detail panel's second status derivation was FIXED by **D268**.
+Three older records carry dated decisions: the `span.patched` channel was RETIRED (D254), the
+span-fold duplicate was FIXED at the fold (D255) with its beat-span identity half deferred against
+a named trigger, and the run-detail panel's second status derivation was FIXED by **D268**. Two
+later records remain open: receipt-qualified outcome truth belongs to Phase 3.1 Task 13-3, and the
+worker step/pipeline/browser-health producers belong to Task 10-2 plus the shared projection seam.
 
 _(The 2026-08-14 "`span.patched` has a declared vocabulary and no emitter" record was CLOSED
 2026-08-20 by **D254**, an operator ruling: the channel is retired rather than built. The

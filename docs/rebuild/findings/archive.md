@@ -4,6 +4,8 @@
 per **D223**; the contracts live in `docs/rebuild/reference/dashboard-surfaces.md` §10.2's
 *D223 as-built* block) or moved to the category file that actually owns it. The file stays so
 the next archive finding has somewhere to go, and so the history of what was here is legible.
+Phase 3.1 Task 11-3 separately owns the current canonical-authority, relaunch, deletion, version,
+and convergence work; that scheduled work does not reopen these historical findings.
 
 Records were opened 2026-08-14 while porting the rebuild-demo's `DemoArchive.tsx`
 (legacy `hr-automation@1bffbd658db34ce84a08e69484db3a40b3658d6e`,

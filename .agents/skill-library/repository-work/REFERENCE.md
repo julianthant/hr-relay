@@ -319,6 +319,9 @@ work only. The Astra/Fable supervisor retains the hardest seam and consequential
 Use `sup_review` / `sup-review` for new final-review dispatches; keep already running reviewers.
 Validate native role definitions before dispatch; never substitute generic roles or model overrides.
 
+Use the worktree location and short task naming rule in root `AGENTS.md` / `CLAUDE.md`;
+worktree directory names are independent of branch names.
+
 Sequential implementation uses a dedicated non-`master` branch in an exclusively available checkout;
 shared, dirty, uncertain or integration-only checkouts require an owned worktree instead. Preserve
 stricter phase isolation. Verify branch/path/base before edits and record a merge condition for both

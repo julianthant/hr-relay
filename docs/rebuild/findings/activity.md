@@ -16,6 +16,10 @@ and absent on purpose. Three have since been settled by operator ruling (2026-08
 decision in their own status line; the symptom paragraphs are kept as written on the day, so a
 sentence like *"the ported header carries the ⓘ only"* describes what was true then, not now.
 
+**Current routing (2026-09-05).** Phase 3.1 Task 12-3 owns bounded Activity/search/export
+completion. The distinct-people producer and the diagnosed span/authority split below remain
+unresolved; the other records are closed or won't-fix as their dated status lines say.
+
 ---
 
 **Settled 2026-08-19 — three of the five records close on operator rulings.** The **write-ledger
@@ -24,9 +28,10 @@ block is SERVED** with an explicit D81 carve-out (**D236**, normative text in re
 minutes store is built and the trigger that would re-open it is named; and the **export is BUILT**
 (**D240**, ref frontend-backend-integration §6.7) at `GET /api/v1/reports/activity.csv`, carrying its caveats inside the
 artifact. Each record below keeps its diagnosis and closes with the decision — a record deleted on
-settlement takes its argument with it, and the argument is what the next person needs. The two that
-stay open are **distinct people** (still blocked on a person axis existing at all) and the **span
-chips** (won't-fix, and why).
+settlement takes its argument with it, and the argument is what the next person needs. The remaining
+original producer gap is **distinct people** (still blocked on a person axis existing at all); the
+**span chips** are won't-fix, and the later 2026-08-27 authority-split diagnosis is a separate
+current record.
 
 **Landed 2026-08-15 — the two open wire gaps are deleted per the ledger rule.** The
 per-workflow cross-tab (eight columns, one summation pass, D81 reconciliation refusals, the

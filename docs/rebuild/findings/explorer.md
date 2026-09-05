@@ -16,9 +16,12 @@ doc): the run overlay, the `1 file` header count, lanes, the `Version registry` 
 delegation child row are all covered by ref operator-trust §5.7's exclusions and its 2026-08-14 presentation
 as-built delta.
 
-**What the 2026-08-19 sweep missed.** `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md`
-§3 (ledger 3) re-audited the Explorer against the demo live and found three real gaps the
+**What the 2026-08-19 sweep missed.** The source-pinned 2026-08-21 standing-surfaces fidelity
+ledger (`9993ab39^:docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` §3; removed with
+obsolete dashboard plans) re-audited the Explorer and found three real gaps the
 "ZERO open records" heading was papering over. All three are booked below.
+
+Phase 3.1 Task 9-4 is the current implementation owner for all three records.
 
 ## `skippedInDryRun` has no per-node signal
 

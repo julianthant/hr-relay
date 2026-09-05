@@ -253,7 +253,7 @@ Rules:
 built: `async-resource.ts` is the right shape and four callers use it, while the fetch effect is
 hand-copied in at least nine other places and 13 of 19 `useDashboardClient` consumers bypass
 `state/` entirely. That is Track D row **D6**, and it is named here rather than left for the next
-reader to find (`docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.4 M2). Two more Track D
+reader to find (`9993ab39^:docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.4 M2). Two more Track D
 rows amend this section: **D7** splits `LoadedApp` (`app/dashboard-app.tsx`, ~1,100 lines, 18
 concerns) along its own seams, and **D8** gives `intake.tsx` and `archive.tsx` the models the
 pairing rule assumes and splits the workflow-versioning surface out of the archive file. Their
@@ -2242,7 +2242,7 @@ and the recorded numbers become the non-regression gates named above. Rows D1–
 D6–D10 — the maintainability slice, including the virtualized list this section's virtualize-or-page
 bullet owes — stay `proposed` behind one named trigger: **before the second migration's
 `Dashboard · wire` task starts.** Ordering, evidence and per-row scope:
-`docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.3, §5. Row **D11** — the descriptor
+`9993ab39^:docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.3, §5. Row **D11** — the descriptor
 registry leaving the bundle — amends §4 and D251 and is planned with D1–D5.
 
 **Where each row lands in this document**, so a reader of any section can find its hardening:

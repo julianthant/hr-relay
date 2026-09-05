@@ -3,12 +3,15 @@
 Records where a demo intake element (`hr-automation@1bffbd658db34ce84a08e69484db3a40b3658d6e`,
 `src/dashboard/components/dev/rebuild-demo/DemoIntake.tsx` + `demo-data-intake.ts`) has no counterpart
 in this tree, verified 2026-08-21 by reading `src/dashboard/surfaces/intake.tsx` and
-`src/domain/intake/**` against `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` §6
-(ledger 3, rows IN15/IN16/IN123–IN144). See `README.md` for the standing rules; this file did not
+`src/domain/intake/**` against the source-pinned 2026-08-21 standing-surfaces fidelity ledger
+(`9993ab39^:docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` §6, rows
+IN15/IN16/IN123–IN144; removed with obsolete dashboard plans). See
+`README.md` for the standing rules; this file did not
 exist before this pass — Track F booked it because the ledger named 22 real gaps and nothing had.
 
 Owning doc for every record below: `docs/rebuild/reference/data-intake-and-edit-data.md` §5/§5.2,
 `docs/rebuild/reference/dashboard-surfaces.md` §9.7.1.
+Phase 3.1 Task 10-4 owns the remaining presentation decisions and producer work.
 
 ## The Manifest and Rerun-diff STAGES are rendered
 

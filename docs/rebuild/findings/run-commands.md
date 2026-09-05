@@ -27,6 +27,8 @@ ZERO records remain open. Every block below is a RESOLVED record kept for its ar
 (D226 the gate ceremonies; D233 the presentation CAS; D234 the retired hide/unhide pair and
 `executeBump`'s CAS; D235 the bulk strip and its once-false refusal copy; D245/D246 the
 parked-write pair).
+Phase 1.6 Task 4 now owns migration of command writers to the canonical run service, and Phase 3.1
+Task 12-1 owns the final operator surface; neither is an unresolved finding in this file.
 
 ---
 

@@ -118,9 +118,12 @@ and its key in `TestTargetWorkflowArmsSchema`, a ready-target schema, a resoluti
 resolver — Person Lookup's `PersonLookup*` exports are the template. The `manifests.ts` and
 `compose.ts` sites are closed, decision-cited `GENERIC_WORKFLOW_ID_ALLOWLIST` entries in
 `workflow-authoring-budget` (D318 / `ref guards-and-tests` §10.9), so a new workflow with a T1b
-manifest edits these files and extends the allowlist with the same citation. Whether this loader should be derived from the registry instead is an open operator
-item (coordinator sheet `docs/coordinator/phase-3c-migration/decisions/2026-09-02-3c-a-close-questions.md`
-item 4); until it is decided, this is the documented registration step.
+manifest edits these files and extends the allowlist with the same citation. The former 3c-A
+coordinator sheet that proposed deriving the loader is source-pinned at
+`a2b6df38^:docs/coordinator/phase-3c-migration/decisions/2026-09-02-3c-a-close-questions.md`; it was
+removed with completed coordination artifacts, and no owning decision replaced the explicit map.
+It therefore remains the documented registration step, and Phase 3.2 Task 4-2 must prove it from a
+clean context before candidate freeze.
 
 **The two closed lists beside the budget.** A legitimately extra file — a migration-doc supplement
 (`docs/rebuild/migrations/separations-legacy-behavior.md`) or a T2/T3 `tests/scenario/dashboard/<id>/`

@@ -13,6 +13,10 @@ ratified until its normative text lands there in the same commit that records it
 **`D131` is a retired gap — never reuse it** (the record of the 2026-08-04 numbering race; see
 §Known gap below).
 
+Historical `docs/plans/...` citations retained verbatim in D248–D264 and D282 refer to plan files
+removed after fulfillment. Read each at `9993ab39^:<recorded path>`; the owning contracts and
+decision text remain current authority.
+
 **The owner cells are swept when the docs move, and the sweep is dated.** A cell names a section,
 so a rewrite that renumbers one breaks the pointer without breaking anything a gate can see. Swept
 **2026-08-21** after the `reference/` rewrites (65 cells over 55 lines): the dashboard-surfaces

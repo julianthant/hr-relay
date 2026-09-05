@@ -97,10 +97,10 @@ Phase 3a closed its exit table 10/10 with row 10 — demo fidelity — met **by 
 
 | # | Carried line | Source | State |
 |---|---|---|---|
-| C1 | ledger 2's 10 structural rows | `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` | closed — DCF1 (`c1507786`) row-by-row disposition |
-| C2 | ledger 1's layout/control groups + C69's re-plan path | `docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` | closed — DCF2/DCF3 (`f7c5ca65`, `a36f1510`) |
-| C3 | ledger 3's AR39/AR59 and remaining non-copy marks | `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` | closed — DCF4 (`d474f526`) and named D275/D179/D223 dispositions |
-| C4 | the `PanelHeader`-span heading finding (P1) | `docs/plans/2026-08-26-p1-refreeze-attribution.md` | closed — 13 production `PanelHeader` headings at `h2` (`029eaba1`); kit specimens excluded |
+| C1 | ledger 2's 10 structural rows | `9993ab39^:docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` | closed — DCF1 (`c1507786`) row-by-row disposition |
+| C2 | ledger 1's layout/control groups + C69's re-plan path | `9993ab39^:docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` | closed — DCF2/DCF3 (`f7c5ca65`, `a36f1510`) |
+| C3 | ledger 3's AR39/AR59 and remaining non-copy marks | `9993ab39^:docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` | closed — DCF4 (`d474f526`) and named D275/D179/D223 dispositions |
+| C4 | the `PanelHeader`-span heading finding (P1) | `9993ab39^:docs/plans/2026-08-26-p1-refreeze-attribution.md` | closed — 13 production `PanelHeader` headings at `h2` (`029eaba1`); kit specimens excluded |
 | C5 | former Capture Mode findings (D278 and photo metadata/retake gaps) | `docs/rebuild/findings/capture.md` | **retired by D294**; no active implementation obligation |
 
 ## Retired — phone photograph → OCR-run Capture Mode (D294)

@@ -10,9 +10,12 @@ both screenshots element by element.
 `DemoQueue.tsx` — same grid, same chip shell, same footer band, same bands and digest. Every
 record below is a MISSING WIRE FIELD or a MISSING PROJECTOR, not a rendering gap: each one is a
 row the component would draw the moment the field arrives. Most are already batched on the
-hookup ledger in `docs/plans/2026-08-13-detail-fidelity-audit.md` (rows *"`QueueBaseFields`
-batch"* and *"queue/run action descriptors"*); they are restated here per record so a backend
+source-pinned 2026-08-13 detail-fidelity audit ledger
+(`9993ab39^:docs/plans/2026-08-13-detail-fidelity-audit.md`; removed with obsolete dashboard plans,
+rows *"`QueueBaseFields` batch"* and *"queue/run action descriptors"*); they are restated here per record so a backend
 session can take them one at a time.
+
+Phase 3.1 Task 12-1 is the current owner for queue-row facts, commands, and deletion.
 
 Shared evidence for every record: `GET /api/v1/dashboard?day=2026-08-14` and
 `QueueBaseFields` in `src/domain/dashboard/projection.ts`.

@@ -200,7 +200,7 @@ cross-referenced rather than re-litigated.
 ### D281 — UI-1: the elements the demo does not cover (2026-08-27)
 
 Ratified 2026-08-27; operator context is `docs/decisions/dashboard.md` §D281 (run UI-1; the audit
-`docs/plans/2026-08-27-ui-fidelity-audit.md`'s `new-in-current` rows plus UF-FU-2), all recommended.
+`9993ab39^:docs/plans/2026-08-27-ui-fidelity-audit.md`'s `new-in-current` rows plus UF-FU-2), all recommended.
 The rebuild-demo (legacy `1ec1d870`, `src/dashboard/components/dev/rebuild-demo/`) is the design
 authority for everything it covers; what it does not cover is ruled here, once, so no later audit
 re-books it. Merged at `a3683bf3`.
@@ -211,7 +211,7 @@ re-books it. Merged at `a3683bf3`.
 4. Keep the TEST column's third arm `provisioned identical to production — refused` (`resolveSystemEntryUrl`'s refusal, stated before it bites; unreachable on today's estate). B blurs "configured wrong" into "not configured", C removes the advance warning.
 5. Keep the Workflow-capabilities banner's trailing clause (the count is descriptor-derived, never authored). B/C remove the only sentence on the page that says so.
 6. Keep the authored display names and notes for `new-kronos`, `old-kronos`, `sharepoint` (`settings-model.ts` `SYSTEM_HOST_PRESENTATION`, each marked `// authored — no demo counterpart`); UF-SET-26 requires a note on every row. B leaves three of nine rows blank, C waits on copy the demo never had.
-7. **The storage band goes full-bleed.** The demo's geometry (`RebuildDemo.tsx:654` / `DemoSettings.tsx:1204+`: border-bottom only, no radius, x=0, mounted above the shellView switch) replaces the inset `Banner` card at the storage-band site — on the queue view too, since the same site serves both. D276 item 4's refusal to revert the `Banner` PRIMITIVE stands: the primitive keeps its bordered, rounded shape everywhere else; the band gets its own full-bleed arm. A keeps an x=12 band over x=0 takeovers; C is the half-match U4a rejected (`dashboard-app.tsx:1377-1383`). **Open port: UI-2 U6** (`docs/plans/2026-08-27-ui-runs.md`).
+7. **The storage band goes full-bleed.** The demo's geometry (`RebuildDemo.tsx:654` / `DemoSettings.tsx:1204+`: border-bottom only, no radius, x=0, mounted above the shellView switch) replaces the inset `Banner` card at the storage-band site — on the queue view too, since the same site serves both. D276 item 4's refusal to revert the `Banner` PRIMITIVE stands: the primitive keeps its bordered, rounded shape everywhere else; the band gets its own full-bleed arm. A keeps an x=12 band over x=0 takeovers; C is the half-match U4a rejected (`dashboard-app.tsx:1377-1383`). **Open port: UI-2 U6** (`9993ab39^:docs/plans/2026-08-27-ui-runs.md`).
 
 Standing from the same receive (summarized in `docs/decisions/dashboard.md` §D281, all recommended, no D-number — run-plan
 matters): intake and the UI catalog adopt `TakeoverFrame` (UF-FU-1 → UI-2 U7); fidelity ledger 1's Region A
@@ -1114,7 +1114,7 @@ which writes span events straight to the stream and can order them however a cas
 live system actually got wrong sat one level down and needed no timing at all:
 `TASK_OUTCOME_PIPELINE` mapped `cancelled|discarded|superseded` to `blocked` while
 `TASK_OUTCOME_STEP` mapped them to `cancelled`, for every folded span, unconditionally. The audit
-recorded the run-status half as C1 (`docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.2);
+recorded the run-status half as C1 (`9993ab39^:docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.2);
 it names a correct requirement on the derivation even though the executor's real ordering never
 exercises it.
 
@@ -3871,7 +3871,7 @@ twice. An error run that never wrote has nothing to lose.
 archived detail's 🗑 sits beside Relaunch with the same confirm. Neither is offered where the
 kernel would refuse; a refusal that reaches the wire anyway prints the kernel's own sentence.
 
-#### D327 — one canonical run-record lifecycle authority (planned in 0.3, implemented in 1.6)
+#### D327 — one canonical run-record lifecycle authority (contracted in 0.3, implementation in 1.6)
 
 Every queue, current, terminal, archive, relaunch and deleted-run surface or command must resolve
 through one SQLite-backed run-record lifecycle service. That service alone decides whether a run
@@ -3894,11 +3894,14 @@ journeys. None of those later parts may create a second lifecycle authority to g
 
 ##### D330 — the run-record lifecycle service contract (0.3 Task 1, 2026-09-04)
 
-_D327 fixed the outcome; this subsection is the contract 1.6 implements. It is normative for identity,
+_D327 fixed the outcome; this subsection is the contract 1.6 implements. Task 2-1's canonical service,
+repositories, v31 lineage migration, and assigned proof matrix landed and integrated on 2026-09-04;
+Tasks 3–4 still migrate the executor/worker and command callers, and later tasks migrate settings,
+upgrade, and downstream consumers. It is normative for identity,
 existence, the state machine, revision/CAS, the typed operation set, ordering and claim, retry/restart/
 relaunch, and archive/purge/delete. §D330.9–§D330.11 (evidence linkage, the adapter boundary, and the
-proofs 1.6 must write) complete it. Nothing here changes runtime code (D326); where the as-built
-`tasks` store already behaves this way the sentence says so, and where it does not, 1.6 owns the change.
+proofs 1.6 must write) complete it. This text was ratified as design under D326; implementation status
+is stated explicitly rather than inferred from its original as-built comparisons.
 Settings authority (0.3 Task 2) and migration/recovery (0.3 Task 3) are cross-referenced, never restated._
 
 ###### D330.1 — stable identity
@@ -3921,16 +3924,15 @@ field of it is ever rewritten. The identity tuple and what each part is for:
 (`workflow`,`itemId`,`attempt`) unique; (`workflow`,`runNumber`) unique; a `parent.runId` must name
 an existing non-deleted run of the same workflow family; a `retryOf` must name an existing run of the
 same (`workflow`,`itemId`). A create that would violate any of these refuses by field name and
-writes nothing. The as-built store already enforces the first three (`tasks` PK,
-`nextItemAttempt` refusal, `tasks_run_number_idx`); the parent/retryOf existence checks are 1.6 work.
+writes nothing. The pre-service store already enforced the first three (`tasks` PK,
+`nextItemAttempt` refusal, `tasks_run_number_idx`); Task 2-1 added the parent/retryOf existence checks.
 
 **A spent ordinal stays spent after delete.** `attempt` and `runNumber` are one past the highest
 value in `tasks` OR in any `deleted_runs` tombstone for that (`workflow`,`itemId`) / `workflow`.
-The tombstone therefore carries the deleted run's `itemId`, `attempt` and `runNumber` (§D330.8);
-as-built derives both watermarks from live `tasks` alone under a comment that assumes runs are never
-deleted, so a D308 delete of the highest-attempt run would re-issue a spent attempt and a duplicate
-`#N` — 1.6 owns the tombstone columns and the two-source watermark; pre-1.6 tombstones without
-ordinals are 0.3 Task 3's migration question.
+The tombstone therefore carries the deleted run's `itemId`, `attempt` and `runNumber` (§D330.8).
+Before Task 2-1, both watermarks read live `tasks` alone and could re-issue an ordinal after D308
+deletion; the service now reads live rows plus tombstones. Pre-floor tombstones without ordinals
+remain D332 migration work.
 
 ###### D330.2 — existence and disposition
 
@@ -4085,8 +4087,9 @@ every refusal names the field or state that refused.
 | `deleteArchived` | archive `contentDigest` cited exactly; retained row `terminal` | D308 cascade behind the tombstone, origin `archive` | `schema-mismatch{digest}` · `tree-non-terminal` |
 | `purge` | retention deadline passed for an EVIDENCE class | removes evidence with declared retention only (§D330.8); never a lifecycle row or tombstone | `retention-not-due` |
 
-As-built, `claimNext`, `terminalize` and the CAS helpers THROW for most of these arms; converting
-each throw into its named refusal arm is 1.6's work and §D330.10's coverage rows prove it.
+Before Task 2-1, `claimNext`, `terminalize` and the CAS helpers threw for most of these arms. The
+canonical service now returns the named refusal union, pinned by §D330.10's assigned coverage rows;
+Tasks 3–4 still move production callers onto it.
 
 **Wire mapping.** The names above are the SERVICE's closed refusal union. Where a refusal reaches the
 operator command wire it maps onto `CommandRejectionCode` / the `CommandResult` state, and 1.6
@@ -4119,9 +4122,9 @@ SQLite atomicity forbids) is a doctor finding, never repaired by a runtime write
 **Eligibility** of a row for a worker is the conjunction: state `queued` ∧ (`notBefore` absent or
 ≤ now) ∧ `workflow` equals the worker's workflow ∧ every `dependencies` edge into the row is
 satisfied ∧ disposition `live`. Nothing else — not `priority`, not age — makes a row ineligible.
-As-built `claimNext` filters only `workflow`, `state` and `notBefore`; the dependency-satisfaction
-and disposition predicates are 1.6's change. The worker's runtime token is REQUIRED in full — there
-is no "fields absent, skip the check" arm (as-built skips when absent; 1.6 closes it).
+The pre-service `claimNext` filtered only `workflow`, `state` and `notBefore`. Task 2-1's service
+adds dependency-satisfaction and disposition predicates and requires the worker's full runtime token;
+there is no "fields absent, skip the check" arm. Task 3 moves the worker caller onto that door.
 
 **Order** is total and fixed: `priority` (`interactive` before `bulk`), then `enqueuedAt` ascending,
 then `runId` ascending as the tiebreak. The same order serves `list` and the queue projection, so
@@ -4215,8 +4218,8 @@ refuses the delete of a terminal source because a later attempt exists.
 **A tree deletes as one transaction with one tombstone per run.** An anchor `delete` removes every
 member and then the anchor; each removed run gets its own `deleted_runs` row, inserted before that
 run's own cascade (the tombstone trigger requires the live row to still exist), so every member's
-`read` answers `deleted` afterwards (§D330.2). As-built `delete` refuses any run with children; 1.6
-owns the member cascade. `is-member` means `parent` is present — never `sessionId`: every fan-out run
+`read` answers `deleted` afterwards (§D330.2). The pre-service delete refused any run with children;
+Task 2-1 added the member cascade. `is-member` means `parent` is present — never `sessionId`: every fan-out run
 carries a session, and reading session membership as tree membership would refuse every delete.
 
 **Order inside the one delete transaction, fixed:** (1) read the row and, for the archive door, the
@@ -4241,12 +4244,12 @@ lifecycle fact the service has already decided without ever deciding one itself.
 | `run_results` and `run_terminal_authorizations` (`record_key` = `runId`), `failures` (`run_id`; own key `failureId`), `run_terminal_outbox` (`run_id`) | as noted | written in the SAME transaction as the `terminal` transition (§D330.4) | the outcome the terminal row already names, and the `failureId` it names | that the run is terminal; the lifecycle row decides that | leave with the run |
 | `write_intents` → `write_attempts` → `durable_outbox` | ONLY `write_intents` carries `runId`, and only inside `record_json`; attempts and outbox link solely by `write_intent_id` (lesson 2026-08-25) | insert-only rows plus the sequencer's fenced status advance | that a write was fenced, attempted, parked or committed | the `parked-write` state; per-run counts derive through THIS run's intent ids, never a global table count | leave with the run; the permanent idempotency keys are released and the confirm copy says so |
 | `evidence_receipts` | `run_id`, UNIQUE | one immutable composition per run | the ordered obligation/verdict tuples | the outcome | leaves with the run |
-| `gate_results` (a logical repository over `checkpoint_payloads`, record key `${runId}:${gateId}`) | the `runId` half of that composite key, and `$.runId` in the record | insert-only simple record | which gate decision resolved a park | `parked-gate`; the row decides it (§D330.3) | **leaves with the run.** D308's "what stays" keeps `checkpoint_payloads` as shared authority, but as-built the table holds ONLY gate records keyed `${runId}:${gateId}` — every row is owned by exactly one run, so the cascade removes that run's keys and the table has nothing that survives its run. 1.6 adds `checkpoint_payloads_never_deleted` relaxed behind the tombstone and extends `DeletedRunTableSchema` with the table so the tally can count it. §D330.11 test 22 pins it. (Ruled 2026-09-04 under D308's own rationale; D308's list did not know gate records were the table's only content.) |
+| `gate_results` (a logical repository over `checkpoint_payloads`, record key `${runId}:${gateId}`) | the `runId` half of that composite key, and `$.runId` in the record | insert-only simple record | which gate decision resolved a park | `parked-gate`; the row decides it (§D330.3) | **leaves with the run.** The table holds only gate records keyed `${runId}:${gateId}`, so every row is owned by one run. Schema v30 added `checkpoint_payloads_never_deleted`, relaxed only behind the tombstone, and `DeletedRunTableSchema` counts the table; §D330.11 test 22 pins the Task 2-1 delete behavior. (Ruled 2026-09-04 under D308's own rationale; D308's original list predated gate records becoming the table's only content.) |
 | `diagnostic_bundles` (`run_id`) and `diagnostic_attachments` (`bundle_id`) | as noted | insert-only, content-digest bound | what was captured at a failure or operator request | existence or state | leave with the run, attachments first |
 | captures and content-addressed artifact bytes | none directly — reached only through a bundle or capture membership row; one ref legitimately serves many runs (D292) | immutable content-addressed objects | what an artifact contains | any run fact whatsoever | the bytes STAY as shared authority; only the membership rows leave |
 | `dry_run_scenario_results` | `run_id`, absent on the `not-started` arm | insert-only evidence; exact replay returns the canonical row, divergent replay refuses | that a T1b case executed and what it observed | whether a run exists — the `not-started` arm names no run at all | leaves with the run when it names one |
 | `activity_person_pseudonyms` | `run_id`, keyed (`runId`, `keyGeneration`) | insert-only under a generation-bound HMAC commitment (D288) | a person count over historical runs | any lifecycle fact | leaves with the run |
-| `archive_relaunches` | `record_key` = the NEW run's id; `archived_run_id` = the source run | insert-only | relaunch lineage (§D330.7) | that either end exists | owned by the NEW run: leaves only with it. Deleting the archived SOURCE keeps the row, whose `archivedRunId` then answers `deleted` — an existence answer, not an orphan. As-built the source-side cascade removes it (silently stripping a live descendant's lineage); 1.6 changes that and relaxes the trigger behind the NEW run's tombstone only. |
+| `archive_relaunches` | `record_key` = the NEW run's id; `archived_run_id` = the source run | insert-only | relaunch lineage (§D330.7) | that either end exists | owned by the NEW run: leaves only with it. Deleting the archived SOURCE keeps the row, whose `archivedRunId` then answers `deleted` — an existence answer, not an orphan. Schema v31 removed the old source-side cascade and relaxes deletion only behind the NEW run's tombstone; Task 2-1 migration tests pin fresh-v31 and v30→v31 behavior. |
 
 **The invariants, numbered:**
 

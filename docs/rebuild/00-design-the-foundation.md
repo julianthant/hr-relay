@@ -473,7 +473,7 @@ catalogued defaults rather than being copied into a second persisted authority.
 
 - [x] Adversarially review identity, concurrency, recovery, redaction, permissions, and migration. —
   R04's cross-contract pass over D330 × D331 × D332 as one system (twelve seam scenarios; the table is
-  `docs/coordinator/phase-0-3-authority-design-c31da5310/reports/r04.md`): eleven findings fixed in the
+  `40683909^:docs/coordinator/phase-0-3-authority-design-c31da5310/reports/r04.md`): eleven findings fixed in the
   owning text — ref dashboard-surfaces §D332.3 step 2 (prepare/rollback files under the private-file
   protocol), §D332.4 (backup WRITE records the observed version; READ admits the D290 lineage and
   `manifestVersion` 1; `protected-entries-written` against the journal's `protectedRevisionAfter`),

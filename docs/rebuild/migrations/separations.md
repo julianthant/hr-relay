@@ -1,6 +1,15 @@
-# Migration plan — `separations` (order 8, the Phase-3 entry)
+# Migration and acceptance record — `separations`
 
-> **STATUS (2026-09-02): BUILT and available for historical dry-run inspection; controlled completion BLOCKED by the test protocol.**
+> **CURRENT STATUS (2026-09-05): historical implementation and evidence retained; current-source
+> acceptance pending.** D329 retired the former order-8/3c-A sequence. Phase 3.2 Tasks 2–3 revalidate
+> the read substrate and D309/D310 safety mechanics, Task 5-2 accepts the final compiled workflow
+> without writes, Task 6 must record a fresh `met` preview with exact 0/0/0 write authority, and
+> Task 7 freezes the candidate. The 2026-09-03 replacement rehearsal reached real reads but failed
+> at New Kronos and therefore did not meet Task 6 (§9.40). Only Phase 3.3 may admit and execute the
+> three controlled commits; all remain open. Dated sections below remain evidence, not current
+> authorization or subject-availability claims.
+
+> **HISTORICAL STATUS (2026-09-02; superseded by the current routing above): BUILT and available for historical dry-run inspection; controlled completion BLOCKED by the test protocol.**
 > D300 admission passed, and sole registered canary 4537 was then found gone (§9.33). The later
 > operator-named candidate batch included 4589, which reached its preview terminal with receipt
 > `0fa49971-bd6a-5a80-8c23-6392614d46c7` and exact-run 0/0/0 write authority (§9.34). That run is
@@ -2485,8 +2494,10 @@ item §9.4 recorded (chunk 2, item 2), unchanged and still open.
 **Provenance of this section.** Three consecutive agent dispatches on chunk 4 died with **zero
 commits** (two 600 s watchdog stalls and one API disconnect). Everything below was live-observed on
 **production** `ucphrprdpub.universityofcalifornia.edu` on **2026-08-13** and salvaged VERBATIM from
-the dead transcripts into `docs/handoffs/2026-08-13-separations-chunk4-restart.md` (handoffs
-removed 2026-08-18; in git history); this section is where it becomes durable. The stall itself is a recorded finding — see *Timings* below.
+the dead transcripts into
+`130b9a70^:docs/handoffs/2026-08-13-separations-chunk4-restart.md` (the source-pinned handoff,
+removed after fulfillment); this section is where it becomes durable. The stall itself is a
+recorded finding — see *Timings* below.
 
 #### The persistence crux — ANSWERED
 
@@ -4586,8 +4597,9 @@ the row meta and the log panel, per the demo (D12 amended, ref dashboard-surface
 §14.2 packet's deterministic comparisons ARE the check (`legacy-tool-ops-sanity-check-record`
 retired, ref operator-trust §4.4) · the archived detail follows the demo — five tabs, Export (D223, ref dashboard-surfaces
 §10.2). The operator also ratified the separations-completion plan's ordering
-(`docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` §7 Decision 5:
-Track B now, Track A on the canary).
+(`a2b6df38^:docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` §7
+Decision 5, source-pinned before completed coordination artifacts were removed: Track B now, Track
+A on the canary).
 
 ---
 
@@ -6542,9 +6554,10 @@ section carries no run id, and every fact in items 1–3 came from a direct read
 `npm run cli -- worker separations --pool-index 1`: the first positional argument is a **workflow
 id**, and the worker id (`separations-worker-1`) is DERIVED from it
 (`src/server/worker/compose.ts` `parseWorkerArguments`). The wrong form — the derived worker id
-passed as the first argument — lives in this run's handoff
-(`docs/handoffs/2026-08-28-run-1-t1b-canary.md:29`), which the parser refuses by name with the
-registered-workflow list. The `hr-manage` skill (`.claude/skills/hr-manage/SKILL.md:19,35`) passes
+passed as the first argument — lives in this run's source-pinned handoff
+(`a2b6df38^:docs/handoffs/2026-08-28-run-1-t1b-canary.md`, line 29), which the parser refuses by
+name with the registered-workflow list. The `hr-manage` skill
+(`.claude/skills/hr-manage/SKILL.md:19,35`) passes
 the correct `<workflow-id>` throughout and only OMITS `--pool-index`; it does not pass the wrong id.
 Recorded here because the refusal reads like a missing workflow rather than a wrong argument.
 
@@ -7043,8 +7056,10 @@ labels stood for are owned by the structural T1a files and the unit tests on syn
 This bounded R2 close reconciles current observations; it does not replace the live records above.
 The parent merged the independently reviewed paired Archive parity cleanup at `54060ded` (follow-up
 reference commit `50007d66`): full coverage passed **341 files / 3,761 tests**, and assert-mode
-parity passed **239/239**. The exact commands, logs, and review are retained in
-`docs/coordinator/worktree-completion/reports/{r2-gates,r2-parity-review}.md`.
+parity passed **239/239**. The exact commands, logs, and review are retained in the source-pinned
+`a2b6df38^:docs/coordinator/worktree-completion/reports/r2-gates.md` and
+`a2b6df38^:docs/coordinator/worktree-completion/reports/r2-parity-review.md`, removed with the
+completed coordination artifacts.
 
 The assigned worktree was then checked only through `npm run smoke:test-target-person-secrets`.
 It exited 1 with the fixed bootstrap refusal that its local `.env` was unavailable; presence-only
@@ -7144,8 +7159,9 @@ worker drain then verified that exact approval and reached terminal `done` at `c
 dry-run preview. Receipt `0fa49971-bd6a-5a80-8c23-6392614d46c7` records `DRY_RUN_PREVIEW`,
 settlement `already-present`, and no external write. The exact-run counts remained 0/0/0. This is
 the green u2 rehearsal; source and canonical input freeze here through the three controlled
-commits. The sanitized UI manifest is
-`docs/coordinator/separations-completion/evidence/ui/2026-09-01-candidate-dry-runs.md`.
+commits. The sanitized UI manifest is source-pinned at
+`a2b6df38^:docs/coordinator/separations-completion/evidence/ui/2026-09-01-candidate-dry-runs.md`;
+the completed coordination artifacts were later removed.
 
 ### 9.35 Controlled-sequence preflight stops before execution — 2026-09-02
 
@@ -7195,9 +7211,11 @@ selected.
 
 The dashboard was restored with `npm run dashboard`; no workflow worker was started. These are
 global unchanged-write counts, **not** a new run's rehearsal evidence. All three controlled commits,
-their measurements and final close-out remain open. Resume boundary and exact git/runtime checks:
-`docs/handoffs/2026-09-02-separations-controlled-sequence-preflight.md`. The coordinator-owned board
-was not rewritten by this operational preflight.
+their measurements and final close-out remain open. The resume boundary and exact git/runtime
+checks are source-pinned at
+`a2b6df38^:docs/handoffs/2026-09-02-separations-controlled-sequence-preflight.md`; that completed
+handoff was later removed. The coordinator-owned board was not rewritten by this operational
+preflight.
 
 ### 9.36 Isolated sequence check finds an invalidated filing receipt — 2026-09-02
 
@@ -7282,7 +7300,7 @@ change, or external write occurred. This does not consume D287 or close criterio
 
 | Readiness claim | Verified evidence | Limit |
 |---|---|---|
-| Existing 4589 run is inspectable | Direct day/run link selects `ca6a5462-4e52-43b7-ac85-f9bdb7fd30cf`; Logs and receipt `0fa49971-bd6a-5a80-8c23-6392614d46c7` rendered; restricted screenshots and sanitized hashes in `docs/coordinator/separations-completion/evidence/r2/` | Historical first-transaction preview, partial/unknown receipt; filing and finalization remain unexecuted |
+| Existing 4589 run is inspectable | Direct day/run link selects `ca6a5462-4e52-43b7-ac85-f9bdb7fd30cf`; Logs and receipt `0fa49971-bd6a-5a80-8c23-6392614d46c7` rendered; restricted screenshots and sanitized hashes are source-pinned under `a2b6df38^:docs/coordinator/separations-completion/evidence/r2/` | Historical first-transaction preview, partial/unknown receipt; filing and finalization remain unexecuted |
 | No workflow/write effects | R2 before/after authority had 19 runs and global writes 0/0/0; exact historical run has no write rows; dashboard restored healthy/current with 19/19 reconciled span streams | Read-only current authority inspection, not a fresh target rehearsal |
 | Default software gate restored | `5853ef80` bounds isolated Vitest file workers to `min(4, availableParallelism())`; default `npm run test:coverage` passes 388/388 files and 4,795/4,795 tests, zero skipped, normal suite-size check | Two earlier red full gates remain recorded; no assertion, test membership, coverage floor or 30-second deadline was weakened |
 | Related checks | Typecheck, lint, manifest and roadmap checks pass; parity 287/287 passed in assert mode on unchanged runtime/UI code; root instruction twins synchronized | No new live selector or controlled-write evidence |
@@ -7294,9 +7312,10 @@ checked-in default command both passed. This supports scheduling contention as t
 on this host, not a universal optimum or a claim about a specific CPU/memory bottleneck.
 
 The coordinator reconciled the stale board, phase/roadmap state and this migration's header with
-§§9.33–9.36. Concrete implementation seams and the one pending protocol decision live at
-`docs/coordinator/separations-completion/research/r2-protocol.md` and
-`decisions/2026-09-02-controlled-proof-protocol.md` in that workspace. The proposal separates an
+§§9.33–9.36. The concrete implementation seams and pending protocol decision are source-pinned at
+`a2b6df38^:docs/coordinator/separations-completion/research/r2-protocol.md` and
+`a2b6df38^:docs/coordinator/separations-completion/decisions/2026-09-02-controlled-proof-protocol.md`;
+those completed coordination artifacts were later removed. The proposal separates an
 explicitly approved disposable deletion proof from the surviving real filing; it also requires
 an explicit restoration/retention disposition under `ref write-safety` §3.2. No protocol amendment
 or target was ratified here. The ordinary one-identity-gate workflow UX is not changed by a proposal

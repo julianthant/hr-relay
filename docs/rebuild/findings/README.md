@@ -9,13 +9,13 @@ Nothing in this folder authorizes implementation or ratifies a decision.
 
 | File | Scope |
 | --- | --- |
-| [dashboard-projection.md](dashboard-projection.md) | Span folding and differences between served surfaces and stored streams |
+| [dashboard-projection.md](dashboard-projection.md) | Span folding plus two current projection gaps routed to Phase 3.1 |
 | [run-commands.md](run-commands.md) | Run actions, gates, command refusals, and parked-write resolution |
 | [queue-rows.md](queue-rows.md) | Queue fields and their producing services |
-| [archive.md](archive.md) | Archive-surface gaps and their dispositions |
-| [explorer.md](explorer.md) | Workflow Explorer fields and projections |
-| [activity.md](activity.md) | Activity aggregates, reporting identity, and exports |
-| [intake.md](intake.md) | Intake stages, wire fields, and presentation |
+| [archive.md](archive.md) | Closed historical archive-surface gaps; current Archive completion lives in Phase 3.1 Task 11-3 |
+| [explorer.md](explorer.md) | Workflow Explorer fields and projections; current completion lives in Phase 3.1 Task 9-4 |
+| [activity.md](activity.md) | Activity aggregates, reporting identity, exports, and a diagnosed authority-join refusal |
+| [intake.md](intake.md) | Intake stages, wire fields, and presentation; current completion lives in Phase 3.1 Task 10-4 |
 | [capture.md](capture.md) | Retired phone-capture provenance; see its D294 disposition |
 | [workflow-taxonomy.md](workflow-taxonomy.md) | Workflow, composition, and harness identity and presentation |
 | [agent-skills.md](agent-skills.md) | Dated external-source research and personal skill recommendations |
