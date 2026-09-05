@@ -45,25 +45,6 @@ describe("secure environment bootstrap", () => {
     assert.equal(smokeInvocations, 1);
   });
 
-  it("refuses the parent environment before opening .env or starting a runner", async () => {
-    const events: string[] = [];
-    await assert.rejects(
-      runSecureEnvironmentBootstrap(["cli"], {
-        assertEnvironment: () => {
-          events.push("assert-parent");
-          throw new Error("migrated environment refused");
-        },
-        admitEnvironmentFile: () => events.push("open-env"),
-        runCli: () => {
-          events.push("run-cli");
-          return Promise.resolve();
-        },
-      }),
-      /migrated environment refused/u,
-    );
-    assert.deepEqual(events, ["assert-parent"]);
-  });
-
   it("does not start the CLI when its module is executed directly", () => {
     const result = spawnSync(TSX, [join(REPO_ROOT, "src", "cli.ts")], {
       cwd: tmpdir(),

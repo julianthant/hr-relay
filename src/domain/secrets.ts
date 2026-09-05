@@ -8,19 +8,15 @@ import {
   statSync,
   type Stats,
 } from "node:fs";
+import { homedir } from "node:os";
 import { parseEnv } from "node:util";
 import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
-import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS } from "./config/catalog.js";
-import {
-  ProtectedStoreRecordSchema,
-  ProtectedValueSchemas,
-  type ProtectedStoreRecord,
-} from "./config/protected-settings.js";
 import type { Config } from "./config/schema.js";
 import { establishHostPrimaryDisplay, type HostDisplayProbe } from "./config/host-display.js";
-import { FingerprintSchema, type Fingerprint } from "./ids.js";
+import { EidSchema, FingerprintSchema, type Fingerprint } from "./ids.js";
 import { deepFreeze } from "./immutability.js";
+import { KualiDocumentNumberSchema } from "./ui/kuali-document-identity.js";
 import {
   createActivityPersonPseudonymDomain,
   type ActivityPersonPseudonymDomain,
@@ -57,19 +53,21 @@ export type {
   TestTargetEidSecretName,
   TestTargetSecretName,
 } from "./secret-names.js";
-const SecretSourceSchema = z.literal("protected-store");
+const SecretSourceSchema = z.literal("environment");
 const REGISTERED_SECRET_FILE_MAXIMUM_BYTES = 64_000;
 
 export const SecretSpecSchema = z.strictObject({
   name: EnvironmentSecretNameSchema,
-  source: z.literal("protected-store"),
+  source: z.literal("environment"),
+  env: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
   requiredAtBoot: z.boolean(),
   classification: z.enum(["secret", "direct-identifier"]),
 });
 export const SecretFamilySpecSchema = z.strictObject({
   name: SecretFamilyNameSchema,
   envPrefix: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
-  modelsConfigKey: z.enum(["gemini", "groq", "mistral", "openRouter", "sambanova"]),
+  modelsEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  legacyModelEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
   maximum: z.number().int().positive(),
   requiredAtBoot: z.boolean(),
   classification: z.literal("secret"),
@@ -83,7 +81,7 @@ export const SecretFileSpecSchema = z.strictObject({
 
 /**
  * The one registered test-target reference (D300): the canary's Kuali document
- * number, bound to its exact protected-store name. The strict literal is what
+ * number, bound to its exact environment key. The strict literal pair is what
  * makes the reference CLOSED — config cannot name an arbitrary key, and the
  * three person-value references D286 registered (employee name, EID, timekeeper
  * name) are retired rather than re-pointed: a document number is not a person
@@ -91,16 +89,18 @@ export const SecretFileSpecSchema = z.strictObject({
  */
 export const TestTargetDocumentNumberSecretReferenceSchema = z.strictObject({
   name: TestTargetDocumentNumberSecretNameSchema,
+  env: z.literal("HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER"),
 });
 /**
  * D318 — the person-lookup live-read canary: ONE UCPath employee id, bound to
- * its exact protected-store name. Like the document number it is a closed
- * reference in config and is judged by the same
+ * its exact environment key. Like the document number it is a closed reference
+ * in config and a value only in ignored `.env`; it is judged by the same
  * `EidSchema` the person-lookup start box applies, and its refusals name the
  * reference and key, never the value.
  */
 export const TestTargetEidSecretReferenceSchema = z.strictObject({
   name: TestTargetEidSecretNameSchema,
+  env: z.literal("HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID"),
 });
 export const TestTargetSecretReferenceSchema = z.union([
   TestTargetDocumentNumberSecretReferenceSchema,
@@ -109,12 +109,24 @@ export const TestTargetSecretReferenceSchema = z.union([
 export type TestTargetSecretReference = z.output<typeof TestTargetSecretReferenceSchema>;
 
 export const ActivityPersonPseudonymSecretReferenceSchema = z.strictObject({
-  name: z.literal("activityPersonPseudonym"),
+  key: z.strictObject({
+    name: z.literal("activityPersonPseudonymHmacKey"),
+    env: z.literal("HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY"),
+  }),
+  generation: z.strictObject({
+    env: z.literal("HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION"),
+  }),
 });
 
 export const ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE = deepFreeze(
   ActivityPersonPseudonymSecretReferenceSchema.parse({
-    name: "activityPersonPseudonym",
+    key: {
+      name: "activityPersonPseudonymHmacKey",
+      env: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY",
+    },
+    generation: {
+      env: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION",
+    },
   }),
 );
 
@@ -130,17 +142,17 @@ export const TestTargetSecretSpecSchema = z.discriminatedUnion("valueKind", [
 ]);
 
 export const SECRET_SPECS = deepFreeze(SecretSpecSchema.array().parse([
-  { name: "ucpathUserId", source: "protected-store", requiredAtBoot: false, classification: "direct-identifier" },
-  { name: "ucpathPassword", source: "protected-store", requiredAtBoot: false, classification: "secret" },
-  { name: "timekeeperName", source: "protected-store", requiredAtBoot: false, classification: "direct-identifier" },
-  { name: "sharepointOnboardingRosterUrl", source: "protected-store", requiredAtBoot: false, classification: "secret" },
+  { name: "ucpathUserId", source: "environment", env: "UCPATH_USER_ID", requiredAtBoot: false, classification: "direct-identifier" },
+  { name: "ucpathPassword", source: "environment", env: "UCPATH_PASSWORD", requiredAtBoot: false, classification: "secret" },
+  { name: "timekeeperName", source: "environment", env: "TIMEKEEPER_NAME", requiredAtBoot: false, classification: "direct-identifier" },
+  { name: "sharepointOnboardingRosterUrl", source: "environment", env: "ONBOARDING_ROSTER_URL", requiredAtBoot: false, classification: "secret" },
 ]));
 export const SECRET_FAMILY_SPECS = deepFreeze(SecretFamilySpecSchema.array().parse([
-  { name: "geminiApiKeys", envPrefix: "GEMINI_API_KEY", modelsConfigKey: "gemini", maximum: 8, requiredAtBoot: false, classification: "secret" },
-  { name: "groqApiKeys", envPrefix: "GROQ_API_KEY", modelsConfigKey: "groq", maximum: 8, requiredAtBoot: false, classification: "secret" },
-  { name: "mistralApiKeys", envPrefix: "MISTRAL_API_KEY", modelsConfigKey: "mistral", maximum: 8, requiredAtBoot: false, classification: "secret" },
-  { name: "openRouterApiKeys", envPrefix: "OPEN_ROUTER_API_KEY", modelsConfigKey: "openRouter", maximum: 8, requiredAtBoot: false, classification: "secret" },
-  { name: "sambaNovaApiKeys", envPrefix: "SAMBANOVA_API_KEY", modelsConfigKey: "sambanova", maximum: 8, requiredAtBoot: false, classification: "secret" },
+  { name: "geminiApiKeys", envPrefix: "GEMINI_API_KEY", modelsEnv: "OCR_GEMINI_MODELS", legacyModelEnv: "OCR_GEMINI_MODEL", maximum: 8, requiredAtBoot: false, classification: "secret" },
+  { name: "groqApiKeys", envPrefix: "GROQ_API_KEY", modelsEnv: "OCR_GROQ_MODELS", legacyModelEnv: "OCR_GROQ_MODEL", maximum: 8, requiredAtBoot: false, classification: "secret" },
+  { name: "mistralApiKeys", envPrefix: "MISTRAL_API_KEY", modelsEnv: "OCR_MISTRAL_MODELS", legacyModelEnv: "OCR_MISTRAL_MODEL", maximum: 8, requiredAtBoot: false, classification: "secret" },
+  { name: "openRouterApiKeys", envPrefix: "OPEN_ROUTER_API_KEY", modelsEnv: "OCR_OPENROUTER_MODELS", legacyModelEnv: "OCR_OPENROUTER_MODEL", maximum: 8, requiredAtBoot: false, classification: "secret" },
+  { name: "sambaNovaApiKeys", envPrefix: "SAMBANOVA_API_KEY", modelsEnv: "OCR_SAMBANOVA_MODELS", legacyModelEnv: "OCR_SAMBANOVA_MODEL", maximum: 8, requiredAtBoot: false, classification: "secret" },
 ]));
 export const SECRET_FILE_SPECS = deepFreeze(SecretFileSpecSchema.array().parse([
   { name: "duoWebauthnCredential", configPath: "paths.duoCredential", classification: "credential-file", maximumBytes: REGISTERED_SECRET_FILE_MAXIMUM_BYTES },
@@ -148,11 +160,13 @@ export const SECRET_FILE_SPECS = deepFreeze(SecretFileSpecSchema.array().parse([
 export const TEST_TARGET_SECRET_SPECS = deepFreeze(TestTargetSecretSpecSchema.array().parse([
   {
     name: "separationsKualiFinalizationCanaryDocumentNumber",
+    env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
     valueKind: "kuali-document-number",
     classification: "direct-identifier",
   },
   {
     name: "personLookupCanaryEid",
+    env: "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
     valueKind: "ucpath-eid",
     classification: "direct-identifier",
   },
@@ -191,21 +205,19 @@ export const SecretAvailabilitySchema = z.discriminatedUnion("state", [
 ]);
 export type SecretAvailability = z.infer<typeof SecretAvailabilitySchema>;
 
-interface SecretFileAccess {
+interface SecretSourceAccess {
+  readonly homeDirectory: () => string;
   readonly stat: (path: string) => SecretFileMetadata;
+  readonly readText: (path: string) => string;
   readonly readBytes: (path: string) => Buffer;
 }
 
-const DEFAULT_SECRET_FILE_ACCESS: SecretFileAccess = {
+const DEFAULT_SECRET_SOURCE_ACCESS: SecretSourceAccess = {
+  homeDirectory: homedir,
   stat: statSync,
+  readText: (path) => readFileSync(path, "utf8"),
   readBytes: (path) => readFileSync(path),
 };
-
-/** Every accessor invocation calls this source; no protected value is cached or published. */
-export const ProtectedSecretSourceSchema = z.strictObject({
-  read: z.function({ input: [], output: z.unknown() }),
-});
-export type ProtectedSecretSource = z.infer<typeof ProtectedSecretSourceSchema>;
 
 export class SecretMissingError extends Error {
   constructor(message: string) {
@@ -246,42 +258,6 @@ function invalidLocalEnvironmentSyntax(line: number): never {
   throw new SecretSourceError(
     `local environment file .env has invalid syntax at line ${String(line)}`,
   );
-}
-
-const MIGRATED_ENVIRONMENT_KEY_SET: ReadonlySet<string> = new Set(
-  MIGRATED_SETTINGS_ENVIRONMENT_KEYS,
-);
-
-function isProviderEnvironmentKey(key: string): boolean {
-  return SECRET_FAMILY_SPECS.some(({ envPrefix, maximum }) => {
-    if (key === envPrefix) return true;
-    const suffix = key.slice(envPrefix.length);
-    return key.startsWith(envPrefix) && /^\d+$/u.test(suffix)
-      && Number(suffix) >= 2 && Number(suffix) <= maximum;
-  });
-}
-
-function migratedEnvironmentRefusal(key: string): SecretSourceError {
-  return new SecretSourceError(
-    `migrated environment key ${key} is refused; set it in Settings, then remove it`,
-  );
-}
-
-/** Refuse migrated names by key membership only; no value is ever inspected. */
-export function assertNoMigratedEnvironmentKeys(
-  env: NodeJS.ProcessEnv = process.env,
-): void {
-  const migrated = Object.keys(env).find((key) => MIGRATED_ENVIRONMENT_KEY_SET.has(key));
-  if (migrated !== undefined) throw migratedEnvironmentRefusal(migrated);
-}
-
-function assertAdmittedEnvironmentKey(key: string): void {
-  if (MIGRATED_ENVIRONMENT_KEY_SET.has(key)) throw migratedEnvironmentRefusal(key);
-  if (!isProviderEnvironmentKey(key)) {
-    throw new SecretSourceError(
-      `local environment file .env contains unsupported key ${key}; only registered provider key families are allowed`,
-    );
-  }
 }
 
 /**
@@ -408,7 +384,6 @@ export function admitLocalEnvironmentFile(
   env: NodeJS.ProcessEnv = process.env,
   access: LocalEnvironmentAdmissionAccess = DEFAULT_LOCAL_ENVIRONMENT_ADMISSION_ACCESS,
 ): void {
-  assertNoMigratedEnvironmentKeys(env);
   let descriptor: number;
   try {
     descriptor = access.open(
@@ -434,7 +409,6 @@ export function admitLocalEnvironmentFile(
     }
     const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     const keys = strictlyValidateLocalEnvironment(text);
-    for (const key of keys) assertAdmittedEnvironmentKey(key);
     parsed = parseEnv(text);
     const parsedKeys = Object.keys(parsed);
     const validatedKeys = new Set(keys);
@@ -485,27 +459,28 @@ function registeredTestTargetSecretSpec(name: TestTargetSecretName) {
 }
 
 /**
- * Resolve a registered test-target value (D300/D318). The protected entry is
+ * Resolve a registered test-target value (D300/D318). The environment key is
  * selected by the closed name schema; callers can never supply an arbitrary
  * key. The value is judged by the SAME schema the owning workflow's ingress
  * applies to a typed start-box entry — `KualiDocumentNumberSchema` for the
  * separations canary, `EidSchema` for the person-lookup canary — so what this
  * returns is exactly what an operator could have typed. Refusals name only
- * the public reference and value kind, never the value.
+ * the public reference, its value kind and its key, never the value.
  */
 export function optionalTestTargetSecret(
   name: TestTargetSecretName,
-  source: ProtectedSecretSource,
+  env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
   const spec = registeredTestTargetSecretSpec(name);
-  const record = readProtectedStore(name, source);
-  const stored = record.entries[name];
-  if (stored === undefined) return undefined;
-  const schema = spec.valueKind === "kuali-document-number"
-    ? ProtectedValueSchemas.separationsKualiFinalizationCanaryDocumentNumber
-    : ProtectedValueSchemas.personLookupCanaryEid;
-  const parsed = schema.safeParse(stored.value);
-  if (!parsed.success) throw new SecretSourceError(`test-target ${spec.valueKind} ${name} is invalid in protected-store`);
+  const testTargetSecretValue = env[spec.env];
+  if (testTargetSecretValue === undefined || testTargetSecretValue.trim() === "") return undefined;
+  const parsed = (spec.valueKind === "kuali-document-number" ? KualiDocumentNumberSchema : EidSchema)
+    .safeParse(testTargetSecretValue.trim());
+  if (!parsed.success) {
+    throw new SecretSourceError(
+      `test-target ${spec.valueKind} ${name} is invalid in registered environment source ${spec.env}`,
+    );
+  }
   return parsed.data;
 }
 
@@ -526,7 +501,7 @@ function assertReadableSecretFile(
   source: string,
   path: string,
   maximumBytes: number,
-  access: SecretFileAccess,
+  access: SecretSourceAccess,
 ): void {
   let metadata: SecretFileMetadata;
   try {
@@ -537,29 +512,24 @@ function assertReadableSecretFile(
   assertRegisteredSecretFileMetadata(metadata, `${name} source ${source}`, maximumBytes);
 }
 
-function readProtectedStore(
-  name: string,
-  source: ProtectedSecretSource,
-): ProtectedStoreRecord {
-  try {
-    return ProtectedStoreRecordSchema.parse(ProtectedSecretSourceSchema.parse(source).read());
-  } catch (error) {
-    throw new SecretSourceError(`${name} could not be read from protected-store`, { cause: error });
-  }
-}
-
-function resolveSecretValue(name: SecretName, source: ProtectedSecretSource): string | undefined {
-  registeredSecretSpec(name);
-  return readProtectedStore(name, source).entries[name]?.value;
+function resolveSecretValue(
+  name: SecretName,
+  env: NodeJS.ProcessEnv,
+  _access: SecretSourceAccess,
+): string | undefined {
+  const spec = registeredSecretSpec(name);
+  const value = env[spec.env]?.trim();
+  return value === "" ? undefined : value;
 }
 
 export function inspectSecret(
   name: SecretName,
-  source: ProtectedSecretSource,
+  env: NodeJS.ProcessEnv = process.env,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
 ): SecretAvailability {
   const spec = registeredSecretSpec(name);
   try {
-    const value = resolveSecretValue(name, source);
+    const value = resolveSecretValue(name, env, access);
     if (value === undefined) {
       return SecretAvailabilitySchema.parse({
         name,
@@ -582,9 +552,22 @@ export function inspectSecret(
 
 export function optionalSecret(
   name: SecretName,
-  source: ProtectedSecretSource,
+  env: NodeJS.ProcessEnv = process.env,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
 ): string | undefined {
-  return resolveSecretValue(name, source);
+  return resolveSecretValue(name, env, access);
+}
+
+/**
+ * The ONE sanctioned production source of the environment object that
+ * `resolveConfig`/`resolveConfigWithProvenance` take as a parameter (ref clock-config-secrets).
+ * The resolver itself never touches `process.env` — it reads only its
+ * statically-declared `CONFIG_ENV_BINDINGS` keys off the value it is handed —
+ * and no module outside this file may reach the environment, so composition
+ * roots obtain it here rather than growing their own read.
+ */
+export function configResolutionEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return env;
 }
 
 /**
@@ -600,17 +583,19 @@ export function hostAwareResolutionEnvironment(
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   establishHostPrimaryDisplay(probe, env);
-  return env;
+  return configResolutionEnvironment(env);
 }
 
 export function requireSecret(
   name: SecretName,
-  source: ProtectedSecretSource,
+  env: NodeJS.ProcessEnv = process.env,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
 ): string {
-  const value = optionalSecret(name, source);
+  const value = optionalSecret(name, env, access);
   if (value === undefined) {
     const spec = registeredSecretSpec(name);
-    throw new SecretMissingError(`${name} is missing from registered source ${spec.source}`);
+    const source = `${spec.source} ${spec.env}`;
+    throw new SecretMissingError(`${name} is missing from registered source ${source}`);
   }
   return value;
 }
@@ -621,16 +606,22 @@ export function requireSecret(
  * no key-reading operation.
  */
 export function requireActivityPersonPseudonymDomain(
-  source: ProtectedSecretSource,
+  env: NodeJS.ProcessEnv = process.env,
 ): ActivityPersonPseudonymDomain {
   const reference = ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE;
-  const stored = readProtectedStore(reference.name, source).entries.activityPersonPseudonym;
-  if (stored === undefined) {
+  const keyGeneration = env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION?.trim();
+  if (keyGeneration === undefined || keyGeneration === "") {
     throw new SecretMissingError(
-      `${reference.name} is missing from registered source protected-store`,
+      `activity person pseudonym generation is missing from registered environment source ${reference.generation.env}`,
     );
   }
-  return createActivityPersonPseudonymDomain(stored.value);
+  const keyHex = env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY?.trim();
+  if (keyHex === undefined || keyHex === "") {
+    throw new SecretMissingError(
+      `activity person pseudonym HMAC key is missing from registered environment source ${reference.key.env}`,
+    );
+  }
+  return createActivityPersonPseudonymDomain({ keyGeneration, keyHex });
 }
 
 export function optionalSecretFamily(name: SecretFamilyName, env: NodeJS.ProcessEnv = process.env): readonly string[] {
@@ -657,12 +648,24 @@ export function requireSecretFamily(name: SecretFamilyName, env: NodeJS.ProcessE
 /**
  * The model chain a provider family is configured to use, in priority order.
  *
- * Model ids are ordinary settings. The provider key family still comes from
- * the environment, but this accessor reads the resolved Config only.
+ * Model ids are NOT secrets, but their env variables were registered on the
+ * family specs at D96 and this module is the only one permitted to read the
+ * environment — so the reader lives here. `modelsEnv` is the comma-separated
+ * chain; the single-model `legacyModelEnv` spelling is honored when the chain
+ * is absent, because the operator's `.env` predates the plural form. An empty
+ * result is a fact the composition root judges (a feature that needs the
+ * family fails loud there), never a default minted here.
  */
-export function providerModelChain(name: SecretFamilyName, config: Config): readonly string[] {
+export function providerModelChain(name: SecretFamilyName, env: NodeJS.ProcessEnv = process.env): readonly string[] {
   const spec = familySpec(name);
-  return config.providers[spec.modelsConfigKey]?.models ?? [];
+  const chain = env[spec.modelsEnv]?.trim();
+  if (chain !== undefined && chain !== "") {
+    const models = chain.split(",").map((model) => model.trim()).filter((model) => model !== "");
+    if (models.length > 0) return models;
+  }
+  const legacy = env[spec.legacyModelEnv]?.trim();
+  if (legacy !== undefined && legacy !== "") return [legacy];
+  return [];
 }
 
 function unresolvedDiagnostics(availabilities: readonly SecretAvailability[]): readonly string[] {
@@ -672,11 +675,11 @@ function unresolvedDiagnostics(availabilities: readonly SecretAvailability[]): r
 }
 
 export function validateBootSecrets(
-  source: ProtectedSecretSource,
   env: NodeJS.ProcessEnv = process.env,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
 ): void {
   const unresolved = unresolvedDiagnostics(SECRET_SPECS.filter(({ requiredAtBoot }) => requiredAtBoot)
-    .map(({ name }) => inspectSecret(name, source)));
+    .map(({ name }) => inspectSecret(name, env, access)));
   const missingFamilies = SECRET_FAMILY_SPECS.filter(({ requiredAtBoot }) => requiredAtBoot)
     .filter(({ name }) => optionalSecretFamily(name, env).length === 0)
     .map(({ envPrefix }) => envPrefix);
@@ -687,10 +690,10 @@ export function validateBootSecrets(
 export function validateDescriptorSecrets(
   names: readonly SecretName[],
   families: readonly SecretFamilyName[],
-  source: ProtectedSecretSource,
   env: NodeJS.ProcessEnv = process.env,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
 ): void {
-  const unresolved = unresolvedDiagnostics(names.map((name) => inspectSecret(name, source)));
+  const unresolved = unresolvedDiagnostics(names.map((name) => inspectSecret(name, env, access)));
   const missingFamilies = families.filter((name) => optionalSecretFamily(name, env).length === 0);
   if (unresolved.length > 0 || missingFamilies.length > 0) {
     const diagnostics = [...unresolved, ...missingFamilies.map((family) => `${family} [missing: environment family has no value]`)];
@@ -701,7 +704,7 @@ export function validateDescriptorSecrets(
 export function requireSecretFile(
   name: SecretFileName,
   config: Config,
-  access: SecretFileAccess = DEFAULT_SECRET_FILE_ACCESS,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
 ): Buffer {
   const parsedName = SecretFileNameSchema.parse(name);
   const spec = SECRET_FILE_SPECS.find((candidate) => candidate.name === parsedName);
@@ -763,7 +766,7 @@ function webauthnCredentialIdentity(entry: unknown): Readonly<{ rpId: string; cr
 export function resolveSecretFileIdentity(
   name: SecretFileName,
   config: Config,
-  access: SecretFileAccess = DEFAULT_SECRET_FILE_ACCESS,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
 ): Fingerprint {
   const bytes = requireSecretFile(name, config, access);
   let parsed: unknown;

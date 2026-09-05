@@ -63,11 +63,14 @@ const NumberLeafSchema = z.strictObject({
 });
 
 export const EditableSettingsLeafWireSchema = z.discriminatedUnion("input", [TextLeafSchema, NumberLeafSchema]).superRefine((leaf, context) => {
-  if (leaf.environmentVariable !== undefined) {
-    context.addIssue({ code: "custom", path: ["environmentVariable"], message: "the retired environment layer cannot own an editable setting" });
+  if (leaf.source === "env" && leaf.environmentVariable === undefined) {
+    context.addIssue({ code: "custom", path: ["environmentVariable"], message: "environment-owned leaf must name its environment variable" });
   }
-  if (!leaf.editable) {
-    context.addIssue({ code: "custom", path: ["editable"], message: "every served ordinary setting is editable" });
+  if (leaf.source !== "env" && leaf.environmentVariable !== undefined) {
+    context.addIssue({ code: "custom", path: ["environmentVariable"], message: "only an environment-owned leaf may name an environment variable" });
+  }
+  if (leaf.editable !== (leaf.source !== "env")) {
+    context.addIssue({ code: "custom", path: ["editable"], message: "environment-owned values are not editable from Settings" });
   }
   if (leaf.source === "settings" && leaf.settingsValue === undefined) {
     context.addIssue({ code: "custom", path: ["settingsValue"], message: "settings provenance requires the persisted settings value" });

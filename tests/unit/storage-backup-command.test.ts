@@ -7,7 +7,7 @@
  * only when asked for. This file pins the three consequences on the real
  * command surface over a real authority database:
  *
- *  1. `storage backup` writes exactly one verified backup set + manifest at the
+ *  1. `storage backup` writes exactly one verified backup + manifest at the
  *     live generation and prints the manifest it wrote;
  *  2. `storage backup` REFUSES when no authority exists — it never creates an
  *     empty database to back up;
@@ -25,7 +25,6 @@ import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { composeStorageCommand } from "../../src/server/storage/compose.js";
-import { initializeSyntheticSettingsBackupRoot } from "./helpers/settings-backup-fixture.js";
 
 const CLOCK = manualClock(new Date("2026-09-03T12:00:00.000Z"));
 const ManifestGenerationSchema = z.object({ authorityGeneration: z.number().int().nonnegative() });
@@ -57,7 +56,6 @@ function paths(): Paths {
 
 function createAuthority(p: Paths): number {
   mkdirSync(p.stateRoot, { recursive: true });
-  initializeSyntheticSettingsBackupRoot(p.stateRoot);
   const database = AuthorityDatabase.open(
     { path: p.authorityPath, busyTimeoutMs: 250, migrationOwner: "backup-command-test" },
     CLOCK,
@@ -80,7 +78,7 @@ describe("cli storage backup (D322)", () => {
     assert.match(outcome.output, /^backup: verified — authority-g\d+-/u);
 
     const entries = readdirSync(p.backupDirectory).sort();
-    assert.equal(entries.length, 4, entries.join(", "));
+    assert.equal(entries.length, 2, entries.join(", "));
     const manifestName = entries.find((name) => name.endsWith(".manifest.json"));
     const backupName = entries.find((name) => name.endsWith(".sqlite"));
     assert.ok(manifestName !== undefined && backupName !== undefined, entries.join(", "));

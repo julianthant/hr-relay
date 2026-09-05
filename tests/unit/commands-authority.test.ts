@@ -19,24 +19,6 @@ import {
 } from "../../src/domain/commands.js";
 import { COMMAND_FIXTURES, HASH_A, NOW, UUID_1, UUID_2, UUID_3 } from "./fixtures/phase1c-contract-fixtures.js";
 
-const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
-  ...COMMAND_FIXTURES,
-  {
-    commandId: UUID_2,
-    requestedAt: NOW,
-    requestedBy: "local-operator",
-    source: "dashboard",
-    family: "settings",
-    type: "apply-protected-settings",
-    target: { expectedRevision: 1 },
-    payload: {
-      protectedSchemaHash: HASH_A,
-      writeId: UUID_3,
-      entries: { ucpathPassword: { clear: true } },
-    },
-  },
-]);
-
 describe("authority classification and D95 command families", () => {
   it("classifies every table exactly once and freezes the registry", () => {
     assert.deepEqual(auditAuthorityTableRegistry(AUTHORITY_TABLE_REGISTRY), []);
@@ -51,8 +33,8 @@ describe("authority classification and D95 command families", () => {
   });
 
   it("parses every closed action and keeps the family registry exhaustive", () => {
-    for (const fixture of CURRENT_COMMAND_FIXTURES) assert.equal(CommandRequestSchema.safeParse(fixture).success, true);
-    const fixtureActions = new Set(CURRENT_COMMAND_FIXTURES.map((fixture) => (fixture as { readonly type: string }).type));
+    for (const fixture of COMMAND_FIXTURES) assert.equal(CommandRequestSchema.safeParse(fixture).success, true);
+    const fixtureActions = new Set(COMMAND_FIXTURES.map((fixture) => (fixture as { readonly type: string }).type));
     assert.deepEqual([...fixtureActions].sort(), [...CommandActionSchema.options].sort());
     assert.deepEqual(
       [...new Set(COMMAND_FAMILY_REGISTRY.flatMap(({ actions }) => actions))].sort(),

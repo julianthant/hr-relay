@@ -92,16 +92,9 @@ export const CONFIG_SNAPSHOT_GENERATIONS = deepFreeze([
     ],
     leafDigest: "c513f3a46af935f05e339f117d3d2f6af015d79f24fba775074dd8e932c82a71",
   },
-  {
-    generation: 5,
-    decision: "D331/D332",
-    introduced: [],
-    retired: ["operator.timekeeperName"],
-    leafDigest: "abc8a7ce0b5709985f29fcf4e7aca584adfa306c32d78caf80e87c7a3e715aec",
-  },
 ] as const satisfies readonly ConfigSnapshotGeneration[]);
 
-export const CURRENT_CONFIG_SNAPSHOT_GENERATION = 5;
+export const CURRENT_CONFIG_SNAPSHOT_GENERATION = 4;
 
 /**
  * The leaves introduced after the baseline generation — precisely the leaves a
@@ -144,6 +137,7 @@ const CurrentStoredConfigSchema = z.strictObject({
   timeouts: ConfigSchema.shape.timeouts.unwrap().partial({ sessionAcquireMs: true, duoCeremonyLeaseGraceMs: true }),
   paths: ConfigSchema.shape.paths,
   annualDates: ConfigSchema.shape.annualDates.unwrap(),
+  operator: ConfigSchema.shape.operator.unwrap(),
   display: ConfigSchema.shape.display.unwrap(),
   performance: ConfigSchema.shape.performance.unwrap(),
   ocr: ConfigSchema.shape.ocr.unwrap(),
@@ -170,18 +164,12 @@ const RetiredPhoneCaptureConfigSchema = z.strictObject({
   maxSlices: z.number().int().positive(),
 });
 
-/** D331's accepted historical exposure is read verbatim, never invented or rewritten. */
-const PreFloorStoredConfigSchema = z.strictObject({
-  ...CurrentStoredConfigSchema.shape,
-  operator: z.strictObject({ timekeeperName: z.string() }),
-});
-
 const LegacyStoredConfigSchema = z.strictObject({
-  ...PreFloorStoredConfigSchema.shape,
+  ...CurrentStoredConfigSchema.shape,
   capture: RetiredPhoneCaptureConfigSchema,
 });
 
-export const StoredConfigSchema = z.union([CurrentStoredConfigSchema, PreFloorStoredConfigSchema, LegacyStoredConfigSchema]);
+export const StoredConfigSchema = z.union([CurrentStoredConfigSchema, LegacyStoredConfigSchema]);
 
 export type StoredConfig = z.infer<typeof StoredConfigSchema>;
 

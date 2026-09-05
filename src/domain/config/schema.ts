@@ -2,7 +2,6 @@ import { z } from "zod";
 import { LocalOperatorActorSchema, LOCAL_OPERATOR_ACTOR_ID } from "../ids.js";
 import type { ProviderCapabilityId } from "../ids.js";
 import { deepFreeze } from "../immutability.js";
-import { ordinarySettingsObject } from "./catalog.js";
 
 const UrlSchema = z.url();
 export const AbsolutePathSchema = z.string().min(1).refine((value) => value.startsWith("/"), "path must be absolute");
@@ -83,19 +82,11 @@ export const ProviderBudgetSchema = z.strictObject({
   costLimitUsdMicros: z.number().int().nonnegative(),
 });
 
-export const ProviderModelChainSchema = z.array(z.string().min(1).max(256).regex(/^[^\s,]+$/u)).min(1).max(32).readonly();
-export const ProviderModelsSchema = z.strictObject({ models: ProviderModelChainSchema });
-
 export const ProviderBudgetConfigSchema = z.strictObject({
   ocrExtract: ProviderBudgetSchema,
   geocodeCensus: ProviderBudgetSchema,
   geocodeNominatim: ProviderBudgetSchema,
   aiAdvisory: ProviderBudgetSchema,
-  gemini: ProviderModelsSchema.optional(),
-  groq: ProviderModelsSchema.optional(),
-  mistral: ProviderModelsSchema.optional(),
-  openRouter: ProviderModelsSchema.optional(),
-  sambanova: ProviderModelsSchema.optional(),
 }).default({
   ocrExtract: { timeoutMs: 120_000, concurrency: 4, requestsPerMinute: 10, dailyRequestLimit: 250, costLimitUsdMicros: 0 },
   geocodeCensus: { timeoutMs: 15_000, concurrency: 2, requestsPerMinute: 30, dailyRequestLimit: 5_000, costLimitUsdMicros: 0 },
@@ -119,8 +110,8 @@ export const PROVIDER_CAPABILITY_CONFIG_KEYS = deepFreeze({
  * default can only be produced by resolving a repo-relative literal against a
  * working directory, which is `node:path` work; a browser has no working
  * directory to resolve against and no business inventing one. So the defaults
- * live in the server-only `./runtime-paths.ts`, which `./resolve.ts` — the one
- * `settings > default` resolver — supplies at parse time. A caller
+ * live in the server-only `./runtime-paths.ts`, which `./resolve.ts` — the ONE
+ * `env > settings.json > default` resolver — supplies at parse time. A caller
  * that hands `ConfigSchema` no `paths` gets a loud zod error naming the missing
  * leaf, never a fabricated path.
  */
@@ -236,6 +227,7 @@ export const ConfigSchema = z.strictObject({
   // and `./resolve.ts` supplies them. See `ConfigPathsSchema`.
   paths: ConfigPathsSchema,
   annualDates: z.record(FiscalYearKeySchema, AnnualDateEntrySchema).default({}),
+  operator: z.strictObject({ timekeeperName: z.string() }).default({ timekeeperName: "" }),
   // The CONTRACT default, used only for a host with no display to report; the
   // runtime default is the host's primary display (D324, `./host-display.ts`).
   display: z.strictObject({ screenWidth: z.number().int().positive(), screenHeight: z.number().int().positive() })
@@ -306,10 +298,9 @@ function partialEndpoints<Shape extends z.ZodRawShape>(routes: z.ZodObject<Shape
   return z.strictObject({ test: routes.partial().optional() });
 }
 
-/** D331: the catalog selects the ordinary members; templates supply their existing value schemas. */
-export const SettingsOverrideSchema = ordinarySettingsObject("", z.strictObject({
-  actor: ordinarySettingsObject("actor", ConfigSchema.shape.actor.unwrap()).partial().optional(),
-  urls: ordinarySettingsObject("urls", z.strictObject({
+export const SettingsOverrideSchema = z.strictObject({
+  actor: z.strictObject({ label: z.string().min(1).optional() }).optional(),
+  urls: z.strictObject({
     kuali: partialEndpoints(KualiRoutesSchema).optional(),
     newKronos: partialEndpoints(NewKronosRoutesSchema).optional(),
     crm: partialEndpoints(CrmRoutesSchema).optional(),
@@ -319,23 +310,54 @@ export const SettingsOverrideSchema = ordinarySettingsObject("", z.strictObject(
     oldKronos: partialEndpoints(OldKronosRoutesSchema).optional(),
     servicenow: partialEndpoints(ServiceNowRoutesSchema).optional(),
     sharepoint: partialEndpoints(SharePointRoutesSchema).optional(),
-  })).optional(),
-  timeouts: ordinarySettingsObject("timeouts", ConfigSchema.shape.timeouts.unwrap()).partial().optional(),
-  paths: ordinarySettingsObject("paths", ConfigPathsSchema).partial().optional(),
-  annualDates: z.record(FiscalYearKeySchema, AnnualDateEntrySchema).optional(),
-  display: ordinarySettingsObject("display", ConfigSchema.shape.display.unwrap()).optional(),
-  performance: ordinarySettingsObject("performance", ConfigSchema.shape.performance.unwrap()).partial().optional(),
-  ocr: ordinarySettingsObject("ocr", ConfigSchema.shape.ocr.unwrap()).partial().optional(),
-  browserHealth: ordinarySettingsObject("browserHealth", ConfigSchema.shape.browserHealth.unwrap()).partial().optional(),
-  browser: ordinarySettingsObject("browser", ConfigSchema.shape.browser.unwrap()).partial().optional(),
-  concurrency: ordinarySettingsObject("concurrency", ConfigSchema.shape.concurrency.unwrap()).partial().optional(),
-  daemon: ordinarySettingsObject("daemon", ConfigSchema.shape.daemon.unwrap()).partial().optional(),
-  features: ordinarySettingsObject("features", ConfigSchema.shape.features.unwrap()).partial().optional(),
-  providers: ordinarySettingsObject("providers", ConfigSchema.shape.providers.unwrap()).partial().optional(),
-}));
+  }).optional(),
+  timeouts: ConfigSchema.shape.timeouts.unwrap().partial().optional(),
+  paths: ConfigPathsSchema.partial().optional(),
+  annualDates: z.record(FiscalYearKeySchema, AnnualDateEntrySchema.partial()).optional(),
+  operator: ConfigSchema.shape.operator.unwrap().partial().optional(),
+  display: ConfigSchema.shape.display.unwrap().partial().optional(),
+  performance: ConfigSchema.shape.performance.unwrap().partial().optional(),
+  ocr: ConfigSchema.shape.ocr.unwrap().partial().optional(),
+  browserHealth: ConfigSchema.shape.browserHealth.unwrap().partial().optional(),
+  browser: ConfigSchema.shape.browser.unwrap().partial().optional(),
+  concurrency: ConfigSchema.shape.concurrency.unwrap().partial().optional(),
+  daemon: ConfigSchema.shape.daemon.unwrap().partial().optional(),
+  features: ConfigSchema.shape.features.unwrap().partial().optional(),
+  providers: ConfigSchema.shape.providers.unwrap().partial().optional(),
+});
 
-/** The resolver and persisted document have the same closed catalog-generated boundary. */
-export const EditableSettingsOverrideSchema = SettingsOverrideSchema;
+/**
+ * The closed set the dashboard settings command may persist. This is
+ * deliberately narrower than `SettingsOverrideSchema`: that broader schema is
+ * the resolver's input contract and includes leaves owned by deployment
+ * environment or credential/runtime-path composition. Adding an editable leaf
+ * is therefore an explicit server change, never an accidental consequence of
+ * widening `ConfigSchema` or the resolver.
+ */
+export const EditableSettingsOverrideSchema = z.strictObject({
+  actor: z.strictObject({ label: z.string().min(1).optional() }).optional(),
+  urls: z.strictObject({
+    crm: z.strictObject({
+      test: CrmRoutesSchema.omit({ entry: true }).partial().optional(),
+    }).optional(),
+    ucpath: z.strictObject({
+      test: UcpathRoutesSchema.omit({ smartHr: true }).partial().optional(),
+    }).optional(),
+    i9: z.strictObject({
+      test: I9RoutesSchema.omit({ entry: true }).partial().optional(),
+    }).optional(),
+  }).optional(),
+  timeouts: ConfigSchema.shape.timeouts.unwrap().omit({ ukgNavigationMs: true }).partial().optional(),
+  paths: ConfigPathsSchema.pick({ reportsDir: true }).partial().optional(),
+  display: ConfigSchema.shape.display.unwrap().partial().optional(),
+  ocr: ConfigSchema.shape.ocr.unwrap().pick({
+    pageConcurrency: true,
+    maxValidationRetries: true,
+  }).partial().optional(),
+  concurrency: ConfigSchema.shape.concurrency.unwrap().pick({ defaultWorkers: true }).partial().optional(),
+  browser: ConfigSchema.shape.browser.unwrap().partial().optional(),
+  providers: ConfigSchema.shape.providers.unwrap().partial().optional(),
+});
 
 export const SettingsOverrideInputSchema = SettingsOverrideSchema.optional().default({});
 

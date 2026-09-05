@@ -1,4 +1,3 @@
-import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -160,8 +159,8 @@ export function persistCorruptJournaledSettings(input: Readonly<{
   activateRuntime: boolean;
 }>): Readonly<{ settingsPath: string; settingsBytes: Buffer }> {
   mkdirSync(input.stateRoot, { recursive: true });
-  const settingsPath = join(input.repoRoot, ".tracker", "settings", "settings.json");
-  const patch = { "browser.headless": { set: false } } as const;
+  const settingsPath = join(input.repoRoot, ".tracker", "settings.json");
+  const patch = { browser: { headless: false } } as const;
   const command = SettingsCommandRequestSchema.parse({
     commandId: COMMAND_ID,
     requestedAt: input.clock.now().toISOString(),
@@ -179,7 +178,7 @@ export function persistCorruptJournaledSettings(input: Readonly<{
   const authority = createSettingsFileAuthority({
     path: settingsPath,
     validateCandidate: (settings) => {
-      resolveConfigWithProvenance(settings, hostConfigFacts({}), input.clock);
+      resolveConfigWithProvenance({}, settings, input.clock);
     },
   });
   const outcome = authority.apply({
@@ -231,7 +230,7 @@ export function persistCorruptJournaledSettings(input: Readonly<{
         committedAt: command.requestedAt,
       });
       if (input.activateRuntime) {
-        const resolved = resolveConfigWithProvenance(outcome.record.settings, hostConfigFacts({}), input.clock);
+        const resolved = resolveConfigWithProvenance({}, outcome.record.settings, input.clock);
         repositories.configSnapshots.insert({
           configSnapshotId: CONFIG_SNAPSHOT_ID,
           revision: 1,

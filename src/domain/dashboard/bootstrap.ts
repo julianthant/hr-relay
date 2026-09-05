@@ -244,7 +244,6 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
     appVersion: AppVersionSchema,
     descriptorHash: FingerprintSchema,
     settingsSchemaHash: FingerprintSchema,
-    protectedSchemaHash: FingerprintSchema,
     projectionGeneration: ProjectionGenerationSchema,
     actor: ActorWireSchema,
     serverClock: ServerClockWireSchema,

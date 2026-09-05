@@ -1,4 +1,3 @@
-import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 /**
  * Ref execution-and-sessions §10.8 (D267): the serialization PROOF, on the
  * manual clock — two workers cold-starting one credential, the second's
@@ -31,7 +30,7 @@ import type { DuoCeremonyGateFactory } from "../../src/core/duo-ceremony-gate.js
 import { WorkerSessionManager } from "../../src/core/worker-sessions.js";
 import { manualClock } from "../../src/domain/clock.js";
 import type { TestClock } from "../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfig } from "../../src/domain/config/resolve.js";
 import {
   BrowserSessionIdSchema,
   FingerprintSchema,
@@ -63,7 +62,7 @@ const T0 = new Date("2026-08-21T12:00:00.000Z");
 const TTL_MS = FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS + FIXTURE_DUO_LEASE_GRACE_MS;
 const BUDGET_MS = FIXTURE_SESSION_ACQUIRE_MS - FIXTURE_DUO_LEASE_GRACE_MS;
 const POLL_MS = 250;
-const CONFIG = resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(T0)).config;
+const CONFIG = resolveConfig({}, {}, manualClock(T0));
 
 interface Deferred { readonly promise: Promise<void>; resolve(): void; reject(error: Error): void }
 function deferred(): Deferred {

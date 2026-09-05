@@ -1,4 +1,3 @@
-import { hostConfigFacts } from "../../domain/config/host-display.js";
 /** Real-service runtime behind `cli dry-run-scenario`. */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -19,7 +18,6 @@ import type {
 } from "../../core/dry-run-scenario-runner.js";
 import type { Clock } from "../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
-import { settingsRootPaths } from "../../domain/config/settings-root.js";
 import { MatchIdentityOutputSchema } from "../../domain/contracts/separations/match-identity.js";
 import type { IdFactory } from "../../domain/identifiers.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../domain/ids.js";
@@ -208,8 +206,8 @@ export function createProductionDryRunScenarioRuntime(
   const stateRoot = join(input.repoRoot, input.isolation.stateRoot);
   const databasePath = join(stateRoot, "state.db");
   const settingsAuthority = createSettingsFileAuthority({
-    path: settingsRootPaths(stateRoot).ordinary,
-    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts(input.env), input.clock); },
+    path: join(stateRoot, "settings.json"),
+    validateCandidate: (settings) => { resolveConfigWithProvenance(input.env, settings, input.clock); },
   });
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(input.repoRoot, "package.json"), "utf8")),
@@ -307,7 +305,7 @@ export function createProductionDryRunScenarioRuntime(
       try {
         const persistedSettings = database.withAuthorityTransaction((repositories) =>
           readJournaledSettings(settingsAuthority, repositories));
-        const resolved = resolveConfigWithProvenance(persistedSettings.settings, hostConfigFacts(input.env), input.clock);
+        const resolved = resolveConfigWithProvenance(input.env, persistedSettings.settings, input.clock);
         admitted = database.withAuthorityTransaction((repositories) => settingsAuthority.withExactRecord({
           revision: persistedSettings.revision,
           settingsFingerprint: persistedSettings.settingsFingerprint,

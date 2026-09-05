@@ -50,7 +50,6 @@ export async function signalImageLoad(image: HTMLImageElement, decode: () => Pro
 
 const BOOTSTRAP = FrontendBootstrapWireSchema.parse({
   wireVersion: 1, appVersion: "0.1.0", descriptorHash: HASH, settingsSchemaHash: HASH,
-  protectedSchemaHash: HASH,
   projectionGeneration: 1, actor: { id: "local-operator", label: "Local operator" },
   serverClock: { now: NOW, zone: "America/Los_Angeles" },
   storage: { authority: "healthy", backup: "current", checkedAt: NOW },

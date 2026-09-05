@@ -1,4 +1,3 @@
-import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -212,7 +211,6 @@ import {
   SECRET_FAMILY_SPECS,
   SECRET_FILE_SPECS,
   SECRET_SPECS,
-  ProtectedSecretSourceSchema,
   SecretFamilySpecSchema,
   SecretFileSpecSchema,
   SecretAvailabilitySchema,
@@ -581,7 +579,7 @@ const FIX = {
 };
 
 const BOOTSTRAP = {
-  wireVersion: 1, appVersion: "1.0.0", descriptorHash: HASH_A, settingsSchemaHash: HASH_B, protectedSchemaHash: HASH_A,
+  wireVersion: 1, appVersion: "1.0.0", descriptorHash: HASH_A, settingsSchemaHash: HASH_B,
   projectionGeneration: 1, actor: { id: "local-operator", label: "Local operator" },
   serverClock: { now: NOW, zone: "America/Los_Angeles" },
   storage: { authority: "healthy", backup: "current", checkedAt: NOW }, workflows: [],
@@ -1336,7 +1334,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "Config", schema: ConfigSchema, fixtures: [ConfigSchema.parse({ paths: defaultRuntimePaths() })] },
   { name: "SettingsOverride", schema: SettingsOverrideSchema, fixtures: [{}] },
   { name: "EditableSettingsOverride", schema: EditableSettingsOverrideSchema, fixtures: [{}] },
-  { name: "ResolvedConfig", schema: ResolvedConfigSchema, fixtures: [resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK)] },
+  { name: "ResolvedConfig", schema: ResolvedConfigSchema, fixtures: [resolveConfigWithProvenance({}, {}, CLOCK)] },
   { name: "ConfigEnvBindings", schema: ConfigEnvBindingRegistrySchema, fixtures: [CONFIG_ENV_BINDINGS] },
   { name: "ClassifiedDiagnosticValue", schema: ClassifiedDiagnosticValueSchema, fixtures: [{ key: "state", classification: "safe-diagnostic", transform: "allow", value: "healthy" }] },
   { name: "RedactionResult", schema: RedactionResultSchema, fixtures: [{ fields: [], warnings: [] }] },
@@ -1367,8 +1365,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "SecretSpec", schema: SecretSpecSchema, fixtures: [SECRET_SPECS[0]] },
   { name: "SecretFamilySpec", schema: SecretFamilySpecSchema, fixtures: [SECRET_FAMILY_SPECS[0]] },
   { name: "SecretFileSpec", schema: SecretFileSpecSchema, fixtures: [SECRET_FILE_SPECS[0]] },
-  { name: "SecretAvailability", schema: SecretAvailabilitySchema, fixtures: [{ name: "ucpathPassword", source: "protected-store", state: "unknown", diagnostic: "registered source could not be read" }] },
-  { name: "ProtectedSecretSource", schema: ProtectedSecretSourceSchema, fixtures: [{ read: () => ({}) }] },
+  { name: "SecretAvailability", schema: SecretAvailabilitySchema, fixtures: [{ name: "ucpathPassword", source: "environment", state: "unknown", diagnostic: "registered source could not be read" }] },
   { name: "TestTargetSecretSpec", schema: TestTargetSecretSpecSchema, fixtures: [TEST_TARGET_SECRET_SPECS[0]] },
   { name: "TestTargetRegistry", schema: TestTargetRegistrySchema, fixtures: [TEST_TARGET_REGISTRY] },
   { name: "SeparationsKualiFinalizationTestTargetResolution", schema: SeparationsKualiFinalizationTestTargetResolutionSchema, fixtures: [{ state: "blocked", label: "finalization-canary", reason: "blocked: needs finalization-canary" }] },

@@ -1,7 +1,6 @@
-import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The dry-run admission fixture every T1b composition proof shares: a selected
- * `.tracker/settings/settings.json` journaled through the REAL settings kernel arm and
+ * `.tracker/settings.json` journaled through the REAL settings kernel arm and
  * activated through the existing dashboard activation contract — never an
  * alternate runtime writer — plus a read-only view of the start-effect tables.
  */
@@ -20,7 +19,6 @@ import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./archive-fixtures.js";
-import { settingsSetOperations } from "./settings-operation-fixtures.js";
 
 export function selectedSettingsFixture(
   root: string,
@@ -32,8 +30,8 @@ export function selectedSettingsFixture(
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "dry-run-admission-test" }, clock);
   databases.push(database);
   const file = createSettingsFileAuthority({
-    path: join(root, ".tracker", "settings", "settings.json"),
-    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts(env), clock); },
+    path: join(root, ".tracker", "settings.json"),
+    validateCandidate: (settings) => { resolveConfigWithProvenance(env, settings, clock); },
   });
   const ids = sequentialIdFactory("b");
   const unused = (): never => { throw new Error("Settings setup reached an unrelated kernel arm"); };
@@ -52,12 +50,11 @@ export function selectedSettingsFixture(
   return {
     database, file, path,
     apply: (patch: unknown) => {
-      const operations = settingsSetOperations(patch);
       const commandId = ids.uuid();
       const result = kernel.execute({
         commandId, requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
         family: "settings", type: "apply-settings", target: { expectedRevision: file.read().revision },
-        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(operations), patch: operations },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
       });
       assert.equal(result.state, "applied");
       assert.equal(database.authority.commands.get(commandId)?.family, "settings");
@@ -67,7 +64,7 @@ export function selectedSettingsFixture(
     },
     activate: () => database.withAuthorityTransaction((repositories) => {
       const record = readJournaledSettings(file, repositories);
-      const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts(env), clock);
+      const resolved = resolveConfigWithProvenance(env, record.settings, clock);
       const configSnapshotId = ids.uuid();
       // The existing dashboard activation contract, not an alternate runtime writer.
       const snapshot = repositories.configSnapshots.insert({
@@ -96,3 +93,4 @@ export function startEffects(path: string) {
     raw.close();
   }
 }
+

@@ -2,25 +2,20 @@ import {
   optionalTestTargetSecret,
   SecretSourceError,
   TestTargetSecretReferenceSchema,
-  type ProtectedSecretSource,
   type TestTargetSecretReference,
 } from "../src/domain/secrets.js";
 import { TestTargetRegistryDefectError } from "../src/control/test-target-registry.js";
-import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";
-import { settingsRootPaths } from "../src/domain/config/settings-root.js";
-import { createProtectedSettingsFileAuthority } from "../src/infra/config/settings-file.js";
-import { resolve } from "node:path";
 
 type DocumentNumberState = "present" | "refused" | "invalid" | "not-attempted";
 type ResolutionState = "ready" | "blocked" | "defect" | "not-attempted";
 
 export interface TestTargetDocumentNumberSmokeOptions {
-  readonly protectedSecrets?: ProtectedSecretSource;
+  readonly env?: NodeJS.ProcessEnv;
   readonly loadCommittedReference?: () => Promise<TestTargetSecretReference>;
-  readonly resolveSubject?: (source: ProtectedSecretSource) => Promise<ResolutionState>;
+  readonly resolveSubject?: (env?: NodeJS.ProcessEnv) => Promise<ResolutionState>;
   readonly readDocumentNumber?: (
     reference: TestTargetSecretReference,
-    source: ProtectedSecretSource,
+    env?: NodeJS.ProcessEnv,
   ) => string | undefined;
   readonly writeLine?: (line: string) => void;
 }
@@ -45,28 +40,19 @@ async function committedReference(): Promise<TestTargetSecretReference> {
  * before any browser starts: the configured number through the descriptor's
  * own start-box parser, ingress and canonical schemas.
  */
-function runtimeProtectedSecrets(): ProtectedSecretSource {
-  const stateRoot = resolve(process.cwd(), rebuildRuntimeIsolation.stateRoot);
-  const authority = createProtectedSettingsFileAuthority({
-    path: settingsRootPaths(stateRoot).ordinary,
-    assertWriteIdAvailable: () => undefined,
-  });
-  return { read: () => authority.read() };
-}
-
-async function resolveCommittedSubject(source: ProtectedSecretSource): Promise<ResolutionState> {
+async function resolveCommittedSubject(env?: NodeJS.ProcessEnv): Promise<ResolutionState> {
   const { resolveSeparationsTestTarget, TEST_TARGET_REGISTRY } = await import(
     "../src/control/test-target-registry.js"
   );
-  return resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, CANARY_LABEL, source).state;
+  return resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, CANARY_LABEL, env).state;
 }
 
 async function subjectResolution(
-  resolveSubject: (source: ProtectedSecretSource) => Promise<ResolutionState>,
-  source: ProtectedSecretSource,
+  resolveSubject: (env?: NodeJS.ProcessEnv) => Promise<ResolutionState>,
+  env?: NodeJS.ProcessEnv,
 ): Promise<ResolutionState> {
   try {
-    return await resolveSubject(source);
+    return await resolveSubject(env);
   } catch (error) {
     if (!(error instanceof TestTargetRegistryDefectError)) throw error;
     // A registry defect names the offending reference/key in its own message;
@@ -76,15 +62,17 @@ async function subjectResolution(
 }
 
 /**
- * The protected source is passed through untouched and read on each use.
+ * `env` is passed through untouched: the ONLY reader of the process environment
+ * is `optionalTestTargetSecret`'s registered default, so this script adds no
+ * environment occurrence of its own.
  */
 function documentNumberState(
   reference: TestTargetSecretReference,
-  source: ProtectedSecretSource,
-  readDocumentNumber: (reference: TestTargetSecretReference, source: ProtectedSecretSource) => string | undefined,
+  env: NodeJS.ProcessEnv | undefined,
+  readDocumentNumber: (reference: TestTargetSecretReference, env?: NodeJS.ProcessEnv) => string | undefined,
 ): DocumentNumberState {
   try {
-    return readDocumentNumber(reference, source) === undefined ? "refused" : "present";
+    return readDocumentNumber(reference, env) === undefined ? "refused" : "present";
   } catch (error) {
     if (!(error instanceof SecretSourceError)) throw error;
     // The value is malformed for the document-number schema. Its message names
@@ -111,15 +99,14 @@ export async function runTestTargetDocumentNumberSmoke(
     throw new Error("committed canary document-number registry unavailable");
   }
 
-  const protectedSecrets = options.protectedSecrets ?? runtimeProtectedSecrets();
-  const resolution = await subjectResolution(options.resolveSubject ?? resolveCommittedSubject, protectedSecrets);
-  const readDocumentNumber = options.readDocumentNumber ?? ((documentReference, source) =>
-    optionalTestTargetSecret(documentReference.name, source)
+  const resolution = await subjectResolution(options.resolveSubject ?? resolveCommittedSubject, options.env);
+  const readDocumentNumber = options.readDocumentNumber ?? ((documentReference, env) =>
+    optionalTestTargetSecret(documentReference.name, env)
   );
   const state = resolution === "ready"
-    ? documentNumberState(reference, protectedSecrets, readDocumentNumber)
+    ? documentNumberState(reference, options.env, readDocumentNumber)
     : "not-attempted";
-  writeLine(`field=documentNumber reference=${reference.name} source=protected-store state=${state}`);
+  writeLine(`field=documentNumber reference=${reference.name} env=${reference.env} state=${state}`);
 
   const reportedResolution: ResolutionState = resolution === "ready" && state !== "present"
     ? "not-attempted"

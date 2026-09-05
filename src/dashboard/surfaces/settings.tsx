@@ -527,7 +527,8 @@ function StorageSection({
   );
 }
 
-function sourceTone(source: "settings" | "default"): "info" | "neutral" {
+function sourceTone(source: "env" | "settings" | "default"): "warning" | "info" | "neutral" {
+  if (source === "env") return "warning";
   if (source === "settings") return "info";
   return "neutral";
 }
@@ -601,7 +602,7 @@ function EditableSettingsSection({
                 />
               </Field>
               <div className="flex flex-wrap items-center gap-[var(--ds-space-tight)]">
-                <Badge tone={sourceTone(leaf.source)}>{leaf.source === "settings" ? "settings.json" : "Default"}</Badge>
+                <Badge tone={sourceTone(leaf.source)}>{leaf.source === "env" ? "Environment" : leaf.source === "settings" ? "settings.json" : "Default"}</Badge>
                 {editor.draft[leaf.path] !== leaf.effectiveValue && <Badge tone="attention">Unsaved</Badge>}
                 {leaf.hazard !== undefined && <Badge tone="warning">Review impact</Badge>}
                 <span className={cn(dsText.micro, dsText.nums, "text-[color:var(--ds-fg-faint)]")}>{leaf.path}</span>

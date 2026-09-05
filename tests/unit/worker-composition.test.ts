@@ -1,4 +1,3 @@
-import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 /**
  * The Phase-1f worker composition (`src/server/worker/compose.ts`) and the
  * command kernel's worker-browser arms as the DASHBOARD process composes them.
@@ -56,7 +55,6 @@ import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "./fixtures/ph
 import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
-import { settingsSetOperations } from "./fixtures/settings-operation-fixtures.js";
 import {
   SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,
   persistCorruptJournaledSettings,
@@ -87,7 +85,7 @@ function seedQueuedRun(
   stateRoot: string,
   clock: TestClock,
   run: Record<string, unknown>,
-  resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock),
+  resolved = resolveConfigWithProvenance({}, {}, clock),
 ): void {
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
@@ -147,7 +145,7 @@ function ensureBaselineRuntimeConfig(repoRoot: string, clock: TestClock): void {
   try {
     database.withAuthorityTransaction((repositories) => {
       if (repositories.runtimeConfig.get() !== undefined) return;
-      const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock);
+      const resolved = resolveConfigWithProvenance({}, {}, clock);
       const baseline = initialSettingsFileRecord();
       const configSnapshotId = "66666666-6666-4666-8666-666666666666";
       repositories.configSnapshots.insert({
@@ -173,7 +171,6 @@ function ensureBaselineRuntimeConfig(repoRoot: string, clock: TestClock): void {
 }
 
 function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, patch: unknown) {
-  patch = settingsSetOperations(patch);
   const patchFingerprint = deriveSettingsPatchFingerprint(patch);
   const command = {
     commandId: "33333333-3333-4333-8333-333333333333",
@@ -186,9 +183,9 @@ function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, pa
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
   };
   const authority = createSettingsFileAuthority({
-    path: join(repoRoot, ".tracker", "settings", "settings.json"),
+    path: join(repoRoot, ".tracker", "settings.json"),
     validateCandidate: (settings) => {
-      resolveConfigWithProvenance(settings, hostConfigFacts({}), clock);
+      resolveConfigWithProvenance({}, settings, clock);
     },
   });
   const outcome = authority.apply({
@@ -220,13 +217,13 @@ function persistJournaledWorkerSettings(
   try {
     journalWorkerSettings(database, persisted);
     const authority = createSettingsFileAuthority({
-      path: join(repoRoot, ".tracker", "settings", "settings.json"),
+      path: join(repoRoot, ".tracker", "settings.json"),
       validateCandidate: (settings) => {
-        resolveConfigWithProvenance(settings, hostConfigFacts({}), clock);
+        resolveConfigWithProvenance({}, settings, clock);
       },
     });
     const record = authority.read();
-    const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock);
+    const resolved = resolveConfigWithProvenance({}, record.settings, clock);
     database.withAuthorityTransaction((repositories) => {
       const configSnapshotId = "55555555-5555-4555-8555-555555555555";
       repositories.configSnapshots.insert({
@@ -458,7 +455,7 @@ describe("composed worker runtime", () => {
         stateRoot,
         clock,
         personLookupQueuedRun(),
-        resolveConfigWithProvenance({ browser: { headless: false } }, hostConfigFacts({}), clock),
+        resolveConfigWithProvenance({}, { browser: { headless: false } }, clock),
       );
 
       await assert.rejects(
@@ -489,7 +486,7 @@ describe("composed worker runtime", () => {
       stateRoot,
       clock,
       personLookupQueuedRun(),
-      resolveConfigWithProvenance({ timeouts: { sessionAcquireMs: 1 } }, hostConfigFacts({}), clock),
+      resolveConfigWithProvenance({}, { timeouts: { sessionAcquireMs: 1 } }, clock),
     );
     const neverOpeningSessions: SessionFactoryHarness = {
       ...happySessionHarness(),
@@ -578,7 +575,7 @@ describe("composed worker runtime", () => {
             clock,
             { browser: { headless: false } },
           );
-          admissionSettingsBytes = readFileSync(join(repoRoot, ".tracker", "settings", "settings.json"));
+          admissionSettingsBytes = readFileSync(join(repoRoot, ".tracker", "settings.json"));
           // This is deliberately a nested savepoint under claim admission,
           // not an independent durable dashboard commit. The thrown claim
           // must roll its journal back while retaining the already-written file.
@@ -590,7 +587,7 @@ describe("composed worker runtime", () => {
       (error: unknown) => error,
     );
     assert.equal(admissionCrossed, true);
-    assert.deepEqual(readFileSync(join(repoRoot, ".tracker", "settings", "settings.json")), admissionSettingsBytes);
+    assert.deepEqual(readFileSync(join(repoRoot, ".tracker", "settings.json")), admissionSettingsBytes);
     const database = reopen(stateRoot, clock);
     assert.equal(sessions.opens("ucpath"), 0);
     assert.equal(sessions.opens("crm"), 0);

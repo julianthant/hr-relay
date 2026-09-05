@@ -22,7 +22,6 @@ import { LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../domain/ids.j
 import type { WorkflowModuleRole } from "../../../domain/workflow/module-role.js";
 import { projectStartSteps, startStepWireControl } from "../../../services/start/step-selection.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../domain/config/protected-settings.js";
 
 /**
  * One registered workflow MODULE, as this query needs to see it (D219).
@@ -107,7 +106,6 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     appVersion: deps.appVersion,
     descriptorHash: deps.descriptorSetHash,
     settingsSchemaHash: deps.settingsSchemaHash,
-    protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
     projectionGeneration: deps.projection.generation(),
     actor: { id: LOCAL_OPERATOR_ACTOR_ID, label: "Local operator" },
     serverClock: { now: deps.clock.now().toISOString(), zone: "America/Los_Angeles" },

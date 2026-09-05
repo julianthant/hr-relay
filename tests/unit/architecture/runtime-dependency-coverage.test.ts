@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import ts from "typescript";
 import { describe, it } from "vitest";
 import { BrowserSystemIdSchema } from "../../../src/domain/ids.js";
-import { SETTINGS_CATALOG } from "../../../src/domain/config/catalog.js";
 import {
   auditRuntimeDependencyCoverage,
   PREFLIGHT_CHECKS,
@@ -123,7 +122,7 @@ describe("runtime dependency coverage", () => {
     }
   });
 
-  it("matches the legacy vision-provider inventory and closes each provider over its settings model chain", () => {
+  it("matches the legacy vision-provider inventory and closes each provider over its environment", () => {
     const provider = FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.runtime.visionProvider;
     const legacy = unionMembers(provider.text, provider.path, "VisionProviderId");
     const visionProviders = PROVIDER_ADAPTER_SPECS
@@ -137,8 +136,8 @@ describe("runtime dependency coverage", () => {
     );
 
     const families = new Map(SECRET_FAMILY_SPECS.map((family) => [family.name, family]));
-    const catalogModelKeys = new Set(SETTINGS_CATALOG
-      .filter(({ key }) => /^providers\.(?:gemini|groq|mistral|openRouter|sambanova)\.models$/u.test(key))
+    const activeModelKeys = new Set(RUNTIME_ENVIRONMENT_EXACT
+      .filter((spec) => spec.disposition === "active" && spec.channel === "provider-model")
       .map(({ key }) => key));
 
     for (const provider of PROVIDER_ADAPTER_SPECS) {
@@ -149,7 +148,8 @@ describe("runtime dependency coverage", () => {
         `${provider.provider}: no runtime capability`,
       );
       if (provider.secretFamily === undefined) {
-        assert.equal(provider.modelsConfigKey, undefined, `${provider.provider}: models config without a secret family`);
+        // A keyless provider must not claim a model environment either.
+        assert.equal(provider.modelsEnv, undefined, `${provider.provider}: models env without a secret family`);
         continue;
       }
       const family = families.get(provider.secretFamily);
@@ -160,21 +160,15 @@ describe("runtime dependency coverage", () => {
         true,
         `${provider.provider}: ${family.envPrefix} is not an active environment family`,
       );
-      assert.equal(provider.modelsConfigKey, family.modelsConfigKey,
-        `${provider.provider}: model settings key differs from its secret-family inventory`);
-      assert.equal(catalogModelKeys.has(`providers.${family.modelsConfigKey}.models`), true,
-        `${provider.provider}: provider model chain has no settings catalog row`);
+      assert.ok(provider.modelsEnv, `${provider.provider}: keyed provider declares no models env`);
+      assert.equal(activeModelKeys.has(provider.modelsEnv), true,
+        `${provider.provider}: ${provider.modelsEnv} is not an active provider-model environment key`);
       assert.equal(isRegisteredEnvironmentKey(family.envPrefix), true, family.envPrefix);
     }
 
-    const claimed = new Set(PROVIDER_ADAPTER_SPECS.flatMap(({ modelsConfigKey }) =>
-      modelsConfigKey === undefined ? [] : [`providers.${modelsConfigKey}.models`]));
-    assert.deepEqual([...catalogModelKeys].filter((key) => !claimed.has(key)), []);
-    assert.deepEqual(
-      RUNTIME_ENVIRONMENT_EXACT.filter((spec) =>
-        spec.disposition === "active" && spec.channel === "provider-model"),
-      [],
-    );
+    // Reverse: no orphan provider-model key without a provider claiming it.
+    const claimed = new Set(PROVIDER_ADAPTER_SPECS.flatMap(({ modelsEnv }) => modelsEnv ? [modelsEnv] : []));
+    assert.deepEqual([...activeModelKeys].filter((key) => !claimed.has(key)), []);
   });
 
   it("gives every runtime capability a blocking-or-optional preflight path", () => {

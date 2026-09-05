@@ -1,13 +1,9 @@
 import { fileURLToPath, pathToFileURL } from "node:url";
-import {
-  admitLocalEnvironmentFile,
-  assertNoMigratedEnvironmentKeys,
-} from "../src/domain/secrets.js";
+import { admitLocalEnvironmentFile } from "../src/domain/secrets.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
 export interface SecureEnvironmentBootstrapDependencies {
-  readonly assertEnvironment?: () => void;
   readonly admitEnvironmentFile?: (path: string) => void;
   readonly runCli?: () => Promise<void>;
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
@@ -33,7 +29,6 @@ export async function runSecureEnvironmentBootstrap(
 ): Promise<void> {
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
-  (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();
   const environmentFilePath = repositoryEnvironmentFilePath();
   (dependencies.admitEnvironmentFile ?? ((path) => admitLocalEnvironmentFile(path)))(
     environmentFilePath,

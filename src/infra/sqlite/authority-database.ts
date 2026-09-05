@@ -58,7 +58,6 @@ import {
   ActorIdSchema,
   ArtifactIdSchema,
   BrowserSystemIdSchema,
-  CommandIdSchema,
   DiagnosticBundleIdSchema,
   FailureFingerprintSchema,
   FingerprintSchema,
@@ -412,7 +411,6 @@ type ReadRepository<RecordValue> = Readonly<{
 type CommandRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandRequestSchema>>;
   get(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
-  findProtectedSettingsCommandIdByWriteId(input: unknown): string | undefined;
 }>;
 
 /**
@@ -1027,11 +1025,6 @@ const OpaqueAuthorityTableSchema = z.enum([
 ]);
 
 const JsonRowSchema = z.strictObject({ record_json: z.string() });
-const RecordKeyRowSchema = z.strictObject({ record_key: z.string() });
-const ProtectedSettingsWriteIdLookupSchema = z.strictObject({
-  writeId: z.uuid(),
-  excludingCommandId: CommandIdSchema,
-});
 const NextEligibleRowSchema = z.strictObject({ next_eligible_at: z.string().nullable() });
 const HeldRunRowSchema = z.strictObject({ run_id: z.string().nullable() });
 const IntPragmaRowSchema = z.record(z.string(), z.number().int());
@@ -4753,21 +4746,6 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (commandId: string) => this.#readRecord("commands", commandId, CommandRequestSchema),
-        findProtectedSettingsCommandIdByWriteId: (input: unknown) => {
-          const { writeId, excludingCommandId } = ProtectedSettingsWriteIdLookupSchema.parse(input);
-          const row = this.#database.prepare(`
-            SELECT record_key FROM commands
-            WHERE family = 'settings'
-              AND record_key <> ?
-              AND json_extract(record_json, '$.type') = 'apply-protected-settings'
-              AND json_extract(record_json, '$.payload.writeId') = ?
-            ORDER BY record_key
-            LIMIT 1
-          `).get(excludingCommandId, writeId);
-          return row === undefined
-            ? undefined
-            : CommandIdSchema.parse(RecordKeyRowSchema.parse(row).record_key);
-        },
       }),
       bulkCommandAcceptances: Object.freeze({
         insert: (input: unknown) => {

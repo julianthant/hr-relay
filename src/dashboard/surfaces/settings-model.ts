@@ -26,9 +26,8 @@ import { systemClock } from "../../domain/clock.js";
 import type { BrowserSystemId } from "./system-chip-model.js";
 import {
   deriveSettingsPatchFingerprint,
-  SettingsPatchSchema,
-  type SettingsPatch,
 } from "../../domain/config/settings.js";
+import { SettingsOverrideSchema, type SettingsOverride } from "../../domain/config/schema.js";
 import type {
   EditableSettingsLeafWire,
   EditableSettingsPath,
@@ -304,26 +303,18 @@ function leafFor(document: EditableSettingsWire, path: EditableSettingsPath): Ed
   return leaf;
 }
 
-function patchFromDraft(document: EditableSettingsWire, draft: DraftValues): SettingsPatch {
-  const patch: Record<string, { readonly set: unknown } | { readonly clear: true }> = {};
-  const leaves = document.sections.flatMap((section) => section.leaves);
-  const dirty = leaves.filter((leaf) => leaf.editable && draft[leaf.path] !== leaf.effectiveValue);
-  const displayDirty = dirty.some((leaf) => leaf.path.startsWith("display."));
-  const displayLeaves = leaves.filter((leaf) => leaf.path.startsWith("display."));
-  const clearDisplay = displayDirty && displayLeaves.every((leaf) => (
-    draft[leaf.path] === leaf.defaultValue && leaf.settingsValue !== undefined
-  ));
-  for (const leaf of leaves) {
-    if (!dirty.includes(leaf) && !(displayDirty && leaf.path.startsWith("display."))) continue;
-    const value = draft[leaf.path];
-    if (value === undefined) throw new Error(`settings editor draft omitted ${leaf.path}`);
-    patch[leaf.path] = clearDisplay && leaf.path.startsWith("display.")
-      ? { clear: true }
-      : value === leaf.defaultValue && leaf.settingsValue !== undefined && !leaf.path.startsWith("display.")
-      ? { clear: true }
-      : { set: value };
+function patchFromDraft(document: EditableSettingsWire, draft: DraftValues): SettingsOverride {
+  const patch: Record<string, Record<string, unknown>> = {};
+  for (const [path, value] of Object.entries(draft)) {
+    const leaf = leafFor(document, path as EditableSettingsPath);
+    if (value === leaf.effectiveValue || !leaf.editable) continue;
+    const [group, key] = path.split(".");
+    if (group === undefined || key === undefined || path.split(".").length !== 2) {
+      throw new Error(`settings editor leaf ${path} cannot form a strict settings patch`);
+    }
+    patch[group] = { ...(patch[group] ?? {}), [key]: value };
   }
-  return SettingsPatchSchema.parse(patch);
+  return SettingsOverrideSchema.parse(patch);
 }
 
 function commandRefusal(result: CommandResult): string | undefined {

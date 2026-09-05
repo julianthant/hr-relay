@@ -25,7 +25,7 @@ const DOCUMENT = EditableSettingsWireSchema.parse({
     { id: "general", label: "General", description: "General settings.", leaves: [{ path: "actor.label", input: "text", label: "Operator label", description: "Label.", effectiveValue: "Local operator", defaultValue: "Local operator", source: "default", editable: true }] },
     { id: "display", label: "Display", description: "Display settings.", leaves: [
       { path: "display.screenWidth", input: "number", label: "Screen width", description: "Width.", effectiveValue: 2560, defaultValue: 2560, source: "default", editable: true, minimum: 1, unit: "px" },
-      { path: "display.screenHeight", input: "number", label: "Screen height", description: "Height.", effectiveValue: 1440, defaultValue: 1440, source: "default", editable: true, minimum: 1, unit: "px" },
+      { path: "display.screenHeight", input: "number", label: "Screen height", description: "Height.", effectiveValue: 1440, defaultValue: 1440, source: "env", environmentVariable: "HRAUTO_SCREEN_HEIGHT", editable: false, minimum: 1, unit: "px" },
     ] },
     { id: "performance", label: "Performance", description: "Performance settings.", leaves: [
       { path: "ocr.pageConcurrency", input: "number", label: "OCR page concurrency", description: "OCR.", effectiveValue: 0, defaultValue: 0, source: "default", editable: true, minimum: 0 },
@@ -102,7 +102,7 @@ describe("editable Settings surface", () => {
     assert.ok(duplicateSectionResult.error.issues.some((issue) => issue.message.includes("repeats section general")));
   });
 
-  it("keeps one keyboard-submittable atomic leaf-operation draft", async () => {
+  it("keeps one keyboard-submittable atomic draft and locks an environment-owned leaf", async () => {
     const applied: unknown[] = [];
     let closeCount = 0;
     const client = {
@@ -143,7 +143,7 @@ describe("editable Settings surface", () => {
     assert.equal(inputs.length, 2);
     const width = inputs[0];
     const height = inputs[1];
-    assert.equal(height.disabled, false);
+    assert.equal(height.disabled, true);
     assert.match(width.className, /pointer-coarse:min-h-11/u);
     width.focus();
     assert.equal(document.activeElement, width, "the editable control accepts keyboard focus");
@@ -177,10 +177,7 @@ describe("editable Settings surface", () => {
     assert.equal(applied.length, 1);
     const command = applied[0] as { target: { expectedRevision: number }; payload: { patch: unknown } };
     assert.equal(command.target.expectedRevision, 1);
-    assert.deepEqual(command.payload.patch, {
-      "display.screenHeight": { set: 1440 },
-      "display.screenWidth": { set: 1980 },
-    });
+    assert.deepEqual(command.payload.patch, { display: { screenWidth: 1980 } });
     assert.equal((applied[0] as { requestedAt: string }).requestedAt, "2026-08-28T18:00:00.000Z");
   });
 

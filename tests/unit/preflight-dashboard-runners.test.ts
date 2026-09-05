@@ -1,4 +1,3 @@
-import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -7,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfig } from "../../src/domain/config/resolve.js";
 import {
   executePreflightRunner,
   requiredPreflightChecks,
@@ -53,7 +52,7 @@ describe("dashboard preflight runners", () => {
     const frontendPort = await occupiedPort(true);
     const composed = createDashboardPreflightRunners({
       repoRoot: root, stateRoot, artifactRoot: join(stateRoot, "artifacts"),
-      processLockRoot: join(stateRoot, "locks"), config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config,
+      processLockRoot: join(stateRoot, "locks"), config: resolveConfig({}, {}, clock),
       backendPort: 0, frontendPort, frontendOwnerNonce: "a".repeat(64), clock,
       authorityHealth: {
         check: PreflightCheckIdSchema.parse("authority.health"), kind: "io",
@@ -97,7 +96,7 @@ describe("dashboard preflight runners", () => {
     };
     const runners = createDashboardPreflightRunners({
       repoRoot: root,
-      config: resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date(NOW))).config,
+      config: resolveConfig({}, {}, manualClock(new Date(NOW))),
       stateRoot,
       artifactRoot,
       backendPort: 0,
@@ -153,7 +152,7 @@ describe("dashboard preflight runners", () => {
     };
     const options = {
       repoRoot: root,
-      config: resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date(NOW))).config,
+      config: resolveConfig({}, {}, manualClock(new Date(NOW))),
       stateRoot,
       artifactRoot,
       backendPort: 0,

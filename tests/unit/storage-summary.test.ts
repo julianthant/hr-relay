@@ -22,7 +22,6 @@ import {
   summarizeBackupHealth,
 } from "../../src/infra/sqlite/index.js";
 import { NOW, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
-import { initializeSyntheticSettingsBackupRoot } from "./helpers/settings-backup-fixture.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {
@@ -41,7 +40,6 @@ function world() {
   );
   disposers.push(() => database.close());
   const directory = join(root, "backups", "authority");
-  initializeSyntheticSettingsBackupRoot(root);
   const service = new AuthorityBackupService(database, { directory }, clock);
   const options = { backupDirectory: directory, maxBackupAgeMs: MAX_AGE_MS };
   return { clock, database, directory, service, options };

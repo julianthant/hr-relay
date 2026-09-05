@@ -82,7 +82,6 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema.parse({
   appVersion: "0.1.0",
   descriptorHash: FIXTURE_FINGERPRINT,
   settingsSchemaHash: FIXTURE_FINGERPRINT,
-  protectedSchemaHash: FIXTURE_FINGERPRINT,
   projectionGeneration: 1,
   actor: { id: "local-operator", label: "Local operator" },
   serverClock: { now: "2026-08-27T18:00:00.000Z", zone: "America/Los_Angeles" },

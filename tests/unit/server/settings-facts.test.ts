@@ -1,4 +1,3 @@
-import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * D274 item 6 (ledger 3 SE40–SE42) — the two READ-ONLY Settings status sections
  * state facts this process already holds, and nothing else.
@@ -16,7 +15,7 @@ import { z } from "zod";
 import { flow } from "../../../src/base/flow.js";
 import { defineWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { listSystemEntryHosts, resolveSystemEntryUrl } from "../../../src/domain/config/instance.js";
 import { SettingsFactsWireSchema } from "../../../src/domain/dashboard/settings.js";
 import { BrowserSystemIdSchema, FingerprintSchema } from "../../../src/domain/ids.js";
@@ -30,9 +29,9 @@ const CLOCK = manualClock(new Date("2026-08-26T00:00:00.000Z"));
 const KUALI_PROD = "https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb";
 const KUALI_TEST = "https://ucsd-sbx.kualibuild.com/build/space/5e47518b90adda9474c14adb";
 
-function facts(settings: unknown = {}) {
+function facts(env: NodeJS.ProcessEnv = {}) {
   return buildSettingsFacts({
-    config: resolveConfigWithProvenance(settings, hostConfigFacts({}), CLOCK).config,
+    config: resolveConfig(env, {}, CLOCK),
     descriptors: [...WORKFLOW_DESCRIPTORS],
   });
 }
@@ -104,7 +103,7 @@ describe("settings facts — system hosts (SE40)", () => {
     for (const host of facts().systemHosts) {
       assert.equal(
         host.production,
-        resolveSystemEntryUrl(resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config, host.system, "prod", "settings-facts.test"),
+        resolveSystemEntryUrl(resolveConfig({}, {}, CLOCK), host.system, "prod", "settings-facts.test"),
         `production host for ${host.system} is not the host a run resolves`,
       );
     }
@@ -118,7 +117,7 @@ describe("settings facts — system hosts (SE40)", () => {
   });
 
   it("serves a DISTINCT configured test host", () => {
-    const kuali = facts({ urls: { kuali: { test: { entry: KUALI_TEST } } } }).systemHosts
+    const kuali = facts({ HRAUTO_KUALI_TEST_URL: KUALI_TEST }).systemHosts
       .find(({ system }) => system === "kuali");
     assert.deepEqual(kuali, {
       system: "kuali",
@@ -140,9 +139,7 @@ describe("settings facts — system hosts (SE40)", () => {
    * ordinary unconfigured system.
    */
   it("reports a test host configured identical to production as `not-distinct`, exactly as a run refuses it", () => {
-    const config = resolveConfigWithProvenance({
-      urls: { kuali: { test: { entry: KUALI_PROD } } },
-    }, hostConfigFacts({}), CLOCK).config;
+    const config = resolveConfig({ HRAUTO_KUALI_TEST_URL: KUALI_PROD }, {}, CLOCK);
     assert.deepEqual(
       listSystemEntryHosts(config).find(({ system }) => system === "kuali")?.test,
       { state: "not-distinct" },
@@ -186,7 +183,7 @@ describe("settings facts — workflow capabilities (SE41)", () => {
 
   it("names the offending node when a transaction declares no preview arm", () => {
     const [row] = buildSettingsFacts({
-      config: resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config,
+      config: resolveConfig({}, {}, CLOCK),
       descriptors: [UNSUPPORTED_DESCRIPTOR],
     }).workflowCapabilities;
     assert.deepEqual(row?.dryRun, {
@@ -205,7 +202,7 @@ describe("settings facts — workflow capabilities (SE41)", () => {
     // `editData: true` is a DECLARATION that keeps the Data section visible with
     // no correctable path — not the same statement as never declaring one.
     const [declared] = buildSettingsFacts({
-      config: resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config,
+      config: resolveConfig({}, {}, CLOCK),
       descriptors: [UNSUPPORTED_DESCRIPTOR],
     }).workflowCapabilities;
     assert.deepEqual(declared?.editData, { state: "declared", editableFields: 0 });
@@ -237,7 +234,7 @@ describe("settings facts — workflow capabilities (SE41)", () => {
     // clock, not operator work, so it is absent rather than listed as something
     // to go and press.
     const [external] = buildSettingsFacts({
-      config: resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config,
+      config: resolveConfig({}, {}, CLOCK),
       descriptors: [UNSUPPORTED_DESCRIPTOR],
     }).workflowCapabilities;
     assert.deepEqual(external?.operatorGates, []);
@@ -273,7 +270,7 @@ describe("settings facts — workflow capabilities (SE41)", () => {
 
 describe("settings facts — the wire itself", () => {
   it("round-trips through JSON under its own strict schema", () => {
-    const served = facts({ urls: { kuali: { test: { entry: KUALI_TEST } } } });
+    const served = facts({ HRAUTO_KUALI_TEST_URL: KUALI_TEST });
     const parsed = SettingsFactsWireSchema.parse(JSON.parse(JSON.stringify(served)));
     assert.deepEqual(parsed, served);
   });

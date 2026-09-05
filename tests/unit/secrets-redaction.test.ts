@@ -1,4 +1,3 @@
-import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 import assert from "node:assert/strict";
 import {
   closeSync,
@@ -15,12 +14,9 @@ import { join } from "node:path";
 import { describe, it } from "vitest";
 import {
   admitLocalEnvironmentFile,
-  assertNoMigratedEnvironmentKeys,
-  inspectSecret,
   optionalSecret,
   optionalSecretFamily,
   optionalTestTargetSecret,
-  providerModelChain,
   requireSecret,
   requireSecretFamily,
   requireSecretFile,
@@ -41,14 +37,13 @@ import {
   RedactionResultSchema,
 } from "../../src/domain/redaction.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfig } from "../../src/domain/config/resolve.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { runTestTargetDocumentNumberSmoke } from "../../scripts/smoke-test-target-document-number.js";
-import { protectedSecretSource } from "./helpers/protected-secret-source.js";
 
 describe("closed secret access", () => {
   it("admits parsed local environment bytes without overriding an explicit parent value", () => {
-    const env: NodeJS.ProcessEnv = { GEMINI_API_KEY: "parent" };
+    const env: NodeJS.ProcessEnv = { HRAUTO_PARENT_SETTING: "parent" };
     const descriptor = 17;
 
     admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", env, {
@@ -60,16 +55,16 @@ describe("closed secret access", () => {
       readBytes: (candidate) => {
         assert.equal(candidate, descriptor);
         return Buffer.from([
-          "GROQ_API_KEY=from-file",
-          "GEMINI_API_KEY=from-file",
+          "HRAUTO_BOOTSTRAP_SETTING=from-file",
+          "HRAUTO_PARENT_SETTING=from-file",
           "",
         ].join("\n"));
       },
       close: (candidate) => assert.equal(candidate, descriptor),
     });
 
-    assert.equal(env.GROQ_API_KEY, "from-file");
-    assert.equal(env.GEMINI_API_KEY, "parent");
+    assert.equal(env.HRAUTO_BOOTSTRAP_SETTING, "from-file");
+    assert.equal(env.HRAUTO_PARENT_SETTING, "parent");
   });
 
   it("rejects every malformed local environment line before applying any binding", () => {
@@ -108,11 +103,11 @@ describe("closed secret access", () => {
     const content = [
       "# leading comment\r",
       "\r",
-      "GEMINI_API_KEY=plain value\r",
-      "GROQ_API_KEY='single # value = retained'\r",
-      "MISTRAL_API_KEY=\"double # value = retained\" # trailing comment\r",
-      "OPEN_ROUTER_API_KEY=`backtick # value = retained`\r",
-      "SAMBANOVA_API_KEY=\"first line\r",
+      "HRAUTO_PLAIN=plain value\r",
+      "HRAUTO_SINGLE='single # value = retained'\r",
+      "HRAUTO_DOUBLE=\"double # value = retained\" # trailing comment\r",
+      "HRAUTO_BACKTICK=`backtick # value = retained`\r",
+      "HRAUTO_MULTILINE=\"first line\r",
       "second # line = retained\"\r",
       "  # indented comment\r",
       "",
@@ -126,66 +121,12 @@ describe("closed secret access", () => {
     });
 
     assert.deepEqual(env, {
-      GEMINI_API_KEY: "plain value",
-      GROQ_API_KEY: "single # value = retained",
-      MISTRAL_API_KEY: "double # value = retained",
-      OPEN_ROUTER_API_KEY: "backtick # value = retained",
-      SAMBANOVA_API_KEY: "first line\nsecond # line = retained",
+      HRAUTO_PLAIN: "plain value",
+      HRAUTO_SINGLE: "single # value = retained",
+      HRAUTO_DOUBLE: "double # value = retained",
+      HRAUTO_BACKTICK: "backtick # value = retained",
+      HRAUTO_MULTILINE: "first line\nsecond # line = retained",
     });
-  });
-
-  it("admits only complete provider pool families and refuses migrated names without reading parent values", () => {
-    const familyCells = SECRET_FAMILY_SPECS.flatMap(({ envPrefix, maximum }) =>
-      Array.from({ length: maximum }, (_, offset) =>
-        offset === 0 ? envPrefix : `${envPrefix}${String(offset + 1)}`));
-    const env: NodeJS.ProcessEnv = {};
-    const content = `${familyCells.map((key) => `${key}=fixture`).join("\n")}\n`;
-    admitLocalEnvironmentFile("/repo/.env", env, {
-      open: () => 22,
-      inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: content.length }),
-      readBytes: () => Buffer.from(content),
-      close: () => undefined,
-    });
-    assert.deepEqual(Object.keys(env), familyCells);
-
-    for (const key of ["GEMINI_API_KEY1", "GEMINI_API_KEY9", "UNREGISTERED_API_KEY"]) {
-      assert.throws(
-        () => admitLocalEnvironmentFile("/repo/.env", {}, {
-          open: () => 23,
-          inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: key.length + 9 }),
-          readBytes: () => Buffer.from(`${key}=fixture\n`),
-          close: () => undefined,
-        }),
-        new RegExp(`unsupported key ${key}`),
-      );
-    }
-
-    let parentValueRead = false;
-    const migrated = {} as NodeJS.ProcessEnv;
-    Object.defineProperty(migrated, "UCPATH_PASSWORD", {
-      enumerable: true,
-      get: () => {
-        parentValueRead = true;
-        return "CANARY_MUST_NOT_BE_READ";
-      },
-    });
-    assert.throws(
-      () => assertNoMigratedEnvironmentKeys(migrated),
-      /migrated environment key UCPATH_PASSWORD is refused; set it in Settings, then remove it/u,
-    );
-    assert.equal(parentValueRead, false);
-
-    const privateValue = "CANARY_MIGRATED_VALUE_MUST_NOT_ESCAPE";
-    assert.throws(
-      () => admitLocalEnvironmentFile("/repo/.env", {}, {
-        open: () => 24,
-        inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: privateValue.length + 20 }),
-        readBytes: () => Buffer.from(`TIMEKEEPER_NAME=${privateValue}\n`),
-        close: () => undefined,
-      }),
-      (error: unknown) => String(error).includes("TIMEKEEPER_NAME")
-        && !String(error).includes(privateValue),
-    );
   });
 
   it("validates admission metadata on the opened descriptor before reading bytes", () => {
@@ -327,50 +268,28 @@ describe("closed secret access", () => {
   });
 
   it("resolves only registered names and fails loud at the requested scope", () => {
-    const source = protectedSecretSource({ ucpathUserId: "operator" });
-    const env = { GEMINI_API_KEY: "key-one", GEMINI_API_KEY2: "key-two" };
-    assert.equal(optionalSecret("ucpathUserId", source), "operator");
-    assert.equal(requireSecret("ucpathUserId", source), "operator");
+    const env = { UCPATH_USER_ID: " operator ", GEMINI_API_KEY: "key-one", GEMINI_API_KEY2: "key-two" };
+    assert.equal(optionalSecret("ucpathUserId", env), "operator");
+    assert.equal(requireSecret("ucpathUserId", env), "operator");
     assert.deepEqual(optionalSecretFamily("geminiApiKeys", env), ["key-one", "key-two"]);
     assert.deepEqual(requireSecretFamily("geminiApiKeys", env), ["key-one", "key-two"]);
-    assert.throws(() => requireSecret("ucpathPassword", source), /ucpathPassword/);
-    assert.throws(() => validateDescriptorSecrets(["ucpathUserId", "ucpathPassword"], [], source, env), /ucpathPassword/);
+    assert.throws(() => requireSecret("ucpathPassword", env), /UCPATH_PASSWORD/);
+    assert.throws(() => validateDescriptorSecrets(["ucpathUserId", "ucpathPassword"], [], env), /ucpathPassword/);
     assert.throws(() => requireSecretFamily("groqApiKeys", env), /GROQ_API_KEY/);
   });
 
-  it("reads protected Settings on every use and distinguishes present, missing, and unknown without values", () => {
-    let delegate = protectedSecretSource({ ucpathUserId: "first-private-value" });
-    let reads = 0;
-    const source = { read: () => {
-      reads += 1;
-      return delegate.read();
-    } };
-    assert.equal(optionalSecret("ucpathUserId", source), "first-private-value");
-    delegate = protectedSecretSource({ ucpathUserId: "second-private-value" });
-    assert.equal(optionalSecret("ucpathUserId", source), "second-private-value");
-    assert.equal(reads, 2);
-
-    assert.deepEqual(inspectSecret("ucpathPassword", source), {
-      name: "ucpathPassword",
-      source: "protected-store",
-      state: "missing",
-      diagnostic: "ucpathPassword is missing from protected-store",
-    });
-    const privateCorruption = "CANARY_PROTECTED_CORRUPTION";
-    delegate = { read: () => ({ privateCorruption }) };
-    const unknown = inspectSecret("ucpathPassword", source);
-    assert.equal(unknown.state, "unknown");
-    assert.equal(JSON.stringify(unknown).includes(privateCorruption), false);
-    assert.match(unknown.state === "unknown" ? unknown.diagnostic : "", /could not be resolved from protected-store/u);
-  });
-
-  it("keeps protected registry names and provider environment families one-to-one", () => {
+  it("keeps registry names and environment sources one-to-one", () => {
     assert.equal(new Set(SECRET_SPECS.map(({ name }) => name)).size, SECRET_SPECS.length);
-    assert.equal(SECRET_SPECS.every(({ source }) => source === "protected-store"), true);
+    const environmentSpecs = SECRET_SPECS.filter((spec) => spec.source === "environment");
+    assert.equal(new Set(environmentSpecs.map(({ env }) => env)).size, environmentSpecs.length);
     assert.equal(new Set(SECRET_FAMILY_SPECS.map(({ name }) => name)).size, SECRET_FAMILY_SPECS.length);
     assert.equal(new Set(SECRET_FAMILY_SPECS.map(({ envPrefix }) => envPrefix)).size, SECRET_FAMILY_SPECS.length);
     assert.equal(
       new Set(TEST_TARGET_SECRET_SPECS.map(({ name }) => name)).size,
+      TEST_TARGET_SECRET_SPECS.length,
+    );
+    assert.equal(
+      new Set(TEST_TARGET_SECRET_SPECS.map(({ env }) => env)).size,
       TEST_TARGET_SECRET_SPECS.length,
     );
     // D300: the canary's Kuali document number crosses the closed boundary; the
@@ -382,26 +301,19 @@ describe("closed secret access", () => {
     ]);
   });
 
-  it("reads provider model chains only from ordinary Config", () => {
-    const config = resolveConfigWithProvenance({
-      providers: { gemini: { models: ["model-a", "model-b"] } },
-    }, hostConfigFacts({}), manualClock(new Date("2026-09-04T12:00:00-07:00"))).config;
-    assert.deepEqual(providerModelChain("geminiApiKeys", config), ["model-a", "model-b"]);
-    assert.deepEqual(providerModelChain("groqApiKeys", config), []);
-  });
-
   it("reads the ONE registered test-target document number through its closed name", () => {
+    const documentNumberEnv = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER";
     assert.equal(optionalTestTargetSecret(
       "separationsKualiFinalizationCanaryDocumentNumber",
-      protectedSecretSource({ separationsKualiFinalizationCanaryDocumentNumber: "4537" }),
+      { [documentNumberEnv]: " 4537 " },
     ), "4537");
-    // Unset is the operator's truthful "not configured", never a substitute.
-    assert.equal(optionalTestTargetSecret(
-      "separationsKualiFinalizationCanaryDocumentNumber",
-      protectedSecretSource(),
-    ), undefined);
+    // Unset and blank are the operator's truthful "not configured", never a
+    // substituted default: the caller receives `undefined` and blocks by key.
+    for (const env of [{}, { [documentNumberEnv]: "" }, { [documentNumberEnv]: "   " }]) {
+      assert.equal(optionalTestTargetSecret("separationsKualiFinalizationCanaryDocumentNumber", env), undefined);
+    }
     for (const { name } of TEST_TARGET_SECRET_SPECS) {
-      assert.equal(optionalTestTargetSecret(name, protectedSecretSource()), undefined);
+      assert.equal(optionalTestTargetSecret(name, {}), undefined);
     }
   });
 
@@ -410,6 +322,7 @@ describe("closed secret access", () => {
     if (spec === undefined) throw new Error("the test-target secret registry has no spec");
     assert.deepEqual({ ...spec }, {
       name: "separationsKualiFinalizationCanaryDocumentNumber",
+      env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
       valueKind: "kuali-document-number",
       classification: "direct-identifier",
     });
@@ -426,15 +339,12 @@ describe("closed secret access", () => {
     const privateValue = "8675309";
     const output: string[] = [];
     let reads = 0;
-    const source = protectedSecretSource({
-      separationsKualiFinalizationCanaryDocumentNumber: privateValue,
-    });
     const exitCode = await runTestTargetDocumentNumberSmoke({
-      protectedSecrets: source,
-      readDocumentNumber: (reference, candidateSource) => {
+      env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: privateValue },
+      readDocumentNumber: (reference, env) => {
         reads += 1;
         assert.equal(reference.name, "separationsKualiFinalizationCanaryDocumentNumber");
-        assert.equal(candidateSource, source);
+        assert.equal(env?.HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER, privateValue);
         return privateValue;
       },
       writeLine: (line) => output.push(line),
@@ -444,7 +354,7 @@ describe("closed secret access", () => {
     assert.equal(reads, 1);
     assert.deepEqual(output, [
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "source=protected-store state=present",
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=present",
       "workflow=separations label=finalization-canary resolution=ready",
     ]);
     assert.equal(output.some((line) => line.includes(privateValue)), false);
@@ -457,9 +367,7 @@ describe("closed secret access", () => {
 
     await assert.rejects(
       runTestTargetDocumentNumberSmoke({
-        protectedSecrets: protectedSecretSource({
-          separationsKualiFinalizationCanaryDocumentNumber: privateValueCanary,
-        }),
+        env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: privateValueCanary },
         loadCommittedReference: () => {
           throw new Error(privateCauseCanary);
         },
@@ -479,7 +387,7 @@ describe("closed secret access", () => {
   it("refuses an unconfigured synthetic document number and never attempts the subject", async () => {
     const output: string[] = [];
     const exitCode = await runTestTargetDocumentNumberSmoke({
-      protectedSecrets: protectedSecretSource(),
+      env: {},
       resolveSubject: () => Promise.resolve("ready"),
       writeLine: (line) => output.push(line),
     });
@@ -487,7 +395,7 @@ describe("closed secret access", () => {
     assert.equal(exitCode, 1);
     assert.deepEqual(output, [
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "source=protected-store state=refused",
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=refused",
       "workflow=separations label=finalization-canary resolution=not-attempted",
     ]);
   });
@@ -496,7 +404,7 @@ describe("closed secret access", () => {
     const malformed = "CANARY_PRIVATE_DOCUMENT_NUMBER";
     const output: string[] = [];
     const exitCode = await runTestTargetDocumentNumberSmoke({
-      protectedSecrets: { read: () => ({ malformed }) },
+      env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: malformed },
       resolveSubject: () => Promise.resolve("ready"),
       writeLine: (line) => output.push(line),
     });
@@ -505,7 +413,7 @@ describe("closed secret access", () => {
     assert.equal(output.some((line) => line.includes(malformed)), false);
     assert.deepEqual(output, [
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "source=protected-store state=invalid",
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=invalid",
       "workflow=separations label=finalization-canary resolution=not-attempted",
     ]);
   });
@@ -516,7 +424,6 @@ describe("closed secret access", () => {
 
     await assert.rejects(
       runTestTargetDocumentNumberSmoke({
-        protectedSecrets: protectedSecretSource(),
         resolveSubject: () => Promise.resolve("ready"),
         readDocumentNumber: () => {
           throw cause;
@@ -531,7 +438,6 @@ describe("closed secret access", () => {
   it("records a known malformed document-number source as invalid", async () => {
     const output: string[] = [];
     const exitCode = await runTestTargetDocumentNumberSmoke({
-      protectedSecrets: protectedSecretSource(),
       resolveSubject: () => Promise.resolve("ready"),
       readDocumentNumber: () => {
         throw new SecretSourceError("registered document number is malformed");
@@ -542,7 +448,7 @@ describe("closed secret access", () => {
     assert.equal(exitCode, 1);
     assert.deepEqual(output, [
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "source=protected-store state=invalid",
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=invalid",
       "workflow=separations label=finalization-canary resolution=not-attempted",
     ]);
   });
@@ -553,7 +459,6 @@ describe("closed secret access", () => {
 
     await assert.rejects(
       runTestTargetDocumentNumberSmoke({
-        protectedSecrets: protectedSecretSource(),
         resolveSubject: () => Promise.reject(cause),
         writeLine: (line) => output.push(line),
       }),
@@ -565,7 +470,6 @@ describe("closed secret access", () => {
   it("records a known registry defect as defect", async () => {
     const output: string[] = [];
     const exitCode = await runTestTargetDocumentNumberSmoke({
-      protectedSecrets: protectedSecretSource(),
       resolveSubject: () => Promise.reject(new TestTargetRegistryDefectError("known registry defect")),
       writeLine: (line) => output.push(line),
     });
@@ -573,7 +477,7 @@ describe("closed secret access", () => {
     assert.equal(exitCode, 1);
     assert.deepEqual(output, [
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "source=protected-store state=not-attempted",
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=not-attempted",
       "workflow=separations label=finalization-canary resolution=defect",
     ]);
   });
@@ -585,29 +489,28 @@ describe("closed secret access", () => {
     for (const resolution of ["blocked", "defect"] as const) {
       const output: string[] = [];
       const exitCode = await runTestTargetDocumentNumberSmoke({
-        protectedSecrets: protectedSecretSource({
-          separationsKualiFinalizationCanaryDocumentNumber: "4537",
-        }),
+        env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: "4537" },
         resolveSubject: () => Promise.resolve(resolution),
         writeLine: (line) => output.push(line),
       });
       assert.equal(exitCode, 1, resolution);
       assert.deepEqual(output[0], "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "source=protected-store state=not-attempted");
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=not-attempted");
       assert.deepEqual(output[1], `workflow=separations label=finalization-canary resolution=${resolution}`);
     }
   });
 
   it("keeps every invalid test-target document number out of its refusal", () => {
     const name = "separationsKualiFinalizationCanaryDocumentNumber";
+    const env = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER";
     // The judge is `KualiDocumentNumberSchema` — the same 3-8 digit rule the
     // separations start box applies — so what survives is exactly what an
     // operator could have typed, and a person value never can be.
     for (const value of ["abc", "1", "123456789", "CANARY_DIRECT_IDENTIFIER", "Person, Private"]) {
       assert.throws(
-        () => optionalTestTargetSecret(name, { read: () => ({ [name]: value }) }),
+        () => optionalTestTargetSecret(name, { [env]: value }),
         (error: unknown) => {
-          assert.match(String(error), new RegExp(`${name}.*protected-store`));
+          assert.match(String(error), new RegExp(`${name}.*registered environment source ${env}`));
           assert.equal(String(error).includes(value), false);
           return true;
         },
@@ -616,7 +519,7 @@ describe("closed secret access", () => {
     }
   });
 
-  it("rejects arbitrary and legacy environment-bearing test-target references", () => {
+  it("rejects arbitrary and mismatched test-target environment references", () => {
     assert.equal(TestTargetSecretReferenceSchema.safeParse({
       name: "separationsKualiFinalizationCanaryDocumentNumber",
       env: "HRAUTO_ARBITRARY_DOCUMENT_NUMBER",
@@ -642,11 +545,11 @@ describe("closed secret access", () => {
     // machine that had actually enrolled Duo it started finding the real
     // credential and stopped asserting anything. A guard whose outcome depends
     // on the developer's filesystem is not a guard.
-    const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date("2026-08-10T12:00:00-07:00"))).config;
-    const config = {
-      ...resolved,
-      paths: { ...resolved.paths, duoCredential: "/nonexistent-rebuild-secret-root/duo-webauthn.json" },
-    };
+    const config = resolveConfig(
+      {},
+      { paths: { duoCredential: "/nonexistent-rebuild-secret-root/duo-webauthn.json" } },
+      manualClock(new Date("2026-08-10T12:00:00-07:00")),
+    );
     assert.equal(requireSecretFile.length, 2);
     assert.throws(() => requireSecretFile("duoWebauthnCredential", config), /registered rebuild credential path/);
   });

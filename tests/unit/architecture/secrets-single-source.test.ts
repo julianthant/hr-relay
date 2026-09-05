@@ -3,8 +3,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 import { CONFIG_ENV_BINDINGS } from "../../../src/domain/config/resolve.js";
-import { SETTINGS_CATALOG } from "../../../src/domain/config/catalog.js";
-import { SECRET_FAMILY_SPECS } from "../../../src/domain/secrets.js";
+import {
+  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
+  SECRET_FAMILY_SPECS,
+  SECRET_SPECS,
+  TEST_TARGET_SECRET_SPECS,
+} from "../../../src/domain/secrets.js";
 import {
   ENVIRONMENT_SOURCE_EXTENSIONS,
   inventoryEnvironmentAccesses,
@@ -60,11 +64,11 @@ const CONFIG_OWNER_PREFIX = "src/domain/config/";
 const ALLOWLIST: CountAllowlist = {};
 
 const CREDENTIAL_KEYS: ReadonlySet<string> = new Set(
-  SETTINGS_CATALOG
-    .filter(({ sourceClass }) => sourceClass === "protected-store")
-    .flatMap(({ currentSource }) => currentSource
-      .filter(({ kind }) => kind === "env")
-      .map(({ name }) => name)),
+  [
+    ...SECRET_SPECS.filter((spec) => spec.source === "environment").map((spec) => spec.env),
+    ...TEST_TARGET_SECRET_SPECS.map((spec) => spec.env),
+    ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.key.env,
+  ],
 );
 const CREDENTIAL_FAMILIES: readonly { readonly prefix: string; readonly maximum: number }[] =
   SECRET_FAMILY_SPECS.map(({ envPrefix, maximum }) => ({ prefix: envPrefix, maximum }));
@@ -534,7 +538,7 @@ describe("secrets single source", () => {
     assert.equal(violations.some((violation) => violation.includes("environment delete")), true);
   });
 
-  it("rejects credential and migrated setting keys read from the config owner", () => {
+  it("rejects a credential key read from the config owner but accepts its own bound keys", () => {
     const credential = auditSecretsSingleSource(
       inventoryEnvironmentAccesses(
         "src/domain/config/resolve.ts",
@@ -544,12 +548,12 @@ describe("secrets single source", () => {
     assert.equal(credential.length, 2, credential.join("\n"));
     assert.equal(credential.every((violation) => violation.includes("belongs to src/domain/secrets.ts")), true);
 
-    assert.equal(
+    assert.deepEqual(
       auditSecretsSingleSource(inventoryEnvironmentAccesses(
         "src/domain/config/resolve.ts",
         "export const retries = process.env.HRAUTO_NAVIGATION_RETRIES;\n",
-      )).some((violation) => violation.includes("no CONFIG_ENV_BINDINGS entry")),
-      true,
+      )),
+      [],
     );
     assert.equal(
       auditSecretsSingleSource(inventoryEnvironmentAccesses(

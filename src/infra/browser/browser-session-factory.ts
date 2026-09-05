@@ -52,11 +52,7 @@ import {
   WorkflowIdSchema,
 } from "../../domain/ids.js";
 import type { BrowserSystemId, Fingerprint, WorkerId, WorkflowId } from "../../domain/ids.js";
-import {
-  requireSecret,
-  requireSecretFile,
-  type ProtectedSecretSource,
-} from "../../domain/secrets.js";
+import { requireSecret, requireSecretFile } from "../../domain/secrets.js";
 import { assertAuthenticatedApplication } from "./authenticated-application.js";
 import type { AuthenticatedApplicationEvidence } from "./login-contract.js";
 import type { SystemLoginContext } from "./login-contract.js";
@@ -86,7 +82,6 @@ export interface PersistentContextLauncher {
 
 export interface BrowserSessionFactoryOptions {
   readonly config: Config;
-  readonly protectedSecrets: ProtectedSecretSource;
   readonly isolation: RuntimeIsolation;
   readonly clock: Clock;
   readonly scheduler: BrowserDeadlineScheduler;
@@ -317,7 +312,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
               instance,
               label,
               signal: options.signal ?? input.signal,
-              credentials: readSsoCredentials(this.#options.protectedSecrets),
+              credentials: readSsoCredentials(),
               recordEvidence: this.#recordEvidence,
               duoCeremony: input.duoCeremony,
             };
@@ -499,9 +494,9 @@ function observeContextLifecycle(context: BrowserContext): ContextLifecycle {
  * ServiceNow), so one registered secret pair serves them all. Missing values
  * throw `SecretMissingError` naming the KEY, never a value.
  */
-function readSsoCredentials(source: ProtectedSecretSource): SsoCredentials {
+function readSsoCredentials(): SsoCredentials {
   return {
-    userId: requireSecret("ucpathUserId", source),
-    password: requireSecret("ucpathPassword", source),
+    userId: requireSecret("ucpathUserId"),
+    password: requireSecret("ucpathPassword"),
   };
 }

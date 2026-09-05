@@ -10,7 +10,6 @@ import {
   StoredConfigSchema,
   auditConfigSnapshotGenerations,
   configLeafDigest,
-  configSnapshotGeneration,
 } from "../../../src/domain/config/snapshot-generations.js";
 
 function currentLeafPaths(): readonly string[] {
@@ -18,19 +17,6 @@ function currentLeafPaths(): readonly string[] {
 }
 
 describe("durable config-leaf generations", () => {
-  it("P38/M14 retains the retired timekeeper leaf only in immutable pre-floor snapshots", () => {
-    const current = ConfigSchema.parse({ paths: defaultRuntimePaths() });
-    const historical = { ...current, operator: { timekeeperName: "synthetic historical timekeeper" } };
-    assert.equal(ConfigSchema.safeParse(historical).success, false);
-    const stored = StoredConfigSchema.parse(historical);
-    assert.deepEqual(stored, historical);
-    assert.equal(configSnapshotGeneration(stored), 4);
-    assert.equal(configSnapshotGeneration(StoredConfigSchema.parse(current)), 5);
-    assert.deepEqual(CONFIG_SNAPSHOT_GENERATIONS[4]?.retired, ["operator.timekeeperName"]);
-    assert.deepEqual(auditConfigSnapshotGenerations(currentLeafPaths()), []);
-    const unretired = auditConfigSnapshotGenerations(currentLeafPaths().filter((leaf) => leaf !== "timeouts.sessionAcquireMs"));
-    assert.match(unretired.join("\n"), /registered config leaf timeouts\.sessionAcquireMs is absent/u);
-  });
   it("pins the current config leaf set and every older generation's reconstruction", () => {
     assert.deepEqual(auditConfigSnapshotGenerations(currentLeafPaths()), []);
     assert.equal(CURRENT_CONFIG_SNAPSHOT_GENERATION, CONFIG_SNAPSHOT_GENERATIONS.at(-1)?.generation);

@@ -18,7 +18,6 @@ import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { manualClock } from "../../../src/domain/clock.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/domain/config/protected-settings.js";
 import { PreflightReportSchema } from "../../../src/domain/preflight.js";
 import {
   FrontendBootstrapWireSchema,
@@ -86,22 +85,6 @@ function depsOf(
 }
 
 describe("bootstrap storage summary", () => {
-  it("P14 serves both ordinary and protected command schema identities", () => {
-    const world = makeWorld();
-    try {
-      const deps = depsOf(world, { authorityReachable: true, backup: "current" });
-      const wire = buildBootstrap(deps);
-      assert.equal(wire.settingsSchemaHash, deps.settingsSchemaHash);
-      assert.equal(wire.protectedSchemaHash, PROTECTED_SETTINGS_SCHEMA_HASH);
-      assert.equal(FrontendBootstrapWireSchema.safeParse({
-        ...wire,
-        protectedSchemaHash: undefined,
-      }).success, false);
-    } finally {
-      world.dispose();
-    }
-  });
-
   it("projects the retained strict preflight report in registry order", () => {
     const world = makeWorld();
     try {

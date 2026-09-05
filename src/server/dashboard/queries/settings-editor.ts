@@ -1,9 +1,9 @@
-import { settingsCatalogRow } from "../../../domain/config/catalog.js";
-import { hostConfigFacts } from "../../../domain/config/host-display.js";
 /** The server-owned, bounded Settings editor inventory and its current values. */
 import {
+  CONFIG_ENV_BINDINGS,
   resolveConfigWithProvenance,
 } from "../../../domain/config/resolve.js";
+import { hostPrimaryDisplayEnvironment } from "../../../domain/config/host-display.js";
 import { SettingsRuntimeStatusSchema, type SettingsFileRecord } from "../../../domain/config/settings.js";
 import type { Config, SettingsOverride } from "../../../domain/config/schema.js";
 import {
@@ -103,12 +103,20 @@ function activeConfigFingerprint(status: unknown): string {
   return parsed.state === "current" ? parsed.identity.configFingerprint : parsed.active.configFingerprint;
 }
 
+function environmentVariable(path: EditableSettingsPath): string | undefined {
+  return CONFIG_ENV_BINDINGS.find((binding) => binding.path === path)?.env;
+}
+
 function buildLeaf(spec: LeafSpec, record: SettingsFileRecord, deps: SettingsEditorQueryDeps) {
-  const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts(deps.environment), deps.clock);
+  const resolved = resolveConfigWithProvenance(deps.environment, record.settings, deps.clock);
   // D324: the "default" column shows the host display default, never the headless fallback.
-  const defaults = resolveConfigWithProvenance({}, hostConfigFacts(deps.environment), deps.clock);
+  const defaults = resolveConfigWithProvenance(hostPrimaryDisplayEnvironment(deps.environment), {}, deps.clock);
   const source = resolved.provenance[spec.path];
   if (source === undefined) throw new Error(`settings editor leaf ${spec.path} has no resolver provenance`);
+  const environment = source === "env" ? environmentVariable(spec.path) : undefined;
+  if (source === "env" && environment === undefined) {
+    throw new Error(`settings editor leaf ${spec.path} is environment-owned but has no environment binding`);
+  }
   const common = {
     path: spec.path,
     label: spec.label,
@@ -117,7 +125,8 @@ function buildLeaf(spec: LeafSpec, record: SettingsFileRecord, deps: SettingsEdi
     defaultValue: spec.configValue(defaults.config),
     ...(spec.settingsValue(record.settings) === undefined ? {} : { settingsValue: spec.settingsValue(record.settings) }),
     source,
-    editable: settingsCatalogRow(spec.path).editability === "operator",
+    ...(environment === undefined ? {} : { environmentVariable: environment }),
+    editable: source !== "env",
     ...(spec.hazard === undefined ? {} : { hazard: spec.hazard }),
   };
   return spec.input === "text"

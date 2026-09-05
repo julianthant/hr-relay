@@ -186,10 +186,7 @@ describe("runtime environment inventory coverage", () => {
     assert.deepEqual(actual.violations, []);
     assert.deepEqual(
       [...actual.keys].sort(),
-      RUNTIME_ENVIRONMENT_FAMILIES
-        .filter(({ disposition }) => disposition === "active")
-        .map(({ prefix }) => prefix)
-        .sort(),
+      RUNTIME_ENVIRONMENT_EXACT.filter(({ documented }) => documented).map(({ key }) => key).sort(),
     );
     assert.deepEqual(parseExampleEnvironment([
       "export ALPHA = value # explanation",
@@ -307,7 +304,7 @@ describe("runtime environment inventory coverage", () => {
     };
     assert.match(
       auditRuntimeEnvironmentInventory(wrongProcessOwnership).join("\n"),
-      /HRAUTO_DASHBOARD_LAUNCH_NONCE (?:is owned by .*; expected src\/domain\/dashboard-frontend-owner\.ts|retains forbidden active secret environment ownership)/,
+      /HRAUTO_DASHBOARD_LAUNCH_NONCE is owned by .*; expected src\/domain\/(?:dashboard-frontend-owner|secrets)\.ts/,
     );
   });
 });

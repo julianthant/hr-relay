@@ -2609,7 +2609,7 @@ append-only per-node `log:` blocks, so history never competes with the plan on t
 The operator opens planning and supervisor sessions for an exact roadmap task. Codex uses GPT-5.6
 Sol (high) to plan and GPT-6 Astra (high) to supervise; Claude uses Opus 5 (high) and Fable 5.1 (high).
 The supervisor dispatches one fresh read-only reviewer subagent at the end of implementation:
-Codex `sup_analyst` (Sol, high) or Claude `sup-analyst` (Opus, high). Review, fixes and finalization
+Codex `sup_review` (Sol, high) or Claude `sup-review` (Opus, high). Review, fixes and finalization
 continue in the same supervisor session. Skills do not switch the current session model or start
 the next task. A separately opened review session is an explicit operator option.
 Explicit operator overrides take precedence. This rule governs future task execution, not a
@@ -2645,7 +2645,7 @@ not a remote branch-protection setting or push authorization.
    leave task completion open. Preserve other sessions' edits and keep the candidate stable during
    review. Do not start another task or create an agent coordinator.
 3. **Review — fresh subagent using `/review`.** After committing the candidate and evidence, pause
-   owned writers and dispatch the native read-only analyst with no inherited implementation history.
+   owned writers and dispatch the dedicated read-only reviewer with no inherited implementation history.
    Give exact task, approved phase/plan commit, checkout, candidate base/head, authority paths and
    gate evidence. The reviewer must not have implemented this candidate, edit files or delegate.
    Inspect the pinned candidate against contracts, surrounding code and tests. Report PASS, CHANGES

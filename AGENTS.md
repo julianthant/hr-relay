@@ -107,7 +107,7 @@ when their full explanation is not repeated in this entry point.
 
 The operator opens `/phase-plan` → `/supervise`: Sol 5.6 → Astra on Codex; Opus 5 → Fable 5.1 on
 Claude, all at high effort. `/supervise` dispatches a fresh read-only `/review` subagent (Codex
-`sup_analyst`, Sol; Claude `sup-analyst`, Opus, both high), then fixes and finalizes in the same
+`sup_review`, Sol; Claude `sup-review`, Opus, both high), then fixes and finalizes in the same
 session. Separate review sessions remain an explicit operator option. Read roadmap §Governance's
 **Plan, implement, review** amendment for stage boundaries, plan approval, commit-bound review and
 finalization. The supervisor records the candidate as awaiting independent review and marks the

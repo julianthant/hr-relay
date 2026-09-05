@@ -56,24 +56,6 @@ import { QUEUED_RUN, sequentialIdFactory } from "../fixtures/phase1f-run-fixture
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 
-const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
-  ...COMMAND_FIXTURES,
-  {
-    commandId: UUID_2,
-    requestedAt: NOW,
-    requestedBy: "local-operator",
-    source: "dashboard",
-    family: "settings",
-    type: "apply-protected-settings",
-    target: { expectedRevision: 1 },
-    payload: {
-      protectedSchemaHash: HASH_B,
-      writeId: UUID_4,
-      entries: { ucpathPassword: { clear: true } },
-    },
-  },
-]);
-
 /* ── the ratified Phase-1f partition (ref dashboard-surfaces §Phase-1f authority) ────────── */
 
 const EXPECTED_ACTIVE = {
@@ -103,7 +85,7 @@ const EXPECTED_ACTIVE = {
     "inspect-intake", "confirm-intake-mapping", "correct-intake-row",
     "exclude-intake-row", "validate-intake", "enqueue-intake-manifest",
   ],
-  settings: ["apply-settings", "apply-protected-settings"],
+  settings: ["apply-settings"],
   // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
   // D308: the Archive's delete door.
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run", "delete-archived-run"],
@@ -181,7 +163,6 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
       reopenBrowser: seamFailure("reopen-browser"),
     },
     settings: {
-      reconcilePending: () => undefined,
       reconcileReplay: () => {
         throw new Error("guard fixture has no persisted settings replay target");
       },
@@ -270,10 +251,7 @@ describe("control-command-single-path", () => {
       "src/infra/sqlite/authority-database.ts",
     ]);
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
-    const settingsAuditReaders = new Map([
-      ["src/server/settings-runtime.ts", 2],
-      ["src/infra/sqlite/backup-service.ts", 3],
-    ]);
+    const settingsVerifier = "src/server/settings-runtime.ts";
     const violations: string[] = [];
     let kernelDefinitions = 0;
     for (const file of walkFiles(join(REPO_ROOT, "src"), { extensions: [".ts", ".tsx"] })) {
@@ -282,14 +260,11 @@ describe("control-command-single-path", () => {
       if (content.includes("export function createCommandKernel")) kernelDefinitions += 1;
       if (allowed.has(path)) continue;
       for (const token of tokens) {
-        const expectedSettingsAuditReads = settingsAuditReaders.get(path);
-        if (expectedSettingsAuditReads !== undefined && token === "commandAudits") {
+        if (path === settingsVerifier && token === "commandAudits") {
           const auditUses = content.match(/\bcommandAudits\.[A-Za-z]+/gu) ?? [];
-          if (auditUses.length !== expectedSettingsAuditReads
-            || auditUses.some((use) => use !== "commandAudits.findByCommand")) {
+          if (auditUses.length !== 1 || auditUses[0] !== "commandAudits.findByCommand") {
             violations.push(
-              `${path} may only authenticate settings through exactly ${String(expectedSettingsAuditReads)} `
-              + "commandAudits.findByCommand reads",
+              `${path} may only authenticate settings through one commandAudits.findByCommand read`,
             );
           }
           continue;
@@ -309,7 +284,7 @@ describe("control-command-single-path", () => {
 
   it("carries a version or immutability binding on every wire arm's target", () => {
     const versionless: string[] = [];
-    for (const fixture of CURRENT_COMMAND_FIXTURES) {
+    for (const fixture of COMMAND_FIXTURES) {
       const request = CommandRequestSchema.parse(fixture);
       const target: Record<string, unknown> = request.target;
       const carries = "expectedVersion" in target || "expectedRevision" in target
@@ -322,7 +297,7 @@ describe("control-command-single-path", () => {
   it("dispatches every D95 family/action to a typed result — active arms execute, later arms are capability-unavailable with zero side effects", () => {
     const harness = createHarness();
     const seen: string[] = [];
-    for (const fixture of CURRENT_COMMAND_FIXTURES) {
+    for (const fixture of COMMAND_FIXTURES) {
       const request = CommandRequestSchema.parse(fixture);
       const key = `${request.family}/${request.type}`;
       seen.push(key);

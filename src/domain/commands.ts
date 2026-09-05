@@ -1,12 +1,6 @@
 import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
-import { SettingsPatchSchema } from "./config/settings.js";
-import {
-  MarkedProtectedSettingsPatchSchema,
-  ProtectedSettingsPatchSchema,
-  ProtectedSettingsReadbackSchema,
-  markProtectedSettingsPatch,
-} from "./config/protected-settings.js";
+import { EditableSettingsOverrideSchema } from "./config/schema.js";
 import { deepFreeze } from "./immutability.js";
 import {
   ActorIdSchema,
@@ -66,7 +60,6 @@ export const CommandActionSchema = z.enum([
   "refresh-browser",
   "reopen-browser",
   "apply-settings",
-  "apply-protected-settings",
   "plan-version-bump",
   "apply-version-bump",
   "relaunch-archived-run",
@@ -207,64 +200,13 @@ export const SettingsCommandRequestSchema = z.strictObject({
   payload: z.strictObject({
     settingsSchemaHash: FingerprintSchema,
     patchFingerprint: FingerprintSchema,
-    patch: SettingsPatchSchema,
+    patch: EditableSettingsOverrideSchema,
   }),
 });
-
-export const ProtectedSettingsCommandRequestSchema = z.strictObject({
-  ...CommandEnvelopeFields,
-  family: z.literal("settings"),
-  type: z.literal("apply-protected-settings"),
-  target: z.strictObject({ expectedRevision: PositiveIntSchema }),
-  payload: z.strictObject({
-    protectedSchemaHash: FingerprintSchema,
-    writeId: z.uuid(),
-    entries: ProtectedSettingsPatchSchema,
-  }),
-});
-
-/** The only protected command shape permitted in the durable journal and audit. */
-export const MarkedProtectedSettingsCommandRequestSchema =
-  z.strictObject({
-    ...CommandEnvelopeFields,
-    family: z.literal("settings"),
-    type: z.literal("apply-protected-settings"),
-    target: z.strictObject({ expectedRevision: PositiveIntSchema }),
-    payload: z.strictObject({
-      protectedSchemaHash: FingerprintSchema,
-      writeId: z.uuid(),
-      entries: MarkedProtectedSettingsPatchSchema,
-    }),
-  });
-
-/**
- * The public boundary accepts values; the durable schema additionally accepts
- * the marked form because command/audit rows must never retain protected data.
- */
-const SettingsCommandFamilyRequestSchema = z.union([
-  ProtectedSettingsCommandRequestSchema,
-  MarkedProtectedSettingsCommandRequestSchema,
-  SettingsCommandRequestSchema,
-]);
-
-export function markSettingsCommand(command: unknown): z.infer<typeof SettingsCommandFamilyRequestSchema> {
-  const parsed = SettingsCommandFamilyRequestSchema.parse(command);
-  if (parsed.type === "apply-settings") return deepFreeze(parsed);
-  const alreadyMarked = MarkedProtectedSettingsCommandRequestSchema.safeParse(parsed);
-  if (alreadyMarked.success) return deepFreeze(alreadyMarked.data);
-  const protectedCommand = ProtectedSettingsCommandRequestSchema.parse(parsed);
-  return deepFreeze(MarkedProtectedSettingsCommandRequestSchema.parse({
-    ...protectedCommand,
-    payload: {
-      ...protectedCommand.payload,
-      entries: markProtectedSettingsPatch(protectedCommand.payload.entries),
-    },
-  }));
-}
 
 /** Crash recovery binds every canonical command-envelope field, not only the patch. */
 export function deriveSettingsCommandFingerprint(command: unknown): string {
-  const parsed = markSettingsCommand(command);
+  const parsed = SettingsCommandRequestSchema.parse(command);
   return FingerprintSchema.parse(sha256Hex(
     `hrauto:settings-command:v1\0${canonicalJsonStringify(parsed)}`,
   ));
@@ -359,8 +301,6 @@ export const CommandRequestSchema = z.union([
   IntakeCommandRequestSchema,
   WorkerBrowserCommandRequestSchema,
   SettingsCommandRequestSchema,
-  ProtectedSettingsCommandRequestSchema,
-  MarkedProtectedSettingsCommandRequestSchema,
   VersionArchiveCommandRequestSchema,
   RunCommandRequestSchema,
   GateCommandRequestSchema,
@@ -380,7 +320,6 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   /** D269: the per-workflow pool row `plan-worker-count` advanced. */
   z.strictObject({ family: z.literal("worker-pool"), workflowId: WorkflowIdSchema }),
   z.strictObject({ family: z.literal("settings"), revision: PositiveIntSchema }),
-  z.strictObject({ family: z.literal("protected-settings"), revision: PositiveIntSchema }),
   z.strictObject({ family: z.literal("version-archive"), versionPlanId: VersionPlanIdSchema }),
   z.strictObject({ family: z.literal("run"), runId: RunIdSchema }),
   z.strictObject({ family: z.literal("gate"), runId: RunIdSchema, gateId: GateIdSchema }),
@@ -394,18 +333,6 @@ export const CommandRejectionCodeSchema = z.enum([
   "authority-unavailable",
   "policy-refused",
   "schema-mismatch",
-  "patch-fingerprint-mismatch",
-  "envelope-fingerprint-mismatch",
-  "not-editable",
-  "invalid-value",
-  "cross-field-invalid",
-  "document-too-large",
-  "authority-unjournaled",
-  "authority-uncertain",
-  "directory-integrity",
-  "lock-unavailable",
-  "command-divergent",
-  "write-id-reused",
   "active-version-blockers",
   /**
    * D113: the arm is schema-recognized but its owning later milestone has not
@@ -419,61 +346,38 @@ const CommandLandingResultSchema = z.strictObject({
   state: z.enum(["applied", "already-applied"]),
   commandId: CommandIdSchema,
   affectedTargets: z.array(CommandTargetReferenceSchema).min(1),
-  restartRequired: z.boolean().optional(),
+  restartRequired: z.literal(true).optional(),
   settingsRevision: PositiveIntSchema.optional(),
   settingsFingerprint: FingerprintSchema.optional(),
-  revision: PositiveIntSchema.optional(),
-  entries: ProtectedSettingsReadbackSchema.shape.entries.optional(),
 }).superRefine((result, context) => {
   const settingsTargets = result.affectedTargets.filter((target) => target.family === "settings");
-  const protectedTargets = result.affectedTargets.filter((target) => target.family === "protected-settings");
-  const hasOrdinaryResult = result.restartRequired === true
+  const hasSettingsResult = result.restartRequired !== undefined
     || result.settingsRevision !== undefined
     || result.settingsFingerprint !== undefined;
-  const hasProtectedResult = result.restartRequired === false
-    || result.revision !== undefined
-    || result.entries !== undefined;
-  if (settingsTargets.length === 0 && protectedTargets.length === 0) {
-    if (hasOrdinaryResult || hasProtectedResult) {
+  if (settingsTargets.length === 0) {
+    if (hasSettingsResult) {
       context.addIssue({
         code: "custom",
-        message: "settings result fields require one settings or protected-settings target",
+        message: "restart-required settings result fields require one settings target",
       });
     }
     return;
   }
-  if (settingsTargets.length === 1) {
-    const target = settingsTargets[0];
-    if (result.affectedTargets.length !== 1 || target === undefined
-      || result.restartRequired !== true
-      || result.settingsRevision !== target.revision
-      || result.settingsFingerprint === undefined
-      || result.revision !== undefined
-      || result.entries !== undefined) {
-      context.addIssue({
-        code: "custom",
-        message: "an ordinary settings result requires restartRequired=true and its exact revision/fingerprint only",
-      });
-    }
-    return;
-  }
-  const target = protectedTargets[0];
-  if (protectedTargets.length !== 1 || result.affectedTargets.length !== 1 || target === undefined) {
+  const target = settingsTargets[0];
+  if (settingsTargets.length !== 1 || result.affectedTargets.length !== 1 || target === undefined) {
     context.addIssue({
       code: "custom",
       path: ["affectedTargets"],
-      message: "a protected settings result must affect exactly one protected-settings revision",
+      message: "a settings result must affect exactly one settings revision",
     });
     return;
   }
-  if (result.restartRequired !== false
-    || result.revision !== target.revision
-    || result.entries === undefined
-    || result.settingsRevision !== undefined
-    || result.settingsFingerprint !== undefined) {
+  if (result.restartRequired !== true
+    || result.settingsRevision !== target.revision
+    || result.settingsFingerprint === undefined) {
     context.addIssue({
       code: "custom",
-      message: "a protected settings result requires restartRequired=false and its exact revision/presence entries only",
+      message: "a settings result requires restartRequired=true and its exact revision/fingerprint",
     });
   }
 });
@@ -491,13 +395,11 @@ export const CommandResultSchema = z.discriminatedUnion("state", [
 ]).superRefine((result, context) => {
   if (result.state !== "applied" && result.state !== "already-applied") return;
   const affectsSettings = result.affectedTargets.some((target) => target.family === "settings");
-  const affectsProtected = result.affectedTargets.some((target) => target.family === "protected-settings");
-  if (affectsSettings !== (result.restartRequired === true)
-    || affectsProtected !== (result.restartRequired === false)) {
+  if (affectsSettings !== (result.restartRequired === true)) {
     context.addIssue({
       code: "custom",
       path: ["restartRequired"],
-      message: "restartRequired must match the ordinary/protected settings target exactly",
+      message: "restartRequired must be true exactly when an applied result affects settings",
     });
   }
 });
@@ -713,7 +615,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   start: ["start-run"],
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"],
-  settings: ["apply-settings", "apply-protected-settings"],
+  settings: ["apply-settings"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run", "delete-archived-run"],
   run: ["retry", "restart", "cancel", "bump", "rename", "delete", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"],
   gate: ["resolve-gate"],
@@ -743,7 +645,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "start", actions: ["start-run"] },
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"] },
-  { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
+  { family: "settings", actions: ["apply-settings"] },
   { family: "version-archive", actions: ["plan-version-bump", "apply-version-bump", "relaunch-archived-run", "delete-archived-run"] },
   { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },

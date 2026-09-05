@@ -196,7 +196,6 @@ const BOOTSTRAP = {
   appVersion: "1.0.0",
   descriptorHash: HASH_A,
   settingsSchemaHash: HASH_B,
-  protectedSchemaHash: HASH_A,
   projectionGeneration: 1,
   actor: { id: "local-operator", label: "Local operator" },
   serverClock: { now: NOW, zone: "America/Los_Angeles" },

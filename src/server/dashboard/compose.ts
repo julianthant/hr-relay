@@ -1,4 +1,3 @@
-import { hostConfigFacts } from "../../domain/config/host-display.js";
 /**
  * The 1g-spine dashboard composition value: open authority, wire the span
  * writers into THE run/queue projection, stand up the command kernel behind
@@ -76,11 +75,7 @@ import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, settingsRuntimeIdentity } from "../../domain/config/settings.js";
-import { settingsRootPaths } from "../../domain/config/settings-root.js";
-import {
-  createProtectedSettingsFileAuthority,
-  createSettingsFileAuthority,
-} from "../../infra/config/settings-file.js";
+import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   FingerprintSchema,
@@ -89,10 +84,7 @@ import {
   type Fingerprint,
 } from "../../domain/ids.js";
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
-import {
-  assertNoMigratedEnvironmentKeys,
-  hostAwareResolutionEnvironment,
-} from "../../domain/secrets.js";
+import { hostAwareResolutionEnvironment } from "../../domain/secrets.js";
 import { probePrimaryDisplay } from "../../infra/host/primary-display.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import { createPreflightAuthority } from "../../domain/preflight.js";
@@ -369,6 +361,7 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
  * (legacy `provider-limits.ts` priority-1 tier-1), never a default minted
  * inside the secrets reader.
  */
+const ADVISORY_GEMINI_MODEL_ID = "gemini-3-flash-preview";
 
 /**
  * D218: how often the dashboard tails `spans/*.jsonl` for lines other
@@ -609,11 +602,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
 
   // D324: the production environment carries the host's primary display as the `display` default.
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
-  assertNoMigratedEnvironmentKeys(env);
   const settingsAuthority = createSettingsFileAuthority({
-    path: settingsRootPaths(stateRoot).ordinary,
+    path: join(stateRoot, "settings.json"),
     validateCandidate: (settings) => {
-      resolveConfigWithProvenance(settings, hostConfigFacts(env), clock);
+      resolveConfigWithProvenance(env, settings, clock);
     },
   });
   mkdirSync(stateRoot, { recursive: true });
@@ -648,16 +640,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       throw openError;
     }
   })();
-  const protectedSettingsAuthority = createProtectedSettingsFileAuthority({
-    path: settingsRootPaths(stateRoot).ordinary,
-    assertWriteIdAvailable: (writeId, commandId) => {
-      const ownerCommandId = database.authority.commands.findProtectedSettingsCommandIdByWriteId({
-        writeId,
-        excludingCommandId: commandId,
-      });
-      if (ownerCommandId !== undefined) throw new Error("write-id-reused");
-    },
-  });
   const bootConfig = (() => {
     try {
       const explorerOverrides = createExplorerOverrideStore(join(stateRoot, "explorer-overrides.json"));
@@ -679,7 +661,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       return Object.freeze({
         explorerOverrides,
         persistedSettings,
-        resolved: resolveConfigWithProvenance(persistedSettings.settings, hostConfigFacts(env), clock),
+        resolved: resolveConfigWithProvenance(env, persistedSettings.settings, clock),
       });
     } catch (bootError) {
       try {
@@ -1086,7 +1068,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     // resolved config and stored snapshot the start planner uses, so a run born
     // from a spreadsheet and one born from the run surface are comparable.
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
-    settings: createSettingsApplicationExecutor(settingsAuthority, protectedSettingsAuthority),
+    settings: createSettingsApplicationExecutor(settingsAuthority),
     archiveSnapshots: createArchiveSnapshotSource(runDetailDeps),
     explorerEdits,
   });
@@ -1143,8 +1125,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
    * variable to set. A composed-but-empty advisory would be worse than none.
    */
   const advisoryKeys = optionalSecretFamily("geminiApiKeys", env);
-  const advisoryModels = providerModelChain("geminiApiKeys", resolved.config);
-  const advisoryChildren = advisoryModels
+  const advisoryModels = providerModelChain("geminiApiKeys", env);
+  const advisoryChildren = (advisoryModels.length > 0 ? advisoryModels : [ADVISORY_GEMINI_MODEL_ID])
     .flatMap((modelId) => advisoryKeys.map((apiKey, keyIndex) => ({
       label: `gemini-key${String(keyIndex + 1)}/${modelId}`,
       adapter: createGeminiAdvisoryAdapter({ apiKey, modelId, clock }),

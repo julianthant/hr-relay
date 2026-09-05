@@ -18,7 +18,7 @@ import fs, {
 } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { buildRunResult } from "../../../src/core/run-result.js";
@@ -84,7 +84,6 @@ import {
   VERSION_PLAN_ROW,
 } from "../fixtures/archive-fixtures.js";
 import { failureDetailWireFixture } from "../fixtures/trust-wire-fixtures.js";
-import { initializeSyntheticSettingsBackupRoot } from "../helpers/settings-backup-fixture.js";
 import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
@@ -606,7 +605,6 @@ function stoppedProof(root: string, authorityPath: string, clock = CLOCK) {
 }
 
 async function createBackup(database: AuthorityDatabase, directory: string) {
-  initializeSyntheticSettingsBackupRoot(dirname(directory));
   const service = new AuthorityBackupService(database, { directory }, CLOCK);
   const report = await service.request({
     trigger: "operator",
@@ -728,7 +726,6 @@ describe("verified native online backups", () => {
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
     database.authority.commands.insert(COMMAND_FIXTURES[0]);
-    initializeSyntheticSettingsBackupRoot(root);
     let copies = 0;
     const source = {
       getMeta: () => database.getMeta(),
@@ -758,7 +755,6 @@ describe("verified native online backups", () => {
     const authorityPath = join(root, "state.sqlite");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
-    initializeSyntheticSettingsBackupRoot(root);
     const failingSource = {
       getMeta: () => database.getMeta(),
       getSourceDatabaseIdentity: () => database.getSourceDatabaseIdentity(),
@@ -793,14 +789,8 @@ describe("verified native online backups", () => {
     const secondDirectory = backupDirectory(secondRoot);
     const secondDatabase = openDatabase(secondPath);
     const second = await createBackup(secondDatabase, secondDirectory);
-    const parsed = JSON.parse(readFileSync(second.manifestPath, "utf8")) as Record<string, unknown> & {
-      files: Array<Record<string, unknown>>;
-    };
-    writeFileSync(second.manifestPath, JSON.stringify({
-      ...parsed,
-      sha256: HASH_B,
-      files: parsed.files.map((file, index) => index === 0 ? { ...file, sha256: HASH_B } : file),
-    }));
+    const parsed = JSON.parse(readFileSync(second.manifestPath, "utf8")) as Record<string, unknown>;
+    writeFileSync(second.manifestPath, JSON.stringify({ ...parsed, sha256: HASH_B }));
     await assert.rejects(verifyBackupManifestAtPath(second.manifestPath), /checksum does not match/);
   });
 
@@ -3895,16 +3885,10 @@ describe("offline exact-backup restore", () => {
     `).run(UUID_8, "person-lookup", UUID_8, "queued", "bulk", 1, 0, 1, JSON.stringify({ recordId: UUID_8 }), NOW);
     corruptBackup.close();
     const bytes = readFileSync(backupPath);
-    const byteSize = statSync(backupPath).size;
-    const sha256 = createHash("sha256").update(bytes).digest("hex");
-    const files = (manifest.files as Array<Record<string, unknown>>).map((file, index) => (
-      index === 0 ? { ...file, byteSize, sha256 } : file
-    ));
     writeFileSync(manifestPath, JSON.stringify({
       ...manifest,
-      byteSize,
-      sha256,
-      files,
+      byteSize: statSync(backupPath).size,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
     }));
 
     const restore = new OfflineAuthorityRestoreService(

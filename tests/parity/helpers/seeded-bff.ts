@@ -1,4 +1,3 @@
-import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The seeded BFF (ref frontend-backend-integration §7.2, test-only adapter #2): the REAL production
  * dashboard stack — authority SQLite, the span/note JSONL writers, THE
@@ -56,7 +55,7 @@ import { createDashboardStreamHub } from "../../../src/server/dashboard/subscrip
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
@@ -934,7 +933,7 @@ export async function startSeededServer(
     // D274 item 6 — the read-only Settings status sections read the SAME
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
-    settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [personLookupDescriptor] },
+    settings: { config: resolveConfig({}, {}, clock), descriptors: [personLookupDescriptor] },
     settingsEditor: {
       settings: {
         read: () => {

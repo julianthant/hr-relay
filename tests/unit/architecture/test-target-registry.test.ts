@@ -23,7 +23,6 @@ import {
 } from "../../../src/control/test-target-registry.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 import { evaluateT1bManifest } from "../../helpers/t1b-manifests.js";
-import { protectedSecretSource } from "../helpers/protected-secret-source.js";
 
 const WORKFLOW_SCENARIO_ROOT = "tests/scenario/workflows";
 const MANIFEST_FILE = "dry-run.scenario.ts";
@@ -117,11 +116,12 @@ const SOLE_SUBJECT_LAST_OBSERVED = "2026-09-03";
 
 /**
  * The ONE test-target reference the registry may commit (D300). The chain arm
- * names this reference and never a number, so choosing the live subject stays
- * in protected Settings rather than in a commit.
+ * names this pair and never a number, so choosing the live subject stays in the
+ * operator's ignored `.env` rather than in a commit.
  */
 const DOCUMENT_NUMBER_REFERENCE = {
   name: "separationsKualiFinalizationCanaryDocumentNumber",
+  env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
 } as const;
 /**
  * Every arm key `TestTargetWorkflowArmsSchema` declares, derived from the
@@ -133,10 +133,11 @@ const DOCUMENT_NUMBER_REFERENCE = {
 const ARM_WORKFLOW_KEYS = Object.keys(TestTargetWorkflowArmsSchema.shape) as readonly (keyof typeof TestTargetWorkflowArmsSchema.shape)[];
 assert.deepEqual([...ARM_WORKFLOW_KEYS].sort(), [FINALIZATION_WORKFLOW, PERSON_LOOKUP_WORKFLOW, SEPARATIONS_WORKFLOW].sort());
 
-/** D318 — the second committed subject: the person-lookup live-read canary, ONE EID selected in protected Settings. */
+/** D318 — the second committed subject: the person-lookup live-read canary, ONE EID selected in ignored `.env`. */
 const PERSON_LOOKUP_SUBJECT_LABEL = "person-lookup-canary";
 const EID_REFERENCE = {
   name: "personLookupCanaryEid",
+  env: "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
 } as const;
 
 /**
@@ -358,19 +359,22 @@ describe("test target registry architecture", () => {
     // (D318) — each a closed reference to one workflow's own ingress value,
     // never a person value with a document-shaped name or the reverse.
     assert.deepEqual(
-      TEST_TARGET_SECRET_SPECS.map(({ name, valueKind, classification }) => ({
+      TEST_TARGET_SECRET_SPECS.map(({ name, env, valueKind, classification }) => ({
         name,
+        env,
         valueKind,
         classification,
       })),
       [
         {
           name: DOCUMENT_NUMBER_REFERENCE.name,
+          env: DOCUMENT_NUMBER_REFERENCE.env,
           valueKind: "kuali-document-number",
           classification: "direct-identifier",
         },
         {
           name: EID_REFERENCE.name,
+          env: EID_REFERENCE.env,
           valueKind: "ucpath-eid",
           classification: "direct-identifier",
         },
@@ -417,9 +421,9 @@ describe("test target registry architecture", () => {
           state: target.availability.state,
           lastObserved: target.availability.lastObserved,
           // D300: the chain arm's document is a closed reference, so the row
-          // reports the NAME the operator configures — never a number.
+          // reports the KEY the operator configures — never a number.
           document: chain.publicInput.document.state === "configured"
-            ? chain.publicInput.document.reference.name
+            ? chain.publicInput.document.reference.env
             : "none",
         }];
       })
@@ -430,7 +434,7 @@ describe("test target registry architecture", () => {
         kind: "full-chain-dry-run",
         state: "available",
         lastObserved: SOLE_SUBJECT_LAST_OBSERVED,
-        document: DOCUMENT_NUMBER_REFERENCE.name,
+        document: DOCUMENT_NUMBER_REFERENCE.env,
       },
     ]);
   });
@@ -444,11 +448,9 @@ describe("test target registry architecture", () => {
    * without committing a false one to config.
   */
   it("answers both resolvers from the one subject's own arm, without cross-workflow guessing", () => {
-    const chain = resolveSeparationsTestTarget(
-      TEST_TARGET_REGISTRY,
-      "finalization-canary",
-      protectedSecretSource({ separationsKualiFinalizationCanaryDocumentNumber: "4999" }),
-    );
+    const chain = resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, "finalization-canary", {
+      [DOCUMENT_NUMBER_REFERENCE.env]: "4999",
+    });
     assert.deepEqual(chain, {
       state: "ready",
       label: "finalization-canary",
@@ -465,11 +467,11 @@ describe("test target registry architecture", () => {
     assert.equal(finalization.state, "blocked");
     assert.match(finalization.reason, /transactionNumber not yet filed/u);
     assert.match(finalization.reason, new RegExp(`last observed ${SOLE_SUBJECT_LAST_OBSERVED}$`, "u"));
-    // Its person leaves are never registry- or protected-settings-supplied, and the
+    // Its person leaves are never registry- or environment-supplied, and the
     // resolver says so in one public sentence once the pending leaves clear.
     assert.match(
       FINALIZATION_PERSON_FACTS_DERIVED_REASON,
-      /never registry- or protected-settings-supplied \(D300\)/,
+      /never registry- or environment-supplied \(D300\)/,
     );
   });
 
