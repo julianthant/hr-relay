@@ -512,22 +512,24 @@ status: planned
 doc: 01 §1.6 · Implement canonical run and settings authorities · ref:workflow-model §4 · ref:execution-and-sessions §3 · ref:frontend-backend-integration §3.4
 
 builds:
-- [ ] BE route start/fan-out publication, queue claim, heartbeat, executor transition, retry scheduling, and terminal publication through the run service (`worker-loop`, `worker-sessions`, `worker/compose`, the start surfaces)
+- [ ] BE route queue claim, heartbeat, executor transition, recovery requeue, cancellation settlement and terminal publication through the run service (`run-record-service`, `worker-loop`, `run-executor`, `write-sequencer`, `worker/compose`); the worker side holds no lifecycle repository mutator
 - [ ] BE preserve stable run/session ids and append-only evidence links; `span.ended` only after the terminal commit
-- [ ] PROOF #4–#7, #9, #10 through the real worker composition; deletion test `worker-loop-writes-only-through-the-service`
+- [ ] PROOF #4–#7, #9, #10 and the worker/recovery half of #27 through the real worker composition; D118 attempting-write admission preserved; deletion test `worker-loop-writes-only-through-the-service`
 
 needs:
 - p1f-run-store
+- p1f-settings-store
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate/deletion test (doc 01 §1.6 Task 3); serial after wave 2 · left: implementation
+- 2026-09-05 | operator-approved direct phase plan | reconciled D330.10 ownership: Task 3 keeps the worker lifecycle seam and Task 4 owns command-kernel start/intake/capture creation plus `run.queued`; Task 3 owns the worker/recovery half of #27. Current `master` `46f95aa0` includes `7414548f`, which reopened Task 2-2, so 1.6.3 is WAITING ON restored Task 2-2 code/evidence and a new verified creation SHA · left: that prerequisite, then implementation
 
 #### 4 · Cut over operator run commands and archive/delete writers {#p1f-run-commands}
 status: planned
 doc: 01 §1.6 · Implement canonical run and settings authorities · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.3 · ref:operator-trust §5.7
 
 builds:
-- [ ] BE route CLI/dashboard start, retry, cancel, rename, archive, relaunch, terminal-only delete/tombstone, bulk, and purge commands through the run service (`command-kernel`, `command-service`, the `cli` run verbs)
+- [ ] BE route CLI/dashboard start, intake/capture fan-out creation, retry, cancel, rename, archive, relaunch, terminal-only delete/tombstone, bulk, and purge through the run service (`command-kernel`, `run-fan-out`, `command-service`, the shared post-commit `run.queued` publication, and the `cli` run verbs)
 - [ ] BE return one typed settlement/conflict vocabulary (`target-deleted` is the one new code) and preserve command actor/version attribution
 - [ ] PROOF idempotence, stale CAS, concurrent-worker, archive/relaunch lineage, and D308 deletion semantics through the real kernel; `no-lifecycle-sql-outside-the-adapter` (#24) activated with its `runs-view-has-no-reader` arm in the same commit
 
@@ -537,6 +539,7 @@ needs:
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate (doc 01 §1.6 Task 4); needs the coordinator's ruling on operator `cancel` of a claimed/running run in §D330.5 before start · left: that ruling, then implementation
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the coordinator ruled option A; the `cancelRequested` arm is in §D330.5 and this task owes §D330.11 #27 — the earlier `left:` is closed · left: implementation
+- 2026-09-05 | operator-approved 1.6.3 feasibility correction | D330.10 keeps lifecycle `create` with the command kernel, so Task 4 also owns start/intake/capture fan-out creation and the shared post-commit `run.queued`; Task 3 supplies the worker/recovery half of #27 before this task starts · left: Task 3, then implementation and complete #27 proof
 
 #### 5 · Cut over settings mutation and runtime resolution {#p1f-settings-consumers}
 status: planned

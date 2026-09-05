@@ -919,34 +919,116 @@ two peers serialize full coverage, architecture and parity runs.
 ### Task 3 · Cut over executor and worker lifecycle writers
 <!-- roadmap: p1f-run-writers -->
 
-**Seam:** `src/core/worker-loop.ts`, `src/core/worker-sessions.ts` and `src/server/worker/compose.ts`
-(claim, heartbeat, worker transitions, terminalize and the recovery sweep's `requeue` through the
-service; the worker holds no repository mutator); the executor / write-sequencer terminal path
-(`terminalize` through the worker under the claim fence; the 2026-08-25 fenced-write lesson and
-`retainAfterFence()` unchanged; `span.ended` after commit); the start/fan-out publication — `create`
-then the write-once `run.queued` root through the shared queue-root builder — in
-`src/server/dry-run-scenario/runtime.ts` and the dashboard start/intake fan-out services;
-`tests/unit/worker-composition.test.ts`, `tests/unit/dry-run-scenario-composition.test.ts`. **Does not
-touch:** the command kernel's operator verbs (Task 4), config consumers (Task 5), any schema. **Owes:**
-§D330.11 #4–#7, #9, #10 re-run THROUGH the real worker composition (the service proved them; this proves
-the wiring); the existing worker/dry-run suites re-pointed with identities byte-identical. **Gate:** base +
-those. **Deletion test:** `worker-loop-writes-only-through-the-service` — a spy adapter whose lifecycle
-mutators the loop must never call directly; red while any direct call survives. **Order:** third, after
-the wave merges.
+**Seam:** `src/core/run-record-service.ts`, `worker-loop.ts`, `run-executor.ts`,
+`write-sequencer.ts`, `worker-sessions.ts` only where its existing lease boundary needs wiring, and
+`src/server/worker/compose.ts`. Claim, heartbeat, worker transitions, terminalization and the recovery
+sweep's `requeue` pass through one worker-owned service port; the loop, executor, sequencer and sweep
+hold no lifecycle repository mutator. The executor keeps only its required read/evidence ports and
+terminalizes through the worker under the claim fence; the 2026-08-25 fenced-write lesson,
+`retainAfterFence()`, diagnostic-bundle atomicity and `span.ended`-after-commit ordering remain unchanged.
+The worker also owns its half of §D330.11 #27: honour `cancelRequested` at the next non-fenced boundary,
+never interrupt a retained fenced callback, and let recovery settle that request as `terminal/cancelled`
+rather than requeueing it. **Does not touch:** the command kernel, `run-fan-out.ts`, dashboard command
+publication or intake/capture creation (all Task 4); config consumers (Task 5); SQL schema/migrations,
+the closed D330 operation set, downstream projections or UI. Existing request/interface schemas may
+change only as needed to expose those admitted operations without adding one. **Owes:** §D330.11 #4–#7,
+#9 and #10 through the real worker composition plus the worker/recovery half of #27; existing worker,
+executor, sequencer and dry-run suites re-pointed with stable run/session/evidence identity byte-identical.
+**Deletion test:** `worker-loop-writes-only-through-the-service` — a red-capable spy/structural oracle
+that fails while the loop, executor, sequencer, composition or recovery sweep can call a lifecycle
+repository mutator directly. **Order:** third, after both wave-2 peers are effectively integrated.
 
-- [ ] Route start/fan-out publication, claim, heartbeat, executor transitions, retry scheduling and
+- [ ] Route claim, heartbeat, executor transitions, recovery requeue, cancellation settlement and
   terminal publication through the run service without changing stable run/session/evidence identity.
-- [ ] Guard or remove direct core-runtime lifecycle writes outside the service: the loop and the sweep
-  hold no mutator; `span.ended` only after the terminal commit (§D330.4, §D330.9).
+- [ ] Guard or remove direct core-runtime lifecycle writes outside the service; preserve D118's
+  attempting-write recovery admission, immutable attempt/claim-generation identity,
+  `retainAfterFence()` and `span.ended` only after terminal commit (§D330.4, §D330.9).
+
+#### Approved focused-session plan (2026-09-05)
+
+**Approval and feasibility correction.** The operator approved this assignment on 2026-09-05.
+D330.10 assigns `create` and command-family mutations to the command kernel while assigning
+`claimNext`, `renewClaim`, `workerTransition`, `terminalize` and recovery `requeue` to the worker.
+The earlier Task-3 sentence both excluded the command kernel and assigned its start/intake creation
+work here. This plan resolves that contradiction: Task 3 owns only the worker lifecycle seam above;
+Task 4 owns start/intake/capture fan-out creation and the shared `run.queued` publication. Task 3
+implements the worker/recovery half of #27 so Task 4 can prove the complete operator-command/tree/
+projection behaviour without reopening the worker seam. No reference contract changes.
+
+**Verified prerequisite and current state.** Accepted Task 2-1 remains an ancestor. The earlier Task-2-2
+integration/completion commit `0a8173e0` was also an ancestor, but current `master` `46f95aa0` includes
+`7414548f`, which removed the effective settings authority and reopened Task 2-2. Therefore this
+assignment is **WAITING ON 1.6.2-2**: before creating its implementation worktree, resolve and verify a
+new `master` SHA whose code and phase/roadmap evidence restore Task 2-2, then verify that the approved
+plan commit is in that creation base. Current worktree inventory is one primary checkout; the proposed
+branch/path were absent when planned. Recheck SHA ancestry, path/ref availability and the four-worktree
+budget at supervisor start. Never recover Task 2-2 inside this assignment.
+
+**Implementation sequence.** One supervisor performs these stable steps in order:
+
+1. Verify the restored Task-2-2 prerequisite, approved plan content, assigned branch/worktree and owned
+   seams. Inventory every production lifecycle mutation reachable from worker composition and establish
+   synthetic authority/runtime roots only.
+2. Introduce one narrow worker lifecycle port backed by `RunRecordService`. Give executor/sequencer only
+   their required read/evidence ports; derive stable lifecycle command identities and map every typed
+   refusal without converting `lost`, `runtime-stale`, `none-eligible` or `heartbeat-live` into success.
+3. Compose the service in `src/server/worker/compose.ts`. Preserve the durable directive recheck and full
+   runtime token inside claim admission; route claim and heartbeat through the service without widening
+   the worker's one-active-item rule.
+4. Put startup/global recovery mutation behind the service's existing `requeue` operation. Preserve the
+   self-sweep proof, stale-heartbeat admission, D118 attempting-write check and park/refuse split in the
+   same authority transaction; a recovery race must return its typed refusal and an attempted cancel must
+   settle cancelled, never queued.
+5. Route executor and write-sequencer state changes and terminal composites through the worker port.
+   Keep checkpoint/write/result/authorization/outbox and prepared diagnostic-bundle settlement atomic;
+   emit the run `span.ended` only after an applied or exact-replay terminal commit. Honour
+   `cancelRequested` only outside the one-way fenced window.
+6. Add the proof matrix and intended-red `worker-loop-writes-only-through-the-service` oracle. Run the
+   focused and repository gates, commit the exact candidate and record `awaiting independent review`
+   without marking Task 3 complete.
+
+**Acceptance and disproof.** Map #4–#7, #9 and #10 to production-composed tests, not direct repository
+fixtures: competing composed workers yield one claim winner; stale runtime claims write nothing; an
+expired claim requeues once while the zombie loses; a live heartbeat is unchanged; injected terminal
+failure rolls back the whole composite; exact/divergent replay is distinguished. Prove D118's
+attempting-write park/refusal, cancellation settlement outside the fence, diagnostic-bundle atomicity,
+and absence of `span.ended` before commit. The deletion test must go red when any direct lifecycle
+mutator call is reintroduced. These results would disprove the plan's highest-risk assumption if the
+existing service/outer transaction boundary could not retain atomic evidence settlement; nested
+authority savepoints and after-outermost-commit callbacks are the inspected current mechanism that
+makes the scope feasible. Run:
+
+```text
+npm run lint && npx vitest run tests/unit/run-record-service/service.test.ts tests/unit/worker-loop.test.ts tests/unit/worker-composition.test.ts tests/unit/claim-sweep-recovery.test.ts tests/unit/run-executor.test.ts tests/unit/write-sequencer.test.ts tests/unit/dry-run-scenario-composition.test.ts
+npm run lint && npx vitest run --project architecture tests/unit/architecture/multi-worker-overlap.test.ts tests/unit/architecture/worker-teardown-soak.test.ts tests/unit/architecture/worker-loop-writes-only-through-the-service.test.ts
+npm run typecheck && npm run lint && npm run test:coverage
+npm run build:manifest:check && npm run test:architecture
+git diff --check
+```
+
+Any descriptor import-closure change requires `npm run build:manifest` before its check. Any test run
+is paired with lint. A needed SQL/contract/new-operation change returns to a newly numbered 0.3 task.
+No live HR write, browser transaction, parity refreeze or push is authorized.
+
+**Supervisor sizing and assignment.** One supervisor fits: the worker port, service composition,
+terminal atomicity and recovery proofs are one coupled seam; a split would overlap every hard boundary.
+This is serial work, not a parallel wave.
+
+| Assignment | Branch | Absolute worktree | Base / start prerequisite | Owned files and resources | Acceptance gates | Merge condition |
+|---|---|---|---|---|---|---|
+| `1.6.3` | `codex/phase-1-6-run-writers` | `/Users/julianhein/Projects/hr-worktree-run-writers` | **WAITING ON 1.6.2-2:** create from the resolved latest `master` SHA that restores Task 2-2 and contains this approved plan commit; verify both before the first edit | Task-3 seam and tests above; synthetic authority/runtime roots only; no real state, browser or fixed port | Assigned proof matrix, focused suites, full coverage gate, manifest check, architecture | Freeze the exact candidate; record evidence and obtain fresh independent `sup_review` PASS. Then, against latest local `master` still containing restored Task 2-2 and the approved plan, integrate without a behavior-changing conflict, or re-review such a fix; run integration gates, record review/merge/gate evidence, remove only owned worktree/ref, and mark only Task 3 complete. No push. |
 
 ### Task 4 · Cut over operator run commands and archive/delete writers
 <!-- roadmap: p1f-run-commands -->
 
 **Seam:** `src/core/command-kernel.ts` (the run family and the version-archive family through the
-service: start, retry, restart, cancel, bump, rename, archive, relaunch, `delete` / `delete-archived-run`
+service: start/intake/capture fan-out `create`, retry, restart, cancel, bump, rename, archive, relaunch,
+`delete` / `delete-archived-run`
 with the D308 member tree, bulk as N children, purge as evidence retention; the typed settlement
 vocabulary with the one new code `target-deleted`, §D330.5's wire mapping),
-`src/server/dashboard/commands/command-service.ts`, the `cli` run verbs, `tests/unit/command-kernel.test.ts`;
+`src/core/run-fan-out.ts`, `src/server/dashboard/commands/command-service.ts`, the shared post-commit
+`run.queued` builder/publication used by dashboard, intake, capture and dry-run starts, the `cli` run
+verbs, `tests/unit/command-kernel.test.ts`;
 `tests/unit/architecture/no-lifecycle-sql-outside-the-adapter.test.ts` lands HERE with its entry flipped
 `planned → active` in the commit that removes the last direct mutator import, carrying the
 `runs-view-has-no-reader` arm and its stub-throws negative control (ref guards-and-tests §5.2 A3). **Does
@@ -961,8 +1043,9 @@ row sets `cancelRequested` under CAS and the worker settles `terminal/cancelled`
 boundary; this task implements exactly that arm and owes #27.
 
 - [ ] Route CLI/dashboard start, retry, cancel, rename, archive, relaunch, D308 terminal-only
-  delete/tombstone, bulk and purge commands through the run service; one typed settlement/conflict
-  vocabulary with actor/version attribution (§D330.5, §D330.8, D233, D235, D308).
+  delete/tombstone, bulk and purge commands through the run service; route start/intake/capture fan-out
+  creation through `create` and its one post-commit `run.queued` publication; one typed settlement/
+  conflict vocabulary with actor/version attribution (§D330.5, §D330.8, D233, D235, D308).
 - [ ] Prove typed settlements, idempotence, stale CAS, worker races and relaunch lineage through the
   real kernel; activate `no-lifecycle-sql-outside-the-adapter` (#24) in the same commit.
 
