@@ -268,7 +268,7 @@ export const ProtectedSettingsApplicationOutcomeSchema = z.union([
 ]);
 
 export interface SettingsApplicationExecutor {
-  apply(command: SettingsCommand): unknown;
+  apply(command: SettingsCommand, repositories: AuthorityRepositories): unknown;
   reconcileReplay(repositories: AuthorityRepositories, command: SettingsCommand): unknown;
 }
 
@@ -3154,6 +3154,7 @@ function executeVersionArchive(
 
 function executeSettings(
   dependencies: CommandKernelDependencies,
+  repositories: AuthorityRepositories,
   request: SettingsCommand,
 ): CommandApplication {
   if (dependencies.settings === undefined) {
@@ -3183,7 +3184,9 @@ function executeSettings(
     throw primary;
   };
   if (request.type === "apply-settings") {
-    const outcome = OrdinarySettingsApplicationOutcomeSchema.parse(dependencies.settings.apply(request));
+    const outcome = OrdinarySettingsApplicationOutcomeSchema.parse(
+      dependencies.settings.apply(request, repositories),
+    );
     if (outcome.state === "conflict") conflict(request, outcome.currentRevision, outcome.message);
     if (outcome.state === "rejected") reject(request, outcome.code, outcome.message);
     requireExpectedRevision(outcome.revision, outcome.rollback);
@@ -3206,7 +3209,9 @@ function executeSettings(
       }),
     });
   }
-  const outcome = ProtectedSettingsApplicationOutcomeSchema.parse(dependencies.settings.apply(request));
+  const outcome = ProtectedSettingsApplicationOutcomeSchema.parse(
+    dependencies.settings.apply(request, repositories),
+  );
   if (outcome.state === "conflict") conflict(request, outcome.currentRevision, outcome.message);
   if (outcome.state === "rejected") reject(request, outcome.code, outcome.message);
   requireExpectedRevision(outcome.readback.revision, outcome.rollback);
@@ -3330,7 +3335,7 @@ function dispatchActive(
     case "explorer":
       return executeExplorerEdit(dependencies, request);
     case "settings":
-      return executeSettings(dependencies, request);
+      return executeSettings(dependencies, repositories, request);
   }
   throw new Error("command dispatch fell through an exhaustive family/action switch");
 }

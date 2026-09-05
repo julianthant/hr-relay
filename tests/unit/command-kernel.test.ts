@@ -29,6 +29,7 @@ import {
 import {
   CommandRequestSchema,
   COMMAND_FAMILY_REGISTRY,
+  ProtectedSettingsCommandRequestSchema,
   deriveSettingsCommandFingerprint,
   type CommandRequest,
 } from "../../src/domain/commands.js";
@@ -45,7 +46,10 @@ import {
   initialProtectedStoreRecord,
   protectedSettingsReadback,
 } from "../../src/domain/config/protected-settings.js";
-import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
+import {
+  createProtectedSettingsFileAuthority,
+  createSettingsFileAuthority,
+} from "../../src/infra/config/settings-file.js";
 import { ExplorerEditApplyResultSchema, ExplorerOverrideDocumentSchema } from "../../src/domain/dashboard/explorer.js";
 import { deriveItemId } from "../../src/domain/identifiers.js";
 import { EidSchema, FingerprintSchema } from "../../src/domain/ids.js";
@@ -2053,6 +2057,76 @@ describe("apply-settings authority", () => {
 });
 
 describe("apply-protected-settings authority", () => {
+  it("refuses unjournaled protected bytes before starting another file mutation", () => {
+    const settingsPath = databasePath("settings/settings.json");
+    const protectedStore = createProtectedSettingsFileAuthority({
+      path: settingsPath,
+      assertWriteIdAvailable: () => undefined,
+    });
+    const seedCommandId = nextCommandId();
+    const seedCommand = ProtectedSettingsCommandRequestSchema.parse({
+      commandId: seedCommandId,
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      family: "settings",
+      type: "apply-protected-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+        writeId: UUID_7,
+        entries: { ucpathPassword: { set: "orphaned-protected-value" } },
+      },
+    });
+    const seeded = protectedStore.apply({
+      commandId: seedCommand.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(seedCommand),
+      expectedRevision: seedCommand.target.expectedRevision,
+      protectedSchemaHash: seedCommand.payload.protectedSchemaHash,
+      writeId: seedCommand.payload.writeId,
+      entries: seedCommand.payload.entries,
+      updatedAt: seedCommand.requestedAt,
+    });
+    assert.equal(seeded.state, "applied");
+    if (seeded.state !== "applied") return;
+    seeded.commit();
+    const protectedPath = join(settingsPath, "..", "protected.json");
+    const before = readFileSync(protectedPath);
+
+    const harness = createHarness(undefined, createSettingsApplicationExecutor(
+      createSettingsFileAuthority({ path: settingsPath, validateCandidate: () => undefined }),
+      protectedStore,
+    ));
+    const command = CommandRequestSchema.parse({
+      commandId: nextCommandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      family: "settings",
+      type: "apply-protected-settings",
+      target: { expectedRevision: 2 },
+      payload: {
+        protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+        writeId: UUID_4,
+        entries: { ucpathPassword: { set: "replacement-protected-value" } },
+      },
+    });
+
+    const result = harness.kernel.execute(command);
+
+    assert.deepEqual(result, {
+      state: "rejected",
+      commandId: command.commandId,
+      code: "authority-unjournaled",
+      message: "authority-unjournaled { document: protected.json }",
+    });
+    assert.deepEqual(readFileSync(protectedPath), before);
+    assert.equal(existsSync(join(settingsPath, "..", "prepare.json")), false);
+    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.equal(harness.database.authority.protectedSettingsCurrent.get(), undefined);
+  });
+
   it("P7/P26 journals only the marked envelope and advances only the protected singleton", () => {
     const harness = createHarness();
     const protectedValue = "protected-value-that-must-never-reach-sqlite";

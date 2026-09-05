@@ -39,6 +39,9 @@ function namedAuthorityCode(messages: readonly string[]): SettingsApplyRejection
   for (const code of SettingsApplyRejectionCodeSchema.options) {
     if (messages.some((message) => message.includes(code))) return code;
   }
+  if (messages.some((message) => message.includes("no durable command journal"))) {
+    return "authority-unjournaled";
+  }
   if (messages.some((message) => /exclusive settings authority|settings authority lock|settings stale-(?:lock|reaper)/u.test(message))) {
     return "lock-unavailable";
   }
@@ -147,7 +150,7 @@ export function createSettingsApplicationExecutor(
   };
 
   return Object.freeze({
-    apply(command: SettingsCommand) {
+    apply(command: SettingsCommand, repositories: AuthorityRepositories) {
       if (command.type === "apply-protected-settings") {
         if (protectedAuthority === undefined) {
           throw new Error(
@@ -156,15 +159,18 @@ export function createSettingsApplicationExecutor(
         }
         const admitted = ProtectedSettingsCommandRequestSchema.parse(command);
         const commandFingerprint = deriveSettingsCommandFingerprint(admitted);
-        const outcome = applySettingsAuthority(admitted, () => protectedAuthority.apply({
-          commandId: admitted.commandId,
-          commandFingerprint,
-          expectedRevision: admitted.target.expectedRevision,
-          protectedSchemaHash: admitted.payload.protectedSchemaHash,
-          writeId: admitted.payload.writeId,
-          entries: admitted.payload.entries,
-          updatedAt: admitted.requestedAt,
-        }));
+        const outcome = applySettingsAuthority(admitted, () => {
+          readJournaledProtectedSettings(protectedAuthority, repositories);
+          return protectedAuthority.apply({
+            commandId: admitted.commandId,
+            commandFingerprint,
+            expectedRevision: admitted.target.expectedRevision,
+            protectedSchemaHash: admitted.payload.protectedSchemaHash,
+            writeId: admitted.payload.writeId,
+            entries: admitted.payload.entries,
+            updatedAt: admitted.requestedAt,
+          });
+        });
         if (outcome.state !== "applied") return outcome;
         const settlement = Object.freeze({
           commandFingerprint,
