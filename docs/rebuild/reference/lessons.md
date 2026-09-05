@@ -3,8 +3,8 @@
 Cited in prose as **`ref lessons`**. Every entry is dated and names the decision(s) it came out of;
 newest first. Moved here from the repository root agent instructions on 2026-08-21 so that a session
 loads it on demand rather than on every start. Add new root-level lessons HERE; module-scoped
-lessons follow the pointer in the module's `AGENTS.md`: dashboard and Kuali use sibling
-`LESSONS.md` ledgers; other modules keep their existing local lesson sections.
+lessons follow the pointer in the module's `AGENTS.md` / `CLAUDE.md`; use its linked ledger
+when present instead of adding history to automatically loaded instructions.
 Before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, workflow, or
 write-safety work, search by the affected seam/decision and read the relevant entries. The owning
 contracts supersede historical entries; retain their dates rather than treating them as current status.

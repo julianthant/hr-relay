@@ -136,3 +136,11 @@ Gate output SHA-256 (retained locally with the task's temporary backup):
 | `coverage.log` | `925975738875c16ba9c7810d45b8f359d037fd97bc56162bf92663e7d0848714` |
 | `fixture-recheck.log` | `cec83be980972543b1b5d10deac8d87ac72219ad33429640079340223082876f` |
 | `coverage-two-workers.log` | `484da0266af9f64336bab19ae1f77e1e0c6fa7cb40b69a9f38b9f6a905e96fa7` |
+
+## Later correction — worker-count interpretation (2026-09-04)
+
+The successful command and gate result above remain valid, but its actual worker count was not
+verified. The later `/docs` pass found that inherited per-project `maxWorkers` takes precedence
+over the root CLI override in this installed Vitest version. Therefore the earlier result does not
+prove that two workers caused the improvement. The later pass enforces the limit on each project
+through a temporary runner configuration, preserving suite membership, isolation, and thresholds.
