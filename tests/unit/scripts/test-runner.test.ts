@@ -78,6 +78,31 @@ function alive(group: number): boolean {
   return result.stdout.trim().split(/\s+/).includes(String(group));
 }
 
+it("finishes forced group shutdown after the leader closes its output", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-runner-proof-")));
+  const runs = join(root, "runs"), ready = join(root, "ready");
+  const descendant = `process.on('SIGTERM',()=>{});require('node:fs').writeFileSync(${JSON.stringify(ready)},'ready');setInterval(()=>{},1000)`;
+  const leader = `require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'ignore'});setInterval(()=>{},1000)`;
+  let group: number | undefined;
+  try {
+    const result = await runTestProcess({ command: process.execPath, args: ["-e", leader], cwd: root, env: {}, rootDirectory: runs, idleTimeoutMs: 500 });
+    assert.equal(result.code, 1);
+    assert.equal(readFileSync(ready, "utf8"), "ready");
+    const claimed = (JSON.parse(readFileSync(join(runs, readdirSync(runs)[0], "owner.json"), "utf8")) as { groupId: unknown }).groupId;
+    assert.ok(typeof claimed === "number" && Number.isSafeInteger(claimed) && claimed > 1);
+    group = claimed;
+    await sleep(100);
+    assert.equal(alive(group), false, "leader close canceled forced shutdown of its surviving descendant");
+    assert.equal(reapTestRuns(runs).removed.length, 1);
+  } finally {
+    if (group !== undefined && alive(group)) {
+      process.kill(-group, "SIGKILL");
+      await until(() => !alive(group!));
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 it("after parent SIGKILL, preserves the live child group and reclaims only after it dies", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-runner-proof-")));
   const runs = join(root, "runs"), ready = join(root, "ready");

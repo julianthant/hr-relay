@@ -89,6 +89,7 @@ export async function runTestProcess(options: TestProcessOptions): Promise<TestP
   publish();
   const start = systemClock.nowMs();
   let tail = "", idle: NodeJS.Timeout | undefined, escalation: NodeJS.Timeout | undefined;
+  let shutdown: Promise<void> | undefined;
   let failure: string | undefined;
   const previousUmask = process.umask(0o077);
   const child = (() => {
@@ -111,7 +112,9 @@ export async function runTestProcess(options: TestProcessOptions): Promise<TestP
   };
   const stop = (): void => {
     terminate("SIGTERM");
-    escalation ??= setTimeout(() => terminate("SIGKILL"), 3000);
+    shutdown ??= new Promise<void>((finish) => {
+      escalation = setTimeout(() => { terminate("SIGKILL"); finish(); }, 3000);
+    });
   };
   const interrupt = (): void => { failure = "interrupted"; stop(); };
   const progress = (): void => {
@@ -132,6 +135,9 @@ export async function runTestProcess(options: TestProcessOptions): Promise<TestP
     child.once("close", (code, signal) => done({ code: failure === undefined ? (code ?? 1) : 1, detail: failure ?? (signal === null ? `exit ${code}` : `signal ${signal}`) }));
   });
   if (idle !== undefined) clearTimeout(idle);
+  // A leader can close while a TERM-resistant descendant with private stdio survives.
+  // Keep the promised forced shutdown until the entire owned group is gone.
+  if (shutdown !== undefined && owner.groupId !== null && groupAlive(owner.groupId)) await shutdown;
   if (escalation !== undefined) clearTimeout(escalation);
   process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);
   const live = owner.groupId !== null && groupAlive(owner.groupId);
