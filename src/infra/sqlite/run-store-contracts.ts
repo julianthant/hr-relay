@@ -10,6 +10,7 @@ import { z } from "zod";
 import {
   ActorIdSchema,
   CommandIdSchema,
+  DiagnosticBundleIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
@@ -33,12 +34,21 @@ import { WorkerPoolRecordSchema } from "../../domain/run/worker-pool.js";
 import { RunDisplayNameSchema } from "../../domain/commands.js";
 import { CheckpointPatchSchema } from "../../domain/workflow/checkpoint.js";
 import { RuntimeConfigClaimTokenSchema } from "../../domain/config/runtime-generation.js";
+import { RunEnvelopeSchema } from "../../domain/run/envelope.js";
 import {
   RequeueCauseSchema,
   RunLifecycleSchema,
+  RunInputStorageSchema,
   RunRecordSchema,
   RunStateSchema,
 } from "../../domain/run/record.js";
+import { ArchivedRunRecordSchema } from "../../domain/archive/model.js";
+import { RunExistenceSchema, RunRecordRefusalSchema } from "../../domain/authority.js";
+import { DeletedRunRecordSchema } from "../../domain/run/deleted-run.js";
+import {
+  FailureTerminalizationRequestSchema,
+  SuccessTerminalizationRequestSchema,
+} from "./run-terminal-contracts.js";
 
 /** Proof that the caller still owns the row it is about to change. */
 export const RunClaimTokenSchema = z.strictObject({
@@ -237,6 +247,190 @@ export const RunClaimSweepOutcomeSchema = z.discriminatedUnion("state", [
   }),
 ]);
 export type RunClaimSweepOutcome = z.infer<typeof RunClaimSweepOutcomeSchema>;
+
+/* ── canonical D330 run-record service boundary ─────────────────────────── */
+
+export const CanonicalCreateRunRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  code: z.string().min(1),
+  matchKey: z.string(),
+  workflow: WorkflowIdSchema,
+  descriptorVersion: RunEnvelopeSchema.shape.descriptorVersion,
+  contractFingerprint: RunEnvelopeSchema.shape.contractFingerprint,
+  configFingerprint: RunEnvelopeSchema.shape.configFingerprint,
+  configSnapshotId: RunEnvelopeSchema.shape.configSnapshotId,
+  resolvedInstance: RunEnvelopeSchema.shape.resolvedInstance,
+  requestedInstance: RunEnvelopeSchema.shape.requestedInstance,
+  priority: RunEnvelopeSchema.shape.priority,
+  shape: RunEnvelopeSchema.shape.shape,
+  dryRun: RunEnvelopeSchema.shape.dryRun,
+  browserMode: RunEnvelopeSchema.shape.browserMode,
+  captureBrowserScreenshots: RunEnvelopeSchema.shape.captureBrowserScreenshots,
+  stepOmissions: RunEnvelopeSchema.shape.stepOmissions,
+  parent: RunEnvelopeSchema.shape.parent,
+  retryOf: RunEnvelopeSchema.shape.retryOf,
+  recovery: RunEnvelopeSchema.shape.recovery,
+  input: RunInputStorageSchema,
+  sessionId: RunRecordSchema.shape.sessionId,
+  appVersion: RunRecordSchema.shape.appVersion,
+  runtimeConfig: RuntimeConfigClaimTokenSchema,
+});
+
+export const CanonicalListRunsRequestSchema = z.strictObject({
+  workflow: WorkflowIdSchema.optional(),
+  disposition: z.enum(["live", "archived"]),
+  limit: PositiveIntSchema.max(1000),
+  cursor: z.strictObject({
+    generation: NonNegativeIntSchema,
+    offset: NonNegativeIntSchema,
+    workflow: WorkflowIdSchema.optional(),
+    disposition: z.enum(["live", "archived"]),
+  }).optional(),
+});
+
+export const CanonicalClaimNextRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  workflow: WorkflowIdSchema,
+  workerId: WorkerIdSchema,
+  runtimeConfig: RuntimeConfigClaimTokenSchema,
+});
+
+const CanonicalVersionIdentityFields = {
+  commandId: CommandIdSchema,
+  runId: RunIdSchema,
+  expectedVersion: PositiveIntSchema,
+} as const;
+
+export const CanonicalTransitionRequestSchema = z.union([
+  z.strictObject({ ...CanonicalVersionIdentityFields, lifecycle: RunLifecycleSchema }),
+  z.strictObject({ ...CanonicalVersionIdentityFields, displayName: RunDisplayNameSchema }),
+  z.strictObject({ ...CanonicalVersionIdentityFields, priority: z.literal("interactive") }),
+]);
+
+export const CanonicalRenewClaimRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  runId: RunIdSchema,
+  claim: RunClaimTokenSchema,
+});
+
+export const CanonicalWorkerTransitionRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  runId: RunIdSchema,
+  claim: RunClaimTokenSchema,
+  lifecycle: RunLifecycleSchema,
+});
+
+export const CanonicalFailureTerminalizeRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  terminal: FailureTerminalizationRequestSchema,
+});
+
+export const CanonicalSuccessTerminalizeRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  terminal: SuccessTerminalizationRequestSchema,
+});
+
+export const CanonicalTerminalizeRequestSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("failure"),
+    commandId: CommandIdSchema,
+    terminal: FailureTerminalizationRequestSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("success"),
+    commandId: CommandIdSchema,
+    terminal: SuccessTerminalizationRequestSchema,
+  }),
+]);
+
+export const CanonicalRequeueRequestSchema = z.strictObject({
+  ...CanonicalVersionIdentityFields,
+  claim: RunClaimTokenSchema.optional(),
+  cause: RequeueCauseSchema,
+  notBefore: IsoInstantSchema.optional(),
+  staleBefore: IsoInstantSchema.optional(),
+});
+
+export const CanonicalRetrySourceRequestSchema = z.strictObject({
+  ...CanonicalVersionIdentityFields,
+  runtimeConfig: RuntimeConfigClaimTokenSchema,
+  appVersion: RunRecordSchema.shape.appVersion,
+});
+
+export const CanonicalRelaunchCreateRequestSchema = CanonicalCreateRunRequestSchema.omit({
+  commandId: true,
+  parent: true,
+  retryOf: true,
+});
+
+export const CanonicalRelaunchRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  archivedRunId: RunIdSchema,
+  contentDigest: FingerprintSchema,
+  relaunchedBy: ActorIdSchema,
+  create: CanonicalRelaunchCreateRequestSchema,
+});
+
+export const CanonicalArchiveRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  expectedVersion: PositiveIntSchema,
+  archive: ArchivedRunRecordSchema,
+});
+
+export const CanonicalDeleteRequestSchema = z.strictObject(CanonicalVersionIdentityFields);
+
+export const CanonicalDeleteArchivedRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  runId: RunIdSchema,
+  contentDigest: FingerprintSchema,
+});
+
+export const CanonicalPurgeRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  evidenceClass: z.literal("diagnostic-bundle"),
+  bundleId: DiagnosticBundleIdSchema,
+});
+
+export const CanonicalRunMutationOutcomeSchema = z.union([
+  z.strictObject({ state: z.literal("applied"), run: RunRecordSchema }),
+  z.strictObject({ state: z.literal("applied-already"), run: RunRecordSchema }),
+  z.strictObject({
+    state: z.literal("applied-already"),
+    tombstone: DeletedRunRecordSchema,
+    appliedVersion: PositiveIntSchema,
+  }),
+  z.strictObject({ state: z.literal("refused"), refusal: RunRecordRefusalSchema }),
+]);
+
+export const CanonicalRunListOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("listed"),
+    rows: z.array(RunRecordSchema),
+    cursor: CanonicalListRunsRequestSchema.shape.cursor.unwrap().optional(),
+  }),
+  z.strictObject({
+    state: z.literal("refused"),
+    refusal: z.strictObject({ reason: z.literal("cursor-stale") }),
+  }),
+]);
+
+export const CanonicalRunDeletionOutcomeSchema = z.union([
+  z.strictObject({
+    state: z.enum(["deleted", "applied-already"]),
+    tombstones: z.array(DeletedRunRecordSchema),
+  }),
+  z.strictObject({ state: z.literal("refused"), refusal: RunRecordRefusalSchema }),
+  RunExistenceSchema,
+]);
+
+export const CanonicalRunPurgeOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.enum(["purged", "applied-already"]),
+    evidenceClass: z.literal("diagnostic-bundle"),
+    purged: NonNegativeIntSchema,
+  }),
+  z.strictObject({ state: z.literal("refused"), refusal: RunRecordRefusalSchema }),
+]);
 
 export const RunItemQuerySchema = z.strictObject({
   workflow: WorkflowIdSchema,

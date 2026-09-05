@@ -19,14 +19,19 @@ import {
   type AuthorityTableName,
   type ProjectionTableName,
   type TableName,
+  type RunRecordRefusal,
 } from "../../domain/authority.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import {
+  AuthorityCommandAuditRecordSchema,
+  AuthorityCommandRecordSchema,
   BulkRunCommandAcceptanceRecordSchema,
   CommandAuditRecordSchema,
   CommandRequestSchema,
+  RunLifecycleCommandAuditRecordSchema,
+  RunLifecycleCommandRecordSchema,
   deriveSettingsCommandFingerprint,
 } from "../../domain/commands.js";
 import { providerBudget, type ProviderBudget } from "../../domain/config/schema.js";
@@ -419,6 +424,13 @@ type CommandAuditRepository = Readonly<{
   findByCommand(commandId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
 }>;
 
+type RunLifecycleJournalRepository = Readonly<{
+  insertCommand(input: unknown): ImmutableInsertResult<z.infer<typeof RunLifecycleCommandRecordSchema>>;
+  getCommand(commandId: string): z.infer<typeof AuthorityCommandRecordSchema> | undefined;
+  insertAudit(input: unknown): ImmutableInsertResult<z.infer<typeof RunLifecycleCommandAuditRecordSchema>>;
+  findAuditByCommand(commandId: string): z.infer<typeof AuthorityCommandAuditRecordSchema> | undefined;
+}>;
+
 type RuntimeConfigRepository = Readonly<{
   get(): ActiveRuntimeConfigRecord | undefined;
   activate(input: unknown): ActiveRuntimeConfigRecord;
@@ -486,6 +498,15 @@ export interface AuthorityTerminalizationHooks {
   afterSuccessStorageStep?(step: SuccessTerminalizationStorageStep): void;
 }
 
+export interface AuthorityLifecycleHooks {
+  afterClaimSelection?(): void;
+  afterRunWrite?(run: RunRecord): void;
+  afterDeleteStep?(event: Readonly<{
+    runId: string;
+    step: "tombstone" | "cascade-complete" | "tally-settled";
+  }>): void;
+}
+
 /**
  * Ref workflow-model §5.7. `latest` answers "latest compatible attempt wins" — it returns
  * the highest-numbered attempt for a logical item's node, and returns
@@ -530,6 +551,8 @@ type DeletedRunRepository = Readonly<{
   get(runId: string): DeletedRunRecord | undefined;
   list(): readonly DeletedRunRecord[];
 }>;
+
+type CanonicalRunClaimOutcome = RunClaimOutcome | Readonly<{ state: "refused"; refusal: RunRecordRefusal }>;
 
 type RunRepository = Readonly<{
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
@@ -612,11 +635,15 @@ type RunRepository = Readonly<{
    */
   listWorkflows(): readonly string[];
   claimNext(input: unknown): RunClaimOutcome;
+  /** D330 service path: dependency and disposition eligibility are mandatory. */
+  claimEligible(input: unknown): CanonicalRunClaimOutcome;
   renewClaim(input: unknown): RunHeartbeatOutcome;
   transition(input: unknown): RunUpdateOutcome;
   requeue(input: unknown): RunUpdateOutcome;
   resume(input: unknown): RunUpdateOutcome;
   updatePresentation(input: unknown): RunUpdateOutcome;
+  requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string }>): RunUpdateOutcome;
+  advanceRevision(input: Readonly<{ runId: string; expectedVersion: number; now: string }>): RunUpdateOutcome;
   /** D95 run-priority `bump`: elevate one QUEUED row's claim class; never a requeue. */
   bumpPriority(input: unknown): RunUpdateOutcome;
   /** Ref data-intake-and-edit-data §6.4 (D166): the Edit-Data save — CAS against the resume fence. */
@@ -883,6 +910,7 @@ type VersionPlanRepository = Readonly<{
 
 /** D179: one self-contained archived run per prior-version run a bump swept. */
 type ArchivedRunRepository = Readonly<{
+  bindingMismatches(input: unknown): readonly string[];
   insert(input: unknown): ImmutableInsertResult<ArchivedRunStorageRecord>;
   get(runId: string): ArchivedRunStorageRecord | undefined;
   isArchived(runId: string): boolean;
@@ -946,6 +974,7 @@ export type AuthorityRepositories = Readonly<{
   deletedRuns: DeletedRunRepository;
   commands: CommandRepository;
   commandAudits: CommandAuditRepository;
+  lifecycleJournal: RunLifecycleJournalRepository;
   bulkCommandAcceptances: ImmutableRepository<z.infer<typeof BulkRunCommandAcceptanceRecordSchema>>;
   dependencies: DependencyRepository;
   delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
@@ -1613,7 +1642,13 @@ const INVARIANT_QUERIES = Object.freeze([
   },
   {
     name: "commands-family-column-matches-record",
-    sql: "SELECT count(*) AS count FROM commands WHERE family <> json_extract(record_json, '$.family')",
+    sql: `
+      SELECT count(*) AS count FROM commands
+      WHERE family IS NOT CASE
+        WHEN json_extract(record_json, '$.kind') = 'run-lifecycle' THEN 'run-lifecycle'
+        ELSE json_extract(record_json, '$.family')
+      END
+    `,
   },
   {
     name: "command-audit-parent-column-matches-record",
@@ -2517,6 +2552,9 @@ export class AuthorityDatabase implements Disposable {
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
   #runSearchCorpusValidation: RunSearchCorpusValidation | undefined;
 
+  #authorityCommitCallbacks: (() => void)[] = [];
+  #lifecycleHooks: AuthorityLifecycleHooks | undefined;
+
   readonly authority: AuthorityRepositories;
   readonly projections: ProjectionRepositories;
 
@@ -2525,6 +2563,7 @@ export class AuthorityDatabase implements Disposable {
     clock: Clock,
     writeCommitHooks?: AuthorityWriteCommitHooks,
     terminalizationHooks?: AuthorityTerminalizationHooks,
+    lifecycleHooks?: AuthorityLifecycleHooks,
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     const existed = options.path !== ":memory:" && existsSync(options.path);
@@ -2538,6 +2577,7 @@ export class AuthorityDatabase implements Disposable {
     this.#clock = clock;
     this.#writeCommitHooks = writeCommitHooks;
     this.#terminalizationHooks = terminalizationHooks;
+    this.#lifecycleHooks = lifecycleHooks;
     this.#path = options.path;
     this.#busyTimeoutMs = options.busyTimeoutMs;
     this.#database = new DatabaseSync(options.path, {
@@ -2584,8 +2624,9 @@ export class AuthorityDatabase implements Disposable {
     clock: Clock = systemClock,
     writeCommitHooks?: AuthorityWriteCommitHooks,
     terminalizationHooks?: AuthorityTerminalizationHooks,
+    lifecycleHooks?: AuthorityLifecycleHooks,
   ): AuthorityDatabase {
-    return new AuthorityDatabase(input, clock, writeCommitHooks, terminalizationHooks);
+    return new AuthorityDatabase(input, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks);
   }
 
   static sourceDatabaseIdentity(path: string): string {
@@ -2664,6 +2705,16 @@ export class AuthorityDatabase implements Disposable {
 
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result {
     return this.#withTransaction("authority", () => work(this.authority));
+  }
+
+  /** D330: queue-root publication belongs after the outermost authority commit. */
+  afterAuthorityCommit(publish: () => void): void {
+    if (this.#transactionDepth === 0) {
+      publish();
+      return;
+    }
+    if (this.#transactionMode !== "authority") throw new Error("authority publication requires an authority transaction");
+    this.#authorityCommitCallbacks.push(publish);
   }
 
   /**
@@ -3543,6 +3594,7 @@ export class AuthorityDatabase implements Disposable {
       }
       const savepoint = `authority_nested_${String(this.#savepointSequence += 1)}`;
       const dirtyBefore = this.#authorityDirty;
+      const callbacksBefore = this.#authorityCommitCallbacks.length;
       this.#database.exec(`SAVEPOINT ${savepoint}`);
       this.#transactionDepth += 1;
       try {
@@ -3553,6 +3605,7 @@ export class AuthorityDatabase implements Disposable {
         this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
         this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
         this.#authorityDirty = dirtyBefore;
+        this.#authorityCommitCallbacks.splice(callbacksBefore);
         throw error;
       } finally {
         this.#transactionDepth -= 1;
@@ -3563,8 +3616,9 @@ export class AuthorityDatabase implements Disposable {
     this.#transactionDepth = 1;
     this.#transactionMode = mode;
     this.#authorityDirty = false;
+    let result: Result;
     try {
-      const result = work();
+      result = work();
       if (this.#authorityDirty) {
         const update = this.#database.prepare(`
           UPDATE authority_meta
@@ -3574,15 +3628,18 @@ export class AuthorityDatabase implements Disposable {
         if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation update did not affect the singleton metadata row");
       }
       this.#database.exec("COMMIT");
-      return result;
     } catch (error) {
       this.#database.exec("ROLLBACK");
+      this.#authorityCommitCallbacks.splice(0);
       throw error;
     } finally {
       this.#transactionDepth = 0;
       this.#transactionMode = undefined;
       this.#authorityDirty = false;
     }
+    const publications = this.#authorityCommitCallbacks.splice(0);
+    for (const publish of publications) publish();
+    return result;
   }
 
   #withReadSnapshot<Result>(read: () => Result): Result {
@@ -4759,6 +4816,74 @@ export class AuthorityDatabase implements Disposable {
           return parseJsonRecord(CommandAuditRecordSchema, JsonRowSchema.parse(row).record_json);
         },
       }),
+      lifecycleJournal: Object.freeze({
+        insertCommand: (input: unknown) => {
+          const record = RunLifecycleCommandRecordSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("commands", () => {
+            const existing = this.#readRecord("commands", record.commandId, AuthorityCommandRecordSchema);
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`command id ${record.commandId} was reused with different content`);
+              }
+              return {
+                result: Object.freeze({ state: "existing" as const, record }),
+                changes: 0,
+              };
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO commands (record_key, family, record_json, created_at) VALUES (?, ?, ?, ?)
+            `).run(record.commandId, record.kind, json, record.recordedAt);
+            return {
+              result: Object.freeze({ state: "inserted" as const, record }),
+              changes: sqliteChanges(result.changes),
+            };
+          });
+        },
+        getCommand: (commandId: string) => this.#readRecord(
+          "commands",
+          commandId,
+          AuthorityCommandRecordSchema,
+        ),
+        insertAudit: (input: unknown) => {
+          const record = RunLifecycleCommandAuditRecordSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("command_audits", () => {
+            const existing = this.#readRecord(
+              "command_audits",
+              record.auditId,
+              AuthorityCommandAuditRecordSchema,
+            );
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`command audit ${record.auditId} already exists with different content`);
+              }
+              return {
+                result: Object.freeze({ state: "existing" as const, record }),
+                changes: 0,
+              };
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO command_audits (record_key, command_id, record_json, created_at) VALUES (?, ?, ?, ?)
+            `).run(record.auditId, record.request.commandId, json, record.completedAt);
+            return {
+              result: Object.freeze({ state: "inserted" as const, record }),
+              changes: sqliteChanges(result.changes),
+            };
+          });
+        },
+        findAuditByCommand: (commandId: string) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM command_audits WHERE command_id = ? ORDER BY record_key
+          `).all(commandId);
+          if (rows.length > 1) {
+            throw new Error(`command ${commandId} has ${String(rows.length)} recorded audits; exactly one outcome may exist`);
+          }
+          const row = rows[0];
+          if (row === undefined) return undefined;
+          return parseJsonRecord(AuthorityCommandAuditRecordSchema, JsonRowSchema.parse(row).record_json);
+        },
+      }),
       dependencies: Object.freeze({
         insert: (input: unknown) => {
           const record = DependencyRecordSchema.parse(input);
@@ -5342,6 +5467,23 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       archivedRuns: Object.freeze({
+        bindingMismatches: (input: unknown) => {
+          const archived = ArchivedRunStorageRecordSchema.parse(input);
+          const run = this.#readRunRow(archived.runId);
+          if (run === undefined) return ["runId has no retained lifecycle row"];
+          if (run.lifecycle.state !== "terminal") return ["retained lifecycle is not terminal"];
+          const identityMatches = archived.traceId === run.envelope.traceId
+            && archived.workflowId === run.envelope.workflow
+            && archived.archivedIdentity.descriptorVersion === run.envelope.descriptorVersion
+            && archived.archivedIdentity.contractFingerprint === run.envelope.contractFingerprint
+            && Number(archived.row.rowRevision) === Number(run.version)
+            && archived.row.attempt === run.envelope.attempt
+            && canonicalJsonStringify(archived.input) === canonicalJsonStringify(run.input);
+          return [
+            ...(identityMatches ? [] : ["archive identity/input/revision differs from the retained run"]),
+            ...archivedTerminalMismatches(run, run.lifecycle, archived),
+          ];
+        },
         insert: (input: unknown) => {
           const record = ArchivedRunStorageRecordSchema.parse(input);
           const json = canonicalJsonStringify(record);
@@ -5717,14 +5859,18 @@ export class AuthorityDatabase implements Disposable {
    * D221 — the attempt the NEXT run of this logical item must take.
    *
    * The `attempt` column is the envelope's own value (the integrity audit pins
-   * the two together), and runs are never deleted, so the maximum over the item
-   * is the whole history of attempts that item has spent. One past it is the
+   * the two together). D330 retains spent ordinals in tombstones, so the
+   * maximum across live and deleted authority is the history. One past it is the
    * only attempt no execution of that item can already own.
    */
   #nextItemAttempt(workflow: string, itemId: string): number {
     const row = MaxAttemptRowSchema.parse(this.#database.prepare(`
-      SELECT max(attempt) AS attempt FROM tasks WHERE workflow = ? AND item_id = ?
-    `).get(WorkflowIdSchema.parse(workflow), ItemIdSchema.parse(itemId)));
+      SELECT max(attempt) AS attempt FROM (
+        SELECT attempt FROM tasks WHERE workflow = ? AND item_id = ?
+        UNION ALL
+        SELECT attempt FROM deleted_runs WHERE workflow = ? AND item_id = ?
+      )
+    `).get(WorkflowIdSchema.parse(workflow), ItemIdSchema.parse(itemId), workflow, itemId));
     const highest = row.attempt;
     if (highest === null) return 1;
     return highest + 1;
@@ -5735,7 +5881,7 @@ export class AuthorityDatabase implements Disposable {
    *
    * Same shape as `#nextItemAttempt` one scope up, and for the same reason: the
    * column is the record's own value (the integrity audit pins them together),
-   * runs are never deleted, so the maximum over the workflow is the whole
+   * tombstones retain deleted ordinals, so the two-source maximum is the whole
    * history of numbers that workflow has spent, and one past it is the only
    * number no run of that workflow can already own.
    *
@@ -5747,8 +5893,12 @@ export class AuthorityDatabase implements Disposable {
    */
   #nextWorkflowRunNumber(workflow: string): number {
     const row = MaxRunNumberRowSchema.parse(this.#database.prepare(`
-      SELECT max(run_number) AS run_number FROM tasks WHERE workflow = ?
-    `).get(WorkflowIdSchema.parse(workflow)));
+      SELECT max(run_number) AS run_number FROM (
+        SELECT run_number FROM tasks WHERE workflow = ?
+        UNION ALL
+        SELECT run_number FROM deleted_runs WHERE workflow = ?
+      )
+    `).get(WorkflowIdSchema.parse(workflow), workflow));
     const highest = row.run_number;
     if (highest === null) return 1;
     return highest + 1;
@@ -5830,6 +5980,7 @@ export class AuthorityDatabase implements Disposable {
       if (changes !== 1) {
         throw new Error(`run ${record.envelope.runId} ${mode} affected ${String(changes)} rows`);
       }
+      this.#lifecycleHooks?.afterRunWrite?.(record);
       return { result: undefined, changes };
     });
   }
@@ -5876,6 +6027,135 @@ export class AuthorityDatabase implements Disposable {
       const updated = RunRecordSchema.parse({ ...candidate, version: current.version + 1, updatedAt: now });
       this.#writeRunRow(updated, "update");
       return RunUpdateOutcomeSchema.parse({ state: "applied", run: updated });
+    });
+  }
+
+  #claimNextRun(input: unknown, canonical: false): RunClaimOutcome;
+  #claimNextRun(input: unknown, canonical: true): CanonicalRunClaimOutcome;
+  #claimNextRun(input: unknown, canonical: boolean): CanonicalRunClaimOutcome {
+    const request = RunClaimRequestSchema.parse(input);
+    if (canonical && request.runtimeConfig === undefined) {
+      return { state: "refused", refusal: { reason: "runtime-stale" } };
+    }
+    return this.withAuthorityTransaction((): CanonicalRunClaimOutcome => {
+      if (request.runtimeConfig !== undefined) {
+        const active = this.#readRecord(
+          "runtime_config",
+          "active",
+          ActiveRuntimeConfigRecordSchema,
+        );
+        const activeToken = active === undefined
+          ? undefined
+          : RuntimeConfigClaimTokenSchema.parse({
+              generation: active.generation,
+              settingsRevision: active.settingsRevision,
+              settingsFingerprint: active.settingsFingerprint,
+              configFingerprint: active.configFingerprint,
+            });
+        if (activeToken === undefined
+          || canonicalJsonStringify(activeToken) !== canonicalJsonStringify(request.runtimeConfig)) {
+          if (canonical) return { state: "refused", refusal: { reason: "runtime-stale" } };
+          throw new Error(
+            `worker boot runtime config generation ${String(request.runtimeConfig.generation)} `
+            + "is no longer dashboard-active; restart activation is required",
+          );
+        }
+        const settingsCurrent = this.#readRecord(
+          "settings_current",
+          "current",
+          SettingsCurrentRecordSchema,
+        );
+        if (settingsCurrent !== undefined
+          && (settingsCurrent.revision !== request.runtimeConfig.settingsRevision
+            || settingsCurrent.settingsFingerprint !== request.runtimeConfig.settingsFingerprint)) {
+          if (canonical) return { state: "refused", refusal: { reason: "runtime-stale" } };
+          throw new Error(
+            "dashboard runtime settings are stale; restart activation is required",
+          );
+        }
+      }
+      // One worker, one active item (ref execution-and-sessions §0.3). A worker asking for a
+      // second row is a bug in the loop, not a state to serve — and serving
+      // it would put two runs and two browser-session sets under one owner.
+      const held = HeldRunRowSchema.parse(this.#database.prepare(`
+        SELECT record_key AS run_id FROM tasks
+        WHERE owner_worker_id = ? AND state IN ('claimed', 'validating', 'running')
+        LIMIT 1
+      `).get(request.workerId) ?? { run_id: null });
+      if (held.run_id !== null) {
+        if (canonical) return { state: "refused", refusal: { reason: "worker-busy", runId: RunIdSchema.parse(held.run_id) } };
+        throw new Error(`worker ${request.workerId} already holds active run ${held.run_id}`);
+      }
+      const row = this.#database.prepare(`
+        SELECT record_json FROM tasks
+        WHERE workflow = ? AND state = 'queued'
+          AND (not_before IS NULL OR not_before <= ?)
+          AND (? = 0 OR (
+            NOT EXISTS (SELECT 1 FROM archived_runs a WHERE a.record_key = tasks.record_key)
+            AND NOT EXISTS (
+              SELECT 1 FROM dependencies d
+              WHERE json_extract(d.record_json, '$.parentRunId') = tasks.record_key
+                AND json_extract(d.record_json, '$.state') <> 'satisfied'
+            )
+          ))
+        ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END, created_at, record_key
+        LIMIT 1
+      `).get(request.workflow, request.now, canonical ? 1 : 0);
+      if (row === undefined) {
+        const deferred = NextEligibleRowSchema.parse(this.#database.prepare(`
+          SELECT min(not_before) AS next_eligible_at FROM tasks
+          WHERE workflow = ? AND state = 'queued' AND not_before > ?
+            AND (? = 0 OR (
+              NOT EXISTS (SELECT 1 FROM archived_runs a WHERE a.record_key = tasks.record_key)
+              AND NOT EXISTS (
+                SELECT 1 FROM dependencies d
+                WHERE json_extract(d.record_json, '$.parentRunId') = tasks.record_key
+                  AND json_extract(d.record_json, '$.state') <> 'satisfied'
+              )
+            ))
+        `).get(request.workflow, request.now, canonical ? 1 : 0));
+        if (deferred.next_eligible_at === null) return RunClaimOutcomeSchema.parse({ state: "idle" });
+        return RunClaimOutcomeSchema.parse({ state: "deferred", nextEligibleAt: deferred.next_eligible_at });
+      }
+      const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+      if (request.configFingerprint !== undefined) {
+        if (current.envelope.configFingerprint !== request.configFingerprint) {
+          if (canonical) return { state: "refused", refusal: { reason: "runtime-stale" } };
+          throw new Error(
+            `queued run ${current.envelope.runId} config fingerprint `
+            + `${current.envelope.configFingerprint} does not match worker boot `
+            + request.configFingerprint,
+          );
+        }
+        const snapshot = this.#readRecord(
+          "config_snapshots",
+          current.envelope.configSnapshotId,
+          ConfigSnapshotRecordSchema,
+        );
+        if (snapshot === undefined
+          || snapshot.fingerprint !== current.envelope.configFingerprint) {
+          if (canonical) return { state: "refused", refusal: { reason: "runtime-stale" } };
+          throw new Error(
+            `queued run ${current.envelope.runId} does not bind an exact stored config snapshot `
+            + `${current.envelope.configSnapshotId}`,
+          );
+        }
+      }
+      if (canonical) this.#lifecycleHooks?.afterClaimSelection?.();
+      const claimed = RunRecordSchema.parse({
+        ...current,
+        lifecycle: {
+          state: "claimed",
+          workerId: request.workerId,
+          claimedAt: request.now,
+          heartbeatAt: request.now,
+        },
+        claimGeneration: current.claimGeneration + 1,
+        version: current.version + 1,
+        updatedAt: request.now,
+      });
+      this.#writeRunRow(claimed, "update");
+      return RunClaimOutcomeSchema.parse({ state: "claimed", run: claimed });
     });
   }
 
@@ -6152,6 +6432,11 @@ export class AuthorityDatabase implements Disposable {
               runId,
               workflow: run.envelope.workflow,
               traceId: run.envelope.traceId,
+              itemId: run.envelope.itemId,
+              attempt: run.envelope.attempt,
+              runNumber: run.runNumber ?? null,
+              ordinalSource: "tombstone",
+              tallyVersion: 2,
               origin,
               commandId,
               deletedAt: now,
@@ -6166,13 +6451,16 @@ export class AuthorityDatabase implements Disposable {
            */
           const inserted = this.#database.prepare(`
             INSERT INTO deleted_runs
-              (record_key, workflow, trace_id, origin, command_id, deleted_at, record_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              (record_key, workflow, trace_id, origin, command_id, deleted_at, record_json, created_at,
+               item_id, attempt, run_number, ordinal_source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             runId, run.envelope.workflow, run.envelope.traceId, origin, commandId, now,
             canonicalJsonStringify(tombstone([])), now,
+            run.envelope.itemId, run.envelope.attempt, run.runNumber ?? null, "tombstone",
           );
           if (sqliteChanges(inserted.changes) !== 1) throw new Error(`deleted_runs tombstone for ${runId} was not written`);
+          this.#lifecycleHooks?.afterDeleteStep?.({ runId, step: "tombstone" });
           const remove = (table: z.infer<typeof DeletedRunTableSchema>, sql: string, ...params: readonly string[]): void => {
             const rows = sqliteChanges(this.#database.prepare(sql).run(...params).changes);
             if (rows > 0) removed.push({ table, rows });
@@ -6201,6 +6489,7 @@ export class AuthorityDatabase implements Disposable {
           remove("run_terminal_outbox", "DELETE FROM run_terminal_outbox WHERE run_id = ?", runId);
           remove("run_results", "DELETE FROM run_results WHERE record_key = ?", runId);
           remove("run_terminal_authorizations", "DELETE FROM run_terminal_authorizations WHERE record_key = ?", runId);
+          remove("checkpoint_payloads", "DELETE FROM checkpoint_payloads WHERE json_extract(record_json, '$.runId') = ?", runId);
           remove("run_checkpoints", "DELETE FROM run_checkpoints WHERE run_id = ?", runId);
           // Inbox items that would otherwise link to a run nobody can open.
           remove("notifications", `
@@ -6212,19 +6501,21 @@ export class AuthorityDatabase implements Disposable {
             DELETE FROM dependencies
             WHERE json_extract(record_json, '$.parentRunId') = ? OR json_extract(record_json, '$.childRunId') = ?`, runId, runId);
           remove("delegation_manifests", "DELETE FROM delegation_manifests WHERE json_extract(record_json, '$.parentRunId') = ?", runId);
-          // The Archive, when this run is in it — or was relaunched from it.
-          remove("archive_relaunches", "DELETE FROM archive_relaunches WHERE archived_run_id = ? OR record_key = ?", runId, runId);
+          // Relaunch lineage belongs to the new run; deleting its source preserves it.
+          remove("archive_relaunches", "DELETE FROM archive_relaunches WHERE record_key = ?", runId);
           remove("archived_runs", "DELETE FROM archived_runs WHERE record_key = ?", runId);
           // Last, the run itself.
           const task = sqliteChanges(this.#database.prepare("DELETE FROM tasks WHERE record_key = ?").run(runId).changes);
           if (task !== 1) throw new Error(`deleting run ${runId} removed ${String(task)} tasks rows, not exactly one`);
           removed.push({ table: "tasks", rows: task });
+          this.#lifecycleHooks?.afterDeleteStep?.({ runId, step: "cascade-complete" });
           const record = tombstone(removed);
           // The one-way settle: the trigger admits exactly this transition.
           const restamped = sqliteChanges(this.#database.prepare(
             "UPDATE deleted_runs SET record_json = ? WHERE record_key = ? AND record_json = ?",
           ).run(canonicalJsonStringify(record), runId, canonicalJsonStringify(tombstone([]))).changes);
           if (restamped !== 1) throw new Error(`deleted_runs tombstone for ${runId} could not carry its tally`);
+          this.#lifecycleHooks?.afterDeleteStep?.({ runId, step: "tally-settled" });
           return { result: record, changes: 1 + removed.reduce((sum, entry) => sum + entry.rows, 0) };
         });
       },
@@ -6234,107 +6525,8 @@ export class AuthorityDatabase implements Disposable {
         `).all(RunIdSchema.parse(parentRunId));
         return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
       },
-      claimNext: (input: unknown) => {
-        const request = RunClaimRequestSchema.parse(input);
-        return this.withAuthorityTransaction(() => {
-          if (request.runtimeConfig !== undefined) {
-            const active = this.#readRecord(
-              "runtime_config",
-              "active",
-              ActiveRuntimeConfigRecordSchema,
-            );
-            const activeToken = active === undefined
-              ? undefined
-              : RuntimeConfigClaimTokenSchema.parse({
-                  generation: active.generation,
-                  settingsRevision: active.settingsRevision,
-                  settingsFingerprint: active.settingsFingerprint,
-                  configFingerprint: active.configFingerprint,
-                });
-            if (activeToken === undefined
-              || canonicalJsonStringify(activeToken) !== canonicalJsonStringify(request.runtimeConfig)) {
-              throw new Error(
-                `worker boot runtime config generation ${String(request.runtimeConfig.generation)} `
-                + "is no longer dashboard-active; restart activation is required",
-              );
-            }
-            const settingsCurrent = this.#readRecord(
-              "settings_current",
-              "current",
-              SettingsCurrentRecordSchema,
-            );
-            if (settingsCurrent !== undefined
-              && (settingsCurrent.revision !== request.runtimeConfig.settingsRevision
-                || settingsCurrent.settingsFingerprint !== request.runtimeConfig.settingsFingerprint)) {
-              throw new Error(
-                "dashboard runtime settings are stale; restart activation is required",
-              );
-            }
-          }
-          // One worker, one active item (ref execution-and-sessions §0.3). A worker asking for a
-          // second row is a bug in the loop, not a state to serve — and serving
-          // it would put two runs and two browser-session sets under one owner.
-          const held = HeldRunRowSchema.parse(this.#database.prepare(`
-            SELECT record_key AS run_id FROM tasks
-            WHERE owner_worker_id = ? AND state IN ('claimed', 'validating', 'running')
-            LIMIT 1
-          `).get(request.workerId) ?? { run_id: null });
-          if (held.run_id !== null) {
-            throw new Error(`worker ${request.workerId} already holds active run ${held.run_id}`);
-          }
-          const row = this.#database.prepare(`
-            SELECT record_json FROM tasks
-            WHERE workflow = ? AND state = 'queued'
-              AND (not_before IS NULL OR not_before <= ?)
-            ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END, created_at, record_key
-            LIMIT 1
-          `).get(request.workflow, request.now);
-          if (row === undefined) {
-            const deferred = NextEligibleRowSchema.parse(this.#database.prepare(`
-              SELECT min(not_before) AS next_eligible_at FROM tasks
-              WHERE workflow = ? AND state = 'queued' AND not_before > ?
-            `).get(request.workflow, request.now));
-            if (deferred.next_eligible_at === null) return RunClaimOutcomeSchema.parse({ state: "idle" });
-            return RunClaimOutcomeSchema.parse({ state: "deferred", nextEligibleAt: deferred.next_eligible_at });
-          }
-          const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
-          if (request.configFingerprint !== undefined) {
-            if (current.envelope.configFingerprint !== request.configFingerprint) {
-              throw new Error(
-                `queued run ${current.envelope.runId} config fingerprint `
-                + `${current.envelope.configFingerprint} does not match worker boot `
-                + request.configFingerprint,
-              );
-            }
-            const snapshot = this.#readRecord(
-              "config_snapshots",
-              current.envelope.configSnapshotId,
-              ConfigSnapshotRecordSchema,
-            );
-            if (snapshot === undefined
-              || snapshot.fingerprint !== current.envelope.configFingerprint) {
-              throw new Error(
-                `queued run ${current.envelope.runId} does not bind an exact stored config snapshot `
-                + `${current.envelope.configSnapshotId}`,
-              );
-            }
-          }
-          const claimed = RunRecordSchema.parse({
-            ...current,
-            lifecycle: {
-              state: "claimed",
-              workerId: request.workerId,
-              claimedAt: request.now,
-              heartbeatAt: request.now,
-            },
-            claimGeneration: current.claimGeneration + 1,
-            version: current.version + 1,
-            updatedAt: request.now,
-          });
-          this.#writeRunRow(claimed, "update");
-          return RunClaimOutcomeSchema.parse({ state: "claimed", run: claimed });
-        });
-      },
+      claimNext: (input: unknown) => this.#claimNextRun(input, false),
+      claimEligible: (input: unknown) => this.#claimNextRun(input, true),
       renewClaim: (input: unknown) => {
         const request = RunHeartbeatRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
@@ -6423,6 +6615,17 @@ export class AuthorityDatabase implements Disposable {
           },
         );
       },
+      requestCancellation: ({ runId, expectedVersion, now }) => this.#mutateRun(
+        RunIdSchema.parse(runId), z.number().int().positive().parse(expectedVersion), IsoInstantSchema.parse(now),
+        undefined, (current) => {
+          if (runClaim(current) === undefined) throw new Error(`run ${runId} holds no claim for a cancel request`);
+          return RunRecordSchema.parse({ ...current, cancelRequested: true });
+        },
+      ),
+      advanceRevision: ({ runId, expectedVersion, now }) => this.#mutateRun(
+        RunIdSchema.parse(runId), z.number().int().positive().parse(expectedVersion), IsoInstantSchema.parse(now),
+        undefined, (current) => current,
+      ),
       updatePresentation: (input: unknown) => {
         const request = RunPresentationRequestSchema.parse(input);
         return this.#mutateRun(

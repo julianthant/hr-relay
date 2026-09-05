@@ -13,9 +13,9 @@ import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
 import { IntakeSessionSchema } from "../../domain/intake/session.js";
 import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
 import {
+  AuthorityCommandAuditRecordSchema,
+  AuthorityCommandRecordSchema,
   BulkRunCommandAcceptanceRecordSchema,
-  CommandAuditRecordSchema,
-  CommandRequestSchema,
 } from "../../domain/commands.js";
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
 import { ActiveRuntimeConfigRecordSchema } from "../../domain/config/runtime-generation.js";
@@ -260,8 +260,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   leases: WorkerLeaseRecordSchema,
   dependencies: DependencyRecordSchema,
   delegation_manifests: DelegationManifestSchema,
-  commands: CommandRequestSchema,
-  command_audits: CommandAuditRecordSchema,
+  commands: AuthorityCommandRecordSchema,
+  command_audits: AuthorityCommandAuditRecordSchema,
   bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,
   notifications: NotificationRecordSchema,
   config_snapshots: ConfigSnapshotRecordSchema,

@@ -669,6 +669,9 @@ member tree leaves-first, gate records, tombstone-first and `ordinal_source = to
 types (existence union and refusal union); `src/domain/run/record.ts` (the actual strict persisted
 `RunRecordSchema` owner, including the fields D330 requires such as `cancelRequested`; source-owner
 path corrected during C858cc3dc R02 verification, 2026-09-04, without a contract change);
+`src/domain/commands.ts` and `src/infra/sqlite/storage-records.ts` only for D333's strict internal
+lifecycle-journal record arm and table-schema union (operator-approved during S2; product commands,
+the command kernel and DDL remain unchanged);
 `src/infra/sqlite/migrations.ts` for ONE additive `v31` migration only (rebuild the
 `archive_relaunches` source relation so deleting an archived source preserves a live descendant's
 lineage, while the row remains owned/deletable only by its NEW run, exactly §D330.9); the generated
@@ -706,8 +709,9 @@ operation/refusal boundary and Task-2-1 proof matrix. The adapter remains the so
 service accepts an injected post-commit queue-root publisher and proves authority commits before
 evidence; it does not import or edit the server builder. Tasks 3/4 retain production caller cutover and
 guard activation, so their staged direct callers may compile but no new bypass is added. Task 4 retains
-proof #24 and Task 4/3 own full cancellation proof #27. Settings, composition, commands, workers, live
-state and UI remain outside this task.
+proof #24 and Task 4/3 own full cancellation proof #27. Settings, composition, product commands/the
+command kernel, workers, live state and UI remain outside this task. The narrow D333 lifecycle-journal
+schemas and table-schema union named in the seam are the sole exception.
 
 **Verified prerequisites.** Task 1's proof merge `5b1fb626` is an ancestor of the current integration
 line. The previous R02 launch stopped during intake and produced no candidate; its worktree/branch are

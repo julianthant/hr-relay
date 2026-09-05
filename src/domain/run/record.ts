@@ -225,6 +225,8 @@ export const RunRecordSchema = z.strictObject({
    * a generation that matches.
    */
   claimGeneration: NonNegativeIntSchema,
+  /** D330: operator intent; a claimed worker alone settles the cancellation. */
+  cancelRequested: z.literal(true).optional(),
   /** Operator-assigned label over a stable id (ref dashboard-surfaces D83); never identity. */
   displayName: RunDisplayNameSchema.optional(),
   /**
