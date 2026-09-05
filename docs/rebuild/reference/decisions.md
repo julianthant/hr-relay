@@ -1,7 +1,8 @@
 # `reference/decisions.md` — the decision ledger (D1–D332, 2026-07-17 → 2026-09-04)
 
-**D325/D326 session-workflow amendment (2026-09-04):** the operator opens separate planning,
-implementation and independent review sessions; task completion requires accepted review plus
+**D325/D326 session-workflow amendment (2026-09-04):** the operator opens planning and supervisor
+sessions; supervision includes a fresh read-only reviewer subagent, fixes and finalization. Task
+completion requires accepted review plus
 integrated implementation, gates and cleanup. Owner: [roadmap §Plan, implement, review](../../roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04).
 
 **This is the POINTER INDEX, not a spec.** One line per decision saying what was decided, when, and

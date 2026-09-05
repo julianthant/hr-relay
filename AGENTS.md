@@ -99,8 +99,10 @@ when their full explanation is not repeated in this entry point.
 
 ## Roadmap task sessions
 
-The operator opens fresh `/phase-plan` → `/supervise` → `/review` sessions: Sol 5.6 → Astra → Sol 5.6
-on Codex; Opus 5 → Fable 5.1 → Opus 5 on Claude, all at high effort. Read roadmap §Governance's
+The operator opens `/phase-plan` → `/supervise`: Sol 5.6 → Astra on Codex; Opus 5 → Fable 5.1 on
+Claude, all at high effort. `/supervise` dispatches a fresh read-only `/review` subagent (Codex
+`sup_analyst`, Sol; Claude `sup-analyst`, Opus, both high), then fixes and finalizes in the same
+session. Separate review sessions remain an explicit operator option. Read roadmap §Governance's
 **Plan, implement, review** amendment for stage boundaries, plan approval, commit-bound review and
 finalization. The supervisor records the candidate as awaiting independent review and marks the
 phase/roadmap task complete only after accepted review, required integration gates and cleanup.

@@ -305,8 +305,10 @@ environment-supplied.
 ## Authorized orchestration
 
 For roadmap work read [roadmap §Plan, implement, review](../../../docs/roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04).
-The operator opens the three sessions. Skills use the exact phase task and approved plan commit;
-implementation remains awaiting review until the independent verdict and required gates pass.
+The operator opens planning and supervisor sessions. Skills use the exact phase task and approved
+plan commit. The supervisor dispatches a fresh read-only analyst using /review with no implementation
+history, waits for its verdict, fixes/re-reviews and finalizes in the same session. Completion remains
+open until independent review, required gates, integration and cleanup pass.
 
 Before authorized worker dispatch, read the active platform's
 `~/.agents/skill-library/parallel-agent-work/REFERENCE.md` (Codex) or
