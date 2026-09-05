@@ -115,18 +115,11 @@ export type RunRecoveryOutcome = RunMutationOutcome | RunExistence | Readonly<{
 }>;
 
 /** Both sweep predicates feed the same service requeue admission. */
-export function sweepWorkerClaims(database: AuthorityDatabase, lifecycle: WorkerRunLifecyclePort, input: unknown) {
+export function sweepWorkerClaims(database: AuthorityDatabase, lifecycle: WorkerRunLifecyclePort, input: unknown,
+  publishCancelled: (run: RunRecord) => void) {
   const request = RunClaimSweepRequestSchema.parse(input);
   return database.withAuthorityTransaction((repositories) => {
-    const rows = request.workerId === undefined
-      ? (request.workflow === undefined ? repositories.runs.listWorkflows() : [request.workflow])
-        .flatMap((workflow) => repositories.runs.listByWorkflow(workflow))
-      : repositories.runs.listByWorker(request.workerId);
-    return rows.filter((run) => {
-      const held = runClaim(run);
-      return held !== undefined && (request.workflow === undefined || run.envelope.workflow === request.workflow)
-        && (request.staleBefore === undefined || Date.parse(held.heartbeatAt) < Date.parse(request.staleBefore));
-    }).sort((a, b) => a.envelope.runId.localeCompare(b.envelope.runId)).map((run) => {
+    return repositories.runs.listClaimRecoveryCandidates(request).map((run) => {
       const held = runClaim(run);
       if (held === undefined) throw new Error("sweep selected an unclaimed run");
       const outcome = lifecycle.requeue({
@@ -136,7 +129,13 @@ export function sweepWorkerClaims(database: AuthorityDatabase, lifecycle: Worker
           ? { claim: { workerId: held.workerId, claimGeneration: held.claimGeneration } }
           : { staleBefore: request.staleBefore }),
       });
-      if (outcome.state !== "recovery-required") requireLifecycleApplied(outcome);
+      if (outcome.state !== "recovery-required") {
+        const settled = requireLifecycleApplied(outcome);
+        if (outcome.state === "applied" && settled.lifecycle.state === "terminal"
+          && settled.lifecycle.outcome === "cancelled") {
+          database.afterAuthorityCommit(() => publishCancelled(settled));
+        }
+      }
       return outcome;
     });
   });
@@ -583,6 +582,10 @@ export class RunRecordService {
           message: "only a claim-holding run may settle failed",
         });
       }
+      if (existence.run.cancelRequested === true) {
+        return refused({ reason: "illegal-transition", from: existence.run.lifecycle.state, to: "terminal",
+          message: "an admitted cancellation must settle cancelled" });
+      }
       const activeMember = findNonTerminalTreeMember(repositories, authorization.runId);
       if (activeMember !== undefined) {
         return refused({ reason: "tree-non-terminal", runId: activeMember.envelope.runId });
@@ -624,6 +627,10 @@ export class RunRecordService {
           to: "terminal",
           message: "only a running run may settle done",
         });
+      }
+      if (existence.run.cancelRequested === true) {
+        return refused({ reason: "illegal-transition", from: existence.run.lifecycle.state, to: "terminal",
+          message: "an admitted cancellation must settle cancelled" });
       }
       const activeMember = findNonTerminalTreeMember(repositories, authorization.runId);
       if (activeMember !== undefined) {

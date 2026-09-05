@@ -1158,6 +1158,45 @@ Exclusions remain as approved: no command-kernel/fan-out/start creation, shared 
 negative recovery/resolveAbsent, config consumer, SQL migration, contract, projection or UI changes.
 No push. No next-task dispatch. Review must bind this implementation range and its evidence commit.
 
+**Independent review and correction round 1 (2026-09-05).** Fresh read-only Codex
+`sup_review_run_writers` (`sup_review`, Sol 5.6/high) reviewed base `7e2b7607`, implementation
+`20715548`, and evidence/head `49670b65`; verdict **CHANGES REQUIRED**. It inspected the complete
+43-file diff and gate logs without running write-producing checks. Three findings were accepted:
+
+- R1 (high): failure authorization could absorb a cancellation committed between its boundary
+  read and current-row read. Success/failure admission now refuses a current cancellation inside
+  the service transaction; executor cancellation settlement occurs after a refused composite
+  unwinds. The exact failure interleaving reproduced red (`failed` instead of cancellation), then
+  passed with neighboring terminal/diagnostic tests. A second regression covers cancellation
+  arriving at success admission after authorization.
+- R2 (medium): recovery cancellation lacked its run-ended event. Startup and global maintenance
+  now supply the existing JSONL emitter through a required sweep publication callback, registered
+  only for a newly applied cancellation via `afterAuthorityCommit`. Both real composition paths
+  reproduced zero terminal events before the fix. They now publish one stable run identity even
+  after repeated process startup. The sweep test proves outer rollback suppresses publication,
+  outer commit delays it correctly, and repeated sweeps add no event or authority generation.
+- R3 (medium): global recovery parsed retained run history under the writer lock. The adapter's
+  read-only `listClaimRecoveryCandidates` now uses the original active-state plus stale-heartbeat/
+  worker/workflow predicates and ordering, with strict request/record validation. All mutation and
+  D118 admission remain inside the service sweep transaction. A SQLite-boundary regression failed
+  before the fix and now proves filtering occurs before JSON reads and forbids whole-workflow
+  enumeration. This is a tactical adapter read adaptation; no migration, contract or lifecycle
+  operation changed.
+
+Correction gates passed: `npm run typecheck`, `npm run lint`, the assigned focused suites plus
+adjacent diagnostics/kernel round-trip tests (**12 files / 364 tests**), full coverage
+(**416 files / 5,211 tests**, all floors; global statements/branches/functions/lines
+**85.57/76.75/89.73/87.64%**, core **87.73/78.30/93.02/90.20%**), suite-size check,
+manifest check (current), standalone architecture (**75 files / 758 tests**) and diff check.
+Coverage ran after compiler/linter completion with at most four file workers. Red/green evidence:
+`/tmp/hr-run-writers-review-r1-red.log`, `-r1-green.log`, `-r2-red.log`, `-r2-green.log`,
+`-r3-red.log`, `-r3-green.log`; full gate log `/tmp/hr-run-writers-review-fix-gates.log`.
+
+The correction and this evidence are committed together on the assigned branch; their immutable
+commit is the commit adding this paragraph, based on reviewed head `49670b65`. The supervisor
+supplies that full SHA for renewed review. Task 3 remains **awaiting independent review** of the
+corrected candidate; no acceptance or integration is claimed by these finding dispositions.
+
 **Supervisor sizing and assignment.** One supervisor fits: the worker port, service composition,
 terminal atomicity and recovery proofs are one coupled seam; a split would overlap every hard boundary.
 This is serial work, not a parallel wave.

@@ -1863,10 +1863,16 @@ export async function executeClaimedRun(
   try {
     return await interpret();
   } catch (error) {
-    if (error instanceof RunAbandonedError || (error instanceof RunLifecycleRefusedError
-      && error.outcome.state === "refused" && error.outcome.refusal.reason === "lost")) {
-      return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: error.message });
+    // A command can commit cancellation between a boundary read and terminal admission.
+    // Settle it here, after any enclosing evidence transaction has unwound.
+    let failure = error;
+    if (failure instanceof RunLifecycleRefusedError) {
+      try { checkCancellation(); } catch (cancellation) { failure = cancellation; }
     }
-    throw error;
+    if (failure instanceof RunAbandonedError || (failure instanceof RunLifecycleRefusedError
+      && failure.outcome.state === "refused" && failure.outcome.refusal.reason === "lost")) {
+      return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: failure.message });
+    }
+    throw failure;
   }
 }

@@ -805,3 +805,78 @@ describe("original claim at failure terminalization", () => {
     assert.equal(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run").length, 0);
   });
 });
+
+describe("cancellation racing failure authorization", () => {
+  it("settles cancelled when admission commits after the boundary read but before authorization", async () => {
+    const h = executorHarness();
+    const { database, clock } = h.authority;
+    const input = RunRecordSchema.parse(personLookupQueuedRun());
+    const claimed = enqueueAndClaim(database, { ...input, input: {
+      ...input.input, parsed: { schemaHash: "a".repeat(64), value: {} },
+    } }, clock.now().toISOString());
+    let interleaved = false;
+    let validatingReads = 0;
+    const deps: RunExecutorDependencies = { ...h.deps, authority: {
+      authority: { ...database.authority, runs: { get: (runId) => {
+        const current = database.authority.runs.get(runId);
+        if (current?.lifecycle.state === "validating") validatingReads++;
+        if (!interleaved && validatingReads === 2) {
+          assert.ok(current);
+          interleaved = true;
+          assert.equal(testRunService(database, clock).transition({
+            commandId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", runId,
+            expectedVersion: current.version,
+            lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() },
+          }).state, "applied");
+        }
+        return current;
+      } } },
+      afterAuthorityCommit: database.afterAuthorityCommit.bind(database),
+      withAuthorityTransaction: database.withAuthorityTransaction.bind(database),
+    } };
+    const outcome = await executeClaimedRun(deps, { ...claimed, signal: SIGNAL });
+    assert.equal(interleaved, true);
+    assert.equal(outcome.state, "abandoned");
+    const settled = database.authority.runs.get(RUN_ID);
+    assert.ok(settled?.lifecycle.state === "terminal");
+    assert.equal(settled.lifecycle.outcome, "cancelled");
+    assert.deepEqual(database.authority.failures.listByRun(RUN_ID), []);
+    assert.equal(database.authority.terminalAuthorizations.get(RUN_ID), undefined);
+    assert.deepEqual(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run")
+      .map((event) => event.outcome), ["cancelled"]);
+  });
+});
+
+describe("cancellation racing terminal admission", () => {
+  it("settles cancellation after a success request loses its version at service admission", async () => {
+    const h = executorHarness();
+    const { database, clock } = h.authority;
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+    const lifecycle = h.deps.lifecycle;
+    let interleaved = false;
+    const deps: RunExecutorDependencies = { ...h.deps, lifecycle: { ...lifecycle,
+      terminalize: (...args) => {
+        if (!interleaved) {
+          interleaved = true;
+          const current = database.authority.runs.get(RUN_ID);
+          assert.ok(current?.lifecycle.state === "running");
+          assert.equal(testRunService(database, clock).transition({
+            commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", runId: RUN_ID,
+            expectedVersion: current.version,
+            lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() },
+          }).state, "applied");
+        }
+        return lifecycle.terminalize(...args);
+      },
+    } };
+    assert.equal((await executeClaimedRun(deps, { ...claimed, signal: SIGNAL })).state, "abandoned");
+    assert.equal(interleaved, true);
+    const settled = database.authority.runs.get(RUN_ID);
+    assert.ok(settled?.lifecycle.state === "terminal");
+    assert.equal(settled.lifecycle.outcome, "cancelled");
+    assert.equal(database.authority.runResults.get(RUN_ID), undefined);
+    assert.equal(database.authority.terminalAuthorizations.get(RUN_ID), undefined);
+    assert.deepEqual(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run")
+      .map((event) => event.outcome), ["cancelled"]);
+  });
+});

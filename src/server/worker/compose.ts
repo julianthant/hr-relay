@@ -1,3 +1,5 @@
+import { runSpanPath } from "../../core/span-emitter.js";
+import type { RunRecord } from "../../domain/run/record.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
 /**
  * The Phase-1f worker composition value: one workflow-scoped browser worker
@@ -273,6 +275,7 @@ interface WorkerMaintenance {
 function startWorkerMaintenance(input: Readonly<{
   database: AuthorityDatabase;
   lifecycle: WorkerRunLifecyclePort;
+  publishCancelled: (run: RunRecord) => void;
   scheduler: MonotonicDeadlineScheduler;
   clock: Clock;
   workerId: WorkerId;
@@ -313,7 +316,7 @@ function startWorkerMaintenance(input: Readonly<{
     const staleBefore = new Date(clock.nowMs() - input.claimStaleAfterMs).toISOString();
     // Recovery is not workflow-scoped by nature (ref execution-and-sessions §3): sweep every
     // workflow's expired claims, not just this worker's.
-    const outcomes = sweepWorkerClaims(database, input.lifecycle, { staleBefore, now });
+    const outcomes = sweepWorkerClaims(database, input.lifecycle, { staleBefore, now }, input.publishCancelled);
     for (const outcome of outcomes) {
       if (outcome.state === "recovery-required") {
         log.warn(
@@ -529,6 +532,15 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     newSessionId: () => ids.uuid(),
   });
   const emitter = createSpanJsonlWriter({ stateRoot, clock });
+  const publishCancelled = (run: RunRecord): void => {
+    if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "cancelled") {
+      throw new Error("recovery cancellation publication requires a cancelled run");
+    }
+    emitter.emit({ t: "span.ended", kind: "run", outcome: "cancelled",
+      ts: run.lifecycle.endedAt, workflow: run.envelope.workflow, runId: run.envelope.runId,
+      attempt: run.envelope.attempt, traceId: run.envelope.traceId,
+      spanPath: runSpanPath(run.envelope.traceId) });
+  };
   // D267 (ref execution-and-sessions §10): the per-credential Duo ceremony
   // lease, keyed on the credential identity resolved ONCE here — an
   // unresolvable identity refuses the whole worker at boot.
@@ -672,7 +684,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
      * an unfinished `attempting` write intent parks (`parked-write`) or stays
      * unclaimable, and NEVER requeues.
      */
-    for (const outcome of sweepWorkerClaims(database, lifecycle, { workerId, now })) {
+    for (const outcome of sweepWorkerClaims(database, lifecycle, { workerId, now }, publishCancelled)) {
       if (outcome.state !== "recovery-required") {
         const run = requireLifecycleApplied(outcome);
         log.warn("orphaned claim released before the first poll; its worker never settled", {
@@ -719,6 +731,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     const maintenance = startWorkerMaintenance({
       database,
       lifecycle,
+      publishCancelled,
       scheduler,
       clock,
       workerId,

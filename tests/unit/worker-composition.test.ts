@@ -1,3 +1,4 @@
+import { SpanEventWireSchema } from "../../src/events/types.js";
 import { testRunService } from "./fixtures/run-lifecycle-fixtures.js";
 import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 /**
@@ -830,18 +831,19 @@ describe("composed worker runtime", () => {
    * reimplemented "release my own rows" would have handed a possibly-landed
    * real HR write straight back to the executor.
    */
-  it("startup recovery settles admitted cancellation without claiming or opening browsers", async () => {
+  for (const recovery of ["startup", "global"] as const) it(`${recovery} recovery publishes cancellation once without claiming or opening browsers`, async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const workerId = phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID));
+    const workerId = recovery === "startup" ? phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID)) : "orphan-other-worker";
     const database = reopen(stateRoot, clock);
     const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: NOW });
     assert.ok(claimed.state === "claimed");
     const service = testRunService(database, clock);
     assert.equal(service.transition({ commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       runId: RUN_ID, expectedVersion: claimed.run.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } }).state, "applied");
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() } }).state, "applied");
+    if (recovery === "global") clock.advanceWall(600_000);
     const sessions = happySessionHarness();
     const report = await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 }));
     assert.deepEqual(report.outcomes, []);
@@ -849,9 +851,20 @@ describe("composed worker runtime", () => {
     assert.equal(sessions.opens("crm"), 0);
     const settled = database.authority.runs.get(RUN_ID);
     assert.ok(settled);
-    assert.deepEqual(settled.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: NOW });
+    assert.deepEqual(settled.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() });
     assert.equal(settled.envelope.attempt, claimed.run.envelope.attempt);
     assert.equal(settled.claimGeneration, claimed.run.claimGeneration);
+    // A fresh process repeating startup/global maintenance must not duplicate the terminal event.
+    await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 }));
+    const spanDirectory = join(stateRoot, "spans");
+    const terminal = readdirSync(spanDirectory).filter((file) => file.endsWith(".jsonl"))
+      .flatMap((file) => readFileSync(join(spanDirectory, file), "utf8").trim().split("\n"))
+      .filter(Boolean).map((line) => SpanEventWireSchema.parse(JSON.parse(line)))
+      .flatMap((event) => event.t === "span.ended" && event.kind === "run" && event.runId === RUN_ID ? [event] : []);
+    assert.equal(terminal.length, 1);
+    assert.equal(terminal[0]?.outcome, "cancelled");
+    assert.equal(terminal[0]?.attempt, claimed.run.envelope.attempt);
+    assert.equal(terminal[0]?.traceId, claimed.run.envelope.traceId);
   });
 
   it("parks — never requeues — its own orphaned claim that holds an attempting write intent", async () => {
