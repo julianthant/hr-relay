@@ -27,7 +27,7 @@ import {
 } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, it, vi } from "vitest";
@@ -75,6 +75,7 @@ import {
   persistCorruptJournaledSettings,
 } from "../fixtures/settings-runtime-corruption-fixtures.js";
 import { withAuthorityBuildVariant } from "../fixtures/authority-build-variant.js";
+import { settingsSetOperations } from "../fixtures/settings-operation-fixtures.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
 
@@ -119,6 +120,7 @@ function settingsCommand(
   expectedRevision: number,
   patch: unknown,
 ) {
+  patch = settingsSetOperations(patch);
   return SettingsCommandRequestSchema.parse({
     commandId,
     requestedAt,
@@ -133,6 +135,18 @@ function settingsCommand(
       patch,
     },
   });
+}
+
+function settingsAuthorityPath(path: string): string {
+  return join(dirname(path), "authority.json");
+}
+
+function settingsPreparePath(path: string): string {
+  return join(dirname(path), "prepare.json");
+}
+
+function settingsRollbackPath(path: string): string {
+  return join(dirname(path), "rollback.json");
 }
 
 function journalSettings(
@@ -375,7 +389,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     }
     // A readable planted settings file makes the early-read negative control
     // reach the same authority refusal rather than failing on ENOENT first.
-    writeFileSync(join(stateRoot, "settings.json"), "{}", { mode: 0o600 });
+    mkdirSync(join(stateRoot, "settings"), { recursive: true, mode: 0o700 });
+    writeFileSync(join(stateRoot, "settings", "settings.json"), "{}", { mode: 0o600 });
 
     await withAuthorityBuildVariant("current-29", async () => {
       const build = await import("../../../src/infra/sqlite/migrations.js");
@@ -393,7 +408,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         }), /authority schema 30 is newer than supported 29/u);
 
         const isSettingsPath = (value: unknown): boolean => typeof value === "string"
-          && (value.startsWith(join(stateRoot, "settings.json"))
+          && (value.startsWith(join(stateRoot, "settings", "settings.json"))
             || value.startsWith(join(stateRoot, "settings") + "/"));
         assert.equal(vi.mocked(openSync).mock.calls.filter(([target]) => isSettingsPath(target)).length,
           0, "M9: zero settings-family openSync calls before downgrade refusal");
@@ -505,7 +520,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     }) => {
       const root = mkdtempSync(join(tmpdir(), "hrauto-settings-precedence-"));
       cleanups.push(() => rmSync(root, { recursive: true, force: true }));
-      const path = join(root, ".tracker", "settings.json");
+      const path = join(root, ".tracker", "settings", "settings.json");
       const databasePath = join(root, "state.db");
       const database = AuthorityDatabase.open({
         path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test",
@@ -557,7 +572,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         audit: raw.prepare("SELECT * FROM command_audits").all(),
         current: raw.prepare("SELECT * FROM settings_current").all(),
         meta: database.getMeta(),
-        files: [path, `${path}.authority.json`, `${path}.prepare.json`, `${path}.rollback.json`]
+        files: [path, settingsAuthorityPath(path), settingsPreparePath(path), settingsRollbackPath(path)]
           .map((filePath) => existsSync(filePath) ? readFileSync(filePath) : undefined),
       });
       const before = readEvidence();
@@ -581,7 +596,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("authenticates a committed prepare and final readback without duplicate authority observations", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-observation-"));
     cleanups.push(() => rmSync(root, { recursive: true, force: true }));
-    const path = join(root, ".tracker", "settings.json");
+    const path = join(root, ".tracker", "settings", "settings.json");
     const database = AuthorityDatabase.open({
       path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test",
     });
@@ -605,7 +620,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     });
     const before = rows();
     assert.equal(before.current?.revision, 2);
-    assert.equal(existsSync(`${path}.prepare.json`), true);
+    assert.equal(existsSync(settingsPreparePath(path)), true);
     const queries = { command: 0, audit: 0, current: 0 };
     let locks = 0;
     const file = createSettingsFileAuthority({
@@ -634,7 +649,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.deepEqual(queries, { command: 2, audit: 2, current: 2 }, "prepared authentication plus final verification");
     assert.equal(locks, 1);
     assert.deepEqual(readFileSync(path), bytes);
-    assert.equal(existsSync(`${path}.prepare.json`), false);
+    assert.equal(existsSync(settingsPreparePath(path)), false);
     assert.deepEqual(rows(), before);
     assert.deepEqual(read(), record);
     assert.deepEqual(queries, { command: 3, audit: 3, current: 3 }, "fresh ordinary read verifies once, without caching");
@@ -668,7 +683,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-prior-recovery-"));
       cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
       const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-      const path = join(repoRoot, ".tracker", "settings.json");
+      const path = join(repoRoot, ".tracker", "settings", "settings.json");
       const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
       mkdirSync(stateRoot, { recursive: true });
       const databasePath = join(stateRoot, "state.db");
@@ -685,7 +700,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       );
       const auditId = "44444444-4444-4444-8444-444444444444";
       const prior = applyJournaledSettings(path, database, priorCommand, auditId);
-      const priorInitializationBytes = readFileSync(`${path}.authority.json`);
+      const priorInitializationBytes = readFileSync(settingsAuthorityPath(path));
       const file = createSettingsFileAuthority({ path, validateCandidate: () => undefined });
       assert.equal(prior.record.revision, 2);
       assert.deepEqual(database.withAuthorityTransaction((repositories) =>
@@ -707,8 +722,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       }, "after-live-rename");
       assert.equal(child.signal, "SIGKILL", child.stderr);
       const liveBytes = readFileSync(path);
-      const prepareBytes = readFileSync(`${path}.prepare.json`);
-      const initializationBytes = readFileSync(`${path}.authority.json`);
+      const prepareBytes = readFileSync(settingsPreparePath(path));
+      const initializationBytes = readFileSync(settingsAuthorityPath(path));
       const next = SettingsFileRecordSchema.parse(JSON.parse(liveBytes.toString("utf8")));
       assert.equal(next.revision, 3);
       assert.equal(next.lastApplied?.commandId, nextCommand.commandId);
@@ -755,15 +770,15 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         if (expected === undefined) {
           assert.deepEqual(recover(), prior.record);
           assert.deepEqual(readFileSync(path), prior.bytes);
-          assert.deepEqual(readFileSync(`${path}.authority.json`), priorInitializationBytes);
-          assert.equal(existsSync(`${path}.prepare.json`), false);
+          assert.deepEqual(readFileSync(settingsAuthorityPath(path)), priorInitializationBytes);
+          assert.equal(existsSync(settingsPreparePath(path)), false);
         } else {
           assert.throws(recover, expected);
           assert.deepEqual(readFileSync(path), liveBytes, "refusal must retain exact live revision-3 bytes");
-          assert.deepEqual(readFileSync(`${path}.prepare.json`), prepareBytes);
-          assert.deepEqual(readFileSync(`${path}.authority.json`), initializationBytes);
+          assert.deepEqual(readFileSync(settingsPreparePath(path)), prepareBytes);
+          assert.deepEqual(readFileSync(settingsAuthorityPath(path)), initializationBytes);
         }
-        assert.equal(existsSync(`${path}.rollback.json`), false);
+        assert.equal(existsSync(settingsRollbackPath(path)), false);
         assert.deepEqual(readRows(), before);
         assert.deepEqual(database.getMeta(), metaBefore);
       }
@@ -807,7 +822,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-orphan-audit-"));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, ".tracker", "settings.json");
+    const path = join(repoRoot, ".tracker", "settings", "settings.json");
     const command = settingsCommand(
       "33333333-3333-4333-8333-333333333333",
       clock.now().toISOString(),
@@ -824,8 +839,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     }, "after-live-rename");
     assert.equal(child.signal, "SIGKILL", child.stderr);
     const settingsBytes = readFileSync(path);
-    const prepareBytes = readFileSync(`${path}.prepare.json`);
-    const initializationBytes = readFileSync(`${path}.authority.json`);
+    const prepareBytes = readFileSync(settingsPreparePath(path));
+    const initializationBytes = readFileSync(settingsAuthorityPath(path));
     const record = SettingsFileRecordSchema.parse(JSON.parse(settingsBytes.toString("utf8")));
     const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
     mkdirSync(stateRoot, { recursive: true });
@@ -862,9 +877,9 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         readJournaledSettings(file, repositories)), expected);
 
       assert.deepEqual(readFileSync(path), settingsBytes);
-      assert.deepEqual(readFileSync(`${path}.prepare.json`), prepareBytes);
-      assert.deepEqual(readFileSync(`${path}.authority.json`), initializationBytes);
-      assert.equal(existsSync(`${path}.rollback.json`), false);
+      assert.deepEqual(readFileSync(settingsPreparePath(path)), prepareBytes);
+      assert.deepEqual(readFileSync(settingsAuthorityPath(path)), initializationBytes);
+      assert.equal(existsSync(settingsRollbackPath(path)), false);
       assert.deepEqual(database.withAuthorityTransaction((repositories) => ({
         command: repositories.commands.get(command.commandId),
         audit: repositories.commandAudits.findByCommand(command.commandId),
@@ -986,7 +1001,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, ".tracker", "settings.json");
+    const path = join(repoRoot, ".tracker", "settings", "settings.json");
     const command = settingsCommand(
       "33333333-3333-4333-8333-333333333333",
       clock.now().toISOString(),
@@ -1003,7 +1018,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     }, "before-live-rename");
     assert.equal(child.signal, "SIGKILL", child.stderr);
     assert.equal(existsSync(path), false);
-    assert.equal(existsSync(`${path}.prepare.json`), true);
+    assert.equal(existsSync(settingsPreparePath(path)), true);
 
     const runtime = await composeDashboardRuntime({
       isolation: rebuildRuntimeIsolation,
@@ -1015,7 +1030,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     cleanups.push(() => runtime.stop());
 
     assert.equal(existsSync(path), false);
-    assert.equal(existsSync(`${path}.prepare.json`), false);
+    assert.equal(existsSync(settingsPreparePath(path)), false);
   });
 
   it("rolls back a prepared settings rename whose command transaction never committed", async () => {
@@ -1023,7 +1038,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, ".tracker", "settings.json");
+    const path = join(repoRoot, ".tracker", "settings", "settings.json");
     const command = settingsCommand(
       "33333333-3333-4333-8333-333333333333",
       clock.now().toISOString(),
@@ -1050,7 +1065,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     cleanups.push(() => runtime.stop());
 
     assert.equal(existsSync(path), false);
-    assert.equal(existsSync(`${path}.prepare.json`), false);
+    assert.equal(existsSync(settingsPreparePath(path)), false);
   });
 
   it("keeps exact prepared settings only after their command, audit, and current result committed", async () => {
@@ -1058,7 +1073,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, ".tracker", "settings.json");
+    const path = join(repoRoot, ".tracker", "settings", "settings.json");
     const command = settingsCommand(
       "33333333-3333-4333-8333-333333333333",
       clock.now().toISOString(),
@@ -1075,7 +1090,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     }, "after-live-rename");
     assert.equal(child.signal, "SIGKILL", child.stderr);
 
-    const prepare = JSON.parse(readFileSync(`${path}.prepare.json`, "utf8")) as {
+    const prepare = JSON.parse(readFileSync(settingsPreparePath(path), "utf8")) as {
       nextSettingsBytesBase64?: unknown;
     };
     assert.equal(typeof prepare.nextSettingsBytesBase64, "string");
@@ -1111,7 +1126,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     cleanups.push(() => runtime.stop());
 
     assert.deepEqual(readFileSync(path), nextBytes);
-    assert.equal(existsSync(`${path}.prepare.json`), false);
+    assert.equal(existsSync(settingsPreparePath(path)), false);
   });
 
   it.each(["GET", "validate"] as const)("serves Explorer with one recovery admission and one document read per %s request", async (operation) => {
@@ -1355,7 +1370,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const patch = { browser: { headless: false } } as const;
+    const patch = settingsSetOperations({ browser: { headless: false } });
     const patchFingerprint = deriveSettingsPatchFingerprint(patch);
     const command = {
       commandId: "33333333-3333-4333-8333-333333333333",
@@ -1368,7 +1383,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
     };
     const outcome = createSettingsFileAuthority({
-      path: join(repoRoot, ".tracker", "settings.json"),
+      path: join(repoRoot, ".tracker", "settings", "settings.json"),
       validateCandidate: (settings) => {
         resolveConfigWithProvenance(settings, hostConfigFacts({}), clock);
       },
@@ -1435,7 +1450,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, ".tracker", "settings.json");
+    const path = join(repoRoot, ".tracker", "settings", "settings.json");
     const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
     mkdirSync(stateRoot, { recursive: true });
     const database = AuthorityDatabase.open(
@@ -1540,7 +1555,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     );
     const applied = await firstClient.executeCommand(command);
     const persisted = SettingsFileRecordSchema.parse(JSON.parse(
-      readFileSync(join(repoRoot, ".tracker", "settings.json"), "utf8"),
+      readFileSync(join(repoRoot, ".tracker", "settings", "settings.json"), "utf8"),
     ));
     assert.deepEqual(applied, {
       state: "applied",
@@ -1604,7 +1619,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const commandId = "72727272-7272-4272-8272-727272727272";
-    const patch = { display: { screenWidth: 1980 } };
+    const patch = settingsSetOperations({ display: { screenWidth: 1980, screenHeight: 1080 } });
     const command = {
       commandId,
       requestedAt: new Date().toISOString(),
@@ -1640,7 +1655,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       const screenWidth = readback.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
       assert.equal(screenWidth?.effectiveValue, 1980);
       assert.equal(screenWidth?.settingsValue, 1980);
-      assert.match(readFileSync(join(repoRoot, ".tracker", "settings.json"), "utf8"), /"screenWidth":1980/u);
+      assert.match(readFileSync(join(repoRoot, ".tracker", "settings", "settings.json"), "utf8"), /"screenWidth":1980/u);
       assert.equal(readRuntimeSettingsRevision(repoRoot), 1);
       const replay = await client.applySettings(command);
       assert.equal(replay.state, "already-applied");
