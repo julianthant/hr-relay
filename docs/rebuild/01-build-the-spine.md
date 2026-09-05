@@ -1027,6 +1027,15 @@ worktree/ref at `e8d0fd54`; no implementation, gates or independent review occur
 resolves that recorded scope blocker. Revalidate prerequisites before resuming; do not treat the
 inspection as implementation acceptance.
 
+**Operator-approved recovery-read amendment (2026-09-05).** Step-1 inspection proved that
+run-based intent enumeration can miss a same-item attempting intent which the existing D118 sweep
+detects. The operator authorized one strict, transaction-safe read-only
+`writeIntents.listAttemptingByItem({ workflowId, itemId })` method in
+`src/infra/sqlite/authority-database.ts` and focused tests. This preserves the existing
+workflow/item/status scan, deterministic ordering and fail-loud parsing without a migration,
+new lifecycle operation or contract change. Base/worktree: `7e2b7607`,
+`codex/phase-1-6-run-writers`, `/Users/julianhein/Projects/hr-worktree-run-writers`.
+
 **Verified prerequisite and current state.** Accepted Task 2-1 and completed Task 2-2 are both ancestors
 of `master`. Task 2-2 was restored on `master` with full integration gates passing. The original Task-3
 plan commit `f34c9021` is an ancestor of `master`; the resume base must also contain the
@@ -1106,6 +1115,48 @@ is paired with lint. A needed SQL/contract/new-operation change returns to a new
 Do not run Playwright parity or live-browser verification. A required UI/browser, SQL schema/migration,
 contract, new-operation or other excluded-scope change stops this assignment for operator resolution.
 No live HR write or push is authorized.
+
+**Task 3 candidate — awaiting independent review (2026-09-05).** Implementation
+`20715548d08325e67ca2070131c5bc7aeb219594` on `codex/phase-1-6-run-writers`, based on
+`7e2b76076e0542c2f40c6ea4be5c3a61252cb061`, follows the original plan `f34c9021` and
+approved amended plan `7e2b7607`, plus the operator-approved recovery-read amendment above.
+Prerequisites were verified before creation: accepted Task 2-1 `bc82fe47`, Task 2-2 restoration
+`94464920` with the restored seam matching `0e38b82f`, and both approved plans are in the base.
+The assigned worktree and branch were absent; only the primary checkout occupied capacity.
+Synthetic authority roots and an empty private test `.env` were used. No browser or live run occurred.
+
+Steps 1–5 are implemented: the five-operation worker port, separate continuation capability,
+production claim/heartbeat/sweep composition, service cancellation settlement, and atomic terminal
+and shared-write composites. The executor retains its original claim across diagnostic capture;
+all terminal publication uses after-outermost-commit callbacks. D118 enumeration includes attempts
+whose run row is absent, and sweep recovery preserves the run attempt and claim generation.
+Task 3 remains open pending independent review, integration gates and owned cleanup.
+
+| Proof boundary | Candidate evidence and forbidden effects |
+|---|---|
+| Composed claim/runtime admission (#4–#5) | `worker-composition.test.ts`: four workers, stale settings and stale epoch cases; `multi-worker-overlap.test.ts`: one execution per row, sibling exclusion. Stale admission unwinds its outer transaction before browser acquisition. |
+| Heartbeat/recovery (#6–#7, #27 worker half) | `claim-sweep-recovery.test.ts`, worker overlap/teardown, and composition startup: live heartbeat retained, zombie loses, self/global sweep preserves attempt/generation. Startup cancellation becomes terminal/cancelled without claim/browser; attempting writes park/refuse. Service regression covers a same-item attempting intent from an absent run. |
+| Terminal settlement (#9–#10) | Service exact/divergent terminal replay; executor success/failure, refusal and outer rollback; diagnostic capture failure injected after bundle persistence. Run/result/failure/authorization/bundle/journal evidence rolls back together and no run-ended event escapes refusal/rollback. The diagnostic-await replacement-worker regression proves the executor cannot borrow a new claim. Existing service callback tests pin outermost-commit behavior. |
+| Claimed shared-write arm | `write-sequencer.test.ts`: actual fenced settlement, stale CAS/claim failures, step-injection rollback, exact helper replay with zero authority-generation delta and divergent checkpoint rejection. Write intent/attempt, checkpoint, both outboxes and lifecycle journal share one transaction. |
+| Recovery/command continuation arm | `write-recovery.test.ts` positive recovery and `parked-write-round-trip.test.ts` real kernel resolve-present preserve proof/actor/target/version admission. Injected refusal after checkpoint insertion and failure after lifecycle transition leave all evidence unchanged. Exact helper replay retains `startAt`; changed continuation refuses. Product and nested lifecycle command ids coexist; exact kernel replay writes nothing. |
+| Cancellation and retained callback | Executor cancellation settles before a non-fenced operation. Sequencer test holds an actual `retainAfterFence()` callback while requesting cancellation: no interruption/close/terminal event, then write settlement completes before cancellation. |
+| Deletion oracle | New type-resolved `worker-loop-writes-only-through-the-service` guard scans runtime/helpers plus admitted continuation adapters, detects relocated/aliased mutators and checks the five-operation port. Reintroduced direct `runs.transition` in the shared helper made the production guard fail (exit 1); exact original bytes restored and guard passed. Inventory updated with this evidence. |
+
+Step 6 candidate gates passed on the implementation tree: focused candidate run 12 files/358 tests,
+then the final claim-fence regression 18 executor tests and 11 focused architecture tests; typecheck
+and root lint passed. Full coverage passed **416 files / 5,206 tests**, including all assigned focused
+suites; global statements/branches/functions/lines **85.56/76.72/89.71/87.62%**, core
+**87.70/78.20/92.90/90.17%**, all ratified floors unchanged. Coverage ran with at most four file
+workers after compiler/linter completion. Suite-size check passed. Manifest check reported current;
+standalone architecture passed **75 files / 758 tests**; `git diff --check` passed.
+Local logs: `/tmp/hr-run-writers-full.log`, `/tmp/hr-run-writers-final-gates.log`, and
+`/tmp/hr-run-writers-deletion-red.log`. These commands and counts are the durable evidence;
+logs are temporary. The evidence-only commit is the next commit after the implementation SHA above
+and repeats the mandatory typecheck/lint/full-coverage gate before committing.
+
+Exclusions remain as approved: no command-kernel/fan-out/start creation, shared queued publication,
+negative recovery/resolveAbsent, config consumer, SQL migration, contract, projection or UI changes.
+No push. No next-task dispatch. Review must bind this implementation range and its evidence commit.
 
 **Supervisor sizing and assignment.** One supervisor fits: the worker port, service composition,
 terminal atomicity and recovery proofs are one coupled seam; a split would overlap every hard boundary.
