@@ -5,6 +5,7 @@ import {
   optionalTestTargetSecret,
   TestTargetDocumentNumberSecretReferenceSchema,
   TestTargetEidSecretReferenceSchema,
+  type ProtectedSecretSource,
   type TestTargetSecretReference,
 } from "../domain/secrets.js";
 import { parseInputRunText, toRawSubmission } from "../domain/workflow/ingress.js";
@@ -84,7 +85,7 @@ export const SeparationsKualiFinalizationPublicTestInputSchema =
  */
 export const FINALIZATION_PERSON_FACTS_DERIVED_REASON =
   "employee name, EID and timekeeper name are derived live by the composed separations chain "
-  + "and are never registry- or environment-supplied (D300); run the composed separations workflow";
+  + "and are never registry- or protected-settings-supplied (D300); run the composed separations workflow";
 
 /**
  * The canonical leaves a live READ cannot supply, each with the reason it is
@@ -156,11 +157,11 @@ export const SeparationsKualiFinalizationArmSchema = z.strictObject({
 });
 
 /**
- * The canary is ONE Kuali document number selected in ignored local
- * configuration (D300): the registry commits the exact closed reference — the
- * registered secret name and its literal environment key — never a number. A
+ * The canary is ONE Kuali document number selected in protected Settings
+ * (D300): the registry commits the exact closed reference — the registered
+ * secret name — never a number. A
  * literal here would let a commit choose the live subject; the reference makes
- * the operator's `.env` the only place that can. "No subject exists" is still
+ * the protected store the only place that can. "No subject exists" is still
  * a real, recorded state, spelled out rather than left as a missing key.
  */
 export const SeparationsChainSubjectDocumentSchema = z.discriminatedUnion("state", [
@@ -451,14 +452,14 @@ function unavailableReason(target: TestTargetRegistryEntry): string {
 function resolveConfiguredDocumentNumber(
   target: TestTargetRegistryEntry,
   reference: TestTargetSecretReference,
-  env?: NodeJS.ProcessEnv,
+  source: ProtectedSecretSource,
 ): string | undefined {
   try {
-    return optionalTestTargetSecret(reference.name, env);
+    return optionalTestTargetSecret(reference.name, source);
   } catch (error) {
     registryDefect(
       target,
-      `document-number reference ${reference.name} (${reference.env}) is invalid`,
+      `document-number reference ${reference.name} is invalid in protected Settings`,
       secretFailureDetail(error),
     );
   }
@@ -468,14 +469,14 @@ function resolveConfiguredDocumentNumber(
 function resolveConfiguredEid(
   target: TestTargetRegistryEntry,
   reference: TestTargetSecretReference,
-  env?: NodeJS.ProcessEnv,
+  source: ProtectedSecretSource,
 ): string | undefined {
   try {
-    return optionalTestTargetSecret(reference.name, env);
+    return optionalTestTargetSecret(reference.name, source);
   } catch (error) {
     registryDefect(
       target,
-      `employee-id reference ${reference.name} (${reference.env}) is invalid`,
+      `employee-id reference ${reference.name} is invalid in protected Settings`,
       secretFailureDetail(error),
     );
   }
@@ -536,7 +537,7 @@ export function resolveSeparationsKualiFinalizationTestTarget(
  * neither is authored here, so a rehearsal cannot start from an input a real
  * run would never produce.
  *
- * The number itself comes from ignored local configuration through the arm's
+ * The number itself comes from protected Settings through the arm's
  * closed reference (D300) — the registry never commits it. Unset is `blocked`
  * by key; malformed is a defect by key. No EID crosses this boundary at all: a
  * Kuali document number is not a person, and it is never copied into one.
@@ -544,7 +545,7 @@ export function resolveSeparationsKualiFinalizationTestTarget(
 export function resolveSeparationsTestTarget(
   registry: TestTargetRegistry,
   label: string,
-  env?: NodeJS.ProcessEnv,
+  source: ProtectedSecretSource,
 ): SeparationsTestTargetResolution {
   const target = registry.targets.find((candidate) => candidate.label === label);
   if (target === undefined) return blocked(label, `blocked: needs ${label}`);
@@ -559,11 +560,11 @@ export function resolveSeparationsTestTarget(
     registryDefect(target, `no Kuali document exists to run: ${arm.publicInput.document.reason}`);
   }
   const { reference } = arm.publicInput.document;
-  const documentNumber = resolveConfiguredDocumentNumber(target, reference, env);
+  const documentNumber = resolveConfiguredDocumentNumber(target, reference, source);
   if (documentNumber === undefined) {
     return blocked(
       label,
-      `blocked: needs ${label}; its Kuali document number is not configured — set ${reference.env} in the ignored local environment (D300)`,
+      `blocked: needs ${label}; its Kuali document number is not configured — set ${reference.name} in protected Settings (D300)`,
     );
   }
   const surface = compileWorkflow(separationsWorkflow).descriptor.surfaces?.inputRun;
@@ -606,14 +607,14 @@ export function resolveSeparationsTestTarget(
  * and canonical schemas, so `keepNonHdh` and `includeCrmDates` come from the
  * parser's declared constants, never from this resolver.
  *
- * The EID itself comes from ignored local configuration through the arm's
+ * The EID itself comes from protected Settings through the arm's
  * closed reference: unset is `blocked` by key; malformed is a defect by key.
  * No person value is committed, and none is echoed in a refusal.
  */
 export function resolvePersonLookupTestTarget(
   registry: TestTargetRegistry,
   label: string,
-  env?: NodeJS.ProcessEnv,
+  source: ProtectedSecretSource,
 ): PersonLookupTestTargetResolution {
   const target = registry.targets.find((candidate) => candidate.label === label);
   if (target === undefined) return blocked(label, `blocked: needs ${label}`);
@@ -626,11 +627,11 @@ export function resolvePersonLookupTestTarget(
     registryDefect(target, `no person exists to search: ${arm.publicInput.subject.reason}`);
   }
   const { reference } = arm.publicInput.subject;
-  const emplId = resolveConfiguredEid(target, reference, env);
+  const emplId = resolveConfiguredEid(target, reference, source);
   if (emplId === undefined) {
     return blocked(
       label,
-      `blocked: needs ${label}; its UCPath employee id is not configured — set ${reference.env} in the ignored local environment (D318)`,
+      `blocked: needs ${label}; its UCPath employee id is not configured — set ${reference.name} in protected Settings (D318)`,
     );
   }
   const surface = compileWorkflow(personLookupWorkflow).descriptor.surfaces?.inputRun;

@@ -11,7 +11,9 @@ import {
   CommandRequestSchema,
   deriveBulkRunCommandFingerprint,
   deriveSettingsCommandFingerprint,
+  markSettingsCommand,
 } from "../../src/domain/commands.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
@@ -2416,6 +2418,39 @@ describe("authority persistence invariants", () => {
       requestedBy: "different-operator",
     }), /reused with different content/);
     assert.equal(database.getMeta().authorityGeneration, 1);
+  });
+
+  it("finds a protected write-id owner after restart while excluding the replaying command", () => {
+    const path = databasePath("protected-write-id.sqlite");
+    const ownerCommandId = UUID_6;
+    const writeId = UUID_7;
+    const first = openDatabase(path);
+    first.authority.commands.insert(markSettingsCommand({
+      commandId: ownerCommandId,
+      requestedAt: NOW,
+      requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+      source: "settings-surface",
+      family: "settings",
+      type: "apply-protected-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+        writeId,
+        entries: { ucpathPassword: { set: "synthetic-protected-value" } },
+      },
+    }));
+    first.close();
+
+    const reopened = openDatabase(path);
+    const lookup: unknown = Reflect.get(
+      reopened.authority.commands,
+      "findProtectedSettingsCommandIdByWriteId",
+    );
+    assert.equal(typeof lookup, "function");
+    const findOwner = lookup as (input: unknown) => string | undefined;
+    assert.equal(findOwner({ writeId, excludingCommandId: ownerCommandId }), undefined);
+    assert.equal(findOwner({ writeId, excludingCommandId: UUID_8 }), ownerCommandId);
+    assert.equal(findOwner({ writeId: UUID_5, excludingCommandId: UUID_8 }), undefined);
   });
 
   it("keeps committed and observed-present idempotency keys permanent", () => {

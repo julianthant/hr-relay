@@ -102,7 +102,7 @@ describe("runtime dependency registry", () => {
     assert.equal(violations.some((violation) => violation.includes("omits ConfigSchema route smartHr")), true);
   });
 
-  it("reverse-audits secrets, model envs, capabilities, consumers, and scenarios", () => {
+  it("reverse-audits secrets, model settings, capabilities, consumers, and scenarios", () => {
     const missingSecret = {
       ...RUNTIME_DEPENDENCY_REGISTRY,
       dependencies: RUNTIME_DEPENDENCY_REGISTRY.dependencies.map((dependency) => dependency.id === "secret.timekeeper"
@@ -114,14 +114,16 @@ describe("runtime dependency registry", () => {
       true,
     );
 
-    const typoModelEnv = {
+    const wrongModelSetting = {
       ...RUNTIME_DEPENDENCY_REGISTRY,
       providers: RUNTIME_DEPENDENCY_REGISTRY.providers.map((provider) => provider.provider === "gemini"
-        ? { ...provider, modelsEnv: "OCR_GEMINI_MODELZ" }
+        ? { ...provider, modelsConfigKey: "openRouter" }
         : provider),
     };
     assert.equal(
-      auditRuntimeDependencyCoverage(typoModelEnv).some((violation) => violation.includes("does not match secret inventory OCR_GEMINI_MODELS")),
+      auditRuntimeDependencyCoverage(wrongModelSetting).some((violation) => violation.includes(
+        "provider gemini models config key openRouter does not match secret inventory gemini",
+      )),
       true,
     );
 
@@ -292,13 +294,15 @@ describe("runtime environment inventory", () => {
     assert.equal(Object.isFrozen(RUNTIME_ENVIRONMENT_REGISTRY.exact), true);
   });
 
-  it("rejects missing config bindings and stale model metadata", () => {
+  it("rejects missing migrated settings and stale model environment metadata", () => {
     const withoutConfig = {
       ...RUNTIME_ENVIRONMENT_REGISTRY,
       exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.filter(({ key }) => key !== "HRAUTO_NAVIGATION_RETRIES"),
     };
     assert.equal(
-      auditRuntimeEnvironmentInventory(withoutConfig).some((violation) => violation.includes("config binding HRAUTO_NAVIGATION_RETRIES")),
+      auditRuntimeEnvironmentInventory(withoutConfig).some((violation) => violation.includes(
+        "migrated settings environment HRAUTO_NAVIGATION_RETRIES is not explicitly refused",
+      )),
       true,
     );
     const staleModel = {
@@ -308,7 +312,9 @@ describe("runtime environment inventory", () => {
         : spec),
     };
     assert.equal(
-      auditRuntimeEnvironmentInventory(staleModel).some((violation) => violation.includes("provider model environment OCR_GEMINI_MODELS")),
+      auditRuntimeEnvironmentInventory(staleModel).some((violation) => violation.includes(
+        "migrated settings environment OCR_GEMINI_MODELS is not explicitly refused",
+      )),
       true,
     );
   });

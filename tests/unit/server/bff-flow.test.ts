@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The BFF spine end-to-end over REAL machinery: the D109 planner + a real
  * authority database + the D113 kernel behind POST /api/v1/start-plans and
@@ -20,7 +21,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import readXlsxFile from "read-excel-file/node";
@@ -35,6 +36,7 @@ import {
   settingsRuntimeIdentity,
   deriveSettingsPatchFingerprint,
 } from "../../../src/domain/config/settings.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/domain/config/protected-settings.js";
 import {
   requiredPreflightChecks,
   type PreflightDeadlineScheduler,
@@ -117,7 +119,7 @@ import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
 import { AT, DAY, traceOf, uuidOf } from "./helpers/dashboard-harness.js";
 import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
-import { resolveConfig } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
@@ -230,10 +232,14 @@ function harness(options: {
   readonly runCaptureAuthority?: (
     real: AuthorityRepositories["diagnosticBundles"],
   ) => AuthorityRepositories["diagnosticBundles"];
+  /** Wrap the ingress journal read to prove request-only refusals stop before authority. */
+  readonly commandJournal?: (
+    real: DashboardAppDeps["commandJournal"],
+  ) => DashboardAppDeps["commandJournal"];
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker");
-  const settingsPath = join(root, ".tracker", "settings.json");
+  const settingsPath = join(root, ".tracker", "settings", "settings.json");
   const clock = manualClock(AT);
   const ids = sequentialIdFactory("c");
   const database = AuthorityDatabase.open(
@@ -322,7 +328,7 @@ function harness(options: {
   const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), HASH_B);
   const settingsAuthority = createSettingsFileAuthority({
     path: settingsPath,
-    validateCandidate: (settings) => { resolveConfig({}, settings, clock); },
+    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); },
   });
   const settingsFile = {
     read: () => {
@@ -448,7 +454,8 @@ function harness(options: {
       search,
       activityReport: (from, to) => projection.buildActivityReportWire(from, to),
     }),
-    commandJournal: database.authority.commands,
+    commandJournal: options.commandJournal?.(database.authority.commands)
+      ?? database.authority.commands,
     bulkCommandAcceptances: {
       withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
         work(repositories.bulkCommandAcceptances)),
@@ -475,7 +482,7 @@ function harness(options: {
     // D274 item 6 — the read-only Settings status sections read the SAME
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
-    settings: { config: resolveConfig({}, {}, clock), descriptors: [fixtureDescriptor] },
+    settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [fixtureDescriptor] },
     settingsEditor: { settings: settingsFile, environment: {}, clock },
     storage: {
       doctorOptions: {
@@ -516,17 +523,28 @@ function optionalFileBytes(path: string): Buffer | undefined {
 }
 
 function settingsAuthoritySnapshot(h: Harness, commandId: string) {
+  const settingsRoot = dirname(h.settingsPath);
   return {
     settingsBytes: optionalFileBytes(h.settingsPath),
-    initializationBytes: optionalFileBytes(`${h.settingsPath}.authority.json`),
-    lockBytes: optionalFileBytes(`${h.settingsPath}.lock`),
-    prepareBytes: optionalFileBytes(`${h.settingsPath}.prepare.json`),
+    protectedBytes: optionalFileBytes(join(settingsRoot, "protected.json")),
+    initializationBytes: optionalFileBytes(join(settingsRoot, "authority.json")),
+    lockBytes: optionalFileBytes(join(settingsRoot, "settings.lock")),
+    prepareBytes: optionalFileBytes(join(settingsRoot, "prepare.json")),
+    rollbackBytes: optionalFileBytes(join(settingsRoot, "rollback.json")),
     current: h.database.authority.settingsCurrent.get(),
+    protectedCurrent: h.database.authority.protectedSettingsCurrent.get(),
     journal: h.database.authority.commands.get(commandId),
     audit: h.database.authority.commandAudits.findByCommand(commandId),
     runtimeGeneration: h.database.authority.runtimeConfig.get()?.generation,
     authorityGeneration: h.database.getMeta().authorityGeneration,
   };
+}
+
+function rawSettingsPatchFingerprint(patch: unknown): string {
+  return createHash("sha256")
+    .update("hrauto:settings-patch:v2\0")
+    .update(canonicalJsonStringify(patch))
+    .digest("hex");
 }
 
 async function captureDiagnosticBundle(h: Harness, runId = RUN_ID) {
@@ -2514,7 +2532,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("refuses a foreign-origin settings command before any authority effect", async () => {
     const h = harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b79";
-    const patch = { browser: { headless: false } } as const;
+    const patch = { "browser.headless": { set: false } } as const;
     const command = {
       commandId,
       requestedAt: "2020-01-01T00:00:00.000Z",
@@ -2554,7 +2572,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b74";
     const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b73";
-    const patch = { browser: { headless: false } };
+    const patch = { "browser.headless": { set: false } } as const;
     h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
     const snapshot = () => ({
       settings: settingsAuthoritySnapshot(h, commandId),
@@ -2598,12 +2616,17 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ["wrong target type", { target: { expectedRevision: "1" } }, { targets: [{ runId: RUN_ID, expectedVersion: "1" }] }],
     ["wrong action", { type: "cancel" }, { type: "apply-settings" }],
     ["wrong command id", { commandId: "invalid" }, { bulkCommandId: "invalid" }],
-    ["unknown nested payload field", { payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: "a".repeat(64), patch: { browser: { extra: true } } } }, { targets: [] }],
+    ["unknown payload field", { payload: {
+      settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+      patchFingerprint: "a".repeat(64),
+      patch: { "browser.headless": { set: false } },
+      extra: true,
+    } }, { targets: [] }],
   ] as const)("refuses %s through strict command ingress with zero effects", async (_label, singleChange, bulkChange) => {
     const h = harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b72";
     const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b71";
-    const patch = { browser: { headless: false } };
+    const patch = { "browser.headless": { set: false } } as const;
     h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
     const snapshot = () => ({
       settings: settingsAuthoritySnapshot(h, commandId),
@@ -2634,6 +2657,285 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     }
   });
 
+  it("returns not-editable for a protected key submitted through ordinary settings before authority access", async () => {
+    let journalReads = 0;
+    const h = harness({
+      commandJournal: (real) => ({
+        get(commandId) {
+          journalReads += 1;
+          return real.get(commandId);
+        },
+      }),
+    });
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b69";
+    const patch = { ucpathPassword: { set: "never-return-this-value" } };
+    const before = settingsAuthoritySnapshot(h, commandId);
+
+    const response = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId,
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          patchFingerprint: rawSettingsPatchFingerprint(patch),
+          patch,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 422);
+    assert.deepEqual(await json(response), {
+      state: "rejected",
+      commandId,
+      code: "not-editable",
+      message: "not-editable { key: ucpathPassword }",
+    });
+    assert.equal(journalReads, 0);
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it.each([
+    ["unknown ordinary", { "unknown.setting": { clear: true } }, "unknown.setting", "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b6a"],
+    ["deployment-owned ordinary", { "paths.stateRoot": { set: "/tmp/foreign-root" } }, "paths.stateRoot", "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b6b"],
+  ] as const)("returns not-editable for %s before authority access", async (_label, patch, key, commandId) => {
+    let journalReads = 0;
+    const h = harness({
+      commandJournal: (real) => ({
+        get(commandId) {
+          journalReads += 1;
+          return real.get(commandId);
+        },
+      }),
+    });
+    const before = settingsAuthoritySnapshot(h, commandId);
+
+    const response = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId,
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          patchFingerprint: rawSettingsPatchFingerprint(patch),
+          patch,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 422);
+    assert.deepEqual(await json(response), {
+      state: "rejected", commandId, code: "not-editable", message: `not-editable { key: ${key} }`,
+    });
+    assert.equal(journalReads, 0);
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it("returns invalid-value for an ordinary settings leaf before authority access", async () => {
+    let journalReads = 0;
+    const h = harness({
+      commandJournal: (real) => ({
+        get(commandId) {
+          journalReads += 1;
+          return real.get(commandId);
+        },
+      }),
+    });
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b66";
+    const patch = { "browser.headless": { set: "not-a-boolean" } };
+    const before = settingsAuthoritySnapshot(h, commandId);
+
+    const response = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId,
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          patchFingerprint: rawSettingsPatchFingerprint(patch),
+          patch,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 422);
+    assert.deepEqual(await json(response), {
+      state: "rejected",
+      commandId,
+      code: "invalid-value",
+      message: "invalid-value { key: browser.headless }",
+    });
+    assert.equal(journalReads, 0);
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it("returns invalid-value for a protected settings leaf before authority access", async () => {
+    let journalReads = 0;
+    const h = harness({
+      commandJournal: (real) => ({
+        get(commandId) {
+          journalReads += 1;
+          return real.get(commandId);
+        },
+      }),
+    });
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b68";
+    const before = settingsAuthoritySnapshot(h, commandId);
+
+    const response = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId,
+        family: "settings",
+        type: "apply-protected-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+          writeId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b67",
+          entries: { sharepointOnboardingRosterUrl: { set: "protected-canary-not-a-url" } },
+        },
+      }),
+    });
+
+    assert.equal(response.status, 422);
+    assert.deepEqual(await json(response), {
+      state: "rejected",
+      commandId,
+      code: "invalid-value",
+      message: "invalid-value { key: sharepointOnboardingRosterUrl }",
+    });
+    assert.equal(journalReads, 0);
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it.each([
+    [
+      "ordinary schema mismatch before an invalid leaf",
+      "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b61",
+      {
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: "0".repeat(64),
+          patchFingerprint: rawSettingsPatchFingerprint({ "browser.headless": { set: "not-a-boolean" } }),
+          patch: { "browser.headless": { set: "not-a-boolean" } },
+        },
+      },
+      "schema-mismatch",
+      "settings.json schema-mismatch",
+    ],
+    [
+      "ordinary patch fingerprint mismatch before an invalid leaf",
+      "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b62",
+      {
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          patchFingerprint: "0".repeat(64),
+          patch: { "browser.headless": { set: "not-a-boolean" } },
+        },
+      },
+      "patch-fingerprint-mismatch",
+      "patch-fingerprint-mismatch: settings patch fingerprint does not match its canonical value",
+    ],
+    [
+      "protected schema mismatch before an invalid leaf",
+      "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b63",
+      {
+        family: "settings",
+        type: "apply-protected-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          protectedSchemaHash: "0".repeat(64),
+          writeId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b60",
+          entries: { sharepointOnboardingRosterUrl: { set: "protected-canary-not-a-url" } },
+        },
+      },
+      "schema-mismatch",
+      "protected.json schema-mismatch",
+    ],
+  ] as const)("preserves %s at mixed-failure ingress", async (_label, commandId, request, code, message) => {
+    let journalReads = 0;
+    const h = harness({
+      commandJournal: (real) => ({
+        get(commandId) {
+          journalReads += 1;
+          return real.get(commandId);
+        },
+      }),
+    });
+    const before = settingsAuthoritySnapshot(h, commandId);
+
+    const response = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({ commandId, ...request }),
+    });
+
+    assert.equal(response.status, 422);
+    assert.deepEqual(await json(response), {
+      state: "rejected",
+      commandId,
+      code,
+      message,
+    });
+    assert.equal(journalReads, 0);
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it("returns not-editable for an unknown protected settings key before authority access", async () => {
+    let journalReads = 0;
+    const h = harness({
+      commandJournal: (real) => ({
+        get(commandId) {
+          journalReads += 1;
+          return real.get(commandId);
+        },
+      }),
+    });
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b65";
+    const before = settingsAuthoritySnapshot(h, commandId);
+
+    const response = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId,
+        family: "settings",
+        type: "apply-protected-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+          writeId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b64",
+          entries: { unknownProtectedName: { clear: true } },
+        },
+      }),
+    });
+
+    assert.equal(response.status, 422);
+    assert.deepEqual(await json(response), {
+      state: "rejected",
+      commandId,
+      code: "not-editable",
+      message: "not-editable { key: unknownProtectedName }",
+    });
+    assert.equal(journalReads, 0);
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
   it.each([[null], [[]], ["command"], [1]])("refuses a non-object command body (%j) without authority effects", async (body) => {
     const h = harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b70";
@@ -2654,7 +2956,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("stamps accepted command provenance from the server-owned operator session", async () => {
     const h = harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b78";
-    const patch = { browser: { headless: false } } as const;
+    const patch = { "browser.headless": { set: false } } as const;
     const acceptedAt = h.clock.now().toISOString();
 
     const response = await h.app.request("http://localhost/api/v1/commands", {
@@ -2714,7 +3016,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b77";
     const acceptedAt = h.clock.now().toISOString();
-    const patch = { browser: { headless: false } } as const;
+    const patch = { "browser.headless": { set: false } } as const;
     const command = {
       commandId,
       requestedAt: "2020-01-01T00:00:00.000Z",
@@ -2778,7 +3080,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness({ intake });
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b75";
     const acceptedAt = h.clock.now().toISOString();
-    const patch = { browser: { headless: false } } as const;
+    const patch = { "browser.headless": { set: false } } as const;
     const command = {
       commandId,
       requestedAt: "2020-01-01T00:00:00.000Z",
@@ -2831,7 +3133,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(badCommand.status, 400);
 
     const settingsCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7b";
-    const settingsPatch = {};
+    const settingsPatch = { "browser.headless": { set: false } } as const;
     const mismatchedCommand = {
       commandId: settingsCommandId,
       requestedAt: h.clock.now().toISOString(),
@@ -2911,7 +3213,10 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("refuses a command whose requested actor disagrees with BFF admission before authority changes", async () => {
     const h = harness();
     const commandId = "00000000-0000-4000-8000-000000000095";
-    const patch = { display: { screenWidth: 1980 } };
+    const patch = {
+      "display.screenWidth": { set: 1980 },
+      "display.screenHeight": { set: 1080 },
+    } as const;
 
     const response = await h.app.request("/api/v1/commands", {
       method: "POST",
@@ -3139,7 +3444,10 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const initialWidth = initial.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
     assert.equal(initialWidth?.source, "default");
 
-    const patch = { display: { screenWidth: 1980 } };
+    const patch = {
+      "display.screenWidth": { set: 1980 },
+      "display.screenHeight": { set: 1080 },
+    } as const;
     const applied = await h.app.request("/api/v1/commands", {
       method: "POST",
       headers: OPERATOR_JSON_HEADERS,

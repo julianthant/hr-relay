@@ -489,15 +489,15 @@ log:
 - 2026-09-04 | direct supervisor close | accepted candidate `bc82fe47` after independent review and corrections, merged evidence commit `bb98dabc` as `49120609`, then passed typecheck, lint, 5,082 coverage tests, manifest, 745 architecture tests and 269 unchanged parity tests; branch/worktrees removed, no push · left: Task 2-2 integrates next
 
 #### 2-2 · Implement the settings catalog and protected root {#p1f-settings-store}
-status: active
-date: wave 2 peer · branches from the master holding Task 1's merge
+status: done
+date: 2026-09-05
 doc: 01 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2 · ref:frontend-backend-integration §4
 
 builds:
-- [ ] BE one leaf catalog (`src/domain/config/catalog.ts`) and the revisioned `.tracker/settings/` root with two documents, one lock, two CAS arms and write-only protected values
-- [ ] BE move username, password, timekeeper identity, local canary inputs, display overrides, timeouts, paths, worker defaults, and all other operator-managed non-provider-key configuration out of `.env`; delete adapters A4 and A5 in this task
-- [ ] BE leave only provider API keys in `.env`; keep D324's probed host display as the catalogued default when no override exists; expose protected settings as presence/revision, never plaintext; `manifestVersion` 2 backup write shape
-- [ ] PROOF §D331.11 P1–P15, P17–P19, P21–P32, P33 protected half, P34–P39, P41 and M14's schema half; `settings-catalog` guard active; `npm run test:parity` unchanged (A8)
+- [x] BE one leaf catalog (`src/domain/config/catalog.ts`) and the revisioned `.tracker/settings/` root with two documents, one lock, two CAS arms and write-only protected values
+- [x] BE move username, password, timekeeper identity, local canary inputs, display overrides, timeouts, paths, worker defaults, and all other operator-managed non-provider-key configuration out of `.env`; delete adapters A4 and A5 in this task
+- [x] BE leave only provider API keys in `.env`; keep D324's probed host display as the catalogued default when no override exists; expose protected settings as presence/revision, never plaintext; `manifestVersion` 2 backup write shape
+- [x] PROOF §D331.11 P1–P15, P17–P19, P21–P32, P33 protected half, P34–P39, P41 and M14's schema half; `settings-catalog` guard active; `npm run test:parity` unchanged (A8)
 
 needs:
 - p1f-floor
@@ -506,6 +506,7 @@ log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | relabelled 2-2 (wave 2 peer) and bound to its seam; never edits `migrations.ts` or `authority-database.ts` (Task 1 landed the singleton) · left: implementation
 - 2026-09-04 | execute-phase-1-6-from C858cc3dc R03 | started the declared wave from common verified base `d2fe05dd`; exact task/worktree/branch and allowance source-pinned at `c77d2b76^:docs/coordinator/execute-phase-1-6-from-c858cc3dc/supervisors.json` · left: implementation, assigned proofs and complete lifecycle
 - 2026-09-04 | direct phase plan | approved one-supervisor focused plan in doc 01 §1.6 Task 2-2: `codex/phase-1-6-settings` at `/Users/julianhein/Projects/hr-worktree-settings`; the minimal Settings producer adaptation preserves the eight-leaf surface and unchanged parity while implementing D331.5's leaf-operation wire; start waits for one recorded common wave SHA containing both approved peer plans · left: implementation from that verified base
+- 2026-09-05 | direct supervisor close | accepted candidate `0e38b82f` after 5 independent review rounds and fixes, merged as `33d6a6e9` / `0a8173e0`, restored to master with full gates passing; Task 2-2 complete · next: Task 3
 
 #### 3 · Cut over executor and worker lifecycle writers {#p1f-run-writers}
 status: planned
@@ -522,7 +523,7 @@ needs:
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate/deletion test (doc 01 §1.6 Task 3); serial after wave 2 · left: implementation
-- 2026-09-05 | operator-approved direct phase plan | reconciled D330.10 ownership: Task 3 keeps the worker lifecycle seam and Task 4 owns command-kernel start/intake/capture creation plus `run.queued`; Task 3 owns the worker/recovery half of #27. Current `master` `46f95aa0` includes `7414548f`, which reopened Task 2-2, so 1.6.3 is WAITING ON restored Task 2-2 code/evidence and a new verified creation SHA · left: that prerequisite, then implementation
+- 2026-09-05 | operator-approved direct phase plan | reconciled D330.10 ownership: Task 3 keeps the worker lifecycle seam and Task 4 owns command-kernel start/intake/capture creation plus `run.queued`; Task 3 owns the worker/recovery half of #27. Restored Task 2-2 code/evidence and full gates on master; Task 2-2 prerequisite satisfied · left: Task 3 implementation
 
 #### 4 · Cut over operator run commands and archive/delete writers {#p1f-run-commands}
 status: planned

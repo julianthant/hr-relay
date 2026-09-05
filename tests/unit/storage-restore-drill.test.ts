@@ -58,6 +58,7 @@ import {
   WRITE_INTENT_ATTEMPTING,
 } from "./fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
+import { initializeSyntheticSettingsBackupRoot } from "./helpers/settings-backup-fixture.js";
 
 const CLOCK = manualClock(new Date(NOW));
 const CommandIdentitySchema = z.object({ commandId: z.string().min(1) });
@@ -131,6 +132,7 @@ function seedRealShapedAuthority(database: AuthorityDatabase): Readonly<{
 }
 
 async function takeBackup(database: AuthorityDatabase, paths: DrillPaths): Promise<string> {
+  initializeSyntheticSettingsBackupRoot(paths.stateRoot);
   const service = new AuthorityBackupService(database, { directory: paths.backupDirectory }, CLOCK);
   const report = await service.request({
     trigger: "operator",

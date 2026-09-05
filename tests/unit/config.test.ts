@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs, {
@@ -18,22 +19,25 @@ import fs, {
 } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, it, vi } from "vitest";
-import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, SETTINGS_CATALOG } from "../../src/domain/config/catalog.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { assertNotPast, requireAnnualDates } from "../../src/domain/config/fiscal-year.js";
 import { resolveInstances, resolveSystemEntryUrl } from "../../src/domain/config/instance.js";
-import { CONFIG_ENV_BINDINGS, resolveConfig, resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { CONFIG_ENV_BINDINGS, ConfigEnvBindingRegistrySchema, configLeafPaths, resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, SettingsOverrideSchema } from "../../src/domain/config/schema.js";
+import { settingsRootAuthority } from "../../src/domain/config/settings-root.js";
 import {
   SETTINGS_SCHEMA_HASH,
+  SettingsPatchSchema,
   SettingsApplyInputSchema,
   SettingsFileRecordSchema,
   derivePersistedSettingsFingerprint,
   deriveSettingsPatchFingerprint,
+  mergeSettingsPatch,
 } from "../../src/domain/config/settings.js";
 import {
   SettingsCommandRequestSchema,
@@ -49,6 +53,10 @@ const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 const SETTINGS_COMMAND_1 = "11111111-1111-4111-8111-111111111111";
 const SETTINGS_COMMAND_2 = "22222222-2222-4222-8222-222222222222";
 
+function ordinarySettingsPath(stateRoot: string): string {
+  return join(stateRoot, "settings", "settings.json");
+}
+
 type TestSettingsFileAuthorityOptions = Omit<SettingsFileAuthorityOptions, "validateCandidate"> & {
   readonly validateCandidate?: SettingsFileAuthorityOptions["validateCandidate"];
 };
@@ -57,12 +65,33 @@ function createSettingsFileAuthority(options: TestSettingsFileAuthorityOptions) 
   return createRawSettingsFileAuthority({
     ...options,
     validateCandidate: options.validateCandidate ?? ((settings) => {
-      resolveConfigWithProvenance({}, settings, CLOCK);
+      resolveConfigWithProvenance(settings, hostConfigFacts({}), CLOCK);
     }),
   });
 }
 
-function settingsApplyRequest(commandId: string, expectedRevision: number, patch: unknown): unknown {
+function settingsOperations(settings: Record<string, unknown>): Record<string, { set: unknown }> {
+  const operations: Record<string, { set: unknown }> = {};
+  const walk = (value: unknown, path: string): void => {
+    const catalogKey = path.replace(/^annualDates\.FY\d{4}\./u, "annualDates.*.");
+    if (SETTINGS_CATALOG.some((row) => row.key === catalogKey && row.sourceClass === "ordinary-settings")) {
+      operations[path] = { set: value };
+      return;
+    }
+    if (value === null || Array.isArray(value) || typeof value !== "object") {
+      operations[path] = { set: value };
+      return;
+    }
+    for (const [key, nested] of Object.entries(value)) walk(nested, path.length === 0 ? key : `${path}.${key}`);
+  };
+  walk(settings, "");
+  delete operations[""];
+  return operations;
+}
+
+function settingsApplyRequest(commandId: string, expectedRevision: number, settings: Record<string, unknown>): unknown {
+  const parsedPatch = SettingsPatchSchema.safeParse(settings);
+  const patch = parsedPatch.success ? parsedPatch.data : settingsOperations(settings);
   const patchFingerprint = deriveSettingsPatchFingerprint(patch);
   const command = {
     commandId,
@@ -170,7 +199,7 @@ describe("strict config resolution", () => {
     (fault) => {
       const root = mkdtempSync(join(tmpdir(), "hrauto-settings-primary-cleanup-"));
       try {
-        const path = join(root, "settings.json");
+        const path = ordinarySettingsPath(root);
         const seeded = createSettingsFileAuthority({ path }).apply(settingsApplyRequest(
           SETTINGS_COMMAND_1, 1, { browser: { headless: false } },
         ));
@@ -237,7 +266,7 @@ describe("strict config resolution", () => {
   it("refuses a writable settings parent before touching authority evidence", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-directory-integrity-"));
     try {
-      const path = join(root, "settings.json");
+      const path = ordinarySettingsPath(root);
       const authority = createSettingsFileAuthority({ path });
       const applied = authority.apply(settingsApplyRequest(
         SETTINGS_COMMAND_1, 1, { browser: { headless: false } },
@@ -245,14 +274,15 @@ describe("strict config resolution", () => {
       assert.equal(applied.state, "applied");
       if (applied.state !== "applied") assert.fail("fixture settings must apply");
       applied.commit();
-      const entries = readdirSync(root);
-      const bytes = entries.map((entry) => readFileSync(join(root, entry)));
+      const directory = dirname(path);
+      const entries = readdirSync(directory);
+      const bytes = entries.map((entry) => readFileSync(join(directory, entry)));
       for (const mode of [0o770, 0o707, 0o777, 0o1777]) {
-        chmodSync(root, mode);
-        assert.throws(() => authority.read(), /settings directory.*group\/world-writable/u);
-        assert.deepEqual(readdirSync(root), entries);
-        assert.deepEqual(entries.map((entry) => readFileSync(join(root, entry))), bytes);
-        assert.equal(lstatSync(root).mode & 0o7777, mode);
+        chmodSync(directory, mode);
+        assert.throws(() => authority.read(), /directory-integrity: settings directory .* must have mode 0700/u);
+        assert.deepEqual(readdirSync(directory), entries);
+        assert.deepEqual(entries.map((entry) => readFileSync(join(directory, entry))), bytes);
+        assert.equal(lstatSync(directory).mode & 0o7777, mode);
       }
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -266,7 +296,7 @@ describe("strict config resolution", () => {
         const ancestor = join(root, String(mode));
         const directory = join(ancestor, "private");
         mkdirSync(directory, { recursive: true, mode: 0o700 });
-        const path = join(directory, "settings.json");
+        const path = ordinarySettingsPath(directory);
         const seed = createSettingsFileAuthority({ path });
         const applied = seed.apply(settingsApplyRequest(
           SETTINGS_COMMAND_1, 1, { browser: { headless: false } },
@@ -274,8 +304,9 @@ describe("strict config resolution", () => {
         if (applied.state !== "applied") assert.fail("fixture settings must apply");
         // Leave a real prepare plus live lock as evidence; refusal must not reap
         // or compensate any of them, even when read() would otherwise fail busy.
-        const entries = readdirSync(directory);
-        const before = entries.map((entry) => readFileSync(join(directory, entry)));
+        const authorityDirectory = dirname(path);
+        const entries = readdirSync(authorityDirectory);
+        const before = entries.map((entry) => readFileSync(join(authorityDirectory, entry)));
         chmodSync(ancestor, mode);
         let effects = 0;
         const authority = createSettingsFileAuthority({
@@ -299,11 +330,11 @@ describe("strict config resolution", () => {
           SETTINGS_COMMAND_2, 2, { browser: { headless: true } },
         )), refusal);
         assert.throws(() => createSettingsFileAuthority({
-          path: join(ancestor, "missing", "nested", "settings.json"),
+          path: ordinarySettingsPath(join(ancestor, "missing", "nested")),
         }).read(), refusal);
         assert.equal(existsSync(join(ancestor, "missing")), false);
-        assert.deepEqual(readdirSync(directory), entries);
-        assert.deepEqual(entries.map((entry) => readFileSync(join(directory, entry))), before);
+        assert.deepEqual(readdirSync(authorityDirectory), entries);
+        assert.deepEqual(entries.map((entry) => readFileSync(join(authorityDirectory, entry))), before);
         assert.equal(effects, 0);
         assert.equal(lstatSync(ancestor).mode & 0o777, mode);
         chmodSync(ancestor, 0o700);
@@ -324,7 +355,7 @@ describe("strict config resolution", () => {
       chmodSync(root, 0o755);
       chmodSync(sticky, 0o1777);
       chmodSync(directory, 0o755);
-      const authority = createSettingsFileAuthority({ path: join(directory, "settings.json") });
+      const authority = createSettingsFileAuthority({ path: ordinarySettingsPath(directory) });
       const applied = authority.apply(settingsApplyRequest(
         SETTINGS_COMMAND_1, 1, { actor: { label: "safe-directory" } },
       ));
@@ -347,7 +378,7 @@ describe("strict config resolution", () => {
       const alias = join(root, "alias");
       mkdirSync(target);
       symlinkSync(target, alias);
-      for (const path of [join(alias, "settings.json"), join(alias, "missing", "settings.json")]) {
+      for (const path of [ordinarySettingsPath(alias), ordinarySettingsPath(join(alias, "missing"))]) {
         assert.throws(() => createSettingsFileAuthority({ path }).read(), /settings directory.*symbolic link/u);
         assert.deepEqual(readdirSync(target), []);
         assert.equal(lstatSync(alias).isSymbolicLink(), true);
@@ -381,7 +412,8 @@ describe("strict config resolution", () => {
         settingsFingerprint: derivePersistedSettingsFingerprint({}), settings: {},
       });
       const settingsBytes = Buffer.from(JSON.stringify(record));
-      writeFileSync(join(physicalSafe, "settings.json"), settingsBytes, { mode: 0o600 });
+      mkdirSync(dirname(ordinarySettingsPath(physicalSafe)), { mode: 0o700 });
+      writeFileSync(ordinarySettingsPath(physicalSafe), settingsBytes, { mode: 0o600 });
       const entries = readdirSync(physicalSafe);
       const realLstat = fs.lstatSync;
       const systemOwnedPaths = new Set([system, alias, pivot]);
@@ -400,7 +432,7 @@ describe("strict config resolution", () => {
       let refusal: unknown;
       try {
         try {
-          createSettingsFileAuthority({ path: join(alias, "settings.json") }).read();
+          createSettingsFileAuthority({ path: ordinarySettingsPath(alias) }).read();
         } catch (error) {
           refusal = error;
         }
@@ -411,7 +443,7 @@ describe("strict config resolution", () => {
       assert.equal(inspectedRootAlias, true, "must pass the simulated root-owned alias boundary");
       assert.deepEqual(readdirSync(physicalSafe), entries,
         "unsafe alias must not publish authority evidence at its physical destination");
-      assert.deepEqual(readFileSync(join(physicalSafe, "settings.json")), settingsBytes);
+      assert.deepEqual(readFileSync(ordinarySettingsPath(physicalSafe)), settingsBytes);
       assert.deepEqual(readdirSync(lexicalSafe), []);
       assert.ok(refusal instanceof Error, "raw parent traversal must refuse, not accept settings");
       assert.match(refusal.message, /raw symbolic-link target contains a '\.\.' path component/u);
@@ -429,7 +461,7 @@ describe("strict config resolution", () => {
     const uidObservation = vi.spyOn(process, "getuid").mockReturnValue(runtimeUid + 1);
     try {
       assert.throws(() => createSettingsFileAuthority({
-        path: join(root, "settings.json"),
+        path: ordinarySettingsPath(root),
       }).read(), /settings directory.*untrusted owner uid/u);
       assert.deepEqual(readdirSync(root), []);
     } finally {
@@ -441,9 +473,10 @@ describe("strict config resolution", () => {
   it("refuses a redirected bound directory before reading or settling through its replacement", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-directory-redirect-"));
     try {
-      const directory = join(root, ".tracker");
+      const stateRoot = join(root, ".tracker");
+      const path = ordinarySettingsPath(stateRoot);
+      const directory = dirname(path);
       const retained = join(root, "retained");
-      const path = join(directory, "settings.json");
       const authority = createSettingsFileAuthority({ path });
       const applied = authority.apply(settingsApplyRequest(
         SETTINGS_COMMAND_1, 1, { browser: { headless: false } },
@@ -471,7 +504,7 @@ describe("strict config resolution", () => {
     }
   });
 
-  it("admits exactly the four DCC3 leaves alongside the retained backend arms", () => {
+  it("preserves the four DCC3 settings among the catalogued ordinary leaves", () => {
     const patch = {
       ocr: { pageConcurrency: 3, maxValidationRetries: 0 },
       concurrency: { defaultWorkers: 2 },
@@ -479,17 +512,18 @@ describe("strict config resolution", () => {
       browser: { headless: false },
     };
     const parsed = SettingsApplyInputSchema.parse(settingsApplyRequest(SETTINGS_COMMAND_1, 1, patch));
-    assert.deepEqual(parsed.patch, patch);
-    const resolved = resolveConfigWithProvenance({}, parsed.patch, CLOCK);
+    assert.deepEqual(parsed.patch, settingsOperations(patch));
+    const persisted = mergeSettingsPatch({}, parsed.patch);
+    const resolved = resolveConfigWithProvenance(persisted, hostConfigFacts({}), CLOCK);
     assert.equal(resolved.config.ocr.pageConcurrency, 3);
     assert.equal(resolved.config.ocr.maxValidationRetries, 0);
     assert.equal(resolved.config.concurrency.defaultWorkers, 2);
     assert.equal(resolved.config.paths.reportsDir, "/tmp/reviewed-reports");
-    assert.throws(() => deriveSettingsPatchFingerprint({ paths: { reportsDir: "relative" } }));
-    assert.throws(() => deriveSettingsPatchFingerprint({ ocr: { pageConcurrency: -1 } }));
+    assert.throws(() => deriveSettingsPatchFingerprint({ "paths.reportsDir": { set: "relative" } }));
+    assert.throws(() => deriveSettingsPatchFingerprint({ "ocr.pageConcurrency": { set: -1 } }));
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-dcc3-roundtrip-"));
     try {
-      const authority = createSettingsFileAuthority({ path: join(root, "settings.json") });
+      const authority = createSettingsFileAuthority({ path: ordinarySettingsPath(root) });
       const applied = authority.apply(settingsApplyRequest(SETTINGS_COMMAND_1, 1, patch));
       if (applied.state !== "applied") assert.fail("DCC3 leaves must apply");
       applied.commit();
@@ -499,12 +533,54 @@ describe("strict config resolution", () => {
     }
   });
 
+  it("applies closed leaf operations and clears persisted overrides back to defaults", () => {
+    assert.throws(() => deriveSettingsPatchFingerprint({ "paths.stateRoot": { set: "/tmp/forbidden" } }));
+    assert.doesNotThrow(() => deriveSettingsPatchFingerprint({ "display.screenWidth": { set: 1920 } }));
+    assert.doesNotThrow(() => deriveSettingsPatchFingerprint({
+      "display.screenWidth": { set: 1920 },
+      "display.screenHeight": { set: 1080 },
+    }));
+
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-clear-"));
+    try {
+      const authority = createSettingsFileAuthority({ path: ordinarySettingsPath(root) });
+      const first = authority.apply(settingsApplyRequest(
+        SETTINGS_COMMAND_1,
+        1,
+        { "actor.label": { set: "Temporary operator" } },
+      ));
+      assert.equal(first.state, "applied");
+      if (first.state !== "applied") return;
+      first.commit();
+      assert.deepEqual(authority.read().settings, { actor: { label: "Temporary operator" } });
+
+      const clearRequest = settingsApplyRequest(
+        SETTINGS_COMMAND_2,
+        2,
+        { "actor.label": { clear: true } },
+      );
+      const cleared = authority.apply(clearRequest);
+      assert.equal(cleared.state, "applied");
+      if (cleared.state !== "applied") return;
+      cleared.commit();
+      assert.deepEqual(authority.read().settings, {});
+      const replay = authority.apply(clearRequest);
+      assert.equal(replay.state, "applied");
+      assert.equal(replay.record.revision, 3);
+      if (replay.state === "applied") replay.rollback();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("refuses old broad-schema and missing-lastApplied envelopes without converting bytes", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-incompatible-"));
     try {
-      const path = join(root, "settings.json");
-      const settings = { display: { screenWidth: 1920 } };
-      for (const settingsSchemaHash of [deriveSchemaHash(SettingsOverrideSchema, "input"), SETTINGS_SCHEMA_HASH]) {
+      const path = ordinarySettingsPath(root);
+      mkdirSync(dirname(path), { mode: 0o700 });
+      createSettingsFileAuthority({ path }).read();
+      const settings = { display: { screenWidth: 1920, screenHeight: 1080 } };
+      for (const settingsSchemaHash of ["cd3bb6c31ccbfb22293d427de1d166227230fb7b7ac5394d821381cf76123151", SETTINGS_SCHEMA_HASH]) {
         // The broad-hash case has otherwise complete lastApplied evidence; the
         // current-hash case omits ONLY lastApplied. Neither refusal masks the other.
         const lastApplied = settingsSchemaHash === SETTINGS_SCHEMA_HASH ? undefined : {
@@ -512,22 +588,22 @@ describe("strict config resolution", () => {
           commandFingerprint: "a".repeat(64),
           expectedRevision: 1,
           settingsSchemaHash,
-          patchFingerprint: deriveSettingsPatchFingerprint(settings),
+          patchFingerprint: deriveSettingsPatchFingerprint(settingsOperations(settings)),
         };
         const bytes = JSON.stringify({ revision: 2, settingsSchemaHash,
           settingsFingerprint: derivePersistedSettingsFingerprint(settings), settings, lastApplied });
         writeFileSync(path, bytes, { mode: 0o600 });
         const authority = createSettingsFileAuthority({ path });
-        assert.throws(() => authority.read(), /strict persisted settings contract.*schema.*lastApplied.*no automatic conversion/);
+        assert.throws(() => authority.read(), /invalid-value: settings\.json/u);
         assert.equal(readFileSync(path, "utf8"), bytes);
-        assert.equal(existsSync(`${path}.prepare.json`), false);
+        assert.equal(existsSync(join(dirname(path), "prepare.json")), false);
       }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("rejects credential paths and environment-owned leaves at both settings write boundaries", () => {
+  it("P8 rejects protected names and deployment paths at both settings write boundaries", () => {
     const forbiddenPatches = [
       { paths: { duoCredential: "/tmp/stolen-duo.json" } },
       { paths: { duoExtensionDir: "/tmp/untrusted-extension" } },
@@ -564,7 +640,7 @@ describe("strict config resolution", () => {
     (field) => {
       const root = mkdtempSync(join(tmpdir(), "hrauto-settings-pure-refusal-"));
       try {
-        const path = join(root, ".tracker", "settings.json");
+        const path = ordinarySettingsPath(join(root, ".tracker"));
         const afterLockLinked = vi.fn();
         const authority = createSettingsFileAuthority({ path, hooks: { afterLockLinked } });
         const request = SettingsApplyInputSchema.parse(settingsApplyRequest(
@@ -572,15 +648,15 @@ describe("strict config resolution", () => {
         ));
         const mismatch = field === "settingsSchemaHash"
           ? "a".repeat(64)
-          : deriveSettingsPatchFingerprint({ browser: { headless: true } });
+          : deriveSettingsPatchFingerprint({ "browser.headless": { set: true } });
         assert.notEqual(mismatch, request[field]);
         const snapshot = () => ({
           entries: readdirSync(root),
           settings: existsSync(path),
-          initialization: existsSync(`${path}.authority.json`),
-          lock: existsSync(`${path}.lock`),
-          prepare: existsSync(`${path}.prepare.json`),
-          rollback: existsSync(`${path}.rollback.json`),
+          initialization: existsSync(join(dirname(path), "authority.json")),
+          lock: existsSync(join(dirname(path), "settings.lock")),
+          prepare: existsSync(join(dirname(path), "prepare.json")),
+          rollback: existsSync(join(dirname(path), "rollback.json")),
         });
         const pristine = {
           entries: [], settings: false, initialization: false,
@@ -592,10 +668,10 @@ describe("strict config resolution", () => {
 
         assert.deepEqual(outcome, {
           state: "rejected",
-          code: "schema-mismatch",
+          code: field === "settingsSchemaHash" ? "schema-mismatch" : "patch-fingerprint-mismatch",
           message: field === "settingsSchemaHash"
-            ? `settings schema ${mismatch} does not match this build's ${SETTINGS_SCHEMA_HASH}`
-            : `settings patch fingerprint ${mismatch} does not match its strict patch value`,
+            ? "settings.json schema-mismatch"
+            : "patch-fingerprint-mismatch: settings patch fingerprint does not match its canonical value",
         });
         assert.equal(Object.isFrozen(outcome), true);
         assert.deepEqual(snapshot(), pristine);
@@ -609,8 +685,8 @@ describe("strict config resolution", () => {
   it("binds crash-recovery replay to the full canonical settings command envelope", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-command-envelope-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
-      const patch = { browser: { headless: false } } as const;
+      const path = ordinarySettingsPath(join(root, ".tracker"));
+      const patch = { "browser.headless": { set: false } } as const;
       const command = {
         commandId: SETTINGS_COMMAND_1,
         requestedAt: "2026-08-28T12:00:00.000Z",
@@ -650,7 +726,7 @@ describe("strict config resolution", () => {
         patchFingerprint: command.payload.patchFingerprint,
         patch: command.payload.patch,
         commandFingerprint: deriveSettingsCommandFingerprint(divergentEnvelope),
-      }), /full canonical command envelope/u);
+      }), /command-divergent: settings command .* differs from its persisted canonical envelope/u);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -659,8 +735,8 @@ describe("strict config resolution", () => {
   it("refuses to follow a settings-file symbolic link", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-symlink-"));
     try {
-      const targetPath = join(root, "target.json");
-      const linkedPath = join(root, "settings.json");
+      const targetPath = ordinarySettingsPath(join(root, "target"));
+      const linkedPath = ordinarySettingsPath(join(root, "linked"));
       const target = createSettingsFileAuthority({ path: targetPath });
       const applied = target.apply(settingsApplyRequest(
         SETTINGS_COMMAND_1,
@@ -669,6 +745,7 @@ describe("strict config resolution", () => {
       ));
       assert.equal(applied.state, "applied");
       if (applied.state === "applied") applied.commit();
+      mkdirSync(dirname(linkedPath), { recursive: true, mode: 0o700 });
       symlinkSync(targetPath, linkedPath);
 
       assert.throws(
@@ -683,7 +760,7 @@ describe("strict config resolution", () => {
   it("refuses non-regular, over-permissive, and oversized settings files", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-file-shape-"));
     try {
-      const regularPath = join(root, "regular.json");
+      const regularPath = ordinarySettingsPath(join(root, "regular"));
       const regular = createSettingsFileAuthority({ path: regularPath }).apply(settingsApplyRequest(
         SETTINGS_COMMAND_1,
         1,
@@ -691,7 +768,8 @@ describe("strict config resolution", () => {
       ));
       assert.equal(regular.state, "applied");
       if (regular.state === "applied") regular.commit();
-      const hardLinkedPath = join(root, "hard-linked.json");
+      const hardLinkedPath = ordinarySettingsPath(join(root, "hard-linked"));
+      mkdirSync(dirname(hardLinkedPath), { recursive: true, mode: 0o700 });
       linkSync(regularPath, hardLinkedPath);
       assert.throws(
         () => createSettingsFileAuthority({ path: hardLinkedPath }).read(),
@@ -704,18 +782,19 @@ describe("strict config resolution", () => {
         /permissions are 644; exactly 600 is required/u,
       );
 
-      const directoryPath = join(root, "directory.json");
-      mkdirSync(directoryPath);
+      const directoryPath = ordinarySettingsPath(join(root, "directory"));
+      mkdirSync(directoryPath, { recursive: true, mode: 0o700 });
       assert.throws(
         () => createSettingsFileAuthority({ path: directoryPath }).read(),
         /not a regular file/u,
       );
 
-      const oversizedPath = join(root, "oversized.json");
+      const oversizedPath = ordinarySettingsPath(join(root, "oversized"));
+      mkdirSync(dirname(oversizedPath), { recursive: true, mode: 0o700 });
       writeFileSync(oversizedPath, Buffer.alloc(MAX_SETTINGS_FILE_BYTES + 1), { mode: 0o600 });
       assert.throws(
         () => createSettingsFileAuthority({ path: oversizedPath }).read(),
-        /maximum is/u,
+        /settings\.json .* exceeds maximum 1048576 bytes/u,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -725,7 +804,7 @@ describe("strict config resolution", () => {
   it("rejects actor metadata that would make the persisted settings file max plus one byte", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-next-bytes-limit-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
+      const path = ordinarySettingsPath(join(root, ".tracker"));
       const authority = createSettingsFileAuthority({ path });
 
       assert.throws(
@@ -734,7 +813,7 @@ describe("strict config resolution", () => {
           1,
           { actor: { label: "a".repeat(1_048_001) } },
         )),
-        /settings candidate is 1048577 bytes; maximum is 1048576 before replacement/u,
+        /document-too-large: settings\.json exceeds its maximum before replacement/u,
       );
       assert.equal(authority.read().revision, 1);
       assert.equal(readdirSync(join(root, ".tracker")).includes("settings.json"), false);
@@ -746,7 +825,7 @@ describe("strict config resolution", () => {
   it("persists actor metadata whose canonical settings file is exactly the byte maximum", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-next-bytes-boundary-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
+      const path = ordinarySettingsPath(join(root, ".tracker"));
       const applied = createSettingsFileAuthority({ path }).apply(settingsApplyRequest(
         SETTINGS_COMMAND_1,
         1,
@@ -772,15 +851,15 @@ describe("strict config resolution", () => {
   it("recovers an acquisition-named hard-link twin left by process loss", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-lock-twin-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
+      const path = ordinarySettingsPath(join(root, ".tracker"));
       const child = crashSettingsAuthorityAtHook(path, "afterLockLinked");
       assert.equal(child.signal, "SIGKILL", child.stderr);
 
       const recovered = createSettingsFileAuthority({ path }).read();
       assert.equal(recovered.revision, 1);
       assert.deepEqual(
-        readdirSync(join(root, ".tracker")),
-        ["settings.json.authority.json"],
+        readdirSync(dirname(path)).sort(),
+        ["authority.json", "protected.json", "settings.json"],
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -790,7 +869,7 @@ describe("strict config resolution", () => {
   it("holds exclusive settings authority until transaction commit or rollback", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-exclusive-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
+      const path = ordinarySettingsPath(join(root, ".tracker"));
       const firstAuthority = createSettingsFileAuthority({ path });
       const first = firstAuthority.apply(settingsApplyRequest(
         SETTINGS_COMMAND_1,
@@ -804,7 +883,7 @@ describe("strict config resolution", () => {
         () => createSettingsFileAuthority({ path }).apply(settingsApplyRequest(
           SETTINGS_COMMAND_2,
           2,
-          { display: { screenHeight: 1080 } },
+          { display: { screenWidth: 1920, screenHeight: 1080 } },
         )),
         /exclusive settings authority/u,
       );
@@ -814,13 +893,13 @@ describe("strict config resolution", () => {
       const second = createSettingsFileAuthority({ path }).apply(settingsApplyRequest(
         SETTINGS_COMMAND_2,
         2,
-        { display: { screenHeight: 1080 } },
+        { display: { screenWidth: 1920, screenHeight: 1080 } },
       ));
       assert.equal(second.state, "applied");
       if (second.state === "applied") second.rollback();
       assert.deepEqual(readFileSync(path), committedBytes);
       assert.equal(createSettingsFileAuthority({ path }).read().revision, 2);
-      assert.equal(readdirSync(join(root, ".tracker")).includes("settings.json.rollback.json"), false);
+      assert.equal(readdirSync(dirname(path)).includes("rollback.json"), false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -829,7 +908,9 @@ describe("strict config resolution", () => {
   it("durably prepares exact prior and next settings before the live rename", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-durable-prepare-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
+      const path = ordinarySettingsPath(join(root, ".tracker"));
+      createSettingsFileAuthority({ path }).read();
+      const priorSettingsBytes = readFileSync(path);
       const request = settingsApplyRequest(
         SETTINGS_COMMAND_1,
         1,
@@ -838,15 +919,18 @@ describe("strict config resolution", () => {
       const child = crashSettingsApplyAfterLiveRename(path, request);
       assert.equal(child.signal, "SIGKILL", child.stderr);
 
-      const prepare = JSON.parse(readFileSync(`${path}.prepare.json`, "utf8")) as Record<string, unknown>;
+      const prepare = JSON.parse(readFileSync(join(dirname(path), "prepare.json"), "utf8")) as Record<string, unknown>;
       assert.deepEqual(prepare.command, {
         commandId: SETTINGS_COMMAND_1,
         commandFingerprint: (request as { commandFingerprint: string }).commandFingerprint,
         expectedRevision: 1,
         settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-        patchFingerprint: deriveSettingsPatchFingerprint({ browser: { headless: false } }),
+        patchFingerprint: deriveSettingsPatchFingerprint({ "browser.headless": { set: false } }),
       });
-      assert.equal(prepare.priorSettingsBytesBase64, null);
+      assert.deepEqual(
+        Buffer.from(String(prepare.priorSettingsBytesBase64), "base64"),
+        priorSettingsBytes,
+      );
       assert.equal(
         prepare.nextSettingsBytesBase64,
         readFileSync(path).toString("base64"),
@@ -861,7 +945,9 @@ describe("strict config resolution", () => {
   it("restores the exact prior settings when a prepared command did not commit", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-prepare-rollback-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
+      const path = ordinarySettingsPath(join(root, ".tracker"));
+      createSettingsFileAuthority({ path }).read();
+      const priorSettingsBytes = readFileSync(path);
       const child = crashSettingsApplyAfterLiveRename(
         path,
         settingsApplyRequest(
@@ -876,9 +962,12 @@ describe("strict config resolution", () => {
 
       assert.equal(recovered.revision, 1);
       assert.deepEqual(recovered.settings, {});
-      assert.equal(existsSync(path), false);
-      assert.equal(existsSync(`${path}.prepare.json`), false);
-      assert.deepEqual(readdirSync(join(root, ".tracker")), ["settings.json.authority.json"]);
+      assert.deepEqual(readFileSync(path), priorSettingsBytes);
+      assert.equal(existsSync(join(dirname(path), "prepare.json")), false);
+      assert.deepEqual(
+        readdirSync(dirname(path)).sort(),
+        ["authority.json", "protected.json", "settings.json"],
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -887,7 +976,7 @@ describe("strict config resolution", () => {
   it("serializes stale cleanup through main-lock reacquisition", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-stale-reaper-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
+      const path = ordinarySettingsPath(join(root, ".tracker"));
       const request = settingsApplyRequest(
         SETTINGS_COMMAND_1,
         1,
@@ -924,7 +1013,7 @@ describe("strict config resolution", () => {
               () => createSettingsFileAuthority({ path }).apply(settingsApplyRequest(
                 SETTINGS_COMMAND_2,
                 2,
-                { display: { screenHeight: 1080 } },
+                { display: { screenWidth: 1920, screenHeight: 1080 } },
               )),
               /stale-lock reclamation is in progress/u,
             );
@@ -949,7 +1038,7 @@ describe("strict config resolution", () => {
   ] as const)("recovers a dead stale-reaper that crashed %s", (_phase, hook) => {
     const root = mkdtempSync(join(tmpdir(), `hrauto-settings-dead-reaper-${hook}-`));
     try {
-      const path = join(root, ".tracker", "settings.json");
+      const path = ordinarySettingsPath(join(root, ".tracker"));
       const staleMain = crashSettingsAuthorityAtHook(path, "afterLockLinked");
       assert.equal(staleMain.signal, "SIGKILL", staleMain.stderr);
       const deadReaper = crashSettingsAuthorityAtHook(path, hook);
@@ -958,7 +1047,10 @@ describe("strict config resolution", () => {
       const recovered = createSettingsFileAuthority({ path }).read();
 
       assert.equal(recovered.revision, 1);
-      assert.deepEqual(readdirSync(join(root, ".tracker")), ["settings.json.authority.json"]);
+      assert.deepEqual(
+        readdirSync(dirname(path)).sort(),
+        ["authority.json", "protected.json", "settings.json"],
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -967,7 +1059,7 @@ describe("strict config resolution", () => {
   it("keeps revision CAS inside the exclusive atomic-replace authority", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-cas-race-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
+      const path = ordinarySettingsPath(join(root, ".tracker"));
       const contender = createSettingsFileAuthority({ path });
       let raceAttempted = false;
       const winner = createSettingsFileAuthority({
@@ -980,7 +1072,7 @@ describe("strict config resolution", () => {
                 () => contender.apply(settingsApplyRequest(
                   SETTINGS_COMMAND_2,
                   1,
-                  { display: { screenHeight: 1080 } },
+                  { display: { screenWidth: 1920, screenHeight: 1080 } },
                 )),
                 /exclusive settings authority/u,
               );
@@ -1009,7 +1101,7 @@ describe("strict config resolution", () => {
   it("distinguishes virgin settings from deletion after initialization", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-deletion-evidence-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
+      const path = ordinarySettingsPath(join(root, ".tracker"));
       const authority = createSettingsFileAuthority({ path });
       assert.equal(authority.read().revision, 1);
       const applied = authority.apply(settingsApplyRequest(
@@ -1024,21 +1116,21 @@ describe("strict config resolution", () => {
 
       assert.throws(
         () => createSettingsFileAuthority({ path }).read(),
-        /missing after settings authority was initialized/u,
+        /authority-uncertain: settings\.json presence does not match authority\.json/u,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("recovers a settings replace that completed before initialization evidence advanced", () => {
+  it("refuses a settings replace whose initialization evidence regressed", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-init-recovery-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
-      const evidencePath = `${path}.authority.json`;
+      const path = ordinarySettingsPath(join(root, ".tracker"));
+      const evidencePath = join(dirname(path), "authority.json");
       const authority = createSettingsFileAuthority({ path });
       assert.equal(authority.read().revision, 1);
-      const virginEvidence = readFileSync(evidencePath);
+      const virginEvidence = Buffer.from(`${JSON.stringify(settingsRootAuthority("virgin", "initialized"))}\n`);
       const applied = authority.apply(settingsApplyRequest(
         SETTINGS_COMMAND_1,
         1,
@@ -1047,21 +1139,24 @@ describe("strict config resolution", () => {
       assert.equal(applied.state, "applied");
       if (applied.state !== "applied") return;
       applied.commit();
+      const settingsBytes = readFileSync(path);
 
       writeFileSync(evidencePath, virginEvidence, { mode: 0o600 });
-      const restarted = createSettingsFileAuthority({ path }).read();
-      assert.deepEqual(restarted.settings, { browser: { headless: false } });
-      assert.notDeepEqual(readFileSync(evidencePath), virginEvidence);
+      assert.throws(
+        () => createSettingsFileAuthority({ path }).read(),
+        /authority-uncertain: settings\.json exists before its revision-1 baseline was initialized/u,
+      );
+      assert.deepEqual(readFileSync(evidencePath), virginEvidence);
+      assert.deepEqual(readFileSync(path), settingsBytes);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("fails loud after process loss between first-update sidecar and settings-byte rollback", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-rollback-order-"));
+  it("fails loud after process loss between the rollback sidecar and settings-byte rollback", () => {
+      const root = mkdtempSync(join(tmpdir(), "hrauto-settings-rollback-order-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
-      const evidencePath = `${path}.authority.json`;
+      const path = ordinarySettingsPath(join(root, ".tracker"));
       const request = settingsApplyRequest(
         SETTINGS_COMMAND_1,
         1,
@@ -1079,7 +1174,7 @@ describe("strict config resolution", () => {
         "tsx",
         "--input-type=module",
         "--eval",
-        `import { readFileSync, renameSync } from "node:fs";
+        `import { renameSync } from "node:fs";
          import { createSettingsFileAuthority } from ${JSON.stringify(moduleUrl)};
          let rollbackArmed = false;
          const authority = createSettingsFileAuthority({
@@ -1088,8 +1183,7 @@ describe("strict config resolution", () => {
            operations: {
              atomicReplace: (source, destination) => {
                renameSync(source, destination);
-               if (rollbackArmed && destination === ${JSON.stringify(evidencePath)}
-                 && JSON.parse(readFileSync(destination, "utf8")).state === "virgin") {
+               if (rollbackArmed && destination === ${JSON.stringify(join(dirname(path), "rollback.json"))}) {
                  process.kill(process.pid, "SIGKILL");
                }
              },
@@ -1121,10 +1215,10 @@ describe("strict config resolution", () => {
     for (const hook of interruptedHooks) {
       const root = mkdtempSync(join(tmpdir(), `hrauto-settings-rollback-${hook}-`));
       try {
-        const path = join(root, ".tracker", "settings.json");
+        const path = ordinarySettingsPath(join(root, ".tracker"));
         const child = crashFirstUpdateRollbackAtHook(path, hook);
         assert.equal(child.signal, "SIGKILL", `${hook}: ${child.stderr}`);
-        assert.match(readFileSync(`${path}.rollback.json`, "utf8"), /"rollbackId":/u);
+        assert.match(readFileSync(join(dirname(path), "rollback.json"), "utf8"), /"rollbackId":/u);
         assert.throws(
           () => createSettingsFileAuthority({ path }).read(),
           /interrupted settings rollback/u,
@@ -1138,10 +1232,10 @@ describe("strict config resolution", () => {
   it("admits restart only after first-update rollback evidence is durably removed", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-rollback-complete-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
+      const path = ordinarySettingsPath(join(root, ".tracker"));
       const child = crashFirstUpdateRollbackAtHook(path, "afterRollbackCompleted");
       assert.equal(child.signal, "SIGKILL", child.stderr);
-      assert.equal(readdirSync(join(root, ".tracker")).includes("settings.json.rollback.json"), false);
+      assert.equal(readdirSync(dirname(path)).includes("rollback.json"), false);
 
       const restarted = createSettingsFileAuthority({ path }).read();
       assert.equal(restarted.revision, 1);
@@ -1156,7 +1250,7 @@ describe("strict config resolution", () => {
       Object.keys(SettingsOverrideSchema.shape).sort(),
       Object.keys(ConfigSchema.shape).sort(),
     );
-    const resolved = resolveConfigWithProvenance({}, {
+    const resolved = resolveConfigWithProvenance({
       actor: { label: "Settings actor" },
       urls: { kuali: { test: { entry: "https://kuali-test.example.test" } } },
       timeouts: { navigationMs: 12_345 },
@@ -1168,8 +1262,7 @@ describe("strict config resolution", () => {
           kronosDefaultStartDate: "07/01/2026",
         },
       },
-      operator: { timekeeperName: "Settings operator" },
-      display: { screenWidth: 1920 },
+      display: { screenWidth: 1920, screenHeight: 1080 },
       performance: { navigationRetries: 3 },
       ocr: { secondOpinionMax: 2 },
       browserHealth: { maxAutoRefresh: 4 },
@@ -1186,11 +1279,11 @@ describe("strict config resolution", () => {
           costLimitUsdMicros: 0,
         },
       },
-    }, CLOCK);
+    }, hostConfigFacts({}), CLOCK);
 
     for (const path of [
       "actor.label", "urls.kuali.test.entry", "timeouts.navigationMs", "paths.reportsDir",
-      "annualDates.FY2027.jobEndDate", "operator.timekeeperName", "display.screenWidth",
+      "annualDates.FY2027.jobEndDate", "display.screenWidth",
       "performance.navigationRetries", "ocr.secondOpinionMax",
       "browserHealth.maxAutoRefresh", "browser.headless", "concurrency.defaultWorkers",
       "daemon.idleMs", "features.debugScreenshots", "providers.ocrExtract.timeoutMs",
@@ -1199,11 +1292,11 @@ describe("strict config resolution", () => {
     }
   });
 
-  it("persists an atomic patch for exact restart readback while environment leaves stay authoritative", () => {
+  it("P4 preserves settings authority on restart under hostile environment names", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-authority-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
-      const patch = { browser: { headless: false }, display: { screenWidth: 1920 } } as const;
+      const path = ordinarySettingsPath(join(root, ".tracker"));
+      const patch = { browser: { headless: false }, display: { screenWidth: 1920, screenHeight: 1080 } } as const;
       const authority = createSettingsFileAuthority({ path });
 
       const applied = authority.apply(settingsApplyRequest(SETTINGS_COMMAND_1, 1, patch));
@@ -1221,13 +1314,9 @@ describe("strict config resolution", () => {
       assert.equal(recoveredReplay.state, "applied");
       if (recoveredReplay.state === "applied") recoveredReplay.commit();
       assert.deepEqual(readFileSync(path), persistedBytes);
-      const resolved = resolveConfigWithProvenance(
-        { TIMEKEEPER_NAME: "environment-name" },
-        { ...restarted.settings, operator: { timekeeperName: "persisted-name" } },
-        CLOCK,
-      );
-      assert.equal(resolved.config.operator.timekeeperName, "environment-name");
-      assert.equal(resolved.provenance["operator.timekeeperName"], "env");
+      const resolved = resolveConfigWithProvenance(restarted.settings, hostConfigFacts({ TIMEKEEPER_NAME: "environment-name" }), CLOCK);
+      assert.equal(Object.hasOwn(resolved.config, "operator"), false);
+      assert.equal(Object.hasOwn(resolved.provenance, "operator.timekeeperName"), false);
       assert.equal(resolved.config.browser.headless, false);
       assert.equal(resolved.provenance["browser.headless"], "settings");
       assert.equal(resolved.config.display.screenWidth, 1920);
@@ -1241,15 +1330,15 @@ describe("strict config resolution", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-interrupted-"));
     try {
       const directory = join(root, ".tracker");
-      const path = join(directory, "settings.json");
+      const path = ordinarySettingsPath(directory);
       const initial = createSettingsFileAuthority({ path });
       const firstPatch = { browser: { headless: false } } as const;
       const first = initial.apply(settingsApplyRequest(SETTINGS_COMMAND_1, 1, firstPatch));
       assert.equal(first.state, "applied");
       if (first.state === "applied") first.commit();
       const priorBytes = readFileSync(path);
-      const priorEvidenceBytes = readFileSync(`${path}.authority.json`);
-      const nextPatch = { display: { screenHeight: 1080 } } as const;
+      const priorEvidenceBytes = readFileSync(join(dirname(path), "authority.json"));
+      const nextPatch = { display: { screenWidth: 1920, screenHeight: 1080 } } as const;
       const interrupted = createSettingsFileAuthority({
         path,
         operations: {
@@ -1265,8 +1354,11 @@ describe("strict config resolution", () => {
         /could not stage a complete durable replacement/u,
       );
       assert.deepEqual(readFileSync(path), priorBytes);
-      assert.deepEqual(readFileSync(`${path}.authority.json`), priorEvidenceBytes);
-      assert.deepEqual(readdirSync(directory), ["settings.json", "settings.json.authority.json"]);
+      assert.deepEqual(readFileSync(join(dirname(path), "authority.json")), priorEvidenceBytes);
+      assert.deepEqual(
+        readdirSync(dirname(path)).sort(),
+        ["authority.json", "protected.json", "settings.json"],
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -1276,7 +1368,9 @@ describe("strict config resolution", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-failure-inspection-"));
     try {
       const directory = join(root, ".tracker");
-      const path = join(directory, "settings.json");
+      const path = ordinarySettingsPath(directory);
+      const authorityDirectory = dirname(path);
+      createSettingsFileAuthority({ path }).read();
       let liveReplacementReached = false;
       const authority = createSettingsFileAuthority({
         path,
@@ -1286,7 +1380,7 @@ describe("strict config resolution", () => {
             if (destination === path) liveReplacementReached = true;
           },
           syncPath: (target) => {
-            if (!liveReplacementReached || target !== directory) return;
+            if (!liveReplacementReached || target !== authorityDirectory) return;
             chmodSync(path, 0o644);
             throw new Error("injected live settings directory fsync failure");
           },
@@ -1316,16 +1410,17 @@ describe("strict config resolution", () => {
   it("refuses malformed or incomplete persisted settings instead of resolving defaults", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-malformed-"));
     try {
-      const path = join(root, ".tracker", "settings.json");
-      mkdirSync(join(root, ".tracker"));
+      const path = ordinarySettingsPath(join(root, ".tracker"));
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
       const authority = createSettingsFileAuthority({ path });
+      authority.read();
 
       writeFileSync(path, '{"revision":2', { encoding: "utf8", mode: 0o600 });
-      assert.throws(() => authority.read(), /is not valid JSON/u);
+      assert.throws(() => authority.read(), /invalid-value: settings\.json is malformed JSON/u);
       writeFileSync(path, '{"revision":2}\n', { encoding: "utf8", mode: 0o600 });
       assert.throws(
         () => authority.read(),
-        /does not satisfy the strict persisted settings contract/u,
+        /invalid-value: settings\.json .* is malformed/u,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -1333,8 +1428,8 @@ describe("strict config resolution", () => {
   });
 
   it("makes empty settings exactly equal schema defaults", () => {
-    assert.deepEqual(resolveConfig({}, {}, CLOCK), ConfigSchema.parse({ paths: defaultRuntimePaths() }));
-    assert.equal(resolveConfig({}, {}, CLOCK).timeouts.ukgNavigationMs, 60_000);
+    assert.deepEqual(resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config, ConfigSchema.parse({ paths: defaultRuntimePaths() }));
+    assert.equal(resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config.timeouts.ukgNavigationMs, 60_000);
     assert.equal(ConfigSchema.safeParse({ unexpected: true }).success, false);
     assert.equal(ConfigSchema.safeParse({ urls: { unexpected: true } }).success, false);
     assert.equal(SettingsOverrideSchema.safeParse({ urls: { ucpath: { test: { typo: "https://example.test" } } } }).success, false);
@@ -1342,102 +1437,100 @@ describe("strict config resolution", () => {
     assert.equal(ConfigSchema.safeParse({ actor: { id: "someone-else", label: "Other" } }).success, false);
   });
 
-  it("applies env over settings over defaults and records complete provenance", () => {
+  it("P4/P6/P10 applies settings over defaults with complete value-free provenance", () => {
     const settings = {
-      operator: { timekeeperName: "settings-name" },
       ocr: { secondOpinionMax: 7 },
+      timeouts: { ukgNavigationMs: 75_000 },
       urls: { ucpath: { test: { smartHr: "https://settings-ucpath.example.test" } } },
     };
-    const resolved = resolveConfigWithProvenance({
-      TIMEKEEPER_NAME: "env-name",
-      HRAUTO_UCPATH_TEST_URL: "https://env-ucpath.example.test",
-      HRAUTO_UKG_NAVIGATION_MS: "75000",
-    }, settings, CLOCK);
-    assert.equal(resolved.config.operator.timekeeperName, "env-name");
+    const resolved = resolveConfigWithProvenance(settings, hostConfigFacts({}), CLOCK);
     assert.equal(resolved.config.ocr.secondOpinionMax, 7);
-    assert.equal(resolved.config.urls.ucpath.test?.smartHr, "https://env-ucpath.example.test");
+    assert.equal(resolved.config.urls.ucpath.test?.smartHr, "https://settings-ucpath.example.test");
     assert.equal(resolved.config.timeouts.ukgNavigationMs, 75_000);
-    assert.equal(resolved.provenance["operator.timekeeperName"], "env");
     assert.equal(resolved.provenance["ocr.secondOpinionMax"], "settings");
-    assert.equal(resolved.provenance["timeouts.ukgNavigationMs"], "env");
+    assert.equal(resolved.provenance["timeouts.ukgNavigationMs"], "settings");
     assert.equal(resolved.provenance["timeouts.taskMs"], "default");
-    assert.match(resolved.fingerprint, /^[0-9a-f]{64}$/);
+    assert.equal(Object.hasOwn(resolved.config, "operator"), false);
+    assert.deepEqual(Object.keys(resolved.provenance).sort(), [...configLeafPaths(resolved.config)].sort());
+    assert.equal(Object.values(resolved.provenance).every((source) => source === "settings" || source === "default"), true);
+    assert.match(resolved.fingerprint, /^[0-9a-f]{64}$/u);
     assert.equal(Object.keys(resolved.provenance).length > 70, true);
   });
 
   it("applies the browser settings group instead of accepting and dropping it", () => {
-    const resolved = resolveConfigWithProvenance({}, {
+    const resolved = resolveConfigWithProvenance({
       browser: { headless: false, closeProofMs: 25_000 },
-    }, CLOCK);
+    }, hostConfigFacts({}), CLOCK);
 
     assert.deepEqual(resolved.config.browser, { headless: false, closeProofMs: 25_000 });
     assert.equal(resolved.provenance["browser.headless"], "settings");
     assert.equal(resolved.provenance["browser.closeProofMs"], "settings");
   });
 
-  it("rejects malformed env values and incomplete annual-date env groups", () => {
-    assert.throws(() => resolveConfig({ OCR_PAGE_CONCURRENCY: "auto" }, {}, CLOCK));
-    assert.throws(() => resolveConfig({ ANNUAL_DATES_END: "06/30/2027" }, {}, CLOCK), /incomplete/);
-    const config = resolveConfig({
-      ANNUAL_DATES_END: "06/30/2027",
-      KRONOS_DEFAULT_END_DATE: "2/1/2027",
-      KRONOS_DEFAULT_START_DATE: "1/1/2017",
-    }, {}, CLOCK);
+  it("P37 rejects malformed ordinary values, half-year groups and half-display overrides", () => {
+    assert.throws(() => resolveConfigWithProvenance({ ocr: { pageConcurrency: "auto" } }, hostConfigFacts({}), CLOCK));
+    assert.throws(() => resolveConfigWithProvenance({ annualDates: { FY2027: { jobEndDate: "06/30/2027" } } }, hostConfigFacts({}), CLOCK));
+    assert.throws(() => resolveConfigWithProvenance({ display: { screenWidth: 1920 } }, hostConfigFacts({}), CLOCK));
+    assert.throws(() => resolveConfigWithProvenance({ display: { screenHeight: 1080 } }, hostConfigFacts({}), CLOCK));
+    const config = resolveConfigWithProvenance({ annualDates: { FY2027: {
+      jobEndDate: "06/30/2027", kronosDefaultEndDate: "2/1/2027", kronosDefaultStartDate: "1/1/2017",
+    } } }, hostConfigFacts({}), CLOCK).config;
     assert.equal(config.annualDates.FY2027?.jobEndDate, "06/30/2027");
   });
 
-  it("keeps the env map one-to-one", () => {
-    const keys = CONFIG_ENV_BINDINGS.map(({ env }) => env);
-    const paths = CONFIG_ENV_BINDINGS.map(({ path }) => path);
-    assert.equal(new Set(keys).size, keys.length);
-    assert.equal(new Set(paths).size, paths.length);
+  it("P3 has no environment bindings and refuses any restored binding", () => {
+    assert.deepEqual(CONFIG_ENV_BINDINGS, []);
+    assert.equal(ConfigEnvBindingRegistrySchema.safeParse([{
+      env: "HRAUTO_DEFAULT_WORKERS", path: "concurrency.defaultWorkers", apply: (config: unknown) => config,
+    }]).success, false);
   });
 
-  it("binds every declared environment path to a real schema leaf and provenance channel", () => {
-    const env = Object.fromEntries(CONFIG_ENV_BINDINGS.map(({ env }) => [
-      env,
-      env.endsWith("_URL") ? "https://config.example.test"
-        : env === "TIMEKEEPER_NAME" ? "Operator"
-          : env === "ANNUAL_DATES_END" ? "06/30/2027"
-            : env === "KRONOS_DEFAULT_END_DATE" ? "2/1/2027"
-              : env === "KRONOS_DEFAULT_START_DATE" ? "1/1/2017"
-                : env === "DEBUG_SCREENSHOTS" || env === "HR_AUTOMATION_DUO_WEBAUTHN" ? "1"
-                  : env.includes("CONCURRENCY") || env.includes("RETRIES") ? "1" : "1000",
-    ]));
-    const resolved = resolveConfigWithProvenance(env, {}, CLOCK);
-    for (const binding of CONFIG_ENV_BINDINGS) {
-      assert.equal(resolved.provenance[binding.path.replace("*", "FY2027")], "env", binding.path);
+  it("P4 ignores every migrated process environment key and rejects the old resolver signature", () => {
+    const settings = { concurrency: { defaultWorkers: 2 } };
+    const facts = hostConfigFacts({});
+    const before = resolveConfigWithProvenance(settings, facts, CLOCK);
+    assert.equal(MIGRATED_SETTINGS_ENVIRONMENT_KEYS.length, 50);
+    try {
+      for (const key of MIGRATED_SETTINGS_ENVIRONMENT_KEYS) vi.stubEnv(key, "hostile-migrated-value");
+      assert.deepEqual(resolveConfigWithProvenance(settings, facts, CLOCK), before);
+      assert.throws(() => {
+        // @ts-expect-error A4: an environment object is no longer the resolver's second input.
+        resolveConfigWithProvenance({}, {}, CLOCK);
+      }, /primaryDisplay/u);
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
+
 });
 
 describe("instance and fiscal safety", () => {
   it("defaults declared systems to production and refuses absent/equal test endpoints", () => {
-    const config = resolveConfig({}, {}, CLOCK);
+    const config = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config;
     assert.deepEqual(resolveInstances(config, ["ucpath", "crm"], undefined, "run-1"), { ucpath: "prod", crm: "prod" });
     assert.throws(() => resolveInstances(config, ["ucpath"], { crm: "test" }, "run-1"), /undeclared systems/);
     assert.throws(() => resolveSystemEntryUrl(config, "ucpath", "test", "run-1"), /no distinct test URL/);
 
-    const withDistinct = resolveConfig({}, {
+    const withDistinct = resolveConfigWithProvenance({
       urls: { ucpath: { test: { smartHr: "https://ucpath-test.example.test" } } },
-    }, CLOCK);
+    }, hostConfigFacts({}), CLOCK).config;
     assert.equal(resolveSystemEntryUrl(withDistinct, "ucpath", "test", "run-1"), "https://ucpath-test.example.test");
-    const withEqual = resolveConfig({}, {
+    const withEqual = resolveConfigWithProvenance({
       urls: { ucpath: { test: { smartHr: config.urls.ucpath.prod.smartHr } } },
-    }, CLOCK);
+    }, hostConfigFacts({}), CLOCK).config;
     assert.throws(() => resolveSystemEntryUrl(withEqual, "ucpath", "test", "run-1"), /no distinct test URL/);
   });
 
   it("fails on missing and stale current-fiscal-year values", () => {
-    const defaults = resolveConfig({}, {}, CLOCK);
+    const defaults = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config;
     assert.throws(() => requireAnnualDates(defaults, CLOCK), /FY2027/);
-    const stale = resolveConfig({}, {
+    const stale = resolveConfigWithProvenance({
       annualDates: { FY2027: {
         jobEndDate: "06/30/2026",
         kronosDefaultEndDate: "2/1/2027",
         kronosDefaultStartDate: "1/1/2017",
       } },
-    }, CLOCK);
+    }, hostConfigFacts({}), CLOCK).config;
     assert.throws(() => requireAnnualDates(stale, CLOCK), /stale/);
     assert.throws(() => assertNotPast("02/30/2027", "badDate", CLOCK), /valid calendar date/);
   });

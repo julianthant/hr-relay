@@ -88,10 +88,12 @@ import {
 import { REPO_ROOT } from "./helpers/guard-files.js";
 import {
   ALL_CANARY_NAMES,
+  auditD331ServedLeafDispositions,
   auditRedactedProducers,
   auditSurfaceOrigins,
   canariesIn,
   decidableLeaves,
+  D331_SERVED_LEAF_DISPOSITIONS,
   REDACTED_NAME_WAIVERS,
   REDACTION_CANARIES,
   REDACTION_SURFACES,
@@ -148,6 +150,38 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
   it("dispositions every free-text and open-JSON leaf of every registered surface", () => {
     const violations = auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS);
     assert.deepEqual(violations, [], `redaction surface audit:\n  ${violations.join("\n  ")}`);
+  });
+
+  it("dispositions every D331 P41 served settings leaf as closed-literal or identifier-free", () => {
+    const violations = auditD331ServedLeafDispositions(D331_SERVED_LEAF_DISPOSITIONS);
+    assert.deepEqual(violations, [], `D331 P41 disposition audit:\n  ${violations.join("\n  ")}`);
+  });
+
+  it("makes an omitted D331 P41 leaf, a wrong class, and an unreviewed class red", () => {
+    const omitted = D331_SERVED_LEAF_DISPOSITIONS.filter((entry) =>
+      entry.surface !== "protected-settings-readback" || entry.path !== "entries.ucpathPassword.valueId");
+    assert.equal(omitted.length, D331_SERVED_LEAF_DISPOSITIONS.length - 1);
+    assert.deepEqual(auditD331ServedLeafDispositions(omitted), [
+      "protected-settings-readback|entries.ucpathPassword.valueId: carries no D331 P41 disposition "
+      + "(ProtectedSettingsNameSchema × ProtectedSettingsPresenceSchema)",
+    ]);
+
+    const wrongClass = D331_SERVED_LEAF_DISPOSITIONS.map((entry) => entry.surface === "host-display"
+      && entry.path === "display.screenWidth.effectiveValue"
+      ? { ...entry, valueClass: "closed-literal" as const }
+      : entry);
+    assert.deepEqual(auditD331ServedLeafDispositions(wrongClass), [
+      "host-display|display.screenWidth.effectiveValue: closed-literal contradicts identifier-free "
+      + "(EditableSettingsWireSchema effectiveValue is the active resolved display fact)",
+    ]);
+
+    const unreviewedClass = D331_SERVED_LEAF_DISPOSITIONS.map((entry) => entry.surface === "frontend-bootstrap"
+      ? { ...entry, valueClass: "captured-value" }
+      : entry);
+    const unreviewedViolations = auditD331ServedLeafDispositions(unreviewedClass);
+    assert.ok(unreviewedViolations.some((violation) => violation.includes("D331 disposition row")));
+    assert.ok(unreviewedViolations.some((violation) =>
+      violation.includes("frontend-bootstrap|protectedSchemaHash: carries no D331 P41 disposition")));
   });
 
   it("audits a real surface rather than an empty set", () => {

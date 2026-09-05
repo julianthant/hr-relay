@@ -1,3 +1,4 @@
+import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 /**
  * The UCPath and CRM login recipes (ref execution-and-sessions §4).
  *
@@ -22,7 +23,7 @@ import type { BrowserSystemId } from "../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
-import { resolveConfig } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import { BrowserLoginError } from "../../src/infra/browser/login-contract.js";
 import type {
   AuthenticatedApplicationEvidence,
@@ -47,7 +48,7 @@ import {
   type FakePageScript,
 } from "./fixtures/fake-login-page.js";
 
-const CONFIG = resolveConfig({}, {}, manualClock(new Date("2026-08-03T09:00:00.000Z")));
+const CONFIG = resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date("2026-08-03T09:00:00.000Z"))).config;
 const CREDENTIALS = Object.freeze({ userId: "fixture-user", password: "fixture-value" });
 const UCPATH_APP = "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app";
 const UCPATH_ENTRY = CONFIG.urls.ucpath.prod.smartHr;
