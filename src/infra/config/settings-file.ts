@@ -347,7 +347,7 @@ function invalidRequest(message: string): never {
 
 function rawSettingsPatchFingerprint(patch: unknown): string {
   return FingerprintSchema.parse(sha256Hex(
-    `hrauto:settings-patch:v1\0${canonicalJsonStringify(patch)}`,
+    `hrauto:settings-patch:v2\0${canonicalJsonStringify(patch)}`,
   ));
 }
 
@@ -363,6 +363,17 @@ function firstUnrecognizedKey(error: z.ZodError): string | undefined {
     if (key === undefined) continue;
     const prefix = issuePath(issue);
     return prefix === "document" ? key : `${prefix}.${key}`;
+  }
+  return undefined;
+}
+
+function firstNotEditableSettingsPath(error: z.ZodError): string | undefined {
+  const unrecognized = firstUnrecognizedKey(error);
+  if (unrecognized !== undefined) return unrecognized;
+  for (const issue of error.issues) {
+    if (!issue.message.includes("is not an editable ordinary setting")) continue;
+    const path = issuePath(issue);
+    if (path !== "document") return path;
   }
   return undefined;
 }
@@ -1851,12 +1862,12 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
       }
       if (preflight.data.patchFingerprint !== expectedPatchFingerprint) {
         return deepFreeze(SettingsApplyRefusalSchema.parse({
-          state: "rejected", code: "schema-mismatch", message: "patch-fingerprint-mismatch: settings patch fingerprint does not match its canonical value",
+          state: "rejected", code: "patch-fingerprint-mismatch", message: "patch-fingerprint-mismatch: settings patch fingerprint does not match its canonical value",
         }));
       }
       const parsed = SettingsApplyInputSchema.safeParse(input);
       if (!parsed.success) {
-        const notEditable = firstUnrecognizedKey(parsed.error);
+        const notEditable = firstNotEditableSettingsPath(parsed.error);
         if (notEditable !== undefined) return invalidRequest(`not-editable { key: ${notEditable} }`);
         return invalidRequest(`invalid-value { key: ${issuePath(parsed.error.issues[0])} }`);
       }

@@ -243,7 +243,7 @@ function envelope(harness: ControlHarness, commandId = nextCommandId()) {
 }
 
 function applySettingsRequiringRestart(harness: ControlHarness): void {
-  const patch = { browser: { headless: false } } as const;
+  const patch = { "browser.headless": { set: false } } as const;
   harness.kernel.execute({
     commandId: nextCommandId(),
     requestedAt: harness.clock.now().toISOString(),

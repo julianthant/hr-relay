@@ -36,6 +36,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import {
   CURRENT_SETTINGS_SCHEMA_HASH,
+  SettingsApplyRejectionCodeSchema,
   deriveSettingsPatchFingerprint,
 } from "../../src/domain/config/settings.js";
 import {
@@ -44,6 +45,7 @@ import {
   type SettingsFileOperations,
 } from "../../src/infra/config/settings-file.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
+import { settingsSetOperations } from "./fixtures/settings-operation-fixtures.js";
 
 const roots: string[] = [];
 let commandSequence = 0;
@@ -65,7 +67,7 @@ function createTestService(options: Readonly<{
 }
 
 function rawPatchFingerprint(patch: unknown): string {
-  return sha256Hex(`hrauto:settings-patch:v1\0${canonicalJsonStringify(patch)}`);
+  return sha256Hex(`hrauto:settings-patch:v2\0${canonicalJsonStringify(patch)}`);
 }
 
 function apply(
@@ -77,13 +79,14 @@ function apply(
   const tail = String(commandSequence).padStart(12, "0");
   const commandId = `99999999-9999-4999-8999-${tail}`;
   const commandFingerprint = "9".repeat(64);
+  const operations = settingsSetOperations(patch);
   const outcome = service.apply({
     commandId,
     commandFingerprint,
     expectedRevision,
     settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
-    patchFingerprint: deriveSettingsPatchFingerprint(patch),
-    patch,
+    patchFingerprint: deriveSettingsPatchFingerprint(operations),
+    patch: operations,
   });
   if (outcome.state === "applied") outcome.commit();
   return outcome;
@@ -106,7 +109,7 @@ describe("baseline atomic Settings invariants on the single file authority", () 
     assert.equal(service.read().revision, 1);
   });
 
-  it("deep-merges successive patches into one strict revisioned record", () => {
+  it("preserves untouched catalog leaves while replacing one catalog leaf", () => {
     const path = settingsPath();
     const service = createTestService({ path });
     assert.equal(apply(service, 1, {
@@ -123,7 +126,6 @@ describe("baseline atomic Settings invariants on the single file authority", () 
     assert.deepEqual(service.read().settings, {
       browser: { headless: false, closeProofMs: 25_000 },
       urls: { crm: { test: {
-        ucPathEntrySheet: "https://crm-test.example.test",
         onboardingSearch: "https://crm-search.example.test",
       } } },
     });
@@ -260,6 +262,24 @@ describe("baseline atomic Settings invariants on the single file authority", () 
 
 
 describe("D331 shared settings root", () => {
+  it("closes the settings rejection vocabulary exactly", () => {
+    assert.deepEqual(SettingsApplyRejectionCodeSchema.options, [
+      "schema-mismatch",
+      "patch-fingerprint-mismatch",
+      "envelope-fingerprint-mismatch",
+      "not-editable",
+      "invalid-value",
+      "cross-field-invalid",
+      "document-too-large",
+      "authority-unjournaled",
+      "authority-uncertain",
+      "directory-integrity",
+      "lock-unavailable",
+      "command-divergent",
+      "write-id-reused",
+    ]);
+  });
+
   function protectedRequest(expectedRevision = 1, value = "synthetic-protected-value") {
     return {
       commandId: randomUUID(), commandFingerprint: "a".repeat(64), expectedRevision,
@@ -294,7 +314,7 @@ describe("D331 shared settings root", () => {
   it("P8/P28 refuses a protected ordinary key before creating authority state", () => {
     const path = settingsPath();
     const service = createTestService({ path });
-    const patch = { ucpathPassword: "must-not-enter-settings-json" };
+    const patch = { ucpathPassword: { set: "must-not-enter-settings-json" } };
 
     assert.throws(() => service.apply({
       commandId: randomUUID(),
@@ -394,12 +414,13 @@ describe("D331 shared settings root", () => {
   it("P28 performs request-only schema, fingerprint, and value refusals before authority access", () => {
     const schemaPath = settingsPath();
     const ordinary = createTestService({ path: schemaPath });
-    const patch = { browser: { headless: false } };
+    const patch = settingsSetOperations({ browser: { headless: false } });
     const mismatch = ordinary.apply({
       commandId: randomUUID(), commandFingerprint: "8".repeat(64), expectedRevision: 1,
       settingsSchemaHash: "0".repeat(64), patchFingerprint: rawPatchFingerprint(patch), patch,
     });
     assert.equal(mismatch.state, "rejected");
+    if (mismatch.state === "rejected") assert.equal(mismatch.code, "schema-mismatch");
     assert.equal(existsSync(dirname(schemaPath)), false);
 
     const fingerprintPath = settingsPath();
@@ -408,6 +429,9 @@ describe("D331 shared settings root", () => {
       settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH, patchFingerprint: "0".repeat(64), patch,
     });
     assert.equal(fingerprintMismatch.state, "rejected");
+    if (fingerprintMismatch.state === "rejected") {
+      assert.equal(fingerprintMismatch.code, "patch-fingerprint-mismatch");
+    }
     assert.equal(existsSync(dirname(fingerprintPath)), false);
 
     const invalidPath = settingsPath();
@@ -582,9 +606,12 @@ describe("D331 shared settings root", () => {
     const patch = {
       urls: { kuali: { test: { entry: `https://example.test/${"a".repeat(1_048_576)}` } } },
     };
+    const operations = settingsSetOperations(patch);
     assert.throws(() => oversized.apply({
       commandId: randomUUID(), commandFingerprint: "7".repeat(64), expectedRevision: 1,
-      settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH, patchFingerprint: rawPatchFingerprint(patch), patch,
+      settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+      patchFingerprint: rawPatchFingerprint(operations),
+      patch: operations,
     }), /document-too-large: settings\.json/u);
     assert.equal(existsSync(oversizedPath), false);
     assert.deepEqual(readFileSync(join(dirname(oversizedPath), "authority.json")), authorityBefore);
@@ -606,11 +633,12 @@ describe("D331 process-loss recovery for both document targets", () => {
         const ordinary = createTestService({ path });
         ordinary.read();
         const authorityBefore = readFileSync(join(dirname(path), "authority.json"));
+        const ordinaryPatch = settingsSetOperations({ browser: { headless: false } });
         const request = target === "ordinary" ? {
           commandId: randomUUID(), commandFingerprint: "b".repeat(64), expectedRevision: 1,
           settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
-          patchFingerprint: deriveSettingsPatchFingerprint({ browser: { headless: false } }),
-          patch: { browser: { headless: false } },
+          patchFingerprint: deriveSettingsPatchFingerprint(ordinaryPatch),
+          patch: ordinaryPatch,
         } : {
           commandId: randomUUID(), commandFingerprint: "c".repeat(64), expectedRevision: 1,
           protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(),

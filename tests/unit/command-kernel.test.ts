@@ -35,15 +35,22 @@ import {
 import { manualClock } from "../../src/domain/clock.js";
 import {
   SETTINGS_SCHEMA_HASH,
+  SettingsApplyRejectionCodeSchema,
   SettingsFileRecordSchema,
   derivePersistedSettingsFingerprint,
   deriveSettingsPatchFingerprint,
 } from "../../src/domain/config/settings.js";
+import {
+  PROTECTED_SETTINGS_SCHEMA_HASH,
+  initialProtectedStoreRecord,
+  protectedSettingsReadback,
+} from "../../src/domain/config/protected-settings.js";
 import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
 import { ExplorerEditApplyResultSchema, ExplorerOverrideDocumentSchema } from "../../src/domain/dashboard/explorer.js";
 import { deriveItemId } from "../../src/domain/identifiers.js";
 import { EidSchema, FingerprintSchema } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import { sha256Hex } from "../../src/domain/sha256.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../../src/infra/sqlite/index.js";
@@ -278,6 +285,25 @@ function createHarness(
       },
       apply: (command: Extract<CommandRequest, { family: "settings" }>) => {
         settingsCalls.push(command.type);
+        if (command.type === "apply-protected-settings") {
+          const baseline = protectedSettingsReadback(initialProtectedStoreRecord());
+          return {
+            state: "applied" as const,
+            readback: {
+              revision: command.target.expectedRevision + 1,
+              entries: {
+                ...baseline.entries,
+                ucpathPassword: { present: true as const, valueId: UUID_4, updatedAt: NOW },
+              },
+            },
+            rollback: () => {
+              settingsRollbacks.push(command.commandId);
+            },
+            commit: () => {
+              settingsCommits.push(command.commandId);
+            },
+          };
+        }
         return {
           state: "applied" as const,
           revision: command.target.expectedRevision + 1,
@@ -408,7 +434,7 @@ function runCommand(type: string, runId: string, expectedVersion: number, extra?
 }
 
 function applySettingsRequiringRestart(harness: Harness): void {
-  const patch = { browser: { headless: false } } as const;
+  const patch = { "browser.headless": { set: false } } as const;
   harness.kernel.execute({
     commandId: nextCommandId(),
     requestedAt: NOW,
@@ -1581,8 +1607,71 @@ describe("D113 deferred arms", () => {
 });
 
 describe("apply-settings authority", () => {
+  it.each(SettingsApplyRejectionCodeSchema.options)(
+    "preserves the closed %s rejection code and rolls back the command journal",
+    (code) => {
+      const settings: SettingsApplicationExecutor = {
+        reconcileReplay: () => {
+          throw new Error("rejected settings fixture has no replay authority");
+        },
+        apply: () => ({ state: "rejected", code, message: `${code} { document: settings.json }` }),
+      };
+      const harness = createHarness(undefined, settings);
+      const patch = { "browser.headless": { set: false } } as const;
+      const command = {
+        commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
+        family: "settings", type: "apply-settings", target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          patchFingerprint: deriveSettingsPatchFingerprint(patch),
+          patch,
+        },
+      } as const;
+
+      const result = harness.kernel.execute(command);
+
+      assert.equal(result.state, "rejected");
+      if (result.state === "rejected") assert.equal(result.code, code);
+      assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+      assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    },
+  );
+
+  it("maps a named settings authority failure to a value-free rejected result", () => {
+    const settingsPath = databasePath("settings/settings.json");
+    const file = createSettingsFileAuthority({
+      path: settingsPath,
+      validateCandidate: () => {
+        throw new Error("private candidate diagnostic must not cross the authority boundary");
+      },
+    });
+    const harness = createHarness(undefined, createSettingsApplicationExecutor(file));
+    const patch = { "browser.headless": { set: false } } as const;
+    const command = {
+      commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
+      family: "settings", type: "apply-settings", target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    } as const;
+
+    const result = harness.kernel.execute(command);
+
+    assert.deepEqual(result, {
+      state: "rejected",
+      commandId: command.commandId,
+      code: "cross-field-invalid",
+      message: "cross-field-invalid { keys: settings }",
+    });
+    assert.equal(JSON.stringify(result).includes("private candidate diagnostic"), false);
+    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(existsSync(settingsPath), false);
+  });
+
   it("reconciles an ambiguous post-COMMIT exception without rolling back committed settings", () => {
-    const settingsPath = databasePath("settings.json");
+    const settingsPath = databasePath("settings/settings.json");
     const file = createSettingsFileAuthority({ path: settingsPath, validateCandidate: () => undefined });
     let reported = false;
     const harness = createHarness(undefined, createSettingsApplicationExecutor(file), (database, work) => {
@@ -1593,7 +1682,7 @@ describe("apply-settings authority", () => {
       }
       return result;
     });
-    const patch = { browser: { headless: false } };
+    const patch = { "browser.headless": { set: false } };
     const command = {
       commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
       family: "settings", type: "apply-settings", target: { expectedRevision: 1 },
@@ -1602,18 +1691,18 @@ describe("apply-settings authority", () => {
     const result = harness.kernel.execute(command);
     assert.equal(result.state, "already-applied");
     assert.equal(file.read().revision, 2);
-    assert.deepEqual(file.read().settings, patch);
+    assert.deepEqual(file.read().settings, { browser: { headless: false } });
     assert.equal(harness.database.authority.settingsCurrent.get()?.commandId, command.commandId);
     assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "applied");
-    assert.equal(existsSync(`${settingsPath}.prepare.json`), false);
-    assert.equal(existsSync(`${settingsPath}.lock`), false);
+    assert.equal(existsSync(join(settingsPath, "..", "prepare.json")), false);
+    assert.equal(existsSync(join(settingsPath, "..", "settings.lock")), false);
     assert.deepEqual(harness.kernel.execute(command), result);
   });
 
   it("preserves committed settings when post-COMMIT inspection fails until exact replay recovers", () => {
-    const settingsPath = databasePath("settings.json");
-    const preparePath = `${settingsPath}.prepare.json`;
-    const lockPath = `${settingsPath}.lock`;
+    const settingsPath = databasePath("settings/settings.json");
+    const preparePath = join(settingsPath, "..", "prepare.json");
+    const lockPath = join(settingsPath, "..", "settings.lock");
     let prepareRemovals = 0;
     const file = createSettingsFileAuthority({
       path: settingsPath,
@@ -1625,7 +1714,7 @@ describe("apply-settings authority", () => {
         },
       },
     });
-    const patch = { browser: { headless: false } } as const;
+    const patch = { "browser.headless": { set: false } } as const;
     const command = CommandRequestSchema.parse({
       commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
       family: "settings", type: "apply-settings", target: { expectedRevision: 1 },
@@ -1636,7 +1725,7 @@ describe("apply-settings authority", () => {
     let boundary: "commit-then-report-failure" | "inspection-unavailable" | "inspection-restored" = "commit-then-report-failure";
     const readCommittedAuthority = (database: AuthorityDatabase) => ({
       settingsBytes: readFileSync(settingsPath),
-      initializationBytes: readFileSync(`${settingsPath}.authority.json`),
+      initializationBytes: readFileSync(join(settingsPath, "..", "authority.json")),
       journal: database.authority.commands.get(command.commandId),
       audit: database.authority.commandAudits.findByCommand(command.commandId),
       current: database.authority.settingsCurrent.get(),
@@ -1681,12 +1770,13 @@ describe("apply-settings authority", () => {
     assert.deepEqual(readFileSync(preparePath), committed.prepareBytes);
     assert.deepEqual(readFileSync(lockPath), committed.lockBytes);
     assert.equal(prepareRemovals, 0, "unknown inspection must not settle the prepared update");
-    assert.equal(existsSync(`${settingsPath}.rollback.json`), false);
+    assert.equal(existsSync(join(settingsPath, "..", "rollback.json")), false);
     assert.deepEqual(committed.authority.journal, command);
-    const settingsFingerprint = derivePersistedSettingsFingerprint(patch);
+    const persistedSettings = { browser: { headless: false } };
+    const settingsFingerprint = derivePersistedSettingsFingerprint(persistedSettings);
     const record = SettingsFileRecordSchema.parse(JSON.parse(committed.authority.settingsBytes.toString("utf8")));
     assert.deepEqual(record, {
-      revision: 2, settingsSchemaHash: SETTINGS_SCHEMA_HASH, settingsFingerprint, settings: patch,
+      revision: 2, settingsSchemaHash: SETTINGS_SCHEMA_HASH, settingsFingerprint, settings: persistedSettings,
       lastApplied: {
         commandId: command.commandId, commandFingerprint: deriveSettingsCommandFingerprint(command),
         expectedRevision: 1, settingsSchemaHash: SETTINGS_SCHEMA_HASH,
@@ -1726,14 +1816,16 @@ describe("apply-settings authority", () => {
   it("finishes exact settings cleanup before acknowledging a post-commit replay", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-replay-cleanup-"));
     roots.push(root);
-    const settingsPath = join(root, ".tracker", "settings.json");
+    const settingsPath = join(root, "settings", "settings.json");
+    const preparePath = join(root, "settings", "prepare.json");
+    const lockPath = join(root, "settings", "settings.lock");
     let cleanupFailed = false;
     const settings = createSettingsApplicationExecutor(createSettingsFileAuthority({
       path: settingsPath,
       validateCandidate: () => undefined,
       operations: {
         remove: (path) => {
-          if (path.endsWith(".prepare.json") && !cleanupFailed) {
+          if (path.endsWith("/prepare.json") && !cleanupFailed) {
             cleanupFailed = true;
             throw new Error("injected post-commit settings cleanup failure");
           }
@@ -1742,7 +1834,7 @@ describe("apply-settings authority", () => {
       },
     }));
     const harness = createHarness(undefined, settings);
-    const patch = { browser: { headless: false } } as const;
+    const patch = { "browser.headless": { set: false } } as const;
     const command = {
       commandId: nextCommandId(),
       requestedAt: NOW,
@@ -1763,7 +1855,7 @@ describe("apply-settings authority", () => {
       /injected post-commit settings cleanup failure/u,
     );
     assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
-    assert.equal(existsSync(`${settingsPath}.prepare.json`), true);
+    assert.equal(existsSync(preparePath), true);
 
     const replay = harness.kernel.execute(command);
 
@@ -1773,17 +1865,18 @@ describe("apply-settings authority", () => {
       affectedTargets: [{ family: "settings", revision: 2 }],
       restartRequired: true,
       settingsRevision: 2,
-      settingsFingerprint: derivePersistedSettingsFingerprint(patch),
+      settingsFingerprint: derivePersistedSettingsFingerprint({ browser: { headless: false } }),
     });
-    assert.equal(existsSync(`${settingsPath}.prepare.json`), false);
-    assert.equal(existsSync(`${settingsPath}.lock`), false);
+    assert.equal(existsSync(preparePath), false);
+    assert.equal(existsSync(lockPath), false);
   });
 
   it("applies one strict multi-leaf patch at the expected settings revision", () => {
     const harness = createHarness();
     const patch = {
-      browser: { headless: false },
-      display: { screenWidth: 1920 },
+      "browser.headless": { set: false },
+      "display.screenWidth": { set: 1920 },
+      "display.screenHeight": { set: 1080 },
     } as const;
     const commandId = nextCommandId();
 
@@ -1848,7 +1941,7 @@ describe("apply-settings authority", () => {
       }),
     };
     const harness = createHarness(undefined, settings);
-    const patch = { timeouts: { taskMs: 240_000 } } as const;
+    const patch = { "timeouts.taskMs": { set: 240_000 } } as const;
     const command = {
       commandId: nextCommandId(),
       requestedAt: NOW,
@@ -1896,7 +1989,7 @@ describe("apply-settings authority", () => {
         },
       },
     }));
-    const patch = { timeouts: { taskMs: 240_000 } } as const;
+    const patch = { "timeouts.taskMs": { set: 240_000 } } as const;
     const commandId = nextCommandId();
     failAudit = true;
 
@@ -1933,7 +2026,7 @@ describe("apply-settings authority", () => {
         },
       },
     }));
-    const patch = { timeouts: { taskMs: 240_000 } } as const;
+    const patch = { "timeouts.taskMs": { set: 240_000 } } as const;
     const commandId = nextCommandId();
     failCurrent = true;
 
@@ -1956,6 +2049,54 @@ describe("apply-settings authority", () => {
     assert.equal(harness.database.authority.commands.get(commandId), undefined);
     assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
     assert.equal(harness.database.authority.settingsCurrent.get(), undefined);
+  });
+});
+
+describe("apply-protected-settings authority", () => {
+  it("P7/P26 journals only the marked envelope and advances only the protected singleton", () => {
+    const harness = createHarness();
+    const protectedValue = "protected-value-that-must-never-reach-sqlite";
+    const commandId = nextCommandId();
+    const result = harness.kernel.execute({
+      commandId,
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      family: "settings",
+      type: "apply-protected-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+        writeId: UUID_7,
+        entries: { ucpathPassword: { set: protectedValue } },
+      },
+    });
+
+    assert.equal(result.state, "applied");
+    if (result.state !== "applied") return;
+    assert.equal(result.restartRequired, false);
+    assert.equal(result.revision, 2);
+    assert.deepEqual(result.affectedTargets, [{ family: "protected-settings", revision: 2 }]);
+    assert.equal(result.entries?.ucpathPassword.present, true);
+    const journal = harness.database.authority.commands.get(commandId);
+    const audit = harness.database.authority.commandAudits.findByCommand(commandId);
+    assert.ok(journal !== undefined);
+    assert.ok(audit !== undefined);
+    const durableBytes = JSON.stringify({ journal, audit });
+    assert.equal(durableBytes.includes(protectedValue), false);
+    assert.equal(durableBytes.includes(sha256Hex(protectedValue)), false);
+    assert.equal(durableBytes.includes('"set":"<set>"'), true);
+    assert.equal(harness.database.authority.settingsCurrent.get(), undefined);
+    assert.deepEqual(harness.database.authority.protectedSettingsCurrent.get(), {
+      revision: 2,
+      commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(journal),
+      auditId: audit.auditId,
+      committedAt: NOW,
+      entries: [{ name: "ucpathPassword", valueId: UUID_4, updatedAt: NOW }],
+    });
+    assert.deepEqual(harness.settingsCalls, ["apply-protected-settings"]);
+    assert.deepEqual(harness.settingsCommits, [commandId]);
   });
 });
 
