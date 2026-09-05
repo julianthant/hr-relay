@@ -23,6 +23,7 @@ import {
   SettingsApplyInputSchema,
   SettingsApplyRefusalSchema,
   SettingsFileRecordSchema,
+  deriveRawSettingsPatchFingerprint,
   derivePersistedSettingsFingerprint,
   initialSettingsFileRecord,
   mergeSettingsPatch,
@@ -360,12 +361,6 @@ function equalBytes(left: Uint8Array | undefined, right: Uint8Array | undefined)
 
 function invalidRequest(message: string): never {
   throw new Error(message);
-}
-
-function rawSettingsPatchFingerprint(patch: unknown): string {
-  return FingerprintSchema.parse(sha256Hex(
-    `hrauto:settings-patch:v2\0${canonicalJsonStringify(patch)}`,
-  ));
 }
 
 function issuePath(issue: z.core.$ZodIssue): string {
@@ -2281,7 +2276,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
       }
       let expectedPatchFingerprint: string;
       try {
-        expectedPatchFingerprint = rawSettingsPatchFingerprint(preflight.data.patch);
+        expectedPatchFingerprint = deriveRawSettingsPatchFingerprint(preflight.data.patch);
       } catch {
         return invalidRequest("invalid-value: settings patch is not canonical JSON");
       }

@@ -2818,6 +2818,84 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
   });
 
+  it.each([
+    [
+      "ordinary schema mismatch before an invalid leaf",
+      "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b61",
+      {
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: "0".repeat(64),
+          patchFingerprint: rawSettingsPatchFingerprint({ "browser.headless": { set: "not-a-boolean" } }),
+          patch: { "browser.headless": { set: "not-a-boolean" } },
+        },
+      },
+      "schema-mismatch",
+      "settings.json schema-mismatch",
+    ],
+    [
+      "ordinary patch fingerprint mismatch before an invalid leaf",
+      "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b62",
+      {
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          patchFingerprint: "0".repeat(64),
+          patch: { "browser.headless": { set: "not-a-boolean" } },
+        },
+      },
+      "patch-fingerprint-mismatch",
+      "patch-fingerprint-mismatch: settings patch fingerprint does not match its canonical value",
+    ],
+    [
+      "protected schema mismatch before an invalid leaf",
+      "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b63",
+      {
+        family: "settings",
+        type: "apply-protected-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          protectedSchemaHash: "0".repeat(64),
+          writeId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b60",
+          entries: { sharepointOnboardingRosterUrl: { set: "protected-canary-not-a-url" } },
+        },
+      },
+      "schema-mismatch",
+      "protected.json schema-mismatch",
+    ],
+  ] as const)("preserves %s at mixed-failure ingress", async (_label, commandId, request, code, message) => {
+    let journalReads = 0;
+    const h = harness({
+      commandJournal: (real) => ({
+        get(commandId) {
+          journalReads += 1;
+          return real.get(commandId);
+        },
+      }),
+    });
+    const before = settingsAuthoritySnapshot(h, commandId);
+
+    const response = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({ commandId, ...request }),
+    });
+
+    assert.equal(response.status, 422);
+    assert.deepEqual(await json(response), {
+      state: "rejected",
+      commandId,
+      code,
+      message,
+    });
+    assert.equal(journalReads, 0);
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
   it("returns not-editable for an unknown protected settings key before authority access", async () => {
     let journalReads = 0;
     const h = harness({

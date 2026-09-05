@@ -13,6 +13,11 @@ import {
   type CommandResult,
   type CommandRequest,
 } from "../../../domain/commands.js";
+import {
+  SETTINGS_SCHEMA_HASH,
+  deriveRawSettingsPatchFingerprint,
+} from "../../../domain/config/settings.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../domain/config/protected-settings.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../domain/ids.js";
 import { RequestIdentityRefusedError } from "../../failures.js";
 
@@ -87,6 +92,20 @@ function settingsLeafRefusal(
   });
 }
 
+function settingsRequestRefusal(
+  commandId: string,
+  code: "schema-mismatch" | "patch-fingerprint-mismatch",
+  document: "settings.json" | "protected.json",
+): CommandIngressDecision {
+  const message = code === "schema-mismatch"
+    ? `${document} schema-mismatch`
+    : "patch-fingerprint-mismatch: settings patch fingerprint does not match its canonical value";
+  return Object.freeze({
+    state: "refused",
+    response: CommandResultSchema.parse({ state: "rejected", commandId, code, message }),
+  });
+}
+
 /** Admit the strict command shell before classifying request-only ordinary leaf failures. */
 function parseOperatorCommand(input: unknown, clock: Clock): CommandIngressDecision {
   const stamped = withOperatorProvenance(input, clock);
@@ -95,6 +114,18 @@ function parseOperatorCommand(input: unknown, clock: Clock): CommandIngressDecis
 
   const ordinary = OrdinarySettingsIngressRequestSchema.safeParse(stamped);
   if (ordinary.success) {
+    if (ordinary.data.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) {
+      return settingsRequestRefusal(ordinary.data.commandId, "schema-mismatch", "settings.json");
+    }
+    const canonicalPatch = z.json().safeParse(ordinary.data.payload.patch);
+    if (canonicalPatch.success && ordinary.data.payload.patchFingerprint
+      !== deriveRawSettingsPatchFingerprint(canonicalPatch.data)) {
+      return settingsRequestRefusal(
+        ordinary.data.commandId,
+        "patch-fingerprint-mismatch",
+        "settings.json",
+      );
+    }
     const strict = SettingsCommandRequestSchema.safeParse(ordinary.data);
     if (strict.success) throw parsed.error;
     return Object.freeze({
@@ -104,6 +135,13 @@ function parseOperatorCommand(input: unknown, clock: Clock): CommandIngressDecis
   }
   const protectedSettings = ProtectedSettingsIngressRequestSchema.safeParse(stamped);
   if (protectedSettings.success) {
+    if (protectedSettings.data.payload.protectedSchemaHash !== PROTECTED_SETTINGS_SCHEMA_HASH) {
+      return settingsRequestRefusal(
+        protectedSettings.data.commandId,
+        "schema-mismatch",
+        "protected.json",
+      );
+    }
     const strict = ProtectedSettingsCommandRequestSchema.safeParse(protectedSettings.data);
     if (strict.success) throw parsed.error;
     return Object.freeze({

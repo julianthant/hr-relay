@@ -132,11 +132,14 @@ export const SettingsPatchSchema = z.record(z.string().min(1), SettingsLeafOpera
     }
   });
 
-export function deriveSettingsPatchFingerprint(patch: unknown): string {
-  const parsed = SettingsPatchSchema.parse(patch);
+export function deriveRawSettingsPatchFingerprint(patch: unknown): string {
   return FingerprintSchema.parse(sha256Hex(
-    `hrauto:settings-patch:v2\0${canonicalJsonStringify(parsed)}`,
+    `hrauto:settings-patch:v2\0${canonicalJsonStringify(patch)}`,
   ));
+}
+
+export function deriveSettingsPatchFingerprint(patch: unknown): string {
+  return deriveRawSettingsPatchFingerprint(SettingsPatchSchema.parse(patch));
 }
 
 export function derivePersistedSettingsFingerprint(settings: unknown): string {
