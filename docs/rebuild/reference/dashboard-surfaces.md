@@ -4136,6 +4136,10 @@ Different citations, ordinary facts or original fences remain divergent. Create/
 bind retained protected identities across raw and parsed input; archive commitments bind the permitted
 authenticated frozen projection. Private historical digests are neither rehashed nor returned in
 refusals. This narrow extension changes no verb, table, lifecycle edge, CAS or transaction boundary.
+New protected archives authenticate their private input against the independent retained run input
+inside the archive repository's SQLite read snapshot. The direct comparison is an integrity check
+only; frozen display content never comes from current-run projections. Missing/differing input
+refuses before index/detail/capture/delete/relaunch use, without writing or hashing protected bytes.
 
 ###### D330.5 — the typed operation set and its failure modes
 

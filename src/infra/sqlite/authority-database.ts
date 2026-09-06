@@ -1,4 +1,6 @@
 import { repeatEvidenceDigest } from "../../domain/run/rerun.js";
+import { archivedRunContentDigest } from "../../domain/archive/model.js";
+import { retainedRunProtectedBindings } from "../../domain/protected-input.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
@@ -3703,6 +3705,19 @@ export class AuthorityDatabase implements Disposable {
     return parseJsonRecord(schema, JsonRowSchema.parse(row).record_json);
   }
 
+  /** New value-free seals cannot authenticate private input; compare the independent retained copy. */
+  #verifyArchivedPrivateInput(record: ArchivedRunStorageRecord): ArchivedRunStorageRecord {
+    const { contentDigest, ...content } = record;
+    const bindings = retainedRunProtectedBindings({ envelope: { workflow: record.workflowId }, input: record.input });
+    if (bindings.length === 0 || archivedRunContentDigest(content) !== contentDigest) return record;
+    const retained = this.#readRunRow(record.runId);
+    if (retained === undefined || retained.envelope.workflow !== record.workflowId
+      || canonicalJsonStringify(retained.input) !== canonicalJsonStringify(record.input)) {
+      throw new Error("archive private input integrity mismatch");
+    }
+    return record;
+  }
+
   #readOperatorXlsxExport(exportId: string): OperatorXlsxExportEvidence | undefined {
     const row = this.#database.prepare(`
       SELECT record_key, selection_kind, artifact_id, digest, byte_length, media_type,
@@ -5539,7 +5554,10 @@ export class AuthorityDatabase implements Disposable {
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(outcome.changes) };
           });
         },
-        get: (runId: string) => this.#readRecord("archived_runs", runId, ArchivedRunStorageRecordSchema),
+        get: (runId: string) => this.#withReadSnapshot(() => {
+          const record = this.#readRecord("archived_runs", runId, ArchivedRunStorageRecordSchema);
+          return record === undefined ? undefined : this.#verifyArchivedPrivateInput(record);
+        }),
         /**
          * The predicate the ONE run/queue projection asks per row (D81/D80).
          * It reads the index rather than the record so excluding an archived
@@ -5548,9 +5566,10 @@ export class AuthorityDatabase implements Disposable {
         isArchived: (runId: string) => CountRowSchema.parse(this.#database.prepare(`
           SELECT count(*) AS count FROM archived_runs WHERE record_key = ?
         `).get(runId)).count > 0,
-        list: () => Object.freeze(this.#database.prepare(`
+        list: () => this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`
           SELECT record_json FROM archived_runs ORDER BY created_at DESC, record_key
-        `).all().map((row) => parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(row).record_json))),
+        `).all().map((row) => this.#verifyArchivedPrivateInput(
+          parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(row).record_json))))),
       }),
       archiveRelaunches: Object.freeze({
         insert: (input: unknown) => {

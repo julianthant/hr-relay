@@ -656,7 +656,7 @@ function archivedReferenceContent(content: ArchivedRunContent): JsonValue {
   }, bindings);
 }
 
-/** Authenticate private storage before citing its value-free content. Never publish an old digest. */
+/** Check the content seal before citation; repository reads separately authenticate new private input. */
 export function archivedRunReferenceFingerprint(record: ArchivedRunRecord): z.infer<typeof FingerprintSchema> {
   const { contentDigest, ...content } = ArchivedRunRecordSchema.parse(record);
   if (!authenticArchivedRunContent(content, contentDigest)) throw new Error("archive content integrity mismatch");
@@ -665,7 +665,7 @@ export function archivedRunReferenceFingerprint(record: ArchivedRunRecord): z.in
   return FingerprintSchema.parse(sha256Hex(`hrauto:archived-run-reference:v1\0${canonicalJsonStringify(archivedReferenceContent(content))}`));
 }
 
-/** Only authenticates pre-D331 immutable private records; never publish this digest. */
+/** Verify the safe seal or historical raw seal; new private input also requires repository comparison. */
 export function authenticArchivedRunContent(content: ArchivedRunContent, digest: string): boolean {
   return archivedRunContentDigest(content) === digest
     || sha256Hex(`hrauto:archived-run:v1\0${canonicalJsonStringify(ArchivedRunContentSchema.parse(content))}`) === digest;

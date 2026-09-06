@@ -595,7 +595,7 @@ function seedCanaryArchive() {
   const record = ArchivedRunRecordSchema.parse({ ...content, contentDigest: archivedRunContentDigest(content) });
   const database = openDatabase();
   database.withAuthorityTransaction((repositories) => {
-    repositories.runs.enqueue(personLookupQueuedRun({ runId: record.runId }));
+    repositories.runs.enqueue({ ...personLookupQueuedRun({ runId: record.runId }), input: record.input });
     repositories.versionPlans.insert(VERSION_PLAN_ROW);
     repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
     repositories.archivedRuns.insert(record);

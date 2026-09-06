@@ -144,6 +144,7 @@ function fixture(options: {
   open?: (ref: ArtifactRef) => Promise<Readable>;
   artifactReader?: ServerVerifiedArtifactReader;
   noStore?: boolean;
+  retainedInput?: ArchivedRunRecord["input"];
   /** Raw repository fault injection: production, not this fixture, validates the result. */
   lookup?: (requestedId: string) => unknown;
 } = {}) {
@@ -157,7 +158,8 @@ function fixture(options: {
   cleanups.push(() => database.close());
   const record = options.record ?? recordWithTile();
   database.withAuthorityTransaction((repositories) => {
-    repositories.runs.enqueue(personLookupQueuedRun({ runId: record.runId }));
+    repositories.runs.enqueue({ ...personLookupQueuedRun({ runId: record.runId }),
+      input: options.retainedInput ?? record.input });
     repositories.versionPlans.insert(VERSION_PLAN_ROW);
     repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
     repositories.archivedRuns.insert(record);
@@ -396,6 +398,25 @@ describe("DCA4 exact archived capture routes", () => {
         assert.match(error.message, /content digest mismatch/u);
         assert.equal(open.mock.calls.length, 0);
       });
+
+      for (const changed of ["raw", "parsed", "both"] as const) {
+        it(`rejects changed private ${changed} input before capture byte open`, async () => {
+          const original = recordWithTile();
+          const corrupt = structuredClone(original);
+          if (changed !== "parsed") corrupt.input.raw = { emplId: "10854321" };
+          if (changed !== "raw") corrupt.input.parsed.value = {
+            emplId: "10854321", keepNonHdh: false, includeCrmDates: false,
+          };
+          const { contentDigest, ...content } = corrupt;
+          assert.equal(archivedRunContentDigest(content), contentDigest);
+          const { app, database, open } = fixture({ record: corrupt, retainedInput: original.input });
+          const generation = database.getMeta().authorityGeneration;
+          const error = await assertError(await app.request(url), 500, "ARCHIVED_CAPTURE_CORRUPT");
+          assert.doesNotMatch(error.message, /10854321|10873698/u);
+          assert.equal(open.mock.calls.length, 0);
+          assert.equal(database.getMeta().authorityGeneration, generation);
+        });
+      }
 
       it("does not expose storage paths from authority failures", async () => {
         const { app, open } = fixture({ lookup: () => { throw new Error("read /private/operator/state.sqlite failed"); } });

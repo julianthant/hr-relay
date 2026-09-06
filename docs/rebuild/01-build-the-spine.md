@@ -2039,6 +2039,35 @@ group, then removed; `/tmp/hr-settings-scratch-cleanup.json` records the exact p
 browser/BFF remains. Integration, final gates, completion marking and owned branch/worktree removal
 remain pending independent PASS.
 
+**Fresh complete review and private archive correction (2026-09-06; awaiting renewed review).**
+`/root/sup_review_settings_consumers_final` (`sup_review`, Sol 5.6/high) reviewed complete
+base `247cf28ff2e3315699333e89536ee36b797ee503` through candidate
+`da421fa95ddae2614e99853e93da672c26084db2`, tree `e72d81bf0c7749331f9d56c87e9c774aca73381a`.
+It returned **CHANGES REQUIRED**: R1/R3/R4/R5 were fixed and the withdrawn terminal-dependency
+concern stayed closed; R2 still allowed new protected archives' private input to change without
+invalidating their safe digest. The exact-tree candidate gates passed 423 files / 5,323 tests,
+77 files / 817 standalone architecture tests and 269 parity cases; all freshness and diff checks passed.
+
+The tactical correction compares new protected archive input directly with the independently retained
+run input inside one archive-repository read snapshot. Both raw and parsed copies must match; no
+protected digest or current-run display fallback is introduced. Historical raw-seal authentication,
+safe citations, replay, archive immutability and all lifecycle effects remain unchanged.
+Nine negative controls reproduced acceptance of altered raw, parsed and both copies at index/detail,
+capture resource/bytes, delete and relaunch; the restored four-file, 128-test neighboring suite passes.
+Logs: `/tmp/hr-settings-private-archive-{red,green}.log`. Full gates, generated hashes, reviewer
+acceptance, integration, completion recording and owned worktree/branch cleanup remain pending.
+
+Adjacent command/repository/recovery/redaction checks pass six files / 406 tests after correcting a
+fixture's independent retained input; no redaction assertion changed. Typecheck and lint pass, and
+manifest/store/roadmap generation leaves their output unchanged. The full parity update passes
+269 cases without changing any reference; the approved total remains twelve Start removals, six
+inspector counts and generated provenance only. Evidence: `/tmp/hr-settings-private-archive-adjacent.log`,
+`private-archive-{typecheck,lint,parity-update,parity-scope,full-parity-scope}.log` under `/tmp/hr-settings-`.
+The serial full gate block for the correction is pinned by `/tmp/hr-settings-private-final-identity.log`
+and its corresponding gate logs before commit. The same fresh complete reviewer will verify this
+bounded R2 correction and neighboring regressions; requirements and lifecycle identity semantics
+have not changed. The commit containing this correction remains **awaiting independent review**.
+
 ### Task 6 · Prove upgrade, rollback, recovery, and compatibility deletion
 <!-- roadmap: p1f-migration-proof -->
 

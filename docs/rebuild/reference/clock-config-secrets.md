@@ -831,6 +831,11 @@ The rules, each a proof 1.6 owes (§D331.11):
    ordinary request fact or original fence refuses. Protected bytes and historical derived digests
    neither enter these commitments nor appear in refusals. No raw-digest fallback, secondary hash,
    new table, run verb or screen is admitted. Historical private archive records remain unchanged.
+   For new value-free-sealed archives, the repository authenticates private input by exact direct
+   comparison with the independently retained run input in the same SQLite read snapshot. A missing
+   or differing copy refuses before citation or use. This comparison supplies no current-run display
+   content and consults neither current settings nor the protected store. Historical raw seals keep
+   their existing authentication path; no new protected-derived digest is created.
 
 7. **Clear is a write.** `{ clear: true }` removes the entry and retires its `valueId`; it is
    journaled, CAS-fenced and revision-advancing like a set. **Every protected row has a per-name

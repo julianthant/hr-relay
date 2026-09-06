@@ -495,6 +495,37 @@ function ledgerBytes(stateRoot: string): readonly [string, string][] {
 }
 
 describe("the D80 archive model", () => {
+  for (const changed of ["raw", "parsed", "both"] as const) {
+    it(`refuses changed protected ${changed} input at archive reads and commands without effects`, () => {
+      const world = createWorld();
+      const fingerprint = archivedRunReferenceFingerprint(ARCHIVED_RUN);
+      const corrupt = structuredClone(ARCHIVED_RUN);
+      if (changed !== "parsed") corrupt.input.raw = { emplId: "10854321" };
+      if (changed !== "raw") corrupt.input.parsed.value = {
+        emplId: "10854321", keepNonHdh: false, includeCrmDates: false,
+      };
+      const { contentDigest, ...content } = corrupt;
+      assert.equal(archivedRunContentDigest(content), contentDigest);
+      world.database.withAuthorityTransaction((repositories) => {
+        repositories.runs.enqueue(QUEUED_RUN);
+        repositories.versionPlans.insert(VERSION_PLAN_ROW);
+        repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+        repositories.archivedRuns.insert(corrupt);
+      });
+      const generation = world.database.getMeta().authorityGeneration;
+      const before = world.database.authority.runs.get(ARCHIVED_RUN.runId);
+      assert.throws(() => buildArchiveIndex(emptyRegistryDeps(world)), /archive.*integrity/u);
+      assert.throws(() => buildArchivedRunDetail(emptyRegistryDeps(world), ARCHIVED_RUN.runId), /archive.*integrity/u);
+      for (const type of ["delete-archived-run", "relaunch-archived-run"]) {
+        assert.throws(() => world.kernel.execute({ ...envelope(), family: "version-archive", type,
+          target: { archivedRunId: ARCHIVED_RUN.runId, archiveFingerprint: fingerprint } }), /archive.*integrity/u);
+      }
+      assert.equal(world.database.getMeta().authorityGeneration, generation);
+      assert.deepEqual(world.database.authority.runs.get(ARCHIVED_RUN.runId), before);
+      assert.equal(world.database.authority.archivedRuns.isArchived(ARCHIVED_RUN.runId), true);
+      assert.equal(world.database.authority.deletedRuns.get(ARCHIVED_RUN.runId), undefined);
+    });
+  }
   it("refuses corrupt retained content at archive reads and commands without effects", () => {
     const world = createWorld();
     const fingerprint = archivedRunReferenceFingerprint(ARCHIVED_RUN);
