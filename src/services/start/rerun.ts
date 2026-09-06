@@ -37,9 +37,13 @@ export function buildRerunPlan(repositories: AuthorityRepositories, descriptor: 
   if (run.version !== source.expectedVersion) throw new RerunRefusedError("source-stale", "Rerun source revision changed; replan");
   if (run.envelope.workflow !== descriptor.id || run.envelope.contractFingerprint !== descriptor.contractFingerprint
     || run.envelope.descriptorVersion !== descriptor.version) throw new RerunRefusedError("schema-mismatch", "Rerun source descriptor changed");
-  if (run.lifecycle.state !== "terminal" || repositories.writeIntents.listAttemptingByItem({ workflowId: descriptor.id, itemId: run.envelope.itemId }).length > 0
+  // Use the same authority disposition predicate as RunRecordService.read.
+  // An archived source returns only through digest-bound archive relaunch.
+  if (repositories.archivedRuns.isArchived(source.runId)) throw new RerunRefusedError("invalid-state", "Archived sources require archive relaunch");
+  if (run.lifecycle.state !== "terminal" || !["done", "failed", "interrupted"].includes(run.lifecycle.outcome)
+    || repositories.writeIntents.listAttemptingByItem({ workflowId: descriptor.id, itemId: run.envelope.itemId }).length > 0
     || repositories.writeIntents.listByRun(source.runId).some((intent) => intent.status === "parked")) {
-    throw new RerunRefusedError("invalid-state", "Rerun requires a terminal source without uncertain writes");
+    throw new RerunRefusedError("invalid-state", "Rerun requires a successful, failed or interrupted source without uncertain writes");
   }
   if (planned.length !== 1) throw new RerunRefusedError("invalid-state", "Rerun requires exactly one accepted submission");
   const selectedKeys = source.selectedStepKeys;
