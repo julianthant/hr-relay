@@ -1304,6 +1304,7 @@ builds:
 - [ ] DOCS map each generic operator journey to one owner, red/green gate, fixture, live proof need, later workflow-specific boundary, and non-overlapping wave file/artifact scope
 - [ ] DOCS turn every historical unchecked 3.1 line into a current task, explicit disposition, or superseded record
 - [ ] PROOF publish the acceptance matrix that Task 18 will execute unchanged
+- [ ] DOCS D340: settle minimum desktop viewport and resize/zoom acceptance in planning; assign retained/replaced/retired mobile proof without losing applicable desktop assertions
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | serial prerequisite in `phase-3-1-dashboard-c21194e18-r08-truth-reset`; it must merge before any implementation wave and freeze the file/artifact ownership that makes peers independent · left: execute after 2.6 closes
@@ -1314,9 +1315,9 @@ date: parallel wave 9 · worktree r09-1-shell
 doc: 03.1 §Task 9-1 · Finish the shell, navigation, and accessibility baseline · ref:dashboard-surfaces §3 · ref:frontend-backend-integration §7
 
 builds:
-- [ ] FE finish top bar, workflow rail, route state, status/help/theme controls, responsive containment, and empty/error states
-- [ ] FE make every action keyboard/touch reachable with truthful names, focus return, reduced motion, and both-theme contrast
-- [ ] PROOF component plus production-bundle desktop/mobile accessibility and parity coverage
+- [ ] FE finish top bar, workflow rail, route state, status/help/theme controls, desktop resize/zoom containment, and empty/error states (D340)
+- [ ] FE make every action keyboard/pointer reachable with truthful names, focus return, reduced motion, and both-theme contrast
+- [ ] PROOF component plus production-bundle desktop accessibility and parity coverage; deliberately update mobile-only layout/proof obligations while retaining applicable assertions and useful responsive CSS (D340)
 
 needs:
 - dash-truth-reset
@@ -1716,7 +1717,7 @@ doc: 03.1 §Task 17 · Build the complete dashboard proof infrastructure · ref:
 
 builds:
 - [ ] PROOF T2 component/feature scenarios cover every generic surface, state arm, command result, and accessibility invariant
-- [ ] PROOF T3 production-bundle browser journeys cover every route/control on desktop/mobile, both themes, keyboard, and reduced motion
+- [ ] PROOF T3 production-bundle browser journeys cover every route/control across Task 8's desktop resize/zoom matrix, both themes, keyboard, and reduced motion; deliberately reconcile shared mobile-only proof under D340
 - [ ] PROOF T4 live dry-run journeys bind assertions to direct SQLite/evidence checks without authorizing writes
 - [ ] PROOF parity references include Settings, sessions, setup, dialogs, and the DS specimen; update only through the deliberate lane
 
@@ -1734,6 +1735,7 @@ doc: 03.1 §Task 18 · Execute integrated dashboard acceptance and close 3.1 · 
 
 builds:
 - [ ] PROOF execute Task 8's unchanged acceptance matrix across run, queue, settings, setup, session, notification, date, trust, archive, Explorer, intake, and recovery journeys
+- [ ] PROOF D340: verify supported desktop sizing/zoom/accessibility and each former mobile obligation's disposition; mobile support is not a completion requirement
 - [ ] PROOF typecheck, lint, coverage, architecture, generated checks, parity, production smoke, performance, storage recovery, and live dry-run gates are green together
 - [ ] PROOF direct authority reconciliation finds no ghost, duplicate, stale, or orphaned run/settings state and no protected-value exposure
 - [ ] DOCS open focused remediation tasks for any failure; this supervisor audits and closes only after every row has independent evidence

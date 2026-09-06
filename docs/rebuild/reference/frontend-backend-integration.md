@@ -2689,6 +2689,31 @@ public origin to gate. `docs/rebuild/guard-inventory.json` carries no row for it
 
 ## 10. Integration definition of done
 
+### D340 — desktop-only dashboard support (operator decision, 2026-09-06)
+
+The dashboard supports desktop and laptop use. Phone/tablet layouts, mobile navigation and
+touch-specific interaction proof are not release requirements. This applies to the browser-hosted
+dashboard now and the later desktop package; Phase 6 packaging is not a prerequisite for this scope.
+Desktop resizing, smaller laptop windows, browser zoom, keyboard access, focus, reduced motion and
+both-theme accessibility remain required. Responsive requirements in this contract and the dashboard
+surface contract mean adaptation within the supported desktop window range, not mobile support.
+
+Phase 3.1 Task 8 must settle and record the minimum supported desktop viewport and the resize/zoom
+matrix before freezing acceptance; no numerical minimum is approved by this decision. It inventories
+existing mobile-specific obligations and assigns each retained, replaced or retired proof to an
+owner. Task 9-1 implements the shell/layout and directly affected proof changes; Task 17 reconciles
+shared browser/parity infrastructure, and Task 18 accepts the resulting desktop matrix. Preserve
+behavioral, accessibility and safety assertions when moving coverage out of a mobile viewport.
+Guard retirement still requires deciding evidence in the guard inventory. Existing tests and parity
+references remain active until their owning implementation deliberately updates them; this planning
+amendment does not delete tests or re-freeze screenshots.
+
+Record scope now; implement the changes in the existing 3.1 sequence after 2.6. Working responsive
+CSS may remain when it serves desktop resizing or costs nothing to retain. Removing all media
+queries is not an acceptance goal. D294's retirement of phone Capture Mode remains a separate
+feature decision. This decision supersedes mobile/touch-specific dashboard acceptance obligations,
+including older desktop/mobile proof wording, without waiving desktop usability or runtime safety.
+
 ### D339 — workflow-required release surfaces (operator decision, 2026-09-06)
 
 The first production release requires complete, usable surfaces for the admitted workflows and their

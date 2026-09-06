@@ -28,6 +28,11 @@ per node per doc, a `<!-- roadmap-status: <id> -->` checklist the roadmap genera
 node's drawer. Where a node's checklist lives under a different section of this doc, the section
 says so in one line rather than opening a second block.
 
+**Desktop support scope (D340, 2026-09-06).** Ref frontend-backend-integration §10 owns desktop-only
+dashboard acceptance. Responsive behavior remains required for supported desktop windows and zoom;
+older mobile/touch-specific proof wording is superseded by D340. Phase 3.1 Tasks 8/9-1/17/18 own
+the matrix, implementation and deliberate proof transition; no existing tests retire in this amendment.
+
 ## Ownership (D1)
 
 | | Concept | Where |
