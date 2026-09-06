@@ -1,19 +1,19 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only history kept in the detail drawer rather than on the phase spine. -->
-asOf: 2026-09-05
+asOf: 2026-09-06
 head: fbc23dc1
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, D323 phase hierarchy, `00`'s size model)
 source: `9993ab39^:docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (historical Tracks 0/A/B/C)
 source: `9993ab39^:docs/plans/2026-08-20-dashboard-architecture-audit.md` (historical Track D) · the phase docs win on any disagreement
 footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; plan, site and owning docs move together — notation: `docs/roadmap/notation.md`.
-> The ground-up rebuild of UCSD's UCPath HR automation, as a tree. Historical Phases 0–2 remain evidenced, but the authority model is deliberately reopened at **0.3** before **1.6** implements it, **2.6** revalidates the tails, and **3.1** completes every generic dashboard function. **3.2** then finishes workflow authoring and freezes one audited candidate, **3.3** accepts Person Lookup and Separations against that exact candidate, and **3.4** finishes Codex/Claude cooperation. Phase 4 migrates the remaining workflows one part at a time. Phase 5 prepares and performs the all-at-once cutover. Phase 6 ships the desktop application. Legacy stays the sole production authority until Phase 5's switch.
+> The ground-up rebuild of UCSD's UCPath HR automation, as a tree. Historical Phases 0–2 remain evidenced, but the authority model is deliberately reopened at **0.3** before **1.6** implements it, **2.6** revalidates the tails, and **3.1** completes the dashboard journeys required by admitted workflows (D339 defers optional screens). **3.2** then finishes workflow authoring and freezes one audited candidate, **3.3** accepts Person Lookup and Separations against that exact candidate, and **3.4** finishes Codex/Claude cooperation. Phase 4 migrates the remaining workflows one part at a time. Phase 5 prepares and performs the all-at-once cutover. Phase 6 ships the desktop application. Legacy stays the sole production authority until Phase 5's switch.
 
 tiles:
 - Historical completion | 0.1–0.2 · 1.1–1.5 · 2.1–2.5 | evidence retained; runtime marker still reports `completedThrough: 2j`
-- Active | Phase 1.6 | implement the run/settings authorities exactly as D330/D331/D332 designed them (0.3 closed 2026-09-04)
+- Active | Phase 1.6 | implement D330/D331/D332 as amended by D336: SQLite runs/settings with independent credentials; Task 6 owns conversion after Task 5
 - Next | Phase 2.6 | revalidate the downstream read models, joins and operator services against the canonical authorities
-- Decisions | D1–D332 | D326 normalizes Phases 0–3 · D327 fixes the one-source run/settings outcomes · D330 fixes the run-record lifecycle contract (0.3 Task 1) · D331 fixes the settings catalog and protected root (0.3 Task 2) · D332 fixes the authority upgrade, adapters and recovery (0.3 Task 3) · D328 renders parallel peers as numeric wave members (`9-1`, `9-2`) · D329 puts authoring/freeze before controlled acceptance · D131 retired, never reused
+- Decisions | D1–D339 | D326 normalizes Phases 0–3 · D327 fixes the one-source run/settings outcomes · D330 fixes the run-record lifecycle contract (0.3 Task 1) · D331 fixes the settings catalog and protected root (0.3 Task 2) · D332 fixes the authority upgrade, adapters and recovery (0.3 Task 3) · D328 renders parallel peers as numeric wave members (`9-1`, `9-2`) · D329 puts authoring/freeze before controlled acceptance · D336/D337 consolidate ordinary settings and appearance overrides in SQLite · D338 gives agents full API capability parity · D339 defers optional release screens · D131 retired, never reused
 - Gates | current source authority | open the active part for exact completion evidence and remaining gates
 - !Critical-path blocker | Separations controlled proof | D329 holds every write behind 3.2's independent candidate audit and 3.3's exact-candidate admission. Historical 4589 remains inspection-only; the bounded authorization must name the candidate, fingerprints, disposable targets, disposition, and sequence, and expires on drift, failure, or UNKNOWN
 
@@ -437,7 +437,7 @@ date: after 0.3 (closed 2026-09-04)
 size: XL
 doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.3 · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §9.2 · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2 · ref:frontend-backend-integration §4
 
-> Implement the exact 0.3 contracts — D330, D331, D332 — without redesigning them. Every task is one supervisor seam bound in doc 01 §1.6 to its files, gate, proofs and deletion test. R04 (0.3 Task 4) ruled the original Tasks 1 and 2 NOT independent as written — both add schema steps and would bump `CURRENT` twice — so the part is re-sliced: Task 1 lands the one serial schema floor, and Tasks 2-1 (run-record service) and 2-2 (settings catalog/root) run as a D328 wave from the master that contains Task 1's merge; the 1.6 coordinator records that base SHA and both worktrees before dispatch. Tasks 3–7 run serially in order. No other pair is a wave.
+> Implement D330/D331/D332 with the operator-approved D336 storage amendment: Task 6 consolidates ordinary settings in SQLite and leaves credential operations independent. Every task is one supervisor seam bound in doc 01 §1.6 to its files, gate, proofs and deletion test. R04 (0.3 Task 4) ruled the original Tasks 1 and 2 NOT independent as written — both add schema steps and would bump `CURRENT` twice — so the part is re-sliced: Task 1 lands the one serial schema floor, and Tasks 2-1 (run-record service) and 2-2 (settings catalog/root) run as a D328 wave from the master that contains Task 1's merge; the 1.6 coordinator records that base SHA and both worktrees before dispatch. Tasks 3–7 run serially in order. No other pair is a wave.
 
 builds:
 - [x] BE one canonical SQLite-backed run-record service with typed CRUD/CAS lifecycle operations
@@ -568,15 +568,18 @@ needs:
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate/deletion test (doc 01 §1.6 Task 5); serial after Task 4 (shares the composition roots with Task 3) · left: implementation
 
-#### 6 · Prove upgrade, rollback, recovery, and compatibility deletion {#p1f-migration-proof}
+#### 6 · Consolidate settings in SQLite and prove upgrade/recovery {#p1f-migration-proof}
 status: planned
-doc: 01 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.5 · ref:operator-trust §1 · ref:guards-and-tests §5.2 · ref:clock-config-secrets §3
+doc: 01 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:dashboard-surfaces §2.5 · ref:guards-and-tests §5.2
+
+> D336 replaces the ordinary-settings file/SQLite transaction with one database authority. Credentials stay independent. The approved architecture now needs a focused Task-6 plan over the integrated Task-5 code.
 
 builds:
-- [ ] BE `cli storage upgrade [--plan] [--json]`: the 15-step preflight requiring an explicit verified `cli storage backup`, prepare/rollback files under the private-file protocol, one exclusive transaction with the journaled settings rewrite and marked protected import, settle, the `authority_upgrades` arms, the closed boot matrix and its `storage-authority` preflight check; no automatic backup cadence
-- [ ] PROOF migrate representative current, terminal, archived, and malformed authorities without losing evidence (M1–M27; ordinals backfilled with provenance, orphan gate records journaled, evidence and snapshots byte-identical)
-- [ ] PROOF import operator-managed non-provider-key configuration once, retain provider keys in `.env`, preserve derived defaults, and refuse ambiguous duplicates (§D332.S1–S6); the backup READ path widened and the WRITE path recording the observed version
-- [ ] BE land A0/A1 with `authority-upgrade-adapters-isolated` active and `authority-upgrade-adapters-retired` + `settings-root-single-pathname` planned for 2.6; delete nothing here — A4/A5 left in 2-2, A0–A3 expire at 2.6, A8 at 3.1; then run the upgrade on the operator's root and announce the `migrated-refused` remove-list
+- [ ] BE persist ordinary settings values, revision and command/audit in one SQLite transaction; cut readers/writers over together and remove file authority, sidecars and cross-store recovery
+- [ ] BE keep credential updates and readback independent of SQLite transactions/restores, with sole-reader access, authorization, truthful outcomes and no protected values in ordinary state, backups or child env
+- [ ] BE retain explicit verified backup and `storage upgrade [--plan] [--json]`; convert verified pre-floor and D331 input formats once, refuse conflicts, preserve data and make credential import separate
+- [ ] PROOF preserve run/evidence/snapshot identities; prove transaction rollback, interruption, replay, restore, missing credentials and rejection of old sources; map affected P/M proofs and adapters before evidenced guard retirement
+- [ ] BE after fixture gates, convert the operator's rebuild root and report key-only cleanup requirements; legacy production remains untouched
 
 needs:
 - p1f-run-commands
@@ -584,6 +587,7 @@ needs:
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate; the deletion checkbox restated — nothing is deleted in 1.6 Task 6, every adapter's deletion task is named (doc 01 §1.6 Task 6) · left: implementation
+- 2026-09-06 | D336 operator-approved simplification | one SQLite authority for runs and ordinary settings, independent credentials; Task 6 owns conversion after Task 5, completed work stays evidenced · left: focused plan, implementation, review and gates
 
 #### 7 · Close the rebuilt foundation {#p1f-close}
 status: planned
@@ -959,6 +963,8 @@ log:
 status: planned
 doc: 02 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust §1 · ref:guards-and-tests · ref:dashboard-surfaces §2.5 · ref:guards-and-tests §5.2
 
+> D336: consume Task 1.6.6's SQLite-settings restore and revised adapter/proof mapping; the old paired-file rollback and settings-pathname target are superseded.
+
 builds:
 - [ ] PROOF run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation gates
 - [ ] PROOF cite historical D135 and perform no second controlled write
@@ -1026,7 +1032,7 @@ chip: Tasks 1–7 evidenced · Task 8, waves 9–13, Tasks 14–18 wait for 2.6
 size: XL
 doc: 03.1 §Phase summary · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §6.8 · ref:dashboard-surfaces §1.2
 
-> Historical Tasks 1–7 built and proved important shared seams, but operator review found incomplete and broken generic journeys. Task 8, parallel waves 9–13, and serial Tasks 14–18 reopen the part around those journeys: a real modal-to-queue-to-worker path, one CRUD run authority, one settings authority, reliable date/session/notification/queue controls, and complete logs/archive/explorer/intake/trust surfaces. Workflow-specific content still belongs to 3.2/3.3.
+> Historical Tasks 1–7 built and proved important shared seams, but operator review found incomplete and broken generic journeys. Task 8, parallel waves 9–13, and serial Tasks 15–18 reopen the part (Task 14 is deferred by D339) around those journeys: a real modal-to-queue-to-worker path, one CRUD run authority, one settings authority, reliable date/session/notification/queue controls, and complete logs/archive/explorer/intake/trust surfaces. Workflow-specific content still belongs to 3.2/3.3.
 
 builds:
 - [ ] BE the per-run stream topics — five of six declared TopicKeys have no producer, so run detail, logs, review, people and artifact updates arrive by re-read, not by patch (ref frontend-backend-integration §3.5)
@@ -1323,6 +1329,8 @@ status: planned
 date: parallel wave 9 · worktree r09-2-settings
 doc: 03.1 §Task 9-2 · Finish Settings over the canonical settings authority · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4 · ref:guards-and-tests §5.2
 
+> D336: ordinary settings are SQLite-owned; protected writes/readback are independent credential operations. Keep the catalog, revision/conflict, reset and restart behavior.
+
 builds:
 - [ ] BOTH render every catalog leaf in one Settings information architecture with source, validity, editability, sensitivity, and restart scope
 - [ ] BOTH support revisioned edit/save/conflict/reset flows; protected values are write-only and display presence, never plaintext
@@ -1335,15 +1343,17 @@ log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 settings seam in `phase-3-1-dashboard-c21194e18-r11-settings`, parallel with Tasks 9, 13 and 25 · left: Task 8 ownership freeze
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 edit contract, §D331.5's two CAS arms and §D331.6 presence readback (no redesign) · left: the deliberate P40/A8 parity re-freeze happens here
 
-#### 9-3 · Finish storage doctor, backup, and recovery controls {#dash-storage}
+#### 9-3 · Finish basic storage health and recovery access {#dash-storage}
 status: planned
 date: parallel wave 9 · worktree r09-3-storage
-doc: 03.1 §Task 9-3 · Finish storage doctor, backup, and recovery controls · ref:operator-trust §1 · ref:frontend-backend-integration §6 · ref:dashboard-surfaces §2.5
+doc: 03.1 §Task 9-3 · Finish basic storage health and recovery access · ref:operator-trust §1 · ref:frontend-backend-integration §10 · ref:dashboard-surfaces §2.5
+
+> D336 supplies the revised SQLite-settings recovery contract. D339 keeps basic health and access to recovery commands in release scope; new advanced recovery interfaces are deferred until needed.
 
 builds:
-- [ ] BOTH expose health, doctor evidence, backup creation, restore admission, degradation, and actionable refusals without overstating safety
-- [ ] BOTH keep destructive/recovery commands revision-bound and stopped-system gated
-- [ ] PROOF corrupt-copy doctor, verified backup/restore, interrupted recovery, stale command, and settings/run consistency cases
+- [ ] BOTH serve truthful health/doctor findings and actionable access/instructions for supported explicit backup, restore and upgrade commands
+- [ ] BOTH preserve working controls and stopped-system/revision admission without requiring new interactive restore, migration or repair UI for release
+- [ ] PROOF cover underlying corruption, interruption, stale, unknown and missing-credential states; show no inert recovery controls and record the advanced-interface deferral
 
 needs:
 - dash-truth-reset
@@ -1351,22 +1361,24 @@ needs:
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 storage seam in `phase-3-1-dashboard-c21194e18-r13-storage`, parallel with Tasks 9, 11 and 25 · left: Task 8 ownership freeze
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D332 §D332.1 (`cli storage upgrade` as a fourth subcommand), §D332.6 verdicts, §D332.5 journal and §D332.4 restore admission (no redesign) · left: D322 explicit-only backup stands
+- 2026-09-06 | D339 approved deferral | basic health/recovery access remains required; new advanced recovery UI waits for a concrete need or explicit post-release request
 
 #### 9-4 · Finish Workflow Explorer and catalog editing {#dash-explorer}
 status: planned
 date: parallel wave 9 · worktree r09-4-explorer
-doc: 03.1 §Task 9-4 · Finish Workflow Explorer and catalog editing · ref:workflow-model §1 · ref:operator-trust §5.9
+doc: 03.1 §Task 9-4 · Finish Workflow Explorer and catalog editing · ref:operator-trust §5.4
 
 builds:
-- [ ] BOTH show the compiled graph, tasks, stores, fields, origins, selectors, conditions, omissions, presentation, versions, and scenario source authority
-- [ ] BOTH support allowed presentation/policy edits through validated overlays with preview, diff, versioning, hot-apply/restart truth, and rollback
-- [ ] PROOF invalid/cyclic/stale overlays, generated-manifest drift, version bump, reload, and clean-context authoring guidance
+- [ ] BOTH preserve graph/catalog reads and validated presentation preview/diff/revision/hot-apply behavior; workflow code remains source-authored
+- [ ] BE D337: put label/icon/category overrides, revision and command/audit in one SQLite transaction; preserve existing values and remove file authority and prepared-claim recovery
+- [ ] PROOF validate invalid/cyclic/stale/manifest-drift/reload cases, exact replay, conversion and rejection of old override sources; bind shared DDL/composition ownership before the wave
 
 needs:
 - dash-truth-reset
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 Explorer/catalog seam in `phase-3-1-dashboard-c21194e18-r25-explorer`, parallel with Tasks 9, 11 and 13 · left: Task 8 ownership freeze
+- 2026-09-06 | D337 approved simplification | same appearance editing, one SQLite commit instead of file/database coordination; implementation remains Task 9-4
 
 #### 10-1 · Repair date navigation and the date picker {#dash-date-navigation}
 status: planned
@@ -1629,24 +1641,24 @@ needs:
 log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 5 Gate/Parked-write section seam in `phase-3-1-dashboard-c21194e18-r22-gates`, parallel with Tasks 19–21 only through Task 18's frozen section boundary · left: Tasks 16 and 18
 
-#### 14 · Finish generic Review and People contracts {#dash-review-people}
-status: planned
-date: serial gate 14 · worktree r14-review-people
-doc: 03.1 §Task 14 · Finish generic Review and People contracts · ref:dashboard-surfaces §5 · ref:frontend-backend-integration §5
+#### 14 · Generic Review and People pages — deferred until needed {#dash-review-people}
+status: proposed
+chip: deferred · not a release blocker
+date: concrete workflow need or explicit post-release request
+doc: 03.1 §Task 14 · Generic Review and People pages — deferred until needed · ref:frontend-backend-integration §10
+
+> D339 defers generic pages. A required workflow keeps its actual Review/People journey in scope; speculative generic page contracts do not hold the release.
 
 builds:
-- [ ] BOTH implement the generic panel/page kinds, routing, empty/error/loading states, group rollups, member outcomes, and declared labels
-- [ ] BOTH require workflow descriptors to provide workflow-specific fields/actions later; 3.1 supplies no invented Separations/OCR policy
-- [ ] PROOF generic fixtures, direct/deep links, accessibility, large groups, partial members, and unavailable workflow-specific content
+- [ ] BOTH on admission, bind the actual use case and descriptor-owned fields/actions before building generic pages
+- [ ] PROOF validate the admitted routes, accessibility, groups, partials and absence states
 
 needs:
-- dash-context-data
-- dash-logs
-- dash-receipts-failures
-- dash-gates
+- you: a concrete workflow need or an explicit post-release request
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | serial section-extension gate in `phase-3-1-dashboard-c21194e18-r27-review-people`; it follows wave 5 so it cannot collide with the four run-detail section writers · left: Tasks 18–22
+- 2026-09-06 | D339 approved deferral | removed from 3.1 realtime/acceptance dependencies; the unchecked future feature does not block release
 
 #### 15 · Prove realtime convergence and reconnect {#dash-realtime}
 status: planned
@@ -1677,7 +1689,6 @@ needs:
 - dash-activity
 - dash-explorer
 - dash-intake-edit
-- dash-review-people
 
 log:
 - 2026-09-03 | 3.1 parallel execution plan | serial convergence gate in `phase-3-1-dashboard-c21194e18-r28-realtime`; it starts only after every feature worktree through Task 27 is integrated and closed · left: Tasks 9–27
@@ -1746,7 +1757,6 @@ needs:
 - dash-activity
 - dash-explorer
 - dash-intake-edit
-- dash-review-people
 - dash-realtime
 - dash-performance
 - dash-production-runtime
@@ -1998,7 +2008,7 @@ size: L
 chip: not started
 doc: 03.4 §Track summary · ref:frontend-backend-integration §3.4 · ref:write-safety §14
 
-> After 3.3 closes, Claude Code becomes the second attributed actor on the one local BFF. Task 1 establishes derived actor identity and the two-actor rule; Task 2 adds the loopback MCP client surface; Tasks 3 and 4 add monitoring and actor-aware clients and may run in parallel under the coordinator plan; Task 5 records the attributed dry-run/T4 proof and closes Phase 3. Desktop attachment remains Phase 6.
+> After 3.3 closes, Claude Code becomes the second attributed actor on the one local BFF. Task 1 establishes truthful actor identity with full capability parity; Task 2 makes the existing API usable directly by agents (MCP optional); Tasks 3 and 4 add monitoring and actor-aware clients and may run in parallel under the coordinator plan; Task 5 records the attributed dry-run/T4 proof and closes Phase 3. Desktop attachment remains Phase 6.
 
 needs:
 - workflow-live-acceptance
@@ -2008,50 +2018,46 @@ log:
 - 2026-09-03 | D326 decimal hierarchy | 3.4 starts after closed 3.3; Tasks 3 and 4 are parallel-capable only through the coordinator plan, and Task 5 owns the T4 journey plus Phase 3 close · desktop attachment remains Phase 6
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
 
-#### 1 · Derive actor identity and enforce the two-actor rule {#claude-actor}
+#### 1 · Derive actor identity and preserve full capability parity {#claude-actor}
 status: planned
-date: R15 · 2026-08-21
+date: D338 · 2026-09-06
 size: M
-doc: 03.4 §Task 1 · Derive actor identity and enforce the two-actor rule · ref:frontend-backend-integration §3.4 · ref:write-safety §14
+doc: 03.4 §Task 1 · Derive actor identity and preserve full capability parity · ref:frontend-backend-integration §4 · ref:write-safety §14
 
-> The actor stops being a literal and becomes a derived fact. A closed union of two ids, a server that DERIVES the acting actor from the caller's own credential instead of trusting a request body, and a per-family policy table: parity everywhere, two-actor on the four arms that authorize a real HR write. This is first because an MCP server built before it would stamp `local-operator` on everything Claude does, and ref operator-trust already says why that cannot be repaired later — an immutable ledger's old rows have no honest answer.
+> D338: agents can perform every supported human action, including HR approvals, through the same API and safeguards. Identity records who acted; it creates no additional approval step.
 
 builds:
-- [ ] BE a closed actor union — `local-operator` and `claude` — replacing the `z.literal` in `src/domain/ids.ts:136` and the config `actor` default
-- [ ] BE extend D75's checkpoint to derive the closed second actor from the caller's credential and stamp that authoritative value; strict solo mismatch refusal is already built
-- [ ] BE the per-family parity table — two-actor for `gate/resolve-gate`, `run/resolve-write-present`, `run/resolve-write-absent` and a `start-run` with `dryRun: false`; parity everywhere else
-- [ ] BE a `pending-confirmation` resolution with NO effect until a DIFFERENT actor confirms it, re-binding the same evidence digest (a schema version; read-forward, since every existing row is a settled single-actor resolution)
-- [ ] WIRE attribution rendered wherever an actor is already durable — gate `resolvedBy`, `plannedBy`/`appliedBy`/`archivedBy`, the D82 evidence receipt
-- [ ] BE a guard: no command path stamps an actor the request did not authenticate, and no two-actor arm settles with one — with a violating fixture
+- [ ] BE derive the supported human/agent caller from its own client credential at the existing admission checkpoint; never trust a body claim alone
+- [ ] BE preserve full action parity, including live start, gate approval and evidence-qualified write resolution; no agent-only refusal or second confirmer
+- [ ] BE record the actual actor throughout commands, audits, gate results, ledger and receipts without rewriting historical actors
+- [ ] PROOF same valid requests can settle for either caller; spoofed identity, stale evidence, invalid ceremony and unsafe replay fail under the same rules
 
 needs:
-- workflow-authoring-model
+- workflow-live-acceptance
 
 log:
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
+- 2026-09-06 | D338 operator correction | replaces two-actor pending-confirmation/schema work with full API capability parity and truthful attribution
 
-#### 2 · Build the local MCP client surface {#claude-mcp}
+#### 2 · Make the existing API usable by agent clients {#claude-mcp}
 status: planned
-date: R15 · 2026-08-21
-size: L
-doc: 03.4 §Task 2 · Build the local MCP client surface · ref:frontend-backend-integration §3.4 · ref:frontend-backend-integration §3.5 · ref:frontend-backend-integration §3.6
+date: D338 · 2026-09-06
+size: M
+doc: 03.4 §Task 2 · Make the existing API usable by agent clients · ref:frontend-backend-integration §3.4 · ref:frontend-backend-integration §3.5 · ref:frontend-backend-integration §4
 
-> A loopback MCP server that is a CLIENT of the BFF, never a second server and never a second wire — it reuses `src/dashboard/client/transport.ts` rather than re-implementing it. A write tool per command family, a read tool per read model, and a tail over the one stream. The local port is not the new thing: the listener already binds `127.0.0.1` and refuses anything else. What is missing is a client Claude Code can speak to.
+> Use the existing loopback API directly. An MCP wrapper is optional client convenience, not a new server, permission layer or prerequisite.
 
 builds:
-- [ ] BE the loopback MCP server over `/api/v1/**`, started from the CLI and registered in a project-scoped `.mcp.json` so the capability travels with the checkout
-- [ ] BE a write tool per command family — ordinary/source-bound Run plan + confirm (including the source-bound Rerun flow; warning acknowledgment is separate from final submission), gate resolve, run cancel/bump/rename, archive, settings, intake, notifications, bulk; no source-run edit command and no retired Capture family
-- [ ] BE a read tool per read model — bootstrap, the day wire, run detail and every lazy section, the evidence receipt, archive, explorer, the activity report, the storage doctor, the UI catalog
-- [ ] BE a `tail` tool over the SSE stream — `Last-Event-ID` resume, `reset-required` reported rather than swallowed
-- [ ] BE actor `claude`, and the CAS `expectedVersion` passed through from the read that produced it — never cached across turns
-- [ ] BE both refusal arms surfaced verbatim (D253), only actions the served descriptors declare, and D226's ceremony obligations honoured by an agent surface too
-- [ ] BE a refusal BY NAME when no BFF answers — the MCP server never starts one, because D181 admits exactly one `server` holder
+- [ ] BOTH document authenticated bootstrap/read/command/stream access and direct HTTP examples for every supported human action
+- [ ] BOTH preserve current-version, server-declared ceremony, source-bound Run/Rerun, exact replay and named refusal behavior
+- [ ] PROOF read → command → result/monitor through the same routes; no second journal or competing BFF; no-BFF and reconnect failures remain explicit
 
 needs:
 - claude-actor
 
 log:
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
+- 2026-09-06 | D338 operator correction | direct HTTP is sufficient for agent operation and acceptance; MCP is optional, stable node id retained
 
 #### 3 · Add cursor-based monitoring and the actor inbox {#claude-monitor}
 status: planned
@@ -2082,14 +2088,14 @@ date: parallel wave 3 · dedicated worktree
 size: M
 doc: 03.4 §Task 4 · Make existing clients actor-aware · ref:frontend-backend-integration §6.9 · ref:clock-config-secrets §3
 
-> "What happens if the user has both open" was answered by D181 before anyone asked it: the `server` role lock is taken before the authority database opens, so there is never more than one BFF on the machine. The web dashboard, the desktop app and Claude's MCP server are three clients of one port, one journal and one projection — which is what makes two actors safe rather than merely convenient.
+> "What happens if the user has both open" was answered by D181 before anyone asked it: the `server` role lock is taken before the authority database opens, so there is never more than one BFF on the machine. The web dashboard, the desktop app and direct agent API clients share one port, one journal and one projection; an MCP wrapper is optional.
 
 builds:
 - [ ] BE the role lock ELECTS the host; a second app attaches to the running BFF as a client and never starts a second one (doc 06's Electron half)
 - [ ] FE every actor-bearing surface renders the actor rather than assuming it — gate `resolvedBy`, `archivedBy`, `plannedBy`, the receipt, the notification row
 - [ ] BOTH a client roster the operator can see — who is attached right now and what each last did; live-only, and it says so rather than pretending to be durable
 - [ ] WIRE the no-BFF refusal, named, from every client — and never naming npm inside a packaged app (doc 06)
-- [ ] PROOF the conflict path as ORDINARY traffic — two clients on one run version, both refused by name with the server's `currentVersion`, neither reporting success
+- [ ] PROOF two clients racing on one run version yield one committed change and one named stale-version conflict; neither client reports an uncommitted change as success
 
 needs:
 - claude-mcp
@@ -2099,18 +2105,18 @@ log:
 
 #### 5 · Prove attributed cooperation and close Phase 3 {#claude-proof}
 status: planned
-date: R15 · 2026-08-21
+date: D338 · 2026-09-06
 size: M
-doc: 03.4 §Task 5 · Prove attributed cooperation and close Phase 3 · ref:guards-and-tests §10
+doc: 03.4 §Task 5 · Prove attributed cooperation and close Phase 3 · ref:guards-and-tests §10 · ref:write-safety §14
 
-> R10's T1 shape driven from a different client. Separations is the subject because its name-resolved arm carries the identity gate and a transaction node, so the two-actor rule is exercised on the arm it was written for. One agent, one scenario — the parallel T4 tier comes later, after `{#parallel-runs}` and `{#duo-lease}`.
+> Prove direct API operation with an agent-resolved dry-run gate and full caller capability parity. No second actor must confirm; no new live HR transaction is added to this phase proof.
 
 builds:
-- [ ] PROOF a Claude Code session drives a separations dry run end to end through the MCP tools — start, watch, gate, settle — with no dashboard click
-- [ ] PROOF every action attributed to `claude` in the command journal, the spans and the evidence receipt
-- [ ] PROOF one identity gate proposed by claude and confirmed by the operator, plus the decline, the stale-digest re-open and the refused self-confirmation
-- [ ] PROOF both apps open during the run, one BFF, one journal, proved from the lock files
-- [ ] PROOF the result recorded durably the way every dry-run scenario is (R10), written as T4's first journey rather than as a transcript
+- [ ] PROOF an agent drives Separations dry-run start/monitor/gate resolution/resume/terminal preview through the API, with actual caller attribution
+- [ ] PROOF equal eligibility for every human/agent command family, including live-start and write-resolution boundaries, using focused tests without another controlled live write
+- [ ] PROOF shared rejection of stale/invalid evidence, invalid ceremony, divergent replay, unknown-submit retry and identity spoofing
+- [ ] PROOF simultaneous clients, one host/journal, resumable monitoring and actor-keyed inbox behavior
+- [ ] DOCS record durable dry-run/T4 evidence, required gates, independent review and cleanup; no optional MCP wrapper blocks acceptance
 
 needs:
 - claude-mcp
@@ -2119,6 +2125,7 @@ needs:
 
 log:
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
+- 2026-09-06 | D338 operator correction | agent approvals settle under the existing guardrails with no human confirmation; prove attribution and full parity
 
 ## Phase 4 · Workflow migrations {#migrations}
 phase: Phase 4

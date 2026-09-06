@@ -942,6 +942,25 @@ builder or literal, is the proof required for route connectivity. No new produce
 ---
 ## 4. State ownership
 
+**D338 — agent/human API capability parity (operator decision, 2026-09-06).** Agents acting for the
+operator can invoke every action a human can invoke through the same BFF API, including queue/start,
+HR gate approval, live-run authorization and evidence-qualified write resolution. Derive and record
+the actual caller identity; identity controls attribution, not an agent-specific permission tier.
+No human-only restriction, second-actor confirmation, agent approval proposal, or extra
+`pending-confirmation` state is introduced. All callers satisfy the same command schemas, current
+revision/evidence checks, declared approval ceremony, duplicate-submit controls and unknown-outcome
+rules. Direct HTTP clients are supported; an MCP wrapper is optional convenience and never an
+additional admission layer or a release prerequisite. Phase 3.4 owns actor-aware API access and its
+parity proof. The write-safety consequence is owned by ref write-safety §D338.
+
+
+> **D336 (2026-09-06; ref clock-config-secrets §D336):** ordinary settings values and their
+> revision/command audit are SQLite-owned. The Settings UI retains the catalog-driven set/clear,
+> conflict and restart behavior. Protected inputs go through a separate credential operation with
+> value-free readback; neither the frontend nor SQLite reconstructs credential-store state. Historical
+> file/journal coupling and paired-file restore descriptions are superseded for the target.
+
+
 <!-- roadmap: p1-spine -->
 <!-- roadmap: track-d -->
 
@@ -2669,6 +2688,32 @@ public origin to gate. `docs/rebuild/guard-inventory.json` carries no row for it
 ---
 
 ## 10. Integration definition of done
+
+### D339 — workflow-required release surfaces (operator decision, 2026-09-06)
+
+The first production release requires complete, usable surfaces for the admitted workflows and their
+operation: configure/start/queue/monitor, applicable identity and write gates, truthful outcomes,
+evidence and recovery. Generic People/Review pages and new advanced storage-recovery interfaces do
+not block release unless an admitted workflow requires them. Working existing controls may remain;
+this deferral is not permission to ship broken, misleading or inert controls as finished features.
+
+Phase 3.1 Task 8 binds the acceptance matrix to actual workflow journeys and explicitly records each
+required or deferred surface. Task 14's generic People/Review work is unscheduled until a concrete
+workflow need or an explicit post-release request admits it. Task 9-3 keeps basic health/status and
+clear access/instructions for supported backup/recovery commands; new interactive restore, migration
+and repair interfaces are deferred under the same trigger. Core backup, doctor, restore and recovery
+behavior and their proofs remain required. A workflow needing Review before release brings its actual
+Review journey into scope; it does not require a speculative all-workflow page framework.
+
+Tasks 15–18 and the integration/cutover surface matrix below cover the required shipped journeys and
+truthful absence of deferred ones. Remove the deferred generic-page task from mandatory dependencies;
+record its disposition at acceptance instead of treating its unchecked features as a release failure.
+Existing active tests remain until any changed surface is implemented and its proofs deliberately
+updated. Accessibility, responsiveness, reconnect, validation and write-safety checks still cover
+every shipped surface. Phases 3.2/3.3 workflow acceptance and Phase 5's production/rollback safeguards
+remain binding. Finishing every optional screen first is rejected because it extends the critical
+path without establishing another required HR capability.
+
 
 <!-- roadmap: cutover -->
 

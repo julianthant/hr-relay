@@ -204,6 +204,13 @@ checkout, because a shared profile is how D243's counter hazard gets a second fr
 ## Credentials — the OS keychain behind the one reader
 <!-- roadmap: desk-secrets -->
 
+> **D336 (2026-09-06):** the credential reader is independent of ordinary settings and SQLite
+> transactions. Supply the platform credential backend through that same boundary; do not redesign
+> ordinary settings or reintroduce database/credential synchronization. The historical child-env
+> injection option below is superseded by the preserved value-free child-environment requirement.
+> Selecting and implementing the OS backend remains this phase's work unless separately reassigned.
+
+
 <!-- roadmap-status: desk-secrets -->
 - [ ] macOS Keychain and Windows Credential Manager as the credential source, replacing `.env` for a packaged app
 - [ ] `src/domain/secrets.ts` stays the ONLY module that reads a credential — `secrets-single-source.test.ts` unchanged

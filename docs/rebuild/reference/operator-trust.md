@@ -1947,6 +1947,25 @@ and failed obligations.
 
 ### 5.4 Compile/apply protocol
 
+**D337 — workflow appearance overrides use SQLite (operator decision, 2026-09-06).**
+The editable workflow label, icon and category remain the same closed presentation-only set. Store
+those override values, revision and successful command/audit records in the existing SQLite authority,
+in one transaction. Preserve descriptor/version checks, validation, preview/diff, exact replay,
+conflict refusal, hot readback and the source-authored workflow boundary. Do not maintain an
+independently authoritative JSON override file, prepared file claim or file/SQLite recovery protocol.
+A user-requested restore of a prior appearance is an ordinary revisioned update, not a filesystem rollback.
+
+Phase 3.1 Task 9-4 owns conversion of existing overrides and removal of the old mechanism, including
+its reader/writer cutover, proof mapping and guard-inventory changes. Before its parallel wave starts,
+its focused plan must reserve the SQLite migration and shared command/composition changes or extract
+an evidenced serial prerequisite. Import existing valid overrides once, refuse conflicting/malformed
+sources, and prove old files cannot influence appearance after conversion. The implementation-specific
+file/SQLite crash protocol below records the current implementation; D337 supersedes it as the target.
+No runtime code or active test is removed by this decision. Keeping the current split avoids conversion
+work but preserves unnecessary coordination for simple preferences; putting the override in SQLite
+keeps the user feature with one authoritative commit.
+
+
 <!-- roadmap: def-explorer-edit -->
 
 Every edit is a draft with a base descriptor version/fingerprint. “Validate” runs the same builder,

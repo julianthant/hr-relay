@@ -1526,6 +1526,16 @@ paragraph).
 
 ### 5.2 D332 compatibility adapters and their deletion tests (0.3 Task 3, 2026-09-04)
 
+> **D336 target amendment (2026-09-06):** Task 1.6.6 replaces ordinary file/SQLite coupling with
+> SQLite-owned settings and independent credential operations (ref clock-config-secrets §D336).
+> The A0/A1 and settings-pathname obligations below must be rebound to the actual supported source
+> formats and a resolver that reads no settings file, rather than requiring a new settings pathname.
+> Its focused plan must disposition every affected D331 P-proof and D332 M-proof and every adapter:
+> retain the invariant, replace its implementation-specific test, or retire the removed mechanism
+> with evidence. Until that implementation lands, the current guard inventory and active tests remain
+> intact. A2/A3 lifecycle-reader cleanup and the protected-value exclusions remain required.
+
+
 A *compatibility adapter* is defined by ref dashboard-surfaces §D332.9, whose five rules — named at
 birth in one place; born with its deletion test; never a fallback; expiry is a deletion, not a switch;
 pre-floor artifacts refuse by name after expiry — are cited here, not restated. The roster lives in
