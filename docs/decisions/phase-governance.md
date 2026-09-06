@@ -159,3 +159,8 @@ UNKNOWN writes.
 
 Normative owners: roadmap §Governance, docs 03.2 and 03.3, ref workflow-model §1.6, ref write-safety
 §3.2/§14, and the canonical decision ledger D329.
+
+The 2026-09-06 storage amendment moves the active Phase 3 files to
+[`docs/rebuild/plans/phase-3/`](../rebuild/plans/phase-3/README.md), using unpadded
+`3.1`–`3.4` filename prefixes. D329's dated filenames above remain historical lookup keys;
+[the plans index](../rebuild/plans/README.md) maps all former paths.

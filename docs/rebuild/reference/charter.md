@@ -559,7 +559,7 @@ The foundation's documentation is part of the foundation.
 <!-- /roadmap-status -->
 
 
-- **Phase 0 (COMPLETE 2026-07-31; `docs/rebuild/00-design-the-foundation.md`):** foundation design
+- **Phase 0 (COMPLETE 2026-07-31; `docs/rebuild/plans/phase-0/README.md`):** foundation design
   docs in `docs/rebuild/`, each reviewed part-by-part with the
   operator in plain language (what the old version did → why it hurt → how the new design fixes it).
 - **Phase 1 — the SPINE, whose exit test is a live workflow (restructured 2026-07-23, operator

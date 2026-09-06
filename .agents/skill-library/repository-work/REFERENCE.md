@@ -11,18 +11,18 @@ status against the owning phase before implementation.
 
 **The plan is the SSOT — read it, do not re-derive it.** It has three parts: the **tree** at
 `docs/roadmap/roadmap.md` (the machine-readable plan + the site's source + the governance rules), the
-admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phase), and the
+admitted **phase docs** under `docs/rebuild/plans/` (actionable: one per subphase, plus phase overviews), and the
 **specs** in `docs/rebuild/reference/` (not actionable; cited by slug).
 
 - `docs/roadmap/roadmap.md` — the plan as written, in the roadmap notation (headings = nodes,
   `builds:`/`needs:`/`doc:` lines); `docs/roadmap/index.html` is GENERATED from it by
   `npm run roadmap`. After `roadmap:end` its **Governance** section owns the one-plan rule, the D1
   ownership map and D263.
-- The **phase docs** under `docs/rebuild/` record tasks, evidence, decisions and exit criteria.
-  Phases 0-3 are `00-design-the-foundation` · `01-build-the-spine` ·
-  `02-prove-writes-build-the-tails` · `03.1-finish-the-dashboard` ·
-  `03.2-finish-workflow-authoring` · `03.3-accept-person-lookup-and-separations` ·
-  `03.4-co-operate-with-claude`. D326 supersedes D323/D325's split phase grammar for
+- The **phase docs** under `docs/rebuild/plans/phase-N/` record tasks, evidence, decisions and exit criteria.
+  [The plans index](../../../docs/rebuild/plans/README.md) routes every existing subphase and former
+  flat path. `/phase-plan` writes the approved task into its owning subphase file; no separate task
+  plan is created. Decimal files cover 0.1–3.4; lettered files cover 4A, 5A–5B and 6A–6F.
+  D326 supersedes D323/D325's split phase grammar for
   Phases 0–3: numbered phases contain decimal parts, each part contains numbered supervisor tasks,
   and each task contains checklist subtasks. The active order is 0.3 authority design, 1.6 authority
   implementation, 2.6 downstream revalidation, 3.1 dashboard, 3.2 workflow authoring/read-only
@@ -50,7 +50,7 @@ admitted **phase docs** under `docs/rebuild/` (actionable: one per admitted phas
 - `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`), recording
   "X looked safe and did Y", each naming its decision. Before kernel / driver / dashboard /
   write-safety work, search by seam/decision and read the matching entries; record root-level lessons THERE when requested; follow module lesson pointers for scoped entries.
-- `docs/rebuild/00`–`06` — active plan-document paths. D323 maps their owning work into the visible
+- `docs/rebuild/plans/phase-0/`–`phase-6/` — active plan-document folders. D323 maps their owning work into the visible
   Phase 0–6 hierarchy; D329 aligns every Phase 3 filename to its decimal part. Each phase owns its
   tasks, decisions and **exit criteria**;
   `docs/roadmap/roadmap.md` is the summary. The old `07-master-plan.md` was dissolved into them on

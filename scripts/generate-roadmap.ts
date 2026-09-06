@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { PLAN_SOURCE_PATH, parsePlan } from "./roadmap/parse-plan.js";
+import { PLAN_SOURCE_PATH, parsePlan, phaseDocPattern } from "./roadmap/parse-plan.js";
 import { bindDocsToPlan, scanDocs, type DocBindingIndex, type NodeDocBinding } from "./roadmap/scan-docs.js";
 import {
   RoadmapSchema,
@@ -29,7 +29,7 @@ import {
  * The plan is the website's single source: phases → tasks → sub-tasks, what
  * every node BUILDS (`builds:` checklist, one layer tag per line) and what it
  * NEEDS (`needs:`) — from which this script derives each node's "unlocks" and
- * the prerequisite links. The phase docs `docs/rebuild/00`–`05` stay normative;
+ * the prerequisite links. The phase docs under `docs/rebuild/plans/` stay normative;
  * plan + site + owning docs are edited together (notation: docs/roadmap/notation.md).
  *
  * The page also renders the DOC side of the binding: every
@@ -256,9 +256,9 @@ function renderNotes(notes: string[] | undefined): string {
  * The node's binding to the plan SSOT, as a muted line under the drawer title.
  * The site is ONE static file with no server behind it, so a ref is not a link
  * — it is a `title` naming the file on disk, which is what a reader needs to
- * open it. A PHASE ref reads `doc 03.1 §2.1` and titles `docs/rebuild/03.1-*.md`;
+ * open it. A PHASE ref reads `doc 3.1 §2.1` and titles `docs/rebuild/plans/phase-3/3.1-*.md`;
  * the glob stands in for the slug on purpose, because this renderer is pure and
- * reading the directory to resolve `01` → `01-build-the-spine.md` would put I/O
+ * reading the directory to resolve `1.6` → its descriptive filename would put I/O
  * in a function whose whole job is formatting. A REFERENCE ref reads
  * `ref write-safety §5` and needs no glob — an unnumbered spec IS its filename.
  */
@@ -267,7 +267,7 @@ function renderDocs(docs: DocRef[] | undefined): string {
   const refs = docs.map((ref) => {
     const reference = ref.kind === "reference";
     const slug = reference ? ref.doc.slice("ref:".length) : ref.doc;
-    const file = reference ? `docs/rebuild/reference/${slug}.md` : `docs/rebuild/${slug}-*.md`;
+    const file = reference ? `docs/rebuild/reference/${slug}.md` : `${phaseDocPattern(slug)}`;
     const title = ref.section === undefined ? file : `${file} §${ref.section}`;
     const label = `${reference ? "ref" : "doc"} ${slug}${ref.section === undefined ? "" : ` §${ref.section}`}`;
     return `<span class="docref" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;

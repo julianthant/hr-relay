@@ -13,7 +13,7 @@ phase: Phase F
 status: active
 when: 2026-08-20 | the fixture's own clock
 open: no
-doc: 03.1 §Phase summary
+doc: 3.1 §Phase summary
 
 > A phase node. A phase may omit its doc: ref; this one carries the phase doc's summary section, which every phase doc has.
 
@@ -22,7 +22,7 @@ builds:
 
 ### The fixture task {#fx-task}
 status: planned
-doc: 03.1 §The wire
+doc: 3.1 §The wire
 
 > A task node — the one arm (c) requires to carry a doc: ref.
 
