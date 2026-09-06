@@ -176,9 +176,9 @@ at its own migration**, because a store's receipt and probe policy is not proven
 
 ## Subphase plans
 
-- [Phase 2.1 · Controlled write proof](2.1-controlled-write-proof.md)
-- [Phase 2.2 · Evidence and operator trust](2.2-evidence-and-operator-trust.md)
-- [Phase 2.3 · Data and intake foundation](2.3-data-and-intake-foundation.md)
-- [Phase 2.4 · Operator services and read models](2.4-operator-services-and-read-models.md)
-- [Phase 2.5 · Closing verification](2.5-closing-verification.md)
-- [Phase 2.6 · Revalidate tails against canonical authorities](2.6-revalidate-tails-against-canonical-authorities.md)
+- [Phase 2.1 · Controlled write proof](2.1-controlled-write-proof/README.md)
+- [Phase 2.2 · Evidence and operator trust](2.2-evidence-and-operator-trust/README.md)
+- [Phase 2.3 · Data and intake foundation](2.3-data-and-intake-foundation/README.md)
+- [Phase 2.4 · Operator services and read models](2.4-operator-services-and-read-models/README.md)
+- [Phase 2.5 · Closing verification](2.5-closing-verification/README.md)
+- [Phase 2.6 · Revalidate tails against canonical authorities](2.6-revalidate-tails-against-canonical-authorities/README.md)

@@ -11,7 +11,7 @@ status against the owning phase before implementation.
 
 **The plan is the SSOT — read it, do not re-derive it.** It has three parts: the **tree** at
 `docs/roadmap/roadmap.md` (the machine-readable plan + the site's source + the governance rules), the
-admitted **phase docs** under `docs/rebuild/plans/` (actionable: one per subphase, plus phase overviews), and the
+admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folders with overviews and optional task files), and the
 **specs** in `docs/rebuild/reference/` (not actionable; cited by slug).
 
 - `docs/roadmap/roadmap.md` — the plan as written, in the roadmap notation (headings = nodes,
@@ -20,8 +20,9 @@ admitted **phase docs** under `docs/rebuild/plans/` (actionable: one per subphas
   ownership map and D263.
 - The **phase docs** under `docs/rebuild/plans/phase-N/` record tasks, evidence, decisions and exit criteria.
   [The plans index](../../../docs/rebuild/plans/README.md) routes every existing subphase and former
-  flat path. `/phase-plan` writes the approved task into its owning subphase file; no separate task
-  plan is created. Decimal files cover 0.1–3.4; lettered files cover 4A, 5A–5B and 6A–6F.
+  flat path. `/phase-plan` reads the subphase overview and writes the approved assignment into its
+  single owner: the overview for a small plan, or a linked task file for a large one. No assignment
+  is duplicated. Decimal folders cover 0.1–3.4; lettered folders cover 4A, 5A–5B and 6A–6F.
   D326 supersedes D323/D325's split phase grammar for
   Phases 0–3: numbered phases contain decimal parts, each part contains numbered supervisor tasks,
   and each task contains checklist subtasks. The active order is 0.3 authority design, 1.6 authority

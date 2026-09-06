@@ -77,8 +77,9 @@ doc: 3.1 §2.1 · ref:write-safety §5 · 0
   one or more refs joined by " · " (the split happens only before a doc token, so a section may contain " · "). A ref is `<doc>` or `<doc> §<section>`,
   and `<doc>` is one of exactly two things:
     · a PHASE doc number — `0`–`6`, decimal parts such as `1.6`, or lettered parts such as `5A`,
-      the actionable `docs/rebuild/plans/phase-N/N[.part|letter]-*.md` docs
-      (the phase digit names the folder; a bare phase number names its `README.md` overview);
+      the actionable `docs/rebuild/plans/phase-N/<subphase>/README.md` overviews
+      (a bare phase number names `phase-N/README.md`); append a slash and task/topic file stem
+      for a leaf binding such as `1.6/task-1-land-the-schema-floor`;
     · `ref:<slug>` — a spec under `docs/rebuild/reference/`, cited by name
       because it is unnumbered: `ref:write-safety`, `ref:decisions`. The
       slug is syntactically a kebab-case filename stem; whether that file
@@ -102,6 +103,10 @@ log:
 
 - **`doc:`** — WHERE this node's contracts are written; the tree's half of the two-way binding below. One line per node; a second is refused.
 - **`log:`** — WHAT each session did to this node, so the next agent reads the node's own history instead of `git log`.
+
+Task/topic file bindings resolve inside the named subphase folder only. For example,
+`doc: 1.6/task-1-land-the-schema-floor §Task 1 · Land the schema floor` names one exact
+file and heading. Paths cannot traverse folders; bare phases cannot name task files.
 
 Rules that keep the tree honest:
 - **Every `builds:` line carries a layer tag** — it is how the operator tells "not built yet" from "built and sloppy".

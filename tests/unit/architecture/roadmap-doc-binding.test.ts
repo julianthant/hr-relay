@@ -24,7 +24,7 @@
  * The arms, in the order they run:
  *
  *   (a) every `doc:` ref on every node resolves. A phase ref (`3.1`) names
- *       exactly one `docs/rebuild/plans/phase-3/3.1-*.md`; a reference ref (`ref:write-safety`)
+ *       exactly one `docs/rebuild/plans/phase-3/3.1-name/README.md`; a reference ref (`ref:write-safety`)
  *       names `docs/rebuild/reference/write-safety.md`. A `§section` matches a
  *       heading's NUMBER (`§5.4` → `## 5.4 …`, `## 5.4. …`) or its TEXT
  *       (`§Phase summary` → `## Phase summary`) — the phase docs number no
@@ -68,6 +68,7 @@ import { describe, expect, it } from "vitest";
 
 import { PHASE_DOC_NUMBERS, PLAN_SOURCE_PATH, parsePlan, phaseDocPattern } from "../../../scripts/roadmap/parse-plan.js";
 import {
+  DocRefSchema,
   RoadmapSchema,
   type DocRef,
   type DocStatusBlock,
@@ -223,12 +224,8 @@ function resolveDocFile(
     return files.has(path) ? { path } : { reason: `names no ${path}` };
   }
   const pattern = phaseDocPattern(ref.doc);
-  const prefix = pattern.split("*")[0] ?? pattern;
-  const matches = [...files.keys()].filter(
-    (path) => pattern.includes("*")
-      ? path.startsWith(prefix) && path.endsWith(".md") && !path.slice(prefix.length).includes("/")
-      : path === pattern,
-  );
+  const matcher = new RegExp(`^${pattern.split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")}$`);
+  const matches = [...files.keys()].filter((path) => matcher.test(path));
   if (matches.length === 1) return { path: matches[0] ?? "" };
   if (matches.length === 0) {
     return { reason: `names no ${phaseDocPattern(ref.doc)} (the phase docs are ${PHASE_DOC_NUMBERS.join(" ")})` };
@@ -568,13 +565,10 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     // itself is asserted: each admitted phase/subphase has exactly one canonical file, and
     // `history/` + `reviews/` describe what a doc USED to say and are skipped.
     for (const number of PHASE_DOC_NUMBERS) {
-      expect(
-        audit.scannedDocs.filter((path) => {
-          const pattern = phaseDocPattern(number);
-          return pattern.includes("*") ? path.startsWith(pattern.split("*")[0] ?? pattern) : path === pattern;
-        }),
-        `${phaseDocPattern(number)} must be scanned`,
-      ).toHaveLength(1);
+      const resolved = resolveDocFile({ kind: "phase", doc: number, raw: number }, tree.files);
+      expect(resolved, `${phaseDocPattern(number)} must resolve uniquely`).toHaveProperty("path");
+      if (!("path" in resolved)) throw new Error(resolved.reason);
+      expect(audit.scannedDocs).toContain(resolved.path);
     }
     expect(audit.scannedDocs.some((path) => path.startsWith("docs/rebuild/migrations/"))).toBe(true);
     expect(audit.scannedDocs.filter((path) => /\/(?:history|reviews|findings|guides)\//.test(path))).toEqual([]);
@@ -597,21 +591,57 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
       expect("path" in resolved, JSON.stringify(resolved)).toBe(true);
       if (!("path" in resolved)) throw new Error(resolved.reason);
       expect(tree.files.get(resolved.path)?.split("\n")[0]).toMatch(new RegExp(`^# Phase ${label.replace(".", "\\.")} · .+`));
-      expect(resolved.path).toMatch(new RegExp(`^docs/rebuild/plans/phase-${label[0]}/(?:README|${label.replace(".", "\\.")}-[a-z0-9]+(?:-[a-z0-9]+)*)\\.md$`));
+      const labelPattern = label.replace(".", "\\.");
+      const filePattern = label.length === 1 ? "README" : `${labelPattern}-[a-z0-9]+(?:-[a-z0-9]+)*/README`;
+      expect(resolved.path).toMatch(new RegExp(`^docs/rebuild/plans/phase-${label[0]}/${filePattern}\\.md$`));
     }
   });
 
   it("refuses duplicate or misplaced subphase files and noncanonical doc labels", () => {
-    const path = "docs/rebuild/plans/phase-3/3.1-the-dashboard.md";
+    const path = "docs/rebuild/plans/phase-3/3.1-the-dashboard/README.md";
     const files = new Map([[path, "# Phase 3.1 · Dashboard"]]);
     const ref: DocRef = { kind: "phase", doc: "3.1", raw: "3.1" };
     expect(resolveDocFile(ref, files)).toEqual({ path });
-    files.set("docs/rebuild/plans/phase-3/3.1-duplicate.md", "# Duplicate");
+    files.set("docs/rebuild/plans/phase-3/3.1-duplicate/README.md", "# Duplicate");
     expect(resolveDocFile(ref, files)).toHaveProperty("reason", expect.stringContaining("matches 2 phase docs"));
-    expect(resolveDocFile(ref, new Map([["docs/rebuild/plans/phase-2/3.1-misplaced.md", "# Wrong phase"]])))
+    expect(resolveDocFile(ref, new Map([["docs/rebuild/plans/phase-2/3.1-misplaced/README.md", "# Wrong phase"]])))
       .toHaveProperty("reason", expect.stringContaining("names no"));
-    for (const label of ["03.1", "0A", "4.1", "7A", "1.0"]) {
+    for (const label of ["03.1", "0A", "4.1", "7A", "1.0", "3/task-1", "3.1/../escape", "3.1/task-1/extra", "3.1/Task-1"]) {
       expect(() => parsePlan(tree.planText.replace(/^doc: .+$/m, `doc: ${label}`))).toThrow("a doc: ref");
+    }
+  });
+
+  it("resolves task and topic bindings only inside their named subphase", () => {
+    const taskDoc = "3.1/task-9-1-shell";
+    const topicDoc = "5A/settings";
+    const taskPath = "docs/rebuild/plans/phase-3/3.1-dashboard/task-9-1-shell.md";
+    const topicPath = "docs/rebuild/plans/phase-5/5A-readiness/settings.md";
+    const files = new Map([[taskPath, "# Task 9-1 · Shell"], [topicPath, "# Settings"]]);
+    for (const [doc, path] of [[taskDoc, taskPath], [topicDoc, topicPath]]) {
+      const ref = DocRefSchema.parse({ kind: "phase", doc, raw: doc });
+      expect(resolveDocFile(ref, files)).toEqual({ path });
+      expect(resolveDocFile(ref, new Map())).toHaveProperty("reason", expect.stringContaining("names no"));
+    }
+    const ref: DocRef = { kind: "phase", doc: taskDoc, raw: taskDoc };
+    expect(resolveDocFile(ref, new Map([[taskPath.replace("3.1-dashboard/", "3.1-dashboard/nested/"), "# Wrong depth"]])))
+      .toHaveProperty("reason", expect.stringContaining("names no"));
+    expect(resolveDocFile(ref, new Map([[taskPath.replace("3.1-dashboard", "3.2-dashboard"), "# Wrong subphase"]])))
+      .toHaveProperty("reason", expect.stringContaining("names no"));
+    files.set(taskPath.replace("3.1-dashboard", "3.1-duplicate"), "# Duplicate");
+    expect(resolveDocFile(ref, files)).toHaveProperty("reason", expect.stringContaining("matches 2"));
+  });
+
+  it("parses mixed overview, task and topic refs without splitting dotted task headings", () => {
+    const parsed = RoadmapSchema.parse(parsePlan(tree.planText.replace(/^doc: .+$/m,
+      "doc: 1.6 §Shared scope · 1.6/task-2-1-run-records §Task 2-1 · Run records · 5A/settings · ref:write-safety §5")));
+    expect(flattenPlan(parsed)[0]?.docs).toEqual([
+      { kind: "phase", doc: "1.6", raw: "1.6 §Shared scope", section: "Shared scope" },
+      { kind: "phase", doc: "1.6/task-2-1-run-records", raw: "1.6/task-2-1-run-records §Task 2-1 · Run records", section: "Task 2-1 · Run records" },
+      { kind: "phase", doc: "5A/settings", raw: "5A/settings" },
+      { kind: "reference", doc: "ref:write-safety", raw: "ref:write-safety §5", section: "5" },
+    ]);
+    for (const doc of ["1/task-1", "1.6/../task-1", "1.6/task-1/nested", "1.6/Task-1", "1.6/task--1"]) {
+      expect(DocRefSchema.safeParse({ kind: "phase", doc, raw: doc }).success).toBe(false);
     }
   });
 
@@ -663,14 +693,14 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     expect(violations).toHaveLength(1);
     expect(violations[0]).toContain("{#fx-task}");
     expect(violations[0]).toContain('doc: ref "3.2 §Phase summary"');
-    expect(violations[0]).toContain("names no docs/rebuild/plans/phase-3/3.2-*.md");
+    expect(violations[0]).toContain("names no docs/rebuild/plans/phase-3/3.2-*/README.md");
   });
 
   it("refuses a doc: ref whose section names no heading in the file it resolves to", () => {
     const { violations } = auditFixture("dangling-section");
     expect(violations).toHaveLength(2);
     expect(violations[0]).toContain("{#fx-task}");
-    expect(violations[0]).toContain("docs/rebuild/plans/phase-3/3.1-the-dashboard.md");
+    expect(violations[0]).toContain("docs/rebuild/plans/phase-3/3.1-the-dashboard/README.md");
     expect(violations[0]).toContain('no heading numbered or titled "Not a heading here"');
     // A section the file has under a LONGER title is the common miss — the
     // phase docs are cited by heading text and their titles carry
@@ -691,7 +721,7 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
   it("refuses a <!-- roadmap: id --> tag that names no node", () => {
     const { violations } = auditFixture("tag-names-no-node");
     expect(violations).toHaveLength(1);
-    expect(violations[0]).toContain("docs/rebuild/plans/phase-3/3.1-the-dashboard.md:");
+    expect(violations[0]).toContain("docs/rebuild/plans/phase-3/3.1-the-dashboard/README.md:");
     expect(violations[0]).toContain("<!-- roadmap: fx-ghost -->");
     expect(violations[0]).toContain(`names no node in ${PLAN_SOURCE_PATH}`);
   });
@@ -699,7 +729,7 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
   it("refuses a <!-- roadmap-status: id --> block that names no node", () => {
     const { violations } = auditFixture("status-names-no-node");
     expect(violations).toHaveLength(1);
-    expect(violations[0]).toContain("docs/rebuild/plans/phase-3/3.1-the-dashboard.md:");
+    expect(violations[0]).toContain("docs/rebuild/plans/phase-3/3.1-the-dashboard/README.md:");
     expect(violations[0]).toContain("<!-- roadmap-status: fx-ghost -->");
     expect(violations[0]).toContain(`names no node in ${PLAN_SOURCE_PATH}`);
   });

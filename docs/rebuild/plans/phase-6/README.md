@@ -165,9 +165,9 @@ own rules forbid — they would be findings first.
 
 ## Subphase plans
 
-- [Phase 6A · Controlled desktop updates](6A-controlled-desktop-updates.md)
-- [Phase 6B · Application shell](6B-application-shell.md)
-- [Phase 6C · Worker lifecycle](6C-worker-lifecycle.md)
-- [Phase 6D · Credentials and keychain](6D-credentials-and-keychain.md)
-- [Phase 6E · Signed installers](6E-signed-installers.md)
-- [Phase 6F · Packaged-app proof](6F-packaged-app-proof.md)
+- [Phase 6A · Controlled desktop updates](6A-controlled-desktop-updates/README.md)
+- [Phase 6B · Application shell](6B-application-shell/README.md)
+- [Phase 6C · Worker lifecycle](6C-worker-lifecycle/README.md)
+- [Phase 6D · Credentials and keychain](6D-credentials-and-keychain/README.md)
+- [Phase 6E · Signed installers](6E-signed-installers/README.md)
+- [Phase 6F · Packaged-app proof](6F-packaged-app-proof/README.md)

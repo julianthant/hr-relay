@@ -457,7 +457,7 @@ log:
 #### 1 · Land the schema floor {#p1f-floor}
 status: done
 date: 2026-09-04
-doc: 1.6 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §2.3
+doc: 1.6/task-1-land-the-schema-floor · 1.6 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §2.3
 
 builds:
 - [x] BE one migration `v30 = floor` carrying every D332 schema step (`deleted_runs` ordinals + `ordinal_source` with the re-created trigger, `checkpoint_payloads_never_deleted`, `protected_settings_current`, `authority_upgrades`) and the frozen D290 27/28/29 literals in the same commit as the `CURRENT` bump
@@ -472,7 +472,7 @@ log:
 #### 2-1 · Implement the canonical run-record service {#p1f-run-store}
 status: done
 date: 2026-09-04
-doc: 1.6 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.3 · ref:execution-and-sessions §3
+doc: 1.6/task-2-1-implement-the-canonical-run-record-service · 1.6 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.3 · ref:execution-and-sessions §3
 
 builds:
 - [x] BE `src/core/run-record-service.ts` + the lifecycle repositories: the §D330.5 operation set with named refusals, three-way `read`, ordered `list`, the two-source watermark
@@ -491,7 +491,7 @@ log:
 #### 2-2 · Implement the settings catalog and protected root {#p1f-settings-store}
 status: done
 date: 2026-09-05
-doc: 1.6 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2 · ref:frontend-backend-integration §4
+doc: 1.6/task-2-2-implement-the-settings-catalog-and-protected-root · 1.6 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2 · ref:frontend-backend-integration §4
 
 builds:
 - [x] BE one leaf catalog (`src/domain/config/catalog.ts`) and the revisioned `.tracker/settings/` root with two documents, one lock, two CAS arms and write-only protected values
@@ -510,7 +510,7 @@ log:
 
 #### 3 · Cut over executor and worker lifecycle writers {#p1f-run-writers}
 status: done
-doc: 1.6 §1.6 · Implement canonical run and settings authorities · ref:workflow-model §4 · ref:execution-and-sessions §3 · ref:frontend-backend-integration §3.4
+doc: 1.6/task-3-cut-over-executor-and-worker-lifecycle-writers · 1.6 §1.6 · Implement canonical run and settings authorities · ref:workflow-model §4 · ref:execution-and-sessions §3 · ref:frontend-backend-integration §3.4
 
 builds:
 - [x] BE route queue claim, heartbeat, executor transition, recovery requeue, cancellation settlement and terminal publication through the run service (`run-record-service`, `worker-loop`, `run-executor`, `write-sequencer`, `worker/compose`); the worker side holds no lifecycle repository mutator
@@ -531,7 +531,7 @@ log:
 
 #### 4 · Cut over operator run commands, Rerun planning, and archive/delete writers {#p1f-run-commands}
 status: done
-doc: 1.6 §1.6 · Implement canonical run and settings authorities · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §9.1 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.4 · ref:data-intake-and-edit-data §6 · ref:operator-trust §5.7
+doc: 1.6/task-4-cut-over-operator-run-commands-rerun-planning-and-archive-delete-writers · 1.6 §1.6 · Implement canonical run and settings authorities · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §9.1 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.4 · ref:data-intake-and-edit-data §6 · ref:operator-trust §5.7
 
 builds:
 - [x] BE route dashboard/dry-run start, intake fan-out creation, internal retry/restart compatibility, cancel, rename, gate/write continuation, archive, relaunch, terminal-only delete/tombstone, bulk, and evidence retention through the run service (`command-kernel`, `run-fan-out`, `command-service`, and the shared post-commit `run.queued` publication)
@@ -555,7 +555,7 @@ log:
 
 #### 5 · Cut over settings mutation and runtime resolution {#p1f-settings-consumers}
 status: done
-doc: 1.6 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
+doc: 1.6/task-5-cut-over-settings-mutation-and-runtime-resolution · 1.6 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
 
 builds:
 - [x] BE route secure bootstrap, worker composition, browser/login, workflow defaults, and preflight inputs through the catalog and the protected store; dashboard presentation remains 3.1 work (the eight-leaf editor inventory stays served, A8)
@@ -571,7 +571,7 @@ log:
 
 #### 6 · Consolidate settings in SQLite and prove upgrade/recovery {#p1f-migration-proof}
 status: planned
-doc: 1.6 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:dashboard-surfaces §2.5 · ref:guards-and-tests §5.2
+doc: 1.6/task-6-consolidate-settings-in-sqlite-and-prove-upgrade-recovery · 1.6 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:dashboard-surfaces §2.5 · ref:guards-and-tests §5.2
 
 > D336 replaces the ordinary-settings file/SQLite transaction with one database authority. Credentials stay independent. The approved architecture now needs a focused Task-6 plan over the integrated Task-5 code.
 
@@ -592,7 +592,7 @@ log:
 
 #### 7 · Close the rebuilt foundation {#p1f-close}
 status: planned
-doc: 1.6 §1.6 · Implement canonical run and settings authorities · 2.6 §2.6 · 3.1 §Reopened completion tasks
+doc: 1.6/task-7-close-the-rebuilt-foundation · 1.6 §1.6 · Implement canonical run and settings authorities · 2.6 §2.6 · 3.1 §Reopened completion tasks
 
 builds:
 - [ ] PROOF typecheck, lint, coverage, architecture, manifest, stores-catalog, parity (unchanged), storage-doctor on the upgraded root, and both workflows' T1b live manifests with exact zero write-authority deltas
@@ -1082,7 +1082,7 @@ log:
 #### 1 · Build the shared dashboard surfaces {#track-b}
 status: done
 chip: B1–B8 all landed · 08-19 → 20
-doc: 3.1 §Task 1 · Build the shared dashboard surfaces · ref:frontend-backend-integration §3.2 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §9.5.1 · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.3 · ref:write-safety §14.11 · ref:operator-trust §5.9 · ref:operator-trust §2.3.5 · ref:operator-trust §2.3.7
+doc: 3.1/task-1-build-the-shared-dashboard-surfaces §Task 1 · Build the shared dashboard surfaces · ref:frontend-backend-integration §3.2 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §9.5.1 · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.3 · ref:write-safety §14.11 · ref:operator-trust §5.9 · ref:operator-trust §2.3.5 · ref:operator-trust §2.3.7
 
 > Separations as the forcing function; the findings ledger swept to zero-or-decided — the definition of "frontend done".
 
@@ -1108,7 +1108,7 @@ log:
 #### 2 · Prove the dashboard against a real run {#track-c}
 status: done
 chip: done 08-20 — §9.22 + the five same-day fixes + the ONE re-freeze
-doc: 3.1 §Task 2 · Prove the dashboard against a real run · ref:workflow-model §1.1 · ref:dashboard-surfaces §2.3 · ref:frontend-backend-integration §7.1
+doc: 3.1/task-2-prove-the-dashboard-against-a-real-run §Task 2 · Prove the dashboard against a real run · ref:workflow-model §1.1 · ref:dashboard-surfaces §2.3 · ref:frontend-backend-integration §7.1
 
 > One pass: the REAL dashboard drives a REAL composed separations dry run — plan → start → gate parks → approve through the B1 ceremony → resume → preview terminal → archive — every UI assertion paired against a direct authority-database check. Closes with the ONE deliberate parity re-freeze. Re-runs over the real commits as Track A's final evidence. Already found and fixed two projection defects on the real run (D258/D259).
 
@@ -1133,7 +1133,7 @@ log:
 status: done
 date: D264 · audit 2026-08-20
 chip: D1–D5 + D11 landed · D4/D5 measured · D6–D10 proposed
-doc: 3.1 §Task 3 · Harden shared status, commands, and read budgets · ref:frontend-backend-integration §2 · ref:frontend-backend-integration §4 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §7.4 · ref:workflow-model §1.2
+doc: 3.1/task-3-harden-shared-status-commands-and-read-budgets §Task 3 · Harden shared status, commands, and read budgets · ref:frontend-backend-integration §2 · ref:frontend-backend-integration §4 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §7.4 · ref:workflow-model §1.2
 
 > From the source-pinned 2026-08-20 architecture audit (`9993ab39^:docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Eleven ordered moves, none a rewrite, sequenced after Track C and before the next workflow leans on the dashboard. **Ruled by D264:** the track sits here under the dashboard defaults; D1–D5 are planned; D6–D10 stay proposed behind one named trigger; and §3.5 is answered — the descriptor registry LEAVES the browser bundle as row D11, amending D251. D4 and D5 double as the FIRST measurement of ref frontend-backend-integration §7.4's performance budgets, whose recorded numbers become the non-regression gates for every later workflow.
 
@@ -1183,7 +1183,7 @@ status: done
 date: fidelity re-audit 2026-08-21 · ratified 2026-08-26
 size: L
 chip: D272–D276 ratified · implementations/proofs open
-doc: 3.1 §Task 4 · Close demo fidelity and parity
+doc: 3.1/task-4-close-demo-fidelity-and-parity §Task 4 · Close demo fidelity and parity
 
 > The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN in the historical audit — nothing is dismissed or "modified" without a citation. Three source-pinned ledgers audited exactly 1,956 elements/rows at HEAD on 2026-08-21 (`9993ab39^:docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `9993ab39^:docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` 348 · `9993ab39^:docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` 1,119); a mechanical recount after the current ports, Activity AC24, Explorer EX5 and shell A46 gives 775 exact rows. The six sheets' 49 choices are ratified as D272–D276; ledger 3's 238 OPEN row marks / 30 groups remain historical audit counts, while their resulting implementations and proofs are current work.
 
@@ -1216,7 +1216,7 @@ status: done
 date: R12 · 2026-08-20
 size: S
 chip: D267 landed · live generations 3 → 4 serialized
-doc: 3.1 §Task 5 · Serialize Duo login ceremonies · ref:execution-and-sessions §4.1 · ref:execution-and-sessions §4.2 · ref:execution-and-sessions §10
+doc: 3.1/task-5-serialize-duo-login-ceremonies §Task 5 · Serialize Duo login ceremonies · ref:execution-and-sessions §4.1 · ref:execution-and-sessions §4.2 · ref:execution-and-sessions §10
 
 > A durable per-credential lease in authority serializes EVERY Duo ceremony — from "navigate to SSO" until the content verifier proves the session — across every worker and every system. TTL is `sessionAcquireMs` + grace; waiters are bounded and refuse loud naming the holder; a refused assertion poison-closes and retries ONCE under the same lease on a FRESH profile, then fails naming the profile; `defineVerifiedLoginRecipe` takes a lease token only the lease store mints, pinned by a guard with a violating fixture. The hazard exists TODAY — two workflows' workers cold-starting together share one credential's server-side counter (D243).
 
@@ -1239,7 +1239,7 @@ log:
 status: done
 date: R11 · 2026-08-20
 size: L
-doc: 3.1 §Task 6 · Manage worker pools and run sessions · ref:execution-and-sessions §1 · ref:execution-and-sessions §3 · ref:execution-and-sessions §7.1 · ref:execution-and-sessions §11
+doc: 3.1/task-6-manage-worker-pools-and-run-sessions §Task 6 · Manage worker pools and run sessions · ref:execution-and-sessions §1 · ref:execution-and-sessions §3 · ref:execution-and-sessions §7.1 · ref:execution-and-sessions §11
 
 > A SESSION is a dashboard-started group of N runs. Every workflow follows the same browser-profile recipe and every worker owns its own profile INSTANCE (doc 05's `(worker, system, instance, configFingerprint)` partition); N workers per workflow, spawned and stopped from the dashboard. Sessions never share information and workers never message each other — they know what the others are doing through AUTHORITY only: run claims, session leases, write fences, the concurrency matrix. The dashboard shows the session and what each of its workers is doing.
 
@@ -1266,7 +1266,7 @@ log:
 status: done
 date: operator 2026-08-20
 size: M
-doc: 3.1 §Task 7 · Record observed page facts · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.1 · ref:operator-trust §2.3
+doc: 3.1/task-7-record-observed-page-facts §Task 7 · Record observed page facts · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.1 · ref:operator-trust §2.3
 
 > The log stream quotes the facts each task RECORDED — the provenance points: field, value, direction, observed-at, with the SYSTEM resolved through `dataOrigins` rather than carried on the point (D252/D106) — redacted by the declared evidence classification, and never a second scrape. Transaction roles preserve each call's observation instant; probe/prepare/verify stream synchronously, while commit flushes after callback settlement so instrumentation cannot interrupt fence→click. The log emission path and the log structure are rebuilt around recorded observations; the scope may widen when the operator reviews phase 3a.
 
@@ -1298,7 +1298,7 @@ log:
 #### 8 · Re-baseline dashboard truth and acceptance {#dash-truth-reset}
 status: planned
 date: serial gate 0 · worktree r08-truth-reset
-doc: 3.1 §Task 8 · Re-baseline dashboard truth and acceptance · ref:dashboard-surfaces · ref:frontend-backend-integration
+doc: 3.1/task-8-re-baseline-dashboard-truth-and-acceptance §Task 8 · Re-baseline dashboard truth and acceptance · ref:dashboard-surfaces · ref:frontend-backend-integration
 
 builds:
 - [ ] PROOF inventory every visible control, route, served field, command arm, producer, and current defect against production code
@@ -1313,7 +1313,7 @@ log:
 #### 9-1 · Finish the shell, navigation, and accessibility baseline {#dash-shell}
 status: planned
 date: parallel wave 9 · worktree r09-1-shell
-doc: 3.1 §Task 9-1 · Finish the shell, navigation, and accessibility baseline · ref:dashboard-surfaces §3 · ref:frontend-backend-integration §7
+doc: 3.1/task-9-1-finish-the-shell-navigation-and-accessibility-baseline §Task 9-1 · Finish the shell, navigation, and accessibility baseline · ref:dashboard-surfaces §3 · ref:frontend-backend-integration §7
 
 builds:
 - [ ] FE finish top bar, workflow rail, route state, status/help/theme controls, desktop resize/zoom containment, and empty/error states (D340)
@@ -1329,7 +1329,7 @@ log:
 #### 9-2 · Finish Settings over the canonical settings authority {#dash-settings}
 status: planned
 date: parallel wave 9 · worktree r09-2-settings
-doc: 3.1 §Task 9-2 · Finish Settings over the canonical settings authority · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4 · ref:guards-and-tests §5.2
+doc: 3.1/task-9-2-finish-settings-over-the-canonical-settings-authority §Task 9-2 · Finish Settings over the canonical settings authority · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4 · ref:guards-and-tests §5.2
 
 > D336: ordinary settings are SQLite-owned; protected writes/readback are independent credential operations. Keep the catalog, revision/conflict, reset and restart behavior.
 
@@ -1348,7 +1348,7 @@ log:
 #### 9-3 · Finish basic storage health and recovery access {#dash-storage}
 status: planned
 date: parallel wave 9 · worktree r09-3-storage
-doc: 3.1 §Task 9-3 · Finish basic storage health and recovery access · ref:operator-trust §1 · ref:frontend-backend-integration §10 · ref:dashboard-surfaces §2.5
+doc: 3.1/task-9-3-finish-basic-storage-health-and-recovery-access §Task 9-3 · Finish basic storage health and recovery access · ref:operator-trust §1 · ref:frontend-backend-integration §10 · ref:dashboard-surfaces §2.5
 
 > D336 supplies the revised SQLite-settings recovery contract. D339 keeps basic health and access to recovery commands in release scope; new advanced recovery interfaces are deferred until needed.
 
@@ -1368,7 +1368,7 @@ log:
 #### 9-4 · Finish Workflow Explorer and catalog editing {#dash-explorer}
 status: planned
 date: parallel wave 9 · worktree r09-4-explorer
-doc: 3.1 §Task 9-4 · Finish Workflow Explorer and catalog editing · ref:operator-trust §5.4
+doc: 3.1/task-9-4-finish-workflow-explorer-and-catalog-editing §Task 9-4 · Finish Workflow Explorer and catalog editing · ref:operator-trust §5.4
 
 builds:
 - [ ] BOTH preserve graph/catalog reads and validated presentation preview/diff/revision/hot-apply behavior; workflow code remains source-authored
@@ -1385,7 +1385,7 @@ log:
 #### 10-1 · Repair date navigation and the date picker {#dash-date-navigation}
 status: planned
 date: parallel wave 10 · worktree r10-1-date-navigation
-doc: 3.1 §Task 10-1 · Repair date navigation and the date picker · ref:clock-config-secrets §1 · ref:dashboard-surfaces §3
+doc: 3.1/task-10-1-repair-date-navigation-and-the-date-picker §Task 10-1 · Repair date navigation and the date picker · ref:clock-config-secrets §1 · ref:dashboard-surfaces §3
 
 builds:
 - [ ] BOTH make selected date, URL, loaded day snapshot, timezone, Today, next/previous, keyboard input, and browser history one coherent state machine
@@ -1401,7 +1401,7 @@ log:
 #### 10-2 · Finish sessions, worker pools, and browser lifecycle {#dash-sessions}
 status: planned
 date: parallel wave 10 · worktree r10-2-sessions
-doc: 3.1 §Task 10-2 · Finish sessions, worker pools, and browser lifecycle · ref:execution-and-sessions §3 · ref:execution-and-sessions §11
+doc: 3.1/task-10-2-finish-sessions-worker-pools-and-browser-lifecycle §Task 10-2 · Finish sessions, worker pools, and browser lifecycle · ref:execution-and-sessions §3 · ref:execution-and-sessions §11
 
 builds:
 - [ ] BOTH make plan/spawn/pause/resume/stop/refresh/reopen controls execute real worker-supervisor effects
@@ -1418,7 +1418,7 @@ log:
 #### 10-3 · Finish notifications and delivery behavior {#dash-notifications}
 status: planned
 date: parallel wave 10 · worktree r10-3-notifications
-doc: 3.1 §Task 10-3 · Finish notifications and delivery behavior · ref:operator-trust §4 · ref:dashboard-surfaces §2.6
+doc: 3.1/task-10-3-finish-notifications-and-delivery-behavior §Task 10-3 · Finish notifications and delivery behavior · ref:operator-trust §4 · ref:dashboard-surfaces §2.6
 
 builds:
 - [ ] BE publish every declared trigger, including run-failed, subject-mismatch, write-parked, repeating-failure, verified-done, storage, and backfill-gap
@@ -1434,7 +1434,7 @@ log:
 #### 10-4 · Finish Intake surfaces {#dash-intake-edit}
 status: planned
 date: parallel wave 10 · worktree r10-4-intake
-doc: 3.1 §Task 10-4 · Finish Intake surfaces · ref:data-intake-and-edit-data · ref:frontend-backend-integration §5.1.7
+doc: 3.1/task-10-4-finish-intake-surfaces §Task 10-4 · Finish Intake surfaces · ref:data-intake-and-edit-data · ref:frontend-backend-integration §5.1.7
 
 builds:
 - [ ] BOTH complete upload/classify/OCR/map/validate/reject/prepare/manifest/rerun-diff flows over existing services
@@ -1452,7 +1452,7 @@ log:
 #### 11-1 · Finish Setup and preflight {#dash-setup}
 status: planned
 date: parallel wave 11 · worktree r11-1-setup
-doc: 3.1 §Task 11-1 · Finish Setup and preflight · ref:frontend-backend-integration §5.1 · ref:operator-trust §3 · ref:clock-config-secrets §3
+doc: 3.1/task-11-1-finish-setup-and-preflight §Task 11-1 · Finish Setup and preflight · ref:frontend-backend-integration §5.1 · ref:operator-trust §3 · ref:clock-config-secrets §3
 
 builds:
 - [ ] BOTH derive setup state from the settings catalog, storage, workers, browsers, and workflow prerequisites
@@ -1471,7 +1471,7 @@ log:
 #### 11-2 · Make Run and Rerun enqueue real work {#dash-run-modal}
 status: planned
 date: parallel wave 11 · worktree r11-2-run-start
-doc: 3.1 §Task 11-2 · Make Run and Rerun enqueue real work · ref:workflow-model §5.6 · ref:frontend-backend-integration §5.1.1 · ref:data-intake-and-edit-data §6 · ref:dashboard-surfaces §9.1 · ref:dashboard-surfaces §9.2
+doc: 3.1/task-11-2-make-run-and-rerun-enqueue-real-work §Task 11-2 · Make Run and Rerun enqueue real work · ref:workflow-model §5.6 · ref:frontend-backend-integration §5.1.1 · ref:data-intake-and-edit-data §6 · ref:dashboard-surfaces §9.1 · ref:dashboard-surfaces §9.2
 
 builds:
 - [ ] FE use one Rerun action: failed/interrupted sources default to remaining steps, successful sources to all steps; allow freely changed selections. Selected previously submitted transactions show Cancel / Confirm; warning Confirm advances to Values only, and final submission carries 1.6.4's D335 acknowledgment
@@ -1491,7 +1491,7 @@ log:
 #### 11-3 · Finish Archive, versions, relaunch, and deletion {#dash-archive}
 status: planned
 date: parallel wave 11 · worktree r11-3-archive
-doc: 3.1 §Task 11-3 · Finish Archive, versions, relaunch, and deletion · ref:dashboard-surfaces §9.5 · ref:operator-trust §5.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5
+doc: 3.1/task-11-3-finish-archive-versions-relaunch-and-deletion §Task 11-3 · Finish Archive, versions, relaunch, and deletion · ref:dashboard-surfaces §9.5 · ref:operator-trust §5.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5
 
 builds:
 - [ ] BOTH derive terminal/archive/tombstone lists and frozen sections from the same canonical run authority
@@ -1508,7 +1508,7 @@ log:
 #### 12-1 · Finish queue rows, commands, and deletion {#dash-queue}
 status: planned
 date: parallel wave 12 · worktree r12-1-queue
-doc: 3.1 §Task 12-1 · Finish queue rows, commands, and deletion · ref:dashboard-surfaces §4 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §9.2
+doc: 3.1/task-12-1-finish-queue-rows-commands-and-deletion §Task 12-1 · Finish queue rows, commands, and deletion · ref:dashboard-surfaces §4 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §9.2
 
 builds:
 - [ ] BOTH render ordering, status, identity, session, worker, progress, outcome, constraints, evidence, and group/member facts from the canonical run record
@@ -1526,7 +1526,7 @@ log:
 #### 12-2 · Finish run detail and the live timeline {#dash-run-detail}
 status: planned
 date: parallel wave 12 · worktree r12-2-run-detail
-doc: 3.1 §Task 12-2 · Finish run detail and the live timeline · ref:dashboard-surfaces §5 · ref:dashboard-surfaces §9.2
+doc: 3.1/task-12-2-finish-run-detail-and-the-live-timeline §Task 12-2 · Finish run detail and the live timeline · ref:dashboard-surfaces §5 · ref:dashboard-surfaces §9.2
 
 builds:
 - [ ] BOTH render task groups, attempts, replay/skipped/blocked arms, live duration, systems, provenance, and focusable timeline segments
@@ -1544,7 +1544,7 @@ log:
 #### 12-3 · Finish Activity, search, and export {#dash-activity}
 status: planned
 date: parallel wave 12 · worktree r12-3-activity
-doc: 3.1 §Task 12-3 · Finish Activity, search, and export · ref:operator-trust §5.8 · ref:dashboard-surfaces §9.8
+doc: 3.1/task-12-3-finish-activity-search-and-export §Task 12-3 · Finish Activity, search, and export · ref:operator-trust §5.8 · ref:dashboard-surfaces §9.8
 
 builds:
 - [ ] BOTH search/filter across dates, workflows, subjects, statuses, actors, versions, failures, and evidence without scanning unbounded state
@@ -1560,7 +1560,7 @@ log:
 #### 12-4 · Finish production startup, serving, and shutdown {#dash-production-runtime}
 status: planned
 date: parallel wave 12 · worktree r12-4-production-runtime
-doc: 3.1 §Task 12-4 · Finish production startup, serving, and shutdown · ref:frontend-backend-integration §6.9 · ref:execution-and-sessions
+doc: 3.1/task-12-4-finish-production-startup-serving-and-shutdown §Task 12-4 · Finish production startup, serving, and shutdown · ref:frontend-backend-integration §6.9 · ref:execution-and-sessions
 
 builds:
 - [ ] BOTH serve the production bundle, admit one runtime, report startup failures, and expose truthful readiness
@@ -1578,7 +1578,7 @@ log:
 #### 13-1 · Finish Context, Data, Attempts, and provenance readback {#dash-context-data}
 status: planned
 date: parallel wave 13 · worktree r13-1-context-data
-doc: 3.1 §Task 13-1 · Finish Context, Data, Attempts, and provenance readback · ref:dashboard-surfaces §5 · ref:data-intake-and-edit-data §6
+doc: 3.1/task-13-1-finish-context-data-attempts-and-provenance-readback §Task 13-1 · Finish Context, Data, Attempts, and provenance readback · ref:dashboard-surfaces §5 · ref:data-intake-and-edit-data §6
 
 builds:
 - [ ] BOTH render declared inputs, origins, directions, redaction, checkpoint provenance, attempt history, and D334 prior-run value coordinates without a mutable source editor
@@ -1595,7 +1595,7 @@ log:
 #### 13-2 · Finish logs, observations, and captures {#dash-logs}
 status: planned
 date: parallel wave 13 · worktree r13-2-logs
-doc: 3.1 §Task 13-2 · Finish logs, observations, and captures · ref:operator-trust §2.3 · ref:dashboard-surfaces §5
+doc: 3.1/task-13-2-finish-logs-observations-and-captures §Task 13-2 · Finish logs, observations, and captures · ref:operator-trust §2.3 · ref:dashboard-surfaces §5
 
 builds:
 - [ ] BE compose the missing production note and line-kind producers without inventing page facts
@@ -1612,7 +1612,7 @@ log:
 #### 13-3 · Finish receipts and failure records {#dash-receipts-failures}
 status: planned
 date: parallel wave 13 · worktree r13-3-receipts-failures
-doc: 3.1 §Task 13-3 · Finish receipts and failure records · ref:operator-trust §5 · ref:write-safety §6
+doc: 3.1/task-13-3-finish-receipts-and-failure-records §Task 13-3 · Finish receipts and failure records · ref:operator-trust §5 · ref:write-safety §6
 
 builds:
 - [ ] BOTH render derived receipt identity, action evidence, write-state proof, failure fingerprint, causal record, recovery, and unknown outcomes
@@ -1629,7 +1629,7 @@ log:
 #### 13-4 · Finish gates and parked-write resolution {#dash-gates}
 status: planned
 date: parallel wave 13 · worktree r13-4-gates
-doc: 3.1 §Task 13-4 · Finish gates and parked-write resolution · ref:write-safety §14 · ref:dashboard-surfaces §5
+doc: 3.1/task-13-4-finish-gates-and-parked-write-resolution §Task 13-4 · Finish gates and parked-write resolution · ref:write-safety §14 · ref:dashboard-surfaces §5
 
 builds:
 - [ ] BOTH render active and settled gate evidence, freshness, actor, command version, write plan, conflict, rejection, and machine-verified absence of gate
@@ -1647,7 +1647,7 @@ log:
 status: proposed
 chip: deferred · not a release blocker
 date: concrete workflow need or explicit post-release request
-doc: 3.1 §Task 14 · Generic Review and People pages — deferred until needed · ref:frontend-backend-integration §10
+doc: 3.1/task-14-generic-review-and-people-pages-deferred-until-needed §Task 14 · Generic Review and People pages — deferred until needed · ref:frontend-backend-integration §10
 
 > D339 defers generic pages. A required workflow keeps its actual Review/People journey in scope; speculative generic page contracts do not hold the release.
 
@@ -1665,7 +1665,7 @@ log:
 #### 15 · Prove realtime convergence and reconnect {#dash-realtime}
 status: planned
 date: serial gate 15 · worktree r15-realtime
-doc: 3.1 §Task 15 · Prove realtime convergence and reconnect · ref:frontend-backend-integration §3.5 · ref:dashboard-surfaces §1
+doc: 3.1/task-15-prove-realtime-convergence-and-reconnect §Task 15 · Prove realtime convergence and reconnect · ref:frontend-backend-integration §3.5 · ref:dashboard-surfaces §1
 
 builds:
 - [ ] BE publish every declared run-detail/log/review/people/artifact topic or remove the false declaration
@@ -1698,7 +1698,7 @@ log:
 #### 16 · Meet large-data and responsiveness budgets {#dash-performance}
 status: planned
 date: serial gate 16 · worktree r16-performance
-doc: 3.1 §Task 16 · Meet large-data and responsiveness budgets · ref:frontend-backend-integration §7.4
+doc: 3.1/task-16-meet-large-data-and-responsiveness-budgets §Task 16 · Meet large-data and responsiveness budgets · ref:frontend-backend-integration §7.4
 
 builds:
 - [ ] BOTH bound database, filesystem, projection, serialization, render, and memory work for large queues, logs, archives, groups, and search
@@ -1714,7 +1714,7 @@ log:
 #### 17 · Build the complete dashboard proof infrastructure {#dash-proof-infrastructure}
 status: planned
 date: serial gate 17 · worktree r17-proof-infrastructure
-doc: 3.1 §Task 17 · Build the complete dashboard proof infrastructure · ref:guards-and-tests §3 · ref:frontend-backend-integration §7
+doc: 3.1/task-17-build-the-complete-dashboard-proof-infrastructure §Task 17 · Build the complete dashboard proof infrastructure · ref:guards-and-tests §3 · ref:frontend-backend-integration §7
 
 builds:
 - [ ] PROOF T2 component/feature scenarios cover every generic surface, state arm, command result, and accessibility invariant
@@ -1732,7 +1732,7 @@ log:
 #### 18 · Execute integrated dashboard acceptance and close 3.1 {#dash-acceptance}
 status: planned
 date: serial gate 18 · worktree r18-acceptance
-doc: 3.1 §Task 18 · Execute integrated dashboard acceptance and close 3.1 · 3.1 §Exit criteria
+doc: 3.1/task-18-execute-integrated-dashboard-acceptance-and-close-3-1 §Task 18 · Execute integrated dashboard acceptance and close 3.1 · 3.1 §Exit criteria
 
 builds:
 - [ ] PROOF execute Task 8's unchanged acceptance matrix across run, queue, settings, setup, session, notification, date, trust, archive, Explorer, intake, and recovery journeys
@@ -2203,7 +2203,7 @@ phase: Phase 5
 status: planned
 when: after Phase 4 | readiness before the one authority switch
 chip: close readiness, then switch once
-doc: 5 §Phase summary · 5A §Shelf summary · 0.2 §Task 4 · Fix the size model and delivery tiers · ref:workflow-model §1.6.2 · 5B §Risk register (top sequencing risks)
+doc: 5 §Phase summary · 5A §Shelf summary · 0.2 §Task 4 · Fix the size model and delivery tiers · ref:workflow-model §1.6.2 · 5B/risk-register-top-sequencing-risks §Risk register (top sequencing risks)
 open: no
 
 > Phase 5 closes every cutover-relevant readiness gap, then performs one all-at-once authority switch. Nothing is silently dropped: every deferred item has a named disposition, and desktop-only update work is carried forward to Phase 6.
@@ -2223,7 +2223,7 @@ doc: 5A §Shelf summary
 
 #### Run the built dashboard without the dev server {#def-byte-path}
 status: planned
-doc: 5A §Run the built dashboard without the dev server · ref:frontend-backend-integration §6.9
+doc: 5A/run-the-built-dashboard-without-the-dev-server §Run the built dashboard without the dev server · ref:frontend-backend-integration §6.9
 
 > BFF static bytes for the ordinary local operator dashboard. D189, amended D294; "production" here means LOCAL (D193).
 
@@ -2241,7 +2241,7 @@ log:
 
 #### Edit a workflow's presentation / policy without a code change {#def-explorer-edit}
 status: planned
-doc: 5A §Edit a workflow's presentation / policy without a code change · ref:operator-trust §5.1 · ref:operator-trust §5.3 · ref:operator-trust §5.4 · ref:operator-trust §5.5 · ref:operator-trust §5.6
+doc: 5A/edit-a-workflow-s-presentation-policy-without-a-code-change §Edit a workflow's presentation / policy without a code change · ref:operator-trust §5.1 · ref:operator-trust §5.3 · ref:operator-trust §5.4 · ref:operator-trust §5.5 · ref:operator-trust §5.6
 
 > D283/DCC4–DCC5 complete existing-workflow authority: label/icon/category hot apply; timeline/grouping and notification are named unavailable without owners; policy and Edit Data yield strict source briefs. D186 still governs new-workflow authoring and broader design work: an editor shaped by a sample of one workflow would be wrong.
 
@@ -2257,7 +2257,7 @@ log:
 #### A record-sanity-check advisory panel {#def-sanity-check}
 status: never
 chip: retired 2026-08-18 (D192)
-doc: 5A §A record-sanity-check advisory panel · ref:operator-trust §4.4.2 · ref:guards-and-tests §3.11
+doc: 5A/a-record-sanity-check-advisory-panel §A record-sanity-check advisory panel · ref:operator-trust §4.4.2 · ref:guards-and-tests §3.11
 
 > RETIRED by the operator 2026-08-18 — no AI feature. D192's deferral condition ("renders beside the order-8 ALWAYS-GATE") was met DETERMINISTICALLY by the §14.2 packet's server-computed comparisons; the deterministic comparison IS the sanity check. Its two siblings retired with it.
 
@@ -2271,7 +2271,7 @@ log:
 #### Edit settings in the dashboard {#def-settings}
 status: active
 chip: bounded Settings + preflight served
-doc: 5A §Edit settings in the dashboard · ref:clock-config-secrets §3 · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §2.4
+doc: 5A/edit-settings-in-the-dashboard §Edit settings in the dashboard · ref:clock-config-secrets §3 · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §2.4
 
 > The `apply-settings` authority and the Settings surface are live: the browser consumes a server-listed resolver-owned editable inventory and emits one revision/schema/patch-bound atomic command. Environment-owned values remain locked, persisted readback names restart-required, and rerun preflight binds the active runtime identity. Phase 3 milestone, no single trigger; listed under cross-cutting above.
 
@@ -2301,7 +2301,7 @@ log:
 
 #### Trust UCPath / ServiceNow wait-before-negative-read windows {#def-propagation}
 status: planned
-doc: 5A §Trust UCPath / ServiceNow wait-before-negative-read windows · ref:write-safety §4 · ref:write-safety §4.2 · ref:workflow-model §1.6.2
+doc: 5A/trust-ucpath-servicenow-wait-before-negative-read-windows §Trust UCPath / ServiceNow wait-before-negative-read windows · ref:write-safety §4 · ref:write-safety §4.2 · ref:workflow-model §1.6.2
 
 > Rebuild-verified propagation measurements replace ported legacy knowledge at each system's own admitted live probe (`ref workflow-model` §1.6.2).
 
@@ -2320,7 +2320,7 @@ log:
 
 #### Search runs across dates / view screenshots / export Excel {#def-search-export}
 status: planned
-doc: 5A §Search runs across dates / view screenshots / export Excel · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §2.2 · ref:operator-trust §2.4
+doc: 5A/search-runs-across-dates-view-screenshots-export-excel §Search runs across dates / view screenshots / export Excel · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §2.2 · ref:operator-trust §2.4
 
 > DCR3–DCR5 deliver current-corpus search authority/transport, its Separations Top Bar surface,
 > and actor-attributed evidenced XLSX. DCR6's automatic receipt comparison was delivered historically
@@ -2353,7 +2353,7 @@ log:
 #### Auto-purge diagnostics on a measured schedule · reclaim unreferenced artifact bytes {#def-retention}
 status: never
 chip: won't build unless you ask
-doc: 5A §Auto-purge diagnostics on a measured schedule · reclaim unreferenced artifact bytes · ref:operator-trust §2.2 · ref:dashboard-surfaces §2.1 · ref:guards-and-tests §3.7
+doc: 5A/auto-purge-diagnostics-on-a-measured-schedule-reclaim-unreferenced-artifact-bytes §Auto-purge diagnostics on a measured schedule · reclaim unreferenced artifact bytes · ref:operator-trust §2.2 · ref:dashboard-surfaces §2.1 · ref:guards-and-tests §3.7
 
 > Retention-sweep SCHEDULING (the sweep itself is built and tested and nothing calls it) and a content-store refcount — D193: disk growth on one local machine isn't worth a durable reference count. There is no "14/8/5" constant in this tree; the shipped number is 30 days from the bundle's own capture instant (D86's notes floor).
 
@@ -2370,7 +2370,7 @@ log:
 status: planned
 size: L
 chip: not started
-doc: 5B §Stage summary · 5B §Exit criteria · 5B §Legacy vs rebuild (as of 2026-08-21) · ref:dashboard-surfaces §5 · ref:frontend-backend-integration §7.4 · ref:frontend-backend-integration §10 · ref:charter §Migration strategy
+doc: 5B §Stage summary · 5B §Exit criteria · 5B/legacy-vs-rebuild-as-of-2026-08-21 §Legacy vs rebuild (as of 2026-08-21) · ref:dashboard-surfaces §5 · ref:frontend-backend-integration §7.4 · ref:frontend-backend-integration §10 · ref:charter §Migration strategy
 
 > D89 / D93. No workflow flips individually, no mixed-engine production, ever. The entire legacy repo is preserved as the rollback asset; nothing in it is deleted until rollback-window closure with separate explicit authorization.
 
@@ -2400,7 +2400,7 @@ log:
 
 #### Rollback window, then closure {#rollback-window}
 status: planned
-doc: 5B §Rollback window, then closure · 5B §Stage summary · 5B §Exit criteria · ref:dashboard-surfaces §5
+doc: 5B/rollback-window-then-closure §Rollback window, then closure · 5B §Stage summary · 5B §Exit criteria · ref:dashboard-surfaces §5
 
 > Legacy code, tests and state intact; closure is its own later authorization. Nothing flips yet, so no window is open — and re-crossing is asymmetric: a launcher repoint before any native write, intent/ledger reconciliation and dedupe proof after one.
 
@@ -2414,7 +2414,7 @@ log:
 #### Later, unplanned {#later-unplanned}
 status: never
 chip: ideas, not a hosted future
-doc: 5B §Later, unplanned · ref:operator-trust §7 · ref:clock-config-secrets §6.1
+doc: 5B/later-unplanned §Later, unplanned · ref:operator-trust §7 · ref:clock-config-secrets §6.1
 
 > A cooperation / multi-user mode built on top of solo (D193) — the tier's one remaining item; the PACKAGING half ("web app → real app") LEFT this tier on 2026-08-21, when the operator made it the desktop stage (`{#desktop-app}`, R14). The LATER tier of D76's MUST / SHOULD / LATER sizing — what the stop-loss cuts FIRST — and it never blocks the cutover: doc 05 §Exit criteria names none of it.
 
@@ -2639,9 +2639,13 @@ append-only per-node `log:` blocks, so history never competes with the plan on t
 ### Phase plan storage (operator amendment, 2026-09-06)
 
 The [plans index](../rebuild/plans/README.md) maps Phase 0–6 to `plans/phase-N/` folders.
-Each existing subphase has one Markdown file; phase-wide summaries remain in `README.md`.
-`/phase-plan` persists the approved task in its owning subphase file, as named by its `doc:` binding.
-New admitted subphases receive their own file in the same folder. This reorganizes storage only:
+Each existing subphase has its own descriptive folder and `README.md`. Small plans fit entirely
+in that overview; large plans split at existing task boundaries into linked task files. Shared
+context and exit criteria remain in the overview; task assignments and evidence have one owner.
+Existing unnumbered work and supporting evidence may use descriptive topic files without inventing
+task numbers. `/phase-plan` reads the overview and persists the approved task at the owner named by
+its `doc:` binding (`1.6` for the overview, `1.6/task-1-land-the-schema-floor` for a task file).
+New admitted subphases receive their own folder. This reorganizes storage only:
 node IDs, phase order, task scope, recorded status, admission rules and evidence remain unchanged.
 Frozen and commit-pinned citations resolve through the index's earlier-path table.
 
@@ -2745,9 +2749,9 @@ The rows below are the same map the master plan's §0.2 carried, re-pointed to t
 
 The operator's vision and the non-negotiables stay `reference/charter` (was doc 00). The PLAN half —
 phases, tasks, exit criteria, the migration order, the deferrals and the cutover — is this file plus
-the phase overviews and subphase files under `docs/rebuild/plans/phase-N/`, routed by the
-[plans index](../rebuild/plans/README.md). Each subphase owns its tasks; each phase's `README.md`
-owns shared context and phase-wide exit criteria.
+the phase overviews and subphase folders under `docs/rebuild/plans/phase-N/`, routed by the
+[plans index](../rebuild/plans/README.md). Each subphase overview owns shared context and
+exit criteria; linked task files, when present, own their assignments and evidence.
 
 ### Standing rule — each completed phase documents itself
 
@@ -2804,11 +2808,11 @@ sections are now:
 | §2 the phase table | this file, §Phases at a glance above |
 | §3 Phase 1 · §7.1–§7.2's Phase-1 rows | `docs/rebuild/plans/phase-1/README.md` |
 | §3 Phase 2 · §7.1–§7.2's Phase-2 rows | `docs/rebuild/plans/phase-2/README.md` |
-| §7.1's approved-target bullet · §7.3 the integration execution rule | `docs/rebuild/plans/phase-3/3.1-finish-the-dashboard.md` |
-| §3.1's PHASE 3 ENTRY block + separations' status | `docs/rebuild/plans/phase-3/3.2-finish-workflow-authoring.md` and `docs/rebuild/plans/phase-3/3.3-accept-person-lookup-and-separations.md`; former layout preserved under `docs/rebuild/history/superseded/` |
+| §7.1's approved-target bullet · §7.3 the integration execution rule | `docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md` |
+| §3.1's PHASE 3 ENTRY block + separations' status | `docs/rebuild/plans/phase-3/3.2-finish-workflow-authoring/README.md` and `docs/rebuild/plans/phase-3/3.3-accept-person-lookup-and-separations/README.md`; former layout preserved under `docs/rebuild/history/superseded/` |
 | §3.1 the migration loop · §3.2 · §3.3 · §3.4 · §3.6 · §3.8 | ref workflow-model §1.6.2–§1.6.3 and docs 03.2–03.3; former layout preserved under `docs/rebuild/history/superseded/` |
-| §3.5 · Phase 0's deferred decisions | `docs/rebuild/plans/phase-5/5A-close-cutover-readiness-gaps.md` |
-| §4 · §5 · §5.1 · §6 · §7.4 | `docs/rebuild/plans/phase-5/5B-switch-production-authority.md` |
+| §3.5 · Phase 0's deferred decisions | `docs/rebuild/plans/phase-5/5A-close-cutover-readiness-gaps/README.md` |
+| §4 · §5 · §5.1 · §6 · §7.4 | `docs/rebuild/plans/phase-5/5B-switch-production-authority/README.md` |
 
 The whole as-written file, with a section-by-section table of where every § landed, is preserved at
 `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`.
@@ -2819,7 +2823,7 @@ This file's own appendices went too:
   **deleted.** `docs/rebuild/reference/decisions.md` is the append-only authority for every `D<n>`
   (its round headings carry the date, its rows the owning doc), and every future gate it listed is
   already a `you:` line on the node that owes it in the tree above.
-- **Appendix B (legacy vs rebuild)** — `docs/rebuild/plans/phase-5/5B-switch-production-authority.md` §Legacy vs rebuild (as of
+- **Appendix B (legacy vs rebuild)** — `docs/rebuild/plans/phase-5/5B-switch-production-authority/legacy-vs-rebuild-as-of-2026-08-21.md` §Legacy vs rebuild (as of
   2026-08-20), dated because it is an inventory of a moving world.
 - **Appendix C (verify any of this yourself)** — the project `CLAUDE.md` §Commands, which already
   carries every command it listed (`phase` and `storage doctor` are subcommands of `npm run cli`).

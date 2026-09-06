@@ -32,7 +32,8 @@ export const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 /**
  * A node's binding to the plan SSOT: which doc section owns the contract this
  * node builds. Two kinds, because the shelf has two halves — a `phase` ref
- * names an actionable `docs/rebuild/plans/phase-N/N[.part|letter]-*.md` by its phase number (`3.1`), a
+ * names an actionable `docs/rebuild/plans/phase-N/<subphase-directory>/README.md` by its phase number (`3.1`)
+ * or a task/topic file by its subphase and stem (`3.1/task-8-name`), a
  * `reference` ref names an unnumbered spec under `docs/rebuild/reference/` by
  * slug and carries the `ref:` prefix in `doc` (`ref:write-safety`). `section`
  * is the part after `§` (dotted numbers, a range, or a heading NAME — the
@@ -42,7 +43,7 @@ export const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
  */
 export const DocRefSchema = z
   .object({
-    doc: z.string().regex(/^(?:(?:[0-6]|[0-3]\.[1-9]\d*|[4-6][A-Z])|ref:[a-z][a-z0-9-]*)$/),
+    doc: z.string().regex(/^(?:[0-6]|(?:[0-3]\.[1-9]\d*|[4-6][A-Z])(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)?|ref:[a-z][a-z0-9-]*)$/),
     kind: z.enum(["phase", "reference"]),
     section: z.string().min(1).optional(),
     raw: z.string().min(1),

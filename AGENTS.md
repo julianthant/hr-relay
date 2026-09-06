@@ -39,7 +39,8 @@ or infer implementation from design. Roadmap §Governance owns D1/D263. Decision
 owning contract plus a pointer in `reference/decisions.md` in the same commit; never reuse D131.
 History is evidence, not current authority. Read phase docs / `npm run cli -- phase` for current status.
 For `/phase-plan`, use [the plans index](docs/rebuild/plans/README.md): one folder per phase,
-one file per subphase; persist approved task plans in the owning subphase file.
+one folder per subphase; small plans live in `README.md`, large plans split into linked task files.
+Persist approved task plans and evidence at the single owner named by the roadmap binding.
 
 D326/D328/D329 order 0.3 → 1.6 → 2.6 → 3.1 → 3.2 → 3.3 → 3.4. Parts contain numbered supervisor
 tasks; parallel peers use `N-1`, `N-2`, etc. with recorded isolation. Phase 3.2 freezes the candidate;

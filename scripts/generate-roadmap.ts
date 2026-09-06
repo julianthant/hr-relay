@@ -256,7 +256,7 @@ function renderNotes(notes: string[] | undefined): string {
  * The node's binding to the plan SSOT, as a muted line under the drawer title.
  * The site is ONE static file with no server behind it, so a ref is not a link
  * — it is a `title` naming the file on disk, which is what a reader needs to
- * open it. A PHASE ref reads `doc 3.1 §2.1` and titles `docs/rebuild/plans/phase-3/3.1-*.md`;
+ * open it. A PHASE ref reads `doc 3.1 §2.1` and titles `docs/rebuild/plans/phase-3/3.1-name/README.md`;
  * the glob stands in for the slug on purpose, because this renderer is pure and
  * reading the directory to resolve `1.6` → its descriptive filename would put I/O
  * in a function whose whole job is formatting. A REFERENCE ref reads
