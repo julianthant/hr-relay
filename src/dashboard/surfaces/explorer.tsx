@@ -1825,18 +1825,10 @@ export function ExplorerPresentationFields({
             <dd className={cn(dsText.ui, dsClip.text, "m-0 min-w-0 text-[color:var(--ds-fg)]")}>
               {explorerPresentationValue(workflow, field)}
             </dd>
-            {/*
-              `min-h-11` was unconditional here — a 44px control on a mouse,
-              which is what made these rows as tall as they were. The house
-              answer is the coarse-pointer arm (`settings.tsx` spends it a
-              dozen times): the touch floor where a finger is the pointer, the
-              control's own height where a cursor is.
-            */}
             <IconButton
               type="button"
               variant="ghost"
               size="sm"
-              className="pointer-coarse:min-h-11 pointer-coarse:min-w-11"
               label={`Edit ${explorerPresentationFieldLabel(field).toLowerCase()}`}
               icon={<Pencil aria-hidden className={dsIcon.sm} />}
               onClick={(event) => onEdit(field, event.currentTarget)}
@@ -2229,10 +2221,6 @@ export function WorkflowExplorer({
           <Button
             variant="ghost"
             size="sm"
-            className={cn(
-              "relative touch-manipulation",
-              "after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
-            )}
             icon={<Eye aria-hidden className={dsIcon.md} />}
             onClick={onVersionRegistry}
           >

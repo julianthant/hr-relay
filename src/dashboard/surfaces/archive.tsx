@@ -196,7 +196,6 @@ import {
 } from "./trust.js";
 import {
   ARCHIVE_INDEX,
-  ARCHIVED_CAPTURE_NAV_TOUCH_TARGET,
   ARCHIVED_CAPTURE_ORIGIN_TONE,
   ARCHIVED_CAPTURE_VIEWER_NOTE,
   BUMP_KIND_LABEL,
@@ -2262,7 +2261,6 @@ export function CaptureViewerDialog({
           size="lg"
           title={tile.step.state === "present" ? `${tile.kind} at ${tile.step.nodeId}` : `${tile.kind} — step unrecorded`}
           description={`Archived capture ${String(index + 1)} of ${String(tiles.length)} on ${subject}.`}
-          className="pointer-coarse:[&>header>button]:min-h-11 pointer-coarse:[&>header>button]:min-w-11"
         >
           <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
             <Well>
@@ -2338,7 +2336,7 @@ export function CaptureViewerDialog({
               size="sm"
               variant="secondary"
               aria-disabled={index === 0}
-              className={cn(ARCHIVED_CAPTURE_NAV_TOUCH_TARGET, index === 0 && "pointer-events-none opacity-45")}
+              className={cn(index === 0 && "pointer-events-none opacity-45")}
               onClick={() => {
                 if (index === 0) return;
                 onIndex(index - 1);
@@ -2351,7 +2349,6 @@ export function CaptureViewerDialog({
               variant="secondary"
               aria-disabled={index === tiles.length - 1}
               className={cn(
-                ARCHIVED_CAPTURE_NAV_TOUCH_TARGET,
                 index === tiles.length - 1 && "pointer-events-none opacity-45",
               )}
               onClick={() => {
@@ -2365,7 +2362,6 @@ export function CaptureViewerDialog({
               <ButtonLink
                 size="sm"
                 variant="primary"
-                className={ARCHIVED_CAPTURE_NAV_TOUCH_TARGET}
                 icon={<Download aria-hidden className={dsIcon.md} />}
                 href={resource.value.resource.downloadUrl}
                 download={`archive-${tile.artifactId}`}
@@ -2373,7 +2369,7 @@ export function CaptureViewerDialog({
                 Download
               </ButtonLink>
             )}
-            <Button size="sm" variant="ghost" className={ARCHIVED_CAPTURE_NAV_TOUCH_TARGET} onClick={closeViewer}>Close</Button>
+            <Button size="sm" variant="ghost" onClick={closeViewer}>Close</Button>
           </DialogFooter>
         </DialogContent>
       )}
@@ -2535,7 +2531,7 @@ function CaptureTileRow({ tile, onOpen }: { tile: ArchivedCaptureTile; onOpen: (
       <Button
         size="sm"
         variant="outline"
-        className={cn(ARCHIVED_CAPTURE_NAV_TOUCH_TARGET, "shrink-0")}
+        className="shrink-0"
         icon={<Camera aria-hidden className={dsIcon.md} />}
         onClick={(event) => { onOpen(event.currentTarget); }}
       >

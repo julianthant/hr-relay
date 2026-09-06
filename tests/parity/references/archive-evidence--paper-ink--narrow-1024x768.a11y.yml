@@ -1,9 +1,9 @@
-# archive-evidence--paper-ink--phone-390x844
+# archive-evidence--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: archive-evidence-verified
 # descriptorHash: e623bc34364972b0bfe651d3f9054a0ec99ed599e1265c5e250d207cf6b7f3b6
 # appVersion: 0.1.0
-# viewport: phone-390x844  theme: paper-ink  variant: default
+# viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
 
 - dialog "screenshot at ucpath-person":

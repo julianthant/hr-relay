@@ -8,13 +8,12 @@ import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { RunCaptures } from "../../../src/dashboard/surfaces/run-captures.js";
 import {
-  RUN_CAPTURE_TOUCH_TARGET,
   runCaptureFrame,
   useRunCaptures,
 } from "../../../src/dashboard/surfaces/run-captures-model.js";
 import { CAPTURE_RUN_A, CAPTURE_RUN_B, CAPTURE_BASE_URL, captureData, captureDetail } from "./fixtures/run-captures-app-fixture.js";
 
-it("frames only literal failure origins and uses the configured coarse-pointer floor", () => {
+it("frames only literal failure origins", () => {
   const capture = captureData();
   const origin = capture.origins[0];
   if (origin === undefined) throw new Error("the capture lifecycle fixture lost its origin");
@@ -23,7 +22,6 @@ it("frames only literal failure origins and uses the configured coarse-pointer f
     runCaptureFrame({ ...capture, origins: [{ ...origin, originKind: "unexpected-state" }] }),
     /danger/u,
   );
-  assert.equal(RUN_CAPTURE_TOUCH_TARGET, "pointer-coarse:min-h-11 pointer-coarse:min-w-11");
 });
 
 it.each(["requested run", "loaded revision", "inactive tab"])(

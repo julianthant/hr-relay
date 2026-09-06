@@ -53,7 +53,6 @@ import {
   searchDaySurfaces,
   TOP_BAR_SEARCH_PAGE_SIZE,
   TOP_BAR_CORPUS_SEARCH_DEBOUNCE_MS,
-  TOP_BAR_SCOPE_TOGGLE_GROUP,
   TOP_BAR_SCOPE_TOGGLE_HIT_AREA,
   type DaySearchOutcome,
   type CorpusSearchResource,
@@ -487,7 +486,7 @@ export function DaySearchControl({
           <div
             className="border-b border-[color:var(--ds-border)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)]"
           >
-            <div role="group" aria-label="Search scope" className={cn("mb-[var(--ds-space-base)] inline-flex border p-[var(--ds-space-hair)]", TOP_BAR_SCOPE_TOGGLE_GROUP)}>
+            <div role="group" aria-label="Search scope" className="mb-[var(--ds-space-base)] inline-flex border p-[var(--ds-space-hair)]">
               <button
                 type="button"
                 aria-pressed={mode === "corpus"}

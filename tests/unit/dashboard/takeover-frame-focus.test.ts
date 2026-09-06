@@ -480,8 +480,6 @@ describe("Settings exits share the page-owned draft guard", () => {
     assert.ok(frameOf("Settings"), "a dirty TopBar navigation must leave Settings mounted for confirmation");
     assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
     const discard = buttonNamed("Discard changes");
-    assert.match(discard.className, /pointer-coarse:min-h-11/u);
-    assert.match(buttonNamed("Keep editing").className, /pointer-coarse:min-h-11/u);
     await press(discard);
     assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
     assert.ok(document.getElementById("dashboard-main-region"));

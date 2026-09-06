@@ -96,7 +96,8 @@ Skip a down system and continue with the rest. Use rebuild drivers; consult lega
 - Dev: `npm run dashboard` starts BFF + Vite; Ctrl+C stops both. BFF alone: `npm run cli -- dashboard`.
   Production: `npm run web:build` then `npm run dashboard:prod`.
 - Live case: `npm run cli -- dry-run-scenario <workflow> --subject <label>`.
-- Visual/a11y: `npm run test:parity`; follow dashboard cadence. Refreeze only deliberately with review.
+- Visual/a11y: `npm run test:parity`; D340 uses desktop-only cases from 1.6.6 onward. Do not
+  restore mobile/coarse-pointer variants; preserve desktop resizing, zoom and accessibility. Follow dashboard cadence. Refreeze only deliberately with review.
 - Descriptor import-closure edits: `npm run build:manifest` / `npm run build:manifest:check`.
   Store catalog: `npm run stores:catalog` / `npm run stores:catalog:check`.
   Roadmap: `npm run roadmap` / `npm run roadmap:check`. Never hand-edit generated output.

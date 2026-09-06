@@ -52,8 +52,8 @@ async function settledDialog(dialog: Locator): Promise<void> {
   await expect.poll(() => dialog.evaluate((node) => new DOMMatrixReadOnly(getComputedStyle(node).transform).a)).toBe(1);
 }
 
-async function assertOpenerGeometry(trigger: Locator, coarse: boolean): Promise<void> {
-  expect(await trigger.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(coarse);
+async function assertOpenerGeometry(trigger: Locator): Promise<void> {
+  expect(await trigger.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(false);
   const proof = await trigger.evaluate((node) => {
     if (!(node instanceof HTMLButtonElement)) throw new Error("the archived capture opener is not a button");
     const rect = node.getBoundingClientRect();
@@ -83,10 +83,7 @@ async function assertOpenerGeometry(trigger: Locator, coarse: boolean): Promise<
   expect(proof.insideViewport).toBe(true);
   expect(proof.ownsEdges).toBe(true);
   expect(proof.overlaps).toBe(0);
-  if (coarse) {
-    expect(proof.width).toBeGreaterThanOrEqual(44);
-    expect(proof.height).toBeGreaterThanOrEqual(44);
-  }
+
 }
 
 function barrier() {
@@ -95,10 +92,10 @@ function barrier() {
   return { promise, release };
 }
 
-async function assertControlGeometry(page: Page, coarse: boolean): Promise<void> {
+async function assertControlGeometry(page: Page): Promise<void> {
   const dialog = page.getByRole("dialog");
   await settledDialog(dialog);
-  expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(coarse);
+  expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(false);
   const proof = await dialog.evaluate((node) => {
     const frame = node.getBoundingClientRect();
     const footer = node.querySelector("footer");
@@ -140,10 +137,7 @@ async function assertControlGeometry(page: Page, coarse: boolean): Promise<void>
   for (const control of proof.controls) {
     expect(control.inside, control.name).toBe(true);
     expect(control.overlaps, control.name).toBe(0);
-    if (coarse) {
-      expect(control.width, control.name).toBeGreaterThanOrEqual(44);
-      expect(control.height, control.name).toBeGreaterThanOrEqual(44);
-    }
+
     // End-of-walk controls are deliberately pointer-inert but retain their keyboard stop.
     if (!control.disabled) expect(control.ownsEdges, control.name).toBe(true);
   }
@@ -245,16 +239,15 @@ async function assertCaptionGeometry(dialog: Locator): Promise<void> {
 
 for (const view of [
   { viewport: { name: "1280x720", width: 1280, height: 720 }, theme: { name: "graphite-warm", attribute: "dark" } },
-  { viewport: { name: "phone-390x844", width: 390, height: 844 }, theme: { name: "paper-ink", attribute: "light" } },
+  { viewport: { name: "narrow-1024x768", width: 1024, height: 768 }, theme: { name: "paper-ink", attribute: "light" } },
 ] as const) {
   test.describe(`${view.theme.name} @ ${view.viewport.name}`, () => {
-    const phone = view.viewport.name === "phone-390x844";
-    test.use({ viewport: { width: view.viewport.width, height: view.viewport.height }, hasTouch: phone, isMobile: phone });
+    test.use({ viewport: { width: view.viewport.width, height: view.viewport.height } });
     test(`verified archived capture evidence ${view.theme.name} @ ${view.viewport.name}`, async ({ page }) => {
       await installTheme(page, view.theme);
       const trigger = await openEvidence(page);
       await assertThemeApplied(page, view.theme);
-      await assertOpenerGeometry(trigger, phone);
+      await assertOpenerGeometry(trigger);
       await trigger.click();
       await expect(page.getByRole("dialog")).toBeVisible();
       const image = page.getByRole("img", { name: /^Archived screenshot captured /u });
@@ -285,7 +278,7 @@ for (const view of [
       expect(Buffer.concat(chunks)).toEqual(Buffer.from(FIXTURE_ARCHIVE_EVIDENCE_BYTES));
       await expect(page.getByText(SUCCESS)).toBeVisible();
       await expectFrozenMetadata(page.getByRole("dialog"));
-      await assertControlGeometry(page, phone);
+      await assertControlGeometry(page);
       await assertCaptionGeometry(page.getByRole("dialog"));
 
       await captureParityPair(page, REFERENCES, {
@@ -391,7 +384,7 @@ test("narrow viewport keeps the footer and preview inside the dialog", async ({ 
   await page.setViewportSize({ width: 1024, height: 768 });
   await (await openEvidence(page)).click();
   await expect(page.getByText(SUCCESS)).toBeVisible();
-  await assertControlGeometry(page, false);
+  await assertControlGeometry(page);
 });
 
 for (const refusal of ["missing", "corrupt", "request", "image-http", "decode"] as const) {

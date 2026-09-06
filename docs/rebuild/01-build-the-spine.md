@@ -552,6 +552,14 @@ example and §8.1 is its as-built, recording the five deltas this run forced.
 ## 1.6 · Implement canonical run and settings authorities
 <!-- roadmap: p1-authority-implementation -->
 
+**D336 operator amendment (2026-09-06).** The approved target is SQLite for runs and ordinary
+settings, plus independent credential operations (ref clock-config-secrets §D336). This supersedes
+only the conflicting storage bindings below. Completed Tasks 1–4 and the existing Task-5 assignment
+retain their evidence and scope. Task 6 owns the conversion, consumer cutover and replacement proofs;
+Task 7 and 2.6 consume that target. No runtime implementation, data migration or feature deferral is
+claimed by this decision record.
+
+
 **Session workflow (operator amendment, 2026-09-04):** use roadmap §Governance's
 [Plan, implement, review](../roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04) rule.
 The approved phase section is the executor's brief. A candidate stays awaiting independent review;
@@ -2068,39 +2076,69 @@ and its corresponding gate logs before commit. The same fresh complete reviewer 
 bounded R2 correction and neighboring regressions; requirements and lifecycle identity semantics
 have not changed. The commit containing this correction remains **awaiting independent review**.
 
-### Task 6 · Prove upgrade, rollback, recovery, and compatibility deletion
+**Independent PASS and integration preparation (2026-09-06).**
+`/root/sup_review_settings_consumers_final` (`sup_review`, Sol 5.6/high) returned **PASS** on
+`a93ba1a5caa071a4432ba22115a1e8e36aa5b4fd`, tree `b7fc3d066110e1f7734ec8a1004ec61776545ede`.
+R1–R5 are closed; the terminal-dependency concern remains withdrawn. The reviewer independently
+inspected code, tests, contracts and exact-tree logs; it did not rerun write-producing gates or browser
+work. Candidate gates passed 423 files / 5,332 coverage tests, 77 files / 817 standalone architecture
+tests and 269 parity cases, with typecheck, lint, manifest/store/roadmap and diff checks passing.
+Evidence is `/tmp/hr-settings-private-final-identity.log` and its matching gate logs.
+
+Integration consumes clean local master `001a7ad4525ef9e42765ab3c296c4853e169e4a3`, which retains the
+approved plan and Task-4 prerequisite. The only conflict joins Task-5 evidence with master's revised
+Task-6 heading; both intents are preserved. D336's future settings conversion and master's D340 desktop
+changes remain intact. No behavior-changing conflict resolution was needed. The exact combined tree
+is verified in the owned worktree with its example-only environment; the serial gate identity/results
+are `/tmp/hr-settings-integrated-identity.log` and matching gate logs. Task completion and owned
+worktree/branch removal remain pending those gates and verified integration. No push or Task-6 work.
+
+### Task 6 · Consolidate settings in SQLite and prove upgrade/recovery
 <!-- roadmap: p1f-migration-proof -->
 
-**Seam:** `src/cli.ts` (`storage upgrade [--plan] [--json]`, the fourth `storage` subcommand); NEW
-`src/infra/compat/pre-floor-upgrade-readers.ts` (A0: frozen pre-floor copies of
-`SettingsFileRecordSchema`, `EditableSettingsOverrideSchema` and the pre-floor `SETTINGS_SCHEMA_HASH`
-literal, the widened `.env` admission as a parameter of the command, the tombstone backfill, the
-orphan-gate sweep) and `old-pathname-reconciler.ts` (A1); the upgrade module (the 15-step preflight,
-`upgrades/<id>.prepare.json` / `.rollback.json` under the private-file protocol, the ONE exclusive
-transaction with the two journaled commands, settle, the §D332.5 arms); the boot matrix completed in the
-open/interlock (`upgrade-unsettled`, `mixed-generation`, `authority-deleted { settings/ }`); the backup
-READ-path widening — three schemas, the inspector, `manifestVersion` 1 and 2 — plus the observed-version
-WRITE in `recovery-contracts.ts` / `backup-service.ts`, and `offline-restore.ts`'s rollback pairing
-(`rollback-evidence-missing`, `protected-entries-written` against the journal's `protectedRevisionAfter`);
-the doctor lines (`authority_upgrades` by basename, `tombstone-ordinal-unknown`, `possibleExternalWrite`);
-the DCC2 preflight's `storage-authority` check with its six literals (§D332.6 wire mapping);
-`guard-inventory.json`: `authority-upgrade-adapters-isolated` (`active`), `authority-upgrade-adapters-retired`
-and `settings-root-single-pathname` (`planned`, 2.6). Then the command is RUN on the operator's real root after an explicit `cli storage backup`, and
-the plan's remove-list is announced: the first post-upgrade boot refuses `migrated-refused { key }` until
-those `.env` lines are gone (§D332.S5). **Owes:** §D332.11 M1–M27 (M3, M9, M21, M14 re-run here over the
-real command), §D332.S1–S6's import rules, the A0/A1 rows of ref guards-and-tests §5.2. **Gate:** base +
-M1–M27 + `npm run cli -- storage upgrade --plan` and the full upgrade over a v29 fixture COPY + `npm run
-cli -- storage doctor` green + `npm run test:architecture` with the three new entries. **Deletion tests:**
-`authority-upgrade-adapters-isolated` (red while A0/A1 are reachable from any composition root); nothing is
-DELETED in this task — A4/A5 left in 2-2, A0–A3 expire at 2.6 (A0/A1 in 2.6 Task 2, A2/A3 in 2.6 Task 1-3),
-A6/A7 are permanent read-forward, A8 expires at 3.1 Task 9-2. **Order:** sixth.
+**D340 verification scope (2026-09-06).** The immediate mobile-only dashboard proof and
+coarse-pointer cleanup is implemented: 12 mobile-only parity cases retired, 257 desktop cases
+passed, and unique image/receipt/notification assertions moved to desktop. Consume its desktop-only
+parity lane; do not run or restore phone/coarse-pointer variants during settings/upgrade work.
+Desktop resizing/accessibility and all backend, migration, credential and safety gates remain.
+Ref frontend-backend-integration §10 records the exact proof dispositions.
 
-- [ ] Require an explicit verified `cli storage backup`, then run the idempotent transactional migration
-  with journal, rollback, mixed-generation refusal and representative evidence checks (§D332.1–§D332.8;
-  M1–M27).
-- [ ] Import non-provider-key local configuration once, refuse ambiguous duplicates, never read a
-  provider value (§D332.S1–S6; M6, M15, M20, M24); land A0/A1 with their `active`/`planned` entries and
-  delete nothing — every remaining adapter's deletion task is named above.
+**Approved architecture, focused implementation plan still required (D336, 2026-09-06).** Implement
+ref clock-config-secrets §D336 after Task 5 is integrated. This replaces the previous Task-6 binding
+to D332's file/SQLite transaction; the phase order and completed task evidence are unchanged.
+
+**Seam:** the existing settings service and SQLite repositories/migrations, their composition and
+resolver consumers, the sole credential reader and independent credential-update boundary, and the
+storage backup/restore/doctor/upgrade commands. Keep the existing catalog and ordinary Settings wire
+behavior. Bind exact files, schema version, credential command/replay semantics, supported source
+formats, guards and integration base from the then-current code in `/phase-plan 1.6.6`; do not invent
+new version numbers or a second settings service in this architecture amendment.
+
+- [ ] Store ordinary settings values, revision and successful command/audit records atomically in
+  SQLite. Cut every runtime reader/writer over together; remove ordinary file authority and its
+  sidecars, locks, prepare/rollback protocol and database-journal reconciliation.
+- [ ] Keep protected values behind the separate credential store and sole reader. Decouple credential
+  updates from SQLite commits and restore; preserve write-only input, truthful outcome/readback,
+  authorization, missing-value refusal and exclusion from ordinary state, logs, backups and child env.
+- [ ] Implement a read-only `storage upgrade --plan` and one explicit, backed-up database conversion
+  covering the verified pre-floor layout and already-created D331 layout. Import ordinary settings
+  once, reject conflicting/malformed sources, and keep credential setup/import a separate operation.
+  Prove a fresh root requires no import and post-upgrade reads cannot fall back to old files or env.
+- [ ] Preserve current/terminal/archived run identities, evidence, snapshots and unknown-write fences.
+  Retain justified tombstone/orphan handling and historical backup readability. Prove database
+  transaction failure, interruption, rerun/idempotence, restore, and independent credential failure.
+- [ ] Map every affected D331 P-proof, D332 M1–M27 proof and A0/A1/other adapter obligation to a retained
+  invariant, replacement proof, or evidenced mechanism retirement. Update guard inventory in the
+  implementation commit; do not retain obsolete coupling solely for an old test or remove a safety
+  test merely because its implementation changes. Name any migration-only reader and its deletion task.
+- [ ] After fixture proofs, perform the approved conversion on the operator's rebuild root with an
+  explicit verified backup and report imported key names, conflicts and source cleanup requirements
+  without values. Preserve legacy production and existing local data.
+
+**Gate:** repository base gates, focused settings/credential/upgrade/recovery tests, generated checks,
+architecture, applicable parity, upgrade plan plus upgrade/restore on supported fixture copies, and
+storage doctor on the converted root. Task 6's focused plan binds exact acceptance commands and proof
+coverage before implementation. Task 7 retains the integrated/live foundation close.
 
 ### Task 7 · Close the rebuilt foundation
 <!-- roadmap: p1f-close -->

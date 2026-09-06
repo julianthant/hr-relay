@@ -71,11 +71,6 @@ import { MEMBER_WELL_LINES } from "./layout-metrics.js";
 import {
   BAND_LABEL,
   BAND_ORDER,
-  MEMBER_NAME_TOUCH_TARGET,
-  MEMBER_TOUCH_TARGET,
-  MEMBER_TOUCH_TARGET_HOST,
-  ROW_INFO_TOUCH_LINE,
-  ROW_INFO_TOUCH_TARGET,
   type LinkedRunWire,
   type MemberSurfaceWire,
   type OperationSurfaceWire,
@@ -446,10 +441,8 @@ function RowInfo({
           }}
           className={cn(
             "text-[color:var(--ds-fg-faint)] hover:text-[color:var(--ds-fg)] data-[state=open]:text-[color:var(--ds-fg)]",
-            // 20px of paint, and the row's only hover-free route to a clipped
-            // fact's whole value; the line it sits on grows with it
-            // (`ROW_INFO_TOUCH_LINE`), or the card's clip takes the height back.
-            ROW_INFO_TOUCH_TARGET,
+            // Keep the compact information control within its own row.
+            "relative",
           )}
         />
       </PopoverTrigger>
@@ -812,9 +805,7 @@ function MemberLine({
       <span
         className={cn(
           "flex min-w-0 items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-fg)]",
-          // This cell is what clips the toggle's coarse-pointer overlay; the
-          // constant carries both its `truncate` and the gated escape.
-          MEMBER_TOUCH_TARGET_HOST,
+          "truncate",
         )}
       >
         {/* Selection and local triage are sibling controls: nesting the latter
@@ -824,10 +815,7 @@ function MemberLine({
           title={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
           aria-label={selectionLabel}
           onClick={onSelect}
-          // The line is 44px on a coarse pointer and this button is the row's
-          // SELECTION — the only way into the member's panel — so it takes the
-          // whole height rather than the 16px its text paints.
-          className={cn("min-w-0 truncate text-left", MEMBER_NAME_TOUCH_TARGET, dsFocus)}
+          className={cn("min-w-0 truncate text-left", dsFocus)}
         >
           {queueRowTitle(surface)}
         </button>
@@ -840,7 +828,7 @@ function MemberLine({
         {onToggleChecked !== undefined && (
           <IconButton
             size="sm"
-            className={MEMBER_TOUCH_TARGET}
+            className="relative"
             label={checked ? `Mark ${queueRowTitle(surface)} unchecked` : `Mark ${queueRowTitle(surface)} checked by you`}
             onClick={(event) => {
               event.stopPropagation();
@@ -1316,16 +1304,11 @@ export function QueueRow({
             {/* The icon, title and status pill share one cross-axis centre. The
                 icon box matches the StatusBadge (`sm` = `--ds-h-xs`) so a taller
                 title line cannot leave the glyph floating above the pill. */}
-            <div className={cn("col-start-1 row-start-1 flex h-[var(--ds-h-xs)] items-center", ROW_INFO_TOUCH_LINE)}>
+            <div className="col-start-1 row-start-1 flex h-[var(--ds-h-xs)] items-center">
               <StatusIcon aria-hidden className={cn(dsIcon.md, "shrink-0", PROPOSED_STATUS[status].iconClass)} />
             </div>
             <div
-              className={cn(
-                "col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center gap-x-[var(--ds-space-base)]",
-                // The ⓘ's 44px is taken by the LINE, not by the control — the
-                // same move `--ds-h-member-line` makes for the member toggle.
-                ROW_INFO_TOUCH_LINE,
-              )}
+              className="col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center gap-x-[var(--ds-space-base)]"
             >
               <div className="flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)]">
                 {/* Bulk selection is a TOP-LEVEL act: a member is acted on

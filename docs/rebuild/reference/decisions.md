@@ -1,4 +1,4 @@
-# `reference/decisions.md` — the decision ledger (D1–D333, 2026-07-17 → 2026-09-04)
+# `reference/decisions.md` — the decision ledger (D1–D339, 2026-07-17 → 2026-09-06)
 
 **D325/D326 session-workflow amendment (2026-09-04):** the operator opens planning and supervisor
 sessions; supervision includes a fresh read-only reviewer subagent, fixes and finalization. Task
@@ -2127,3 +2127,31 @@ _phase: 1.6 planning correction; implementation remains open_
 | # | Decision | Owning doc |
 |---|---|---|
 | **D335** | **ONE RERUN ACTION; FAILED SOURCES DEFAULT TO REMAINING STEPS, SUCCESSFUL SOURCES TO ALL STEPS. WARNING CONFIRM ADVANCES TO VALUES; ONLY FINAL MODAL SUBMISSION STARTS THE RUN.** Rerun opens Steps for both outcomes. The operator may select any eligible steps. Proceeding with a selected previously submitted transaction shows a duplicate-submission warning with Cancel / Confirm: Cancel returns to Steps, Confirm acknowledges and opens Values. Neither consumes a plan, creates a run, mints run/trace ids, publishes or submits a transaction. The operator edits Values, then the final modal submission binds the actual values/omissions and revalidated warning acknowledgment and authorizes a fresh submission, never old-receipt reuse. Unchanged warning facts retain acknowledgment through Values edits; changed warned selection/business keys/source/evidence require renewal. Prior completion never vetoes explicit selection. Exact final-command replay never submits twice; a later deliberate Rerun is a new authorization. Source runs/evidence remain unchanged; omitted transactions produce no new write evidence. Natural-business-key admission spans all occurrences, and old evidence cannot settle a new unknown outcome. This supersedes D334's two contextual labels. Task 1.6.4 owns the backend protocol, source-bound execution and minimum frontend compatibility/reference changes; 3.1 Task 11-2 owns the full modal/warning UI; 2.6 Task 1-2 owns completion/value reads. No DDL or live write is authorized. | ref write-safety §D335 (primary execution/fencing/recovery) · ref dashboard-surfaces §9.1 (primary interaction) · ref data-intake-and-edit-data §6 · ref frontend-backend-integration §5.1.1 · ref workflow-model §5.6.1 · doc 01 Task 4 · doc 02 Task 1-2 · doc 03.1 Task 11-2 |
+
+
+## Reconciliation round 142 (2026-09-06) — consolidate ordinary state in SQLite
+
+_phase: 1.6; approved architecture, implementation remains open_
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D336** | **RUNS AND ORDINARY SETTINGS SHARE SQLITE; CREDENTIALS USE AN INDEPENDENT STORE.** Ordinary settings values, revision and command/audit commit atomically in the existing database; remove file authority and cross-store recovery. Preserve the catalog, validation, conflict/restart behavior, immutable evidence and secret-free backups. Credential operations remain separately authorized, value-free on readback and independent of SQLite restore. Task 1.6.6 converts supported existing formats and rebinds affected proofs after Task 5; no runtime implementation, real migration or additional feature deferral is claimed here. | ref clock-config-secrets §D336 (primary) · ref dashboard-surfaces §2.5 D332 amendment · ref frontend-backend-integration §4 · ref guards-and-tests §5.2 · doc 01 Task 6 · doc 02 Task 2 · doc 03.1 Tasks 9-2/9-3 · doc 06 Credentials |
+
+
+## Reconciliation round 143 (2026-09-06) — remove duplicate storage and approval mechanisms; narrow release surfaces
+
+_phase: 3.1 / 3.4; approved planning amendments, implementation remains open_
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D337** | **WORKFLOW APPEARANCE OVERRIDES USE SQLITE.** Keep label/icon/category editing while committing override values, revision and command/audit atomically; retire the file/SQLite prepared-claim protocol after a preserving conversion in 3.1 Task 9-4. Source-authored workflows and existing validation/replay/conflict behavior remain. | ref operator-trust §5.4 (primary) · doc 03.1 Task 9-4 |
+| **D338** | **AGENTS AND HUMANS HAVE THE SAME API CAPABILITIES, INCLUDING HR APPROVALS.** Derive and record the true caller; apply the same existing guardrails, without a human-only restriction, agent proposal or second-actor confirmation. Direct HTTP access is sufficient; MCP is optional. Phase 3.4 proves attribution, parity and an agent-resolved dry-run gate. | ref frontend-backend-integration §4 (primary API/attribution) · ref write-safety §14 D338 amendment (primary approval) · ref dashboard-surfaces §4 · doc 03.4 Tasks 1–5 |
+| **D339** | **RELEASE WITH THE SCREENS REQUIRED BY ACTUAL WORKFLOWS.** Generic People/Review pages and new advanced recovery interfaces are deferred until a concrete workflow need or an explicit post-release request; remove them from mandatory release dependencies. Keep required workflow journeys, basic health/recovery access, core recovery commands and all shipped-surface/write-safety acceptance. | ref frontend-backend-integration §10 (primary) · doc 03.1 Tasks 8/9-3/14–18 · doc 05 Stage summary |
+
+## Reconciliation round 144 (2026-09-06) — desktop-only dashboard support
+
+_phase: 1.6 / 3.1; immediate desktop-only baseline implemented_
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D340** | **SUPPORT DESKTOP AND LAPTOP DASHBOARD USE; REMOVE MOBILE WORK NOW.** The operator superseded the initial 3.1 deferral with immediate mobile-only proof/coarse-pointer cleanup before 1.6.6. Retain desktop geometry, accessibility and safety coverage; move unique phone evidence to narrow desktop cases and deliberately replace the phone Archive reference. All later phases consume desktop-only gates; 3.1 Task 8 still settles its final desktop/zoom matrix. Responsive desktop/zoom controls, D294 retirement guards and contact phone validation remain. | ref frontend-backend-integration §10 (primary) · ref dashboard-surfaces support scope · doc 01 Task 6 · doc 03.1 Tasks 8/9-1/17/18 |

@@ -93,8 +93,6 @@ import {
   capacityChip,
   connectionTone,
   needsYouCount,
-  POOL_CONTROL_TOUCH_TARGET,
-  POOL_COUNT_TOUCH_TARGET,
   SESSION_POOL_MAX_WORKERS,
   type PoolPlanIntent,
   type SessionPoolGroup,
@@ -837,7 +835,7 @@ function AuthorityDetails({
           )}
           data-authority-touch-target="44"
           className={cn(
-            "group relative z-10 size-11 -ml-6 rounded-none touch-manipulation hover:bg-transparent active:translate-y-0",
+            "group relative z-10 size-11 -ml-6 rounded-none hover:bg-transparent active:translate-y-0",
             touchAlign === "up" ? "-mt-6 mb-0" : touchAlign === "down" ? "mt-0 -mb-6" : "-my-3",
           )}
         />
@@ -1117,12 +1115,11 @@ function WorkerCard({
           <span className={cn(dsText.nums, "shrink-0 tabular-nums")}>
             {elapsed > 0 ? fmtElapsed(elapsed) : "—"}
           </span>
-          {/* The one control the demo's card carries. It takes the coarse
-              44px floor because it stops a real worker process. */}
+          {/* The worker card's stop control. */}
           <Button
             size="sm"
             variant="outline"
-            className={cn("shrink-0", POOL_CONTROL_TOUCH_TARGET)}
+            className="shrink-0"
             disabled={onStop === undefined || !canStopWorker(card)}
             title={canStopWorker(card)
               ? `Stop worker ${String(card.workerId)} after its current item (lease version ${String(card.leaseVersion)})`
@@ -1194,7 +1191,7 @@ export function UnmetMemberRow({
       <Button
         size="sm"
         variant="outline"
-        className={cn("shrink-0", POOL_CONTROL_TOUCH_TARGET)}
+        className="shrink-0"
         disabled={spawn.pending}
         title={spawn.title}
         onClick={spawn.onSpawn}
@@ -1435,7 +1432,6 @@ function AddWorkersDialog({
                     <IconButton
                       size="md"
                       label="One fewer worker"
-                      className={POOL_COUNT_TOUCH_TARGET}
                       disabled={count <= 1}
                       onClick={() => setCount((value) => Math.max(1, value - 1))}
                       icon={<Minus aria-hidden className={dsIcon.md} />}
@@ -1449,7 +1445,6 @@ function AddWorkersDialog({
                     <IconButton
                       size="md"
                       label="One more worker"
-                      className={POOL_COUNT_TOUCH_TARGET}
                       disabled={count >= SESSION_POOL_MAX_WORKERS}
                       onClick={() => setCount((value) => Math.min(SESSION_POOL_MAX_WORKERS, value + 1))}
                       icon={<Plus aria-hidden className={dsIcon.md} />}
@@ -1560,7 +1555,6 @@ function AddWorkersDialog({
           */}
           <Button
             variant={stopping.length > 0 ? "danger" : "primary"}
-            className={POOL_CONTROL_TOUCH_TARGET}
             disabled={group === undefined || intent === undefined || intent.kind !== "ready" || pending}
             title={group === undefined
               ? "No workflow to plan"

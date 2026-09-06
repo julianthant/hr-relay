@@ -28,6 +28,12 @@ per node per doc, a `<!-- roadmap-status: <id> -->` checklist the roadmap genera
 node's drawer. Where a node's checklist lives under a different section of this doc, the section
 says so in one line rather than opening a second block.
 
+**Desktop support scope (D340, 2026-09-06).** Ref frontend-backend-integration §10 owns desktop-only
+dashboard acceptance. Responsive behavior remains required for supported desktop windows and zoom;
+older mobile/touch-specific proof wording is superseded by D340. The operator moved mobile-only
+proof and coarse-pointer cleanup to immediate execution before 1.6.6. Phase 3.1 consumes the desktop
+baseline and owns its final desktop/zoom matrix; it does not repeat mobile cleanup.
+
 ## Ownership (D1)
 
 | | Concept | Where |
@@ -1761,6 +1767,19 @@ the restore interlock are safety floor and remain mandatory.
 
 #### D332 — the authority upgrade: one offline, journaled, idempotent migration from today's authorities to D330/D331 (0.3 Task 3, 2026-09-04)
 
+> **D336 target amendment (2026-09-06; owner: ref clock-config-secrets §D336):** Phase 1.6 Task 6
+> puts ordinary settings and their command/audit records in the same SQLite transaction as their
+> authority. Credential operations stay independent. The file/SQLite prepare–commit–settle protocol,
+> ordinary-settings sidecar/lock/reaper, mixed database/settings-file boot matrix and paired-file
+> rollback below describe the superseded design and are not implementation requirements. Keep
+> stopped-system admission, verified explicit backup, database schema/integrity checks, truthful
+> outcomes, conflict refusal, immutable evidence and uncertain-write non-readmission. Task 6 binds
+> the exact supported input formats and maps every M1–M27 obligation to retained behavior, a
+> replacement test or removal of its underlying mechanism; an obsolete mechanism is not kept merely
+> to pass its old test. No active guard or preservation guarantee is retired by this documentation
+> amendment. Credential migration cannot roll back or partially commit a run/settings transaction.
+
+
 _D327 fixed that 1.6 replaces two authorities and required 0.3 to design "migration/read-forward/recovery"
 and "compatibility deletion tests". D330 (the run-record service) and D331 (the settings catalog and
 protected root) are the targets; this subsection is the ONE path from what exists on an operator's disk
@@ -2698,6 +2717,12 @@ step-label switches, the stub map) becomes a projection of the descriptor set wi
 ---
 
 ## 4. Unified completion contract (replaces approveTo / approveDocumentTo / completeDelegatedRun)
+
+> **D338 (2026-09-06):** human and operator-directed agent callers use this same completion
+> protocol and the same server-declared checks. Caller kind adds no second approval or capability
+> restriction. Attribute the real caller; ref write-safety §D338 and ref frontend-backend-integration
+> §4 own this amendment.
+
 
 
 **Re-derived from `tracker/dashboard/ocr/approve.ts` + `prepare.ts` as-built (D11), not the OCR

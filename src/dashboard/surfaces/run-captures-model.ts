@@ -22,9 +22,6 @@ export type RunCapturesState = Exclude<RunCapturesRead, { state: "available" }>
     readonly select: (artifactId: string | undefined) => void;
   });
 
-/** Local coarse-pointer floor; fine-pointer Button dimensions stay unchanged. */
-export const RUN_CAPTURE_TOUCH_TARGET = "pointer-coarse:min-h-11 pointer-coarse:min-w-11";
-
 export function runCaptureFrame(capture: RunCaptureArtifactWire): string {
   return capture.origins.some(origin => origin.originKind === "failure")
     ? "border-2 border-[color:var(--ds-danger)]"

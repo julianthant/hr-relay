@@ -816,15 +816,6 @@ export const ARCHIVED_CAPTURE_VIEWER_NOTE =
   "This archive keeps the capture's POINTER facts frozen. The separate byte check is only for this exact archived id, "
   + "digest, size and media type.";
 
-/**
- * The capture viewer's footer actions need a 44px floor in BOTH dimensions:
- * short labels such as Close can be narrower even when the height is 44px.
- * Keep the floor coarse-pointer-only so fine pointers retain the demo's
- * `size="sm"` visuals. The local footer wraps its gap-separated controls;
- * browser parity proves the resulting hit rectangles and nonoverlap.
- */
-export const ARCHIVED_CAPTURE_NAV_TOUCH_TARGET = "pointer-coarse:min-h-11 pointer-coarse:min-w-11";
-
 /** Read-time byte status, deliberately separate from the frozen capture tile. */
 export type ArchivedCaptureResourceLoad =
   | { readonly state: "idle" }

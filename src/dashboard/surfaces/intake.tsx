@@ -891,7 +891,7 @@ function RejectedRowsTable({
                         <Button
                           size="sm"
                           variant="outline"
-                          className="relative touch-manipulation after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']"
+                          className="relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']"
                           disabled={locked}
                           onClick={() => {
                             setExclusion(null);
@@ -904,7 +904,7 @@ function RejectedRowsTable({
                       <Button
                         size="sm"
                         variant="outline"
-                        className="relative touch-manipulation after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']"
+                        className="relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']"
                         disabled={locked}
                         onClick={() => {
                           setCorrection(null);

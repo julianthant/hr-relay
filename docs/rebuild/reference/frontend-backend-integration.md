@@ -942,6 +942,25 @@ builder or literal, is the proof required for route connectivity. No new produce
 ---
 ## 4. State ownership
 
+**D338 — agent/human API capability parity (operator decision, 2026-09-06).** Agents acting for the
+operator can invoke every action a human can invoke through the same BFF API, including queue/start,
+HR gate approval, live-run authorization and evidence-qualified write resolution. Derive and record
+the actual caller identity; identity controls attribution, not an agent-specific permission tier.
+No human-only restriction, second-actor confirmation, agent approval proposal, or extra
+`pending-confirmation` state is introduced. All callers satisfy the same command schemas, current
+revision/evidence checks, declared approval ceremony, duplicate-submit controls and unknown-outcome
+rules. Direct HTTP clients are supported; an MCP wrapper is optional convenience and never an
+additional admission layer or a release prerequisite. Phase 3.4 owns actor-aware API access and its
+parity proof. The write-safety consequence is owned by ref write-safety §D338.
+
+
+> **D336 (2026-09-06; ref clock-config-secrets §D336):** ordinary settings values and their
+> revision/command audit are SQLite-owned. The Settings UI retains the catalog-driven set/clear,
+> conflict and restart behavior. Protected inputs go through a separate credential operation with
+> value-free readback; neither the frontend nor SQLite reconstructs credential-store state. Historical
+> file/journal coupling and paired-file restore descriptions are superseded for the target.
+
+
 <!-- roadmap: p1-spine -->
 <!-- roadmap: track-d -->
 
@@ -2669,6 +2688,75 @@ public origin to gate. `docs/rebuild/guard-inventory.json` carries no row for it
 ---
 
 ## 10. Integration definition of done
+
+### D340 — desktop-only dashboard support (operator decision, 2026-09-06)
+
+The dashboard supports desktop and laptop use. Phone/tablet layouts, mobile navigation and
+touch-specific interaction proof are not release requirements. This applies to the browser-hosted
+dashboard now and the later desktop package; Phase 6 packaging is not a prerequisite for this scope.
+Desktop resizing, smaller laptop windows, browser zoom, keyboard access, focus, reduced motion and
+both-theme accessibility remain required. Responsive requirements in this contract and the dashboard
+surface contract mean adaptation within the supported desktop window range, not mobile support.
+
+**Immediate execution amendment (operator decision, 2026-09-06).** Remove mobile-only dashboard
+verification and coarse-pointer presentation now, before Task 1.6.6 starts. This supersedes the
+original deferral of that cleanup to Phase 3.1. Standard gates use desktop cases from this point
+onward; no later task owes mobile implementation or mobile proof. Keep the existing desktop
+viewports (1024×768, 1280×720 and 1440×900), resizing, keyboard access and both themes. Task 3.1.8
+still owns the final supported desktop/zoom acceptance matrix; this cleanup does not invent a new
+minimum or claim that every zoom case is already proven.
+
+Retire the extra coarse-pointer cases for member, toolbar, pool and search controls; retain their
+real-browser desktop density and hit-ownership checks in the corresponding `*-desktop-target.spec.ts`
+files. Remove coarse-pointer target constants/media rules, the Version registry’s finger-only overlay
+and small-screen touch sizing. Keep
+responsive controls and containment that serve smaller desktop windows or zoom. Existing compact
+controls, pointer hit ownership, accessible names, focus handling and keyboard actions remain required.
+
+Move the unique phone Receipt PNG/origin/download/focus checks, portrait diagnostic-image checks,
+Archive evidence/lightbox checks and pinned-notification reachability to the existing narrow desktop
+viewport. Remove the duplicate mobile observed-log case; its desktop case retains the full ledger,
+continuation and containment assertions. Replace the phone Archive reference triple with the narrow
+Paper Ink desktop triple through the deliberate parity lane. The exact evidence attachment/digest
+guard retains its assertions under the new desktop attachment names. D294 retirement guards and
+contact phone-number validation remain active: they do not exercise a mobile dashboard.
+
+Tasks 3.1.8/9-1/17/18 consume this desktop-only baseline rather than scheduling another mobile cleanup.
+Keep desktop behavior, accessibility and safety assertions, coverage floors and all unrelated tests.
+Removing every media query is not a goal; adaptive desktop layout is still useful. Phase 6 packaging
+is unaffected. This decision supersedes mobile/touch-specific dashboard acceptance obligations,
+including historical desktop/mobile proof wording.
+
+**Implementation evidence (2026-09-06).** The desktop lane passes 257 cases after retiring 12
+mobile-only variants. The single phone Archive screenshot/a11y/provenance triple is replaced by
+`archive-evidence--paper-ink--narrow-1024x768`; existing desktop references pass without a bulk
+re-freeze. The narrow Receipt and diagnostic cases still publish exact digest-bound a11y evidence.
+
+### D339 — workflow-required release surfaces (operator decision, 2026-09-06)
+
+The first production release requires complete, usable surfaces for the admitted workflows and their
+operation: configure/start/queue/monitor, applicable identity and write gates, truthful outcomes,
+evidence and recovery. Generic People/Review pages and new advanced storage-recovery interfaces do
+not block release unless an admitted workflow requires them. Working existing controls may remain;
+this deferral is not permission to ship broken, misleading or inert controls as finished features.
+
+Phase 3.1 Task 8 binds the acceptance matrix to actual workflow journeys and explicitly records each
+required or deferred surface. Task 14's generic People/Review work is unscheduled until a concrete
+workflow need or an explicit post-release request admits it. Task 9-3 keeps basic health/status and
+clear access/instructions for supported backup/recovery commands; new interactive restore, migration
+and repair interfaces are deferred under the same trigger. Core backup, doctor, restore and recovery
+behavior and their proofs remain required. A workflow needing Review before release brings its actual
+Review journey into scope; it does not require a speculative all-workflow page framework.
+
+Tasks 15–18 and the integration/cutover surface matrix below cover the required shipped journeys and
+truthful absence of deferred ones. Remove the deferred generic-page task from mandatory dependencies;
+record its disposition at acceptance instead of treating its unchecked features as a release failure.
+Existing active tests remain until any changed surface is implemented and its proofs deliberately
+updated. Accessibility, responsiveness, reconnect, validation and write-safety checks still cover
+every shipped surface. Phases 3.2/3.3 workflow acceptance and Phase 5's production/rollback safeguards
+remain binding. Finishing every optional screen first is rejected because it extends the critical
+path without establishing another required HR capability.
+
 
 <!-- roadmap: cutover -->
 

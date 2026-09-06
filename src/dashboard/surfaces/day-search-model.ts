@@ -21,15 +21,8 @@ export type TopBarSearchMode = "corpus" | "day";
 /** One page is the bounded interaction size, independent of server maximum. */
 export const TOP_BAR_SEARCH_PAGE_SIZE = 20;
 
-/** A short painted scope control with a 44px coarse-pointer reach per toggle. */
-export const TOP_BAR_SCOPE_TOGGLE_GROUP = "pointer-coarse:overflow-visible";
-export const TOP_BAR_SCOPE_TOGGLE_HIT_AREA = [
-  "relative min-w-11 h-[var(--ds-h-sm)] touch-manipulation",
-  "pointer-coarse:after:pointer-events-auto pointer-coarse:after:absolute",
-  "pointer-coarse:after:inset-x-0 pointer-coarse:after:top-1/2",
-  "pointer-coarse:after:h-11 pointer-coarse:after:-translate-y-1/2",
-  "pointer-coarse:after:content-['']",
-].join(" ");
+/** Compact desktop scope controls retain their existing paint and spacing. */
+export const TOP_BAR_SCOPE_TOGGLE_HIT_AREA = "relative min-w-11 h-[var(--ds-h-sm)]";
 
 /** A pause keeps fast typing to one bounded authority request. */
 export const TOP_BAR_CORPUS_SEARCH_DEBOUNCE_MS = 250;

@@ -17,6 +17,12 @@ that must hold before it happens. This doc's job is to keep those conditions hon
 ## Stage summary
 <!-- roadmap: cutover -->
 
+> **D339 (2026-09-06):** the integration surface matrix is the set of required shipped workflow
+> journeys plus explicit deferred-surface dispositions (ref frontend-backend-integration §10).
+> Generic People/Review and new advanced recovery UI do not block cutover absent a current workflow
+> need. Core recovery, capability migration, live acceptance, cutover rehearsal and rollback stay required.
+
+
 <!-- roadmap-status: cutover -->
 - [x] the model is ratified — ONE all-at-once authority switch, no workflow-scoped flip, no mixed-engine interval, no compat layer (D89, amended by D93 to a change of REPOSITORY)
 - [x] the rollback asset is defined and structurally safe — the whole legacy repo, never deleted through the initial cutover; deletion needs its own operator authorization (D89/D93)

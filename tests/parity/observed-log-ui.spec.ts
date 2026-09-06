@@ -382,7 +382,6 @@ test("the served 200-row bound remains complete and searchable without eager con
 
 for (const viewport of [
   { name: "desktop", width: 1440, height: 900 },
-  { name: "mobile", width: 390, height: 844 },
 ]) {
   test(`observed log ledger is reachable and contained at ${viewport.name}`, async ({ page }, testInfo) => {
     const continuationRelease = deferred<void>();
@@ -449,12 +448,6 @@ for (const viewport of [
     await search.fill("");
 
     const loadMore = page.getByRole("button", { name: "Load more lines" });
-    if (viewport.name === "mobile") {
-      const box = await loadMore.boundingBox();
-      expect(box, "the mobile continuation control must have measurable geometry").not.toBeNull();
-      expect(box?.width).toBeGreaterThanOrEqual(44);
-      expect(box?.height).toBeGreaterThanOrEqual(44);
-    }
     await loadMore.click();
     const loading = page.getByRole("button", { name: "Loading more lines…" });
     await expect(loading).toBeVisible();
@@ -464,7 +457,7 @@ for (const viewport of [
     await expect(page.getByRole("button", { name: "Load more lines" })).toHaveCount(0);
     await expect(log.getByRole("listitem")).toHaveCount(4);
     const logWidth = await log.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
-    expect(logWidth, "the observed log ledger must fit its own mobile panel").toEqual({ scroll: logWidth.client, client: logWidth.client });
+    expect(logWidth, "the observed log ledger must fit its own desktop panel").toEqual({ scroll: logWidth.client, client: logWidth.client });
     if (viewport.name === "desktop") {
       await expect(log.getByRole("heading", { name: "Find person · ucpath/person-read" }).first()).toHaveCSS("position", "sticky");
     }

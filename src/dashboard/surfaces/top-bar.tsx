@@ -702,7 +702,7 @@ export function NotificationBell({
         aria-label={`Notifications — ${unread} unread`}
         onClick={() => setOpen(true)}
         className={cn(
-          "relative flex touch-manipulation items-center justify-center rounded-[var(--ds-radius-md)] p-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)] max-sm:min-h-11 max-sm:min-w-11 max-sm:p-0",
+          "relative flex items-center justify-center rounded-[var(--ds-radius-md)] p-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]",
           "hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
           dsFocus,
           dsMotion.base,
@@ -759,7 +759,6 @@ export function NotificationBell({
                   selected={filter === entry.key}
                   onSelect={() => setFilter(entry.key)}
                   tone="neutral"
-                  className="touch-manipulation max-sm:min-h-11"
                 >
                   {`${entry.label} ${counts[entry.key]}`}
                 </Chip>

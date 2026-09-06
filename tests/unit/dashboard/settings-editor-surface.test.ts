@@ -144,7 +144,6 @@ describe("editable Settings surface", () => {
     const width = inputs[0];
     const height = inputs[1];
     assert.equal(height.disabled, false);
-    assert.match(width.className, /pointer-coarse:min-h-11/u);
     width.focus();
     assert.equal(document.activeElement, width, "the editable control accepts keyboard focus");
     await act(async () => {
@@ -166,7 +165,6 @@ describe("editable Settings surface", () => {
     await act(async () => { overlayButton("Keep editing").click(); });
     assert.equal(closeCount, 0);
     const save = button("Save 1");
-    assert.match(save.className, /pointer-coarse:min-h-11/u);
     save.focus();
     assert.equal(document.activeElement, save, "the atomic save action accepts keyboard focus");
     const form = host.querySelector("form");

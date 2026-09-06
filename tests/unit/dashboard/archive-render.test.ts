@@ -362,8 +362,6 @@ for (const close of ["button", "Escape"] as const) {
     if (!(evidenceTab instanceof HTMLButtonElement)) throw new Error("the archive detail has no Evidence tab");
     await press(evidenceTab);
     const opener = findButton("What it was");
-    assert.ok(opener.classList.contains("pointer-coarse:min-h-11"));
-    assert.ok(opener.classList.contains("pointer-coarse:min-w-11"));
     await press(opener);
     assert.ok(document.querySelector('[role="dialog"]'));
     if (close === "button") await press(findButton("Close"));
@@ -498,19 +496,12 @@ describe("the archived capture viewer's read-time resource state", () => {
     assert.doesNotMatch(document.body.textContent ?? "", /purged/u);
   });
 
-  it("declares both dimensions of the coarse-pointer touch floor on every capture footer action and its header close", async () => {
+  it("renders capture footer actions in navigation order", async () => {
     await mountHarness(0, async (runId, artifactId) => available(runId, artifactId));
     const dialog = document.querySelector('[role="dialog"]');
     if (!(dialog instanceof HTMLElement)) throw new Error("the capture dialog did not open");
     const actions = [...dialog.querySelectorAll("footer button, footer a")];
     assert.deepEqual(actions.map((action) => action.textContent?.trim()), ["Previous capture", "Next capture", "Download", "Close"]);
-    // Check the shortest footer label first: a height-only floor left Close narrower than 44px.
-    for (const action of actions.toReversed()) {
-      assert.ok(action.classList.contains("pointer-coarse:min-h-11"), `footer ${action.textContent} has no 44px minimum height`);
-      assert.ok(action.classList.contains("pointer-coarse:min-w-11"), `footer ${action.textContent} has no 44px minimum width`);
-    }
-    assert.ok(dialog.classList.contains("pointer-coarse:[&>header>button]:min-h-11"));
-    assert.ok(dialog.classList.contains("pointer-coarse:[&>header>button]:min-w-11"));
   });
 
   it("withholds the verified-image claim until the browser has loaded and decoded the image", async () => {

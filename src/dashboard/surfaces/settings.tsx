@@ -510,7 +510,7 @@ function StorageSection({
         <HealthLine status={authorityStatusOf(storage.authority)} label="Authority" value={storage.authority} />
         <HealthLine status={backupStatusOf(storage.backup)} label="Backup" value={storage.backup} />
         <span>
-          <Button className="pointer-coarse:min-h-11" size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
+          <Button size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
             {doctor.state === "loading" ? "Running doctor…" : "Run storage doctor"}
           </Button>
         </span>
@@ -592,7 +592,6 @@ function EditableSettingsSection({
                 hint={leaf.input === "number" ? leaf.unit : undefined}
               >
                 <Input
-                  className="pointer-coarse:min-h-11"
                   type={leaf.input === "number" ? "number" : "text"}
                   value={String(value)}
                   min={leaf.input === "number" ? leaf.minimum : undefined}
@@ -606,7 +605,7 @@ function EditableSettingsSection({
                 {leaf.hazard !== undefined && <Badge tone="warning">Review impact</Badge>}
                 <span className={cn(dsText.micro, dsText.nums, "text-[color:var(--ds-fg-faint)]")}>{leaf.path}</span>
                 {!locked && editor.draft[leaf.path] !== leaf.effectiveValue && (
-                  <Button className="pointer-coarse:min-h-11" size="sm" variant="ghost" onClick={() => editor.reset(leaf.path)}>Reset</Button>
+                  <Button size="sm" variant="ghost" onClick={() => editor.reset(leaf.path)}>Reset</Button>
                 )}
               </div>
               {leaf.hazard !== undefined && <span className={cn(dsText.meta, "text-[color:var(--ds-status-waiting-fg)]")}>{leaf.hazard}</span>}
@@ -620,8 +619,8 @@ function EditableSettingsSection({
         })}
         <div className="sticky bottom-0 flex flex-wrap items-center gap-[var(--ds-space-snug)] border-t border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] py-[var(--ds-space-base)]">
           <span className={cn(dsText.meta, "mr-auto text-[color:var(--ds-fg-muted)]")}>{plural(editor.dirtyCount, "unsaved change")}</span>
-          <Button className="pointer-coarse:min-h-11" size="sm" variant="ghost" onClick={editor.discard} disabled={editor.dirtyCount === 0 || editor.save.state === "saving"}>Discard all</Button>
-          <Button className="pointer-coarse:min-h-11" type="submit" size="sm" variant="primary" disabled={editor.dirtyCount === 0 || Object.values(editor.errors).some((error) => error !== undefined) || editor.save.state === "saving"}>
+          <Button size="sm" variant="ghost" onClick={editor.discard} disabled={editor.dirtyCount === 0 || editor.save.state === "saving"}>Discard all</Button>
+          <Button type="submit" size="sm" variant="primary" disabled={editor.dirtyCount === 0 || Object.values(editor.errors).some((error) => error !== undefined) || editor.save.state === "saving"}>
             {editor.save.state === "saving" ? "Saving…" : `Save ${String(editor.dirtyCount)}`}
           </Button>
         </div>
@@ -645,7 +644,7 @@ function PreflightControl({
     <section className="flex flex-col gap-[var(--ds-space-snug)]" aria-label="Preflight">
       <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
         <SectionLabel>Preflight</SectionLabel>
-        <Button className="pointer-coarse:min-h-11" size="sm" variant="secondary" onClick={editor.rerunPreflight} disabled={editor.preflight.state === "running"}>
+        <Button size="sm" variant="secondary" onClick={editor.rerunPreflight} disabled={editor.preflight.state === "running"}>
           {editor.preflight.state === "running" ? "Running preflight…" : "Rerun preflight"}
         </Button>
       </div>
@@ -975,13 +974,6 @@ function CapabilitiesSection({ workflowLabels }: { workflowLabels: ReadonlyMap<s
                           <IconButton
                             size="xs"
                             label={`What ${spec.label} means`}
-                            // 20px at rest. The floor is taken as min-w/min-h
-                            // rather than an `::after` overlay because this
-                            // control sits in a FLEX ROW — it grows the row and
-                            // cannot resolve a tap to a neighbour (F2d). The
-                            // parity corpus renders at `pointer: fine`, so no
-                            // reference moves.
-                            className="pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                             icon={<Info aria-hidden className={dsIcon.sm} />}
                           />
                         </PopoverTrigger>
@@ -1128,22 +1120,6 @@ function SectionButton({
       className={cn(
         "flex min-w-0 items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-md)]",
         "px-[var(--ds-space-base)] py-[var(--ds-space-snug)] text-left",
-        // The finger's 44px floor, taken by GROWING the entry rather than by
-        // hanging an overlay on it (`ds/tokens.css`'s coarse-pointer note, and
-        // unit F2c's lesson). It is safe here where it was not on the member
-        // line: these entries are separated by a real `gap-hair`, so a taller
-        // entry has its own box to grow into and cannot resolve a tap to its
-        // neighbour. A fine pointer sees the demo's density unchanged, and the
-        // parity corpus renders at `pointer: fine`.
-        //
-        // `pointer-coarse:` — the variant the queue's own touch constants use.
-        // The first attempt here was the arbitrary form
-        // `[@media(pointer:coarse)]:min-h-[44px]`, which compiled to an EMPTY
-        // rule: the class was in the DOM and the declaration was in no
-        // stylesheet, so nothing on screen and nothing in the gate family would
-        // have said the floor was missing. Read the generated CSS, not the
-        // class list — F2c's lesson, one layer lower down.
-        "pointer-coarse:min-h-11",
         dsText.ui,
         dsFocus,
         dsMotion.base,
@@ -1315,7 +1291,7 @@ export function SettingsPage({
           size="sm"
           icon={<ArrowLeft aria-hidden className={dsIcon.md} />}
           onClick={requestClose}
-          className="justify-start pointer-coarse:min-h-11"
+          className="justify-start"
         >
           Back to the dashboard
         </Button>
@@ -1397,8 +1373,8 @@ export function SettingsPage({
           description={`You have ${plural(editor.dirtyCount, "unsaved change")}. Leaving Settings discards the entire atomic draft.`}
         >
           <DialogFooter>
-            <Button className="pointer-coarse:min-h-11" variant="secondary" onClick={() => setPendingExit(undefined)}>Keep editing</Button>
-            <Button className="pointer-coarse:min-h-11" variant="danger" onClick={discardAndExit}>Discard changes</Button>
+            <Button variant="secondary" onClick={() => setPendingExit(undefined)}>Keep editing</Button>
+            <Button variant="danger" onClick={discardAndExit}>Discard changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

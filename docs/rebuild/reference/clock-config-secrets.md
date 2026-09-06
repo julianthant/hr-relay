@@ -495,7 +495,70 @@ downstream consumers, and Phase 3.1 owns the Settings/Setup interface.
 
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R02 | designed as **D331** (§D331.1–§D331.12 below); no runtime code changed (D326). 0.3 Task 3 owns migration/recovery; 1.6 implements; §D331.11 lists the owed proofs.
 
+##### D336 — SQLite settings and an independent credential store (operator decision, 2026-09-06)
+
+**Approved target; implementation belongs to Phase 1.6 Task 6.** Runs and ordinary settings use
+one SQLite authority database. Credentials and other protected settings use one separate credential
+store reached through the existing sole secret reader. Credential updates are independent operations,
+not participants in a run/settings transaction. This section supersedes the conflicting D321/D331/D332
+file layout, file/journal coupling, backup-pairing and recovery requirements below; their original
+text remains evidence for already-built code and input formats, not the target implementation.
+Tasks 1–4 retain their completed evidence and the in-flight Task-5 assignment remains bounded as
+approved. Task 6 performs the storage conversion and all necessary consumer changes together.
+
+**Ordinary settings.** The existing closed catalog, leaf validation, set/clear behavior, revision
+compare-and-swap, defaults, restart scopes and immutable per-run snapshots remain. The persisted
+settings values, revision and successful command/audit records commit in the same SQLite transaction.
+The resolver reads that database through the settings service. No JSON file, sidecar, lock, prepared
+file, rollback file or second database row acts as an independently authoritative copy of ordinary
+settings. JSON export/import may be an explicit operation; an export is never a runtime authority.
+For example, applying `concurrency.defaultWorkers = 3` at revision 7 either commits revision 8 and
+its audit together, or leaves both unchanged. The exact table/schema/API binding is Task 6's focused
+plan, based on the then-integrated code; this decision does not invent a parallel repository.
+
+**Protected settings.** Preserve write-only inputs, value-free presence readback, per-name validation,
+next-use reads, missing-credential refusals and the sole reader boundary. A credential value never
+enters the authority database, ordinary configuration, fingerprints, snapshots, logs, API readback,
+backups or child-process environment. The credential backend owns its own durable updates and reports
+success, refusal or an uncertain outcome truthfully. SQLite may retain value-free audit observations,
+but no SQLite singleton or journal row authenticates the credential store's current revision or gates
+its availability. An audit failure must not be reported as success; it also must not roll back an
+unrelated database transaction or make a database restore pretend to restore a password. Credential
+write authorization and replay/readback semantics must be bound in the Task-6 plan before code changes.
+Provider keys retain their current dedicated `.env` source until the separately owned OS credential
+backend is implemented; ordinary settings never return to environment precedence. This is a storage
+boundary decision, not approval to replace the OS backend or import real credentials in this session.
+
+**Backup and restore.** A verified SQLite backup now contains runs and ordinary settings together;
+credential values are excluded by construction. Restoring it leaves the separate credential store
+unchanged and reports current credential availability from that store. A missing credential blocks
+the operation that needs it. Do not add a cross-store generation handshake, force-delete credentials,
+or infer credential absence from old SQLite metadata. Existing snapshots/evidence and D332's rule
+against re-admitting an externally uncertain write remain binding.
+
+**Transition.** Task 6 inventories the actual supported source formats, including the pre-floor
+settings family and the D331 files already created by Tasks 2-2/5. It validates and imports ordinary
+values into SQLite once, refuses conflicting sources, and proves that old files/environment values
+cannot influence the resolver after conversion. Credential setup/import is separate, with value-free
+status and explicit failure; it never makes the SQLite upgrade a cross-store transaction. A new empty
+root starts directly in the target format. Existing local data is preserved; this decision does not
+authorize deleting the rebuild's state or touching legacy production. `storage upgrade --plan`, a
+verified explicit backup, database migration/restore checks and preservation proofs remain; the old
+prepare/commit/file-settle boot matrix is replaced, not carried forward under new names.
+
+**Why.** The split file/SQLite design requires an application-level transaction and recovery protocol
+for an ordinary setting. SQLite already provides the required atomicity. Keeping all values, including
+plaintext credentials, in SQLite would simplify commits but violate the intentional secret-free backup
+boundary. One database for ordinary state plus independent credential operations retains that boundary
+without pretending the two stores can commit atomically. Phase 6 consumes the same credential reader
+interface when it supplies the platform backend.
+
 ##### D331 — the settings catalog and protected root contract (0.3 Task 2, 2026-09-04)
+
+> **Current target:** §D336 supersedes the file destinations and database/file coupling below.
+> Keep the catalog and user-visible behavior; use SQLite for ordinary settings and independent
+> credential operations. File-specific paragraphs describe the source implementation to convert.
+
 
 D327 required the settings half of the authority reset to be DESIGNED before 1.6 implements it. This
 subsection is that design: one closed catalog that enumerates every local configuration leaf exactly
@@ -1264,6 +1327,12 @@ parenthetical pointer too); the ledger row (`reference/decisions.md`) points her
    lock/signCount protocol; ref stores' catalog is unaffected (no task contract changes).
 
 ##### D332 (settings half) — importing today's `.env`, `settings.json` and canary inputs at the upgrade (0.3 Task 3, 2026-09-04)
+
+> **D336 target amendment (2026-09-06):** the key classifications, validation, conflict refusals and
+> historical-source facts below remain inputs to migration. Ordinary values now import into SQLite;
+> credential import is independent. File destinations and the coupled two-command settlement are
+> superseded by §D336. Task 6 must cover both pre-floor and already-created D331 files.
+
 
 ref dashboard-surfaces §D332 owns the upgrade command, its preflight, its one exclusive transaction,
 its journal, its rollback and its boot matrix. §D332.10 assigns THIS subsection the import: which key

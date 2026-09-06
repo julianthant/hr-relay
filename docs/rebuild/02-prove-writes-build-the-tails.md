@@ -575,6 +575,13 @@ closed. This is scheduling under D328, not authority redesign.
 ### Task 2 · Run the non-mutating migration and recovery proof
 <!-- roadmap: p2f-proof -->
 
+> **D336 (2026-09-06):** consume Task 1.6.6's verified SQLite-settings format, database restore
+> behavior and independently read credential availability. The older paired-file rollback and
+> `settings-root-single-pathname` target below are superseded. Delete only the migration adapters
+> actually admitted by Task 6's revised proof/expiry mapping. Preserve downstream reconciliation,
+> evidence readability, redaction and unknown-write refusal; no second live write is authorized.
+
+
 - [ ] Run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation
   gates; cite D135 rather than performing a second controlled write.
 - [ ] Prove displaced sources cannot alter a response.
