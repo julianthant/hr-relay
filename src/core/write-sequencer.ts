@@ -1,3 +1,5 @@
+import { isFreshOccurrenceProof } from "./repeat-proof.js";
+import { readRunCheckpoint } from "./run-checkpoint-reader.js";
 /**
  * The Phase-1f fenced write sequencer — ref write-safety §3's seven-beat kernel write
  * sequence (D111), the D117 transaction-node semantics of ref workflow-model §3.1, and the
@@ -57,6 +59,8 @@ import {
 import type { ActorId, BrowserSystemId, Fingerprint, TaskId } from "../domain/ids.js";
 import { runClaim, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
+import { RepeatOccurrenceSchema, repeatOccurrenceKey } from "../domain/run/rerun.js";
+import { repeatEvidenceDigest } from "../domain/run/rerun.js";
 import { sha256Hex } from "../domain/sha256.js";
 import { idempotencyKeyDigestReference } from "../domain/redaction.js";
 import {
@@ -1612,6 +1616,16 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           cause: failure,
         });
       }
+      if (!isFreshOccurrenceProof(intent, context.run.envelope, {
+        schemaHash: deriveSchemaHash(completion.proofSchema, "output"), value: proofValue,
+      })) {
+        const failure = new PostFenceWriteFailure({ writeIntentId: intent.writeIntentId, generation: intent.generation,
+          intentVersion: intent.version, parkCode: "unknown", message: "Earlier receipt cannot settle the new write occurrence",
+          authorityReason: authorityReason("recovery-probe-unknown", "proof", proofValue) });
+        await parkAfterFence(context, failure);
+        throw new WriteParkedError({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
+          parkCode: "unknown", message: failure.message, cause: failure });
+      }
       const settlement = buildCommittedSettlement({
         descriptor: context.descriptor,
         nodeId: String(context.node.id),
@@ -1765,16 +1779,40 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const commitInput: unknown = commitContract.input.parse(node.commit.bind(context.scope));
     const system = systemOf(commitContract.id);
     const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
-    const key = IdempotencyKeySchema.parse(keyRaw);
+    const naturalKey = IdempotencyKeySchema.parse(keyRaw);
+    const businessKeyDigest = deriveIdempotencyKeyDigest(system, naturalKey);
+    const sourceBound = envelope.sourceBound;
+    const consent = sourceBound?.warnings.filter((warning) => warning.nodeId === node.id
+      && warning.taskId === commitContract.id && warning.system === system && warning.businessKeyDigest === businessKeyDigest);
+    const occurrence = sourceBound === undefined || consent === undefined || consent.length === 0 ? undefined
+      : RepeatOccurrenceSchema.parse({ ...consent[0], confirmationCommandId: sourceBound.confirmationCommandId,
+        sourceRunId: sourceBound.source.runId, sourceVersion: sourceBound.source.expectedVersion,
+        warningDigest: sourceBound.warningDigest,
+        baselineEvidence: consent.map(({ writeIntentId, evidenceDigest }) => ({ writeIntentId, evidenceDigest })) });
+    if (occurrence !== undefined && sourceBound?.acknowledgment !== sourceBound?.warningDigest) {
+      throw new Error("confirmation-required: repeat acknowledgment is missing or stale");
+    }
+    const key = occurrence === undefined ? naturalKey
+      : IdempotencyKeySchema.parse(repeatOccurrenceKey(businessKeyDigest, occurrence.confirmationCommandId, String(node.id)));
     const keyDigest = deriveIdempotencyKeyDigest(system, key);
+    const siblings = deps.authority.authority.writeIntents.listByBusinessKey(system, businessKeyDigest);
+    if (siblings.some((intent) => intent.idempotencyKey !== key && (intent.status !== "committed" && intent.status !== "observed-present"))) {
+      throw new Error("business key has an unresolved write occurrence");
+    }
+    if (sourceBound !== undefined) {
+      for (const intent of siblings) {
+        if (intent.idempotencyKey === key && "runId" in intent && intent.runId === envelope.runId) continue;
+        if (intent.status !== "committed" && intent.status !== "observed-present") continue;
+        if (!consent?.some((warning) => warning.writeIntentId === intent.writeIntentId
+          && warning.evidenceDigest === repeatEvidenceDigest(intent))) {
+          throw new Error("confirmation-required: fresh transaction facts require renewed warning acknowledgment");
+        }
+      }
+    }
 
     /* step 0 — this node's settled outcome replays byte-exact, never re-clicks */
-    const storedCheckpoint = deps.authority.authority.runCheckpoints.latest(
-      context.descriptor.id,
-      envelope.itemId,
-      String(node.id),
-    );
-    if (storedCheckpoint !== undefined) {
+    const storedCheckpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id));
+    if (storedCheckpoint !== undefined && (sourceBound === undefined || storedCheckpoint.runId === envelope.runId)) {
       /*
        * D314 — a replayed settlement must still be THE write the fresh facts
        * address. A Restart-from-start attempt (and any resume whose
@@ -1787,7 +1825,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       assertReplayMatchesFreshFacts(context, commitContract, storedCheckpoint, system, key, keyDigest);
       return replayCheckpoint(context, commitContract, storedCheckpoint);
     }
-    refuseRetiredPermanentKeys(commitContract, commitInput, system, key);
+    refuseRetiredPermanentKeys(commitContract, commitInput, system, naturalKey);
 
     /* beat ① — durable permanent-key lookup, regardless of status/origin */
     const durable = deps.authority.authority.writeIntents.findByPermanentKey(system, key);
@@ -1819,7 +1857,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
 
     /* beat ① — the policy-controlled live probe on a separate read lease */
-    const mustProbe = node.probePolicy === "always"
+    const mustProbe = sourceBound !== undefined || node.probePolicy === "always"
       || durable !== undefined
       || envelope.attempt > 1;
     if (mustProbe) {
@@ -1834,7 +1872,16 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           error,
         );
       }
-      if (verdict.state === "present") {
+      if (verdict.state === "present" && occurrence !== undefined) {
+        const completion = commitContract.writeSafety.completion;
+        const proof = completion.proofSchema.parse(Reflect.apply(completion.proofFromPresentProbe, undefined, [verdict]));
+        const evidenceDigest = sha256Hex(canonicalJsonStringify({ schemaHash: deriveSchemaHash(completion.proofSchema, "output"),
+          value: JsonValueSchema.parse(proof) }));
+        if (!consent?.some((warning) => warning.evidenceDigest === evidenceDigest)) {
+          throw new Error("confirmation-required: live completion evidence changed");
+        }
+      } else if (verdict.state === "present") {
+        if (sourceBound !== undefined) throw new Error("confirmation-required: a newly discovered completed transaction requires acknowledgment");
         if (durable !== undefined) {
           throw new Error(
             `live probe found ${idempotencyKeyDigestReference(keyDigest)} present, but its permanent intent `
@@ -1891,7 +1938,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           ),
         );
       }
-      if (verdict.evidence.idempotencyKeyDigest !== keyDigest) {
+      if (verdict.state === "absent" && verdict.evidence.idempotencyKeyDigest !== businessKeyDigest) {
         throw new WriteSafetyAuthorityError(
           `pre-write probe absent evidence does not match ${idempotencyKeyDigestReference(keyDigest)}; `
           + "refusing to treat foreign evidence as absence",
@@ -2004,6 +2051,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           : WriteIntentIdSchema.parse(durable === undefined ? deps.ids.uuid() : durable.writeIntentId);
         const intentRecord = WriteIntentRecordSchema.parse({
           writeIntentId: intentId,
+          ...(occurrence === undefined ? {} : { occurrence }),
           workflowId: context.descriptor.id,
           itemId: envelope.itemId,
           taskId: commitContract.id,
@@ -2198,6 +2246,13 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           rawCommitOutput,
           intent: fenced,
         });
+        if (!isFreshOccurrenceProof(fenced, envelope, {
+          schemaHash: deriveSchemaHash(commitContract.writeSafety.completion.proofSchema, "output"), value: captured.proofValue,
+        })) {
+          throw new PostFenceWriteFailure({ writeIntentId: fenced.writeIntentId, generation: fenced.generation,
+            intentVersion: fenced.version, parkCode: "unknown", message: "new occurrence has only its earlier receipt; completion is unknown",
+            authorityReason: authorityReason("post-click-verifier-unknown", "proof", captured.proofValue) });
+        }
         return { intent: fenced, proofValue: captured.proofValue, outputValue: captured.outputValue };
         },
       );
@@ -2322,6 +2377,20 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const key = IdempotencyKeySchema.parse(keyRaw);
     const keyDigest = deriveIdempotencyKeyDigest(system, key);
     refuseRetiredPermanentKeys(commitContract, commitInput, system, key);
+    const source = envelope.sourceBound;
+    const consent = source?.warnings.filter((warning) => warning.nodeId === node.id && warning.taskId === commitContract.id
+      && warning.system === system && warning.businessKeyDigest === keyDigest);
+    const siblings = deps.authority.authority.writeIntents.listByBusinessKey(system, keyDigest);
+    if (siblings.some((intent) => intent.idempotencyKey !== key
+      && intent.status !== "committed" && intent.status !== "observed-present")) {
+      throw new Error("business key has an unresolved write occurrence");
+    }
+    if (source !== undefined && siblings.some((intent) => (intent.status === "committed" || intent.status === "observed-present")
+      && (source.acknowledgment !== source.warningDigest || !consent?.some((warning) => warning.writeIntentId === intent.writeIntentId
+        && warning.evidenceDigest === repeatEvidenceDigest(intent))))) {
+      throw new Error("confirmation-required: preview completion evidence changed");
+    }
+
 
     /** The settlement the real path would reuse — DERIVED, never fabricated. */
     const presentFromProof = (proofRaw: unknown): Readonly<{ proof: JsonValue; output: JsonValue }> => {
@@ -2351,7 +2420,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           + "only the typed operator resolutions may release it, so there is nothing to rehearse",
         );
       }
-      if (durable.status === "committed" || durable.status === "observed-present") {
+      if (source === undefined && (durable.status === "committed" || durable.status === "observed-present")) {
         const stored = durable.status === "committed" ? durable.completionProof : durable.observedProof;
         if (stored.schemaHash !== proofSchemaHash) {
           throw new Error(
@@ -2379,7 +2448,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
 
     /* beat ① — the policy-controlled live probe, on its own read lease */
-    const mustProbe = node.probePolicy === "always"
+    const mustProbe = source !== undefined || node.probePolicy === "always"
       || durable !== undefined
       || envelope.attempt > 1;
     let probe: z.input<typeof DryRunProbeObservationSchema>;
@@ -2412,7 +2481,16 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           ),
         );
       }
-      if (verdict.state === "present") {
+      if (verdict.state === "present" && source !== undefined) {
+        const raw: unknown = Reflect.apply(completion.proofFromPresentProbe, undefined, [verdict]);
+        const settled = presentFromProof(raw);
+        const proof = { schemaHash: proofSchemaHash, value: settled.proof };
+        if (source.acknowledgment !== source.warningDigest
+          || !consent?.some((warning) => warning.evidenceDigest === sha256Hex(canonicalJsonStringify(proof)))) {
+          throw new Error("confirmation-required: preview found unacknowledged completion evidence");
+        }
+        probe = { state: "present", proof, output: { schemaHash: outputSchemaHash, value: settled.output } };
+      } else if (verdict.state === "present") {
         if (durable !== undefined) {
           throw new Error(
             `preview probe found ${idempotencyKeyDigestReference(keyDigest)} present, but its permanent intent `
@@ -2433,14 +2511,14 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           observedAt: instant(),
         });
       }
-      if (verdict.evidence.idempotencyKeyDigest !== keyDigest) {
+      if (verdict.state === "absent" && verdict.evidence.idempotencyKeyDigest !== keyDigest) {
         throw new WriteSafetyAuthorityError(
           `preview probe absent evidence does not match ${idempotencyKeyDigestReference(keyDigest)}; `
           + "refusing to treat foreign evidence as absence",
           authorityReason("preview-probe-foreign-absence", "probe", verdict),
         );
       }
-      probe = { state: "absent", evidence: verdict.evidence };
+      if (verdict.state === "absent") probe = { state: "absent", evidence: verdict.evidence };
     }
 
     /* the staged rehearsal — reached only when the real run would fence */

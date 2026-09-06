@@ -1,7 +1,7 @@
 # run-queued--graphite-warm--narrow-1024x768
 # adapter: fixture
 # fixture: run-queued
-# descriptorHash: c5c4bd6af0200ce10f11a7c1b572b325e327a15d606d7d798794e29215b30a9d
+# descriptorHash: 9d4492693c6190a258ea5ed7e186410f807302c77f4fdb3c821087d7099812cc
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -255,7 +255,7 @@
     - list "Run log lines":
       - 'listitem "9:55 AM: info note: Run queued at interactive priority"': 9:55 AM Run queued at interactive priority
     - searchbox "Search logs"
-    - text: c5c4bd6a
+    - text: 9d449269
     - button "Run provenance"
     - text: idle
   - complementary "Run data":
@@ -264,16 +264,11 @@
     - region "Extracted fields":
       - text: Extracted fields
       - button "About run data"
-      - button "Widen the data surface to edit"
+      - button "Widen the data surface"
       - text: Starts on 9:51 AM
-      - textbox "Starts on": 2026-07-15
+      - paragraph: 2026-07-15
       - text: Invited on corrected 9:50 AM
-      - textbox "Invited on": 2026-06-02
-      - text: Corrected 9:50 AM — applies when the run resumes; the run recorded 2026-06-01.
-      - paragraph: No unsaved changes.
-      - button "Reset edits" [disabled]
-      - button "Save 0 corrections" [disabled]
-      - text: Change a value to save a correction.
+      - paragraph: 2026-06-01
   - dialog "Workflow Panel":
     - text: Workflow Panel
     - button "Dock the Workflow Panel as a sidebar"

@@ -1,3 +1,4 @@
+import { readRunCheckpoint } from "./run-checkpoint-reader.js";
 /**
  * The Phase-1f graph interpreter (ref workflow-model §§4–5; ref execution-and-sessions §3): a worker claims a
  * queued run and walks the descriptor's node tuple to a terminal state.
@@ -764,7 +765,7 @@ export async function executeClaimedRun(
         continue;
       }
       if (omissionPlan.asserted.has(String(node.id))) {
-        const own = deps.authority.authority.runCheckpoints.latest(descriptor.id, envelope.itemId, String(node.id));
+        const own = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
         const ownRecord = own === undefined ? undefined : RunCheckpointRecordSchema.parse(own);
         const replay = ownRecord !== undefined
           && ownRecord.assertion !== undefined
@@ -805,11 +806,7 @@ export async function executeClaimedRun(
             continue;
           }
         }
-        const stored = deps.authority.authority.runCheckpoints.latest(
-          descriptor.id,
-          envelope.itemId,
-          String(node.id),
-        );
+        const stored = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
         // D314 — Restart from start: a read/compute checkpoint ANOTHER run of
         // this item produced is not replayed; every read and computation
         // executes again. This run's own rows (a gate resume re-claiming the
@@ -819,7 +816,7 @@ export async function executeClaimedRun(
         // (`runCheckpoints.latest` fails loud on a malformed row before this
         // point), so its run id is read directly: a lenient re-parse here would
         // classify an unparseable row as "another run's" instead of refusing.
-        if (envelope.recovery === "restart-from-start" && stored !== undefined && stored.runId !== runId) {
+        if ((envelope.recovery === "restart-from-start" || envelope.sourceBound !== undefined) && stored !== undefined && stored.runId !== runId) {
           if (explicit) {
             problems.push(
               `node "${node.id}" (${labelOf(node)}) cannot be replayed on a restart-from-start attempt; `
@@ -1764,11 +1761,7 @@ export async function executeClaimedRun(
             // durably recorded, and a row that does not project to the very
             // settlement just observed means the two disagree — both are hard
             // errors, never a substituted checkpoint.
-            const stored = deps.authority.authority.runCheckpoints.latest(
-              descriptor.id,
-              envelope.itemId,
-              String(node.id),
-            );
+            const stored = readRunCheckpoint(deps.authority.authority, envelope, String(node.id));
             if (stored === undefined) {
               throw new Error(
                 `transaction node "${node.id}" settled but run ${runId} has no durable checkpoint for it; `

@@ -1,3 +1,9 @@
+import { CommandResultSchema } from "../../../src/domain/commands.js";
+import { singleAppliedRunId } from "../fixtures/operator-command-fixtures.js";
+import { seedSyntheticRuntimeConfig } from "../fixtures/operator-command-fixtures.js";
+import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
+import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
+import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The BFF spine end-to-end over REAL machinery: the D109 planner + a real
@@ -246,6 +252,12 @@ function harness(options: {
     { path: join(root, "state.db"), busyTimeoutMs: 1000, migrationOwner: "bff-flow-test" },
     clock,
   );
+
+  seedSyntheticRuntimeConfig(database);
+  const projectionTransaction = database.withProjectionTransaction.bind(database);
+  database.withProjectionTransaction = (work) => projectionTransaction((repositories) => work({ ...repositories,
+    runsView: { ...repositories.runsView, get: () => { throw new Error("runs_view is not lifecycle authority"); } },
+  }));
   const artifacts = createContentAddressedArtifactWriter({
     workspaceRoot: root,
     artifactRoot: ".tracker/artifacts",
@@ -348,6 +360,10 @@ function harness(options: {
     },
   };
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: (run, publication) => {
+      if (publication === undefined) throw new Error("command-created run lacks queue presentation");
+      spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: PublicationActorIdSchema.parse(publication.actorId) }));
+    } }),
     appVersion: "0.1.0",
     archiveSnapshots: archiveSnapshots(runDetailDeps),
     configIdentity: UNSTORED_CONFIG_IDENTITY,
@@ -807,7 +823,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       }),
     });
     assert.equal(command.status, 200);
-    const runId = (plan.planned as { runId: string }[])[0]?.runId;
+    const runId = singleAppliedRunId(CommandResultSchema.parse(await json(command)));
     assert.ok(runId, "the browser-mode plan must propose a run");
     const run = h.database.authority.runs.get(runId);
     assert.equal((run?.envelope as { browserMode?: unknown } | undefined)?.browserMode, "headed");
@@ -2198,8 +2214,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(planResponse.status, 200);
     const plan = await json(planResponse);
-    const plannedRun = (plan.planned as { runId: string }[])[0];
-    if (plannedRun === undefined) throw new Error("the fixture start plan did not produce its run");
     const fingerprints = plan.fingerprints as Record<string, string>;
     const commandResponse = await h.app.request("/api/v1/commands", {
       method: "POST",
@@ -2226,7 +2240,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       }),
     });
     assert.equal(commandResponse.status, 200);
-    assert.equal((await json(commandResponse)).state, "applied");
+    const plannedRun = { runId: singleAppliedRunId(CommandResultSchema.parse(await json(commandResponse))) };
 
     const capture = createDiagnosticCaptureService({
       authority: h.database.authority,
@@ -2347,7 +2361,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(planResponse.status, 200);
     const plan = await json(planResponse);
-    const planned = plan.planned as { runId: string; title: string; traceId: string }[];
+    const planned = plan.planned as { logicalKey: string; title: string }[];
     const refused = plan.refused as { entry: number; code: string }[];
     assert.equal(planned.length, 1);
     assert.equal(planned[0].title, "Fixture 10873698");
@@ -2380,7 +2394,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       body: JSON.stringify(command),
     });
     assert.equal(commandResponse.status, 200);
-    assert.equal((await json(commandResponse)).state, "applied");
+    const createdRunId = singleAppliedRunId(CommandResultSchema.parse(await json(commandResponse)));
+    const created = h.database.authority.runs.get(createdRunId); assert.ok(created);
 
     // The run.queued span landed in real JSONL (authority first, JSONL after).
     const spanLines = readEventStreamLines(h.stateRoot, "spans");
@@ -2403,7 +2418,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const day = await json(dayResponse);
     const surfaces = day.queueSurfaces as { runId: string; status: string; pipeline: { id: string }[] }[];
     assert.equal(surfaces.length, 1);
-    assert.equal(surfaces[0].runId, planned[0].runId);
+    assert.equal(surfaces[0].runId, created.envelope.runId);
     assert.equal(surfaces[0].status, "queued");
     // Pipeline comes from the descriptor's runtime nodes, pending until spans arrive.
     assert.equal(surfaces[0].pipeline.length > 0, true);
@@ -2414,7 +2429,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(day.statusCounts, [{ status: "queued", count: 1 }]);
 
     // Detail header + note-backed logs slice.
-    const runId = planned[0].runId;
+    const runId = created.envelope.runId;
     const detail = await json(await h.app.request(`/api/v1/runs/${runId}`));
     assert.equal((detail.header as { title: string }).title, "Fixture 10873698");
     // DCA3: a live read must state absence, not omit capture availability.
@@ -2448,7 +2463,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(missingCapturesResponse)).code, "DIAGNOSTIC_BUNDLE_BYTES_MISSING");
     h.noteWriter.emitNote({
       workflow: "fixture-graph",
-      address: { runId, attempt: 1, traceId: planned[0].traceId, spanPath: planned[0].traceId },
+      address: { runId, attempt: 1, traceId: created.envelope.traceId, spanPath: created.envelope.traceId },
       level: "step",
       message: "opened person search",
     });
@@ -2483,7 +2498,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         dryRun: false,
       }),
     }));
-    const planned = plan.planned as { runId: string; traceId: string }[];
     const fingerprints = plan.fingerprints as Record<string, string>;
     const commandResponse = await h.app.request("/api/v1/commands", {
       method: "POST",
@@ -2505,8 +2519,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         },
       }),
     });
-    assert.equal((await json(commandResponse)).state, "applied");
-    const { runId, traceId } = planned[0];
+    const runId = singleAppliedRunId(CommandResultSchema.parse(await json(commandResponse)));
+    const created = h.database.authority.runs.get(runId); assert.ok(created);
+    const traceId = created.envelope.traceId;
 
     // The worker process: raw O_APPEND lines in the shared stream file.
     const base = {
@@ -3483,7 +3498,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid: "10873698", mode: "read-only" }], dryRun: false }),
     }));
     const fingerprints = planResponse.fingerprints as Record<string, string>;
-    await h.app.request("/api/v1/commands", {
+    const commandResponse = await h.app.request("/api/v1/commands", {
       method: "POST",
       headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
@@ -3501,7 +3516,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         payload: fingerprints,
       }),
     });
-    const runId = (planResponse.planned as { runId: string }[])[0].runId;
+    const runId = singleAppliedRunId(CommandResultSchema.parse(await json(commandResponse)));
 
     const review = await h.app.request(`/api/v1/runs/${runId}/review`);
     assert.equal(review.status, 409);
@@ -3777,8 +3792,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
           },
         }),
       });
-      assert.equal((await json(started)).state, "applied");
-      return (plan.planned as { runId: string }[])[0].runId;
+      return singleAppliedRunId(CommandResultSchema.parse(await json(started)));
     };
     const runA = await startRun("10873698", "1a000000-0000-4000-8000-000000000001");
     const runB = await startRun("10002296", "1a000000-0000-4000-8000-000000000002");

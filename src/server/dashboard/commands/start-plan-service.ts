@@ -15,6 +15,8 @@ import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import type { Clock } from "../../../domain/clock.js";
 import type { IdFactory } from "../../../domain/identifiers.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
+import { buildRerunPlan } from "../../../services/start/rerun.js";
+import { StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../../domain/run/start-plan.js";
 import { planStart } from "../../../services/start/plan.js";
 import { StartStepOmissionRefusedError, applyStartStepSelection, resolveStartStepOmissions } from "../../../services/start/step-selection.js";
 import type { StartPlannerDeps } from "../../../services/start/plan.js";
@@ -63,7 +65,11 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         );
       }
       const stepOmissions = resolveStartStepOmissions(descriptor, ingress.selectedStepKeys, ingress.stepOmissions);
-      const record = planStart(
+      const sourceSelection = ingress.rerunSource?.selectedStepKeys;
+      if (sourceSelection !== undefined && JSON.stringify(sourceSelection) !== JSON.stringify(ingress.selectedStepKeys)) {
+        throw new Error("Rerun source selection must equal submitted selection");
+      }
+      let record = planStart(
         {
           authority: deps.authorityRead,
           clock: deps.clock,
@@ -88,6 +94,13 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
       );
       const stored = deps.authority.withAuthorityTransaction((repositories) => {
         repositories.runtimeConfig.requireSettingsCurrent();
+        if (ingress.rerunSource !== undefined) {
+          const rerun = buildRerunPlan(repositories, descriptor, ingress.rerunSource, record.planned, ingress.warningAcknowledgment, record.stepOmissions);
+          record = StartPlanRecordSchema.parse({ ...record, rerun, inputFingerprint: derivePlannedInputFingerprint(
+            record.planned, record.ingressSchemaHash, record.canonicalInputSchemaHash, rerun, record.stepOmissions) });
+        } else if (ingress.warningAcknowledgment !== undefined) {
+          throw new Error("warning acknowledgment requires a Rerun source");
+        }
         return repositories.startPlans.create(record);
       });
       if (stored.state !== "inserted") {
@@ -117,9 +130,9 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           canonicalInputSchemaHash: record.canonicalInputSchemaHash,
           inputFingerprint: record.inputFingerprint,
         },
+        ...(record.rerun === undefined ? {} : { rerun: record.rerun }),
         planned: record.planned.map((planned) => ({
-          runId: planned.runId,
-          traceId: planned.traceId,
+          logicalKey: planned.itemId,
           title: planned.title,
           ...(planned.subtitle === undefined ? {} : { subtitle: planned.subtitle }),
           matchKey: planned.matchKey,

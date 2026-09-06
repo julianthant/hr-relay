@@ -17,6 +17,7 @@
  *    exactly one attempt (ref workflow-model §5.5) and an override naming a different
  *    attempt is a bug, not a silently-ignored no-op — so it is rejected.
  */
+import { SourceBoundRunSchema } from "./rerun.js";
 import { z } from "zod";
 import {
   BrowserSystemIdSchema,
@@ -103,6 +104,7 @@ export const RunEnvelopeSchema = z.strictObject({
   stepOmissions: StepOmissionsSchema.optional(),
   /** D314 — present only on a Restart-from-start attempt; carried unchanged through a requeue. */
   recovery: RunRecoveryModeSchema.optional(),
+  sourceBound: SourceBoundRunSchema.optional(),
   /** A resumable graph-node id, never an internal transaction arm (ref workflow-model §5.7). */
   startAt: NodeIdSchema.optional(),
   injected: z.array(CheckpointPatchSchema).min(1).optional(),

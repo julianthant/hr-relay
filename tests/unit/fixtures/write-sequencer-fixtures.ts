@@ -1,3 +1,4 @@
+import { sourceBoundReadContract } from "./source-bound-read-fixtures.js";
 /**
  * Synthetic transaction corpus for the write-sequencer / write-recovery tests
  * and the ref guards-and-tests §3.3/§3.9 guards: a real sealed prepare/commit/probe/verify
@@ -461,6 +462,9 @@ const WriteFixtureCanonicalInput = defineCanonicalInput(
 interface FixtureDescriptorOptions {
   readonly contractFingerprint?: string;
   readonly version?: number;
+  readonly memo?: boolean;
+  readonly omittable?: boolean;
+  readonly enqueue?: "reject-active" | "allow-parallel";
   readonly commitEid?: string;
   /** D209 negative control — a transaction node with no preview arm. */
   readonly dryRun?: "stop-after-prepare" | "unsupported";
@@ -472,7 +476,9 @@ function buildDescriptor(
 ): AnyWorkflowDescriptor {
   const commitContract = commitVariant === "receipt" ? WriteFixtureCommit : WriteFixtureSaveCommit;
   const commitEid = options.commitEid;
-  const fixtureFlow = flow(WriteFixtureInput)
+  const fixtureInput = options.memo === true ? WriteFixtureInput.extend({ memo: z.string().optional() }) : WriteFixtureInput;
+  const canonicalInput = options.memo === true ? defineCanonicalInput(fixtureInput, z.strictObject({ eid: EidSchema, memo: z.string().optional() }), [{ eid: WRITE_FIXTURE_EID }]) : WriteFixtureCanonicalInput;
+  const fixtureGraph = flow(fixtureInput)
     .transaction(WRITE_FIXTURE_NODE_ID, {
       dependsOn: [],
       prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
@@ -483,13 +489,14 @@ function buildDescriptor(
       dryRun: options.dryRun ?? "stop-after-prepare",
       probePolicy: "always",
       probeToFenceMaxMs: 30_000,
-    })
-    .build({
-      schema: z.strictObject({ transactionId: z.string().min(1) }),
-      dependsOn: [WRITE_FIXTURE_NODE_ID],
-      derive: ({ outputs }) => ({ transactionId: outputs[WRITE_FIXTURE_NODE_ID].output.transactionId }),
     });
-  return defineWorkflowDescriptor({
+  const omittedFlow = () => fixtureGraph.step("read", sourceBoundReadContract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid }) })
+    .build({ schema: z.strictObject({ eid: EidSchema }), dependsOn: [], derive: ({ input }) => ({ eid: input.eid }) });
+  const fixtureFlow = () => fixtureGraph.build({
+    schema: z.strictObject({ transactionId: z.string().min(1) }), dependsOn: [WRITE_FIXTURE_NODE_ID],
+    derive: ({ outputs }) => ({ transactionId: outputs[WRITE_FIXTURE_NODE_ID].output.transactionId }),
+  });
+  const definition = {
     id: WRITE_FIXTURE_WORKFLOW_ID,
     version: options.version ?? 1,
     contractFingerprint: FingerprintSchema.parse(options.contractFingerprint ?? WRITE_FIXTURE_FINGERPRINT),
@@ -497,21 +504,27 @@ function buildDescriptor(
     label: "Write Fixture",
     icon: "ShieldCheck",
     category: "operations",
-    canonicalInput: WriteFixtureCanonicalInput,
+    canonicalInput,
     inputSubject: "eid",
     surface: { shape: "single" },
-    enqueue: "reject-active",
+    enqueue: options.enqueue ?? "reject-active",
     actions: STANDARD_WORKFLOW_ACTIONS,
     surfaces: {},
     details: [],
-    identity: { matchKey: (input) => `eid:${input.eid}` },
-    presentation: { title: (input) => `Write fixture ${input.eid}` },
+    identity: { matchKey: (input: z.output<typeof WriteFixtureInput>) => `eid:${input.eid}` },
+    presentation: { title: (input: z.output<typeof WriteFixtureInput>) => `Write fixture ${input.eid}` },
     scenarios: ["write-fixture/happy"],
-    flow: fixtureFlow,
-  });
+    ...(options.omittable === true ? { timeline: [{ key: "reading", label: "Read", nodes: ["read"] }, { key: "write", label: "Write", nodes: [WRITE_FIXTURE_NODE_ID],
+      omission: { form: { fields: [{ key: "reason", label: "Reason", kind: "text" as const }] }, produces: {} } }] } : {}),
+  } as const;
+  return options.omittable === true ? defineWorkflowDescriptor({ ...definition, flow: omittedFlow() })
+    : defineWorkflowDescriptor({ ...definition, flow: fixtureFlow() });
 }
 
 export const writeFixtureDescriptor = buildDescriptor("receipt");
+export const writeFixtureOmittableDescriptor = buildDescriptor("receipt", { omittable: true });
+export const writeFixtureMemoDescriptor = buildDescriptor("receipt", { memo: true });
+export const writeFixtureParallelDescriptor = buildDescriptor("receipt", { enqueue: "allow-parallel" });
 
 /**
  * D209's negative control: the same graph whose one transaction node declares

@@ -15,7 +15,7 @@ import {
 import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import type { Clock } from "../domain/clock.js";
 import type { RuntimeConfigClaimToken } from "../domain/config/runtime-generation.js";
-import { deriveItemId, deriveTraceId, type IdFactory } from "../domain/identifiers.js";
+import { deriveItemId, deriveTraceId, lifecycleCommandId, type IdFactory } from "../domain/identifiers.js";
 import {
   CommandIdSchema,
   FingerprintSchema,
@@ -91,11 +91,7 @@ export function runContinuationPort(service: RunRecordService): RunContinuationP
     service.transition(CanonicalWriteResolutionTransitionRequestSchema.parse(input)) });
 }
 
-/** Domain separation keeps nested lifecycle entries distinct from product commands. */
-export function lifecycleCommandId(operation: string, identity: unknown) {
-  const hash = sha256Hex(`hrauto:worker-lifecycle:v1\0${operation}\0${canonicalJsonStringify(identity)}`);
-  return CommandIdSchema.parse(`${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`);
-}
+export { lifecycleCommandId } from "../domain/identifiers.js";
 
 export class RunLifecycleRefusedError extends Error {
   constructor(readonly outcome: RunMutationOutcome | RunExistence) {
@@ -152,12 +148,14 @@ type LifecycleJournalInspection =
       result: z.infer<typeof RunLifecycleCommandAuditRecordSchema>["result"];
     }>;
 
+export interface RunQueuedPublication { readonly title: string; readonly subtitle?: string; readonly actorId: string; }
+
 export type RunRecordServiceDependencies = Readonly<{
   database: AuthorityDatabase;
   clock: Clock;
   ids: IdFactory;
   /** Composition supplies the shared runQueuedSpanEvent builder and emitter. */
-  publishQueued: (run: RunRecord) => void;
+  publishQueued: (run: RunRecord, publication?: RunQueuedPublication) => void;
 }>;
 
 /** D330: one lifecycle authority; projections never enter this service. */
@@ -214,7 +212,7 @@ export class RunRecordService {
     });
   }
 
-  create(input: CreateRunRequest): RunMutationOutcome {
+  create(input: CreateRunRequest, publication?: RunQueuedPublication): RunMutationOutcome {
     const request = CreateRunRequestSchema.parse(input);
     const outcome = this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome => {
       const journal = this.inspectJournal(repositories, "create", request, { kind: "none" });
@@ -267,7 +265,7 @@ export class RunRecordService {
       return { state: "applied", run };
     });
     if (outcome.state === "applied") {
-      this.dependencies.database.afterAuthorityCommit(() => this.dependencies.publishQueued(outcome.run));
+      this.dependencies.database.afterAuthorityCommit(() => this.dependencies.publishQueued(outcome.run, publication));
     }
     return outcome;
   }
@@ -319,6 +317,8 @@ export class RunRecordService {
         const members: RunRecord[] = [];
         const collect = (runId: string): void => {
           for (const child of repositories.runs.listChildren(runId)) {
+            const edge = repositories.dependencies.listByParentRun(runId).find((entry) => entry.childRunId === child.envelope.runId);
+            if (edge?.policy.cascadeCancel === "independent") continue;
             collect(child.envelope.runId);
             members.push(child);
           }
@@ -358,8 +358,15 @@ export class RunRecordService {
           .map((member) => repositories.runs.get(member.envelope.runId))
           .find((member) => member !== undefined && member.lifecycle.state !== "terminal");
         if (stillActive !== undefined) {
-          this.recordJournal(repositories, journal.command, journalRun(current.run));
-          return { state: "applied" as const, run: current.run };
+          let anchor = current.run;
+          if (runClaim(anchor) !== undefined && anchor.cancelRequested !== true) {
+            const requested = repositories.runs.requestCancellation({ runId: anchor.envelope.runId,
+              expectedVersion: anchor.version, now: this.dependencies.clock.now().toISOString() });
+            if (requested.state !== "applied") throw new Error("cancel tree lost anchor version fence");
+            anchor = requested.run;
+          }
+          this.recordJournal(repositories, journal.command, journalRun(anchor));
+          return { state: "applied" as const, run: anchor };
         }
       }
       if (!("lifecycle" in request)) {
@@ -422,7 +429,7 @@ export class RunRecordService {
           to: request.lifecycle.state, message: violation === undefined ? "transition requires the worker door" : violation });
       }
       if (request.lifecycle.state === "terminal") {
-        const activeMember = findNonTerminalTreeMember(repositories, request.runId);
+        const activeMember = findNonTerminalTreeMember(repositories, request.runId, request.lifecycle.outcome === "cancelled");
         if (activeMember !== undefined) {
           return refused({ reason: "tree-non-terminal", runId: activeMember.envelope.runId });
         }
@@ -733,15 +740,15 @@ export class RunRecordService {
     });
   }
 
-  retry(input: unknown, descriptor: AnyWorkflowDescriptor): RunMutationOutcome | RunExistence {
-    return this.retrySource(input, descriptor, false);
+  retry(input: unknown, descriptor: AnyWorkflowDescriptor, publication?: RunQueuedPublication): RunMutationOutcome | RunExistence {
+    return this.retrySource(input, descriptor, false, publication);
   }
 
-  restart(input: unknown, descriptor: AnyWorkflowDescriptor): RunMutationOutcome | RunExistence {
-    return this.retrySource(input, descriptor, true);
+  restart(input: unknown, descriptor: AnyWorkflowDescriptor, publication?: RunQueuedPublication): RunMutationOutcome | RunExistence {
+    return this.retrySource(input, descriptor, true, publication);
   }
 
-  relaunch(input: unknown, descriptor: AnyWorkflowDescriptor): RunMutationOutcome | RunExistence {
+  relaunch(input: unknown, descriptor: AnyWorkflowDescriptor, publication?: RunQueuedPublication): RunMutationOutcome | RunExistence {
     const request = CanonicalRelaunchRequestSchema.parse(input);
     descriptorRuntimeNodes(descriptor);
     const outcome = this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome | RunExistence => {
@@ -824,12 +831,12 @@ export class RunRecordService {
       return { state: "applied", run };
     });
     if (outcome.state === "applied") {
-      this.dependencies.database.afterAuthorityCommit(() => this.dependencies.publishQueued(outcome.run));
+      this.dependencies.database.afterAuthorityCommit(() => this.dependencies.publishQueued(outcome.run, publication));
     }
     return outcome;
   }
 
-  private retrySource(input: unknown, descriptor: AnyWorkflowDescriptor, restart: boolean): RunMutationOutcome | RunExistence {
+  private retrySource(input: unknown, descriptor: AnyWorkflowDescriptor, restart: boolean, publication?: RunQueuedPublication): RunMutationOutcome | RunExistence {
     const request = CanonicalRetrySourceRequestSchema.parse(input);
     descriptorRuntimeNodes(descriptor);
     const outcome = this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome | RunExistence => {
@@ -863,6 +870,7 @@ export class RunRecordService {
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,
       }));
       delete envelope.recovery;
+      delete envelope.sourceBound;
       const next = RunRecordSchema.parse({
         envelope: { ...envelope, runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
           retryOf: run.envelope.runId, enqueuedAt: now,
@@ -879,7 +887,7 @@ export class RunRecordService {
       return { state: "applied", run: next };
     });
     if (outcome.state === "applied") {
-      this.dependencies.database.afterAuthorityCommit(() => this.dependencies.publishQueued(outcome.run));
+      this.dependencies.database.afterAuthorityCommit(() => this.dependencies.publishQueued(outcome.run, publication));
     }
     return outcome;
   }
@@ -1156,12 +1164,15 @@ function journalRun(run: RunRecord) {
 function findNonTerminalTreeMember(
   repositories: AuthorityRepositories,
   rootRunId: string,
+  cascadeOnly = false,
 ): RunRecord | undefined {
   const visited = new Set<string>();
   const visit = (parentRunId: string): RunRecord | undefined => {
     if (visited.has(parentRunId)) throw new Error(`cycle in run parent tree ${parentRunId}`);
     visited.add(parentRunId);
     for (const child of repositories.runs.listChildren(parentRunId)) {
+      if (cascadeOnly && repositories.dependencies.listByParentRun(parentRunId).some((edge) => edge.childRunId === child.envelope.runId
+        && edge.policy.cascadeCancel === "independent")) continue;
       if (child.lifecycle.state !== "terminal") return child;
       const nested = visit(child.envelope.runId);
       if (nested !== undefined) return nested;

@@ -191,7 +191,7 @@ describe("C4 — one owner for the rail's expansion", () => {
     return renderToStaticMarkup(createElement(ContextRail, {
       summary,
       // No `context-data` payload: the header word is the claim here, and the
-      // editor beneath it needs a BFF client this lane deliberately has none of.
+      // read-only data beneath it is covered by the context rail render suite.
       sections: {},
       onClose: () => undefined,
       actorId: "local-operator",
@@ -206,8 +206,8 @@ describe("C4 — one owner for the rail's expansion", () => {
     // The defect this closes: `LogPanel` sized the grid column from its own
     // flag while the rail's header read a `useState` of its own, so a collapsed
     // and re-opened rail said `Run data` over a column still at the wide token.
-    assert.match(railHeader(true), /Run data · editing/u);
-    assert.equal(/Run data · editing/u.test(railHeader(false)), false);
+    assert.match(railHeader(true), /Run data · expanded/u);
+    assert.equal(/Run data · expanded/u.test(railHeader(false)), false);
     assert.match(railHeader(false), /Run data/u);
   });
 });

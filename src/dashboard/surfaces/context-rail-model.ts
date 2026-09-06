@@ -9,7 +9,6 @@
  */
 import { useCallback, useState } from "react";
 import { readEnumPreference, writePreference } from "../lib/preference-storage.js";
-import { plural } from "./format.js";
 import type { z } from "zod";
 import type {
   ContextSummaryWireSchema,
@@ -165,80 +164,6 @@ export function freshnessNoteOf(entry: ContextDataEntry): string | undefined {
 }
 
 /* ── D273 item 6: a refused save, said in the two arms this wire has ─────── */
-
-/**
- * WHAT A REFUSED SAVE SAYS — the copy behind the Data dock's refusal, composed
- * once and read in the two places the demo reads it (ledger 2 C55/C57).
- *
- * Until this fold the whole of a refusal was ONE red `<span>` carrying
- * `settlement.problem`: no code, no statement of what was not done, and — the
- * finding the operator raised — nothing at all saying the drafts survived. They
- * DO survive (`save()` keeps them on every refusal, D253), and a surface that
- * holds a fact the operator is anxious about and does not say it is the
- * fail-loud rule's failure mode in display form. "A refusal you cannot quote is
- * one you cannot get help with" is the demo's own line
- * (`DemoContextRail.tsx:684-697`).
- *
- * TWO ARMS, split on whether the server named a CODE, and the split is exact
- * rather than approximate: `CommandResultSchema` gives `rejected` a required
- * `code` and gives `conflict` none, so `CommandSettlement.reason` decides it.
- * This is `refused-notice-model.ts`'s reading (D273 item 10) applied to a third
- * ceremony — and it is a THIRD COPY on purpose rather than a third `ceremony`
- * arm over there, because two of that notice's three clauses are false here:
- * the held work is a set of drafts ABOVE the control, not "your answer below",
- * and the count of them is a fact this ceremony has and a dialog does not.
- * Parameterizing a shared string until it is the union of three ceremonies is
- * how the drift D273 item 10 fixed got in.
- *
- * The held clause is stated TWICE — mid-`MetaLine` in lower case and opening a
- * sentence — for the reason that file gives: a fold that lower-cases the first
- * character works until the first clause that begins with a proper noun.
- */
-export interface CheckpointRefusalCopy {
-  /** the banner's title — what happened, in the operator's terms */
-  readonly title: string;
-  /** the held-drafts fact as a `MetaLine` segment / mid-sentence clause */
-  readonly held: string;
-  /** the same fact opening a sentence — the toast's first words */
-  readonly heldSentence: string;
-  /** what was NOT done, in the demo's own words */
-  readonly outcome: string;
-  /** the uncoded arm's sentence, printed AFTER the server's own message */
-  readonly uncoded: string;
-}
-
-export function checkpointRefusalCopy(
-  reason: "conflict" | "rejected",
-  heldEdits: number,
-): CheckpointRefusalCopy {
-  // `save()` returns before dispatching when nothing is dirty, so a refusal
-  // always has at least one draft behind it. A zero here would print "your 0
-  // edits are still here" — a sentence that reassures the operator about work
-  // that does not exist — so it throws instead of composing it.
-  if (!Number.isInteger(heldEdits) || heldEdits < 1) {
-    throw new Error(
-      `checkpointRefusalCopy: a refused save holds at least one edit, got ${String(heldEdits)}`,
-    );
-  }
-  const edits = plural(heldEdits, "edit");
-  const verb = heldEdits === 1 ? "is" : "are";
-  return {
-    title: reason === "conflict"
-      // The demo's own words for the CAS arm (`DemoContextRail.tsx:551`). The
-      // per-field re-offer that follows it there is unserved here (C56), so
-      // nothing in this copy promises one.
-      ? "Not saved — the checkpoint moved"
-      // The demo titles this arm with the server's own `headline`, which this
-      // wire does not carry: `CommandResult`'s `rejected` arm is a `message`
-      // and a `code`. The message is rendered as its own node below, so the
-      // title says what happened rather than inventing a headline for it.
-      : "Not saved — the correction was refused",
-    held: `your ${edits} ${verb} still here`,
-    heldSentence: `Your ${edits} ${verb} still here.`,
-    outcome: "nothing was written to the checkpoint",
-    uncoded: "The server sent no refusal code, so there is nothing here to quote in a bug report.",
-  };
-}
 
 export type EditableScalar = string | number | boolean;
 

@@ -49,7 +49,7 @@ const WIRE = {
     canonicalInputSchemaHash: HEX64,
     inputFingerprint: HEX64,
   },
-  planned: [{ runId: UUID, traceId: "pl-100000-9e8d", title: "Person lookup", matchKey: "person-lookup:10873698" }],
+  planned: [{ logicalKey: UUID, title: "Person lookup", matchKey: "person-lookup:10873698" }],
   refused: [],
 } as const;
 
@@ -104,7 +104,7 @@ describe("start-plan wire contract (one shared owner)", () => {
     assert.equal(StartPlanWireSchema.safeParse({
       ...WIRE,
       planned: [{ ...WIRE.planned[0], traceId: "fixture-plan-01" }],
-    }).success, false, "a trace id has the <code>-<HHMMSS>-<runId4> shape");
+    }).success, false, "a proposal cannot reserve or display any trace id");
   });
 
   it("the client parses the answer with the shared wire, so an impossible refusal code is a schema error, not a rendered string", async () => {

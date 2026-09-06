@@ -13,6 +13,7 @@
  * and not turned into a run that fails later — it is a named `refused` entry the
  * surface renders beside the ones that will go.
  */
+import { RerunPlanSchema, type RerunPlan } from "./rerun.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { StartRefusalCodeSchema } from "./start-refusal.js";
@@ -30,7 +31,7 @@ import {
   WorkflowIdSchema,
 } from "../ids.js";
 import { SchemaBoundCanonicalValueSchema } from "../schema-bound-value.js";
-import { StepOmissionsSchema } from "../workflow/step-omission.js";
+import { StepOmissionsSchema, type StepOmissions } from "../workflow/step-omission.js";
 import {
   BrowserPresentationModeSchema,
   InstanceSelectionSchema,
@@ -42,9 +43,10 @@ import {
 export { StartRefusalCodeSchema, type StartRefusalCode } from "./start-refusal.js";
 
 export const PlannedRunSchema = z.strictObject({
-  runId: RunIdSchema,
+  /** Legacy reservations are readable only to require replanning. */
+  runId: RunIdSchema.optional(),
   itemId: ItemIdSchema,
-  traceId: TraceIdSchema,
+  traceId: TraceIdSchema.optional(),
   /** The exact title/subtitle the confirmation surface showed. */
   title: z.string().min(1),
   subtitle: z.string().min(1).optional(),
@@ -95,6 +97,7 @@ export const StartPlanRecordSchema = z.strictObject({
   captureBrowserScreenshots: z.boolean().optional(),
   /** D307 — omitted steps with their typed facts; copied unchanged onto every run this plan starts. */
   stepOmissions: StepOmissionsSchema.optional(),
+  rerun: RerunPlanSchema.optional(),
   planned: z.array(PlannedRunSchema),
   refused: z.array(StartRefusalSchema),
   plannedBy: ActorIdSchema,
@@ -116,7 +119,7 @@ export const StartPlanRecordSchema = z.strictObject({
   if (Date.parse(plan.expiresAt) <= Date.parse(plan.plannedAt)) {
     context.addIssue({ code: "custom", path: ["expiresAt"], message: "a start plan must expire after it was planned" });
   }
-  const runIds = plan.planned.map(({ runId }) => runId);
+  const runIds = plan.planned.flatMap(({ runId }) => runId === undefined ? [] : [runId]);
   if (new Set(runIds).size !== runIds.length) {
     context.addIssue({ code: "custom", path: ["planned"], message: "a start plan cannot propose one run id twice" });
   }
@@ -144,6 +147,8 @@ export const StartPlanRecordSchema = z.strictObject({
     plan.planned,
     plan.ingressSchemaHash,
     plan.canonicalInputSchemaHash,
+    plan.rerun,
+    plan.stepOmissions,
   )) {
     context.addIssue({
       code: "custom",
@@ -178,16 +183,21 @@ export function derivePlannedInputFingerprint(
   planned: readonly PlannedRun[],
   ingressSchemaHash: string,
   canonicalInputSchemaHash: string,
+  rerun?: RerunPlan,
+  stepOmissions?: StepOmissions,
 ): string {
   return FingerprintSchema.parse(createHash("sha256")
-    .update("hrauto:start-plan-input:v2\0")
+    .update(planned.some((run) => run.runId !== undefined)
+      ? "hrauto:start-plan-input:v2\0" : "hrauto:start-plan-input:v3\0")
     .update(canonicalJsonStringify({
       ingressSchemaHash,
       canonicalInputSchemaHash,
+      ...(rerun === undefined ? {} : { rerun }),
+      ...(planned.some((run) => run.runId !== undefined) || stepOmissions === undefined ? {} : { stepOmissions }),
       accepted: planned.map((run) => ({
-        runId: run.runId,
+        ...(run.runId === undefined ? {} : { runId: run.runId }),
         itemId: run.itemId,
-        traceId: run.traceId,
+        ...(run.traceId === undefined ? {} : { traceId: run.traceId }),
         matchKey: run.matchKey,
         rawInput: run.rawInput,
         canonicalInput: run.input,

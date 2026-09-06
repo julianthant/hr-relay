@@ -1,3 +1,4 @@
+import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The dry-run admission fixture every T1b composition proof shares: a selected
@@ -38,6 +39,7 @@ export function selectedSettingsFixture(
   const ids = sequentialIdFactory("b");
   const unused = (): never => { throw new Error("Settings setup reached an unrelated kernel arm"); };
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock, ids, appVersion: "0.1.0",
     configIdentity: UNSTORED_CONFIG_IDENTITY,

@@ -1,3 +1,5 @@
+import { readRunCheckpoint } from "./run-checkpoint-reader.js";
+import { repeatOccurrenceKey } from "../domain/run/rerun.js";
 /**
  * D136 — what a parked write's resolvability actually binds to (ref write-safety §4.1).
  *
@@ -175,9 +177,11 @@ export function findTransactionNodeByCommit(
 function lookupTransactionNode(
   descriptor: AnyWorkflowDescriptor,
   commitTaskId: string,
+  nodeId?: string,
 ): TransactionRuntimeNode | undefined {
   return descriptorRuntimeNodes(descriptor).find((candidate): candidate is TransactionRuntimeNode =>
-    candidate.kind === "transaction" && candidate.commit.uses.id === commitTaskId);
+    candidate.kind === "transaction" && candidate.commit.uses.id === commitTaskId
+      && (nodeId === undefined || candidate.id === nodeId));
 }
 
 /**
@@ -217,7 +221,12 @@ export function rebuildCommitInput(
     );
   }
   const digest = deriveIdempotencyKeyDigest(intent.system, key);
-  if (key !== intent.idempotencyKey || digest !== intent.idempotencyKeyDigest) {
+  const occurrence = intent.status === "observed-present" ? undefined : intent.occurrence;
+  if (occurrence === undefined ? key !== intent.idempotencyKey || digest !== intent.idempotencyKeyDigest
+    : digest !== occurrence.businessKeyDigest || occurrence.nodeId !== node.id
+      || occurrence.taskId !== intent.taskId || occurrence.system !== intent.system
+      || intent.idempotencyKey !== repeatOccurrenceKey(digest, occurrence.confirmationCommandId, occurrence.nodeId)
+      || intent.idempotencyKeyDigest !== deriveIdempotencyKeyDigest(intent.system, intent.idempotencyKey)) {
     throw new WriteCommitInputRebuildError(
       "key-drift",
       `derived:${digest};fenced:${intent.idempotencyKeyDigest}`,
@@ -241,11 +250,7 @@ function rebuildCommitInputWithoutFence(
       throw new Error(`transaction "${node.id}" depends on unknown node "${dependency}"`);
     }
     if (dependencyNode.kind === "task") {
-      const checkpoint = repositories.runCheckpoints.latest(
-        descriptor.id,
-        run.envelope.itemId,
-        String(dependency),
-      );
+      const checkpoint = readRunCheckpoint(repositories, run.envelope, String(dependency), true);
       if (checkpoint === undefined) {
         throw new WriteCommitInputRebuildError(
           "missing-evidence",
@@ -340,7 +345,7 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
     ));
 
   const identityHeld = checks.every((result) => result.state === "held");
-  const node = identityHeld ? lookupTransactionNode(descriptor, intent.taskId) : undefined;
+  const node = identityHeld ? lookupTransactionNode(descriptor, intent.taskId, intent.status === "observed-present" ? undefined : intent.occurrence?.nodeId) : undefined;
 
   if (!identityHeld) {
     for (const check of ["transaction-node", "canonical-input", "permanent-key-identity", "binding-proof-identity"] as const) {

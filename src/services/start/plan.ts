@@ -12,12 +12,13 @@
  * silently planning three. Dropping the fourth would be the same failure mode
  * as a fallback: the operator would act on a lie.
  */
+import type { RerunPlan } from "../../domain/run/rerun.js";
 import { workflowDryRunSupport, workflowPlanning, workflowProjections } from "../../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../base/workflow.js";
 import { JsonValueSchema } from "../../domain/canonical-json.js";
 import type { JsonValue } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
-import { deriveItemId, deriveTraceId } from "../../domain/identifiers.js";
+import { deriveItemId } from "../../domain/identifiers.js";
 import type { IdFactory } from "../../domain/identifiers.js";
 import {
   BrowserSystemIdSchema,
@@ -72,6 +73,7 @@ export interface StartPlanRequest {
   readonly configFingerprint: string;
   readonly configSnapshotId: string;
   readonly plannedBy: string;
+  readonly rerun?: RerunPlan;
 }
 
 function errorText(error: unknown): string {
@@ -205,13 +207,10 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       }
     }
 
-    const runId = deps.ids.uuid();
     const subtitle = planning.subtitle(parsed);
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
-      runId,
       itemId,
-      traceId: deriveTraceId(descriptor.code, runId, deps.clock),
       title: planning.title(parsed),
       ...(subtitle === undefined ? {} : { subtitle }),
       rawInput,
@@ -230,7 +229,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     configSnapshotId: request.configSnapshotId,
     ingressSchemaHash,
     canonicalInputSchemaHash: canonicalSchemaHash,
-    inputFingerprint: derivePlannedInputFingerprint(planned, ingressSchemaHash, canonicalSchemaHash),
+    inputFingerprint: derivePlannedInputFingerprint(planned, ingressSchemaHash, canonicalSchemaHash, request.rerun, request.stepOmissions),
     ...(request.requestedInstance === undefined ? {} : { requestedInstance: request.requestedInstance }),
     resolvedInstance,
     shape: request.shape,
@@ -239,6 +238,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     ...(request.browserMode === undefined ? {} : { browserMode: request.browserMode }),
     captureBrowserScreenshots: request.captureBrowserScreenshots ?? false,
     ...(request.stepOmissions === undefined ? {} : { stepOmissions: request.stepOmissions }),
+    ...(request.rerun === undefined ? {} : { rerun: request.rerun }),
     planned,
     refused,
     plannedBy: request.plannedBy,

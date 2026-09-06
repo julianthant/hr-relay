@@ -270,6 +270,7 @@ export const CanonicalCreateRunRequestSchema = z.strictObject({
   parent: RunEnvelopeSchema.shape.parent,
   retryOf: RunEnvelopeSchema.shape.retryOf,
   recovery: RunEnvelopeSchema.shape.recovery,
+  sourceBound: RunEnvelopeSchema.shape.sourceBound,
   input: RunInputStorageSchema,
   sessionId: RunRecordSchema.shape.sessionId,
   appVersion: RunRecordSchema.shape.appVersion,

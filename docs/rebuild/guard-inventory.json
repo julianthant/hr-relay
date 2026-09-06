@@ -324,10 +324,12 @@
     {
       "name": "edit-data-field-policy",
       "file": "tests/unit/architecture/edit-data-field-policy.test.ts",
-      "status": "active",
+      "status": "retired",
       "owner": "docs/rebuild/reference/data-intake-and-edit-data.md §6; docs/rebuild/reference/workflow-model.md §5.6",
-      "invariant": "Edit Data's default is read-only: a descriptor must declare every correctable node+field path, a declared path must resolve through the producing READ task node's own output schema (a transaction node's output is a write proof and never correctable), the negative controls run through the real descriptor factory, every registered descriptor's policy parses the closed schema, and the edit-checkpoint save command stays in the ACTIVE partition so a declared policy can never outrun the kernel arm whose CAS-against-resume-fence honours it (D166).",
-      "replacementRequired": true
+      "invariant": "D334 retires in-place checkpoint saves. Descriptor/source/version/provenance checks now protect copied values in a new source-bound start plan; rerun-prefill-boundary carries the surviving negative controls.",
+      "replacementRequired": true,
+      "retiredBy": "D334",
+      "replacedBy": "rerun-prefill-boundary"
     },
     {
       "name": "evidence-receipt",
@@ -390,9 +392,9 @@
     {
       "name": "no-lifecycle-sql-outside-the-adapter",
       "file": "tests/unit/architecture/no-lifecycle-sql-outside-the-adapter.test.ts",
-      "status": "planned",
+      "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md; docs/rebuild/reference/dashboard-surfaces.md",
-      "invariant": "PLANNED for 1.6 Task 4 (D330.10/D332.9/D334): lifecycle mutation and lifecycle-authoritative reads route only through the run-record service adapter; no dashboard, worker, command, executor, or projection seam writes tasks/leases directly or treats evidence and runs_view as lifecycle authority. The D334 source run is read-only: the former edit-checkpoint mutator is absent, and Retry/Rerun creates a new service-owned row from a confirmed source-bound start plan. The guard and its violating fixtures activate together only after Task 4 has displaced the existing writers.",
+      "invariant": "D334/D335 lifecycle mutations stay inside the SQLite adapter and run service. Checked-in SQL, aliased mutator and runs_view reader violations prove the literal two-module boundary; source-bound plans create fresh service-owned runs.",
       "replacementRequired": true,
       "activationMilestone": "phase-1.6-task-4"
     },
@@ -735,6 +737,14 @@
       "status": "active",
       "owner": "docs/rebuild/01-build-the-spine.md",
       "invariant": "Task 1.6.3: worker loop, executor, sequencer, compositions, recovery sweep and positive continuations cannot call or extract lifecycle repository mutators. Type-resolved scan includes all core helpers, with only Task-4 command/fan-out and negative-resolution paths excluded. Negative controls detect direct, aliased and relocated writes; worker capability excludes command-family transition.",
+      "replacementRequired": true
+    },
+    {
+      "name": "rerun-prefill-boundary",
+      "file": "tests/unit/architecture/rerun-prefill-boundary.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/data-intake-and-edit-data.md §6; D334/D335",
+      "invariant": "Descriptor schema, source version and copied-value coordinates are checked before a new source-bound plan can become work. The retired checkpoint-save command has no active or deferred arm; provenance never grants replay authority.",
       "replacementRequired": true
     }
   ],

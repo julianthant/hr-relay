@@ -20,6 +20,7 @@
  *
  * Browser-bundle-safe on purpose: zod and src/domain/** only.
  */
+import { RerunSourceSchema, RerunPlanSchema } from "../run/rerun.js";
 import { z } from "zod";
 import { JsonValueSchema } from "../canonical-json.js";
 import {
@@ -27,9 +28,7 @@ import {
   ConfigSnapshotIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
-  RunIdSchema,
   StartPlanIdSchema,
-  TraceIdSchema,
   WorkflowIdSchema,
 } from "../ids.js";
 import { BrowserPresentationModeSchema, InstanceSelectionSchema, RunPrioritySchema } from "../run/envelope.js";
@@ -40,6 +39,8 @@ import { StepOmissionsSchema } from "../workflow/step-omission.js";
 /** The leaves both sides agree on verbatim. */
 const SHARED_REQUEST_LEAVES = {
   workflowId: WorkflowIdSchema,
+  rerunSource: RerunSourceSchema.optional(),
+  warningAcknowledgment: FingerprintSchema.optional(),
   submissions: z.array(JsonValueSchema).min(1),
   dryRun: z.boolean(),
   /** The surface may request `bulk` explicitly; the server stamps the default. */
@@ -98,9 +99,9 @@ export const StartPlanWireSchema = z.strictObject({
     canonicalInputSchemaHash: FingerprintSchema,
     inputFingerprint: FingerprintSchema,
   }),
+  rerun: RerunPlanSchema.optional(),
   planned: z.array(z.strictObject({
-    runId: RunIdSchema,
-    traceId: TraceIdSchema,
+    logicalKey: z.string().min(1),
     title: z.string().min(1),
     subtitle: z.string().min(1).optional(),
     matchKey: z.string().min(1),

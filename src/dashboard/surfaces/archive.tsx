@@ -3025,7 +3025,7 @@ function ArchivedCommandRefusal({ result, onDismiss }: { result: CommandResult; 
   return (
     <Refusal
       title="That command was refused"
-      code={settlement.reason === "conflict" ? "version-conflict" : settlement.code}
+      code={settlement.reason === "conflict" ? "version-conflict" : settlement.reason === "rejected" ? settlement.code : "confirmation-required"}
       outcome="Nothing was changed. This archived record is exactly as it was."
       meta={settlement.reason === "conflict" ? [`now at version ${String(settlement.currentVersion)}`] : []}
       action={<Button size="sm" variant="ghost" onClick={onDismiss}>Dismiss</Button>}

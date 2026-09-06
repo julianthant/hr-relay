@@ -1,3 +1,4 @@
+import { ActorIdSchema } from "../../domain/ids.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
 /**
  * The 1g-spine dashboard composition value: open authority, wire the span
@@ -131,6 +132,7 @@ import {
   ExplorerOverridePendingError,
 } from "./commands/explorer-override-store.js";
 import { createIntakeService } from "./commands/intake-service.js";
+import { runQueuedSpanEvent } from "./commands/run-queued-span.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
 import { createCrossDateSearchService } from "./queries/search.js";
@@ -962,10 +964,14 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   });
   // Ref write-safety §4.1's typed operator resolutions, over the SAME AuthorityDatabase
   // instance as the kernel transaction (the executor's documented requirement).
+  const lifecycle = new RunRecordService({ database, clock, ids,
+    publishQueued: (run, publication) => {
+      if (publication === undefined) throw new Error("queued run is missing its publication context");
+      spanWriter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
+    },
+  });
   const writeResolution: WriteResolutionExecutor = createWriteResolutionExecutor({
-    continuation: runContinuationPort(new RunRecordService({ database, clock, ids,
-      publishQueued: () => { throw new Error("write continuation cannot create runs"); },
-    })),
+    continuation: runContinuationPort(lifecycle),
     descriptors,
     authority: database,
     ids,
@@ -1075,6 +1081,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   };
 
   const kernel = createCommandKernel({
+    lifecycle,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids,

@@ -410,7 +410,6 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "reopen-browser": "worker-browser commands target the worker pool, not a run row",
   "apply-settings": "the Settings surface owns the whole payload; a row control cannot express it",
   "apply-protected-settings": "the Settings surface owns its write-only protected payload; row actions cannot express it",
-  "edit-checkpoint": "2i-C's Edit Data rail owns it — the payload is a field patch set the rail composes",
   "inspect-intake": "the intake surface drives the whole session; its targets are intake sessions, not runs",
   "confirm-intake-mapping": "intake session target, not a run row",
   "correct-intake-row": "intake session target, not a run row",

@@ -1,3 +1,6 @@
+import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
+import { ActorIdSchema as PublicationActorIdSchema } from "../../src/domain/ids.js";
+import { RunRecordService } from "../../src/core/run-record-service.js";
 /**
  * The operator lifecycle, walked ACROSS the 2h/2i slices (2j, D185).
  *
@@ -197,6 +200,9 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
   // The config identity a fan-out stamps has to name a snapshot the database
   // holds; `UNSTORED_CONFIG_IDENTITY` is for kernels that never enqueue.
   database.withAuthorityTransaction((repositories) => repositories.configSnapshots.insert(CONFIG_SNAPSHOT));
+  database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: CONFIG_SNAPSHOT.fingerprint,
+    configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint, activatedAt: NOW });
+
 
   const world = { registry: descriptors } as World & { registry: readonly AnyWorkflowDescriptor[] };
   const resolve = (workflowId: string): AnyWorkflowDescriptor | undefined =>
@@ -264,6 +270,10 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
   };
 
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: (run, publication) => {
+      if (publication === undefined) throw new Error("command-created run lacks queue presentation");
+      spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: PublicationActorIdSchema.parse(publication.actorId) }));
+    } }),
     appVersion: APP_VERSION,
     archiveSnapshots: archiveSnapshots(runDetail),
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
@@ -825,6 +835,7 @@ describe("the operator lifecycle, across slices", () => {
     const world = createWorld([personLookupDescriptor]);
     const { database } = world;
     const seeded = seedPersonLookupExitRun(database);
+    world.clock.advanceWall(Math.max(0, Date.parse(EXIT_TERMINAL_AT) - world.clock.now().getTime()));
     const runId = String(seeded.run.envelope.runId);
     assert.equal(runId, EXIT_RUN_ID);
 

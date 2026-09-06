@@ -35,7 +35,6 @@ import {
 import { VersionBumpChangeRecordSchema } from "./archive/change-record.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import { sha256Hex } from "./sha256.js";
-import { CheckpointPatchSchema } from "./workflow/checkpoint.js";
 import { ExplorerEditApplyRequestSchema } from "./dashboard/explorer.js";
 
 export const CommandFamilySchema = z.enum([
@@ -77,7 +76,6 @@ export const CommandActionSchema = z.enum([
   "bump",
   "rename",
   "delete",
-  "edit-checkpoint",
   "resolve-write-present",
   "resolve-write-absent",
   "resolve-gate",
@@ -333,9 +331,8 @@ export const RunCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
   // D166: ref data-intake-and-edit-data §6.3's field-level patch model. The earlier whole-checkpoint
   // blob payload was a deferred-arm placeholder no producer ever sent.
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("edit-checkpoint"), target: RunVersionTargetSchema, payload: z.strictObject({ patches: z.array(CheckpointPatchSchema).min(1) }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-present"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema }), payload: z.strictObject({ proof: SchemaBoundCanonicalValueSchema, evidenceNote: OperatorReasonSchema }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-absent"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema }), payload: z.strictObject({ evidenceNote: OperatorReasonSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-present"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema.optional(), proof: SchemaBoundCanonicalValueSchema, evidenceNote: OperatorReasonSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-absent"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema.optional(), evidenceNote: OperatorReasonSchema }) }),
 ]);
 
 export const GateCommandRequestSchema = z.strictObject({
@@ -391,6 +388,8 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
 export const CommandRejectionCodeSchema = z.enum([
   "invalid-state",
   "target-not-found",
+  "target-deleted",
+  "replan-required",
   "authority-unavailable",
   "policy-refused",
   "schema-mismatch",
@@ -480,6 +479,7 @@ const CommandLandingResultSchema = z.strictObject({
 
 export const CommandResultSchema = z.discriminatedUnion("state", [
   CommandLandingResultSchema,
+  z.strictObject({ state: z.literal("confirmation-required"), commandId: CommandIdSchema, warningDigest: FingerprintSchema, message: z.string().min(1) }),
   /**
    * `currentVersion` is non-negative rather than positive since D269: the worker
    * POOL is the one versioned target whose "no row yet" state is a legitimate
@@ -715,7 +715,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"],
   settings: ["apply-settings", "apply-protected-settings"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run", "delete-archived-run"],
-  run: ["retry", "restart", "cancel", "bump", "rename", "delete", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"],
+  run: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze"],
   explorer: ["apply-explorer-edit"],
@@ -745,7 +745,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"] },
   { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
   { family: "version-archive", actions: ["plan-version-bump", "apply-version-bump", "relaunch-archived-run", "delete-archived-run"] },
-  { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"] },
+  { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze"] },
   { family: "explorer", actions: ["apply-explorer-edit"] },

@@ -1,3 +1,4 @@
+import { RunRecordService } from "../../../src/core/run-record-service.js";
 /**
  * W5 (ref execution-and-sessions §7.1 / §11, D271): the automated two-child
  * PARALLEL proof for the dashboard worker supervisor — §7.1's standing rule
@@ -212,6 +213,7 @@ function kernelOver(
   pool: WorkerPoolRuntimeSeam,
 ): CommandKernel {
   const dependencies: CommandKernelDependencies = {
+    lifecycle: new RunRecordService({ database, clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,

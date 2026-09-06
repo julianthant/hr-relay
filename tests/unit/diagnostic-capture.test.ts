@@ -1,3 +1,4 @@
+import { testRunService } from "./fixtures/run-lifecycle-fixtures.js";
 import { z } from "zod";
 import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
@@ -419,13 +420,14 @@ describe("retention and the pin sweep", () => {
       retention: { kind: "pinned", reason: "knowledge" },
     });
 
-    const early = createDiagnosticRetentionSweep({ authority: database.authority, clock });
+    const early = createDiagnosticRetentionSweep({ authority: database.authority, clock, lifecycle: testRunService(database, clock) });
     assert.deepEqual(early.sweep().purged, []);
 
     const later = new Date(clock.now().getTime() + 2 * 86_400_000);
     const sweep = createDiagnosticRetentionSweep({
       authority: database.authority,
       clock: manualClock(later),
+      lifecycle: testRunService(database, manualClock(later)),
     });
     const report = sweep.sweep();
     assert.deepEqual(report.purged, [ordinary.bundleId]);

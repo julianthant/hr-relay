@@ -1,3 +1,4 @@
+import { RunRecordService } from "../../src/core/run-record-service.js";
 import { lifecycleCommandId } from "../../src/core/run-record-service.js";
 import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "./fixtures/run-lifecycle-fixtures.js";
 /**
@@ -96,6 +97,7 @@ function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDes
   const emitter = recordingEmitter().emitter;
 
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,

@@ -52,6 +52,7 @@ type CommandRejectionCode = Extract<CommandResult, { state: "rejected" }>["code"
 export type CommandSettlement =
   /** The command landed — `already-applied` is a replay of the same landing. */
   | { readonly kind: "applied"; readonly replayed: boolean }
+  | { readonly kind: "refused"; readonly reason: "confirmation-required"; readonly problem: string; readonly message: string; readonly warningDigest: string }
   /**
    * A CAS refusal: the target moved under the surface that was looking at it.
    * There is no code — the server sent none — and `currentVersion` is the only
@@ -79,6 +80,8 @@ export function settleCommandResult(result: CommandResult): CommandSettlement {
       return { kind: "applied", replayed: false };
     case "already-applied":
       return { kind: "applied", replayed: true };
+    case "confirmation-required":
+      return { kind: "refused", reason: "confirmation-required", problem: result.message, message: result.message, warningDigest: result.warningDigest };
     case "conflict":
       return {
         kind: "refused",

@@ -1,3 +1,4 @@
+import { repeatEvidenceDigest } from "../../domain/run/rerun.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
@@ -462,6 +463,7 @@ type DependencyRepository = Readonly<{
 }>;
 
 type WriteIntentRepository = Readonly<{
+  listByBusinessKey(system: unknown, digest: unknown): readonly z.infer<typeof WriteIntentRecordSchema>[];
   /** D118 recovery admission includes intents from earlier or missing run rows. */
   listAttemptingByItem(input: unknown): readonly z.infer<typeof WriteIntentRecordSchema>[];
   recordObservedPresent(input: unknown): PermanentWriteResolution;
@@ -5576,12 +5578,22 @@ export class AuthorityDatabase implements Disposable {
         ))),
       }),
       writeIntents: Object.freeze({
+        listByBusinessKey: (system: unknown, digest: unknown) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM write_intents WHERE system = ? AND
+              (json_extract(record_json, '$.idempotencyKeyDigest') = ? OR
+               json_extract(record_json, '$.occurrence.businessKeyDigest') = ?)
+            ORDER BY record_key
+          `).all(BrowserSystemIdSchema.parse(system), FingerprintSchema.parse(digest), FingerprintSchema.parse(digest));
+          return Object.freeze(rows.map((row) => parseJsonRecord(WriteIntentRecordSchema, JsonRowSchema.parse(row).record_json)));
+        },
         recordObservedPresent: (input: unknown) => {
           const record = WriteIntentRecordSchema.parse(input);
           if (record.status !== "observed-present") {
             throw new Error(`recordObservedPresent requires observed-present status, received ${record.status}`);
           }
           return this.withAuthorityTransaction(() => {
+            this.#assertBusinessWriteAdmission(record);
             const existing = this.#findPermanentWriteIntent(record.system, record.idempotencyKey);
             if (existing !== undefined) {
               return PermanentWriteResolutionSchema.parse({ state: "existing", intent: existing });
@@ -5593,6 +5605,7 @@ export class AuthorityDatabase implements Disposable {
         fenceAttempt: (input: unknown) => {
           const { intent, attempt } = WriteFenceInputSchema.parse(input);
           return this.withAuthorityTransaction(() => {
+            this.#assertBusinessWriteAdmission(intent);
             const existing = this.#findPermanentWriteIntent(intent.system, intent.idempotencyKey);
             if (existing !== undefined) {
               return PermanentWriteResolutionSchema.parse({ state: "existing", intent: existing });
@@ -5609,6 +5622,11 @@ export class AuthorityDatabase implements Disposable {
           }
           return this.withAuthorityTransaction(() => {
             const current = this.#requireWriteIntent(intent.writeIntentId);
+            if (canonicalJsonStringify(current.status === "observed-present" ? null : current.occurrence ?? null)
+              !== canonicalJsonStringify(intent.occurrence ?? null)) {
+              throw new Error("re-fence may not change permanent occurrence authorization");
+            }
+            this.#assertBusinessWriteAdmission(intent);
             if (current.status !== "retryable") {
               throw new Error(`write intent ${intent.writeIntentId} is ${current.status}; only a retryable intent may re-fence`);
             }
@@ -7887,6 +7905,25 @@ export class AuthorityDatabase implements Disposable {
       throw new Error(`write attempt ${writeAttemptId} is ${attempt.outcome.state}; only an attempting attempt may transition`);
     }
     return attempt;
+  }
+
+  #assertBusinessWriteAdmission(intent: WriteIntentRecord): void {
+    const businessDigest = intent.status !== "observed-present" && intent.occurrence !== undefined
+      ? intent.occurrence.businessKeyDigest : intent.idempotencyKeyDigest;
+    const unresolved = this.authority.writeIntents.listByBusinessKey(intent.system, businessDigest)
+      .find((other) => other.idempotencyKey !== intent.idempotencyKey
+        && (other.status !== "committed" && other.status !== "observed-present"));
+    if (unresolved !== undefined) throw new Error("business key has an unresolved write occurrence");
+    if (intent.status !== "observed-present" && intent.occurrence !== undefined) {
+      const settled = this.authority.writeIntents.listByBusinessKey(intent.system, businessDigest)
+        .filter((other) => other.idempotencyKey !== intent.idempotencyKey
+          && (other.status === "committed" || other.status === "observed-present"));
+      if (settled.length !== intent.occurrence.baselineEvidence.length || settled.some((other) =>
+        !intent.occurrence?.baselineEvidence.some((proof) => proof.writeIntentId === other.writeIntentId
+          && proof.evidenceDigest === repeatEvidenceDigest(other)))) {
+        throw new Error("confirmation-required: repeat completion evidence changed before fence");
+      }
+    }
   }
 
   #findPermanentWriteIntent(system: string, idempotencyKey: string): WriteIntentRecord | undefined {

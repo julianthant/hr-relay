@@ -1,3 +1,4 @@
+import { RunRecordService } from "../../src/core/run-record-service.js";
 /**
  * D314 — the command kernel's two ordinary recovery choices.
  *
@@ -29,6 +30,7 @@ import { AuthorityDatabase, type AuthorityRepositories } from "../../src/infra/s
 import { planStart } from "../../src/services/start/plan.js";
 import { NOW } from "./fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "./fixtures/operator-command-fixtures.js";
 import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
@@ -121,7 +123,9 @@ function createHarness(): Harness {
     clock,
   );
   openDatabases.push(database);
+  seedSyntheticRuntimeConfig(database);
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,
@@ -189,7 +193,7 @@ function startTerminalRun(harness: Harness, options: Readonly<{ dryRun: boolean;
     },
   });
   assert.equal(started.state, "applied");
-  const runId = plan.planned[0].runId;
+  const runId = singleAppliedRunId(started);
   const original = harness.database.authority.runs.get(runId);
   assert.ok(original !== undefined);
   const cancelled = harness.kernel.execute(runCommand("cancel", runId, original.version));

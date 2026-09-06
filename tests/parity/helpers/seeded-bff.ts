@@ -1,3 +1,8 @@
+import { seedSyntheticRuntimeConfig } from "../../unit/fixtures/operator-command-fixtures.js";
+import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
+import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
+import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { sequentialIdFactory } from "../../unit/fixtures/phase1f-run-fixtures.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The seeded BFF (ref frontend-backend-integration §7.2, test-only adapter #2): the REAL production
@@ -729,6 +734,7 @@ export async function startSeededServer(
     clock,
   );
 
+  seedSyntheticRuntimeConfig(database);
   const descriptors = {
     resolve: (workflowId: string) => (workflowId === WORKFLOW_ID ? personLookupDescriptor : undefined),
   };
@@ -824,6 +830,10 @@ export async function startSeededServer(
   };
 
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: (run, publication) => {
+      if (publication === undefined) throw new Error("command-created run lacks queue presentation");
+      spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: PublicationActorIdSchema.parse(publication.actorId) }));
+    } }),
     appVersion: SEEDED_APP_VERSION,
     archiveSnapshots: archiveSnapshots(runDetailDeps),
     configIdentity: UNSTORED_CONFIG_IDENTITY,

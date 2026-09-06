@@ -1,3 +1,4 @@
+import { RunRecordService } from "../../src/core/run-record-service.js";
 /**
  * 2i-B: the notification lifecycle arms and the day-wire mapping.
  *
@@ -60,6 +61,7 @@ function harness(): { database: AuthorityDatabase; kernel: CommandKernel } {
   );
   disposers.push(() => database.close());
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,

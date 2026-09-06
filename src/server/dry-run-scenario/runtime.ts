@@ -1,3 +1,4 @@
+import { RunRecordService, type RunRecordServiceDependencies } from "../../core/run-record-service.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
 /** Real-service runtime behind `cli dry-run-scenario`. */
 import { readFileSync } from "node:fs";
@@ -68,6 +69,7 @@ function descriptorFor(workflow: string) {
 }
 
 function createScenarioKernel(input: Readonly<{
+  publishQueued: RunRecordServiceDependencies["publishQueued"];
   database: AuthorityDatabase;
   clock: Clock;
   ids: IdFactory;
@@ -76,6 +78,7 @@ function createScenarioKernel(input: Readonly<{
   configSnapshotId: string;
 }>): CommandKernel {
   return createCommandKernel({
+    lifecycle: new RunRecordService({ database: input.database, clock: input.clock, ids: input.ids, publishQueued: input.publishQueued }),
     authority: { withAuthorityTransaction: (work) => input.database.withAuthorityTransaction(work) },
     clock: input.clock,
     ids: input.ids,
@@ -302,7 +305,6 @@ export function createProductionDryRunScenarioRuntime(
       let admitted: Readonly<{
         identity: Readonly<{ fingerprint: string; snapshotId: string }>;
         started: DryRunScenarioStarted;
-        queuedSpan: ReturnType<typeof runQueuedSpanEvent>;
       }>;
       try {
         const persistedSettings = database.withAuthorityTransaction((repositories) =>
@@ -347,8 +349,11 @@ export function createProductionDryRunScenarioRuntime(
           }
           const planned = plan.planned[0];
           if (planned === undefined) throw new Error("dry-run start plan lost its only planned run");
-          const before = database.authority.writeIntents.countDryRunEvidenceByRun(planned.runId);
           const kernel = createScenarioKernel({
+            publishQueued: (run, publication) => {
+              if (publication === undefined) throw new Error("scenario queued publication context missing");
+              spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: LOCAL_OPERATOR_ACTOR_ID }));
+            },
             database,
             clock: input.clock,
             ids: input.ids,
@@ -371,23 +376,21 @@ export function createProductionDryRunScenarioRuntime(
             payload: plan.fingerprints,
           });
           requireApplied("dry-run start-run command", outcome);
-          const run = database.authority.runs.get(planned.runId);
+          if (outcome.state !== "applied") throw new Error("scenario start did not apply");
+          const target = outcome.affectedTargets.find((entry) => entry.family === "run");
+          if (target?.family !== "run") throw new Error("scenario start returned no run identity");
+          const run = database.authority.runs.get(target.runId);
           if (run === undefined) {
-            throw new Error(`dry-run run ${planned.runId} vanished after its start command applied`);
+            throw new Error(`dry-run run ${target.runId} vanished after its start command applied`);
           }
           return {
             identity,
             started: {
-              runId: planned.runId,
-              traceId: planned.traceId,
-              writeSafetyBefore: before,
+              runId: run.envelope.runId,
+              traceId: run.envelope.traceId,
+              writeSafetyBefore: database.authority.writeIntents.countDryRunEvidenceByRun(run.envelope.runId),
             },
-            queuedSpan: runQueuedSpanEvent({
-              run,
-              actorId: LOCAL_OPERATOR_ACTOR_ID,
-              title: planned.title,
-              ...(planned.subtitle === undefined ? {} : { subtitle: planned.subtitle }),
-            }),
+
           };
         }));
       } finally {
@@ -396,7 +399,6 @@ export function createProductionDryRunScenarioRuntime(
       // Authority commits first; the write-once queue root follows through the
       // same shared projection as dashboard starts. Publish scenario identity
       // only after both the transaction handle and its required span settle.
-      spans.emit(admitted.queuedSpan);
       configIdentity = admitted.identity;
       scenarioCase = request.scenarioCase;
       scenarioArm = request.manifest.arm;
@@ -446,6 +448,7 @@ export function createProductionDryRunScenarioRuntime(
         const identity = configIdentity;
         if (identity === undefined) throw new Error("dry-run gate resolution lost its start config identity");
         const kernel = createScenarioKernel({
+          publishQueued: () => { throw new Error("gate resolution cannot create runs"); },
           database,
           clock: input.clock,
           ids: input.ids,

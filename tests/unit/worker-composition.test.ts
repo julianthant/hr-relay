@@ -1,3 +1,4 @@
+import { RunRecordService } from "../../src/core/run-record-service.js";
 import { SpanEventWireSchema } from "../../src/events/types.js";
 import { testRunService } from "./fixtures/run-lifecycle-fixtures.js";
 import { hostConfigFacts } from "../../src/domain/config/host-display.js";
@@ -1077,6 +1078,7 @@ function kernelHarness(): { database: AuthorityDatabase; kernel: CommandKernel; 
   );
   openDatabases.push(database);
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,

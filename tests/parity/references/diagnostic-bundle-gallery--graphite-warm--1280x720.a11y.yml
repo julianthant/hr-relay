@@ -1,16 +1,11 @@
 # diagnostic-bundle-gallery--graphite-warm--1280x720
 # adapter: fixture
 # fixture: diagnostic-bundle-gallery
-# descriptorHash: c5c4bd6af0200ce10f11a7c1b572b325e327a15d606d7d798794e29215b30a9d
+# descriptorHash: 9d4492693c6190a258ea5ed7e186410f807302c77f4fdb3c821087d7099812cc
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- main:
-  - complementary "Run data":
-    - region "Extracted fields":
-      - text: The run is now failed — it moved while this data was open, so these values may be stale. Reopen the run to edit.
-      - paragraph: No unsaved changes.
 - dialog "Diagnostic bundle 00000000-0904-4000-8000-000000000904":
   - banner:
     - heading "Diagnostic bundle 00000000-0904-4000-8000-000000000904" [level=2]

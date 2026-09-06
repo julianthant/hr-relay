@@ -1,7 +1,7 @@
 # run-done--paper-ink--1440x900
 # adapter: fixture
 # fixture: run-done
-# descriptorHash: c5c4bd6af0200ce10f11a7c1b572b325e327a15d606d7d798794e29215b30a9d
+# descriptorHash: 9d4492693c6190a258ea5ed7e186410f807302c77f4fdb3c821087d7099812cc
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -272,11 +272,11 @@
     - region "Extracted fields":
       - text: Extracted fields
       - button "About run data"
-      - button "Widen the data surface to edit"
-      - text: Selection exact-match Active status active The run is now done — it moved while this data was open, so these values may be stale. Reopen the run to edit.
-      - paragraph: No unsaved changes.
-      - button "Reset edits" [disabled]
-      - button "Save 0 corrections" [disabled]
+      - button "Widen the data surface"
+      - text: Selection
+      - paragraph: exact-match
+      - text: Active status
+      - paragraph: active
   - dialog "Workflow Panel":
     - text: Workflow Panel
     - button "Dock the Workflow Panel as a sidebar"

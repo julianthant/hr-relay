@@ -1,3 +1,4 @@
+import { RunRecordService } from "../../../src/core/run-record-service.js";
 /**
  * W3 (ref execution-and-sessions §11, D271): the dashboard's REAL worker
  * process control, composed exactly as production composes it —
@@ -186,6 +187,7 @@ function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
     ? aliasBrokenPool
     : options.interceptPool(aliasBrokenPool, { database, clock });
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,

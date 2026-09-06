@@ -37,7 +37,7 @@
  *    through this service and never through the kernel directly.
  */
 import { z } from "zod";
-import { workflowPlanning, type AnyWorkflowDescriptor } from "../../../base/workflow.js";
+import { type AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import type { Clock } from "../../../domain/clock.js";
 import {
@@ -60,8 +60,6 @@ import { runSpanPath } from "../../../core/span-emitter.js";
 import type { SpanJsonlWriter } from "../../../infra/events/span-jsonl-writer.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { errorText } from "../support.js";
-import { TargetNotFoundError } from "../../failures.js";
-import { runQueuedSpanEvent } from "./run-queued-span.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
@@ -135,75 +133,9 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       // only recovers the typed view the emission step dispatches on.
       const request = CommandRequestSchema.parse(input);
 
-      if (request.family === "start") {
-        const plan = deps.authorityRead.getStartPlan(request.target.startPlanId);
-        if (plan === undefined) {
-          throw new Error(`start plan ${request.target.startPlanId} vanished after its command applied`);
-        }
-        for (const planned of plan.planned) {
-          const run = deps.authorityRead.getRun(planned.runId);
-          if (run === undefined) {
-            throw new Error(`run ${planned.runId} from applied start plan ${plan.startPlanId} is missing from authority`);
-          }
-          deps.spans.emit(runQueuedSpanEvent({
-            run,
-            actorId: request.requestedBy,
-            title: planned.title,
-            ...(planned.subtitle === undefined ? {} : { subtitle: planned.subtitle }),
-          }));
-        }
-        deps.projection.ingestFromDisk();
-        return result;
-      }
-
-      if (request.family === "intake" && request.type === "enqueue-intake-manifest") {
-        const session = deps.authorityRead.getIntakeSession(request.target.intakeSessionId);
-        if (session?.intakeManifestId === undefined) {
-          throw new Error(
-            `intake session ${request.target.intakeSessionId} names no manifest after its enqueue applied`,
-          );
-        }
-        const manifest = deps.authorityRead.getIntakeManifest(session.intakeManifestId);
-        if (manifest === undefined) {
-          throw new Error(`intake manifest ${session.intakeManifestId} is missing from authority after its enqueue applied`);
-        }
-        const descriptor = deps.descriptors.resolve(manifest.workflow);
-        if (descriptor === undefined) {
-          throw new Error(`workflow ${manifest.workflow} vanished from the registry after its intake enqueue applied`);
-        }
-        const planning = workflowPlanning(descriptor);
-        // The join is the ITEM id, which the manifest and the run envelope both
-        // carry and which `duplicate-identity` guarantees is unique in a file.
-        const enqueued = new Map<string, RunRecord>();
-        for (const target of result.affectedTargets) {
-          if (target.family !== "run") continue;
-          const run = deps.authorityRead.getRun(target.runId);
-          if (run === undefined) {
-            throw new Error(`run ${target.runId} from applied intake manifest ${manifest.manifestId} is missing from authority`);
-          }
-          enqueued.set(run.envelope.itemId, run);
-        }
-        if (enqueued.size !== manifest.validRows.length) {
-          throw new Error(
-            `intake manifest ${manifest.manifestId} has ${String(manifest.validRows.length)} valid rows but its `
-            + `command reported ${String(enqueued.size)} runs; refusing to file a partial fan-out`,
-          );
-        }
-        for (const row of manifest.validRows) {
-          const run = enqueued.get(row.itemId);
-          if (run === undefined) {
-            throw new Error(
-              `intake manifest ${manifest.manifestId} source row ${String(row.sourceRow)} (${row.itemId}) has no enqueued run`,
-            );
-          }
-          const subtitle = planning.subtitle(row.parsedInput);
-          deps.spans.emit(runQueuedSpanEvent({
-            run,
-            actorId: request.requestedBy,
-            title: planning.title(row.parsedInput),
-            ...(subtitle === undefined ? {} : { subtitle }),
-          }));
-        }
+      if (request.family === "start" || (request.family === "intake" && request.type === "enqueue-intake-manifest")
+        || (request.family === "run" && (request.type === "retry" || request.type === "restart"))
+        || (request.family === "version-archive" && request.type === "relaunch-archived-run")) {
         deps.projection.ingestFromDisk();
         return result;
       }
@@ -232,35 +164,6 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
             sha256Hex(`hrauto:gate-resolved-span:v1\0${canonicalJsonStringify(request.payload.result)}`),
           ),
         });
-        deps.projection.ingestFromDisk();
-        return result;
-      }
-
-      if (request.family === "run" && request.type === "retry") {
-        // The kernel minted a NEW run linked by retryOf; it is born at
-        // enqueue like any other, so it gets its run.queued span here.
-        const newRunTarget = result.affectedTargets.find(
-          (target) => target.family === "run" && target.runId !== request.target.runId,
-        );
-        if (newRunTarget?.family !== "run") {
-          throw new Error(`applied retry of ${request.target.runId} reported no new run target`);
-        }
-        const run = deps.authorityRead.getRun(newRunTarget.runId);
-        if (run === undefined) {
-          throw new Error(`retry run ${newRunTarget.runId} is missing from authority after its command applied`);
-        }
-        const original = deps.projection.runFold(request.target.runId);
-        if (original === undefined) {
-          throw new TargetNotFoundError(
-            `retry of ${request.target.runId} cannot emit run.queued: the original run has no span fold to carry its title`,
-          );
-        }
-        deps.spans.emit(runQueuedSpanEvent({
-          run,
-          actorId: request.requestedBy,
-          title: original.queued.title,
-          ...(original.queued.subtitle === undefined ? {} : { subtitle: original.queued.subtitle }),
-        }));
         deps.projection.ingestFromDisk();
         return result;
       }

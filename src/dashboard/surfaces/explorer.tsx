@@ -2005,6 +2005,7 @@ export function ExplorerEditDialog({
           case "applied":
           case "already-applied":
             break;
+          case "confirmation-required":
           case "conflict":
           case "rejected":
             throw new Error("Explorer command settlement disagreed with its result state");

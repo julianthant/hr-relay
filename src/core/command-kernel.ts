@@ -27,6 +27,9 @@
  * retains the observed version for audit but validates CURRENT authority
  * instead of rejecting on version drift alone.
  */
+import { lifecycleCommandId, type RunMutationOutcome, type RunRecordService } from "./run-record-service.js";
+import type { RunExistence, RunRecordRefusal } from "../domain/authority.js";
+import { RuntimeConfigClaimTokenSchema } from "../domain/config/runtime-generation.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../base/workflow.js";
@@ -46,7 +49,6 @@ import {
   type ArchiveSnapshotSource,
 } from "../services/archive/archive-service.js";
 import {
-  ArchiveRelaunchRecordSchema,
   CURRENT_ARCHIVE_SCHEMA_GENERATION,
   VersionBumpApplicationSchema,
   VersionBumpPlanSchema,
@@ -54,6 +56,7 @@ import {
   type WorkflowVersionIdentity,
 } from "../domain/archive/model.js";
 import { VersionPlanStorageRecordSchema } from "../infra/sqlite/storage-records.js";
+import { buildRerunPlan, RerunRefusedError } from "../services/start/rerun.js";
 import { planStart } from "../services/start/plan.js";
 import type { ArtifactRef } from "../domain/artifacts.js";
 import type { Clock } from "../domain/clock.js";
@@ -68,7 +71,7 @@ import {
   type CommandRequest,
   type CommandResult,
 } from "../domain/commands.js";
-import { deriveItemId, deriveTraceId, type IdFactory } from "../domain/identifiers.js";
+import { deriveItemId, type IdFactory } from "../domain/identifiers.js";
 import {
   CommandIdSchema,
   FingerprintSchema,
@@ -87,9 +90,7 @@ import { confirmBinding } from "../domain/intake/mapping.js";
 import type { IntakeProjection } from "../domain/intake/projection.js";
 import { validateIntakeRows } from "../domain/intake/validate.js";
 import { deepFreeze } from "../domain/immutability.js";
-import { isTerminalRunState, runClaim, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
-import { RunCheckpointRecordSchema } from "../domain/workflow/checkpoint.js";
-import { applyCheckpointPatches } from "./checkpoint-patch.js";
+import { isTerminalRunState, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
 import { isLiveWorker } from "../domain/run/worker.js";
 import { workerPoolVersion } from "../domain/run/worker-pool.js";
 import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../domain/schema-bound-value.js";
@@ -129,7 +130,6 @@ const PHASE1_ACTIVE = {
     "delete",
     "resolve-write-present",
     "resolve-write-absent",
-    "edit-checkpoint",
   ],
   gate: ["resolve-gate"],
   // 2i-B: the notification inbox lifecycle over D134/D138's durable rows.
@@ -208,7 +208,6 @@ type RunCommand = Extract<CommandRequest, { family: "run" }>;
 type RunBasicCommand = Extract<RunCommand, { type: "retry" | "restart" | "cancel" | "bump" }>;
 /** D314 — the two recovery verbs share the basic run command shape; `executeRetry` reads `type` to choose the mode. */
 type RunRecoveryCommand = RunBasicCommand;
-type RunEditCheckpointCommand = Extract<RunCommand, { type: "edit-checkpoint" }>;
 type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
 type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
 export type SettingsCommand = Extract<CommandRequest, { family: "settings" }>;
@@ -433,6 +432,7 @@ export interface RunConfigIdentity {
 
 export interface CommandKernelDependencies {
   readonly authority: CommandAuthority;
+  readonly lifecycle: RunRecordService;
   readonly clock: Clock;
   readonly ids: IdFactory;
   /**
@@ -487,7 +487,7 @@ class CommandRefusal extends Error {
 
   constructor(result: unknown) {
     const parsed = CommandResultSchema.parse(result);
-    if (parsed.state !== "conflict" && parsed.state !== "rejected") {
+    if (parsed.state !== "conflict" && parsed.state !== "rejected" && parsed.state !== "confirmation-required") {
       throw new Error("a command refusal cannot carry an applied result");
     }
     super(`command ${parsed.commandId} ${parsed.state}: ${parsed.message}`);
@@ -635,11 +635,45 @@ function requireRun(
   request: CommandRequest,
   runId: string,
 ): RunRecord {
+  if (repositories.deletedRuns.get(runId) !== undefined) reject(request, "target-deleted", "run was deleted");
   const run = repositories.runs.get(runId);
   if (run === undefined) reject(request, "target-not-found", `run ${runId} does not exist`);
   return run;
 }
 
+
+function runtimeToken(repositories: AuthorityRepositories) {
+  const active = repositories.runtimeConfig.get();
+  if (active === undefined) throw new Error("operator lifecycle command has no active runtime config");
+  return RuntimeConfigClaimTokenSchema.parse({ generation: active.generation, settingsRevision: active.settingsRevision,
+    settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint });
+}
+
+function lifecycleRefusal(request: CommandRequest, refusal: RunRecordRefusal): never {
+  switch (refusal.reason) {
+    case "conflict": return conflict(request, refusal.currentVersion, "run version changed");
+    case "schema-mismatch": return reject(request, "schema-mismatch", "run schema or archive digest changed");
+    case "source-deleted": case "tombstoned": return reject(request, "target-deleted", "run was deleted");
+    case "policy-refused": return reject(request, "policy-refused", "run policy refuses this operation");
+    case "runtime-stale": return reject(request, "schema-mismatch", "runtime configuration changed");
+    case "workflow-unregistered": return reject(request, "target-not-found", "workflow is not registered");
+    case "illegal-transition": return reject(request, "invalid-state", refusal.message);
+    case "owned-by-worker": case "heartbeat-live": case "invalid-state": case "not-terminal":
+    case "already-archived": case "is-member": case "tree-non-terminal": case "use-archive-door":
+      return reject(request, "invalid-state", `run lifecycle refused: ${refusal.reason}`);
+    case "parent-missing": case "retry-of-missing": case "identity-conflict": case "cursor-stale":
+    case "lost": case "replay-divergent": case "retention-not-due": case "none-eligible": case "worker-busy":
+      throw new Error(`unexpected operator lifecycle refusal: ${refusal.reason}`);
+  }
+}
+
+function lifecycleRun(request: CommandRequest, outcome: RunMutationOutcome | RunExistence): RunRecord {
+  if (outcome.state === "refused") lifecycleRefusal(request, outcome.refusal);
+  if (outcome.state === "deleted") reject(request, "target-deleted", "run was deleted");
+  if (outcome.state === "absent") reject(request, "target-not-found", "run does not exist");
+  if ((outcome.state === "applied" || outcome.state === "applied-already") && "run" in outcome) return outcome.run;
+  throw new Error(`unexpected operator lifecycle result: ${outcome.state}`);
+}
 
 /* ── the arms ────────────────────────────────────────────────────────────── */
 
@@ -680,6 +714,24 @@ function executeStartRun(
     );
   }
 
+  if (plan.planned.some((entry) => entry.runId !== undefined || entry.traceId !== undefined)) {
+    reject(request, "replan-required", "legacy plan reserved lifecycle identities; replan before submitting");
+  }
+  if (plan.rerun !== undefined) {
+    let current;
+    try {
+      current = buildRerunPlan(repositories, descriptor, plan.rerun.source, plan.planned, plan.rerun.acknowledgment, plan.stepOmissions);
+    } catch (error) {
+      if (!(error instanceof RerunRefusedError)) throw error;
+      reject(request, error.code === "source-stale" ? "replan-required" : error.code, error.message);
+    }
+    if (canonicalJsonStringify(current) !== canonicalJsonStringify(plan.rerun)
+      || (current.warnings.length > 0 && current.acknowledgment !== current.warningDigest)) {
+      throw new CommandRefusal(CommandResultSchema.parse({ state: "confirmation-required", commandId: request.commandId,
+        warningDigest: current.warningDigest, message: "Confirm the current repeat warning before final submission" }));
+    }
+  }
+
   const consumption = repositories.startPlans.consume({
     startPlanId: request.target.startPlanId,
     expectedVersion: request.target.expectedVersion,
@@ -718,9 +770,12 @@ function executeStartRun(
 
   const fanOut = fanOutQueuedRuns(
     repositories,
-    (message) => reject(request, "policy-refused", message),
+    dependencies.lifecycle,
+    (message, refusal) => refusal === undefined ? reject(request, "policy-refused", message) : lifecycleRefusal(request, refusal),
     descriptor,
     {
+      commandId: request.commandId, actorId: request.requestedBy,
+      ...(plan.rerun === undefined ? {} : { sourceBound: { ...plan.rerun, confirmationCommandId: request.commandId } }),
       workflow: plan.workflowId,
       descriptorVersion: plan.descriptorVersion,
       contractFingerprint: plan.descriptorFingerprint,
@@ -745,9 +800,10 @@ function executeStartRun(
       },
     },
     plan.planned.map((planned) => ({
-      runId: planned.runId,
       itemId: planned.itemId,
-      traceId: planned.traceId,
+      title: planned.title, subtitle: planned.subtitle,
+      ...(plan.rerun === undefined || repositories.runs.get(plan.rerun.source.runId)?.envelope.itemId !== planned.itemId
+        ? {} : { retryOf: plan.rerun.source.runId }),
       matchKey: planned.matchKey,
       rawInput: planned.rawInput,
       parsedInput: planned.input,
@@ -776,7 +832,7 @@ function executeRetry(
   dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
   request: RunRecoveryCommand,
-  now: string,
+  _now: string,
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
   if (current.lifecycle.state === "parked-write") {
@@ -816,82 +872,18 @@ function executeRetry(
     }
   }
 
-  const runId = dependencies.ids.uuid();
-  const record = RunRecordSchema.parse({
-    envelope: {
-      runId,
-      workflow: current.envelope.workflow,
-      itemId: current.envelope.itemId,
-      traceId: deriveTraceId(descriptor.code, runId, dependencies.clock),
-      descriptorVersion: current.envelope.descriptorVersion,
-      contractFingerprint: current.envelope.contractFingerprint,
-      ...(current.envelope.requestedInstance === undefined
-        ? {}
-        : { requestedInstance: current.envelope.requestedInstance }),
-      resolvedInstance: current.envelope.resolvedInstance,
-      configFingerprint: current.envelope.configFingerprint,
-      configSnapshotId: current.envelope.configSnapshotId,
-      shape: current.envelope.shape,
-      priority: current.envelope.priority,
-      dryRun: current.envelope.dryRun,
-      ...(current.envelope.browserMode === undefined ? {} : { browserMode: current.envelope.browserMode }),
-      ...(current.envelope.captureBrowserScreenshots === undefined
-        ? {}
-        : { captureBrowserScreenshots: current.envelope.captureBrowserScreenshots }),
-      // D307 — a retry omits exactly what the operator omitted; a different choice is a new start.
-      ...(current.envelope.stepOmissions === undefined ? {} : { stepOmissions: current.envelope.stepOmissions }),
-      // D314 — Restart from start is the same next attempt with the root marker.
-      ...(request.type === "restart" ? { recovery: "restart-from-start" as const } : {}),
-      retryOf: current.envelope.runId,
-      /*
-       * D221 — a retry is the item's NEXT attempt, which is what ref workflow-model §5.6 #1
-       * has always said a retry is ("failure at node k ⇒ retry = new attempt").
-       * Minting it at 1 made the new run re-execute its `always-rerun` nodes
-       * under the retried run's own checkpoint keys, and the immutable insert
-       * refused them by name — so a run that failed at or after such a node
-       * could not be retried at all. D214 refused ADVANCING THE ATTEMPT for a
-       * gate resume because that would rewrite an in-flight envelope and label a
-       * park as a retry; neither reason reaches here, where a fresh envelope is
-       * minted for something that IS a retry.
-       */
-      attempt: repositories.runs.nextItemAttempt({
-        workflow: current.envelope.workflow,
-        itemId: current.envelope.itemId,
-      }),
-      enqueuedAt: now,
-    },
-    // Immutable parsed input and its exact raw/schema identities are reused;
-    // Edit Data is a different, later arm on purpose.
-    input: current.input,
-    lifecycle: { state: "queued" },
-    claimGeneration: 0,
-    // A retry is a fresh enqueue, so it stamps the build it is enqueued
-    // under — not the build the run it retries carried. The DESCRIPTOR
-    // identity above is deliberately inherited; the app build is not.
-    appVersion: dependencies.appVersion,
-    /*
-     * D230: a retry is a fresh enqueue, so it takes the workflow's NEXT ordinal
-     * rather than inheriting the retried run's. The two runs are two rows an
-     * operator can name apart, which is the whole point of the number; a retry
-     * that re-used `#7` would make one footer describe two runs.
-     */
-    runNumber: repositories.runs.nextWorkflowRunNumber(current.envelope.workflow),
-    /*
-     * D269: a retry INHERITS the retried run's session rather than minting
-     * one. It is the same item's next attempt (D221), so the group the operator
-     * started keeps reporting the item it contains; a retry of a run no
-     * fan-out grouped (a pre-v17 row) stays ungrouped — nothing is invented.
-     */
-    ...(current.sessionId === undefined ? {} : { sessionId: current.sessionId }),
-    version: 1,
-    createdAt: now,
-    updatedAt: now,
-  });
-  const inserted = repositories.runs.enqueue(record);
-  if (inserted.state !== "inserted") {
-    throw new Error(`retry of ${request.target.runId} minted run id ${runId}, which already exists`);
-  }
-  return applied(request, [runTarget(runId), runTarget(request.target.runId)], []);
+  const planning = workflowPlanning(descriptor);
+  const value = current.input.parsed?.value;
+  if (value === undefined) throw new Error("retry source lacks canonical input");
+  const record = lifecycleRun(request, dependencies.lifecycle[request.type === "restart" ? "restart" : "retry"]({
+    commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
+    runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
+    runtimeConfig: runtimeToken(repositories), appVersion: dependencies.appVersion,
+  }, descriptor, { title: planning.title(value), subtitle: planning.subtitle(value), actorId: request.requestedBy }));
+  return applied(request, [runTarget(record.envelope.runId), runTarget(request.target.runId)], [
+    { target: runTarget(record.envelope.runId), before: 0, after: record.version },
+  ]);
+
 }
 
 interface CancelTarget {
@@ -953,6 +945,7 @@ function refuseCancelOverUnresolvedWrite(
 }
 
 function executeCancel(
+  dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
   request: RunBasicCommand,
   now: string,
@@ -1002,19 +995,19 @@ function executeCancel(
 
   const affectedTargets: TargetReference[] = [];
   const versionChanges: VersionChange[] = [];
-  for (const target of targets) {
-    const outcome = repositories.runs.transition({
+  for (const target of [...targets].reverse()) {
+    const outcome = dependencies.lifecycle.transition({
+      commandId: lifecycleCommandId("operator-cancel", { commandId: request.commandId, runId: target.run.envelope.runId }),
       runId: target.run.envelope.runId,
       expectedVersion: target.run.version,
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: now },
-      now,
     });
-    requireApplied(outcome, `cancelling run ${target.run.envelope.runId}`);
+    const cancelled = lifecycleRun(request, outcome);
     affectedTargets.push(runTarget(target.run.envelope.runId));
     versionChanges.push({
       target: runTarget(target.run.envelope.runId),
       before: target.run.version,
-      after: target.run.version + 1,
+      after: cancelled.version,
     });
   }
   return applied(request, affectedTargets, versionChanges, dependencyIds);
@@ -1043,9 +1036,10 @@ function executeCancel(
  * copy says so; this arm does not second-guess a ruling that was given twice.
  */
 function executeDelete(
+  dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
   request: RunDeleteCommand,
-  now: string,
+  _now: string,
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
   if (current.version !== request.target.expectedVersion) {
@@ -1081,12 +1075,11 @@ function executeDelete(
     );
   }
   const order = deleteTreeOrder(repositories, request, current);
-  const affectedTargets: TargetReference[] = [];
-  for (const run of order) {
-    repositories.runs.delete({ runId: run.envelope.runId, origin: "queue", commandId: request.commandId, now });
-    affectedTargets.push(runTarget(run.envelope.runId));
-  }
-  return applied(request, affectedTargets, []);
+  const outcome = dependencies.lifecycle.delete({ commandId: lifecycleCommandId("operator-delete", request.commandId),
+    runId: current.envelope.runId, expectedVersion: request.target.expectedVersion });
+  if (outcome.state === "refused") lifecycleRefusal(request, outcome.refusal);
+  if (outcome.state !== "deleted" && outcome.state !== "applied-already") throw new Error(`delete: ${outcome.state}`);
+  return applied(request, order.map((run) => runTarget(run.envelope.runId)), []);
 }
 
 /**
@@ -1134,9 +1127,10 @@ function deleteTreeOrder(
 }
 
 function executeBump(
+  dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
   request: RunBasicCommand,
-  now: string,
+  _now: string,
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
   /*
@@ -1176,10 +1170,11 @@ function executeBump(
   if (current.envelope.priority === "interactive") {
     return applied(request, [runTarget(request.target.runId)], []);
   }
-  const outcome = repositories.runs.bumpPriority({
+  const outcome = dependencies.lifecycle.transition({
+    commandId: lifecycleCommandId("operator-bump", request.commandId),
+    priority: "interactive",
     runId: request.target.runId,
     expectedVersion: request.target.expectedVersion,
-    now,
   });
   requireApplied(outcome, `bumping run ${request.target.runId}`);
   return applied(request, [runTarget(request.target.runId)], [{
@@ -1198,127 +1193,6 @@ function executeBump(
  * ride `envelope.injected` and become authority only when a resume replays
  * the checkpoint through the same applier.
  */
-function executeEditCheckpoint(
-  dependencies: CommandKernelDependencies,
-  repositories: AuthorityRepositories,
-  request: RunEditCheckpointCommand,
-  now: string,
-): CommandApplication {
-  const current = requireRun(repositories, request, request.target.runId);
-  if (current.version !== request.target.expectedVersion) {
-    reject(
-      request,
-      "invalid-state",
-      `run ${request.target.runId} moved to version ${String(current.version)} while you were editing `
-      + `(you loaded ${String(request.target.expectedVersion)}); your edit was not applied — reload the current state`,
-    );
-  }
-  if (runClaim(current) !== undefined) {
-    reject(
-      request,
-      "invalid-state",
-      `run ${request.target.runId} resumed while you were editing — your edit was not applied; `
-      + "reload the current state",
-    );
-  }
-  if (current.lifecycle.state !== "queued" && current.lifecycle.state !== "parked-gate") {
-    reject(
-      request,
-      "invalid-state",
-      `run ${request.target.runId} is ${current.lifecycle.state}; checkpoint corrections apply only to a `
-      + "non-executing resumable run — a running task's checkpoints are being written, and a done run is history",
-    );
-  }
-  const descriptor = resolveDescriptorOrReject(dependencies, request, current.envelope.workflow);
-  requireDescriptorMatchesEnvelope(request, descriptor, current);
-
-  const editData = descriptor.capabilities?.editData;
-  if (editData === undefined || typeof editData === "boolean") {
-    reject(
-      request,
-      "policy-refused",
-      `workflow ${current.envelope.workflow} declares no editable checkpoint fields; the default is `
-      + "read-only, never all checkpoint JSON",
-    );
-  }
-  const declared = new Set(editData.fields.map((field) => `${String(field.nodeId)}\0${field.fieldPath}`));
-  for (const patch of request.payload.patches) {
-    if (!declared.has(`${String(patch.nodeId)}\0${patch.fieldPath}`)) {
-      reject(
-        request,
-        "policy-refused",
-        `field ${String(patch.nodeId)}.${patch.fieldPath} is not descriptor-allowlisted for correction`,
-      );
-    }
-  }
-
-  // Prove every patched output re-parses BEFORE anything durable moves.
-  const nodes = descriptorRuntimeNodes(descriptor);
-  const byNode = new Map<string, typeof request.payload.patches[number][]>();
-  for (const patch of request.payload.patches) {
-    const existing = byNode.get(String(patch.nodeId));
-    if (existing === undefined) byNode.set(String(patch.nodeId), [patch]);
-    else existing.push(patch);
-  }
-  for (const [nodeId, nodePatches] of byNode) {
-    const node = nodes.find((candidate) => String(candidate.id) === nodeId);
-    if (node === undefined || node.kind !== "task") {
-      reject(request, "policy-refused", `node "${nodeId}" is not a correctable task node`);
-    }
-    const stored = repositories.runCheckpoints.latest(
-      current.envelope.workflow,
-      current.envelope.itemId,
-      nodeId,
-    );
-    if (stored === undefined) {
-      reject(
-        request,
-        "invalid-state",
-        `node "${nodeId}" has no stored checkpoint to correct; a correction supersedes a recorded fact`,
-      );
-    }
-    try {
-      applyCheckpointPatches({
-        replayed: RunCheckpointRecordSchema.parse(stored),
-        patches: nodePatches,
-        outputSchema: node.uses.output,
-        attempt: current.envelope.attempt,
-        /*
-         * D214 — the generation the RESUMING claim will carry (a claim advances
-         * it by exactly one). This record is validated and thrown away; the
-         * executor mints the durable one under the claim it actually holds, so
-         * nothing here can put a wrong execution id on a stored row. It is
-         * supplied rather than omitted because the applier mints a whole
-         * checkpoint record and a record without it would not parse.
-         */
-        claimGeneration: current.claimGeneration + 1,
-        runId: current.envelope.runId,
-        writtenAt: now,
-      });
-    } catch (error) {
-      reject(
-        request,
-        "schema-mismatch",
-        `the corrected output for node "${nodeId}" does not satisfy the producing contract's schema: `
-        + (error instanceof Error ? error.message : String(error)),
-      );
-    }
-  }
-
-  const outcome = repositories.runs.injectCheckpointPatches({
-    runId: request.target.runId,
-    expectedVersion: current.version,
-    patches: request.payload.patches,
-    now,
-  });
-  requireApplied(outcome, `injecting checkpoint corrections into run ${request.target.runId}`);
-  return applied(request, [runTarget(request.target.runId)], [{
-    target: runTarget(request.target.runId),
-    before: current.version,
-    after: current.version + 1,
-  }]);
-}
-
 function intakeTarget(intakeSessionId: string): TargetReference {
   return { family: "intake", intakeSessionId };
 }
@@ -1790,9 +1664,11 @@ function executeIntake(
 
       const fanOut = fanOutQueuedRuns(
         repositories,
-        (message) => reject(request, "policy-refused", message),
+        dependencies.lifecycle,
+        (message, refusal) => refusal === undefined ? reject(request, "policy-refused", message) : lifecycleRefusal(request, refusal),
         descriptor,
         {
+          commandId: request.commandId, actorId: request.requestedBy,
           workflow: current.workflow,
           descriptorVersion: descriptor.version,
           contractFingerprint: descriptor.contractFingerprint,
@@ -1822,7 +1698,6 @@ function executeIntake(
           },
         },
         plan.manifest.validRows.map((row) => {
-          const runId = dependencies.ids.uuid();
           let canonicalInput: unknown;
           try {
             // D62: the manifest's stored value is re-read through the
@@ -1836,9 +1711,8 @@ function executeIntake(
             );
           }
           return {
-            runId,
             itemId: row.itemId,
-            traceId: deriveTraceId(descriptor.code, runId, dependencies.clock),
+            title: planning.title(row.parsedInput), subtitle: planning.subtitle(row.parsedInput),
             matchKey: planning.matchKey(row.parsedInput),
             // The manifest's own stored value IS this run's ingress: it is what
             // intake submitted, and `validRows[].inputHash` pins its bytes.
@@ -1877,9 +1751,10 @@ function executeIntake(
  * is how `retry` ends up told to "refresh before renaming it".
  */
 function executePresentation(
+  dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
   request: RunRenameCommand,
-  now: string,
+  _now: string,
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
   /*
@@ -1907,13 +1782,13 @@ function executePresentation(
       + "holding may not be the name it has",
     );
   }
-  const outcome = repositories.runs.updatePresentation({
+  const outcome = dependencies.lifecycle.transition({
+    commandId: lifecycleCommandId("operator-rename", request.commandId),
     runId: request.target.runId,
     expectedVersion: request.target.expectedVersion,
     displayName: request.payload.displayName,
-    now,
   });
-  requireApplied(outcome, `${request.type} on run ${request.target.runId}`);
+  lifecycleRun(request, outcome);
   return applied(request, [runTarget(request.target.runId)], [{
     target: runTarget(request.target.runId),
     before: current.version,
@@ -2075,13 +1950,13 @@ function executeResolveGate(
       + "while the run is still parked; the store is inconsistent",
     );
   }
-  const resumed = repositories.runs.resume({
+  const resumed = dependencies.lifecycle.transition({
+    commandId: lifecycleCommandId("operator-gate", request.commandId),
+    lifecycle: { state: "queued" },
     runId: request.target.runId,
     expectedVersion: current.version,
-    startAt: current.lifecycle.resumeAt,
-    now,
   });
-  requireApplied(resumed, `resuming run ${request.target.runId} after gate ${request.target.gateId}`);
+  lifecycleRun(request, resumed);
   const gateReference: TargetReference = {
     family: "gate",
     runId: request.target.runId,
@@ -2928,7 +2803,9 @@ function executeVersionBumpApply(
     // would let a registry that moved between the two calls freeze a label
     // beside a blank code — a half-resolved descriptor the record refuses.
     const registered = dependencies.descriptors.resolve(candidate.workflowId);
-    repositories.archivedRuns.insert(deriveArchivedRunRecord({
+    lifecycleRun(request, dependencies.lifecycle.archive({
+      commandId: lifecycleCommandId("operator-archive", { commandId: request.commandId, runId: run.envelope.runId }),
+      expectedVersion: run.version, archive: deriveArchivedRunRecord({
       repositories,
       run,
       snapshot: dependencies.archiveSnapshots.snapshot(candidate.runId),
@@ -2938,7 +2815,7 @@ function executeVersionBumpApply(
       archivedAt: now,
       workflowLabel: registered?.label,
       workflowCode: registered?.code,
-    }));
+    }) }));
     affectedTargets.push(runTarget(candidate.runId));
   }
 
@@ -2958,9 +2835,10 @@ function executeVersionBumpApply(
  * `archive` origin.
  */
 function executeArchivedRunDelete(
+  dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
   request: Extract<VersionArchiveCommand, { type: "delete-archived-run" }>,
-  now: string,
+  _now: string,
 ): CommandApplication {
   const archived = repositories.archivedRuns.get(request.target.archivedRunId);
   if (archived === undefined) {
@@ -2976,17 +2854,11 @@ function executeArchivedRunDelete(
   }
   const retained = requireRun(repositories, request, archived.runId);
   const order = deleteTreeOrder(repositories, request, retained);
-  const affectedTargets: TargetReference[] = [];
-  for (const run of order) {
-    repositories.runs.delete({
-      runId: run.envelope.runId,
-      origin: run.envelope.runId === archived.runId ? "archive" : "queue",
-      commandId: request.commandId,
-      now,
-    });
-    affectedTargets.push(runTarget(run.envelope.runId));
-  }
-  return applied(request, affectedTargets, []);
+  const outcome = dependencies.lifecycle.deleteArchived({ commandId: lifecycleCommandId("operator-delete-archive", request.commandId),
+    runId: archived.runId, contentDigest: request.target.archiveFingerprint });
+  if (outcome.state === "refused") lifecycleRefusal(request, outcome.refusal);
+  if (outcome.state !== "deleted" && outcome.state !== "applied-already") throw new Error(`archive delete: ${outcome.state}`);
+  return applied(request, order.map((run) => runTarget(run.envelope.runId)), []);
 }
 
 function executeArchivedRunRelaunch(
@@ -3087,9 +2959,12 @@ function executeArchivedRunRelaunch(
 
   const fanOut = fanOutQueuedRuns(
     repositories,
-    (message) => reject(request, "policy-refused", message),
+    dependencies.lifecycle,
+    (message, refusal) => refusal === undefined ? reject(request, "policy-refused", message) : lifecycleRefusal(request, refusal),
     descriptor,
     {
+      commandId: request.commandId, actorId: request.requestedBy,
+      relaunch: { archivedRunId: archived.runId, contentDigest: archived.contentDigest },
       workflow: record.workflowId,
       descriptorVersion: record.descriptorVersion,
       contractFingerprint: record.descriptorFingerprint,
@@ -3114,9 +2989,8 @@ function executeArchivedRunRelaunch(
       },
     },
     record.planned.map((entry) => ({
-      runId: entry.runId,
       itemId: entry.itemId,
-      traceId: entry.traceId,
+      title: entry.title, subtitle: entry.subtitle,
       matchKey: entry.matchKey,
       rawInput: entry.rawInput,
       parsedInput: entry.input,
@@ -3124,20 +2998,6 @@ function executeArchivedRunRelaunch(
     now,
     `relaunch of archived run ${archived.runId}`,
   );
-
-  const [relaunched] = record.planned;
-  repositories.archiveRelaunches.insert(ArchiveRelaunchRecordSchema.parse({
-    archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
-    runId: relaunched.runId,
-    archivedRunId: archived.runId,
-    relaunchedIdentity: {
-      workflowId: descriptor.id,
-      descriptorVersion: descriptor.version,
-      contractFingerprint: descriptor.contractFingerprint,
-    },
-    relaunchedBy: request.requestedBy,
-    relaunchedAt: now,
-  }));
 
   return applied(request, fanOut.affectedTargets, fanOut.versionChanges);
 }
@@ -3152,7 +3012,7 @@ function executeVersionArchive(
     case "plan-version-bump": return executeVersionBumpPlan(dependencies, repositories, request, now);
     case "apply-version-bump": return executeVersionBumpApply(dependencies, repositories, request, now);
     case "relaunch-archived-run": return executeArchivedRunRelaunch(dependencies, repositories, request, now);
-    case "delete-archived-run": return executeArchivedRunDelete(repositories, request, now);
+    case "delete-archived-run": return executeArchivedRunDelete(dependencies, repositories, request, now);
   }
 }
 
@@ -3312,15 +3172,13 @@ function dispatchActive(
         case "restart":
           repositories.runtimeConfig.requireSettingsCurrent();
           return executeRetry(dependencies, repositories, request, now);
-        case "cancel": return executeCancel(repositories, request, now);
-        case "delete": return executeDelete(repositories, request, now);
-        case "bump": return executeBump(repositories, request, now);
-        case "rename": return executePresentation(repositories, request, now);
+        case "cancel": return executeCancel(dependencies, repositories, request, now);
+        case "delete": return executeDelete(dependencies, repositories, request, now);
+        case "bump": return executeBump(dependencies, repositories, request, now);
+        case "rename": return executePresentation(dependencies, repositories, request, now);
         case "resolve-write-present":
         case "resolve-write-absent":
           return executeWriteResolution(dependencies, repositories, request, now);
-        case "edit-checkpoint":
-          return executeEditCheckpoint(dependencies, repositories, request, now);
       }
       break;
     }

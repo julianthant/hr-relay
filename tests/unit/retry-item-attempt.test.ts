@@ -1,3 +1,5 @@
+import { seedSyntheticRuntimeConfig } from "./fixtures/operator-command-fixtures.js";
+import { RunRecordService } from "../../src/core/run-record-service.js";
 import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * D221 — a RETRY of a failed item re-executes its `always-rerun` nodes without
@@ -179,6 +181,7 @@ function harness(): Readonly<{
   kernel: ReturnType<typeof createCommandKernel>;
 }> {
   const authority = openAuthorityHarness();
+  seedSyntheticRuntimeConfig(authority.database);
   disposers.push(authority.dispose);
   const sessions = sessionFactoryHarness({
     ucpath: () => healthyUcpathDriver(),
@@ -205,6 +208,7 @@ function harness(): Readonly<{
     log: recordingLogger().log,
   };
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: authority.database, clock: authority.clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,
