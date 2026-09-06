@@ -1546,6 +1546,13 @@ platform browser playbook when manual inspection is required. No live HR run, re
 `.tracker` state, performance lane, or production fixed port is required. Preserve synthetic parity's
 own declared startup/isolation protocol.
 
+**Operator-approved reference amendment (2026-09-05).** The implementation changes generated
+descriptor and implementation fingerprints through their transitive import closures. Refresh their
+provenance metadata and displayed hash text/pixels across otherwise unchanged reference scenes,
+using `test:parity:update` and inspecting the resulting diffs. All other DOM, copy, control and
+layout changes remain limited to the confirmation-card and retired-checkpoint-editor compatibility
+scenes admitted above. This amendment does not permit unrelated UI changes or weaker assertions.
+
 Stop only for a NEW material SQL/DDL need, new lifecycle operation, full-modal/driver/Capture/CLI
 expansion, unowned downstream implementation, changed prerequisite, or an actual blocker. The exact
 JSON, adapter-query/fence, executor/sequencer/recovery, shared-result and minimum frontend/reference
@@ -1564,6 +1571,51 @@ whole amended candidate, including repeat recovery and the exact reference updat
 | Assignment | Branch | Absolute worktree | Base / start prerequisite | Owned files and resources | Acceptance gates | Merge condition |
 |---|---|---|---|---|---|---|
 | `1.6.4` | `codex/phase-1-6-run-commands` | `/Users/julianhein/Projects/hr-worktree-run-commands` | Verified full approved-plan commit on local `master`, containing Task 1.6.3 completion `e29dd119c92bd44356d50927380595b6d8838a2d`; recheck ancestry/path/ref/capacity before creation | Task-4 seam plus named D334/D335 JSON, adapter-query/fence, source-bound execution/recovery, minimum UI compatibility/reference edits and tests; synthetic authority/runtime/parity roots only; no DDL, full modal, driver, Capture, live HR state or write | Acceptance matrix, focused unit/architecture suites, typecheck, lint, full coverage, manifest/roadmap checks, standalone architecture, full parity with only approved compatibility reference changes, diff check | Freeze exact candidate and obtain fresh `sup_review` PASS. Against latest local `master` still containing the approved plan and Task-3 prerequisite, integrate without a behavior-changing conflict or renew review; run integration gates, record review/merge/gate evidence, remove only owned worktree/ref, and mark only Task 4 complete. No push. |
+
+**Task 4 candidate — awaiting independent review (2026-09-05).** Approved plan/base
+`db368866c2c2d2ea13ef8dea1bc2bbf197dcebd6`; implementation `5e4df715` and reference refresh
+`ae11918c2b4bef8da9b84b17348e616489c2d2b6` form the candidate range. The operator approved the
+fingerprint-only reference amendment above before its refresh. Task 4 remains open until fresh
+independent review, integration gates and cleanup. Local `master` still points to the clean approved
+base. Task-3 merge `2c4e1af6` and completion `e29dd119` ancestry, branch/path availability and worktree
+capacity were rechecked before creating the assigned isolated branch/worktree.
+
+Steps 1–6 are implemented: strict logical/source-bound plans and separate warning acknowledgment;
+service-owned atomic fan-out and command lifecycle writes; source-bound fresh execution and D335
+occurrence admission/recovery; shared post-commit publication; narrow card/read-only-data compatibility;
+and active lifecycle/prefill guards. The production-composed `source-bound-repeat` suite has 17 cases,
+including actual fresh submission, zero-effect acknowledgment, stale/deleted source, Values/selection
+changes, omission, replay/concurrency/orphan fences, kth-create rollback, claim-loss/old-proof recovery
+and dry-run zero effects. Existing kernel, archive, retention, recovery and BFF suites use the real
+service composition. Both lifecycle-guard SQL/mutator/view fixtures and prefill negative controls pass.
+
+| Candidate gate | Evidence |
+| --- | --- |
+| Typecheck and lint | PASS; `/tmp/hr-164-candidate-typecheck.log`, `-lint.log` |
+| Complete coverage and suite-size | PASS; 418 files / 5,222 tests, two workers, all floors; statements/branches/functions/lines 85.56/76.90/89.73/87.67%; `/tmp/hr-164-candidate-coverage.log` |
+| Manifest and roadmap checks | PASS; `/tmp/hr-164-candidate-manifest.log`, `-roadmap.log` |
+| Standalone architecture | PASS; 76 files / 761 tests; `/tmp/hr-164-candidate-architecture.log` |
+| Full assert-mode parity | PASS; 269 tests, zero skipped/flaky/failed; `/tmp/hr-164-candidate-parity.log` |
+| Diff and reference audit | PASS; `/tmp/hr-164-reference-audit.json`; no unrelated reference-content change |
+
+Coverage used the exact admitted two-worker equivalent, after compiler/linter completion. The only
+subsequent guard-catalog edit restored original formatting of unchanged entries; parsed JSON equality
+was checked and standalone architecture then passed. All gates used the private mode-600 example
+`.env` and synthetic authority/runtime roots; the primary environment was preserved. No live HR,
+real submit, DDL, Capture, generic CLI or later-task UI was introduced.
+
+Reference review covers 210 a11y files, 210 metadata files and 48 PNGs. Non-hash content changes are
+confined to 58 run-data scenes, two diagnostic-gallery backgrounds carrying the retired editor, and
+eight confirmation-card scenes (four retain that same card after submission). All other a11y bodies
+are identical after normalizing generated hashes; metadata differs only in descriptor hash. The only
+changed PNG outside compatibility scenes is the displayed descriptor hash behind the paper-ink
+archive-version dialog, within x131–166/y320–328. Desktop/narrow cards/data and the diagnostic/dialog
+captures were visually inspected. Scoped UI finishing review passed; it is not the independent
+whole-candidate review required below. The full modal and its warning navigation remain 3.1.11-2.
+
+Owned manual browser/server and gate processes are stopped. The temporary scope-blocker handoff was
+verified and consumed after operator approval; its surviving facts are recorded here and in the
+candidate. Keep the assigned worktree/ref for review and exact integrated-tree gates. No push.
 
 ### Task 5 · Cut over settings mutation and runtime resolution
 <!-- roadmap: p1f-settings-consumers -->
