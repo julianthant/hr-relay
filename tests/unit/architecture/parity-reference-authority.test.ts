@@ -297,15 +297,14 @@ describe("parity lane reference authority (D132)", () => {
       "diagnostic-lightbox-keyboard-focus.a11y.yml",
       "diagnostic-lightbox--graphite-warm--1280x720.a11y.yml",
       "diagnostic-lightbox--paper-ink--1280x720.a11y.yml",
-      "diagnostic-lightbox--portrait--320x844.a11y.yml",
-      "diagnostic-lightbox--portrait--390x844.a11y.yml",
+      "diagnostic-lightbox--portrait--1024x768.a11y.yml",
     ];
     const receiptRequired = [
       "run-captures-full-graphite-desktop.a11y.yml",
       "run-capture-jpeg-graphite-desktop.a11y.yml",
       "run-captures-full-paper-desktop.a11y.yml",
-      "run-capture-png-paper-phone.a11y.yml",
-      "run-captures-short-graphite-phone.a11y.yml",
+      "run-capture-png-paper-narrow-desktop.a11y.yml",
+      "run-captures-short-graphite-narrow-desktop.a11y.yml",
     ];
     for (const path of specs) {
       assertExactA11yAttachmentDigest(readFileSync(join(REPO_ROOT, path), "utf8"), path);
@@ -338,8 +337,7 @@ describe("parity lane reference authority (D132)", () => {
     );
     for (const name of [
       "diagnostic-lightbox-keyboard-focus.a11y.yml",
-      "diagnostic-lightbox--portrait--320x844.a11y.yml",
-      "diagnostic-lightbox--portrait--390x844.a11y.yml",
+      "diagnostic-lightbox--portrait--1024x768.a11y.yml",
     ]) {
       const withoutDeclaration = source.replace(name, "removed-required-evidence.a11y.yml");
       assert.notEqual(withoutDeclaration, source, `the ${name} inventory control must mutate the real spec`);

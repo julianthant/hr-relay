@@ -133,12 +133,12 @@ async function attachRenderedEvidence(page: Page, name: string, expectedAccessib
   await test.info().attach(a11yName, { body: snapshot, contentType: "text/yaml" });
 }
 
-async function expectTargetGeometry(page: Page, scope: Locator, coarse: boolean): Promise<void> {
-  expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(coarse);
+async function expectTargetGeometry(page: Page, scope: Locator): Promise<void> {
+  expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(false);
   const proof = await scope.locator("button:visible, a:visible").evaluateAll(nodes => {
     const controls = nodes.filter((node): node is HTMLElement => node instanceof HTMLElement);
     const rectangles = controls.map(control => control.getBoundingClientRect());
-    // A foreign control is a hazard only if a finger can reach it. A non-zero
+    // A foreign control is a hazard only if the pointer can reach it. A non-zero
     // rect and `visibility: visible` do not say that: a queue row scrolled out
     // of its list's `overflow-hidden` box keeps both while painting nothing,
     // and one such row's ⓘ was counted against `Download` the moment a
@@ -148,7 +148,7 @@ async function expectTargetGeometry(page: Page, scope: Locator, coarse: boolean)
     // edge midpoint, which keeps a half-clipped control and drops a clipped or
     // fully covered one. The rectangle test below is unchanged — a painted
     // neighbour inside this box is still a fault even when this control owns
-    // every point, because the neighbour's own finger-box overlaps this one.
+    // every point, because the neighbour's own target overlaps this one.
     const allInteractive = [...document.querySelectorAll("button, a[href]")].flatMap(control => {
       if (!(control instanceof HTMLElement)) return [];
       const rect = control.getBoundingClientRect();
@@ -163,9 +163,8 @@ async function expectTargetGeometry(page: Page, scope: Locator, coarse: boolean)
         });
       return paintable ? [{ control, rect }] : [];
     });
-    const effective = rectangles.map(rect => ({ left: rect.left + rect.width / 2 - 22,
-      right: rect.left + rect.width / 2 + 22, top: rect.top + rect.height / 2 - 22,
-      bottom: rect.top + rect.height / 2 + 22 }));
+    const effective = rectangles.map(rect => ({ left: rect.left, right: rect.right,
+      top: rect.top, bottom: rect.bottom }));
     return controls.map((control, index) => {
       const rect = rectangles[index];
       const target = effective[index];
@@ -175,9 +174,12 @@ async function expectTargetGeometry(page: Page, scope: Locator, coarse: boolean)
         return hit === control || (hit !== null && control.contains(hit));
       };
       const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      const targetPoints: Array<readonly [number, number]> = [];
-      for (let x = center.x - 21; x <= center.x + 21; x += 2) {
-        for (let y = center.y - 21; y <= center.y + 21; y += 2) targetPoints.push([x, y]);
+      const targetPoints: Array<readonly [number, number]> = [[center.x, center.y]];
+      // Probe the actual desktop control, inside its rounded corners. The retired
+      // phone test probed a fixed 44px square beyond compact desktop controls.
+      const inset = Math.max(1, Number.parseFloat(getComputedStyle(control).borderTopLeftRadius) + 1);
+      for (let x = rect.left + inset; x < rect.right - inset; x += 2) {
+        for (let y = rect.top + inset; y < rect.bottom - inset; y += 2) targetPoints.push([x, y]);
       }
       const pseudoInactive = ["::before", "::after"].every(pseudo => {
         const style = getComputedStyle(control, pseudo);
@@ -212,13 +214,9 @@ async function expectTargetGeometry(page: Page, scope: Locator, coarse: boolean)
     expect(control.overlaps, control.name).toBe(0);
     expect(control.width, control.name).toBeGreaterThan(0);
     expect(control.height, control.name).toBeGreaterThan(0);
-    if (coarse) {
-      expect(control.width, control.name).toBeGreaterThanOrEqual(44);
-      expect(control.height, control.name).toBeGreaterThanOrEqual(44);
-      expect(control.ownsTarget, control.name).toBe(true);
-      expect(control.pseudoInactive, control.name).toBe(true);
-      expect(control.foreignOverlaps, control.name).toBe(0);
-    }
+    expect(control.ownsTarget, control.name).toBe(true);
+    expect(control.pseudoInactive, control.name).toBe(true);
+    expect(control.foreignOverlaps, control.name).toBe(0);
   }
 }
 
@@ -361,12 +359,12 @@ test(
   },
 );
 
-test.describe("coarse phone Receipt", () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+test.describe("narrow desktop Receipt", () => {
+  test.use({ viewport: { width: 1024, height: 768 } });
 
   test(
     "short Receipt preserves all origins and literal failure framing",
-    requiredA11yEvidence("run-capture-png-paper-phone.a11y.yml"),
+    requiredA11yEvidence("run-capture-png-paper-narrow-desktop.a11y.yml"),
     async ({ page }) => {
     test.slow();
     await installTheme(page, { name: "paper-ink", attribute: "light" });
@@ -388,7 +386,7 @@ test.describe("coarse phone Receipt", () => {
     await opener.scrollIntoViewIfNeeded();
     await expect(opener).toBeInViewport({ ratio: 1 });
     await expect(tileDownload).toBeInViewport({ ratio: 1 });
-    await expectTargetGeometry(page, tile, true);
+    await expectTargetGeometry(page, tile);
 
     await opener.focus();
     await expectKeyboardFocus(opener);
@@ -400,7 +398,7 @@ test.describe("coarse phone Receipt", () => {
     await expectDangerFrame(dialog.getByRole("figure", { name: "Run capture preview" }));
     await expect(dialog.getByRole("list", { name: "Capture origins" }).getByRole("listitem"))
       .toHaveText(capture.origins.map(origin => `${origin.originKind} · ${origin.bundleId}`));
-    await expectTargetGeometry(page, dialog.locator("footer"), true);
+    await expectTargetGeometry(page, dialog.locator("footer"));
     const image = dialog.getByRole("img", { name: `Capture ${capture.artifact.artifactId}` });
     const dimensions = await image.evaluate(async node => {
       if (!(node instanceof HTMLImageElement)) throw new Error("the PNG preview is not an image");
@@ -410,7 +408,7 @@ test.describe("coarse phone Receipt", () => {
     expect(dimensions).toEqual({ width: capture.artifact.mediaKind === "image" ? capture.artifact.width : 0,
       height: capture.artifact.mediaKind === "image" ? capture.artifact.height : 0 });
     await expectDownloadedBytes(page, dialog.getByRole("link", { name: "Download" }), capture.artifact.artifactId);
-    await attachRenderedEvidence(page, "run-capture-png-paper-phone", 'dialog "Run capture":');
+    await attachRenderedEvidence(page, "run-capture-png-paper-narrow-desktop", 'dialog "Run capture":');
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     await expectKeyboardFocus(opener);
@@ -418,8 +416,8 @@ test.describe("coarse phone Receipt", () => {
   );
 
   test(
-    "short Receipt renders in Graphite Warm at the phone viewport",
-    requiredA11yEvidence("run-captures-short-graphite-phone.a11y.yml"),
+    "short Receipt renders in Graphite Warm at the narrow desktop viewport",
+    requiredA11yEvidence("run-captures-short-graphite-narrow-desktop.a11y.yml"),
     async ({ page }) => {
     await installTheme(page, { name: "graphite-warm", attribute: "dark" });
     const region = await openReceipt(page, FIXTURE_IDS.failedRun);
@@ -436,8 +434,8 @@ test.describe("coarse phone Receipt", () => {
     await opener.scrollIntoViewIfNeeded();
     await expect(opener).toBeInViewport({ ratio: 1 });
     await expect(tileDownload).toBeInViewport({ ratio: 1 });
-    await expectTargetGeometry(page, tile, true);
-    await attachRenderedEvidence(page, "run-captures-short-graphite-phone", 'region "Run captures":');
+    await expectTargetGeometry(page, tile);
+    await attachRenderedEvidence(page, "run-captures-short-graphite-narrow-desktop", 'region "Run captures":');
     },
   );
 });

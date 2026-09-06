@@ -178,7 +178,7 @@ describe("parity JSON evidence verifier", () => {
       top.specs = [];
       Object.assign(top, {
         suites: [{
-          title: "coarse phone Receipt",
+          title: "narrow desktop Receipt",
           file: top.file,
           column: 1,
           line: 301,

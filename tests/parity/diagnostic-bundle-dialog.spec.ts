@@ -26,7 +26,7 @@ import {
   FIXTURE_SECTIONS,
 } from "./helpers/fixture-day.js";
 
-const MOBILE_VIEWPORT = { width: 390, height: 844 } as const;
+const NARROW_DESKTOP_VIEWPORT = { width: 1024, height: 768 } as const;
 const REFERENCES = resolve(import.meta.dirname, "references");
 let server: FixtureServer;
 
@@ -883,11 +883,10 @@ test("an unknown reread error never grants a screenshot download", async ({ page
 });
 
 for (const [width, evidence] of [
-  [320, requiredA11yEvidence("diagnostic-lightbox--portrait--320x844.a11y.yml")],
-  [390, requiredA11yEvidence("diagnostic-lightbox--portrait--390x844.a11y.yml")],
+  [1024, requiredA11yEvidence("diagnostic-lightbox--portrait--1024x768.a11y.yml")],
 ] as const) {
-  test(`portrait screenshot gallery and lightbox stay within ${String(width)}px with touch-sized actions`, evidence, async ({ page }) => {
-    await page.setViewportSize({ width, height: 844 });
+  test(`portrait screenshot gallery and lightbox stay within the ${String(width)}px desktop viewport`, evidence, async ({ page }) => {
+    await page.setViewportSize({ width, height: 768 });
     const bytes = Buffer.from(TRUECOLOUR_PNG_BASE64, "base64");
     const bundle = screenshotBundle(2, {
       width: 10, height: 14, byteLength: bytes.byteLength,
@@ -935,7 +934,7 @@ for (const [width, evidence] of [
       lightbox.getByRole("button", { name: "Back to screenshots", exact: true }),
       lightbox.getByRole("link", { name: "Download screenshot", exact: true }),
     ], ["Back to screenshots", "Download screenshot"]);
-    await attachLightboxEvidence(page, lightbox, `diagnostic-lightbox--portrait--${String(width)}x844`, 10, 14);
+    await attachLightboxEvidence(page, lightbox, `diagnostic-lightbox--portrait--${String(width)}x768`, 10, 14);
     await page.keyboard.press("Escape");
     await expect(trigger).toBeFocused();
   });
@@ -976,8 +975,8 @@ test("keeps the absent diagnostic-bundle arm explanatory and does not expose a d
   await expect(page.getByRole("button", { name: /^Diagnostic bundle / })).toHaveCount(0);
 });
 
-test("keeps the lg dialog inside the mobile viewport with touch-sized actions", async ({ page }) => {
-  await page.setViewportSize(MOBILE_VIEWPORT);
+test("keeps the lg dialog and its actions inside the narrow desktop viewport", async ({ page }) => {
+  await page.setViewportSize(NARROW_DESKTOP_VIEWPORT);
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.failedRun });
   // The product's own Escape binding minimizes the floating workflow panel;
   // otherwise that panel truthfully owns the tap at this narrow width — the

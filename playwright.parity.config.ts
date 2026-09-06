@@ -20,12 +20,8 @@
  * isolation ports, so it can run beside a live rebuild runtime, and it is why
  * the files can run in parallel.
  *
- * The current matrix lists 281 cases (2026-09-02). The 2026-09-01 289-case
- * timings no longer predict this matrix: the current audit recorded an
- * ordinary baseline of 287 passed in 83.58s and a deliberate update of 281
- * passed in 113.95s. Both figures retain zero counted pixel diffs under the
- * `maxDiffPixels: 0` allowance below. `fullyParallel` remains material —
- * without it one file stays on one worker and the big file alone was 158s.
+ * D340: desktop-only proof. Unique image, receipt and notification assertions
+ * use the existing narrow desktop viewport; phone/coarse-pointer variants are retired.
  */
 import { defineConfig } from "@playwright/test";
 import { parityUpdateRequested } from "./tests/parity/helpers/reference-store.js";
@@ -70,6 +66,8 @@ export default defineConfig({
   snapshotPathTemplate: "{testDir}/references/{arg}{ext}",
   use: {
     browserName: "chromium",
+    isMobile: false,
+    hasTouch: false,
     headless: true,
     deviceScaleFactor: 1,
   },

@@ -3,7 +3,7 @@ import { Banner, Button, ButtonLink, Dialog, DialogBody, DialogClose, DialogCont
   DialogTrigger, EmptyState, SectionLabel, Skeleton, dsRadius, dsText } from "../ds/ui.js";
 import type { RunCaptureArtifactWire } from "../../domain/dashboard/run-detail.js";
 import { cn } from "../lib/utils.js";
-import { RUN_CAPTURE_TOUCH_TARGET, runCaptureFrame, useRunCaptureImage, type RunCaptureItem, type RunCapturesState } from "./run-captures-model.js";
+import { runCaptureFrame, useRunCaptureImage, type RunCaptureItem, type RunCapturesState } from "./run-captures-model.js";
 
 export function RunCaptures({ captures, compact = false }: { captures: RunCapturesState; compact?: boolean }) {
   if (captures.state === "inactive") return null;
@@ -40,7 +40,7 @@ export function RunCaptures({ captures, compact = false }: { captures: RunCaptur
               <Dialog open={captures.selectedId === item.capture.artifact.artifactId}
                 onOpenChange={open => { captures.select(open ? item.capture.artifact.artifactId : undefined); }}>
                 <DialogTrigger asChild>
-                  <Button variant="secondary" className={RUN_CAPTURE_TOUCH_TARGET} aria-label={`Open capture ${item.capture.artifact.artifactId}`}>Preview</Button>
+                  <Button variant="secondary" aria-label={`Open capture ${item.capture.artifact.artifactId}`}>Preview</Button>
                 </DialogTrigger>
                 <DialogContent size="xl" hideClose title="Run capture" description={`Artifact ${item.capture.artifact.artifactId}`}>
                   <DialogBody className="flex flex-col gap-[var(--ds-space-loose)]">
@@ -48,13 +48,13 @@ export function RunCaptures({ captures, compact = false }: { captures: RunCaptur
                     <RunCaptureFacts capture={item.capture} />
                   </DialogBody>
                   <DialogFooter className="max-sm:[&>span:last-child]:flex-wrap">
-                    <DialogClose asChild><Button variant="ghost" className={RUN_CAPTURE_TOUCH_TARGET}>Close</Button></DialogClose>
-                    <ButtonLink className={RUN_CAPTURE_TOUCH_TARGET} href={item.downloadUrl} download={`capture-${item.capture.artifact.artifactId}`}>Download</ButtonLink>
+                    <DialogClose asChild><Button variant="ghost">Close</Button></DialogClose>
+                    <ButtonLink href={item.downloadUrl} download={`capture-${item.capture.artifact.artifactId}`}>Download</ButtonLink>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
             )}
-            <ButtonLink className={RUN_CAPTURE_TOUCH_TARGET} href={item.downloadUrl} download={`capture-${item.capture.artifact.artifactId}`} variant="secondary">Download</ButtonLink>
+            <ButtonLink href={item.downloadUrl} download={`capture-${item.capture.artifact.artifactId}`} variant="secondary">Download</ButtonLink>
           </div>
         </article>
       ))}

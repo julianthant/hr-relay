@@ -2126,8 +2126,8 @@ _phase: 3.1 / 3.4; approved planning amendments, implementation remains open_
 
 ## Reconciliation round 144 (2026-09-06) — desktop-only dashboard support
 
-_phase: 3.1; operator-approved scope amendment, implementation remains open_
+_phase: 1.6 / 3.1; immediate desktop-only baseline implemented_
 
 | # | Decision | Owning doc |
 |---|---|---|
-| **D340** | **SUPPORT DESKTOP AND LAPTOP DASHBOARD USE; MOBILE SUPPORT IS NOT REQUIRED.** Record scope now and implement in 3.1 after 2.6. Task 8 settles minimum desktop dimensions and resize/zoom acceptance; Task 9-1 owns shell/layout and directly affected proof changes; Task 17 reconciles shared browser/parity infrastructure; Task 18 audits the desktop matrix. Preserve desktop accessibility, behavior and safety assertions; deliberately disposition mobile-only tests and retain useful responsive CSS. No numeric minimum, test retirement or implementation completion is approved by this amendment. | ref frontend-backend-integration §10 (primary) · ref dashboard-surfaces support scope · doc 03.1 Tasks 8/9-1/17/18 |
+| **D340** | **SUPPORT DESKTOP AND LAPTOP DASHBOARD USE; REMOVE MOBILE WORK NOW.** The operator superseded the initial 3.1 deferral with immediate mobile-only proof/coarse-pointer cleanup before 1.6.6. Retain desktop geometry, accessibility and safety coverage; move unique phone evidence to narrow desktop cases and deliberately replace the phone Archive reference. All later phases consume desktop-only gates; 3.1 Task 8 still settles its final desktop/zoom matrix. Responsive desktop/zoom controls, D294 retirement guards and contact phone validation remain. | ref frontend-backend-integration §10 (primary) · ref dashboard-surfaces support scope · doc 01 Task 6 · doc 03.1 Tasks 8/9-1/17/18 |

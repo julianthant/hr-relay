@@ -64,6 +64,11 @@ Three adaptations for a reader in THIS tree (a third was undisclosed until Track
 
 **Read this before building a surface. It is binding.**
 
+D340 scopes this dashboard to desktop/laptop use. Mobile layouts and touch-specific proof are
+retired; desktop resizing, zoom and keyboard accessibility remain. The current contract is
+`docs/rebuild/reference/frontend-backend-integration.md` §10; it supersedes historical touch
+requirements below.
+
 > **The principle:** this is a dense, keyboard-first console for one operator who
 > files real HR transactions all day — every pixel either helps them see what
 > needs them or gets out of the way.
@@ -493,13 +498,9 @@ Two things this rule does **not** license:
   exactly how one of thirteen came to be 30px in a row of 24. A control that
   WRAPS others (a segmented composite) takes the height itself and its segments
   fill it with `h-full` — a segment carrying its own height makes the box grow
-  by its padding and its border. **Under `pointer: coarse` the token is 44px and
-  `--ds-h-bar` is 52** (2026-08-26, F14b review finding 3), because 28px is
-  16px short of the WCAG 2.5.5 floor on a finger — and it moves as a TOKEN for
-  the same reason it is a token at all: growing the one control somebody
-  reviewed is how a row of 24 acquired a 30. The corpus renders at
-  `pointer: fine`, so no photographed reference moves;
-  `tests/parity/toolbar-touch-target.spec.ts` measures both sides.
+  by its padding and its border. D340 retires the coarse-pointer token override;
+  `tests/parity/toolbar-desktop-target.spec.ts` verifies the compact desktop geometry.
+
 - Truncate with `truncate` + `min-w-0` on the flex child; never wrap a person's
   name onto two lines in a dense list.
 - Empty is a **state**: say what would be here, why it is not, and what to do —

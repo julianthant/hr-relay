@@ -15,7 +15,7 @@ import { FIXTURE_EXPLORER_WORKFLOW_ID } from "./helpers/fixture-explorer.js";
 
 const FIRST_WARNING = "CRM returned a stale session on attempt 1";
 const PARTIAL_RUN_ID = "00000000-0000-4000-8000-000000000099";
-const MOBILE_VIEWPORT = { width: 390, height: 844 } as const;
+const NARROW_DESKTOP_VIEWPORT = { width: 1024, height: 768 } as const;
 
 let server: FixtureServer;
 
@@ -122,8 +122,8 @@ test("Explorer's Version registry door restores the route-owned view through lin
   await expectVersionRegistry(page, registrySearch);
 });
 
-test("Explorer's mobile Version registry action keeps ghost-sm geometry with a 44px clear hit target", async ({ page }) => {
-  await page.setViewportSize(MOBILE_VIEWPORT);
+test("Explorer's Version registry action keeps ghost-sm geometry and a clear desktop hit target", async ({ page }) => {
+  await page.setViewportSize(NARROW_DESKTOP_VIEWPORT);
   await gotoAppState(page, server.baseUrl, {
     day: FIXTURE_DAY,
     explore: FIXTURE_EXPLORER_WORKFLOW_ID,
@@ -132,8 +132,7 @@ test("Explorer's mobile Version registry action keeps ghost-sm geometry with a 4
   const action = page.getByRole("button", { name: "Version registry" });
   const proof = await action.evaluate((button) => {
     const visual = button.getBoundingClientRect();
-    const pseudo = getComputedStyle(button, "::after");
-    const effectiveHeight = Number.parseFloat(pseudo.height);
+    const effectiveHeight = visual.height;
     const effective = {
       left: visual.left,
       right: visual.right,
@@ -170,7 +169,7 @@ test("Explorer's mobile Version registry action keeps ghost-sm geometry with a 4
   });
 
   expect(proof.visualHeight).toBe(24);
-  expect(proof.effectiveHeight).toBeGreaterThanOrEqual(44);
+  expect(proof.effectiveHeight).toBe(proof.visualHeight);
   expect(proof.ownsTop).toBe(true);
   expect(proof.ownsBottom).toBe(true);
   expect(proof.overlaps).toEqual([]);

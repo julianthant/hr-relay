@@ -2698,21 +2698,39 @@ Desktop resizing, smaller laptop windows, browser zoom, keyboard access, focus, 
 both-theme accessibility remain required. Responsive requirements in this contract and the dashboard
 surface contract mean adaptation within the supported desktop window range, not mobile support.
 
-Phase 3.1 Task 8 must settle and record the minimum supported desktop viewport and the resize/zoom
-matrix before freezing acceptance; no numerical minimum is approved by this decision. It inventories
-existing mobile-specific obligations and assigns each retained, replaced or retired proof to an
-owner. Task 9-1 implements the shell/layout and directly affected proof changes; Task 17 reconciles
-shared browser/parity infrastructure, and Task 18 accepts the resulting desktop matrix. Preserve
-behavioral, accessibility and safety assertions when moving coverage out of a mobile viewport.
-Guard retirement still requires deciding evidence in the guard inventory. Existing tests and parity
-references remain active until their owning implementation deliberately updates them; this planning
-amendment does not delete tests or re-freeze screenshots.
+**Immediate execution amendment (operator decision, 2026-09-06).** Remove mobile-only dashboard
+verification and coarse-pointer presentation now, before Task 1.6.6 starts. This supersedes the
+original deferral of that cleanup to Phase 3.1. Standard gates use desktop cases from this point
+onward; no later task owes mobile implementation or mobile proof. Keep the existing desktop
+viewports (1024×768, 1280×720 and 1440×900), resizing, keyboard access and both themes. Task 3.1.8
+still owns the final supported desktop/zoom acceptance matrix; this cleanup does not invent a new
+minimum or claim that every zoom case is already proven.
 
-Record scope now; implement the changes in the existing 3.1 sequence after 2.6. Working responsive
-CSS may remain when it serves desktop resizing or costs nothing to retain. Removing all media
-queries is not an acceptance goal. D294's retirement of phone Capture Mode remains a separate
-feature decision. This decision supersedes mobile/touch-specific dashboard acceptance obligations,
-including older desktop/mobile proof wording, without waiving desktop usability or runtime safety.
+Retire the extra coarse-pointer cases for member, toolbar, pool and search controls; retain their
+real-browser desktop density and hit-ownership checks in the corresponding `*-desktop-target.spec.ts`
+files. Remove coarse-pointer target constants/media rules, the Version registry’s finger-only overlay
+and small-screen touch sizing. Keep
+responsive controls and containment that serve smaller desktop windows or zoom. Existing compact
+controls, pointer hit ownership, accessible names, focus handling and keyboard actions remain required.
+
+Move the unique phone Receipt PNG/origin/download/focus checks, portrait diagnostic-image checks,
+Archive evidence/lightbox checks and pinned-notification reachability to the existing narrow desktop
+viewport. Remove the duplicate mobile observed-log case; its desktop case retains the full ledger,
+continuation and containment assertions. Replace the phone Archive reference triple with the narrow
+Paper Ink desktop triple through the deliberate parity lane. The exact evidence attachment/digest
+guard retains its assertions under the new desktop attachment names. D294 retirement guards and
+contact phone-number validation remain active: they do not exercise a mobile dashboard.
+
+Tasks 3.1.8/9-1/17/18 consume this desktop-only baseline rather than scheduling another mobile cleanup.
+Keep desktop behavior, accessibility and safety assertions, coverage floors and all unrelated tests.
+Removing every media query is not a goal; adaptive desktop layout is still useful. Phase 6 packaging
+is unaffected. This decision supersedes mobile/touch-specific dashboard acceptance obligations,
+including historical desktop/mobile proof wording.
+
+**Implementation evidence (2026-09-06).** The desktop lane passes 257 cases after retiring 12
+mobile-only variants. The single phone Archive screenshot/a11y/provenance triple is replaced by
+`archive-evidence--paper-ink--narrow-1024x768`; existing desktop references pass without a bulk
+re-freeze. The narrow Receipt and diagnostic cases still publish exact digest-bound a11y evidence.
 
 ### D339 — workflow-required release surfaces (operator decision, 2026-09-06)
 

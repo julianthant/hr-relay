@@ -27,6 +27,10 @@ surface/decision and read matching entries. Requested lessons go there.
 
 ## Verification
 
+D340: desktop/laptop only. Do not add mobile-only layouts, coarse-pointer styling or phone/touch
+test variants. Keep responsive desktop/zoom behavior, keyboard access and the desktop parity lane.
+The exact retirement/replacement mapping is in ref frontend-backend-integration §10.
+
 `npm run dashboard` starts BFF + Vite; `npm run web` alone needs a BFF. `npm run web:build` builds
 production assets. Root typecheck/lint/coverage requirements apply.
 

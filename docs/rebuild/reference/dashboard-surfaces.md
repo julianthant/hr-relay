@@ -30,8 +30,9 @@ says so in one line rather than opening a second block.
 
 **Desktop support scope (D340, 2026-09-06).** Ref frontend-backend-integration §10 owns desktop-only
 dashboard acceptance. Responsive behavior remains required for supported desktop windows and zoom;
-older mobile/touch-specific proof wording is superseded by D340. Phase 3.1 Tasks 8/9-1/17/18 own
-the matrix, implementation and deliberate proof transition; no existing tests retire in this amendment.
+older mobile/touch-specific proof wording is superseded by D340. The operator moved mobile-only
+proof and coarse-pointer cleanup to immediate execution before 1.6.6. Phase 3.1 consumes the desktop
+baseline and owns its final desktop/zoom matrix; it does not repeat mobile cleanup.
 
 ## Ownership (D1)
 

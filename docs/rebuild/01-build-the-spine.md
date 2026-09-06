@@ -1859,6 +1859,13 @@ at planning time is expected and is not a blocker.
 ### Task 6 · Consolidate settings in SQLite and prove upgrade/recovery
 <!-- roadmap: p1f-migration-proof -->
 
+**D340 verification scope (2026-09-06).** The immediate mobile-only dashboard proof and
+coarse-pointer cleanup is implemented: 12 mobile-only parity cases retired, 257 desktop cases
+passed, and unique image/receipt/notification assertions moved to desktop. Consume its desktop-only
+parity lane; do not run or restore phone/coarse-pointer variants during settings/upgrade work.
+Desktop resizing/accessibility and all backend, migration, credential and safety gates remain.
+Ref frontend-backend-integration §10 records the exact proof dispositions.
+
 **Approved architecture, focused implementation plan still required (D336, 2026-09-06).** Implement
 ref clock-config-secrets §D336 after Task 5 is integrated. This replaces the previous Task-6 binding
 to D332's file/SQLite transaction; the phase order and completed task evidence are unchanged.
