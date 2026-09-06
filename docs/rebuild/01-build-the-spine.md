@@ -1617,6 +1617,29 @@ Owned manual browser/server and gate processes are stopped. The temporary scope-
 verified and consumed after operator approval; its surviving facts are recorded here and in the
 candidate. Keep the assigned worktree/ref for review and exact integrated-tree gates. No push.
 
+**Task 4 renewed candidate — awaiting independent review (2026-09-05).** Fresh read-only reviewer
+`/root/sup_review_run_commands` (`sup_review`, Sol 5.6/high) reviewed the complete base-to-
+`734dba6da7dbc36e806049934b1c9a5c21c7a88b` candidate and returned CHANGES REQUIRED: Rerun admitted
+archived, cancelled, discarded and superseded sources. D334 admits live successful/failed/interrupted
+sources; archived returns require the separate digest-bound relaunch path. No other material finding
+remained. The reviewer inspected gate evidence and independently reconciled all 48 PNG diffs; it did
+not rerun write-producing gates.
+
+Fix `1dd76ecb0d57d3bed6a9ba1bc68dbc6462bf7bfe` checks the authoritative archive disposition and
+allowed terminal outcomes in the shared planner used by proposal and final consumption. Eight real-
+composition regression cases cover all four exclusions at both boundaries, including strict stored
+pre-fix plans. They assert no plan persistence/consumption, lifecycle identity, authority mutation,
+run creation or publication. All eight failed for the intended admission defect before the fix
+(`/tmp/hr-164-eligibility-red.log`); the fixed neighboring suites passed 7 files / 166 tests
+(`/tmp/hr-164-eligibility-green.log`).
+
+The unchanged fixed code/test tree passed typecheck, lint, complete two-worker coverage (419 files /
+5,230 tests; statements/branches/functions/lines 85.56/76.90/89.73/87.67%), manifest and roadmap checks,
+standalone architecture (76 files / 761 tests), full assertion parity (269 passed, no skipped/flaky
+tests), and diff check. Logs are `/tmp/hr-164-revised-{typecheck,lint,coverage,manifest,roadmap,architecture,parity}.log`.
+Generated manifest and reference files remain unchanged. The same private example environment and
+synthetic isolation apply. Task 4 remains open pending renewed review, integration gates and cleanup.
+
 ### Task 5 · Cut over settings mutation and runtime resolution
 <!-- roadmap: p1f-settings-consumers -->
 
