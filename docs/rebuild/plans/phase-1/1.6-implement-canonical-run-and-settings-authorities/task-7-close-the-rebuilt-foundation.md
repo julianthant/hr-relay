@@ -3,7 +3,7 @@
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-**Seam:** no product code beyond fixes the gates demand; `docs/rebuild/01` §1.6 (this section's
+**Seam:** no product code beyond fixes the gates demand; this task file and the subphase overview (this section's
 `log:`/status), the roadmap nodes, ref lessons, the 2.6 handoff. **Gate:** base + `npm run test:parity`
 + `npm run stores:catalog:check` + `npm run test:architecture` + `npm run cli -- storage doctor` on the
 upgraded operator root + both workflows' T1b live manifests (`dry-run-scenario person-lookup` `live-read`,
