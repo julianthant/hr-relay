@@ -1,7 +1,7 @@
 # run-group--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: run-group
-# descriptorHash: c5c4bd6af0200ce10f11a7c1b572b325e327a15d606d7d798794e29215b30a9d
+# descriptorHash: 9d4492693c6190a258ea5ed7e186410f807302c77f4fdb3c821087d7099812cc
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -268,7 +268,7 @@
       - 'listitem "9:10 AM: info note: Fan-out planned 13 member lookups"': 9:10 AM Fan-out planned 13 member lookups
       - 'listitem "9:13 AM: warning note: 2 members failed cross-verification"': 9:13 AM 2 members failed cross-verification
     - searchbox "Search logs"
-    - text: c5c4bd6a
+    - text: 9d449269
     - button "Run provenance"
     - text: idle
   - complementary "Run data":
@@ -277,11 +277,11 @@
     - region "Extracted fields":
       - text: Extracted fields
       - button "About run data"
-      - button "Widen the data surface to edit"
-      - text: Selection 13 members Active status mixed The run is now partial — it moved while this data was open, so these values may be stale. Reopen the run to edit.
-      - paragraph: No unsaved changes.
-      - button "Reset edits" [disabled]
-      - button "Save 0 corrections" [disabled]
+      - button "Widen the data surface"
+      - text: Selection
+      - paragraph: 13 members
+      - text: Active status
+      - paragraph: mixed
   - dialog "Workflow Panel":
     - text: Workflow Panel
     - button "Dock the Workflow Panel as a sidebar"
