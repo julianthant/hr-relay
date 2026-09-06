@@ -1143,7 +1143,7 @@ slipped in behind a coverage fix.
 <!-- roadmap: phase-3 -->
 
 <!-- roadmap-status: phase-3 -->
-- [x] the per-commit gate is `typecheck && lint && test:coverage` (D191) — a strict superset of the old `test` + `test:architecture` pair, measured faster (28.2 s vs ≈39 s)
+- [x] the implementation per-commit gate is `typecheck && lint && test:coverage` (D191; documentation-only exception below) — a strict superset of the old `test` + `test:architecture` pair, measured faster (28.2 s vs ≈39 s)
 - [ ] the gate gains nothing new from R10: T1 structural and T2 are inside `test:coverage`, and every dry-run tier is deliberately outside it (§10.9)
 > 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `package.json` and `CLAUDE.md`'s After-changes section
 <!-- /roadmap-status -->
@@ -1201,6 +1201,36 @@ progress and is not detected by this inactivity bound.
 Regression evidence lives in `tests/unit/scripts/test-runner.test.ts` and the existing parity JSON
 and gate-manifest suites: real child success/failure, silent stall, worker/parent SIGKILL, live-group
 preservation, safe reclamation, path/ownership refusal and actual failing Vitest CLI execution.
+
+**2026-09-06 gate-cadence amendment (operator-approved).** Implementation commits/candidates and
+materially changed integration trees retain typecheck, lint and full coverage. During iteration,
+use focused checks that can inform the next change and group related corrections into logical
+commits. Do not add a full run for each green micro-cycle. Existing admitted assignments retain their
+explicit gates and ordering unless the operator revises them; this amendment does not reschedule
+Task 1.6.5 or waive an explicitly required standalone suite.
+
+Documentation-only planning, instruction, contract, evidence and completion commits run applicable
+documentation checks, existing instruction-pair equality and link checks, affected generated-output
+checks, and `git diff --check`. Full code gates may be reused only when an inspected diff establishes
+that their relevant code, tests, configuration, dependencies and other inputs are unchanged. File
+extensions alone do not establish this: documentation consumed by a guard/generator and generated
+runtime artifacts require their affected checks. Changed acceptance requirements or material contracts
+need substantive assessment; prior green code tests do not establish new behavior. This approved
+policy-only amendment uses these scoped checks; it does not claim runtime verification.
+
+Record each reused command/result, tested commit/tree, current candidate and unchanged-input evidence
+in the existing plan/evidence record or commit body. Missing evidence, affected inputs, unresolved
+uncertainty, failures and explicit assignment boundaries require the applicable rerun. A recording-only
+SHA change does not by itself require full coverage or renewed review of unchanged implementation.
+Do not present reused evidence as independently rerun or use stale live-state evidence as current.
+
+New plans bind a gate schedule for iteration, implementation commit/candidate, integration and
+recording-only changes, with exact commands, reuse/rerun triggers and concurrent groups or exclusive
+resources. Independent typecheck, lint and generated checks may overlap within verified host limits;
+generation precedes its freshness check and shared mutable outputs remain serialized. Keep coverage
+free of compiler/linter contention, use the demonstrated worker count within the four-worker ceiling,
+and serialize only evidenced resource conflicts. Preserve membership, assertions, coverage floors,
+isolation, deadlines and every required acceptance proof.
 
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
@@ -1967,8 +1997,8 @@ system, and they are cheap enough that the only sane policy is to run them.
 
 **When they run:**
 
-- **every commit** — `npm run typecheck && npm run lint && npm run test:coverage` (D191). That is
-  every no-dry-run test except parity, which is a Playwright lane outside the vitest projects.
+- **implementation commits/candidates and materially changed integration** — typecheck, lint and
+  full coverage (D191; §3.14 owns scheduling and the documentation-only exception). That is every no-dry-run test except parity, which is a Playwright lane outside the vitest projects.
 - **a change to ONE workflow** — that workflow's structural scenario, plus everything the gate
   already runs. The guards are global by construction, so "only this workflow's tests" is never the
   whole answer; it is the *additional* thing the author must think about.
@@ -2347,7 +2377,7 @@ and D190's lesson is that a lane nobody chains is a lane that cannot fail.
 
 | script | runs | trigger |
 |---|---|---|
-| `npm run typecheck && npm run lint && npm run test:coverage` | unit + architecture + T1 structural + T2 + the walks, with the floors | **every commit** (D191) |
+| `npm run typecheck && npm run lint && npm run test:coverage` | unit + architecture + T1 structural + T2 + the walks, with the floors | implementation commits/candidates and materially changed integration; documentation-only exception and scheduling in §3.14 D191 |
 | `npm run test:parity` | 281 browser cases, including 222 reference triples and the dual-adapter comparison | every dashboard change; before a slice closes |
 | `npm run perf:dashboard` | reproducible structural counters plus observational timings | after a measured dashboard data-path change; before a slice closes |
 | `npm run cli -- dry-run-scenario <workflow> --subject <label>` | ONE T1b manifest against the real systems | at a workflow's migration; whenever its graph or its transaction node changes; to refresh a stale recorded result |

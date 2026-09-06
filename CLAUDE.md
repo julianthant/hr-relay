@@ -16,7 +16,10 @@ asset until the single all-at-once cutover (D89/D93). This rebuild is not produc
 - Keep existing `AGENTS.md` / `CLAUDE.md` pairs byte-identical. Write one shared text; update both.
   Change instructions when their rules change, not after every feature edit. Put requested lessons
   in the module's linked ledger. Use `/docs` for broader documentation cleanup; `/docs audit` is read-only.
-- Before committing: `npm run typecheck && npm run lint && npm run test:coverage` (D191).
+- Implementation commits/candidates and materially changed integration trees require typecheck, lint
+  and full coverage (D191). Documentation-only commits use D191's scoped checks and verified reuse;
+  classify by affected inputs, not extension. Read `ref guards-and-tests` §3.14 D191 for gate cadence,
+  concurrent groups, evidence requirements and existing-plan exceptions.
   Update relevant tests for feature changes; say when none exist. Lint failures are task failures.
   Preserve assertions, membership, isolation, coverage floors, and timeouts. Use at most four file
   workers and run coverage without this task's compiler/linter contention. Guard additions/retirements

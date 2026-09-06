@@ -107,6 +107,10 @@ Keep per-file isolation, in-test concurrency, test membership, coverage floors a
 limits intact. Run full coverage without a concurrent compiler/linter gate; reduce contention
 before treating a full-suite timeout as permission to weaken a check.
 
+D191 in `docs/rebuild/reference/guards-and-tests.md` §3.14 owns documentation-only checks,
+unchanged-input evidence reuse and concurrent gate scheduling; existing assignments keep their
+explicit cadence until revised.
+
 The gate family is deliberately plain (`typecheck`/`lint`/`test:coverage`, D191 — `test:coverage` is
 a strict superset of the earlier `test`+`test:architecture` pair and measured faster); the old
 `*:rebuild` names retired with D93 and the `rebuild:` runtime prefix with D247 (2026-08-20) — this is
