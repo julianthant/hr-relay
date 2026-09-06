@@ -223,6 +223,15 @@ function resolveDocFile(
     const path = `docs/rebuild/reference/${ref.doc.slice("ref:".length)}.md`;
     return files.has(path) ? { path } : { reason: `names no ${path}` };
   }
+  const separator = ref.doc.indexOf("/");
+  if (separator !== -1) {
+    const subphase = ref.doc.slice(0, separator);
+    const overview = resolveDocFile({ kind: "phase", doc: subphase, raw: subphase }, files);
+    if (!("path" in overview)) return overview;
+    const leaf = ref.doc.slice(separator + 1);
+    const path = `${overview.path.slice(0, -"README.md".length)}${leaf}.md`;
+    return files.has(path) ? { path } : { reason: `names no ${path}` };
+  }
   const pattern = phaseDocPattern(ref.doc);
   const matcher = new RegExp(`^${pattern.split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")}$`);
   const matches = [...files.keys()].filter((path) => matcher.test(path));
@@ -616,17 +625,29 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     const topicDoc = "5A/settings";
     const taskPath = "docs/rebuild/plans/phase-3/3.1-dashboard/task-9-1-shell.md";
     const topicPath = "docs/rebuild/plans/phase-5/5A-readiness/settings.md";
-    const files = new Map([[taskPath, "# Task 9-1 · Shell"], [topicPath, "# Settings"]]);
+    const taskOverview = "docs/rebuild/plans/phase-3/3.1-dashboard/README.md";
+    const overviews = [
+      [taskOverview, "# Phase 3.1 · Dashboard"],
+      ["docs/rebuild/plans/phase-5/5A-readiness/README.md", "# Phase 5A · Readiness"],
+    ] as const;
+    const files = new Map<string, string>([...overviews, [taskPath, "# Task 9-1 · Shell"], [topicPath, "# Settings"]]);
     for (const [doc, path] of [[taskDoc, taskPath], [topicDoc, topicPath]]) {
       const ref = DocRefSchema.parse({ kind: "phase", doc, raw: doc });
       expect(resolveDocFile(ref, files)).toEqual({ path });
       expect(resolveDocFile(ref, new Map())).toHaveProperty("reason", expect.stringContaining("names no"));
     }
     const ref: DocRef = { kind: "phase", doc: taskDoc, raw: taskDoc };
-    expect(resolveDocFile(ref, new Map([[taskPath.replace("3.1-dashboard/", "3.1-dashboard/nested/"), "# Wrong depth"]])))
+    expect(resolveDocFile(ref, new Map<string, string>([...overviews, [taskPath.replace("3.1-dashboard/", "3.1-dashboard/nested/"), "# Wrong depth"]])))
       .toHaveProperty("reason", expect.stringContaining("names no"));
-    expect(resolveDocFile(ref, new Map([[taskPath.replace("3.1-dashboard", "3.2-dashboard"), "# Wrong subphase"]])))
+    expect(resolveDocFile(ref, new Map<string, string>([...overviews, [taskPath.replace("3.1-dashboard", "3.2-dashboard"), "# Wrong subphase"]])))
       .toHaveProperty("reason", expect.stringContaining("names no"));
+    // A same-label folder without the canonical overview must never become a second task owner.
+    const orphanPath = taskPath.replace("3.1-dashboard", "3.1-other");
+    expect(resolveDocFile(ref, new Map<string, string>([...overviews, [orphanPath, "# Orphan task"]])))
+      .toEqual({ reason: `names no ${taskPath}` });
+    expect(resolveDocFile(ref, new Map([[taskPath, "# Task without an overview"]])))
+      .toHaveProperty("reason", expect.stringContaining("README.md"));
+    files.set(taskOverview.replace("3.1-dashboard", "3.1-duplicate"), "# Duplicate overview");
     files.set(taskPath.replace("3.1-dashboard", "3.1-duplicate"), "# Duplicate");
     expect(resolveDocFile(ref, files)).toHaveProperty("reason", expect.stringContaining("matches 2"));
   });
