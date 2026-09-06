@@ -70,6 +70,7 @@ export const WRITE_FIXTURE_SECRET_CANARY = "RAW_TRANSACTION_SECRET_CANARY";
 const SubjectInput = z.strictObject({ eid: EidSchema });
 export const WriteFixtureProofSchema = z.strictObject({
   transactionId: z.string().regex(/^T\d{6,}$/),
+  documentNumber: z.string().optional(),
 });
 const ProbeOutputSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("present"), proof: WriteFixtureProofSchema }),
@@ -463,6 +464,7 @@ interface FixtureDescriptorOptions {
   readonly contractFingerprint?: string;
   readonly version?: number;
   readonly memo?: boolean;
+  readonly documentNumber?: boolean;
   readonly omittable?: boolean;
   readonly enqueue?: "reject-active" | "allow-parallel";
   readonly commitEid?: string;
@@ -476,8 +478,11 @@ function buildDescriptor(
 ): AnyWorkflowDescriptor {
   const commitContract = commitVariant === "receipt" ? WriteFixtureCommit : WriteFixtureSaveCommit;
   const commitEid = options.commitEid;
-  const fixtureInput = options.memo === true ? WriteFixtureInput.extend({ memo: z.string().optional() }) : WriteFixtureInput;
-  const canonicalInput = options.memo === true ? defineCanonicalInput(fixtureInput, z.strictObject({ eid: EidSchema, memo: z.string().optional() }), [{ eid: WRITE_FIXTURE_EID }]) : WriteFixtureCanonicalInput;
+  const fixtureInput = options.documentNumber === true ? WriteFixtureInput.extend({ documentNumber: z.string().optional() })
+    : options.memo === true ? WriteFixtureInput.extend({ memo: z.string().optional() }) : WriteFixtureInput;
+  const canonicalInput = options.documentNumber === true
+    ? defineCanonicalInput(fixtureInput, z.strictObject({ eid: EidSchema, documentNumber: z.string().optional() }), [{ eid: WRITE_FIXTURE_EID }])
+    : options.memo === true ? defineCanonicalInput(fixtureInput, z.strictObject({ eid: EidSchema, memo: z.string().optional() }), [{ eid: WRITE_FIXTURE_EID }]) : WriteFixtureCanonicalInput;
   const fixtureGraph = flow(fixtureInput)
     .transaction(WRITE_FIXTURE_NODE_ID, {
       dependsOn: [],
@@ -524,6 +529,7 @@ function buildDescriptor(
 export const writeFixtureDescriptor = buildDescriptor("receipt");
 export const writeFixtureOmittableDescriptor = buildDescriptor("receipt", { omittable: true });
 export const writeFixtureMemoDescriptor = buildDescriptor("receipt", { memo: true });
+export const writeFixtureDocumentDescriptor = buildDescriptor("receipt", { documentNumber: true });
 export const writeFixtureParallelDescriptor = buildDescriptor("receipt", { enqueue: "allow-parallel" });
 
 /**

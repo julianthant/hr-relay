@@ -18,6 +18,7 @@ import type { Clock } from "../../../domain/clock.js";
 import type { IdFactory } from "../../../domain/identifiers.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { buildRerunPlan } from "../../../services/start/rerun.js";
+import { projectRerunPlanForOperator } from "../../../domain/run/rerun.js";
 import { StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../../domain/run/start-plan.js";
 import { planStart } from "../../../services/start/plan.js";
 import { StartStepOmissionRefusedError, applyStartStepSelection, resolveStartStepOmissions } from "../../../services/start/step-selection.js";
@@ -145,7 +146,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           canonicalInputSchemaHash: record.canonicalInputSchemaHash,
           inputFingerprint: record.inputFingerprint,
         },
-        ...(record.rerun === undefined ? {} : { rerun: record.rerun }),
+        ...(record.rerun === undefined ? {} : { rerun: projectRerunPlanForOperator(record.rerun) }),
         planned: record.planned.map((planned) => ({
           logicalKey: planned.itemId,
           title: planned.title,

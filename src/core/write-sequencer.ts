@@ -646,20 +646,24 @@ export function executeSequencedWriteCommit(
   hooks?: WriteSequencerHooks,
 ): SequencedWriteCommitResult {
   const parsed = SequencedWriteCommitInputSchema.parse(input);
-  const evidenceFingerprint = FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(valueFreeProtectedData(parsed))));
   const commandId = lifecycleCommandId(`write-${transition.kind}`, {
     runId: parsed.run.runId, expectedVersion: parsed.run.expectedVersion,
     writeIntentId: parsed.commit.writeIntentId, generation: parsed.commit.generation,
     ...(transition.kind === "resume-queued" ? { sourceCommandId: transition.commandId } : {}),
   });
-  const advance = () => transition.kind === "advance-running"
-    ? transition.port.workerTransition({ commandId, ...parsed.run, claim: transition.claim, evidenceFingerprint,
-        lifecycle: { state: "running", workerId: transition.claim.workerId, claimedAt: transition.claimedAt,
-          heartbeatAt: parsed.commit.confirmedAt, currentNodeId: NodeIdSchema.parse(parsed.checkpoint.nodeId) } })
-    : transition.port.transition({ commandId, runId: parsed.run.runId, expectedVersion: parsed.run.expectedVersion,
-        evidenceFingerprint, lifecycle: { state: "queued" }, writeResolution: "resolve-write-present",
-        startAt: NodeIdSchema.parse(transition.startAt) });
   return authority.withAuthorityTransaction((repositories) => {
+    const current = repositories.runs.get(parsed.run.runId);
+    if (current === undefined) throw new Error(`run ${parsed.run.runId} does not exist`);
+    const evidenceFingerprint = FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(
+      valueFreeProtectedData(parsed, retainedRunProtectedBindings(current)),
+    )));
+    const advance = () => transition.kind === "advance-running"
+      ? transition.port.workerTransition({ commandId, ...parsed.run, claim: transition.claim, evidenceFingerprint,
+          lifecycle: { state: "running", workerId: transition.claim.workerId, claimedAt: transition.claimedAt,
+            heartbeatAt: parsed.commit.confirmedAt, currentNodeId: NodeIdSchema.parse(parsed.checkpoint.nodeId) } })
+      : transition.port.transition({ commandId, runId: parsed.run.runId, expectedVersion: parsed.run.expectedVersion,
+          evidenceFingerprint, lifecycle: { state: "queued" }, writeResolution: "resolve-write-present",
+          startAt: NodeIdSchema.parse(transition.startAt) });
     const intent = repositories.writeIntents.get(parsed.commit.writeIntentId);
     if (intent?.status === "committed") {
       const outcome = advance();
@@ -681,8 +685,6 @@ export function executeSequencedWriteCommit(
       }
       return Object.freeze({ report, run });
     }
-    const current = repositories.runs.get(parsed.run.runId);
-    if (current === undefined) throw new Error(`run ${parsed.run.runId} does not exist`);
     if (current.version !== parsed.run.expectedVersion) {
       throw new RunLifecycleRefusedError({ state: "refused", refusal: {
         reason: "conflict", currentVersion: current.version,
@@ -1792,12 +1794,14 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const naturalKey = IdempotencyKeySchema.parse(keyRaw);
     const businessKeyDigest = deriveIdempotencyKeyDigest(system, naturalKey);
     const sourceBound = envelope.sourceBound;
+    const repeatBindings = sourceBound?.protectedBindings ?? retainedRunProtectedBindings(run);
     const consent = sourceBound?.warnings.filter((warning) => warning.nodeId === node.id
       && warning.taskId === commitContract.id && warning.system === system && warning.businessKeyDigest === businessKeyDigest);
     const occurrence = sourceBound === undefined || consent === undefined || consent.length === 0 ? undefined
       : RepeatOccurrenceSchema.parse({ ...consent[0], confirmationCommandId: sourceBound.confirmationCommandId,
         sourceRunId: sourceBound.source.runId, sourceVersion: sourceBound.source.expectedVersion,
         warningDigest: sourceBound.warningDigest,
+        ...(repeatBindings.length === 0 ? {} : { protectedBindings: repeatBindings }),
         baselineEvidence: consent.map(({ writeIntentId, evidenceDigest }) => ({ writeIntentId, evidenceDigest })) });
     if (occurrence !== undefined && sourceBound?.acknowledgment !== sourceBound?.warningDigest) {
       throw new Error("confirmation-required: repeat acknowledgment is missing or stale");
@@ -1814,7 +1818,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         if (intent.idempotencyKey === key && "runId" in intent && intent.runId === envelope.runId) continue;
         if (intent.status !== "committed" && intent.status !== "observed-present") continue;
         if (!consent?.some((warning) => warning.writeIntentId === intent.writeIntentId
-          && warning.evidenceDigest === repeatEvidenceDigest(intent))) {
+          && warning.evidenceDigest === repeatEvidenceDigest(intent, repeatBindings))) {
           throw new Error("confirmation-required: fresh transaction facts require renewed warning acknowledgment");
         }
       }
@@ -1886,7 +1890,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         const completion = commitContract.writeSafety.completion;
         const proof = completion.proofSchema.parse(Reflect.apply(completion.proofFromPresentProbe, undefined, [verdict]));
         const evidenceDigest = repeatEvidenceDigest({ status: "committed", completionProof: { schemaHash: deriveSchemaHash(completion.proofSchema, "output"),
-          value: JsonValueSchema.parse(proof) } });
+          value: JsonValueSchema.parse(proof) } }, repeatBindings);
         if (!consent?.some((warning) => warning.evidenceDigest === evidenceDigest)) {
           throw new Error("confirmation-required: live completion evidence changed");
         }
@@ -2388,6 +2392,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const keyDigest = deriveIdempotencyKeyDigest(system, key);
     refuseRetiredPermanentKeys(commitContract, commitInput, system, key, hasProtectedTransactionInput(context.run));
     const source = envelope.sourceBound;
+    const repeatBindings = source?.protectedBindings ?? retainedRunProtectedBindings(context.run);
     const consent = source?.warnings.filter((warning) => warning.nodeId === node.id && warning.taskId === commitContract.id
       && warning.system === system && warning.businessKeyDigest === keyDigest);
     const siblings = deps.authority.authority.writeIntents.listByBusinessKey(system, keyDigest);
@@ -2397,7 +2402,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
     if (source !== undefined && siblings.some((intent) => (intent.status === "committed" || intent.status === "observed-present")
       && (source.acknowledgment !== source.warningDigest || !consent?.some((warning) => warning.writeIntentId === intent.writeIntentId
-        && warning.evidenceDigest === repeatEvidenceDigest(intent))))) {
+        && warning.evidenceDigest === repeatEvidenceDigest(intent, repeatBindings))))) {
       throw new Error("confirmation-required: preview completion evidence changed");
     }
 
@@ -2496,7 +2501,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         const settled = presentFromProof(raw);
         const proof = { schemaHash: proofSchemaHash, value: settled.proof };
         if (source.acknowledgment !== source.warningDigest
-          || !consent?.some((warning) => warning.evidenceDigest === repeatEvidenceDigest({ status: "committed", completionProof: proof }))) {
+          || !consent?.some((warning) => warning.evidenceDigest === repeatEvidenceDigest({ status: "committed", completionProof: proof }, repeatBindings))) {
           throw new Error("confirmation-required: preview found unacknowledged completion evidence");
         }
         probe = { state: "present", proof, output: { schemaHash: outputSchemaHash, value: settled.output } };

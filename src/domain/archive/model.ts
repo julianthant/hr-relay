@@ -31,7 +31,7 @@ import { retainedRunProtectedBindings, valueFreeProtectedData } from "../protect
  *   refuses the whole bump — an unresolved possible-submit is never buried.
  */
 import { z } from "zod";
-import { canonicalJsonStringify } from "../canonical-json.js";
+import { canonicalJsonStringify, type JsonValue } from "../canonical-json.js";
 import { SemverSchema, VersionScopeSchema } from "../commands.js";
 import { AppVersionSchema, RunAppVersionSchema } from "../dashboard/primitives.js";
 import { ArchivedQueueSurfaceStorageSchema } from "../dashboard/projection.js";
@@ -55,7 +55,7 @@ import { RunInputStorageSchema, RunStateSchema } from "../run/record.js";
 import { VersionBumpChangeRecordSchema } from "./change-record.js";
 import { ArchivedRunSectionsSchema } from "./sections.js";
 import { sha256Hex } from "../sha256.js";
-import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
+import { projectReceiptForOperator, RunEvidenceReceiptSchema } from "../trust/evidence.js";
 import { WorkflowCodeSchema } from "../workflow/presentation.js";
 
 /**
@@ -638,18 +638,31 @@ export type ArchiveRelaunchRecord = z.infer<typeof ArchiveRelaunchRecordSchema>;
  * their command names.
  */
 export function archivedRunContentDigest(content: ArchivedRunContent): string {
-  return sha256Hex(`hrauto:archived-run:v1\0${canonicalJsonStringify(valueFreeProtectedData(ArchivedRunContentSchema.parse(content)))}`);
+  const parsed = ArchivedRunContentSchema.parse(content);
+  return sha256Hex(`hrauto:archived-run:v1\0${canonicalJsonStringify(archivedReferenceContent(parsed))}`);
 }
 
-/** A public citation of one immutable archive, independent of historical protected digests. */
-export function archivedRunReferenceFingerprint(record: ArchivedRunRecord): string {
+/** Bind the complete permitted projection; historical diagnostic blobs have no safe provenance. */
+function archivedReferenceContent(content: ArchivedRunContent): JsonValue {
+  const bindings = retainedRunProtectedBindings({ envelope: { workflow: content.workflowId }, input: content.input });
+  if (!bindings.some(({ inputPath }) => inputPath !== "timekeeperName")) return valueFreeProtectedData(content, bindings);
+  const withheld = { state: "withheld-protected-input" };
+  const receipt = content.receipt.state === "present" ? projectReceiptForOperator(content.receipt.value) : content.receipt;
+  return valueFreeProtectedData({ ...content,
+    row: { ...content.row, title: withheld, subtitle: withheld, facts: withheld, liveMessage: withheld,
+      warnings: withheld },
+    detail: { ...content.detail, header: { ...content.detail.header, title: withheld } },
+    receipt, failure: withheld, ...(content.sections === undefined ? {} : { sections: withheld }),
+  }, bindings);
+}
+
+/** Authenticate private storage before citing its value-free content. Never publish an old digest. */
+export function archivedRunReferenceFingerprint(record: ArchivedRunRecord): z.infer<typeof FingerprintSchema> {
+  const { contentDigest, ...content } = ArchivedRunRecordSchema.parse(record);
+  if (!authenticArchivedRunContent(content, contentDigest)) throw new Error("archive content integrity mismatch");
   const bindings = retainedRunProtectedBindings({ envelope: { workflow: record.workflowId }, input: record.input });
   if (bindings.length === 0) return record.contentDigest;
-  return sha256Hex(`hrauto:archived-run-reference:v1\0${canonicalJsonStringify({
-    runId: record.runId, workflowId: record.workflowId, archivedAt: record.archivedAt,
-    archiveSchemaGeneration: record.archiveSchemaGeneration,
-    protectedBindings: bindings,
-  })}`);
+  return FingerprintSchema.parse(sha256Hex(`hrauto:archived-run-reference:v1\0${canonicalJsonStringify(archivedReferenceContent(content))}`));
 }
 
 /** Only authenticates pre-D331 immutable private records; never publish this digest. */

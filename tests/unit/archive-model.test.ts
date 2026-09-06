@@ -1,5 +1,7 @@
 import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
+import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
+import { sha256Hex } from "../../src/domain/sha256.js";
 /**
  * The D80 archive model, clause by clause (2i-G, D179).
  *
@@ -493,6 +495,28 @@ function ledgerBytes(stateRoot: string): readonly [string, string][] {
 }
 
 describe("the D80 archive model", () => {
+  it("refuses corrupt retained content at archive reads and commands without effects", () => {
+    const world = createWorld();
+    const fingerprint = archivedRunReferenceFingerprint(ARCHIVED_RUN);
+    world.database.withAuthorityTransaction((repositories) => {
+      repositories.runs.enqueue(QUEUED_RUN);
+      repositories.versionPlans.insert(VERSION_PLAN_ROW);
+      repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      repositories.archivedRuns.insert({ ...ARCHIVED_RUN, row: { ...ARCHIVED_RUN.row, status: "failed" } });
+    });
+    const generation = world.database.getMeta().authorityGeneration;
+    const before = world.database.authority.runs.get(ARCHIVED_RUN.runId);
+    assert.throws(() => buildArchivedRunDetail(emptyRegistryDeps(world), ARCHIVED_RUN.runId), /archive.*integrity/u);
+    assert.throws(() => buildArchiveIndex(emptyRegistryDeps(world)), /archive.*integrity/u);
+    for (const type of ["delete-archived-run", "relaunch-archived-run"]) {
+      assert.throws(() => world.kernel.execute({ ...envelope(), family: "version-archive", type,
+        target: { archivedRunId: ARCHIVED_RUN.runId, archiveFingerprint: fingerprint } }), /archive.*integrity/u);
+    }
+    assert.equal(world.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(world.database.authority.runs.get(ARCHIVED_RUN.runId), before);
+    assert.equal(world.database.authority.archivedRuns.list().length, 1);
+    assert.equal(world.database.authority.deletedRuns.get(ARCHIVED_RUN.runId), undefined);
+  });
   it("moves prior-version runs into the archive and out of every live read", () => {
     const world = createWorld();
     const archived = startRun(world, "10873698", true);
@@ -734,7 +758,8 @@ describe("the D80 archive model", () => {
   it("reads a pre-D269 archived row forward without changing its stored digest", () => {
     const world = createWorld();
     const { session: _session, ...preD269Row } = ARCHIVED_RUN.row;
-    const historicalDigest = "d".repeat(64);
+    const { contentDigest: _oldDigest, ...historicalContent } = ARCHIVED_RUN;
+    const historicalDigest = sha256Hex(`hrauto:archived-run:v1\0${canonicalJsonStringify({ ...historicalContent, row: preD269Row })}`);
     const preD269Record = { ...ARCHIVED_RUN, row: preD269Row, contentDigest: historicalDigest };
 
     assert.equal(QueueSurfaceWireSchema.safeParse(preD269Row).success, false, "the live queue wire still requires session");

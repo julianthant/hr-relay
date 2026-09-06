@@ -1,7 +1,7 @@
 # explorer-graph--graphite-warm--1440x900
 # adapter: fixture
 # fixture: explorer-graph
-# descriptorHash: 692f08078c8905cbe475d9165c126f59b5ca1c5200ecc55b41953bad2a05e22b
+# descriptorHash: e623bc34364972b0bfe651d3f9054a0ec99ed599e1265c5e250d207cf6b7f3b6
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -154,7 +154,7 @@
             - row "Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts":
               - rowheader "Source"
               - cell "contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts"
-        - text: input ee4776e0a94eoutput 6b08cc3af988impl ed9fa06a564d
+        - text: input ee4776e0a94eoutput 6b08cc3af988impl 17a780abac95
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

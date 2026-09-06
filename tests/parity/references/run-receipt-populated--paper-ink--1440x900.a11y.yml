@@ -1,7 +1,7 @@
 # run-receipt-populated--paper-ink--1440x900
 # adapter: seeded
 # fixture: seeded-done-run
-# descriptorHash: 692f08078c8905cbe475d9165c126f59b5ca1c5200ecc55b41953bad2a05e22b
+# descriptorHash: e623bc34364972b0bfe651d3f9054a0ec99ed599e1265c5e250d207cf6b7f3b6
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -138,7 +138,7 @@
     - region "Actions": Actions workflow:person-lookup/read-active-status local-projection This run wrote nothing — no write was attempted.10:00 AM
     - region "Verification": Verification node.searching unknown node.cross-verify unknown node.active-status verifiedrequired node.crm-dates absent completion.terminal-result verifiedrequired identity.eid-agrees-across-sources unknownrequired identity.ucpath-selection-is-unambiguous absentrequired
     - region "Output": Output hdh truederived · from 2 entries reason UCPath reports an active HDH appointment and CRM onboarding is completederived · from 2 entries state activederived · from 2 entries state not-requestedderived · from 2 entries
-    - text: result partial trace pl-090303-0003 descriptor 78d73650 config bbbbbbbb
+    - text: result partial trace pl-090303-0003 descriptor f80dc230 config bbbbbbbb
     - region "Run captures": Captures No captures this composition wires no diagnostic capture authority
   - complementary "Run data":
     - text: Run data

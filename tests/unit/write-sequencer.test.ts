@@ -1,4 +1,5 @@
 import { RunClaimTokenSchema } from "../../src/infra/sqlite/run-store-contracts.js";
+import { lifecycleCommandId } from "../../src/core/run-record-service.js";
 import { testRunLifecycle, testRunService } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref write-safety §3 beats ①–⑦ over the REAL authority database, worker session
@@ -15,6 +16,7 @@ import { TaskError } from "../../src/base/errors.js";
 import type { WriteSequencerContext } from "../../src/core/run-executor.js";
 import {
   createWriteSequencer,
+  buildCommittedSettlement,
   executeSequencedWriteCommit,
   invokeBoundedTask,
   StagedPageDiscardedError,
@@ -25,13 +27,14 @@ import {
 } from "../../src/core/write-sequencer.js";
 import { withBoundRunConfigFingerprint, type WorkerSessionManager } from "../../src/core/worker-sessions.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
-import { TaskIdSchema } from "../../src/domain/ids.js";
+import { ActorIdSchema, TaskIdSchema } from "../../src/domain/ids.js";
 import { classifyEvidenceLeaf } from "../../src/domain/trust/evidence-classification.js";
 import type { AnyWorkflowDescriptor } from "../../src/base/workflow.js";
-import type { RunRecord } from "../../src/domain/run/record.js";
+import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import {
   deriveWriteAuthorityReason,
+  deriveIdempotencyKeyDigest,
   deriveWriteBindingProofDigest,
   WriteSafetyAuthorityError,
 } from "../../src/domain/write-safety.js";
@@ -64,6 +67,7 @@ import {
   WRITE_FIXTURE_WORKER_ID,
   WRITE_FIXTURE_WORKFLOW_ID,
   WriteFixtureProofSchema,
+  WriteFixtureCommit,
   writeFixtureDescriptor,
   writeFixtureQueuedRun,
   writeFixtureSaveDescriptor,
@@ -1396,6 +1400,48 @@ describe("D116 — a driver lease without the claimed run's bound fingerprint re
 
 
 describe("service-backed shared settlement", () => {
+  it("keeps settlement journal identity independent of protected proof bytes while binding ordinary proof", () => {
+    const settle = (documentNumber: string, transactionId = "T123456", protectedKey = false) => {
+      const h = harness();
+      const queued = RunRecordSchema.parse(writeFixtureQueuedRun());
+      const protectedBindings = [{ kind: "protected-store", name: "separationsKualiFinalizationCanaryDocumentNumber",
+        inputPath: "documentNumber", valueId: "10000000-0000-4000-8000-000000000001" }];
+      const { run, claim } = claimRunning(h.database, h.clock, { ...queued,
+        input: { ...queued.input, raw: { documentNumber }, parsed: { ...queued.input.parsed,
+          value: { documentNumber }, protectedBindings } } });
+      const fence = attemptingIntentFixture(run.envelope.runId);
+      if (protectedKey) {
+        fence.intent.idempotencyKey = `protected-document:${documentNumber}`;
+        fence.intent.idempotencyKeyDigest = deriveIdempotencyKeyDigest("ucpath", fence.intent.idempotencyKey);
+      }
+      assert.equal(h.database.authority.writeIntents.fenceAttempt(fence).state, "fenced");
+      const intent = h.database.authority.writeIntents.get(fence.intent.writeIntentId);
+      assert.ok(intent?.status === "attempting");
+      const bundle = buildCommittedSettlement({ descriptor: writeFixtureDescriptor, nodeId: WRITE_FIXTURE_NODE_ID,
+        run, intent, commitContract: WriteFixtureCommit, operator: ActorIdSchema.parse("local-operator"),
+        implFingerprint: WRITE_FIXTURE_IMPL_FINGERPRINT, proofSource: "normal-output",
+        proofValue: { documentNumber, transactionId }, outputValue: { documentNumber, transactionId },
+        confirmedAt: WRITE_FIXTURE_NOW, ids: h.ids });
+      const input = { run: { runId: run.envelope.runId, expectedVersion: run.version, claim }, ...bundle };
+      const { outcome: _outcome, ...request } = input;
+      const transition = { kind: "advance-running" as const, claim: RunClaimTokenSchema.parse(claim),
+        claimedAt: WRITE_FIXTURE_NOW, port: testRunLifecycle(h.database, h.clock) };
+      executeSequencedWriteCommit(h.database, request, transition);
+      assert.equal(h.database.authority.writeIntents.get(intent.writeIntentId)?.idempotencyKey, fence.intent.idempotencyKey);
+      assert.equal(h.database.authority.writeIntents.get(intent.writeIntentId)?.idempotencyKeyDigest, fence.intent.idempotencyKeyDigest);
+      const generation = h.database.getMeta().authorityGeneration;
+      executeSequencedWriteCommit(h.database, request, transition);
+      assert.equal(h.database.getMeta().authorityGeneration, generation);
+      const commandId = lifecycleCommandId("write-advance-running", { runId: run.envelope.runId,
+        expectedVersion: run.version, writeIntentId: intent.writeIntentId, generation: intent.generation });
+      const journal = h.database.authority.lifecycleJournal.getCommand(commandId);
+      assert.ok(journal && "requestFingerprint" in journal);
+      return journal.requestFingerprint;
+    };
+    assert.equal(settle("12345678"), settle("87654321"));
+    assert.notEqual(settle("12345678"), settle("12345678", "T234567"));
+    assert.equal(settle("12345678", "T123456", true), settle("87654321", "T123456", true));
+  });
   it("replays the exact worker bundle without writes and refuses changed evidence", async () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock);

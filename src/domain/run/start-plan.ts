@@ -211,7 +211,7 @@ function plannedInputFingerprint(
     .update(canonicalJsonStringify({
       ingressSchemaHash,
       canonicalInputSchemaHash,
-      ...(rerun === undefined ? {} : { rerun }),
+      ...(rerun === undefined ? {} : { rerun: legacy ? rerun : valueFreeProtectedData(rerun) }),
       ...(planned.some((run) => run.runId !== undefined) || stepOmissions === undefined ? {} : { stepOmissions }),
       accepted: planned.map((run) => ({
         ...(run.runId === undefined ? {} : { runId: run.runId }),

@@ -20,7 +20,7 @@
  *
  * Browser-bundle-safe on purpose: zod and src/domain/** only.
  */
-import { RerunSourceSchema, RerunPlanSchema } from "../run/rerun.js";
+import { RerunSourceSchema, PublicRerunPlanSchema } from "../run/rerun.js";
 import { z } from "zod";
 import { JsonValueSchema } from "../canonical-json.js";
 import {
@@ -99,7 +99,7 @@ export const StartPlanWireSchema = z.strictObject({
     canonicalInputSchemaHash: FingerprintSchema,
     inputFingerprint: FingerprintSchema,
   }),
-  rerun: RerunPlanSchema.optional(),
+  rerun: PublicRerunPlanSchema.optional(),
   planned: z.array(z.strictObject({
     logicalKey: z.string().min(1),
     title: z.string().min(1),

@@ -67,7 +67,7 @@ export interface FanOutEnvelope {
   readonly commandId: string;
   readonly actorId: string;
   readonly sourceBound?: RunEnvelope["sourceBound"];
-  readonly relaunch?: Readonly<{ archivedRunId: string; contentDigest: string }>;
+  readonly relaunch?: Readonly<{ archivedRunId: string; archiveFingerprint: string }>;
   readonly workflow: string;
   readonly descriptorVersion: number;
   readonly contractFingerprint: string;

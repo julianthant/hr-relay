@@ -416,9 +416,12 @@ describe("DCA4 exact archived capture routes", () => {
       });
 
       it("rejects an active document media type from a malformed repository result before byte open", async () => {
-        const { contentDigest: originalDigest, ...content } = recordWithTile();
-        // Pin the raw sealing helper to the valid writer before changing only MIME.
-        assert.equal(rawArchiveContentDigest(content), originalDigest);
+        const { contentDigest: projectedDigest, ...content } = recordWithTile();
+        assert.equal(archivedRunContentDigest(content), projectedDigest);
+        // Prove the historical raw seal is accepted before changing only MIME.
+        const originalDigest = rawArchiveContentDigest(content);
+        const valid = fixture({ lookup: () => ({ ...content, contentDigest: originalDigest }) });
+        assert.equal((await valid.app.request(url)).status, 200);
         assert.ok(content.sections?.captures.state === "present");
         const tile = content.sections.captures.value[0];
         assert.ok(tile);

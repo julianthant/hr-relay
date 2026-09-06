@@ -388,7 +388,7 @@ export const CanonicalRelaunchCreateRequestSchema = CanonicalCreateRunRequestSch
 export const CanonicalRelaunchRequestSchema = z.strictObject({
   commandId: CommandIdSchema,
   archivedRunId: RunIdSchema,
-  contentDigest: FingerprintSchema,
+  archiveFingerprint: FingerprintSchema,
   relaunchedBy: ActorIdSchema,
   create: CanonicalRelaunchCreateRequestSchema,
 });
@@ -404,7 +404,7 @@ export const CanonicalDeleteRequestSchema = z.strictObject(CanonicalVersionIdent
 export const CanonicalDeleteArchivedRequestSchema = z.strictObject({
   commandId: CommandIdSchema,
   runId: RunIdSchema,
-  contentDigest: FingerprintSchema,
+  archiveFingerprint: FingerprintSchema,
 });
 
 export const CanonicalPurgeRequestSchema = z.strictObject({

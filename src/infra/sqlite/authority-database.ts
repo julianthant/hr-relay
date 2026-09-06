@@ -7920,7 +7920,7 @@ export class AuthorityDatabase implements Disposable {
           && (other.status === "committed" || other.status === "observed-present"));
       if (settled.length !== intent.occurrence.baselineEvidence.length || settled.some((other) =>
         !intent.occurrence?.baselineEvidence.some((proof) => proof.writeIntentId === other.writeIntentId
-          && proof.evidenceDigest === repeatEvidenceDigest(other)))) {
+          && proof.evidenceDigest === repeatEvidenceDigest(other, intent.occurrence?.protectedBindings)))) {
         throw new Error("confirmation-required: repeat completion evidence changed before fence");
       }
     }

@@ -1,4 +1,5 @@
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
+import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../domain/protected-input.js";
 import { TransactionOutcomeSchema } from "../../domain/write-safety-primitives.js";
 import type { StepOmissions } from "../../domain/workflow/step-omission.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../base/workflow.js";
@@ -72,6 +73,7 @@ export function buildRerunPlan(repositories: AuthorityRepositories, descriptor: 
     }
   }
   const selected = new Set(source.selectedStepKeys);
+  const protectedBindings = retainedRunProtectedBindings(run);
   const nodes = new Set(descriptor.timeline.filter((step) => selected.has(step.key)).flatMap((step) => step.nodes.map((node) => String(node.id))));
   const warnings: RepeatWarning[] = [];
   for (const node of descriptorRuntimeNodes(descriptor)) {
@@ -91,13 +93,14 @@ export function buildRerunPlan(repositories: AuthorityRepositories, descriptor: 
     for (const intent of repositories.writeIntents.listByBusinessKey(system, digest)) {
       if (intent.status !== "committed" && intent.status !== "observed-present") continue;
       warnings.push(RepeatWarningSchema.parse({ nodeId: node.id, taskId: node.commit.uses.id, system, businessKeyDigest: digest,
-        writeIntentId: intent.writeIntentId, evidenceDigest: repeatEvidenceDigest(intent) }));
+        writeIntentId: intent.writeIntentId, evidenceDigest: repeatEvidenceDigest(intent, protectedBindings) }));
     }
   }
   warnings.sort((a, b) => a.nodeId.localeCompare(b.nodeId) || a.writeIntentId.localeCompare(b.writeIntentId));
-  const warningDigest = sha256Hex(`hrauto:rerun-warnings:v1\0${canonicalJsonStringify({
+  const protection = protectedBindings.length === 0 ? {} : { protectedBindings };
+  const warningDigest = sha256Hex(`hrauto:rerun-warnings:v1\0${canonicalJsonStringify(valueFreeProtectedData({
     runId: source.runId, expectedVersion: source.expectedVersion, descriptorFingerprint: descriptor.contractFingerprint,
-    selectedStepKeys: [...selected].sort(), warnings,
-  })}`);
-  return RerunPlanSchema.parse({ source, warnings, warningDigest, ...(acknowledgment === undefined ? {} : { acknowledgment }) });
+    selectedStepKeys: [...selected].sort(), warnings, ...protection,
+  }, protectedBindings))}`);
+  return RerunPlanSchema.parse({ source, warnings, warningDigest, ...protection, ...(acknowledgment === undefined ? {} : { acknowledgment }) });
 }

@@ -4,7 +4,7 @@ import { PlannedRunSchema, StartPlanRecordSchema, derivePlannedInputFingerprint 
 import { sourceBoundReadDescriptor, sourceBoundReadStores } from "./fixtures/source-bound-read-fixtures.js";
 import { CreateRunRequestSchema } from "../../src/core/run-record-service.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { WriteFixtureProofSchema, writeFixtureOmittableDescriptor, writeFixtureDescriptor, writeFixtureParallelDescriptor, writeFixtureMemoDescriptor } from "./fixtures/write-sequencer-fixtures.js";
+import { WriteFixtureProofSchema, writeFixtureOmittableDescriptor, writeFixtureDescriptor, writeFixtureParallelDescriptor, writeFixtureMemoDescriptor, writeFixtureDocumentDescriptor } from "./fixtures/write-sequencer-fixtures.js";
 import { WriteIntentRecordSchema, deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { repeatOccurrenceKey } from "../../src/domain/run/rerun.js";
 import { PositiveIntSchema } from "../../src/domain/ids.js";
@@ -32,6 +32,70 @@ function effects(h: ReturnType<typeof harness>) {
 }
 
 describe("source-bound repeat through planner, kernel, service and interpreter (D334/D335)", () => {
+  it("keeps protected source proof and key digests out of serialized rerun warnings", async () => {
+    const documentHarness = () => { const h = sourceBoundHarness(writeFixtureDocumentDescriptor); disposers.push(h.dispose); return h; };
+    const original = documentHarness(); const completedSource = await completed(original);
+    const { sessionId: _sessionId, ...sourceWithoutSession } = completedSource;
+    const originalIntent = original.database.authority.writeIntents.listByRun(completedSource.envelope.runId)[0];
+    assert.ok(originalIntent.status === "committed");
+    const proposal = async (documentNumber: string) => {
+      const h = documentHarness();
+      const source = { ...sourceWithoutSession, envelope: { ...sourceWithoutSession.envelope,
+        runId: "eeeeeeee-0001-4000-8000-000100000000" }, input: { ...completedSource.input,
+        raw: { eid: "10812345", documentNumber }, parsed: { ...completedSource.input.parsed,
+          value: { eid: "10812345", documentNumber }, protectedBindings: [{ kind: "protected-store",
+            inputPath: "documentNumber", name: "separationsKualiFinalizationCanaryDocumentNumber",
+            valueId: "10000000-0000-4000-8000-000000000001" }] } } };
+      assert.equal(h.database.authority.runs.enqueue({ ...source, lifecycle: { state: "queued" } }).state, "inserted");
+      const claimed = h.database.authority.runs.claimNext({ workflow: source.envelope.workflow,
+        workerId: "fixture-owner", now: h.clock.now().toISOString() });
+      assert.ok(claimed.state === "claimed");
+      assert.equal(h.database.authority.runs.transition({ runId: source.envelope.runId, expectedVersion: claimed.run.version,
+        claim: { workerId: "fixture-owner", claimGeneration: claimed.run.claimGeneration },
+        lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() },
+        now: h.clock.now().toISOString() }).state, "applied");
+      const { runId: _runId, runAttempt: _attempt, currentAttemptId: _attemptId, bindingProof: _binding,
+        bindingProofDigest: _bindingDigest, fencedAt: _fenced, confirmedAt: _confirmed,
+        completionProof, ...identity } = originalIntent;
+      h.database.authority.writeIntents.recordObservedPresent({ ...identity, status: "observed-present",
+        observedAt: originalIntent.confirmedAt,
+        observedProof: { ...completionProof, value: { transactionId: "T123456", documentNumber } } });
+      const storedSource = h.database.authority.runs.get(source.envelope.runId); assert.ok(storedSource);
+      const selectedStepKeys = h.descriptor.timeline.map((step) => step.key);
+      const wire = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345", documentNumber }],
+        dryRun: true, selectedStepKeys, rerunSource: { runId: storedSource.envelope.runId,
+          expectedVersion: storedSource.version, intent: "rerun", selectedStepKeys } });
+      const stored = h.database.authority.startPlans.get(wire.startPlanId); assert.ok(stored);
+      assert.ok(wire.rerun);
+      assert.equal(wire.rerun.warnings[0].businessKeyDigest, "withheld-protected-input");
+      assert.ok(!JSON.stringify(wire.rerun).includes(documentNumber));
+      assert.ok(!JSON.stringify(wire.rerun).includes(originalIntent.idempotencyKeyDigest));
+      assert.equal(stored.rerun?.warnings[0].businessKeyDigest, originalIntent.idempotencyKeyDigest);
+      const accepted = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345", documentNumber }],
+        dryRun: true, selectedStepKeys, warningAcknowledgment: wire.rerun.warningDigest,
+        rerunSource: { runId: storedSource.envelope.runId, expectedVersion: storedSource.version, intent: "rerun", selectedStepKeys } });
+      const preview = h.start(accepted);
+      h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456", documentNumber } });
+      const result = await h.execute(preview);
+      assert.equal(result.state, "done", JSON.stringify(result.state === "failed" ? h.database.authority.failures.get(result.failureId) : result));
+      assert.equal(h.world.events.filter((event) => event.startsWith("commit-click")).length, 0);
+      assert.deepEqual(h.database.authority.writeIntents.listByRun(preview.envelope.runId), []);
+      const livePlan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345", documentNumber }],
+        dryRun: false, selectedStepKeys, warningAcknowledgment: wire.rerun.warningDigest,
+        rerunSource: { runId: storedSource.envelope.runId, expectedVersion: storedSource.version, intent: "rerun", selectedStepKeys } });
+      const repeat = h.start(livePlan);
+      h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456", documentNumber } });
+      h.world.commitOutput = { transactionId: "T234567", documentNumber };
+      const committed = await h.execute(repeat);
+      assert.equal(committed.state, "done", JSON.stringify(committed.state === "failed" ? h.database.authority.failures.get(committed.failureId) : committed));
+      const newIntent = h.database.authority.writeIntents.listByRun(repeat.envelope.runId)[0];
+      assert.ok(newIntent.status === "committed" && newIntent.occurrence);
+      assert.equal(newIntent.occurrence.businessKeyDigest, originalIntent.idempotencyKeyDigest);
+      assert.equal(h.world.events.filter((event) => event.startsWith("commit-click")).length, 1);
+      return wire.rerun;
+    };
+    assert.deepEqual(await proposal("12345678"), await proposal("87654321"));
+  });
   it("warning acknowledgment spends no lifecycle identity; final submission commits afresh and exact replay publishes once", async () => {
     const h = harness(); const source = await completed(h);
     const original = canonicalJsonStringify({ run: source,

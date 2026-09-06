@@ -88,7 +88,7 @@ export function valueFreeProtectedData(value: unknown, bindings?: readonly Prote
         return [key, safe];
       }
       if (ownBindings.some(({ inputPath }) => inputPath !== "timekeeperName")
-        && ["idempotencyKeyDigest", "businessKeyDigest", "occurrenceKeyDigest"].includes(key)) {
+        && ["idempotencyKey", "idempotencyKeyDigest", "businessKeyDigest", "occurrenceKeyDigest"].includes(key)) {
         return [key, "withheld-protected-input"];
       }
       if (PROTECTED_COMMENT_FIELDS.has(key) && typeof child === "string") {

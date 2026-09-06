@@ -1,4 +1,5 @@
-import { valueFreeProtectedData } from "../protected-input.js";
+import { ProtectedInputBindingsSchema, PublicTransactionKeyDigestSchema, publicTransactionKeyDigest,
+  valueFreeProtectedData, type ProtectedInputBinding } from "../protected-input.js";
 import { z } from "zod";
 import { CommandIdSchema, FingerprintSchema, NodeIdSchema, PositiveIntSchema, RunIdSchema, TaskIdSchema, WriteIntentIdSchema, BrowserSystemIdSchema } from "../ids.js";
 import { canonicalJsonStringify } from "../canonical-json.js";
@@ -36,8 +37,19 @@ export const RerunPlanSchema = z.strictObject({
   warnings: z.array(RepeatWarningSchema),
   warningDigest: FingerprintSchema,
   acknowledgment: FingerprintSchema.optional(),
+  protectedBindings: ProtectedInputBindingsSchema.optional(),
 });
 export type RerunPlan = z.infer<typeof RerunPlanSchema>;
+
+/** Private consent retains natural keys; the browser receives only the permitted reference. */
+export const PublicRerunPlanSchema = RerunPlanSchema.extend({
+  warnings: z.array(RepeatWarningSchema.extend({ businessKeyDigest: PublicTransactionKeyDigestSchema })),
+});
+export function projectRerunPlanForOperator(plan: RerunPlan): z.infer<typeof PublicRerunPlanSchema> {
+  const withheld = plan.protectedBindings?.some(({ inputPath }) => inputPath !== "timekeeperName") === true;
+  return PublicRerunPlanSchema.parse({ ...plan, warnings: plan.warnings.map((warning) => ({ ...warning,
+    businessKeyDigest: publicTransactionKeyDigest(warning.businessKeyDigest, withheld) })) });
+}
 
 /** Only final plan consumption stamps a command-bound execution authorization. */
 export const SourceBoundRunSchema = z.strictObject({
@@ -51,6 +63,7 @@ export const RepeatOccurrenceSchema = z.strictObject({
   sourceVersion: PositiveIntSchema,
   warningDigest: FingerprintSchema,
   baselineEvidence: z.array(z.strictObject({ writeIntentId: WriteIntentIdSchema, evidenceDigest: FingerprintSchema })).min(1),
+  protectedBindings: ProtectedInputBindingsSchema.optional(),
 });
 export type RepeatOccurrence = z.infer<typeof RepeatOccurrenceSchema>;
 
@@ -60,8 +73,9 @@ export function repeatOccurrenceKey(businessKeyDigest: string, confirmationComma
 }
 
 /** Exact schema-bound proof identity, independent of intent storage status. */
-export function repeatEvidenceDigest(intent: Readonly<{ status: string; completionProof?: SchemaBoundCanonicalValue; observedProof?: SchemaBoundCanonicalValue }>): string {
+export function repeatEvidenceDigest(intent: Readonly<{ status: string; completionProof?: SchemaBoundCanonicalValue; observedProof?: SchemaBoundCanonicalValue }>,
+  bindings?: readonly ProtectedInputBinding[]): string {
   const proof = intent.status === "committed" ? intent.completionProof : intent.status === "observed-present" ? intent.observedProof : undefined;
   if (proof === undefined) throw new Error("repeat warning requires settled evidence");
-  return sha256Hex(canonicalJsonStringify(valueFreeProtectedData(proof)));
+  return sha256Hex(canonicalJsonStringify(valueFreeProtectedData(proof, bindings)));
 }

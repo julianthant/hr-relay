@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../base/workflow.js";
-import { CURRENT_ARCHIVE_SCHEMA_GENERATION } from "../domain/archive/model.js";
+import { archivedRunReferenceFingerprint, CURRENT_ARCHIVE_SCHEMA_GENERATION } from "../domain/archive/model.js";
 import {
   RunExistenceSchema,
   type RunExistence,
@@ -13,6 +13,7 @@ import {
   type RunLifecycleCommandOperationSchema,
 } from "../domain/commands.js";
 import { canonicalJsonStringify } from "../domain/canonical-json.js";
+import { retainedRunProtectedBindings, valueFreeProtectedData } from "../domain/protected-input.js";
 import type { Clock } from "../domain/clock.js";
 import type { RuntimeConfigClaimToken } from "../domain/config/runtime-generation.js";
 import { deriveItemId, deriveTraceId, lifecycleCommandId, type IdFactory } from "../domain/identifiers.js";
@@ -762,8 +763,9 @@ export class RunRecordService {
           ? { state: "absent", runId: request.archivedRunId }
           : refused({ reason: "source-deleted" });
       }
-      if (archived.contentDigest !== request.contentDigest) {
-        return refused({ reason: "schema-mismatch", digest: request.contentDigest });
+      const archiveFingerprint = archivedRunReferenceFingerprint(archived);
+      if (archiveFingerprint !== request.archiveFingerprint) {
+        return refused({ reason: "schema-mismatch", digest: request.archiveFingerprint });
       }
       const create = request.create;
       if (descriptor.id !== archived.workflowId || create.workflow !== descriptor.id) {
@@ -772,7 +774,7 @@ export class RunRecordService {
       if (create.descriptorVersion !== descriptor.version
         || create.contractFingerprint !== descriptor.contractFingerprint
         || canonicalJsonStringify(create.input.raw) !== canonicalJsonStringify(archived.input.raw)) {
-        return refused({ reason: "schema-mismatch", digest: archived.contentDigest });
+        return refused({ reason: "schema-mismatch", digest: archiveFingerprint });
       }
       if (!this.runtimeMatches(create.runtimeConfig)
         || create.configFingerprint !== create.runtimeConfig.configFingerprint) {
@@ -913,7 +915,7 @@ export class RunRecordService {
       if (current.run.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: current.run.version });
       if (current.run.lifecycle.state !== "terminal") return refused({ reason: "not-terminal" });
       if (repositories.archivedRuns.bindingMismatches(request.archive).length !== 0) {
-        return refused({ reason: "schema-mismatch", digest: request.archive.contentDigest });
+        return refused({ reason: "schema-mismatch", digest: archivedRunReferenceFingerprint(request.archive) });
       }
       repositories.archivedRuns.insert(request.archive);
       const updated = repositories.runs.advanceRevision({ runId: request.archive.runId,
@@ -960,7 +962,7 @@ export class RunRecordService {
 
   private deleteTree(request: Readonly<{ commandId: string; runId: string }> & (
     | Readonly<{ origin: "queue"; expectedVersion: number }>
-    | Readonly<{ origin: "archive"; contentDigest: string }>
+    | Readonly<{ origin: "archive"; archiveFingerprint: string }>
   )): RunDeletionOutcome {
     return this.dependencies.database.withAuthorityTransaction((repositories): RunDeletionOutcome => {
       const journal = this.inspectJournal(
@@ -982,8 +984,8 @@ export class RunRecordService {
         if (existence.disposition === "archived") return refused({ reason: "use-archive-door" });
       } else {
         const archive = repositories.archivedRuns.get(request.runId);
-        if (archive === undefined || archive.contentDigest !== request.contentDigest) {
-          return refused({ reason: "schema-mismatch", digest: FingerprintSchema.parse(request.contentDigest) });
+        if (archive === undefined || archivedRunReferenceFingerprint(archive) !== request.archiveFingerprint) {
+          return refused({ reason: "schema-mismatch", digest: FingerprintSchema.parse(request.archiveFingerprint) });
         }
       }
       if (run.envelope.parent !== undefined) return refused({ reason: "is-member" });
@@ -1034,8 +1036,23 @@ export class RunRecordService {
   ): LifecycleJournalInspection {
     const parsedFence = RunLifecycleCommandFenceSchema.parse(fence);
     const commandId = CommandIdSchema.parse((request as { commandId?: unknown }).commandId);
+    let fingerprintInput = request;
+    if (operation === "create") {
+      const create = CanonicalCreateRunRequestSchema.parse(request);
+      fingerprintInput = valueFreeProtectedData(create, retainedRunProtectedBindings({
+        envelope: { workflow: create.workflow }, input: create.input,
+      }));
+    } else if (operation === "relaunch") {
+      const relaunch = CanonicalRelaunchRequestSchema.parse(request);
+      fingerprintInput = valueFreeProtectedData(relaunch, retainedRunProtectedBindings({
+        envelope: { workflow: relaunch.create.workflow }, input: relaunch.create.input,
+      }));
+    } else if (operation === "archive") {
+      const archive = CanonicalArchiveRequestSchema.parse(request);
+      fingerprintInput = { ...archive, archive: archivedRunReferenceFingerprint(archive.archive) };
+    }
     const requestFingerprint = FingerprintSchema.parse(sha256Hex(
-      `hrauto:run-lifecycle-command:v1\0${operation}\0${canonicalJsonStringify(request)}`,
+      `hrauto:run-lifecycle-command:v1\0${operation}\0${canonicalJsonStringify(fingerprintInput)}`,
     ));
     const existing = repositories.lifecycleJournal.getCommand(commandId);
     const audit = repositories.lifecycleJournal.findAuditByCommand(commandId);

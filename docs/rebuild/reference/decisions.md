@@ -2065,6 +2065,13 @@ ref clock-config-secrets §D331.6 and ref write-safety's protected-source except
 permanent transaction identity privately and withhold protected-derived digests from public sinks.
 Doc 01 Task 5 records the corresponding narrow implementation admission.
 
+D331 historical archive lifecycle identity amendment (operator-approved 2026-09-06): canonical
+relaunch/delete retain the safe Archive citation instead of the private historical content digest;
+the existing lifecycle journal binds that reference and permitted input facts for exact replay after
+source deletion. Private archive authentication, fences and transaction boundaries remain intact;
+no new table, verb or screen. Normative owners: ref clock-config-secrets §D331.6 and
+ref dashboard-surfaces §D330.4/§D330.5; doc 01 Task 5 records implementation and proofs.
+
 ## Phase 1.6 parity admission clarification (2026-09-04)
 
 Operator choice 3 A, expanded by explicit approval of verified displayed hash-only changes, permits

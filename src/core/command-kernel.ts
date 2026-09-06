@@ -2856,7 +2856,7 @@ function executeArchivedRunDelete(
   const retained = requireRun(repositories, request, archived.runId);
   const order = deleteTreeOrder(repositories, request, retained);
   const outcome = dependencies.lifecycle.deleteArchived({ commandId: lifecycleCommandId("operator-delete-archive", request.commandId),
-    runId: archived.runId, contentDigest: archived.contentDigest });
+    runId: archived.runId, archiveFingerprint: request.target.archiveFingerprint });
   if (outcome.state === "refused") lifecycleRefusal(request, outcome.refusal);
   if (outcome.state !== "deleted" && outcome.state !== "applied-already") throw new Error(`archive delete: ${outcome.state}`);
   return applied(request, order.map((run) => runTarget(run.envelope.runId)), []);
@@ -2965,7 +2965,7 @@ function executeArchivedRunRelaunch(
     descriptor,
     {
       commandId: request.commandId, actorId: request.requestedBy,
-      relaunch: { archivedRunId: archived.runId, contentDigest: archived.contentDigest },
+      relaunch: { archivedRunId: archived.runId, archiveFingerprint: request.target.archiveFingerprint },
       workflow: record.workflowId,
       descriptorVersion: record.descriptorVersion,
       contractFingerprint: record.descriptorFingerprint,

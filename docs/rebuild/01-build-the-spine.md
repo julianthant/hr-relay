@@ -1944,6 +1944,101 @@ work and Task 1.6.6 remain excluded. The temporary handoff was consumed and remo
 remaining decision was approved and its surviving facts were recorded here. Manual servers and
 browser sessions are stopped; the owned checkout stays stable for review.
 
+**Task 5 review repairs (2026-09-06; awaiting renewed independent review).** Fresh read-only
+`/root/sup_review_settings_consumers` (`sup_review`, Sol 5.6/high) returned **CHANGES REQUIRED**
+on `04331f0fb0ef73f2de809653739fc202ccabb94d` (tree
+`f7e70e0d539535a727542aeb113dc871e8b10baa`) against the approved base. Four findings concerned
+archive raw-input hashing, archive citation integrity, settlement sibling proof/key hashing, and
+rerun proof/key disclosure. Its tentative terminal-dependency concern was disproved: terminal
+records hold coordinates and protected-aware output digests, not raw checkpoint outputs.
+
+The repair candidate keeps the task open for renewed review. Archive digests
+and citations bind both retained input copies using source metadata, plus the permitted frozen
+projection; already-withheld diagnostic blobs cannot become indirect value comparators. Every
+archive reference authenticates the retained private digest before index/detail/delete/relaunch;
+historical raw digests remain readable for authentication only. Settlement fingerprinting obtains
+retained bindings inside the existing authority transaction and applies them across sibling proof,
+output and private-key copies. Exact durable settlement replay still compares private records.
+Rerun plans retain private natural-key digests while their public schema uses the closed withheld
+marker. Source metadata binds safe proof facts, warning and plan fingerprints, preview consent,
+the repeat occurrence and the final atomic fence. Historical input metadata is retained rather
+than resolved from current settings. No SQL DDL or lifecycle verb changed.
+
+Focused negative controls reproduced each finding: protected raw/archive diagnostic changes,
+safe-content/corrupt-reference acceptance, protected settlement proof/private-key changes, public
+rerun key disclosure, preview consent and occurrence-fence context loss. Restoring the corrections
+passed the combined nine-file, 151-test set, including archive/capture/retention, restart no-repeat,
+source eligibility and repeat settlement. Logs use `/tmp/hr-settings-fix-`; the `*-red.log` files
+record intended failures and `combined.log` the restored combined pass. Typecheck and lint passed
+after correcting test-only branded types. Typecheck and lint passed staged tree
+`c50b9d9a2b145b925733bf4c45cb7d8655268726`; full coverage was interrupted when the additional
+lifecycle fingerprint issue below was found, and is not passing evidence. Its log is
+`/tmp/hr-settings-repaired-coverage-interrupted.log`. The complete candidate gate block must be
+renewed after the remaining repair; prior tree identity and outcomes are recorded in
+`/tmp/hr-settings-repaired-identity.log` and matching gate logs. The prior review
+findings remain pending reviewer acceptance; integration and owned cleanup remain unfinished.
+
+The repaired reference update passed 269 cases. Compared with the reviewed candidate, all 210
+a11y/metadata pairs and 31 PNG changes contain only regenerated code hashes; the a11y audit has
+zero non-hash differences and counted pixels lie inside displayed hash glyphs. Against the approved
+base, the total remains 210 pairs / 49 PNGs, with exactly twelve Start removals and six approved
+inspector count changes. Logs: `/tmp/hr-settings-fix-parity-update.log`,
+`/tmp/hr-settings-fix-parity-scope.log`, `/tmp/hr-settings-full-parity-scope.log`, and
+`/tmp/hr-settings-fix-parity-counted-pixel-bounds.json`. Full assertion parity follows in the serial
+gate block; no additional visual allowance was used.
+
+**Historical archive lifecycle amendment and repair (operator-approved 2026-09-06).**
+The independent reviewer confirmed that create/archive fingerprint projection was admitted by step 3,
+while retaining a safe archive identity in relaunch/delete requests crossed the lifecycle identity
+exclusion. The operator explicitly approved that narrow extension. D331.6 and D330.4/D330.5 now bind
+canonical relaunch/delete to the safe `archiveFingerprint` already cited by Archive, instead of the
+private historical content digest. First apply authenticates the retained archive before matching
+that reference. The existing lifecycle journal retains its safe commitment for exact replay after
+source deletion; differing references, ordinary request facts and original fences still refuse.
+Create/relaunch projection applies retained bindings across raw/parsed input; archive commitments
+use authenticated permitted content. Archive mismatch refusals return the safe reference. Private
+archive authentication, immutable historical records, lifecycle edges, CAS and transaction boundaries
+remain intact; no SQL DDL, new verb, screen or protected-digest hash fallback is admitted.
+
+The create/archive intended-red and 76-test neighboring pass are recorded in
+`/tmp/hr-settings-fix-lifecycle-input-{red,green}.log`. Historical relaunch/delete value-rotation and
+archive refusal negative controls are `/tmp/hr-settings-lifecycle-{archive,refusal}-red.log`.
+The restored combined lifecycle/archive/settlement/rerun set passes six files and 145 tests in
+`/tmp/hr-settings-lifecycle-combined.log`, including replay after source deletion, divergence and
+zero generation change on replay/refusal. Existing journal corruption and archive divergence
+assertions remain intact. The temporary handoff was consumed after verifying its base, prerequisite,
+owned dirty state and gate evidence; surviving facts are recorded here. Task 5 remains open for
+full candidate gates, regenerated provenance, renewed independent review, integration and cleanup.
+
+**Renewed candidate record (2026-09-06; awaiting independent review).** The commit containing this
+record repairs the original four findings and the approved lifecycle identity extension against
+base `247cf28ff2e3315699333e89536ee36b797ee503`, retaining prerequisite
+`5849220cfcda7f87a557488f1d6b2e9bdcb9d25e`. The serial candidate gate block and exact staged-tree
+identity are recorded under `/tmp/hr-settings-review-ready-` (`identity.log` plus typecheck, lint,
+coverage, manifest, stores, roadmap, architecture, parity and diff logs). The full block must pass
+before this candidate is committed and submitted to a fresh independent reviewer. The review
+selection rule requires a fresh complete review after a lifecycle identity amendment; all prior
+findings remain in the reconciliation ledger above, rather than being dropped or reset.
+
+The latest provenance refresh passes 269 cases. Its audit against the reviewed candidate shows
+210 a11y/metadata pairs, 31 PNGs, zero non-hash a11y differences, and counted pixel changes only
+inside code-hash glyphs, including two representative visual inspections. Against the approved base,
+scope remains 210 pairs / 49 PNGs, with twelve Start removals and six approved inspector counts only.
+Evidence: `/tmp/hr-settings-lifecycle-parity-update.log`, `lifecycle-parity-scope.log`,
+`lifecycle-full-parity-scope.log` and `lifecycle-parity-counted-pixel-bounds.json` under `/tmp/hr-settings-`.
+Full coverage on the preceding staged tree passed 5,321 tests and exposed two capture-route fixtures
+that assumed a historical raw seal equaled the new protected-aware digest. The fixtures now prove a
+valid historical raw seal is accepted at the real HTTP boundary before changing only the media type;
+the existing unsafe-media, error-classification and zero-byte-open assertions remain unchanged.
+The three-file, 73-test neighboring set passes in `/tmp/hr-settings-capture-fixture-green.log`;
+the original full-run failure is `/tmp/hr-settings-renewed-coverage.log`. No production code or
+reference hash changed for this fixture correction.
+
+All 58 attributable retained test scratch roots were rechecked for owner identity and dead process
+group, then removed; `/tmp/hr-settings-scratch-cleanup.json` records the exact paths. No owned manual
+browser/BFF remains. Integration, final gates, completion marking and owned branch/worktree removal
+remain pending independent PASS.
+
 ### Task 6 · Prove upgrade, rollback, recovery, and compatibility deletion
 <!-- roadmap: p1f-migration-proof -->
 

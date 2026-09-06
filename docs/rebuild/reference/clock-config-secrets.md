@@ -820,6 +820,18 @@ The rules, each a proof 1.6 owes (§D331.11):
    values and old derived digests are not newly served. This is the narrow exception to mandatory
    digest presentation in ref write-safety; it is not an exception permitting public protected data.
 
+   **Historical archive lifecycle identity (operator-approved 2026-09-06, Task 1.6.5).**
+   Canonical relaunch/delete requests retain the value-free `archiveFingerprint` already cited by
+   Archive, never its private historical `contentDigest`. The lifecycle service authenticates the
+   retained private content before matching that reference on first apply. Its existing journal
+   commits the safe reference and permitted request facts; relaunch/create input projection applies
+   retained protected bindings across both raw and parsed copies. Archive command commitments use
+   the authenticated permitted archive projection, excluding already-withheld diagnostic blobs.
+   Exact replay of these requests remains read-only after source deletion; a different reference,
+   ordinary request fact or original fence refuses. Protected bytes and historical derived digests
+   neither enter these commitments nor appear in refusals. No raw-digest fallback, secondary hash,
+   new table, run verb or screen is admitted. Historical private archive records remain unchanged.
+
 7. **Clear is a write.** `{ clear: true }` removes the entry and retires its `valueId`; it is
    journaled, CAS-fenced and revision-advancing like a set. **Every protected row has a per-name
    value schema** the apply arm and the accessor share: the canaries keep `KualiDocumentNumberSchema`

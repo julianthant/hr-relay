@@ -4127,6 +4127,16 @@ both journal rows in the mutation's transaction, so the whole operation advances
 once. Refusals write neither row. No DDL is added: schema v31 remains solely the relaunch-lineage
 migration in §D330.9.
 
+**Protected archive identity amendment (operator-approved 2026-09-06, D331).** The commitment above
+uses the value-free request projection for protected input. Canonical `relaunch` and `deleteArchived`
+requests carry `archiveFingerprint`, the safe Archive citation, instead of private `contentDigest`.
+First apply authenticates retained archive content before matching the citation; the existing journal
+binds that citation and safe request facts so exact replay still works after source deletion.
+Different citations, ordinary facts or original fences remain divergent. Create/relaunch projections
+bind retained protected identities across raw and parsed input; archive commitments bind the permitted
+authenticated frozen projection. Private historical digests are neither rehashed nor returned in
+refusals. This narrow extension changes no verb, table, lifecycle edge, CAS or transaction boundary.
+
 ###### D330.5 — the typed operation set and its failure modes
 
 The service exposes exactly this closed set. Every operation is a total function returning a closed
@@ -4146,9 +4156,9 @@ every refusal names the field or state that refused.
 | `requeue` | `expectedVersion` or recovery admission; state claimed/validating/running with expired heartbeat, or `terminal/interrupted` | `→ queued` with `requeuedFrom ∈ {reassign, bump, recovery, provider-capacity}`; `claimGeneration` untouched | `conflict` · `illegal-transition` · `heartbeat-live` |
 | `retry` / `restart` | `expectedVersion`; source `terminal` and not `parked-write`-derived; source not `deleted` | internal compatibility operations during the 1.6 cutover: `create` of the SAME item's next attempt with `retryOf` (§D330.7). D334's operator Rerun surface instead confirms a source-bound start plan, allowing authoritative input/omission changes before `create`; 3.1 exposes no direct dashboard call to these operations | `conflict` · `invalid-state` · `source-deleted` |
 | `archive` | `expectedVersion`; state `terminal`; disposition `live` | insert `archived_runs` bound to the row with `contentDigest`; `version+1` | `conflict` · `not-terminal` · `already-archived` |
-| `relaunch` | archive `contentDigest` cited exactly; workflow still registered | `create` of a FRESH run on the current descriptor (§D330.7); `archive_relaunches` lineage row | `schema-mismatch{digest}` · `workflow-unregistered` |
+| `relaunch` | authenticated archive `archiveFingerprint` cited exactly (D331 projection); workflow still registered | `create` of a FRESH run on the current descriptor (§D330.7); `archive_relaunches` lineage row | `schema-mismatch{digest}` · `workflow-unregistered` |
 | `delete` | `expectedVersion`; `terminal`; disposition `live`; not a member; every tree member `terminal` | D308 cascade behind the tombstone (§D330.8) | `conflict` · `not-terminal` · `is-member` · `tree-non-terminal{runId}` · `use-archive-door` |
-| `deleteArchived` | archive `contentDigest` cited exactly; retained row `terminal` | D308 cascade behind the tombstone, origin `archive` | `schema-mismatch{digest}` · `tree-non-terminal` |
+| `deleteArchived` | authenticated archive `archiveFingerprint` cited exactly (D331 projection); retained row `terminal` | D308 cascade behind the tombstone, origin `archive` | `schema-mismatch{digest}` · `tree-non-terminal` |
 | `purge` | retention deadline passed for an EVIDENCE class | removes evidence with declared retention only (§D330.8); never a lifecycle row or tombstone | `retention-not-due` |
 
 As-built, `claimNext`, `terminalize` and the CAS helpers THROW for most of these arms; converting
