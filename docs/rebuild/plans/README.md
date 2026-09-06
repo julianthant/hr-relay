@@ -1,22 +1,43 @@
 # Rebuild phase plans
 
-This folder mirrors the existing roadmap: one folder per Phase 0–6, one Markdown file per
-subphase, and one overview per phase. The [roadmap](../../roadmap/roadmap.md) owns sequencing;
-these files own execution plans, tasks, evidence and exit criteria. Requirements remain in
+This folder mirrors the roadmap: one folder per Phase 0–6, one folder per subphase, and a
+`README.md` overview at each level. The [roadmap](../../roadmap/roadmap.md) owns sequencing;
+these folders own execution plans, tasks, evidence and exit criteria. Requirements remain in
 [`reference/`](../reference/); workflow migration records remain in [`migrations/`](../migrations/).
 
 ## Find or write a plan
 
-For `/phase-plan`, follow the assigned roadmap node's `doc:` binding to its subphase file.
-Persist the complete approved assignment in that file's existing task section. Do not create a
-second per-task plan or put new plans at the rebuild root. Create a new subphase file only when
-the owning roadmap admits that subphase; preserve Phase 4's verification and approval boundary.
+For `/phase-plan`, follow the assigned roadmap node's `doc:` binding. Read the subphase overview
+for shared scope, dependencies, decisions and gates, then the owning task file when one exists.
+Persist the complete approved assignment and its evidence at that one owner. Do not duplicate
+an assignment in both the overview and a task file or create a separate competing plan.
 
-Filenames use a roadmap phase label, including its decimal or lettered part and
-a descriptive slug: `phase-1/1.6-implement-canonical-run-and-settings-authorities.md`,
-`phase-3/3.1-finish-the-dashboard.md`, `phase-5/5A-close-cutover-readiness-gaps.md`.
-`README.md` holds phase-wide summaries, decisions and exit criteria. Subphase task labels,
-roadmap node IDs, append-only journals and recorded statuses survive a move unchanged.
+Every subphase has a folder named `<roadmap-label>-<descriptive-slug>/`. Small subphases keep their
+whole plan in `README.md`. Split a large subphase at existing task boundaries into
+`task-<number>-<descriptive-slug>.md`; retain parallel labels such as `task-2-1-…`. Existing unnumbered
+work or supporting evidence may use descriptive topic filenames without inventing task numbers.
+The overview links the extracted files and retains shared context and exit criteria. Split by
+coherent responsibility, not a fixed line count. Section references in split plans may name a
+sibling file; use the overview's links and roadmap binding to find the owner.
+
+```text
+phase-1/
+├── README.md
+├── 1.1-guardrails-and-strict-domain/
+│   └── README.md
+└── 1.6-implement-canonical-run-and-settings-authorities/
+    ├── README.md
+    ├── task-1-land-the-schema-floor.md
+    ├── task-2-1-implement-the-canonical-run-record-service.md
+    └── …
+```
+
+A bare phase binding such as `doc: 1` names the phase overview. `doc: 1.6` names the subphase
+README; `doc: 1.6/task-1-land-the-schema-floor` names its task file. A `§` heading selector still
+names a section inside that exact file. After extraction, update affected bindings and links,
+keep every roadmap tag/status block and journal at its original content owner, and regenerate
+the roadmap. New subphases require roadmap admission; Phase 4's verification and approval boundary
+is unchanged. Node IDs, task labels, recorded statuses and append-only evidence survive moves.
 
 | Phase | Subphases |
 | --- | --- |
@@ -32,7 +53,7 @@ roadmap node IDs, append-only journals and recorded statuses survive a move unch
 
 The flat phase files were split on 2026-09-06. Frozen history, source comments, pinned commit/path
 citations and append-only evidence retain their original text. Resolve those earlier paths through
-this table, then find the named section within that phase's subphase files. When inspecting a pinned
+this table, then find the named section within that phase's subphase folders. When inspecting a pinned
 commit, use the path as it existed at that commit.
 
 | Former file under `docs/rebuild/` | Current home |
@@ -40,12 +61,17 @@ commit, use the path as it existed at that commit.
 | `00-design-the-foundation.md` | [phase-0](phase-0) |
 | `01-build-the-spine.md` | [phase-1](phase-1) |
 | `02-prove-writes-build-the-tails.md` | [phase-2](phase-2) |
-| `03.2-finish-workflow-authoring.md` | [phase-3/3.2-finish-workflow-authoring.md](phase-3/3.2-finish-workflow-authoring.md) |
-| `03.1-finish-the-dashboard.md` | [phase-3/3.1-finish-the-dashboard.md](phase-3/3.1-finish-the-dashboard.md) |
-| `03.4-co-operate-with-claude.md` | [phase-3/3.4-co-operate-with-claude.md](phase-3/3.4-co-operate-with-claude.md) |
-| `03.3-accept-person-lookup-and-separations.md` | [phase-3/3.3-accept-person-lookup-and-separations.md](phase-3/3.3-accept-person-lookup-and-separations.md) |
-| `04-close-the-deferrals.md` | [phase-5/5A-close-cutover-readiness-gaps.md](phase-5/5A-close-cutover-readiness-gaps.md) |
-| `05-cut-over.md` | [phase-5/5B-switch-production-authority.md](phase-5/5B-switch-production-authority.md) |
+| `03.2-finish-workflow-authoring.md` | [phase-3/3.2-finish-workflow-authoring/](phase-3/3.2-finish-workflow-authoring/README.md) |
+| `03.1-finish-the-dashboard.md` | [phase-3/3.1-finish-the-dashboard/](phase-3/3.1-finish-the-dashboard/README.md) |
+| `03.4-co-operate-with-claude.md` | [phase-3/3.4-co-operate-with-claude/](phase-3/3.4-co-operate-with-claude/README.md) |
+| `03.3-accept-person-lookup-and-separations.md` | [phase-3/3.3-accept-person-lookup-and-separations/](phase-3/3.3-accept-person-lookup-and-separations/README.md) |
+| `04-close-the-deferrals.md` | [phase-5/5A-close-cutover-readiness-gaps/](phase-5/5A-close-cutover-readiness-gaps/README.md) |
+| `05-cut-over.md` | [phase-5/5B-switch-production-authority/](phase-5/5B-switch-production-authority/README.md) |
 | `06-ship-the-desktop-app.md` | [phase-6](phase-6) |
 
-`04-close-the-deferrals.md` now belongs to 5A; its controlled-desktop-updates section belongs to [6A](phase-6/6A-controlled-desktop-updates.md).
+`04-close-the-deferrals.md` now belongs to 5A; its controlled-desktop-updates section belongs to [6A](phase-6/6A-controlled-desktop-updates/README.md).
+
+The intermediate `plans/phase-N/<subphase>.md` paths now resolve to
+`plans/phase-N/<subphase>/README.md`. For an extracted section, follow the overview link to its
+task/topic file. This mapping also applies to frozen and commit-pinned text; inspect a pinned
+commit using its original path.

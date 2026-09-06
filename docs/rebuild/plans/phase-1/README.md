@@ -300,9 +300,9 @@ three reference-doc sections. D75 closed the former unowned `requestedBy` admiss
 
 ## Subphase plans
 
-- [Phase 1.1 · Guardrails and strict domain](1.1-guardrails-and-strict-domain.md)
-- [Phase 1.2 · Durable authority and workflow model](1.2-durable-authority-and-workflow-model.md)
-- [Phase 1.3 · Execution kernel and write safety](1.3-execution-kernel-and-write-safety.md)
-- [Phase 1.4 · Projection, BFF, and operator shell](1.4-projection-bff-and-operator-shell.md)
-- [Phase 1.5 · Live foundation proof](1.5-live-foundation-proof.md)
-- [Phase 1.6 · Implement canonical run and settings authorities](1.6-implement-canonical-run-and-settings-authorities.md)
+- [Phase 1.1 · Guardrails and strict domain](1.1-guardrails-and-strict-domain/README.md)
+- [Phase 1.2 · Durable authority and workflow model](1.2-durable-authority-and-workflow-model/README.md)
+- [Phase 1.3 · Execution kernel and write safety](1.3-execution-kernel-and-write-safety/README.md)
+- [Phase 1.4 · Projection, BFF, and operator shell](1.4-projection-bff-and-operator-shell/README.md)
+- [Phase 1.5 · Live foundation proof](1.5-live-foundation-proof/README.md)
+- [Phase 1.6 · Implement canonical run and settings authorities](1.6-implement-canonical-run-and-settings-authorities/README.md)

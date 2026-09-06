@@ -1,0 +1,100 @@
+# Phase 0.3 · Redesign single-source runtime authority
+
+Read the [phase overview](../README.md) for shared context, decisions and phase-wide exit criteria.
+
+## 0.3 · Redesign single-source runtime authority
+<!-- roadmap: phase0-authority-reset -->
+
+This is the reopened design part and the next-session starting point. It changes no runtime code.
+Its job is to finish the contracts that 1.6 will implement: one SQLite-backed run-record service is
+the lifecycle authority for queued, current, terminal, archived, and tombstoned runs; one catalog
+and one protected `.tracker/settings/` root own operator-managed local configuration. Provider API
+keys remain the sole `.env` class. Host observations such as D324's primary-display probe remain
+catalogued defaults rather than being copied into a second persisted authority.
+
+### Task 1 · Define the canonical run-record authority
+<!-- roadmap: phase0-run-authority-design -->
+
+- [x] Define stable run identity and typed create/read/update/delete, claim, retry, archive, relaunch,
+  purge, and compare-and-swap transitions. — D330 §D330.1, §D330.3–§D330.5, §D330.7
+- [x] Keep spans, logs, receipts, captures, and artifacts append-only evidence linked to the run;
+  none may decide whether the run exists or what lifecycle state it occupies. — D330 §D330.2, §D330.9
+- [x] Adopt D308's terminal-only physical deletion behind an insert-only tombstone; define queue
+  ordering, first-eligible claim, evidence retention, and direct-table adapter boundaries. — D330 §D330.6, §D330.8, §D330.10–§D330.11
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R01 | Task 1 designed as D330 in ref dashboard-surfaces §D327; no runtime code changed (D326). Tasks 2–4 open.
+
+### Task 2 · Define the canonical settings catalog and root
+<!-- roadmap: phase0-settings-authority-design -->
+
+- [x] Enumerate every leaf once with schema, default, editability, sensitivity, restart scope, and
+  owning consumer. — D331 §D331.1 (the closed row schema and its pairing refusals), §D331.9 (the
+  88-row catalog: 59 ordinary, 7 protected, 5 provider-key families, 1 derived host fact, 16 code-fixed)
+- [x] Supersede D321's single-file layout with one protected `.tracker/settings/` directory while
+  retaining its state-root/database-journal coupling; move username, password, timekeeper identity,
+  local canary inputs, overrides, timeouts, paths, and worker defaults there. — D331 §D331.2
+  (source classes), §D331.3 (the directory: 0700, one lock, two 0600 documents, prepare/rollback per
+  target, backups copy the ordinary half only), §D331.4 (two SQLite singletons; "outlives its
+  database" refuses per document), §D331.12 items 3–4
+- [x] Keep only provider API keys in `.env`; preserve D324's host-derived display as a catalogued
+  default; expose protected values through write-only inputs and presence/revision readback. — D331
+  §D331.5 (`apply-settings` + `apply-protected-settings`, marked-envelope journal), §D331.6
+  (`{present, valueId, updatedAt}` readback; never in Config, fingerprint, snapshot, token, wire,
+  evidence, backup or child environment), §D331.7 (`generation`/`next-use`/`next-start`/`process`;
+  protected revision is not a claim-token field), §D331.8 (`settings > default`; retired keys refuse
+  by name; `.env` allowlist = provider families)
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R02 | Task 2 designed as D331 in ref clock-config-secrets §D327; no runtime code changed (D326). Tasks 3–4 open.
+
+### Task 3 · Design migration, compatibility, and recovery
+<!-- roadmap: phase0-authority-migration-design -->
+
+- [x] Define an idempotent upgrade from existing SQLite rows, `settings.json` sidecars, `.env`
+  leaves, and local canary inputs without copying provider API keys or erasing run evidence. — D332
+  §D332.1 (`cli storage upgrade`, stopped system, never at boot), §D332.3 (prepare → one exclusive
+  transaction → settle), §D332.5 (`upgradeId`, `already-upgraded`, the resume arms), §D332.7
+  (evidence, snapshots, spans and archive digests byte-identical; ordinals backfilled with
+  provenance), ref clock-config-secrets §D332 settings half (provider families classified by name,
+  never read)
+- [x] Require an explicit verified `cli storage backup` before the upgrade, then use a transactional
+  migration journal and rollback; do not restore the automatic backup cadence retired by D322. —
+  D332 §D332.2 step 10 (the newest verified manifest must re-verify and match the live generation;
+  the command writes no backup), §D332.5 (`authority_upgrades`, one journal inside the database),
+  §D332.4 (transactional vs operator rollback; the pre-upgrade backup plus `upgrades/<id>.rollback.json`);
+  §2.5 items 3–4 carry dated notes and no cadence returns
+- [x] Name temporary adapters, mixed-generation refusals, read-forward rules, and deletion tests. —
+  D332 §D332.9 (policy and roster A0–A8 with expiry phases), ref guards-and-tests §5.2 (each
+  deletion test and intended inventory entries), §D332.6 (the closed boot matrix), §D332.8
+  (read-forward table), §D332.11 (24 proofs)
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R03 | Task 3 designed as D332 in ref dashboard-surfaces §2.5 (primary), ref clock-config-secrets §D332 (settings half) and ref guards-and-tests §5.2 (adapters); no runtime code changed (D326). Task 4 open.
+
+### Task 4 · Close design and issue implementation briefs
+<!-- roadmap: phase0-authority-design-close -->
+
+- [x] Adversarially review identity, concurrency, recovery, redaction, permissions, and migration. —
+  R04's cross-contract pass over D330 × D331 × D332 as one system (twelve seam scenarios; the table is
+  `40683909^:docs/coordinator/phase-0-3-authority-design-c31da5310/reports/r04.md`): eleven findings fixed in the
+  owning text — ref dashboard-surfaces §D332.3 step 2 (prepare/rollback files under the private-file
+  protocol), §D332.4 (backup WRITE records the observed version; READ admits the D290 lineage and
+  `manifestVersion` 1; `protected-entries-written` against the journal's `protectedRevisionAfter`),
+  §D332.5 (basename on wires), §D332.6 (the healthy row's generation activation; the wire mapping of the
+  boot-door verdicts), §D332.11 M25–M27, §D330.8 (`ordinal_source`; `retryOf` over a tombstone), §D330.11
+  #16 (17 triggers); ref clock-config-secrets §D331.3 (as-built manifest note), §D331.6 rule 1 (the
+  pseudonym's public half), §D331.11 P41; ref guards-and-tests §5.2 (A0's two entries; A4's thirteen
+  importers; A5's `providerModelChain` fallback); ref lessons — and ONE deferred to the coordinator as
+  product truth: operator `cancel` of a claimed/running run under §D330.5 (NEEDS COORDINATOR, report item 1)
+- [x] Land every decision in its owning reference contract and `reference/decisions.md` pointer. — every
+  R01–R03 residue item and every R04 finding ends `resolved at <doc §>` or `deferred to <task> because`
+  in the report's resolved-decisions checklist; no new decision was minted (D333 stays free; every fix
+  is a dated amendment inside D330/D331/D332)
+- [x] Bind each 1.6 task to one implementation seam and gate; prove 2.6 and 3.1 consume the contracts
+  without redesigning them. — doc 01 §1.6 (the binding: Task 1 the serial schema floor, wave `2-1`/`2-2`,
+  serial Tasks 3–7, each with seam, gate, order, its share of the 94 proofs and one deletion test; the
+  wave ruling: Tasks 1 and 2 as written were NOT independent, the floor makes them so) and roadmap
+  `p1f-floor`/`p1f-*`; docs 02 §2.6 and 03.1 §Reopened completion tasks (9-2, 9-3, 11-1, 11-2, 11-3,
+  12-1, 12-2) carry dated consumption notes citing the exact contract sections, and their thirteen
+  roadmap nodes cite the contracts on `doc:` — no 2.6/3.1 task text contradicted the contracts; the gap
+  was citation, now closed
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | Task 4 closed: the cross-contract review, the resolved-decisions checklist, the 1.6 binding and the 2.6/3.1 consumption notes are landed; no runtime code changed (D326). 0.3 closes with this task; the open item is the coordinator's `cancel` ruling, needed before 1.6 Task 4.
+> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the coordinator ruled the `cancel` item option A; landed as a dated amendment in ref dashboard-surfaces §D330.3, §D330.5 (the `cancelRequested` request arm, the `cancelling` served status) and §D330.11 #27. Every R04 finding is now closed in its owning spec; nothing is open before 1.6.
+
+0.3 closes only when every checkbox above has durable evidence. The execution order after it is
+**1.6 implementation → 2.6 downstream revalidation → reopened 3.1 dashboard completion**.

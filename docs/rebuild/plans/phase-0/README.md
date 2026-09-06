@@ -195,6 +195,6 @@ test-target registry later landed under R10's names; D329 routes its remaining m
 
 ## Subphase plans
 
-- [Phase 0.1 · Product charter and safety boundaries](0.1-product-charter-and-safety-boundaries.md)
-- [Phase 0.2 · Delivery governance and plan structure](0.2-delivery-governance-and-plan-structure.md)
-- [Phase 0.3 · Redesign single-source runtime authority](0.3-redesign-single-source-runtime-authority.md)
+- [Phase 0.1 · Product charter and safety boundaries](0.1-product-charter-and-safety-boundaries/README.md)
+- [Phase 0.2 · Delivery governance and plan structure](0.2-delivery-governance-and-plan-structure/README.md)
+- [Phase 0.3 · Redesign single-source runtime authority](0.3-redesign-single-source-runtime-authority/README.md)

@@ -2158,7 +2158,8 @@ _phase: 1.6 / 3.1; immediate desktop-only baseline implemented_
 
 ## Operator storage amendment (2026-09-06) — phase-plan folders
 
-The operator requested one folder per Phase 0–6 and one file per existing subphase, with consistent
-names. Owner: [roadmap §Phase plan storage](../../roadmap/roadmap.md#phase-plan-storage-operator-amendment-2026-09-06);
+The operator requested one folder per Phase 0–6, then approved a folder for every subphase with
+a `README.md` overview and task/topic files for large plans, using consistent names and one owner
+for each assignment and its evidence. Owner: [roadmap §Phase plan storage](../../roadmap/roadmap.md#phase-plan-storage-operator-amendment-2026-09-06);
 [the plans index](../plans/README.md) defines current paths and historical lookup. Scope, sequencing,
 admission rules and completion evidence are unchanged.

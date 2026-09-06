@@ -3134,7 +3134,7 @@ implement*. It moved whole to
 unbuildable contract kept inside a live reference doc is read by somebody eventually — and one of
 its sentences (§5.3's `(engine, cutoverGeneration)` stamp) was already being cited from outside the
 block as if it were live. Nothing about it is deleted; §5's live half above is what answers those
-questions now, and `docs/rebuild/plans/phase-5/5B-switch-production-authority.md` owns the phase.
+questions now, and `docs/rebuild/plans/phase-5/5B-switch-production-authority/README.md` owns the phase.
 
 <!-- roadmap: cutover -->
 <!-- roadmap-status: cutover -->

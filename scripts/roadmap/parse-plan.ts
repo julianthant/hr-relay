@@ -28,8 +28,9 @@ import type { Layer, Status } from "./schema.js";
  *     one or more refs joined by " · " (the split happens only before a doc token, so a section may contain " · "). A ref is `<doc>` or `<doc> §<section>`,
  *     and `<doc>` is one of exactly two things:
  *       · a PHASE doc number — `0`–`6`, decimal parts such as `1.6`, or lettered parts such as `5A`,
- *         the actionable `docs/rebuild/plans/phase-N/N[.part|letter]-*.md` docs (the prefix names the phase folder;
- *         a bare phase number names its overview);
+ *         the actionable `docs/rebuild/plans/phase-N/<subphase-directory>/README.md` overviews;
+ *         append `/task-6-name` (a file stem) to bind one task/topic file inside a subphase;
+ *         a bare phase number names `phase-N/README.md`;
  *       · `ref:<slug>` — a spec under `docs/rebuild/reference/`, cited by name
  *         because it is unnumbered: `ref:write-safety`, `ref:decisions`. The
  *         slug is syntactically a kebab-case filename stem; whether that file
@@ -66,18 +67,19 @@ const HEADING_RE = /^(#{2,5}) (.*?)(?: \{#([a-z0-9][a-z0-9-]*)\})?\s*$/;
  * spaces because the phase docs number no headings; it may not carry the ` · `
  * that separates refs, and may not have edge whitespace.
  */
-const DOC_REF_RE = /^((?:[0-6]|[0-3]\.[1-9]\d*|[4-6][A-Z])|ref:[a-z][a-z0-9-]*)(?: §(\S(?:.*\S)?))?$/;
+const DOC_REF_RE = /^([0-6]|(?:[0-3]\.[1-9]\d*|[4-6][A-Z])(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)?|ref:[a-z][a-z0-9-]*)(?: §(\S(?:.*\S)?))?$/;
 // Refs are joined by " · "; a section may itself contain " · " (phase-doc headings mirror node titles such as
 // "Order 0 · person-lookup"), so the split happens only before a DOC TOKEN, never inside a section.
-const DOC_REF_SPLIT_RE = / · (?=(?:(?:[0-6]|[0-3]\.[1-9]\d*|[4-6][A-Z]))(?:\s|$)|ref:[a-z])/;
+const DOC_REF_SPLIT_RE = / · (?=(?:[0-6]|(?:[0-3]\.[1-9]\d*|[4-6][A-Z])(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)?)(?:\s|$)|ref:[a-z])/;
 
 /** Currently admitted phase overviews and subphase docs; the guard requires each file. */
 export const PHASE_DOC_NUMBERS = ["0", "0.1", "0.2", "0.3", "1", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "2", "2.1", "2.2", "2.3", "2.4", "2.5", "2.6", "3", "3.1", "3.2", "3.3", "3.4", "4", "4A", "5", "5A", "5B", "6", "6A", "6B", "6C", "6D", "6E", "6F"] as const;
 
 /** Canonical path pattern for a validated phase document token. */
 export function phaseDocPattern(doc: string): string {
-  const file = doc.length === 1 ? "README.md" : `${doc}-*.md`;
-  return `docs/rebuild/plans/phase-${doc[0]}/${file}`;
+  const [phase = "", leaf] = doc.split("/");
+  const file = phase.length === 1 ? "README.md" : `${phase}-*/${leaf ?? "README"}.md`;
+  return `docs/rebuild/plans/phase-${phase[0]}/${file}`;
 }
 
 interface RawDocRef {
@@ -127,7 +129,7 @@ function parseDocRefs(value: string, lineNo: number): RawDocRef[] {
     if (match === null) {
       fail(
         lineNo,
-        `a doc: ref must be "<doc>" or "<doc> §<section>", refs joined by " · ", where <doc> is a phase doc number (${PHASE_DOC_NUMBERS.join(" ")}) or "ref:<slug>" naming a docs/rebuild/reference/ spec: "${raw}"`,
+        `a doc: ref must be "<doc>" or "<doc> §<section>", refs joined by " · ", where <doc> is a phase doc number (${PHASE_DOC_NUMBERS.join(" ")}) optionally followed by "/<task-or-topic-file-stem>" for a subphase, or "ref:<slug>" naming a docs/rebuild/reference/ spec: "${raw}"`,
       );
     }
     const doc = match[1] ?? "";
