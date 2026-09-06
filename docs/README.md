@@ -11,7 +11,7 @@ A design, finding, or historical live result is not proof of current implementat
 docs/
 ├── roadmap/              Plan source, notation, and generated tracking site
 ├── rebuild/
-│   ├── 00–06*.md         Phase scope, tasks, evidence, and exit criteria
+│   ├── plans/            Phase 0–6 folders; one plan per subphase plus phase overviews
 │   ├── reference/        Contracts, decision pointers, lessons, and store catalog
 │   ├── migrations/       Workflow migration and acceptance records
 │   ├── guides/           Practical instructions grounded in the contracts and code
@@ -26,7 +26,7 @@ docs/
 
 | Work | Start here |
 | --- | --- |
-| Find the assigned phase or task | [Roadmap source](roadmap/roadmap.md), then the phase document linked by its `doc:` binding |
+| Find the assigned phase or task | [Roadmap source](roadmap/roadmap.md), then the subphase file linked by its `doc:` binding; [plans index](rebuild/plans/README.md) |
 | Find a requirement's owner | [D1 ownership map](roadmap/roadmap.md#d1-ownership-map--the-quick-index-concept--owning-doc); `ref <slug>` means `rebuild/reference/<slug>.md` |
 | Understand a numbered decision | [Decision pointer index](rebuild/reference/decisions.md), then its named owner; [operator context](decisions/README.md) explains choices |
 | Add or change a workflow | [Workflow authoring guide](rebuild/guides/workflow-authoring.md), then its [migration record](rebuild/migrations/README.md) |
@@ -50,4 +50,4 @@ prose. [Roadmap notation](roadmap/notation.md) documents the plan bindings.
 The former `docs/migrations/`, `docs/guides/`, and `docs/findings/` folders now live under
 `docs/rebuild/`, with their filenames retained. Source-pinned citations, frozen history, and temporary handoffs may still
 cite those earlier paths. Source comments participate in workflow fingerprints, so their historical
-citations are resolved through this map without changing runtime identities. The phase and reference paths retain their existing bindings.
+citations are resolved through this map without changing runtime identities. Former flat phase paths resolve through the [plans index](rebuild/plans/README.md#earlier-paths); current roadmap bindings name the split files. Reference paths are unchanged.

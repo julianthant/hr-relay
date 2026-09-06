@@ -13,7 +13,7 @@ side of this tree, verified 2026-08-21 against `src/dashboard/surfaces/capture-s
 2026-08-21 standing-surfaces fidelity ledger
 (`9993ab39^:docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` §7, rows CP2, CP6–CP16,
 CP21, CP45; removed with obsolete dashboard plans). D175 rules the PHONE side and built it; nothing ruled the operator side's absence
-(`docs/rebuild/03.1-finish-the-dashboard.md` OPEN question 8). See `README.md` for the standing
+(`docs/rebuild/plans/phase-3/3.1-finish-the-dashboard.md` OPEN question 8). See `README.md` for the standing
 rules; this file did not exist before this pass.
 
 Owning doc for every record below: `docs/rebuild/reference/data-intake-and-edit-data.md` §5.1,

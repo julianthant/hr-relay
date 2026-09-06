@@ -22,14 +22,14 @@ import type { Layer, Status } from "./schema.js";
  *
  * The three binding/journal shapes, in full:
  *
- *   doc: 03.1 §2.1 · ref:write-safety §5 · 00
+ *   doc: 3.1 §2.1 · ref:write-safety §5 · 0
  *     An ATTRIBUTE line (so it sits in the attribute block under the heading,
  *     beside `status:`), legal on a phase, a task or a sub-task. Its value is
  *     one or more refs joined by " · " (the split happens only before a doc token, so a section may contain " · "). A ref is `<doc>` or `<doc> §<section>`,
  *     and `<doc>` is one of exactly two things:
- *       · a PHASE doc number — `00` `01` `02` `03.1` `03.2` `03.3` `03.4` `04` `05` `06`,
- *         the actionable `docs/rebuild/NN-*.md` docs (the number IS the phase,
- *         and phase 3 is four docs, so bare `03` is not one of them);
+ *       · a PHASE doc number — `0`–`6`, decimal parts such as `1.6`, or lettered parts such as `5A`,
+ *         the actionable `docs/rebuild/plans/phase-N/N[.part|letter]-*.md` docs (the prefix names the phase folder;
+ *         a bare phase number names its overview);
  *       · `ref:<slug>` — a spec under `docs/rebuild/reference/`, cited by name
  *         because it is unnumbered: `ref:write-safety`, `ref:decisions`. The
  *         slug is syntactically a kebab-case filename stem; whether that file
@@ -39,7 +39,7 @@ import type { Layer, Status } from "./schema.js";
  *     whitespace: dotted numbers (`5.4`), a range (`5.4–5.6`), or a heading
  *     NAME (`Phase summary`) — the phase docs number no headings, so naming
  *     one is the only way to cite it. Rendered as a muted
- *     `doc 03.1 §2.1 · ref write-safety §5` line under the drawer title.
+ *     `doc 3.1 §2.1 · ref write-safety §5` line under the drawer title.
  *     Absence is legal HERE — presence is a guard's business.
  *
  *   log:
@@ -61,18 +61,24 @@ const LAYER_TOKEN: Record<string, Layer> = { FE: "frontend", BE: "backend", BOTH
 
 const HEADING_RE = /^(#{2,5}) (.*?)(?: \{#([a-z0-9][a-z0-9-]*)\})?\s*$/;
 /**
- * `<doc>` or `<doc> §<section>` — `<doc>` a phase-doc number (`00`…`03.1`…`06`)
+ * `<doc>` or `<doc> §<section>` — `<doc>` a phase-doc number (`0`…`3.1`…`6`)
  * or `ref:<slug>` naming a `docs/rebuild/reference/` spec. The section admits
  * spaces because the phase docs number no headings; it may not carry the ` · `
  * that separates refs, and may not have edge whitespace.
  */
-const DOC_REF_RE = /^(0[0-2]|03\.[1-4]|0[456]|ref:[a-z][a-z0-9-]*)(?: §(\S(?:.*\S)?))?$/;
+const DOC_REF_RE = /^((?:[0-6]|[0-3]\.[1-9]\d*|[4-6][A-Z])|ref:[a-z][a-z0-9-]*)(?: §(\S(?:.*\S)?))?$/;
 // Refs are joined by " · "; a section may itself contain " · " (phase-doc headings mirror node titles such as
 // "Order 0 · person-lookup"), so the split happens only before a DOC TOKEN, never inside a section.
-const DOC_REF_SPLIT_RE = / · (?=(?:0[0-2]|03\.[1-4]|0[456])(?:\s|$)|ref:[a-z])/;
+const DOC_REF_SPLIT_RE = / · (?=(?:(?:[0-6]|[0-3]\.[1-9]\d*|[4-6][A-Z]))(?:\s|$)|ref:[a-z])/;
 
-/** The phase docs, in build order — the only numbers a `doc:` ref may name. */
-export const PHASE_DOC_NUMBERS = ["00", "01", "02", "03.1", "03.2", "03.3", "03.4", "04", "05", "06"] as const;
+/** Currently admitted phase overviews and subphase docs; the guard requires each file. */
+export const PHASE_DOC_NUMBERS = ["0", "0.1", "0.2", "0.3", "1", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "2", "2.1", "2.2", "2.3", "2.4", "2.5", "2.6", "3", "3.1", "3.2", "3.3", "3.4", "4", "4A", "5", "5A", "5B", "6", "6A", "6B", "6C", "6D", "6E", "6F"] as const;
+
+/** Canonical path pattern for a validated phase document token. */
+export function phaseDocPattern(doc: string): string {
+  const file = doc.length === 1 ? "README.md" : `${doc}-*.md`;
+  return `docs/rebuild/plans/phase-${doc[0]}/${file}`;
+}
 
 interface RawDocRef {
   doc: string;

@@ -2155,3 +2155,10 @@ _phase: 1.6 / 3.1; immediate desktop-only baseline implemented_
 | # | Decision | Owning doc |
 |---|---|---|
 | **D340** | **SUPPORT DESKTOP AND LAPTOP DASHBOARD USE; REMOVE MOBILE WORK NOW.** The operator superseded the initial 3.1 deferral with immediate mobile-only proof/coarse-pointer cleanup before 1.6.6. Retain desktop geometry, accessibility and safety coverage; move unique phone evidence to narrow desktop cases and deliberately replace the phone Archive reference. All later phases consume desktop-only gates; The later minimum-canvas amendment fixes a 1024×720 CSS-pixel floor: queue beside detail, document scrolling below the floor. Task 3.1.8 binds its desktop/zoom journeys to that floor. Responsive desktop/zoom controls, D294 retirement guards and contact phone validation remain. | ref frontend-backend-integration §10 (primary) · ref dashboard-surfaces support scope · doc 01 Task 6 · doc 03.1 Tasks 8/9-1/17/18 |
+
+## Operator storage amendment (2026-09-06) — phase-plan folders
+
+The operator requested one folder per Phase 0–6 and one file per existing subphase, with consistent
+names. Owner: [roadmap §Phase plan storage](../../roadmap/roadmap.md#phase-plan-storage-operator-amendment-2026-09-06);
+[the plans index](../plans/README.md) defines current paths and historical lookup. Scope, sequencing,
+admission rules and completion evidence are unchanged.
