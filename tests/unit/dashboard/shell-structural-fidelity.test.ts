@@ -84,9 +84,11 @@ describe("DCF2 shell and queue structural fidelity", () => {
     );
   });
 
-  it("A170 — restores the demo root's horizontal shrink and viewport clip without re-adding min-h", () => {
+  it("A170 / D340 — retains the desktop canvas floor and internal viewport clip", () => {
     const root = sourceSlice(APP, "<div\n      data-app-root=\"\"", ">\n    <TooltipProvider", "the app root opening tag");
-    assert.match(root, /flex h-screen min-w-0 flex-col overflow-hidden/u);
+    for (const token of ["h-screen", "min-h-[var(--ds-h-desktop-min)]", "min-w-[var(--ds-w-desktop-min)]", "overflow-hidden"]) {
+      assert.ok(root.includes(token), `the desktop canvas must retain ${token}`);
+    }
     assert.doesNotMatch(root, /min-h-0/u, "min-h-0 belongs to the root's flex child, not the demo root");
   });
 });

@@ -320,7 +320,7 @@ function SpanAuthorityReport({ spanAuthority }: { spanAuthority: StorageDoctorWi
           {spanAuthority.problems.map((problem, index) => (
             <li
               key={`${problem.state}:${String(index)}`}
-              className={cn(dsText.meta, "grid min-w-0 gap-[var(--ds-space-hair)] sm:grid-cols-[max-content_minmax(0,1fr)]")}
+              className={cn(dsText.meta, "grid min-w-0 gap-[var(--ds-space-hair)] grid-cols-[max-content_minmax(0,1fr)]")}
             >
               <span className={cn(dsText.nums, "font-semibold text-[color:var(--ds-status-waiting-fg)]")}>
                 {problem.state}
@@ -609,7 +609,7 @@ function EditableSettingsSection({
                 )}
               </div>
               {leaf.hazard !== undefined && <span className={cn(dsText.meta, "text-[color:var(--ds-status-waiting-fg)]")}>{leaf.hazard}</span>}
-              <div className={cn(dsText.micro, "grid grid-cols-1 gap-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)] sm:grid-cols-3")}>
+              <div className={cn(dsText.micro, "grid grid-cols-3 gap-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
                 <span>Environment: {leaf.environmentVariable ?? "not set"}</span>
                 <span>settings.json: {leaf.settingsValue === undefined ? "not set" : String(leaf.settingsValue)}</span>
                 <span>Default: {String(leaf.defaultValue)}</span>

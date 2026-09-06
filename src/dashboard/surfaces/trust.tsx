@@ -678,15 +678,15 @@ function DiagnosticBundleDialog({
                   <div
                     key={content.artifactId}
                     className={cn(
-                      "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)]",
-                      "sm:grid-cols-[auto_minmax(0,16rem)_minmax(0,1fr)] sm:items-baseline",
+                      "grid min-w-0 items-baseline gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)]",
+                      "grid-cols-[auto_minmax(0,16rem)_minmax(0,1fr)]",
                     )}
                   >
                     <Check aria-hidden className={cn(dsIcon.sm, "mt-px shrink-0 text-[color:var(--ds-success-fg)]")} />
                     <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg)]")}>
                       {content.key}
                     </span>
-                    <span className={cn(dsText.meta, "col-start-2 min-w-0 break-words text-[color:var(--ds-fg-muted)] sm:col-start-3")}>
+                    <span className={cn(dsText.meta, "col-start-3 min-w-0 break-words text-[color:var(--ds-fg-muted)]")}>
                       {content.detail} · {content.digest}
                     </span>
                   </div>

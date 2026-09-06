@@ -2703,8 +2703,17 @@ verification and coarse-pointer presentation now, before Task 1.6.6 starts. This
 original deferral of that cleanup to Phase 3.1. Standard gates use desktop cases from this point
 onward; no later task owes mobile implementation or mobile proof. Keep the existing desktop
 viewports (1024×768, 1280×720 and 1440×900), resizing, keyboard access and both themes. Task 3.1.8
-still owns the final supported desktop/zoom acceptance matrix; this cleanup does not invent a new
-minimum or claim that every zoom case is already proven.
+still owns the journey-specific desktop/zoom acceptance matrix. The subsequent layout amendment
+below fixes its minimum canvas; it does not claim every zoom journey is already proven.
+
+**Minimum-canvas amendment (operator decision, 2026-09-06).** Keep the queue and detail side by
+side at the smallest supported desktop width. The canvas floor is **1024×720 CSS pixels**, preserving
+1024×768, 1280×720 and 1440×900. Below it, document scrolling exposes the same desktop arrangement;
+the page cannot force the browser window itself to resize. Remove below-floor viewport switches
+that would reorder the top bar, substitute a workflow picker or restack desktop form columns.
+Detail content retains its own container-based layout. Larger desktop layouts still use available
+space. Browser zoom follows the same CSS-pixel floor, with scrolling and keyboard access retained.
+Phase 3.1 consumes this floor rather than reopening it as an unanswered minimum-width decision.
 
 Retire the extra coarse-pointer cases for member, toolbar, pool and search controls; retain their
 real-browser desktop density and hit-ownership checks in the corresponding `*-desktop-target.spec.ts`

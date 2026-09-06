@@ -65,7 +65,9 @@ Three adaptations for a reader in THIS tree (a third was undisclosed until Track
 **Read this before building a surface. It is binding.**
 
 D340 scopes this dashboard to desktop/laptop use. Mobile layouts and touch-specific proof are
-retired; desktop resizing, zoom and keyboard accessibility remain. The current contract is
+retired. The desktop canvas is at least 1024×720 CSS pixels; queue and detail stay side by side,
+with document scrolling below that floor. Desktop resizing, zoom and keyboard accessibility remain.
+The current contract is
 `docs/rebuild/reference/frontend-backend-integration.md` §10; it supersedes historical touch
 requirements below.
 

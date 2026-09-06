@@ -2093,6 +2093,40 @@ is verified in the owned worktree with its example-only environment; the serial 
 are `/tmp/hr-settings-integrated-identity.log` and matching gate logs. Task completion and owned
 worktree/branch removal remain pending those gates and verified integration. No push or Task-6 work.
 
+**Latest-master integration (2026-09-06).** The first combined tree was committed as
+`40b3ae42a2722584f4240264573ed00dfd13f961` after all gates passed (5,332 coverage tests,
+817 standalone architecture tests, 257 desktop parity cases). Before the primary checkout became
+available, its owner completed D340's minimum-canvas amendment as
+`3e6a7d1f7607052c407303c2357f70a6828176c7`. That clean latest master retains both required ancestors.
+The follow-up merge preserves its 1024×720 desktop canvas. Source/tests/contracts merged cleanly;
+only six approved narrow Separations options/plan/result PNGs conflicted. They were regenerated from
+the combined code and all six visually inspected, preserving both intents without a code conflict fix.
+No unrelated reference was refreshed. The focused run first failed on the old PNGs; regeneration
+passed both scene tests. Its wrapper also required a body-backed accessibility case; including that
+existing case gave a fully passing three-test focused run. Logs use
+`/tmp/hr-settings-desktop-merge-parity-{red,update,green}.log`.
+
+Playwright CLI against the owned synthetic fixture BFF reconfirmed all twelve Start state/theme/
+viewport combinations with no protected display. Evidence is `/tmp/hr-settings-desktop-browser-inspection.log`
+and `/tmp/hr-settings-desktop-{options,plan,result}-{dark,light}-{1024,1440}.png`.
+The owned CLI browser and BFF were closed; the sole browser console error was the fixture's absent
+favicon. No live system or real submit was used. The next full serial gate block is bound by
+`/tmp/hr-settings-integrated-final-identity.log` and matching logs before the merge commit.
+Review remains PASS for the unchanged settings implementation; no behavior-changing conflict fix
+was made. Task completion and owned branch/worktree removal remain pending final integration.
+
+The first latest-master gate block passed typecheck, lint, 5,332 coverage tests, generated checks and
+817 architecture tests, then full parity exposed twelve additional narrow-view PNGs whose newly
+visible code-version labels still showed master's previous descriptor hash (247 cases passed).
+The operator-approved hash-only refresh covers these references. All counted differences are
+140–141 pixels inside the code-hash glyph rectangle; representative light/dark results were inspected.
+Only those twelve PNGs changed, with no additional a11y, metadata, layout or copy change.
+The focused thirteen-test update passes; full assert-mode parity and all exact-tree commit gates
+follow before integration. Evidence: `/tmp/hr-settings-desktop-hash-update.log`,
+`/tmp/hr-settings-desktop-hash-pixel-bounds.json` and `/tmp/hr-settings-desktop-hash-full-parity.log`.
+The final accepted combined gate identity is `/tmp/hr-settings-integrated-accepted-identity.log`;
+its matching gate logs supersede the preceding failed-parity block without hiding that failure.
+
 ### Task 6 · Consolidate settings in SQLite and prove upgrade/recovery
 <!-- roadmap: p1f-migration-proof -->
 

@@ -54,12 +54,10 @@ describe("the detail region's breakpoints", () => {
   });
 
   it("keys on the COLUMN, never on the window", () => {
-    // `min-[1180px]:` is allowed once and only on the container DECLARATION:
-    // that is the SHELL's own breakpoint (ref dashboard-surfaces §Shell's first row), the one
-    // question in this file the window is the right instrument for.
+    // D340: the shell never stacks, so the detail container is unconditional.
     const viewportQueries = [...code().matchAll(/(?<!@)\bmin-\[(\d+)px\]:(\S*)/gu)]
       .map((match) => `min-[${String(match[1])}px]:${String(match[2])}`);
-    expect(viewportQueries).toEqual(["min-[1180px]:@container/detail"]);
+    expect(viewportQueries).toEqual([]);
   });
 
   it("derives both thresholds from the shell the region sits in", () => {
