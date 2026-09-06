@@ -1254,7 +1254,7 @@ function RerunStageView({ session }: { session: IntakeSessionWire }) {
         <Chip label="contract" tone={stage.contract === "changed" ? "warning" : "neutral"}>{stage.contract}</Chip>
         <Chip label="changed inputs" tone={stage.changedInputs.length > 0 ? "info" : "neutral"}>{String(stage.changedInputs.length)}</Chip>
       </div>
-      <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] min-[640px]:grid-cols-2">
+      <div className="grid grid-cols-2 gap-[var(--ds-space-cozy)]">
         <RerunMembership
           label={`In this plan, not in ${shortHash(stage.manifestId)}…`}
           owner={`rerun:${stage.manifestId}:added`}

@@ -2229,12 +2229,11 @@ export function WorkflowExplorer({
         }
       />
 
-      {/* The two thresholds are the demo's: the list splits off first because
-          it is the cheapest column, and the node record splits off second
-          because it is the one that needs width for a table. */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)] min-[900px]:grid-cols-[minmax(0,232px)_minmax(0,1fr)] min-[1280px]:grid-cols-[minmax(0,232px)_minmax(0,1fr)_minmax(0,420px)]">
+      {/* D340 keeps the workflow list beside the graph at the desktop floor.
+          The node record gets its own column when the desktop has room. */}
+      <div className="grid min-h-0 flex-1 gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)] grid-cols-[minmax(0,232px)_minmax(0,1fr)] min-[1280px]:grid-cols-[minmax(0,232px)_minmax(0,1fr)_minmax(0,420px)]">
         {resource.state === "loading" && (
-          <Panel className="min-h-0 min-[900px]:col-span-2 min-[1280px]:col-span-3">
+          <Panel className="min-h-0 col-span-2 min-[1280px]:col-span-3">
             <PanelBody className="p-[var(--ds-space-cozy)]">
               <div className="flex items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]">
                 <Spinner label="Loading the explorer projection" />
@@ -2245,7 +2244,7 @@ export function WorkflowExplorer({
         )}
 
         {resource.state === "failed" && (
-          <Panel className="min-h-0 min-[900px]:col-span-2 min-[1280px]:col-span-3">
+          <Panel className="min-h-0 col-span-2 min-[1280px]:col-span-3">
             <PanelBody className="p-[var(--ds-space-cozy)]">
               <Banner tone="danger" title="The explorer projection could not be read">
                 {resource.error.message}
@@ -2328,7 +2327,7 @@ export function WorkflowExplorer({
                   on top of each other — the demo's grid has the same hole and
                   its corpus never photographed that width.
                 */}
-                <div className="flex min-h-0 min-[900px]:col-span-2 min-[1280px]:col-span-1">
+                <div className="flex min-h-0 col-span-2 min-[1280px]:col-span-1">
                   <NodeDetail
                     workflow={workflow}
                     node={openNode}

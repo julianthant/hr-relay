@@ -6391,8 +6391,12 @@ above the three-column threshold.
 
 | Width | Layout |
 |---|---|
-| **< 1180** | one scrolling stack — shape, then detail, then context. The rail degrades to a section, never to nothing. |
-| **≥ 1180** | queue `--ds-w-side-panel` (**376px**), a fixed track, + a detail cell taking `minmax(0,1fr)`. |
+| **≥ 1024** | queue `--ds-w-side-panel` (**376px**), a fixed track, beside a detail cell taking `minmax(0,1fr)`. |
+| **< 1024** | retain the 1024px desktop canvas and horizontal document scrolling; never stack the queue above detail. |
+
+D340 sets a **1024×720 CSS-pixel minimum canvas**. Below 720px height the document also scrolls
+vertically. This preserves all three existing desktop reference viewports. The browser page cannot
+resize its host window; the later desktop package may enforce the same floor as a native window minimum.
 
 The **queue and the rail share ONE resting width** and neither side panel grows independently at
 wider viewports, so the centre stays the largest column at every size. 376 is 28px wider than the
@@ -6405,8 +6409,9 @@ the whole point and this doc used to state the principle and then leave window n
 the same 1280px viewport gives the centre 414px with the rail open and 728px with it collapsed, so a
 viewport media query fires at the wrong moment in both directions. (Caught in the act: the two
 `Write parked` resolutions were being forced side by side into a 414px column, each a ~200px box
-holding a two-line sentence about whether a real UCPath termination exists.) Only the shell grid
-itself is a window query, at `min-[1180px]`, because the window is genuinely what it measures.
+holding a two-line sentence about whether a real UCPath termination exists.) D340 removes the
+shell’s former 1180px stacking switch; the detail container is now declared at every window width.
+Its internal container queries remain valid, including when the browser shows only part of the canvas.
 
 **Grid, not flex, is normative — it is what makes the empty case impossible.** The region was
 authored as two `flex-1` children. `flex-1` distributes free space only among children that EXIST,

@@ -47,7 +47,7 @@ export function RunCaptures({ captures, compact = false }: { captures: RunCaptur
                     <RunCaptureImagePreview item={item} />
                     <RunCaptureFacts capture={item.capture} />
                   </DialogBody>
-                  <DialogFooter className="max-sm:[&>span:last-child]:flex-wrap">
+                  <DialogFooter>
                     <DialogClose asChild><Button variant="ghost">Close</Button></DialogClose>
                     <ButtonLink href={item.downloadUrl} download={`capture-${item.capture.artifact.artifactId}`}>Download</ButtonLink>
                   </DialogFooter>

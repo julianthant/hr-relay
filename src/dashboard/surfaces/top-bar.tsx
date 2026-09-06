@@ -1105,13 +1105,12 @@ export const TopBar = memo(function TopBar({
         dsSize.hTopbar,
         dsBorder.base,
         dsSurface.card,
-        "gap-[var(--ds-space-cozy)] px-[var(--ds-shell-inset)] max-sm:gap-[var(--ds-space-tight)] max-sm:px-[var(--ds-space-base)]",
-        "max-sm:overflow-x-auto max-sm:overscroll-contain",
+        "gap-[var(--ds-space-cozy)] px-[var(--ds-shell-inset)]",
       )}
     >
       {/* The app's name is the page's ONE h1. It reads at `dsText.ui` like the
           chrome it is — heading LEVEL is the document outline, not a type size. */}
-      <div className="flex shrink-0 items-center gap-[var(--ds-space-base)] max-sm:order-1">
+      <div className="flex shrink-0 items-center gap-[var(--ds-space-base)]">
         <span
           aria-hidden
           className={cn("flex items-center justify-center", dsRadius.md, "size-[var(--ds-h-sm)] bg-[var(--ds-accent-quiet)]")}
@@ -1123,11 +1122,11 @@ export const TopBar = memo(function TopBar({
 
       {/* Product navigation sits beside the history pair: both are ways of
           changing WHERE YOU ARE, and the switcher is the deliberate one. */}
-      <span className="max-sm:order-3 max-sm:flex sm:contents">
+      <span className="contents">
         <NavHistoryControls nav={nav} />
       </span>
 
-      <span className="max-sm:order-4 max-sm:flex sm:contents">
+      <span className="contents">
         <ShellViewSwitcher view={view} onView={onView} />
       </span>
 
@@ -1144,7 +1143,6 @@ export const TopBar = memo(function TopBar({
         className={cn(
           "flex min-w-0 flex-1 items-center justify-end",
           "gap-[var(--ds-space-snug)]",
-          "max-sm:order-5 max-sm:flex-none",
         )}
       >
         <DaySearchControl
@@ -1157,7 +1155,7 @@ export const TopBar = memo(function TopBar({
         <DateNav day={day} today={today} monthCounts={monthCounts} onDay={onDay} />
       </span>
 
-      <span className="flex shrink-0 items-center gap-[var(--ds-space-hair)] max-sm:order-2">
+      <span className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">
         {/* Preflight stays on screen whenever bootstrap serves its retained
             report, rather than three clicks inside a page of preferences. Its
             glyph carries the worst verdict. Only an older producer's honest

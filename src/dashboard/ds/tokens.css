@@ -60,6 +60,9 @@
    ========================================================================== */
 
 :root {
+  /* D340: desktop canvas; smaller browser windows scroll this geometry. */
+  --ds-w-desktop-min: 1024px;
+  --ds-h-desktop-min: 720px;
   /* ---------------------------------------------------------------------
      SURFACE — the elevation ladder, darkest (page) to lightest (raised).
      Depth in this product comes from surface + hairline border, never from

@@ -1734,7 +1734,7 @@ function LogsTab({
             <Button
               variant="ghost"
               size="sm"
-              className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0"
+              className="min-h-0 min-w-0"
               onClick={paged.loadMore}
               disabled={paged.loading}
               aria-busy={paged.loading || undefined}
@@ -2348,20 +2348,11 @@ export const LogPanel = memo(function LogPanel({
       measures this box with `getBoundingClientRect`, so its border box has to
       BE its container-query box or the two halves can disagree.
 
-      `min-[1180px]:` on the container DECLARATION is ref dashboard-surfaces §Shell's first
-      row, and it is the one question in this file the WINDOW is the right
-      instrument for — it is the shell's own breakpoint, already spelled once
-      in `dashboard-app.tsx`. Below it the shell is a single stacked column, so
-      the region is handed the full page width (1000px at a 1024px window)
-      while having no definite height for an inner grid to fill: a three-column
-      arrangement there would be wide enough and still wrong, and no width
-      threshold can tell that 1000px apart from the 868px a docked 1280px
-      window gives a region that IS a cell. So below 1180 there is simply no
-      container named `detail`, every `@…/detail:` variant is false, and the
-      arrangement is the stack the table asks for — "the rail degrades to a
-      section, never to nothing."
+      D340 keeps the shell side by side at its 1024px minimum canvas.
+      The detail container therefore exists at every window size; its own
+      measured width still decides how its internal content is arranged.
     */
-    <div ref={regionRef} className="min-[1180px]:@container/detail flex min-h-0 min-w-0 flex-col">
+    <div ref={regionRef} className="@container/detail flex min-h-0 min-w-0 flex-col">
     <div
       className={cn(
         // Below the three-column threshold the region is a scrolling stack, so

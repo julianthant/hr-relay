@@ -316,7 +316,7 @@ export function DashboardApp() {
       data-app-root=""
       data-demo-theme={theme}
       style={{ "--ds-toast-inset-bottom": "calc(var(--ds-h-bar) + var(--ds-space-loose))" } as CSSProperties}
-      className="flex h-screen min-w-0 flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]"
+      className="flex h-screen min-h-[var(--ds-h-desktop-min)] min-w-[var(--ds-w-desktop-min)] flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]"
     >
     <TooltipProvider delayDuration={200}>
     <ToastProvider>
@@ -1789,7 +1789,7 @@ function LoadedApp({
             against the viewport and was clipping the status-filter row.
           */}
           <div className="relative min-h-0 flex-1">
-            <div className="grid h-full grid-cols-1 gap-[var(--ds-shell-inset)] p-[var(--ds-shell-inset)] min-[1180px]:grid-cols-[var(--ds-w-side-panel)_minmax(0,1fr)]">
+            <div className="grid h-full grid-cols-[var(--ds-w-side-panel)_minmax(0,1fr)] gap-[var(--ds-shell-inset)] p-[var(--ds-shell-inset)]">
               <QueuePanel
                 surfaces={surfaces}
                 state={viewState}

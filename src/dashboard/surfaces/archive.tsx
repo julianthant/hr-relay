@@ -1620,7 +1620,7 @@ export function ArchivedRunDetail({
             </CardBody>
           </Card>
 
-          <div className="grid grid-cols-1 gap-[var(--ds-space-base)] min-[900px]:grid-cols-2">
+          <div className="grid grid-cols-2 gap-[var(--ds-space-base)]">
             <Card>
               <CardBody grow className="flex flex-col gap-[var(--ds-space-snug)]">
                 <SectionLabel>Immutable input — what a relaunch replays</SectionLabel>
@@ -2319,7 +2319,6 @@ export function CaptureViewerDialog({
           </DialogBody>
           <DialogFooter
             meta={`Captured ${fmtClock(tile.capturedAt)} · bundle ${shortHash(tile.bundleId)}`}
-            className="max-sm:flex-col max-sm:items-stretch max-sm:[&>span:last-child]:w-full max-sm:[&>span:last-child]:flex-wrap max-sm:[&>span:last-child]:justify-end"
           >
             {/*
               `aria-disabled`, never `disabled`, at either end of the walk

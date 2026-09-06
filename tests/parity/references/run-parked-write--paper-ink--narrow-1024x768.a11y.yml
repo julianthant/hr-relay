@@ -269,9 +269,6 @@
     - text: 9d449269
     - button "Run provenance"
     - text: idle
-    - status:
-      - button "Write parked Go to the parked write open 20m 0s"
-      - button "Dismiss this reminder — the write stays parked"
   - complementary "Run data":
     - text: Run data
     - button "Hide run data"

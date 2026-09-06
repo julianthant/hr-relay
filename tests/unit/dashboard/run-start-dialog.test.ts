@@ -619,9 +619,13 @@ describe("D293 keeps D285 and removes only per-start destination", () => {
     assert.ok(!dialog.text().includes("Test instance"));
     assert.equal(
       document.body.querySelectorAll("select").length,
-      5,
-      "Options must align the workflow picker, two locked values, Priority, and Browser mode as controls",
+      4,
+      "Options must align two locked values, Priority, and Browser mode; D340 retires the mobile workflow select",
     );
+    const selectedWorkflow = document.body.querySelector('button[aria-current="true"]');
+    const workflow = WORKFLOWS.find((candidate) => candidate.workflowId === WORKFLOW_ID);
+    assert.ok(workflow !== undefined);
+    assert.ok(selectedWorkflow?.textContent?.includes(workflow.label), "the desktop picker must identify the selected workflow");
     assert.equal(
       document.body.querySelectorAll("select:disabled").length,
       2,

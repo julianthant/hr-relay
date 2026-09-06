@@ -46,3 +46,10 @@ binding would contradict them.
 
 D334 / 1.6.4 retires the checkpoint-save action and its in-flight `Saving…` deviation.
 The Context rail retains read-only data; source-bound Rerun values belong to 3.1.11-2.
+
+## Desktop canvas (D340, 2026-09-06)
+
+The operator replaced the 1180px shell stacking switch with a 1024×720 CSS-pixel minimum
+canvas. Queue and detail remain side by side; smaller browser windows scroll. The affected
+1024×768 references deliberately change, while larger desktop references retain their geometry.
+Ref frontend-backend-integration §10 and ref dashboard-surfaces §9.9 own this amendment.

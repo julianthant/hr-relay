@@ -515,7 +515,7 @@ function WorkflowPicker({
   const blockedGroups = useMemo(() => pickerGroups(blocked), [blocked]);
 
   return (
-    <div className="hidden w-[204px] shrink-0 flex-col border-r border-[color:var(--ds-border)] min-[768px]:flex">
+    <div className="flex w-[204px] shrink-0 flex-col border-r border-[color:var(--ds-border)]">
       <div className="box-content flex h-[var(--ds-h-sm)] shrink-0 items-center border-b border-[color:var(--ds-border)] px-[var(--ds-space-base)] py-[var(--ds-space-cozy)]">
         {/* A plain labelled input rather than SearchInput: this filters a short
             list, so a clear affordance would cost a control for a state one
@@ -1418,14 +1418,6 @@ export function RunStartDialog({
           />
 
           <DialogBody className="@container flex flex-1 flex-col gap-[var(--ds-space-section)]">
-            <Field label="Workflow" className="min-[768px]:hidden">
-              <Select value={workflowId} onChange={(event) => selectWorkflow(event.target.value)}>
-                {workflows.filter(isStartable).map((candidate) => (
-                  <option key={candidate.workflowId} value={candidate.workflowId}>{candidate.label}</option>
-                ))}
-              </Select>
-            </Field>
-
             {result !== null && (
               <EnqueueResultBanner result={result} onDismiss={returnToInput} onReload={returnToInput} />
             )}

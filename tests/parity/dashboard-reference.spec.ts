@@ -1283,6 +1283,49 @@ test.describe("access variants", () => {
   });
 });
 
+// D340 is desktop-window resizing, not a mobile-device test variant.
+for (const theme of PARITY_THEMES) {
+  test(`desktop canvas holds its side-by-side floor — ${theme.name}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 720 });
+    await installTheme(page, theme);
+    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.failedRun });
+    await dismissWorkflowWindow(page);
+    const geometry = async () => page.evaluate(() => {
+      const root = document.querySelector("[data-app-root]");
+      const queue = document.querySelector('[aria-label="Queue"]');
+      const detail = queue?.nextElementSibling;
+      const header = document.querySelector("header");
+      if (!root || !queue || !detail || !header) throw new Error("Desktop shell is incomplete");
+      const box = (element: Element) => {
+        const rect = element.getBoundingClientRect();
+        return { x: rect.x + scrollX, y: rect.y + scrollY, width: rect.width, height: rect.height };
+      };
+      return { root: box(root), queue: box(queue), detail: box(detail), header: box(header) };
+    });
+    const minimum = await geometry();
+    expect(minimum.root.width).toBe(1024);
+    expect(minimum.root.height).toBe(720);
+    expect(minimum.queue.y).toBe(minimum.detail.y);
+    expect(minimum.detail.x).toBeGreaterThanOrEqual(minimum.queue.x + minimum.queue.width);
+    expect(minimum.detail.width).toBeGreaterThan(400);
+    expect(minimum.queue.height).toBeGreaterThan(400);
+    for (const viewport of [{ width: 800, height: 600 }, { width: 600, height: 400 }]) {
+      await page.setViewportSize(viewport);
+      await expect.poll(geometry).toEqual(minimum);
+      const scroll = await page.evaluate(() => {
+        window.scrollTo(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
+        return { x: scrollX, y: scrollY };
+      });
+      expect(scroll.x).toBeGreaterThan(0);
+      expect(scroll.y).toBeGreaterThan(0);
+      await expect.poll(geometry).toEqual(minimum);
+      await page.evaluate(() => window.scrollTo(0, 0));
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect.poll(async () => (await geometry()).detail.width).toBeGreaterThan(minimum.detail.width);
+  });
+}
+
 /**
  * Browser-local queue triage is deliberately outside the reference corpus:
  * its proof is the state transition and reload reset, not a second baseline

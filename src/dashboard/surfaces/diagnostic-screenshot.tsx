@@ -22,7 +22,7 @@ export function DiagnosticScreenshotGallery({ bundle, attachmentUrl, readBundle 
   return (
     <section aria-label="Diagnostic screenshots" className="flex flex-col gap-[var(--ds-space-snug)]">
       <SectionLabel>Screenshots</SectionLabel>
-      <div className="grid grid-cols-1 gap-[var(--ds-space-base)] sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-[var(--ds-space-base)]">
         {screenshots.map((screenshot, index) => (
           <ScreenshotResource
             key={screenshotResourceKey(bundle, screenshot)}
