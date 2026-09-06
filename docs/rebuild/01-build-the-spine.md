@@ -1913,6 +1913,37 @@ contracts. These are field totals, not additional HR transactions. The allowance
 those count glyphs and corresponding a11y text, alongside the already approved code-version hashes.
 No further content, control, layout, Settings/Setup or transaction change is authorized.
 
+
+**Task 5 candidate — awaiting independent review (2026-09-06).** Implementation commit
+`599fbb895fc2f77da06b7aa35714766fa92cf748` is based on approved plan
+`247cf28ff2e3315699333e89536ee36b797ee503`, retaining prerequisite
+`5849220cfcda7f87a557488f1d6b2e9bdcb9d25e`. The evidence commit containing this paragraph is
+the candidate review head; its only source difference from the implementation commit removes an
+extra EOF blank line caught by the staged diff check in the newly added protected-journal module.
+The task remains open pending fresh read-only `sup_review`, accepted fixes, integration gates and
+owned-worktree cleanup. No scope decision remains open.
+
+The implementation gate run passed typecheck, lint, full coverage (421 files / 5,314 tests;
+statements/branches/functions/lines 85.58/77.08/89.64/87.69%), manifest/store/roadmap checks,
+standalone architecture (77 files / 817 tests), and full assertion parity (269 tests). Two initial
+four-worker coverage attempts timed out in the unchanged lifecycle-SQL guard; the isolated guard
+passed both tests, and the complete two-worker run passed without changing assertions, membership,
+coverage floors or deadlines. Use two workers for subsequent full coverage on this host, within
+the approved maximum of four. Logs: `/tmp/hr-settings-commit-typecheck.log`,
+`/tmp/hr-settings-commit-lint.log`, `/tmp/hr-settings-commit-coverage-two.log`, and
+`/tmp/hr-settings-commit-{manifest,stores,roadmap,architecture,parity}.log`.
+
+The evidence revision is validated again with the full serial gate block under the
+`/tmp/hr-settings-evidence-` log prefix. Scope is exactly the original Task 5 plus its recorded
+operator amendments. The 210 changed a11y/metadata pairs contain only generated provenance plus
+the twelve Start removals and six approved inspector count changes; 49 PNGs change, with counted
+pixel differences restricted to those removals/counts or displayed hashes. The four allowed identity
+ceremony triples have no non-hash body drift. All twelve intended-red controls and manual CLI
+inspections are documented above. Settings/Setup behavior, SQL DDL, live HR transactions, performance
+work and Task 1.6.6 remain excluded. The temporary handoff was consumed and removed after its
+remaining decision was approved and its surviving facts were recorded here. Manual servers and
+browser sessions are stopped; the owned checkout stays stable for review.
+
 ### Task 6 · Prove upgrade, rollback, recovery, and compatibility deletion
 <!-- roadmap: p1f-migration-proof -->
 

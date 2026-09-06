@@ -132,4 +132,3 @@ export function requireJournaledProtectedSettings(
   }
   observeJournaledProtectedSettings(record, repositories, { kind: "required" });
 }
-
