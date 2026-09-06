@@ -1711,9 +1711,9 @@ Separations Start parity refreeze below + those. **Deletion test:**
 populated for every retired key and assert byte-identical `Config`, zero accessor reads and a refusal by
 key name; red while any composition still reads the environment. **Order:** fifth.
 
-- [ ] Route secure bootstrap, workers, browser/login, workflow defaults and preflight inputs through the
+- [x] Route secure bootstrap, workers, browser/login, workflow defaults and preflight inputs through the
   catalog and the protected store; leave Settings UI behaviour to 3.1 (§D331.7, §D331.8, §D331.10).
-- [ ] Revision/CAS updates, validation, restart-required reporting and protected write-only input reach
+- [x] Revision/CAS updates, validation, restart-required reporting and protected write-only input reach
   every composition; every setting resolves from exactly one catalog leaf and one persisted authority.
 
 **Approved assignment (2026-09-05).** The operator approved this complete Task-5 assignment in the
@@ -2126,6 +2126,26 @@ follow before integration. Evidence: `/tmp/hr-settings-desktop-hash-update.log`,
 `/tmp/hr-settings-desktop-hash-pixel-bounds.json` and `/tmp/hr-settings-desktop-hash-full-parity.log`.
 The final accepted combined gate identity is `/tmp/hr-settings-integrated-accepted-identity.log`;
 its matching gate logs supersede the preceding failed-parity block without hiding that failure.
+
+**Task 1.6.5 complete (2026-09-06).** Steps 1.6.5.1–1.6.5.6 are accepted. Independent
+`sup_review` PASS on `a93ba1a5caa071a4432ba22115a1e8e36aa5b4fd` closes R1–R5; the withdrawn
+terminal-dependency concern remains closed. The reviewed settings implementation is integrated as
+`5f1c6907f002c839b1af95060cdafab9415aff87`, including latest local master
+`3e6a7d1f7607052c407303c2357f70a6828176c7`. The approved plan and Task-4 prerequisite remain ancestors.
+The documentation-boundary resolution preserves Task-5 evidence and master's future Task-6 plan.
+The six overlapping Start PNGs were regenerated and inspected to preserve both protected-value
+removal and master's desktop canvas; no behavior-changing source conflict was resolved.
+
+| Verification | Accepted evidence |
+|---|---|
+| Candidate | 423 files / 5,332 coverage tests; 77 files / 817 architecture tests; 269 parity cases; typecheck, lint, manifest/store/roadmap and diff PASS; `/tmp/hr-settings-private-final-*` |
+| Final combined implementation | Exact staged tree and all serial gate results in `/tmp/hr-settings-integrated-accepted-identity.log` and matching logs; 5,332 coverage tests, 817 architecture tests, 259 current desktop parity cases PASS |
+| Browser and parity scope | Twelve Start combinations inspected with Playwright CLI; six merge PNGs inspected; initial approved Start removals, inspector counts and provenance retained. Master's separate D340 changes are preserved, not an unrelated Task-5 refreeze. `/tmp/hr-settings-desktop-browser-inspection.log` and `desktop-merge-parity-*` logs |
+| Completion record | Exact final tree and serial typecheck/lint/coverage, generated, standalone architecture, full parity and diff results in `/tmp/hr-settings-completion-identity.log` and matching logs |
+| Preservation and cleanup | Master advanced to the exact gated merge tree; existing primary `.env` untouched. Owned synthetic browser/BFF closed, attributable failed-test scratch removed, owned worktree and branch removed before this completion record was applied. Browser evidence retained under `/tmp/hr-settings-final-browser-evidence`; exact scratch paths in `/tmp/hr-settings-scratch-cleanup.json`. No push. |
+
+Only Task 1.6.5 is marked complete. Task 1.6.6 and the remainder of Phase 1.6 remain open; no live HR
+login, real submit, SQL DDL, Settings/Setup work, performance lane or next-task implementation ran.
 
 ### Task 6 · Consolidate settings in SQLite and prove upgrade/recovery
 <!-- roadmap: p1f-migration-proof -->

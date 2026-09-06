@@ -554,18 +554,19 @@ log:
 - 2026-09-05 | direct supervisor close | completed the seven-step D334/D335 plan; independent `sup_review` PASS on `03a2f508` after source-eligibility fix `1dd76ecb`. Integrated unchanged as `5d050d3d`; isolated integration typecheck/lint, 5,230 coverage tests, 761 architecture tests, 269 parity tests, manifest/roadmap and diff checks passed. Owned worktree/ref and verified scratch residue removed; Task 4 complete. Full modal remains 3.1.11-2. No push or next-task dispatch.
 
 #### 5 · Cut over settings mutation and runtime resolution {#p1f-settings-consumers}
-status: planned
+status: done
 doc: 01 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4
 
 builds:
-- [ ] BE route secure bootstrap, worker composition, browser/login, workflow defaults, and preflight inputs through the catalog and the protected store; dashboard presentation remains 3.1 work (the eight-leaf editor inventory stays served, A8)
-- [ ] BE revision/CAS update, validation, restart-required reporting, and protected write-only inputs reach every composition; the worker spawn environment is value-free
-- [ ] PROOF P16, P20, P33's composition half, P4 at composition level; deletion test `composition-reads-no-environment-leaf`; `npm run test:parity` unchanged
+- [x] BE route secure bootstrap, worker composition, browser/login, workflow defaults, and preflight inputs through the catalog and the protected store; dashboard presentation remains 3.1 work (the eight-leaf editor inventory stays served, A8)
+- [x] BE revision/CAS update, validation, restart-required reporting, and protected write-only inputs reach every composition; the worker spawn environment is value-free
+- [x] PROOF P16, P20, P33's composition half, P4 at composition level; deletion test `composition-reads-no-environment-leaf`; `npm run test:parity` passes after approved Start/inspector/provenance changes and preservation of master’s separate D340 desktop changes
 
 needs:
 - p1f-settings-store
 
 log:
+- 2026-09-06 | direct supervisor close | Steps 1.6.5.1–1.6.5.6 complete; independent `sup_review` PASS on `a93ba1a5` with R1–R5 closed. Integrated as `5f1c6907f002c839b1af95060cdafab9415aff87` against latest local master `3e6a7d1f`; all serial candidate/integration/completion gates pass. Final combined implementation: 5,332 coverage tests, 817 architecture tests, 259 desktop parity cases. Owned browser, synthetic scratch, worktree and branch removed; primary `.env` preserved. Exact review, tree and log provenance in doc 01 Task 5. No push or Task-6 work.
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate/deletion test (doc 01 §1.6 Task 5); serial after Task 4 (shares the composition roots with Task 3) · left: implementation
 
 #### 6 · Consolidate settings in SQLite and prove upgrade/recovery {#p1f-migration-proof}
