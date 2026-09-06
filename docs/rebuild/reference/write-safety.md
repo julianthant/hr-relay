@@ -22,6 +22,12 @@ positive proof or to a new generation from contract-valid stabilized negative pr
 against every remote UI regardless of consistency" is not claimed and is not enforceable from a
 browser probe (§1).
 
+**D335 planning amendment (2026-09-05).** Explicitly confirmed repetition of a known completed
+transaction is governed by [§D335](#d335--explicitly-confirmed-repetition-of-a-completed-transaction-2026-09-05).
+It adds an authorized occurrence while preserving natural-business-key conflict detection and unknown
+outcome resolution. Earlier automatic completed-proof reuse statements continue to govern ordinary
+and internal compatibility recovery; they do not veto a D335 confirmed repeat.
+
 **Where the evidence lives.** Doc 02 owns the Phase-2 phase record and points here for the numbers;
 doc 03.3 owns Separations' three controlled proofs and current targets; `docs/rebuild/migrations/separations.md`
 is the as-built migration record. This doc owns the CONTRACT — what every write must declare, what
@@ -2297,3 +2303,79 @@ operation still requires explicit operator authorization and the ordinary runtim
 `hr-manage`/this spec; that authorization is not a second workflow gate. The disposable deletion
 target, sweep identity, filing-survival design and target restoration/retention choice remain the
 pending protocol. D309 neither supplies that protocol nor authorizes a real HR write.
+
+
+## D335 — explicitly confirmed repetition of a completed transaction (2026-09-05)
+
+**Operator approval.** In the Task-1.6.4 planning correction the operator selected a narrow scope
+amendment and explicitly clarified that Proceed means submit the transaction again despite recorded
+completion. The final clarification uses one **Rerun** action: failed/interrupted runs default to
+failed/unfinished steps; successful runs default to all steps. The operator may change any selection.
+Proceeding from Steps with a selected previously submitted transaction opens a Cancel / Confirm
+warning. Cancel returns to Steps; warning Confirm acknowledges and advances to Values. It creates no
+run and submits nothing. The operator edits Values and finishes the modal; only that final submission
+authorizes the new run. Completion history does not prohibit explicit selection. This is a planned contract, not a claim that repeat submission is implemented or live-proved.
+
+**Authorization is exact and durable.** The server plan binds source run/version, descriptor and
+config fingerprints, selected/omitted steps, submitted typed values, and each known completed
+transaction's node/task, natural-business-key digest and evidence identity. Its warning-set digest
+is acknowledged by the Steps warning's Confirm and retained while the operator edits Values. The
+final plan recomputes the warning set against the submitted values: acknowledgment remains usable
+only for the same source/version, warned selection, natural business keys and completion evidence.
+A change to those warning facts requires renewed acknowledgment; Values edits alone do not. Only
+the final modal submission consumes the finished plan atomically with new-run creation and stamps
+server-owned repeat authorization on that run, bound to the product command and node. The warning
+Confirm never consumes the plan or mints an occurrence. In the execution rules below, “confirmation
+command” means the final submission command, never the warning's navigation action. No authorization is
+inferred from mere `retryOf`, attempt number, a prefill value, a client `force` boolean, or an old
+confirmation. Omitted transactions have no repeat authorization and create no attempt, intent or
+proof. A new relevant completion found only after fresh upstream reads requires renewed warned
+confirmation; it is never silently reused or turned into implicit consent.
+
+**Separate submission, same business identity.** Ordinary writes retain their existing natural key.
+An authorized repeat uses one deterministic, domain-separated occurrence key bound to the natural
+key, consumed confirmation command and transaction node. It records the original business-key digest
+and authorization provenance in strict intent/envelope JSON. The key and digest still agree under
+`deriveIdempotencyKeyDigest`; the existing unique indexes fence that one occurrence. This is an
+explicit D335 exception to older prose forbidding any occurrence-qualified key, not permission to
+change a workflow's natural key or append random retry ids. Old intents, attempts, checkpoints and
+source runs remain unchanged. No migration, new table, overwritten completed intent, released key,
+or retired trigger is required or authorized.
+
+**Business-wide admission still applies.** The adapter must query the natural key and all its
+recorded occurrences, including rows whose originating run no longer exists. Query plus fence is
+one authority transaction. A different attempting, parked or otherwise unresolved occurrence cannot
+be bypassed by minting another occurrence key. One exact confirmation has one occurrence across
+reload, race and crash; two distinct explicit confirmations are separate authorizations, serialized
+against active occurrences. Ordinary writes also consult this business-wide fence, so a repeat does
+not create a second unobserved concurrency lane. JSON lookup support and strict schema changes are
+owned by Task 1.6.4; SQL DDL remains excluded.
+
+**Execution and proof.** A source-bound run does not replay another run's read/compute or transaction
+checkpoint. An acknowledged selected completed transaction reaches fresh prepare, subject binding,
+fence, commit and verification. A matching older `present` probe is recorded as the warned baseline,
+not returned as the new result and not a completion-history veto. Unknown/ambiguous state still uses
+the evidence-resolution boundary. After the new fence, success requires the existing contract's
+fresh post-commit verifier or receipt evidence for this invocation. Old receipts and unchanged
+baseline observations alone cannot prove a new submission. If the external system refuses the new
+operation, report its actual failure; never manufacture a successful repeat.
+
+**Recovery is occurrence-specific.** Same-run checkpoint reuse and exact command replay remain
+legal and never click twice. After loss of the new claim/process, a generic business-key probe that
+finds the old completed transaction cannot settle the new occurrence. Reuse the existing typed
+positive/negative recovery protocol only with evidence attributable to the new occurrence. If that
+attribution is unavailable, retain the unknown occurrence and its evidence-resolution actions;
+neither the old receipt nor the earlier repeat confirmation authorizes another click. Normal
+successful execution still uses fresh verification; this rule adds no blanket park on that path.
+The same distinction applies to operator-present/absent resolutions and dry-run previews. Preview
+never consumes a real-write occurrence or creates write evidence.
+
+**Ownership and proof.** Task 1.6.4 owns plan/command acknowledgment, strict persisted JSON and
+adapter queries, source-bound execution, sequencer/recovery behavior, composition and synthetic
+proofs. Task 2.6.1-2 serves completion/value provenance read-only. Task 3.1.11-2 renders the shared
+modal defaults and specific warning/Confirm interaction. Internal compatibility retry/restart retains
+D314's reuse semantics; it cannot mint repeat authorization. Preserve all ordinary seven-beat,
+subject-binding, claim-generation, after-commit, unknown-write and D308 deletion invariants.
+The Task-4 matrix must disprove missing/stale acknowledgment, cross-node/key authorization reuse,
+competing occurrences, same-confirmation double-click, old-receipt recovery, rollback publication,
+omitted-transaction effects and source mutation. Live repeat verification is outside Task 1.6.4.

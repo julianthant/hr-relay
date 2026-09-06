@@ -16,7 +16,7 @@ after 1.6; contracts it built live in `reference/`.
 - [ ] **2.6** waits for 1.6, then migrates/re-proves downstream read models, joins, and operator services without redesigning or rewriting append-only evidence
 - [ ] seven residuals ship WITH the phase, each owned by a later node — the notes emitter and the ledger drain, five unpublished notification arms, the knowledge projection, the retention sweep, the phone's delivery path, the empty capture bindings (see *What Phase 2 left standing*)
 > 2026-09-03 | D326/D327 authority reset | 1.6 owns stores, lifecycle/configuration writers, and core resolution; 2.6 owns downstream consumers and non-mutating revalidation only
-> 2026-09-05 | D334 operator correction | historical Edit Data checkpoint mutation is superseded; 1.6.4 removes the writer, 2.6 Task 1-2 serves read-only completed-value/provenance candidates, and 3.1 Task 11-2 owns the source-bound Retry/Rerun modal
+> 2026-09-05 | D334 operator correction | historical Edit Data checkpoint mutation is superseded; 1.6.4 removes the writer, 2.6 Task 1-2 serves read-only completed-value/provenance candidates, and 3.1 Task 11-2 owns the source-bound Rerun modal
 > 2026-08-21 | docs-cohesion 02 | verified against the five reference docs' own `p2-*` status blocks (`reference/{operator-trust,dashboard-surfaces,data-intake-and-edit-data,frontend-backend-integration,guards-and-tests}.md`) and spot-checked in `src/core/{write-sequencer,evidence-receipt}.ts`, `src/services/notifications/**`, `src/infra/ledger/**`, `src/infra/sqlite/migrations.ts` (v10–v13); left: the seven residuals below, each attributed
 
 <!-- /roadmap-status -->
@@ -531,9 +531,12 @@ closed. This is scheduling under D328, not authority redesign.
 <!-- roadmap: p2f-data -->
 
 - [ ] Rewire only actual run/settings dependencies across intake, OCR, manifests, mappings, and the
-  D334 Retry/Rerun prefill source.
+  D334 Rerun prefill source.
 - [ ] Serve every descriptor-allowed completed-step value with exact source run/version, step/node,
   field path and provenance; preserve artifact readability and fail loud on missing canonical linkage.
+  Also serve read-only completed/failed/unfinished step classification and completed-transaction evidence
+  coordinates for D335 defaults/warnings. Never infer completion from an omitted-step assertion or grant
+  repeat consent in this projection; 1.6.4 owns the already-built backend authorization boundary.
 - [ ] Keep the projection read-only: it offers prefill candidates and never writes a lifecycle row,
   checkpoint, start plan or modal value. Redact/withhold any value the ordinary operator-suppliable
   schema does not admit.
@@ -548,7 +551,7 @@ closed. This is scheduling under D328, not authority redesign.
 >
 > 2026-09-05 | D334 operator correction | the old `run.edit-checkpoint` consumer is retired by 1.6.4.
 > This task owns only the replacement READ: completed-step values and their exact provenance for the
-> source-bound Retry/Rerun modal. Prove partial/missing/malformed/deleted/archived sources, copied
+> source-bound Rerun modal. Prove partial/missing/malformed/deleted/archived sources, copied
 > versus operator-entered provenance, transaction outputs represented as assertions rather than new
 > write proof, and a byte-identical source run. Task 3.1.11-2 owns all modal state and submission.
 

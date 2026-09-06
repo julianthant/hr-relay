@@ -1965,15 +1965,24 @@ and enqueue re-reads the stored value through the DESCRIPTOR's canonical schema.
 identity-not-equivalence argument `defineIntakeProjection` already makes per target field, applied
 to the whole input.
 
-## 6. Retry/Rerun values from a prior run (charter §12)
+## 6. Rerun values from a prior run (charter §12)
 
 <!-- roadmap: p2-2h -->
 <!-- roadmap: p2-2i -->
 
-**Current contract — D334 (2026-09-05).** The operator-facing name is no longer Edit Data. A failed
-or interrupted source offers **Retry** and a completed source offers **Rerun**. Either opens the
-ordinary Run modal at its Steps screen and creates a new run only after confirmation. The source run
-is read-only and remains byte-identical.
+**Current contract — D334/D335 (2026-09-05).** The operator-facing action is **Rerun** for failed,
+interrupted and successful runs. It opens the ordinary Run modal at Steps, defaulting to failed and
+unfinished steps for a failed/interrupted source and all steps, including previously omitted steps,
+for a successful source. The operator may change any selection. The source run is read-only and remains byte-identical.
+
+D335 permits explicit repetition of a completed transaction. On proceeding from Steps, a warning
+about selected previously submitted transactions offers Cancel / Confirm. Cancel returns to Steps;
+Confirm acknowledges and advances to Values without creating or submitting a run. The operator
+edits Values, then the final modal submission authorizes another submission, not receipt reuse. Prior
+completion alone never vetoes the operator's selection. The read model serves completion coordinates
+and evidence identity for the warning; it cannot grant repeat authorization. The server retains the
+acknowledgment with the exact values/selection and revalidates it at consumption. `ref write-safety`
+§D335 owns execution, concurrency and recovery; §9.1 of `ref dashboard-surfaces` owns the interaction.
 
 Completed-step values are candidates for prefill, not inherited authority. The operator controls
 both dimensions independently: which eligible steps execute, and which prior values are copied,
@@ -1984,7 +1993,7 @@ step/node and field path, but that citation does not turn a prior checkpoint int
 An omitted step executes none of its entries. An omitted transaction creates no new intent, attempt,
 commit or proof; downstream work may consume only the schema-valid operator assertion the workflow's
 declared omission form admits. A parked or uncertain write still exposes only its evidence-resolution
-actions and cannot enter Retry/Rerun.
+actions and cannot enter Rerun.
 
 The run service mints the new `runId`/`traceId` only when the confirmed server plan is consumed.
 Planning and consumption revalidate the source id/version and descriptor/config/input/omission
@@ -2198,19 +2207,20 @@ insert — fail-closed pending the archive/attempt-model work. §6.5's new-input
 start-plan flow. Proof: `tests/unit/edit-data.test.ts` (applier, all five save arms, and the
 three consume arms) plus the activated `edit-data-field-policy` guard.
 
-### 6.5 Retry/Rerun is the source-bound start-plan path
+### 6.5 Rerun is the source-bound start-plan path
 
 <!-- roadmap: p2-2i -->
 
-Retry/Rerun submits through `src/services/start/plan.ts` and the `start-run` command. The source
+Rerun submits through `src/services/start/plan.ts` and the `start-run` command. The source
 coordinate and observed version bind the prefill/recovery context, while the ordinary raw input,
 canonical snapshot, step selection and omission facts bind what the new run will actually execute.
 The proposal carries no run identity. Confirmation consumes it once and the service returns the
 newly committed identity.
 
-The source outcome chooses only the label and useful defaults. Retry initially selects the failed or
-incomplete step and downstream work; Rerun initially selects the source run's prior selected-step
-set. The operator may change either selection and any offered value before confirmation. Unselected
+The action is always Rerun. The source outcome chooses only the defaults: failed/interrupted runs
+select failed and unfinished steps; successful runs select all steps, including previously omitted
+steps. The operator may change any selection, acknowledge the submitted-transaction warning to
+advance to Values, and change any offered value before the final modal submission. Unselected
 steps do not replay automatically. Changing an identity-bearing value is legal when the ordinary
 workflow input schema accepts it; the planner derives the resulting item rather than forcing the
 source item's identity onto different input.
@@ -2229,7 +2239,7 @@ digest and lineage path. Neither is a shortcut around this modal or a way to mut
 | 2 | **Coercion swallows a bad cell** (a malformed EID becomes `""` or a guessed value) | `field.coerce` throws a per-cell error naming row/column/value; the cell becomes a **row rejection** (§5), never a substituted default. **Held by the `fail-loud-catch-default` and `nullish-literal-data-fallback` ratchet arms** (`tests/unit/architecture/helpers/ratchet-arms.ts`), which scan the whole of `src/**` — there is no `src/intake`; the domain half is `src/domain/intake/` and the service half `src/server/intake/` |
 | 3 | **Mapping reuse on a changed/duplicate layout** | unambiguous canonical-JSON fingerprint; bindings resolve by header+occurrence; missing columns unmap; duplicate headings require visible sample confirmation; index never silently binds. **Held by `intake-mapping-boundary` (active)** |
 | 4 | **A rejected row silently vanishes (or a partial file launches)** | `Run` is disabled until the reject list is reviewed; only the `valid` set fans out; each reject carries row/column/value/reason and must be fixed or explicitly excluded (§5) — nothing half-launches. **Held by `IntakePlanManifestSchema`'s own refinements** (unique 1..n source-row coverage, exact derived totals, `valid > 0`), not by a named guard |
-| 5 | **A Retry/Rerun plan silently adopts stale source values or mutates its source** | Plan and consume both bind the source run id/version; drift refuses before create. Prefill is copied into a new typed plan, never replayed from the source at execution, and the source record must remain byte-identical. Task 1.6.4 repoints the former Edit Data tests to this boundary; 2.6 Task 1-2 proves source value/provenance reads. |
+| 5 | **A Rerun plan silently adopts stale source values or mutates its source** | Plan and consume both bind the source run id/version; drift refuses before create. Prefill is copied into a new typed plan, never replayed from the source at execution, and the source record must remain byte-identical. Task 1.6.4 repoints the former Edit Data tests to this boundary; 2.6 Task 1-2 proves source value/provenance reads. |
 | 6 | **An intake projection re-declares a regex looser than its canonical field** | Guard asserts every *mapped* input key points at the same `CanonicalField.schema` object; non-intake workflow fields remain legal. The full assembled input still parses through the workflow schema; every migrated legacy EID fixture is audited against canonical `Eid`, and a truly distinct identifier must get a separately named/validated domain type (§1). **Held by `intake-mapping-boundary` + `intake-canonical-field-registry` (both active)**, and by `defineIntakeProjection` refusing anything but the same schema OBJECT |
 | 7 | **Roster match fabricates an EID on no-match** | `matchedEid` is `nullable`; `mismatch:"no-match"` is a first-class output; the caller falls through to person-lookup — the `nullish-literal-data-fallback` ratchet arm bans `?? "<eid-literal>"`-shaped fallbacks in the roster impl |
 | 8 | **A stale roster match rides into a write on resume** | finite field freshness + declared DAG walk refuses stale facts feeding a commit; an unrelated Edit Data patch cannot reset their observed time |

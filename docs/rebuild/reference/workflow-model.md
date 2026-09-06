@@ -2279,7 +2279,7 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
    schema—a bad edit is rejected loudly at save time; a good edit becomes a typed patch with
    field-level operator provenance). Editing checkpoint data in this Context section is the supported way
    to correct a run's data mid-way; hand-editing SQLite or JSONL is not.
-4. **Retry/Rerun through the Run modal (D334).** The source run supplies completed-step values as
+4. **Rerun through the Run modal (D334).** The source run supplies completed-step values as
    optional editable prefill only. The operator selects/omits steps and submits authoritative typed
    input/assertions through a new start plan; no source checkpoint is inherited and the source run
    remains unchanged. A changed match key derives a new logical item. An unchanged item may retain
@@ -2312,14 +2312,21 @@ only its evidence-resolution actions; these two choices do not bypass write reco
 > real executor over real run authority in `tests/scenario/workflows/person-lookup/structural.scenario.test.ts`
 > (T1a); D318's `live-read` T1b arm (ref guards-and-tests §10.4) is the live half of that same T1 pair.
 
-**Current operator recovery contract — D334 (2026-09-05).** Retry and Rerun are labels for the same
-source-bound Run modal, not direct recovery mutations. Retry defaults the selection to the
-failed/incomplete step and downstream work; Rerun defaults to the source's prior selected-step set.
+**Current operator recovery contract — D334/D335 (2026-09-05).** One Rerun action opens the
+source-bound Run modal. Failed/interrupted runs default to failed and unfinished steps; successful
+runs default to all steps, including those omitted by the source. After selecting steps, the warning
+for a previously submitted transaction offers Cancel / Confirm. Confirm advances to Values only;
+only the final modal submission consumes the plan and creates the new run.
 The operator may change every eligible selection and any offered value. Submitted modal values and
 omission facts are typed operator assertions for the new run. An unselected transaction does not
 execute and contributes no new proof; an unknown write remains blocked on its evidence-resolution
 door. D314's scenarios remain historical evidence for the service's internal compatibility
 `retry`/`restart` operations until Task 1.6.4 repoints them; they no longer define the dashboard.
+D335 adds warned, explicitly confirmed repetition: a selected completed transaction executes a new
+submission after acknowledgment, rather than inheriting its old output. A durable source-bound
+execution marker suppresses other runs' checkpoints while retaining this run's own resumable facts.
+Ordinary internal compatibility recovery remains unchanged. `ref write-safety` §D335 owns the
+separate occurrence identity, natural-business-key conflict checks and fresh completion evidence.
 
 ### 5.7 The checkpoint store — and resume scope (D9)
 

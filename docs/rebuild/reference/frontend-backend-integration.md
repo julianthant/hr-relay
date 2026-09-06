@@ -1076,7 +1076,7 @@ until every cell in its row has an implementation and a test. The **Built** colu
 - [x] archive · activity · explorer — frozen archived detail, the aggregate + ledger block + CSV, the read-only graph (D179/D223/D236/D240/D227–D229, §5.1.5)
 - [x] notifications — the bell, its filters, and read/unread/snooze CASed on the row's own revision (D222/D253, §5.1.6)
 - [x] intake — upload → mapping → validate → manifest → fan-out (2h/2i-E, §5.1.7); the phone session it used to name was retired by D294
-- [~] Retry/Rerun prefill — D334 supersedes the wired checkpoint-edit command; 1.6.4 removes its writer, 2.6 Task 1-2 serves completed values/provenance, and 3.1 Task 11-2 lands the shared modal (§5.1.7)
+- [~] Rerun prefill — D334 supersedes the wired checkpoint-edit command; 1.6.4 removes its writer, 2.6 Task 1-2 serves completed values/provenance, and 3.1 Task 11-2 lands the shared modal (§5.1.7)
 - [ ] Group People and OCR Review — both matrix rows have NO surface; `people` and `review` are declared-unserved (D184)
 - [ ] the live half of every square except the queue row — five of six stream topics have no producer, so a panel follows the day cursor and re-reads (§3.5)
 - [ ] the Session Panel's other six commands — kernel arms exist, controls do not
@@ -1275,9 +1275,11 @@ ids whose completed proofs will be validated and reused without prepare/commit. 
 input, omission or checkpoint patch. A parked unknown write exposes neither command. Until this
 amendment is implemented, the existing `retry` command remains the only built recovery verb.
 
-**D334 — Retry/Rerun enter this modal (2026-09-05, operator approved).** A failed/interrupted source
-labels the launcher Retry; a completed source labels it Rerun. Both open at Steps. The source detail
-serves descriptor-allowed completed-step values with coordinates and provenance; the client may copy,
+**D334/D335 — one Rerun action enters this modal (2026-09-05, operator approved).** Failed/interrupted
+and successful sources use the same Rerun launcher. It opens at Steps, defaulting to failed/unfinished
+steps for a failed/interrupted source and all steps, including previously omitted steps, for a
+successful source. The source detail serves descriptor-allowed completed-step values with coordinates and
+provenance; the client may copy,
 change or clear any offered value and select or omit any eligible step. Submission is an ordinary
 source-bound start-plan request: raw input and typed omission facts are authoritative, while prior
 values are prefill only. The plan carries the source run id/version and intent but no proposed
@@ -1285,6 +1287,23 @@ values are prefill only. The plan carries the source run id/version and intent b
 unchanged, unselected steps do not replay, and an omitted transaction produces no new write proof.
 Unknown writes keep only their evidence-resolution actions. Task 1.6.4 lands the backend contract;
 2.6 Task 1-2 serves the source values; 3.1 Task 11-2 owns the shared modal and launchers.
+
+**D335 confirmation contract.** A selected completed transaction is warning-bearing, not disabled.
+On proceeding from Steps, the popup warns that the selected transaction was already submitted and
+rerunning it may create a duplicate. Cancel returns to Steps; warning Confirm acknowledges the exact
+server-derived warning set and advances to Values. This navigation neither calls the final `start`
+command nor consumes a plan or creates/publishes a run. The source read model supplies bounded
+completion coordinates/digests for this warning; the final plan revalidates them against the submitted
+Values and selected steps. Values edits that preserve that warning set retain the acknowledgment;
+changed warned keys/transactions/evidence require renewed acknowledgment. There is no free-form force
+flag or silent acknowledgment of a new warning. Only the modal's final submission calls the existing
+`start` command with the finished plan and this strict optional acknowledgment;
+missing/stale acknowledgment is a structured confirmation-required result with zero plan consumption,
+run creation or publication. Its implementation may extend the closed result vocabulary as required
+by this arm; D330's `target-deleted` mapping remains distinct. Exact replay returns the original new
+run ids and performs no second submission. Backend admission/execution belongs to 1.6.4, and the
+warning/confirmation UI belongs to 3.1 Task 11-2. Only the narrow removed-field/retired-command
+compatibility edits and their reference changes move into 1.6.4; no full modal moves early.
 
 ##### D250 — the typed box DESCRIBES itself, and its examples are proved typeable (2026-08-20)
 
@@ -1586,7 +1605,7 @@ notification service, not this surface.
 span per member, so the rows arrive through §5.1.2's ordinary path. The former Context-rail
 `run.edit-checkpoint` path is superseded by D334 and is now historical implementation evidence.
 2.6 Task 1-2 replaces it with a read-only completed-value/provenance projection; 3.1 Task 11-2
-consumes that projection in the shared Retry/Rerun Run modal.
+consumes that projection in the shared Rerun Run modal.
 
 **Mobile capture is retired, not deferred (D294, 2026-08-31).** `surfaces/capture-start.tsx`, the
 second browser bundle under `src/dashboard/phone/**` (`capture.html`), the nine bespoke REST routes,
