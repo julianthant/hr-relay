@@ -530,16 +530,16 @@ log:
 - 2026-09-05 | direct supervisor close | candidate `a2c37bba` passed fresh independent `sup_review` after resolving cancellation admission, recovery publication and indexed recovery-selection findings; integrated as `2c4e1af6` with typecheck/lint, 5,211 coverage tests, 758 architecture tests, manifest and diff checks passing. Owned worktree/ref removed; Task 3 complete. No push or next-task dispatch.
 
 #### 4 · Cut over operator run commands, Rerun planning, and archive/delete writers {#p1f-run-commands}
-status: planned
+status: done
 doc: 01 §1.6 · Implement canonical run and settings authorities · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §9.1 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.4 · ref:data-intake-and-edit-data §6 · ref:operator-trust §5.7
 
 builds:
-- [ ] BE route dashboard/dry-run start, intake fan-out creation, internal retry/restart compatibility, cancel, rename, gate/write continuation, archive, relaunch, terminal-only delete/tombstone, bulk, and evidence retention through the run service (`command-kernel`, `run-fan-out`, `command-service`, and the shared post-commit `run.queued` publication)
-- [ ] BE make D334 source-bound Rerun plans carry logical entries, selected/omitted steps, submitted values and prefill provenance but no `runId`/`traceId`; Confirm creates the new run and the source stays byte-identical; remove `run.edit-checkpoint`
-- [ ] BE return one typed settlement/conflict vocabulary, preserving `target-deleted` and actor/version attribution; D335 also admits the strict confirmation-required arm
-- [ ] BE implement D335 acknowledged repeat occurrences, natural-business-key admission across occurrences, source-bound fresh execution and occurrence-specific recovery without source mutation or DDL
-- [ ] FE apply only required removed-identity/retired-editor compatibility changes and their reviewed references; full modal defaults/warning UI remains 3.1 Task 11-2
-- [ ] PROOF plan/confirm identity timing, exact replay, source/value/step customization, idempotence, stale CAS, concurrent-worker, archive/relaunch lineage, and D308 deletion semantics through the real kernel; `no-lifecycle-sql-outside-the-adapter` (#24) and replacement `rerun-prefill-boundary` activate in the same commit
+- [x] BE route dashboard/dry-run start, intake fan-out creation, internal retry/restart compatibility, cancel, rename, gate/write continuation, archive, relaunch, terminal-only delete/tombstone, bulk, and evidence retention through the run service (`command-kernel`, `run-fan-out`, `command-service`, and the shared post-commit `run.queued` publication)
+- [x] BE make D334 source-bound Rerun plans carry logical entries, selected/omitted steps, submitted values and prefill provenance but no `runId`/`traceId`; Confirm creates the new run and the source stays byte-identical; remove `run.edit-checkpoint`
+- [x] BE return one typed settlement/conflict vocabulary, preserving `target-deleted` and actor/version attribution; D335 also admits the strict confirmation-required arm
+- [x] BE implement D335 acknowledged repeat occurrences, natural-business-key admission across occurrences, source-bound fresh execution and occurrence-specific recovery without source mutation or DDL
+- [x] FE apply only required removed-identity/retired-editor compatibility changes and their reviewed references; full modal defaults/warning UI remains 3.1 Task 11-2
+- [x] PROOF plan/confirm identity timing, exact replay, source/value/step customization, idempotence, stale CAS, concurrent-worker, archive/relaunch lineage, and D308 deletion semantics through the real kernel; `no-lifecycle-sql-outside-the-adapter` (#24) and replacement `rerun-prefill-boundary` activate in the same commit
 
 needs:
 - p1f-run-writers
@@ -551,6 +551,7 @@ log:
 - 2026-09-05 | shared-settlement ownership | Task 3 supplies the service-backed positive-recovery/operator-present `resume-queued` helper and narrow composition injection. Task 4 retains command dispatch/admission, other write-resolution paths and the remaining command cutover; preserve Task 3's atomicity, continuation and replay proofs · left: Task 3, then implementation
 - 2026-09-05 | D335 approved planning correction | One Rerun action defaults failed/interrupted sources to remaining steps and successful sources to all steps. Selected previously submitted transactions show Cancel / Confirm; warning Confirm advances to Values without lifecycle effects. Only final modal submission starts the new run with fresh-submission authorization, not receipt reuse. Task 4 explicitly owns strict occurrence JSON, adapter query/fence, execution/recovery and minimum UI/reference compatibility; no DDL/live write/full modal. Producer-consumer/replay feasibility and acceptance are recorded in doc 01 before renewed launch · left: implement and independently review the amended Task-4 plan
 - 2026-09-05 | D334 operator-approved focused plan | Task 3 is integrated. Run identities now mint only when Confirm consumes a plan. Rerun is a contextual preset of the ordinary new-run modal; completed-step values are optional editable prefill, submitted values/omissions are authoritative, the source is immutable, and unknown writes remain evidence-resolution only. 1.6.4 removes the Edit Data writer and owns this backend boundary; no Capture or generic CLI surface returns · left: implement the approved Task-4 plan in doc 01
+- 2026-09-05 | direct supervisor close | completed the seven-step D334/D335 plan; independent `sup_review` PASS on `03a2f508` after source-eligibility fix `1dd76ecb`. Integrated unchanged as `5d050d3d`; isolated integration typecheck/lint, 5,230 coverage tests, 761 architecture tests, 269 parity tests, manifest/roadmap and diff checks passed. Owned worktree/ref and verified scratch residue removed; Task 4 complete. Full modal remains 3.1.11-2. No push or next-task dispatch.
 
 #### 5 · Cut over settings mutation and runtime resolution {#p1f-settings-consumers}
 status: planned

@@ -1640,6 +1640,48 @@ tests), and diff check. Logs are `/tmp/hr-164-revised-{typecheck,lint,coverage,m
 Generated manifest and reference files remain unchanged. The same private example environment and
 synthetic isolation apply. Task 4 remains open pending renewed review, integration gates and cleanup.
 
+#### Task 4 completed (2026-09-05)
+
+**COMPLETE.** Independent reviewer `/root/sup_review_run_commands` (`sup_review`, Sol 5.6/high)
+returned **PASS** on renewed candidate `03a2f5083234e0d5aa3a4c79abb91c1310529a92`, against
+approved plan/base `db368866c2c2d2ea13ef8dea1bc2bbf197dcebd6`. The source-eligibility finding is
+resolved by `1dd76ecb0d57d3bed6a9ba1bc68dbc6462bf7bfe`; no new material findings remained.
+The reviewer checked the complete initial candidate and reference audit, then the correction and
+regression evidence. Gate logs were inspected, not independently rerun; read-only Git identity and
+diff checks were independently verified. All seven steps and the assigned acceptance matrix are
+satisfied within Task 4's backend and minimum UI compatibility scope.
+
+The accepted candidate was merged without conflicts into local `master` as
+`5d050d3ddb38b09b194f0cc047535a691cd1820c`. Its tree
+`ba06c58d03b93b2f2ec998087d54b5235712124c` exactly matches the reviewed tree. The owned branch
+was fast-forwarded to that integration commit, and the complete committed gates ran serially there
+with the private mode-600 example environment and synthetic state. Rebuild port 3938 was verified
+free before coverage; compiler/linter completed before the two-worker coverage run.
+
+| Integration gate | Result on `5d050d3d` |
+| --- | --- |
+| Typecheck and lint | PASS |
+| Full coverage and suite-size | PASS; 419 files / 5,230 tests; all floors; statements/branches/functions/lines 85.56/76.90/89.73/87.67% |
+| Manifest and roadmap checks | PASS; generated outputs current |
+| Standalone architecture | PASS; 76 files / 761 tests |
+| Full assertion parity | PASS; 269 tests, no failed/skipped/flaky tests |
+| Diff and tested-tree identity | PASS; both checkouts clean, exact integrated HEAD/tree retained through gates |
+
+Logs: `/tmp/hr-164-integrated-{identity,typecheck,lint,coverage,manifest,roadmap,architecture,parity}.log`.
+The observed red/green eligibility tests and initial production-composed repeat proofs remain
+applicable to this unchanged implementation. No additional reference refresh was needed.
+
+Cleanup was verified before this completion record: all owned gates and manual browser/server work
+had stopped; `/Users/julianhein/Projects/hr-worktree-run-commands`, its Git registration and
+`codex/phase-1-6-run-commands` were removed with ordinary Git cleanup. Its private environment,
+dependency symlink and synthetic outputs were removed with the worktree; the primary environment
+and dependency installation were preserved. Three attributable failed-test scratch directories were
+removed only after owner identity and stopped process groups were verified. External gate logs are
+retained as evidence. Supporting agents had no separate sidebar tasks to archive.
+
+This closes only Task 1.6.4. Full Rerun modal navigation/defaults remain Task 3.1.11-2. No DDL,
+Capture or generic CLI expansion, live HR verification, real submit, push or next-task dispatch occurred.
+
 ### Task 5 · Cut over settings mutation and runtime resolution
 <!-- roadmap: p1f-settings-consumers -->
 
