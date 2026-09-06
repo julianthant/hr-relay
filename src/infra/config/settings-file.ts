@@ -46,6 +46,7 @@ import {
   SettingsRootAuthoritySchema,
   settingsRootAuthority,
   settingsRootPathsFromOrdinaryPath,
+  settingsRootPaths,
   type SettingsDocumentTarget,
   type SettingsRootAuthority,
 } from "../../domain/config/settings-root.js";
@@ -525,6 +526,7 @@ type SettingsDirectoryIdentity = ReadonlyMap<string, Readonly<{ device: number; 
 function verifySettingsDirectory(
   directory: string,
   prior?: SettingsDirectoryIdentity,
+  createMissing = true,
 ): SettingsDirectoryIdentity {
   const uid = process.getuid?.();
   if (uid === undefined) {
@@ -541,7 +543,7 @@ function verifySettingsDirectory(
     try {
       status = lstatSync(path);
     } catch (error) {
-      if (!isMissing(error)) throw error;
+      if (!isMissing(error) || !createMissing) throw error;
       if (prior !== undefined) {
         throw new Error(`settings directory ${path} disappeared after its identity was bound`, { cause: error });
       }
@@ -2441,4 +2443,42 @@ export function createProtectedSettingsFileAuthority(options: ProtectedSettingsF
     ...authority,
     admit: (input: unknown) => codec.admit(input),
   });
+}
+
+/** P16: observe a stable settled authority without acquiring a lock or repairing any evidence.
+ * Pending transitions and unrecognized crash artifacts are unavailable until their owning
+ * writer settles them. The callback authenticates the private record in a read-only DB snapshot.
+ */
+export function inspectProtectedSettingsFilesReadOnly<Result>(
+  stateRoot: string,
+  authenticate: (record: ProtectedStoreRecord) => Result,
+): Result {
+  const paths = settingsRootPaths(stateRoot);
+  const identity = verifySettingsDirectory(paths.root, undefined, false);
+  const names = readdirSync(paths.root).sort();
+  const allowed = new Set(["authority.json", "settings.json", "protected.json"]);
+  if (names.some((name) => !allowed.has(name))) throw new Error("protected settings authority is unsettled");
+  const bounds = [[paths.authority, MAX_SETTINGS_INITIALIZATION_BYTES],
+    [paths.protected, MAX_PROTECTED_SETTINGS_BYTES], [paths.ordinary, MAX_SETTINGS_FILE_BYTES]] as const;
+  const before = bounds.map(([path, limit]) => readPrivateRegularFile(path, basename(path), limit));
+  const authorityBytes = before[0]?.bytes;
+  if (authorityBytes === undefined) throw new Error("protected settings initialization authority is absent");
+  const authority = parseSettingsInitialization(paths.authority, authorityBytes);
+  if ((before[1] !== undefined) !== (authority.protected === "initialized")
+    || (before[2] !== undefined) !== (authority.ordinary === "initialized"))
+    throw new Error("protected settings initialization authority disagrees");
+  const bytes = before[1]?.bytes;
+  const record = bytes === undefined ? initialProtectedStoreRecord()
+    : ProtectedStoreRecordSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
+  const result = authenticate(record);
+  verifySettingsDirectory(paths.root, identity, false);
+  if (canonicalJsonStringify(readdirSync(paths.root).sort()) !== canonicalJsonStringify(names))
+    throw new Error("protected settings authority moved during inspection");
+  bounds.forEach(([path, limit], index) => {
+    const after = readPrivateRegularFile(path, basename(path), limit);
+    const prior = before[index];
+    if (after?.device !== prior?.device || after?.inode !== prior?.inode
+      || !equalBytes(after?.bytes, prior?.bytes)) throw new Error("protected settings authority moved during inspection");
+  });
+  return result;
 }

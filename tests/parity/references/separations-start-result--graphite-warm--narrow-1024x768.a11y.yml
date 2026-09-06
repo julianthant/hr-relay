@@ -1,7 +1,7 @@
 # separations-start-result--graphite-warm--narrow-1024x768
 # adapter: fixture
 # fixture: separations-start-result
-# descriptorHash: 932117000f9aff06071b347059ecf5bf67d2c3ab4ec9253072c8c9efd7c1f75b
+# descriptorHash: d75c96a77d3cb088a31e7e50bac571a068005425f7e5e891774a5741497c4128
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -47,7 +47,7 @@
     - term: Steps
     - definition: 6 of 6 included
     - term: Values
-    - definition: "timekeeperName: Julian Zaw"
+    - definition: No manual values
     - term: Options
     - definition: "Browser: Headed · Browser screenshots: On"
     - term: Safety

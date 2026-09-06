@@ -1,3 +1,4 @@
+import { ProtectedInputBindingSchema } from "../protected-input.js";
 /**
  * **What the writes will consume** — the block ref write-safety §14.2's decision packet
  * gained when the composition existed to fill it.
@@ -71,7 +72,11 @@ export const SeparationWritePlanSchema = z.discriminatedUnion("state", [
       payrollTitleCode: z.string().min(1),
       payrollTitle: z.string().min(1),
       terminationEffectiveDate: z.string().min(1),
-      timekeeperName: z.string().min(1),
+      // Read historical packets without carrying their protected bytes forward.
+      timekeeperName: z.union([ProtectedInputBindingSchema, z.string().min(1)])
+        .transform((value) => typeof value === "string"
+          ? ProtectedInputBindingSchema.parse({ kind: "legacy-protected-input", name: "timekeeperName", inputPath: "timekeeperName" })
+          : value).pipe(ProtectedInputBindingSchema),
     }),
     /**
      * How the dates were reconciled, with what the form said beside them.

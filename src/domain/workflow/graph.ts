@@ -1,3 +1,4 @@
+import type { ProtectedInputBinding } from "../protected-input.js";
 /**
  * Bundle-safe workflow graph vocabulary (ref workflow-model §1.1/§3).
  *
@@ -52,6 +53,7 @@ export type AnyWorkflowRef = WorkflowRef<z.ZodType, z.ZodType>;
 /** The widest scope a runtime switch may see; never a source of inference. */
 export interface RuntimeScope {
   readonly input: JsonValue;
+  readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: JsonObject;
 }
 

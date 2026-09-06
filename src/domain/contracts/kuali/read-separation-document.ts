@@ -131,7 +131,7 @@ export const KualiReadSeparationDocument = defineTaskContract({
     },
     timekeeper: {
       requestAcknowledged: true,
-      name: { state: "present", value: "Julian Zaw" },
+      name: { state: "present", value: "Synthetic Timekeeper" },
       comments: { state: "absent", reason: "the control is present on the form and holds no value" },
     },
     finalTransactions: {

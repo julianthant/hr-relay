@@ -1,3 +1,4 @@
+import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../domain/protected-input.js";
 import { readRunCheckpoint } from "./run-checkpoint-reader.js";
 import { repeatOccurrenceKey } from "../domain/run/rerun.js";
 /**
@@ -204,7 +205,7 @@ export function rebuildCommitInput(
     if (error instanceof WriteCommitInputRebuildError) throw error;
     throw new WriteCommitInputRebuildError(
       "schema-failure",
-      error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`,
+      "commit-input-rebuild-failed",
       error,
     );
   }
@@ -216,7 +217,7 @@ export function rebuildCommitInput(
   } catch (error) {
     throw new WriteCommitInputRebuildError(
       "schema-failure",
-      error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`,
+      "commit-input-rebuild-failed",
       error,
     );
   }
@@ -229,7 +230,7 @@ export function rebuildCommitInput(
       || intent.idempotencyKeyDigest !== deriveIdempotencyKeyDigest(intent.system, intent.idempotencyKey)) {
     throw new WriteCommitInputRebuildError(
       "key-drift",
-      `derived:${digest};fenced:${intent.idempotencyKeyDigest}`,
+      "permanent-key-binding-moved",
     );
   }
   return commitInput;
@@ -276,7 +277,8 @@ function rebuildCommitInputWithoutFence(
       `unsupported-dependency:${dependencyNode.kind}:${String(dependency)}`,
     );
   }
-  const scope: RuntimeScope = { input: JsonValueSchema.parse(canonicalInput), outputs: Object.freeze(outputs) };
+  const scope: RuntimeScope = { input: JsonValueSchema.parse(canonicalInput), outputs: Object.freeze(outputs),
+    protectedInputBindings: retainedRunProtectedBindings(run) };
   const commitContract = node.commit.uses;
   return commitContract.input.parse(node.commit.bind(scope));
 }
@@ -397,14 +399,14 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
       ? error.failure
       : WriteCommitInputRebuildFailureSchema.parse({
         category: "schema-failure",
-        evidenceDigest: sha256Hex(error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`),
+        evidenceDigest: sha256Hex("commit-input-rebuild-failed"),
       });
   }
   if (keyFailure !== undefined) {
     checks.push(moved(
       "permanent-key-identity",
       `this build cannot re-derive intent ${intent.writeIntentId}'s fenced ${intent.system} `
-      + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} from the exact durable input; `
+      + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))} from the exact durable input; `
       + `${keyFailure.category} (evidence ${keyFailure.evidenceDigest.slice(0, 12)}…)`,
       keyFailure,
     ));
@@ -414,7 +416,7 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
   checks.push(held(
     "permanent-key-identity",
     `this build re-derives the exact fenced ${intent.system} `
-    + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} from the run's durable input — the write still names the `
+    + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))} from the run's durable input — the write still names the `
     + "same external transaction",
   ));
 

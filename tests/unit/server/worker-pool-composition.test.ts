@@ -145,6 +145,7 @@ function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
     clock,
     scheduler,
     launch: {
+      environment: {},
       command: "/usr/bin/fake-worker-node",
       prefixArgs: Object.freeze(["--import", "tsx", "src/cli.ts"]),
       cwd: root,

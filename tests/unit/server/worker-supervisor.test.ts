@@ -163,6 +163,7 @@ function openHarness(overrides?: Readonly<{
       stopReceipt(directive.requestedAt),
     supervisor: createDashboardWorkerProcessSupervisor({
       launch: {
+        environment: {},
         command: overrides?.launchCommand ?? LAUNCH.command,
         prefixArgs: LAUNCH.prefixArgs,
         cwd: LAUNCH.cwd,

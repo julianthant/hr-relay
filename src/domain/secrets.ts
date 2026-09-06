@@ -18,7 +18,7 @@ import {
   type ProtectedStoreRecord,
 } from "./config/protected-settings.js";
 import type { Config } from "./config/schema.js";
-import { establishHostPrimaryDisplay, type HostDisplayProbe } from "./config/host-display.js";
+import { establishHostPrimaryDisplay, hostPrimaryDisplayEnvironment, type HostDisplayProbe } from "./config/host-display.js";
 import { FingerprintSchema, type Fingerprint } from "./ids.js";
 import { deepFreeze } from "./immutability.js";
 import {
@@ -493,10 +493,10 @@ function registeredTestTargetSecretSpec(name: TestTargetSecretName) {
  * returns is exactly what an operator could have typed. Refusals name only
  * the public reference and value kind, never the value.
  */
-export function optionalTestTargetSecret(
+export function optionalTestTargetEntry(
   name: TestTargetSecretName,
   source: ProtectedSecretSource,
-): string | undefined {
+): Readonly<{ value: string; valueId: string }> | undefined {
   const spec = registeredTestTargetSecretSpec(name);
   const record = readProtectedStore(name, source);
   const stored = record.entries[name];
@@ -506,7 +506,11 @@ export function optionalTestTargetSecret(
     : ProtectedValueSchemas.personLookupCanaryEid;
   const parsed = schema.safeParse(stored.value);
   if (!parsed.success) throw new SecretSourceError(`test-target ${spec.valueKind} ${name} is invalid in protected-store`);
-  return parsed.data;
+  return { value: parsed.data, valueId: stored.valueId };
+}
+
+export function optionalTestTargetSecret(name: TestTargetSecretName, source: ProtectedSecretSource): string | undefined {
+  return optionalTestTargetEntry(name, source)?.value;
 }
 
 function registeredSecretSpec(name: SecretName): SecretSpec {
@@ -787,4 +791,21 @@ export function resolveSecretFileIdentity(
     .update("hrauto:duo-credential-identity:v1\0")
     .update(canonicalJsonStringify(identities))
     .digest("hex"));
+}
+
+
+/** Closed worker bootstrap: OS lookup/home/temp/locale mechanics plus D324's display channel.
+ * NODE_OPTIONS and arbitrary parent bindings are deliberately not process mechanics here.
+ * The child admits provider keys from its own fixed .env after launch.
+ */
+export const WORKER_PROCESS_MECHANIC_KEYS = Object.freeze(["PATH", "HOME", "TMPDIR", "TMP", "TEMP", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"] as const);
+
+export function workerBootstrapEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  assertNoMigratedEnvironmentKeys(env);
+  const result: NodeJS.ProcessEnv = { ...hostPrimaryDisplayEnvironment(env) };
+  for (const key of WORKER_PROCESS_MECHANIC_KEYS) {
+    const value = env[key];
+    if (value !== undefined) result[key] = value;
+  }
+  return Object.freeze(result);
 }

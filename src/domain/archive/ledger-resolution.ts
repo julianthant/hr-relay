@@ -1,3 +1,4 @@
+import { publicTransactionKeyDigest, PublicTransactionKeyDigestSchema } from "../protected-input.js";
 /**
  * Resolving an archived run's ledger POINTERS against the live ledger.
  *
@@ -108,7 +109,7 @@ export const ResolvedLedgerLineWireSchema = z.discriminatedUnion("state", [
     system: z.string().min(1),
     instance: z.enum(["prod", "test"]),
     /** The permanent key digest; the authority-only natural key never crosses this wire. */
-    idempotencyKeyDigest: FingerprintSchema,
+    idempotencyKeyDigest: PublicTransactionKeyDigestSchema,
     completionKind: LedgerCompletionKindSchema,
     proofSource: LedgerProofSourceSchema,
     confirmedAt: z.iso.datetime({ offset: true }),
@@ -363,18 +364,19 @@ interface LedgerEntryFacts {
 export function resolveLedgerLine(
   pointer: LedgerLinePointer,
   entry: LedgerEntryFacts,
+  protectedTransaction = false,
 ): ResolvedLedgerLineWire {
   return ResolvedLedgerLineWireSchema.parse({
     state: "resolved",
     pointer,
     system: entry.system,
     instance: entry.instance,
-    idempotencyKeyDigest: entry.idempotencyKeyDigest,
+    idempotencyKeyDigest: publicTransactionKeyDigest(entry.idempotencyKeyDigest, protectedTransaction),
     completionKind: entry.completionKind,
     proofSource: entry.proofSource,
     confirmedAt: entry.confirmedAt,
-    action: readDeclaredColumn(entry, "action"),
-    confirmation: readDeclaredColumn(entry, "confirmation"),
+    action: protectedTransaction ? { state: "absent", reason: "protected transaction details withheld" } : readDeclaredColumn(entry, "action"),
+    confirmation: protectedTransaction ? { state: "absent", reason: "protected transaction details withheld" } : readDeclaredColumn(entry, "confirmation"),
   });
 }
 

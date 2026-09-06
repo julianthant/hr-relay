@@ -498,6 +498,21 @@ describe("failure, retry, and resume", () => {
     assert.equal(JSON.stringify(event).includes(wholeEid), false);
   });
 
+  it("drops a protected canary EID before real executor observed-data emission", async () => {
+    const harness = executorHarness({ sessions: happySessionHarness() });
+    const { database, clock } = harness.authority;
+    const binding = { kind: "protected-store" as const, inputPath: "emplId" as const,
+      name: "personLookupCanaryEid" as const, valueId: "00000000-0000-4000-8000-000000000088" };
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun({ protectedBindings: [binding] }), clock.now().toISOString());
+    const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
+    assert.equal(outcome.state, "done");
+    const points = harness.emitter.events().flatMap((event) => event.t === "data.observed" ? event.points : []);
+    const identifiers = points.flatMap((point) => point.values).filter(({ key }) => key.endsWith("emplId"));
+    assert.ok(identifiers.length > 0);
+    assert.ok(identifiers.every(({ transform }) => transform === "drop"));
+    assert.deepEqual(database.authority.runs.get(RUN_ID)?.input.parsed.protectedBindings, [binding]);
+  });
+
   it("fails the task by name on an UNDECLARED leaf, emitting nothing for that batch (D270)", async () => {
     // The point is honest about the page and the classification table has no
     // line for it. Dropping it would make the log look complete while hiding

@@ -1,3 +1,5 @@
+import type { ProtectedInputBinding } from "../../../domain/protected-input.js";
+import type { ProtectedSecretSource } from "../../../domain/secrets.js";
 /**
  * POST /api/v1/start-plans — minting the short-lived plan a `start-run`
  * command later consumes (ref frontend-backend-integration §5.1). Planning goes through the D109
@@ -25,6 +27,9 @@ import { TargetNotFoundError } from "../../failures.js";
 export type { StartPlanWire } from "../../../domain/dashboard/start-plan.js";
 
 export interface StartPlanServiceDeps {
+  readonly protectedSecrets?: ProtectedSecretSource;
+  /** Internal test admission only; never accepted by the public ingress schema. */
+  readonly protectedSubmissionBindings?: readonly ProtectedInputBinding[];
   readonly authority: {
     withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
   };
@@ -69,15 +74,25 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
       if (sourceSelection !== undefined && JSON.stringify(sourceSelection) !== JSON.stringify(ingress.selectedStepKeys)) {
         throw new Error("Rerun source selection must equal submitted selection");
       }
+      const rerunSource = ingress.rerunSource;
       let record = planStart(
         {
           authority: deps.authorityRead,
+          ...(deps.protectedSecrets === undefined ? {} : { protectedSecrets: deps.protectedSecrets }),
           clock: deps.clock,
           ids: deps.ids,
           planTtlMs: deps.planTtlMs,
         },
         {
           descriptor,
+          ...(deps.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: deps.protectedSubmissionBindings }),
+          ...(rerunSource === undefined ? {} : {
+            retainedInputs: [deps.authority.withAuthorityTransaction((repositories) => {
+              const run = repositories.runs.get(rerunSource.runId);
+              if (run === undefined) throw new Error("Rerun source does not exist");
+              return run.input.parsed;
+            })],
+          }),
           submissions: ingress.submissions.map((submission) =>
             applyStartStepSelection(descriptor, submission, ingress.selectedStepKeys)),
           ...(ingress.requestedInstance === undefined ? {} : { requestedInstance: ingress.requestedInstance }),

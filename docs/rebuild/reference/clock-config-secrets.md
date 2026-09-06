@@ -810,6 +810,16 @@ The rules, each a proof 1.6 owes (§D331.11):
    `protected-identifier` too (it resolves to a person).
 
    > 2026-09-04 | phase-0-3-authority-design C31da5310 R03 | the import of both canary references — valid imports, malformed refuses `invalid-value { key }`, absent stays `blocked` by key — is §D332 (settings half) §D332.S4.
+   **Protected-source transaction projection (operator-approved 2026-09-05).** Test admission retains
+   the configured canary value privately with its protected name, canonical input path and `valueId`.
+   Public plans and fingerprints substitute that binding. The natural permanent transaction key and
+   its authoritative digest remain unchanged inside private write-safety authority, including across
+   protected rotation and clear/re-set. Receipts, logs, refusals, diagnostics and dashboard/Archive
+   projections omit that protected-derived digest, using a closed withheld marker and existing
+   independent run/write-intent identities. Historical authority remains immutable; its protected
+   values and old derived digests are not newly served. This is the narrow exception to mandatory
+   digest presentation in ref write-safety; it is not an exception permitting public protected data.
+
 7. **Clear is a write.** `{ clear: true }` removes the entry and retires its `valueId`; it is
    journaled, CAS-fenced and revision-advancing like a set. **Every protected row has a per-name
    value schema** the apply arm and the accessor share: the canaries keep `KualiDocumentNumberSchema`
@@ -825,6 +835,27 @@ The rules, each a proof 1.6 owes (§D331.11):
    any claim that the migration erases it. Retiring the leaf also needs an explicit RETIREMENT arm in
    `snapshot-generations.ts` (`auditConfigSnapshotGenerations` refuses a vanished registered leaf
    today) — an owed 1.6 change, and 0.3 Task 3 owns the generation rule.
+
+**2026-09-05 — Task 1.6.5 operator amendment: the timekeeper is not displayed.** Each
+installation has one timekeeper; the operator already knows their identity. Admission reads
+`timekeeperName` once and retains the value in canonical run input with its protected name,
+input path and immutable store `valueId`. Approval and evidence bind that retained identity,
+never the value or a digest derived from it. The Separations identity approval packet omits the
+name and all name-derived text, including initials within generated comments; its digest binds
+the value-free retained identity and the remaining decision facts. Later protected rotation
+neither changes that run nor invalidates its approval. Changing any other approved fact still
+invalidates approval. Historical input uses an explicit legacy binding marker; old protected
+bytes or their digests must not be newly served. This narrowly supersedes ref write-safety
+§14.5/§14.10's inclusion of the timekeeper among displayed and hashed write-plan values.
+
+**2026-09-06 — Task 1.6.5 rendered-proof amendments.** The operator approved generated
+code-version provenance updates in 194 additional reference triples, beyond the twelve Separations
+Start and four directly affected identity-approval triples. This includes metadata, a11y headers
+and displayed hashes. Six `explorer-transaction` triples may additionally update generated schema
+field totals from `103 reads / 13 writes` to `107 / 14`, reflecting the admitted protected binding
+fields; no transaction is added. Only those count glyphs and corresponding a11y text are admitted.
+The owning Task-5 section records the exact review and negative-control evidence. All other
+non-hash visual changes remain limited to the previously approved Start/identity scope.
 
 ###### D331.7 — restart scope, and where the D330 claim token comes from
 
@@ -1146,6 +1177,15 @@ deleted or renamed proof is a red guard, not silent drift.
 | P39 | Every existing guard/test the migration invalidates is changed deliberately in the same commit, not deleted | update and re-run: `runtime-environment-coverage.test.ts`, `secrets-single-source.test.ts` (the `CONFIG_OWNER_PREFIX` env-read permission and the new WRITE arm), `strict-boundary-schemas.test.ts` (catalog + protected schemas join the inventory), `config-snapshot-generations.test.ts`, `test-target-registry.test.ts`, `evidence-receipt.test.ts`; and the non-guard set `config.test.ts`, `settings-file-service.test.ts`, `settings-runtime-reader.test.ts`, `command-kernel.test.ts`, `worker-composition.test.ts`, `dry-run-scenario-composition.test.ts`, `compose-real-port.test.ts`, `bff-flow.test.ts`, `fixtures/settings-runtime-corruption-fixtures.ts`, `fixtures/dry-run-admission-fixtures.ts` | the named files, each with its `guard-inventory.json` row where it has one |
 | P40 | The eleven frozen parity references containing the Settings surface's `settings.json: not set` line are re-frozen DELIBERATELY, never tolerated as drift | run `npm run test:parity` to see the eleven fail, re-freeze with `npm run test:parity:update`, and review the diff as bytes | `tests/parity/references/{settings,storage-settings}--*.yml` |
 | P41 | (R04, 2026-09-04) Every leaf D331 adds to a served contract is dispositioned under D183 by name in the commit that adds it: the presence tuple `{ present, valueId, updatedAt }` and store `revision`, the protected schema hash, `restartRequired` + `runtimeStatus`, the observed/active `display` pair, `revision-conflict { currentRevision }` and every §D331.5 refusal literal | the schema-driven `redaction-surface-scan` is red on an undispositioned leaf; a disposition naming a value class other than closed-literal/identifier-free is red at review | `tests/unit/architecture/redaction-surface-scan.test.ts` and its disposition table |
+
+> 2026-09-06 | D331 P16 | Operator-approved read-only inspection clarification: SQLite may
+> update only WAL-index (`state.db-shm`) reader marks at byte offsets 100–119 while establishing
+> a coherent live read snapshot. No settings file, database/WAL content, table, authority metadata
+> or filesystem metadata may change; all other SHM bytes remain pinned by the proof. These
+> transient marks contain no database data. Doctor neither acquires/reaps settings locks nor
+> initializes, repairs or settles authority; unreadable or unsettled protected state stays
+> unavailable. See [SQLite WAL format](https://www.sqlite.org/walformat.html#the_wal_index_header).
+
 
 ###### D331.12 — what this contract supersedes (dated 2026-09-04)
 

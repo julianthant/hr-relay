@@ -1,3 +1,4 @@
+import { ProtectedInputBindingsSchema } from "../../protected-input.js";
 /**
  * `workflow:separations/match-identity` — the identity authority packet, built
  * as a real node.
@@ -40,6 +41,7 @@ export const SeparationsMatchIdentity = defineTaskContract({
   title: "Identity Comparison",
   effect: "read",
   input: z.strictObject({
+    protectedBindings: ProtectedInputBindingsSchema.optional(),
     documentNumber: z.string().min(1),
     /** The employee name the separation document carries, verbatim. */
     documentName: z.string().min(1),

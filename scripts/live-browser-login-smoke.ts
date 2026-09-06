@@ -56,7 +56,7 @@ import { systemClock } from "../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../src/domain/config/resolve.js";
 import { RuntimeInstanceSchema } from "../src/domain/config/instance.js";
 import { settingsRootPaths } from "../src/domain/config/settings-root.js";
-import { assertNoMigratedEnvironmentKeys } from "../src/domain/secrets.js";
+import { assertNoMigratedEnvironmentKeys, hostAwareResolutionEnvironment } from "../src/domain/secrets.js";
 import {
   BrowserSystemIdSchema,
   FingerprintSchema,
@@ -68,7 +68,9 @@ import {
   workerProfileDirectory,
 } from "../src/infra/browser/browser-session-factory.js";
 import type { BrowserDeadlineScheduler } from "../src/infra/browser/browser-session-factory.js";
-import { createProtectedSettingsFileAuthority } from "../src/infra/config/settings-file.js";
+import { createJournaledProtectedSecretSource, readJournaledSettings } from "../src/server/settings-runtime.js";
+import { probePrimaryDisplay } from "../src/infra/host/primary-display.js";
+import { createSettingsFileAuthority, createProtectedSettingsFileAuthority } from "../src/infra/config/settings-file.js";
 import type { AuthenticatedApplicationEvidence } from "../src/infra/browser/login-contract.js";
 import { AuthorityDatabase } from "../src/infra/sqlite/authority-database.js";
 import { acquireRuntimeProcessLock } from "../src/infra/sqlite/runtime-process-locks.js";
@@ -106,12 +108,33 @@ async function main(): Promise<void> {
     throw new Error(`usage: live-browser-login-smoke <${[...SUPPORTED].join("|")}> [--headed] [--cold] [--reuse]`);
   }
   const system = BrowserSystemIdSchema.parse(requested);
-  const config = resolveConfigWithProvenance({}, hostConfigFacts({}), systemClock).config;
   const headed = process.argv.includes("--headed");
   // `--worker <id>` lets two smokes run side by side on distinct profiles —
   // the D267 live two-worker cold start (ref execution-and-sessions §10.8).
   const workerFlag = process.argv.indexOf("--worker");
   const workerId = WorkerIdSchema.parse(workerFlag === -1 ? "live-smoke-worker-1" : process.argv[workerFlag + 1]);
+  const stateRoot = join(process.cwd(), rebuildRuntimeIsolation.stateRoot);
+  mkdirSync(stateRoot, { recursive: true });
+  const processLockRoot = join(process.cwd(), rebuildRuntimeIsolation.processLockRoot, "live-smoke", workerId);
+  const processLock = acquireRuntimeProcessLock(
+    { processLockRoot, name: "live-smoke", pid: process.pid },
+    systemClock,
+  );
+
+  // D267: the Duo ceremony lease lives in the REAL authority database, so two
+  // smokes (or a smoke beside a worker) serialize their ceremonies for real.
+  const database = AuthorityDatabase.open(
+    { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "live-smoke" },
+    systemClock,
+  );
+  try {
+  const hostFacts = hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay));
+  const settingsAuthority = createSettingsFileAuthority({
+    path: settingsRootPaths(stateRoot).ordinary,
+    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostFacts, systemClock); },
+  });
+  const record = database.withAuthorityTransaction((repositories) => readJournaledSettings(settingsAuthority, repositories));
+  const config = resolveConfigWithProvenance(record.settings, hostFacts, systemClock).config;
   const workflowId = WorkflowIdSchema.parse("person-lookup");
   const instance = RuntimeInstanceSchema.parse("prod");
   // A synthetic but well-formed reuse identity: the smoke is one "run", and a
@@ -150,15 +173,13 @@ async function main(): Promise<void> {
 
   const evidence: AuthenticatedApplicationEvidence[] = [];
   const hops: string[] = [];
-  const stateRoot = join(process.cwd(), rebuildRuntimeIsolation.stateRoot);
-  mkdirSync(stateRoot, { recursive: true });
   const protectedAuthority = createProtectedSettingsFileAuthority({
     path: settingsRootPaths(stateRoot).ordinary,
     assertWriteIdAvailable: () => undefined,
   });
   const factory = new PlaywrightWorkerSessionFactory({
     config: { ...config, browser: { ...config.browser, headless: !headed } },
-    protectedSecrets: { read: () => protectedAuthority.read() },
+    protectedSecrets: createJournaledProtectedSecretSource({ file: protectedAuthority, database }),
     isolation: rebuildRuntimeIsolation,
     clock: systemClock,
     scheduler: realScheduler,
@@ -195,18 +216,6 @@ async function main(): Promise<void> {
   // together, so a database that still needs migrating must be brought to the
   // current schema by ONE smoke first — which is why §10.8's how-to runs a
   // single cold worker before the pair.
-  const processLockRoot = join(process.cwd(), rebuildRuntimeIsolation.processLockRoot, "live-smoke", workerId);
-  const processLock = acquireRuntimeProcessLock(
-    { processLockRoot, name: "live-smoke", pid: process.pid },
-    systemClock,
-  );
-
-  // D267: the Duo ceremony lease lives in the REAL authority database, so two
-  // smokes (or a smoke beside a worker) serialize their ceremonies for real.
-  const database = AuthorityDatabase.open(
-    { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "live-smoke" },
-    systemClock,
-  );
   const duoCeremony = composeDuoCeremonyGateFactory({
     config, leases: database.authority.duoCeremonyLeases, clock: systemClock, scheduler: realScheduler,
   });
@@ -247,8 +256,10 @@ async function main(): Promise<void> {
   write(`[smoke] ${system} login + neutral reset verified in ${elapsed(started)}`);
   await sessions.closeAll("worker-stop");
   write("[smoke] every session closed with proof");
-  database.close();
-  processLock.release();
+  } finally {
+    database.close();
+    processLock.release();
+  }
 }
 
 main().catch((error: unknown) => {

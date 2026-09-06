@@ -1,3 +1,5 @@
+import { retainedRunProtectedBindings } from "../../domain/protected-input.js";
+import { PublicTransactionKeyDigestSchema, publicTransactionKeyDigest, hasProtectedTransactionInput } from "../../domain/protected-input.js";
 /**
  * `explain run <traceId|runId> [--json] [--bundle <dir>]` — ref operator-trust §2.5's
  * canonical debug entry point (D143).
@@ -20,7 +22,6 @@
  *    receipt can never disagree — they are one derivation.
  */
 import { z } from "zod";
-import { FingerprintSchema } from "../../domain/ids.js";
 import { TimelineCategoryKeySchema } from "../../domain/workflow/presentation.js";
 import { idempotencyKeyDigestReference } from "../../domain/redaction.js";
 import type { RunEvidenceReceipt } from "../../domain/trust/evidence.js";
@@ -107,7 +108,7 @@ export const ExplainRunViewSchema = z.strictObject({
     writeIntentId: z.string().min(1),
     system: z.string().min(1),
     status: z.string().min(1),
-    idempotencyKeyDigest: FingerprintSchema,
+    idempotencyKeyDigest: PublicTransactionKeyDigestSchema,
     proof: z.string().min(1),
   })),
   receipt: present(z.strictObject({
@@ -172,7 +173,7 @@ function nextSafeAction(
       }
       return `Resolve the parked write through the typed operator commands only (ref write-safety §4.1): `
         + `intent ${lifecycle.writeIntentId} generation ${String(lifecycle.intentGeneration)}, `
-        + `park code "${lifecycle.code}", ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}. Never edit the row.`;
+        + `park code "${lifecycle.code}", ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))}. Never edit the row.`;
     }
     case "parked-gate":
       return `Resolve gate ${lifecycle.gateId}; the run resumes at node "${lifecycle.resumeAt}".`;
@@ -229,7 +230,7 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
   const receipt = receiptProjection?.state === "available" ? receiptProjection.value : undefined;
   const failure = evidence.failure === undefined
     ? undefined
-    : projectFailureForOperator(evidence.failure);
+    : projectFailureForOperator(evidence.failure, retainedRunProtectedBindings(evidence.run).length > 0);
   const lastSuccessful = [...(receipt?.actions ?? [])]
     .filter((action) => action.writeState !== "unknown" && action.writeState !== "attempting")
     .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt))
@@ -312,7 +313,7 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
       writeIntentId: intent.writeIntentId,
       system: intent.system,
       status: intent.status,
-      idempotencyKeyDigest: intent.idempotencyKeyDigest,
+      idempotencyKeyDigest: publicTransactionKeyDigest(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run)),
       proof: intent.status === "committed"
         ? `binding proof ${intent.bindingProof.proofId}; completion proof confirmed ${intent.confirmedAt}`
         : intent.status === "observed-present"

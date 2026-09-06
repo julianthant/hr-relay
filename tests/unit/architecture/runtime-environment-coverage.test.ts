@@ -266,6 +266,20 @@ describe("runtime environment inventory coverage", () => {
     assert.match(auditOccurrences(relocated).join("\n"), /not pinned to its owner/);
   });
 
+  it("pins worker mechanics to a closed non-secret set and the exact accessor", () => {
+    const change = (targets: unknown, enclosingSymbol = "workerBootstrapEnvironment") => ({
+      ...RUNTIME_ENVIRONMENT_REGISTRY,
+      computedReaders: RUNTIME_ENVIRONMENT_REGISTRY.computedReaders.map((reader) =>
+        reader.targets.kind === "closed-process-mechanics" ? { ...reader, targets, enclosingSymbol } : reader),
+    });
+    const mechanics = RUNTIME_ENVIRONMENT_REGISTRY.computedReaders.find((reader) => reader.targets.kind === "closed-process-mechanics");
+    assert.ok(mechanics?.targets.kind === "closed-process-mechanics");
+    assert.match(auditRuntimeEnvironmentInventory(change({ ...mechanics.targets,
+      exact: ["UCPATH_PASSWORD", ...mechanics.targets.exact.slice(1)] })).join("\n"), /strict parsing/u);
+    assert.match(auditRuntimeEnvironmentInventory(change(mechanics.targets, "unrelatedAccessor")).join("\n"),
+      /closed process mechanics belong only to the worker bootstrap accessor/u);
+  });
+
   it("rejects a target-bootstrap reader whose owner differs from its source", () => {
     const wrongBootstrapOwner = {
       ...RUNTIME_ENVIRONMENT_REGISTRY,

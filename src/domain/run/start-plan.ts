@@ -1,3 +1,4 @@
+import { protectedInputBindings, valueFreeProtectedData, valueFreeProtectedInput, type ProtectedInputBinding } from "../protected-input.js";
 /**
  * The start plan — what a `start-run` command consumes (ref frontend-backend-integration §5.1).
  *
@@ -135,7 +136,9 @@ export const StartPlanRecordSchema = z.strictObject({
         message: "a planned canonical input must use the start plan canonical-input schema hash",
       });
     }
-    if (planned.canonicalInputDigest !== deriveCanonicalInputDigest(planned.input.value)) {
+    if (planned.canonicalInputDigest !== deriveCanonicalInputDigest(planned.input.value, planned.input.protectedBindings)
+      && !(planned.input.protectedBindings === undefined && protectedInputBindings(planned.input.value).length > 0
+        && planned.canonicalInputDigest === legacyCanonicalInputDigest(planned.input.value))) {
       context.addIssue({
         code: "custom",
         path: ["planned", index, "canonicalInputDigest"],
@@ -149,7 +152,10 @@ export const StartPlanRecordSchema = z.strictObject({
     plan.canonicalInputSchemaHash,
     plan.rerun,
     plan.stepOmissions,
-  )) {
+  ) && !(plan.planned.some((run) => run.input.protectedBindings === undefined && protectedInputBindings(run.input.value).length > 0)
+    && plan.planned.every((run) => run.input.protectedBindings === undefined)
+    && plan.inputFingerprint === plannedInputFingerprint(plan.planned, plan.ingressSchemaHash,
+      plan.canonicalInputSchemaHash, plan.rerun, plan.stepOmissions, true))) {
     context.addIssue({
       code: "custom",
       path: ["inputFingerprint"],
@@ -167,10 +173,16 @@ export const StartPlanRecordSchema = z.strictObject({
 export type StartPlanRecord = z.infer<typeof StartPlanRecordSchema>;
 
 /** The digest of one schema-validated canonical snapshot, never of raw ingress. */
-export function deriveCanonicalInputDigest(value: unknown): string {
+/** Private read-forward authentication of pre-D331 immutable input; never a served identity. */
+function legacyCanonicalInputDigest(value: unknown): string {
+  return createHash("sha256").update("hrauto:start-plan-canonical-input:v1\0")
+    .update(canonicalJsonStringify(value)).digest("hex");
+}
+
+export function deriveCanonicalInputDigest(value: unknown, bindings?: readonly ProtectedInputBinding[]): string {
   return FingerprintSchema.parse(createHash("sha256")
     .update("hrauto:start-plan-canonical-input:v1\0")
-    .update(canonicalJsonStringify(value))
+    .update(canonicalJsonStringify(valueFreeProtectedInput(value, bindings)))
     .digest("hex"));
 }
 
@@ -186,6 +198,13 @@ export function derivePlannedInputFingerprint(
   rerun?: RerunPlan,
   stepOmissions?: StepOmissions,
 ): string {
+  return plannedInputFingerprint(planned, ingressSchemaHash, canonicalInputSchemaHash, rerun, stepOmissions, false);
+}
+
+function plannedInputFingerprint(
+  planned: readonly PlannedRun[], ingressSchemaHash: string, canonicalInputSchemaHash: string,
+  rerun: RerunPlan | undefined, stepOmissions: StepOmissions | undefined, legacy: boolean,
+): string {
   return FingerprintSchema.parse(createHash("sha256")
     .update(planned.some((run) => run.runId !== undefined)
       ? "hrauto:start-plan-input:v2\0" : "hrauto:start-plan-input:v3\0")
@@ -199,8 +218,8 @@ export function derivePlannedInputFingerprint(
         itemId: run.itemId,
         ...(run.traceId === undefined ? {} : { traceId: run.traceId }),
         matchKey: run.matchKey,
-        rawInput: run.rawInput,
-        canonicalInput: run.input,
+        rawInput: legacy ? run.rawInput : valueFreeProtectedData(run.rawInput, run.input.protectedBindings),
+        canonicalInput: legacy ? run.input : { ...run.input, value: valueFreeProtectedInput(run.input.value, run.input.protectedBindings) },
         canonicalInputDigest: run.canonicalInputDigest,
       })),
     }))

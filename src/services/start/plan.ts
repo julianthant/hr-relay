@@ -1,3 +1,8 @@
+import { type ProtectedInputBinding } from "../../domain/protected-input.js";
+import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { admitProtectedInput } from "./protected-input.js";
+import type { ProtectedSecretSource } from "../../domain/secrets.js";
+import type { SchemaBoundCanonicalValue } from "../../domain/schema-bound-value.js";
 /**
  * Start planning — the step between "the operator typed something" and "runs
  * exist" (ref frontend-backend-integration §5.1).
@@ -40,6 +45,7 @@ import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 
 
 export interface StartPlannerDeps {
+  readonly protectedSecrets?: ProtectedSecretSource;
   /**
    * Narrowed to the ONE read the planner makes (D179). An `AuthorityDatabase`
    * satisfies it structurally, so every existing caller is unchanged; the
@@ -58,6 +64,8 @@ export interface StartPlannerDeps {
 
 export interface StartPlanRequest {
   readonly descriptor: AnyWorkflowDescriptor;
+  readonly protectedSubmissionBindings?: readonly ProtectedInputBinding[];
+  readonly retainedInputs?: readonly SchemaBoundCanonicalValue[];
   /** Raw submissions in the operator's order; entry numbers are 1-based. */
   readonly submissions: readonly unknown[];
   readonly requestedInstance?: InstanceSelection;
@@ -141,6 +149,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
    * the whole planning request before minting any proposal rather than turning
    * it into a plausible refusal with fabricated or dropped ingress.
    */
+  const admittedSubmissions = admitProtectedInput(descriptor, request.submissions, deps.protectedSecrets, request.retainedInputs, request.protectedSubmissionBindings);
   const rawSubmissions: JsonValue[] = [];
   for (let index = 0; index < request.submissions.length; index += 1) {
     if (!Object.hasOwn(request.submissions, index)) {
@@ -183,14 +192,16 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     let canonicalInput: unknown;
     try {
       // This is the one and only ingress parse for this raw submission.
-      parsed = planning.parseInput(rawInput);
+      parsed = planning.parseInput(admittedSubmissions[index].admitted);
       canonicalInput = planning.parseCanonicalInput(parsed);
     } catch (error) {
-      refuse("input-invalid", errorText(error));
+      refuse("input-invalid", admittedSubmissions[index].bindings.length > 0 ? "workflow input is invalid" : errorText(error));
       continue;
     }
 
-    const matchKey = planning.matchKey(parsed);
+    const bindings = admittedSubmissions[index].bindings;
+    const protectedSubject = bindings.some(({ inputPath }) => inputPath !== "timekeeperName");
+    const matchKey = protectedSubject ? `protected-input:${canonicalJsonStringify(bindings)}` : planning.matchKey(parsed);
     const itemId = deriveItemId(descriptor.id, matchKey);
     if (seenItemIds.has(itemId)) {
       refuse("active-run-exists", `entry ${String(entry)} repeats ${matchKey}, which is already in this plan`);
@@ -207,15 +218,16 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       }
     }
 
-    const subtitle = planning.subtitle(parsed);
+    const subtitle = protectedSubject ? undefined : planning.subtitle(parsed);
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
       itemId,
-      title: planning.title(parsed),
+      title: protectedSubject ? "Protected test subject" : planning.title(parsed),
       ...(subtitle === undefined ? {} : { subtitle }),
       rawInput,
-      input: { schemaHash: canonicalSchemaHash, value: canonicalInput },
-      canonicalInputDigest: deriveCanonicalInputDigest(canonicalInput),
+      input: { schemaHash: canonicalSchemaHash, value: canonicalInput,
+        protectedBindings: admittedSubmissions[index].bindings },
+      canonicalInputDigest: deriveCanonicalInputDigest(canonicalInput, admittedSubmissions[index].bindings),
       matchKey,
     }));
   }

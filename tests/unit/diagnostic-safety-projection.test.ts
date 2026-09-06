@@ -89,7 +89,7 @@ describe("versioned diagnostic safety", () => {
 
     assert.equal(authority.diagnosticSafetyVersion, CURRENT_DIAGNOSTIC_SAFETY_VERSION);
     assert.equal(authority.summary, "node searching threw a non-Error value");
-    assert.deepEqual(projectFailureForOperator(authority), authority);
+    assert.deepEqual(projectFailureForOperator(authority, false), authority);
   });
 
   it("withholds every historical failure free-text field without rewriting authority", () => {
@@ -103,7 +103,18 @@ describe("versioned diagnostic safety", () => {
 
   it("keeps current, stamped failure diagnostics useful", () => {
     const authority = failure(CURRENT_DIAGNOSTIC_SAFETY_VERSION);
-    assert.deepEqual(projectFailureForOperator(authority), authority);
+    assert.deepEqual(projectFailureForOperator(authority, false), authority);
+  });
+
+  it("withholds protected and unknown-source stamped text, and unstamped ordinary text", () => {
+    const authority = FailureRecordSchema.parse({ ...failure(CURRENT_DIAGNOSTIC_SAFETY_VERSION),
+      summary: RAW, causeChain: [{ code: "UNHANDLED", summary: RAW, role: "primary", transient: false }],
+      remediation: [{ kind: "operator-action", message: RAW }] });
+    const before = JSON.stringify(authority);
+    for (const source of [true, undefined])
+      assert.equal(JSON.stringify(projectFailureForOperator(authority, source)).includes(RAW), false);
+    assert.equal(JSON.stringify(projectFailureForOperator(failure(), false)).includes(RAW), false);
+    assert.equal(JSON.stringify(authority), before);
   });
 
   it("withholds current write-authority detail while preserving its strict code and digest in authority", () => {

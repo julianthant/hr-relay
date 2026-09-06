@@ -1,3 +1,7 @@
+import { RedactedFieldSchema } from "../../../domain/redaction.js";
+import { protectIdentityEvidencePacket } from "../../../domain/separations/identity-evidence.js";
+import { valueFreeProtectedEvidence, retainedRunProtectedBindings, hasProtectedTransactionInput, publicTransactionKeyDigest } from "../../../domain/protected-input.js";
+import { deriveIdentityEvidenceDigest } from "../../../domain/separations/identity-evidence.js";
 /**
  * `RunDetailWire` header + the lazy sections Person Lookup needs (ref frontend-backend-integration
  * §3.3, §6.2): logs (from the notes stream) and the context data/attempts
@@ -873,7 +877,7 @@ export function buildRunDetail(
           { workflowId: row.queued.workflow, itemId: authority.envelope.itemId },
           deps.authority,
         )
-        ?? row.queued.title,
+        ?? (hasProtectedTransactionInput(authority) ? "Protected test subject" : row.queued.title),
       status,
       attempt: row.attempt,
     },
@@ -1324,7 +1328,7 @@ function logLinesForRun(
       }
       if ("runId" in note && note.runId === runId) {
         assertRunLogIdentity("note", note, line, runId, row, authority);
-        const projected = projectNoteForOperator(note);
+        const projected = projectNoteForOperator(note, hasProtectedTransactionInput(authority));
         if (!("runId" in projected)) {
           throw new Error(`notes line ${line.file.path}:${String(line.lineNumber)} changed identity during projection`);
         }
@@ -1345,7 +1349,10 @@ function logLinesForRun(
       assertScopedSpanWorkflow(event, line);
       assertRunLogIdentity("span", event, line, runId, row, authority);
       if (event.t === "data.observed") {
-        matches.push({ kind: "observed", line, event, producer: producerOf(descriptor, event, line) });
+        const protectedPoints = event.points.map((point) => ({ ...point,
+          values: point.values.map((value) => RedactedFieldSchema.parse(valueFreeProtectedEvidence(value,
+            retainedRunProtectedBindings(authority).map(({ inputPath }) => inputPath)))) }));
+        matches.push({ kind: "observed", line, event: { ...event, points: protectedPoints }, producer: producerOf(descriptor, event, line) });
       }
       if (event.t === "transaction.fenced") {
         matches.push({ kind: "transaction-fenced", line, event, producer: producerOf(descriptor, event, line) });
@@ -1555,7 +1562,7 @@ export function buildRunSection(
   }
   return RunDetailSectionResponseSchema.parse({
     section: "failure",
-    payload: { state: "available", value: failureDetailWire(runId, failure, trust) },
+    payload: { state: "available", value: failureDetailWire(runId, failure, trust, retainedRunProtectedBindings(authority).length > 0) },
   });
 }
 
@@ -1757,7 +1764,8 @@ function buildIdentityGatePayload(
   }
   const found = evidence[0];
   if (found === undefined) throw new Error(`gate "${gate.nodeId}" evidence disappeared mid-projection`);
-  const { packet, evidenceDigest } = found;
+  const packet = protectIdentityEvidencePacket(found.packet, retainedRunProtectedBindings(authority));
+  const evidenceDigest = deriveIdentityEvidenceDigest(packet);
   if (packet.emplIdSource !== "name-resolved") {
     return missing(
       `gate "${gate.nodeId}" is parked on ${packet.emplIdSource} evidence, but this build requires an `
@@ -1900,7 +1908,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     runAttempt: intent.runAttempt,
     system: intent.system,
     taskId: intent.taskId,
-    idempotencyKeyDigest: intent.idempotencyKeyDigest,
+    idempotencyKeyDigest: publicTransactionKeyDigest(intent.idempotencyKeyDigest, hasProtectedTransactionInput(authority)),
     fencedAt: intent.fencedAt,
     // The run's park instant, not the intent's `updatedAt`: the operator is
     // being told when THIS run stopped, and a later intent row touch is a
@@ -1908,7 +1916,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     parkedAt: lifecycle.parkedAt,
     parkedCode: intent.parkedCode,
     parkedMessage: `Write intent ${intent.writeIntentId} is parked (${intent.parkedCode}) for `
-      + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}. Verify the target system, then use one typed resolution.`,
+      + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(authority))}. Verify the target system, then use one typed resolution.`,
     subject: parkedWriteSubject(intent.bindingProof),
     proofContract: parkedWriteProofContract(deps, authority, intent),
     actions: parkedWriteActions(authority, intent),
@@ -2276,8 +2284,9 @@ function failureDetailWire(
   runId: string,
   failure: FailureRecord,
   trust: RunDetailTrustDeps,
+  protectedInput: boolean,
 ): z.infer<typeof FailureDetailWireSchema> {
-  const projected = projectFailureForOperator(failure);
+  const projected = projectFailureForOperator(failure, protectedInput);
   const seen = trust.countFailuresByFingerprint(projected.fingerprint);
   return FailureDetailWireSchema.parse({
     runId,

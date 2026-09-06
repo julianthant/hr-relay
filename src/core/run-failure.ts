@@ -1,3 +1,4 @@
+import { hasProtectedTransactionInput } from "../domain/protected-input.js";
 /**
  * Executor-side construction of ref operator-trust's strict `FailureRecord` (ref dashboard-surfaces
  * §Phase-1f: `failures` is a non-rebuildable authority family — every failed
@@ -128,7 +129,7 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
     transient,
     /** Phase-1 read/control nodes; transaction failures are the sequencer's. */
     writeState: "not-attempted",
-    ...(taskError?.subject === undefined
+    ...(taskError?.subject === undefined || hasProtectedTransactionInput(run)
       ? {}
       : { subject: { expected: subjectEvidence(taskError.subject) } }),
     causeChain: [{

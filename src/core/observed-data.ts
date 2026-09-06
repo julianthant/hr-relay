@@ -1,3 +1,6 @@
+import type { TaskLogger } from "../base/task.js";
+import { retainedRunProtectedBindings, valueFreeProtectedEvidence } from "../domain/protected-input.js";
+import type { RunRecord } from "../domain/run/record.js";
 /**
  * The observed-log emission's redaction (D270, `03.1-finish-the-dashboard.md`
  * §Observed logs).
@@ -46,6 +49,7 @@ import type { ObservedDataPoint } from "./span-emitter.js";
 export function redactObservedDataPoints(
   taskId: TaskId,
   points: readonly RecordedDataPoint[],
+  protectedPaths: readonly string[] = [],
 ): readonly ObservedDataPoint[] {
   if (points.length === 0) {
     throw new Error(`task ${taskId} produced an empty observed-data batch; an emission describes an observation`);
@@ -54,6 +58,27 @@ export function redactObservedDataPoints(
   return Object.freeze(points.map((point) => Object.freeze(ObservedDataPointSchema.parse({
     direction: point.direction,
     field: point.field,
-    values: evidenceLeaves(point.value, point.field).map((leaf) => redactEvidenceLeaf(scope, leaf)),
+    values: valueFreeProtectedEvidence(evidenceLeaves(point.value, point.field).map((leaf) => redactEvidenceLeaf(scope, leaf)), protectedPaths),
   }))));
+}
+
+/** Free-text task logging cannot bypass the source-aware observed-data policy. */
+export function protectedTaskLogger(log: TaskLogger, run: RunRecord): TaskLogger {
+  const bindings = retainedRunProtectedBindings(run);
+  if (bindings.length === 0) return log;
+  const raw = run.input.parsed.value;
+  const values = bindings.flatMap((binding) => {
+    const value: unknown = raw !== null && typeof raw === "object" ? Reflect.get(raw, binding.inputPath) : undefined;
+    return typeof value === "string" && value.length > 0 ? [{ value, marker: `<protected ${binding.name}>` }] : [];
+  });
+  const clean = (text: string): string => {
+    let result = text;
+    for (const { value, marker } of values) result = result.replaceAll(value, marker);
+    return bindings.some(({ inputPath }) => inputPath !== "timekeeperName")
+      ? result.replace(/key digest [a-f0-9]{12}…|\b[a-f0-9]{64}\b/gu, "protected digest withheld") : result;
+  };
+  const wrap = (emit: TaskLogger["info"]): TaskLogger["info"] => (message, fields) => emit(clean(message),
+    fields === undefined ? undefined : Object.fromEntries(Object.entries(fields).map(([key, value]) =>
+      [key, typeof value === "string" ? clean(value) : value])));
+  return { debug: wrap(log.debug), info: wrap(log.info), warn: wrap(log.warn) };
 }

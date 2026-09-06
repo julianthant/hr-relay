@@ -1,3 +1,4 @@
+import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
 import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../src/domain/ids.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
@@ -781,7 +782,7 @@ describe("the operator lifecycle, across slices", () => {
     reportWalkPhase("10-relaunch", "begin");
     const relaunched = versionCommand(world, "relaunch-archived-run", {
       archivedRunId: settledRunId,
-      archiveFingerprint: archived.contentDigest,
+      archiveFingerprint: archivedRunReferenceFingerprint(archived),
     });
     assert.equal(relaunched.state, "applied", relaunched.state === "rejected" ? relaunched.message : "refused");
     const freshTarget = relaunched.state === "applied"

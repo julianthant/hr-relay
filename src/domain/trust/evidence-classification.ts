@@ -127,7 +127,10 @@ export function evidenceScopeKey(scope: EvidenceValueScope): string {
 
 /** `safe-diagnostic` + `allow` — a value about the transaction, not the person. */
 function open(scope: EvidenceValueScope, ...paths: readonly string[]): unknown[] {
-  return paths.map((path) => ({ scope, path, classification: "safe-diagnostic", transform: "allow" }));
+  return paths.map((path) => ((["dateChangeComments", "timekeeperComments", "observedExistingComments"].includes(path.split(".").at(-1) ?? "") || path.endsWith("timekeeper.comments.value"))
+    || (path.split(".").at(-1) === "evidenceDigest" && evidenceScopeKey(scope).includes("separations")))
+    ? { scope, path, classification: "direct-identifier", transform: "drop" }
+    : { scope, path, classification: "safe-diagnostic", transform: "allow" });
 }
 
 /** `direct-identifier` + `last4` — the widest transform ref clock-config-secrets permits for one. */
@@ -388,6 +391,8 @@ function writePlanLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   const at = (path: string): string => `${prefix}.${path}`;
   return [
     ...person(scope, at("document.timekeeperName")),
+    ...open(scope, at("document.timekeeperName.kind"), at("document.timekeeperName.name"),
+      at("document.timekeeperName.inputPath"), at("document.timekeeperName.valueId")),
     ...open(scope,
       at("state"), at("reason"),
       at("termination.terminationType"), at("termination.classification"),
@@ -438,7 +443,7 @@ function identityPacketLeaves(scope: EvidenceValueScope, prefix: string): unknow
     ...person(scope, at("emplId"), at("documentEidText"), at("documentName"), at("ucpathName"),
       at("nameSearch.candidate.eid"), at("nameSearch.candidate.name")),
     ...population(scope, at("comparisons"), at("approvableEids"), at("nameSearch.candidateEids")),
-    ...open(scope, at("documentNumber"), at("emplIdSource"), at("nameTier"), at("approvalShape"),
+    ...open(scope, at("protectedBindings"), at("documentNumber"), at("emplIdSource"), at("nameTier"), at("approvalShape"),
       at("observedAt"), at("nameSearch.status"), at("nameSearch.candidate.department"),
       at("nameSearch.candidate.jobTitle"), at("nameSearch.candidate.employeeStatus")),
     ...jobClassificationLeaves(scope, at("jobs")),

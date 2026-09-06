@@ -111,7 +111,7 @@ import {
   EditableSettingsPathSchema,
   EditableSettingsWireSchema,
 } from "../../../../src/domain/dashboard/settings-editor.js";
-import { StorageDoctorWireSchema } from "../../../../src/domain/dashboard/storage.js";
+import { StorageDoctorWireSchema, ProtectedSettingsInspectionWireSchema } from "../../../../src/domain/dashboard/storage.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../src/domain/dashboard/subscription.js";
 import { OperatorXlsxExportEvidenceSchema } from "../../../../src/domain/dashboard/xlsx-export.js";
 import { StartPlanWireSchema } from "../../../../src/domain/dashboard/start-plan.js";
@@ -507,6 +507,7 @@ export const D331ServedValueClassSchema = z.enum(["closed-literal", "identifier-
 export type D331ServedValueClass = z.infer<typeof D331ServedValueClassSchema>;
 
 export const D331ServedSurfaceSchema = z.enum([
+  "protected-settings-doctor",
   "protected-settings-readback",
   "frontend-bootstrap",
   "settings-command-result",
@@ -541,6 +542,10 @@ function expectedD331ServedLeaves(): readonly ExpectedD331ServedLeaf[] {
   ): void => {
     expected.push({ surface, path, valueClass, evidence });
   };
+
+  for (const leaf of surfaceLeaves(ProtectedSettingsInspectionWireSchema))
+    add("protected-settings-doctor", leaf.path, leaf.path === "cause.summary" ? "identifier-free" : "closed-literal",
+      "ProtectedSettingsInspectionWireSchema names and presence only");
 
   for (const name of ProtectedSettingsNameSchema.options) {
     for (const leaf of surfaceLeaves(ProtectedSettingsPresenceSchema)) {
@@ -633,6 +638,11 @@ function schemaLeafPaths(schema: z.ZodType): ReadonlySet<string> {
  */
 export const D331_SERVED_LEAF_DISPOSITIONS: readonly D331ServedLeafDisposition[] = Object.freeze(
   D331ServedLeafDispositionSchema.array().parse([
+    { surface: "protected-settings-doctor", path: "state", valueClass: "closed-literal" },
+    { surface: "protected-settings-doctor", path: "entries[].name", valueClass: "closed-literal" },
+    { surface: "protected-settings-doctor", path: "entries[].present", valueClass: "closed-literal" },
+    { surface: "protected-settings-doctor", path: "cause.code", valueClass: "closed-literal" },
+    { surface: "protected-settings-doctor", path: "cause.summary", valueClass: "identifier-free" },
     { surface: "protected-settings-readback", path: "entries.ucpathUserId.present", valueClass: "closed-literal" },
     { surface: "protected-settings-readback", path: "entries.ucpathUserId.updatedAt", valueClass: "identifier-free" },
     { surface: "protected-settings-readback", path: "entries.ucpathUserId.valueId", valueClass: "identifier-free" },
@@ -1075,7 +1085,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.value.packet.plan.document.payrollTitleCode", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.packet.plan.document.payrollTitle", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.packet.plan.document.terminationEffectiveDate", origin: "captured-hr-value" },
-  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.document.timekeeperName", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.packet.plan.dates.kualiLastDayWorked", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.packet.plan.dates.lastDayWorked", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.packet.plan.dates.kualiSeparationDate", origin: "captured-hr-value" },
@@ -1353,6 +1362,8 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
   { surface: "wire/capture-pointer", path: "dimensions.reason", origin: "repository-authored" },
 
+  { surface: "wire/storage-doctor", path: "protectedSettings.cause.code", origin: "repository-authored" },
+  { surface: "wire/storage-doctor", path: "protectedSettings.cause.summary", origin: "repository-authored" },
   { surface: "wire/storage-doctor", path: "authority.cause.code", origin: "repository-authored" },
   { surface: "wire/storage-doctor", path: "authority.cause.summary", origin: "external-text" },
   { surface: "wire/storage-doctor", path: "backup.cause.code", origin: "repository-authored" },

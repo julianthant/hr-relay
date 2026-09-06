@@ -405,7 +405,7 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
       attempt: 1,
       enqueuedAt,
     },
-    input: { raw: { emplId: "10873698" }, parsed: { schemaHash: HASH_B, value: { emplId: "10873698" } }, ingressSchemaHash: HASH_A },
+    input: { raw: { emplId: "10873698" }, parsed: { schemaHash: HASH_B, protectedBindings: [], value: { emplId: "10873698" } }, ingressSchemaHash: HASH_A },
     lifecycle: input.lifecycle ?? { state: "queued" },
     claimGeneration: input.claimGeneration ?? 0,
     ...(input.displayName === undefined ? {} : { displayName: input.displayName }),
@@ -545,7 +545,7 @@ export function receiptWithWarningsOf(input: Readonly<{
   workflow?: string;
 }>): RunEvidenceReceipt {
   return RunEvidenceReceiptSchema.parse({
-    composition: 3,
+    composition: 4,
     receiptId: uuidOf(input.seed + 7000),
     runId: uuidOf(input.seed),
     traceId: traceOf(input.seed),

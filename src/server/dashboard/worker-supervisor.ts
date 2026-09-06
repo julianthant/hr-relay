@@ -61,6 +61,7 @@ import {
 /** The exact spawn request handed to the process boundary — argv, never a shell string. */
 export interface WorkerProcessSpawnRequest {
   readonly command: string;
+  readonly environment: NodeJS.ProcessEnv;
   readonly args: readonly string[];
   readonly cwd: string;
   readonly member: WorkerPoolMember;
@@ -120,6 +121,7 @@ export interface WorkerGracefulStopChannel {
 export interface WorkerCliLaunchSpec {
   /** Absolute path to the interpreter/binary; a relative command is a PATH ambiguity and refuses. */
   readonly command: string;
+  readonly environment: NodeJS.ProcessEnv;
   /** The fixed argv prefix up to (not including) the `worker` subcommand. */
   readonly prefixArgs: readonly string[];
   readonly cwd: string;
@@ -343,6 +345,7 @@ export function createDashboardWorkerProcessSupervisor(
       );
     }
     const child = deps.spawn(Object.freeze({
+      environment: deps.launch.environment,
       command: deps.launch.command,
       args: Object.freeze([...deps.launch.prefixArgs, ...workerCliArgv(member)]),
       cwd: deps.launch.cwd,

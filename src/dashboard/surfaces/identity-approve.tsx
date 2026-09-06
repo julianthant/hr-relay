@@ -112,7 +112,7 @@ function PacketSubject({ gate }: { gate: IdentityGateDetail }) {
   const { packet } = gate;
   return (
     <Well className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
-      <Chip label="document">{packet.documentNumber}</Chip>
+      {packet.documentNumber === "protected document" ? null : <Chip label="document">{packet.documentNumber}</Chip>}
       <Chip label="document name">{packet.documentName}</Chip>
       <Chip label="UCPath name">{packet.ucpathName}</Chip>
       <Chip label="name tier" tone={packet.nameTier === "same" ? "neutral" : "warning"}>
@@ -251,13 +251,12 @@ function PacketPlan({ gate }: { gate: IdentityGateDetail }) {
           { key: "Effective", value: termination.effectiveDate },
           { key: "Last date worked", value: termination.lastDateWorked },
           { key: "Comments", value: termination.initiatorComments },
-          { key: "Kuali document", value: document.documentNumber },
+          ...(document.documentNumber === "protected document" ? [] : [{ key: "Kuali document", value: document.documentNumber }]),
           {
             key: "Department",
             value: `${document.department} (${document.departmentCode}) · UCPath: ${document.ucpathDepartment}`,
           },
           { key: "Payroll title", value: `${document.payrollTitle} (${document.payrollTitleCode})` },
-          { key: "Timekeeper", value: document.timekeeperName },
           {
             key: "Last day worked",
             tone: dates.lastDayWorkedChanged ? ("warning" as const) : undefined,

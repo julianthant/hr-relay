@@ -1228,7 +1228,7 @@ describe("separations scenarios — the composition", () => {
             payrollTitleCode: employment.payrollTitleCode,
             payrollTitle: employment.payrollTitle,
             terminationEffectiveDate: dates.terminationEffectiveDate,
-            timekeeperName: COMPOSITION_TIMEKEEPER,
+            timekeeperName: { kind: "legacy-protected-input", name: "timekeeperName", inputPath: "timekeeperName" },
           },
           dates: {
             kualiLastDayWorked: dates.kualiLastDayWorked,

@@ -146,15 +146,15 @@ describe("RunEvidenceReceiptSchema.composition", () => {
     assert.equal(parsed.composition, 2);
   });
 
-  it("composition 3 is the first diagnostic-safe operator composition", () => {
-    const parsed = RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 3 });
-    assert.equal(parsed.composition, 3);
+  it("composition 4 adds the protected-value-safe operator projection", () => {
+    const parsed = RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 4 });
+    assert.equal(parsed.composition, 4);
     assert.equal(projectReceiptForOperator(parsed).state, "available");
   });
 
-  it("withholds immutable composition 1/2 rows from operator projection without rewriting them", () => {
+  it("withholds immutable composition 1/2/3 rows from operator projection without rewriting them", () => {
     const legacyRaw = "ucpath:termination|10812345|2026-08-29";
-    for (const composition of [undefined, 2] as const) {
+    for (const composition of [undefined, 2, 3] as const) {
       const receipt = RunEvidenceReceiptSchema.parse({
         ...RECEIPT_IDENTITY,
         ...(composition === undefined ? {} : { composition }),
@@ -175,7 +175,7 @@ describe("RunEvidenceReceiptSchema.composition", () => {
   });
 
   it("refuses a composition this builder never produced", () => {
-    assert.throws(() => RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 4 }));
+    assert.throws(() => RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 5 }));
     assert.throws(() => RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 1 }));
   });
 });

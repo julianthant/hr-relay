@@ -423,12 +423,12 @@ export const NoteWireSchema = z.union([
 export type NoteWire = z.infer<typeof NoteWireSchema>;
 
 /** Historical note messages and text fields predate the diagnostic-safe stamp. */
-export function projectNoteForOperator(noteInput: unknown): NoteWire {
+export function projectNoteForOperator(noteInput: unknown, protectedInput = false): NoteWire {
   const note = NoteWireSchema.parse(noteInput);
-  if (note.diagnosticSafetyVersion === CURRENT_DIAGNOSTIC_SAFETY_VERSION) return note;
+  if (!protectedInput && note.diagnosticSafetyVersion === CURRENT_DIAGNOSTIC_SAFETY_VERSION) return note;
   const { fields: _historicalFields, ...identity } = note;
   return NoteWireSchema.parse({
     ...identity,
-    message: "historical note text withheld (predates diagnostic safety v1)",
+    message: protectedInput ? "protected run note text withheld" : "historical note text withheld (predates diagnostic safety v1)",
   });
 }

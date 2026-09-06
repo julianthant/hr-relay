@@ -1,3 +1,5 @@
+import { archivedRunReferenceFingerprint } from "../domain/archive/model.js";
+import { retainedRawSubmission } from "../services/start/protected-input.js";
 /**
  * The ONE command kernel — D113 (ref dashboard-surfaces §Phase-1f authority, §2.4; ref guards-and-tests §3.9).
  *
@@ -2844,18 +2846,17 @@ function executeArchivedRunDelete(
   if (archived === undefined) {
     reject(request, "target-not-found", `archived run ${request.target.archivedRunId} is not in the archive`);
   }
-  if (archived.contentDigest !== request.target.archiveFingerprint) {
+  if (archivedRunReferenceFingerprint(archived) !== request.target.archiveFingerprint) {
     reject(
       request,
       "schema-mismatch",
-      `archived run ${archived.runId} holds content digest ${archived.contentDigest.slice(0, 12)}…, `
-      + `not the ${request.target.archiveFingerprint.slice(0, 12)}… this delete cited`,
+      `archived run ${archived.runId} does not match the archive reference this delete cited`,
     );
   }
   const retained = requireRun(repositories, request, archived.runId);
   const order = deleteTreeOrder(repositories, request, retained);
   const outcome = dependencies.lifecycle.deleteArchived({ commandId: lifecycleCommandId("operator-delete-archive", request.commandId),
-    runId: archived.runId, contentDigest: request.target.archiveFingerprint });
+    runId: archived.runId, contentDigest: archived.contentDigest });
   if (outcome.state === "refused") lifecycleRefusal(request, outcome.refusal);
   if (outcome.state !== "deleted" && outcome.state !== "applied-already") throw new Error(`archive delete: ${outcome.state}`);
   return applied(request, order.map((run) => runTarget(run.envelope.runId)), []);
@@ -2874,12 +2875,11 @@ function executeArchivedRunRelaunch(
   // ref frontend-backend-integration §5's "integrity": a relaunch cites the exact bytes it read. A
   // mismatch means the operator is looking at a different record than the one
   // their command names.
-  if (archived.contentDigest !== request.target.archiveFingerprint) {
+  if (archivedRunReferenceFingerprint(archived) !== request.target.archiveFingerprint) {
     reject(
       request,
       "schema-mismatch",
-      `archived run ${archived.runId} holds content digest ${archived.contentDigest.slice(0, 12)}…, `
-      + `not the ${request.target.archiveFingerprint.slice(0, 12)}… this relaunch cited`,
+      `archived run ${archived.runId} does not match the archive reference this relaunch cited`,
     );
   }
   const descriptor = dependencies.descriptors.resolve(archived.workflowId);
@@ -2910,7 +2910,8 @@ function executeArchivedRunRelaunch(
       },
       {
         descriptor,
-        submissions: [archived.input.raw],
+        submissions: [retainedRawSubmission(descriptor, archived.input.raw)],
+        retainedInputs: [archived.input.parsed],
         dryRun: false,
         priority: "interactive",
         shape: "single",

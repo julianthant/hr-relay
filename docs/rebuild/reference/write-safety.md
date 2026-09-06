@@ -221,6 +221,16 @@ preflight-present and recovery paths have no other way to produce the node's typ
 kernel then wraps the result in the discriminated `TransactionOutcome`, so downstream code sees
 whether **this** run committed or found prior work.
 
+**D331 protected-source exception (operator-approved 2026-09-05).** When transaction identity
+contains a configured protected canary input, its natural key and authoritative digest remain
+private and unchanged for permanent lookup, deduplication and integrity checks. Every public
+projection below (including receipts, Archive/Explain, warnings, logs and diagnostics) withholds
+the protected-derived digest with a closed marker and existing independent run/write-intent IDs.
+Do not replace the permanent key or its authoritative digest with a protected setting `valueId`:
+rotation or clear/re-set must not create a new transaction identity. This exception applies when
+projecting historical records too, without rewriting them. D331 owns source-aware binding and
+fingerprint substitution; no lifecycle or transaction semantics change is authorized.
+
 The natural key is authority, not presentation. Its exact bytes stay on the write-intent and ledger
 records and continue to drive permanent-key lookup, digest re-derivation and idempotency unchanged.
 Diagnostics, receipt warnings, resolution-binding explanations, Archive/Explain output and dashboard
@@ -1999,6 +2009,12 @@ parked writes applies identically here). The command arm is the typed gate-resol
 
 ### 14.5 Staleness — an approval is an observation, not a permanent fact
 
+> 2026-09-05 | D331, Task 1.6.5 operator amendment | The timekeeper is already known to
+> the sole operator and is not shown. Replace that protected value and name-derived text
+> in the approval packet and digest preimage with the retained input binding identity
+> (name/path/valueId, or the explicit historical marker). All other approval facts remain
+> bound. See ref clock-config-secrets §D331.6; this supersedes the timekeeper inclusion below.
+
 An approval made against candidate data read at `t` asserts nothing about the world at `t + 3 days`.
 So the gate result carries `approvedAt` and the **`evidenceDigest` of the exact candidate packet
 shown**, and the transaction node declares a freshness limit on both (D8/D34 — this is field
@@ -2141,6 +2157,12 @@ decides without leaving the dashboard, and a wrong-person control whose evidence
 control that cannot be exercised.
 
 ### 14.10 The packet carries the WRITE PLAN, and the digest binds to it (D211, 2026-08-14)
+
+> 2026-09-05 | D331, Task 1.6.5 operator amendment | The timekeeper is already known to
+> the sole operator and is not shown. Replace that protected value and name-derived text
+> in the approval packet and digest preimage with the retained input binding identity
+> (name/path/valueId, or the explicit historical marker). All other approval facts remain
+> bound. See ref clock-config-secrets §D331.6; this supersedes the timekeeper inclusion below.
 
 §14.4's packet list ends at "the fields that agreed vs disagreed", which is complete for a gate whose
 only question is *is this the right person*. Separations chunks 4 and 5 each discovered the other

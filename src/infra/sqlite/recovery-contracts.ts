@@ -1,3 +1,4 @@
+import { ProtectedSettingsPresenceEntriesSchema } from "../../domain/config/protected-settings.js";
 import { z } from "zod";
 import { AuthorityTableNameSchema, ProjectionTableNameSchema } from "../../domain/authority.js";
 import {
@@ -386,9 +387,15 @@ const DoctorAuthoritySchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("degraded"), cause: StorageHealthCauseSchema }),
 ]);
 
+export const ProtectedSettingsInspectionSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("available"), entries: ProtectedSettingsPresenceEntriesSchema }),
+  z.strictObject({ state: z.literal("unavailable"), cause: StorageHealthCauseSchema }),
+]);
+
 export const StorageDoctorReportSchema = z.strictObject({
   kind: z.literal("authority-storage-doctor"),
   mode: z.literal("read-only"),
+  protectedSettings: ProtectedSettingsInspectionSchema,
   checkedAt: IsoInstantSchema,
   sourceDatabaseIdentity: FingerprintSchema,
   authority: DoctorAuthoritySchema,

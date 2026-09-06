@@ -495,7 +495,7 @@ test.describe("separations start-run continuity", () => {
         await page.getByRole("button", { name: "Next" }).click();
         await expect(page.getByText("Fixture plan row", { exact: true })).toBeVisible();
         await expect(page.getByText("4502", { exact: true })).toBeVisible();
-        await expect(page.getByText(/Julian Zaw/u)).toBeVisible();
+        await expect(page.getByText(/Julian Zaw/u)).toHaveCount(0);
         await assertShellGeometry(page, `separations-start-plan @ ${viewport.name} ${theme.name}`);
         expect(errors, "page errors while rendering the separations Start Run plan").toEqual([]);
 
@@ -514,7 +514,7 @@ test.describe("separations start-run continuity", () => {
         await page.getByRole("button", { name: "Start run" }).click();
         await expect(page.getByText("Start applied", { exact: true })).toBeVisible();
         await expect(page.getByText("4502", { exact: true })).toBeVisible();
-        await expect(page.getByText(/Julian Zaw/u)).toBeVisible();
+        await expect(page.getByText(/Julian Zaw/u)).toHaveCount(0);
         await assertShellGeometry(page, `separations-start-result @ ${viewport.name} ${theme.name}`);
         expect(errors, "page errors while rendering the separations Start Run result").toEqual([]);
 

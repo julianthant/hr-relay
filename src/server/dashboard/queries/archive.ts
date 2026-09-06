@@ -1,3 +1,5 @@
+import { hasProtectedTransactionInput } from "../../../domain/protected-input.js";
+import { archivedRunReferenceFingerprint, authenticArchivedRunContent } from "../../../domain/archive/model.js";
 /**
  * The Archive read model and the version-bump state (D179; ref dashboard-surfaces §10.2, doc
  * ref frontend-backend-integration §5 "Archive + version bump", §3.6 `GET /api/v1/archive`).
@@ -37,7 +39,6 @@ import { VersionScopeSchema } from "../../../domain/commands.js";
 import type { WorkflowVersionIdentity } from "../../../domain/archive/model.js";
 import {
   ArchivedRunRecordSchema,
-  archivedRunContentDigest,
   CURRENT_ARCHIVE_SCHEMA_GENERATION,
   versionBumpPlanFingerprint,
 } from "../../../domain/archive/model.js";
@@ -115,7 +116,10 @@ function legacyDiagnosticWithheldReason(archiveSchemaGeneration: number): string
 function archivedWarningsForOperator(
   warnings: QueueSurfaceWire["warnings"],
   archiveSchemaGeneration: number,
+  protectedInput = false,
 ): QueueSurfaceWire["warnings"] {
+  if (protectedInput && archiveSchemaGeneration >= 6 && warnings.state === "present")
+    return { state: "absent", reason: "protected archived detail withheld; private authority is unchanged" };
   return archiveSchemaGeneration >= 6
     ? warnings
     : { state: "absent", reason: legacyDiagnosticWithheldReason(archiveSchemaGeneration) };
@@ -274,7 +278,7 @@ function frozenArchivedCaptureRef(
       const record = ArchivedRunRecordSchema.parse(input);
       if (record.runId !== runId) corrupt("foreign archived run identity");
       const { contentDigest, ...content } = record;
-      if (archivedRunContentDigest(content) !== contentDigest) corrupt("content digest mismatch");
+      if (!authenticArchivedRunContent(content, contentDigest)) corrupt("content digest mismatch");
       const captures = record.sections?.captures;
       if (captures?.state !== "present") {
         throw new TargetNotFoundError(`archived run ${runId} has no frozen capture metadata`);
@@ -437,7 +441,8 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
           ? record.workflowLabel.value
           : record.workflowId,
         workflowCode: archivedWorkflowCode(record),
-        title: record.row.title,
+        title: hasProtectedTransactionInput({ envelope: { workflow: record.workflowId }, input: record.input })
+          ? "Protected test subject" : record.row.title,
         status: record.row.status,
         archivedIdentity: record.archivedIdentity,
         appVersion: record.appVersion,
@@ -454,8 +459,9 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
         // the index adds no authority read and cannot diverge from the run's
         // own page.
         dryRun: record.row.dryRun,
-        warnings: archivedWarningsForOperator(record.row.warnings, record.archiveSchemaGeneration),
-        archiveFingerprint: record.contentDigest,
+        warnings: archivedWarningsForOperator(record.row.warnings, record.archiveSchemaGeneration,
+          hasProtectedTransactionInput({ envelope: { workflow: record.workflowId }, input: record.input })),
+        archiveFingerprint: archivedRunReferenceFingerprint(record),
       })),
       sweeps: repositories.versionBumpApplications.list().map((application) => ({
         applicationId: application.applicationId,
@@ -528,6 +534,10 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
      * page renders comes out of `record`.
      */
     const current = registered.find((entry) => entry.id === record.workflowId);
+    const protectedArchive = hasProtectedTransactionInput({ envelope: { workflow: record.workflowId }, input: record.input });
+    const protectedAbsence = { state: "absent" as const, reason: "protected archived detail withheld; private authority is unchanged" };
+    const projectedRow = archivedQueueRow(record.row, record.archiveSchemaGeneration);
+
     return ArchivedRunDetailWireSchema.parse({
       wireVersion: 1,
       archiveSchemaGeneration: record.archiveSchemaGeneration,
@@ -543,11 +553,12 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
       drift: record.drift,
       archivedAt: record.archivedAt,
       archivedBy: record.archivedBy,
-      archiveFingerprint: record.contentDigest,
-      row: archivedQueueRow(record.row, record.archiveSchemaGeneration),
-      detail: record.detail,
+      archiveFingerprint: archivedRunReferenceFingerprint(record),
+      row: protectedArchive ? { ...projectedRow, title: "Protected test subject", subtitle: protectedAbsence,
+        facts: protectedAbsence, liveMessage: protectedAbsence, warnings: projectedRow.warnings.state === "absent" ? projectedRow.warnings : protectedAbsence } : projectedRow,
+      detail: protectedArchive ? { ...record.detail, header: { ...record.detail.header, title: "Protected test subject" } } : record.detail,
       receipt: archivedReceiptForOperator(record.receipt),
-      failure: record.failure.state === "absent"
+      failure: protectedArchive ? protectedAbsence : record.failure.state === "absent"
         ? record.failure
         : {
           state: "present",
@@ -568,7 +579,7 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
             + "which predates D223's frozen section payloads; its log lines, data points, member rows, "
             + "capture descriptions and attempt history were never captured and are not reconstructible",
         }
-        : {
+        : protectedArchive ? protectedAbsence : {
           state: "present",
           value: archivedSectionsForOperator(record.sections, record.archiveSchemaGeneration),
         },
@@ -580,7 +591,8 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
        * the ledger is a flat append-only file whose entry schema is the same
        * one every reader in this tree uses.
        */
-      ledger: deps.ledger.resolve(record.evidence.ledgerPartitions),
+      ledger: deps.ledger.resolve(record.evidence.ledgerPartitions, hasProtectedTransactionInput({
+        envelope: { workflow: record.workflowId }, input: record.input })),
       /*
        * Computed from the record's OWN fields, the D86 policy constants and
        * `now` — no store read, no descriptor. Reading the artifact bytes back

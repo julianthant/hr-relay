@@ -1766,6 +1766,7 @@ in this same commit; D286 is superseded._
 
 > 2026-09-04 | D331 | SOURCE superseded: the reference moves from `.env` to `.tracker/settings/protected.json` (ref clock-config-secrets §D331.6 item 6); semantics unchanged (unset is `blocked` by key, malformed is a defect by key, never a name or EID). "The only test-target secret" reads as "the only test-target secret OF SEPARATIONS" — `personLookupCanaryEid` (person-lookup `live-read`, D318) is the class's second member.
 
+
 ## Reconciliation round 113 (2026-09-01) — append-only recovery of a missing queue root
 
 _phase: platform_
@@ -2042,6 +2043,11 @@ run-record lifecycle service contract that D327 required. It changes no runtime 
 ## Reconciliation round 137 (2026-09-04) — Phase 0.3 Task 2, the settings catalog and protected root
 
 _phase: 0_
+> 2026-09-05 | D331 | Task 1.6.5 operator amendment: omit the known timekeeper from the
+> Separations approval display; bind the retained protected input identity instead of its value
+> or value-derived text/digest. Owning contract: ref clock-config-secrets §D331.6; narrow
+> supersession: ref write-safety §14.5/§14.10.
+
 _D331 records the Phase 0.3 Task 2 design landed by supervisor run R02 (coordination C31da5310): the exact
 settings catalog, source classes, protected root, update API, protected-value policy, restart scope and
 precedence rule that D327 required. It changes no runtime code; 1.6 implements it, 0.3 Task 3 owns the migration._
@@ -2049,6 +2055,15 @@ precedence rule that D327 required. It changes no runtime code; 1.6 implements i
 | # | Decision | Owning doc |
 |---|---|---|
 | **D331** | **THE SETTINGS CATALOG AND PROTECTED ROOT CONTRACT: ONE CLOSED CODE REGISTRY ENUMERATES EVERY LEAF ONCE (KEY, SCHEMA, DEFAULT KIND, EDITABILITY, SENSITIVITY, RESTART SCOPE, ONE SOURCE CLASS, CONSUMERS, MIGRATION EDGE); FIVE SOURCE CLASSES WITH ONE AUTHORITY EACH (`ordinary-settings` → `.tracker/settings/settings.json`, `protected-store` → `.tracker/settings/protected.json`, `provider-env` → `.env` API-KEY FAMILIES ONLY, `derived-host` → THE D324 PROBE, `runtime-isolation` → CODE); ONE `.tracker/settings/` DIRECTORY (0700, ANCESTRY-VERIFIED, ONE LOCK, PREPARE/ROLLBACK PER TARGET, D321 COUPLING KEPT UNDER TWO SQLITE SINGLETONS, BACKUPS COPY THE ORDINARY HALF ONLY); ONE COMMAND FAMILY WITH TWO CAS ARMS (`apply-settings`, `apply-protected-settings`) AND CLOSED REFUSALS; PROTECTED VALUES WRITE-ONLY WITH `{present, valueId, updatedAt}` READBACK, NEVER IN `Config`, ANY FINGERPRINT, SNAPSHOT, TOKEN, WIRE, EVIDENCE, BACKUP OR CHILD ENVIRONMENT, A MARKED-ENVELOPE JOURNAL AND AN IN-FILE MAC; RESTART SCOPES `generation` / `next-use` / `next-start` / `process` WITH THE D330 CLAIM TOKEN'S PROVENANCE FIXED (PROTECTED REVISION IS NOT A TOKEN FIELD); PRECEDENCE `settings > default` WITH THE ENVIRONMENT REMOVED AS A RESOLVER INPUT, `CONFIG_ENV_BINDINGS` EMPTIED, EVERY MIGRATED KEY RETIRED AND REFUSED BY NAME, AND `timekeeperName` LEAVING `ConfigSchema` (0.3 Task 2, 2026-09-04).** Design only (D326). Supersedes §3's blanket `env > settings > default` sentences, DCC3's eight-leaf editor as a boundary, D321's single-file layout (coupling kept), §6's `source: environment` for non-provider secrets, and D300's `.env` source sentence (semantics kept; the person-lookup canary is the class's second member). D324, D322, D330 and ref frontend-backend-integration §4's cut are preserved verbatim. The catalog table, the 3.1 edit contract and the 1.6 proofs are §D331.9–§D331.11. | ref clock-config-secrets §D327 → §D331.1–§D331.12 (primary) · §3 · §Operational isolation · §6 · ref dashboard-surfaces §2.1 (note) · doc 00 §0.3 Task 2 · roadmap `phase0-settings-authority-design` |
+
+> 2026-09-06: Task 1.6.5 additionally permits generated code-version provenance updates in 194 reference triples and the generated field-count change (103/13 → 107/14) in six inspector triples. All other non-hash visual changes remain limited to the twelve Start and four identity-approval triples. D331.6 and the owning Task-5 amendments record the exact boundary.
+
+> 2026-09-06: D331 P16 permits only SQLite WAL-index read marks (bytes 100–119) as transient reader bookkeeping; all authority data, other bytes and filesystem metadata stay unchanged. Ratified in clock-config-secrets P16 and Task 1.6.5.
+
+D331 protected-source transaction projection amendment (operator-approved 2026-09-05):
+ref clock-config-secrets §D331.6 and ref write-safety's protected-source exception retain natural
+permanent transaction identity privately and withhold protected-derived digests from public sinks.
+Doc 01 Task 5 records the corresponding narrow implementation admission.
 
 ## Phase 1.6 parity admission clarification (2026-09-04)
 

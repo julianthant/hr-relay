@@ -1,3 +1,5 @@
+import { createProtectedSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
+import { journalProtectedSettings } from "./helpers/journaled-protected-settings.js";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -203,7 +205,7 @@ const FAILED_TEST_MANIFEST = parseDryRunScenarioManifest({
   }],
 });
 
-function admissionFixture(env: NodeJS.ProcessEnv = {}) {
+function admissionFixture(env: NodeJS.ProcessEnv = {}, afterSettingsRead?: () => void) {
   const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-admission-"));
   roots.push(root);
   mkdirSync(join(root, rebuildRuntimeIsolation.stateRoot), { recursive: true });
@@ -213,6 +215,7 @@ function admissionFixture(env: NodeJS.ProcessEnv = {}) {
   const scenarioCase = TEST_MANIFEST.cases[0];
   assert.ok(scenarioCase);
   const runtime = createProductionDryRunScenarioRuntime({
+    ...(afterSettingsRead === undefined ? {} : { afterSettingsRead }),
     isolation: rebuildRuntimeIsolation, repoRoot: root, env, clock,
     ids: sequentialIdFactory("d"),
     drainWorker: () => Promise.reject(new Error("admission proof must not drain a worker")),
@@ -419,6 +422,28 @@ describe("dry-run scenario production composition boundary", () => {
     assert.equal(runEvents[0]?.configSnapshotId, active.configSnapshotId);
   });
 
+  it("admits the real Separations protected input without nesting the shared settings lock", async () => {
+    const fixture = admissionFixture();
+    fixture.activate();
+    const file = createProtectedSettingsFileAuthority({ path: join(fixture.root, ".tracker", "settings", "settings.json"),
+      assertWriteIdAvailable: () => undefined });
+    journalProtectedSettings(fixture.database, file, { timekeeperName: { set: "Synthetic Admission Operator" } });
+    const scenarioCase = CHAIN_READY_MANIFEST.cases[0];
+    assert.ok(scenarioCase);
+    const started = await fixture.runtime.start({ manifest: CHAIN_READY_MANIFEST, scenarioCase,
+      canonicalInput: { documentNumber: "4999" } });
+    const retained = fixture.database.authority.runs.get(started.runId)?.input.parsed;
+    assert.ok(retained);
+    assert.equal(Reflect.get(retained.value as object, "timekeeperName"), "Synthetic Admission Operator");
+    assert.equal(retained.protectedBindings?.[0]?.kind, "protected-store");
+    journalProtectedSettings(fixture.database, file, { timekeeperName: { clear: true } });
+    assert.deepEqual(fixture.database.authority.runs.get(started.runId)?.input.parsed, retained);
+    const before = startEffects(fixture.path);
+    await assert.rejects(fixture.runtime.start({ manifest: CHAIN_READY_MANIFEST, scenarioCase,
+      canonicalInput: { documentNumber: "4998" } }), /protected input timekeeperName is absent/);
+    assert.deepEqual(startEffects(fixture.path), before);
+  });
+
   it("refuses absent activation before any start effects while allowing baseline Settings initialization", async () => {
     const fixture = admissionFixture();
     const before = startEffects(fixture.path);
@@ -458,8 +483,10 @@ describe("dry-run scenario production composition boundary", () => {
     await assert.rejects(fixture.runtime.collectEvidence(admitted.runId), /dry-run evidence collection ran before start/);
   });
 
-  it("does not let a retired environment leaf shadow the activated Settings snapshot", async () => {
-    const env: NodeJS.ProcessEnv = { HRAUTO_DEFAULT_WORKERS: "5" };
+  it("ignores non-retired hostile noise while retaining the activated Settings snapshot", async () => {
+    const env: NodeJS.ProcessEnv = {};
+    let reads = 0;
+    Object.defineProperty(env, "UNRELATED_HOSTILE_NOISE", { enumerable: true, get: () => { reads += 1; throw new Error("environment noise was read"); } });
     const fixture = admissionFixture(env);
     const record = fixture.apply({ concurrency: { defaultWorkers: 3 } });
     const { active, snapshot } = fixture.activate();
@@ -467,6 +494,7 @@ describe("dry-run scenario production composition boundary", () => {
     const bytes = readFileSync(join(fixture.root, ".tracker", "settings", "settings.json"));
     const started = await fixture.runtime.start(fixture.request);
     const run = fixture.database.authority.runs.get(started.runId);
+    assert.equal(reads, 0);
     assert.equal(record.settings.concurrency?.defaultWorkers, 3);
     assert.equal(snapshot?.config.concurrency.defaultWorkers, 3);
     assert.equal(snapshot?.provenance["concurrency.defaultWorkers"], "settings");
@@ -547,8 +575,8 @@ describe("dry-run scenario production composition boundary", () => {
     assert.notDeepEqual(readFileSync(join(fixture.root, ".tracker", "settings", "settings.json")), settingsBytes);
   });
 
-  it("retains exact Settings precedence when a retired environment leaf is present", async () => {
-    const fixture = admissionFixture({ HRAUTO_DEFAULT_WORKERS: "5" });
+  it("retains exact Settings precedence with unrelated environment noise", async () => {
+    const fixture = admissionFixture({ UNRELATED_HOSTILE_NOISE: "5" });
     const record = fixture.apply({ browser: { headless: false }, concurrency: { defaultWorkers: 3 } });
     const { active, snapshot } = fixture.activate();
     assert.equal(record.settings.concurrency?.defaultWorkers, 3);
@@ -567,17 +595,11 @@ describe("dry-run scenario production composition boundary", () => {
 
   it("refuses Settings file replacement after the initial journal read before any start effects", async () => {
     let afterJournalRead: (() => void) | undefined;
-    const env = new Proxy<NodeJS.ProcessEnv>({}, {
-      get(target, property, receiver) {
-        if (property === "HRAUTO_HOST_PRIMARY_DISPLAY") {
-          const callback = afterJournalRead;
-          afterJournalRead = undefined;
-          callback?.();
-        }
-        return Reflect.get(target, property, receiver) as string | undefined;
-      },
+    const fixture = admissionFixture({}, () => {
+      const callback = afterJournalRead;
+      afterJournalRead = undefined;
+      callback?.();
     });
-    const fixture = admissionFixture(env);
     const prior = fixture.apply({ browser: { headless: false } });
     const settingsPath = join(fixture.root, ".tracker", "settings", "settings.json");
     const priorBytes = readFileSync(settingsPath);
@@ -590,7 +612,7 @@ describe("dry-run scenario production composition boundary", () => {
     const before = startEffects(fixture.path);
     let replaced = false;
     afterJournalRead = () => {
-      // One real host-facts boundary, after journal reconciliation but before
+      // One explicit composition race boundary, after journal reconciliation but before
       // final admission. Only file bytes move: SQLite still owns revision 3.
       assert.deepEqual(readFileSync(settingsPath), currentBytes);
       assert.deepEqual(fixture.file.read(), current);
@@ -616,34 +638,20 @@ describe("dry-run scenario production composition boundary", () => {
   });
 
   it("refuses a missing activated snapshot before any start effects", async () => {
-    let armed = false;
-    let readsAfterArming = 0;
-    const mutation: { raw?: DatabaseSync; activeSnapshotId?: string } = {};
-    const env = new Proxy<NodeJS.ProcessEnv>({}, {
-      get(target, property, receiver) {
-        if (armed && property === "HRAUTO_HOST_PRIMARY_DISPLAY" && ++readsAfterArming === 1) {
-          if (mutation.activeSnapshotId === undefined) {
-            throw new Error("missing active snapshot id at synthetic row-loss boundary");
-          }
-          mutation.raw?.prepare("DELETE FROM config_snapshots WHERE record_key = ?")
-            .run(mutation.activeSnapshotId);
-        }
-        return Reflect.get(target, property, receiver) as string | undefined;
-      },
-    });
-    const fixture = admissionFixture(env);
+    let afterSettingsRead: (() => void) | undefined;
+    const fixture = admissionFixture({}, () => afterSettingsRead?.());
     fixture.apply({ browser: { headless: false } });
     const { active } = fixture.activate();
     const raw = new DatabaseSync(fixture.path);
-    mutation.raw = raw;
-    mutation.activeSnapshotId = active.configSnapshotId;
     let before: ReturnType<typeof startEffects> | undefined;
     try {
       raw.exec("PRAGMA foreign_keys = OFF");
-      armed = true;
+      afterSettingsRead = () => {
+        raw.prepare("DELETE FROM config_snapshots WHERE record_key = ?").run(active.configSnapshotId);
+      };
       await assert.rejects(fixture.runtime.start(fixture.request), /active runtime config generation 1 does not bind exact snapshot/);
       before = startEffects(fixture.path);
-      assert.ok(before !== undefined, "the real resolver reached the row-loss boundary");
+      assert.ok(before !== undefined, "the real start admission refused the missing snapshot");
       assert.deepEqual(startEffects(fixture.path), before);
       assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
     } finally {
@@ -1030,8 +1038,6 @@ describe("dry-run scenario target dispatch", () => {
 
     assert.deepEqual(capturedCanonicalInput, {
       documentNumber: "4999",
-      timekeeperName: "Julian Zaw",
-      searchTimeoutMs: 15_000,
     });
   });
 

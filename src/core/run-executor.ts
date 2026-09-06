@@ -1,3 +1,4 @@
+import { retainedRunProtectedBindings } from "../domain/protected-input.js";
 import { readRunCheckpoint } from "./run-checkpoint-reader.js";
 /**
  * The Phase-1f graph interpreter (ref workflow-model §§4–5; ref execution-and-sessions §3): a worker claims a
@@ -128,7 +129,7 @@ import {
   taskSpanPath,
   type SpanEmitter,
 } from "./span-emitter.js";
-import { redactObservedDataPoints } from "./observed-data.js";
+import { protectedTaskLogger, redactObservedDataPoints } from "./observed-data.js";
 import { createTaskProvenanceCollector } from "./task-provenance.js";
 import { buildTerminalAuthorization } from "./terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type WorkerRunLifecyclePort } from "./run-record-service.js";
@@ -730,7 +731,8 @@ export async function executeClaimedRun(
         const value = outputs[String(dependency)];
         if (value !== undefined) picked[String(dependency)] = value;
       }
-      return { input: canonicalInput, outputs: Object.freeze(picked) };
+      return { input: canonicalInput, outputs: Object.freeze(picked),
+        protectedInputBindings: retainedRunProtectedBindings(getRun()) };
     };
 
     const startAt = envelope.startAt;
@@ -1124,7 +1126,7 @@ export async function executeClaimedRun(
             nodeId: String(node.id),
             taskId: contract.id,
             observedAt: recordedAt,
-            points: redactObservedDataPoints(contract.id, points),
+            points: redactObservedDataPoints(contract.id, points, retainedRunProtectedBindings(initial).map(({ inputPath }) => inputPath)),
           });
         },
       });
@@ -1149,7 +1151,7 @@ export async function executeClaimedRun(
       const run = RunnableTaskSchema.parse(task.impl.run);
       const ctxCommon = {
         signal: controller.signal,
-        log: deps.log,
+        log: protectedTaskLogger(deps.log, initial),
         fail: (code: string, message: string, options?: Readonly<{
           subject?: string; transient?: boolean; cause?: unknown;
         }>): never => {
@@ -1244,6 +1246,7 @@ export async function executeClaimedRun(
         output: {
           schemaHash: deriveSchemaHash(contract.output, "output"),
           value: JsonValueSchema.parse(parsedOutput),
+          ...(retainedRunProtectedBindings(initial).length === 0 ? {} : { protectedBindings: retainedRunProtectedBindings(initial) }),
         },
         descriptorVersion: descriptor.version,
         contractFingerprint: descriptor.contractFingerprint,
@@ -1520,7 +1523,8 @@ export async function executeClaimedRun(
           assertedRecords.set(String(node.id), Object.freeze({
             step: replayed.assertion.step,
             assertedAt: replayed.assertion.assertedAt,
-            output: Object.freeze({ schemaHash: replayed.output.schemaHash, value: replayed.output.value }),
+            output: Object.freeze({ ...replayed.output,
+              ...(retainedRunProtectedBindings(initial).length === 0 ? {} : { protectedBindings: retainedRunProtectedBindings(initial) }) }),
           }));
           const replaySpanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
           emit({
@@ -1570,7 +1574,8 @@ export async function executeClaimedRun(
           attempt: envelope.attempt,
           claimGeneration: claim.claimGeneration,
           runId,
-          output: { schemaHash: outputSchemaHash, value },
+          output: { schemaHash: outputSchemaHash, value,
+            ...(retainedRunProtectedBindings(initial).length === 0 ? {} : { protectedBindings: retainedRunProtectedBindings(initial) }) },
           descriptorVersion: descriptor.version,
           contractFingerprint: descriptor.contractFingerprint,
           implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, node.uses.id),
@@ -1586,7 +1591,8 @@ export async function executeClaimedRun(
         assertedRecords.set(String(node.id), Object.freeze({
           step: assertion.step,
           assertedAt,
-          output: Object.freeze({ schemaHash: outputSchemaHash, value }),
+          output: Object.freeze({ schemaHash: outputSchemaHash, value,
+            ...(retainedRunProtectedBindings(initial).length === 0 ? {} : { protectedBindings: retainedRunProtectedBindings(initial) }) }),
         }));
         const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
         emit({

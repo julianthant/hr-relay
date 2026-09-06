@@ -266,7 +266,6 @@ describe("workflow definition public equivalence characterization", () => {
             parser: {
               split: { kind: "delimited", delimiters: [";", "\n"] },
               rules: [{ when: { kind: "pattern", pattern: "document-number" }, emit: "documentNumber" }],
-              constants: [{ field: "timekeeperName", value: { kind: "text", text: "Julian Zaw" } }],
             },
             examples: [
               { key: "one-document", label: "One document", text: "4502", note: "the ordinary case — one run for one Kuali separation document" },

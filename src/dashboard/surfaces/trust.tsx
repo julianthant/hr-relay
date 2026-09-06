@@ -973,9 +973,9 @@ function WriteProofBlock({ proved }: { proved: ActionWriteProofWire }) {
     <div className="flex flex-col gap-[var(--ds-space-tight)] pl-[var(--ds-space-loose)]">
       <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
         <SystemTag system={proved.system} />
-        <Chip label="key" title={proved.idempotencyKeyDigest}>
-          {shortHash(proved.idempotencyKeyDigest)}
-        </Chip>
+        {proved.idempotencyKeyDigest === "withheld-protected-input" ? null : (
+          <Chip label="key" title={proved.idempotencyKeyDigest}>{shortHash(proved.idempotencyKeyDigest)}</Chip>
+        )}
       </div>
       {proved.values.map((value) => (
         <FactRow key={value.key} label={value.key} value={redactedText(value)} />

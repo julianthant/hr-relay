@@ -1,3 +1,4 @@
+import { valueFreeProtectedData } from "../../domain/protected-input.js";
 /**
  * The one place a Kuali finalization read-back becomes a ref write-safety `ProbeVerdict`.
  *
@@ -35,8 +36,8 @@ import { deriveIdempotencyKeyDigest } from "../../domain/write-safety.js";
  */
 export function kualiFinalizationQueryDigest(target: KualiFinalizationTarget): string {
   return FingerprintSchema.parse(sha256Hex(
-    `hrauto:kuali-finalization-query:v1\0${target.actionId}\0${target.documentNumber}`
-    + `\0${JSON.stringify(target.variables)}`,
+    `hrauto:kuali-finalization-query:v1\0${JSON.stringify(valueFreeProtectedData({ actionId: target.actionId,
+      documentNumber: target.documentNumber, variables: target.variables }, target.protectedBindings))}`,
   ));
 }
 
@@ -51,8 +52,7 @@ function kualiFinalizationAbsenceEvidenceId(
   observedAt: string,
 ): string {
   const digest = sha256Hex(
-    `hrauto:kuali-finalization-absence:v1\0${target.actionId}\0${target.documentNumber}`
-    + `\0${JSON.stringify(target.variables)}\0${observedAt}`,
+    `hrauto:kuali-finalization-absence:v1\0${kualiFinalizationQueryDigest(target)}\0${observedAt}`,
   );
   return [
     digest.slice(0, 8),

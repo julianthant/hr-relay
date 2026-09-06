@@ -1,3 +1,4 @@
+import type { ProtectedInputBinding } from "../../../src/domain/protected-input.js";
 /**
  * Shared Phase-1f interpreter harness: a real temp-file AuthorityDatabase, a
  * deterministic browser-session factory that serves the checked-in fake
@@ -90,6 +91,7 @@ export function openAuthorityHarness(): AuthorityHarness {
 
 /** A queued person-lookup run whose fingerprints match the REAL descriptor. */
 export function personLookupQueuedRun(options: Readonly<{
+  protectedBindings?: readonly ProtectedInputBinding[];
   runId?: string;
   itemId?: string;
   includeCrmDates?: boolean;
@@ -119,6 +121,7 @@ export function personLookupQueuedRun(options: Readonly<{
       parsed: {
         schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
         value: parsedValue,
+        protectedBindings: options.protectedBindings ?? [],
       },
     },
     createdAt: QUEUED_RUN.createdAt,

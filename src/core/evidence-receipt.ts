@@ -1,3 +1,5 @@
+import { retainedRunProtectedBindings, hasProtectedTransactionInput, publicTransactionKeyDigest, valueFreeProtectedEvidence } from "../domain/protected-input.js";
+import { valueFreeProtectedInput } from "../domain/protected-input.js";
 /**
  * The `RunEvidenceReceipt` builder (ref operator-trust §2.3, D140/D141).
  *
@@ -89,7 +91,6 @@ import { evaluateNodeCondition } from "../domain/workflow/node-condition.js";
 import {
   directIdentifierDigestReference,
   idempotencyKeyDigestReference,
-  redactionDigest,
 } from "../domain/redaction.js";
 import {
   descriptorRuntimeNodes,
@@ -286,8 +287,9 @@ interface NodeEvidence {
 }
 
 function canonicalInputFingerprint(run: RunRecord) {
+  const { protectedBindings, ...canonical } = run.input.parsed;
   return FingerprintSchema.parse(sha256Hex(
-    `hrauto:receipt-canonical-input:v1\0${canonicalJsonStringify(run.input.parsed)}`,
+    `hrauto:receipt-canonical-input:v1\0${canonicalJsonStringify({ ...canonical, ...(protectedBindings === undefined || protectedBindings.length === 0 ? {} : { protectedBindings }), value: valueFreeProtectedInput(run.input.parsed.value, retainedRunProtectedBindings(run)) })}`,
   ));
 }
 
@@ -340,8 +342,8 @@ function pickCheckpoint(
  * receipt at 1 and never upgrades it in place — the D199 stranding, refused
  * structurally rather than remembered.
  */
-export type ReceiptComposition = 1 | 2 | 3;
-export const LATEST_RECEIPT_COMPOSITION = 3 satisfies ReceiptComposition;
+export type ReceiptComposition = 1 | 2 | 3 | 4;
+export const LATEST_RECEIPT_COMPOSITION = 4 satisfies ReceiptComposition;
 
 /** The one sentence a receipt says about each closed not-run reason; a new reason must be authored here, never inherited. */
 const NOT_RUN_SENTENCE: Record<TerminalNotRunReason, (id: string) => string> = {
@@ -382,6 +384,7 @@ export function deriveActionWriteProof(input: Readonly<{
   /** The transaction node's checkpoint row (raw or parsed). */
   record: unknown;
   intent: WriteIntentRecord | undefined;
+  protectedTransaction?: boolean;
 }>): ActionWriteProof {
   const { commitContract, intent } = input;
   const record = RunCheckpointRecordSchema.parse(input.record);
@@ -412,7 +415,7 @@ export function deriveActionWriteProof(input: Readonly<{
   const scope: EvidenceValueScope = { kind: "write-proof", taskId: commitContract.id };
   return ActionWriteProofSchema.parse({
     system: intent.system,
-    idempotencyKeyDigest: intent.idempotencyKeyDigest,
+    idempotencyKeyDigest: publicTransactionKeyDigest(intent.idempotencyKeyDigest, input.protectedTransaction ?? false),
     completion: commitContract.writeSafety.completion.kind,
     proofSource: outcome.proofSource,
     values: evidenceLeaves(outcome.proof.value).map((leaf) => redactEvidenceLeaf(scope, leaf)),
@@ -604,8 +607,8 @@ export function deriveRunEvidenceReceipt(
     const storedDigest = deriveCheckpointOutputDigest(stored.output);
     if (storedDigest !== cited.outputDigest) {
       throw new Error(
-        `run ${envelope.runId}'s asserted checkpoint for node "${nodeId}" holds output digest ${storedDigest}, `
-        + `and its terminal record cites ${cited.outputDigest}; the terminal derive did not consume the value `
+        `run ${envelope.runId}'s asserted checkpoint for node "${nodeId}" disagrees with its terminal output binding; `
+        + "the terminal derive did not consume the value "
         + "this row carries",
       );
     }
@@ -860,6 +863,7 @@ export function deriveRunEvidenceReceipt(
        */
       if (composition >= 2) {
         commitAction.proved = deriveActionWriteProof({
+          protectedTransaction: composition >= 4 && hasProtectedTransactionInput(run),
           commitContract: node.commit.uses,
           record,
           intent: write?.intent,
@@ -884,7 +888,7 @@ export function deriveRunEvidenceReceipt(
           id: identityId,
           kind: "identity",
           outcome: "approved",
-          reason: subjectReason(write.intent, composition),
+          reason: subjectReason(write.intent, composition, composition >= 4 && hasProtectedTransactionInput(run)),
           evidence: [evidenceEntryRef(commitAction.id)],
         });
       }
@@ -1098,7 +1102,7 @@ export function deriveRunEvidenceReceipt(
         code: ErrorCodeSchema.parse("RESIDUAL_WRITE_INTENT"),
         summary: composition >= 3
           ? `write intent ${intent.writeIntentId} for ${intent.system} `
-            + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} is still ${intent.status}; this run left an unsettled `
+            + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, composition >= 4 && hasProtectedTransactionInput(run))} is still ${intent.status}; this run left an unsettled `
             + "external write behind and only ref write-safety's typed operator resolutions may release it"
           : legacyAuthorityResidualWriteSummary(intent),
         loadBearing: true,
@@ -1133,7 +1137,7 @@ export function deriveRunEvidenceReceipt(
           ? "partial"
           : "done-with-warnings";
 
-  const receipt = RunEvidenceReceiptSchema.parse({
+  const receiptData = {
     ...(composition === 1 ? {} : { composition }),
     receiptId,
     runId: envelope.runId,
@@ -1166,7 +1170,10 @@ export function deriveRunEvidenceReceipt(
     warnings,
     confidence,
     result: receiptResult,
-  });
+  };
+  const receipt = RunEvidenceReceiptSchema.parse(composition >= 4
+    ? valueFreeProtectedEvidence(receiptData, run.input.parsed.protectedBindings?.map(({ inputPath }) => inputPath)
+      ?? (run.envelope.workflow === "person-lookup" ? ["emplId"] : hasProtectedTransactionInput(run) ? ["timekeeperName", "documentNumber"] : [])) : receiptData);
   assertEvidenceRefsResolve(receipt);
   return Object.freeze({ receipt, checks: binding.checks });
 }
@@ -1378,11 +1385,13 @@ function emitGateEvidence(input: GateEvidenceInput): void {
   if (boundLeaf !== undefined && typeof boundLeaf.value !== "string") {
     throw new Error(
       `gate "${nodeId}" of ${input.workflowId} declares "${String(declaration.boundEvidencePath)}" as its `
-      + `bound evidence and stored value digest ${redactionDigest(boundLeaf.value)} there; a bound-evidence leaf `
+      + "bound evidence and stored a non-string there; a bound-evidence leaf "
       + "must be a single comparable identity",
     );
   }
-  const bound: string | undefined = typeof boundLeaf?.value === "string" ? boundLeaf.value : undefined;
+  const bound: string | undefined = input.composition >= 4
+    && (input.workflowId === "separations" || input.workflowId === "separations-kuali-finalization")
+    ? undefined : typeof boundLeaf?.value === "string" ? boundLeaf.value : undefined;
   const projectedBound = bound === undefined || input.composition < 3
     ? bound
     : FingerprintSchema.safeParse(bound).success
@@ -1754,10 +1763,10 @@ function legacyAuthorityObservedPresentReason(intent: WriteIntentRecord): string
   ].join("");
 }
 
-function subjectReason(intent: WriteIntentRecord, composition: ReceiptComposition): string {
+function subjectReason(intent: WriteIntentRecord, composition: ReceiptComposition, protectedTransaction = false): string {
   if (intent.status === "observed-present") {
     return composition >= 3
-      ? `the permanent ${intent.system} ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} was already satisfied and `
+      ? `the permanent ${intent.system} ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, protectedTransaction)} was already satisfied and `
         + "observed present; this run bound no fresh subject because it performed no write"
       : legacyAuthorityObservedPresentReason(intent);
   }

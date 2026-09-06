@@ -4,6 +4,7 @@ import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS } from "./config/catalog.js";
 import { HOST_PRIMARY_DISPLAY_ENV } from "./config/host-display.js";
 import { deepFreeze } from "./immutability.js";
 import {
+  WORKER_PROCESS_MECHANIC_KEYS,
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
   TEST_TARGET_SECRET_SPECS,
@@ -87,6 +88,15 @@ const ComputedReaderBulkTargetSchema = z.strictObject({
   reason: z.string().min(1),
 });
 
+/** D331 worker spawn mechanics are not settings or provider bindings. */
+const WorkerProcessMechanicsTargetsSchema = z.strictObject({
+  kind: z.literal("closed-process-mechanics"),
+  exact: z.array(z.enum(WORKER_PROCESS_MECHANIC_KEYS)).length(WORKER_PROCESS_MECHANIC_KEYS.length),
+}).superRefine((targets, ctx) => {
+  if (new Set(targets.exact).size !== WORKER_PROCESS_MECHANIC_KEYS.length)
+    ctx.addIssue({ code: "custom", message: "worker mechanics must name each closed process key exactly once" });
+});
+
 export const ComputedEnvironmentReaderSchema = z.strictObject({
   path: SourcePathSchema,
   enclosingSymbol: z.string().min(1),
@@ -96,10 +106,10 @@ export const ComputedEnvironmentReaderSchema = z.strictObject({
   expressionFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   classification: z.enum(["legacy-production", "target-accessor", "target-bootstrap", "test-only"]),
   owner: SourcePathSchema,
-  targets: z.union([ComputedReaderClosedTargetsSchema, ComputedReaderBulkTargetSchema]),
+  targets: z.union([ComputedReaderClosedTargetsSchema, ComputedReaderBulkTargetSchema, WorkerProcessMechanicsTargetsSchema]),
 }).superRefine((reader, context) => {
   if (reader.owner !== reader.path) context.addIssue({ code: "custom", path: ["owner"], message: "computed reader owner must be its exact source path" });
-  if (reader.accessKind === "unresolved" && reader.targets.kind !== "closed-targets") {
+  if (reader.accessKind === "unresolved" && reader.targets.kind !== "closed-targets" && reader.targets.kind !== "closed-process-mechanics") {
     context.addIssue({ code: "custom", path: ["targets"], message: "unresolved reader requires closed exact/family targets" });
   }
   if (reader.accessKind === "bulk" && reader.targets.kind !== "bulk-pass-through" && reader.classification !== "target-accessor") {
@@ -344,6 +354,7 @@ interface ComputedReaderInput {
   readonly expressionFingerprint: string;
   readonly classification: "legacy-production" | "target-accessor" | "target-bootstrap" | "test-only";
   readonly targets:
+    | { readonly kind: "closed-process-mechanics"; readonly exact: readonly (typeof WORKER_PROCESS_MECHANIC_KEYS)[number][] }
     | {
         readonly kind: "closed-targets";
         readonly exact: readonly string[];
@@ -363,7 +374,9 @@ interface ComputedReaderInput {
 }
 
 function computedReader(input: ComputedReaderInput): z.input<typeof ComputedEnvironmentReaderSchema> {
-  const targets = input.targets.kind === "closed-targets"
+  const targets = input.targets.kind === "closed-process-mechanics"
+    ? { ...input.targets, exact: [...input.targets.exact] }
+    : input.targets.kind === "closed-targets"
     ? { ...input.targets, exact: [...input.targets.exact], families: [...input.targets.families] }
     : input.targets;
   return { ...input, targets, operation: "read", owner: input.path };
@@ -394,6 +407,8 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "buildSharePointRosterDownloadHandler", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "admitLocalEnvironmentFile", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "bulk-pass-through", boundary: "secure-local-environment-admission", reason: "the validated and exactly parsed local source fills only bindings absent from the inherited parent environment" } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "assertNoMigratedEnvironmentKeys", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: RETIRED_ENVIRONMENT_KEYS, families: [] } }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [...RETIRED_ENVIRONMENT_KEYS, HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "72b51583d255ce06b58a1fb09a91cfed0e89cd4cf7406fc6dea176093c81757c", classification: "target-accessor", targets: { kind: "closed-process-mechanics", exact: WORKER_PROCESS_MECHANIC_KEYS } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "hostAwareResolutionEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalSecretFamily", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "72b51583d255ce06b58a1fb09a91cfed0e89cd4cf7406fc6dea176093c81757c", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "requireSecretFamily", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
@@ -528,6 +543,10 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
         violations.push(`target bootstrap reader is outside the exact dashboard launcher/Vite contract: ${reader.path}`);
       }
     }
+    if (reader.targets.kind === "closed-process-mechanics" && (reader.path !== "src/domain/secrets.ts"
+      || reader.enclosingSymbol !== "workerBootstrapEnvironment" || reader.accessKind !== "unresolved"
+      || reader.classification !== "target-accessor"))
+      violations.push("closed process mechanics belong only to the worker bootstrap accessor");
     if (reader.targets.kind !== "closed-targets") continue;
     for (const key of reader.targets.exact) {
       if (!exact.has(key)) violations.push(`computed reader ${reader.path} targets unknown exact key ${key}`);

@@ -222,7 +222,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  explain run <traceId|runId> [--json]  explain one run from authority (ref operator-trust §2.5)",
     "  activity-person-pseudonyms backfill [--run <run-id> ...] [--json]  derive D288 evidence from reviewed current Separations results",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page (D151/D158)",
-    "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5; exit 0 = authority healthy + reconciliation healthy; backup reported, not gated)",
+    "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5; exit 0 = authority healthy + reconciliation healthy + protected authority readable; backup reported, not gated)",
     "  storage backup [--json]  write ONE verified authority backup + manifest — the only backup writer (D322)",
     "  storage restore --from <manifest.json> [--json]  quarantine the suspect authority and swap in ONE named verified backup (D181)",
   ].join("\n");

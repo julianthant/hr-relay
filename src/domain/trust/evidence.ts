@@ -1,3 +1,4 @@
+import { PublicTransactionKeyDigestSchema } from "../protected-input.js";
 import { z } from "zod";
 import {
   ActorIdSchema,
@@ -120,7 +121,7 @@ export const DecisionEvidenceSchema = z.strictObject({
  */
 export const ActionWriteProofSchema = z.strictObject({
   system: BrowserSystemIdSchema,
-  idempotencyKeyDigest: FingerprintSchema,
+  idempotencyKeyDigest: PublicTransactionKeyDigestSchema,
   completion: z.enum(["receipt", "save-verify", "upload-verify"]),
   proofSource: z.enum(["normal-output", "recovery-probe", "operator-attestation", "durable-intent", "live-probe"]),
   values: z.array(RedactedFieldSchema).min(1),
@@ -196,7 +197,7 @@ export const RunEvidenceReceiptSchema = z.strictObject({
    * immutable and re-derives under ITS OWN composition (never upgraded in
    * place), so absence is a closed, documented state rather than a default.
    */
-  composition: z.union([z.literal(2), z.literal(3)]).optional(),
+  composition: z.union([z.literal(2), z.literal(3), z.literal(4)]).optional(),
   receiptId: EvidenceReceiptIdSchema,
   runId: RunIdSchema,
   traceId: TraceIdSchema,
@@ -263,7 +264,7 @@ export type RunEvidenceReceipt = z.infer<typeof RunEvidenceReceiptSchema>;
 
 const DiagnosticSafeRunEvidenceReceiptSchema = z.intersection(
   RunEvidenceReceiptSchema,
-  z.strictObject({ composition: z.literal(3) }),
+  z.strictObject({ composition: z.union([z.literal(3), z.literal(4)]) }),
 );
 
 export const OperatorReceiptProjectionSchema = z.union([
@@ -273,7 +274,7 @@ export const OperatorReceiptProjectionSchema = z.union([
   }),
   z.strictObject({
     state: z.literal("withheld"),
-    composition: z.union([z.literal(1), z.literal(2)]),
+    composition: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     reason: z.string().min(1),
   }),
 ]);
@@ -287,7 +288,8 @@ export type OperatorReceiptProjection = z.infer<typeof OperatorReceiptProjection
  */
 export function projectReceiptForOperator(receiptInput: unknown): OperatorReceiptProjection {
   const receipt = RunEvidenceReceiptSchema.parse(receiptInput);
-  if (receipt.composition === 3) {
+  const protectedWorkflow = receipt.workflowId === "separations" || receipt.workflowId === "separations-kuali-finalization" || receipt.workflowId === "person-lookup";
+  if (receipt.composition === 4 || (receipt.composition === 3 && !protectedWorkflow)) {
     return Object.freeze(OperatorReceiptProjectionSchema.parse({
       state: "available",
       value: receipt,
@@ -297,7 +299,7 @@ export function projectReceiptForOperator(receiptInput: unknown): OperatorReceip
   return Object.freeze(OperatorReceiptProjectionSchema.parse({
     state: "withheld",
     composition,
-    reason: `immutable receipt composition ${String(composition)} predates diagnostic-safe composition 3; `
+    reason: `immutable receipt composition ${String(composition)} predates the required protected-value projection; `
       + "its free-text projection is withheld and the authority row is unchanged",
   }));
 }

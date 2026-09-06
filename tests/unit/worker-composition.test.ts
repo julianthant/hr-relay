@@ -1,3 +1,11 @@
+import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
+import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
+import { ActorIdSchema, TraceIdSchema } from "../../src/domain/ids.js";
+import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
+import { composeDashboardRuntime } from "../../src/server/dashboard/compose.js";
+import { createJournaledProtectedSecretSource } from "../../src/server/settings-runtime.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
+import { RuntimeConfigClaimTokenSchema } from "../../src/domain/config/runtime-generation.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
 import { SpanEventWireSchema } from "../../src/events/types.js";
 import { testRunService } from "./fixtures/run-lifecycle-fixtures.js";
@@ -14,7 +22,7 @@ import { hostConfigFacts } from "../../src/domain/config/host-display.js";
  * a parallel reimplementation.
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -33,7 +41,7 @@ import { deriveSettingsCommandFingerprint } from "../../src/domain/commands.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import type { PositiveInt } from "../../src/domain/ids.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
-import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
+import { createProtectedSettingsFileAuthority, createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   observeProcessIdentity,
@@ -421,8 +429,8 @@ describe("composed worker runtime", () => {
     );
     assert.deepEqual(
       settingsLockAcquisitions,
-      [2, 2, 2, 2],
-      "each worker pays two boot validations; idle/claim polls pay zero OS observation, link, fsync, or unlink cycles",
+      [3, 3, 3, 3],
+      "each worker pays prepare-target inspection and two ordinary boot validations; idle/claim polls pay zero OS observation, link, fsync, or unlink cycles",
     );
   });
 
@@ -1022,6 +1030,102 @@ describe("composed worker runtime", () => {
   });
 });
 
+describe("D331 settings apply during a production worker claim", () => {
+  it.each(["protected", "ordinary"] as const)("%s apply preserves the active run and enforces its restart scope", async (kind) => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const database = reopen(stateRoot, clock);
+    const spans = createSpanJsonlWriter({ stateRoot, clock });
+    const queued = database.authority.runs.get(RUN_ID); assert.ok(queued);
+    spans.emit(runQueuedSpanEvent({ run: queued, actorId: ActorIdSchema.parse("local-operator"), title: "Synthetic claim fixture" }));
+    const path = join(stateRoot, "settings", "settings.json");
+    const ordinary = createSettingsFileAuthority({ path,
+      validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); } });
+    const protectedFile = createProtectedSettingsFileAuthority({ path, assertWriteIdAvailable: (writeId, commandId) => {
+      if (database.authority.commands.findProtectedSettingsCommandIdByWriteId({ writeId, excludingCommandId: commandId }) !== undefined)
+        throw new Error("write-id-reused");
+    } });
+    const { kernel } = kernelHarness({ database, clock, settings: createSettingsApplicationExecutor(ordinary, protectedFile) });
+    const source = createJournaledProtectedSecretSource({ file: protectedFile, database });
+    const applyProtected = (value: string, revision: number) => kernel.execute({
+      commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",
+      family: "settings", type: "apply-protected-settings", target: { expectedRevision: revision },
+      payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: nextCommandId(), entries: { timekeeperName: { set: value } } },
+    });
+    assert.equal(applyProtected("Synthetic Initial Keeper", 1).state, "applied");
+    const gate = Promise.withResolvers<void>();
+    const arrived = Promise.withResolvers<void>();
+    const sessions = happySessionHarness();
+    const heldSessions = { ...sessions, factory: { open: async (...args: Parameters<typeof sessions.factory.open>) => {
+      arrived.resolve(); await gate.promise; return sessions.factory.open(...args);
+    } } };
+    const worker = composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: heldSessions, poolIndex: POOL_INDEX_1 }));
+    // Attach rejection immediately; the ordinary arm deliberately becomes stale on its next poll.
+    const settled = worker.then((report) => ({ report }), (error: unknown) => ({ error }));
+    try {
+      await Promise.race([arrived.promise, settled.then(() => { throw new Error("worker settled before claim barrier"); })]);
+      const run = database.authority.runs.get(RUN_ID); assert.ok(run);
+      assert.ok(run.claimGeneration > 0);
+      const active = database.authority.runtimeConfig.get(); assert.ok(active);
+      const token = RuntimeConfigClaimTokenSchema.parse({ generation: active.generation, settingsRevision: active.settingsRevision,
+        settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint });
+      const waitingId = "ffffffff-0001-4000-8000-000000000001";
+      if (kind === "ordinary") {
+        const waiting = RunRecordSchema.parse(personLookupQueuedRun({ runId: waitingId, itemId: "ffffffff-0002-4000-8000-000000000001" }));
+        waiting.envelope.traceId = TraceIdSchema.parse("pl-170000-9999");
+        assert.equal(database.authority.runs.enqueue(waiting).state, "inserted");
+        spans.emit(runQueuedSpanEvent({ run: waiting, actorId: ActorIdSchema.parse("local-operator"), title: "Synthetic waiting fixture" }));
+      }
+      const waitingBefore = database.authority.runs.get(waitingId);
+      const epoch = database.authority.settingsCurrent.get();
+      const snapshot = database.authority.configSnapshots.get(active.configSnapshotId);
+      assert.equal(source.read().entries.timekeeperName?.value, "Synthetic Initial Keeper");
+      const result = kind === "protected" ? applyProtected("Synthetic Rotated Keeper", 2) : (() => {
+        const patch = { "timeouts.taskMs": { set: 240_000 } } as const;
+        return kernel.execute({ commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",
+          family: "settings", type: "apply-settings", target: { expectedRevision: 1 },
+          payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
+      })();
+      assert.equal(result.state, "applied");
+      assert.deepEqual(database.authority.runtimeConfig.get(), active);
+      assert.deepEqual(database.authority.runtimeConfig.requireActive({ settingsRevision: active.settingsRevision,
+        settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint }), token);
+      assert.deepEqual(database.authority.configSnapshots.get(active.configSnapshotId), snapshot);
+      assert.deepEqual(database.authority.runs.get(RUN_ID), run);
+      if (kind === "protected") {
+        assert.deepEqual(database.authority.settingsCurrent.get(), epoch);
+        assert.equal(source.read().entries.timekeeperName?.value, "Synthetic Rotated Keeper");
+      } else assert.notDeepEqual(database.authority.settingsCurrent.get(), epoch);
+      gate.resolve();
+      const outcome = await settled;
+      const terminal = database.authority.runs.get(RUN_ID)?.lifecycle;
+      assert.ok(terminal?.state === "terminal");
+      assert.equal(terminal.outcome, "done");
+      if (kind === "protected") {
+        assert.ok("report" in outcome);
+        assert.deepEqual(outcome.report.outcomes.map(({ state }) => state), ["done"]);
+      } else {
+        assert.ok("error" in outcome && outcome.error instanceof Error);
+        assert.match(outcome.error.message, /runtime-stale/u);
+        assert.deepEqual(database.authority.runtimeConfig.get(), active);
+        assert.deepEqual(database.authority.runs.get(waitingId), waitingBefore);
+        for (const name of ["package.json", "package-lock.json"])
+          writeFileSync(join(repoRoot, name), readFileSync(join(process.cwd(), name)));
+        const restarted = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock,
+          backendPortOverride: 0, frontendPortOverride: 0 });
+        await restarted.stop();
+        const next = database.authority.runtimeConfig.get(); assert.ok(next);
+        assert.equal(next.generation, active.generation + 1);
+        assert.equal(database.authority.configSnapshots.get(next.configSnapshotId)?.config.timeouts.taskMs, 240_000);
+        const freshWorker = await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
+          args: ["separations", "--pool-index", "1", "--drain"] }));
+        assert.deepEqual(freshWorker.outcomes, []);
+      }
+    } finally { gate.resolve(); await settled; }
+  });
+});
+
 describe("worker composition helpers", () => {
   it("schedules real monotonic deadlines and cancels them", async () => {
     const clock = manualClock(new Date(NOW));
@@ -1068,15 +1172,16 @@ function refusingWorkerSupervisor(): WorkerProcessSupervisor {
   });
 }
 
-function kernelHarness(): { database: AuthorityDatabase; kernel: CommandKernel; clock: TestClock } {
+function kernelHarness(existing?: { database: AuthorityDatabase; clock: TestClock;
+  settings: ReturnType<typeof createSettingsApplicationExecutor> }): { database: AuthorityDatabase; kernel: CommandKernel; clock: TestClock } {
   const root = mkdtempSync(join(tmpdir(), "hrauto-worker-arms-"));
   roots.push(root);
-  const clock = manualClock(new Date(NOW));
-  const database = AuthorityDatabase.open(
+  const clock = existing?.clock ?? manualClock(new Date(NOW));
+  const database = existing?.database ?? AuthorityDatabase.open(
     { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
   );
-  openDatabases.push(database);
+  if (existing === undefined) openDatabases.push(database);
   const kernel = createCommandKernel({
     lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
@@ -1099,6 +1204,7 @@ function kernelHarness(): { database: AuthorityDatabase; kernel: CommandKernel; 
       },
     },
     workerRuntime: createPhase1WorkerRuntimeExecutor(refusingWorkerSupervisor()),
+    ...(existing === undefined ? {} : { settings: existing.settings }),
   });
   return { database, kernel, clock };
 }

@@ -1,3 +1,4 @@
+import type { ProtectedInputBinding } from "../domain/protected-input.js";
 /**
  * D311/D315/D317 — the ONE workflow-authoring seam.
  *
@@ -109,6 +110,7 @@ export interface WorkflowEntryScope<
   References extends readonly AnyWorkflowEntry[],
 > {
   readonly input: z.output<InputSchema>;
+  readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: EntryOutputs<References>;
 }
 

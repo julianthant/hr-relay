@@ -303,7 +303,7 @@ describe("D5 · a row reads its evidence receipt once (audit P4)", () => {
     });
     assert.deepEqual(rowOf(4)?.warnings, {
       state: "absent",
-      reason: "immutable receipt composition 1 predates diagnostic-safe composition 3; "
+      reason: "immutable receipt composition 1 predates the required protected-value projection; "
         + "its free-text projection is withheld and the authority row is unchanged",
     });
   });

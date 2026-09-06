@@ -28,11 +28,12 @@ import {
 
 afterEach(disposeWorlds);
 
-function filedBySubtitle(world: ReturnType<typeof createSeparationsWorld>, runId: string) {
+function retainedTimekeeperHidden(world: ReturnType<typeof createSeparationsWorld>, runId: string) {
   const run = world.database.authority.runs.get(runId);
   if (run === undefined) throw new Error(`run ${runId} is not in authority`);
   const input = SeparationsCanonicalInput.parse(run.input.parsed.value);
-  return { state: "present", value: `Filed by ${input.timekeeperName}` } as const;
+  assert.ok(input.timekeeperName.length > 0, "the run retains the admitted timekeeper privately");
+  return { state: "absent", reason: "the start plan proposed no subtitle" } as const;
 }
 
 describe("separations dashboard — the start door the operator types into", () => {
@@ -65,7 +66,7 @@ describe("separations dashboard — what the queue row calls a run", () => {
     // `presentation.title` / `presentation.subtitle`, composed at PLAN time and
     // carried onto the row through the run.queued span.
     assert.equal(row.title, `Separation ${FIXTURE_DOCUMENT_NUMBER}`);
-    assert.deepEqual({ ...row.subtitle }, filedBySubtitle(world, started.runId));
+    assert.deepEqual({ ...row.subtitle }, retainedTimekeeperHidden(world, started.runId));
   });
 
   it("replaces the document title with the PERSON once UCPath's Job Summary has answered", () => {
@@ -83,8 +84,8 @@ describe("separations dashboard — what the queue row calls a run", () => {
 
     const after = world.projection.queueSurface(started.runId);
     assert.equal(after?.title, displayedName);
-    // The subtitle is NOT a second subject line: it still says who filed.
-    assert.deepEqual({ ...after?.subtitle }, filedBySubtitle(world, started.runId));
+    // The protected timekeeper stays out of the queue subtitle.
+    assert.deepEqual({ ...after?.subtitle }, retainedTimekeeperHidden(world, started.runId));
   });
 
   it("keeps the document title when the declared subject node has not run", () => {

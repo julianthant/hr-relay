@@ -1,3 +1,4 @@
+import { ProtectedInputBindingsSchema } from "../protected-input.js";
 /**
  * Kuali Build — the RRSS **Separation Request Form** FINALIZATION write surface
  * (`docs/migrations/separations.md` §4e, chunk 5).
@@ -518,6 +519,7 @@ export function kualiFinalizationWireUnasserted(): readonly KualiFinalizationFie
 
 /** The run's whole address for this write: the document, the person, and the variables. */
 export const KualiFinalizationTargetSchema = z.strictObject({
+  protectedBindings: ProtectedInputBindingsSchema.optional(),
   actionId: KualiActionIdSchema,
   documentNumber: KualiDocumentNumberSchema,
   emplId: EidSchema,

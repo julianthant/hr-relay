@@ -33,6 +33,7 @@ import {
   parseDryRunScenarioManifest,
   type DryRunScenarioManifest,
 } from "../../domain/trust/dry-run-scenario.js";
+import { createJournaledProtectedSecretSource } from "../settings-runtime.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import { createProtectedSettingsFileAuthority } from "../../infra/config/settings-file.js";
 
@@ -98,12 +99,12 @@ export async function composeDryRunScenarioCommand(
     path: settingsRootPaths(stateRoot).ordinary,
     assertWriteIdAvailable: () => undefined,
   });
-  const protectedSecrets = input.protectedSecrets ?? { read: () => protectedAuthority.read() };
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "dry-run-scenario" },
     clock,
   );
   try {
+    const protectedSecrets = input.protectedSecrets ?? createJournaledProtectedSecretSource({ file: protectedAuthority, database });
     const outcome = await runDryRunScenario({
       args,
       loadManifest: () => Promise.resolve(manifestInput),

@@ -37,20 +37,13 @@ import {
  *
  * - `src/domain/secrets.ts` is the sole *credential* reader. Every other
  *   consumer receives an already-resolved value.
- * - `src/domain/config/**` may read the environment, because the config
- *   resolver's `env > settings.json > default` precedence is a distinct
- *   concern from secret values — but ONLY for keys the config binding table
- *   owns. A config-owned read of a `SECRET_SPECS` / `SECRET_FAMILY_SPECS` key
- *   is the exact confusion this guard exists to reject, so membership (not
- *   directory) decides.
- * - Everywhere else in `src/**`, ANY environment access fails —
- *   read, write, or delete; exact, computed, or bulk.
- *
- * Today `src/domain/config/resolve.ts` takes `env: NodeJS.ProcessEnv` as
- * an injected parameter and reads nothing itself, so the tree is stricter than
- * the contract requires. The allowlist below is the shrink-only ported-leaf
- * escape hatch the other ratchets use and is deliberately EMPTY: new
- * `src` code gets zero tolerance (ref clock-config-secrets §2).
+ * - D331 removes environment leaves from config resolution. CONFIG_ENV_BINDINGS is
+ *   empty; the composition guard independently scans config modules and tests retired
+ *   key refusals before effects. Explicit host facts remain a separate source.
+ * - Protected catalog keys are forbidden even in the secret owner: reads, writes and
+ *   deletes must never revive the retired environment bridge.
+ * - Everywhere else in src, any direct/computed/bulk environment access fails.
+ * The shrink-only ported-leaf allowlist remains empty.
  */
 
 const SECRET_OWNER = "src/domain/secrets.ts";
@@ -91,7 +84,12 @@ export function auditSecretsSingleSource(
   const violations: string[] = [];
   for (const occurrence of occurrences) {
     const where = `${occurrence.path}:${String(occurrence.line)}:${String(occurrence.column)}`;
-    if (occurrence.path === SECRET_OWNER) continue;
+    if (occurrence.path === SECRET_OWNER) {
+      if (occurrence.key !== undefined && CREDENTIAL_KEYS.has(occurrence.key)) {
+        violations.push(`${where}: protected environment ${occurrence.operation} of ${occurrence.key} is forbidden, including in the secret owner`);
+      }
+      continue;
+    }
     if (!occurrence.path.startsWith(CONFIG_OWNER_PREFIX)) {
       violations.push(
         `${where}: environment ${occurrence.operation} in ${occurrence.enclosingSymbol} — only ${SECRET_OWNER} and ${CONFIG_OWNER_PREFIX}** may touch process.env`,
@@ -532,6 +530,23 @@ describe("secrets single source", () => {
     assert.equal(violations.every((violation) => violation.includes("only src/domain/secrets.ts")), true);
     assert.equal(violations.some((violation) => violation.includes("environment write")), true);
     assert.equal(violations.some((violation) => violation.includes("environment delete")), true);
+  });
+
+  it("rejects protected reads, writes and deletes inside the secret owner for every catalogued key", () => {
+    assert.ok(CREDENTIAL_KEYS.size > 0);
+    for (const key of CREDENTIAL_KEYS) {
+      for (const content of [
+        `const leaked = process.env.${key};`,
+        `process.env.${key} = "synthetic-private-value";`,
+        `const env = process.env; env["${key}"] = "synthetic-private-value";`,
+        `delete process.env["${key}"];`,
+      ]) {
+        const violations = auditSecretsSingleSource(inventoryEnvironmentAccesses(SECRET_OWNER, content));
+        assert.equal(violations.length, 1, content);
+        assert.match(violations[0] ?? "", /protected environment (read|write|delete)/u);
+        assert.equal(violations[0]?.includes("synthetic-private-value"), false);
+      }
+    }
   });
 
   it("rejects credential and migrated setting keys read from the config owner", () => {

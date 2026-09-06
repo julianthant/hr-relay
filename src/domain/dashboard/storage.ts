@@ -1,3 +1,4 @@
+import { ProtectedSettingsPresenceEntriesSchema } from "../config/protected-settings.js";
 /**
  * The storage doctor wire (ref dashboard-surfaces §2.5, 2i-D): the read-only recovery report
  * the Settings surface and `cli storage doctor` both render.
@@ -136,8 +137,14 @@ export const SpanAuthorityReconciliationWireSchema = z.discriminatedUnion("state
   z.strictObject({ state: z.literal("unavailable"), cause: StorageCauseWireSchema }),
 ]);
 
+export const ProtectedSettingsInspectionWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("available"), entries: ProtectedSettingsPresenceEntriesSchema }),
+  z.strictObject({ state: z.literal("unavailable"), cause: StorageCauseWireSchema }),
+]);
+
 export const StorageDoctorWireSchema = z.strictObject({
   mode: z.literal("read-only"),
+  protectedSettings: ProtectedSettingsInspectionWireSchema,
   checkedAt: IsoInstantSchema,
   authority: z.discriminatedUnion("state", [
     z.strictObject({

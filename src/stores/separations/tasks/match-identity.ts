@@ -40,6 +40,7 @@ export const matchIdentityTask = defineTask(SeparationsMatchIdentity, {
     }
 
     const packet = buildIdentityEvidencePacket({
+      ...(input.protectedBindings === undefined ? {} : { protectedBindings: input.protectedBindings }),
       documentNumber: input.documentNumber,
       documentName: input.documentName,
       documentEidText: documentEidPresent

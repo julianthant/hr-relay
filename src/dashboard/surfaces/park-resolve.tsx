@@ -618,9 +618,9 @@ export function ParkResolveDialog({
             <Chip label="system">{parked.system}</Chip>
             <Chip label="fenced">{fmtClock(parked.fencedAt)}</Chip>
             <Chip label="generation">{String(parked.generation)}</Chip>
-            <Chip label="key" title={parked.idempotencyKeyDigest}>
-              {shortDigest(parked.idempotencyKeyDigest)}
-            </Chip>
+            {parked.idempotencyKeyDigest === "withheld-protected-input" ? null : (
+              <Chip label="key" title={parked.idempotencyKeyDigest}>{shortDigest(parked.idempotencyKeyDigest)}</Chip>
+            )}
             <SubjectFacts subject={parked.subject} inline />
           </Well>
 

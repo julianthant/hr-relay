@@ -139,7 +139,8 @@ describe("write sequencer — no repeat writes across recovery (D314)", () => {
       (error: unknown) => error instanceof Error
         && new RegExp(`transaction node "${TERMINATION_NODE}" holds a completed settlement`, "u").test(error.message)
         && /refusing to relabel a completed external write as the consequence of new facts \(D314\)/u.test(error.message)
-        && /key digest [0-9a-f]{12}…/u.test(error.message)
+        && /protected transaction key \(withheld\)/u.test(error.message)
+        && !/[0-9a-f]{12}…/u.test(error.message)
         && !error.message.includes(String(COMPOSITION_OTHER_EID))
         && !error.message.includes(String(COMPOSITION_EID)),
     );

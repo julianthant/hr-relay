@@ -1,3 +1,4 @@
+import { valueFreeProtectedData } from "../protected-input.js";
 import { z } from "zod";
 import { CommandIdSchema, FingerprintSchema, NodeIdSchema, PositiveIntSchema, RunIdSchema, TaskIdSchema, WriteIntentIdSchema, BrowserSystemIdSchema } from "../ids.js";
 import { canonicalJsonStringify } from "../canonical-json.js";
@@ -62,5 +63,5 @@ export function repeatOccurrenceKey(businessKeyDigest: string, confirmationComma
 export function repeatEvidenceDigest(intent: Readonly<{ status: string; completionProof?: SchemaBoundCanonicalValue; observedProof?: SchemaBoundCanonicalValue }>): string {
   const proof = intent.status === "committed" ? intent.completionProof : intent.status === "observed-present" ? intent.observedProof : undefined;
   if (proof === undefined) throw new Error("repeat warning requires settled evidence");
-  return sha256Hex(canonicalJsonStringify(proof));
+  return sha256Hex(canonicalJsonStringify(valueFreeProtectedData(proof)));
 }

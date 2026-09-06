@@ -1,3 +1,4 @@
+import type { ProtectedInputBinding } from "../domain/protected-input.js";
 import { z } from "zod";
 import {
   DryRunAssertionOutcomeSchema,
@@ -44,7 +45,7 @@ export function parseDryRunScenarioArguments(args: readonly string[]): DryRunSce
 
 export type DryRunScenarioTargetResolution =
   | Readonly<{ state: "blocked"; label: string; reason: string }>
-  | Readonly<{ state: "ready"; label: string; canonicalInput: unknown }>;
+  | Readonly<{ state: "ready"; label: string; canonicalInput: unknown; protectedBindings?: readonly ProtectedInputBinding[] }>;
 
 const EvidenceCheckpointSchema = z.strictObject({
   node: z.string().min(1),
@@ -134,6 +135,7 @@ export interface DryRunScenarioRuntime {
     manifest: DryRunScenarioManifest;
     scenarioCase: DryRunScenarioAnyCase;
     canonicalInput: unknown;
+    protectedBindings?: readonly ProtectedInputBinding[];
   }>) => Promise<DryRunScenarioStarted>;
   readonly drain: (workflow: string) => Promise<void>;
   readonly resolveGate: (input: Readonly<{
@@ -357,6 +359,7 @@ export async function runDryRunScenario(
       manifest,
       scenarioCase,
       canonicalInput: resolution.canonicalInput,
+      ...(resolution.protectedBindings === undefined ? {} : { protectedBindings: resolution.protectedBindings }),
     }));
     await runtime.drain(manifest.workflow);
     if (scenarioCase.gateResults.length > 0) {

@@ -60,8 +60,9 @@ export interface FailureTriageAdvisorDeps {
 export async function produceFailureTriageAdvisory(
   deps: FailureTriageAdvisorDeps,
   failureInput: unknown,
+  protectedInput?: boolean,
 ): Promise<FailureTriageOutcome> {
-  const failure = projectFailureForOperator(failureInput);
+  const failure = projectFailureForOperator(failureInput, protectedInput);
   const template = ADVISORY_TEMPLATES["failure-triage"];
   const facts = buildAdvisoryFacts("failure-triage", failure);
   const prompt = buildAdvisoryPrompt("failure-triage", facts);

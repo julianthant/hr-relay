@@ -1,4 +1,6 @@
-import { hostConfigFacts } from "../domain/config/host-display.js";
+import { observeJournaledProtectedSettings, requireJournaledProtectedSettings } from "../infra/config/protected-settings-journal.js";
+export { requireJournaledProtectedSettings } from "../infra/config/protected-settings-journal.js";
+import { type HostConfigFacts } from "../domain/config/host-display.js";
 import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import {
   SettingsRuntimeStatusSchema,
@@ -9,7 +11,6 @@ import {
 } from "../domain/config/settings.js";
 import {
   PROTECTED_SETTINGS_SCHEMA_HASH,
-  ProtectedSettingsNameSchema,
   ProtectedSettingsReadbackSchema,
   protectedSettingsReadback,
   type ProtectedSettingsReadback,
@@ -21,7 +22,6 @@ import { resolveConfigWithProvenance } from "../domain/config/resolve.js";
 import type { CommandAuthority } from "../core/command-kernel.js";
 import {
   deriveSettingsCommandFingerprint,
-  markSettingsCommand,
   type CommandRequest,
 } from "../domain/commands.js";
 import type {
@@ -178,136 +178,6 @@ export function readJournaledSettings(
   return record;
 }
 
-function protectedCurrentEntries(record: ProtectedStoreRecord) {
-  return ProtectedSettingsNameSchema.options.flatMap((name) => {
-    const entry = record.entries[name];
-    return entry === undefined ? [] : [{ name, valueId: entry.valueId, updatedAt: entry.updatedAt }];
-  });
-}
-
-function requireMatchingProtectedCommand(
-  record: ProtectedStoreRecord,
-  applied: NonNullable<ProtectedStoreRecord["lastApplied"]>,
-  command: CommandRequest | undefined,
-) {
-  if (command === undefined) {
-    throw new Error(
-      `protected settings revision ${String(record.revision)} has no durable command journal for protected.json; `
-      + "the protected file outlived its authority database — restore the state root, or delete protected.json "
-      + "and re-enter every protected entry",
-    );
-  }
-  if (command.family !== "settings" || command.type !== "apply-protected-settings") {
-    throw new Error(
-      `protected settings revision ${String(record.revision)} names non-protected-settings command ${applied.commandId}`,
-    );
-  }
-  const commandFingerprint = deriveSettingsCommandFingerprint(command);
-  if (commandFingerprint !== applied.commandFingerprint
-    || command.target.expectedRevision !== applied.expectedRevision
-    || command.payload.protectedSchemaHash !== applied.protectedSchemaHash
-    || command.payload.writeId !== applied.writeId) {
-    throw new Error(
-      `protected settings revision ${String(record.revision)} does not match the full marked journaled command envelope `
-      + applied.commandId,
-    );
-  }
-  return command;
-}
-
-type ProtectedJournalAdmission = Readonly<
-  | { kind: "required" }
-  | { kind: "prepared" }
->;
-
-function observeJournaledProtectedSettings(
-  record: ProtectedStoreRecord,
-  repositories: AuthorityRepositories,
-  admission: ProtectedJournalAdmission,
-): "authenticated" | "absent-for-command" {
-  const applied = record.lastApplied;
-  if (applied === undefined) {
-    throw new Error(`protected settings revision ${String(record.revision)} names no last applied command`);
-  }
-  const durableCommand = repositories.commands.get(applied.commandId);
-  const audit = repositories.commandAudits.findByCommand(applied.commandId);
-  const current = repositories.protectedSettingsCurrent.get();
-  if (admission.kind === "prepared"
-    && durableCommand === undefined
-    && audit === undefined
-    && current?.commandId !== applied.commandId) {
-    return "absent-for-command";
-  }
-  const command = requireMatchingProtectedCommand(record, applied, durableCommand);
-  if (current === undefined || record.revision > current.revision) {
-    throw new Error(
-      `authority-unjournaled: protected.json revision ${String(record.revision)} has no matching protected settings singleton`,
-    );
-  }
-  if (record.revision < current.revision) {
-    throw new Error(
-      `authority-uncertain: protected.json revision ${String(record.revision)} is behind canonical revision `
-      + `${String(current.revision)}; delete protected.json and re-enter every protected entry`,
-    );
-  }
-  if (audit === undefined) {
-    throw new Error(
-      `protected settings revision ${String(record.revision)} command ${applied.commandId} has no durable audit`,
-    );
-  }
-  const target = { family: "protected-settings" as const, revision: record.revision };
-  const expectedVersionChanges = [{
-    target,
-    before: applied.expectedRevision,
-    after: record.revision,
-  }];
-  const readback = protectedSettingsReadback(record);
-  if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(markSettingsCommand(command))
-    || audit.result.state !== "applied"
-    || audit.result.commandId !== applied.commandId
-    || audit.result.restartRequired !== false
-    || audit.result.revision !== record.revision
-    || canonicalJsonStringify(audit.result.entries) !== canonicalJsonStringify(readback.entries)
-    || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])
-    || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify(expectedVersionChanges)
-    || audit.affectedDependencyIds.length !== 0) {
-    throw new Error(
-      `protected settings revision ${String(record.revision)} command ${applied.commandId} has a mismatched durable audit`,
-    );
-  }
-  const entries = protectedCurrentEntries(record);
-  if (current.revision !== record.revision
-    || current.commandId !== applied.commandId
-    || current.commandFingerprint !== applied.commandFingerprint
-    || current.auditId !== audit.auditId
-    || current.committedAt !== audit.completedAt
-    || canonicalJsonStringify(current.entries) !== canonicalJsonStringify(entries)) {
-    throw new Error(
-      `authority-uncertain: protected.json revision ${String(record.revision)} does not match its exact canonical current result; `
-      + "delete protected.json and re-enter every protected entry",
-    );
-  }
-  return "authenticated";
-}
-
-/** Prove the protected bytes against their value-free command, audit and singleton identities. */
-export function requireJournaledProtectedSettings(
-  record: ProtectedStoreRecord,
-  repositories: AuthorityRepositories,
-): void {
-  const current = repositories.protectedSettingsCurrent.get();
-  if (record.revision === 1) {
-    if (current !== undefined) {
-      throw new Error(
-        `authority-uncertain: baseline protected.json is stale behind canonical current revision ${String(current.revision)}; `
-        + "delete protected.json and re-enter every protected entry",
-      );
-    }
-    return;
-  }
-  observeJournaledProtectedSettings(record, repositories, { kind: "required" });
-}
-
 /** Reconcile protected prepare evidence, then authenticate presence-only readback. */
 export function readJournaledProtectedSettings(
   authority: ProtectedSettingsFileAuthority,
@@ -326,6 +196,17 @@ export function readJournaledProtectedSettings(
   });
   requireJournaledProtectedSettings(record, repositories);
   return record;
+}
+
+/** Next-use source: authenticate every read against the opened database. */
+export function createJournaledProtectedSecretSource(input: Readonly<{
+  file: ProtectedSettingsFileAuthority;
+  database: CommandAuthority;
+}>): Readonly<{ read(): ProtectedStoreRecord }> {
+  return Object.freeze({
+    read: () => input.database.withAuthorityTransaction((repositories) =>
+      readJournaledProtectedSettings(input.file, repositories)),
+  });
 }
 
 export interface ProtectedSettingsRuntimeSnapshot {
@@ -358,7 +239,7 @@ export interface SettingsRuntimeSnapshot {
 export function createSettingsRuntimeReader(input: Readonly<{
   file: SettingsFileAuthority;
   database: CommandAuthority;
-  environment: NodeJS.ProcessEnv;
+  hostFacts: HostConfigFacts;
   clock: Clock;
   active: SettingsRuntimeIdentity;
 }>): Readonly<{ read(): SettingsRuntimeSnapshot }> {
@@ -371,7 +252,7 @@ export function createSettingsRuntimeReader(input: Readonly<{
         configFingerprint: input.active.configFingerprint,
       });
       const record = readJournaledSettings(input.file, repositories);
-      const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts(input.environment), input.clock);
+      const resolved = resolveConfigWithProvenance(record.settings, input.hostFacts, input.clock);
       const persisted = settingsRuntimeIdentity(record, resolved.fingerprint);
       const runtimeStatus = SettingsRuntimeStatusSchema.parse(
         canonicalJsonStringify(persisted) === canonicalJsonStringify(input.active)
@@ -381,4 +262,17 @@ export function createSettingsRuntimeReader(input: Readonly<{
       return Object.freeze({ record, runtimeStatus });
     }),
   });
+}
+
+
+/** Recover the shared prepare journal through its declared document owner before boot reads. */
+export function readJournaledSettingsAtBoot(
+  ordinary: SettingsFileAuthority,
+  protectedFile: ProtectedSettingsFileAuthority,
+  repositories: AuthorityRepositories,
+): SettingsFileRecord {
+  if (ordinary.pendingTarget() === "protected") readJournaledProtectedSettings(protectedFile, repositories);
+  const record = readJournaledSettings(ordinary, repositories);
+  readJournaledProtectedSettings(protectedFile, repositories);
+  return record;
 }

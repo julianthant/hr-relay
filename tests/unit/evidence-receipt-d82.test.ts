@@ -20,6 +20,8 @@ import { manualClock } from "../../src/domain/clock.js";
 import { WriteIntentRecordSchema } from "../../src/domain/write-safety.js";
 import { buildRunEvidenceReceipt } from "../../src/core/evidence-receipt.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { protectedInputBindings } from "../../src/domain/protected-input.js";
+import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js";
 import type { RunEvidenceReceipt } from "../../src/domain/trust/evidence.js";
 import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
 import {
@@ -31,7 +33,6 @@ import {
   KUALI_EID,
   KUALI_INTENT_ID,
   KUALI_RUN_ID,
-  KUALI_VALUE,
   kualiReceiptEvidence,
   seedPersonLookupExitRun,
 } from "./fixtures/receipt-run-fixtures.js";
@@ -54,6 +55,13 @@ function openDatabase(): AuthorityDatabase {
   );
   databases.push(database);
   return database;
+}
+
+/** Ordinary caller input carries an explicit source declaration after D331 admission.
+ * Protected and unmarked historical rows are covered by evidence-receipt-write-proof. */
+function ordinaryRun(value: unknown): RunRecord {
+  const run = RunRecordSchema.parse(value);
+  return { ...run, input: { ...run.input, parsed: { ...run.input.parsed, protectedBindings: [...protectedInputBindings(run.input.parsed.value)] } } };
 }
 
 /* ── receipt-only reading helpers ────────────────────────────────────────── */
@@ -109,7 +117,7 @@ describe("D82 — the live person-lookup exit run explains itself", () => {
     const seeded = seedPersonLookupExitRun(database);
     const receipt = buildRunEvidenceReceipt({
       descriptor: personLookupDescriptor,
-      run: seeded.run,
+      run: ordinaryRun(seeded.run),
       result: database.authority.runResults.get(EXIT_RUN_ID),
       checkpoints: seeded.checkpoints,
     });
@@ -231,7 +239,7 @@ describe("D82 — the Kuali finalization write explains itself", () => {
     const evidence = kualiReceiptEvidence();
     const receipt = buildRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
-      run: evidence.run,
+      run: ordinaryRun(evidence.run),
       result: evidence.result,
       checkpoints: evidence.checkpoints,
       writes: evidence.writes,
@@ -281,8 +289,8 @@ describe("D82 — the Kuali finalization write explains itself", () => {
       KUALI_DOCUMENT_NUMBER,
     );
     assert.deepEqual(shownValue(receipt, "output", "finalization.proof.fields.timekeeperName"), {
-      state: "transformed", key: "finalization.proof.fields.timekeeperName", classification: "direct-identifier",
-      transform: "last4", value: KUALI_VALUE.slice(-4),
+      state: "redacted", key: "finalization.proof.fields.timekeeperName", classification: "direct-identifier",
+      transform: "drop",
     });
     assert.equal(shownScalar(receipt, "output", "finalization.disposition"), "committed");
 
@@ -315,7 +323,7 @@ describe("D82 — the Kuali finalization write explains itself", () => {
     });
     const receipt = buildRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
-      run: evidence.run,
+      run: ordinaryRun(evidence.run),
       result: evidence.result,
       checkpoints: evidence.checkpoints,
       writes: [{ intent: parked, attempts: [] }],

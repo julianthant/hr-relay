@@ -137,6 +137,9 @@ function formatReport(report: StorageDoctorReport): string {
   } else {
     lines.push(`authority: DEGRADED — ${report.authority.cause.code}: ${report.authority.cause.summary}`);
   }
+  lines.push(report.protectedSettings.state === "available"
+    ? `protected settings: ${report.protectedSettings.entries.map(({ name, present }) => `${name}=${present ? "present" : "absent"}`).join(" · ")}`
+    : `protected settings: unavailable — ${report.protectedSettings.cause.summary}`);
   if (report.counts.state === "available") {
     const values = report.counts.values;
     lines.push(
@@ -539,7 +542,8 @@ export async function composeStorageCommand(
     busyTimeoutMs: 5000,
   }, clock);
   const healthy = report.authority.state === "healthy"
-    && report.spanAuthority.state === "reconciled";
+    && report.spanAuthority.state === "reconciled"
+    && report.protectedSettings.state === "available";
   return {
     output: json ? JSON.stringify(report, null, 2) : formatReport(report),
     exitCode: healthy ? 0 : 1,

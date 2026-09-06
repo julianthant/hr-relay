@@ -1,3 +1,4 @@
+import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
 /**
  * The D80 archive model, clause by clause (2i-G, D179).
@@ -572,7 +573,7 @@ describe("the D80 archive model", () => {
     assert.match(captures.state === "absent" ? captures.reason : "", /captured no diagnostic artifact/u);
   });
 
-  it("withholds pre-generation-6 receipt, failure, queue, and log diagnostics without rewriting the archive", () => {
+  it.each([5, 6])("withholds protected generation-%s receipt, failure, queue, and log diagnostics without rewriting the archive", (generation) => {
     const world = createWorld();
     const raw = "ucpath:termination|10812345|2026-08-29";
     const sections = ARCHIVED_RUN_WITH_SECTIONS.sections;
@@ -605,7 +606,7 @@ describe("the D80 archive model", () => {
     const { contentDigest: _oldDigest, ...base } = ARCHIVED_RUN;
     const content = ArchivedRunContentSchema.parse({
       ...base,
-      archiveSchemaGeneration: 5,
+      archiveSchemaGeneration: generation,
       workflowCode: { state: "present", value: "pl" },
       row: {
         ...base.row,
@@ -613,7 +614,7 @@ describe("the D80 archive model", () => {
         liveMessage: { state: "present", value: raw },
         warnings: { state: "present", count: 1, first: raw },
       },
-      receipt: { state: "present", value: receipt },
+      receipt: generation < 6 ? { state: "present", value: receipt } : { state: "absent", reason: "historical receipt withheld" },
       failure: {
         state: "present",
         value: {
@@ -668,8 +669,9 @@ describe("the D80 archive model", () => {
       return undefined;
     });
 
-    const expectedWarningReason = "archive schema generation 5 predates diagnostic safety v1; "
-      + "historical free text is withheld";
+    const expectedWarningReason = generation < 6
+      ? "archive schema generation 5 predates diagnostic safety v1; historical free text is withheld"
+      : "protected archived detail withheld; private authority is unchanged";
     const indexEntry = buildArchiveIndex(emptyRegistryDeps(world)).entries.find(({ runId }) => (
       runId === historical.runId
     ));
@@ -679,9 +681,9 @@ describe("the D80 archive model", () => {
     assert.deepEqual(projected.row.warnings, { state: "absent", reason: expectedWarningReason });
     assert.equal(JSON.stringify(projected).includes(raw), false);
     assert.equal(projected.receipt.state, "absent");
-    assert.equal(projected.failure.state, "present");
+    assert.equal(projected.failure.state, "absent");
     assert.equal(projected.row.liveMessage.state, "absent");
-    assert.equal(projected.sections.state, "present");
+    assert.equal(projected.sections.state, "absent");
     assert.equal(JSON.stringify(world.database.authority.archivedRuns.get(historical.runId)).includes(raw), true);
   });
 
@@ -1138,7 +1140,7 @@ describe("the D80 archive model", () => {
       ...envelope(),
       family: "version-archive",
       type: "relaunch-archived-run",
-      target: { archivedRunId: archived, archiveFingerprint: String(record?.contentDigest) },
+      target: { archivedRunId: archived, archiveFingerprint: archivedRunReferenceFingerprint(ArchivedRunRecordSchema.parse(record)) },
     }));
     assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "relaunch refused");
     if (result.state !== "applied") return;
@@ -1197,7 +1199,7 @@ describe("the D80 archive model", () => {
       `schema-mismatch` can mean "you are looking at a different record".
     */
     const detail = buildArchivedRunDetail(emptyRegistryDeps(world), archived);
-    assert.equal(detail.archiveFingerprint, record?.contentDigest);
+    assert.equal(detail.archiveFingerprint, archivedRunReferenceFingerprint(ArchivedRunRecordSchema.parse(record)));
 
     // A delete citing a digest the record does not hold removes NOTHING.
     const stale = CommandResultSchema.parse(world.kernel.execute({

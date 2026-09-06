@@ -1181,7 +1181,7 @@ function LedgerLineRow({ line }: { line: ResolvedLedgerLineWire }) {
   }
   return (
     <TR>
-      <TD title={`${line.pointer.date} line ${String(line.pointer.sequence)} · ${line.idempotencyKeyDigest}`}>
+      <TD title={`${line.pointer.date} line ${String(line.pointer.sequence)} · ${line.idempotencyKeyDigest === "withheld-protected-input" ? "protected transaction" : line.idempotencyKeyDigest}`}>
         {line.system}
       </TD>
       <TD
@@ -2924,10 +2924,10 @@ function RelaunchConfirmDialog({
                           </span>
                           <span
                             className="min-w-0 flex-1 truncate text-[color:var(--ds-fg)]"
-                            title={line.state === "unresolved" ? line.reason : line.idempotencyKeyDigest}
+                            title={line.state === "unresolved" ? line.reason : line.idempotencyKeyDigest === "withheld-protected-input" ? "protected transaction" : line.idempotencyKeyDigest}
                           >
                             {line.state === "resolved"
-                              ? `key ${shortHash(line.idempotencyKeyDigest)}`
+                              ? line.idempotencyKeyDigest === "withheld-protected-input" ? "protected transaction" : `key ${shortHash(line.idempotencyKeyDigest)}`
                               : `ledger ${line.pointer.date} — ${line.failure.replace(/-/gu, " ")}`}
                           </span>
                           <span className={cn(dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>

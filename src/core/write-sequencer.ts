@@ -1,3 +1,5 @@
+import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../domain/protected-input.js";
+import { valueFreeProtectedData } from "../domain/protected-input.js";
 import { isFreshOccurrenceProof } from "./repeat-proof.js";
 import { readRunCheckpoint } from "./run-checkpoint-reader.js";
 /**
@@ -112,7 +114,7 @@ import type { SessionNeed } from "../domain/session.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import type { SpanEmitter } from "./span-emitter.js";
 import { ExecutorSpanEventSchema } from "./span-emitter.js";
-import { redactObservedDataPoints } from "./observed-data.js";
+import { protectedTaskLogger, redactObservedDataPoints } from "./observed-data.js";
 import { WriteParkedError } from "./run-executor.js";
 import type { WriteSequencer, WriteSequencerContext } from "./run-executor.js";
 
@@ -162,6 +164,7 @@ function authorityExceptionDetail(error: unknown): string {
 }
 
 function authorityReason(
+  run: RunRecord,
   code: WriteAuthorityReasonCode,
   kind: WriteAuthorityReason["evidence"]["kind"],
   evidence: unknown,
@@ -169,7 +172,10 @@ function authorityReason(
   const detail = kind === "exception"
     ? authorityExceptionDetail(evidence)
     : canonicalJsonStringify(evidence);
-  return deriveWriteAuthorityReason(code, kind, detail);
+  const bindings = retainedRunProtectedBindings(run);
+  const safeDetail = bindings.length === 0 ? detail : canonicalJsonStringify({ protectedBindings: bindings,
+    evidence: kind === "exception" || kind === "session" ? "protected detail withheld" : valueFreeProtectedData(evidence, bindings) });
+  return deriveWriteAuthorityReason(code, kind, safeDetail);
 }
 
 /** The probe→fence budget elapsed: the staged page is discarded, nothing clicked. */
@@ -640,7 +646,7 @@ export function executeSequencedWriteCommit(
   hooks?: WriteSequencerHooks,
 ): SequencedWriteCommitResult {
   const parsed = SequencedWriteCommitInputSchema.parse(input);
-  const evidenceFingerprint = FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(parsed)));
+  const evidenceFingerprint = FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(valueFreeProtectedData(parsed))));
   const commandId = lifecycleCommandId(`write-${transition.kind}`, {
     runId: parsed.run.runId, expectedVersion: parsed.run.expectedVersion,
     writeIntentId: parsed.commit.writeIntentId, generation: parsed.commit.generation,
@@ -860,6 +866,7 @@ function buildTransactionCheckpoint(
     output: {
       schemaHash: TRANSACTION_OUTCOME_SCHEMA_HASH,
       value: JsonValueSchema.parse(outcome),
+      ...(retainedRunProtectedBindings(identity.run).length === 0 ? {} : { protectedBindings: retainedRunProtectedBindings(identity.run) }),
     },
     descriptorVersion: identity.descriptor.version,
     contractFingerprint: identity.descriptor.contractFingerprint,
@@ -891,7 +898,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     taskId: TaskId,
     signal: AbortSignal,
     recordData: (point: DataPoint | readonly DataPoint[]) => void,
-  ) => taskCtx(taskId, signal, recordData, deps.log);
+    run: RunRecord,
+  ) => taskCtx(taskId, signal, recordData, protectedTaskLogger(deps.log, run));
 
   function transactionTaskSpanPath(context: WriteSequencerContext, role: TransactionTaskRole): string {
     return `${TraceIdSchema.parse(context.run.envelope.traceId)}/${String(context.node.id)}/${role}`;
@@ -915,7 +923,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     } as const;
     const points: readonly RecordedDataPoint[] = Object.freeze(batch.points.map((point) =>
       RecordedDataPointSchema.parse({ ...point, execution, recordedAt: batch.recordedAt })));
-    const redacted = redactObservedDataPoints(taskId, points);
+    const redacted = redactObservedDataPoints(taskId, points, retainedRunProtectedBindings(context.run).map(({ inputPath }) => inputPath));
     deps.emitter.emit(ExecutorSpanEventSchema.parse({
       t: "data.observed",
       ts: batch.recordedAt,
@@ -1142,7 +1150,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const instance = resolvedInstanceFor(context, systemOf(commitContract.id));
     emitTaskSpan(context, "probe", "span.started");
     try {
-      const verdict = await executeIdempotencyProbe(deps, {
+      const verdict = await executeIdempotencyProbe({ ...deps, log: protectedTaskLogger(deps.log, context.run) }, {
         commitContract,
         commitInput,
         instance,
@@ -1184,7 +1192,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       attempt: envelope.attempt,
       claimGeneration: context.run.claimGeneration,
       runId: envelope.runId,
-      output: { schemaHash: TRANSACTION_OUTCOME_SCHEMA_HASH, value: JsonValueSchema.parse(outcome) },
+      output: { schemaHash: TRANSACTION_OUTCOME_SCHEMA_HASH, value: JsonValueSchema.parse(outcome),
+        ...(retainedRunProtectedBindings(context.run).length === 0 ? {} : { protectedBindings: retainedRunProtectedBindings(context.run) }) },
       descriptorVersion: context.descriptor.version,
       contractFingerprint: context.descriptor.contractFingerprint,
       implFingerprint: resolveImplFingerprint(commitContract.id),
@@ -1288,7 +1297,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     assertNoCheckpointDrift(context, commitContract, stored);
     const outcome = TransactionOutcomeSchema.parse(stored.output.value);
     const durable = deps.authority.authority.writeIntents.findByPermanentKey(system, key);
-    const reference = idempotencyKeyDigestReference(keyDigest);
+    const reference = idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run));
     if (durable === undefined) {
       throw new Error(
         `transaction node "${context.node.id}" holds a completed settlement, but the fresh facts derive ${reference}, `
@@ -1436,7 +1445,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         intentVersion: intent.version,
         parkCode,
         message,
-        authorityReason: authorityReason(authorityCode, evidenceKind, evidence),
+        authorityReason: authorityReason(input.context.run, authorityCode, evidenceKind, evidence),
         ...(cause === undefined ? {} : { cause }),
       });
 
@@ -1505,7 +1514,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           const run = RunnableTaskSchema.parse(verifyTask.impl.run);
           return run({
             input: verifyInput,
-            ctx: { ...taskCtxCommon(completion.verify.taskId, innerSignal, recordData), driver: input.driver },
+            ctx: { ...taskCtxCommon(completion.verify.taskId, innerSignal, recordData, input.context.run), driver: input.driver },
           });
         },
       );
@@ -1574,7 +1583,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         intentVersion: intent.version,
         parkCode: "unknown",
         message: `recovery probe for ${commitContract.id} failed; the target state remains unknown`,
-        authorityReason: authorityReason("inline-recovery-probe-exception", "exception", error),
+        authorityReason: authorityReason(context.run, "inline-recovery-probe-exception", "exception", error),
         cause: error,
       });
       await parkAfterFence(context, failure);
@@ -1604,7 +1613,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           parkCode: "present-proof-invalid",
           message: `recovery probe for ${commitContract.id} found the write present, but its proof cannot be `
             + "validated; a present we cannot validate is indeterminate, not done",
-          authorityReason: authorityReason("inline-recovery-present-proof-schema-failure", "exception", error),
+          authorityReason: authorityReason(context.run, "inline-recovery-present-proof-schema-failure", "exception", error),
           cause: error,
         });
         await parkAfterFence(context, failure);
@@ -1621,7 +1630,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       })) {
         const failure = new PostFenceWriteFailure({ writeIntentId: intent.writeIntentId, generation: intent.generation,
           intentVersion: intent.version, parkCode: "unknown", message: "Earlier receipt cannot settle the new write occurrence",
-          authorityReason: authorityReason("recovery-probe-unknown", "proof", proofValue) });
+          authorityReason: authorityReason(context.run, "recovery-probe-unknown", "proof", proofValue) });
         await parkAfterFence(context, failure);
         throw new WriteParkedError({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
           parkCode: "unknown", message: failure.message, cause: failure });
@@ -1667,9 +1676,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       intentVersion: intent.version,
       parkCode,
       message: `recovery probe for ${commitContract.id} reports ${verdict.state} for `
-        + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}; retry authority requires the ref write-safety `
+        + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(context.run))}; retry authority requires the ref write-safety `
         + "§4 settlement machine or the operator",
-      authorityReason: authorityReason(
+      authorityReason: authorityReason(context.run,
         verdict.state === "absent"
           ? "inline-recovery-absent"
           : verdict.state === "ambiguous"
@@ -1717,6 +1726,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     commitInput: unknown,
     system: z.output<typeof BrowserSystemIdSchema>,
     currentKey: string,
+    protectedTransaction: boolean,
   ): void {
     const retired = commitContract.writeSafety.idempotency.retiredKeys;
     if (retired === undefined) return;
@@ -1735,7 +1745,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       const digest = deriveIdempotencyKeyDigest(system, key);
       throw new Error(
         `${commitContract.id} found immutable retired-key intent ${intent.writeIntentId} (${intent.status}) for `
-        + `${idempotencyKeyDigestReference(digest)}; ${entry.reason}. Refusing before any probe, browser, fence, or click`,
+        + `${idempotencyKeyDigestReference(digest, protectedTransaction)}; ${entry.reason}. Refusing before any probe, browser, fence, or click`,
       );
     }
   }
@@ -1825,7 +1835,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       assertReplayMatchesFreshFacts(context, commitContract, storedCheckpoint, system, key, keyDigest);
       return replayCheckpoint(context, commitContract, storedCheckpoint);
     }
-    refuseRetiredPermanentKeys(commitContract, commitInput, system, naturalKey);
+    refuseRetiredPermanentKeys(commitContract, commitInput, system, naturalKey, hasProtectedTransactionInput(context.run));
 
     /* beat ① — durable permanent-key lookup, regardless of status/origin */
     const durable = deps.authority.authority.writeIntents.findByPermanentKey(system, key);
@@ -1841,12 +1851,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         }
         throw new Error(
           `another run (${durable.runId} attempt ${String(durable.runAttempt)}) is mid-submit for `
-          + `${idempotencyKeyDigestReference(keyDigest)} — refusing to double-fence`,
+          + `${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} — refusing to double-fence`,
         );
       }
       if (durable.status === "parked") {
         throw new Error(
-          `write intent ${durable.writeIntentId} for ${idempotencyKeyDigestReference(keyDigest)} is parked (`
+          `write intent ${durable.writeIntentId} for ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} is parked (`
           + `${durable.parkedCode}); stored detail is retained only in authority. `
           + "only the typed operator resolutions may release it",
         );
@@ -1866,17 +1876,17 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         verdict = await runLiveProbe(context, commitContract, commitInput);
       } catch (error) {
         throw new WriteSafetyAuthorityError(
-          `pre-write probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest)} failed; `
+          `pre-write probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} failed; `
             + "refusing to fence or click because the target state is unknown",
-          authorityReason("prewrite-probe-exception", "exception", error),
+          authorityReason(context.run, "prewrite-probe-exception", "exception", error),
           error,
         );
       }
       if (verdict.state === "present" && occurrence !== undefined) {
         const completion = commitContract.writeSafety.completion;
         const proof = completion.proofSchema.parse(Reflect.apply(completion.proofFromPresentProbe, undefined, [verdict]));
-        const evidenceDigest = sha256Hex(canonicalJsonStringify({ schemaHash: deriveSchemaHash(completion.proofSchema, "output"),
-          value: JsonValueSchema.parse(proof) }));
+        const evidenceDigest = repeatEvidenceDigest({ status: "committed", completionProof: { schemaHash: deriveSchemaHash(completion.proofSchema, "output"),
+          value: JsonValueSchema.parse(proof) } });
         if (!consent?.some((warning) => warning.evidenceDigest === evidenceDigest)) {
           throw new Error("confirmation-required: live completion evidence changed");
         }
@@ -1884,7 +1894,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         if (sourceBound !== undefined) throw new Error("confirmation-required: a newly discovered completed transaction requires acknowledgment");
         if (durable !== undefined) {
           throw new Error(
-            `live probe found ${idempotencyKeyDigestReference(keyDigest)} present, but its permanent intent `
+            `live probe found ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} present, but its permanent intent `
             + `${durable.writeIntentId} is `
             + `${durable.status}; a settled-absent key that now reads present needs the operator, not a guess`,
           );
@@ -1928,10 +1938,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           ? `found ${String(verdict.matches)} matches`
           : "is indeterminate";
         throw new WriteSafetyAuthorityError(
-          `pre-write probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest)} ${detail}; `
+          `pre-write probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} ${detail}; `
           + "refusing to fence or click — "
           + "verify in the target system, then retry",
-          authorityReason(
+          authorityReason(context.run,
             verdict.state === "ambiguous" ? "prewrite-probe-ambiguous" : "prewrite-probe-unknown",
             "probe",
             verdict,
@@ -1940,9 +1950,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
       if (verdict.state === "absent" && verdict.evidence.idempotencyKeyDigest !== businessKeyDigest) {
         throw new WriteSafetyAuthorityError(
-          `pre-write probe absent evidence does not match ${idempotencyKeyDigestReference(keyDigest)}; `
+          `pre-write probe absent evidence does not match ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))}; `
           + "refusing to treat foreign evidence as absence",
-          authorityReason("prewrite-probe-foreign-absence", "probe", verdict),
+          authorityReason(context.run, "prewrite-probe-foreign-absence", "probe", verdict),
         );
       }
     }
@@ -1994,7 +2004,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
               const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
               return runImpl({
                 input: prepareInput,
-                ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData), driver },
+                ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context.run), driver },
               });
             },
           );
@@ -2101,7 +2111,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           if (resolution.state === "existing") throw new FenceLostRaceError(resolution.intent);
           if (resolution.state !== "fenced") {
             throw new Error(
-              `write fence for ${idempotencyKeyDigestReference(keyDigest)} reported ${resolution.state}; refusing to click`,
+              `write fence for ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} reported ${resolution.state}; refusing to click`,
             );
           }
           fencedRecord = resolution.intent;
@@ -2118,9 +2128,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             generation: fencedRecord.generation,
             intentVersion: fencedRecord.version,
             parkCode: "unknown",
-            message: `write fence for ${idempotencyKeyDigestReference(keyDigest)} returned ${fencedRecord.status}, `
+            message: `write fence for ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} returned ${fencedRecord.status}, `
               + "not attempting; refusing to click",
-            authorityReason: authorityReason(
+            authorityReason: authorityReason(context.run,
               "write-fence-state-invalid",
               "fence",
               { state: fencedRecord.status, writeIntentId: fencedRecord.writeIntentId },
@@ -2145,7 +2155,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             const runImpl = RunnableTaskSchema.parse(commitTask.impl.run);
             return runImpl({
               input: commitInput,
-              ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData), driver, mutation: capability },
+              ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData, context.run), driver, mutation: capability },
             });
           },
           (batch) => bufferedCommitObservations.push(batch),
@@ -2204,7 +2214,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             parkCode: "unknown",
             message: `${detail}; whether the external write landed is unknown: ${failureMessage(cause)}`,
             operatorMessage: `${detail}; whether the external write landed is unknown`,
-            authorityReason: authorityReason(reasonCode, "exception", cause),
+            authorityReason: authorityReason(context.run, reasonCode, "exception", cause),
             cause,
           });
         if (commitSettlement.state === "failed" && emissionFailure !== undefined) {
@@ -2251,7 +2261,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         })) {
           throw new PostFenceWriteFailure({ writeIntentId: fenced.writeIntentId, generation: fenced.generation,
             intentVersion: fenced.version, parkCode: "unknown", message: "new occurrence has only its earlier receipt; completion is unknown",
-            authorityReason: authorityReason("post-click-verifier-unknown", "proof", captured.proofValue) });
+            authorityReason: authorityReason(context.run, "post-click-verifier-unknown", "proof", captured.proofValue) });
         }
         return { intent: fenced, proofValue: captured.proofValue, outputValue: captured.outputValue };
         },
@@ -2276,7 +2286,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           message: `${commitContract.id} transaction lease failed after the fence; whether the external write landed `
             + `is unknown: ${failureMessage(error)}`,
           operatorMessage: `${commitContract.id} transaction lease failed after the fence; whether the external write landed is unknown`,
-          authorityReason: authorityReason("post-fence-session-exception", "session", authorityExceptionDetail(error)),
+          authorityReason: authorityReason(context.run, "post-fence-session-exception", "session", authorityExceptionDetail(error)),
           cause: error,
         });
         await parkAfterFence(context, failure);
@@ -2296,7 +2306,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           return reuseDurableIntent(context, commitContract, winner);
         }
         throw new Error(
-          `write fence for ${idempotencyKeyDigestReference(keyDigest)} lost the race to intent `
+          `write fence for ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} lost the race to intent `
           + `${winner.writeIntentId} (${winner.status}); `
           + "the staged page was discarded and nothing was clicked",
           { cause: error },
@@ -2376,7 +2386,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
     const key = IdempotencyKeySchema.parse(keyRaw);
     const keyDigest = deriveIdempotencyKeyDigest(system, key);
-    refuseRetiredPermanentKeys(commitContract, commitInput, system, key);
+    refuseRetiredPermanentKeys(commitContract, commitInput, system, key, hasProtectedTransactionInput(context.run));
     const source = envelope.sourceBound;
     const consent = source?.warnings.filter((warning) => warning.nodeId === node.id && warning.taskId === commitContract.id
       && warning.system === system && warning.businessKeyDigest === keyDigest);
@@ -2407,7 +2417,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     if (durable !== undefined) {
       if (durable.status === "attempting") {
         throw new Error(
-          `preview of "${node.id}" found ${idempotencyKeyDigestReference(keyDigest)} mid-submit under run `
+          `preview of "${node.id}" found ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} mid-submit under run `
           + `${durable.runId} attempt `
           + `${String(durable.runAttempt)}; a preview may not run recovery, and reporting a settlement `
           + "it did not observe would be the fabrication D144 refuses",
@@ -2415,7 +2425,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
       if (durable.status === "parked") {
         throw new Error(
-          `preview of "${node.id}" found ${idempotencyKeyDigestReference(keyDigest)} parked `
+          `preview of "${node.id}" found ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} parked `
           + `(${durable.parkedCode}); stored detail is retained only in authority. `
           + "only the typed operator resolutions may release it, so there is nothing to rehearse",
         );
@@ -2460,9 +2470,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         verdict = await runLiveProbe(context, commitContract, commitInput);
       } catch (error) {
         throw new WriteSafetyAuthorityError(
-          `preview probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest)} failed; `
+          `preview probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} failed; `
             + "the preview refuses because the real run could not prove a safe target state",
-          authorityReason("preview-probe-exception", "exception", error),
+          authorityReason(context.run, "preview-probe-exception", "exception", error),
           error,
         );
       }
@@ -2471,10 +2481,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           ? `found ${String(verdict.matches)} matches`
           : "is indeterminate";
         throw new WriteSafetyAuthorityError(
-          `preview probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest)} ${detail}; `
+          `preview probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} ${detail}; `
           + "the real run would refuse to "
           + "fence or click here, so the preview refuses too rather than staging a page it could not use",
-          authorityReason(
+          authorityReason(context.run,
             verdict.state === "ambiguous" ? "preview-probe-ambiguous" : "preview-probe-unknown",
             "probe",
             verdict,
@@ -2486,14 +2496,14 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         const settled = presentFromProof(raw);
         const proof = { schemaHash: proofSchemaHash, value: settled.proof };
         if (source.acknowledgment !== source.warningDigest
-          || !consent?.some((warning) => warning.evidenceDigest === sha256Hex(canonicalJsonStringify(proof)))) {
+          || !consent?.some((warning) => warning.evidenceDigest === repeatEvidenceDigest({ status: "committed", completionProof: proof }))) {
           throw new Error("confirmation-required: preview found unacknowledged completion evidence");
         }
         probe = { state: "present", proof, output: { schemaHash: outputSchemaHash, value: settled.output } };
       } else if (verdict.state === "present") {
         if (durable !== undefined) {
           throw new Error(
-            `preview probe found ${idempotencyKeyDigestReference(keyDigest)} present, but its permanent intent `
+            `preview probe found ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} present, but its permanent intent `
             + `${durable.writeIntentId} is `
             + `${durable.status}; a settled-absent key that now reads present needs the operator, not a guess`,
           );
@@ -2513,9 +2523,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
       if (verdict.state === "absent" && verdict.evidence.idempotencyKeyDigest !== keyDigest) {
         throw new WriteSafetyAuthorityError(
-          `preview probe absent evidence does not match ${idempotencyKeyDigestReference(keyDigest)}; `
+          `preview probe absent evidence does not match ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))}; `
           + "refusing to treat foreign evidence as absence",
-          authorityReason("preview-probe-foreign-absence", "probe", verdict),
+          authorityReason(context.run, "preview-probe-foreign-absence", "probe", verdict),
         );
       }
       if (verdict.state === "absent") probe = { state: "absent", evidence: verdict.evidence };
@@ -2541,7 +2551,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
             return runImpl({
               input: prepareInput,
-              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData), driver },
+              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context.run), driver },
             });
           },
         );

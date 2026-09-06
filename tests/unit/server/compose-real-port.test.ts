@@ -946,6 +946,23 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.ok(!launch.prefixArgs.some((arg) => arg.endsWith(join("src", "cli.ts"))));
   });
 
+  it("P20 launch carries only process mechanics and host display, never provider or arbitrary values", () => {
+    const hostile = new Proxy<NodeJS.ProcessEnv>({
+      PATH: "/synthetic/bin", HOME: "/synthetic/home", HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080",
+      GEMINI_API_KEY: "synthetic-provider-private", NODE_OPTIONS: "synthetic-injection", UNREGISTERED: "synthetic-private",
+    }, { get(target, key, receiver) {
+      if (key === "GEMINI_API_KEY" || key === "NODE_OPTIONS" || key === "UNREGISTERED") {
+        throw new Error("forbidden environment value read");
+      }
+      return Reflect.get(target, key, receiver) as string | undefined;
+    } });
+    assert.deepEqual(productionWorkerLaunch("/repo", hostile).environment, {
+      PATH: "/synthetic/bin", HOME: "/synthetic/home", HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080",
+    });
+    assert.throws(() => productionWorkerLaunch("/repo", { UCPATH_PASSWORD: "synthetic-private" }),
+      /migrated environment key UCPATH_PASSWORD is refused/u);
+  });
+
   it("publishes a lease-only worker card from the real tail tick, before any span exists (D248 freshness)", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-lease-tick-"));
     copyRuntimePackageFixture(repoRoot);

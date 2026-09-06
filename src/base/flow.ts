@@ -1,3 +1,4 @@
+import type { ProtectedInputBinding } from "../domain/protected-input.js";
 /**
  * The ONE workflow builder API (ref workflow-model §3; absorbs ref task-contract §5).
  *
@@ -81,6 +82,7 @@ export type OutputsOf<S> = {
 
 export interface FlowScope<InputSchema extends z.ZodType, S> {
   readonly input: z.output<InputSchema>;
+  readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: OutputsOf<S>;
 }
 export type TerminalWorkflowScope<InputSchema extends z.ZodType, S> = FlowScope<InputSchema, S>;

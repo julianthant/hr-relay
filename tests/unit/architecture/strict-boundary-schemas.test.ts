@@ -823,6 +823,7 @@ const RECOVERY_RUNTIME_LOCK_SNAPSHOT = {
   },
 };
 const STORAGE_DOCTOR_REPORT = {
+  protectedSettings: { state: "unavailable", cause: { code: "authority-unavailable", summary: "protected settings fixture is unavailable" } },
   kind: "authority-storage-doctor",
   mode: "read-only",
   checkedAt: NOW,

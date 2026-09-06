@@ -7943,7 +7943,7 @@ export class AuthorityDatabase implements Disposable {
         SELECT system, idempotency_key FROM write_intents WHERE idempotency_key_digest = ?
       `).get(record.idempotencyKeyDigest);
       if (digestCollision !== undefined) {
-        throw new Error(`write intent digest ${record.idempotencyKeyDigest} is already bound to a different permanent key`);
+        throw new Error("write intent digest is already bound to a different permanent key");
       }
       const result = this.#database.prepare(`
         INSERT INTO write_intents (

@@ -1,3 +1,4 @@
+import { ProtectedInputBindingsSchema, type ProtectedInputBinding } from "../protected-input.js";
 /**
  * The identity-approval **decision packet** — ref write-safety §14.4's "everything needed
  * to decide without leaving the dashboard", as a pure fold over facts the run
@@ -128,6 +129,7 @@ export const IdentityApprovalShapeSchema = z.enum([
 export type IdentityApprovalShape = z.infer<typeof IdentityApprovalShapeSchema>;
 
 export const IdentityEvidencePacketSchema = z.strictObject({
+  protectedBindings: ProtectedInputBindingsSchema.optional(),
   documentNumber: z.string().min(1),
   /** The EID this run checked, and where it came from. */
   emplId: EidSchema,
@@ -245,6 +247,7 @@ export function deriveApprovalShape(input: Readonly<{
  * them to drift.
  */
 interface IdentityEvidenceInput {
+  readonly protectedBindings?: readonly ProtectedInputBinding[];
   readonly documentNumber: string;
   readonly documentName: string;
   readonly documentEidText: string;
@@ -328,7 +331,7 @@ export function buildIdentityEvidencePacket(
     ...nameSearch.candidateEids,
   ])];
 
-  return IdentityEvidencePacketSchema.parse({
+  return protectIdentityEvidencePacket(IdentityEvidencePacketSchema.parse({
     documentNumber: input.documentNumber,
     emplId: input.jobSummary.emplId,
     emplIdSource: input.emplIdSource,
@@ -350,5 +353,13 @@ export function buildIdentityEvidencePacket(
       disposition: jobs.disposition,
     }),
     observedAt: input.jobSummary.observedAt,
-  });
+  }), input.protectedBindings);
+}
+
+/** The displayed approval binds retained identity; execution still uses the private canonical input. */
+export function protectIdentityEvidencePacket(packet: IdentityEvidencePacket, bindings?: readonly ProtectedInputBinding[]): IdentityEvidencePacket {
+  if (bindings === undefined || !bindings.some(({ inputPath }) => inputPath === "documentNumber")) return packet;
+  return IdentityEvidencePacketSchema.parse({ ...packet, protectedBindings: bindings,
+    documentNumber: "protected document", plan: packet.plan.state === "planned"
+      ? { ...packet.plan, document: { ...packet.plan.document, documentNumber: "protected document" } } : packet.plan });
 }

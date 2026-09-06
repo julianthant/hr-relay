@@ -1,3 +1,4 @@
+import { PublicTransactionKeyDigestSchema } from "../protected-input.js";
 import { z } from "zod";
 import {
   ActorIdSchema,
@@ -1091,7 +1092,7 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   taskId: TaskIdSchema,
   /** The permanent key as a digest; the key itself never reaches a surface. */
-  idempotencyKeyDigest: FingerprintSchema,
+  idempotencyKeyDigest: PublicTransactionKeyDigestSchema,
   fencedAt: IsoInstantSchema,
   parkedAt: IsoInstantSchema,
   parkedCode: ParkedWriteCodeSchema,

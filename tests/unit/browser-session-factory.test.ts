@@ -443,6 +443,25 @@ describe("worker browser session factory", () => {
     });
   });
 
+  it("reads rotated credentials on the next authentication of an existing session", async () => {
+    await withTempRuntime(async ({ config }) => {
+      let current = protectedSecretSource({ ucpathUserId: "first-user", ucpathPassword: "first-password" });
+      const seen: Readonly<{ userId: string; password: string }>[] = [];
+      const factory = factoryFor(config, fakeLauncher(), recordingBindings({
+        onLogin: ({ credentials }) => seen.push(credentials),
+      }), NEVER_SCHEDULER, { read: () => current.read() });
+      const resource = await factory.open(OPEN_INPUT);
+      await resource.authentication.authenticate("ucpath", {});
+      current = protectedSecretSource({ ucpathUserId: "second-user", ucpathPassword: "second-password" });
+      await resource.authentication.authenticate("ucpath", {});
+      assert.deepEqual(seen, [
+        { userId: "first-user", password: "first-password" },
+        { userId: "second-user", password: "second-password" },
+      ]);
+      await resource.close({ reason: "worker-stop" });
+    });
+  });
+
   it("fails loud when a secret is missing rather than logging in blank", async () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher();

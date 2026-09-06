@@ -1,3 +1,4 @@
+import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
 import { RETIRED_EDIT_CHECKPOINT_COMMAND } from "./fixtures/phase1c-contract-fixtures.js";
 import { RunRecordService, lifecycleCommandId } from "../../src/core/run-record-service.js";
 /**
@@ -2446,7 +2447,7 @@ describe("D308 delete — a terminal run leaves authority behind one tombstone",
     if (wrongRecord.state === "rejected") assert.equal(wrongRecord.code, "schema-mismatch");
     assert.ok(harness.database.authority.archivedRuns.get(RUN_ID) !== undefined, "a mismatched digest removes nothing");
 
-    const deleted = harness.kernel.execute(archiveDoor(ARCHIVED_RUN.contentDigest));
+    const deleted = harness.kernel.execute(archiveDoor(archivedRunReferenceFingerprint(ARCHIVED_RUN)));
     assert.equal(deleted.state, "applied");
     assert.equal(harness.database.authority.archivedRuns.get(RUN_ID), undefined);
     assert.equal(harness.database.authority.runs.get(RUN_ID), undefined, "the retained tasks row goes with the record");

@@ -438,7 +438,7 @@ export function buildTerminationComments(input: Readonly<{
 }
 
 /**
- * `"Julian Zaw"` → `"JZ"`. Ported from `getInitials`
+ * `"Synthetic Operator"` → `"SO"`. Ported from `getInitials`
  * (`legacy:.../schema.ts:227-232` @ `1bffbd65…`).
  */
 export function separationInitials(fullName: string): string {
@@ -448,7 +448,7 @@ export function separationInitials(fullName: string): string {
     .map((part) => part.charAt(0).toUpperCase())
     .join("");
   if (initials.length === 0) {
-    throw new Error(`cannot derive initials from ${JSON.stringify(fullName)}`);
+    throw new Error("cannot derive initials from protected input timekeeperName");
   }
   return initials;
 }

@@ -1,3 +1,4 @@
+import { assertNoMigratedEnvironmentKeys } from "../../domain/secrets.js";
 import { RunRecordService, type RunRecordServiceDependencies } from "../../core/run-record-service.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
 /** Real-service runtime behind `cli dry-run-scenario`. */
@@ -29,14 +30,14 @@ import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../domain/separations/identity-approval.js";
 import type { DryRunScenarioAnyCase } from "../../domain/trust/dry-run-scenario.js";
 import { SpanEventWireSchema } from "../../events/types.js";
-import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
+import { createProtectedSettingsFileAuthority, createSettingsFileAuthority } from "../../infra/config/settings-file.js";
 import { readEventStreamLines } from "../../infra/events/jsonl-streams.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import type { ProcessIdentityObserver } from "../../infra/sqlite/runtime-process-locks.js";
 import { createStartPlanService } from "../dashboard/commands/start-plan-service.js";
 import { runQueuedSpanEvent } from "../dashboard/commands/run-queued-span.js";
-import { readJournaledSettings, requireJournaledSettings } from "../settings-runtime.js";
+import { createJournaledProtectedSecretSource, readJournaledSettings, requireJournaledSettings } from "../settings-runtime.js";
 import { createReceiptService } from "../trust/receipt-service.js";
 import { composeWorkerRuntime } from "../worker/compose.js";
 
@@ -46,6 +47,8 @@ export interface ProductionDryRunScenarioRuntimeInput {
   readonly isolation: RuntimeIsolation;
   readonly repoRoot: string;
   readonly env: NodeJS.ProcessEnv;
+  /** Test-only race seam after journal authentication and before final start admission. */
+  readonly afterSettingsRead?: () => void;
   readonly clock: Clock;
   readonly ids: IdFactory;
   /** Deterministic integration seam; production always uses the real worker composition. */
@@ -208,11 +211,13 @@ export function liveReadGraphRefusal(
 export function createProductionDryRunScenarioRuntime(
   input: ProductionDryRunScenarioRuntimeInput,
 ): DryRunScenarioRuntime {
+  assertNoMigratedEnvironmentKeys(input.env);
+  const hostFacts = hostConfigFacts(input.env);
   const stateRoot = join(input.repoRoot, input.isolation.stateRoot);
   const databasePath = join(stateRoot, "state.db");
   const settingsAuthority = createSettingsFileAuthority({
     path: settingsRootPaths(stateRoot).ordinary,
-    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts(input.env), input.clock); },
+    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostFacts, input.clock); },
   });
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(input.repoRoot, "package.json"), "utf8")),
@@ -309,12 +314,15 @@ export function createProductionDryRunScenarioRuntime(
       try {
         const persistedSettings = database.withAuthorityTransaction((repositories) =>
           readJournaledSettings(settingsAuthority, repositories));
-        const resolved = resolveConfigWithProvenance(persistedSettings.settings, hostConfigFacts(input.env), input.clock);
-        admitted = database.withAuthorityTransaction((repositories) => settingsAuthority.withExactRecord({
-          revision: persistedSettings.revision,
-          settingsFingerprint: persistedSettings.settingsFingerprint,
-        }, () => {
-          requireJournaledSettings(persistedSettings, repositories);
+        input.afterSettingsRead?.();
+        const resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, input.clock);
+        admitted = database.withAuthorityTransaction((repositories) => {
+          // Validate ordinary authority, then release the shared settings lock before
+          // protected admission takes it. SQLite exclusion spans the whole start.
+          settingsAuthority.withExactRecord({ revision: persistedSettings.revision,
+            settingsFingerprint: persistedSettings.settingsFingerprint }, () => {
+            requireJournaledSettings(persistedSettings, repositories);
+          });
           repositories.runtimeConfig.requireActive({
             settingsRevision: persistedSettings.revision,
             settingsFingerprint: persistedSettings.settingsFingerprint,
@@ -325,6 +333,10 @@ export function createProductionDryRunScenarioRuntime(
           const configSnapshotId = active.configSnapshotId;
           const identity = { fingerprint: active.configFingerprint, snapshotId: configSnapshotId };
           const plans = createStartPlanService({
+            ...(request.protectedBindings === undefined ? {} : { protectedSubmissionBindings: request.protectedBindings }),
+            protectedSecrets: createJournaledProtectedSecretSource({ database, file: createProtectedSettingsFileAuthority({
+              path: settingsRootPaths(stateRoot).ordinary, assertWriteIdAvailable: () => undefined,
+            }) }),
             authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
             authorityRead: database,
             descriptors: { resolve: descriptorFor },
@@ -349,6 +361,9 @@ export function createProductionDryRunScenarioRuntime(
           }
           const planned = plan.planned[0];
           if (planned === undefined) throw new Error("dry-run start plan lost its only planned run");
+          return settingsAuthority.withExactRecord({ revision: persistedSettings.revision,
+            settingsFingerprint: persistedSettings.settingsFingerprint }, () => {
+          requireJournaledSettings(persistedSettings, repositories);
           const kernel = createScenarioKernel({
             publishQueued: (run, publication) => {
               if (publication === undefined) throw new Error("scenario queued publication context missing");
@@ -392,7 +407,8 @@ export function createProductionDryRunScenarioRuntime(
             },
 
           };
-        }));
+          });
+        });
       } finally {
         database.close();
       }

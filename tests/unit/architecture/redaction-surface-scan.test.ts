@@ -184,6 +184,17 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
       violation.includes("frontend-bootstrap|protectedSchemaHash: carries no D331 P41 disposition")));
   });
 
+  it("refuses every independently omitted P16 doctor leaf", () => {
+    const doctor = D331_SERVED_LEAF_DISPOSITIONS.filter(({ surface }) => surface === "protected-settings-doctor");
+    assert.equal(doctor.length, 5);
+    for (const omitted of doctor) {
+      const remaining = D331_SERVED_LEAF_DISPOSITIONS.filter((entry) => entry !== omitted);
+      const violations = auditD331ServedLeafDispositions(remaining);
+      assert.equal(violations.length, 1);
+      assert.ok(violations[0]?.includes(`protected-settings-doctor|${omitted.path}: carries no`));
+    }
+  });
+
   it("audits a real surface rather than an empty set", () => {
     // A registry that silently emptied would make the arm above vacuously
     // green. The counts are floors, not pins: adding a surface must not force

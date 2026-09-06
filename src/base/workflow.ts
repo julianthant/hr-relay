@@ -1,3 +1,5 @@
+import { retainedRunProtectedBindings } from "../domain/protected-input.js";
+import { ProtectedInputDeclarationSchema, type ProtectedInputBinding, type ProtectedInputDeclaration } from "../domain/protected-input.js";
 /**
  * Descriptor assembly — ref workflow-model §1.1's `WorkflowDescriptor` and the factory that
  * validates one.
@@ -233,7 +235,7 @@ export function requireFact<Value>(
 
 export interface WorkflowPresentationSpec<Input> {
   readonly title: (input: Input) => string;
-  readonly subtitle?: (input: Input) => string;
+  readonly subtitle?: (input: Input) => string | undefined;
 }
 
 /* ── the descriptor ──────────────────────────────────────────────────────── */
@@ -258,6 +260,7 @@ export interface WorkflowDescriptor<
   readonly category: WorkflowCategory;
   readonly input: InputSchema;
   readonly canonicalInput: CanonicalInputSchema<InputSchema>;
+  readonly protectedInputs?: readonly ProtectedInputDeclaration[];
   readonly result: WorkflowResultSpec<ResultSchema, InputSchema, S, D>;
   readonly inputSubject: InputSubject | ((input: z.output<InputSchema>) => InputSubject);
   readonly surface: SurfaceShape;
@@ -335,6 +338,7 @@ export interface AnyWorkflowDescriptor {
   readonly category: WorkflowCategory;
   readonly input: z.ZodType;
   readonly canonicalInput: z.ZodType;
+  readonly protectedInputs?: readonly ProtectedInputDeclaration[];
   readonly inputSubject: InputSubject | ((input: never) => InputSubject);
   readonly surface: SurfaceShape;
   readonly nodes: readonly GraphNodeBase[];
@@ -573,7 +577,7 @@ interface WorkflowTerminalRun {
     stepOmissions?: readonly Readonly<{ step: string }>[];
   }>;
   readonly input: Readonly<{
-    parsed: Readonly<{ schemaHash: string; value: unknown }>;
+    parsed: Readonly<{ schemaHash: string; value: unknown; protectedBindings?: readonly ProtectedInputBinding[] }>;
   }>;
   readonly lifecycle: Readonly<{ state: string }>;
   readonly version: number;
@@ -1005,7 +1009,7 @@ function assertNodeFieldPath(
  * clears neither is a lie about what this workflow accepts, and a lie a guard
  * can catch is not one worth shipping.
  */
-function assertInputRunExamples(id: string, input: z.ZodType, inputRun: InputRunSurface): void {
+function assertInputRunExamples(id: string, input: z.ZodType, inputRun: InputRunSurface, protectedInputs: readonly ProtectedInputDeclaration[]): void {
   const examples = inputRun.examples;
   if (examples === undefined) return;
   assertUnique(id, "input-run example keys", examples.map((example) => example.key));
@@ -1023,7 +1027,8 @@ function assertInputRunExamples(id: string, input: z.ZodType, inputRun: InputRun
     })();
     for (const entry of entries) {
       const parsed = input.safeParse(toRawSubmission(entry));
-      if (!parsed.success) {
+      if (!parsed.success && !parsed.error.issues.every((issue) => issue.code === "invalid_type"
+        && issue.path.length === 1 && protectedInputs.some(({ inputPath }) => inputPath === issue.path[0]))) {
         throw new Error(
           `${id}: input-run example "${example.key}" entry ${String(entry.index + 1)} ("${entry.sourceText}") `
           + `is refused by this workflow's own input schema: ${parsed.error.message}`,
@@ -1033,7 +1038,7 @@ function assertInputRunExamples(id: string, input: z.ZodType, inputRun: InputRun
   }
 }
 
-function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSurfaces): void {
+function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSurfaces, protectedInputs: readonly ProtectedInputDeclaration[]): void {
   const inputRun = surfaces.inputRun;
   if (inputRun !== undefined) {
     for (const rule of inputRun.parser.rules) {
@@ -1042,7 +1047,14 @@ function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSur
     for (const constant of inputRun.parser.constants ?? []) {
       assertSchemaOffersPath(input, constant.field, `${id}: input-run parser constant`);
     }
-    assertInputRunExamples(id, input, inputRun);
+    for (const declaration of protectedInputs) {
+      assertSchemaOffersPath(input, declaration.inputPath, `${id}: protected input`);
+      if (inputRun.parser.rules.some((rule) => rule.emit === declaration.inputPath)
+        || inputRun.parser.constants?.some((constant) => constant.field === declaration.inputPath)) {
+        throw new Error(`${id}: protected input ${declaration.name} cannot be supplied by the browser parser`);
+      }
+    }
+    assertInputRunExamples(id, input, inputRun, protectedInputs);
   }
   const uploadRun = surfaces.uploadRun;
   if (uploadRun !== undefined) {
@@ -1230,7 +1242,7 @@ export function defineWorkflowDescriptor<
     throw new Error(`${id}: a coordinator declares at most one completion consumption rule`);
   }
 
-  assertSurfaceFields(id, spec.flow.input, spec.surfaces);
+  assertSurfaceFields(id, spec.flow.input, spec.surfaces, spec.protectedInputs ?? []);
 
   // The identity/presentation proof stays inside the factory so `spec` keeps
   // its exact `InputSchema`: a helper would have to widen the parsed value, and
@@ -1246,8 +1258,8 @@ export function defineWorkflowDescriptor<
     if (spec.presentation.title(parsed).trim().length === 0) {
       throw new Error(`${where} produced an empty presentation title`);
     }
-    const subtitle = spec.presentation.subtitle;
-    if (subtitle !== undefined && subtitle(parsed).trim().length === 0) {
+    const subtitle = spec.presentation.subtitle?.(parsed);
+    if (subtitle !== undefined && subtitle.trim().length === 0) {
       throw new Error(`${where} produced an empty presentation subtitle`);
     }
     if (typeof spec.inputSubject === "function") InputSubjectSchema.parse(spec.inputSubject(parsed));
@@ -1308,6 +1320,7 @@ export function defineWorkflowDescriptor<
   });
   const descriptor: WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D> = Object.freeze({
     ...spec,
+    ...(spec.protectedInputs === undefined ? {} : { protectedInputs: Object.freeze(ProtectedInputDeclarationSchema.array().max(1).parse(spec.protectedInputs)) }),
     id,
     contractFingerprint,
     surfaces,
@@ -1614,7 +1627,9 @@ export function defineWorkflowDescriptor<
       const derived = spec.flow.result.derive(ExactTerminalScopeSchema.parse(scopeCandidate));
       const parsedResult = JsonValueSchema.parse(spec.flow.result.schema.parse(derived));
       const schemaHash = deriveSchemaHash(spec.flow.result.schema, "output");
-      const resultValue = { schemaHash, value: parsedResult };
+      const resultValue = { schemaHash, value: parsedResult,
+        ...(retainedRunProtectedBindings(currentRun).length === 0 ? {} :
+          { protectedBindings: retainedRunProtectedBindings(currentRun) }) };
       const result = RunResultRecordSchema.parse({
         runId: currentRun.envelope.runId,
         attempt: currentRun.envelope.attempt,
@@ -1696,7 +1711,9 @@ export function defineWorkflowDescriptor<
       // result hash, which would make a preview readable as a completed
       // workflow (D144's rule applied to the terminal row).
       const schemaHash = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
-      const resultValue = { schemaHash, value: previewValue };
+      const resultValue = { schemaHash, value: previewValue,
+        ...(retainedRunProtectedBindings(currentRun).length === 0 ? {} :
+          { protectedBindings: retainedRunProtectedBindings(currentRun) }) };
       const result = RunResultRecordSchema.parse({
         runId: currentRun.envelope.runId,
         attempt: currentRun.envelope.attempt,

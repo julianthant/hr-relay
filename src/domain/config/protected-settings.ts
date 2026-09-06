@@ -158,3 +158,12 @@ export function initialProtectedStoreRecord(): ProtectedStoreRecord {
     schemaVersion: 1, revision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, entries: {},
   }));
 }
+
+/** Doctor/preflight expose only catalog names and presence, never entry identities. */
+export const ProtectedSettingsPresenceEntriesSchema = z.array(z.strictObject({
+  name: ProtectedSettingsNameSchema, present: z.boolean(),
+})).superRefine((entries, context) => {
+  if (entries.length !== ProtectedSettingsNameSchema.options.length
+    || entries.some((entry, index) => entry.name !== ProtectedSettingsNameSchema.options[index]))
+    context.addIssue({ code: "custom", message: "protected presence must enumerate the catalog exactly in order" });
+});

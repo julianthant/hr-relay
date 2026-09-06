@@ -158,7 +158,7 @@ export function verifyIdentityApproval(
     return IdentityApprovalVerificationSchema.parse({
       state: "refused",
       code: "identity-approval-evidence-moved",
-      reason: `the stored identity digest ${expectedDigest.slice(0, 12)}… does not describe this packet, which re-derives to ${actualDigest.slice(0, 12)}…`,
+      reason: "the stored identity evidence does not describe this packet",
     });
   }
 
@@ -202,8 +202,7 @@ export function verifyIdentityApproval(
     return IdentityApprovalVerificationSchema.parse({
       state: "refused",
       code: "identity-approval-evidence-moved",
-      reason: `the approval is bound to evidence ${result.evidenceDigest.slice(0, 12)}…, and this run's `
-        + `identity evidence re-derives to ${expectedDigest.slice(0, 12)}…. An approval is an `
+      reason: "the approval is bound to different evidence. An approval is an "
         + "observation of a specific packet (ref write-safety §14.5); it never survives the disappearance of "
         + "what it approved.",
     });

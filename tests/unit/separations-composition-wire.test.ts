@@ -1,3 +1,6 @@
+import { ProtectedStoreRecordSchema } from "../../src/domain/config/protected-settings.js";
+import { FingerprintSchema } from "../../src/domain/ids.js";
+import { deriveCheckpointOutputDigest, deriveRunResultDigest } from "../../src/domain/run/result.js";
 /**
  * The composed `separations` workflow, driven through the machinery that
  * ALREADY exists — §3's rule for every chunk of this migration: *"makes its
@@ -11,6 +14,7 @@
  * chunk added (the gate packet's write-plan block) reaches the wire an approver
  * reads, rather than living only in the graph.
  */
+import { protectedSecretSource } from "./helpers/protected-secret-source.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,13 +23,14 @@ import { afterEach, describe, it } from "vitest";
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../src/base/workflow.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
-import { MatchIdentityOutputSchema } from "../../src/domain/contracts/separations/match-identity.js";
+import { SeparationsMatchIdentity, MatchIdentityOutputSchema } from "../../src/domain/contracts/separations/match-identity.js";
 import { deriveItemId } from "../../src/domain/identifiers.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { IdentityApprovalResultSchema } from "../../src/domain/separations/identity-approval.js";
+import { verifyIdentityApproval, IdentityApprovalResultSchema } from "../../src/domain/separations/identity-approval.js";
 import {
   buildIdentityEvidencePacket,
   deriveIdentityEvidenceDigest,
+  protectIdentityEvidencePacket,
 } from "../../src/domain/separations/identity-evidence.js";
 import type { IdentityEvidencePacket } from "../../src/domain/separations/identity-evidence.js";
 import { SeparationWritePlanSchema } from "../../src/domain/separations/write-plan.js";
@@ -58,7 +63,6 @@ const GATE_NOW = "2026-08-14T18:00:00.000Z";
  */
 const SUBMISSION = Object.freeze({
   documentNumber: "4510",
-  timekeeperName: "Julian Zaw",
 });
 
 const roots: string[] = [];
@@ -87,7 +91,7 @@ function openDatabase(): AuthorityDatabase {
 
 function plan(submissions: readonly unknown[], dryRun = false) {
   return planStart(
-    { authority: openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000 },
+    { protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }), authority: openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000 },
     {
       descriptor: separationsDescriptor,
       submissions,
@@ -102,6 +106,97 @@ function plan(submissions: readonly unknown[], dryRun = false) {
 }
 
 describe("separations — start planning through the existing service", () => {
+  it("reads protected input once, retains it across rotation, and refuses override/absence before IDs", () => {
+    const authority = openDatabase();
+    let current = ProtectedStoreRecordSchema.parse(protectedSecretSource({ timekeeperName: "Synthetic First Operator" }).read());
+    let reads = 0;
+    let ids = 0;
+    const source = { read: () => { reads += 1; return current; } };
+    const request = { descriptor: separationsDescriptor, submissions: [SUBMISSION], dryRun: true,
+      priority: "bulk" as const, shape: "single" as const, configFingerprint: HASH_A,
+      configSnapshotId: UUID_4, plannedBy: "local-operator" };
+    const deps = { authority, clock: CLOCK, ids: { uuid: () => { ids += 1; return uuidOf(ids + 50); } },
+      planTtlMs: 600_000, protectedSecrets: source };
+    const first = planStart(deps, request);
+    assert.equal(reads, 1);
+    const retained = first.planned[0]?.input;
+    assert.ok(retained);
+    assert.equal(Reflect.get(retained.value as object, "timekeeperName"), "Synthetic First Operator");
+    const changedBytes = ProtectedStoreRecordSchema.parse(protectedSecretSource({ timekeeperName: "Synthetic Second Operator" }).read());
+    current = changedBytes;
+    const sameBinding = planStart(deps, request);
+    assert.equal(sameBinding.inputFingerprint, first.inputFingerprint, "values cannot enter fingerprints");
+    current = { ...changedBytes, entries: { ...changedBytes.entries, timekeeperName: {
+      ...changedBytes.entries.timekeeperName!, valueId: uuidOf(90),
+    } } };
+    const rotated = planStart(deps, request);
+    assert.notEqual(rotated.inputFingerprint, first.inputFingerprint, "the retained valueId is identity");
+    const beforeRetained = reads;
+    const rerun = planStart(deps, { ...request, retainedInputs: [retained] });
+    assert.equal(reads, beforeRetained);
+    assert.deepEqual(rerun.planned[0]?.input, retained);
+    current = ProtectedStoreRecordSchema.parse(protectedSecretSource().read());
+    const beforeBlocked = ids;
+    assert.throws(() => planStart(deps, request), /protected input timekeeperName is absent/);
+    assert.equal(ids, beforeBlocked);
+    const beforeOverride = reads;
+    assert.throws(() => planStart(deps, { ...request, submissions: [{ ...SUBMISSION, timekeeperName: "Do Not Echo This" }] }),
+      /^Error: caller-supplied protected input timekeeperName is refused$/);
+    assert.equal(reads, beforeOverride);
+    assert.equal(ids, beforeBlocked);
+    assert.throws(() => planStart({ ...deps, protectedSecrets: { read: () => { throw new Error("Do Not Echo This"); } } }, request),
+      /^Error: protected input timekeeperName source is unreadable$/);
+    assert.equal(ids, beforeBlocked);
+  });
+
+  it("binds protected canary plans without document-derived titles, match keys or fingerprints", () => {
+    const deps = { authority: openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000,
+      protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }) };
+    const request = { descriptor: separationsDescriptor, submissions: [{ documentNumber: "4511" }],
+      protectedSubmissionBindings: [{ kind: "protected-store" as const, inputPath: "documentNumber" as const,
+        name: "separationsKualiFinalizationCanaryDocumentNumber" as const, valueId: uuidOf(88) }],
+      dryRun: true, priority: "bulk" as const, shape: "single" as const, configFingerprint: HASH_A,
+      configSnapshotId: UUID_4, plannedBy: "local-operator" };
+    const first = planStart(deps, request);
+    const changed = planStart(deps, { ...request, submissions: [{ documentNumber: "4512" }] });
+    assert.equal(first.inputFingerprint, changed.inputFingerprint);
+    const retained = first.planned[0].input;
+    assert.equal(first.planned[0].title, "Protected test subject");
+    assert.equal(first.planned[0].matchKey.includes("4511"), false);
+    assert.equal(first.planned[0].itemId, changed.planned[0].itemId);
+    assert.throws(() => planStart(deps, { ...request, retainedInputs: [retained],
+      submissions: [{ documentNumber: "4512" }] }), /retained protected input .* cannot change/);
+    const rereadRefusal = { read: () => { throw new Error("must not reread"); } };
+    assert.deepEqual(planStart({ ...deps, protectedSecrets: rereadRefusal }, { ...request, retainedInputs: [retained] })
+      .planned[0].input, retained);
+  });
+
+  it("hides the protected canary document while keeping approval bound to its retained identity", () => {
+    const base = MatchIdentityOutputSchema.parse(SeparationsMatchIdentity.example).packet;
+    const binding = { kind: "protected-store" as const, inputPath: "documentNumber" as const,
+      name: "separationsKualiFinalizationCanaryDocumentNumber" as const, valueId: uuidOf(88) };
+    const first = protectIdentityEvidencePacket(base, [binding]);
+    assert.equal(first.documentNumber, "protected document");
+    assert.equal(JSON.stringify(first).includes(base.documentNumber), false);
+    assert.equal(deriveIdentityEvidenceDigest(first), deriveIdentityEvidenceDigest(
+      protectIdentityEvidencePacket({ ...base, documentNumber: "4999" }, [binding])));
+    assert.notEqual(deriveIdentityEvidenceDigest(first), deriveIdentityEvidenceDigest(
+      protectIdentityEvidencePacket(base, [{ ...binding, valueId: uuidOf(89) }])));
+  });
+
+  it("keeps protected names and signed comments out of checkpoint and result fingerprint preimages", () => {
+    const first = { schemaHash: HASH_A, value: { savedState: { fields: {
+      timekeeperName: "Synthetic First Operator", timekeeperComments: "Filed. -SFO 06/19/2026",
+    } }, dates: { dateChangeComments: "Updated. -SFO", separationDate: "06/19/2026" } } };
+    const rotated = { schemaHash: HASH_A, value: { savedState: { fields: {
+      timekeeperName: "Synthetic Second Operator", timekeeperComments: "Filed. -SSO 06/19/2026",
+    } }, dates: { dateChangeComments: "Updated. -SSO", separationDate: "06/19/2026" } } };
+    assert.equal(deriveCheckpointOutputDigest(first), deriveCheckpointOutputDigest(rotated));
+    assert.equal(deriveRunResultDigest(first), deriveRunResultDigest(rotated));
+    assert.notEqual(deriveRunResultDigest(first), deriveRunResultDigest({ ...first,
+      value: { ...first.value, dates: { ...first.value.dates, separationDate: "06/20/2026" } } }));
+  });
+
   it("plans one item per document, and refuses a submission the ingress does not admit", () => {
     // The refused half is now the SHAPE the surface no longer sends: a
     // submission still carrying D261's retired `actionId` is refused by the
@@ -139,10 +234,9 @@ describe("separations — start planning through the existing service", () => {
       "separations:4502",
       "separations:4510",
     ]);
-    // The constant rode along on every entry — one typed value, one baked one.
+    // Browser submissions carry only the typed document number.
     assert.deepEqual(toRawSubmission(entries[0]), {
       documentNumber: "4502",
-      timekeeperName: "Julian Zaw",
     });
   });
 
@@ -408,6 +502,35 @@ describe("separations — the identity-gate wire", () => {
       ).decision,
       "approved",
     );
+  });
+
+  it("binds approval to retained value identity and never serves historical protected bytes or digests", () => {
+    const packet = packetWithPlan();
+    assert.equal(JSON.stringify(packet).includes("Julian Zaw"), false);
+    assert.equal(packet.plan.state, "planned");
+    if (packet.plan.state !== "planned") throw new Error("fixture must carry a plan");
+    const plannedPacket = packet.plan;
+    const bind = (valueId: string) => ({ ...packet, plan: SeparationWritePlanSchema.parse({
+      ...plannedPacket,
+      document: { ...plannedPacket.document, timekeeperName: {
+        kind: "protected-store", name: "timekeeperName", inputPath: "timekeeperName", valueId,
+      } },
+    }) });
+    const first = bind(uuidOf(40));
+    const rotated = bind(uuidOf(41));
+    const digest = deriveIdentityEvidenceDigest(first);
+    assert.notEqual(digest, deriveIdentityEvidenceDigest(rotated));
+    const result = IdentityApprovalResultSchema.parse({ decision: "approved", eid: first.emplId,
+      chosenFrom: "checked", evidenceDigest: digest });
+    assert.equal(verifyIdentityApproval(first, result).state, "approved");
+    assert.equal(verifyIdentityApproval(rotated, result).state, "refused");
+    const historicalDigest = FingerprintSchema.parse("e".repeat(64));
+    const refusal = verifyIdentityApproval(first, result, historicalDigest);
+    assert.equal(refusal.state, "refused");
+    assert.equal(JSON.stringify(refusal).includes(historicalDigest.slice(0, 12)), false);
+    const historical = SeparationWritePlanSchema.parse({ ...packet.plan,
+      document: { ...packet.plan.document, timekeeperName: "Another Synthetic Operator" } });
+    assert.equal(deriveIdentityEvidenceDigest({ ...packet, plan: historical }), deriveIdentityEvidenceDigest(packet));
   });
 
   it("moves the evidence digest when a PLANNED VALUE moves, not only when the person does", () => {

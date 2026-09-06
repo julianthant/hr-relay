@@ -200,7 +200,7 @@ function alreadyPresentReceiptEvidence() {
   };
 }
 
-describe("composition 3 — the commit action carries what proved the write", () => {
+describe("composition 4 — the commit action carries what proved the write", () => {
   const evidence = kualiReceiptEvidence();
   const receipt = buildRunEvidenceReceipt({
     descriptor: separationsKualiFinalizationDescriptor,
@@ -211,17 +211,18 @@ describe("composition 3 — the commit action carries what proved the write", ()
   });
 
   it("stamps the composition it derived under", () => {
-    assert.equal(receipt.composition, 3);
+    assert.equal(receipt.composition, 4);
   });
 
-  it("carries the fence identity — the system and the exact key's digest, never the raw key", () => {
+  it("withholds the protected transaction digest while retaining exact private fence identity", () => {
     const proved = commitActionOfReceipt(receipt).proved;
     assert.ok(proved, "the settled kuali commit must carry its proof");
     assert.equal(proved.system, "kuali");
     assert.equal(
       proved.idempotencyKeyDigest,
-      deriveIdempotencyKeyDigest("kuali", KUALI_IDEMPOTENCY_KEY),
+      "withheld-protected-input",
     );
+    assert.equal(evidence.writes[0]?.intent.idempotencyKeyDigest, deriveIdempotencyKeyDigest("kuali", KUALI_IDEMPOTENCY_KEY));
     assert.ok(
       !JSON.stringify(proved).includes(KUALI_IDEMPOTENCY_KEY),
       "the raw idempotency key embeds identifiers and stays in authority",
@@ -236,18 +237,18 @@ describe("composition 3 — the commit action carries what proved the write", ()
     assert.equal(proved.recordedAt, KUALI_CONFIRMED_AT);
   });
 
-  it("carries the completion proof's leaves, redacted by declaration — the document verbatim, the person last-4", () => {
+  it("withholds protected proof fields and preserves independently observed person last-4", () => {
     const proved = commitActionOfReceipt(receipt).proved;
     assert.ok(proved);
     const byKey = new Map(proved.values.map((value) => [value.key, value]));
     const documentNumber = byKey.get("documentNumber");
-    assert.ok(documentNumber !== undefined && documentNumber.state === "allowed");
+    assert.ok(documentNumber !== undefined && documentNumber.state === "redacted");
     const observedEid = byKey.get("observedEid");
     assert.ok(observedEid !== undefined, "the proof's person leaf is carried");
     assert.equal(observedEid.state, "transformed");
     assert.ok("transform" in observedEid && observedEid.transform === "last4");
     const timekeeper = byKey.get("fields.timekeeperName");
-    assert.ok(timekeeper !== undefined && timekeeper.state === "transformed");
+    assert.ok(timekeeper !== undefined && timekeeper.state === "redacted");
   });
 
   it("puts no proof on the prepare action — a prepare fences nothing", () => {
@@ -507,7 +508,7 @@ describe("ensureRunEvidenceReceipt — a stored composition-1 receipt is never s
       KUALI_RUN_ID,
     );
     assert.equal(outcome.state, "derived");
-    assert.equal(outcome.receipt.composition, 3);
+    assert.equal(outcome.receipt.composition, 4);
     const commit = outcome.receipt.actions.find((action) => action.kind === "commit");
     assert.ok(commit?.proved, "a fresh derivation carries the write proof");
   });

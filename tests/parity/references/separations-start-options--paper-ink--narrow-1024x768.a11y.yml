@@ -1,7 +1,7 @@
 # separations-start-options--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: separations-start-options
-# descriptorHash: 932117000f9aff06071b347059ecf5bf67d2c3ab4ec9253072c8c9efd7c1f75b
+# descriptorHash: d75c96a77d3cb088a31e7e50bac571a068005425f7e5e891774a5741497c4128
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -35,11 +35,7 @@
     - checkbox "Dry run"
     - text: Dry run
     - checkbox "Capture browser screenshots" [checked]
-    - text: Capture browser screenshots timekeeperName
-    - combobox "timekeeperName" [disabled]:
-      - option "Julian Zaw" [selected]
-    - paragraph: Fixed by this workflow.
-    - text: Active-run policy
+    - text: Capture browser screenshots Active-run policy
     - combobox "Active-run policy" [disabled]:
       - option "Refuse overlapping subject runs" [selected]
     - paragraph: Fixed by this workflow.

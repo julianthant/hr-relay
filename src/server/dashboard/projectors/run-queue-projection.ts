@@ -1,3 +1,5 @@
+import { retainedRunProtectedBindings } from "../../../domain/protected-input.js";
+import { hasProtectedTransactionInput } from "../../../domain/protected-input.js";
 /**
  * THE run/queue projection — the single server-side read model every surface
  * renders (ref dashboard-surfaces §2.2/§2.3, D81 §10.1).
@@ -1232,7 +1234,7 @@ export class RunQueueProjection {
         reason: `run settled failed against failure ${failureId}, which authority does not hold`,
       };
     }
-    return { state: "present", value: projectFailureForOperator(failure).summary };
+    return { state: "present", value: projectFailureForOperator(failure, retainedRunProtectedBindings(authority).length > 0).summary };
   }
 
   /**
@@ -1653,11 +1655,13 @@ export class RunQueueProjection {
        * `displayName` beside this, so a renamed row can still state the subject
        * it was renamed away from.
        */
-      title: this.#subjectTitle(queued.workflow, authority) ?? queued.title,
+      title: this.#subjectTitle(queued.workflow, authority) ?? (hasProtectedTransactionInput(authority) ? "Protected test subject" : queued.title),
       displayName: authority.displayName === undefined
         ? { state: "absent", reason: "the operator has not renamed this run" }
         : { state: "present", value: authority.displayName },
-      subtitle: queued.subtitle === undefined
+      subtitle: queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
+        && authority.input.parsed.value !== null && typeof authority.input.parsed.value === "object"
+        && Object.hasOwn(authority.input.parsed.value, "timekeeperName"))
         ? { state: "absent", reason: "the start plan proposed no subtitle" }
         : { state: "present", value: queued.subtitle },
       status,

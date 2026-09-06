@@ -454,9 +454,9 @@ describe("test target registry architecture", () => {
       label: "finalization-canary",
       canonicalInput: {
         documentNumber: "4999",
-        timekeeperName: "Julian Zaw",
-        searchTimeoutMs: 15_000,
       },
+      protectedBindings: [{ kind: "protected-store", inputPath: "documentNumber",
+        name: "separationsKualiFinalizationCanaryDocumentNumber", valueId: "00000000-0000-4000-8000-000000000010" }],
     });
     const finalization = resolveSeparationsKualiFinalizationTestTarget(
       TEST_TARGET_REGISTRY,

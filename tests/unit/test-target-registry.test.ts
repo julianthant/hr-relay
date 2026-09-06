@@ -214,10 +214,10 @@ describe("the committed test target registry", () => {
     assert.deepEqual(resolution, {
       state: "ready",
       label: "finalization-canary",
+      protectedBindings: [{ kind: "protected-store", inputPath: "documentNumber", name: "separationsKualiFinalizationCanaryDocumentNumber",
+        valueId: "00000000-0000-4000-8000-000000000010" }],
       canonicalInput: {
         documentNumber: COMMITTED_DOCUMENT_NUMBER,
-        timekeeperName: "Julian Zaw",
-        searchTimeoutMs: 15_000,
       },
     });
     assert.deepEqual(read, ["protected-store"]);
@@ -700,13 +700,13 @@ describe("separations chain test target resolution", () => {
       label: "fixture-target",
       // The document number is the box's ONE varying value, and it arrives from
       // protected Settings through the arm's closed reference;
-      // `timekeeperName` rides in the descriptor's own `constants[]` and
-      // `searchTimeoutMs` is the ingress default the real start path applies.
+      // The server planner admits the protected timekeeper and applies
+      // ingress defaults once after this readiness check.
       // Nothing here is authored by the resolver.
+      protectedBindings: [{ kind: "protected-store", inputPath: "documentNumber",
+        name: "separationsKualiFinalizationCanaryDocumentNumber", valueId: "00000000-0000-4000-8000-000000000010" }],
       canonicalInput: {
         documentNumber: FIXTURE_DOCUMENT_NUMBER,
-        timekeeperName: "Julian Zaw",
-        searchTimeoutMs: 15_000,
       },
     });
   });
@@ -855,6 +855,8 @@ describe("the person-lookup live-read resolver (D318)", () => {
     assert.deepEqual(resolution, {
       state: "ready",
       label: PERSON_LOOKUP_LABEL,
+      protectedBindings: [{ kind: "protected-store", inputPath: "emplId",
+        name: "personLookupCanaryEid", valueId: "00000000-0000-4000-8000-000000000010" }],
       canonicalInput: { emplId: "10800000", keepNonHdh: false, includeCrmDates: false },
     });
   });

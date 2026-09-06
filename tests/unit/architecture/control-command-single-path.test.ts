@@ -275,7 +275,8 @@ describe("control-command-single-path", () => {
     ]);
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
     const settingsAuditReaders = new Map([
-      ["src/server/settings-runtime.ts", 2],
+      ["src/server/settings-runtime.ts", 1],
+      ["src/infra/config/protected-settings-journal.ts", 1],
       ["src/infra/sqlite/backup-service.ts", 3],
     ]);
     const violations: string[] = [];

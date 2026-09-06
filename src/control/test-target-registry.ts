@@ -1,8 +1,9 @@
+import { ProtectedInputBindingsSchema } from "../domain/protected-input.js";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { deepFreeze } from "../domain/immutability.js";
 import {
-  optionalTestTargetSecret,
+  optionalTestTargetEntry,
   TestTargetDocumentNumberSecretReferenceSchema,
   TestTargetEidSecretReferenceSchema,
   type ProtectedSecretSource,
@@ -16,7 +17,6 @@ import {
   personLookupWorkflow,
 } from "../workflows/person-lookup/workflow.js";
 import {
-  SeparationsCanonicalInput,
   SeparationsInput,
   separationsWorkflow,
 } from "../workflows/separations/workflow.js";
@@ -248,7 +248,9 @@ export type SeparationsKualiFinalizationTestTargetResolution =
 export const SeparationsReadyTestTargetSchema = z.strictObject({
   state: z.literal("ready"),
   label: z.string().min(1),
-  canonicalInput: SeparationsCanonicalInput,
+  // Protected workflow fields and ingress defaults are admitted once by the server planner.
+  canonicalInput: SeparationsInput.pick({ documentNumber: true }),
+  protectedBindings: ProtectedInputBindingsSchema,
 });
 export const SeparationsTestTargetResolutionSchema = z.discriminatedUnion("state", [
   TestTargetBlockedResolutionSchema,
@@ -261,6 +263,7 @@ export const PersonLookupReadyTestTargetSchema = z.strictObject({
   state: z.literal("ready"),
   label: z.string().min(1),
   canonicalInput: PersonLookupCanonicalInput,
+  protectedBindings: ProtectedInputBindingsSchema,
 });
 export const PersonLookupTestTargetResolutionSchema = z.discriminatedUnion("state", [
   TestTargetBlockedResolutionSchema,
@@ -453,9 +456,9 @@ function resolveConfiguredDocumentNumber(
   target: TestTargetRegistryEntry,
   reference: TestTargetSecretReference,
   source: ProtectedSecretSource,
-): string | undefined {
+): ReturnType<typeof optionalTestTargetEntry> {
   try {
-    return optionalTestTargetSecret(reference.name, source);
+    return optionalTestTargetEntry(reference.name, source);
   } catch (error) {
     registryDefect(
       target,
@@ -470,9 +473,9 @@ function resolveConfiguredEid(
   target: TestTargetRegistryEntry,
   reference: TestTargetSecretReference,
   source: ProtectedSecretSource,
-): string | undefined {
+): ReturnType<typeof optionalTestTargetEntry> {
   try {
-    return optionalTestTargetSecret(reference.name, source);
+    return optionalTestTargetEntry(reference.name, source);
   } catch (error) {
     registryDefect(
       target,
@@ -532,10 +535,10 @@ export function resolveSeparationsKualiFinalizationTestTarget(
  * finalization resolver must. It feeds the registry's document number through
  * the descriptor's OWN `inputRun` parser — the same code path the dashboard's
  * start box uses — and parses the resulting submission through the descriptor's
- * own ingress and canonical schemas. `timekeeperName` therefore comes from the
- * descriptor's `constants[]` and `searchTimeoutMs` from the ingress default;
- * neither is authored here, so a rehearsal cannot start from an input a real
- * run would never produce.
+ * own server admission. The ready value contains only the start-box submission:
+ * `timekeeperName` is bound once from protected settings by the planner, which
+ * then applies the ingress defaults and canonical validation. Readiness never
+ * manufactures a protected default or accepts a protected caller override.
  *
  * The number itself comes from protected Settings through the arm's
  * closed reference (D300) — the registry never commits it. Unset is `blocked`
@@ -571,31 +574,16 @@ export function resolveSeparationsTestTarget(
   if (surface === undefined) {
     registryDefect(target, "descriptor separations declares no inputRun start box to resolve through");
   }
-  const entries = parseInputRunText(surface.parser, documentNumber);
+  const entries = parseInputRunText(surface.parser, documentNumber.value);
   const entry = entries[0];
   if (entries.length !== 1 || entry === undefined) {
     registryDefect(target, `document number parsed into ${String(entries.length)} start-box entries; exactly one is required`);
   }
-  const submission = SeparationsInput.safeParse(toRawSubmission(entry));
-  if (!submission.success) {
-    registryDefect(
-      target,
-      "configured document number does not form a valid separations submission",
-      z.prettifyError(submission.error),
-    );
-  }
-  const canonical = SeparationsCanonicalInput.safeParse(submission.data);
-  if (!canonical.success) {
-    registryDefect(
-      target,
-      "configured document number does not form the complete canonical input",
-      z.prettifyError(canonical.error),
-    );
-  }
   return SeparationsReadyTestTargetSchema.parse({
     state: "ready",
     label,
-    canonicalInput: canonical.data,
+    canonicalInput: toRawSubmission(entry),
+    protectedBindings: [{ kind: "protected-store", inputPath: "documentNumber", name: reference.name, valueId: documentNumber.valueId }],
   });
 }
 
@@ -638,7 +626,7 @@ export function resolvePersonLookupTestTarget(
   if (surface === undefined) {
     registryDefect(target, "descriptor person-lookup declares no inputRun start box to resolve through");
   }
-  const entries = parseInputRunText(surface.parser, emplId);
+  const entries = parseInputRunText(surface.parser, emplId.value);
   const entry = entries[0];
   if (entries.length !== 1 || entry === undefined) {
     registryDefect(target, `employee id parsed into ${String(entries.length)} start-box entries; exactly one is required`);
@@ -663,5 +651,6 @@ export function resolvePersonLookupTestTarget(
     state: "ready",
     label,
     canonicalInput: canonical.data,
+    protectedBindings: [{ kind: "protected-store", inputPath: "emplId", name: reference.name, valueId: emplId.valueId }],
   });
 }

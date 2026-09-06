@@ -1,3 +1,4 @@
+import { retainedRunProtectedBindings } from "../../domain/protected-input.js";
 import { ActorIdSchema } from "../../domain/ids.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
 /**
@@ -94,6 +95,7 @@ import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import {
   assertNoMigratedEnvironmentKeys,
   hostAwareResolutionEnvironment,
+  workerBootstrapEnvironment,
 } from "../../domain/secrets.js";
 import { probePrimaryDisplay } from "../../infra/host/primary-display.js";
 import { sha256Hex } from "../../domain/sha256.js";
@@ -123,7 +125,7 @@ import {
   type GateParkObservation,
 } from "../../services/notifications/gate-park.js";
 import { createIntakeParser } from "../intake/intake-parser.js";
-import { createSettingsRuntimeReader, readJournaledSettings } from "../settings-runtime.js";
+import { createJournaledProtectedSecretSource, createSettingsRuntimeReader, readJournaledSettingsAtBoot } from "../settings-runtime.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
 import { createSettingsApplicationExecutor } from "./commands/settings-service.js";
 import { createExplorerEditService } from "./commands/explorer-edit-service.js";
@@ -442,13 +444,15 @@ const WORKER_BIRTH_POLL_MS = 250;
  * entry spawns a child that exits 0 before ever writing a lease, which the
  * birth proof reports as "exited with code 0 before proving its lease birth".
  */
-export function productionWorkerLaunch(repoRoot: string): Readonly<{
+export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.ProcessEnv): Readonly<{
   command: string;
+  environment: NodeJS.ProcessEnv;
   prefixArgs: readonly string[];
   cwd: string;
 }> {
   return Object.freeze({
     command: process.execPath,
+    environment: workerBootstrapEnvironment(environment),
     prefixArgs: Object.freeze(["--import", "tsx", join(repoRoot, "scripts", "secure-env-bootstrap.ts"), "cli"]),
     cwd: repoRoot,
   });
@@ -551,13 +555,14 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
  * non-absolute command). `stdio: "inherit"` keeps the worker's structured
  * stdout/stderr lines visible in the dashboard's terminal instead of
  * swallowing them; durable evidence still flows through spans, notes and
- * authority. The child inherits this process's environment — the same
- * `.env`-loaded one the CLI itself runs under.
+ * authority. The closed environment carries only process mechanics and host display.
+ * Each child admits its own provider .env and opens its own protected authority.
  */
 function realWorkerProcessSpawner(): WorkerProcessSpawner {
   return (request) => {
     const child = spawnChildProcess(request.command, [...request.args], {
       cwd: request.cwd,
+      env: request.environment,
       stdio: "inherit",
     });
     return Object.freeze({
@@ -613,10 +618,11 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   // D324: the production environment carries the host's primary display as the `display` default.
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
+  const hostFacts = hostConfigFacts(env);
   const settingsAuthority = createSettingsFileAuthority({
     path: settingsRootPaths(stateRoot).ordinary,
     validateCandidate: (settings) => {
-      resolveConfigWithProvenance(settings, hostConfigFacts(env), clock);
+      resolveConfigWithProvenance(settings, hostFacts, clock);
     },
   });
   mkdirSync(stateRoot, { recursive: true });
@@ -661,6 +667,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       if (ownerCommandId !== undefined) throw new Error("write-id-reused");
     },
   });
+  const protectedSecrets = createJournaledProtectedSecretSource({ file: protectedSettingsAuthority, database });
   const bootConfig = (() => {
     try {
       const explorerOverrides = createExplorerOverrideStore(join(stateRoot, "explorer-overrides.json"));
@@ -678,11 +685,11 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
         // that command commits; partial/divergent evidence refuses boot.
       }
       const persistedSettings = database.withAuthorityTransaction((repositories) =>
-        readJournaledSettings(settingsAuthority, repositories));
+        readJournaledSettingsAtBoot(settingsAuthority, protectedSettingsAuthority, repositories));
       return Object.freeze({
         explorerOverrides,
         persistedSettings,
-        resolved: resolveConfigWithProvenance(persistedSettings.settings, hostConfigFacts(env), clock),
+        resolved: resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock),
       });
     } catch (bootError) {
       try {
@@ -716,7 +723,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const settingsReader = createSettingsRuntimeReader({
     file: settingsAuthority,
     database,
-    environment: env,
+    hostFacts,
     clock,
     active: settingsRuntimeIdentity(persistedSettings, resolved.fingerprint),
   });
@@ -957,7 +964,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     database,
     clock,
     scheduler: input.workerProcess?.scheduler ?? createTimeoutDeadlineScheduler(clock),
-    launch: input.workerProcess?.launch ?? productionWorkerLaunch(repoRoot),
+    launch: input.workerProcess?.launch ?? productionWorkerLaunch(repoRoot, env),
     spawn: input.workerProcess?.spawn ?? realWorkerProcessSpawner(),
     birth: input.workerProcess?.birth ?? { pollMs: WORKER_BIRTH_POLL_MS, timeoutMs: WORKER_BIRTH_TIMEOUT_MS },
     onFault: reportSupervisorFault,
@@ -1117,6 +1124,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   });
 
   const startPlans = createStartPlanService({
+    protectedSecrets,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: database,
     descriptors,
@@ -1193,7 +1201,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
           idFactory: { next: () => ProviderAdmissionIdSchema.parse(ids.uuid()) },
           deadlineScheduler: advisoryScheduler,
         });
-        return produceFailureTriageAdvisory({ clock, client }, failure);
+        return produceFailureTriageAdvisory({ clock, client }, failure, retainedRunProtectedBindings(run).length > 0);
       },
     };
 

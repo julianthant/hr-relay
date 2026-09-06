@@ -1,3 +1,4 @@
+import { retainedRunProtectedBindings, valueFreeProtectedData } from "../protected-input.js";
 /**
  * The archive model — charter §25 / ref dashboard-surfaces §10.2 (D80), as-built by D179.
  *
@@ -540,11 +541,11 @@ function refineDiagnosticSafetyGeneration(
   context: z.RefinementCtx,
 ): void {
   if (record.archiveSchemaGeneration < 6 || record.receipt.state !== "present") return;
-  if (record.receipt.value?.composition !== 3) {
+  if (record.receipt.value?.composition !== 3 && record.receipt.value?.composition !== 4) {
     context.addIssue({
       code: "custom",
       path: ["receipt"],
-      message: "an archive at generation 6 or later may present only diagnostic-safe receipt composition 3; "
+      message: "an archive at generation 6 or later may present only diagnostic-safe receipt composition 3/4; "
         + "immutable composition 1/2 evidence must be stored through the named absent arm",
     });
   }
@@ -637,7 +638,24 @@ export type ArchiveRelaunchRecord = z.infer<typeof ArchiveRelaunchRecordSchema>;
  * their command names.
  */
 export function archivedRunContentDigest(content: ArchivedRunContent): string {
-  return sha256Hex(`hrauto:archived-run:v1\0${canonicalJsonStringify(ArchivedRunContentSchema.parse(content))}`);
+  return sha256Hex(`hrauto:archived-run:v1\0${canonicalJsonStringify(valueFreeProtectedData(ArchivedRunContentSchema.parse(content)))}`);
+}
+
+/** A public citation of one immutable archive, independent of historical protected digests. */
+export function archivedRunReferenceFingerprint(record: ArchivedRunRecord): string {
+  const bindings = retainedRunProtectedBindings({ envelope: { workflow: record.workflowId }, input: record.input });
+  if (bindings.length === 0) return record.contentDigest;
+  return sha256Hex(`hrauto:archived-run-reference:v1\0${canonicalJsonStringify({
+    runId: record.runId, workflowId: record.workflowId, archivedAt: record.archivedAt,
+    archiveSchemaGeneration: record.archiveSchemaGeneration,
+    protectedBindings: bindings,
+  })}`);
+}
+
+/** Only authenticates pre-D331 immutable private records; never publish this digest. */
+export function authenticArchivedRunContent(content: ArchivedRunContent, digest: string): boolean {
+  return archivedRunContentDigest(content) === digest
+    || sha256Hex(`hrauto:archived-run:v1\0${canonicalJsonStringify(ArchivedRunContentSchema.parse(content))}`) === digest;
 }
 
 /**

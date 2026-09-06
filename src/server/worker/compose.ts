@@ -98,7 +98,7 @@ import {
   type SettingsFileAuthorityHooks,
 } from "../../infra/config/settings-file.js";
 import { settingsRootPaths } from "../../domain/config/settings-root.js";
-import { readJournaledSettings, requireJournaledSettings } from "../settings-runtime.js";
+import { createJournaledProtectedSecretSource, readJournaledSettingsAtBoot, requireJournaledSettings } from "../settings-runtime.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import {
   createCensusGeocodeAdapter,
@@ -420,12 +420,13 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   // D324: the production environment carries the host's primary display as the `display` default.
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
+  const hostFacts = hostConfigFacts(env);
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
   const settingsAuthority = createSettingsFileAuthority({
     path: settingsRootPaths(stateRoot).ordinary,
     validateCandidate: (settings) => {
-      resolveConfigWithProvenance(settings, hostConfigFacts(env), clock);
+      resolveConfigWithProvenance(settings, hostFacts, clock);
     },
     hooks: input.settingsFileHooks,
   });
@@ -433,7 +434,6 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     path: settingsRootPaths(stateRoot).ordinary,
     assertWriteIdAvailable: () => undefined,
   });
-  const protectedSecrets = { read: () => protectedAuthority.read() };
   /**
    * D181: the `workers` role lock, taken before the database opens. The
    * authority worker LEASE is the richer fence and stays the one that decides
@@ -473,6 +473,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     throw openError;
   }
 
+  const protectedSecrets = createJournaledProtectedSecretSource({ file: protectedAuthority, database });
   const lifecycle = workerRunLifecyclePort(new RunRecordService({ database, clock, ids,
     publishQueued: () => { throw new Error("worker port cannot create runs"); },
   }));
@@ -480,8 +481,8 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   let runtimeConfig: ReturnType<AuthorityDatabase["authority"]["runtimeConfig"]["requireActive"]>;
   try {
     const persistedSettings = database.withAuthorityTransaction((repositories) =>
-      readJournaledSettings(settingsAuthority, repositories));
-    resolved = resolveConfigWithProvenance(persistedSettings.settings, hostConfigFacts(env), clock);
+      readJournaledSettingsAtBoot(settingsAuthority, protectedAuthority, repositories));
+    resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock);
 
     const settingsExpectation = Object.freeze({
       revision: persistedSettings.revision,

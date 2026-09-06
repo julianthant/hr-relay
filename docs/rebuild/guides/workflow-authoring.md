@@ -972,10 +972,15 @@ Lookup's manifest is the template.
 
 **The subject registry — `config/test-subjects.json`.** Labels only. Register a label per subject
 with today's dated availability, an arm per workflow (kind = the manifest's `subjectKind`), and any
-sensitive value as a closed reference into ignored `.env`, read only through `src/domain/secrets.ts`.
-A new secret reference is two edits: its literal name in `src/domain/secret-names.ts` and its
-reference schema plus registry row in `src/domain/secrets.ts` (`personLookupCanaryEid` is the
-template); the registry's `reference: { name, env }` pair then cites it.
+sensitive value as a closed protected-store reference, read through the journal-authenticated
+`src/domain/secrets.ts` accessor after database authority opens (D331 supersedes the old `.env`
+source). The registry cites `{ name }`, resolved only from the protected store; provider `.env` keys remain
+separate. A new protected name requires a catalog/contract decision; do not add an environment key.
+Protected workflow inputs such as Separations `timekeeperName` use the descriptor's value-free
+`protectedInputs` declaration and the shared server admission adapter. Admission reads once,
+retains the canonical value and binding identity, and refuses caller override. Rerun, retry,
+relaunch and omission evaluation use that retained input. Never put protected values in browser
+constants, titles, fingerprints or diagnostic output; use the retained binding identity.
 A `gone` / `unknown` / `consumed` label resolves `blocked` (`not-started`) before any browser; that is
 a valid recorded outcome, never `failed`. Then register the workflow's T1b loader and resolver (§3).
 

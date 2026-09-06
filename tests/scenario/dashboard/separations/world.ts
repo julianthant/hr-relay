@@ -1,3 +1,4 @@
+import { protectedSecretSource } from "../../../unit/helpers/protected-secret-source.js";
 import { runQueuedSpanEvent } from "../../../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/domain/ids.js";
 import { RunRecordService } from "../../../../src/core/run-record-service.js";
@@ -259,6 +260,7 @@ export function createSeparationsWorld(): SeparationsDashboardWorld {
   });
 
   const startPlans = createStartPlanService({
+    protectedSecrets: protectedSecretSource({ timekeeperName: FIXTURE_TIMEKEEPER_NAME }),
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: database,
     descriptors: descriptorResolver,

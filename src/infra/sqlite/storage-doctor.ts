@@ -1,3 +1,8 @@
+import { inspectProtectedSettingsFilesReadOnly } from "../config/settings-file.js";
+import { requireJournaledProtectedSettings } from "../config/protected-settings-journal.js";
+import { ProtectedSettingsNameSchema } from "../../domain/config/protected-settings.js";
+import { settingsRootPaths } from "../../domain/config/settings-root.js";
+import { ProtectedSettingsInspectionSchema } from "./recovery-contracts.js";
 import { createHash } from "node:crypto";
 import {
   closeSync,
@@ -948,6 +953,25 @@ async function inspectCandidates(
   return candidates.sort((left, right) => right.modifiedMs - left.modifiedMs);
 }
 
+/** No repair, lock, migration, or value-bearing error may escape this observer. */
+function inspectProtectedSettings(stateRoot: string, authorityPath: string, busyTimeoutMs: number) {
+  try {
+    const database = AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs, migrationOwner: "storage-doctor", openMode: "storage-doctor-read-only-no-migrate" });
+    const reader = database;
+    try {
+      return reader.withAuthorityReadSnapshot(() => inspectProtectedSettingsFilesReadOnly(stateRoot, (record) => {
+      requireJournaledProtectedSettings(record, reader.authority);
+      return ProtectedSettingsInspectionSchema.parse({ state: "available", entries:
+        ProtectedSettingsNameSchema.options.map((name) => ({ name, present: record.entries[name] !== undefined })) });
+      }));
+    } finally { database.close(); }
+  } catch {
+    return ProtectedSettingsInspectionSchema.parse({ state: "unavailable", cause: {
+      code: "authority-unavailable", summary: `protected settings in ${basename(settingsRootPaths(stateRoot).root)} could not be verified read-only`,
+    } });
+  }
+}
+
 export async function doctorAuthorityStorage(input: unknown, clock: Clock = systemClock): Promise<StorageDoctorReport> {
   const options = StorageDoctorOptionsSchema.parse(input);
   const authorityPath = resolve(options.authorityPath);
@@ -1029,6 +1053,7 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   const spanAuthorityIdentityMismatch = initialAuthorityIdentity !== undefined
     && spanAuthorityRead.authorityIdentity !== undefined
     && !sameAuthorityIdentity(initialAuthorityIdentity, spanAuthorityRead.authorityIdentity);
+  const protectedSettings = inspectProtectedSettings(stateRoot, authorityPath, options.busyTimeoutMs);
   const finalAuthorityRead = inspectAuthorityIdentity(authorityPath, options.busyTimeoutMs);
   if (initialAuthorityRead.state !== finalAuthorityRead.state) {
     throw authorityIdentityChanged(initialAuthorityRead, finalAuthorityRead);
@@ -1050,6 +1075,7 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   }
   return StorageDoctorReportSchema.parse({
     kind: "authority-storage-doctor",
+    protectedSettings,
     mode: "read-only",
     checkedAt: clock.now().toISOString(),
     sourceDatabaseIdentity,

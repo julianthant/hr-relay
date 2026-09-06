@@ -1,3 +1,4 @@
+import { createProtectedSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs, {
@@ -3954,6 +3955,7 @@ describe("authority.health preflight and static recovery boundary", () => {
     const authorityPath = join(root, "state.sqlite");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
+    createProtectedSettingsFileAuthority({ path: join(root, "settings", "settings.json"), assertWriteIdAvailable: () => undefined }).read();
     await createBackup(database, directory);
     const runner = new AuthorityHealthPreflightRunner({
       stateRootTrustAnchor: root,

@@ -99,7 +99,8 @@ export function directIdentifierDigestReference(value: string): string {
 }
 
 /** Operator-visible permanent-write identity, derived only from the authority digest. */
-export function idempotencyKeyDigestReference(digestInput: unknown): string {
+export function idempotencyKeyDigestReference(digestInput: unknown, withheld = false): string {
+  if (withheld || digestInput === "withheld-protected-input") return "protected transaction key (withheld)";
   const digest = FingerprintSchema.parse(digestInput);
   return `key digest ${digest.slice(0, 12)}…`;
 }

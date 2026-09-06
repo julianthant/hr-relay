@@ -1719,6 +1719,36 @@ two themes × two viewports). Removing the protected value therefore cannot pass
 Only those twelve scene triples may be deliberately refrozen after their expected red result and
 rendered/a11y review. The Settings references remain byte-unchanged; D331.11 P40 stays with 3.1.
 
+**Operator amendment (2026-09-05, during 1.6.5.3).** The operator chose to hide the
+timekeeper on the identity approval screen: each installation has one timekeeper who already
+knows their identity. D331.6 and write-safety §14.5/§14.10 now bind approval to the retained
+protected input identity instead of protected bytes or name-derived text. This admits the
+identity packet, digest, refusal and display consumers required by that decision. The twelve
+Start reference triples remain the planned refreeze; only directly affected identity approval
+references may additionally change, after intended-red and rendered review. No unrelated
+reference or Settings/Setup surface change is admitted. The prior stop condition for this exact
+contract conflict is resolved; all other stop boundaries remain in force.
+
+**Operator amendment (2026-09-05, protected test transaction references).** The operator approved
+omitting transaction-key digests derived from protected canary inputs from receipts, logs,
+diagnostics and dashboard/Archive output. The natural permanent key and its authoritative digest
+remain private and unchanged for duplicate-write prevention, lookup and integrity validation;
+setting rotation or clear/re-set must never create a new permanent transaction identity. Carry
+source-aware protected bindings through test admission and retained run input. Public projections
+use a closed withheld marker and existing independent run/write-intent identities, without a
+value-derived substitute. This narrowly supersedes write-safety's mandatory digest presentation
+for protected-source records, including historical projections; it does not alter lifecycle,
+transaction identity, or authorize unrelated parity changes.
+
+**Operator amendment (2026-09-06, generated parity provenance).** The operator approved
+mechanically derived descriptor-hash updates in the 194 additional affected reference triples,
+including their a11y provenance headers, metadata records and any displayed code-version hash.
+The manifest truthfully changes 210 descriptor-bound triples in total: 30 Start-profile and
+180 general-profile triples. Non-hash screen/a11y changes remain limited to the twelve approved
+Separations Start triples and four directly affected identity-approval ceremony triples. Review
+exact diffs; any other content, control or layout drift is still a stop condition. This supersedes
+the earlier blanket reference-count limit only for generated code-version provenance.
+
 **Outcome and protected-input decision.** Every dashboard, worker, dry-run, smoke and backfill
 composition resolves ordinary configuration from the active document plus explicit host facts and
 defaults, and reads protected values through one journal-authenticated protected-store source. No
@@ -1782,6 +1812,16 @@ input; it does not read the current store again.
    candidate/evidence, record `awaiting independent review`, dispatch `/supervise`'s fresh read-only
    `sup_review`, fix tactical findings in this worktree and renew review until PASS. Integrate only the
    accepted candidate, rerun integration gates, record evidence/cleanup and mark only Task 5 complete.
+
+**Operator-approved P16 proof clarification (2026-09-06).** The operator approved the narrow
+SQLite reader-bookkeeping exception to the no-file-mutation acceptance clause. The observer uses the existing read-only/no-migrate SQLite mode and
+secure no-follow file reads, with exact journal authentication and a second file/ancestry fence.
+Missing, insecure, malformed, moving, or unsettled settings authority returns unavailable; doctor
+never acquires/reaps a settings lock, creates a baseline, cleans a temporary, or settles prepare/
+rollback evidence. Tests pin settings files and all filesystem metadata, database/WAL bytes and
+authority metadata. For a live WAL connection, only SQLite's documented SHM read-mark bytes
+100–119 are volatile reader coordination; all other SHM bytes remain pinned. These marks carry
+no database content ([SQLite WAL format](https://www.sqlite.org/walformat.html#the_wal_index_header)).
 
 **Acceptance and disproof matrix.** Production-composed tests use synthetic settings/authority roots and
 canary values; scanning one helper in isolation is insufficient:
@@ -1847,6 +1887,31 @@ at planning time is expected and is not a blocker.
 | Assignment | Branch | Absolute worktree | Base / start prerequisite | Owned seams and resources | Acceptance gates | Merge condition |
 |---|---|---|---|---|---|---|
 | `1.6.5` | `codex/phase-1-6-settings-consumers` | `/Users/julianhein/Projects/hr-worktree-settings-consumers` | The verified full approved-plan commit on local `master`, containing Task-4 completion `5849220cfcda7f87a557488f1d6b2e9bdcb9d25e`; resolve the plan commit after this section is committed, then recheck ancestry, cleanliness, ref/path absence and four-worktree capacity before creation | Task-5 composition/settings-runtime/browser-accessor/start-plan/protected-input/evidence/doctor/preflight seams, named scripts, guards, docs, tests and exact Separations Start references; synthetic private settings/authority roots and owned Playwright runtime only | Acceptance matrix; focused unit/architecture tests; typecheck, lint, complete coverage, manifest/store/roadmap checks, standalone architecture, full parity after only the admitted refreeze, diff check and manual two-theme/two-viewport inspection | Freeze the exact candidate and obtain fresh `sup_review` PASS. Against latest local `master` still containing this approved plan and Task-4 prerequisite, integrate without a behavior-changing conflict or renew review; run exact integrated-tree gates, record review/merge/gate evidence, remove only the owned worktree/ref and mark only Task 5 complete. No push. |
+
+**Task 5 implementation verification (2026-09-06; not yet a review candidate).** Implementation is
+in `codex/phase-1-6-settings-consumers` at `/Users/julianhein/Projects/hr-worktree-settings-consumers`,
+based on approved plan `247cf28ff2e3315699333e89536ee36b797ee503`, retaining prerequisite
+`5849220cfcda7f87a557488f1d6b2e9bdcb9d25e`. Steps 1–5 have passed their focused proofs. Step 6
+has completed rendered negative controls and full gates. All reference-scope amendments are approved.
+Independent review, integration and task completion remain outstanding.
+
+| Proof | Verified evidence |
+|---|---|
+| Runtime and process authority, steps 1–2 | Focused runtime 142 tests; process isolation 137; protected environment guard 20. Ordinary configuration uses persisted settings and host facts; child bootstrap admits its own provider source and next-use protected reader. |
+| Protected input and public sinks, step 3 | Safety 91 tests; adjacent consumers 225; retained input/binding and fingerprint checks 48. Admission, historical projection, private permanent-key stability and public digest withholding are covered by the owning start, receipt, write-proof and restart suites. |
+| Read-only doctor/preflight, step 4 | Doctor and adjacent consumers 169 tests; architecture 130; exact read-only authority proof 11, including the approved SQLite SHM read-mark exception. |
+| Restart and hostile environment, step 5 | Combined unit proof 101 tests and focused architecture 88. Real worker claim barriers prove protected rotation preserves the active run and full token; ordinary apply rejects the next claim as runtime-stale and a restarted runtime activates the new snapshot. Catalog-derived retired-key cases cover dashboard, worker and both dry-run boundaries. |
+| Full code gates | Typecheck and lint PASS; full coverage 421 files / 5,314 tests PASS, 85.58% statements, 77.07% branches, 89.64% functions, 87.69% lines. Manifest, store-catalog and roadmap freshness PASS. Standalone architecture 77 files / 817 tests PASS. |
+| Rendered negative controls | Temporary copies of the original a11y bodies, with current generated provenance, failed all four Options, four Plan and four Result comparisons specifically on the removed timekeeper control/text. Each four-case group passed after `test:parity:update`; filtered wrapper runs correctly refused to claim full required a11y evidence. Full update passed 269 cases; the final full assert-mode run passed 269 cases, including required body-backed a11y evidence. Diff check PASS. |
+| Manual browser and reference scope | Playwright CLI against an owned synthetic BFF inspected all twelve Start views across both themes and viewports; no timekeeper field/name remained. Exact metadata and a11y audit found two generated descriptor-hash mappings across 210 triples; non-hash differences are the twelve Start triples plus the six inspector count changes described below. Counted pixel bounds, using the lane's existing 0.2 threshold, agree. A sole unrelated PNG with zero counted differences was restored byte-for-byte. |
+
+**Operator amendment (2026-09-06, generated inspector totals).** After the remaining decision was
+presented, the operator instructed the supervisor to complete the task. This approves the six
+`explorer-transaction` reference triples displaying generated schema field totals of `107 reads /
+14 writes`, formerly `103 / 13`, because admitted protected bindings add fields to the existing
+contracts. These are field totals, not additional HR transactions. The allowance is limited to
+those count glyphs and corresponding a11y text, alongside the already approved code-version hashes.
+No further content, control, layout, Settings/Setup or transaction change is authorized.
 
 ### Task 6 · Prove upgrade, rollback, recovery, and compatibility deletion
 <!-- roadmap: p1f-migration-proof -->

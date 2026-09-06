@@ -1,3 +1,4 @@
+import { ProtectedInputBindingsSchema } from "./protected-input.js";
 import { z } from "zod";
 import { JsonValueSchema, canonicalJsonStringify } from "./canonical-json.js";
 import { FingerprintSchema, type Fingerprint } from "./ids.js";
@@ -6,6 +7,7 @@ import { sha256Hex } from "./sha256.js";
 export const SchemaBoundCanonicalValueSchema = z.strictObject({
   schemaHash: FingerprintSchema,
   value: JsonValueSchema,
+  protectedBindings: ProtectedInputBindingsSchema.optional(),
 });
 
 export function schemaBoundValueSchema<ValueSchema extends z.ZodType>(

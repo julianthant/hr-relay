@@ -1,3 +1,4 @@
+import { valueFreeProtectedData } from "../protected-input.js";
 /**
  * Durable terminal workflow results and the exact checkpoint identities from
  * which they were derived (ref workflow-model §5.7, D114).
@@ -134,7 +135,7 @@ export type RunDryRunPreviewResult = z.infer<typeof RunDryRunPreviewResultSchema
 
 export function deriveRunResultDigest(result: unknown): Fingerprint {
   return FingerprintSchema.parse(sha256Hex(
-    `hrauto:run-result:v1\0${canonicalJsonStringify(result)}`,
+    `hrauto:run-result:v1\0${canonicalJsonStringify(valueFreeProtectedData(result))}`,
   ));
 }
 
@@ -147,7 +148,7 @@ export function deriveTerminalDependencyDigest(dependencies: unknown): Fingerpri
 
 export function deriveCheckpointOutputDigest(output: unknown): Fingerprint {
   return FingerprintSchema.parse(sha256Hex(
-    `hrauto:checkpoint-output:v1\0${canonicalJsonStringify(output)}`,
+    `hrauto:checkpoint-output:v1\0${canonicalJsonStringify(valueFreeProtectedData(output))}`,
   ));
 }
 
@@ -179,7 +180,8 @@ export const RunResultRecordSchema = z.strictObject({
       message: "terminal result schema hash must equal resultSchemaHash",
     });
   }
-  if (record.resultDigest !== deriveRunResultDigest(record.result)) {
+  if (record.resultDigest !== deriveRunResultDigest(record.result)
+    && record.resultDigest !== sha256Hex(`hrauto:run-result:v1\0${canonicalJsonStringify(record.result)}`)) {
     context.addIssue({
       code: "custom",
       path: ["resultDigest"],

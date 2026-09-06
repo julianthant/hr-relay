@@ -1,3 +1,5 @@
+import { protectedTaskLogger } from "./observed-data.js";
+import { valueFreeProtectedData, retainedRunProtectedBindings, hasProtectedTransactionInput } from "../domain/protected-input.js";
 import { isFreshOccurrenceProof } from "./repeat-proof.js";
 /**
  * Ref write-safety §4 crash-window recovery (D118) and the §4.1 typed operator
@@ -222,6 +224,13 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
     if (run === undefined) {
       throw new Error(`write intent ${input.writeIntentId} names run ${intent.runId}, which does not exist`);
     }
+    const protectedReason: typeof deriveWriteAuthorityReason = (code, kind, detail) => {
+      const bindings = retainedRunProtectedBindings(run);
+      if (bindings.length === 0) return deriveWriteAuthorityReason(code, kind, detail);
+      const parsed: unknown = kind === "exception" || kind === "session" ? "protected detail withheld" : JSON.parse(detail);
+      return deriveWriteAuthorityReason(code, kind, canonicalJsonStringify({ protectedBindings: bindings,
+        evidence: valueFreeProtectedData(parsed, bindings) }));
+    };
     /*
      * D136: resolvability binds to the SEMANTIC surface this probe consumes —
      * the workflow/version identity, the transaction node that commits this
@@ -266,7 +275,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
     /* the probe runs FIRST — before any startAt/resume logic (ref write-safety §4) */
     let verdict: RuntimeProbeVerdict;
     try {
-      verdict = await executeIdempotencyProbe(probeDeps, {
+      verdict = await executeIdempotencyProbe({ ...probeDeps, log: protectedTaskLogger(probeDeps.log, run) }, {
         commitContract,
         commitInput,
         instance: instanceSelection,
@@ -278,9 +287,9 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
       return park(
         intent,
         "unknown",
-        `recovery probe threw for ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}; `
+        `recovery probe threw for ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))}; `
           + "the target state is unknown and only a typed resolution may release it",
-        deriveWriteAuthorityReason(
+        protectedReason(
           "recovery-probe-exception",
           "probe",
           error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`,
@@ -292,7 +301,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
 
     if (intent.occurrence !== undefined && verdict.state !== "present") {
       return park(intent, "unknown", "Generic business-key evidence cannot identify the new write occurrence",
-        deriveWriteAuthorityReason("recovery-probe-unknown", "probe", canonicalJsonStringify(verdict)));
+        protectedReason("recovery-probe-unknown", "probe", canonicalJsonStringify(verdict)));
     }
     if (verdict.state === "present") {
       const completion = commitContract.writeSafety.completion;
@@ -308,9 +317,9 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
         return park(
           intent,
           "present-proof-invalid",
-          `recovery probe found ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} present, but its `
+          `recovery probe found ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))} present, but its `
           + "proof does not satisfy the declared completion schema; a present we cannot validate is indeterminate, not done",
-          deriveWriteAuthorityReason(
+          protectedReason(
             "recovery-present-proof-schema-failure",
             "proof",
             error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`,
@@ -321,7 +330,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
         schemaHash: deriveSchemaHash(completion.proofSchema, "output"), value: proofValue,
       })) {
         return park(intent, "unknown", "Earlier receipt cannot settle the new write occurrence",
-          deriveWriteAuthorityReason("recovery-probe-unknown", "proof", canonicalJsonStringify(proofValue)));
+          protectedReason("recovery-probe-unknown", "proof", canonicalJsonStringify(proofValue)));
       }
       if (run.lifecycle.state !== "parked-write") {
         throw new Error(
@@ -363,15 +372,15 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
 
     if (verdict.state === "ambiguous") {
       return park(intent, "ambiguous",
-        `recovery probe found ${String(verdict.matches)} matches for ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}; `
+        `recovery probe found ${String(verdict.matches)} matches for ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))}; `
         + "verify in the target system, then use the typed resolutions",
-      deriveWriteAuthorityReason("recovery-probe-ambiguous", "probe", canonicalJsonStringify(verdict)));
+      protectedReason("recovery-probe-ambiguous", "probe", canonicalJsonStringify(verdict)));
     }
     if (verdict.state === "unknown") {
       return park(intent, "unknown",
-        `recovery probe is indeterminate for ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}; `
+        `recovery probe is indeterminate for ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))}; `
         + "verify in the target system, then use the typed resolutions",
-      deriveWriteAuthorityReason("recovery-probe-unknown", "probe", canonicalJsonStringify(verdict)));
+      protectedReason("recovery-probe-unknown", "probe", canonicalJsonStringify(verdict)));
     }
 
     /* absent — one observation is diagnostic; authority needs D64/D69 */
@@ -444,9 +453,9 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
     return park(
       intent,
       code,
-      `negative settlement parked ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} `
+      `negative settlement parked ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))} `
         + `(${evaluation.code}); only the declared settlement policy or a typed operator resolution may release it`,
-      deriveWriteAuthorityReason(
+      protectedReason(
         `negative-settlement-${evaluation.code}`,
         "settlement",
         canonicalJsonStringify(evaluation),

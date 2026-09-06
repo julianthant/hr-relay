@@ -768,11 +768,11 @@ export const SeparationsCanonicalInput = defineCanonicalInput(
   [
     {
       documentNumber: "4510",
-      timekeeperName: "Julian Zaw",
+      timekeeperName: "Synthetic Timekeeper",
     },
     {
       documentNumber: "4524",
-      timekeeperName: "Julian Zaw",
+      timekeeperName: "Synthetic Timekeeper",
       searchTimeoutMs: 30_000,
       reRead: { ordinal: 1, reason: "the department corrected the last day worked" },
     },
@@ -859,6 +859,7 @@ export const separationsWorkflow = defineWorkflow({
   icon: "ShieldCheck",
   category: "separation",
   canonicalInput: SeparationsCanonicalInput,
+  protectedInputs: [{ inputPath: "timekeeperName", name: "timekeeperName" }],
   inputSubject: "document",
   surface: { shape: "single" },
   /**
@@ -880,16 +881,8 @@ export const separationsWorkflow = defineWorkflow({
    * action from the number, and the schema now has exactly one required field
    * that varies — so the modal has a box and the rule D260 wrote is unchanged.
    *
-   * `timekeeperName` rides in `constants[]`, which is only legitimate because
-   * it does not vary per RUN — §9.16 decision 6a-2 ratified it as ingress, and
-   * D260's own table records it as constant *per operator*. That is the honest
-   * scope of this constant and it is worth stating where somebody will read it:
-   * it is a fact about WHO is filing, baked into a bundle-safe descriptor, and
-   * the trigger that ends it is a SECOND timekeeper — at which point it must
-   * become a typed form field (D260 shape 1) rather than a second constant.
-   * `config.operator.timekeeperName` stays deliberately unused: a descriptor is
-   * bundle-safe and cannot read config, and a value retained in the canonical
-   * input is one `explain run` can show for the run that used it.
+   * D331: the server binds `timekeeperName` from protected settings at admission.
+   * This browser-safe descriptor carries only the setting name and input path.
    */
   surfaces: {
     inputRun: {
@@ -907,9 +900,6 @@ export const separationsWorkflow = defineWorkflow({
          */
         rules: [
           { when: { kind: "pattern", pattern: "document-number" }, emit: "documentNumber" },
-        ],
-        constants: [
-          { field: "timekeeperName", value: { kind: "text", text: "Julian Zaw" } },
         ],
       },
       /**
@@ -1033,14 +1023,8 @@ export const separationsWorkflow = defineWorkflow({
   },
   presentation: {
     title: (input) => `Separation ${input.documentNumber}`,
-    /**
-     * D261 removed the action id from the ingress, so the subtitle no longer
-     * has one to abbreviate — and it never should have carried it: an operator
-     * reading a queue row learns nothing from eight hex characters of a
-     * workflow-step address. The filer is the fact the row was missing.
-     */
     subtitle: (input) => (input.reRead === undefined
-      ? `Filed by ${input.timekeeperName}`
+      ? undefined
       : `re-read ${String(input.reRead.ordinal)} — ${input.reRead.reason}`),
   },
   /** D229 — the descriptor's own words about each node, projected by the explorer. */
@@ -1275,7 +1259,8 @@ export const separationsWorkflow = defineWorkflow({
     const comparison = task(
       comparisonNode,
       [document, plan, subject, jobSummary, nameSearch, terminationType, departmentOption, employment, dates],
-      ({ input, outputs }) => ({
+      ({ input, outputs, protectedInputBindings }) => ({
+      ...(protectedInputBindings === undefined ? {} : { protectedBindings: [...protectedInputBindings] }),
     /**
      * Everything identity authority consumes depends INTO this node. That is
      * what makes `identity-gate-before-commit` pass on a graph with three
@@ -1316,7 +1301,8 @@ export const separationsWorkflow = defineWorkflow({
           payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
           payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
           terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-          timekeeperName: input.timekeeperName,
+          timekeeperName: protectedInputBindings?.find(({ name }) => name === "timekeeperName")
+            ?? { kind: "legacy-protected-input" as const, name: "timekeeperName" as const, inputPath: "timekeeperName" as const },
         },
         dates: {
           kualiLastDayWorked: outputs[DATES_NODE].kualiLastDayWorked,
@@ -1394,7 +1380,8 @@ export const separationsWorkflow = defineWorkflow({
       finalizeKualiNode,
       [approval, action, document, plan, employment, departmentOption, dates, receipt, filingPresence],
       {
-    prepareBind: ({ input, outputs }) => ({
+    prepareBind: ({ input, outputs, protectedInputBindings }) => ({
+      ...(protectedInputBindings === undefined ? {} : { protectedBindings: [...protectedInputBindings] }),
       actionId: outputs[ACTION_NODE].actionId,
       documentNumber: input.documentNumber,
       emplId: outputs[APPROVAL_NODE].approved.emplId,
@@ -1430,7 +1417,8 @@ export const separationsWorkflow = defineWorkflow({
      * output. That is what makes the permanent key stable before any page
      * mutation (ref workflow-model §3.1), and what the beat-⑥ read-back compares against.
      */
-    commitBind: ({ input, outputs }) => ({
+    commitBind: ({ input, outputs, protectedInputBindings }) => ({
+      ...(protectedInputBindings === undefined ? {} : { protectedBindings: [...protectedInputBindings] }),
       actionId: outputs[ACTION_NODE].actionId,
       documentNumber: input.documentNumber,
       emplId: outputs[APPROVAL_NODE].approved.emplId,
@@ -1470,8 +1458,8 @@ export const separationsWorkflow = defineWorkflow({
       result: result(
         SeparationsResultSchema,
         [approval, employment, departmentOption, dates, receipt, clearPending, fileTermination, finalizeKuali],
-        ({ outputs }) => ({
-      documentNumber: outputs[APPROVAL_NODE].documentNumber,
+        ({ input, outputs }) => ({
+      documentNumber: input.documentNumber,
       approved: outputs[APPROVAL_NODE].approved,
       employment: {
         emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,

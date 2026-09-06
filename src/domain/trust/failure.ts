@@ -117,9 +117,11 @@ export type FailureRecord = z.infer<typeof FailureRecordSchema>;
  * codes, states, digests and action ids remain useful; only opaque sentences
  * (and historical page display strings) are reconstructed.
  */
-export function projectFailureForOperator(failureInput: unknown): FailureRecord {
+export function projectFailureForOperator(failureInput: unknown, protectedInput?: boolean): FailureRecord {
   const failure = FailureRecordSchema.parse(failureInput);
-  const { writeAuthorityReason, ...operatorBase } = failure;
+  const protectedWorkflow = protectedInput ?? ["separations", "separations-kuali-finalization", "person-lookup"].includes(failure.workflowId);
+  const { writeAuthorityReason, subject, ...withoutSubject } = failure;
+  const operatorBase = protectedWorkflow ? withoutSubject : { ...withoutSubject, ...(subject === undefined ? {} : { subject }) };
   if (writeAuthorityReason !== undefined) {
     const safeSummary = `${failure.code}: write safety refused without replaying authority-only diagnostic detail`;
     return FailureRecordSchema.parse({
@@ -135,10 +137,11 @@ export function projectFailureForOperator(failureInput: unknown): FailureRecord 
       })),
     });
   }
-  if (failure.diagnosticSafetyVersion === CURRENT_DIAGNOSTIC_SAFETY_VERSION) return failure;
+  if (!protectedWorkflow && failure.diagnosticSafetyVersion === CURRENT_DIAGNOSTIC_SAFETY_VERSION) return failure;
   return FailureRecordSchema.parse({
     ...operatorBase,
-    summary: `${failure.code}: historical diagnostic text withheld (predates diagnostic safety v1)`,
+    summary: protectedWorkflow && failure.diagnosticSafetyVersion === CURRENT_DIAGNOSTIC_SAFETY_VERSION ? `${failure.code}: protected diagnostic text withheld`
+      : `${failure.code}: historical diagnostic text withheld (predates diagnostic safety v1)`,
     causeChain: failure.causeChain.map((cause) => ({
       ...cause,
       summary: `${cause.code}: historical ${cause.role} diagnostic text withheld`,

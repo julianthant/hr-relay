@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +10,7 @@ import { defineRuntimeIsolation } from "../../src/config/define-runtime-isolatio
 import { deriveRunResultDigest, deriveTerminalDependencyDigest, RunResultRecordSchema } from "../../src/domain/run/result.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
+import { journalProtectedSettings } from "./helpers/journaled-protected-settings.js";
 import { settingsRootPaths } from "../../src/domain/config/settings-root.js";
 import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
 import { createActivityPersonPseudonymBackfillService } from "../../src/server/activity-person-pseudonym-backfill/service.js";
@@ -600,26 +600,14 @@ describe("reviewed activity person pseudonym backfill", () => {
       { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-command-test" },
       manualClock(new Date(COMPOSITION_NOW)),
     );
-    database.close();
     const protectedStore = createProtectedSettingsFileAuthority({
       path: settingsRootPaths(join(root, stateRoot)).ordinary,
       assertWriteIdAvailable: () => undefined,
     });
-    const prepared = protectedStore.apply({
-      commandId: randomUUID(),
-      commandFingerprint: "a".repeat(64),
-      expectedRevision: 1,
-      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-      writeId: randomUUID(),
-      entries: {
-        activityPersonPseudonym: {
-          set: { keyHex: KEY_HEX, keyGeneration: "activity-person-g1" },
-        },
-      },
-      updatedAt: COMPOSITION_NOW,
-    });
-    if (prepared.state !== "applied") assert.fail("expected protected Settings update");
-    prepared.commit();
+    journalProtectedSettings(database, protectedStore, {
+      activityPersonPseudonym: { set: { keyHex: KEY_HEX, keyGeneration: "activity-person-g1" } },
+    }, COMPOSITION_NOW);
+    database.close();
     try {
       const productionComposition = readFileSync(
         new URL("../../src/server/activity-person-pseudonym-backfill/compose.ts", import.meta.url),
@@ -628,7 +616,7 @@ describe("reviewed activity person pseudonym backfill", () => {
       assert.doesNotMatch(productionComposition, /pseudonyms\?:/u);
       assert.match(
         productionComposition,
-        /createActivityPersonPseudonymBackfillWriteCapability\(\s*requireActivityPersonPseudonymDomain\(\{ read: \(\) => protectedAuthority\.read\(\) \}\)/u,
+        /createActivityPersonPseudonymBackfillWriteCapability\(\s*requireActivityPersonPseudonymDomain\(createJournaledProtectedSecretSource\(\{ file: protectedAuthority, database \}\)\)/u,
       );
       const outcome = composeActivityPersonPseudonymBackfillCommand({
         isolation,

@@ -33,6 +33,7 @@ import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { buildSettingsEditor } from "../../../src/server/dashboard/queries/settings-editor.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
 import {
+  createJournaledProtectedSecretSource,
   createProtectedSettingsRuntimeReader,
   createSettingsRuntimeReader,
 } from "../../../src/server/settings-runtime.js";
@@ -88,7 +89,7 @@ function fixture(afterLockLinked: () => void = () => undefined) {
   });
   const initial = file.read();
   const active = activate(database, initial, clock, "11111111-1111-4111-8111-111111111111");
-  const reader = createSettingsRuntimeReader({ file, database, environment: {}, clock, active });
+  const reader = createSettingsRuntimeReader({ file, database, hostFacts: hostConfigFacts({}), clock, active });
   return { database, databasePath, file, path, clock, initial, active, reader, locks: () => lockAcquisitions };
 }
 
@@ -275,7 +276,7 @@ describe("verified Settings reader snapshot", () => {
     assert.deepEqual(readFileSync(f.path), bytes);
     assert.deepEqual(f.database.authority.runtimeConfig.get(), runtimeBefore);
     const currentReader = createSettingsRuntimeReader({
-      file: f.file, database: f.database, environment: {}, clock: f.clock, active,
+      file: f.file, database: f.database, hostFacts: hostConfigFacts({}), clock: f.clock, active,
     });
     assert.deepEqual(currentReader.read(), { record, runtimeStatus: { state: "current", identity: active } });
     assert.equal(f.locks() - before, 1);
@@ -384,5 +385,26 @@ describe("verified protected Settings reader snapshot", () => {
       () => f.protectedReader.read(),
       /protected settings revision 2 has no durable command journal for protected\.json/u,
     );
+  });
+});
+
+
+describe("journal-authenticated next-use protected source", () => {
+  it("observes an applied value at next use without changing ordinary runtime identity", () => {
+    const f = protectedFixture();
+    const source = createJournaledProtectedSecretSource({ file: f.protectedFile, database: f.database });
+    const before = f.database.authority.runtimeConfig.get();
+    assert.equal(source.read().entries.ucpathPassword, undefined);
+    persistProtected(f, "synthetic-next-use-password", true);
+    assert.equal(source.read().entries.ucpathPassword?.value, "synthetic-next-use-password");
+    assert.deepEqual(f.database.authority.runtimeConfig.get(), before);
+    assert.equal(f.reader.read().runtimeStatus.state, "current");
+  });
+
+  it("refuses file-only publication even when the protected file is otherwise valid", () => {
+    const f = protectedFixture();
+    const source = createJournaledProtectedSecretSource({ file: f.protectedFile, database: f.database });
+    persistProtected(f, "synthetic-unjournaled-password", false);
+    assert.throws(() => source.read(), /has no durable command journal for protected\.json/u);
   });
 });

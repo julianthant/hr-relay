@@ -161,6 +161,8 @@ function enqueueRun(world: SeedWorld, spec: SeedSpec): RunRecord {
       raw: { emplId: "10873698" },
       parsed: {
         schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
+        // Synthetic ordinary caller input, carrying the production admission source marker.
+        protectedBindings: [],
         value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
       },
       ingressSchemaHash: INGRESS_SCHEMA_HASH,

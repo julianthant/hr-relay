@@ -41,7 +41,7 @@ import { ledgerFilePath, listLedgerFiles } from "./ledger-projector.js";
 
 export interface LedgerReadThrough {
   /** Resolve every pointer, in the order given. Never reorders, never drops. */
-  resolve(pointers: readonly LedgerLinePointer[]): readonly ResolvedLedgerLineWire[];
+  resolve(pointers: readonly LedgerLinePointer[], protectedTransaction?: boolean): readonly ResolvedLedgerLineWire[];
   /**
    * The Activity report's write-ledger block over `[from, to]` inclusive
    * (D236) — what was actually filed, folded by `(system, instance)`.
@@ -57,7 +57,7 @@ export interface LedgerReadThrough {
   foldActivityRange(from: string, to: string): ActivityLedgerBlock;
 }
 
-function resolveOne(stateRoot: string, pointer: LedgerLinePointer): ResolvedLedgerLineWire {
+function resolveOne(stateRoot: string, pointer: LedgerLinePointer, protectedTransaction = false): ResolvedLedgerLineWire {
   const path = ledgerFilePath(stateRoot, pointer.system, pointer.date);
   if (!existsSync(path)) {
     return unresolvedLedgerLine(
@@ -81,12 +81,12 @@ function resolveOne(stateRoot: string, pointer: LedgerLinePointer): ResolvedLedg
   let json: unknown;
   try {
     json = JSON.parse(line);
-  } catch (error) {
+  } catch {
     return unresolvedLedgerLine(
       pointer,
       "line-malformed",
       `${pointer.system}-${pointer.date}.jsonl line ${String(pointer.sequence + 1)} is not JSON: `
-      + (error instanceof Error ? error.message : String(error)),
+      + "invalid JSON",
     );
   }
   const parsed = LedgerEntrySchema.safeParse(json);
@@ -95,7 +95,7 @@ function resolveOne(stateRoot: string, pointer: LedgerLinePointer): ResolvedLedg
       pointer,
       "line-malformed",
       `${pointer.system}-${pointer.date}.jsonl line ${String(pointer.sequence + 1)} is not a ledger entry: `
-      + parsed.error.message,
+      + "invalid ledger record",
     );
   }
   if (parsed.data.seq !== pointer.sequence) {
@@ -109,7 +109,7 @@ function resolveOne(stateRoot: string, pointer: LedgerLinePointer): ResolvedLedg
       + `${String(parsed.data.seq)}; this partition disagrees with the pointer and is not searched around`,
     );
   }
-  return resolveLedgerLine(pointer, parsed.data.payload);
+  return resolveLedgerLine(pointer, parsed.data.payload, protectedTransaction);
 }
 
 /** `date` plus `days`, on the UTC calendar the partition file names use. */
@@ -195,8 +195,8 @@ function foldActivity(stateRoot: string, fromInput: string, toInput: string): Ac
 export function createLedgerReadThrough(stateRootInput: unknown): LedgerReadThrough {
   const stateRoot = z.string().min(1).parse(stateRootInput);
   return Object.freeze({
-    resolve(pointers: readonly LedgerLinePointer[]): readonly ResolvedLedgerLineWire[] {
-      return Object.freeze(pointers.map((pointer) => resolveOne(stateRoot, pointer)));
+    resolve(pointers: readonly LedgerLinePointer[], protectedTransaction?: boolean): readonly ResolvedLedgerLineWire[] {
+      return Object.freeze(pointers.map((pointer) => resolveOne(stateRoot, pointer, protectedTransaction)));
     },
     foldActivityRange(from: string, to: string): ActivityLedgerBlock {
       return foldActivity(stateRoot, from, to);

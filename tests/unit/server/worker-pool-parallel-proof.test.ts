@@ -337,6 +337,7 @@ function openSoakHarness(options?: SoakHarnessOptions): SoakHarness {
     clock,
     scheduler,
     launch: {
+      environment: {},
       command: "/usr/bin/fake-worker-node",
       prefixArgs: Object.freeze(["--import", "tsx", "src/cli.ts"]),
       cwd: root,
@@ -842,6 +843,7 @@ describe("W5 real processes: two children supervised concurrently through the co
       clock: systemClock,
       scheduler: createTimeoutDeadlineScheduler(systemClock),
       launch: {
+      environment: {},
         command: launchCommandOverride ?? process.execPath,
         prefixArgs: Object.freeze(["--import", "tsx", STUB_CLI_PATH, dbPath, lockRoot]),
         cwd: REPO_ROOT,
@@ -1077,6 +1079,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
         repoRoot,
         workerProcess: {
           launch: {
+      environment: {},
             command: process.execPath,
             prefixArgs: Object.freeze(["--import", "tsx", STUB_CLI_PATH, dbPath, lockRoot]),
             cwd: REPO_ROOT,
