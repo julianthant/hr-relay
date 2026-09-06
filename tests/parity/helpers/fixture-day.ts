@@ -1692,8 +1692,8 @@ export const FIXTURE_START_PLAN: StartPlanResponse = StartPlanResponseSchema.par
     inputFingerprint: "e".repeat(64),
   },
   planned: [
-    { runId: uuidOf(910), traceId: traceOf(910), title: "EID 10873698", subtitle: "person lookup", matchKey: "eid:10873698" },
-    { runId: uuidOf(911), traceId: traceOf(911), title: "Battistessa, Johnnie", subtitle: "person lookup", matchKey: "name:Battistessa, Johnnie" },
+    { logicalKey: "entry:1", title: "EID 10873698", subtitle: "person lookup", matchKey: "eid:10873698" },
+    { logicalKey: "entry:2", title: "Battistessa, Johnnie", subtitle: "person lookup", matchKey: "name:Battistessa, Johnnie" },
   ],
   refused: [
     { entry: 3, code: "active-run-exists", message: "an active run already exists for eid:10873698" },
@@ -1725,8 +1725,7 @@ export const FIXTURE_SEPARATIONS_START_PLAN: StartPlanResponse = StartPlanRespon
   },
   planned: [
     {
-      runId: uuidOf(932),
-      traceId: "fp-101500-0932",
+      logicalKey: "entry:1",
       title: "Fixture plan row",
       subtitle: "generic layout evidence",
       matchKey: "fixture:plan-row-1",

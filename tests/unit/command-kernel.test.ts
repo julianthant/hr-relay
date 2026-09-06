@@ -1,3 +1,5 @@
+import { RETIRED_EDIT_CHECKPOINT_COMMAND } from "./fixtures/phase1c-contract-fixtures.js";
+import { RunRecordService, lifecycleCommandId } from "../../src/core/run-record-service.js";
 /**
  * D113 command-kernel semantics (ref dashboard-surfaces §Phase-1f authority, §2.4).
  *
@@ -75,6 +77,11 @@ import {
   WRITE_INTENT_ATTEMPTING,
 } from "./fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import {
+  appliedRunIds,
+  seedSyntheticRuntimeConfig,
+  singleAppliedRunId,
+} from "./fixtures/operator-command-fixtures.js";
 import { fixtureDescriptor } from "./architecture/helpers/descriptor-fixtures.js";
 import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
@@ -237,6 +244,12 @@ function createHarness(
     clock,
   );
   openDatabases.push(database);
+  seedSyntheticRuntimeConfig(database);
+  if (wrap !== undefined) {
+    const transaction = database.withAuthorityTransaction.bind(database);
+    database.withAuthorityTransaction = (work) => transaction((repositories) => work(wrap(repositories)));
+  }
+
   const workerCalls: string[] = [];
   const writeCalls: string[] = [];
   const settingsCalls: string[] = [];
@@ -244,6 +257,7 @@ function createHarness(
   const settingsCommits: string[] = [];
   const explorerCalls: unknown[] = [];
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,
@@ -252,7 +266,7 @@ function createHarness(
     authority: {
       withAuthorityTransaction: (work) => {
         const wrappedWork = (repositories: AuthorityRepositories) =>
-          work(wrap === undefined ? repositories : wrap(repositories));
+          work(repositories);
         const result = transactionWrap === undefined
           ? database.withAuthorityTransaction(wrappedWork)
           : transactionWrap(database, wrappedWork);
@@ -460,11 +474,13 @@ function applySettingsRequiringRestart(harness: Harness): void {
 }
 
 function commandFixture(family: CommandRequest["family"], type: string): CommandRequest {
-  const fixture = COMMAND_FIXTURES
-    .map((candidate) => CommandRequestSchema.parse(candidate))
-    .find((candidate) => candidate.family === family && candidate.type === type);
+  const fixture = COMMAND_FIXTURES.find((candidate) => {
+    if (typeof candidate !== "object" || candidate === null) return false;
+    const record = candidate as Readonly<Record<string, unknown>>;
+    return record.family === family && record.type === type;
+  });
   assert.ok(fixture !== undefined, `${family}/${type} fixture exists`);
-  return fixture;
+  return CommandRequestSchema.parse(fixture);
 }
 
 describe("settings restart fence", () => {
@@ -519,7 +535,7 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
       /dashboard runtime settings are stale; restart activation is required/u,
     );
     assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
-    assert.equal(harness.database.authority.runs.get(plan.planned[0].runId), undefined);
+    assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), []);
   });
 
   it("consumes the plan and enqueues every accepted run in one applied command", () => {
@@ -531,13 +547,17 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
     assert.equal(result.state, "applied");
     if (result.state !== "applied") return;
     assert.equal(result.affectedTargets.length, 3);
+    const runIds = appliedRunIds(result);
+    assert.equal(runIds.length, plan.planned.length);
 
     const consumed = harness.database.authority.startPlans.get(plan.startPlanId);
     assert.ok(consumed?.consumedBy !== undefined);
     assert.equal(consumed.version, plan.version + 1);
-    for (const planned of plan.planned) {
-      const run = harness.database.authority.runs.get(planned.runId);
-      assert.ok(run !== undefined, planned.runId);
+    for (const [index, planned] of plan.planned.entries()) {
+      const runId = runIds[index];
+      assert.ok(runId !== undefined);
+      const run = harness.database.authority.runs.get(runId);
+      assert.ok(run !== undefined, runId);
       assert.equal(run.lifecycle.state, "queued");
       assert.deepEqual(run.input.raw, planned.rawInput);
       assert.deepEqual(run.input.parsed, planned.input);
@@ -556,8 +576,9 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
     const result = harness.kernel.execute(startCommand(plan));
     assert.equal(result.state, "applied");
+    const runIds = appliedRunIds(result);
 
-    const sessionIds = new Set(plan.planned.map((planned) => harness.database.authority.runs.get(planned.runId)?.sessionId));
+    const sessionIds = new Set(runIds.map((runId) => harness.database.authority.runs.get(runId)?.sessionId));
     assert.equal(sessionIds.size, 1, "both runs carry the same session id");
     const [sessionId] = [...sessionIds];
     assert.ok(sessionId !== undefined);
@@ -569,7 +590,7 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
     // Membership is DERIVED — the session row names nobody; the run table does.
     assert.deepEqual(
       harness.database.authority.runs.listBySession(sessionId).map((run) => run.envelope.runId).sort(),
-      plan.planned.map((planned) => planned.runId).sort(),
+      [...runIds].sort(),
     );
     assert.deepEqual(harness.database.authority.runSessions.listByWorkflow(plan.workflowId).map((row) => row.sessionId), [sessionId]);
   });
@@ -596,7 +617,7 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
     const stored = harness.database.authority.startPlans.get(plan.startPlanId);
     assert.equal(stored?.consumedBy, undefined);
     assert.equal(stored?.version, plan.version);
-    assert.equal(harness.database.authority.runs.get(plan.planned[0].runId), undefined);
+    assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), []);
     assert.equal(harness.database.authority.runSessions.listByWorkflow(plan.workflowId).length, 0);
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
     assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
@@ -622,7 +643,7 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
     shouldFail = true;
     const generationBefore = harness.database.getMeta().authorityGeneration;
     assert.throws(() => harness.kernel.execute(startCommand(plan)), /injected active-run lookup failure/);
-    assert.equal(harness.database.authority.runs.get(plan.planned[0].runId), undefined);
+    assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), []);
     assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
     assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
   });
@@ -704,7 +725,10 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
     assert.equal(harness.database.authority.runSessions.listByWorkflow(plan.workflowId).length, 0);
     // The FIRST planned run was enqueued before the second refused — all of it
     // must have rolled back with the consumption.
-    assert.equal(harness.database.authority.runs.get(plan.planned[0].runId), undefined);
+    assert.deepEqual(
+      harness.database.authority.runs.listByWorkflow(plan.workflowId).map((run) => run.envelope.runId),
+      [UUID_7],
+    );
     assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
   });
@@ -714,29 +738,33 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
     const first = createPlan(harness, supersedeDescriptor, ["10800000"]);
     const firstResult = harness.kernel.execute(startCommand(first));
     assert.equal(firstResult.state, "applied");
-    const activeRunId = first.planned[0].runId;
+    const activeRunId = singleAppliedRunId(firstResult);
 
     const second = createPlan(harness, supersedeDescriptor, ["10800000"]);
     const result = harness.kernel.execute(startCommand(second));
     assert.equal(result.state, "applied");
+    const replacementId = appliedRunIds(result).at(-1);
+    assert.ok(replacementId !== undefined);
 
     const superseded = harness.database.authority.runs.get(activeRunId);
     assert.equal(superseded?.lifecycle.state, "terminal");
     if (superseded?.lifecycle.state === "terminal") {
       assert.equal(superseded.lifecycle.outcome, "superseded");
     }
-    const replacement = harness.database.authority.runs.get(second.planned[0].runId);
+    const replacement = harness.database.authority.runs.get(replacementId);
     assert.equal(replacement?.lifecycle.state, "queued");
   });
 
   it("allow-parallel enqueues beside an active run for the same item", () => {
     const harness = createHarness();
     const first = createPlan(harness, parallelDescriptor, ["10800000"]);
-    assert.equal(harness.kernel.execute(startCommand(first)).state, "applied");
+    const firstResult = harness.kernel.execute(startCommand(first));
+    assert.equal(firstResult.state, "applied");
     const second = createPlan(harness, parallelDescriptor, ["10800000"]);
-    assert.equal(harness.kernel.execute(startCommand(second)).state, "applied");
-    const firstRun = harness.database.authority.runs.get(first.planned[0].runId);
-    const secondRun = harness.database.authority.runs.get(second.planned[0].runId);
+    const secondResult = harness.kernel.execute(startCommand(second));
+    assert.equal(secondResult.state, "applied");
+    const firstRun = harness.database.authority.runs.get(singleAppliedRunId(firstResult));
+    const secondRun = harness.database.authority.runs.get(singleAppliedRunId(secondResult));
     assert.equal(firstRun?.lifecycle.state, "queued");
     assert.equal(secondRun?.lifecycle.state, "queued");
   });
@@ -946,7 +974,7 @@ describe("D113 run arms", () => {
     const plan = createPlan(harness, descriptor, [eid]);
     const result = harness.kernel.execute(startCommand(plan));
     assert.equal(result.state, "applied");
-    return plan.planned[0].runId;
+    return singleAppliedRunId(result);
   }
 
   it("retries a terminal run into a fresh linked run and refuses an active item", () => {
@@ -1057,7 +1085,7 @@ describe("D113 run arms", () => {
     assert.equal(stale.state, "conflict");
 
     const result = harness.kernel.execute(runCommand("cancel", parentId, parent.version));
-    assert.equal(result.state, "applied");
+    assert.equal(result.state, "applied", JSON.stringify(result));
     const cancelledParent = harness.database.authority.runs.get(parentId);
     assert.equal(cancelledParent?.lifecycle.state, "terminal");
     const cascaded = harness.database.authority.runs.get(cascadeChildId);
@@ -1302,7 +1330,7 @@ describe("D113 gate resolution", () => {
     assert.equal(harness.database.authority.startPlans.create(plan).state, "inserted");
     const started = harness.kernel.execute(startCommand(plan));
     assert.equal(started.state, "applied");
-    const runId = plan.planned[0].runId;
+    const runId = singleAppliedRunId(started);
     const claimed = harness.database.authority.runs.claimNext({ workflow: "fixture-graph", workerId: "worker-1", now: NOW });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") throw new Error("unreachable");
@@ -1583,9 +1611,11 @@ describe("D113 deferred arms", () => {
 
   it("returns typed capability-unavailable for EVERY deferred arm with zero authority side effects", () => {
     const harness = createHarness();
-    const deferredFixtures = COMMAND_FIXTURES
-      .map((fixture) => CommandRequestSchema.parse(fixture))
-      .filter((request) => deferredKeys.has(`${request.family}/${request.type}`));
+    const deferredFixtures = [...deferredKeys].map((key) => {
+      const [family, type] = key.split("/");
+      assert.ok(family !== undefined && type !== undefined);
+      return commandFixture(family as CommandRequest["family"], type);
+    });
     assert.equal(deferredFixtures.length, deferredKeys.size);
 
     for (const request of deferredFixtures) {
@@ -1611,6 +1641,12 @@ describe("D113 deferred arms", () => {
         `${request.family}/${request.type} was audited`,
       );
     }
+  });
+
+  it("rejects the retired edit-checkpoint command at the strict schema boundary", () => {
+    const fixture = RETIRED_EDIT_CHECKPOINT_COMMAND;
+    assert.ok(fixture !== undefined, "the retired fixture remains as a negative control");
+    assert.equal(CommandRequestSchema.safeParse(fixture).success, false);
   });
 });
 
@@ -2309,7 +2345,7 @@ describe("D308 delete — a terminal run leaves authority behind one tombstone",
     const plan = createPlan(harness, descriptor, [eid]);
     const result = harness.kernel.execute(startCommand(plan));
     assert.equal(result.state, "applied");
-    return plan.planned[0].runId;
+    return singleAppliedRunId(result);
   }
 
   function settle(harness: Harness, runId: string): number {
@@ -2369,7 +2405,7 @@ describe("D308 delete — a terminal run leaves authority behind one tombstone",
     const tombstone = harness.database.authority.deletedRuns.get(runId);
     assert.ok(tombstone !== undefined, "exactly one tombstone remains");
     assert.equal(tombstone.origin, "queue");
-    assert.equal(tombstone.commandId, command.commandId);
+    assert.equal(tombstone.commandId, lifecycleCommandId("operator-delete", command.commandId));
     assert.equal(tombstone.workflow, "kernel-reject");
     assert.deepEqual(tombstone.removed.filter(({ table }) => table === "tasks"), [{ table: "tasks", rows: 1 }]);
     assert.ok(harness.database.authority.commands.get(command.commandId) !== undefined, "the delete is journaled");
@@ -2377,7 +2413,7 @@ describe("D308 delete — a terminal run leaves authority behind one tombstone",
 
     const again = harness.kernel.execute(runCommand("delete", runId, version));
     assert.equal(again.state, "rejected");
-    if (again.state === "rejected") assert.equal(again.code, "target-not-found");
+    if (again.state === "rejected") assert.equal(again.code, "target-deleted");
   });
 
   it("sends an archived run to the Archive door, which cites the exact record it removes", () => {

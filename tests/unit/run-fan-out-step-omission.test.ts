@@ -1,3 +1,6 @@
+import { RunRecordService } from "../../src/core/run-record-service.js";
+import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { seedSyntheticRuntimeConfig } from "./fixtures/operator-command-fixtures.js";
 /**
  * D307 — `fanOutQueuedRuns` (src/core/run-fan-out.ts) is the ONE place N
  * queued runs are inserted; every start/retry/relaunch door funnels through
@@ -18,7 +21,7 @@ import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import type { StepOmissions } from "../../src/domain/workflow/step-omission.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { PersonLookupCanonicalInput, PersonLookupInput } from "../../src/workflows/person-lookup/workflow.js";
-import { HASH_A, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
+import { HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const roots: string[] = [];
@@ -35,15 +38,15 @@ function openDatabase(): AuthorityDatabase {
     { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
     manualClock(new Date(NOW)),
   );
+  seedSyntheticRuntimeConfig(database);
   databases.push(database);
   return database;
 }
 
-function plannedEntry(runId: string, eid: string) {
+function plannedEntry(eid: string) {
   return {
-    runId,
     itemId: deriveItemId("person-lookup", `eid:${eid}`),
-    traceId: `pl-170000-${runId.slice(0, 4)}`,
+    title: `EID ${eid}`,
     matchKey: `eid:${eid}`,
     rawInput: { emplId: eid },
     parsedInput: {
@@ -55,11 +58,12 @@ function plannedEntry(runId: string, eid: string) {
 
 function baseEnvelope(sessionId: string, stepOmissions?: StepOmissions) {
   return {
+    commandId: sessionId, actorId: "local-operator",
     workflow: personLookupDescriptor.id,
     descriptorVersion: personLookupDescriptor.version,
     contractFingerprint: personLookupDescriptor.contractFingerprint,
     resolvedInstance: { ucpath: "prod" as const, crm: "prod" as const },
-    configFingerprint: HASH_A,
+    configFingerprint: HASH_B,
     configSnapshotId: UUID_4,
     shape: "single" as const,
     priority: "bulk" as const,
@@ -80,14 +84,15 @@ describe("fanOutQueuedRuns (D307)", () => {
     const stepOmissions = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/19/2026" } }];
     database.withAuthorityTransaction((repositories) => fanOutQueuedRuns(
       repositories,
+      new RunRecordService({ database, clock: manualClock(new Date(NOW)), ids: sequentialIdFactory("a"), publishQueued: () => {} }),
       (message) => { throw new Error(message); },
       personLookupDescriptor,
       baseEnvelope("bbbbbbbb-0001-4000-8000-000100000000", stepOmissions),
-      [plannedEntry("aaaaaaaa-1001-4000-8000-100100000000", "10873698")],
+      [plannedEntry("10873698")],
       NOW,
       "fixture fan-out",
     ));
-    const run = database.authority.runs.get("aaaaaaaa-1001-4000-8000-100100000000");
+    const run = database.authority.runs.listByWorkflow("person-lookup")[0];
     assert.ok(run !== undefined);
     assert.deepEqual(run.envelope.stepOmissions, stepOmissions);
   });
@@ -96,14 +101,15 @@ describe("fanOutQueuedRuns (D307)", () => {
     const database = openDatabase();
     database.withAuthorityTransaction((repositories) => fanOutQueuedRuns(
       repositories,
+      new RunRecordService({ database, clock: manualClock(new Date(NOW)), ids: sequentialIdFactory("a"), publishQueued: () => {} }),
       (message) => { throw new Error(message); },
       personLookupDescriptor,
       baseEnvelope("bbbbbbbb-0002-4000-8000-000200000000"),
-      [plannedEntry("aaaaaaaa-1002-4000-8000-100200000000", "10001573")],
+      [plannedEntry("10001573")],
       NOW,
       "fixture fan-out",
     ));
-    const run = database.authority.runs.get("aaaaaaaa-1002-4000-8000-100200000000");
+    const run = database.authority.runs.listByWorkflow("person-lookup")[0];
     assert.ok(run !== undefined);
     assert.equal(Object.hasOwn(run.envelope, "stepOmissions"), false);
   });

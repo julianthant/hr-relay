@@ -178,7 +178,7 @@ export function PlanPreview({
       ) : (
         <ul aria-label="Runs this start will create" className="flex flex-col gap-[var(--ds-space-snug)]">
           {plan.planned.map((row) => (
-            <li key={row.runId}>
+            <li key={row.logicalKey}>
               <PlanRowCard row={row} />
             </li>
           ))}
@@ -203,7 +203,7 @@ export function PlanPreview({
  * One proposed run, as a card (C57, D272 item 8 — `ref dashboard-surfaces` §10).
  *
  * The demo's `PlanRowCard` anatomy with the fields this wire actually serves:
- * `StartPlanResponse.planned[]` carries `{runId, traceId, title, subtitle,
+ * `StartPlanResponse.planned[]` carries `{logicalKey, title, subtitle,
  * matchKey}` and no role, panel, containment, born-as status or note, so those
  * are ABSENT rather than invented — their `builds:` line is ledger 1's first
  * region-C row. What replaces the demo's `panel` / `containment` chips is the
@@ -217,12 +217,12 @@ function PlanRowCard({ row }: { row: StartPlanResponse["planned"][number] }) {
         <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-base)]">
           <span className={cn(dsText.ui, "min-w-0 flex-1 truncate font-medium", dsFg.base)}>{row.title}</span>
         </div>
-        {/* The match key and the trace id are on the card's PROVENANCE LINE,
+        {/* The match key is on the card's PROVENANCE LINE,
             not in chips (unit F5b finding 5). `Chip`'s own rule says so: it is
             a single-line token that truncates inside its own border and
             recovers the cut on `title` — "if a fact cannot survive truncation
             it is not a chip: put it on the row's `MetaLine`, on its own line,
-            where it can wrap." A match key and a trace id are exactly that
+            where it can wrap." A match key is exactly that
             kind of fact: half of `eid:E1234567` is a different subject, and a
             `title` is reachable by mouse and by nobody else, which is the
             defect C48/C81 fixed two components up in this same file. */}
@@ -230,7 +230,6 @@ function PlanRowCard({ row }: { row: StartPlanResponse["planned"][number] }) {
           items={[
             row.subtitle,
             `match key ${row.matchKey}`,
-            `trace ${row.traceId}`,
           ]}
         />
       </CardBody>
@@ -332,6 +331,10 @@ export function EnqueueResultBanner({
         </div>
       </Banner>
     );
+  }
+
+  if (result.state === "confirmation-required") {
+    return <Banner tone="warning" title="Confirmation required" action={dismissWith("Close")}>{result.message}</Banner>;
   }
 
   return (

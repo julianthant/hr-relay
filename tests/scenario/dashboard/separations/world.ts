@@ -1,3 +1,6 @@
+import { runQueuedSpanEvent } from "../../../../src/server/dashboard/commands/run-queued-span.js";
+import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/domain/ids.js";
+import { RunRecordService } from "../../../../src/core/run-record-service.js";
 /**
  * The T2 world for the `separations` dashboard feature (ref guards-and-tests
  * §10.12): the REAL run/queue projection and the REAL dashboard command service
@@ -146,6 +149,9 @@ export function createSeparationsWorld(): SeparationsDashboardWorld {
   // A fan-out stamps a config identity that must name a snapshot authority
   // holds; the start planner reads the same pair back on every plan.
   database.withAuthorityTransaction((repositories) => repositories.configSnapshots.insert(CONFIG_SNAPSHOT));
+  database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: CONFIG_SNAPSHOT.fingerprint,
+    configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint, activatedAt: NOW });
+
 
   const descriptor = separationsDescriptor as unknown as AnyWorkflowDescriptor;
   const descriptorResolver = {
@@ -213,6 +219,10 @@ export function createSeparationsWorld(): SeparationsDashboardWorld {
   };
 
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: (run, publication) => {
+      if (publication === undefined) throw new Error("command-created run lacks queue presentation");
+      spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: PublicationActorIdSchema.parse(publication.actorId) }));
+    } }),
     appVersion: APP_VERSION,
     archiveSnapshots: archiveSnapshots(runDetail),
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
@@ -360,11 +370,14 @@ export function startFromTypedText(
   if (result.state !== "applied") {
     throw new Error(`the start command answered ${result.state}, not applied`);
   }
-  return plan.planned.map((planned) => ({
-    runId: planned.runId,
-    title: planned.title,
-    traceId: planned.traceId,
-  }));
+  return result.affectedTargets.flatMap((target) => {
+    if (target.family !== "run") return [];
+    const run = world.database.authority.runs.get(target.runId);
+    if (run === undefined) throw new Error("applied start has no authoritative run");
+    const planned = plan.planned.find((entry) => entry.logicalKey === run.envelope.itemId);
+    if (planned === undefined) throw new Error("applied run has no logical plan entry");
+    return [{ runId: run.envelope.runId, traceId: run.envelope.traceId, title: planned.title }];
+  });
 }
 
 /* ── authority states a worker would have written ────────────────────────── */

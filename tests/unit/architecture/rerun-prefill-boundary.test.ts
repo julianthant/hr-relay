@@ -1,18 +1,10 @@
-/**
- * Ref data-intake-and-edit-data §6.2/§6.3 (D166): Edit Data's field policy is structural.
- *
- * The default is read-only — a descriptor must DECLARE every correctable
- * node+field path WITH its operator-facing label (2i-C), a declared path must
- * resolve through the producing task node's own output schema (anything else
- * could never re-parse; one union arm offering it is enough, since the save
- * re-parses the whole stored output), only a READ task node's output is
- * correctable (a transaction node's output is a write proof), and only a
- * checkpoint-replayed node qualifies — an always-rerun node would discard the
- * correction. The negative controls run through the REAL descriptor factory,
- * so a dead check cannot stand in for enforcement; the activation arm pins
- * the save command in the ACTIVE partition so descriptors declaring fields
- * can never outrun the kernel arm that honours the policy.
- */
+import { sourceBoundHarness } from "../fixtures/source-bound-fixtures.js";
+import { absentProbeEvidence, WRITE_FIXTURE_EID } from "../fixtures/write-sequencer-fixtures.js";
+import { buildRerunPlan } from "../../../src/services/start/rerun.js";
+import { RerunSourceSchema } from "../../../src/domain/run/rerun.js";
+import { FingerprintSchema } from "../../../src/domain/ids.js";
+/** D334 retains descriptor field-shape controls and replaces the save boundary
+ * with exact source/version/provenance validation for new operator assertions. */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -130,8 +122,37 @@ describe("edit data field policy", () => {
     }
   });
 
-  it("pins the save command ACTIVE so a declared policy can never outrun its kernel arm", () => {
-    assert.ok(PHASE1_ACTIVE_COMMAND_ARMS.run.includes("edit-checkpoint"));
+  it("keeps the retired save outside the active and deferred partitions", () => {
+    assert.ok(!PHASE1_ACTIVE_COMMAND_ARMS.run.includes("edit-checkpoint" as never));
     assert.ok(!PHASE1_DEFERRED_COMMAND_ARMS.run.includes("edit-checkpoint" as never));
+  });
+});
+
+describe("Rerun source and provenance boundary (D334)", () => {
+  it("checks source revision, descriptor closure, node and field provenance before storing a plan", async () => {
+    const h = sourceBoundHarness();
+    try {
+      const initial = h.start(h.proposal());
+      h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+      assert.equal((await h.execute(initial)).state, "done");
+      const source = h.fresh(initial);
+      const selectedStepKeys = h.descriptor.timeline.map((step) => step.key);
+      const request = { workflowId: h.descriptor.id, submissions: [{ eid: WRITE_FIXTURE_EID }], dryRun: false, selectedStepKeys,
+        rerunSource: { runId: source.envelope.runId, expectedVersion: source.version, intent: "rerun", selectedStepKeys } };
+      assert.ok(h.planner.plan(request).rerun, "valid source is the positive control");
+      const effects = () => ({ generation: h.database.getMeta().authorityGeneration, ids: h.lifecycleIds.minted(), roots: h.queueRoots });
+      const before = structuredClone(effects());
+      assert.throws(() => h.planner.plan({ ...request, rerunSource: { ...request.rerunSource, expectedVersion: source.version + 1 } }), /revision changed/);
+      assert.throws(() => h.planner.plan({ ...request, rerunSource: { ...request.rerunSource,
+        copiedFrom: [{ nodeId: "not-in-descriptor", fieldPath: "eid", targetFieldPath: "eid" }] } }), /descriptor output/);
+      assert.throws(() => h.planner.plan({ ...request, rerunSource: { ...request.rerunSource,
+        copiedFrom: [{ nodeId: "submit-write", fieldPath: "missing", targetFieldPath: "eid" }] } }), /coordinates do not resolve/);
+      assert.throws(() => h.planner.plan({ ...request, rerunSource: { ...request.rerunSource,
+        copiedFrom: [{ nodeId: "submit-write", fieldPath: "output.value.transactionId", targetFieldPath: "eid" }] } }), /does not match/);
+      assert.deepEqual(effects(), before, "every negative control leaves authority and publication unchanged");
+      const changedDescriptor = { ...h.descriptor, contractFingerprint: FingerprintSchema.parse("f".repeat(64)) };
+      assert.throws(() => buildRerunPlan(h.database.authority, changedDescriptor, RerunSourceSchema.parse(request.rerunSource), []), /descriptor changed/);
+      assert.deepEqual(h.fresh(source), source);
+    } finally { h.dispose(); }
   });
 });

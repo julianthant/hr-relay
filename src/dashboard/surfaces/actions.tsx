@@ -163,7 +163,7 @@ export function CommandResultFeed({
               </div>
             ) : (
               <p className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-hair)] pl-5 text-[color:var(--ds-danger)]")}>
-                code {entry.settlement.code} · {entry.subject} · {entry.workflowLabel}
+                code {(entry.settlement.reason === "rejected" ? entry.settlement.code : "confirmation-required")} · {entry.subject} · {entry.workflowLabel}
               </p>
             )}
           </div>

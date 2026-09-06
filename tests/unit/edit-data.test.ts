@@ -1,3 +1,4 @@
+import { RunRecordService } from "../../src/core/run-record-service.js";
 import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref data-intake-and-edit-data §6 (D166): the Edit Data core, in three layers.
@@ -268,6 +269,7 @@ function kernelHarness(descriptor: AnyWorkflowDescriptor): {
   );
   disposers.push(() => database.close());
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,
@@ -321,75 +323,22 @@ function queuedRunFor(descriptor: AnyWorkflowDescriptor, runId?: string, attempt
   };
 }
 
-describe("edit-checkpoint save — the CAS against the resume fence", () => {
-  it("accepts an allowlisted, schema-clean patch onto a queued run and stores it on the envelope", () => {
+describe("D334 retires checkpoint saves", () => {
+  it.each([
+    { version: 1, patch: PATCH },
+    { version: 2, patch: PATCH },
+    { version: 1, patch: { ...PATCH, fieldPath: "disposition" } },
+    { version: 1, patch: { ...PATCH, value: "not-an-eid" } },
+  ])("refuses the retired command regardless of former field/CAS eligibility: %j", ({ version, patch }) => {
     const descriptor = editDescriptor();
     const { database, kernel } = kernelHarness(descriptor);
     database.authority.runCheckpoints.insert(REPLAYED);
     database.authority.runs.enqueue(queuedRunFor(descriptor));
-
-    const result = kernel.execute(editCommand(RUN_ID, 1, [PATCH]));
-    assert.equal(result.state, "applied");
-    const run = database.authority.runs.get(RUN_ID);
-    assert.ok(run !== undefined);
-    assert.equal(run.version, 2);
-    assert.deepEqual(run.envelope.injected, [PATCH]);
-  });
-
-  it("rejects a save whose loaded version has moved — the resume wins", () => {
-    const descriptor = editDescriptor();
-    const { database, kernel } = kernelHarness(descriptor);
-    database.authority.runCheckpoints.insert(REPLAYED);
-    database.authority.runs.enqueue(queuedRunFor(descriptor));
-
-    const stale = kernel.execute(editCommand(RUN_ID, 7, [PATCH]));
-    assert.equal(stale.state, "rejected");
-    if (stale.state === "rejected") assert.match(stale.message, /reload the current state/u);
-    assert.equal(database.authority.runs.get(RUN_ID)?.envelope.injected, undefined);
-  });
-
-  it("rejects a save onto a claimed run — the resume claim is the fence", () => {
-    const descriptor = editDescriptor();
-    const { database, kernel } = kernelHarness(descriptor);
-    database.authority.runCheckpoints.insert(REPLAYED);
-    database.authority.runs.enqueue(queuedRunFor(descriptor));
-    const claimed = database.authority.runs.claimNext({
-      workflow: descriptor.id,
-      workerId: WORKER_ID,
-      now: NOW,
-    });
-    assert.equal(claimed.state, "claimed");
-    const version = claimed.state === "claimed" ? claimed.run.version : 0;
-
-    const raced = kernel.execute(editCommand(RUN_ID, version, [PATCH]));
-    assert.equal(raced.state, "rejected");
-    if (raced.state === "rejected") assert.match(raced.message, /resumed while you were editing/u);
-  });
-
-  it("rejects a field the descriptor does not allowlist — the default is read-only", () => {
-    const descriptor = editDescriptor();
-    const { database, kernel } = kernelHarness(descriptor);
-    database.authority.runCheckpoints.insert(REPLAYED);
-    database.authority.runs.enqueue(queuedRunFor(descriptor));
-
-    const refused = kernel.execute(editCommand(RUN_ID, 1, [{ ...PATCH, fieldPath: "disposition" }]));
-    assert.equal(refused.state, "rejected");
-    if (refused.state === "rejected") {
-      assert.equal(refused.code, "policy-refused");
-      assert.match(refused.message, /not descriptor-allowlisted/u);
-    }
-  });
-
-  it("rejects a value the producing schema refuses, before anything durable moves", () => {
-    const descriptor = editDescriptor();
-    const { database, kernel } = kernelHarness(descriptor);
-    database.authority.runCheckpoints.insert(REPLAYED);
-    database.authority.runs.enqueue(queuedRunFor(descriptor));
-
-    const refused = kernel.execute(editCommand(RUN_ID, 1, [{ ...PATCH, value: "not-an-eid" }]));
-    assert.equal(refused.state, "rejected");
-    if (refused.state === "rejected") assert.equal(refused.code, "schema-mismatch");
-    assert.equal(database.authority.runs.get(RUN_ID)?.envelope.injected, undefined);
+    const before = database.authority.runs.get(RUN_ID);
+    const generation = database.getMeta().authorityGeneration;
+    assert.throws(() => kernel.execute(editCommand(RUN_ID, version, [patch])));
+    assert.deepEqual(database.authority.runs.get(RUN_ID), before);
+    assert.equal(database.getMeta().authorityGeneration, generation);
   });
 });
 

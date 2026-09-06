@@ -22,7 +22,6 @@ carries the citation in code.
 
 | Deviation | Where | Why it stays | Rejected |
 |---|---|---|---|
-| **`Saving…` on the commit arm while a save is in flight** (ledger 2 C71) | `surfaces/context-rail.tsx` | The demo's save is a synchronous mock and this one is a real `run/edit-checkpoint` round trip. A control that looks identical mid-flight invites the second press D272's own after-dispatch lesson is about; the label IS the pending state, so the fact reaches a screen reader on the control's accessible name rather than through decoration | B — suppress the async state for exactness |
 | **The Data section's `aria-label` is its VISIBLE label** (ledger 2 C16) | `surfaces/context-rail.tsx` | The demo's region says `Data` under a visible `Extracted fields` — a mismatch it inherited when its own visible label changed and its region name did not. Porting it would put two names on one region and undo the one-expression rule this bundle ratified for WCAG 2.5.3 (`intake.tsx`'s review checkbox). `DATA_SECTION_LABEL` feeds both halves so they cannot drift | A — port `aria-label="Data"` verbatim |
 | **The unattributed ledger group takes no `Well` and no band** (ledger 2 C51/C54) | `surfaces/context-rail.tsx` | The demo has no counterpart because it always knows the step. The chrome ENCODES the step, so a group that has none has nothing to encode and an empty band would be D252's made-up heading in a quieter form. Its rows keep the dividers, which separate values rather than name a producer | B — give it a band with an invented or blank heading |
 
@@ -44,3 +43,6 @@ is deliberately NOT a `shortcuts-model.ts` entry — the legend's own *When they
 open dialog owns the keyboard including Escape, and listing a per-dialog refinement as a global
 binding would contradict them.
 
+
+D334 / 1.6.4 retires the checkpoint-save action and its in-flight `Saving…` deviation.
+The Context rail retains read-only data; source-bound Rerun values belong to 3.1.11-2.

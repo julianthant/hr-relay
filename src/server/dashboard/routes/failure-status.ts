@@ -1,3 +1,4 @@
+import { RerunRefusedError } from "../../../services/start/rerun.js";
 /**
  * The ONE place a throw becomes an HTTP status and a `WireError` body
  * (Track D row D2, audit C3).
@@ -69,6 +70,10 @@ export function failureStatus(
   const message = errorText(error);
   if (error instanceof TargetNotFoundError) {
     return { status: 404, body: wireError("TARGET_NOT_FOUND", message, false) };
+  }
+  if (error instanceof RerunRefusedError) {
+    return { status: error.code === "target-not-found" ? 404 : 409,
+      body: { ...wireError("RERUN_REFUSED", message, false), refusalCode: error.code } };
   }
   if (error instanceof StartStepOmissionRefusedError) {
     // A caller-input refusal, in the same 400 family a schema failure leaves

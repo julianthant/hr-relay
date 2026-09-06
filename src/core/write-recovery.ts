@@ -1,3 +1,4 @@
+import { isFreshOccurrenceProof } from "./repeat-proof.js";
 /**
  * Ref write-safety §4 crash-window recovery (D118) and the §4.1 typed operator
  * resolutions behind the command kernel's `WriteResolutionExecutor` seam.
@@ -289,6 +290,10 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
       deps.sessions.releaseRunConfigFingerprint();
     }
 
+    if (intent.occurrence !== undefined && verdict.state !== "present") {
+      return park(intent, "unknown", "Generic business-key evidence cannot identify the new write occurrence",
+        deriveWriteAuthorityReason("recovery-probe-unknown", "probe", canonicalJsonStringify(verdict)));
+    }
     if (verdict.state === "present") {
       const completion = commitContract.writeSafety.completion;
       let proofValue: JsonValue;
@@ -311,6 +316,12 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
             error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`,
           ),
         );
+      }
+      if (!isFreshOccurrenceProof(intent, run.envelope, {
+        schemaHash: deriveSchemaHash(completion.proofSchema, "output"), value: proofValue,
+      })) {
+        return park(intent, "unknown", "Earlier receipt cannot settle the new write occurrence",
+          deriveWriteAuthorityReason("recovery-probe-unknown", "proof", canonicalJsonStringify(proofValue)));
       }
       if (run.lifecycle.state !== "parked-write") {
         throw new Error(
@@ -396,11 +407,12 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
             + "a parked-write run",
           );
         }
-        const resumed = repositories.runs.resume({
+        const resumed = deps.continuation.transition({
+          commandId: lifecycleCommandId("recovery-absent", { writeIntentId: intent.writeIntentId, generation: intent.generation }),
+          lifecycle: { state: "queued" }, writeResolution: "resolve-write-absent",
           runId: run.envelope.runId,
           expectedVersion: current.version,
           startAt: node.id,
-          now: instant(),
         });
         if (resumed.state !== "applied") {
           throw new Error(`resuming run ${run.envelope.runId} after retry settlement failed: ${resumed.state}`);
@@ -511,6 +523,10 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
         throw new Error(`resolvePresent received a ${context.command.type} command`);
       }
       requireResolvableIntent(context);
+      if (context.intent.status !== "observed-present" && context.intent.occurrence !== undefined
+        && context.command.payload.occurrenceKeyDigest !== context.intent.idempotencyKeyDigest) {
+        rejectCommandRequest(context.command, "invalid-state", "Resolution must attest the exact new write occurrence");
+      }
       const { descriptor, node } = requireResolutionTarget(
         deps,
         repositories,
@@ -553,6 +569,9 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
           `confirmed-present proof does not parse through ${commitContract.id}'s completion proof schema: `
           + `${parsedProof.error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ")}`,
         );
+      }
+      if (!isFreshOccurrenceProof(context.intent, context.run.envelope, payload.proof)) {
+        rejectCommandRequest(context.command, "invalid-value", "Earlier receipt cannot settle the new write occurrence");
       }
       const proof: unknown = parsedProof.data;
       const outputRaw: unknown = Reflect.apply(completion.outputFromProof, undefined, [proof]);
@@ -603,6 +622,10 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
         throw new Error(`resolveAbsent received a ${context.command.type} command`);
       }
       requireResolvableIntent(context);
+      if (context.intent.status !== "observed-present" && context.intent.occurrence !== undefined
+        && context.command.payload.occurrenceKeyDigest !== context.intent.idempotencyKeyDigest) {
+        rejectCommandRequest(context.command, "invalid-state", "Resolution must attest the exact new write occurrence");
+      }
       const { node } = requireResolutionTarget(deps, repositories, context, "operator-confirmed-absent");
       repositories.writeIntents.settleRetryable({
         writeIntentId: context.intent.writeIntentId,
@@ -618,11 +641,12 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
         },
         now: context.now,
       });
-      const resumed = repositories.runs.resume({
+      const resumed = deps.continuation.transition({
+        commandId: lifecycleCommandId("operator-absent", context.command.commandId),
+        lifecycle: { state: "queued" }, writeResolution: "resolve-write-absent",
         runId: context.run.envelope.runId,
         expectedVersion: context.run.version,
         startAt: node.id,
-        now: context.now,
       });
       if (resumed.state !== "applied") {
         throw new Error(

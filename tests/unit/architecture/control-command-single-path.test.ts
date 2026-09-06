@@ -1,3 +1,5 @@
+import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../fixtures/operator-command-fixtures.js";
+import { RunRecordService } from "../../../src/core/run-record-service.js";
 /**
  * `control-command-single-path` — ref guards-and-tests §3.9, activated by D113.
  *
@@ -91,7 +93,6 @@ const EXPECTED_ACTIVE = {
     "delete",
     "resolve-write-present", "resolve-write-absent",
     // D166: the Edit-Data save activated with its CAS-against-resume-fence arm.
-    "edit-checkpoint",
   ],
   gate: ["resolve-gate"],
   // 2i-B: the inbox lifecycle activated over D134/D138's durable rows.
@@ -150,11 +151,14 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
     { path: join(root, "guard.sqlite"), busyTimeoutMs: 250, migrationOwner: "command-guard" },
     clock,
   );
+
+  seedSyntheticRuntimeConfig(database);
   openDatabases.push(database);
   const seamFailure = (seam: string) => () => {
     throw new Error(`${seam} process seam was reached before authority validation`);
   };
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,
@@ -442,7 +446,7 @@ describe("control-command-single-path", () => {
     shouldFail = true;
     const generationBefore = harness.database.getMeta().authorityGeneration;
     assert.throws(() => harness.kernel.execute(command), /injected active-run lookup failure/);
-    assert.equal(harness.database.authority.runs.get(plan.planned[0].runId), undefined);
+    assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), []);
     assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
     assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
@@ -465,8 +469,7 @@ describe("control-command-single-path", () => {
   it("typed gate results parse the descriptor's exact schema and store a checkpointed result", () => {
     const harness = createHarness();
     const plan = createFixturePlan(harness);
-    assert.equal(harness.kernel.execute(startCommandFor(plan)).state, "applied");
-    const runId = plan.planned[0].runId;
+    const runId = singleAppliedRunId(harness.kernel.execute(startCommandFor(plan)));
     const claimed = harness.database.authority.runs.claimNext({
       workflow: "fixture-graph", workerId: "worker-1", now: NOW,
     });

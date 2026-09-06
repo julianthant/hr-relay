@@ -1,12 +1,9 @@
+import type { RunRecordRefusal } from "../domain/authority.js";
 /**
  * The ONE place N queued runs are inserted (ref dashboard-surfaces §2.4 Enqueue, D171, D174).
  *
- * It began inside the command kernel because its only two callers were command
- * arms — `start-run` and `enqueue-intake-manifest`. The capture finalize
- * handoff is the third caller and is NOT a command: it runs inside the finalize
- * projector's settlement transaction, where there is no command envelope to
- * reject against. So the enqueue moved here whole rather than being copied,
- * and its ONE command-shaped dependency — how to refuse — became a callback.
+ * Start, intake, and archive-relaunch commands share this atomic fan-out.
+ * Lifecycle creation and publication belong to the injected run service.
  *
  * Everything it writes is inside the CALLER's authority transaction, so a
  * refusal on run 39 of 40 leaves nothing behind. That property is why the
@@ -14,11 +11,14 @@
  * caller that could keep going after a policy refusal would be able to enqueue
  * exactly the partial fan-out this function exists to prevent.
  */
+import { CreateRunRequestSchema, lifecycleCommandId, requireLifecycleApplied, type RunRecordService } from "./run-record-service.js";
+import { RuntimeConfigClaimTokenSchema } from "../domain/config/runtime-generation.js";
+import type { RunEnvelope } from "../domain/run/envelope.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape } from "../domain/run/envelope.js";
 import type { StepOmissions } from "../domain/workflow/step-omission.js";
-import { isTerminalRunState, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
+import { isTerminalRunState, type RunRecord } from "../domain/run/record.js";
 import { RunSessionRecordSchema, type RunSessionOrigin } from "../domain/run/session.js";
 
 /** Built loosely, then proven strict by the `CommandResultSchema`/audit parses. */
@@ -51,11 +51,12 @@ export function activeRunsForItem(
 }
 
 export interface PlannedRunInsert {
-  readonly runId: string;
   readonly itemId: string;
-  readonly traceId: string;
   /** Only ever used to NAME the item in an enqueue-policy refusal. */
   readonly matchKey: string;
+  readonly title: string;
+  readonly subtitle?: string;
+  readonly retryOf?: string;
   readonly rawInput: unknown;
   /** The canonical value bound to its schema hash (D62/D110). */
   readonly parsedInput: unknown;
@@ -63,6 +64,10 @@ export interface PlannedRunInsert {
 
 /** Everything the runs of one fan-out share, stamped once for all of them. */
 export interface FanOutEnvelope {
+  readonly commandId: string;
+  readonly actorId: string;
+  readonly sourceBound?: RunEnvelope["sourceBound"];
+  readonly relaunch?: Readonly<{ archivedRunId: string; contentDigest: string }>;
   readonly workflow: string;
   readonly descriptorVersion: number;
   readonly contractFingerprint: string;
@@ -88,31 +93,31 @@ export interface FanOutEnvelope {
   readonly appVersion: string;
   /**
    * D269 (ref execution-and-sessions §11.1): the SESSION this fan-out is. One
-   * per fan-out, N ≥ 1, minted by the caller (a fresh uuid for a command, a
-   * stable-key derivation for the capture handoff so a replay names the same
-   * group) and written HERE, before the first member, inside the caller's
-   * transaction — so a member row can never exist without its session row,
-   * and `runs.enqueue` refuses one that tries.
+   * per fan-out, N ≥ 1, minted by the caller and inserted before members,
+   * inside the same outer transaction.
    */
   readonly session: Readonly<{ sessionId: string; origin: RunSessionOrigin }>;
 }
 
-/**
- * How this caller refuses an enqueue policy collision. A command arm throws its
- * typed `policy-refused` rejection; the capture handoff throws, which the
- * finalize projector turns into durable `failed` plus Retry Finalize.
- */
-export type FanOutRefusal = (message: string) => never;
+/** A refusal must abort the caller's outer authority transaction. */
+export type FanOutRefusal = (message: string, refusal?: RunRecordRefusal) => never;
 
 export function fanOutQueuedRuns(
   repositories: AuthorityRepositories,
+  lifecycle: RunRecordService,
   refuse: FanOutRefusal,
   descriptor: AnyWorkflowDescriptor,
   envelope: FanOutEnvelope,
   planned: readonly PlannedRunInsert[],
   now: string,
   origin: string,
-): Readonly<{ affectedTargets: readonly TargetReference[]; versionChanges: readonly VersionChange[] }> {
+): Readonly<{ affectedTargets: readonly TargetReference[]; versionChanges: readonly VersionChange[]; runs: readonly RunRecord[] }> {
+  const runs: RunRecord[] = [];
+  const activeConfig = repositories.runtimeConfig.get();
+  if (activeConfig === undefined) throw new Error("fan-out has no active runtime config");
+  const runtimeConfig = RuntimeConfigClaimTokenSchema.parse({ generation: activeConfig.generation,
+    settingsRevision: activeConfig.settingsRevision, settingsFingerprint: activeConfig.settingsFingerprint,
+    configFingerprint: activeConfig.configFingerprint });
   const affectedTargets: TargetReference[] = [];
   const versionChanges: VersionChange[] = [];
   /*
@@ -145,11 +150,11 @@ export function fanOutQueuedRuns(
     }
     if (descriptor.enqueue === "supersede-active") {
       for (const activeRun of active) {
-        const outcome = repositories.runs.transition({
+        const outcome = lifecycle.transition({
+          commandId: lifecycleCommandId("operator-supersede", { commandId: envelope.commandId, runId: activeRun.envelope.runId }),
           runId: activeRun.envelope.runId,
           expectedVersion: activeRun.version,
           lifecycle: { state: "terminal", outcome: "superseded", endedAt: now },
-          now,
         });
         requireApplied(outcome, `superseding run ${activeRun.envelope.runId}`);
         affectedTargets.push(runTarget(activeRun.envelope.runId));
@@ -161,66 +166,30 @@ export function fanOutQueuedRuns(
       }
     }
 
-    const record = RunRecordSchema.parse({
-      envelope: {
-        runId: entry.runId,
-        workflow: envelope.workflow,
-        itemId: entry.itemId,
-        traceId: entry.traceId,
-        descriptorVersion: envelope.descriptorVersion,
-        contractFingerprint: envelope.contractFingerprint,
-        ...(envelope.requestedInstance === undefined ? {} : { requestedInstance: envelope.requestedInstance }),
-        resolvedInstance: envelope.resolvedInstance,
-        configFingerprint: envelope.configFingerprint,
-        configSnapshotId: envelope.configSnapshotId,
-        shape: envelope.shape,
-        priority: envelope.priority,
-        dryRun: envelope.dryRun,
-        ...(envelope.browserMode === undefined ? {} : { browserMode: envelope.browserMode }),
-        ...(envelope.captureBrowserScreenshots === undefined
-          ? {}
-          : { captureBrowserScreenshots: envelope.captureBrowserScreenshots }),
-        ...(envelope.stepOmissions === undefined ? {} : { stepOmissions: envelope.stepOmissions }),
-        /*
-         * D221 — the attempt belongs to the ITEM. A fan-out entry whose item has
-         * run before (a re-run of the same subject, a superseded predecessor)
-         * takes the next attempt, so its executions never land on a key an
-         * earlier run of that item already owns. Read per entry, inside this
-         * transaction, AFTER any supersede above: two entries of one fan-out can
-         * name the same item.
-         */
-        attempt: repositories.runs.nextItemAttempt({ workflow: envelope.workflow, itemId: entry.itemId }),
-        enqueuedAt: now,
-      },
-      input: {
-        raw: entry.rawInput,
-        parsed: entry.parsedInput,
-        ingressSchemaHash: envelope.ingressSchemaHash,
-      },
-      lifecycle: { state: "queued" },
-      claimGeneration: 0,
-      appVersion: envelope.appVersion,
-      /*
-       * D230 — this run's ordinal within its workflow, the queue footer's `#N`.
-       *
-       * Read per entry, inside this transaction, exactly as the attempt above
-       * is: each `enqueue` below writes its row before the next entry reads the
-       * counter, so a fan-out of forty takes forty consecutive numbers rather
-       * than forty copies of one. Reading it once outside the loop is the
-       * defect this comment exists to prevent.
-       */
-      runNumber: repositories.runs.nextWorkflowRunNumber(envelope.workflow),
-      // D269: membership is THIS field, nothing else.
-      sessionId: envelope.session.sessionId,
-      version: 1,
-      createdAt: now,
-      updatedAt: now,
-    });
-    const inserted = repositories.runs.enqueue(record);
-    if (inserted.state !== "inserted") {
-      throw new Error(`${origin} proposed run id ${entry.runId}, which already exists; refusing to adopt it`);
-    }
-    affectedTargets.push(runTarget(entry.runId));
+    const create = CreateRunRequestSchema.parse(Object.fromEntries(Object.entries({
+      commandId: lifecycleCommandId("operator-create", { commandId: envelope.commandId, entry: runs.length }),
+      code: descriptor.code, matchKey: entry.matchKey, workflow: envelope.workflow,
+      descriptorVersion: envelope.descriptorVersion, contractFingerprint: envelope.contractFingerprint,
+      requestedInstance: envelope.requestedInstance, resolvedInstance: envelope.resolvedInstance,
+      configFingerprint: envelope.configFingerprint, configSnapshotId: envelope.configSnapshotId,
+      shape: envelope.shape, priority: envelope.priority, dryRun: envelope.dryRun,
+      browserMode: envelope.browserMode, captureBrowserScreenshots: envelope.captureBrowserScreenshots,
+      stepOmissions: envelope.stepOmissions, sourceBound: envelope.sourceBound,
+      retryOf: entry.retryOf, appVersion: envelope.appVersion, sessionId: envelope.session.sessionId,
+      input: { raw: entry.rawInput, parsed: entry.parsedInput, ingressSchemaHash: envelope.ingressSchemaHash },
+      runtimeConfig,
+    }).filter(([, value]) => value !== undefined)));
+    const publication = { title: entry.title, ...(entry.subtitle === undefined ? {} : { subtitle: entry.subtitle }), actorId: envelope.actorId };
+    const { commandId, retryOf: unusedRetryOf, ...relaunchCreate } = create;
+    void unusedRetryOf;
+    const outcome = envelope.relaunch === undefined ? lifecycle.create(create, publication)
+      : lifecycle.relaunch({ commandId: lifecycleCommandId("operator-relaunch", commandId),
+        ...envelope.relaunch, relaunchedBy: envelope.actorId, create: relaunchCreate }, descriptor, publication);
+    if (outcome.state === "refused") refuse("run lifecycle refused", outcome.refusal);
+    const record = requireLifecycleApplied(outcome);
+    runs.push(record);
+    affectedTargets.push(runTarget(record.envelope.runId));
+    versionChanges.push({ target: runTarget(record.envelope.runId), before: 0, after: record.version });
   }
-  return Object.freeze({ affectedTargets, versionChanges });
+  return Object.freeze({ affectedTargets, versionChanges, runs });
 }

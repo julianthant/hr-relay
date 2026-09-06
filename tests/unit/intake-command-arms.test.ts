@@ -1,3 +1,4 @@
+import { RunRecordService } from "../../src/core/run-record-service.js";
 /**
  * D170 — the five non-enqueue intake arms, driven through the REAL kernel over
  * the REAL authority database.
@@ -131,6 +132,9 @@ function harness(sessionOverrides: Record<string, unknown> = {}, preReservation 
   openDatabases.push(database);
   // The config identity an intake fan-out stamps must name a stored snapshot.
   database.withAuthorityTransaction((repositories) => repositories.configSnapshots.insert(CONFIG_SNAPSHOT));
+  database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: CONFIG_SNAPSHOT.fingerprint,
+    configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint, activatedAt: NOW });
+
 
   const session = IntakeSessionSchema.parse({
     intakeSessionId: UUID_7,
@@ -176,6 +180,7 @@ function harness(sessionOverrides: Record<string, unknown> = {}, preReservation 
   }
 
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },

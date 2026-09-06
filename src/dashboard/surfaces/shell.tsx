@@ -1320,7 +1320,7 @@ export function PoolOutcomeNotice({ outcome }: { outcome: PoolControlOutcome }) 
             outcome.action,
             settlement.reason === "conflict"
               ? `pool version ${String(settlement.currentVersion)}`
-              : `code ${settlement.code}`,
+              : `code ${settlement.reason === "rejected" ? settlement.code : "confirmation-required"}`,
           ]}
         />
       </span>

@@ -1,3 +1,5 @@
+import { lifecycleCommandId } from "../../domain/identifiers.js";
+import { CanonicalRunPurgeOutcomeSchema } from "../../infra/sqlite/run-store-contracts.js";
 /**
  * Ref operator-trust §2.2's retention/pin sweep.
  *
@@ -40,6 +42,7 @@ export interface DiagnosticRetentionSweep {
 export interface DiagnosticRetentionSweepDependencies {
   readonly authority: Pick<AuthorityRepositories, "diagnosticBundles">;
   readonly clock: Clock;
+  readonly lifecycle: { purge(input: unknown): unknown };
 }
 
 export function createDiagnosticRetentionSweep(
@@ -62,8 +65,10 @@ export function createDiagnosticRetentionSweep(
           throw new Error(`diagnostic bundle ${disposition.bundleId} was indexed as due but plans to ${disposition.state}`);
         }
         const attachments = repository.listAttachments(disposition.bundleId);
-        const outcome = repository.purge(disposition.bundleId, sweptAt);
-        if (outcome === "absent") {
+        const outcome = CanonicalRunPurgeOutcomeSchema.parse(dependencies.lifecycle.purge({ commandId: lifecycleCommandId("diagnostic-retention", { bundleId: disposition.bundleId, sweptAt }),
+          bundleId: disposition.bundleId, evidenceClass: "diagnostic-bundle" }));
+        if (outcome.state === "refused") throw new Error(`retention refused: ${outcome.refusal.reason}`);
+        if (outcome.purged === 0) {
           vanished.push(disposition.bundleId);
           continue;
         }

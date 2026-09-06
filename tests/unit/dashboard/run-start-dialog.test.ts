@@ -151,8 +151,7 @@ function planResponse(startPlanId: string): StartPlanResponse {
       inputFingerprint: HASH,
     },
     planned: [{
-      runId: "1a000000-0000-4000-8000-000000000001",
-      traceId: "tr-000000-0001",
+      logicalKey: "entry:1",
       title: "Ada Lovelace",
       subtitle: "E1234567",
       matchKey: "eid:E1234567",
@@ -928,8 +927,7 @@ function separationsPlan(omittedSteps?: readonly string[]): StartPlanResponse {
       inputFingerprint: HASH,
     },
     planned: [{
-      runId: "1a000000-0000-4000-8000-000000000009",
-      traceId: "tr-000000-0009",
+      logicalKey: "entry:9",
       title: "Fixture plan row",
       subtitle: DOCUMENT,
       matchKey: `kuali-document:${DOCUMENT}`,

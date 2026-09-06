@@ -1,3 +1,6 @@
+import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
+import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
+import { RunRecordService } from "../../../src/core/run-record-service.js";
 /**
  * D170 — the intake upload route, the parser seam, and the session wire, over
  * the REAL content-addressed artifact writer, the REAL shared grid edge and
@@ -91,6 +94,9 @@ function surface(): Surface {
   );
   openDatabases.push(database);
   database.withAuthorityTransaction((repositories) => repositories.configSnapshots.insert(CONFIG_SNAPSHOT));
+  database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: CONFIG_SNAPSHOT.fingerprint,
+    configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint, activatedAt: NOW });
+
 
   const artifacts = createContentAddressedArtifactWriter({
     workspaceRoot: root,
@@ -124,6 +130,10 @@ function surface(): Surface {
   });
 
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: (run, publication) => {
+      if (publication === undefined) throw new Error("command-created run lacks queue presentation");
+      spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: PublicationActorIdSchema.parse(publication.actorId) }));
+    } }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },

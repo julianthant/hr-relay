@@ -1,3 +1,4 @@
+import { RunRecordService } from "../../src/core/run-record-service.js";
 /**
  * The D80 archive model, clause by clause (2i-G, D179).
  *
@@ -51,6 +52,7 @@ import type { ArchiveRunSnapshot } from "../../src/services/archive/archive-serv
 import { planStart } from "../../src/services/start/plan.js";
 import { HASH_A, HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "./fixtures/operator-command-fixtures.js";
 import { WriteFixtureCommit, WriteFixturePrepare } from "./fixtures/write-sequencer-fixtures.js";
 import {
   ARCHIVED_RUN,
@@ -60,7 +62,7 @@ import {
   VERSION_PLAN_ROW,
 } from "./fixtures/archive-fixtures.js";
 import { ledgerCommitFixture } from "./fixtures/ledger-projection-fixtures.js";
-import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
@@ -174,7 +176,7 @@ function snapshotSource(world: {
     snapshot(runId: string): ArchiveRunSnapshot {
       const run = world.database.authority.runs.get(runId);
       if (run === undefined) throw new Error(`no run ${runId} to snapshot`);
-      const status = "done" as const;
+      const status = "cancelled" as const;
       return {
         row: {
           runId: run.envelope.runId,
@@ -240,7 +242,7 @@ function snapshotSource(world: {
           },
           timeline: { events: [] },
           gate: { state: "absent", reason: "this workflow declares no gate" },
-          outcome: { state: "terminal", result: "verified-done", completedAt: NOW },
+          outcome: { state: "terminal", result: "cancelled", completedAt: NOW },
           context: { dataFacts: 0, evidenceFacts: 0, attempts: 1 },
           availableSections: ["logs"],
         },
@@ -322,6 +324,7 @@ function createWorld(): World {
     clock,
   );
   databases.push(database);
+  seedSyntheticRuntimeConfig(database);
   const ids = sequentialIdFactory("a");
   const world: World = {
     database,
@@ -333,6 +336,7 @@ function createWorld(): World {
     kernel: undefined as unknown as CommandKernel,
   };
   world.kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids,
@@ -350,7 +354,7 @@ function createWorld(): World {
     },
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
-    configIdentity: UNSTORED_CONFIG_IDENTITY,
+    configIdentity: { configFingerprint: HASH_B, configSnapshotId: UUID_4 },
     archiveSnapshots: snapshotSource(world),
   });
   return world;
@@ -398,7 +402,7 @@ function startRun(world: World, eid: string, terminal: boolean, dryRun = false):
     },
   }));
   assert.equal(result.state, "applied");
-  const runId = plan.planned[0].runId;
+  const runId = singleAppliedRunId(result);
   if (terminal) {
     const run = world.database.authority.runs.get(runId);
     assert.notEqual(run, undefined);

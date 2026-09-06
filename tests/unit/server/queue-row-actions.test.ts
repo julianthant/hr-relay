@@ -517,11 +517,8 @@ describe("queue-row action descriptors — every served verb has a command behin
         `the projection serves "${command}", which this test asserts it must not`,
       );
     }
-    // (a) `edit-checkpoint` IS a live kernel verb, so the vocabulary check
-    //     alone would pass it; what refuses it is that a row cannot compose a
-    //     patch set. Stated here so the exclusion is a decision, not an
-    //     oversight.
-    assert.ok((PHASE1_ACTIVE_COMMAND_ARMS.run as readonly string[]).includes("edit-checkpoint"));
+    // D334 retires the checkpoint-save vocabulary and its row command.
+    assert.ok(!(PHASE1_ACTIVE_COMMAND_ARMS.run as readonly string[]).includes("edit-checkpoint"));
     // (b) a verb the kernel does not implement at all must fail the vocabulary
     //     check — this is the arm that catches an invented control.
     assert.ok(!(ActionCommandKeySchema.options as readonly string[]).includes("force-done"));

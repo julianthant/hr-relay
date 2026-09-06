@@ -107,6 +107,16 @@ describe("derived identity", () => {
 });
 
 describe("start planning", () => {
+  it("planning reserves no lifecycle identity", () => {
+    const database = openDatabase();
+    const ids = sequentialIdFactory();
+    const plan = planStart(plannerDeps(database, ids),
+      baseRequest([{ emplId: "10873698" }]));
+    assert.deepEqual(ids.minted(), [plan.startPlanId], "only the start-plan identity may be minted");
+    assert.equal(Object.hasOwn(plan.planned[0], "runId"), false);
+    assert.equal(Object.hasOwn(plan.planned[0], "traceId"), false);
+  });
+
   it("plans every valid submission and derives its identity from the workflow's own match key", () => {
     const database = openDatabase();
     const plan = planStart(plannerDeps(database), baseRequest([
@@ -387,10 +397,13 @@ describe("start planning", () => {
   it("fingerprints the planned set so a re-plan cannot be started by an old confirmation", () => {
     const database = openDatabase();
     const one = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
+    const same = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
     const two = planStart(plannerDeps(database), baseRequest([
       { emplId: "10873698" },
       { emplId: "10001573" },
     ]));
+    assert.equal(one.inputFingerprint, same.inputFingerprint);
+    assert.equal(one.inputFingerprint, same.inputFingerprint);
     assert.notEqual(one.inputFingerprint, two.inputFingerprint);
     assert.equal(one.inputFingerprint, derivePlannedInputFingerprint(
       one.planned,

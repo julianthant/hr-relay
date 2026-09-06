@@ -77,8 +77,7 @@ const PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
   },
   planned: [
     {
-      runId: "1a000000-0000-4000-8000-000000000001",
-      traceId: "tr-000000-0001",
+      logicalKey: "entry:1",
       title: "Ada Lovelace",
       subtitle: "E1234567",
       matchKey: "eid:E1234567",
@@ -151,7 +150,7 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
     );
     assert.doesNotMatch(markup, /<table/u, "the plan is still a table");
     const text = textOf(markup);
-    for (const served of ["Ada Lovelace", "E1234567", "eid:E1234567", "tr-000000-0001"]) {
+    for (const served of ["Ada Lovelace", "E1234567", "eid:E1234567"]) {
       assert.ok(text.includes(served), `the card drops the served ${served}`);
     }
   });
@@ -179,7 +178,7 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
     // Both assertions are red against the chips this replaced: `Chip` emits
     // `title="eid:E1234567"` and carries `dsClip.token`'s `whitespace-nowrap`.
     const markup = renderToStaticMarkup(createElement(PlanPreview, { plan: PLAN }));
-    for (const identity of ["eid:E1234567", "tr-000000-0001"]) {
+    for (const identity of ["eid:E1234567"]) {
       assert.ok(textOf(markup).includes(identity), `the card drops the served ${identity}`);
       // Neither identity carries a regex metacharacter, so the literal is the
       // pattern; a helper that escaped one would be untested machinery here.
@@ -191,7 +190,7 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
     }
     assert.doesNotMatch(markup, /whitespace-nowrap/u, "a served identity is back inside a single-line token");
     assert.ok(textOf(markup).includes("match key eid:E1234567"));
-    assert.ok(textOf(markup).includes("trace tr-000000-0001"));
+    assert.equal(textOf(markup).includes("trace"), false, "a proposal has no lifecycle trace");
   });
 
   it("prints the plan's expiry as a clock reading, never a raw ISO instant (C61)", () => {

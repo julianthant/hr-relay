@@ -1,3 +1,4 @@
+import { RunRecordService } from "../../src/core/run-record-service.js";
 /**
  * D307 — the command kernel's start and retry envelope builders
  * (src/core/command-kernel.ts `executeStartRun` / `executeRetry`) must carry
@@ -28,6 +29,7 @@ import { AuthorityDatabase, type AuthorityRepositories } from "../../src/infra/s
 import { planStart } from "../../src/services/start/plan.js";
 import { NOW } from "./fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "./fixtures/operator-command-fixtures.js";
 import { fixtureDescriptor, FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
@@ -126,7 +128,9 @@ function createHarness(): Harness {
     clock,
   );
   openDatabases.push(database);
+  seedSyntheticRuntimeConfig(database);
   const kernel = createCommandKernel({
+    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,
@@ -221,7 +225,7 @@ describe("command-kernel start/retry step-omission carry (D307)", () => {
     const plan = createPlan(harness, ["10800000"], STEP_OMISSIONS);
     const result = harness.kernel.execute(startCommand(plan));
     assert.equal(result.state, "applied");
-    const runId = plan.planned[0].runId;
+    const runId = singleAppliedRunId(result);
     const run = harness.database.authority.runs.get(runId);
     assert.ok(run !== undefined);
     assert.deepEqual(run.envelope.stepOmissions, STEP_OMISSIONS);
@@ -232,7 +236,7 @@ describe("command-kernel start/retry step-omission carry (D307)", () => {
     const plan = createPlan(harness, ["10800001"]);
     const result = harness.kernel.execute(startCommand(plan));
     assert.equal(result.state, "applied");
-    const run = harness.database.authority.runs.get(plan.planned[0].runId);
+    const run = harness.database.authority.runs.get(singleAppliedRunId(result));
     assert.ok(run !== undefined);
     assert.equal(Object.hasOwn(run.envelope, "stepOmissions"), false);
   });
@@ -242,7 +246,7 @@ describe("command-kernel start/retry step-omission carry (D307)", () => {
     const plan = createPlan(harness, ["10800000"], STEP_OMISSIONS);
     const started = harness.kernel.execute(startCommand(plan));
     assert.equal(started.state, "applied");
-    const runId = plan.planned[0].runId;
+    const runId = singleAppliedRunId(started);
 
     const originalRun = harness.database.authority.runs.get(runId);
     assert.ok(originalRun !== undefined);

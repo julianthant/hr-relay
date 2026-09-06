@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { RepeatOccurrenceSchema, repeatOccurrenceKey } from "./run/rerun.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Clock } from "./clock.js";
@@ -312,6 +313,7 @@ const WriteIntentIdentityFields = {
 } as const;
 
 const WriteIntentAttemptFields = {
+  occurrence: RepeatOccurrenceSchema.optional(),
   ...WriteIntentIdentityFields,
   currentAttemptId: WriteAttemptIdSchema,
   generation: PositiveIntSchema,
@@ -369,6 +371,15 @@ export const WriteIntentRecordSchema = z.discriminatedUnion("status", [
   const expectedDigest = deriveIdempotencyKeyDigest(record.system, record.idempotencyKey);
   if (record.idempotencyKeyDigest !== expectedDigest) {
     context.addIssue({ code: "custom", path: ["idempotencyKeyDigest"], message: "idempotency key digest does not match the exact system and natural key" });
+  }
+  if (record.status !== "observed-present" && record.occurrence !== undefined) {
+    const occurrence = record.occurrence;
+    if (occurrence.system !== record.system || occurrence.taskId !== record.taskId
+      || record.idempotencyKey !== repeatOccurrenceKey(occurrence.businessKeyDigest, occurrence.confirmationCommandId, occurrence.nodeId)
+      || !occurrence.baselineEvidence.some((proof) => proof.writeIntentId === occurrence.writeIntentId && proof.evidenceDigest === occurrence.evidenceDigest)
+      || new Set(occurrence.baselineEvidence.map((proof) => proof.writeIntentId)).size !== occurrence.baselineEvidence.length) {
+      context.addIssue({ code: "custom", path: ["occurrence"], message: "repeat occurrence identity or acknowledged evidence is inconsistent" });
+    }
   }
   if (record.status !== "observed-present"
     && record.bindingProofDigest !== deriveWriteBindingProofDigest(record.bindingProof)) {

@@ -174,6 +174,7 @@ type IntakeCommand =
  */
 type CommandProblem =
   | { readonly kind: "rejected"; readonly code: string; readonly message: string }
+  | { readonly kind: "confirmation-required"; readonly message: string }
   | { readonly kind: "conflict"; readonly currentVersion: number; readonly message: string }
   | { readonly kind: "transport"; readonly message: string };
 
@@ -187,6 +188,7 @@ type CommandProblem =
 function problemOf(result: CommandResult): CommandProblem | undefined {
   const settlement = settleCommandResult(result);
   if (settlement.kind === "applied") return undefined;
+  if (settlement.reason === "confirmation-required") return { kind: "confirmation-required", message: settlement.message };
   return settlement.reason === "rejected"
     ? { kind: "rejected", code: settlement.code, message: settlement.message }
     : { kind: "conflict", currentVersion: settlement.currentVersion, message: settlement.message };
@@ -235,6 +237,7 @@ function ProblemNotice({ problem, onDismiss }: { problem: CommandProblem; onDism
       </Arriving>
     );
   }
+  if (problem.kind === "confirmation-required") return <Banner tone="warning" title="Confirmation required" action={action}>{problem.message}</Banner>;
   if (problem.kind === "conflict") {
     return (
       <Arriving>
