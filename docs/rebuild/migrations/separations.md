@@ -7489,3 +7489,21 @@ Both retained worker leases are stopped. The BFF stopped with exit 0; no owned b
 3938/5174 listener remains. Original primary master was restored clean and unchanged. Private
 source metadata remained unchanged. The Task-7 owner binds the candidate, safe evidence and both
 remaining live blockers; no final review or merge has occurred.
+
+### 9.43 Task 1.6.7 matching replacement selected; shared SAML prerequisite blocked (2026-09-07)
+
+The operator supplied matching Kuali and New Kronos screenshots and selected the corresponding
+private Kuali document. Value-free comparisons proved that the previous failed document represented
+a different employee. The explicit replacement was applied through the atomic private writer with
+a fresh opaque identity; the entire Person Lookup entry was preserved. Complete production
+admission, including the timekeeper binding, proved Separations next attempt 1 with no checkpoints.
+No identifier entered this record or the public registry.
+
+At frozen candidate `9018540f564e82be8db972d4509fe3e3386fdbba`, the serial Person Lookup proof
+failed UCPath acquisition (result `711c7193-4a49-4b9f-a0cf-0f97d6665106`). A login-only diagnostic
+then observed the post-Duo UCSD SAML page remain loading with an unfinished main response, before
+its automatic form handoff. The underlying cause is unresolved. Separations was not launched
+through that shared prerequisite: no new result/run/verdict or run-scoped deltas are claimed.
+The old failed document's evidence remains intact; the replacement is unspent. Post-doctor was
+healthy v32/generation 216 with zero pending writes, runtime/browser stopped, original master restored clean.
+Task 1.6.7 remains open; the owner records the safe source identity and recovery boundary.

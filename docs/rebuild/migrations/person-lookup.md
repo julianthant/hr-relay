@@ -205,3 +205,19 @@ all-at-once cutover (D89/D93).
   and deltas are **0/0/0**. Both failed attempts remain retained. This deterministic ambiguity
   needs an operator-resolved subject/source fact; neither a blind rerun nor choosing one CRM
   record is authorized. Separations does not use CRM and may be checked independently.
+
+- 2026-09-07 — Task 1.6.7 froze replacement-input candidate
+  `9018540f564e82be8db972d4509fe3e3386fdbba` after full deterministic gates. The fresh replacement
+  live-read produced result `711c7193-4a49-4b9f-a0cf-0f97d6665106`, **failed**, run
+  `78967c1a-5797-4ab7-826b-be31472acf0e` / trace `pl-164455-7896`, attempt 1, `dryRun=false`.
+  Manifest `3ca0eaf2e0db1aff2da866b01fd34b73d5a2ba8d369caee497ac76ec7adee89f`; evaluator 60181 ms,
+  command 62349 ms/exit 1. UCPath acquisition hit the existing 60000 ms bound before any checkpoint.
+  Failure `921a158e-bba5-4e42-98a7-749bc8512f78` (`UNHANDLED`, non-transient, not-attempted),
+  bundle `72ad2765-ec36-46b9-8461-37fc4dcff42a`; receipt
+  `ee5e5746-0bf9-5008-b00f-f556240840ad` failed/unknown. Three assertions met, four failed;
+  exact write-intent/attempt/durable-outbox deltas and readback counts were **0/0/0**.
+  A login-only diagnostic reached the UCSD SAML response after Duo but its main response never
+  completed within the bound, preventing the page's auto-submit-on-load. Underlying cause remains
+  unresolved; no retry or form replay occurred. This replacement's first ordinal is now spent.
+  Post-doctor passed healthy v32/generation 216 with four retained runs and zero pending writes; the primary
+  master was restored clean. The Task 7 owner holds exact binding and diagnostic evidence.

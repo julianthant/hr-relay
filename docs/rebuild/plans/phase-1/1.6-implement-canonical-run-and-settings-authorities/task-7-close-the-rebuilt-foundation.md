@@ -910,3 +910,80 @@ tracked gate-input hashes. No further parity references, production code, provid
 behavior changed. The consumed test-subject-blockers handoff's surviving state is recorded here;
 removed only that temporary file. Freeze this source/test/evidence candidate before the serial
 primary live pair. Final review/integration/cleanup remain open.
+
+### Replacement live-read blocked at the SAML handoff (2026-09-07)
+
+Frozen candidate **9018540f564e82be8db972d4509fe3e3386fdbba** contains the tested replacement
+identity/attempt proof. All 1908 entries in `replacement-gated-inputs.json` matched before commit
+and again after the clean primary checkout detached at that exact commit. Master remained
+`f0b1cf92195897e56e4917384b512c45d7b4d41a`; installed dependency inputs matched. The final private
+source metadata above remained unchanged, provider admission passed, runtime locks were stopped,
+and neither replacement command had previously launched. Pre-doctor at
+`2026-09-07T23:44:27.750Z` was healthy schema 32/generation 177 on the same primary database identity.
+
+Ordinary BFF session 65094 activated the current settings/configuration. Exact `requireActive`
+passed (settings revision 1/runtime generation 4), and bootstrap plus Explorer matched the candidate's
+descriptor-set fingerprint `4651f4c1376e0e39446cae9b906368b8943449ffa8ca2b0dd85eb6863d4676f7`.
+`replacement-live-primary-binding.json`, `replacement-live-activation.json` and
+`replacement-live-served-identity.json` retain the safe binding facts.
+
+| Live proof | Observed result |
+| --- | --- |
+| Command | `npm run cli -- dry-run-scenario person-lookup --subject person-lookup-canary` |
+| Candidate / session | 9018540f564e82be8db972d4509fe3e3386fdbba / 71602 |
+| Result / verdict | `711c7193-4a49-4b9f-a0cf-0f97d6665106` / **failed** |
+| Run / trace | `78967c1a-5797-4ab7-826b-be31472acf0e` / `pl-164455-7896` |
+| Arm / ordinal | `live-read`, `dryRun=false`, replacement attempt 1 |
+| Manifest digest | `3ca0eaf2e0db1aff2da866b01fd34b73d5a2ba8d369caee497ac76ec7adee89f` |
+| Timing / exit | evaluator 60181 ms; command 62349 ms; exit 1 |
+| Checkpoints / failure | none; `searching`, `UNHANDLED`, non-transient, `not-attempted` |
+| Failure / bundle | `921a158e-bba5-4e42-98a7-749bc8512f78` / `72ad2765-ec36-46b9-8461-37fc4dcff42a` |
+| Receipt | `ee5e5746-0bf9-5008-b00f-f556240840ad`, failed/unknown |
+| Assertions | nodes-excluded, gate-results and write-safety-deltas met; other four failed |
+| Exact write-intent / attempt / durable-outbox deltas and independent run counts | **0/0/0** |
+
+The acquisition envelope expired at its existing 60000 ms bound. The frozen manifest's attempt 1 is
+now spent for this replacement identity; do not rerun it as fresh or renew its identity to evade
+the ordinal. `person-lookup-replacement-command.json` and
+`person-lookup-replacement-readback.json` retain the command and exact insert-only authority readback.
+Separations was **not launched** through the unresolved shared UCPath dependency. Its selected
+replacement remains unspent; no new Separations verdict, run or per-run deltas are claimed.
+
+A bounded login-only diagnostic used the failed worker's exact existing UCPath profile and the
+production login recipe through playwright-cli. It passed the Duo page and returned to
+`a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO` at `23:47:26.271Z`; the unchanged 60000 ms diagnostic
+bound expired at `23:48:16.905Z`. The page was still `loading`, titled `Please wait ...`, with the
+observed auto-submit-on-load form, no password field and no Duo refusal marker. Both stylesheets
+returned 200, but Navigation Timing still reported no main-document `responseEnd`, DOMContentLoaded
+or load event. The automatic SAML handoff therefore did not execute. This locates the observed
+stall before PeopleSoft's BuildPage navigation; it does not establish the underlying server,
+transport or browser cause. No form replay, longer timeout, speculative fallback or workflow retry
+was performed. `replacement-login-failure-diagnostic.json` retains only fixed markers, timing
+booleans and host/path navigation; no credential, SAML payload, query string or test value.
+
+BFF 65094 stopped with exit 130; CLI browser `task7-replacement-login` (PID 38937) closed. The reused
+worker profile is preserved, and the owned stopped diagnostic lock is
+`.tracker/locks/live-smoke/task7-replacement-login`. Post-doctor at
+`2026-09-07T23:48:38.807Z` passed healthy schema 32/generation 216, reconciled four retained runs/spans, zero
+pending command/write/outbox counts, and two retained stopped worker leases. No listeners on
+3938/5174 or matching owned runtime/browser processes remain. Provider/private-source admission
+still passed. Primary master was restored clean to its unchanged full original HEAD;
+`replacement-live-restored.json` records that check.
+
+**WAITING ON:** recovery of the observed UCSD SAML handoff and a proved login before another live
+workflow attempt. Input setup is complete; no further operator identifier or credential is needed.
+The next discriminating diagnostic should capture main-document response completion/failure and
+safe timing with the production browser recipe; do not replay the SAML form or assume that another
+login proves a cause. Steps 1–3 remain accepted. Steps 4–6, final metadata/evidence consolidation,
+fresh complete review, integration gates and owned cleanup remain open. No final reviewer or merge
+was dispatched because the mandatory live acceptance is still missing. The provisional delivery
+assessment is unchanged: deterministic authority proof passes, live foundation closure is blocked.
+
+Blocked-evidence recording passed target-registry architecture (16 tests, session 54377) and the
+corrected exact `roadmap-doc-binding.test.ts` selector (23 tests). The initial pluralized selector
+was absent and collected only the registry file; it was not counted as roadmap coverage. Lint
+session 6533 passed with zero warnings. Roadmap freshness, instruction-twin/size audit and diff
+checks passed. All 1908 tracked hashes in `replacement-gated-inputs.json` still match candidate
+9018540f, proving D191 reuse for these three evidence-only Markdown additions. Full gates remain
+passing evidence for that input set; the failed live gate remains failed. The two retained worker
+lease PIDs, 38761 and 29045, were independently confirmed stopped. Their rows were preserved.
