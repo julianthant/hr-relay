@@ -896,3 +896,143 @@ The app returned completed review turns with no message items; the exact local r
 The same approved reviewer will verify this documentation-only correction before integration.
 D191 reuses the unchanged R10 executable gates above, with scoped instruction/link, roadmap
 freshness and diff checks for this lesson/evidence commit. Completion remains open.
+
+
+#### Accepted R10, final integration gates, and operator input blocker — 2026-09-07
+
+Standalone review turn `01a07ac0-30d9-7141-8f4d-fa78204e1030` returned **PASS, no findings**
+on executable candidate `ad15bb982757a2e2342cf85f98df6eeca2a48050` and reviewed evidence
+`cfd880dd973b3b491a1623f78d0eca82144b22b6`. The P3 lesson correction is accepted; all
+P1–P41, M1–M27 and R1–R10 are supported. Complete base-to-evidence scope is 119 paths;
+all executable inputs are unchanged from the accepted R10 gate state. The same exact independent
+review task and approved continuation arrangement apply; prior native BLOCKED attempts supply no
+acceptance credit. The supervisor verified its exact verdict from the local task's completion record.
+
+The repair merged without conflicts as **`23e0c9ba169a321f03be268f92f7e2e284a59c43`**; its tree
+exactly equals reviewed cfd880dd. All required integration gates passed on that merged tree:
+
+| Gate | Merged result | Evidence |
+| --- | --- | --- |
+| Typecheck / lint | PASS, exit 0 each | `/tmp/hr-settings-r10-integration-{typecheck,lint}.log` |
+| Full coverage / suite size | PASS: 5,456 tests / 433 files; 314.55 seconds; configured floors and suite size pass | `/tmp/hr-settings-r10-integration-coverage.log` |
+| Standalone architecture | PASS: 827 tests / 79 files; 60.97 seconds | `/tmp/hr-settings-r10-integration-architecture.log` |
+| Desktop parity | PASS: 259 cases; 60.6 seconds wrapper time; no tracked reference changes | `/tmp/hr-settings-r10-integration-parity.log` |
+| Manifest / catalog / roadmap | PASS, exit 0 each | `/tmp/hr-settings-r10-integration-{manifest,catalog,roadmap}.log` |
+| Exact reviewed tree / clean status / diff | PASS | supervisor git checks |
+
+The real CLI lifecycle case passed in 1.52 seconds in the merged coverage run despite the operator's
+unchanged migrated environment. Coverage used the equivalent primary-checkout effective-two-worker
+adapter `/tmp/hr-settings-r9-integration-two-workers.config.mts`; compiler/linter contention was
+absent and architecture/parity were sequential. Percentages remain statements 85.79%, branches
+77.36% report-only, functions 89.80%, lines 87.94%. The merged 2,117-input map is
+`/tmp/hr-settings-r10-integration-inputs.json`, aggregate
+`7251620d0256cc7882e5440facc9001e1ee74901fed2acbce00c2c51b7278329`.
+Steps .1–.6 are accepted. Step .7 is incomplete for the following observed operator input condition.
+
+Immediately before conversion, primary was clean on the gated merge, both rebuild ports were free,
+and the operator authority remained schema **29 / generation 91**, with no independent credential
+file, no tombstones and zero write-intent/write-attempt/outbox rows. The merged command
+`npm run --silent cli -- storage backup --json` succeeded and verified a **v3 database-only** backup
+at generation 91, file
+`authority-g91-20260907073349090-c153f23c-8266-46a6-8268-1171f8cd499e.sqlite` under
+`.tracker/backups/authority/`. The following `storage upgrade --plan --json` returned exit 1,
+`refused-or-incomplete`, code **`env-unknown-key`**. Apply, repeat and doctor did not run.
+
+A separate read-only plan rerun confirmed the same named refusal and byte-identical `.env` and
+main database. Key-name-only inspection through the actual strict environment validator/registry
+identified exactly **`I9_USER_ID`, `I9_PASSWORD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`** as
+unregistered. No values were printed, copied into evidence or imported. Existing state/evidence
+files remain byte-identical; the backup is the sole intended new authority artifact. Sanitized
+controller evidence is `/tmp/hr-settings-r9-operator.json`; its `planExit: 1` is a refusal, not a
+successful plan. The controller `/tmp/hr-settings-r9-operator-conversion.py` must NOT be blindly
+rerun: it refuses existing evidence and its original baseline snapshots were process-local.
+
+**Pending operator choice, not an approved amendment:** admit only these four exact historical names
+as migration-only, cleanup-only inputs, never import their values, keep normal runtime rejection,
+report cleanup by name, and preserve `.env` byte-for-byte. This changes the approved declared-input
+boundary and requires explicit approval plus contract/proof/code updates, new candidate review and
+applicable candidate/integration gates. Do not silently ignore arbitrary unknown names or remove
+entries from `.env`. The current refusal is the planned fail-closed behavior, not evidence of a
+production bug. The missed concrete operator name inventory is a planning/preflight omission.
+
+Completion checkboxes remain open. Preserve the task worktree/branch, exact review task, verified
+backup and diagnostic logs. Cleanup audit found 23 dead task-owned retained test roots before the
+last integration run; re-audit with `/tmp/hr-settings-r9-audit-scratch.py` before later removal.
+Do not sweep unrelated runs. The task checkout's six ignored entries are owned: provider template
+`.env`, parity-only `.tracker`, coverage, dist, parity output and a symlink to primary dependencies.
+No push, legacy access/change, application write transaction or cutover occurred. The temporary recovery brief was consumed on approval; surviving recovery details remain in this owner.
+
+This stopped-state evidence commit changes documentation only. D191 reuses the accepted executable
+review and merged gates above; instruction/link, roadmap freshness and diff checks cover recording.
+Final delivery assessment and completion remain pending the actual .7 outcome and cleanup.
+
+
+#### Approved four-name migration cleanup amendment (R11) — 2026-09-07
+
+The operator answered **“yes clean them up”** to the proposal to admit the four exact names as
+migration-only cleanup inputs, never import their values, preserve `.env` and renew independent
+review. D336 and its decision pointer now record that bounded exception. No `.env` edit is authorized
+or performed by this amendment. Arbitrary unknown names remain errors; the runtime registry and
+catalog remain unchanged. Strict syntax/duplicate/source integrity checks apply before cleanup-name
+selection. The adapter reports names only and never parses those bindings into values.
+
+Resume verified the handoff and clean task HEAD `da00b16991a86802a000371f0d569165e48facf3`,
+primary `23e0c9ba169a321f03be268f92f7e2e284a59c43`, existing failed-plan evidence and original
+verified backup. The handoff's surviving facts are recorded here and in the preceding section;
+its exact file is removed after verified consumption. The original v29/g91 operator root stays
+untouched until the amended candidate is accepted and merged-code gates pass.
+
+R11's independently reviewable acceptance unit is the complete amendment relative to accepted
+integration `23e0c9ba`, plus an unchanged-input reconciliation against that accepted Task-6 baseline.
+A **fresh read-only native `sup_review`** covers all amendment code, contracts, proofs, command output,
+normal runtime admission and source/backup exclusion, with no implementation involvement or delegation.
+This uses the required fresh reviewer for changed contracts; it does not ask an exhausted native
+reviewer to complete the original 119-path assignment. The original complete standalone PASS remains
+bound to its original accepted tree; no old verdict supplies acceptance of the amendment. Candidate
+and integration gates remain the full original schedule. No extra app task is created.
+
+The real storage-command test first failed on the expected `env-unknown-key` plan refusal
+(`/tmp/hr-settings-r11-cleanup-red.log`). Its positive oracle requires successful read-only planning,
+conversion, empty ordinary/private settings, exact cleanup-name output, source preservation,
+value-free JSON/database/verified backup and a no-write settled retry. It separately proves all four
+names still fail normal environment admission with an empty child environment. Neighboring input
+proofs retain arbitrary unknown rejection and add near-name, duplicate retired-name and malformed
+retired-value refusals before plan/apply effects. Full gates and fresh review remain pending.
+
+
+#### R11 candidate gates — awaiting fresh independent review
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Focused upgrade/command/bootstrap neighbors | PASS: 66 tests / five files | `/tmp/hr-settings-r11-focused.log` |
+| Final mixed-input and command proof | PASS: 21 tests / two files; all 45 existing settings inputs still import, all 54 cleanup names reported | `/tmp/hr-settings-r11-mixed.log` |
+| Typecheck / lint | PASS, exit 0 each on final inputs | `/tmp/hr-settings-r11-{typecheck,lint}.log` |
+| Full coverage / suite size | PASS: 5,461 tests / 433 files; 298.09 seconds; all configured floors and chained suite size pass | `/tmp/hr-settings-r11-coverage.log` |
+| Standalone architecture | PASS: 827 tests / 79 files; 59.56 seconds | `/tmp/hr-settings-r11-architecture.log` |
+| Desktop parity | PASS: 259 cases; 58.6 seconds; no reference changes | `/tmp/hr-settings-r11-parity.log` |
+| Manifest / catalog / roadmap freshness | PASS, exit 0 each | `/tmp/hr-settings-r11-{manifest,catalog,roadmap}.log` |
+| Scoped instruction/link/diff checks | PASS: nine equal pairs; maximum chain 15,457 bytes; owner link valid | supervisor scoped checks |
+
+Coverage used the previously verified two-worker adapter with no compiler/linter contention;
+architecture and parity were sequential. Statements 85.80%, branches 77.37% report-only, functions
+89.81%, lines 87.94%. One initial lint finding on unvalidated test JSON member access was corrected
+with a strict schema; final typecheck/lint and full coverage include that correction. No test,
+timeout, membership, isolation or floor was weakened. The full suite includes upgrade/restore/doctor
+fixtures. Relative to accepted integration 23e0c9ba, the complete amendment changes six paths:
+upgrade-sources, two test files, D336, its decision pointer and this owner. The consumed handoff
+existed only on the task branch and is absent from the final net amendment.
+
+Operator conversion remains stopped. `/tmp/hr-settings-r11-operator-conversion.py` is prepared but
+unrun: it preserves the original failed-plan evidence, takes fresh exact SQL/file snapshots, reuses
+the verified original backup only after successful plan revalidation, and checks conversion,
+repeat/doctor and source/backup preservation. It requires the new exact clean gated integration SHA.
+
+
+R11 executable candidate: `5e42fe08d67bc18e05d472389f79c9be435d46e1`; accepted amendment base:
+`23e0c9ba169a321f03be268f92f7e2e284a59c43`. The 2,117-input map
+`/tmp/hr-settings-r11-inputs.json` binds the candidate with SHA-256
+`8f262430a36b3642347371245442c92c1e7724f31de04323c59d9d523443e06e`.
+Exactly the six amendment paths differ from `/tmp/hr-settings-r10-integration-inputs.json`;
+all other accepted inputs are identical. This evidence-only append reuses those executable gates
+under D191; scoped checks and roadmap freshness/diff pass. Fresh review must accept the complete
+amendment and verify this unchanged-baseline reconciliation before integration. Completion stays open.
