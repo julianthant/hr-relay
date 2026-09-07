@@ -73,7 +73,7 @@ const DOC_REF_RE = /^([0-6]|(?:[0-3]\.[1-9]\d*|[4-6][A-Z])(?:\/[a-z0-9]+(?:-[a-z
 const DOC_REF_SPLIT_RE = / · (?=(?:[0-6]|(?:[0-3]\.[1-9]\d*|[4-6][A-Z])(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)?)(?:\s|$)|ref:[a-z])/;
 
 /** Currently admitted phase overviews and subphase docs; the guard requires each file. */
-export const PHASE_DOC_NUMBERS = ["0", "0.1", "0.2", "0.3", "1", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "2", "2.1", "2.2", "2.3", "2.4", "2.5", "2.6", "3", "3.1", "3.2", "3.3", "3.4", "4", "4A", "5", "5A", "5B", "6", "6A", "6B", "6C", "6D", "6E", "6F"] as const;
+export const PHASE_DOC_NUMBERS = ["0", "0.1", "0.2", "0.3", "1", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "2", "2.1", "2.2", "2.3", "2.4", "2.5", "2.6", "3", "3.1", "3.2", "3.3", "3.4", "3.5", "4", "4A", "5", "5A", "5B", "6", "6A", "6B", "6C", "6D", "6E", "6F"] as const;
 
 /** Canonical path pattern for a validated phase document token. */
 export function phaseDocPattern(doc: string): string {

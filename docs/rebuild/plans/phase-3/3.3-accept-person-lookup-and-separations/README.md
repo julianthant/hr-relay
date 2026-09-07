@@ -74,7 +74,7 @@ Task 1 changes no source. A defect or changed candidate stops here and returns t
 - [ ] reconcile Person Lookup and Separations T1–T3 evidence against the frozen candidate and controlled results
 - [ ] update migration records, regression scenarios, knowledge records, capability dispositions, and every owning reference whose truth changed
 - [ ] run the complete integrated gate family without weakening floors, limits, or assertions
-- [ ] remove and verify every Phase 3.3 worktree and local branch, archive exact tasks, close the coordinator ledger, and unlock Phase 3.4
+- [ ] remove and verify every Phase 3.3 worktree and local branch, archive exact tasks, close the coordinator ledger, and unlock optional Phase 3.4 plus required Phase 3.5; no optional feature blocks cooperation
 > 2026-09-04 | D329 new sequence | absorbs the close portions of former 3.2 Tasks 10/13 and former 3.3 Task 6
 <!-- /roadmap-status -->
 

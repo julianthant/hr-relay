@@ -9,11 +9,11 @@ Read the [phase overview](../README.md) for shared context, decisions and phase-
 Phase 3 proves the reusable dashboard/workflow platform with Person Lookup and Separations, and
 nothing could be wired into a dashboard that did not exist yet. **Phase 3.1 is that dashboard**: the
 generic surfaces every admitted workflow inherits, built once, plus the hardening the first real
-connection to a running workflow exposed. D326/D329 make it the first of four coordinator-owned parts:
+connection to a running workflow exposed. D326/D329/D342 place it first in the Phase 3 hierarchy:
 **3.1 Shared dashboard**, then **3.2 workflow authoring and candidate freeze**, **3.3 controlled acceptance**, and
-**3.4 Codex and Claude cooperation**. This file owns `{#dash-defaults}` and its numbered supervisor
+**3.4 optional document tools**, then **3.5 Codex and Claude cooperation**. This file owns `{#dash-defaults}` and its numbered supervisor
 tasks. [3.2](../3.2-finish-workflow-authoring/README.md), [3.3](../3.3-accept-person-lookup-and-separations/README.md), and
-[3.4](../3.4-co-operate-with-claude/README.md) own the following parts. D319 leaves every other workflow
+[3.4](../3.4-optional-document-tools/README.md) and [3.5](../3.5-co-operate-with-claude/README.md) own the following parts. D319 leaves every other workflow
 unnumbered until the operator verifies and approves its admission packet. Contracts this phase built
 or amended live in `reference/`; this doc holds the work, its state, and its exit.
 

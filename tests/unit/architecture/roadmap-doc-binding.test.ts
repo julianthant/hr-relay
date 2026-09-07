@@ -273,7 +273,7 @@ const FOUNDATIONAL_PHASE_PARTS = [
   {
     phaseId: "phase-3",
     phaseNumber: 3,
-    parts: ["dash-defaults", "workflow-authoring-model", "workflow-live-acceptance", "claude-operator"],
+    parts: ["dash-defaults", "workflow-authoring-model", "workflow-live-acceptance", "optional-document-tools", "claude-operator"],
   },
 ] as const;
 const SUPERVISOR_TASK_RE = /^(\d+)(?:-(\d+))? · /;
@@ -293,6 +293,32 @@ export function auditPhaseThreeExecutionOrder(roadmap: Roadmap): string[] {
       );
     }
 
+    // Only the explicitly admitted D342 subtree is optional. A dependency
+    // from required work would turn the menu back into a release gate.
+    const optionalPart = parts.find((part) => part.id === "optional-document-tools");
+    if (optionalPart !== undefined) {
+      const optionalIds = new Set<string>();
+      const collectOptional = (node: Item): void => {
+        if (node.id !== undefined) optionalIds.add(node.id);
+        for (const child of node.items ?? []) collectOptional(child);
+      };
+      collectOptional(optionalPart);
+      const checkRequired = (node: Pick<Item, "id" | "requires" | "items">): void => {
+        if (node.id !== undefined && optionalIds.has(node.id)) return;
+        for (const requirement of node.requires ?? []) {
+          if (requirement.kind === "node" && optionalIds.has(requirement.ref)) {
+            violations.push(
+              `D342 required node {#${node.id ?? "missing-id"}} must not require optional feature {#${requirement.ref}}`,
+            );
+          }
+        }
+        for (const child of node.items ?? []) checkRequired(child);
+      };
+      for (const entry of roadmap.spine) {
+        if (entry.kind === "phase") checkRequired(entry);
+      }
+    }
+
     for (const [partIndex, expectedPartId] of expectedPhase.parts.entries()) {
       const part = parts.find((candidate) => candidate.id === expectedPartId);
       if (part === undefined) continue;
@@ -303,7 +329,11 @@ export function auditPhaseThreeExecutionOrder(roadmap: Roadmap): string[] {
         );
       }
       if (partIndex > 0) {
-        const previousPartId = expectedPhase.parts[partIndex - 1];
+        // D342: the optional document menu occupies 3.4, but cooperation
+        // still depends directly on controlled acceptance, not optional delivery.
+        const previousPartId = expectedPartId === "claude-operator"
+          ? "workflow-live-acceptance"
+          : expectedPhase.parts[partIndex - 1];
         const requirements = new Set(
           (part.requires ?? []).flatMap((requirement) => (requirement.kind === "node" ? [requirement.ref] : [])),
         );
@@ -805,6 +835,29 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
       "## session: 2026-09-03 | roadmap-redesign | history does not belong on the phase spine\n\n<!-- roadmap:end -->",
     );
     expect(() => parsePlan(withSessionMarker)).toThrow(/phase .* needs an \{#id\}/);
+  });
+
+  it("keeps D342 document features outside required cooperation and release dependencies", () => {
+    const roadmap = RoadmapSchema.parse(parsePlan(tree.planText));
+    expect(auditPhaseThreeExecutionOrder(roadmap)).toEqual([]);
+    const phase = roadmap.spine.find((entry) => entry.kind === "phase" && entry.id === "phase-3");
+    if (phase === undefined || phase.kind !== "phase") throw new Error("test fixture has no Phase 3");
+    const cooperation = phase.items.find((part) => part.id === "claude-operator");
+    if (cooperation === undefined) throw new Error("test fixture has no cooperation part");
+    cooperation.requires = [{ kind: "node", ref: "optional-document-tools" }];
+    expect(auditPhaseThreeExecutionOrder(roadmap).join("\n")).toContain(
+      "must require preceding part {#workflow-live-acceptance}",
+    );
+    expect(auditPhaseThreeExecutionOrder(roadmap).join("\n")).toContain(
+      "must not require optional feature {#optional-document-tools}",
+    );
+    cooperation.requires = [{ kind: "node", ref: "workflow-live-acceptance" }];
+    const migrations = roadmap.spine.find((entry) => entry.kind === "phase" && entry.id === "migrations");
+    if (migrations === undefined || migrations.kind !== "phase") throw new Error("test fixture has no Phase 4");
+    migrations.requires = [{ kind: "node", ref: "optional-semantic-search" }];
+    expect(auditPhaseThreeExecutionOrder(roadmap).join("\n")).toContain(
+      "D342 required node {#migrations} must not require optional feature {#optional-semantic-search}",
+    );
   });
 
   it("refuses Phase 0–3 parts or supervisor tasks that leave D326/D328's shared execution grammar", () => {
