@@ -24,6 +24,9 @@ function mutator(declaration: ts.Declaration | undefined): boolean {
     || owner(declaration, "ArchivedRunRepository") && name === "insert"
     || owner(declaration, "DiagnosticBundleRepository") && name === "purge";
 }
+// D332/D336's sole stopped, transactional ordinal backfill; its import closure
+// is independently guarded by authority-upgrade-adapters-isolated.
+const BACKFILL_SQL = "UPDATE deleted_runs SET item_id=?, attempt=?, run_number=NULL, ordinal_source=?, record_json=json_set(record_json,'$.itemId',?,'$.attempt',?,'$.runNumber',NULL,'$.ordinalSource',?) WHERE record_key=? AND item_id IS NULL AND attempt IS NULL AND run_number IS NULL";
 function audit(fixtures = false): string[] {
   const roots = gitVisibleFiles(["src"]).filter((path) => /\.tsx?$/u.test(path));
   const extras = new Map(["sql", "mutator", "view"].map((kind) => [resolve(REPO_ROOT, `src/core/guard-fixtures/${kind}.ts`),
@@ -54,7 +57,8 @@ function audit(fixtures = false): string[] {
       visited++;
       const report = (arm: string) => violations.push(`${relative}:${arm}:${node.getText().slice(0, 100)}`);
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node))
-        && /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM)\s+["`[]?(?:tasks|leases|archived_runs|deleted_runs|run_results|archive_relaunches)\b/iu.test(node.getText())) report("sql");
+        && /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM)\s+["`[]?(?:tasks|leases|archived_runs|deleted_runs|run_results|archive_relaunches)\b/iu.test(node.getText())
+        && !(relative === "src/infra/compat/settings-database-upgrade.ts" && ts.isStringLiteralLike(node) && node.text === BACKFILL_SQL)) report("sql");
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) && /\bFROM\s+["`[]?runs_view\b/iu.test(node.getText())) report("runs-view");
       const signature = ts.isCallExpression(node) ? checker.getResolvedSignature(node)?.declaration : undefined;
       const symbol = ts.isPropertyAccessExpression(node) ? checker.getSymbolAtLocation(node.name) : undefined;
@@ -68,7 +72,7 @@ function audit(fixtures = false): string[] {
   return violations;
 }
 describe("no-lifecycle-sql-outside-the-adapter", () => {
-  it("limits lifecycle writes to the literal two-module authority boundary", () => { assert.deepEqual(audit(), []); });
+  it("limits lifecycle writes to the service/adapter and exact stopped ordinal backfill", () => { assert.deepEqual(audit(), []); });
   it("detects checked-in SQL, aliased mutator and runs_view reader violations", () => {
     const found = audit(true);
     for (const arm of ["sql", "mutator", "view"]) assert.ok(found.some((entry) => entry.startsWith(`src/core/guard-fixtures/${arm}.ts:`)), arm);

@@ -1,3 +1,4 @@
+import { derivePersistedSettingsFingerprint } from "../../src/domain/config/settings.js";
 /**
  * The run/claim store (ref execution-and-sessions §3, ref workflow-model §4).
  *
@@ -282,7 +283,7 @@ describe("run claim store", () => {
         affectedTargets: [{ family: "settings", revision: 2 }],
         restartRequired: true,
         settingsRevision: 2,
-        settingsFingerprint: HASH_C,
+        settingsFingerprint: derivePersistedSettingsFingerprint({}),
       },
       completedAt: NOW,
       versionChanges: [{
@@ -293,8 +294,9 @@ describe("run claim store", () => {
       affectedDependencyIds: [],
     });
     database.authority.settingsCurrent.advance({
+      settings: {},
       revision: 2,
-      settingsFingerprint: HASH_C,
+      settingsFingerprint: derivePersistedSettingsFingerprint({}),
       commandId: settingsCommand.commandId,
       commandFingerprint: deriveSettingsCommandFingerprint(settingsCommand),
       auditId: UUID_8,

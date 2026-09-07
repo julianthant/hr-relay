@@ -88,6 +88,7 @@ export interface DashboardAppDeps {
     get(commandId: string): CommandRequest | undefined;
   }>;
   readonly bulkCommandAcceptances: BulkCommandAcceptanceAuthority;
+  readonly protectedCommandAcceptedAt: (commandId: string) => string | undefined;
   readonly startPlans: StartPlanService;
   readonly intake: IntakeService;
   readonly hub: DashboardStreamHub;
@@ -237,6 +238,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   const operatorCommands = createOperatorCommandIngress({
     clock: deps.bootstrap.clock,
     journal: deps.commandJournal,
+    protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
     bulkAcceptances: deps.bulkCommandAcceptances,
   });
 

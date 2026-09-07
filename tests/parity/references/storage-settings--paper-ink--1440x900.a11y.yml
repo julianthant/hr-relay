@@ -54,7 +54,7 @@
     - text: The operator identity this runtime reports. Operator label
     - textbox "Operator label": Local operator
     - paragraph: The local operator label in dashboard and command evidence.
-    - text: "Default actor.label Environment: not set settings.json: not set Default: Local operator 0 unsaved changes"
+    - text: "Default actor.label Environment: not set Saved: not set Default: Local operator 0 unsaved changes"
     - button "Discard all" [disabled]
     - button "Save 0" [disabled]
 - region "Session Panel":

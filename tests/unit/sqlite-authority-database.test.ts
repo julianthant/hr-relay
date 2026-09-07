@@ -13,6 +13,7 @@ import {
   deriveSettingsCommandFingerprint,
   markSettingsCommand,
 } from "../../src/domain/commands.js";
+import { derivePersistedSettingsFingerprint } from "../../src/domain/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
@@ -334,7 +335,7 @@ const SETTINGS_CURRENT_AUDIT = {
     affectedTargets: [{ family: "settings" as const, revision: 2 }],
     restartRequired: true as const,
     settingsRevision: 2,
-    settingsFingerprint: HASH_C,
+    settingsFingerprint: derivePersistedSettingsFingerprint({}),
   },
   completedAt: NOW,
   versionChanges: [{
@@ -475,7 +476,7 @@ function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
 }
 
-function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30): void {
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
@@ -886,19 +887,20 @@ afterEach(() => {
 });
 
 describe("native SQLite authority schema", () => {
-  it("keeps the stopped-system gate below the floor so later additive migrations remain automatic", () => {
+  it("requires stopped conversion through v31 and admits v32 directly", () => {
     assert.equal(requiresStoppedSystemAuthorityUpgrade(29), true);
-    assert.equal(requiresStoppedSystemAuthorityUpgrade(30), false);
-    assert.equal(requiresStoppedSystemAuthorityUpgrade(31), false);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(30), true);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(31), true);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(32), false);
   });
 
-  it("creates a fresh authority at v31 with one v30-floor baseline journal row", () => {
-    const path = databasePath("fresh-v31.sqlite");
+  it("creates a fresh authority at v32 with one v32 baseline journal row", () => {
+    const path = databasePath("fresh-v32.sqlite");
     openDatabase(path).close();
 
     const raw = new DatabaseSync(path, { readOnly: true });
     try {
-      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 31);
+      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), CURRENT_AUTHORITY_SCHEMA_VERSION);
       const row = raw.prepare(`
         SELECT record_key, upgrade_id, phase, record_json
         FROM authority_upgrades
@@ -917,7 +919,7 @@ describe("native SQLite authority schema", () => {
         upgradeId: "fresh",
         phase: "baseline",
         fromSchemaVersion: 0,
-        toSchemaVersion: 30,
+        toSchemaVersion: 32,
         by: "local-operator",
         recordedAt: NOW,
       });
@@ -990,7 +992,7 @@ describe("native SQLite authority schema", () => {
     applyReleasedMigrationChainForTest(path, 30);
     const upgraded = new DatabaseSync(path, { enableForeignKeyConstraints: true });
     try {
-      assert.equal(Reflect.get(upgraded.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 31);
+      assert.equal(Reflect.get(upgraded.prepare("PRAGMA user_version").get() ?? {}, "user_version"), CURRENT_AUTHORITY_SCHEMA_VERSION);
       const foreignKeys = upgraded.prepare("PRAGMA foreign_key_list(archive_relaunches)").all() as Array<{ from: string; table: string }>;
       assert.deepEqual(foreignKeys.map(({ from, table }) => ({ from, table })), [{ from: "record_key", table: "tasks" }]);
       const tombstone = (run: typeof source) => upgraded.prepare(`
@@ -1021,7 +1023,7 @@ describe("native SQLite authority schema", () => {
 
   it("refuses an at-floor authority whose immutable baseline claims another target", () => {
     const path = databasePath("invalid-baseline-target.sqlite");
-    createExactReleasedDatabase(path, 30);
+    createExactReleasedDatabase(path, CURRENT_AUTHORITY_SCHEMA_VERSION);
     const raw = new DatabaseSync(path);
     raw.prepare(`
       INSERT INTO authority_upgrades (
@@ -1076,7 +1078,7 @@ describe("native SQLite authority schema", () => {
 
     assert.throws(
       () => openDatabase(path),
-      /upgrade-required \{ schemaVersion: 29, floor: 30 \}/u,
+      /upgrade-required \{ schemaVersion: 29, floor: 31 \}/u,
     );
     assert.deepEqual(readFileSync(path), before);
   });
@@ -1141,7 +1143,7 @@ describe("native SQLite authority schema", () => {
     assert.deepEqual(readFileSync(path), before);
   });
 
-  it("creates the complete v30 schema floor and preserves journal append semantics", () => {
+  it("creates the complete v32 schema and preserves journal append semantics", () => {
     const path = databasePath("v30-schema-floor.sqlite");
     openDatabase(path).close();
     const raw = new DatabaseSync(path);
@@ -1162,7 +1164,7 @@ describe("native SQLite authority schema", () => {
       `).get() ?? {}, "sql"));
       assert.match(checkpointTriggerSql, /substr\(OLD\.record_key, 1, 36\)/u);
       assert.match(checkpointTriggerSql, /substr\(OLD\.record_key, 37, 1\) <> ':'/u);
-      assert.notEqual(raw.prepare(`
+      assert.equal(raw.prepare(`
         SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'protected_settings_current'
       `).get(), undefined);
 
@@ -2051,7 +2053,8 @@ describe("authority generation accounting", () => {
       mutate: (db) => {
         db.authority.settingsCurrent.advance({
           revision: 2,
-          settingsFingerprint: HASH_C,
+          settings: {},
+          settingsFingerprint: derivePersistedSettingsFingerprint({}),
           commandId: SETTINGS_CURRENT_COMMAND.commandId,
           commandFingerprint: deriveSettingsCommandFingerprint(SETTINGS_CURRENT_COMMAND),
           auditId: SETTINGS_CURRENT_AUDIT.auditId,
@@ -2119,7 +2122,7 @@ describe("authority generation accounting", () => {
   it("accounts for every authority table and increments once per outer authority mutation", () => {
     assert.deepEqual(cases.map(({ table }) => table).sort(), AUTHORITY_TABLE_REGISTRY
       .filter(({ classification, name }) => classification === "authority"
-        && !["authority_meta", "authority_upgrades", "protected_settings_current"].includes(name))
+        && !["authority_meta", "authority_upgrades"].includes(name))
       .map(({ name }) => name)
       .sort());
     for (const mutation of cases) {
@@ -2133,9 +2136,21 @@ describe("authority generation accounting", () => {
   });
 
   it("#16 enumerates every current never-delete trigger and each aborts without a tombstone", () => {
-    const expectedTriggerNames = [...new Set(SQLITE_MIGRATIONS.flatMap(({ statements }) => statements
-      .flatMap((statement) => [...statement.matchAll(/CREATE TRIGGER\s+([a-z0-9_]+_never_deleted)\b/gu)]
-        .map((match) => match[1]))))].sort();
+    const currentTriggerNames = new Set<string>();
+    const triggerTables = new Map<string, string>();
+    for (const { statements } of SQLITE_MIGRATIONS) {
+      for (const statement of statements) {
+        for (const match of statement.matchAll(/DROP TRIGGER(?: IF EXISTS)?\s+([a-z0-9_]+_never_deleted)\b/gu)) currentTriggerNames.delete(match[1]);
+        for (const match of statement.matchAll(/CREATE TRIGGER\s+([a-z0-9_]+_never_deleted)\s+BEFORE DELETE ON ([a-z0-9_]+)/gu)) {
+          currentTriggerNames.add(match[1]);
+          triggerTables.set(match[1], match[2]);
+        }
+        for (const match of statement.matchAll(/DROP TABLE\s+([a-z0-9_]+)/gu)) {
+          for (const [trigger, table] of triggerTables) if (table === match[1]) currentTriggerNames.delete(trigger);
+        }
+      }
+    }
+    const expectedTriggerNames = [...currentTriggerNames].sort();
     const inventoryDatabase = openDatabase();
     const inventoryPath = databasePaths.get(inventoryDatabase);
     if (inventoryPath === undefined) throw new Error("never-delete inventory fixture lost its path");
@@ -2159,21 +2174,7 @@ describe("authority generation accounting", () => {
         mutation.prepare?.(database);
         mutation.mutate(database);
       } else {
-        assert.ok(
-          trigger.tableName === "authority_upgrades" || trigger.tableName === "protected_settings_current",
-          `${trigger.name} has no fixture`,
-        );
-        if (trigger.tableName === "protected_settings_current") {
-          database.authority.commands.insert(COMMAND_FIXTURES[0]);
-          database.authority.commandAudits.insert(COMMAND_AUDIT);
-          const seed = new DatabaseSync(path);
-          seed.prepare(`
-            INSERT INTO protected_settings_current
-              (record_key, revision, command_id, command_fingerprint, audit_id, record_json, created_at)
-            VALUES ('current', 2, ?, ?, ?, '{}', ?)
-          `).run(UUID_1, HASH_A, UUID_2, NOW);
-          seed.close();
-        }
+        assert.equal(trigger.tableName, "authority_upgrades", `${trigger.name} has no fixture`);
       }
       const sqlite = new DatabaseSync(path);
       const count = sqlite.prepare(`SELECT count(*) AS count FROM "${trigger.tableName}"`).get() as { count: number };

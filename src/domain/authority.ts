@@ -63,7 +63,6 @@ export const AuthorityTableNameSchema = z.enum([
   "worker_pools",
   "run_sessions",
   "deleted_runs",
-  "protected_settings_current",
   "authority_upgrades",
 ]);
 
@@ -163,7 +162,7 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   upgradeId: z.literal("fresh"),
   phase: z.literal("baseline"),
   fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.literal(30),
+  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32)]),
 });
 
 const AuthorityUpgradeExecutionRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
@@ -193,10 +192,36 @@ const AuthorityUpgradeExecutionRecordSchema = AuthorityUpgradeRecordBaseSchema.e
   envKeysToRemove: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/u)),
 });
 
-/** D332.5 — append-only upgrade evidence; protected values never enter this record. */
-export const AuthorityUpgradeRecordSchema = z.discriminatedUnion("phase", [
+export const TombstoneBackfillCountsSchema = z.strictObject({
+  fromRoots: NonNegativeIntSchema,
+  fromReconstructedRoots: NonNegativeIntSchema,
+  unknown: NonNegativeIntSchema,
+  missingRunNumber: NonNegativeIntSchema,
+});
+
+/** D336 observations never authenticate or gate the independent credential store. */
+const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
+  format: z.literal(3),
+  historicalExposure: z.array(z.literal("operator.timekeeperName")),
+  tombstoneBackfill: TombstoneBackfillCountsSchema,
+  upgradeId: FingerprintSchema,
+  phase: z.enum(["committed", "settled"]),
+  toSchemaVersion: z.literal(32),
+  backupManifest: z.string().min(1),
+  ordinaryRevision: PositiveIntSchema,
+  ordinaryFingerprint: FingerprintSchema,
+  orphanGateRecordsRemoved: NonNegativeIntSchema,
+  sourceFiles: z.array(z.string().min(1)),
+  credentialCommandId: CommandIdSchema,
+  credentialWriteId: z.uuid(),
+  importedKeys: z.array(z.string().min(1)),
+  envKeysToRemove: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/u)),
+});
+
+export const AuthorityUpgradeRecordSchema = z.union([
   AuthorityUpgradeBaselineRecordSchema,
   AuthorityUpgradeExecutionRecordSchema,
+  SqliteSettingsUpgradeRecordSchema,
 ]);
 export type AuthorityUpgradeRecord = z.infer<typeof AuthorityUpgradeRecordSchema>;
 

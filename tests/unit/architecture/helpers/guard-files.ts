@@ -63,7 +63,7 @@ export function gitVisibleFiles(paths: readonly string[]): string[] {
     "git",
     ["ls-files", "--cached", "--others", "--exclude-standard", "--", ...paths],
     { cwd: REPO_ROOT, encoding: "utf8" },
-  ).trim().split("\n").filter(Boolean).sort();
+  ).trim().split("\n").filter((path) => path !== "" && existsSync(resolve(REPO_ROOT, path))).sort();
 }
 
 /** The same inventory rooted at another checkout (a worktree, a scratch repo root). */
@@ -73,7 +73,7 @@ export function gitVisibleFilesIn(root: string, paths: readonly string[]): strin
     "git",
     ["ls-files", "--cached", "--others", "--exclude-standard", "--", ...paths],
     { cwd: root, encoding: "utf8" },
-  ).trim().split("\n").filter(Boolean).sort();
+  ).trim().split("\n").filter((path) => path !== "" && existsSync(resolve(root, path))).sort();
 }
 
 export interface CountAllowlistEntry {

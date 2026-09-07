@@ -2142,6 +2142,14 @@ at-floor root because A1 settles or refuses it inside the upgrade before COMMIT.
    possible. Tombstones written at or after the floor carry `ordinal_source = tombstone` from the
    service. D330.8's "its only UPDATE is the one-way tally settle" gains a dated note naming this
    migration-time backfill as the one other write, executed only inside §D332.3's exclusive transaction.
+   > 2026-09-06 · Task 1.6.6 operator amendment: released `run.queued` spans (including
+   > reconstructed roots) contain `itemId` and `attempt`, but never `runNumber`. Recover the
+   > known fields, using the final evidenced attempt in the ordered stream; retain `runNumber`
+   > as NULL. Report `tombstone-ordinal-unknown` with the missing field names in CLI doctor and
+   > JSON evidence. Journal `missingRunNumber` separately from zero-root `unknown` counts.
+   > M11's three-ordinal assertion is replaced by these partial-recovery and no-guess assertions;
+   > duplicate/mismatched roots still refuse, and M12's trigger protection remains unchanged.
+
 3. **Tallies are read forward, never completed; orphaned gate records leave.** A pre-floor tombstone's
    tally lacks the `checkpoint_payloads` key §D330.9 adds and was settled once; `DeletedRunTableSchema`'s
    tally is versioned (`tallyVersion` 1 = the pre-floor key set, 2 = with `checkpoint_payloads`), a v1

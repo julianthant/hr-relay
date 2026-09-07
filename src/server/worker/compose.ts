@@ -1,3 +1,4 @@
+import { createCredentialStore } from "../../infra/config/credential-store.js";
 import { runSpanPath } from "../../core/span-emitter.js";
 import type { RunRecord } from "../../domain/run/record.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
@@ -92,13 +93,7 @@ import {
   createRunDiagnosticCapture,
 } from "../../services/trust/run-diagnostic-capture.js";
 import { PlaywrightWorkerSessionFactory } from "../../infra/browser/browser-session-factory.js";
-import {
-  createProtectedSettingsFileAuthority,
-  createSettingsFileAuthority,
-  type SettingsFileAuthorityHooks,
-} from "../../infra/config/settings-file.js";
-import { settingsRootPaths } from "../../domain/config/settings-root.js";
-import { createJournaledProtectedSecretSource, readJournaledSettingsAtBoot, requireJournaledSettings } from "../settings-runtime.js";
+import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../settings-runtime.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import {
   createCensusGeocodeAdapter,
@@ -233,7 +228,6 @@ export interface WorkerComposeInput {
   /** Test seam for proving process-record cleanup when database close fails. */
   readonly closeDatabase?: (database: AuthorityDatabase) => void;
   /** Test-only observation/crash hooks for the settings exclusion boundary. */
-  readonly settingsFileHooks?: SettingsFileAuthorityHooks;
   /** Test seam over the concrete Playwright factory; production omits it. */
   readonly sessionFactory?: WorkerBrowserSessionFactory;
   /**
@@ -423,17 +417,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const hostFacts = hostConfigFacts(env);
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
-  const settingsAuthority = createSettingsFileAuthority({
-    path: settingsRootPaths(stateRoot).ordinary,
-    validateCandidate: (settings) => {
-      resolveConfigWithProvenance(settings, hostFacts, clock);
-    },
-    hooks: input.settingsFileHooks,
-  });
-  const protectedAuthority = createProtectedSettingsFileAuthority({
-    path: settingsRootPaths(stateRoot).ordinary,
-    assertWriteIdAvailable: () => undefined,
-  });
+  const protectedAuthority = createCredentialStore({ stateRoot });
   /**
    * D181: the `workers` role lock, taken before the database opens. The
    * authority worker LEASE is the richer fence and stays the one that decides
@@ -473,7 +457,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     throw openError;
   }
 
-  const protectedSecrets = createJournaledProtectedSecretSource({ file: protectedAuthority, database });
+  const protectedSecrets = createCredentialSecretSource(protectedAuthority);
   const lifecycle = workerRunLifecyclePort(new RunRecordService({ database, clock, ids,
     publishQueued: () => { throw new Error("worker port cannot create runs"); },
   }));
@@ -481,7 +465,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   let runtimeConfig: ReturnType<AuthorityDatabase["authority"]["runtimeConfig"]["requireActive"]>;
   try {
     const persistedSettings = database.withAuthorityTransaction((repositories) =>
-      readJournaledSettingsAtBoot(settingsAuthority, protectedAuthority, repositories));
+      readSettings(repositories));
     resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock);
 
     const settingsExpectation = Object.freeze({
@@ -489,8 +473,8 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       settingsFingerprint: persistedSettings.settingsFingerprint,
     });
     runtimeConfig = database.withAuthorityTransaction((repositories) =>
-      settingsAuthority.withExactRecord(settingsExpectation, () => {
-        requireJournaledSettings(persistedSettings, repositories);
+      withCurrentSettings(repositories, settingsExpectation, () => {
+        requireCurrentSettings(persistedSettings, repositories);
         return repositories.runtimeConfig.requireActive({
           settingsRevision: persistedSettings.revision,
           settingsFingerprint: persistedSettings.settingsFingerprint,

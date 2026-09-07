@@ -37,7 +37,6 @@ import type { ArtifactRef } from "../../../src/domain/artifacts.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
   SETTINGS_SCHEMA_HASH,
-  SettingsFileRecordSchema,
   initialSettingsFileRecord,
   settingsRuntimeIdentity,
   deriveSettingsPatchFingerprint,
@@ -67,7 +66,8 @@ import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
 import { PreflightRerunCommandResultSchema } from "../../../src/domain/preflight.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
-import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
+import { createCredentialStore } from "../../../src/infra/config/credential-store.js";
+import { readSettings } from "../../../src/server/settings-runtime.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../../../src/infra/sqlite/index.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
@@ -218,6 +218,7 @@ afterEach(() => {
 });
 
 function harness(options: {
+  readonly protectedCommandAcceptedAt?: DashboardAppDeps["protectedCommandAcceptedAt"];
   readonly requestIdentity?: RequestIdentityCheckpoint;
   readonly intake?: IntakeService;
   /** Wrap the real start-plan service (e.g. to observe whether admission reached it). */
@@ -245,11 +246,12 @@ function harness(options: {
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker");
+  mkdirSync(stateRoot, { mode: 0o700 });
   const settingsPath = join(root, ".tracker", "settings", "settings.json");
   const clock = manualClock(AT);
   const ids = sequentialIdFactory("c");
   const database = AuthorityDatabase.open(
-    { path: join(root, "state.db"), busyTimeoutMs: 1000, migrationOwner: "bff-flow-test" },
+    { path: join(stateRoot, "state.db"), busyTimeoutMs: 1000, migrationOwner: "bff-flow-test" },
     clock,
   );
 
@@ -338,16 +340,13 @@ function harness(options: {
   };
 
   const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), HASH_B);
-  const settingsAuthority = createSettingsFileAuthority({
-    path: settingsPath,
-    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); },
-  });
+  const credentials = createCredentialStore({ stateRoot });
   const settingsFile = {
     read: () => {
       // Applying a revision does not mutate the running process. This test
       // harness therefore models the same persisted/active split as the real
       // runtime instead of serving a stale identity as a false "current".
-      const record = settingsAuthority.read();
+      const record = readSettings(database.authority);
       const persisted = settingsRuntimeIdentity(record, HASH_B);
       if (
         persisted.settingsRevision === activeSettingsIdentity.settingsRevision
@@ -387,7 +386,7 @@ function harness(options: {
       refreshBrowser: () => ({ state: "accepted" }),
       reopenBrowser: () => ({ state: "accepted" }),
     },
-    settings: createSettingsApplicationExecutor(settingsAuthority),
+    settings: createSettingsApplicationExecutor((settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); }, credentials),
   });
   const commands = createDashboardCommandService({
     kernel,
@@ -435,6 +434,7 @@ function harness(options: {
     },
   });
   const app = createDashboardApp({
+    protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
     requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
       id: "local-operator",
       label: "Local operator",
@@ -504,8 +504,7 @@ function harness(options: {
       doctorOptions: {
         stateRootTrustAnchor: root,
         stateRoot,
-        // The harness database lives at the temp ROOT, not under stateRoot.
-        authorityPath: join(root, "state.db"),
+        authorityPath: join(stateRoot, "state.db"),
         backupDirectory: join(stateRoot, "backups", "authority"),
         maxBackupAgeMs: 45 * 60 * 1000,
         busyTimeoutMs: 1000,
@@ -542,13 +541,12 @@ function settingsAuthoritySnapshot(h: Harness, commandId: string) {
   const settingsRoot = dirname(h.settingsPath);
   return {
     settingsBytes: optionalFileBytes(h.settingsPath),
-    protectedBytes: optionalFileBytes(join(settingsRoot, "protected.json")),
+    protectedBytes: optionalFileBytes(join(dirname(settingsRoot), "credentials", "protected.json")),
     initializationBytes: optionalFileBytes(join(settingsRoot, "authority.json")),
     lockBytes: optionalFileBytes(join(settingsRoot, "settings.lock")),
     prepareBytes: optionalFileBytes(join(settingsRoot, "prepare.json")),
     rollbackBytes: optionalFileBytes(join(settingsRoot, "rollback.json")),
     current: h.database.authority.settingsCurrent.get(),
-    protectedCurrent: h.database.authority.protectedSettingsCurrent.get(),
     journal: h.database.authority.commands.get(commandId),
     audit: h.database.authority.commandAudits.findByCommand(commandId),
     runtimeGeneration: h.database.authority.runtimeConfig.get()?.generation,
@@ -632,7 +630,7 @@ function seedCurrentSeparationsRun(
     ...CURRENT_SEPARATIONS_RESULT,
     approved: { ...CURRENT_SEPARATIONS_RESULT.approved, emplId: canonicalSubject },
   });
-  seedSeparationsRunAuthority(h.database, join(h.stateRoot, "..", "state.db"), run, result);
+  seedSeparationsRunAuthority(h.database, join(h.stateRoot, "state.db"), run, result);
 }
 
 function persistCurrentSeparationsEvidence(
@@ -999,7 +997,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         enqueuedAt: "2026-08-28T15:00:00.000Z",
       });
       const corrupted = corpusCase.mutate(run);
-      const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+      const raw = new DatabaseSync(join(h.stateRoot, "state.db"));
       try {
         raw.prepare("UPDATE tasks SET workflow = ?, state = ?, record_json = ? WHERE record_key = ?")
           .run(
@@ -1037,7 +1035,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       correctedAt: run.createdAt,
       reason: "corrupt fixture",
     };
-    const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+    const raw = new DatabaseSync(join(h.stateRoot, "state.db"));
     try {
       raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
         .run(JSON.stringify({
@@ -2752,6 +2750,92 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
   });
 
+  it.each([
+    { label: "partial display set", seed: {}, patch: { "display.screenWidth": { set: 1600 } }, missing: ["display.screenHeight"] },
+    { label: "partial display clear", seed: { "display.screenWidth": { set: 1600 }, "display.screenHeight": { set: 900 } }, patch: { "display.screenHeight": { clear: true } }, missing: ["display.screenHeight"] },
+    { label: "partial annual dates set", seed: {}, patch: { "annualDates.FY2027.jobEndDate": { set: "06/30/2027" } }, missing: ["annualDates.FY2027.kronosDefaultEndDate", "annualDates.FY2027.kronosDefaultStartDate"] },
+    { label: "partial annual dates clear", seed: { "annualDates.FY2027.jobEndDate": { set: "06/30/2027" }, "annualDates.FY2027.kronosDefaultEndDate": { set: "06/30/2027" }, "annualDates.FY2027.kronosDefaultStartDate": { set: "07/01/2026" } }, patch: { "annualDates.FY2027.jobEndDate": { clear: true } }, missing: ["annualDates.FY2027.jobEndDate"] },
+  ])("returns cross-field-invalid for $label without durable effects", async ({ seed, patch, missing }) => {
+    const h = harness();
+    const send = (commandId: string, expectedRevision: number, changes: unknown) => h.app.request("/api/v1/commands", {
+      method: "POST", headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({ commandId, family: "settings", type: "apply-settings", target: { expectedRevision },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: rawSettingsPatchFingerprint(changes), patch: changes } }),
+    });
+    const seeded = Object.keys(seed).length > 0;
+    if (seeded) assert.equal((await send("00000000-0000-4000-8000-000000000901", 1, seed)).status, 200);
+    const commandId = "00000000-0000-4000-8000-000000000902";
+    const before = settingsAuthoritySnapshot(h, commandId);
+    const response = await send(commandId, seeded ? 2 : 1, patch);
+    assert.equal(response.status, 422);
+    assert.deepEqual(await json(response), { state: "rejected", commandId, code: "cross-field-invalid",
+      message: `cross-field-invalid { keys: ${missing.join(", ")} }` });
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it("refuses invalid or unauthorized requests before protected retry identity and journal reads", async () => {
+    let reads = 0;
+    const forbiddenRead = () => { reads += 1; throw new Error("forbidden request-only authority read"); };
+    const h = harness({ protectedCommandAcceptedAt: forbiddenRead, commandJournal: () => ({ get: forbiddenRead }) });
+    const commandId = "00000000-0000-4000-8000-000000000907";
+    const request = { commandId, family: "settings", type: "apply-protected-settings", target: { expectedRevision: 1 },
+      payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000908", entries: { ucpathPassword: { set: "synthetic-validation-only" } } } };
+    const before = settingsAuthoritySnapshot(h, commandId);
+    for (const { body, headers, status } of [
+      { body: { ...request, payload: { ...request.payload, protectedSchemaHash: "0".repeat(64) } }, headers: OPERATOR_JSON_HEADERS, status: 422 },
+      { body: { ...request, payload: { ...request.payload, entries: { ucpathPassword: { set: 42 } } } }, headers: OPERATOR_JSON_HEADERS, status: 422 },
+      { body: request, headers: { ...OPERATOR_JSON_HEADERS, origin: "https://foreign.invalid" }, status: 403 },
+    ]) {
+      const response = await h.app.request("/api/v1/commands", { method: "POST", headers, body: JSON.stringify(body) });
+      assert.equal(response.status, status);
+    }
+    assert.equal(reads, 0);
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it.each(["set", "clear"] as const)("settles an uncertain credential %s audit through HTTP after the server clock advances", async (operation) => {
+    const h = harness();
+    const commandId = "00000000-0000-4000-8000-000000000903";
+    const request = { commandId, family: "settings", type: "apply-protected-settings", target: { expectedRevision: operation === "clear" ? 2 : 1 },
+      payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000904",
+        entries: { ucpathPassword: operation === "clear" ? { clear: true } : { set: "synthetic-http-retry-private" } } } };
+    const send = (body: unknown = request) => h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body) });
+    if (operation === "clear") {
+      const seed = { ...request, commandId: "00000000-0000-4000-8000-000000000905", target: { expectedRevision: 1 },
+        payload: { ...request.payload, writeId: "00000000-0000-4000-8000-000000000906", entries: { ucpathPassword: { set: "synthetic-http-retry-private" } } } };
+      assert.equal((await send(seed)).status, 200);
+      h.clock.advanceWall(1000);
+    }
+    const acceptedAt = h.clock.now().toISOString();
+    const transaction = h.database.withAuthorityTransaction.bind(h.database);
+    vi.spyOn(h.database, "withAuthorityTransaction").mockImplementationOnce((work) => transaction((repositories) => {
+      work(repositories);
+      throw new Error("injected-http-audit-failure");
+    }));
+    assert.equal((await send()).status, 500);
+    const privatePath = join(h.stateRoot, "credentials", "protected.json");
+    const bytes = readFileSync(privatePath);
+    assert.equal(h.database.authority.commands.get(commandId), undefined);
+    const beforeForeign = settingsAuthoritySnapshot(h, commandId);
+    const foreign = await send({ commandId, family: "run", type: "cancel", target: { runId: UUID_4, expectedVersion: 1 } });
+    assert.equal(foreign.status, 422);
+    assert.equal((await json(foreign)).code, "command-divergent");
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), beforeForeign);
+    h.clock.advanceWall(1000);
+    const divergent = { ...request, payload: { ...request.payload, entries: { ucpathPassword: { set: "synthetic-http-retry-divergent" } } } };
+    const denied = await json(await send(divergent));
+    assert.equal(denied.code, "command-divergent");
+    h.clock.advanceWall(1000);
+    const retry = await send();
+    assert.equal(retry.status, 200);
+    assert.equal((await json(retry)).state, "applied");
+    assert.equal((await json(await send())).state, "already-applied");
+    assert.deepEqual(readFileSync(privatePath), bytes);
+    const audit = h.database.authority.commandAudits.findByCommand(commandId); assert.ok(audit);
+    assert.equal(audit.request.requestedAt, acceptedAt);
+    assert.equal(JSON.stringify(audit).includes("synthetic-http-retry-private"), false);
+  });
+
   it("returns invalid-value for an ordinary settings leaf before authority access", async () => {
     let journalReads = 0;
     const h = harness({
@@ -3015,11 +3099,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     };
     assert.deepEqual(h.database.authority.commands.get(commandId), expectedCommand);
     assert.deepEqual(h.database.authority.commandAudits.findByCommand(commandId)?.request, expectedCommand);
-    const persisted = SettingsFileRecordSchema.parse(
-      JSON.parse(readFileSync(h.settingsPath, "utf8")),
-    );
     assert.equal(
-      persisted.lastApplied?.commandFingerprint,
+      h.database.authority.settingsCurrent.get()?.commandFingerprint,
       createHash("sha256")
         .update("hrauto:settings-command:v1\0")
         .update(canonicalJsonStringify(expectedCommand))
@@ -3330,7 +3411,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(h.database.getMeta().authorityGeneration, generationBefore);
     const artifactRoot = join(h.stateRoot, "artifacts");
     assert.deepEqual(existsSync(artifactRoot) ? readdirSync(artifactRoot) : [], []);
-    const inspection = new DatabaseSync(join(h.stateRoot, "..", "state.db"), { readOnly: true });
+    const inspection = new DatabaseSync(join(h.stateRoot, "state.db"), { readOnly: true });
     try {
       const row = inspection.prepare("SELECT count(*) AS count FROM operator_xlsx_exports").get();
       assert.equal(Reflect.get(row ?? {}, "count"), 0);
@@ -3354,11 +3435,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // service arm says why in its own words rather than an inferred blank.
     assert.equal(report.backup.state, "missing");
     assert.deepEqual(report.spanAuthority, {
-      state: "unavailable",
-      cause: {
-        code: "span-stream-invalid",
-        summary: "span corpus parent .tracker could not be inspected (ENOENT)",
-      },
+      state: "reconciled",
+      liveRunCount: 0,
+      streamRunCount: 0,
+      archived: [],
+      deleted: [],
     });
     assert.deepEqual(report.restoreCandidates, []);
     assert.deepEqual(report.service, {

@@ -1,11 +1,12 @@
+// Frozen D331 contract from e314fb0d; permanent strict v1/v2 historical-backup reader.
 import { z } from "zod";
 import { basename, dirname, join, resolve } from "node:path";
-import { canonicalJsonStringify } from "../canonical-json.js";
-import { FingerprintSchema } from "../ids.js";
-import { deepFreeze } from "../immutability.js";
-import { sha256Hex } from "../sha256.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "./protected-settings.js";
-import { SETTINGS_SCHEMA_HASH } from "./settings.js";
+import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { FingerprintSchema } from "../../domain/ids.js";
+import { deepFreeze } from "../../domain/immutability.js";
+import { sha256Hex } from "../../domain/sha256.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../domain/config/protected-settings.js";
+import { SETTINGS_SCHEMA_HASH } from "../../domain/config/settings.js";
 
 export const SettingsDocumentTargetSchema = z.enum(["ordinary", "protected"]);
 export type SettingsDocumentTarget = z.infer<typeof SettingsDocumentTargetSchema>;

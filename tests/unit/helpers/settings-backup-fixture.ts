@@ -6,7 +6,7 @@ import {
   settingsRootAuthority,
   settingsRootPaths,
   type SettingsRootPaths,
-} from "../../../src/domain/config/settings-root.js";
+} from "../../../src/infra/compat/d331-settings-root.js";
 
 /** Synthetic-only baseline for tests whose subject is backup/recovery rather than settings writes. */
 export function initializeSyntheticSettingsBackupRoot(stateRoot: string): SettingsRootPaths {

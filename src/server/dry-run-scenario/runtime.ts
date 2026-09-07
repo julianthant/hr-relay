@@ -1,3 +1,4 @@
+import { createCredentialStore } from "../../infra/config/credential-store.js";
 import { assertNoMigratedEnvironmentKeys } from "../../domain/secrets.js";
 import { RunRecordService, type RunRecordServiceDependencies } from "../../core/run-record-service.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
@@ -21,7 +22,6 @@ import type {
 } from "../../core/dry-run-scenario-runner.js";
 import type { Clock } from "../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
-import { settingsRootPaths } from "../../domain/config/settings-root.js";
 import { MatchIdentityOutputSchema } from "../../domain/contracts/separations/match-identity.js";
 import type { IdFactory } from "../../domain/identifiers.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../domain/ids.js";
@@ -30,14 +30,13 @@ import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../domain/separations/identity-approval.js";
 import type { DryRunScenarioAnyCase } from "../../domain/trust/dry-run-scenario.js";
 import { SpanEventWireSchema } from "../../events/types.js";
-import { createProtectedSettingsFileAuthority, createSettingsFileAuthority } from "../../infra/config/settings-file.js";
 import { readEventStreamLines } from "../../infra/events/jsonl-streams.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import type { ProcessIdentityObserver } from "../../infra/sqlite/runtime-process-locks.js";
 import { createStartPlanService } from "../dashboard/commands/start-plan-service.js";
 import { runQueuedSpanEvent } from "../dashboard/commands/run-queued-span.js";
-import { createJournaledProtectedSecretSource, readJournaledSettings, requireJournaledSettings } from "../settings-runtime.js";
+import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../settings-runtime.js";
 import { createReceiptService } from "../trust/receipt-service.js";
 import { composeWorkerRuntime } from "../worker/compose.js";
 
@@ -215,10 +214,6 @@ export function createProductionDryRunScenarioRuntime(
   const hostFacts = hostConfigFacts(input.env);
   const stateRoot = join(input.repoRoot, input.isolation.stateRoot);
   const databasePath = join(stateRoot, "state.db");
-  const settingsAuthority = createSettingsFileAuthority({
-    path: settingsRootPaths(stateRoot).ordinary,
-    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostFacts, input.clock); },
-  });
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(input.repoRoot, "package.json"), "utf8")),
   ).version;
@@ -313,15 +308,15 @@ export function createProductionDryRunScenarioRuntime(
       }>;
       try {
         const persistedSettings = database.withAuthorityTransaction((repositories) =>
-          readJournaledSettings(settingsAuthority, repositories));
+          readSettings(repositories));
         input.afterSettingsRead?.();
         const resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, input.clock);
         admitted = database.withAuthorityTransaction((repositories) => {
-          // Validate ordinary authority, then release the shared settings lock before
-          // protected admission takes it. SQLite exclusion spans the whole start.
-          settingsAuthority.withExactRecord({ revision: persistedSettings.revision,
+          // SQLite excludes ordinary settings changes throughout start admission.
+          // Credential availability is read independently at its next-use boundary.
+          withCurrentSettings(repositories, { revision: persistedSettings.revision,
             settingsFingerprint: persistedSettings.settingsFingerprint }, () => {
-            requireJournaledSettings(persistedSettings, repositories);
+            requireCurrentSettings(persistedSettings, repositories);
           });
           repositories.runtimeConfig.requireActive({
             settingsRevision: persistedSettings.revision,
@@ -334,9 +329,7 @@ export function createProductionDryRunScenarioRuntime(
           const identity = { fingerprint: active.configFingerprint, snapshotId: configSnapshotId };
           const plans = createStartPlanService({
             ...(request.protectedBindings === undefined ? {} : { protectedSubmissionBindings: request.protectedBindings }),
-            protectedSecrets: createJournaledProtectedSecretSource({ database, file: createProtectedSettingsFileAuthority({
-              path: settingsRootPaths(stateRoot).ordinary, assertWriteIdAvailable: () => undefined,
-            }) }),
+            protectedSecrets: createCredentialSecretSource(createCredentialStore({ stateRoot })),
             authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
             authorityRead: database,
             descriptors: { resolve: descriptorFor },
@@ -361,9 +354,9 @@ export function createProductionDryRunScenarioRuntime(
           }
           const planned = plan.planned[0];
           if (planned === undefined) throw new Error("dry-run start plan lost its only planned run");
-          return settingsAuthority.withExactRecord({ revision: persistedSettings.revision,
+          return withCurrentSettings(repositories, { revision: persistedSettings.revision,
             settingsFingerprint: persistedSettings.settingsFingerprint }, () => {
-          requireJournaledSettings(persistedSettings, repositories);
+          requireCurrentSettings(persistedSettings, repositories);
           const kernel = createScenarioKernel({
             publishQueued: (run, publication) => {
               if (publication === undefined) throw new Error("scenario queued publication context missing");

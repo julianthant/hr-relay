@@ -1556,6 +1556,30 @@ paragraph).
 
 ### 5.2 D332 compatibility adapters and their deletion tests (0.3 Task 3, 2026-09-04)
 
+**Task 1.6.6 implementation binding (D336).** The active
+`sqlite-settings-authority` guard replaces the ordinary authority pathname oracle: SQLite is the
+only runtime ordinary authority. The active `authority-upgrade-adapters-isolated` guard checks
+transitive imports and the dynamic storage dispatch boundary. Its A0 paths are
+`src/infra/compat/upgrade-sources.ts`, `pre-floor-settings.ts` and
+`settings-database-upgrade.ts`; A1 is `src/infra/compat/settings-source-recovery.ts`.
+Only `src/server/storage/upgrade.ts` may enter this migration graph. Phase 2.6 Task 2 deletes these
+four adapters and activates `authority-upgrade-adapters-retired`; its test file remains absent
+until that deletion. A2/A3 retain their existing assignments.
+
+Strict historical-backup readers `backup-inspection.ts`, `d331-settings-current.ts`,
+`d331-settings-root.ts` and `d331-protected-journal.ts` under `src/infra/compat/` remain after
+adapter expiry. Immutable journal grammar in `src/domain/commands-history.ts` and
+`src/domain/config/settings-v29-schema.ts` also remains: neither is a runtime settings fallback.
+The SQLite implementation boundary now includes the private historical backup and stopped
+conversion adapters; no server/core/domain module receives a raw connection or imports
+`node:sqlite`. `sqlite-authority-boundary.test.ts` enumerates that closed implementation set and
+keeps the public SQLite entrypoint and `AuthorityDatabase` repositories free of SQL escape hatches.
+The lifecycle SQL guard admits only the exact stopped tombstone ordinal UPDATE in that adapter;
+all other lifecycle SQL and mutators retain the service/adapter boundary. The migration proof
+pins rollback, trigger restoration and every protected ordinal column.
+The new guards' injected violations and the full candidate gates are required evidence.
+
+
 > **D336 target amendment (2026-09-06):** Task 1.6.6 replaces ordinary file/SQLite coupling with
 > SQLite-owned settings and independent credential operations (ref clock-config-secrets §D336).
 > The A0/A1 and settings-pathname obligations below must be rebound to the actual supported source

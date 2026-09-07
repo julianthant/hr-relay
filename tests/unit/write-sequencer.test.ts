@@ -1,3 +1,5 @@
+import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
+import { personLookupDescriptor, separationsDescriptor } from "../helpers/registered-workflows.js";
 import { RunClaimTokenSchema } from "../../src/infra/sqlite/run-store-contracts.js";
 import { lifecycleCommandId } from "../../src/core/run-record-service.js";
 import { testRunLifecycle, testRunService } from "./fixtures/run-lifecycle-fixtures.js";
@@ -382,6 +384,21 @@ function parkLegacyAttemptingIntent(database: AuthorityDatabase, message: string
 }
 
 describe("the seven-beat happy path", () => {
+  it("M18 registered transaction policies probe an unseen key before any commit; person-lookup has no transaction node", async () => {
+    assert.equal(descriptorRuntimeNodes(personLookupDescriptor).filter((node) => node.kind === "transaction").length, 0);
+    const registered = descriptorRuntimeNodes(separationsDescriptor).filter((node) => node.kind === "transaction");
+    assert.equal(registered.length, 3);
+    for (const node of registered) {
+      assert.equal(node.probePolicy, "always", node.id);
+      const h = harness(); const { run, claim } = claimRunning(h.database, h.clock);
+      assert.equal(intentByKey(h.database), undefined);
+      h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+      const context = contextFor(run, claim);
+      await h.execute({ ...context, node: { ...context.node, probePolicy: node.probePolicy } });
+      assert.equal(h.world.events[0], "probe", node.id);
+      assert.ok(h.world.events.indexOf("probe") < h.world.events.indexOf("commit-click:ucpath.write-fixture.save-submit"), node.id);
+    }
+  });
   it("probes, prepares, binds, fences before the click, and settles beat ⑦ atomically", async () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock);

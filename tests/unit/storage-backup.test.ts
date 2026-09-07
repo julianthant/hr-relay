@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -10,41 +11,47 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
+import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { manualClock } from "../../src/domain/clock.js";
 import {
-  PROTECTED_SETTINGS_SCHEMA_HASH,
-  ProtectedStoreRecordSchema,
-  protectedSettingsReadback,
-} from "../../src/domain/config/protected-settings.js";
-import {
-  CURRENT_SETTINGS_SCHEMA_HASH,
-  SettingsFileRecordSchema,
-  derivePersistedSettingsFingerprint,
-  deriveSettingsPatchFingerprint,
-} from "../../src/domain/config/settings.js";
-import {
-  SettingsRootAuthoritySchema,
-  settingsRootPaths,
-} from "../../src/domain/config/settings-root.js";
-import {
-  ProtectedSettingsCommandRequestSchema,
-  SettingsCommandRequestSchema,
+  CommandAuditRecordSchema,
   deriveSettingsCommandFingerprint,
-  markSettingsCommand,
+  SettingsCommandRequestSchema,
 } from "../../src/domain/commands.js";
 import {
-  createProtectedSettingsFileAuthority,
-  createSettingsFileAuthority,
-} from "../../src/infra/config/settings-file.js";
+  derivePersistedSettingsFingerprint,
+  deriveSettingsPatchFingerprint,
+  SETTINGS_SCHEMA_HASH,
+  SettingsFileRecordSchema,
+  type SettingsFileRecord,
+} from "../../src/domain/config/settings.js";
+import {
+  inspectAuthorityBackupReadOnly,
+  openAuthorityBackupSourceReadOnly,
+} from "../../src/infra/compat/backup-inspection.js";
+import { SettingsCurrentRecordSchema } from "../../src/infra/compat/d331-settings-current.js";
 import {
   AuthorityBackupService,
   verifyBackupManifestAtPath,
 } from "../../src/infra/sqlite/backup-service.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { AuthorityBackupManifestSchema } from "../../src/infra/sqlite/recovery-contracts.js";
+import {
+  AUTHORITY_APPLICATION_ID,
+  SQLITE_MIGRATIONS,
+} from "../../src/infra/sqlite/migrations.js";
+import {
+  AuthorityBackupManifestSchema,
+  type AuthorityBackupManifest,
+} from "../../src/infra/sqlite/recovery-contracts.js";
+import { createSettingsFileAuthority } from "../fixtures/d331-settings-file.js";
+import { initializeSyntheticSettingsBackupRoot } from "./helpers/settings-backup-fixture.js";
 
-const NOW = "2026-09-04T20:00:00.000Z";
+const NOW = "2026-09-06T20:00:00.000Z";
+const CLOCK = manualClock(new Date(NOW));
+const SETTINGS_COMMAND_ID = "11111111-1111-4111-8111-111111111111";
+const SETTINGS_AUDIT_ID = "22222222-2222-4222-8222-222222222222";
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 
@@ -53,363 +60,434 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function world(protectedValue: string, journal = true) {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-settings-backup-"));
-  roots.push(root);
-  const stateRoot = join(root, ".tracker");
-  const paths = settingsRootPaths(stateRoot);
-  const ordinaryStore = createSettingsFileAuthority({ path: paths.ordinary, validateCandidate: () => undefined });
-  const ordinaryPatch = { "browser.headless": { set: false } };
-  const ordinaryCommand = SettingsCommandRequestSchema.parse({
-    commandId: "00000000-0000-4000-8000-000000000003",
-    requestedAt: NOW,
-    requestedBy: "local-operator",
-    source: "dashboard",
-    family: "settings",
-    type: "apply-settings",
-    target: { expectedRevision: 1 },
-    payload: {
-      settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
-      patchFingerprint: deriveSettingsPatchFingerprint(ordinaryPatch),
-      patch: ordinaryPatch,
-    },
-  });
-  const ordinaryCommandFingerprint = deriveSettingsCommandFingerprint(ordinaryCommand);
-  const ordinaryApplied = ordinaryStore.apply({
-    commandId: ordinaryCommand.commandId,
-    commandFingerprint: ordinaryCommandFingerprint,
-    expectedRevision: 1,
-    ...ordinaryCommand.payload,
-  });
-  assert.equal(ordinaryApplied.state, "applied");
-  if (ordinaryApplied.state === "applied") ordinaryApplied.commit();
-  const protectedStore = createProtectedSettingsFileAuthority({
-    path: paths.ordinary,
-    assertWriteIdAvailable: () => undefined,
-  });
-  protectedStore.read();
-  const protectedCommand = ProtectedSettingsCommandRequestSchema.parse({
-    commandId: "00000000-0000-4000-8000-000000000001",
-    requestedAt: NOW,
-    requestedBy: "local-operator",
-    source: "settings-surface",
-    family: "settings",
-    type: "apply-protected-settings",
-    target: { expectedRevision: 1 },
-    payload: {
-      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-      writeId: "00000000-0000-4000-8000-000000000002",
-      entries: { ucpathPassword: { set: protectedValue } },
-    },
-  });
-  const protectedCommandFingerprint = deriveSettingsCommandFingerprint(protectedCommand);
-  const applied = protectedStore.apply({
-    commandId: protectedCommand.commandId,
-    commandFingerprint: protectedCommandFingerprint,
-    expectedRevision: 1,
-    ...protectedCommand.payload,
-    updatedAt: NOW,
-  });
-  assert.equal(applied.state, "applied");
-  if (applied.state === "applied") applied.commit();
-  const database = AuthorityDatabase.open({
-    path: join(stateRoot, "state.db"),
-    busyTimeoutMs: 250,
-    migrationOwner: "settings-backup-test",
-  }, manualClock(new Date(NOW)));
-  databases.push(database);
-  if (journal) database.withAuthorityTransaction((repositories) => {
-    const ordinaryTarget = { family: "settings" as const, revision: 2 };
-    const ordinaryAuditId = "00000000-0000-4000-8000-000000000004";
-    repositories.commands.insert(ordinaryCommand);
-    repositories.commandAudits.insert({
-      auditId: ordinaryAuditId,
-      request: ordinaryCommand,
-      result: {
-        state: "applied",
-        commandId: ordinaryCommand.commandId,
-        affectedTargets: [ordinaryTarget],
-        restartRequired: true,
-        settingsRevision: 2,
-        settingsFingerprint: ordinaryApplied.record.settingsFingerprint,
-      },
-      completedAt: NOW,
-      versionChanges: [{ target: ordinaryTarget, before: 1, after: 2 }],
-      affectedDependencyIds: [],
-    });
-    repositories.settingsCurrent.advance({
-      revision: 2,
-      settingsFingerprint: ordinaryApplied.record.settingsFingerprint,
-      commandId: ordinaryCommand.commandId,
-      commandFingerprint: ordinaryCommandFingerprint,
-      auditId: ordinaryAuditId,
-      committedAt: NOW,
-    });
+function sha256(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
 
-    const marked = markSettingsCommand(protectedCommand);
-    const protectedTarget = { family: "protected-settings" as const, revision: 2 };
-    const protectedAuditId = "00000000-0000-4000-8000-000000000005";
-    const readback = protectedSettingsReadback(applied.record);
-    repositories.commands.insert(marked);
-    repositories.commandAudits.insert({
-      auditId: protectedAuditId,
-      request: marked,
-      result: {
-        state: "applied",
-        commandId: protectedCommand.commandId,
-        affectedTargets: [protectedTarget],
-        restartRequired: false,
-        revision: 2,
-        entries: readback.entries,
-      },
-      completedAt: NOW,
-      versionChanges: [{ target: protectedTarget, before: 1, after: 2 }],
-      affectedDependencyIds: [],
-    });
-    repositories.protectedSettingsCurrent.advanceInTransaction({
-      revision: 2,
-      commandId: protectedCommand.commandId,
-      commandFingerprint: protectedCommandFingerprint,
-      auditId: protectedAuditId,
-      committedAt: NOW,
-      entries: [{
-        name: "ucpathPassword",
-        valueId: applied.record.entries.ucpathPassword?.valueId,
-        updatedAt: NOW,
-      }],
-    });
-  });
+function temporaryRoot(prefix: string): string {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  roots.push(root);
+  return root;
+}
+
+function openCurrentWorld() {
+  const root = temporaryRoot("hrauto-v3-backup-");
+  const stateRoot = join(root, ".tracker");
+  mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
+  const authorityPath = join(stateRoot, "state.db");
+  const database = AuthorityDatabase.open({
+    path: authorityPath,
+    busyTimeoutMs: 250,
+    migrationOwner: "backup-test",
+  }, CLOCK);
+  databases.push(database);
   return {
-    root,
     stateRoot,
-    paths,
+    authorityPath,
     database,
-    ordinaryStore,
-    protectedStore,
     backupDirectory: join(stateRoot, "backups", "authority"),
   };
 }
 
-async function backup(w: ReturnType<typeof world>) {
-  const service = new AuthorityBackupService(w.database, {
-    directory: w.backupDirectory,
-    settingsRoot: w.paths.root,
-  }, manualClock(new Date(NOW)));
+function createHistoricalAuthority(path: string, schemaVersion: number): void {
+  const database = new DatabaseSync(path, {
+    enableForeignKeyConstraints: true,
+    enableDoubleQuotedStringLiterals: false,
+    allowExtension: false,
+    readBigInts: false,
+    returnArrays: false,
+    allowBareNamedParameters: false,
+    allowUnknownNamedParameters: false,
+    defensive: true,
+  });
+  try {
+    database.exec("PRAGMA foreign_keys = ON");
+    database.exec("BEGIN IMMEDIATE");
+    for (const migration of SQLITE_MIGRATIONS) {
+      if (migration.version > schemaVersion) break;
+      for (const statement of migration.statements) database.exec(statement);
+    }
+    database.prepare(`
+      INSERT INTO authority_meta
+        (singleton_id, schema_version, authority_generation, updated_at,
+         migration_owner, migration_started_at)
+      VALUES (1, ?, 7, ?, NULL, NULL)
+    `).run(schemaVersion, NOW);
+    database.exec(`PRAGMA application_id = ${String(AUTHORITY_APPLICATION_ID)}`);
+    database.exec(`PRAGMA user_version = ${String(schemaVersion)}`);
+    database.exec("COMMIT");
+  } finally {
+    database.close();
+  }
+}
+
+function verificationFor(path: string, schemaVersion: number) {
+  const inspection = inspectAuthorityBackupReadOnly(path, schemaVersion);
+  return {
+    inspection,
+    verification: {
+      state: "verified" as const,
+      observedFrom: "backup-copy" as const,
+      observedAt: NOW,
+      applicationId: inspection.applicationId,
+      schemaVersion: inspection.schemaVersion,
+      pageCount: inspection.pageCount,
+      authorityGeneration: inspection.authorityGeneration,
+      authorityContentFingerprint: inspection.authorityContentFingerprint,
+      quickCheck: inspection.quickCheck,
+      foreignKeyViolations: inspection.foreignKeyViolations,
+      invariantViolations: inspection.invariantViolations,
+      exactTableRegistry: inspection.exactTableRegistry,
+    },
+  };
+}
+
+function journalHistoricalOrdinarySettings(
+  authorityPath: string,
+  settingsPath: string,
+): SettingsFileRecord {
+  const patch = { "browser.headless": { set: false } } as const;
+  const patchFingerprint = deriveSettingsPatchFingerprint(patch);
+  const command = SettingsCommandRequestSchema.parse({
+    commandId: SETTINGS_COMMAND_ID,
+    requestedAt: NOW,
+    requestedBy: "local-operator",
+    source: "settings-surface",
+    family: "settings",
+    type: "apply-settings",
+    target: { expectedRevision: 1 },
+    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
+  });
+  const commandFingerprint = deriveSettingsCommandFingerprint(command);
+  const ordinary = createSettingsFileAuthority({
+    path: settingsPath,
+    validateCandidate: () => undefined,
+  });
+  const applied = ordinary.apply({
+    commandId: command.commandId,
+    commandFingerprint,
+    expectedRevision: command.target.expectedRevision,
+    settingsSchemaHash: command.payload.settingsSchemaHash,
+    patchFingerprint: command.payload.patchFingerprint,
+    patch: command.payload.patch,
+  });
+  if (applied.state !== "applied") {
+    throw new Error(`released settings producer refused historical fixture: ${applied.message}`);
+  }
+  const record = applied.record;
+  const target = { family: "settings" as const, revision: record.revision };
+  const audit = CommandAuditRecordSchema.parse({
+    auditId: SETTINGS_AUDIT_ID,
+    request: command,
+    result: {
+      state: "applied",
+      commandId: command.commandId,
+      affectedTargets: [target],
+      restartRequired: true,
+      settingsRevision: record.revision,
+      settingsFingerprint: record.settingsFingerprint,
+    },
+    completedAt: NOW,
+    versionChanges: [{ target, before: 1, after: record.revision }],
+    affectedDependencyIds: [],
+  });
+  const current = SettingsCurrentRecordSchema.parse({
+    revision: record.revision,
+    settingsFingerprint: record.settingsFingerprint,
+    commandId: command.commandId,
+    commandFingerprint,
+    auditId: SETTINGS_AUDIT_ID,
+    committedAt: NOW,
+  });
+  const database = new DatabaseSync(authorityPath, {
+    enableForeignKeyConstraints: true,
+    enableDoubleQuotedStringLiterals: false,
+    allowExtension: false,
+    readBigInts: false,
+    returnArrays: false,
+    allowBareNamedParameters: false,
+    allowUnknownNamedParameters: false,
+    defensive: true,
+  });
+  let journalCommitted = false;
+  try {
+    database.exec("PRAGMA foreign_keys = ON");
+    database.exec("BEGIN IMMEDIATE");
+    database.prepare(`
+      INSERT INTO commands (record_key, family, record_json, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(command.commandId, command.family, canonicalJsonStringify(command), command.requestedAt);
+    database.prepare(`
+      INSERT INTO command_audits (record_key, command_id, record_json, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(audit.auditId, command.commandId, canonicalJsonStringify(audit), audit.completedAt);
+    database.prepare(`
+      INSERT INTO settings_current
+        (record_key, revision, settings_fingerprint, command_id, command_fingerprint,
+         audit_id, record_json, created_at)
+      VALUES ('current', ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      current.revision,
+      current.settingsFingerprint,
+      current.commandId,
+      current.commandFingerprint,
+      current.auditId,
+      canonicalJsonStringify(current),
+      current.committedAt,
+    );
+    database.prepare(`
+      UPDATE authority_meta
+      SET authority_generation = authority_generation + 1, updated_at = ?
+      WHERE singleton_id = 1
+    `).run(NOW);
+    database.exec("COMMIT");
+    journalCommitted = true;
+    applied.commit();
+  } catch (error) {
+    if (database.isTransaction) database.exec("ROLLBACK");
+    if (!journalCommitted) applied.rollback();
+    throw error;
+  } finally {
+    database.close();
+  }
+  return record;
+}
+
+function fileIdentity(path: string) {
+  const bytes = readFileSync(path);
+  return { byteSize: bytes.byteLength, sha256: sha256(bytes) };
+}
+
+function writeManifest(
+  directory: string,
+  value: AuthorityBackupManifest,
+  name = `${value.backupFileName}.manifest.json`,
+): string {
+  const path = join(directory, name);
+  writeFileSync(path, `${JSON.stringify(value)}\n`, { mode: 0o600 });
+  return path;
+}
+
+async function takeBackup(world: ReturnType<typeof openCurrentWorld>) {
+  const service = new AuthorityBackupService(world.database, { directory: world.backupDirectory }, CLOCK);
   const report = await service.request({
     trigger: "operator",
-    requiredGeneration: w.database.getMeta().authorityGeneration,
+    requiredGeneration: world.database.getMeta().authorityGeneration,
   });
   const manifest = report.manifests[0];
   assert.ok(manifest !== undefined);
-  const manifestPath = join(w.backupDirectory, `${manifest.backupFileName}.manifest.json`);
-  return { report, manifest, manifestPath };
+  return {
+    report,
+    manifest,
+    manifestPath: join(world.backupDirectory, `${manifest.backupFileName}.manifest.json`),
+  };
 }
 
-describe("D331 P15 settings-aware authority backups", () => {
-  it("refuses revision-2 settings files beside an empty copied command journal", async () => {
-    const w = world("unjournaled-backup-canary", false);
+describe("D336 DB-only authority backups", () => {
+  it("writes manifest v3 and never reads or copies settings or credentials", async () => {
+    const world = openCurrentWorld();
+    const canary = "CANARY-CREDENTIAL-must-not-enter-backup";
+    const credentialRoot = join(world.stateRoot, "credentials");
+    mkdirSync(credentialRoot, { mode: 0o700 });
+    writeFileSync(join(credentialRoot, "protected.json"), canary, { mode: 0o600 });
+    writeFileSync(join(world.stateRoot, "unrelated-settings.json"), canary, { mode: 0o600 });
 
-    await assert.rejects(
-      backup(w),
-      /settings revision 2 has no durable command journal/u,
+    const { report, manifest, manifestPath } = await takeBackup(world);
+
+    assert.equal(report.manifests.every((entry) => entry.manifestVersion === 3), true);
+    assert.equal(manifest.manifestVersion, 3);
+    assert.equal("files" in manifest, false);
+    assert.equal("protectedSettings" in manifest, false);
+    const entries = readdirSync(world.backupDirectory).sort();
+    assert.equal(entries.length, 2);
+    assert.equal(
+      entries.some((name) => readFileSync(join(world.backupDirectory, name)).includes(canary)),
+      false,
     );
-    assert.deepEqual(readdirSync(w.backupDirectory), []);
-  });
-
-  it("backs up a fresh composition after it materializes both revision-1 baselines", async () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-fresh-settings-backup-"));
-    roots.push(root);
-    const stateRoot = join(root, ".tracker");
-    mkdirSync(stateRoot, { mode: 0o700 });
-    const paths = settingsRootPaths(stateRoot);
-    const database = AuthorityDatabase.open({
-      path: join(stateRoot, "state.db"),
-      busyTimeoutMs: 250,
-      migrationOwner: "fresh-settings-backup-test",
-    }, manualClock(new Date(NOW)));
-    databases.push(database);
-    const ordinary = createSettingsFileAuthority({
-      path: paths.ordinary,
-      validateCandidate: () => undefined,
-    });
-    const protectedStore = createProtectedSettingsFileAuthority({
-      path: paths.ordinary,
-      assertWriteIdAvailable: () => undefined,
-    });
-
-    assert.equal(ordinary.read().revision, 1);
-    assert.equal(SettingsFileRecordSchema.parse(JSON.parse(readFileSync(paths.ordinary, "utf8"))).revision, 1);
-    assert.deepEqual(ProtectedStoreRecordSchema.parse(JSON.parse(readFileSync(paths.protected, "utf8"))).entries, {});
-    const authority = SettingsRootAuthoritySchema.parse(JSON.parse(readFileSync(paths.authority, "utf8")));
-    assert.deepEqual({ ordinary: authority.ordinary, protected: authority.protected }, {
-      ordinary: "initialized",
-      protected: "initialized",
-    });
-
-    const { manifest } = await backup({
-      root,
-      stateRoot,
-      paths,
-      database,
-      ordinaryStore: ordinary,
-      protectedStore,
-      backupDirectory: join(stateRoot, "backups", "authority"),
-    });
-    assert.equal(manifest.manifestVersion, 2);
-    if (manifest.manifestVersion === 2) {
-      assert.deepEqual(manifest.protectedSettings, { revision: 1, entries: [] });
-    }
-  });
-
-  it("writes manifest v2 with ordinary files and value-free protected presence only", async () => {
-    const canary = "CANARY-PROTECTED-PASSWORD-must-not-enter-backup";
-    const w = world(canary);
-    const { report, manifest, manifestPath } = await backup(w);
-
-    assert.equal(report.manifests.every((entry) => entry.manifestVersion === 2), true);
-    assert.equal(manifest.manifestVersion, 2);
-    if (manifest.manifestVersion !== 2) return;
-    assert.deepEqual(manifest.files.map(({ role, sourceFileName }) => ({ role, sourceFileName })), [
-      { role: "authority-database", sourceFileName: "state.db" },
-      { role: "ordinary-settings", sourceFileName: "settings.json" },
-      { role: "settings-root-authority", sourceFileName: "authority.json" },
-    ]);
-    assert.deepEqual(manifest.protectedSettings, {
-      revision: 2,
-      entries: [{
-        name: "ucpathPassword",
-        valueId: manifest.protectedSettings.entries[0]?.valueId,
-        updatedAt: NOW,
-      }],
-    });
-    assert.match(manifest.protectedSettings.entries[0]?.valueId ?? "", /^[0-9a-f-]{36}$/u);
-    const entries = readdirSync(w.backupDirectory).sort();
-    assert.equal(entries.length, 4);
-    assert.equal(entries.some((name) => name.includes("protected")), false);
-    assert.equal(entries.some((name) => name.includes("prepare") || name.includes("rollback") || name.includes("lock")), false);
-    const allBackupBytes = entries.map((name) => readFileSync(join(w.backupDirectory, name))).join("\n");
-    assert.equal(allBackupBytes.includes(canary), false);
-    assert.equal(allBackupBytes.includes("protected.json"), false);
-    assert.equal(JSON.stringify(manifest).includes("value\""), false);
-    assert.doesNotMatch(JSON.stringify(manifest), /prepare|rollback/u);
     assert.equal(AuthorityBackupManifestSchema.safeParse({
       ...manifest,
-      protectedSettings: {
-        ...manifest.protectedSettings,
-        entries: manifest.protectedSettings.entries.map((entry) => ({ ...entry, value: canary })),
-      },
+      protectedSettings: { revision: 1, entries: [] },
     }).success, false);
-    await verifyBackupManifestAtPath(manifestPath, w.database.getSourceDatabaseIdentity());
+    await verifyBackupManifestAtPath(manifestPath, world.database.getSourceDatabaseIdentity());
   });
 
-  it("holds the shared settings lock while it copies and authenticates SQLite", async () => {
-    const w = world("lock-held-backup-canary");
-    let lockObserved = false;
-    const service = new AuthorityBackupService({
-      getMeta: () => w.database.getMeta(),
-      getSourceDatabaseIdentity: () => w.database.getSourceDatabaseIdentity(),
-      onlineBackupTo: async (destination) => {
-        assert.throws(() => w.ordinaryStore.read(), /exclusive settings authority/u);
-        assert.throws(() => w.protectedStore.read(), /exclusive settings authority/u);
-        lockObserved = true;
-        return w.database.onlineBackupTo(destination);
-      },
-    }, {
-      directory: w.backupDirectory,
-      settingsRoot: w.paths.root,
-    }, manualClock(new Date(NOW)));
-
-    const report = await service.request({
-      trigger: "operator",
-      requiredGeneration: w.database.getMeta().authorityGeneration,
-    });
-
-    assert.equal(report.state, "verified");
-    assert.equal(lockObserved, true);
-  });
-
-  it("rejects a parseable checksummed settings copy that does not match the copied journal", async () => {
-    const w = world("verification-authentication-canary");
-    const { manifest, manifestPath } = await backup(w);
-    assert.equal(manifest.manifestVersion, 2);
-    if (manifest.manifestVersion !== 2) return;
-    const ordinaryIdentity = manifest.files[1];
-    const ordinaryPath = join(w.backupDirectory, ordinaryIdentity.backupFileName);
-    const ordinary = SettingsFileRecordSchema.parse(JSON.parse(readFileSync(ordinaryPath, "utf8")));
-    const settings = { ...ordinary.settings, browser: { ...ordinary.settings.browser, headless: true } };
-    const forgedBytes = Buffer.from(`${JSON.stringify(SettingsFileRecordSchema.parse({
-      ...ordinary,
-      settings,
-      settingsFingerprint: derivePersistedSettingsFingerprint(settings),
-    }))}\n`);
-    writeFileSync(ordinaryPath, forgedBytes);
-    const forgedManifest = AuthorityBackupManifestSchema.parse({
-      ...manifest,
-      files: [
-        manifest.files[0],
-        {
-          ...ordinaryIdentity,
-          byteSize: forgedBytes.byteLength,
-          sha256: createHash("sha256").update(forgedBytes).digest("hex"),
-        },
-        manifest.files[2],
-      ],
-    });
-    writeFileSync(manifestPath, `${JSON.stringify(forgedManifest)}\n`);
-
+  it("preserves checksum and source-identity refusals", async () => {
+    const world = openCurrentWorld();
+    const { manifest, manifestPath } = await takeBackup(world);
+    await assert.rejects(
+      verifyBackupManifestAtPath(manifestPath, "f".repeat(64)),
+      /belongs to a different authority database/u,
+    );
+    writeFileSync(join(world.backupDirectory, manifest.backupFileName), "tampered");
     await assert.rejects(
       verifyBackupManifestAtPath(manifestPath),
-      /settings\.json revision 2 is not its authenticated current journal result/u,
+      /byte size does not match verified manifest/u,
     );
   });
 
-  it("keeps authority.json value-independent and fails verification if an ordinary copy is changed", async () => {
-    const first = world("first protected value");
-    const second = world("second protected value");
-    const firstAuthority = JSON.parse(readFileSync(first.paths.authority, "utf8")) as { rootFingerprint: string };
-    const secondAuthority = JSON.parse(readFileSync(second.paths.authority, "utf8")) as { rootFingerprint: string };
-    assert.equal(firstAuthority.rootFingerprint, secondAuthority.rootFingerprint);
+  it("reads strict historical v1 and v2 layouts independently of the current schema", async () => {
+    const root = temporaryRoot("hrauto-historical-backup-");
+    const stateRoot = join(root, ".tracker");
+    const directory = join(stateRoot, "backups", "authority");
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
 
-    const { manifest, manifestPath } = await backup(first);
-    assert.equal(manifest.manifestVersion, 2);
-    if (manifest.manifestVersion !== 2) return;
-    writeFileSync(join(first.backupDirectory, manifest.files[1].backupFileName), "tampered settings");
-    await assert.rejects(verifyBackupManifestAtPath(manifestPath), /byte size does not match verified manifest/u);
-  });
-
-  it("reads a strict legacy v1 manifest but never emits one", async () => {
-    const w = world("legacy-read-canary");
-    const { manifest, manifestPath } = await backup(w);
-    assert.equal(manifest.manifestVersion, 2);
-    const legacyPath = join(w.backupDirectory, "legacy-v1.manifest.json");
-    const legacy = {
-      kind: manifest.kind,
+    const v29Name = "authority-v29.sqlite";
+    const v29Path = join(directory, v29Name);
+    createHistoricalAuthority(v29Path, 29);
+    const v29 = verificationFor(v29Path, 29);
+    const v1 = AuthorityBackupManifestSchema.parse({
+      kind: "hrauto-authority-backup",
       manifestVersion: 1,
-      backupFileName: manifest.backupFileName,
-      sourceDatabaseIdentity: manifest.sourceDatabaseIdentity,
-      applicationId: manifest.applicationId,
-      schemaVersion: manifest.schemaVersion,
-      pageCount: manifest.pageCount,
-      authorityGeneration: manifest.authorityGeneration,
-      authorityContentFingerprint: manifest.authorityContentFingerprint,
-      createdAt: manifest.createdAt,
-      byteSize: manifest.byteSize,
-      sha256: manifest.sha256,
-      verification: manifest.verification,
-    };
-    writeFileSync(legacyPath, JSON.stringify(legacy), { mode: 0o600 });
-    assert.equal((await verifyBackupManifestAtPath(legacyPath)).manifest.manifestVersion, 1);
-    assert.equal(AuthorityBackupManifestSchema.safeParse({ ...legacy, files: [] }).success, false);
-    assert.equal((await verifyBackupManifestAtPath(manifestPath)).manifest.manifestVersion, 2);
+      backupFileName: v29Name,
+      sourceDatabaseIdentity: "a".repeat(64),
+      applicationId: v29.inspection.applicationId,
+      schemaVersion: v29.inspection.schemaVersion,
+      pageCount: v29.inspection.pageCount,
+      authorityGeneration: v29.inspection.authorityGeneration,
+      authorityContentFingerprint: v29.inspection.authorityContentFingerprint,
+      createdAt: NOW,
+      ...fileIdentity(v29Path),
+      verification: v29.verification,
+    });
+    const v1Path = writeManifest(directory, v1, "authority-v29.v1.manifest.json");
+    assert.equal((await verifyBackupManifestAtPath(v1Path)).manifest.manifestVersion, 1);
+
+    const v31Name = "authority-v31.sqlite";
+    const v31Path = join(directory, v31Name);
+    createHistoricalAuthority(v31Path, 31);
+    const settings = initializeSyntheticSettingsBackupRoot(stateRoot);
+    const ordinaryRecord = journalHistoricalOrdinarySettings(v31Path, settings.ordinary);
+    const v31 = verificationFor(v31Path, 31);
+    writeFileSync(settings.protected, "unread credential canary", { mode: 0o600 });
+    const ordinaryName = "authority-v31.settings.json";
+    const rootAuthorityName = "authority-v31.settings-authority.json";
+    writeFileSync(join(directory, ordinaryName), readFileSync(settings.ordinary), { mode: 0o600 });
+    writeFileSync(join(directory, rootAuthorityName), readFileSync(settings.authority), { mode: 0o600 });
+    const v2 = AuthorityBackupManifestSchema.parse({
+      kind: "hrauto-authority-backup",
+      manifestVersion: 2,
+      backupFileName: v31Name,
+      sourceDatabaseIdentity: "b".repeat(64),
+      applicationId: v31.inspection.applicationId,
+      schemaVersion: v31.inspection.schemaVersion,
+      pageCount: v31.inspection.pageCount,
+      authorityGeneration: v31.inspection.authorityGeneration,
+      authorityContentFingerprint: v31.inspection.authorityContentFingerprint,
+      createdAt: NOW,
+      ...fileIdentity(v31Path),
+      verification: v31.verification,
+      files: [
+        { role: "authority-database", sourceFileName: "state.db", backupFileName: v31Name, ...fileIdentity(v31Path) },
+        { role: "ordinary-settings", sourceFileName: "settings.json", backupFileName: ordinaryName, ...fileIdentity(join(directory, ordinaryName)) },
+        { role: "settings-root-authority", sourceFileName: "authority.json", backupFileName: rootAuthorityName, ...fileIdentity(join(directory, rootAuthorityName)) },
+      ],
+      protectedSettings: { revision: 1, entries: [] },
+    });
+    const v2Path = writeManifest(directory, v2, "authority-v31.v2.manifest.json");
+    assert.equal((await verifyBackupManifestAtPath(v2Path)).manifest.manifestVersion, 2);
+    assert.equal(AuthorityBackupManifestSchema.safeParse({ ...v2, schemaVersion: 29 }).success, false);
+
+    const tamperedSettings = { browser: { headless: true } };
+    const tamperedOrdinary = SettingsFileRecordSchema.parse({
+      ...ordinaryRecord,
+      settings: tamperedSettings,
+      settingsFingerprint: derivePersistedSettingsFingerprint(tamperedSettings),
+    });
+    writeFileSync(
+      join(directory, ordinaryName),
+      `${canonicalJsonStringify(tamperedOrdinary)}\n`,
+      { mode: 0o600 },
+    );
+    if (v2.manifestVersion !== 2) throw new Error("historical fixture is not v2");
+    const ordinaryTamperManifest = AuthorityBackupManifestSchema.parse({
+      ...v2,
+      files: v2.files.map((file, index) => index === 1
+        ? { ...file, ...fileIdentity(join(directory, ordinaryName)) }
+        : file),
+    });
+    const ordinaryTamperPath = writeManifest(
+      directory,
+      ordinaryTamperManifest,
+      "authority-v31.ordinary-tamper.manifest.json",
+    );
+    await assert.rejects(
+      verifyBackupManifestAtPath(ordinaryTamperPath),
+      /is not its authenticated current journal result/u,
+    );
+
+    writeFileSync(
+      join(directory, ordinaryName),
+      `${canonicalJsonStringify(ordinaryRecord)}\n`,
+      { mode: 0o600 },
+    );
+    const protectedTamperManifest = AuthorityBackupManifestSchema.parse({
+      ...v2,
+      files: v2.files.map((file, index) => index === 1
+        ? { ...file, ...fileIdentity(join(directory, ordinaryName)) }
+        : file),
+      protectedSettings: {
+        revision: 2,
+        entries: [{
+          name: "ucpathPassword",
+          valueId: "33333333-3333-4333-8333-333333333333",
+          updatedAt: NOW,
+        }],
+      },
+    });
+    const protectedTamperPath = writeManifest(
+      directory,
+      protectedTamperManifest,
+      "authority-v31.protected-tamper.manifest.json",
+    );
+    await assert.rejects(
+      verifyBackupManifestAtPath(protectedTamperPath),
+      /does not match its copied singleton/u,
+    );
   });
 
-  it("fails loud and removes copied database bytes when the settings root is absent", async () => {
-    const w = world("missing-root-canary");
-    rmSync(w.paths.root, { recursive: true, force: true });
-    await assert.rejects(
-      backup(w),
-      /settings root is unavailable for verified backup/u,
+  it.each([
+    ["table", "CREATE TABLE unauthorized_table (id INTEGER) STRICT"],
+    ["column", "ALTER TABLE tasks ADD COLUMN unauthorized_column TEXT"],
+    ["index", "CREATE INDEX unauthorized_index ON tasks(record_key)"],
+    ["trigger", `CREATE TRIGGER unauthorized_trigger BEFORE DELETE ON tasks
+      BEGIN SELECT RAISE(ABORT, 'unauthorized'); END`],
+  ])("refuses a historical schema with an extra %s", (_kind, statement) => {
+    const root = temporaryRoot("hrauto-historical-schema-");
+    const path = join(root, "state.db");
+    createHistoricalAuthority(path, 29);
+    const database = new DatabaseSync(path);
+    database.exec(statement);
+    database.close();
+    assert.throws(
+      () => inspectAuthorityBackupReadOnly(path, 29),
+      /does not match its immutable migration replay/u,
     );
-    assert.deepEqual(readdirSync(w.backupDirectory), []);
+  });
+
+  it("backs up a stopped v29 source as v3 without migrating it", async () => {
+    const root = temporaryRoot("hrauto-v29-source-backup-");
+    const authorityPath = join(root, "state.db");
+    const directory = join(root, "backups");
+    createHistoricalAuthority(authorityPath, 29);
+    const sourceBytes = readFileSync(authorityPath);
+    const source = openAuthorityBackupSourceReadOnly(authorityPath);
+    try {
+      const service = new AuthorityBackupService(source, { directory }, CLOCK);
+      const report = await service.request({ trigger: "schema-migration", requiredGeneration: 7 });
+      const manifest = report.manifests[0];
+      assert.ok(manifest !== undefined);
+      assert.equal(manifest.manifestVersion, 3);
+      assert.equal(manifest.schemaVersion, 29);
+      assert.equal(source.getMeta().schemaVersion, 29);
+      await verifyBackupManifestAtPath(
+        join(directory, `${manifest.backupFileName}.manifest.json`),
+        source.getSourceDatabaseIdentity(),
+      );
+    } finally {
+      source.close();
+    }
+    assert.equal(readFileSync(authorityPath).equals(sourceBytes), true);
+    assert.equal(existsSync(`${authorityPath}-wal`), false);
+    assert.equal(existsSync(`${authorityPath}-shm`), false);
   });
 });

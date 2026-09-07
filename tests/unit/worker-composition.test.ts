@@ -3,7 +3,7 @@ import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queu
 import { ActorIdSchema, TraceIdSchema } from "../../src/domain/ids.js";
 import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
 import { composeDashboardRuntime } from "../../src/server/dashboard/compose.js";
-import { createJournaledProtectedSecretSource } from "../../src/server/settings-runtime.js";
+import { createCredentialSecretSource, readSettings } from "../../src/server/settings-runtime.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
 import { RuntimeConfigClaimTokenSchema } from "../../src/domain/config/runtime-generation.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
@@ -28,7 +28,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
-import { createCommandKernel, type CommandKernel } from "../../src/core/command-kernel.js";
+import { createCommandKernel, executeSettingsCommand, type CommandKernel } from "../../src/core/command-kernel.js";
 import { createPhase1WorkerRuntimeExecutor, phase1WorkerId, poolWorkerId } from "../../src/core/worker-loop.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
@@ -36,12 +36,12 @@ import {
   SETTINGS_SCHEMA_HASH,
   deriveSettingsPatchFingerprint,
   initialSettingsFileRecord,
+  derivePersistedSettingsFingerprint,
 } from "../../src/domain/config/settings.js";
-import { deriveSettingsCommandFingerprint } from "../../src/domain/commands.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import type { PositiveInt } from "../../src/domain/ids.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
-import { createProtectedSettingsFileAuthority, createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
+import { createCredentialStore } from "../../src/infra/config/credential-store.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   observeProcessIdentity,
@@ -196,25 +196,8 @@ function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, pa
     target: { expectedRevision: 1 },
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
   };
-  const authority = createSettingsFileAuthority({
-    path: join(repoRoot, ".tracker", "settings", "settings.json"),
-    validateCandidate: (settings) => {
-      resolveConfigWithProvenance(settings, hostConfigFacts({}), clock);
-    },
-  });
-  const outcome = authority.apply({
-    commandId: command.commandId,
-    commandFingerprint: deriveSettingsCommandFingerprint(command),
-    expectedRevision: 1,
-    settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-    patchFingerprint,
-    patch,
-  });
-  if (outcome.state !== "applied") {
-    assert.fail(`worker settings fixture refused: ${outcome.message}`);
-  }
-  outcome.commit();
-  return Object.freeze({ command, settingsFingerprint: outcome.record.settingsFingerprint });
+  void repoRoot; void clock;
+  return Object.freeze({ command, settingsFingerprint: derivePersistedSettingsFingerprint({ browser: { headless: false } }) });
 }
 
 function persistJournaledWorkerSettings(
@@ -229,14 +212,8 @@ function persistJournaledWorkerSettings(
     clock,
   );
   try {
-    journalWorkerSettings(database, persisted);
-    const authority = createSettingsFileAuthority({
-      path: join(repoRoot, ".tracker", "settings", "settings.json"),
-      validateCandidate: (settings) => {
-        resolveConfigWithProvenance(settings, hostConfigFacts({}), clock);
-      },
-    });
-    const record = authority.read();
+    journalWorkerSettings(database, persisted, stateRoot);
+    const record = readSettings(database.authority);
     const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock);
     database.withAuthorityTransaction((repositories) => {
       const configSnapshotId = "55555555-5555-4555-8555-555555555555";
@@ -265,36 +242,11 @@ function persistJournaledWorkerSettings(
 function journalWorkerSettings(
   database: AuthorityDatabase,
   persisted: ReturnType<typeof persistUnjournaledWorkerSettings>,
+  stateRoot: string,
 ): void {
-  database.withAuthorityTransaction((repositories) => {
-    const { command, settingsFingerprint } = persisted;
-    repositories.commands.insert(command);
-    const target = { family: "settings" as const, revision: 2 };
-    const auditId = "44444444-4444-4444-8444-444444444444";
-    repositories.commandAudits.insert({
-      auditId,
-      request: command,
-      result: {
-        state: "applied",
-        commandId: command.commandId,
-        affectedTargets: [target],
-        restartRequired: true,
-        settingsRevision: 2,
-        settingsFingerprint,
-      },
-      completedAt: command.requestedAt,
-      versionChanges: [{ target, before: 1, after: 2 }],
-      affectedDependencyIds: [],
-    });
-    repositories.settingsCurrent.advance({
-      revision: 2,
-      settingsFingerprint,
-      commandId: command.commandId,
-      commandFingerprint: deriveSettingsCommandFingerprint(command),
-      auditId,
-      committedAt: command.requestedAt,
-    });
-  });
+  const result = executeSettingsCommand({ authority: database, clock: manualClock(new Date(NOW)), ids: sequentialIdFactory("4"),
+    settings: createSettingsApplicationExecutor(() => {}, createCredentialStore({ stateRoot })) }, persisted.command);
+  assert.equal(result.state, "applied");
 }
 
 function fixtureProcessIdentityObserver(pid: number) {
@@ -400,56 +352,27 @@ describe("worker CLI argument parsing", () => {
 });
 
 describe("composed worker runtime", () => {
-  it("four workers poll and claim without reacquiring settings-file exclusion", async () => {
+  it("four workers boot, poll and claim without creating file authority", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const settingsLockAcquisitions = [0, 0, 0, 0];
-
-    const reports = await Promise.all(settingsLockAcquisitions.map((_, offset) =>
-      composeWorkerRuntime({
-        ...composeInput({
-          repoRoot,
-          clock,
-          sessions: happySessionHarness(),
-          poolIndex: PositiveIntSchema.parse(offset + 1),
-          processId: 4300 + offset,
-        }),
-        settingsFileHooks: {
-          afterLockLinked: () => {
-            settingsLockAcquisitions[offset] += 1;
-          },
-        },
-      })));
-
-    assert.equal(
-      reports.flatMap(({ outcomes }) => outcomes).length,
-      1,
-      "one queued run is claimed once while the other workers observe idle",
-    );
-    assert.deepEqual(
-      settingsLockAcquisitions,
-      [3, 3, 3, 3],
-      "each worker pays prepare-target inspection and two ordinary boot validations; idle/claim polls pay zero OS observation, link, fsync, or unlink cycles",
-    );
+    const reports = await Promise.all([0, 1, 2, 3].map((offset) =>
+      composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: happySessionHarness(),
+        poolIndex: PositiveIntSchema.parse(offset + 1), processId: 4300 + offset }))));
+    assert.equal(reports.flatMap(({ outcomes }) => outcomes).length, 1,
+      "one queued run is claimed once while other workers observe idle");
+    assert.equal(existsSync(join(stateRoot, "settings")), false, "boot and polling create no file authority or lock");
   });
 
-  it("refuses an unjournaled persisted settings generation before claiming", async () => {
+  it("ignores retired unjournaled file bytes and claims using SQLite settings", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
-    persistUnjournaledWorkerSettings(repoRoot, clock, { browser: { headless: false } });
+    const directory = join(stateRoot, "settings"); mkdirSync(directory);
+    const path = join(directory, "settings.json"); writeFileSync(path, "retired invalid authority");
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-
-    await assert.rejects(
-      composeWorkerRuntime(composeInput({
-        repoRoot,
-        clock,
-        sessions: happySessionHarness(),
-        poolIndex: POOL_INDEX_1,
-      })),
-      /settings revision 2 has no durable command journal/u,
-    );
-    assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+    const report = await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1 }));
+    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
+    assert.equal(readFileSync(path, "utf8"), "retired invalid authority");
     assertStoppedWorkerProcessRecord(repoRoot, clock);
   });
 
@@ -481,7 +404,7 @@ describe("composed worker runtime", () => {
         })),
         corruption.expected,
       );
-      assert.deepEqual(readFileSync(fixture.settingsPath), fixture.settingsBytes);
+      assert.deepEqual(reopen(stateRoot, clock).authority.settingsCurrent.get(), fixture.record);
       assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
       assertStoppedWorkerProcessRecord(repoRoot, clock);
     },
@@ -567,7 +490,7 @@ describe("composed worker runtime", () => {
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const sessions = happySessionHarness();
     let admissionCrossed = false;
-    let admissionSettingsBytes: Buffer | undefined;
+    let admissionSettingsRecord: ReturnType<typeof readSettings> | undefined;
     let admissionDatabase: AuthorityDatabase | undefined;
 
     const refusal = await composeWorkerRuntime({
@@ -589,11 +512,9 @@ describe("composed worker runtime", () => {
             clock,
             { browser: { headless: false } },
           );
-          admissionSettingsBytes = readFileSync(join(repoRoot, ".tracker", "settings", "settings.json"));
-          // This is deliberately a nested savepoint under claim admission,
-          // not an independent durable dashboard commit. The thrown claim
-          // must roll its journal back while retaining the already-written file.
-          journalWorkerSettings(admissionDatabase, persisted);
+          // Nested settings application must roll back with failed claim admission.
+          admissionSettingsRecord = readSettings(admissionDatabase.authority);
+          journalWorkerSettings(admissionDatabase, persisted, stateRoot);
           admissionCrossed = true;
         },
       }).then(
@@ -601,7 +522,7 @@ describe("composed worker runtime", () => {
       (error: unknown) => error,
     );
     assert.equal(admissionCrossed, true);
-    assert.deepEqual(readFileSync(join(repoRoot, ".tracker", "settings", "settings.json")), admissionSettingsBytes);
+    assert.deepEqual(readSettings(reopen(stateRoot, clock).authority), admissionSettingsRecord);
     const database = reopen(stateRoot, clock);
     assert.equal(sessions.opens("ucpath"), 0);
     assert.equal(sessions.opens("crm"), 0);
@@ -1039,15 +960,10 @@ describe("D331 settings apply during a production worker claim", () => {
     const spans = createSpanJsonlWriter({ stateRoot, clock });
     const queued = database.authority.runs.get(RUN_ID); assert.ok(queued);
     spans.emit(runQueuedSpanEvent({ run: queued, actorId: ActorIdSchema.parse("local-operator"), title: "Synthetic claim fixture" }));
-    const path = join(stateRoot, "settings", "settings.json");
-    const ordinary = createSettingsFileAuthority({ path,
-      validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); } });
-    const protectedFile = createProtectedSettingsFileAuthority({ path, assertWriteIdAvailable: (writeId, commandId) => {
-      if (database.authority.commands.findProtectedSettingsCommandIdByWriteId({ writeId, excludingCommandId: commandId }) !== undefined)
-        throw new Error("write-id-reused");
-    } });
-    const { kernel } = kernelHarness({ database, clock, settings: createSettingsApplicationExecutor(ordinary, protectedFile) });
-    const source = createJournaledProtectedSecretSource({ file: protectedFile, database });
+    const credentials = createCredentialStore({ stateRoot });
+    const { kernel } = kernelHarness({ database, clock, settings: createSettingsApplicationExecutor(
+      (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); }, credentials) });
+    const source = createCredentialSecretSource(credentials);
     const applyProtected = (value: string, revision: number) => kernel.execute({
       commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",
       family: "settings", type: "apply-protected-settings", target: { expectedRevision: revision },

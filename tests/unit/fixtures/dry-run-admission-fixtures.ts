@@ -2,7 +2,7 @@ import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The dry-run admission fixture every T1b composition proof shares: a selected
- * `.tracker/settings/settings.json` journaled through the REAL settings kernel arm and
+ * SQLite ordinary settings journaled through the REAL settings kernel arm and
  * activated through the existing dashboard activation contract — never an
  * alternate runtime writer — plus a read-only view of the start-effect tables.
  */
@@ -14,9 +14,9 @@ import type { TestClock } from "../../../src/domain/clock.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../src/domain/config/settings.js";
-import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
+import { createCredentialStore } from "../../../src/infra/config/credential-store.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
-import { readJournaledSettings } from "../../../src/server/settings-runtime.js";
+import { readSettings } from "../../../src/server/settings-runtime.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
@@ -32,10 +32,8 @@ export function selectedSettingsFixture(
   const path = join(root, rebuildRuntimeIsolation.stateRoot, "state.db");
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "dry-run-admission-test" }, clock);
   databases.push(database);
-  const file = createSettingsFileAuthority({
-    path: join(root, ".tracker", "settings", "settings.json"),
-    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts(env), clock); },
-  });
+  const file = { read: () => readSettings(database.authority) };
+  const credentials = createCredentialStore({ stateRoot: join(root, rebuildRuntimeIsolation.stateRoot) });
   const ids = sequentialIdFactory("b");
   const unused = (): never => { throw new Error("Settings setup reached an unrelated kernel arm"); };
   const kernel = createCommandKernel({
@@ -49,7 +47,7 @@ export function selectedSettingsFixture(
     intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { resolvePresent: unused, resolveAbsent: unused },
     workerRuntime: { planWorkerCount: unused, spawnWorker: unused, refreshBrowser: unused, reopenBrowser: unused },
-    settings: createSettingsApplicationExecutor(file),
+    settings: createSettingsApplicationExecutor((settings) => { resolveConfigWithProvenance(settings, hostConfigFacts(env), clock); }, credentials),
   });
   return {
     database, file, path,
@@ -65,10 +63,10 @@ export function selectedSettingsFixture(
       assert.equal(database.authority.commands.get(commandId)?.family, "settings");
       assert.equal(database.authority.commandAudits.findByCommand(commandId)?.result.state, "applied");
       assert.equal(database.authority.settingsCurrent.get()?.commandId, commandId);
-      return database.withAuthorityTransaction((repositories) => readJournaledSettings(file, repositories));
+      return database.withAuthorityTransaction((repositories) => readSettings(repositories));
     },
     activate: () => database.withAuthorityTransaction((repositories) => {
-      const record = readJournaledSettings(file, repositories);
+      const record = readSettings(repositories);
       const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts(env), clock);
       const configSnapshotId = ids.uuid();
       // The existing dashboard activation contract, not an alternate runtime writer.

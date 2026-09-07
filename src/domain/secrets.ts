@@ -299,7 +299,10 @@ function assertAdmittedEnvironmentKey(key: string): void {
  * CRLF/LF lines and retain `#`/`=`. Outside a quoted value, `#` begins a
  * comment. `export` and lowercase names are intentionally not another dialect.
  */
-function strictlyValidateLocalEnvironment(text: string): readonly string[] {
+export function strictlyValidateLocalEnvironment(
+  text: string,
+  collectBinding?: (name: string, source: string) => void,
+): readonly string[] {
   const keys: string[] = [];
   const seen = new Set<string>();
   let index = 0;
@@ -395,6 +398,7 @@ function strictlyValidateLocalEnvironment(text: string): readonly string[] {
     if (seen.has(key)) invalidLocalEnvironmentSyntax(keyLine);
     seen.add(key);
     keys.push(key);
+    collectBinding?.(key, text.slice(keyStart, index));
   }
   return Object.freeze(keys);
 }

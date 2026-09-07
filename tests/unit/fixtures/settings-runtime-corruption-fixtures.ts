@@ -1,5 +1,5 @@
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
@@ -7,7 +7,6 @@ import type { Clock } from "../../../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import {
   SETTINGS_SCHEMA_HASH,
-  SettingsFileRecordSchema,
   deriveSettingsPatchFingerprint,
 } from "../../../src/domain/config/settings.js";
 import {
@@ -15,7 +14,8 @@ import {
   SettingsCommandRequestSchema,
   deriveSettingsCommandFingerprint,
 } from "../../../src/domain/commands.js";
-import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
+import type { SettingsCurrentRecord } from "../../../src/domain/config/settings-current.js";
+import { derivePersistedSettingsFingerprint } from "../../../src/domain/config/settings.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 
 const COMMAND_ID = "33333333-3333-4333-8333-333333333333";
@@ -158,9 +158,8 @@ export function persistCorruptJournaledSettings(input: Readonly<{
   clock: Clock;
   corruption: SettingsRuntimeIdentityCorruption;
   activateRuntime: boolean;
-}>): Readonly<{ settingsPath: string; settingsBytes: Buffer }> {
+}>): Readonly<{ record: SettingsCurrentRecord }> {
   mkdirSync(input.stateRoot, { recursive: true });
-  const settingsPath = join(input.repoRoot, ".tracker", "settings", "settings.json");
   const patch = { "browser.headless": { set: false } } as const;
   const command = SettingsCommandRequestSchema.parse({
     commandId: COMMAND_ID,
@@ -176,24 +175,7 @@ export function persistCorruptJournaledSettings(input: Readonly<{
       patch,
     },
   });
-  const authority = createSettingsFileAuthority({
-    path: settingsPath,
-    validateCandidate: (settings) => {
-      resolveConfigWithProvenance(settings, hostConfigFacts({}), input.clock);
-    },
-  });
-  const outcome = authority.apply({
-    commandId: command.commandId,
-    commandFingerprint: deriveSettingsCommandFingerprint(command),
-    expectedRevision: command.target.expectedRevision,
-    settingsSchemaHash: command.payload.settingsSchemaHash,
-    patchFingerprint: command.payload.patchFingerprint,
-    patch: command.payload.patch,
-  });
-  if (outcome.state !== "applied") {
-    throw new Error(`corrupt settings fixture refused: ${outcome.message}`);
-  }
-
+  const record = { revision: 2, settings: { browser: { headless: false } }, settingsFingerprint: derivePersistedSettingsFingerprint({ browser: { headless: false } }) };
   const databasePath = join(input.stateRoot, "state.db");
   const database = AuthorityDatabase.open(
     { path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" },
@@ -202,7 +184,7 @@ export function persistCorruptJournaledSettings(input: Readonly<{
   try {
     database.withAuthorityTransaction((repositories) => {
       repositories.commands.insert(command);
-      const target = { family: "settings" as const, revision: outcome.record.revision };
+      const target = { family: "settings" as const, revision: record.revision };
       repositories.commandAudits.insert({
         auditId: AUDIT_ID,
         request: command,
@@ -211,27 +193,28 @@ export function persistCorruptJournaledSettings(input: Readonly<{
           commandId: command.commandId,
           affectedTargets: [target],
           restartRequired: true,
-          settingsRevision: outcome.record.revision,
-          settingsFingerprint: outcome.record.settingsFingerprint,
+          settingsRevision: record.revision,
+          settingsFingerprint: record.settingsFingerprint,
         },
         completedAt: command.requestedAt,
         versionChanges: [{
           target,
           before: command.target.expectedRevision,
-          after: outcome.record.revision,
+          after: record.revision,
         }],
         affectedDependencyIds: [],
       });
       repositories.settingsCurrent.advance({
-        revision: outcome.record.revision,
-        settingsFingerprint: outcome.record.settingsFingerprint,
+        revision: record.revision,
+        settings: record.settings,
+        settingsFingerprint: record.settingsFingerprint,
         commandId: command.commandId,
         commandFingerprint: deriveSettingsCommandFingerprint(command),
         auditId: AUDIT_ID,
         committedAt: command.requestedAt,
       });
       if (input.activateRuntime) {
-        const resolved = resolveConfigWithProvenance(outcome.record.settings, hostConfigFacts({}), input.clock);
+        const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), input.clock);
         repositories.configSnapshots.insert({
           configSnapshotId: CONFIG_SNAPSHOT_ID,
           revision: 1,
@@ -242,21 +225,22 @@ export function persistCorruptJournaledSettings(input: Readonly<{
           provenance: resolved.provenance,
         });
         repositories.runtimeConfig.activate({
-          settingsRevision: outcome.record.revision,
-          settingsFingerprint: outcome.record.settingsFingerprint,
+          settingsRevision: record.revision,
+          settingsFingerprint: record.settingsFingerprint,
           configSnapshotId: CONFIG_SNAPSHOT_ID,
           configFingerprint: resolved.fingerprint,
           activatedAt: command.requestedAt,
         });
       }
     });
-    outcome.commit();
   } finally {
     database.close();
   }
 
-  const settingsBytes = readFileSync(settingsPath);
-  SettingsFileRecordSchema.parse(JSON.parse(settingsBytes.toString("utf8")));
+  const reopened = AuthorityDatabase.open({ path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" }, input.clock);
+  let current: SettingsCurrentRecord;
+  try { const value = reopened.authority.settingsCurrent.get(); if (value === undefined) throw new Error("missing fixture current"); current = value; }
+  finally { reopened.close(); }
   corruptPersistedIdentity(databasePath, input.corruption);
-  return Object.freeze({ settingsPath, settingsBytes });
+  return Object.freeze({ record: current });
 }

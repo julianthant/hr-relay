@@ -241,11 +241,14 @@ for porting provenance; never restore a live legacy dependency (D93/D150).
 
 `.env` is gitignored and NOT part of the repo. Create it safely with `umask 077` and
 `install -m 600 .env.example .env`, then fill only the required values. CLI and D300 document-number smoke startup
-go through `scripts/secure-env-bootstrap.ts`: it opens the fixed path with no symlink following,
-fstats and validates that descriptor, reads/parses those exact bytes, preserves an explicit parent
-environment, and only then imports the allowlisted CLI or smoke entrypoint. `src/domain/config/resolve.ts`
-implements `env > settings.json > default` exactly once; the `display` DEFAULT is the host's primary
-display (D324, 2026-09-03): `src/infra/host/primary-display.ts` probes it once per process tree,
+go through `scripts/secure-env-bootstrap.ts`: normal runtime startup refuses migrated environment
+names, opens the fixed provider-only path without following symlinks, validates that descriptor,
+and admits its exact bytes before importing the allowlisted entrypoint. Storage commands bypass
+runtime environment admission so stopped upgrade can inspect historical sources without changing
+them. Ordinary settings come only from SQLite; `src/domain/config/resolve.ts` combines those values
+with defaults. Protected settings come from the independent credential store through the registered
+secret reader. Provider credentials remain environment-owned. The `display` default is the host's
+primary display (D324): `src/infra/host/primary-display.ts` probes it once per process tree,
 `hostAwareResolutionEnvironment` in `src/domain/secrets.ts` publishes it as
 `HRAUTO_HOST_PRIMARY_DISPLAY` for every child process, and 2560×1440 remains only the headless
 fallback — never re-probe in a child, never guess on an unrecognized OS answer;

@@ -64,6 +64,18 @@ describe("secure environment bootstrap", () => {
     assert.deepEqual(events, ["assert-parent"]);
   });
 
+  it.each(["doctor", "backup", "upgrade", "restore"])("isolates storage %s from provider environment admission", async (operation) => {
+    const original = [...process.argv]; const events: string[] = [];
+    try {
+      await runSecureEnvironmentBootstrap(["cli", "storage", operation], {
+        assertEnvironment: () => { throw new Error("storage must not read parent provider environment"); },
+        admitEnvironmentFile: () => { throw new Error("storage must not open provider .env"); },
+        runCli: async () => { events.push(...process.argv.slice(2)); },
+      });
+      assert.deepEqual(events, ["storage", operation]);
+    } finally { process.argv.splice(0, process.argv.length, ...original); }
+  });
+
   it("does not start the CLI when its module is executed directly", () => {
     const result = spawnSync(TSX, [join(REPO_ROOT, "src", "cli.ts")], {
       cwd: tmpdir(),

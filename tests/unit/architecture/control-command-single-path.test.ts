@@ -27,6 +27,7 @@ import { RunRecordService } from "../../../src/core/run-record-service.js";
  *    error enqueues zero runs.
  */
 import assert from "node:assert/strict";
+import { PositiveIntSchema } from "../../../src/domain/ids.js";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
@@ -185,7 +186,7 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
       reopenBrowser: seamFailure("reopen-browser"),
     },
     settings: {
-      reconcilePending: () => undefined,
+      prepare: (command) => command.type === "apply-protected-settings" ? { state: "conflict", currentRevision: PositiveIntSchema.parse(1), message: "guard fixture has no mutable credential target" } : undefined,
       reconcileReplay: () => {
         throw new Error("guard fixture has no persisted settings replay target");
       },
@@ -276,8 +277,9 @@ describe("control-command-single-path", () => {
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
     const settingsAuditReaders = new Map([
       ["src/server/settings-runtime.ts", 1],
-      ["src/infra/config/protected-settings-journal.ts", 1],
-      ["src/infra/sqlite/backup-service.ts", 3],
+      ["src/infra/compat/d331-protected-journal.ts", 1],
+      ["src/infra/sqlite/backup-service.ts", 0],
+      ["src/infra/compat/upgrade-sources.ts", 0],
     ]);
     const violations: string[] = [];
     let kernelDefinitions = 0;
@@ -291,7 +293,7 @@ describe("control-command-single-path", () => {
         if (expectedSettingsAuditReads !== undefined && token === "commandAudits") {
           const auditUses = content.match(/\bcommandAudits\.[A-Za-z]+/gu) ?? [];
           if (auditUses.length !== expectedSettingsAuditReads
-            || auditUses.some((use) => use !== "commandAudits.findByCommand")) {
+            || auditUses.some((use) => use !== (path === "src/server/settings-runtime.ts" ? "commandAudits.findSettingsHistory" : "commandAudits.findByCommand"))) {
             violations.push(
               `${path} may only authenticate settings through exactly ${String(expectedSettingsAuditReads)} `
               + "commandAudits.findByCommand reads",

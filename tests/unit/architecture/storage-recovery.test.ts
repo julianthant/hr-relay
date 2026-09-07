@@ -1,4 +1,3 @@
-import { createProtectedSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs, {
@@ -19,7 +18,7 @@ import fs, {
 } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { buildRunResult } from "../../../src/core/run-result.js";
@@ -85,7 +84,6 @@ import {
   VERSION_PLAN_ROW,
 } from "../fixtures/archive-fixtures.js";
 import { failureDetailWireFixture } from "../fixtures/trust-wire-fixtures.js";
-import { initializeSyntheticSettingsBackupRoot } from "../helpers/settings-backup-fixture.js";
 import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
@@ -453,6 +451,7 @@ function spanAuthorityRoot(runInput: unknown = QUEUED_RUN) {
     configFingerprint: run.envelope.configFingerprint,
     configSnapshotId: run.envelope.configSnapshotId,
     queuedAt: run.envelope.enqueuedAt,
+    reconstructed: false,
     initialAttempt: run.envelope.attempt,
     finalAttempt: run.envelope.attempt,
     streamIssues: [],
@@ -607,7 +606,6 @@ function stoppedProof(root: string, authorityPath: string, clock = CLOCK) {
 }
 
 async function createBackup(database: AuthorityDatabase, directory: string) {
-  initializeSyntheticSettingsBackupRoot(dirname(directory));
   const service = new AuthorityBackupService(database, { directory }, CLOCK);
   const report = await service.request({
     trigger: "operator",
@@ -729,7 +727,6 @@ describe("verified native online backups", () => {
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
     database.authority.commands.insert(COMMAND_FIXTURES[0]);
-    initializeSyntheticSettingsBackupRoot(root);
     let copies = 0;
     const source = {
       getMeta: () => database.getMeta(),
@@ -759,7 +756,6 @@ describe("verified native online backups", () => {
     const authorityPath = join(root, "state.sqlite");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
-    initializeSyntheticSettingsBackupRoot(root);
     const failingSource = {
       getMeta: () => database.getMeta(),
       getSourceDatabaseIdentity: () => database.getSourceDatabaseIdentity(),
@@ -794,13 +790,10 @@ describe("verified native online backups", () => {
     const secondDirectory = backupDirectory(secondRoot);
     const secondDatabase = openDatabase(secondPath);
     const second = await createBackup(secondDatabase, secondDirectory);
-    const parsed = JSON.parse(readFileSync(second.manifestPath, "utf8")) as Record<string, unknown> & {
-      files: Array<Record<string, unknown>>;
-    };
+    const parsed = JSON.parse(readFileSync(second.manifestPath, "utf8")) as Record<string, unknown>;
     writeFileSync(second.manifestPath, JSON.stringify({
       ...parsed,
       sha256: HASH_B,
-      files: parsed.files.map((file, index) => index === 0 ? { ...file, sha256: HASH_B } : file),
     }));
     await assert.rejects(verifyBackupManifestAtPath(second.manifestPath), /checksum does not match/);
   });
@@ -816,7 +809,7 @@ describe("verified native online backups", () => {
       .run(JSON.stringify({ family: "start" }), UUID_1);
     corruption.close();
 
-    await assert.rejects(createBackup(database, directory), /commands record .* failed strict record schema validation/);
+    await assert.rejects(createBackup(database, directory), /authority-record-invalid \{ table: commands, record:/);
     assert.deepEqual(readdirSync(directory), []);
   });
 });
@@ -835,6 +828,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     );
 
     assert.deepEqual(snapshot, {
+      tombstoneOrdinalFindings: [],
       authorityGeneration: authority.authorityGeneration,
       authorityContentFingerprint: authority.authorityContentFingerprint,
       liveRunCount: 1,
@@ -3898,14 +3892,10 @@ describe("offline exact-backup restore", () => {
     const bytes = readFileSync(backupPath);
     const byteSize = statSync(backupPath).size;
     const sha256 = createHash("sha256").update(bytes).digest("hex");
-    const files = (manifest.files as Array<Record<string, unknown>>).map((file, index) => (
-      index === 0 ? { ...file, byteSize, sha256 } : file
-    ));
     writeFileSync(manifestPath, JSON.stringify({
       ...manifest,
       byteSize,
       sha256,
-      files,
     }));
 
     const restore = new OfflineAuthorityRestoreService(
@@ -3915,7 +3905,7 @@ describe("offline exact-backup restore", () => {
     );
     await assert.rejects(
       restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
-      /tasks record .* failed strict record schema validation/,
+      /authority-record-invalid \{ table: tasks, record:/,
     );
     assert.equal(existsSync(suspects), false);
   });
@@ -3955,7 +3945,6 @@ describe("authority.health preflight and static recovery boundary", () => {
     const authorityPath = join(root, "state.sqlite");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
-    createProtectedSettingsFileAuthority({ path: join(root, "settings", "settings.json"), assertWriteIdAvailable: () => undefined }).read();
     await createBackup(database, directory);
     const runner = new AuthorityHealthPreflightRunner({
       stateRootTrustAnchor: root,
@@ -3975,9 +3964,19 @@ describe("authority.health preflight and static recovery boundary", () => {
     assert.match(withoutBackup.summary, /backup missing/);
   });
 
-  it("keeps the native handle private and bans live-copy or VACUUM backup fallbacks", () => {
+  it("keeps native SQLite use in the reviewed recovery boundaries and bans copy or VACUUM fallbacks", () => {
     const adapterPath = "src/infra/sqlite/authority-database.ts";
-    const sourceFiles = gitVisibleFiles(["src"]).filter((path) => path.endsWith(".ts") || path.endsWith(".tsx"));
+    const sqliteBoundaryPaths = [
+      "src/infra/compat/backup-inspection.ts",
+      "src/infra/compat/upgrade-sources.ts",
+      adapterPath,
+      "src/infra/sqlite/backup-service.ts",
+      "src/infra/compat/settings-database-upgrade.ts",
+    ].sort();
+    const sourceFiles = gitVisibleFiles(["src"]).filter(
+      (path) => (path.endsWith(".ts") || path.endsWith(".tsx"))
+        && existsSync(join(REPO_ROOT, path)),
+    );
     const sqliteImports: string[] = [];
     const nativeHandleMentions: string[] = [];
     for (const path of sourceFiles) {
@@ -3986,12 +3985,14 @@ describe("authority.health preflight and static recovery boundary", () => {
       if (/\bDatabaseSync\b/.test(source)) nativeHandleMentions.push(path);
       assert.doesNotMatch(source, /VACUUM\s+INTO/i, path);
     }
-    assert.deepEqual(sqliteImports, [adapterPath]);
-    assert.deepEqual(nativeHandleMentions, [adapterPath]);
+    assert.deepEqual(sqliteImports, sqliteBoundaryPaths);
+    assert.deepEqual(nativeHandleMentions, sqliteBoundaryPaths);
     const adapter = readFileSync(join(REPO_ROOT, adapterPath), "utf8");
-    const backupService = readFileSync(join(REPO_ROOT, "src/infra/sqlite/backup-service.ts"), "utf8");
+    const boundarySources = sqliteBoundaryPaths
+      .map((path) => readFileSync(join(REPO_ROOT, path), "utf8"))
+      .join("\n");
     assert.match(adapter, /backup as sqliteBackup/);
-    assert.doesNotMatch(`${adapter}\n${backupService}`, /\bcopyFile(?:Sync)?\b/);
+    assert.doesNotMatch(boundarySources, /\bcopyFile(?:Sync)?\b/);
     assert.doesNotMatch(readFileSync(join(REPO_ROOT, "src/infra/sqlite/index.ts"), "utf8"), /DatabaseSync|node:sqlite/);
   });
 });

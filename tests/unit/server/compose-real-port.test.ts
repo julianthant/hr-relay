@@ -8,7 +8,6 @@ import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
  * operational-isolation; a test must never contend with a running dashboard.
  */
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { once } from "node:events";
 import {
   closeSync,
@@ -29,7 +28,6 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { pathToFileURL } from "node:url";
 import { afterEach, describe, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
@@ -42,23 +40,19 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import {
   SETTINGS_SCHEMA_HASH,
-  SettingsFileRecordSchema,
   deriveSettingsPatchFingerprint,
-  type SettingsFileRecord,
 } from "../../../src/domain/config/settings.js";
 import {
   CommandAuditRecordSchema,
   CommandResultSchema,
   ProtectedSettingsCommandRequestSchema,
   SettingsCommandRequestSchema,
-  deriveSettingsCommandFingerprint,
 } from "../../../src/domain/commands.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/domain/config/protected-settings.js";
 import {
   ExplorerEditApplyRequestSchema,
   ExplorerWorkflowOverrideSchema,
 } from "../../../src/domain/dashboard/explorer.js";
-import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
 import {
@@ -71,7 +65,7 @@ import {
   type DashboardComposeInput,
   type DashboardRuntime,
 } from "../../../src/server/dashboard/compose.js";
-import { readJournaledSettings, requireJournaledSettings } from "../../../src/server/settings-runtime.js";
+import { readSettings } from "../../../src/server/settings-runtime.js";
 import {
   SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,
   persistCorruptJournaledSettings,
@@ -162,122 +156,9 @@ function protectedSettingsCommand(
   });
 }
 
-function settingsAuthorityPath(path: string): string {
-  return join(dirname(path), "authority.json");
-}
-
-function settingsPreparePath(path: string): string {
-  return join(dirname(path), "prepare.json");
-}
-
-function settingsRollbackPath(path: string): string {
-  return join(dirname(path), "rollback.json");
-}
-
-function journalSettings(
-  database: AuthorityDatabase,
-  command: ReturnType<typeof settingsCommand>,
-  record: SettingsFileRecord,
-  auditId: string,
-  includeCurrent = true,
-): void {
-  database.withAuthorityTransaction((repositories) => {
-    repositories.commands.insert(command);
-    const target = { family: "settings" as const, revision: record.revision };
-    repositories.commandAudits.insert({
-      auditId,
-      request: command,
-      result: {
-        state: "applied",
-        commandId: command.commandId,
-        affectedTargets: [target],
-        restartRequired: true,
-        settingsRevision: record.revision,
-        settingsFingerprint: record.settingsFingerprint,
-      },
-      completedAt: command.requestedAt,
-      versionChanges: [{
-        target,
-        before: command.target.expectedRevision,
-        after: record.revision,
-      }],
-      affectedDependencyIds: [],
-    });
-    if (includeCurrent) repositories.settingsCurrent.advance({
-      revision: record.revision,
-      settingsFingerprint: record.settingsFingerprint,
-      commandId: command.commandId,
-      commandFingerprint: deriveSettingsCommandFingerprint(command),
-      auditId,
-      committedAt: command.requestedAt,
-    });
-  });
-}
-
-function applyJournaledSettings(
-  path: string,
-  database: AuthorityDatabase,
-  command: ReturnType<typeof settingsCommand>,
-  auditId: string,
-): Readonly<{ record: SettingsFileRecord; bytes: Buffer }> {
-  const authority = createSettingsFileAuthority({
-    path,
-    validateCandidate: () => undefined,
-  });
-  const outcome = authority.apply({
-    commandId: command.commandId,
-    commandFingerprint: deriveSettingsCommandFingerprint(command),
-    expectedRevision: command.target.expectedRevision,
-    settingsSchemaHash: command.payload.settingsSchemaHash,
-    patchFingerprint: command.payload.patchFingerprint,
-    patch: command.payload.patch,
-  });
-  if (outcome.state !== "applied") {
-    assert.fail(`settings fixture refused: ${outcome.message}`);
-  }
-  journalSettings(database, command, outcome.record, auditId);
-  outcome.commit();
-  return Object.freeze({ record: outcome.record, bytes: readFileSync(path) });
-}
-
-function crashSettingsReplacement(
-  path: string,
-  input: unknown,
-  phase: "before-live-rename" | "after-live-rename",
-) {
-  createSettingsFileAuthority({ path, validateCandidate: () => undefined }).read();
-  const moduleUrl = pathToFileURL(join(
-    process.cwd(),
-    "src",
-    "infra",
-    "config",
-    "settings-file.ts",
-  )).href;
-  return spawnSync(process.execPath, [
-    "--import",
-    "tsx",
-    "--input-type=module",
-    "--eval",
-    `import { renameSync } from "node:fs";
-     import { createSettingsFileAuthority } from ${JSON.stringify(moduleUrl)};
-     createSettingsFileAuthority({
-       path: ${JSON.stringify(path)},
-       validateCandidate: () => undefined,
-       operations: {
-         atomicReplace: (source, destination) => {
-           if (destination === ${JSON.stringify(path)}
-             && ${JSON.stringify(phase)} === "before-live-rename") {
-             process.kill(process.pid, "SIGKILL");
-           }
-           renameSync(source, destination);
-           if (destination === ${JSON.stringify(path)}
-             && ${JSON.stringify(phase)} === "after-live-rename") {
-             process.kill(process.pid, "SIGKILL");
-           }
-         },
-       },
-     }).apply(${JSON.stringify(input)});`,
-  ], { encoding: "utf8" });
+function readPersistedSettings(repoRoot: string, clock: ReturnType<typeof manualClock>) {
+  const database = AuthorityDatabase.open({ path: join(repoRoot, ".tracker", "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
+  try { return readSettings(database.authority); } finally { database.close(); }
 }
 
 function copyRuntimePackageFixture(repoRoot: string): void {
@@ -395,7 +276,7 @@ function journalExplorer(
 }
 
 describe("composed dashboard runtime over an owned loopback socket", () => {
-  it("M9 refuses a real v31 authority under CURRENT29 before settings opens or config resolution", async () => {
+  it("M9 refuses a real v32 authority under CURRENT29 before settings opens or config resolution", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-downgrade-v31-"));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
@@ -408,7 +289,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const before = readFileSync(path);
     const raw = new DatabaseSync(path, { readOnly: true });
     try {
-      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 31);
+      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 32);
       assert.notEqual(raw.prepare("SELECT name FROM sqlite_master WHERE name = 'authority_upgrades'").get(), undefined);
     } finally {
       raw.close();
@@ -431,7 +312,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         await assert.rejects(composeOlderBuild({
           isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0,
           env: {}, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")), repoRoot,
-        }), /authority schema 31 is newer than supported 29/u);
+        }), /authority schema 32 is newer than supported 29/u);
 
         const isSettingsPath = (value: unknown): boolean => typeof value === "string"
           && (value.startsWith(join(stateRoot, "settings", "settings.json"))
@@ -454,12 +335,12 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         resolveSpy.mockRestore();
       }
     });
-    assert.equal((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 31);
+    assert.equal((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 32);
   });
 
   it.each([
-    { version: 29, refusal: /upgrade-required \{ schemaVersion: 29, floor: 30 \}/u },
-    { version: 32, refusal: /authority schema 32 is newer than supported 31/u },
+    { version: 29, refusal: /upgrade-required \{ schemaVersion: 29, floor: 31 \}/u },
+    { version: 33, refusal: /authority schema 33 is newer than supported 32/u },
   ])("releases its acquired server process record when authority v$version refuses open", async ({
     version,
     refusal,
@@ -506,412 +387,6 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), version);
     } finally {
       unchanged.close();
-    }
-  });
-
-  describe.each(["require", "read", "recover"] as const)("%s diagnostic precedence", (entry) => {
-    it.each([
-      {
-        label: "simultaneously malformed command, audit and current",
-        commandFault: "malformed", auditFault: "malformed", currentFault: "malformed",
-        ordinary: /malformed_current/u, recovery: /malformed_command/u,
-      },
-      {
-        label: "malformed command before malformed audit with valid current",
-        commandFault: "malformed", auditFault: "malformed", currentFault: "none",
-        ordinary: /malformed_command/u, recovery: /malformed_command/u,
-      },
-      {
-        label: "malformed audit and current with valid command",
-        commandFault: "none", auditFault: "malformed", currentFault: "malformed",
-        ordinary: /malformed_current/u, recovery: /malformed_audit/u,
-      },
-      {
-        label: "divergent command envelope versus malformed audit",
-        commandFault: "envelope", auditFault: "malformed", currentFault: "none",
-        ordinary: /does not match the full journaled command envelope/u, recovery: /malformed_audit/u,
-      },
-      {
-        label: "missing command versus malformed audit",
-        commandFault: "missing", auditFault: "malformed", currentFault: "none",
-        ordinary: /has no durable command journal/u, recovery: /malformed_audit/u,
-      },
-      {
-        label: "divergent audit before divergent current",
-        commandFault: "none", auditFault: "identity", currentFault: "identity",
-        ordinary: /has a mismatched durable audit/u, recovery: /has a mismatched durable audit/u,
-      },
-    ] as const)("preserves $label without settling evidence", ({
-      commandFault, auditFault, currentFault, ordinary, recovery,
-    }) => {
-      const root = mkdtempSync(join(tmpdir(), "hrauto-settings-precedence-"));
-      cleanups.push(() => rmSync(root, { recursive: true, force: true }));
-      const path = join(root, ".tracker", "settings", "settings.json");
-      const databasePath = join(root, "state.db");
-      const database = AuthorityDatabase.open({
-        path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test",
-      });
-      cleanups.push(() => database.close());
-      const command = settingsCommand(
-        "33333333-3333-4333-8333-333333333333", "2026-08-28T12:00:00.000Z", 1,
-        { browser: { headless: false } },
-      );
-      const auditId = "44444444-4444-4444-8444-444444444444";
-      if (entry === "recover") {
-        const child = crashSettingsReplacement(path, {
-          commandId: command.commandId,
-          commandFingerprint: deriveSettingsCommandFingerprint(command),
-          expectedRevision: 1,
-          ...command.payload,
-        }, "after-live-rename");
-        assert.equal(child.signal, "SIGKILL", child.stderr);
-        journalSettings(database, command,
-          SettingsFileRecordSchema.parse(JSON.parse(readFileSync(path, "utf8"))), auditId);
-      } else {
-        applyJournaledSettings(path, database, command, auditId);
-      }
-      const record = SettingsFileRecordSchema.parse(JSON.parse(readFileSync(path, "utf8")));
-      // Corrupt only an already-open, synthetic authority. Public readers must
-      // choose the existing diagnostic and leave all durable evidence untouched.
-      const raw = new DatabaseSync(databasePath, { enableForeignKeyConstraints: false });
-      cleanups.push(() => raw.close());
-      if (commandFault === "malformed") {
-        raw.exec("UPDATE commands SET record_json = json_set(record_json, '$.malformed_command', 1)");
-      } else if (commandFault === "envelope") {
-        raw.exec("UPDATE commands SET record_json = json_set(record_json, '$.requestedAt', '2026-08-28T12:00:01.000Z')");
-      } else if (commandFault === "missing") {
-        raw.exec("DELETE FROM commands");
-      }
-      if (auditFault === "malformed") {
-        raw.exec("UPDATE command_audits SET record_json = json_set(record_json, '$.malformed_audit', 1)");
-      } else {
-        raw.prepare("UPDATE command_audits SET record_json = json_set(record_json, '$.result.settingsFingerprint', ?)")
-          .run("f".repeat(64));
-      }
-      if (currentFault === "malformed") {
-        raw.exec("UPDATE settings_current SET revision = 3, record_json = json_set(record_json, '$.revision', 3, '$.malformed_current', 1)");
-      } else if (currentFault === "identity") {
-        raw.exec("UPDATE settings_current SET revision = 3, record_json = json_set(record_json, '$.revision', 3, '$.committedAt', '2026-08-28T12:00:02.000Z')");
-      }
-      const readEvidence = () => ({
-        command: raw.prepare("SELECT * FROM commands").all(),
-        audit: raw.prepare("SELECT * FROM command_audits").all(),
-        current: raw.prepare("SELECT * FROM settings_current").all(),
-        meta: database.getMeta(),
-        files: [path, settingsAuthorityPath(path), settingsPreparePath(path), settingsRollbackPath(path)]
-          .map((filePath) => existsSync(filePath) ? readFileSync(filePath) : undefined),
-      });
-      const before = readEvidence();
-      assert.equal(before.command.length, commandFault === "missing" ? 0 : 1);
-      assert.equal(before.audit.length, 1);
-      assert.equal(before.current.length, 1);
-      assert.equal(before.files[2] !== undefined, entry === "recover");
-      const file = createSettingsFileAuthority({ path, validateCandidate: () => undefined });
-
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        assert.throws(() => database.withAuthorityTransaction((repositories) => {
-          if (entry === "require") requireJournaledSettings(record, repositories);
-          else readJournaledSettings(file, repositories);
-        }), entry === "recover" ? recovery : ordinary);
-
-        assert.deepEqual(readEvidence(), before);
-      }
-    });
-  });
-
-  it("authenticates a committed prepare and final readback without duplicate authority observations", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-observation-"));
-    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
-    const path = join(root, ".tracker", "settings", "settings.json");
-    const database = AuthorityDatabase.open({
-      path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test",
-    });
-    cleanups.push(() => database.close());
-    const command = settingsCommand(
-      "33333333-3333-4333-8333-333333333333", "2026-08-28T12:00:00.000Z", 1,
-      { browser: { headless: false } },
-    );
-    const child = crashSettingsReplacement(path, {
-      commandId: command.commandId, commandFingerprint: deriveSettingsCommandFingerprint(command),
-      expectedRevision: 1, ...command.payload,
-    }, "after-live-rename");
-    assert.equal(child.signal, "SIGKILL", child.stderr);
-    const bytes = readFileSync(path);
-    const record = SettingsFileRecordSchema.parse(JSON.parse(bytes.toString("utf8")));
-    journalSettings(database, command, record, "44444444-4444-4444-8444-444444444444");
-    const rows = () => ({
-      command: database.authority.commands.get(command.commandId),
-      audit: database.authority.commandAudits.findByCommand(command.commandId),
-      current: database.authority.settingsCurrent.get(),
-    });
-    const before = rows();
-    assert.equal(before.current?.revision, 2);
-    assert.equal(existsSync(settingsPreparePath(path)), true);
-    const queries = { command: 0, audit: 0, current: 0 };
-    let locks = 0;
-    const file = createSettingsFileAuthority({
-      path, validateCandidate: () => undefined,
-      hooks: { afterLockLinked: () => { locks += 1; } },
-    });
-    const read = () => database.withAuthorityTransaction((repositories) => readJournaledSettings(file, {
-      ...repositories,
-      // Observe calls without replacing any repository behavior or return value.
-      commands: { ...repositories.commands, get: (id) => {
-        queries.command += 1;
-        return repositories.commands.get(id);
-      } },
-      commandAudits: { ...repositories.commandAudits, findByCommand: (id) => {
-        queries.audit += 1;
-        return repositories.commandAudits.findByCommand(id);
-      } },
-      settingsCurrent: { ...repositories.settingsCurrent, get: () => {
-        queries.current += 1;
-        return repositories.settingsCurrent.get();
-      } },
-    }));
-
-    assert.deepEqual(read(), record);
-
-    assert.deepEqual(queries, { command: 2, audit: 2, current: 2 }, "prepared authentication plus final verification");
-    assert.equal(locks, 1);
-    assert.deepEqual(readFileSync(path), bytes);
-    assert.equal(existsSync(settingsPreparePath(path)), false);
-    assert.deepEqual(rows(), before);
-    assert.deepEqual(read(), record);
-    assert.deepEqual(queries, { command: 3, audit: 3, current: 3 }, "fresh ordinary read verifies once, without caching");
-    assert.equal(locks, 2);
-    assert.deepEqual(rows(), before);
-  });
-
-  describe("prepared revision 3 over journaled revision 2", () => {
-    it.each([
-      {
-        label: "restores the exact journaled prior generation",
-        corruption: "none",
-        expected: undefined,
-      },
-      {
-        label: "retains evidence when the prior command is missing",
-        corruption: "missing-command",
-        expected: /settings revision 2 has no durable command journal for 33333333-3333-4333-8333-333333333333/u,
-      },
-      {
-        label: "retains evidence when the prior audit result is mismatched",
-        corruption: "audit-result",
-        expected: /settings revision 2 command 33333333-3333-4333-8333-333333333333 has a mismatched durable audit/u,
-      },
-      {
-        label: "retains evidence when the prior current completion identity is mismatched",
-        corruption: "current-completion",
-        expected: /settings revision 2 is not the exact canonical current settings result/u,
-      },
-    ] as const)("$label", ({ corruption, expected }) => {
-      const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-prior-recovery-"));
-      cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
-      const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-      const path = join(repoRoot, ".tracker", "settings", "settings.json");
-      const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
-      mkdirSync(stateRoot, { recursive: true });
-      const databasePath = join(stateRoot, "state.db");
-      const database = AuthorityDatabase.open(
-        { path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" },
-        clock,
-      );
-      cleanups.push(() => database.close());
-      const priorCommand = settingsCommand(
-        "33333333-3333-4333-8333-333333333333",
-        clock.now().toISOString(),
-        1,
-        { browser: { headless: false } },
-      );
-      const auditId = "44444444-4444-4444-8444-444444444444";
-      const prior = applyJournaledSettings(path, database, priorCommand, auditId);
-      const priorInitializationBytes = readFileSync(settingsAuthorityPath(path));
-      const file = createSettingsFileAuthority({ path, validateCandidate: () => undefined });
-      assert.equal(prior.record.revision, 2);
-      assert.deepEqual(database.withAuthorityTransaction((repositories) =>
-        readJournaledSettings(file, repositories)), prior.record);
-
-      const nextCommand = settingsCommand(
-        "55555555-5555-4555-8555-555555555555",
-        clock.now().toISOString(),
-        2,
-        { browser: { headless: true } },
-      );
-      const child = crashSettingsReplacement(path, {
-        commandId: nextCommand.commandId,
-        commandFingerprint: deriveSettingsCommandFingerprint(nextCommand),
-        expectedRevision: nextCommand.target.expectedRevision,
-        settingsSchemaHash: nextCommand.payload.settingsSchemaHash,
-        patchFingerprint: nextCommand.payload.patchFingerprint,
-        patch: nextCommand.payload.patch,
-      }, "after-live-rename");
-      assert.equal(child.signal, "SIGKILL", child.stderr);
-      const liveBytes = readFileSync(path);
-      const prepareBytes = readFileSync(settingsPreparePath(path));
-      const initializationBytes = readFileSync(settingsAuthorityPath(path));
-      const next = SettingsFileRecordSchema.parse(JSON.parse(liveBytes.toString("utf8")));
-      assert.equal(next.revision, 3);
-      assert.equal(next.lastApplied?.commandId, nextCommand.commandId);
-      const readRows = () => database.withAuthorityTransaction((repositories) => ({
-        priorCommand: repositories.commands.get(priorCommand.commandId),
-        priorAudit: repositories.commandAudits.findByCommand(priorCommand.commandId),
-        nextCommand: repositories.commands.get(nextCommand.commandId),
-        nextAudit: repositories.commandAudits.findByCommand(nextCommand.commandId),
-        current: repositories.settingsCurrent.get(),
-      }));
-      const originalRows = readRows();
-      assert.equal(originalRows.nextCommand, undefined);
-      assert.equal(originalRows.nextAudit, undefined);
-      assert.equal(originalRows.current?.commandId, priorCommand.commandId);
-      assert.equal(originalRows.current?.revision, 2);
-
-      if (corruption !== "none") {
-        // Inject corruption only after this temporary authority is open, so
-        // recovery itself must refuse before touching the prepared file bytes.
-        const raw = new DatabaseSync(databasePath, { enableForeignKeyConstraints: false });
-        try {
-          if (corruption === "missing-command") {
-            raw.prepare("DELETE FROM commands WHERE record_key = ?").run(priorCommand.commandId);
-          } else {
-            const audit = originalRows.priorAudit;
-            assert.ok(audit);
-            const changed = CommandAuditRecordSchema.parse(corruption === "audit-result"
-              ? { ...audit, result: { ...audit.result, settingsFingerprint: "f".repeat(64) } }
-              : { ...audit, completedAt: "2026-08-28T12:00:01.000Z" });
-            raw.prepare("UPDATE command_audits SET record_json = ? WHERE record_key = ?")
-              .run(JSON.stringify(changed), auditId);
-          }
-        } finally {
-          raw.close();
-        }
-      }
-      const before = readRows();
-      if (corruption !== "none") assert.notDeepEqual(before, originalRows);
-      const metaBefore = database.getMeta();
-
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const recover = () => database.withAuthorityTransaction((repositories) =>
-          readJournaledSettings(file, repositories));
-        if (expected === undefined) {
-          assert.deepEqual(recover(), prior.record);
-          assert.deepEqual(readFileSync(path), prior.bytes);
-          assert.deepEqual(readFileSync(settingsAuthorityPath(path)), priorInitializationBytes);
-          assert.equal(existsSync(settingsPreparePath(path)), false);
-        } else {
-          assert.throws(recover, expected);
-          assert.deepEqual(readFileSync(path), liveBytes, "refusal must retain exact live revision-3 bytes");
-          assert.deepEqual(readFileSync(settingsPreparePath(path)), prepareBytes);
-          assert.deepEqual(readFileSync(settingsAuthorityPath(path)), initializationBytes);
-        }
-        assert.equal(existsSync(settingsRollbackPath(path)), false);
-        assert.deepEqual(readRows(), before);
-        assert.deepEqual(database.getMeta(), metaBefore);
-      }
-    });
-  });
-
-  it.each([
-    {
-      label: "only its audit",
-      commandPresent: false, auditPresent: true, currentPresent: false,
-      expected: /settings revision 2 has no durable command journal for 33333333-3333-4333-8333-333333333333/u,
-    },
-    {
-      label: "only its command",
-      commandPresent: true, auditPresent: false, currentPresent: false,
-      expected: /settings revision 2 command 33333333-3333-4333-8333-333333333333 has no durable audit/u,
-    },
-    {
-      label: "only settings_current",
-      commandPresent: false, auditPresent: false, currentPresent: true,
-      expected: /settings revision 2 has no durable command journal for 33333333-3333-4333-8333-333333333333/u,
-    },
-    {
-      label: "its command and audit",
-      commandPresent: true, auditPresent: true, currentPresent: false,
-      expected: /settings revision 2 is not the exact canonical current settings result/u,
-    },
-    {
-      label: "its command and settings_current",
-      commandPresent: true, auditPresent: false, currentPresent: true,
-      expected: /settings revision 2 command 33333333-3333-4333-8333-333333333333 has no durable audit/u,
-    },
-    {
-      label: "its audit and settings_current",
-      commandPresent: false, auditPresent: true, currentPresent: true,
-      expected: /settings revision 2 has no durable command journal for 33333333-3333-4333-8333-333333333333/u,
-    },
-  ])("retains exact prepared settings evidence when $label is present", ({
-    commandPresent, auditPresent, currentPresent, expected,
-  }) => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-orphan-audit-"));
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
-    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, ".tracker", "settings", "settings.json");
-    const command = settingsCommand(
-      "33333333-3333-4333-8333-333333333333",
-      clock.now().toISOString(),
-      1,
-      { browser: { headless: false } },
-    );
-    const child = crashSettingsReplacement(path, {
-      commandId: command.commandId,
-      commandFingerprint: deriveSettingsCommandFingerprint(command),
-      expectedRevision: command.target.expectedRevision,
-      settingsSchemaHash: command.payload.settingsSchemaHash,
-      patchFingerprint: command.payload.patchFingerprint,
-      patch: command.payload.patch,
-    }, "after-live-rename");
-    assert.equal(child.signal, "SIGKILL", child.stderr);
-    const settingsBytes = readFileSync(path);
-    const prepareBytes = readFileSync(settingsPreparePath(path));
-    const initializationBytes = readFileSync(settingsAuthorityPath(path));
-    const record = SettingsFileRecordSchema.parse(JSON.parse(settingsBytes.toString("utf8")));
-    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
-    mkdirSync(stateRoot, { recursive: true });
-    const databasePath = join(stateRoot, "state.db");
-    const database = AuthorityDatabase.open(
-      { path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" },
-      clock,
-    );
-    cleanups.push(() => database.close());
-    const auditId = "44444444-4444-4444-8444-444444444444";
-    journalSettings(database, command, record, auditId, currentPresent);
-    // Fault injection on this temporary, already-open authority only. A fresh
-    // database open rejects dangling FKs before reaching boot's recovery seam.
-    const raw = new DatabaseSync(databasePath, { enableForeignKeyConstraints: false });
-    try {
-      if (!auditPresent) raw.prepare("DELETE FROM command_audits WHERE record_key = ?").run(auditId);
-      if (!commandPresent) raw.prepare("DELETE FROM commands WHERE record_key = ?").run(command.commandId);
-    } finally {
-      raw.close();
-    }
-    const before = database.withAuthorityTransaction((repositories) => ({
-      command: repositories.commands.get(command.commandId),
-      audit: repositories.commandAudits.findByCommand(command.commandId),
-      current: repositories.settingsCurrent.get(),
-    }));
-    assert.equal(before.command !== undefined, commandPresent);
-    assert.equal(before.audit !== undefined, auditPresent);
-    assert.equal(before.current !== undefined, currentPresent);
-    const metaBefore = database.getMeta();
-    const file = createSettingsFileAuthority({ path, validateCandidate: () => undefined });
-
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      assert.throws(() => database.withAuthorityTransaction((repositories) =>
-        readJournaledSettings(file, repositories)), expected);
-
-      assert.deepEqual(readFileSync(path), settingsBytes);
-      assert.deepEqual(readFileSync(settingsPreparePath(path)), prepareBytes);
-      assert.deepEqual(readFileSync(settingsAuthorityPath(path)), initializationBytes);
-      assert.equal(existsSync(settingsRollbackPath(path)), false);
-      assert.deepEqual(database.withAuthorityTransaction((repositories) => ({
-        command: repositories.commands.get(command.commandId),
-        audit: repositories.commandAudits.findByCommand(command.commandId),
-        current: repositories.settingsCurrent.get(),
-      })), before);
-      assert.deepEqual(database.getMeta(), metaBefore);
     }
   });
 
@@ -1038,139 +513,6 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"] });
     assert.deepEqual(card?.browsers, []);
   }, 20_000);
-
-  it("clears a durable prepare when the process died before the live settings rename", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-pre-rename-settings-"));
-    copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
-    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, ".tracker", "settings", "settings.json");
-    const command = settingsCommand(
-      "33333333-3333-4333-8333-333333333333",
-      clock.now().toISOString(),
-      1,
-      { browser: { headless: false } },
-    );
-    const child = crashSettingsReplacement(path, {
-      commandId: command.commandId,
-      commandFingerprint: deriveSettingsCommandFingerprint(command),
-      expectedRevision: command.target.expectedRevision,
-      settingsSchemaHash: command.payload.settingsSchemaHash,
-      patchFingerprint: command.payload.patchFingerprint,
-      patch: command.payload.patch,
-    }, "before-live-rename");
-    assert.equal(child.signal, "SIGKILL", child.stderr);
-    assert.equal(SettingsFileRecordSchema.parse(JSON.parse(readFileSync(path, "utf8"))).revision, 1);
-    assert.equal(existsSync(settingsPreparePath(path)), true);
-
-    const runtime = await composeDashboardRuntime({
-      isolation: rebuildRuntimeIsolation,
-      backendPortOverride: 0,
-      env: {},
-      clock,
-      repoRoot,
-    });
-    cleanups.push(() => runtime.stop());
-
-    assert.equal(SettingsFileRecordSchema.parse(JSON.parse(readFileSync(path, "utf8"))).revision, 1);
-    assert.equal(existsSync(settingsPreparePath(path)), false);
-  });
-
-  it("rolls back a prepared settings rename whose command transaction never committed", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-prepared-settings-"));
-    copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
-    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, ".tracker", "settings", "settings.json");
-    const command = settingsCommand(
-      "33333333-3333-4333-8333-333333333333",
-      clock.now().toISOString(),
-      1,
-      { browser: { headless: false } },
-    );
-    const child = crashSettingsReplacement(path, {
-      commandId: command.commandId,
-      commandFingerprint: deriveSettingsCommandFingerprint(command),
-      expectedRevision: command.target.expectedRevision,
-      settingsSchemaHash: command.payload.settingsSchemaHash,
-      patchFingerprint: command.payload.patchFingerprint,
-      patch: command.payload.patch,
-    }, "after-live-rename");
-    assert.equal(child.signal, "SIGKILL", child.stderr);
-
-    const runtime = await composeDashboardRuntime({
-      isolation: rebuildRuntimeIsolation,
-      backendPortOverride: 0,
-      env: {},
-      clock,
-      repoRoot,
-    });
-    cleanups.push(() => runtime.stop());
-
-    assert.equal(SettingsFileRecordSchema.parse(JSON.parse(readFileSync(path, "utf8"))).revision, 1);
-    assert.equal(existsSync(settingsPreparePath(path)), false);
-  });
-
-  it("keeps exact prepared settings only after their command, audit, and current result committed", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-committed-settings-"));
-    copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
-    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, ".tracker", "settings", "settings.json");
-    const command = settingsCommand(
-      "33333333-3333-4333-8333-333333333333",
-      clock.now().toISOString(),
-      1,
-      { browser: { headless: false } },
-    );
-    const child = crashSettingsReplacement(path, {
-      commandId: command.commandId,
-      commandFingerprint: deriveSettingsCommandFingerprint(command),
-      expectedRevision: command.target.expectedRevision,
-      settingsSchemaHash: command.payload.settingsSchemaHash,
-      patchFingerprint: command.payload.patchFingerprint,
-      patch: command.payload.patch,
-    }, "after-live-rename");
-    assert.equal(child.signal, "SIGKILL", child.stderr);
-
-    const prepare = JSON.parse(readFileSync(settingsPreparePath(path), "utf8")) as {
-      nextSettingsBytesBase64?: unknown;
-    };
-    assert.equal(typeof prepare.nextSettingsBytesBase64, "string");
-    if (typeof prepare.nextSettingsBytesBase64 !== "string") {
-      throw new Error("prepared settings fixture has no next bytes");
-    }
-    const nextBytes = Buffer.from(prepare.nextSettingsBytesBase64, "base64");
-    const record = SettingsFileRecordSchema.parse(JSON.parse(nextBytes.toString("utf8")));
-    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
-    mkdirSync(stateRoot, { recursive: true });
-    const database = AuthorityDatabase.open(
-      { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-      clock,
-    );
-    try {
-      journalSettings(
-        database,
-        command,
-        record,
-        "44444444-4444-4444-8444-444444444444",
-      );
-    } finally {
-      database.close();
-    }
-
-    const runtime = await composeDashboardRuntime({
-      isolation: rebuildRuntimeIsolation,
-      backendPortOverride: 0,
-      env: {},
-      clock,
-      repoRoot,
-    });
-    cleanups.push(() => runtime.stop());
-
-    assert.deepEqual(readFileSync(path), nextBytes);
-    assert.equal(existsSync(settingsPreparePath(path)), false);
-  });
 
   it.each(["GET", "validate"] as const)("serves Explorer with one recovery admission and one document read per %s request", async (operation) => {
     const fixture = pendingExplorer();
@@ -1408,49 +750,19 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.equal(existsSync(`${fixture.path}.claim`), true);
   }, 20_000);
 
-  it("refuses an unjournaled persisted settings generation before serving", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-unjournaled-settings-"));
+  it("ignores retired malformed file authority and serves the SQLite baseline", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-retired-settings-"));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
-    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const patch = settingsSetOperations({ browser: { headless: false } });
-    const patchFingerprint = deriveSettingsPatchFingerprint(patch);
-    const command = {
-      commandId: "33333333-3333-4333-8333-333333333333",
-      requestedAt: clock.now().toISOString(),
-      requestedBy: "local-operator",
-      source: "dashboard",
-      family: "settings",
-      type: "apply-settings",
-      target: { expectedRevision: 1 },
-      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
-    };
-    const outcome = createSettingsFileAuthority({
-      path: join(repoRoot, ".tracker", "settings", "settings.json"),
-      validateCandidate: (settings) => {
-        resolveConfigWithProvenance(settings, hostConfigFacts({}), clock);
-      },
-    }).apply({
-      commandId: command.commandId,
-      commandFingerprint: deriveSettingsCommandFingerprint(command),
-      expectedRevision: 1,
-      settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-      patchFingerprint,
-      patch,
-    });
-    assert.equal(outcome.state, "applied");
-    if (outcome.state === "applied") outcome.commit();
-
-    await assert.rejects(async () => {
-      const runtime = await composeDashboardRuntime({
-        isolation: rebuildRuntimeIsolation,
-        backendPortOverride: 0,
-        env: {},
-        clock,
-        repoRoot,
-      });
-      await runtime.stop();
-    }, /settings revision 2 has no durable command journal/u);
+    const path = join(repoRoot, ".tracker", "settings", "settings.json");
+    mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, "retired malformed file");
+    const runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot });
+    try {
+      const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+      const editor = await client.editableSettings();
+      assert.equal(editor.revision, 1);
+      assert.equal(readFileSync(path, "utf8"), "retired malformed file");
+    } finally { await runtime.stop(); }
   });
 
   it.each(SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS)(
@@ -1482,64 +794,10 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         await runtime.stop();
       }, corruption.expected);
 
-      const retainedBytes = readFileSync(fixture.settingsPath);
-      assert.deepEqual(retainedBytes, fixture.settingsBytes);
-      SettingsFileRecordSchema.parse(JSON.parse(retainedBytes.toString("utf8")));
+      const database = AuthorityDatabase.open({ path: join(repoRoot, ".tracker", "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
+      try { assert.deepEqual(database.authority.settingsCurrent.get(), fixture.record); } finally { database.close(); }
     },
   );
-
-  it("refuses a byte-exact older settings file even when that revision was once journaled", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-stale-settings-"));
-    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
-    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const path = join(repoRoot, ".tracker", "settings", "settings.json");
-    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
-    mkdirSync(stateRoot, { recursive: true });
-    const database = AuthorityDatabase.open(
-      { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-      clock,
-    );
-    let staleBytes: Buffer;
-    try {
-      staleBytes = applyJournaledSettings(
-        path,
-        database,
-        settingsCommand(
-          "33333333-3333-4333-8333-333333333333",
-          clock.now().toISOString(),
-          1,
-          { browser: { headless: false } },
-        ),
-        "44444444-4444-4444-8444-444444444444",
-      ).bytes;
-      applyJournaledSettings(
-        path,
-        database,
-        settingsCommand(
-          "55555555-5555-4555-8555-555555555555",
-          clock.now().toISOString(),
-          2,
-          { timeouts: { taskMs: 240_000 } },
-        ),
-        "66666666-6666-4666-8666-666666666666",
-      );
-    } finally {
-      database.close();
-    }
-    writeFileSync(path, staleBytes);
-
-    await assert.rejects(async () => {
-      const runtime = await composeDashboardRuntime({
-        isolation: rebuildRuntimeIsolation,
-        backendPortOverride: 0,
-        env: {},
-        clock,
-        repoRoot,
-      });
-      await runtime.stop();
-    }, /settings revision 2 is not the exact canonical current settings result/u);
-  });
 
   it("refuses new start plans after settings apply until this dashboard restarts", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-stale-runtime-"));
@@ -1597,9 +855,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       { browser: { headless: false } },
     );
     const applied = await firstClient.executeCommand(command);
-    const persisted = SettingsFileRecordSchema.parse(JSON.parse(
-      readFileSync(join(repoRoot, ".tracker", "settings", "settings.json"), "utf8"),
-    ));
+    const persisted = readPersistedSettings(repoRoot, clock);
     assert.deepEqual(applied, {
       state: "applied",
       commandId: command.commandId,
@@ -1663,7 +919,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       "first-synthetic-protected-value",
     ));
     assert.equal(first.state, "applied");
-    const protectedPath = join(repoRoot, ".tracker", "settings", "protected.json");
+    const protectedPath = join(repoRoot, ".tracker", "credentials", "protected.json");
     const committedBytes = readFileSync(protectedPath);
 
     await runtime.stop();
@@ -1687,8 +943,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
 
     assert.equal(reused.state, "rejected");
     if (reused.state === "rejected") {
-      assert.equal(reused.code, "write-id-reused");
-      assert.equal(reused.message, `write-id-reused { writeId: ${writeId} }`);
+      assert.equal(reused.code, "command-divergent");
+      assert.equal(reused.message, "credential command or write identity differs from its persisted request");
     }
     assert.deepEqual(readFileSync(protectedPath), committedBytes);
   });
@@ -1753,7 +1009,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       const screenWidth = readback.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
       assert.equal(screenWidth?.effectiveValue, 1980);
       assert.equal(screenWidth?.settingsValue, 1980);
-      assert.match(readFileSync(join(repoRoot, ".tracker", "settings", "settings.json"), "utf8"), /"screenWidth":1980/u);
+      assert.equal(readPersistedSettings(repoRoot, manualClock(new Date(command.requestedAt))).settings.display?.screenWidth, 1980);
       assert.equal(readRuntimeSettingsRevision(repoRoot), 1);
       const replay = await client.applySettings(command);
       assert.equal(replay.state, "already-applied");

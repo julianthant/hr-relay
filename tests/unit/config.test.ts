@@ -29,7 +29,7 @@ import { resolveInstances, resolveSystemEntryUrl } from "../../src/domain/config
 import { CONFIG_ENV_BINDINGS, ConfigEnvBindingRegistrySchema, configLeafPaths, resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, SettingsOverrideSchema } from "../../src/domain/config/schema.js";
-import { settingsRootAuthority } from "../../src/domain/config/settings-root.js";
+import { settingsRootAuthority } from "../../src/infra/compat/d331-settings-root.js";
 import {
   SETTINGS_SCHEMA_HASH,
   SettingsPatchSchema,
@@ -47,7 +47,7 @@ import {
   MAX_SETTINGS_FILE_BYTES,
   createSettingsFileAuthority as createRawSettingsFileAuthority,
   type SettingsFileAuthorityOptions,
-} from "../../src/infra/config/settings-file.js";
+} from "../fixtures/d331-settings-file.js";
 
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 const SETTINGS_COMMAND_1 = "11111111-1111-4111-8111-111111111111";
@@ -116,10 +116,9 @@ function settingsApplyRequest(commandId: string, expectedRevision: number, setti
 function crashSettingsAuthorityAtHook(path: string, hook: string) {
   const moduleUrl = pathToFileURL(join(
     process.cwd(),
-    "src",
-    "infra",
-    "config",
-    "settings-file.ts",
+    "tests",
+    "fixtures",
+    "d331-settings-file.ts",
   )).href;
   return spawnSync(process.execPath, [
     "--import",
@@ -138,10 +137,9 @@ function crashSettingsAuthorityAtHook(path: string, hook: string) {
 function crashFirstUpdateRollbackAtHook(path: string, hook: string) {
   const moduleUrl = pathToFileURL(join(
     process.cwd(),
-    "src",
-    "infra",
-    "config",
-    "settings-file.ts",
+    "tests",
+    "fixtures",
+    "d331-settings-file.ts",
   )).href;
   const request = settingsApplyRequest(
     SETTINGS_COMMAND_1,
@@ -168,10 +166,9 @@ function crashFirstUpdateRollbackAtHook(path: string, hook: string) {
 function crashSettingsApplyAfterLiveRename(path: string, request: unknown) {
   const moduleUrl = pathToFileURL(join(
     process.cwd(),
-    "src",
-    "infra",
-    "config",
-    "settings-file.ts",
+    "tests",
+    "fixtures",
+    "d331-settings-file.ts",
   )).href;
   return spawnSync(process.execPath, [
     "--import",
@@ -984,10 +981,9 @@ describe("strict config resolution", () => {
       );
       const moduleUrl = pathToFileURL(join(
         process.cwd(),
-        "src",
-        "infra",
-        "config",
-        "settings-file.ts",
+        "tests",
+        "fixtures",
+        "d331-settings-file.ts",
       )).href;
       const child = spawnSync(process.execPath, [
         "--import",
@@ -1164,10 +1160,9 @@ describe("strict config resolution", () => {
       );
       const moduleUrl = pathToFileURL(join(
         process.cwd(),
-        "src",
-        "infra",
-        "config",
-        "settings-file.ts",
+        "tests",
+        "fixtures",
+        "d331-settings-file.ts",
       )).href;
       const child = spawnSync(process.execPath, [
         "--import",

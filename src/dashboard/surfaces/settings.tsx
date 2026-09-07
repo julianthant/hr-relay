@@ -600,7 +600,7 @@ function EditableSettingsSection({
                 />
               </Field>
               <div className="flex flex-wrap items-center gap-[var(--ds-space-tight)]">
-                <Badge tone={sourceTone(leaf.source)}>{leaf.source === "settings" ? "settings.json" : "Default"}</Badge>
+                <Badge tone={sourceTone(leaf.source)}>{leaf.source === "settings" ? "Saved" : "Default"}</Badge>
                 {editor.draft[leaf.path] !== leaf.effectiveValue && <Badge tone="attention">Unsaved</Badge>}
                 {leaf.hazard !== undefined && <Badge tone="warning">Review impact</Badge>}
                 <span className={cn(dsText.micro, dsText.nums, "text-[color:var(--ds-fg-faint)]")}>{leaf.path}</span>
@@ -611,7 +611,7 @@ function EditableSettingsSection({
               {leaf.hazard !== undefined && <span className={cn(dsText.meta, "text-[color:var(--ds-status-waiting-fg)]")}>{leaf.hazard}</span>}
               <div className={cn(dsText.micro, "grid grid-cols-3 gap-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
                 <span>Environment: {leaf.environmentVariable ?? "not set"}</span>
-                <span>settings.json: {leaf.settingsValue === undefined ? "not set" : String(leaf.settingsValue)}</span>
+                <span>Saved: {leaf.settingsValue === undefined ? "not set" : String(leaf.settingsValue)}</span>
                 <span>Default: {String(leaf.defaultValue)}</span>
               </div>
             </div>

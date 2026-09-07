@@ -285,11 +285,25 @@ export const SettingsRuntimeStatusSchema = z.discriminatedUnion("state", [
 ]);
 export type SettingsRuntimeStatus = z.infer<typeof SettingsRuntimeStatusSchema>;
 
+/** Value projection used by runtime identities; journal metadata stays in SQLite. */
+export const SettingsRecordSchema = z.strictObject({
+  revision: PositiveIntSchema,
+  settingsSchemaHash: FingerprintSchema,
+  settingsFingerprint: FingerprintSchema,
+  settings: EditableSettingsOverrideSchema,
+}).superRefine((record, context) => {
+  if (record.settingsSchemaHash !== SETTINGS_SCHEMA_HASH
+    || record.settingsFingerprint !== derivePersistedSettingsFingerprint(record.settings)
+    || (record.revision === 1 && record.settingsFingerprint !== derivePersistedSettingsFingerprint({}))) {
+    context.addIssue({ code: "custom", message: "settings value identity is invalid" });
+  }
+});
+
 export function settingsRuntimeIdentity(
   recordInput: unknown,
   configFingerprint: string,
 ): SettingsRuntimeIdentity {
-  const record = SettingsFileRecordSchema.parse(recordInput);
+  const record = SettingsRecordSchema.parse(recordInput);
   return deepFreeze(SettingsRuntimeIdentitySchema.parse({
     settingsRevision: record.revision,
     settingsSchemaHash: record.settingsSchemaHash,

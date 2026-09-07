@@ -1,3 +1,4 @@
+import { createCredentialStore } from "../src/infra/config/credential-store.js";
 import {
   assertNoMigratedEnvironmentKeys,
   optionalTestTargetSecret,
@@ -8,11 +9,7 @@ import {
 } from "../src/domain/secrets.js";
 import { TestTargetRegistryDefectError } from "../src/control/test-target-registry.js";
 import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";
-import { settingsRootPaths } from "../src/domain/config/settings-root.js";
-import { createProtectedSettingsFileAuthority } from "../src/infra/config/settings-file.js";
-import { AuthorityDatabase } from "../src/infra/sqlite/authority-database.js";
-import { createJournaledProtectedSecretSource } from "../src/server/settings-runtime.js";
-import { systemClock } from "../src/domain/clock.js";
+import { createCredentialSecretSource } from "../src/server/settings-runtime.js";
 import { resolve } from "node:path";
 
 type DocumentNumberState = "present" | "refused" | "invalid" | "not-attempted";
@@ -51,20 +48,8 @@ async function committedReference(): Promise<TestTargetSecretReference> {
  */
 function runtimeProtectedSecrets(): ProtectedSecretSource {
   const stateRoot = resolve(process.cwd(), rebuildRuntimeIsolation.stateRoot);
-  const authority = createProtectedSettingsFileAuthority({
-    path: settingsRootPaths(stateRoot).ordinary,
-    assertWriteIdAvailable: () => undefined,
-  });
-  return { read: () => {
-    const database = AuthorityDatabase.open({
-      path: resolve(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "document-number-smoke",
-    }, systemClock);
-    try {
-      return createJournaledProtectedSecretSource({ file: authority, database }).read();
-    } finally {
-      database.close();
-    }
-  } };
+  const authority = createCredentialStore({ stateRoot });
+  return createCredentialSecretSource(authority);
 }
 
 async function resolveCommittedSubject(source: ProtectedSecretSource): Promise<ResolutionState> {
