@@ -602,11 +602,13 @@ instruction-size and diff checks for the evidence commit. Nine instruction pairs
 the maximum project instruction chain is 15,457 bytes, below 32,768. No implementation is accepted
 merely because these gates pass. Status remains **awaiting independent review**.
 
-#### Proposed standalone review exception — awaiting explicit approval
+#### Approved standalone review exception
 
-The latest operator approval admitted the six focused scopes plus RI2. It did not authorize the
-exception below. All six prior blocked review attempts remain findings/evidence only; none supplies
-PASS credit. No new review task has been created and no role configuration has been changed.
+The operator explicitly approved the following exception in the supervisor session after evidence
+commit `f65453c39b03928dff9039c1cfb345ec3551f219`. It replaces the six focused scopes plus RI2.
+All six prior blocked review attempts remain findings/evidence only; none supplies PASS credit.
+No role configuration is changed. The supervisor will record the created standalone task's identity
+with its verdict after holding this approval commit stable throughout review.
 
 Replace the six-scope/RI2 allocation and native `sup_review` dispatch requirement for Task 1.6.6
 only with **one fresh, independent standalone `/review` task using GPT-5.6 Sol at high reasoning**.
@@ -631,8 +633,8 @@ The standalone review's exact-candidate PASS, complete coverage and closure of a
 would replace focused/RI2 acceptance. CHANGES REQUIRED or BLOCKED keeps finalization closed; the
 supervisor owns repairs, appropriate gates and renewed independent review. Local integration,
 merged-code gates, operator-root backup/plan/upgrade/doctor, completion evidence and cleanup remain
-unchanged and authorized only after accepted review. No push. If this exception is not approved,
-review remains blocked on sizing; do not launch another unchanged allocation or self-approve.
+unchanged and authorized only after accepted review. No push. This exception is now admitted;
+do not launch another superseded allocation or self-approve.
 
 **Resume boundary and residue.** Candidate `1a9484ad3e52fef7452ce781fc2e86470b2bbbf7`; primary
 master remains clean at `e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`. Steps .1–.5 are implemented
