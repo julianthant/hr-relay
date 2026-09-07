@@ -115,12 +115,15 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     });
     const scenarioCase = PERSON_LOOKUP_LIVE_READ.cases[0];
     assert.ok(scenarioCase);
-    // Match the retained live precondition through the real runtime: attempt 1
-    // failed during session acquisition, before any reusable checkpoint existed.
-    const previous = await runtime.start({ manifest: PERSON_LOOKUP_LIVE_READ, scenarioCase, canonicalInput: CANONICAL_INPUT });
+    // The old test selection remains failed. A replacement private input gets a
+    // new opaque identity, so its ordinal cannot collide with the old selection.
+    const binding = { kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid" } as const;
+    const previous = await runtime.start({ manifest: PERSON_LOOKUP_LIVE_READ, scenarioCase, canonicalInput: CANONICAL_INPUT,
+      protectedBindings: [{ ...binding, sourceId: "aaaaaaaa-0001-4000-8000-000000000010" }] });
     await runtime.drain(PERSON_LOOKUP_LIVE_READ.workflow);
     acquiringFailedAttempt = false;
-    const started = await runtime.start({ manifest: PERSON_LOOKUP_LIVE_READ, scenarioCase, canonicalInput: CANONICAL_INPUT });
+    const started = await runtime.start({ manifest: PERSON_LOOKUP_LIVE_READ, scenarioCase, canonicalInput: CANONICAL_INPUT,
+      protectedBindings: [{ ...binding, sourceId: "aaaaaaaa-0001-4000-8000-000000000011" }] });
     assert.notEqual(started.runId, previous.runId);
     assert.deepEqual(started.writeSafetyBefore, { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 });
 
@@ -132,9 +135,10 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     const queued = database.authority.runs.get(started.runId);
     assert.ok(queued !== undefined);
     assert.equal(queued.envelope.dryRun, false, "a live read is the ordinary path; dryRun is false");
-    assert.equal(queued.envelope.attempt, 2, "the prior ordinal remains spent; the manifest checks the next exact attempt");
+    assert.equal(queued.envelope.attempt, 1, "the replacement identity starts at the exact first unspent attempt");
     const retained = database.authority.runs.get(previous.runId);
     assert.equal(retained?.envelope.attempt, 1);
+    assert.notEqual(queued.envelope.itemId, retained?.envelope.itemId, "replacement identity cannot reuse the prior subject's checkpoints");
     assert.equal(retained?.lifecycle.state, "terminal");
     assert.equal(retained?.lifecycle.state === "terminal" ? retained.lifecycle.outcome : undefined, "failed");
     assert.deepEqual(database.authority.runCheckpoints.listByItem(queued.envelope.workflow, queued.envelope.itemId), []);
@@ -158,10 +162,10 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     const observed = DryRunScenarioEvidenceSchema.parse(evidence);
     const wrongAttempt = evaluateDryRunScenarioEvidence(
       PERSON_LOOKUP_LIVE_READ.arm, scenarioCase, started.writeSafetyBefore,
-      { ...observed, checkpoints: observed.checkpoints.map((row) => ({ ...row, attempt: 1 })) },
+      { ...observed, checkpoints: observed.checkpoints.map((row) => ({ ...row, attempt: 2 })) },
     );
     assert.equal(wrongAttempt.find((row) => row.assertionId === "checkpoints")?.verdict, "failed",
-      "retained attempt-1 evidence cannot satisfy the exact attempt-2 rehearsal");
+      "attempt-2 evidence cannot satisfy the replacement's exact attempt-1 rehearsal");
     // The result row is the workflow's OWN result, never a preview.
     const result = database.authority.runResults.get(started.runId);
     assert.ok(result !== undefined);

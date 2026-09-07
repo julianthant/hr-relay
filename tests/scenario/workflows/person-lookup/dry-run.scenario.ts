@@ -52,7 +52,7 @@ export const PERSON_LOOKUP_LIVE_READ: DryRunScenarioManifest = parseDryRunScenar
   scenarioId: "person-lookup/live-read",
   workflow: "person-lookup",
   arm: "live-read",
-  recordedBy: "Task 1.6.7 2026-09-07 — attempt 1 retained as failed acquisition; next unspent attempt 2, unchanged D318 receipt obligations",
+  recordedBy: "Task 1.6.7 2026-09-07 — operator-selected replacement with a fresh private input identity; exact attempt 1, unchanged D318 receipt obligations",
   cases: [
     {
       caseId: "search-by-eid",
@@ -61,9 +61,9 @@ export const PERSON_LOOKUP_LIVE_READ: DryRunScenarioManifest = parseDryRunScenar
       why: "the ordinary Search mode: one current person resolved by EID, cross-verified against the CRM, folded to a verdict; the CRM dates arm stays off by the start box's declared constant",
       nodesReached: [...READ_NODES],
       nodesExcluded: ["crm-dates"],
-      // The primary root retains failed run 6e42041a-cd1f-48c7-bc62-d945bd4b8950.
-      // D330/D221 reserve its spent ordinal: this exact rehearsal must prove 2.
-      checkpoints: READ_NODES.map((node) => ({ node, attempt: 2, keyedBy: [...CHECKPOINT_KEY] })),
+      // Prior failed runs remain under their original input identity.
+      // The operator-selected replacement has no spent attempt or checkpoint.
+      checkpoints: READ_NODES.map((node) => ({ node, attempt: 1, keyedBy: [...CHECKPOINT_KEY] })),
       gateResults: [],
       durableDeltas: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
       receipt: {

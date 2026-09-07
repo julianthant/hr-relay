@@ -807,3 +807,106 @@ passed with zero warnings (`auth-blocked-record-lint.log`). Roadmap freshness, i
 audit and diff checks passed. All 1908 `auth-gated-inputs.json` entries remain byte-identical, so
 D191 reuses b69d9d92's deterministic full gates for these three Markdown-only evidence additions.
 This reuse does not waive either failed live proof.
+
+### Replacement Person Lookup input and retained Separations diagnosis (2026-09-07)
+
+The operator reported setup done, then clarified that only the Person Lookup employee selection
+changed and the Separations selection remains intended. No identifier was copied from chat into
+code, commands or evidence. Reverified clean primary master f0b1cf92, owned ec5671b6, and all
+1908 prior gated-input hashes. Private configuration remained valid/present and 0600; its metadata
+had changed. The selected Person Lookup entry still carried its old opaque value identity.
+
+While primary was stopped on master, applied the operator's replacement safely by renewing only
+that entry's random `valueId` and `updatedAt` through the existing atomic, prior-state-checked
+`writeTestDataLocalConfig` writer. Exact in-memory readback proved both selected values preserved
+and the complete Separations entry unchanged. No value or value-derived hash entered the receipt.
+`replacement-identity-receipt.json` records those booleans and the new source metadata: device
+16777234, inode 253162897, mtimeNs 1788823674490964625, mode0600. The source remains primary-only;
+`.env`, `.env.providers` and credentials were untouched. The later repaired-candidate execution
+uses this already-established source; it does not mutate private input during the live lane.
+
+The exact Person Lookup authority preflight now proves attempt 1 with zero checkpoints for the
+replacement identity (`replacement-person-exact-preflight.json`). Its manifest pins attempt 1,
+with all seven assertions unchanged. The composition proof retains a failed old input identity,
+starts the replacement as a distinct item at attempt 1 and rejects attempt-2 checkpoint evidence.
+Five focused tests passed (`replacement-composition.log`, session 9527); typecheck (41886) and
+lint (31499) passed. Full gates are running as session16635 in `replacement-candidate-*` logs.
+
+**Preflight correction:** the first scratch Separations attempt query used only the test-input
+binding and omitted the production-added timekeeper credential binding. Its apparent fresh
+ordinal was invalid and was not used to start a run. The complete production `admitProtectedInput`
+closure proves next attempt 2 and the nine retained attempt-1 checkpoints.
+`replacement-corrected-separations-preflight.json` supersedes that part of
+`replacement-subject-preflight.json`; the latter is retained as a diagnosed harness error.
+The briefly started BFF session29419 was stopped (exit130) and primary master restored; neither
+workflow was launched. Its ordinary activation advanced runtime metadata only.
+
+The New Kronos diagnostic ran only from primary detached at the previously gated b69d9d92. A
+fresh owned CLI profile stopped on the UCSD SAML handoff before proving login. The observed page
+carried `body.onload = document.forms[0].submit()` but remained loading. After the diagnostic's
+login failure, manually dispatching that observed SAML auto-submit led to HTTP400 at the consumer;
+this is not a production login proof or a cause established for the earlier employee-not-found.
+`replacement-kronos-cold-diagnostic.json` records the safe facts; browser closed. No workflow ran.
+
+A second diagnostic used this task's exact New Kronos worker profile, created by the failed
+Separations run at `2026-09-07T22:59:23.283383Z`:
+`.auth/hrauto-rebuild/separations-worker-1/new-kronos-prod-da46b8f49972-headless`. Other older
+profiles in that shared worker root were preserved. The production login recipe succeeded.
+The production search driver then searched the exact employee carried by the retained subject
+checkpoint, with its ordinary 30000ms bound, and returned `no-results` in 4478ms. Later readback
+continued to show zero rows, the explicit no-results sentinel and exact query equality, without
+printing the query (`replacement-kronos-search-readback.json`).
+
+The observed Advanced Settings panel selected Current Pay Period. A separate read-only diagnostic
+changed only that visible timeframe to Last 4 Quarters and searched the same retained employee.
+The settled page still showed zero rows and the no-results sentinel; exact query equality held
+(`replacement-kronos-historical-search.json`). This does not prove absence outside this account's
+visible search scope. Restored Current Pay Period before closing `task7-kronos-warm`, then restored
+clean primary master. The fresh diagnostic profile `.auth/task7-kronos-inspect-profile` and its
+scoped stopped smoke lock are owned and retained. No full Separations rerun, source record change,
+transaction, timeout increase or selector fallback occurred. The operator was asked whether the
+same employee's timecard can be opened in their normal account; this is a source-availability
+comparison, not an access or retry approval.
+
+The operator confirmed they can open a New Kronos timecard and supplied an Employee Search
+screenshot showing one result. A local OCR check captured the screenshot in memory, required its
+query and result-row identifiers to agree, and compared that identifier privately with the
+retained document and resolved subject. **Both comparisons differed.** No OCR text, identifier,
+name or value-derived hash was printed or saved.
+`replacement-screenshot-identity-comparison.json` records only the three booleans. The selected
+private document still matches the retained Kuali read; its supplied employee ID matches the
+resolved subject and UCPath job read (`replacement-separations-identity-comparison.json`).
+Thus the screenshot proves availability of a different employee, not failure of the current
+document-to-search binding. The operator was asked to select the Kuali document corresponding
+to their screenshot in the private test configuration; metadata identity renewal will accompany
+that explicitly selected replacement. No product search/identity rule is changed by this finding.
+
+The operator supplied the matching Kuali screenshot and confirmed the replacement selection.
+The primary private file still held the prior document: a value-free check proved equality with
+the failed run's retained document and inequality with the screenshot. Independent OCR modes
+6 and 11 agreed on the screenshot's document header. Applied that explicitly selected document
+directly through the existing atomic private writer, with a fresh opaque identity; OCR output
+remained in process memory, transferred through stdin, never a command argument, log or temporary
+text file. Exact readback matched the screenshot selection and preserved the entire Person Lookup
+entry. `replacement-selected-document-applied.json` records only booleans and metadata: device
+16777234, inode253219094, mtimeNs1788824455223026067, mode0600. A preceding metadata-only identity
+renewal ran after an unsuccessful equality check because the orchestration did not stop that
+dependent call; it preserved the old value and launched nothing. The final selected-value write
+supersedes it, and the old receipt remains as evidence. Subsequent dependent preflight requires
+explicit successful exit and exact expected checks before proceeding.
+
+The complete production admission closure now proves **both** replacement items are attempt1
+with zero retained checkpoints (`replacement-final-admission-preflight.json`), including the
+Separations timekeeper binding. The corresponding manifests independently pin those exact ordinals.
+All failed original-item attempts/checkpoints remain in authority; no row was reset or removed.
+
+Replacement Step3 accepted: session16635 passed coverage (438 files/5520 tests; statement85.87%,
+branch77.51%, function89.87%, line87.99%; 313717ms), suite-size (222ms), standalone architecture
+(80 files/833 tests; 62322ms), and assertion-mode desktop parity (259 cases; 61313ms). Typecheck
+41886 and lint31499 passed; freshness session20822 and instruction/diff checks passed. The same
+approved two-worker adapter/config hashes remain in force. `replacement-candidate-gate-results.json`
+and its four logs retain exact commands/exits. `replacement-gated-inputs.json` captures all1908
+tracked gate-input hashes. No further parity references, production code, provider or credential
+behavior changed. The consumed test-subject-blockers handoff's surviving state is recorded here;
+removed only that temporary file. Freeze this source/test/evidence candidate before the serial
+primary live pair. Final review/integration/cleanup remain open.
