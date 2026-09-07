@@ -409,3 +409,34 @@ import, `.env` edit or legacy change occurred. No push occurred. Both supporting
 are removed; only the supervisor worktree remains, with its ignored environment template, build/test
 outputs, dependency symlink and parity-report lock. Private supporting-draft archives remain in `/tmp`
 as recorded above. All unique resume state lives in this owner; no duplicate handoff document is needed.
+
+
+#### Proposed review-allocation amendment — awaiting operator approval
+
+The reloaded supervise independent-review skill now admits planned focused scopes followed by a
+separate integration reviewer. This is a concrete proposal, not an approved allocation or another
+implementation plan. Product scope, the one-candidate consumer cutover, all acceptance/proof rows,
+required gates, review independence, merged-code operator conversion and cleanup remain unchanged.
+The complete candidate continues to use base `e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6` and implementation
+`4646ab6cede1fea82e38344cc26dad8c4a071533`; every reviewer receives the same current evidence head,
+approved plan/amendments and both BLOCKED-review ledgers. Prior attempts supply no PASS credit.
+
+| Review ID | Complete assigned behaviors and acceptance | Primary source boundaries and proof expectations | Overlap / dependency |
+| --- | --- | --- | --- |
+| 1.6.6.RA — settings, credentials and consumers | D331 P1–P41 under the existing Task-6 retain/replace dispositions; ordinary atomicity, protected authorization/CAS/history/readback, environment exclusion, runtime next-use/restart, public secrecy, Saved parity and the corresponding task checkboxes. Resolve R1 and challenge the older-audit-retry suspicion. | Current settings/credential domain contracts, command-kernel settings paths, credential-store, settings service/runtime, all dashboard/worker/dry-run/activity/bootstrap/smoke consumers, their tests and settings/secrets/SQLite-authority guards. Inspect every affected settings instruction/contract hunk and all 12 PNG/a11y pairs. Historical schemas/readers are RB-owned, but RA checks their current-runtime callers and inability to admit historical writes. | Shared P15/P16/P23/P41, settings schema migration, source admission/public outputs and private import binding with RB. Inspect the credential side of R2 and preservation across SQLite restore. No gate or proof-row omission is implied by shared ownership. |
+| 1.6.6.RB — upgrade, historical authorities and recovery | D332 M1–M27 under existing dispositions; every admitted/refused schema/layout, backup/restore, no source mutation, interrupted conversion, tombstone/evidence preservation, externally uncertain writes, doctor, adapter isolation/expiry and corresponding task checkboxes. Resolve R2 and challenge the cleanup-only model-source suspicion. | All infra/compat modules and immutable historical schemas, v30–v32 migrations and authority inspection/history paths, backup-service/offline-restore/storage-doctor/recovery contracts, storage CLI/coordinator, recovery fixtures/tests/guards, guard inventory and Phase-2.6 deletion/doc changes. Inspect all remaining changed historical-producer tests and rename provenance. | Shared P15/P16/P23/P41, settings schema migration, source admission/public outputs and private import binding with RA. Independently inspect binding-before-SQL and all crash/source-change/restore combinations, including RA-owned backend entrypoints needed to establish ordering. |
+| 1.6.6.RI — final integration review | Complete acceptance and changed-boundary coverage mapping; final independent decision only after RA and RB PASS on the final candidate, with no unresolved required finding. | Receive complete diff, plan, all scope verdicts/findings and gate evidence. Independently inspect cross-boundary transactions/order, identity and data propagation, runtime wiring, source/credential/SQLite recovery, value exclusion, tombstone/unknown-write behavior and real-entry proofs. Verify every changed path and proof row has an owner, directly verify all gate summaries/fingerprint and evidence-only diffs, and reconcile both prior-review ledgers. | Depends on both RA and RB PASS. Does not repeat every module-internal check, but independently verifies integration rather than accepting reports alone. Any uncovered acceptance or boundary remains blocked. |
+
+Total: three fresh native `sup_review` assignments, no nested agents. RA/RB may run concurrently
+(maximum two review agents); RI runs afterwards alone. Each remains read-only, receives the same
+pinned candidate, and must finish its entire assigned scope before compaction. Existing compacted
+reviewers are not reused. If native capacity is unavailable, sequence supported fresh dispatches;
+never recycle a compacted agent or fabricate retirement. Candidate remains frozen during a round.
+After fixes, re-review affected scopes and neighboring boundaries, then integration; unaffected
+scope reuse needs exact unchanged-input evidence and RI verification. RA/RB PASS is scoped; only
+the final RI PASS plus all scope PASS and required gates permits local master integration.
+
+On operator approval, mark only this review allocation admitted, record that approval here and
+execute it in the supervisor session. Until then do not dispatch this partitioned round, merge,
+convert the operator root or remove the active supervisor worktree. This proposal changes no code,
+tests, runtime configuration, dependencies or gate results; D191 evidence-only checks apply.
