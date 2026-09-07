@@ -865,3 +865,14 @@ The approved standalone Sol/high reviewer will reopen the fixture and neighborin
 proof coverage on the new commit, independently verify unchanged production and prior accepted
 coverage, and issue a new commit-bound verdict. The prior PASS is not a verdict on R10. All completion
 checkboxes remain open until accepted review, new merged-code gates, operator conversion and cleanup.
+
+
+R10 implementation candidate: **`ad15bb982757a2e2342cf85f98df6eeca2a48050`**, base
+`e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`, original plan
+`9969857a79ba06d07a88b71ba2f0d4d64dc9967e`. The 2,117-path input map
+`/tmp/hr-settings-r10-inputs.json` binds that exact commit; aggregate SHA-256 is
+`413311868b752faeaee8e664f0a1f1b185fcf19ac887ea9c7feaad02ad0c448c`.
+Comparison with the prior accepted map differs only in this evidence owner and the lifecycle test.
+This recording append changes no gate inputs beyond task evidence; D191 reuses the candidate results
+above with scoped instruction/link, roadmap freshness and diff checks. Review remains assigned to
+`01a07a45-50d7-7d01-bd47-672d3dfa1720` under the operator-approved standalone continuation arrangement.
