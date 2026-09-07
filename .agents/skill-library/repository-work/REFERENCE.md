@@ -256,14 +256,14 @@ fallback — never re-probe in a child, never guess on an unrecognized OS answer
 (`secrets-single-source.test.ts` enforces it). A credential must never be interpolated into a
 message — `no-secret-values-in-logs.test.ts` enforces that half.
 
-Dry-run subjects live in the strict, recursively frozen `config/test-subjects.json` registry. A
-scenario asks for a label; the loader requires that label's workflow and kind to match its manifest.
-`gone` / `unknown` / `consumed` labels resolve `blocked` before any browser starts. An `available`
-entry that cannot form the workflow's exact canonical input is a registry defect and throws with the
-label and `lastObserved` date. Since D300 the separations canary commits only one closed Kuali
-document-number reference; `src/domain/secrets.ts` reads that value from ignored `.env`, and the
-composed workflow derives and verifies every person fact live. No canary name or EID is registry- or
-environment-supplied.
+Dry-run subjects resolve by label through the typed registry; workflow/kind must match the manifest.
+Unavailable/consumed/unknown subjects and declared-pending leaves block before private reads or a
+browser; malformed available subjects fail by label/date. Current code uses `config/test-subjects.json`
+and independently stored credentials. D341’s approved pre-1.6.7 detour moves subjects/shared data to
+`config/test-data.json` and private identifiers/paths to ignored `config/test-data.local.json`; it is
+not implemented merely because the plan exists. Read `ref guards-and-tests` §10.5 and
+`ref clock-config-secrets` §D341 for the active transition and completion evidence. Never source a
+canary from `.env`, expose its value, silently substitute another target, or infer current availability.
 
 ## Coding conventions
 

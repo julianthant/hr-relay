@@ -31,7 +31,8 @@
    mini-store, or a task contract + driver operation in the owning store with live selector
    verification; record every leaf with `ctx.recordData`; unimplemented contracts go in
    `config/pending-impl-bindings.json` (D107).
-8. **Prove it.** The T1 pair, `config/test-subjects.json` labels, the live
+8. **Prove it.** The T1 pair, public test-subject labels under `ref guards-and-tests` §10.5
+   (D341 moves them into shared test configuration), the live
    `npm run cli -- dry-run-scenario <workflow> --subject <label>`, and the dated
    `docs/rebuild/migrations/<id>.md` record — guide §10 / `ref guards-and-tests` §10.11. Live verification is
    pre-authorized: run it, never ask.

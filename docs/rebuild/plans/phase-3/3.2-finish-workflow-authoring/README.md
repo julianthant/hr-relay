@@ -1,5 +1,12 @@
 # Phase 3.2 · Finish workflow authoring and freeze the acceptance candidate
 
+**D341 input foundation (approved 2026-09-07).** Author new workflows against the completed shared
+test-data/fixture interface. Public labels and named safe assets live in tracked test configuration;
+real canaries/private paths live in ignored local test configuration, outside application settings.
+Structural cases stay synthetic. The operator reset existing rebuild runtime data; historical
+previews remain documentary history only, never a substitute for this phase’s fresh live acceptance.
+This phase does not finish deferred fixture consolidation: the detour owns its complete delivery.
+
 Read the [phase overview](../README.md) for shared context, decisions and phase-wide exit criteria.
 
 Phase 3.2 owns every activity that may still change the workflow compiler, shared runtime,

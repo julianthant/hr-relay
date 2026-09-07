@@ -25,6 +25,9 @@ They were, and they are — both allowlists are EMPTY.
    redaction, `0700`/`0600` file modes and no secret-bearing URLs are base requirements precisely
    because the tool drives live HR systems from one desk.
 
+**Current test-input target:** D341 below separates test configuration from application settings;
+implementation is pending in the approved pre-1.6.7 detour.
+
 **Section map.** §1 the legacy baseline this replaces · §2 the Clock · §3 the config resolver ·
 §4 the per-run snapshot and instance selection, §4.1 its generation line · §5 fiscal-year dates ·
 §6 the secrets accessor, §6.1 scope, §6.2 the environment doctor · §7 the rot vectors and what
@@ -569,6 +572,58 @@ plaintext credentials, in SQLite would simplify commits but violate the intentio
 boundary. One database for ordinary state plus independent credential operations retains that boundary
 without pretending the two stores can commit atomically. Phase 6 consumes the same credential reader
 interface when it supplies the platform backend.
+
+##### D341 — Test inputs have a separate owner
+
+**Operator-approved 2026-09-07; implementation pending in the test-data foundation detour before
+Task 1.6.7.** Test-only inputs are not application settings. This amendment supersedes D300/D318's
+old source location and the test-target portions of D331/D332/D336, not their privacy, ingress,
+availability, isolation or write-safety requirements. The current implementation remains the
+protected-store reader until the detour is accepted; this contract does not claim a migration ran.
+
+**Owners and files.** Tracked `config/test-data.json` owns public subject declarations, named safe
+fixture paths and reusable synthetic data. It incorporates the existing `config/test-subjects.json`
+registry rather than duplicating it. Ignored `config/test-data.local.json` owns actual canary values
+and private document paths; a tracked example contains no private values. One typed test-data reader
+validates these sources. Each input has one owner, not an override chain. Application settings,
+credentials and `.env` are not fallback sources. Current application credential handling otherwise
+stays under D336. The two canary rows leave the application catalog (88 → 86), Settings set/clear and
+readback schemas, and application secret registries. Retired environment names remain rejected
+independently of their removal from the catalog. Tests and explicit test commands consume test data;
+ordinary application startup must not read private test configuration or offer it to users.
+
+**Loading and identity.** Offline tests need only tracked data. Private reads are explicit and lazy;
+unknown/unavailable/pending subjects block before private access or browser composition. Resolve
+relative paths against the declaring config file, never the working directory or another checkout.
+Tracked fixture paths remain within the repository; private files may use explicit local paths.
+Strict shape, missing-file and permissions failures report keys/status, never values. Shared data is
+immutable; fixture builders return isolated values. Capture the selected live input once per start
+with an opaque source identity and preserve it through admission, fingerprints, receipts, redaction,
+resume/rerun and archive. Later config edits affect later starts. No identifier or value-derived hash
+may leak through the new binding. Expected assertions remain independent from shared inputs.
+
+**Verified conversion.** The detour owns one explicit stopped-system conversion from the authenticated
+current credential document to private test configuration and a test-free credential representation.
+The old document's strict replayed history and upgrade binding must be understood before removing
+fields. Preserve operational credential values/current identities and accepted command/write identity
+non-reuse; never relabel a historical command fingerprint as a new request. A versioned migration
+baseline and value-free retired identity records may replace obsolete canary-bearing history.
+Missing destination can be created privately, equal values permit verified idempotent completion,
+and conflicting/malformed destinations or changed sources stop without overwrite. Stage, durably
+verify and bind the destination before retiring source entries. Interruption/retry must establish
+which exact state settled; uncertain state never reports success. No runtime fallback survives.
+Existing general historical readers remain isolated and frozen to their source schema; reducing the
+live catalog cannot silently discard historical input or reintroduce a test-only setting.
+
+**Scope and proof.** The operator discarded all existing rebuild runs on 2026-09-07. No old run data
+is required to migrate, and this amendment does not restore it or remove unrelated historical/recovery
+safeguards. Future migration/recovery tests use reproducible synthetic data. The detour proves new
+source-bound run behavior, complete shared-fixture adoption, migration failures/retry and actual
+private-file conversion with no browser/provider/external write. Task 1.6.7 retains its two live
+workflow proofs and honest missing-input/selection prerequisites. Full testing/fixture requirements
+and implementation completion evidence belong to `ref guards-and-tests` §10.5. The temporary
+execution handoff is `docs/handoffs/2026-09-07-test-data-foundation.md`; after accepted completion its
+unique evidence moves to §10.5 and Task 7 before that handoff is removed.
 
 ##### D331 — the settings catalog and protected root contract (0.3 Task 2, 2026-09-04)
 

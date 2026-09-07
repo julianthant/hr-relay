@@ -1,5 +1,11 @@
 # Phase 6F · Packaged-app proof
 
+**D341 proof inputs (approved 2026-09-07).** Consume the shared test-data contract and fixtures.
+Provision ignored private test configuration explicitly on each proof machine through the test
+harness; never ship its private values/assets or add them to user Settings. Bind each named target
+and local file to that machine’s proof setup; no fallback to the developer checkout. The installed
+application must not require private test config for ordinary startup.
+
 Read the [phase overview](../README.md) for shared context, decisions and phase-wide exit criteria.
 
 ## Proof — a dry run from the packaged app on both operating systems

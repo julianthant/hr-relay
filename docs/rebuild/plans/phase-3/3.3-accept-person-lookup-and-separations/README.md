@@ -80,11 +80,13 @@ Task 1 changes no source. A defect or changed candidate stops here and returns t
 
 ## The canary and target registry
 
-`config/test-subjects.json` remains the public-label registry and ignored protected configuration
-remains the only permitted source of the selected document number. A dated `available` observation
+`config/test-data.json` owns the public-label registry after the completed D341 detour; ignored
+`config/test-data.local.json` is the only current source of private test identifiers and paths.
+Application Settings, credentials and `.env` are not alternative test-target sources. A dated `available` observation
 is admission evidence, not proof that the target satisfies a scenario. Gone, consumed, unknown, or
 incomplete subjects block before a browser starts. No name, EID, or protected value is copied into
-this plan.
+this plan. Consume the detour’s shared fixtures and captured test-input identities. The operator’s
+old runtime data was reset; acceptance must produce fresh evidence against the frozen candidate.
 
 ## Separations controlled-write contract
 

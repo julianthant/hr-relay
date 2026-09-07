@@ -595,15 +595,18 @@ log:
 status: planned
 doc: 1.6/task-7-close-the-rebuilt-foundation · 1.6 §1.6 · Implement canonical run and settings authorities · 2.6 §2.6 · 3.1 §Reopened completion tasks
 
+> D341 prerequisite: finish the approved test-data foundation detour before resuming this close; no new phase number. Use the fresh operator-reset root and shared synthetic recovery fixtures.
+
 builds:
-- [ ] PROOF typecheck, lint, coverage, architecture, manifest, stores-catalog, parity (unchanged), storage-doctor on the upgraded root, and both workflows' T1b live manifests with exact zero write-authority deltas
+- [ ] PROOF typecheck, lint, coverage, architecture, manifest, stores-catalog, parity (unchanged), storage-doctor on the fresh root after the D341 detour, and both workflows' T1b live manifests with exact zero write-authority deltas
 - [ ] PROOF adversarial review finds no second run/settings lifecycle authority or secret-value leak, and the `no-lifecycle-sql` negative control intact
-- [ ] DOCS record the migration and hand 2.6 only verified contracts, the migrated fixture pair, the named adapter deletions (A0/A1 → 2.6 Task 2; A2 + its unit test and A3 → 2.6 Task 1-3; A8/P40 → 3.1 Task 9-2), residuals, and exact gates
+- [ ] DOCS record the migration and hand 2.6 only verified contracts, the reproducible synthetic fresh/migrated fixture pair, the named adapter deletions (A0/A1 → 2.6 Task 2; A2 + its unit test and A3 → 2.6 Task 1-3; A8/P40 → 3.1 Task 9-2), residuals, and exact gates
 
 needs:
 - p1f-migration-proof
 
 log:
+- 2026-09-07 | D341 approved detour | test-only configuration and complete shared-fixture consolidation precede Task 7; operator database reset verified, credentials preserved; implementation remains pending and the paused Task-7 worktree must consume the new base.
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its gate and its 2.6 handoff list (doc 01 §1.6 Task 7) · left: implementation
 
 ## Phase 2 · Prove writes and build the platform tails {#phase-2}
@@ -966,6 +969,8 @@ status: planned
 doc: 2.6 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust §1 · ref:guards-and-tests · ref:dashboard-surfaces §2.5 · ref:guards-and-tests §5.2
 
 > D336: consume Task 1.6.6's SQLite-settings restore and revised adapter/proof mapping; the old paired-file rollback and settings-pathname target are superseded.
+
+> D341: consume shared fixtures and private-test source identities; recovery uses reproducible synthetic fresh/v29 copies, never the removed operator database/backup. Existing adapter-retirement ownership remains.
 
 builds:
 - [ ] PROOF run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation gates
@@ -1333,6 +1338,8 @@ date: parallel wave 9 · worktree r09-2-settings
 doc: 3.1/task-9-2-finish-settings-over-the-canonical-settings-authority §Task 9-2 · Finish Settings over the canonical settings authority · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4 · ref:guards-and-tests §5.2
 
 > D336: ordinary settings are SQLite-owned; protected writes/readback are independent credential operations. Keep the catalog, revision/conflict, reset and restart behavior.
+
+> D341: consume the application-only 86-row catalog; test subjects, canaries, file paths and test data are excluded from Settings/Setup and credential operations.
 
 builds:
 - [ ] BOTH render every catalog leaf in one Settings information architecture with source, validity, editability, sensitivity, and restart scope
@@ -1904,6 +1911,8 @@ doc: 3.2 §Task 6 · Record current-source Separations read-only acceptance · r
 
 > Reverify the selected closed Kuali document through the integrated compiled workflow and reach the declared dry-run preview terminal with a fresh `met` T1b result and exact-run 0/0/0 intents, attempts, and outbox.
 
+> D341: use the completed shared/private test configuration. Prior runtime data was reset; produce fresh live evidence, not a citation to deleted run rows.
+
 builds:
 - [~] PROOF historical previews remain evidence; the 2026-09-03 replacement failed at New Kronos with 0/0/0 write authority and did not meet the strict gate
 - [ ] PROOF current live reads, preview terminal, durable result, and exact write-authority deltas
@@ -1918,6 +1927,8 @@ chip: independent · audit only
 doc: 3.2 §Task 7 · Audit and freeze the acceptance candidate · ref:workflow-model §1.6 · ref:write-safety §14
 
 > Independently verify Tasks 1–6, run every integrated gate, and freeze the exact commit, generated manifest, workflow fingerprints, runtime/configuration schema, and focused evidence. A failure creates a focused 3.2 remediation task and restarts this audit.
+
+> D341: verify authored workflows consume the completed shared fixture/configuration interface; no deferred fixture-consolidation work remains at freeze.
 
 builds:
 - [ ] PROOF current-source audit, complete green gate family, exact candidate record, and no parked write against a closure that will change
@@ -1996,6 +2007,8 @@ size: M
 doc: 3.3 §Task 4 · Reconcile acceptance and close Phase 3.3 · ref:guards-and-tests §10 · ref:operator-trust §10
 
 > Reconcile Person Lookup and Separations T1–T3 evidence, migration and knowledge records, capability dispositions, regressions, complete gates, and every 3.3 execution row. A failure is never converted into a waiver.
+
+> D341: acceptance consumes public labels/private test configuration and captured input identity from the detour; Settings and environment are not canary sources.
 
 builds:
 - [ ] PROOF unchanged candidate, all three controlled proofs, reconciled acceptance, and complete green integrated gates
@@ -2568,6 +2581,8 @@ size: M
 doc: 6F §Proof — a dry run from the packaged app on both operating systems · ref:guards-and-tests §10
 
 > R10's T1 tier run from the INSTALLED app — a live `dryRun=true` workflow with its checkpoints asserted over authority — on macOS and on Windows, on real hardware. R10's T3 dashboard conditions attached, driven through the app's own window. The parity corpus re-rendered in the Electron renderer, because the operator's actual pixels are the ones the corpus exists to pin (D187). The recovery drill exercised through the app's own lock files, which are now what D181's stopped-system proof composes from.
+
+> D341: explicitly provision private test inputs per proof machine; consume shared fixtures, ship no private assets/values, and add no test-data controls to user Settings.
 
 builds:
 - [ ] PROOF T1 — a full workflow dry run driven from the installed app on macOS, checkpoints asserted over authority and the result recorded durably

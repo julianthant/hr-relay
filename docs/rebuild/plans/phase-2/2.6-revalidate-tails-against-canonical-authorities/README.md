@@ -3,6 +3,14 @@
 Read the [phase overview](../README.md) for shared context, decisions and phase-wide exit criteria.
 
 ## 2.6 · Revalidate tails against canonical authorities
+
+**D341 input foundation (approved 2026-09-07).** Consume the completed pre-1.6.7 detour’s shared
+fixture/configuration interface and explicit private-test source bindings. Tests do not provision
+canaries through Settings. Trust/data/operator consumers must preserve redaction and captured-input
+identity without reading current private configuration to reconstruct an existing run. The actual
+operator database was reset; recovery proofs use reproducible synthetic fresh/v29 fixture recipes
+handed off by Task 7, never the removed operator database or backup. The detour completes fixture
+consolidation; this part consumes it and retains its existing adapter-retirement ownership.
 <!-- roadmap: p2-authority-revalidation -->
 
 This reopened part starts only after 1.6 closes. It changes downstream read models, joins, and
@@ -124,9 +132,10 @@ These historical readers never reintroduce runtime settings-file authority.
 > (`pre-floor-manifest-readable-for-restore`), re-run over a migrated COPY, and §D332.7 item 6 — a run
 > left `authority-unknown` by a restore is never re-admitted. This task deletes adapters A0 and A1 and
 > flips `authority-upgrade-adapters-retired` and `settings-root-single-pathname` from `planned` to
-> `active` in that same deletion commit (`ref guards-and-tests` §5.2, intended entries 1–2). Because
-> 1.6 Task 6 already upgraded the operator's real root, §D332.9 rule 5's `authority-below-floor`
-> refusal is what a pre-floor artifact meets afterwards. D135 is cited; no second controlled write. No
+> `active` in that same deletion commit (`ref guards-and-tests` §5.2, intended entries 1–2). Task 1.6.6
+> previously upgraded the real root; the operator subsequently reset it. Prove §D332.9 rule 5’s
+> `authority-below-floor` refusal with a synthetic pre-floor artifact after adapter retirement;
+> the deleted operator root/backup is not an input. D135 is cited; no second controlled write. No
 > redesign.
 
 ### Task 3 · Close tail revalidation and hand fixtures to 3.1

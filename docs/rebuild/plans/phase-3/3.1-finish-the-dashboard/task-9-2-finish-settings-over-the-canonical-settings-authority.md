@@ -1,6 +1,11 @@
 # Task 9-2 · Finish Settings over the canonical settings authority
 <!-- roadmap: dash-settings -->
 
+**D341 (approved 2026-09-07).** Consume the detour’s application-only 86-row catalog. Test subjects,
+canaries, fixture paths and shared test data are not Settings/Setup leaves or protected-setting
+operations/readback. Do not add controls for them or reintroduce a source. The shared test-data
+interface supplies this task’s fixtures; operational credentials retain D336’s independent authority.
+
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
 > **D336 (2026-09-06):** ordinary settings are SQLite-owned; credentials are independently stored.

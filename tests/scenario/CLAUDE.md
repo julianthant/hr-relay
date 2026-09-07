@@ -28,7 +28,9 @@ synthetic range `10800000`–`10800099`; `19999999` is the sole invalid-EID sent
 document numbers authored by the same fixtures must be visibly synthetic too. A collected scenario
 may derive a declared operator label from the real registered descriptor, but it must not copy that
 label into fixture input or treat it as external-world evidence. Real observed subject identifiers
-belong only to ignored environment input and durable T1b run evidence, never collected source.
+belong only to private test-input storage and durable T1b run evidence, never collected source.
+D341’s approved detour makes private test configuration the owner; do not restore the retired
+environment source or place canaries in application Settings. See §10.5 for implementation status.
 
 `workflows/<workflow-id>/dry-run.scenario.ts` (T1b) is deliberately **not** `.test.` — a checkpoint
 manifest vitest collected would start a browser inside the per-commit gate.
@@ -67,6 +69,8 @@ RUN needs a T3 pair as well, not just a T2.
 
 ## Fixtures a scenario may import
 
-`tests/fixtures/` is shared fixture DATA for any tier. Importing from `tests/unit/fixtures/` is
-established practice here (`operator-lifecycle.walk.test.ts` does it) — those are contract fixtures,
-not unit assertions.
+`tests/fixtures/` is shared fixture DATA for any tier. Existing cross-tier imports from
+`tests/unit/fixtures/` are migrated by the approved D341 detour to shared ownership; consult §10.5
+for acceptance status. New shared data uses that common home/interface. Test-specific assertions,
+behavioral helpers and architecture violation fixtures remain at their owner. Offline scenarios
+never require private test configuration; file paths are named inputs, not developer-machine paths.

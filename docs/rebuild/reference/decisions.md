@@ -2168,3 +2168,12 @@ a `README.md` overview and task/topic files for large plans, using consistent na
 for each assignment and its evidence. Owner: [roadmap §Phase plan storage](../../roadmap/roadmap.md#phase-plan-storage-operator-amendment-2026-09-06);
 [the plans index](../plans/README.md) defines current paths and historical lookup. Scope, sequencing,
 admission rules and completion evidence are unchanged.
+
+
+## Reconciliation round 145 (2026-09-07) — dedicated test-data ownership
+
+_phase: detour before 1.6.7; approved, implementation pending_
+
+| # | Decision | Owning doc |
+| --- | --- | --- |
+| **D341** | **TEST INPUTS HAVE THEIR OWN CONFIGURATION, OUTSIDE USER SETTINGS.** Complete shared-fixture consolidation now: tracked public/synthetic config plus ignored private values/paths, one typed reader, and verified one-time migration of current canaries out of credentials. Preserve privacy, availability, source-bound identities and operational credentials; remove the two test-only Settings rows. The operator reset the rebuild database and requires no old-run migration. The detour finishes before 1.6.7, and downstream phases consume it without another consolidation pass. | ref clock-config-secrets §D341 (configuration/conversion owner) · ref guards-and-tests §10.5 (fixture/proof/completion owner) · Task 1.6.7 (dependency/resume owner) |

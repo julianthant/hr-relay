@@ -2190,61 +2190,61 @@ when its task evidence supports that verdict; it is not forced to the preview ar
 
 ### 10.5 The subject registry — labels in the repo, values outside it
 
-A dry-run scenario is **subject-parameterized**. It never names a person; it names a LABEL, and the
-registry resolves it.
+**D341, approved 2026-09-07; implementation pending.** The test-data foundation detour must finish
+before Task 1.6.7 resumes. Configuration ownership, privacy and conversion are defined in
+[clock-config-secrets, D341](clock-config-secrets.md#d341--test-inputs-have-a-separate-owner).
+The current code still uses `config/test-subjects.json` and the independent credential store;
+`.env` is already a retired test-target source. Do not mistake this approved target for completed code.
 
-- **`config/test-subjects.json`** (`schemaVersion` 2, D284) — the subjects. **An entry is a
-  SUBJECT, not a (label, workflow) pair**: `label`, `purpose` (what the subject is good for), ONE
-  `availability` claim (`available` · `consumed` · `gone` · `unknown`) with the date it was last
-  observed — a fact about the DOCUMENT, never about one workflow — the doc or migration section that
-  records what it is, D85's usage rules (read-only vs write-allowed-if-restored, the cleanup
-  obligation, the owner), and a strict `workflows` object holding **one arm per workflow that can
-  address the subject**. An arm carries that workflow's `kind` (what the subject is FOR, to that
-  workflow — `ordinary` for the finalization, `full-chain-dry-run` for the composed chain) and that
-  workflow's public input: only values that are genuinely not sensitive live here, and an EID never
-  does. Since D300 the `separations` arm's document is itself a CLOSED reference, never a literal
-  number — `{ state: "configured", reference }` names the registered secret and its env key, so the
-  committed registry chooses no subject on its own; the operator's ignored `.env` does. A subject two
-  workflows can drive is ONE row with two arms — never two entries and never an alias, because an
-  alias puts the workflow choice back into a name. **Today the registry holds exactly one subject** —
-  `finalization-canary` — with both arms; doc 03.3 Tasks 1–3 own its current admission and
-  `docs/rebuild/migrations/separations.md` §9.31 tabulates the eight labels that retired into history. This
-  is D85 part 3's `TestTargetRegistry`, built.
-- **`pending` — how the registry says "true, and not ready".** An arm may DECLARE the canonical
-  leaves a live read cannot supply, each with its reason (the finalization arm's `transactionNumber`
-  exists only once the UCPath filing ② files it; its `timekeeperComments` are composed by the chain;
-  its `terminationEffectiveDate` is empty on the live form and derived by the chain's `dates` node as
-  separation date + 1). A leaf the entry AUTHORS rather than observed belongs here, not in
-  `publicInput`. An arm with nothing pending omits the block: `pending: {}` is refused at parse.
-  A declared-pending leaf resolves **`blocked` BY NAME** — label, workflow, field, observation date —
-  before any secret is read, because a run that cannot start must not spend a credential. An
-  **undeclared** missing leaf is a registry DEFECT and fails by label and date. A leaf cannot be
-  both observed and pending; the parser refuses the entry.
-- **`.env`, through `src/domain/secrets.ts`** — the sensitive values. Since D300 (superseding D286)
-  the ONLY registered test-target reference is the canary's Kuali document number, read from `.env`
-  through the one module permitted to read a credential from `process.env`
-  (`secrets-single-source.test.ts` enforces that it is the only one), never interpolated into a
-  message (`no-secret-values-in-logs.test.ts` enforces the other half). The finalization arm's person
-  leaves — employee name, EID, timekeeper name — are never registry- or environment-supplied at all:
-  the composed `separations` chain derives them live, so `separations-kuali-finalization`'s own
-  resolver can only ever answer `blocked`.
-- **A missing subject reports `blocked: needs <label>`, never `failed`.** This is the load-bearing
-  rule. A canary is a live thing and it decays: `docs/rebuild/migrations/separations.md` §9.16 records doc
-  4524 — the best-mapped Kuali candidate — having its action COMPLETED between two passes, after
-  which the read task that made it a candidate could no longer read it, and §9.16 records clearing a
-  pending transaction deleting the only witness for another arm. A suite that reports `failed`
-  when a person left the university teaches its readers to ignore red. `blocked` says *this test did
-  not run and here is the label it needs*, which is a sentence somebody can act on.
-- **`availability` is a claim with a date, and the runner checks it.** It is a fact about the
-  document — one claim per subject, whatever workflow asks. A subject marked `available` that the run
-  cannot resolve, and did not declare the missing leaf `pending`, is a registry defect and fails BY
-  NAME with the label and the date; a subject marked `gone` is `blocked` before a browser starts. A
-  resolver asked for a subject that declares no arm for its workflow refuses BY NAME too — a
-  mis-addressed label is a defect in the request, not a decayed canary.
-- **Both directions are guarded** (`test-target-registry`): every manifest case's
-  `(label, workflow, kind)` matches an ARM of a registry entry, and every registry arm has a case in
-  that workflow's own manifest; the committed registry, doc 03.3's admission inventory and the manifests
-  name the same document set.
+**One public registry.** The target `config/test-data.json` incorporates subjects and their stable
+labels, purposes, one dated availability claim (`available`, `consumed`, `gone`, `unknown`), usage
+restrictions, provenance and workflow-specific kind/input arms. A subject shared by workflows is
+one entry with multiple arms. Its private document/EID fields are closed references resolved only
+from `config/test-data.local.json`. Derive current labels and kinds from the registry instead of
+freezing their changing counts in prose. The Separations chain derives person facts live; its
+standalone finalization arm retains its named pending block and cannot fabricate readiness.
+
+**Admission.** Validate label/workflow/kind correspondence in both directions against live manifests.
+Unavailable subjects and declared-pending leaves block before private reads or browser composition.
+An empty pending declaration, simultaneously pending/observed field, mismatched workflow/kind or
+undeclared missing canonical leaf is a defect by label/key/date. An absent configured live input
+reports blocked, never an invented default or a successful skipped test. A dated availability claim
+is not proof that the external system still satisfies the scenario. Use the actual descriptor's
+ingress and canonical schema. Malformed private config and unreadable requested files fail explicitly.
+
+**Shared fixtures.** Reusable data has one discoverable home under `tests/fixtures/`, consumed through
+shared typed imports/configuration by unit, architecture, scenario, parity, performance and scripts.
+Complete consolidation accounts for every existing shared-data source and consumer, including
+cross-tier `tests/unit/fixtures` imports, and removes obsolete duplicates/shims. Case-specific
+assertions, expected results, invalid-input examples, architecture violation sources and behavioral
+helpers remain at their test owner when sharing would obscure the proof. Do not derive the expected
+answer from the same shared input under test. Preserve synthetic-subject ranges, deterministic
+clocks, dataset shapes/counts, case membership, isolation, timeouts and coverage floors.
+
+**Files and privacy.** Offline imports must succeed without private configuration, credentials,
+provider access, database startup or browsers. Tracked safe file paths resolve relative to their
+config and stay inside the checkout. Private paths resolve only when explicitly requested and never
+fall back to another worktree. Include a minimal synthetic PDF and a consumer proving actual readable
+bytes; no tracked real HR documents or fabricated private corpus. Missing/invalid selected files,
+duplicate/unknown config keys, path escapes and CWD dependence have negative tests. Shared data is
+frozen and builder instances are independent.
+
+**Proof and closure.** The detour owns Settings exclusion and retired-source negative controls,
+availability-before-private-read ordering, source-bound redaction/fingerprints through new run
+resume/rerun/archive, complete fixture accounting, credential-history conversion, destination/source
+conflicts, interrupted/repeated migration, accepted identity non-reuse, and verified actual private-file
+conversion. Follow D191 full candidate/integration gates plus desktop parity and generated freshness.
+Task 1.6.7 owns live workflow acceptance; no live success is inferred from migration or input presence.
+The detour supervisor records accepted commits, review, gate and conversion evidence here and the
+Task-7 resume boundary before removing the temporary execution handoff. Implementation is not yet
+complete. No new roadmap phase/node or deferred consolidation remainder is authorized.
+
+**Reset evidence (2026-09-07).** At the operator's explicit request the rebuild database was replaced
+with a fresh schema-32 database; only schema metadata/fresh-baseline marker remained. Doctor exited 0
+with zero runs/spans/pending counts and valid integrity. Old run spans, artifacts and the old authority
+backup were removed; credentials were verified byte-identical and ordinary settings remained defaults.
+This is an operational snapshot, not lasting proof of emptiness. Recheck on resume. Deleted runs are
+not migration inputs or live acceptance evidence; historical documentation remains historical.
 
 ### 10.6 The durable result — what a `PROOF` tick is allowed to cite
 

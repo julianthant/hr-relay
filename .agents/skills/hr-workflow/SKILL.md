@@ -19,7 +19,7 @@ preserving hand-maintained Known failure modes and Live record sections.
 4. `docs/rebuild/migrations/<id>.md` if present (separations is the worked example — §1 questionnaire, §9 live records) and the workflow's node in `docs/roadmap/roadmap.md` (status, `you:` lines, `log:` lines).
 5. The reference docs it cites: `workflow-model` (run state machine, §5.4 validation/resume), `write-safety` (beats ①–⑦, §3.2 controlled-commit proof, §14 gate), `execution-and-sessions`, `guards-and-tests` §10 (test tiers), `dashboard-surfaces`.
 6. `docs/rebuild/reference/lessons.md` — grep the workflow id and each system; every hit becomes a line in "Known failure modes".
-7. `config/test-subjects.json` (when it exists) and `tests/scenario/*<id>*` — canary labels and what the existing scenarios assert.
+7. The current public test-subject registry and workflow scenarios — canary labels and existing assertions. `ref guards-and-tests` §10.5 owns the D341 transition from `config/test-subjects.json` to `config/test-data.json`; inspect accepted status rather than guessing a path or reading private values.
 8. The platform-wide rails live in `.agents/skills/hr-manage/SKILL.md` and
    `.agents/skill-library/hr-debug/REFERENCE.md` — read both once so the generated resource points to
    them instead of restating them.
@@ -46,7 +46,7 @@ Stop when you can fill every template section from evidence. A section you canno
 
 ## Inputs & subjects
 - Run modal / `surfaces.inputRun`: <what the operator types, examples declared by the descriptor>
-- Canary subjects: <labels from config/test-subjects.json; values stay in .env via src/domain/secrets.ts — a missing subject is `blocked: needs <label>`, never `failed`>
+- Canary subjects: <labels from the current public registry under ref guards-and-tests §10.5; private values resolve through its typed reader, never `.env` or report text — a missing subject is `blocked: needs <label>`, never `failed`>
 - Subjects that must NOT be used / are burnt: <from the migration doc's live records>
 
 ## Run it (details in hr-manage)

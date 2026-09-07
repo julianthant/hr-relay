@@ -1,5 +1,9 @@
 # Phase 3.1 · Finish the dashboard
 
+**D341 dependency (approved 2026-09-07).** The pre-1.6.7 test-data detour is complete before this
+phase starts. Consume its shared fixtures and application-only Settings catalog; no test-only
+configuration UI or second canary source. Task 9-2 owns the corresponding Settings presentation.
+
 Read the [phase overview](../README.md) for shared context, decisions and phase-wide exit criteria.
 
 Phase 3 proves the reusable dashboard/workflow platform with Person Lookup and Separations, and
