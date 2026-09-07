@@ -1,8 +1,8 @@
-import { seedSyntheticRuntimeConfig } from "../../unit/fixtures/operator-command-fixtures.js";
+import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
-import { sequentialIdFactory } from "../../unit/fixtures/phase1f-run-fixtures.js";
+import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The seeded BFF (ref frontend-backend-integration §7.2, test-only adapter #2): the REAL production

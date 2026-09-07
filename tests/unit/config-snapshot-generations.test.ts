@@ -16,7 +16,7 @@ import {
 import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../src/domain/config/snapshot.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import { AuthorityBootStore } from "../../src/infra/sqlite/authority-boot.js";
-import { HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
+import { HASH_B, NOW, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 
 const roots: string[] = [];
 const SNAPSHOT_ID = UUID_4;

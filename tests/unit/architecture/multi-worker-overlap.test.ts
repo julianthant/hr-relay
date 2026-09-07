@@ -1,4 +1,4 @@
-import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 /**
  * D182 — ref execution-and-sessions §7.1 rows C1–C4: the OVERLAP half of the 2j concurrency matrix.
  *
@@ -23,7 +23,7 @@ import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
  * called N times with distinct `workerId`s over one database — which is exactly
  * the shape ref execution-and-sessions §2 says a future phase spawns.
  */
-import { fixtureDuoCeremonyGates } from "../fixtures/duo-ceremony-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../../helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { runWorkerLoop, type WorkerLoopDependencies } from "../../../src/core/worker-loop.js";
@@ -32,7 +32,7 @@ import { WorkerIdSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
 import type { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
-import { sequentialIdFactory, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
+import { sequentialIdFactory, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import {
   happySessionHarness,
   healthyCrmDriver,
@@ -44,7 +44,7 @@ import {
   sessionFactoryHarness,
   type AuthorityHarness,
   type SessionFactoryHarness,
-} from "../fixtures/phase1f-executor-harness.js";
+} from "../../helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const ACTIVE_STATES = new Set(["claimed", "validating", "running"]);

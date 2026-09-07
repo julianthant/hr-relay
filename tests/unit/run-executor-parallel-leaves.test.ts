@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D315 — a parallel entry's leaves checkpoint independently, so a failed leaf
  * retries on the item's next attempt while its successful sibling replays.
@@ -13,8 +13,8 @@ import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../src/core/run-executor.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
-import { UUID_5 } from "./fixtures/phase1c-contract-fixtures.js";
-import { RUN_ID, WORKER_ID, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { UUID_5 } from "../fixtures/phase1c-contract-fixtures.js";
+import { RUN_ID, WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   ManualScheduler,
   healthyCrmDriver,
@@ -26,7 +26,7 @@ import {
   sessionFactoryHarness,
   sessionManagerFor,
   type AuthorityHarness,
-} from "./fixtures/phase1f-executor-harness.js";
+} from "../helpers/phase1f-executor-harness.js";
 import {
   compileFixtureWorkflow,
   parallelLeavesWorkflow,

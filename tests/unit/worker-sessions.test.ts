@@ -1,4 +1,4 @@
-import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
@@ -20,7 +20,7 @@ import type {
 } from "../../src/core/worker-sessions.js";
 import type { RunBrowserScreenshotCapture } from "../../src/base/diagnostics.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
-import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "./fixtures/phase1f-executor-harness.js";
+import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../helpers/phase1f-executor-harness.js";
 
 const WORKER_ID = WorkerIdSchema.parse("worker-session-fixture");
 const WORKFLOW_ID = WorkflowIdSchema.parse("person-lookup");

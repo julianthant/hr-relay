@@ -19,11 +19,11 @@ import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./archive-fixtures.js";
-import { HASH_B, UUID_4, NOW } from "./phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
-import { ManualScheduler, recordingEmitter, recordingLogger } from "./phase1f-executor-harness.js";
-import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "./operator-command-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";
+import { HASH_B, UUID_4, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
+import { ManualScheduler, recordingEmitter, recordingLogger } from "../../helpers/phase1f-executor-harness.js";
+import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../../fixtures/operator-command-fixtures.js";
 import { writeFixtureDescriptor, createWriteFixtureWorld, buildWriteFixtureRegistry, writeFixtureSessions,
   writeFixtureSessionManager, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_EID } from "./write-sequencer-fixtures.js";
 

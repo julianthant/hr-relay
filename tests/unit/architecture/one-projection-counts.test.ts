@@ -42,7 +42,7 @@ import ts from "typescript";
 import { afterEach, describe, it } from "vitest";
 import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
 import { ledgerDirectory, ledgerFilePath } from "../../../src/infra/ledger/ledger-projector.js";
-import { IDEMPOTENCY_KEY, LEDGER_PAYLOAD } from "../fixtures/phase1c-contract-fixtures.js";
+import { IDEMPOTENCY_KEY, LEDGER_PAYLOAD } from "../../fixtures/phase1c-contract-fixtures.js";
 import {
   claimEventOf,
   failureRecordOf,

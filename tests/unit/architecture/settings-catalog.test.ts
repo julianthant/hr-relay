@@ -16,10 +16,11 @@ import {
   SECRET_FAMILY_SPECS,
   SECRET_FILE_SPECS,
   SECRET_SPECS,
-  TEST_TARGET_SECRET_SPECS,
 } from "../../../src/domain/secrets.js";
 import { RUNTIME_DEPENDENCY_REGISTRY } from "../../../src/domain/runtime-dependencies.js";
 import {
+  MIGRATED_SETTINGS_ENVIRONMENT_KEYS,
+  RETIRED_TEST_TARGET_ENVIRONMENT_KEYS,
   SETTINGS_CATALOG,
   SettingsCatalogRowSchema,
   SettingsCatalogSchema,
@@ -97,10 +98,10 @@ function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
     || (row.sourceClass === "runtime-isolation" && row.defaultKind === "contract")
     || row.sourceClass === "provider-env"
   ).map(({ key }) => key);
-  // next-start canaries are retained by the dry-run composition root; the
-  // protected runtime reader owns the next-use presence/readback surface.
+  // D341 moved the next-start canaries out of the catalog entirely; the
+  // protected runtime reader owns the whole next-use presence/readback surface.
   const protectedReadback = rows.filter((row) =>
-    row.sourceClass === "protected-store" && row.restartScope === "next-use"
+    row.sourceClass === "protected-store"
   ).map(({ key }) => key);
   const dependencySecretNames = RUNTIME_DEPENDENCY_REGISTRY.dependencies
     .flatMap(({ secretNames }) => secretNames ?? []);
@@ -113,12 +114,10 @@ function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
     { declaration: "providerBudget", keys: Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS).map((key) => `providers.${key}`) },
     { declaration: "optionalSecret", keys: SECRET_SPECS.map(({ name }) => name) },
     { declaration: "requireActivityPersonPseudonymDomain", keys: [ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.name] },
-    { declaration: "optionalTestTargetSecret", keys: TEST_TARGET_SECRET_SPECS.map(({ name }) => name) },
     { declaration: "optionalSecretFamily", keys: SECRET_FAMILY_SPECS.map(({ name }) => name) },
     { declaration: "providerModelChain", keys: SECRET_FAMILY_SPECS.map(({ modelsConfigKey }) => `providers.${modelsConfigKey}.models`) },
     { declaration: "requireSecretFile", keys: SECRET_FILE_SPECS.flatMap(({ name, configPath }) => [name, configPath]) },
     { declaration: "RUNTIME_DEPENDENCY_REGISTRY", keys: dependencySecretNames },
-    { declaration: "createProductionDryRunScenarioRuntime", keys: TEST_TARGET_SECRET_SPECS.map(({ name }) => name) },
     { declaration: "establishHostPrimaryDisplay", keys: rows.filter(({ sourceClass }) => sourceClass === "derived-host").map(({ key }) => key) },
   ];
 }
@@ -192,7 +191,7 @@ describe("D331 settings catalog", () => {
     assert.deepEqual(coverageViolations(leaves), []);
     assert.deepEqual(coverageViolations([...leaves, "uncatalogued.setting"]), ["uncatalogued.setting"]);
     assert.deepEqual(coverageViolations(leaves.filter((leaf) => leaf !== "actor.label")), ["actor.label"]);
-    const external = [...SECRET_SPECS, ...TEST_TARGET_SECRET_SPECS, ...SECRET_FAMILY_SPECS, ...SECRET_FILE_SPECS]
+    const external = [...SECRET_SPECS, ...SECRET_FAMILY_SPECS, ...SECRET_FILE_SPECS]
       .map((spec) => spec.name);
     assert.deepEqual(SETTINGS_CATALOG.filter((row) => !["ordinary-settings", "runtime-isolation", "derived-host"].includes(row.sourceClass))
       .map((row) => row.key).filter((key) => key !== "activityPersonPseudonym").sort(),
@@ -213,13 +212,13 @@ describe("D331 settings catalog", () => {
     assert.equal(SettingsOverrideSchema.safeParse({ urls: { kuali: { prod: { entry: "https://example.invalid" } } } }).success, false);
     assert.throws(() => ordinarySettingsObject("actor", z.strictObject({ id: z.string() })), /actor.label is missing/u);
   });
-  it("P1 pins the 88-row closed registry and refuses a missing or duplicated row", () => {
-    assert.equal(SETTINGS_CATALOG.length, 88);
+  it("P1 pins the 86-row closed registry and refuses a missing or duplicated row", () => {
+    assert.equal(SETTINGS_CATALOG.length, 86);
     assert.deepEqual(Object.fromEntries([
       "ordinary-settings", "protected-store", "provider-env", "derived-host", "runtime-isolation",
     ].map((sourceClass) => [sourceClass, SETTINGS_CATALOG.filter((row) => row.sourceClass === sourceClass).length])), {
       "ordinary-settings": 59,
-      "protected-store": 7,
+      "protected-store": 5,
       "provider-env": 5,
       "derived-host": 1,
       "runtime-isolation": 16,
@@ -233,7 +232,7 @@ describe("D331 settings catalog", () => {
 
   it("P2 refuses every protected, provider and observed value in the ordinary document", () => {
     const protectedRows = SETTINGS_CATALOG.filter((row) => row.sourceClass === "protected-store");
-    assert.equal(protectedRows.length, 7);
+    assert.equal(protectedRows.length, 5);
     for (const row of SETTINGS_CATALOG.filter((row) => row.sensitivity !== "ordinary")) {
       const parsed = SettingsCatalogRowSchema.safeParse({ ...row, sourceClass: "ordinary-settings" });
       assert.equal(parsed.success, false, row.key);
@@ -258,12 +257,21 @@ describe("D331 settings catalog", () => {
     ]);
   });
 
-  it("P33 assigns protected credentials next-use and canaries next-start", () => {
+  it("P33 assigns protected credentials next-use; D341 retired the next-start canary rows and their env keys", () => {
     for (const name of ["ucpathUserId", "ucpathPassword", "timekeeperName", "sharepointOnboardingRosterUrl", "activityPersonPseudonym"]) {
       assert.equal(settingsCatalogRow(name).restartScope, "next-use", name);
     }
     for (const name of ["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]) {
-      assert.equal(settingsCatalogRow(name).restartScope, "next-start", name);
+      assert.throws(() => settingsCatalogRow(name), new RegExp(`settings catalog has no key ${name}`, "u"));
+    }
+    assert.equal(SETTINGS_CATALOG.some((row) => row.restartScope === "next-start"), false);
+    assert.deepEqual([...RETIRED_TEST_TARGET_ENVIRONMENT_KEYS], [
+      "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
+      "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
+    ]);
+    for (const key of RETIRED_TEST_TARGET_ENVIRONMENT_KEYS) {
+      assert.equal(MIGRATED_SETTINGS_ENVIRONMENT_KEYS.includes(key), true, key);
+      assert.equal(SETTINGS_CATALOG.some((row) => row.currentSource.some((source) => source.kind === "env" && (source.name as string) === key)), false, key);
     }
     for (const row of SETTINGS_CATALOG.filter((row) => row.sourceClass === "ordinary-settings")) {
       assert.equal(row.restartScope, "generation", row.key);

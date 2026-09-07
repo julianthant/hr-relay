@@ -10,7 +10,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { DryRunScenarioResultSchema } from "../../src/domain/trust/dry-run-scenario-result.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "../../src/infra/sqlite/storage-records.js";
-import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 
 const NOW = "2026-08-25T12:00:00.000Z";
 const HASH = "a".repeat(64);

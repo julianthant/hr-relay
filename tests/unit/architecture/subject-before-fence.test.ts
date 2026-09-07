@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref guards-and-tests §3.9 — subject binding before the fence (ref write-safety beat ③, ref execution-and-sessions §6.1).
  *
@@ -34,8 +34,8 @@ import { EidSchema, taskId, TaskIdSchema } from "../../../src/domain/ids.js";
 import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { fixtureDescriptor } from "./helpers/descriptor-fixtures.js";
-import { ManualScheduler, recordingEmitter, recordingLogger } from "../fixtures/phase1f-executor-harness.js";
-import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { ManualScheduler, recordingEmitter, recordingLogger } from "../../helpers/phase1f-executor-harness.js";
+import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import {
   absentProbeEvidence,
   buildWriteFixtureRegistry,

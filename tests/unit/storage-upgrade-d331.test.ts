@@ -10,7 +10,8 @@ import { manualClock } from "../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { SettingsCommandRequestSchema, ProtectedSettingsCommandRequestSchema, markSettingsCommand, deriveSettingsCommandFingerprint } from "../../src/domain/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../src/domain/config/settings.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH, protectedSettingsReadback } from "../../src/domain/config/protected-settings.js";
+// D341: D331 sources belong to the LEGACY protected family; the fixture writes what the pinned reader accepts.
+import { LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, RETIRED_TEST_TARGET_PROTECTED_NAMES, legacyProtectedSettingsReadback } from "../../src/domain/config/protected-settings-legacy.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import { createCredentialStore } from "../../src/infra/config/credential-store.js";
@@ -23,18 +24,20 @@ const now = "2026-09-06T12:00:00.000Z";
 const clock = manualClock(new Date(now));
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 type Target = "ordinary" | "protected";
-function fixture(target: Target, committed: boolean) {
+function fixture(target: Target, committed: boolean, protectedEntries: Record<string, { set: string }> = { ucpathPassword: { set: "synthetic-d331-private-value" } }) {
   const root = mkdtempSync(join(tmpdir(), "upgrade-d331-")); roots.push(root);
   const directory = join(root, "settings"); mkdirSync(directory, { mode: 0o700 });
   const path = join(root, "state.db"); const ordinaryPath = join(directory, "settings.json");
   const envelope = { commandId: randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "settings-surface", family: "settings", target: { expectedRevision: 1 } };
   const patch = { "concurrency.defaultWorkers": { set: 3 } };
   const request = target === "ordinary" ? SettingsCommandRequestSchema.parse({ ...envelope, type: "apply-settings", payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } })
-    : ProtectedSettingsCommandRequestSchema.parse({ ...envelope, type: "apply-protected-settings", payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: { set: "synthetic-d331-private-value" } } } });
+    : ProtectedSettingsCommandRequestSchema.parse({ ...envelope, type: "apply-protected-settings", payload: { protectedSchemaHash: LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(),
+      // The live command grammar no longer names retired entries; the D331 file itself (below) still may.
+      entries: Object.fromEntries(Object.entries(protectedEntries).filter(([name]) => !(RETIRED_TEST_TARGET_PROTECTED_NAMES as readonly string[]).includes(name))) } });
   const commandFingerprint = deriveSettingsCommandFingerprint(request);
   const publication = request.type === "apply-settings"
     ? createSettingsFileAuthority({ path: ordinaryPath, validateCandidate: () => {} }).apply({ commandId: request.commandId, commandFingerprint, expectedRevision: 1, ...request.payload })
-    : createProtectedSettingsFileAuthority({ path: ordinaryPath, assertWriteIdAvailable: () => {} }).apply({ commandId: request.commandId, commandFingerprint, expectedRevision: 1, ...request.payload, updatedAt: now });
+    : createProtectedSettingsFileAuthority({ path: ordinaryPath, assertWriteIdAvailable: () => {} }).apply({ commandId: request.commandId, commandFingerprint, expectedRevision: 1, ...request.payload, entries: protectedEntries, updatedAt: now });
   assert.equal(publication.state, "applied");
   if (publication.state !== "applied") throw new Error("D331 fixture failed");
   const prepared = readFileSync(join(directory, "prepare.json"));
@@ -51,7 +54,7 @@ function fixture(target: Target, committed: boolean) {
       const affected = { family: target === "ordinary" ? "settings" : "protected-settings", revision: 2 };
       const result = "settingsFingerprint" in record
         ? { state: "applied", commandId: request.commandId, affectedTargets: [affected], restartRequired: true, settingsRevision: 2, settingsFingerprint: record.settingsFingerprint }
-        : { state: "applied", commandId: request.commandId, affectedTargets: [affected], restartRequired: false, ...protectedSettingsReadback(record) };
+        : { state: "applied", commandId: request.commandId, affectedTargets: [affected], restartRequired: false, ...legacyProtectedSettingsReadback(record) };
       const audit = { auditId, request: marked, result, completedAt: now, versionChanges: [{ target: affected, before: 1, after: 2 }], affectedDependencyIds: [] };
       db.prepare("INSERT INTO commands VALUES (?,?,?,?)").run(request.commandId, "settings", canonicalJsonStringify(marked), now);
       db.prepare("INSERT INTO command_audits VALUES (?,?,?,?)").run(auditId, request.commandId, canonicalJsonStringify(audit), now);
@@ -64,6 +67,27 @@ function fixture(target: Target, committed: boolean) {
   return { root, directory, path, prepared, snapshot, targetPath: join(directory, target === "ordinary" ? "settings.json" : "protected.json"),
     input: { stateRoot: root, processLockRoot: join(root, "locks"), environmentFile: join(root, ".env"), plan: false } };
 }
+
+describe("D341 retired test-target entries in D331 sources", () => {
+  it.each([...RETIRED_TEST_TARGET_PROTECTED_NAMES])("refuses %s by name before any value is copied, changing nothing", async (name) => {
+    const value = name === "personLookupCanaryEid" ? "10000001" : "4000001";
+    const f = fixture("protected", true, { ucpathPassword: { set: "synthetic-d331-private-value" }, [name]: { set: value } });
+    const before = f.snapshot(); const databaseBytes = readFileSync(f.path);
+    await backupStoppedAuthority(f.root, clock);
+    for (const plan of [true, false]) {
+      await assert.rejects(upgradeStorage({ ...f.input, plan }, clock), (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        assert.match(message, new RegExp(`retired-test-target \\{ key: ${name} \\}`, "u"));
+        assert.match(message, /config\/test-data\.local\.json \(D341\)/u);
+        assert.equal(message.includes(value), false, "the refusal names the key, never the value");
+        return true;
+      });
+    }
+    assert.deepEqual(f.snapshot(), before, "D331 bytes untouched");
+    assert.deepEqual(readFileSync(f.path), databaseBytes, "database untouched");
+    assert.equal(readdirSync(f.root).includes("credentials"), false, "no credential store was created");
+  });
+});
 
 describe("D331 interrupted sources through stopped upgrade", () => {
   for (const target of ["ordinary", "protected"] as const) {

@@ -25,7 +25,7 @@ import {
   ledgerFilePath,
   ledgerLineForOutbox,
 } from "../../../src/infra/ledger/index.js";
-import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
+import { NOW } from "../../fixtures/phase1c-contract-fixtures.js";
 import { ledgerCommitFixture } from "../fixtures/ledger-projection-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 

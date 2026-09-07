@@ -113,7 +113,7 @@ import {
   compositionQueuedRun,
   compositionSweepIdempotencyKey,
   type CompositionHarness,
-} from "../../../unit/fixtures/separations-composition-fixtures.js";
+} from "../../../helpers/separations-composition-fixtures.js";
 import { separationsDescriptor } from "../../../helpers/registered-workflows.js";
 
 const FAILURES: string[] = [];

@@ -35,8 +35,8 @@ import {
   ARCHIVED_RUN_WITH_SECTIONS,
   VERSION_PLAN_ROW,
   VERSION_BUMP_APPLICATION,
-} from "../fixtures/archive-fixtures.js";
-import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
+} from "../../fixtures/archive-fixtures.js";
+import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";
 
 const ARTIFACT_ID = "00000000-0000-4000-8000-000000000917";
 const FOREIGN_ID = "00000000-0000-4000-8000-000000000919";

@@ -1,4 +1,4 @@
-import { testRunService, testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunService, testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 import { sweepWorkerClaims } from "../../src/core/run-record-service.js";
 /**
  * D118 (ref execution-and-sessions §3): an expired claim is not ordinary requeue authority. An
@@ -22,7 +22,7 @@ import {
   UUID_7,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
-} from "./fixtures/phase1c-contract-fixtures.js";
+} from "../fixtures/phase1c-contract-fixtures.js";
 
 const OBSERVED_PRESENT_WRITE_INTENT = {
   writeIntentId: UUID_7,
@@ -48,7 +48,7 @@ import {
   RUN_ID,
   WORKER_ID,
   WORKFLOW_ID,
-} from "./fixtures/phase1f-run-fixtures.js";
+} from "../fixtures/phase1f-run-fixtures.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];

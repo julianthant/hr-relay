@@ -1,10 +1,10 @@
-import { testWorkerPorts } from "./fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref execution-and-sessions §3 worker loop: claim → execute → next, one active item, heartbeat
  * renewal during long operations, claim-loss abort, and worker-stop session
  * closure — plus the Phase-1 `WorkerRuntimeExecutor` seam.
  */
-import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers";
 import { afterEach, describe, it } from "vitest";
@@ -20,8 +20,8 @@ import type { WorkerRuntimeExecutor } from "../../src/core/command-kernel.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
-import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
-import { UUID_5, UUID_7, NOW } from "./fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
+import { UUID_5, UUID_7, NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   EXECUTOR_WORKER_ID,
   happySessionHarness,
@@ -34,7 +34,7 @@ import {
   recordingLogger,
   sessionFactoryHarness,
   type SessionFactoryHarness,
-} from "./fixtures/phase1f-executor-harness.js";
+} from "../helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const disposers: (() => void)[] = [];

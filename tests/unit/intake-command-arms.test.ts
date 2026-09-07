@@ -47,9 +47,9 @@ import {
   UUID_2,
   UUID_3,
   UUID_7,
-} from "./fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
+} from "../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 import {
   INTAKE_FIXTURE_WORKFLOW_ID,
   INTAKE_SERIAL_WORKFLOW_ID,

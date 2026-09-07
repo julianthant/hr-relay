@@ -1,7 +1,7 @@
-import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { composeDashboardRuntime } from "../../src/server/dashboard/compose.js";
-import { CONFIG_SNAPSHOT } from "./fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT } from "../fixtures/phase1c-contract-fixtures.js";
 import { DeletedRunRecordSchema } from "../../src/domain/run/deleted-run.js";
 import { SETTINGS_SCHEMA_HASH as HISTORICAL_HASH, derivePersistedSettingsFingerprint as historicalFingerprint, deriveSettingsPatchFingerprint as historicalPatchFingerprint } from "../../src/infra/compat/pre-floor-settings.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
-import { GATE_RESULT } from "./fixtures/phase1c-contract-fixtures.js";
+import { GATE_RESULT } from "../fixtures/phase1c-contract-fixtures.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";

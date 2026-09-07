@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "./run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * The separations chunk-4 UCPath transaction harness.
  *
@@ -17,44 +17,44 @@ import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { manualClock, type TestClock } from "../../../src/domain/clock.js";
-import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
-import type { WriteSequencerContext } from "../../../src/core/run-executor.js";
+import { manualClock, type TestClock } from "../../src/domain/clock.js";
+import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
+import type { WriteSequencerContext } from "../../src/core/run-executor.js";
 import {
   createWriteSequencer,
   type ProductionWriteSequencer,
-} from "../../../src/core/write-sequencer.js";
-import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../src/core/worker-sessions.js";
+} from "../../src/core/write-sequencer.js";
+import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../src/core/worker-sessions.js";
 import {
   EidSchema,
   FingerprintSchema,
   IsoInstantSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
-} from "../../../src/domain/ids.js";
-import type { RunRecord } from "../../../src/domain/run/record.js";
-import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
-import type { RuntimeFlowNode } from "../../../src/domain/workflow/graph.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+} from "../../src/domain/ids.js";
+import type { RunRecord } from "../../src/domain/run/record.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import type { RuntimeFlowNode } from "../../src/domain/workflow/graph.js";
+import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   createDeterministicUcpathSmartHrWorldDriver,
   createUcpathSmartHrFakeWorld,
   type UcpathSmartHrFakeWorld,
-} from "../../../src/stores/ucpath/driver/smart-hr-fake.js";
+} from "../../src/stores/ucpath/driver/smart-hr-fake.js";
 import type {
   UcpathPendingTransactionSet,
   UcpathSsSmartHrSettlementDiagnostic,
   UcpathTransactionRow,
-} from "../../../src/domain/ui/ucpath-smart-hr-termination.js";
-import { isUcpathTerminationInProgress } from "../../../src/domain/ui/ucpath-smart-hr-termination.js";
-import { ucpathPendingSweepIdempotencyKey } from "../../../src/domain/contracts/ucpath/delete-pending-terminations.js";
-import { taskStoreRegistry } from "../../../src/stores/index.js";
+} from "../../src/domain/ui/ucpath-smart-hr-termination.js";
+import { isUcpathTerminationInProgress } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
+import { ucpathPendingSweepIdempotencyKey } from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
+import { taskStoreRegistry } from "../../src/stores/index.js";
 import {
   SeparationsUcpathTerminationCanonicalInput,
   SeparationsUcpathTerminationInput,
-} from "../../../src/workflows/separations/ucpath-transaction/workflow.js";
-import { separationsUcpathTerminationDescriptor } from "../../helpers/registered-workflows.js";
-import { UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
+} from "../../src/workflows/separations/ucpath-transaction/workflow.js";
+import { separationsUcpathTerminationDescriptor } from "./registered-workflows.js";
+import { UUID_2, UUID_3, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
   ManualScheduler,
@@ -62,7 +62,7 @@ import {
   recordingLogger,
   sessionFactoryHarness,
 } from "./phase1f-executor-harness.js";
-import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 
 export const TERMINATION_EID = EidSchema.parse("10800000");
 export const TERMINATION_NAME = "Deterministic Person";

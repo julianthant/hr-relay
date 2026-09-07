@@ -10,7 +10,7 @@ import { describe, it } from "vitest";
 import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema } from "../../src/domain/ids.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
-import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 
 const ACTOR = ActorIdSchema.parse("local-operator");
 const SENSITIVE_FACT_VALUE = "06/19/2026-SENSITIVE-SEPARATION-DATE";

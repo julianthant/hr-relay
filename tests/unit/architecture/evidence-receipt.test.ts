@@ -29,7 +29,7 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { BUILD_MANIFEST } from "../../../src/domain/workflow/build-manifest.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
-import { seedPersonLookupExitRun } from "../fixtures/receipt-run-fixtures.js";
+import { seedPersonLookupExitRun } from "../../fixtures/receipt-run-fixtures.js";
 import {
   workflowProjections,
   workflowTerminalResultExecution,
@@ -57,7 +57,7 @@ import {
   GATE_RESOLVED_BY,
   identityGateReceiptEvidence,
   kualiReceiptEvidence,
-} from "../fixtures/receipt-run-fixtures.js";
+} from "../../fixtures/receipt-run-fixtures.js";
 import {
   GATE_DECISIONS,
   findGateDecision,

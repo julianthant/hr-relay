@@ -15,7 +15,7 @@ import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { ProjectionDegradedError } from "../../../src/server/failures.js";
 import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
-import { HASH_A, HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, HASH_B, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 import {
   APP_VERSION,
   atDayOffset,

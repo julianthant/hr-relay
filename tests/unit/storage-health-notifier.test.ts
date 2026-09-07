@@ -24,8 +24,8 @@ import {
   backupHealthDiagnosticFingerprint,
   createBackupHealthNotifier,
 } from "../../src/services/notifications/storage-health.js";
-import { NOW } from "./fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

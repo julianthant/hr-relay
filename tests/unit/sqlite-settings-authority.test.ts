@@ -23,8 +23,8 @@ import { FingerprintSchema } from "../../src/domain/ids.js";
 
 import { RunRecordService } from "../../src/core/run-record-service.js";
 import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
-import { seedSyntheticRuntimeConfig } from "./fixtures/operator-command-fixtures.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
+import { seedSyntheticRuntimeConfig } from "../fixtures/operator-command-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 
 const roots: string[] = [];

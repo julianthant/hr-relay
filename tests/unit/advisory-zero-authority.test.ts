@@ -33,7 +33,7 @@ import {
   producedOutcome,
   producedTriageEnvelope,
 } from "./fixtures/advisory-fixtures.js";
-import { QUEUED_RUN, RUN_ID } from "./fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID } from "../fixtures/phase1f-run-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

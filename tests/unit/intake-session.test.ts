@@ -15,7 +15,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { IntakeSessionSchema, type IntakeSession } from "../../src/domain/intake/session.js";
 import { IntakeManifestWireSchema, IntakeSessionWireSchema } from "../../src/domain/intake/wire.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { HASH_A, LATER, NOW, UUID_2, UUID_3, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, LATER, NOW, UUID_2, UUID_3, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

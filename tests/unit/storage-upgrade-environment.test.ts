@@ -30,6 +30,9 @@ const bindings = {
   UCPATH_USER_ID: "synthetic-user", UCPATH_PASSWORD: "synthetic-private-password", TIMEKEEPER_NAME: "Synthetic Keeper",
   ONBOARDING_ROSTER_URL: "https://fixture.invalid/private-roster", HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY: "ab".repeat(32),
   HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION: "activity-person-fixture",
+};
+// D341: the two test-target canary keys are retired from the env import; a stale `.env` still naming one is refused by name (proved below).
+const RETIRED_TEST_TARGET_ENV = {
   HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: "12345678", HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID: "10123456",
 };
 function fixture(body: string) {
@@ -38,14 +41,14 @@ function fixture(body: string) {
   return { root, environmentFile, input: { stateRoot: root, processLockRoot: join(root, "locks"), environmentFile, plan: false } };
 }
 describe("D336 total migration environment admission", () => {
-  it("imports every one of 45 declared inputs, names all 54 cleanup keys, and excludes retired/provider values", async () => {
-    assert.deepEqual(Object.keys(bindings).sort(), [...MIGRATED_SETTINGS_ENVIRONMENT_KEYS]);
+  it("imports every declared input, names every cleanup key, and excludes retired/provider values", async () => {
+    assert.deepEqual([...Object.keys(bindings), ...Object.keys(RETIRED_TEST_TARGET_ENV)].sort(), [...MIGRATED_SETTINGS_ENVIRONMENT_KEYS]);
     const retired = { I9_USER_ID: "synthetic-retired-id", I9_PASSWORD: "synthetic-retired-password", TELEGRAM_BOT_TOKEN: "synthetic-retired-token", TELEGRAM_CHAT_ID: "synthetic-retired-chat" };
     const body = Object.entries({ ...bindings, ...retired, GEMINI_API_KEY: "synthetic-provider-never-imported" }).map(([key, value]) => `${key}=${value}`).join("\n") + "\n";
     const f = fixture(body); const before = readdirSync(f.root);
     const plan = await upgradeStorage({ ...f.input, plan: true }, clock);
-    assert.deepEqual(plan.envKeysToRemove, [...MIGRATED_SETTINGS_ENVIRONMENT_KEYS, ...Object.keys(retired)].sort());
-    assert.equal(plan.importedKeys.length, 44); assert.deepEqual(readdirSync(f.root), before);
+    assert.deepEqual(plan.envKeysToRemove, [...Object.keys(bindings), ...Object.keys(retired)].sort());
+    assert.equal(plan.importedKeys.length, 42); assert.deepEqual(readdirSync(f.root), before);
     const applied = await upgradeStorage(f.input, clock); assert.deepEqual(applied.importedKeys, plan.importedKeys);
     const database = AuthorityDatabase.open({ path: join(f.root, "state.db"), busyTimeoutMs: 500, migrationOwner: "all-env-proof" }, clock);
     try {
@@ -65,11 +68,24 @@ describe("D336 total migration environment admission", () => {
     assert.deepEqual(Object.fromEntries(Object.entries(credentials.entries).map(([key, entry]) => [key, entry?.value])), {
       ucpathUserId: bindings.UCPATH_USER_ID, ucpathPassword: bindings.UCPATH_PASSWORD, timekeeperName: bindings.TIMEKEEPER_NAME,
       sharepointOnboardingRosterUrl: bindings.ONBOARDING_ROSTER_URL, activityPersonPseudonym: { keyHex: bindings.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY, keyGeneration: bindings.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION },
-      separationsKualiFinalizationCanaryDocumentNumber: bindings.HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER, personLookupCanaryEid: bindings.HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID,
     });
     assert.equal(readFileSync(f.environmentFile, "utf8"), body);
     for (const value of Object.values(retired)) assert.equal(JSON.stringify(credentials).includes(value), false);
     for (const value of [...Object.values(retired), bindings.UCPATH_PASSWORD, bindings.UCPATH_USER_ID, "synthetic-provider-never-imported"]) assert.equal(readFileSync(join(f.root, "state.db")).includes(Buffer.from(value)), false);
+  });
+  it.each(Object.entries(RETIRED_TEST_TARGET_ENV))("refuses the retired test-target env key %s by name before creating authority (D341)", async (key, value) => {
+    const body = Object.entries({ ...bindings, [key]: value }).map(([name, entry]) => `${name}=${entry}`).join("\n") + "\n";
+    const f = fixture(body); const before = readdirSync(f.root);
+    for (const input of [{ ...f.input, plan: true }, f.input]) {
+      await assert.rejects(upgradeStorage(input, clock), (error: unknown) => {
+        const diagnostic = String(error);
+        assert.match(diagnostic, new RegExp(`retired-test-target-env \\{ key: ${key} \\}`, "u"));
+        assert.match(diagnostic, /config\/test-data\.local\.json \(D341\)/u);
+        assert.equal(diagnostic.includes(value), false);
+        return true;
+      });
+    }
+    assert.deepEqual(readdirSync(f.root), before); assert.equal(readFileSync(f.environmentFile, "utf8"), body);
   });
   it.each(["UNREGISTERED_SETTING=1", "I9_USER_ID_EXTRA=synthetic-private", "TELEGRAM_TOKEN=synthetic-private", "I9_USER_ID=one\nI9_USER_ID=two", "TELEGRAM_BOT_TOKEN=\"unterminated", "HRAUTO_DEFAULT_WORKERS=abc", "HRAUTO_KUALI_TEST_URL=not-a-url", "HRAUTO_DEFAULT_WORKERS=2\nHRAUTO_DEFAULT_WORKERS=3", "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY=" + "ab".repeat(32)])("refuses invalid migration input before creating authority (case %#)", async (body) => {
     const f = fixture(body); const before = readdirSync(f.root);

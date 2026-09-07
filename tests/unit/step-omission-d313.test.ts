@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D313 — the run modal is the complete omission authority.
  *
@@ -33,7 +33,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentatio
 import { planStepOmissions, type StepOmissionDeclaration } from "../../src/domain/workflow/step-omission.js";
 import { StartStepOmissionRefusedError, resolveStartStepOmissions, stepOmissionGraphView } from "../../src/services/start/step-selection.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
-import { WORKER_ID, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   ManualScheduler,
   healthyCrmDriver,
@@ -44,7 +44,7 @@ import {
   recordingLogger,
   sessionFactoryHarness,
   sessionManagerFor,
-} from "./fixtures/phase1f-executor-harness.js";
+} from "../helpers/phase1f-executor-harness.js";
 import { compileFixtureWorkflow } from "./fixtures/workflow-definition-fixtures.js";
 
 const disposers: (() => void)[] = [];

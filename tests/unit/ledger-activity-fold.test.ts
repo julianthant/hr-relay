@@ -25,7 +25,7 @@ import { localDatePart } from "../../src/domain/clock.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { ledgerDirectory, ledgerFilePath } from "../../src/infra/ledger/ledger-projector.js";
 import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
-import { IDEMPOTENCY_KEY, LEDGER_PAYLOAD } from "./fixtures/phase1c-contract-fixtures.js";
+import { IDEMPOTENCY_KEY, LEDGER_PAYLOAD } from "../fixtures/phase1c-contract-fixtures.js";
 
 const roots: string[] = [];
 

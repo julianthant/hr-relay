@@ -3,12 +3,12 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS } from "../../../src/domain/config/catalog.js";
+import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../../../src/domain/config/catalog.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import { fixtureDuoCeremonyGates } from "../fixtures/duo-ceremony-fixtures.js";
-import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../../helpers/duo-ceremony-fixtures.js";
+import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { composeDashboardRuntime } from "../../../src/server/dashboard/compose.js";
 import { composeWorkerRuntime } from "../../../src/server/worker/compose.js";
@@ -84,8 +84,12 @@ describe("composition-reads-no-environment-leaf (D331)", () => {
     writeFileSync(join(root, "package.json"), '{"version":"0.1.0"}');
     const hostile = environment(key);
     const common = { isolation: rebuildRuntimeIsolation, repoRoot: root, env: hostile.env, clock };
-    const refuse = (error: unknown): boolean => error instanceof Error && error.message ===
-      `migrated environment key ${key} is refused; set it in Settings, then remove it`;
+    // D341: the two retired canary keys are refused by name toward the private test-data file; every
+    // other migrated key still points at Settings. Both refusals happen before any value is read.
+    const expected = (RETIRED_TEST_TARGET_ENVIRONMENT_KEYS as readonly string[]).includes(key)
+      ? `retired test-target environment key ${key} is refused; test-target inputs live in config/test-data.local.json (D341), so remove it`
+      : `migrated environment key ${key} is refused; set it in Settings, then remove it`;
+    const refuse = (error: unknown): boolean => error instanceof Error && error.message === expected;
     await assert.rejects(composeDashboardRuntime({ ...common, backendPortOverride: 0, frontendPortOverride: 0 }), refuse);
     await assert.rejects(composeWorkerRuntime({ ...common, args: ["person-lookup", "--pool-index", "1", "--drain"] }), refuse);
     await assert.rejects(composeDryRunScenarioCommand({ ...common, args: ["separations", "--subject", "finalization-canary"],

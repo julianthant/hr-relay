@@ -22,7 +22,7 @@ import { buildRunSection } from "../../src/server/dashboard/queries/run-detail.j
 import {
   KUALI_EID,
   kualiReceiptEvidence,
-} from "./fixtures/receipt-run-fixtures.js";
+} from "../fixtures/receipt-run-fixtures.js";
 import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
 import {
   makeWorld,

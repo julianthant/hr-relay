@@ -23,7 +23,7 @@ import {
   prepareArchivedCaptureLease,
 } from "../../../src/server/dashboard/queries/archive.js";
 import type { AuthorityRepositories } from "../../../src/infra/sqlite/authority-database.js";
-import { ARCHIVED_RUN_WITH_SECTIONS } from "../fixtures/archive-fixtures.js";
+import { ARCHIVED_RUN_WITH_SECTIONS } from "../../fixtures/archive-fixtures.js";
 
 const ARTIFACT_ID = "00000000-0000-4000-8000-000000000917";
 const BUNDLE_ID = "00000000-0000-4000-8000-000000000918";

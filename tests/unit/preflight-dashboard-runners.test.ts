@@ -16,7 +16,7 @@ import {
 import { createDashboardPreflightRunners } from "../../src/server/preflight/dashboard-runners.js";
 import type { probeOwnedViteServer } from "../../src/infra/providers/local-vite-probe.js";
 import { PreflightCheckIdSchema } from "../../src/domain/runtime-dependencies.js";
-import { NOW } from "./fixtures/phase1c-contract-fixtures.js";
+import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
 
 const roots: string[] = [];
 const servers: Server[] = [];

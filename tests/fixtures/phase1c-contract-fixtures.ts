@@ -1,10 +1,10 @@
-import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
-import { ConfigSchema } from "../../../src/domain/config/schema.js";
-import { sourceColumnId } from "../../../src/domain/intake/mapping.js";
+import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
+import { ConfigSchema } from "../../src/domain/config/schema.js";
+import { sourceColumnId } from "../../src/domain/intake/mapping.js";
 import {
   deriveIdempotencyKeyDigest,
   deriveWriteBindingProofDigest,
-} from "../../../src/domain/write-safety.js";
+} from "../../src/domain/write-safety.js";
 
 export const UUID_1 = "11111111-1111-4111-8111-111111111111";
 export const UUID_2 = "22222222-2222-4222-8222-222222222222";

@@ -24,8 +24,8 @@ import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { StartStepOmissionRefusedError } from "../../../src/services/start/step-selection.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
-import { HASH_A, NOW, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { HASH_A, NOW, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import {
   omissionAssertingDescriptor,
   omissionCascadingDescriptor,

@@ -27,13 +27,13 @@ import {
   HASH_B,
   NOW,
   UUID_4,
-} from "./fixtures/phase1c-contract-fixtures.js";
+} from "../fixtures/phase1c-contract-fixtures.js";
 import {
   QUEUED_RUN,
   RUN_ID,
   WORKER_ID,
   WORKFLOW_ID,
-} from "./fixtures/phase1f-run-fixtures.js";
+} from "../fixtures/phase1f-run-fixtures.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];

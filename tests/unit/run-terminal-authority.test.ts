@@ -31,13 +31,13 @@ import {
   NOW,
   UUID_6,
   UUID_7,
-} from "./fixtures/phase1c-contract-fixtures.js";
+} from "../fixtures/phase1c-contract-fixtures.js";
 import {
   QUEUED_RUN,
   RUN_ID,
   WORKER_ID,
   WORKFLOW_ID,
-} from "./fixtures/phase1f-run-fixtures.js";
+} from "../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const CLOCK = manualClock(new Date(LATER));

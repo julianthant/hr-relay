@@ -39,7 +39,7 @@ import {
   RunQueueProjection,
   type RunQueueProjectionChange,
 } from "../../../../src/server/dashboard/projectors/run-queue-projection.js";
-import { HASH_A, HASH_B, NOW, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, HASH_B, NOW, UUID_4 } from "../../../fixtures/phase1c-contract-fixtures.js";
 
 export const DAY = "2026-08-03";
 export const AT = new Date("2026-08-03T10:00:00.000-07:00");

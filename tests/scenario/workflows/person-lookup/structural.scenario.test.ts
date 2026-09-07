@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "../../../unit/fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../../../fixtures/run-lifecycle-fixtures.js";
 /**
  * Executable scenarios for `person-lookup` — the T1a half of this workflow's
  * canonical pair (ref guards-and-tests §10.3 · §10.9).
@@ -66,13 +66,13 @@ import type {
 import { executeClaimedRun } from "../../../../src/core/run-executor.js";
 import type { RunExecutorDependencies } from "../../../../src/core/run-executor.js";
 import { taskStoreRegistry } from "../../../../src/stores/index.js";
-import { UUID_5 } from "../../../unit/fixtures/phase1c-contract-fixtures.js";
+import { UUID_5 } from "../../../fixtures/phase1c-contract-fixtures.js";
 import {
   RUN_ID,
   WORKER_ID,
   WORKFLOW_ID,
   sequentialIdFactory,
-} from "../../../unit/fixtures/phase1f-run-fixtures.js";
+} from "../../../fixtures/phase1f-run-fixtures.js";
 import {
   ManualScheduler,
   healthyCrmDriver,
@@ -84,7 +84,7 @@ import {
   sessionFactoryHarness,
   sessionManagerFor,
   type AuthorityHarness,
-} from "../../../unit/fixtures/phase1f-executor-harness.js";
+} from "../../../helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../../../helpers/registered-workflows.js";
 import { walkDescriptor } from "../../helpers/pure-walk.js";
 

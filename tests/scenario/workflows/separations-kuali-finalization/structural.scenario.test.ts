@@ -110,7 +110,7 @@ import {
   finalizationHarness,
   finalizationQueuedRun,
   type FinalizationHarness,
-} from "../../../unit/fixtures/kuali-finalization-fixtures.js";
+} from "../../../helpers/kuali-finalization-fixtures.js";
 import { noSeparationWritePlan } from "../../../../src/domain/separations/write-plan.js";
 
 const FAILURES: string[] = [];

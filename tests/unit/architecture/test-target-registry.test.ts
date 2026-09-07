@@ -5,7 +5,9 @@ import { describe, it } from "vitest";
 import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
 import { GENERATED_BUILD_MANIFEST } from "../../../src/domain/workflow/generated-build-manifest.js";
-import { TEST_TARGET_SECRET_SPECS } from "../../../src/domain/secrets.js";
+import { TEST_DATA_INPUT_NAMES, TestDataInputValueSchemas } from "../../../src/domain/test-data.js";
+import { RETIRED_TEST_TARGET_PROTECTED_NAMES } from "../../../src/domain/config/protected-settings-legacy.js";
+import { ProtectedSettingsNameSchema } from "../../../src/domain/config/protected-settings.js";
 import type { DryRunScenarioManifest } from "../../../src/domain/trust/dry-run-scenario.js";
 import {
   FINALIZATION_PERSON_FACTS_DERIVED_REASON,
@@ -23,7 +25,7 @@ import {
 } from "../../../src/control/test-target-registry.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 import { evaluateT1bManifest } from "../../helpers/t1b-manifests.js";
-import { protectedSecretSource } from "../helpers/protected-secret-source.js";
+import { testDataInputSource } from "../helpers/test-data-source.js";
 
 const WORKFLOW_SCENARIO_ROOT = "tests/scenario/workflows";
 const MANIFEST_FILE = "dry-run.scenario.ts";
@@ -118,7 +120,7 @@ const SOLE_SUBJECT_LAST_OBSERVED = "2026-09-03";
 /**
  * The ONE test-target reference the registry may commit (D300). The chain arm
  * names this reference and never a number, so choosing the live subject stays
- * in protected Settings rather than in a commit.
+ * in ignored config/test-data.local.json (D341) rather than in a commit.
  */
 const DOCUMENT_NUMBER_REFERENCE = {
   name: "separationsKualiFinalizationCanaryDocumentNumber",
@@ -133,7 +135,7 @@ const DOCUMENT_NUMBER_REFERENCE = {
 const ARM_WORKFLOW_KEYS = Object.keys(TestTargetWorkflowArmsSchema.shape) as readonly (keyof typeof TestTargetWorkflowArmsSchema.shape)[];
 assert.deepEqual([...ARM_WORKFLOW_KEYS].sort(), [FINALIZATION_WORKFLOW, PERSON_LOOKUP_WORKFLOW, SEPARATIONS_WORKFLOW].sort());
 
-/** D318 — the second committed subject: the person-lookup live-read canary, ONE EID selected in protected Settings. */
+/** D318 — the second committed subject: the person-lookup live-read canary, ONE EID selected in ignored config/test-data.local.json (D341). */
 const PERSON_LOOKUP_SUBJECT_LABEL = "person-lookup-canary";
 const EID_REFERENCE = {
   name: "personLookupCanaryEid",
@@ -353,29 +355,20 @@ describe("test target registry architecture", () => {
     // The retired person block may not come back under any spelling: the
     // finalization arm is an observation record and carries no secret input.
     assert.equal(Object.hasOwn(subject?.workflows[FINALIZATION_WORKFLOW] ?? {}, "secretInput"), false);
-    // Exactly TWO registered test-target secrets: the separations canary's
-    // document number (D300) and the person-lookup live-read canary's EID
-    // (D318) — each a closed reference to one workflow's own ingress value,
-    // never a person value with a document-shaped name or the reverse.
-    assert.deepEqual(
-      TEST_TARGET_SECRET_SPECS.map(({ name, valueKind, classification }) => ({
-        name,
-        valueKind,
-        classification,
-      })),
-      [
-        {
-          name: DOCUMENT_NUMBER_REFERENCE.name,
-          valueKind: "kuali-document-number",
-          classification: "direct-identifier",
-        },
-        {
-          name: EID_REFERENCE.name,
-          valueKind: "ucpath-eid",
-          classification: "direct-identifier",
-        },
-      ],
-    );
+    // Exactly TWO test-data inputs (D341): the separations canary's document
+    // number (D300) and the person-lookup live-read canary's EID (D318) — each
+    // a closed reference to one workflow's own ingress value, judged by that
+    // workflow's own value schema, never a person value with a document-shaped
+    // name or the reverse. Neither is a protected Settings name any more.
+    assert.deepEqual([...TEST_DATA_INPUT_NAMES], [DOCUMENT_NUMBER_REFERENCE.name, EID_REFERENCE.name]);
+    assert.equal(TestDataInputValueSchemas[DOCUMENT_NUMBER_REFERENCE.name].safeParse("4999").success, true);
+    assert.equal(TestDataInputValueSchemas[DOCUMENT_NUMBER_REFERENCE.name].safeParse("10800000x").success, false);
+    assert.equal(TestDataInputValueSchemas[EID_REFERENCE.name].safeParse("10800000").success, true);
+    assert.equal(TestDataInputValueSchemas[EID_REFERENCE.name].safeParse("4999").success, false);
+    assert.deepEqual([...RETIRED_TEST_TARGET_PROTECTED_NAMES], [...TEST_DATA_INPUT_NAMES]);
+    for (const name of TEST_DATA_INPUT_NAMES) {
+      assert.equal(ProtectedSettingsNameSchema.safeParse(name).success, false, `${name} left protected Settings`);
+    }
   });
 
   it("exports a recursively frozen committed registry", () => {
@@ -447,7 +440,7 @@ describe("test target registry architecture", () => {
     const chain = resolveSeparationsTestTarget(
       TEST_TARGET_REGISTRY,
       "finalization-canary",
-      protectedSecretSource({ separationsKualiFinalizationCanaryDocumentNumber: "4999" }),
+      testDataInputSource({ separationsKualiFinalizationCanaryDocumentNumber: "4999" }),
     );
     assert.deepEqual(chain, {
       state: "ready",
@@ -455,8 +448,8 @@ describe("test target registry architecture", () => {
       canonicalInput: {
         documentNumber: "4999",
       },
-      protectedBindings: [{ kind: "protected-store", inputPath: "documentNumber",
-        name: "separationsKualiFinalizationCanaryDocumentNumber", valueId: "00000000-0000-4000-8000-000000000010" }],
+      protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber",
+        name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: "00000000-0000-4000-8000-000000000010" }],
     });
     const finalization = resolveSeparationsKualiFinalizationTestTarget(
       TEST_TARGET_REGISTRY,

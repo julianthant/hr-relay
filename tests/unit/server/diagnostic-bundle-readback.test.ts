@@ -31,9 +31,9 @@ import {
   TargetNotFoundError,
 } from "../../../src/server/failures.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
-import { HASH_A, HASH_B, NOW } from "../fixtures/phase1c-contract-fixtures.js";
-import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
-import { RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
+import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";
+import { RUN_ID, sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 
 const ARTIFACT_ROOT = ".tracker/artifacts";
 const JSON_BYTES = Uint8Array.from([0x5b, 0x5d]);

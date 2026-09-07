@@ -1,6 +1,6 @@
-import { testRunService } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunService } from "../fixtures/run-lifecycle-fixtures.js";
 import { z } from "zod";
-import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref operator-trust §2.2, executed: the closed trigger set, redaction AT capture, the
  * two-phase failure↔bundle binding over the real interpreter and authority, and
@@ -36,8 +36,8 @@ import {
   createRunDiagnosticCapture,
   operatorRequestedCapture,
 } from "../../src/services/trust/run-diagnostic-capture.js";
-import { HASH_A, HASH_B, NOW, UUID_1 } from "./fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory, RUN_ID, WORKER_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
+import { HASH_A, HASH_B, NOW, UUID_1 } from "../fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory, RUN_ID, WORKER_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
 import {
   happySessionHarness,
   healthyUcpathDriver,
@@ -48,7 +48,7 @@ import {
   recordingLogger,
   sessionFactoryHarness,
   sessionManagerFor,
-} from "./fixtures/phase1f-executor-harness.js";
+} from "../helpers/phase1f-executor-harness.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 

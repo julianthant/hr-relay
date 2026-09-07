@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D162 executor capability wiring (ref data-intake-and-edit-data §4.11): the run executor mints
  * admitted provider clients per task invocation over the run's RETAINED
@@ -47,13 +47,13 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentatio
 import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createDeterministicProviderHarness } from "../../src/infra/providers/deterministic-provider.js";
 import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { HASH_A, NOW } from "./fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   QUEUED_RUN,
   RUN_ID,
   WORKER_ID,
   sequentialIdFactory,
-} from "./fixtures/phase1f-run-fixtures.js";
+} from "../fixtures/phase1f-run-fixtures.js";
 import {
   happySessionHarness,
   ManualScheduler,
@@ -61,7 +61,7 @@ import {
   recordingEmitter,
   recordingLogger,
   sessionManagerFor,
-} from "./fixtures/phase1f-executor-harness.js";
+} from "../helpers/phase1f-executor-harness.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

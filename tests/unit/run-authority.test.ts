@@ -40,7 +40,7 @@ import {
   UUID_1,
   UUID_5,
   UUID_8,
-} from "./fixtures/phase1c-contract-fixtures.js";
+} from "../fixtures/phase1c-contract-fixtures.js";
 import {
   ITEM_ID,
   QUEUED_RUN,
@@ -49,7 +49,7 @@ import {
   WORKER_ID,
   WORKER_START_REQUEST,
   WORKFLOW_ID,
-} from "./fixtures/phase1f-run-fixtures.js";
+} from "../fixtures/phase1f-run-fixtures.js";
 
 const CLOCK = manualClock(new Date(NOW));
 const roots: string[] = [];

@@ -24,7 +24,7 @@ import {
   NOTIFICATION,
   NOW,
   UUID_1,
-} from "./fixtures/phase1c-contract-fixtures.js";
+} from "../fixtures/phase1c-contract-fixtures.js";
 import { z } from "zod";
 
 describe("durable control and outbox records", () => {

@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref data-intake-and-edit-data §4.1 / ref dashboard-surfaces §2.1 (D45, D164): the stable-keyed local artifact
  * projector, in three layers.
@@ -46,8 +46,8 @@ import {
   createXlsxRetentionSink,
 } from "../../src/infra/artifacts/xlsx-retention-sink.js";
 import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { HASH_A } from "./fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { HASH_A } from "../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   happySessionHarness,
   ManualScheduler,
@@ -55,7 +55,7 @@ import {
   recordingEmitter,
   recordingLogger,
   sessionManagerFor,
-} from "./fixtures/phase1f-executor-harness.js";
+} from "../helpers/phase1f-executor-harness.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

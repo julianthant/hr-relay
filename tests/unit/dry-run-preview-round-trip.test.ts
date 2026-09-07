@@ -1,4 +1,4 @@
-import { testRunLifecycle, testWorkerPorts } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D210 — a previewed run through the REAL pipeline, end to end, with nothing
  * faked but the browser, clock, ids, timers, and span sink:
@@ -17,7 +17,7 @@ import { testRunLifecycle, testWorkerPorts } from "./fixtures/run-lifecycle-fixt
  * itself writes — because "nothing was committed" is a statement about durable
  * rows, and a function that returned proves nothing.
  */
-import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -43,9 +43,9 @@ import {
   finalizationPreviewDependencies,
   finalizationQueuedRun,
   type FinalizationHarness,
-} from "./fixtures/kuali-finalization-fixtures.js";
-import { ManualScheduler, recordingEmitter, recordingLogger } from "./fixtures/phase1f-executor-harness.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+} from "../helpers/kuali-finalization-fixtures.js";
+import { ManualScheduler, recordingEmitter, recordingLogger } from "../helpers/phase1f-executor-harness.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   absentProbeEvidence,
   buildWriteFixtureRegistry,

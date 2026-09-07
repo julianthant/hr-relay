@@ -14,7 +14,7 @@ import {
   NOW,
   UUID_1,
   UUID_2,
-} from "../fixtures/phase1c-contract-fixtures.js";
+} from "../../fixtures/phase1c-contract-fixtures.js";
 
 const POLICY = {
   kind: "stabilized",

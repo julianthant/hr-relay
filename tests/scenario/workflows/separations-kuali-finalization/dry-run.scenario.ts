@@ -13,7 +13,7 @@
  * be settled by a live rehearsal.
  *
  * **Subjects are LABELS.** No person's identifier appears in this file and none
- * may: this arm is an OBSERVATION record, so `config/test-subjects.json` holds
+ * may: this arm is an OBSERVATION record, so `config/test-data.json` (subjects) holds
  * the non-sensitive half (a Kuali document number, a transaction number) and
  * nothing else. Since D300 no person value is registry- or
  * environment-supplied at all — the composed `separations` chain derives the
@@ -160,7 +160,7 @@ const MANIFEST = {
   cases: [
     {
       caseId: "ordinary",
-      // config/test-subjects.json names the document and nothing about a
+      // config/test-data.json (subjects) names the document and nothing about a
       // person: since D300 this arm carries no secret input at all.
       subjectLabel: "finalization-canary",
       subjectKind: "ordinary",

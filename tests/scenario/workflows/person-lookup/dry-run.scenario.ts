@@ -22,11 +22,11 @@
  * A no-op transaction added only to enter the preview arm is forbidden.
  *
  * **Subjects are LABELS.** No person's identifier appears in this file and
- * none may: `config/test-subjects.json` commits only the closed reference
- * (`personLookupCanaryEid` / `HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID`),
- * and the EID itself is read from ignored `.env` through
- * `src/domain/secrets.ts`, judged by the same `EidSchema` the start box
- * applies, then fed through the descriptor's OWN `inputRun` parser so
+ * none may: `config/test-data.json` (subjects) commits only the closed reference
+ * (`personLookupCanaryEid`), and the EID itself is read from ignored
+ * `config/test-data.local.json` through `src/control/test-data.ts` (D341),
+ * judged by the same `EidSchema` the start box applies, then fed through the
+ * descriptor's OWN `inputRun` parser so
  * `keepNonHdh` and `includeCrmDates` come from the parser's declared constants.
  *
  * **What a live read of THIS workflow does.** The start box's constants set

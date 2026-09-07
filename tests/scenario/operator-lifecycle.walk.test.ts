@@ -93,13 +93,13 @@ import {
   intakeFixtureProjection,
 } from "../fixtures/intake-workflow-fixture.js";
 import { FixtureReadReceipt } from "../unit/architecture/helpers/descriptor-fixtures.js";
-import { CONFIG_SNAPSHOT, HASH_B, HASH_C, NOW, UUID_1 } from "../unit/fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "../unit/fixtures/phase1f-run-fixtures.js";
+import { CONFIG_SNAPSHOT, HASH_B, HASH_C, NOW, UUID_1 } from "../fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   EXIT_RUN_ID,
   EXIT_TERMINAL_AT,
   seedPersonLookupExitRun,
-} from "../unit/fixtures/receipt-run-fixtures.js";
+} from "../fixtures/receipt-run-fixtures.js";
 import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 

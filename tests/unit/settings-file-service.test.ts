@@ -22,12 +22,16 @@ import { basename, dirname, join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import {
-  PROTECTED_SETTINGS_SCHEMA_HASH,
   PROTECTED_SETTINGS_SET_MARKER,
-  ProtectedSettingsReadbackSchema,
   markProtectedSettingsPatch,
-  protectedSettingsReadback,
 } from "../../src/domain/config/protected-settings.js";
+// D341: the D331 settings-file authority is a frozen LEGACY source (seven protected names, pinned
+// hash); this file proves that source and therefore speaks the legacy family, never the live one.
+import {
+  LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH as PROTECTED_SETTINGS_SCHEMA_HASH,
+  LegacyProtectedSettingsReadbackSchema as ProtectedSettingsReadbackSchema,
+  legacyProtectedSettingsReadback as protectedSettingsReadback,
+} from "../../src/domain/config/protected-settings-legacy.js";
 import {
   SettingsRootAuthoritySchema,
   settingsRootPaths,

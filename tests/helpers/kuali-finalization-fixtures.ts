@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "./run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * The separations chunk-5 Kuali finalization harness.
  *
@@ -18,54 +18,54 @@ import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { manualClock, type TestClock } from "../../../src/domain/clock.js";
-import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
-import type { WriteSequencerContext } from "../../../src/core/run-executor.js";
+import { manualClock, type TestClock } from "../../src/domain/clock.js";
+import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
+import type { WriteSequencerContext } from "../../src/core/run-executor.js";
 import {
   createWriteSequencer,
   type ProductionWriteSequencer,
-} from "../../../src/core/write-sequencer.js";
-import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../src/core/worker-sessions.js";
-import { kualiFinalizationIdempotencyKey } from "../../../src/domain/contracts/kuali/save-separation-finalization.js";
-import { SearchPersonOrgOutputSchema } from "../../../src/domain/contracts/ucpath/search-person-org.js";
-import { UcpathVerifyTerminationFilingPresent } from "../../../src/domain/contracts/ucpath/verify-termination-filing-present.js";
-import { SeparationsMatchDepartmentOption } from "../../../src/domain/contracts/separations/match-department-option.js";
-import { SeparationsVerifyIdentityApproval } from "../../../src/domain/contracts/separations/verify-identity-approval.js";
+} from "../../src/core/write-sequencer.js";
+import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../src/core/worker-sessions.js";
+import { kualiFinalizationIdempotencyKey } from "../../src/domain/contracts/kuali/save-separation-finalization.js";
+import { SearchPersonOrgOutputSchema } from "../../src/domain/contracts/ucpath/search-person-org.js";
+import { UcpathVerifyTerminationFilingPresent } from "../../src/domain/contracts/ucpath/verify-termination-filing-present.js";
+import { SeparationsMatchDepartmentOption } from "../../src/domain/contracts/separations/match-department-option.js";
+import { SeparationsVerifyIdentityApproval } from "../../src/domain/contracts/separations/verify-identity-approval.js";
 import {
   EidSchema,
   FingerprintSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
-} from "../../../src/domain/ids.js";
-import type { RunRecord } from "../../../src/domain/run/record.js";
-import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
-import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
+} from "../../src/domain/ids.js";
+import type { RunRecord } from "../../src/domain/run/record.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import {
   kualiFinalizationFields,
   type KualiFinalizationFields,
   type KualiFinalizationVariables,
-} from "../../../src/domain/ui/kuali-separation-finalization.js";
-import { UcpathJobSummaryReadSchema } from "../../../src/domain/ui/ucpath-job-summary.js";
-import type { RuntimeFlowNode } from "../../../src/domain/workflow/graph.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+} from "../../src/domain/ui/kuali-separation-finalization.js";
+import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summary.js";
+import type { RuntimeFlowNode } from "../../src/domain/workflow/graph.js";
+import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   createDeterministicKualiDriver,
   createKualiFakeWorld,
   type KualiFakeWorld,
-} from "../../../src/stores/kuali/driver/fake.js";
-import { createDeterministicUcpathPersonOrgDriver } from "../../../src/stores/ucpath/driver/fake.js";
+} from "../../src/stores/kuali/driver/fake.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
 import {
   createDeterministicUcpathSmartHrWorldDriver,
   createUcpathSmartHrFakeWorld,
-} from "../../../src/stores/ucpath/driver/smart-hr-fake.js";
-import type { KualiFinalizationFieldName } from "../../../src/domain/ui/kuali-separation-finalization.js";
-import { taskStoreRegistry } from "../../../src/stores/index.js";
+} from "../../src/stores/ucpath/driver/smart-hr-fake.js";
+import type { KualiFinalizationFieldName } from "../../src/domain/ui/kuali-separation-finalization.js";
+import { taskStoreRegistry } from "../../src/stores/index.js";
 import {
   SeparationsKualiFinalizationCanonicalInput,
   SeparationsKualiFinalizationInput,
-} from "../../../src/workflows/separations/kuali-finalization/workflow.js";
-import { separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
-import { UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
+} from "../../src/workflows/separations/kuali-finalization/workflow.js";
+import { separationsKualiFinalizationDescriptor } from "./registered-workflows.js";
+import { UUID_2, UUID_3, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
   ManualScheduler,
@@ -73,7 +73,7 @@ import {
   recordingLogger,
   sessionFactoryHarness,
 } from "./phase1f-executor-harness.js";
-import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 
 export const FINALIZATION_ACTION_ID = "0123456789abcdef01234567";
 export const FINALIZATION_DOCUMENT = "4444";

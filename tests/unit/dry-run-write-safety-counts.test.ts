@@ -10,7 +10,7 @@ import {
   NOW,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
-} from "./fixtures/phase1c-contract-fixtures.js";
+} from "../fixtures/phase1c-contract-fixtures.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];

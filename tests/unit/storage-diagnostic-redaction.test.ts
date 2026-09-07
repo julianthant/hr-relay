@@ -12,8 +12,8 @@ import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js"
 import { doctorAuthorityStorage } from "../../src/infra/sqlite/storage-doctor.js";
 import { buildStorageDoctor } from "../../src/server/dashboard/queries/storage.js";
 import { composeStorageCommand } from "../../src/server/storage/compose.js";
-import { NOW } from "./fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
+import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 
 const roots: string[] = [];
 const clock = manualClock(new Date(NOW));

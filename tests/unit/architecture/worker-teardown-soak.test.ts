@@ -1,4 +1,4 @@
-import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 /**
  * D182 — ref execution-and-sessions §7.1 rows C5–C8: the TEARDOWN and SOAK half of the 2j
  * concurrency matrix.
@@ -23,7 +23,7 @@ import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
  * own claim on the way out would be guessing whether the browser it just lost
  * had already submitted something.
  */
-import { fixtureDuoCeremonyGates } from "../fixtures/duo-ceremony-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../../helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { runWorkerLoop, WorkerLoopReportSchema, type WorkerLoopDependencies } from "../../../src/core/worker-loop.js";
@@ -44,7 +44,7 @@ import type { RunRecord } from "../../../src/domain/run/record.js";
 import { createLedgerProjector } from "../../../src/infra/ledger/index.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
-import { sequentialIdFactory, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
+import { sequentialIdFactory, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
   happySessionHarness,
@@ -56,7 +56,7 @@ import {
   sessionFactoryHarness,
   type AuthorityHarness,
   type SessionFactoryHarness,
-} from "../fixtures/phase1f-executor-harness.js";
+} from "../../helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const ACTIVE_STATES = new Set(["claimed", "validating", "running"]);

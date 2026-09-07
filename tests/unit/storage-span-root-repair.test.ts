@@ -16,13 +16,13 @@ import {
   LATER,
   NOW,
   UUID_1,
-} from "./fixtures/phase1c-contract-fixtures.js";
+} from "../fixtures/phase1c-contract-fixtures.js";
 import {
   QUEUED_RUN,
   RUN_SESSION,
   RUN_SESSION_ID,
   START_PLAN,
-} from "./fixtures/phase1f-run-fixtures.js";
+} from "../fixtures/phase1f-run-fixtures.js";
 
 const roots: string[] = [];
 

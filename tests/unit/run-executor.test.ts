@@ -1,6 +1,6 @@
 import { DiagnosticBundleSchema } from "../../src/domain/trust/diagnostic.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
-import { testRunLifecycle, testRunService } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testRunService } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Phase-1f interpreter behavior over the REAL person-lookup descriptor,
  * stores, claim authority, and worker session manager — only the process
@@ -28,8 +28,8 @@ import { crmDriver } from "../../src/stores/crm/declaration.js";
 import { readOnboardingDatesTask } from "../../src/stores/crm/tasks/read-onboarding-dates.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import { PersonLookupResultSchema } from "../../src/workflows/person-lookup/workflow.js";
-import { sequentialIdFactory, RUN_ID, WORKER_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
-import { UUID_5, UUID_6 } from "./fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory, RUN_ID, WORKER_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
+import { UUID_5, UUID_6 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   happySessionHarness,
   healthyCrmDriver,
@@ -43,7 +43,7 @@ import {
   sessionManagerFor,
   type AuthorityHarness,
   type SessionFactoryHarness,
-} from "./fixtures/phase1f-executor-harness.js";
+} from "../helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const disposers: (() => void)[] = [];
@@ -501,8 +501,8 @@ describe("failure, retry, and resume", () => {
   it("drops a protected canary EID before real executor observed-data emission", async () => {
     const harness = executorHarness({ sessions: happySessionHarness() });
     const { database, clock } = harness.authority;
-    const binding = { kind: "protected-store" as const, inputPath: "emplId" as const,
-      name: "personLookupCanaryEid" as const, valueId: "00000000-0000-4000-8000-000000000088" };
+    const binding = { kind: "test-data-local" as const, inputPath: "emplId" as const,
+      name: "personLookupCanaryEid" as const, sourceId: "00000000-0000-4000-8000-000000000088" };
     const claimed = enqueueAndClaim(database, personLookupQueuedRun({ protectedBindings: [binding] }), clock.now().toISOString());
     const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
     assert.equal(outcome.state, "done");

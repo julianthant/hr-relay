@@ -21,8 +21,8 @@ import {
   seedTerminalSeparationsResult,
   TERMINAL_SEPARATIONS_RUN,
 } from "./fixtures/activity-person-pseudonym-fixtures.js";
-import { COMPOSITION_EID } from "./fixtures/separations-composition-fixtures.js";
-import { protectedSecretSource } from "./helpers/protected-secret-source.js";
+import { COMPOSITION_EID } from "../helpers/separations-composition-fixtures.js";
+import { protectedSecretSource } from "../helpers/protected-secret-source.js";
 
 const RUN_ID = TERMINAL_SEPARATIONS_RUN.envelope.runId;
 const KEY_HEX = ACTIVITY_PERSON_PSEUDONYM_KEY_HEX;

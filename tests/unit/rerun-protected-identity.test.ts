@@ -3,8 +3,8 @@ import { describe, it } from "vitest";
 import { repeatEvidenceDigest } from "../../src/domain/run/rerun.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
 
-const bindings = [{ kind: "protected-store", inputPath: "documentNumber",
-  name: "separationsKualiFinalizationCanaryDocumentNumber", valueId: "10000000-0000-4000-8000-000000000001" }] as const;
+const bindings = [{ kind: "test-data-local", inputPath: "documentNumber",
+  name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: "10000000-0000-4000-8000-000000000001" }] as const;
 
 describe("protected rerun evidence", () => {
   it("binds safe completion facts and retained source identity instead of protected proof values", () => {
@@ -14,6 +14,6 @@ describe("protected rerun evidence", () => {
     assert.notEqual(repeatEvidenceDigest(proof("12345678"), bindings), repeatEvidenceDigest(proof("12345678", "T234567"), bindings));
     assert.notEqual(repeatEvidenceDigest(proof("12345678"), []), repeatEvidenceDigest(proof("87654321"), []));
     assert.notEqual(repeatEvidenceDigest(proof("12345678"), bindings), repeatEvidenceDigest(proof("12345678"),
-      [{ ...bindings[0], valueId: "10000000-0000-4000-8000-000000000002" }]));
+      [{ ...bindings[0], sourceId: "10000000-0000-4000-8000-000000000002" }]));
   });
 });

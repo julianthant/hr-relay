@@ -21,7 +21,7 @@ import {
 } from "../../../src/domain/archive/model.js";
 import { ArchivedCaptureTileSchema } from "../../../src/domain/archive/sections.js";
 import { archiveRetention } from "../../../src/domain/archive/retention.js";
-import { ARCHIVED_RUN_WITH_SECTIONS } from "../../unit/fixtures/archive-fixtures.js";
+import { ARCHIVED_RUN_WITH_SECTIONS } from "../../fixtures/archive-fixtures.js";
 import { FIXTURE_ARCHIVE_INDEX } from "./fixture-archive.js";
 import { FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./fixture-day.js";
 

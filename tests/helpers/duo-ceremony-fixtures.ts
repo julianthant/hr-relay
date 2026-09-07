@@ -9,17 +9,17 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { MonotonicDeadlineScheduler } from "../../../src/core/deadline-scheduler.js";
+import type { MonotonicDeadlineScheduler } from "../../src/core/deadline-scheduler.js";
 import {
   createDuoCeremonyGateFactory,
   DUO_CEREMONY_LEASE_POLL_MS,
-} from "../../../src/core/duo-ceremony-gate.js";
-import type { DuoCeremonyGateFactory, DuoCeremonyGateHandle } from "../../../src/core/duo-ceremony-gate.js";
-import { systemClock } from "../../../src/domain/clock.js";
-import type { Clock } from "../../../src/domain/clock.js";
-import { FingerprintSchema, WorkerIdSchema } from "../../../src/domain/ids.js";
-import type { BrowserSystemId, WorkerId } from "../../../src/domain/ids.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+} from "../../src/core/duo-ceremony-gate.js";
+import type { DuoCeremonyGateFactory, DuoCeremonyGateHandle } from "../../src/core/duo-ceremony-gate.js";
+import { systemClock } from "../../src/domain/clock.js";
+import type { Clock } from "../../src/domain/clock.js";
+import { FingerprintSchema, WorkerIdSchema } from "../../src/domain/ids.js";
+import type { BrowserSystemId, WorkerId } from "../../src/domain/ids.js";
+import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 
 export const FIXTURE_DUO_CREDENTIAL_KEY = FingerprintSchema.parse("d0".repeat(32));
 /** The production defaults (D125 / D267). */

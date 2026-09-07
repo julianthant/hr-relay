@@ -17,40 +17,40 @@
  *    the descriptor factory's own; only process-edge ids and values are
  *    deterministic test data.
  */
-import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
-import { manualClock } from "../../../src/domain/clock.js";
-import { CrmReadOnboardingRecord } from "../../../src/domain/contracts/crm/read-onboarding-record.js";
-import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
-import { SearchPersonOrg } from "../../../src/domain/contracts/ucpath/search-person-org.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import { manualClock } from "../../src/domain/clock.js";
+import { CrmReadOnboardingRecord } from "../../src/domain/contracts/crm/read-onboarding-record.js";
+import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
+import { SearchPersonOrg } from "../../src/domain/contracts/ucpath/search-person-org.js";
 import {
   KualiSaveSeparationFinalization,
   kualiFinalizationIdempotencyKey,
-} from "../../../src/domain/contracts/kuali/save-separation-finalization.js";
-import { RunTerminalOutboxRecordSchema } from "../../../src/domain/run/terminal-outbox.js";
-import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
+} from "../../src/domain/contracts/kuali/save-separation-finalization.js";
+import { RunTerminalOutboxRecordSchema } from "../../src/domain/run/terminal-outbox.js";
+import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import {
   deriveIdempotencyKeyDigest,
   deriveWriteBindingProofDigest,
   TransactionOutcomeSchema,
   WriteAttemptRecordSchema,
   WriteIntentRecordSchema,
-} from "../../../src/domain/write-safety.js";
-import { buildRunResult } from "../../../src/core/run-result.js";
-import type { ReceiptWriteEvidence } from "../../../src/core/evidence-receipt.js";
-import type { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
-import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
+} from "../../src/domain/write-safety.js";
+import { buildRunResult } from "../../src/core/run-result.js";
+import type { ReceiptWriteEvidence } from "../../src/core/evidence-receipt.js";
+import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js";
 import {
   RunResultRecordSchema,
   deriveTerminalDependencyDigest,
-} from "../../../src/domain/run/result.js";
-import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
-import { SeparationsKualiFinalizationCanonicalInput } from "../../../src/workflows/separations/kuali-finalization/workflow.js";
-import { separationsIdentityCheckDescriptor, separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
-import { SeparationsIdentityCheckCanonicalInput } from "../../../src/workflows/separations/identity-check/workflow.js";
-import { SeparationsVerifyIdentityApproval } from "../../../src/domain/contracts/separations/verify-identity-approval.js";
-import { SeparationsMatchDepartmentOption } from "../../../src/domain/contracts/separations/match-department-option.js";
-import { IdentityApprovalResultSchema } from "../../../src/domain/separations/identity-approval.js";
-import { GateResultRecordSchema } from "../../../src/domain/gates.js";
+} from "../../src/domain/run/result.js";
+import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
+import { SeparationsKualiFinalizationCanonicalInput } from "../../src/workflows/separations/kuali-finalization/workflow.js";
+import { separationsIdentityCheckDescriptor, separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
+import { SeparationsIdentityCheckCanonicalInput } from "../../src/workflows/separations/identity-check/workflow.js";
+import { SeparationsVerifyIdentityApproval } from "../../src/domain/contracts/separations/verify-identity-approval.js";
+import { SeparationsMatchDepartmentOption } from "../../src/domain/contracts/separations/match-department-option.js";
+import { IdentityApprovalResultSchema } from "../../src/domain/separations/identity-approval.js";
+import { GateResultRecordSchema } from "../../src/domain/gates.js";
 import {
   FINALIZATION_ACTION_ID,
   FINALIZATION_DOCUMENT,
@@ -59,8 +59,8 @@ import {
   FINALIZATION_RUN_INPUT,
   FINALIZATION_SCOPE_OUTPUTS,
   FINALIZATION_VARIABLES,
-} from "./kuali-finalization-fixtures.js";
-import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+} from "../helpers/kuali-finalization-fixtures.js";
+import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 /* ── person-lookup: the live Phase-1 exit run ────────────────────────────── */
 

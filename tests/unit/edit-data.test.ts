@@ -1,5 +1,5 @@
 import { RunRecordService } from "../../src/core/run-record-service.js";
-import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref data-intake-and-edit-data §6 (D166): the Edit Data core, in three layers.
  *
@@ -47,13 +47,13 @@ import {
   WorkflowCapabilitiesSchema,
 } from "../../src/domain/workflow/presentation.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { HASH_A, NOW } from "./fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   QUEUED_RUN,
   RUN_ID,
   WORKER_ID,
   sequentialIdFactory,
-} from "./fixtures/phase1f-run-fixtures.js";
+} from "../fixtures/phase1f-run-fixtures.js";
 import {
   happySessionHarness,
   ManualScheduler,
@@ -61,9 +61,9 @@ import {
   recordingEmitter,
   recordingLogger,
   sessionManagerFor,
-} from "./fixtures/phase1f-executor-harness.js";
+} from "../helpers/phase1f-executor-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

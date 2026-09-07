@@ -1,6 +1,6 @@
 import { CommandResultSchema } from "../../../src/domain/commands.js";
-import { singleAppliedRunId } from "../fixtures/operator-command-fixtures.js";
-import { seedSyntheticRuntimeConfig } from "../fixtures/operator-command-fixtures.js";
+import { singleAppliedRunId } from "../../fixtures/operator-command-fixtures.js";
+import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
@@ -118,10 +118,10 @@ import {
   ARCHIVED_RUN,
   VERSION_BUMP_APPLICATION,
   VERSION_PLAN_ROW,
-} from "../fixtures/archive-fixtures.js";
-import { HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
-import { RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
-import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
+} from "../../fixtures/archive-fixtures.js";
+import { HASH_B, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
+import { RUN_ID, sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
+import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";
 import { AT, DAY, traceOf, uuidOf } from "./helpers/dashboard-harness.js";
 import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";

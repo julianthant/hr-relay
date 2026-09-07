@@ -14,7 +14,7 @@ import { afterEach, describe, it } from "vitest";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import { ContextDataSectionSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { buildRunSection } from "../../../src/server/dashboard/queries/run-detail.js";
-import { HASH_A, HASH_B, NOW } from "../fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
 import {
   claimEventOf,
   makeWorld,

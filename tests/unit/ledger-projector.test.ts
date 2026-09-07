@@ -23,7 +23,7 @@ import {
   listLedgerFiles,
   type LedgerProjector,
 } from "../../src/infra/ledger/index.js";
-import { NOW } from "./fixtures/phase1c-contract-fixtures.js";
+import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import { ledgerCommitFixture } from "./fixtures/ledger-projection-fixtures.js";
 
 const PARTITION = LedgerPartitionKeySchema.parse({ system: "ucpath", date: "2026-07-31" });

@@ -1,7 +1,7 @@
 import { RunRecordService } from "../../src/core/run-record-service.js";
 import { randomUUID } from "node:crypto";
 import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
-import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 /**
  * D322: an authority backup is written ONLY by `cli storage backup`.
  *

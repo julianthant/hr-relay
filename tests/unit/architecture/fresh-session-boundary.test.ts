@@ -35,8 +35,8 @@ import {
   healthyUcpathDriver,
   sessionFactoryHarness,
   sessionManagerFor,
-} from "../fixtures/phase1f-executor-harness.js";
-import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
+} from "../../helpers/phase1f-executor-harness.js";
+import { QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 
 const RUN_FINGERPRINT = FingerprintSchema.parse(QUEUED_RUN.envelope.configFingerprint);
 const OTHER_FINGERPRINT = FingerprintSchema.parse("9".repeat(64));

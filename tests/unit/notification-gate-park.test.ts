@@ -19,8 +19,8 @@ import { notificationWireOf } from "../../src/domain/dashboard/projection.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { createNotificationInbox, type NotificationPublishReport } from "../../src/services/notifications/inbox.js";
 import { createGateParkNotifier } from "../../src/services/notifications/gate-park.js";
-import { NOW, UUID_1, UUID_2 } from "./fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { NOW, UUID_1, UUID_2 } from "../fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

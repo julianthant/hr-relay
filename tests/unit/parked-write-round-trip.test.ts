@@ -1,6 +1,6 @@
 import { RunRecordService } from "../../src/core/run-record-service.js";
 import { lifecycleCommandId } from "../../src/core/run-record-service.js";
-import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * The full parked-write round trip across every landed seam, with nothing
  * faked but the browser, clock, ids, timers, and span sink:
@@ -17,7 +17,7 @@ import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "./fixtur
  * The park is a post-fence indeterminate state, so the arms proven here are
  * exactly the ones that must never invent a terminal outcome.
  */
-import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,8 +32,8 @@ import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { ManualScheduler, recordingEmitter, recordingLogger } from "./fixtures/phase1f-executor-harness.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { ManualScheduler, recordingEmitter, recordingLogger } from "../helpers/phase1f-executor-harness.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   absentProbeEvidence,
   buildWriteFixtureRegistry,
@@ -55,7 +55,7 @@ import {
   type WriteFixtureWorld,
 } from "./fixtures/write-sequencer-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];

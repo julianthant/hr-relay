@@ -1,6 +1,6 @@
-import { RunRecordService, workerRunLifecyclePort, runContinuationPort } from "../../../src/core/run-record-service.js";
-import type { Clock } from "../../../src/domain/clock.js";
-import type { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { RunRecordService, workerRunLifecyclePort, runContinuationPort } from "../../src/core/run-record-service.js";
+import type { Clock } from "../../src/domain/clock.js";
+import type { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import { CONFIG_SNAPSHOT, HASH_A, HASH_B, UUID_4, NOW } from "./phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
 

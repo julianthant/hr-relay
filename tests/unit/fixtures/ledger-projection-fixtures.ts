@@ -10,7 +10,7 @@ import {
   UUID_2,
   UUID_3,
   UUID_6,
-} from "./phase1c-contract-fixtures.js";
+} from "../../fixtures/phase1c-contract-fixtures.js";
 
 /** A deterministic, pattern-valid UUID per named fixture slot. */
 export function fixtureUuid(tag: string): string {

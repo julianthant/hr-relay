@@ -32,14 +32,14 @@ import { parseDryRunScenarioManifest } from "../../src/domain/trust/dry-run-scen
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
 import { selectedSettingsFixture } from "./fixtures/dry-run-admission-fixtures.js";
-import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import {
   EXECUTOR_EID,
   healthyCrmDriver,
   healthyUcpathDriver,
   sessionFactoryHarness,
-} from "./fixtures/phase1f-executor-harness.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+} from "../helpers/phase1f-executor-harness.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor, separationsDescriptor } from "../helpers/registered-workflows.js";
 import { evaluateT1bManifest } from "../helpers/t1b-manifests.js";
 import { z } from "zod";
@@ -54,7 +54,7 @@ import {
   LIVE_READ_ADMITTED_NODE_KINDS,
   liveReadGraphRefusal,
 } from "../../src/server/dry-run-scenario/runtime.js";
-import { HASH_A, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 
 // The checked-in declarations, evaluated without importing them: a collected
 // file may never import a T1b manifest (the pair invariant), and the exact

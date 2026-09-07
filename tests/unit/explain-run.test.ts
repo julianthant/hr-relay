@@ -20,7 +20,7 @@ import {
   EXIT_RUN_ID,
   EXIT_TRACE_ID,
   seedPersonLookupExitRun,
-} from "./fixtures/receipt-run-fixtures.js";
+} from "../fixtures/receipt-run-fixtures.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];

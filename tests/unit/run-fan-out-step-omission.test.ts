@@ -1,6 +1,6 @@
 import { RunRecordService } from "../../src/core/run-record-service.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
-import { seedSyntheticRuntimeConfig } from "./fixtures/operator-command-fixtures.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { seedSyntheticRuntimeConfig } from "../fixtures/operator-command-fixtures.js";
 /**
  * D307 — `fanOutQueuedRuns` (src/core/run-fan-out.ts) is the ONE place N
  * queued runs are inserted; every start/retry/relaunch door funnels through
@@ -21,7 +21,7 @@ import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import type { StepOmissions } from "../../src/domain/workflow/step-omission.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { PersonLookupCanonicalInput, PersonLookupInput } from "../../src/workflows/person-lookup/workflow.js";
-import { HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
+import { HASH_B, NOW, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const roots: string[] = [];
