@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, it } from "vitest";
 import {
   FINALIZATION_PERSON_FACTS_DERIVED_REASON,
   parseTestTargetRegistry,
@@ -14,7 +17,8 @@ import {
   PERSON_LOOKUP_WORKFLOW,
   type TestTargetRegistryInput,
 } from "../../src/control/test-target-registry.js";
-import { TestDataLocalConfigError, type TestDataInputSource } from "../../src/domain/test-data.js";
+import type { TestDataInputSource } from "../../src/domain/test-data.js";
+import { createTestDataInputSource, testDataLocalPath } from "../../src/control/test-data.js";
 import { testDataInputSource } from "./helpers/test-data-source.js";
 
 type TestTargetEntryInput = TestTargetRegistryInput["targets"][number];
@@ -161,10 +165,20 @@ function recordingInputSource(values: Parameters<typeof testDataInputSource>[0])
 }
 
 /** A source whose private file is invalid: the loader already refused it by key, never by value. */
-function invalidInputSource(name: string): TestDataInputSource {
-  return { read: () => {
-    throw new TestDataLocalConfigError(`config/test-data.local.json is invalid: inputs.${name}.value`);
-  } };
+const privateRoots: string[] = [];
+afterEach(() => { for (const root of privateRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+
+/** A REAL private file (0600) carrying one configured value, read through the production loader. */
+function privateFileSource(name: string, value: string): TestDataInputSource {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-test-target-private-"));
+  privateRoots.push(root);
+  mkdirSync(join(root, "config"));
+  const path = testDataLocalPath(root);
+  writeFileSync(path, `${JSON.stringify({ schemaVersion: 1, inputs: {
+    [name]: { valueId: "10000000-0000-4000-8000-00000000000a", value, updatedAt: "2026-09-07T00:00:00.000Z" },
+  }, files: {} })}\n`, { mode: 0o600 });
+  chmodSync(path, 0o600);
+  return createTestDataInputSource(path);
 }
 
 describe("the committed test target registry", () => {
@@ -741,8 +755,9 @@ describe("separations chain test target resolution", () => {
   it("defects by reference and key — never by value — on a malformed configured number", () => {
     // The value is judged by the SAME `KualiDocumentNumberSchema` the start box
     // applies (3-8 digits) when the private file loads, so what the resolver
-    // accepts is exactly what an operator could have typed. A malformed one is
-    // a DEFECT in local configuration reported by the source as a
+    // accepts is exactly what an operator could have typed. Each malformed value
+    // below is written to a real 0600 private file and read through the
+    // production loader: a DEFECT in local configuration surfaces as a
     // TestDataLocalConfigError, and the resolver's message may name the
     // reference and the key only. Any other source failure propagates unchanged.
     const parsed = parseTestTargetRegistry(registry([chainSubject({ availability: AVAILABLE })]));
@@ -752,7 +767,7 @@ describe("separations chain test target resolution", () => {
     );
     for (const malformed of ["abc", "1", "123456789", "CANARY_PRIVATE_DOCUMENT_NUMBER"]) {
       assert.throws(
-        () => resolveSeparationsTestTarget(parsed, "fixture-target", invalidInputSource(DOCUMENT_NUMBER_SECRET.name)),
+        () => resolveSeparationsTestTarget(parsed, "fixture-target", privateFileSource(DOCUMENT_NUMBER_SECRET.name, malformed)),
         (error: unknown) => {
           assert.equal((error as Error).name, "TestTargetRegistryDefectError");
           const diagnostic = String(error);
@@ -880,7 +895,7 @@ describe("the person-lookup live-read resolver (D318)", () => {
       () => resolvePersonLookupTestTarget(
         TEST_TARGET_REGISTRY,
         PERSON_LOOKUP_LABEL,
-        invalidInputSource("personLookupCanaryEid"),
+        privateFileSource("personLookupCanaryEid", "not-an-eid-99"),
       ),
       (error: unknown) => error instanceof Error
         && /employee-id reference personLookupCanaryEid is invalid in config\/test-data\.local\.json/u.test(error.message)

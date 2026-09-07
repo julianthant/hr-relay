@@ -35,7 +35,7 @@ function decodeKey(raw: string, label: string): string {
     if (typeof decoded !== "string") throw new Error("not a string");
     return decoded;
   } catch {
-    throw new TestDataConfigError(`${label} has an invalid string escape in a key`);
+    throw new TestDataConfigError(`${label} has an invalid key string`);
   }
 }
 
