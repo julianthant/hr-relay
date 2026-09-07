@@ -876,3 +876,23 @@ Comparison with the prior accepted map differs only in this evidence owner and t
 This recording append changes no gate inputs beyond task evidence; D191 reuses the candidate results
 above with scoped instruction/link, roadmap freshness and diff checks. Review remains assigned to
 `01a07a45-50d7-7d01-bd47-672d3dfa1720` under the operator-approved standalone continuation arrangement.
+
+
+#### R10 independent review and documentation correction
+
+Standalone review turn `01a07abb-23a3-70d0-9d19-86f2aac7ad86` returned **CHANGES REQUIRED**
+on implementation `ad15bb982757a2e2342cf85f98df6eeca2a48050` / evidence
+`e3294572cab2deda1b589081f0361cef8868ae91`: executable R10 accepted, no production findings,
+but one P3 correction to the active lifecycle fixture recipe in `src/server/LESSONS.md`.
+The reviewer covered 118 entries, verified every prior P/M/R disposition through unchanged inputs,
+and independently recomputed the 2,117-input map with zero mismatches. The recipe still prescribed
+only package files and a dependency symlink, which could recreate the demonstrated environment
+coupling. It now requires the unchanged copied bootstrap, private provider-only fixture environment,
+source link and explicit cleanup of both links. No executable input changes.
+
+The app returned completed review turns with no message items; the exact local review rollout's
+`task_complete.last_agent_message` supplied the verdict, subsequently restated in turn
+`01a07abf-0ef5-7bf2-99bd-3a455e2ed2db`. This is a retrieval issue, not missing independent work.
+The same approved reviewer will verify this documentation-only correction before integration.
+D191 reuses the unchanged R10 executable gates above, with scoped instruction/link, roadmap
+freshness and diff checks for this lesson/evidence commit. Completion remains open.

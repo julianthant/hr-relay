@@ -21,11 +21,16 @@ source win over historical status. Record requested lessons here; keep the entry
   bootstrap awaits it. Prove it with a real child (`node --import tsx
   scripts/secure-env-bootstrap.ts cli dashboard`) asserting exit 0 and a `releasedAt` on the lock
   record naming THAT pid — an injected composer cannot see whether the production entrypoint
-  registered any handler at all. Spawn that child in a scratch `mkdtemp` cwd holding only
-  `package.json`, `package-lock.json` and a `node_modules` symlink (Node resolves the bare
-  `--import tsx` specifier against the CWD), because the composition takes `repoRoot = process.cwd()`
-  and would otherwise run every per-commit gate over the developer's own authority; send the second
-  SIGINT inside the measured ~40ms drain, and assert the child is still draining before you send it.
+  registered any handler at all. Spawn that child in a scratch `mkdtemp` cwd holding
+  `package.json`, `package-lock.json`, and symlinks to the real `node_modules` and `src` trees.
+  Copy the unchanged production bootstrap into the scratch `scripts/` directory and copy the
+  provider-only `.env.example` to scratch `.env` with mode 0600; invoke that copied bootstrap.
+  Its environment path is module-relative, while the composition takes `repoRoot = process.cwd()`:
+  isolating only the cwd still reads the operator's environment and can refuse migrated keys.
+  Explicitly unlink both source/dependency symlinks before recursively removing the fixture.
+  Send the second SIGINT inside the measured drain and assert the child is still draining before
+  sending it. Task 1.6.6 R10 proved the old fixture fails with a synthetic migrated caller `.env`,
+  while this isolated fixture passes both signals and preserves the caller's environment bytes.
 
 - **2026-09-03 — `dashboard --prod` serves `dist/dashboard` from the BFF; a flag the runtime ignores
   is a mode that does not exist.** `parseDashboardCommandOptions` refuses any unexpected argument by
