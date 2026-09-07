@@ -33,7 +33,7 @@ The BFF is a singleton (pinned port + lock). A BFF started before a descriptor e
 
 - **Dashboard**: `playwright-cli -s=mgr open http://localhost:5174` → run modal → the descriptor's declared entry shape (`surfaces.inputRun`; examples are shown in the modal) → confirm with `dryRun` checked. Screenshot the confirmation.
 - **API**: `POST /api/v1/start-plans` (entries per `inputRun`) → `POST /api/v1/commands` (confirm; carries `dryRun`, `expectedVersion`). `docs/rebuild/migrations/separations.md` §9 has the exact pairs that were used live. Response arms: `accepted` · `rejected` · `conflict` (CAS — re-read `currentVersion`, never just "try again").
-- Subjects by LABEL (`config/test-subjects.json`), values from `.env` via `src/domain/secrets.ts`; missing → `blocked: needs <label>`.
+- Subjects by LABEL (`config/test-data.json` → `subjects`), private values from ignored `config/test-data.local.json` via `src/control/test-data.ts` (D341); check with `npm run cli -- test-data check --json --subject <label>`; missing → `blocked: needs <label>`.
 - A REAL write (`dryRun=false`): only under `ref write-safety` §3.2 with the operator's explicit authorization for that run/subject/document, stated in the conversation; say it back before you send it.
 
 ## 3 · Batch / cohort (the "do these N" request)

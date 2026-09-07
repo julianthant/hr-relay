@@ -970,12 +970,14 @@ workflow truthfully addresses, each naming `nodesReached`, `nodesExcluded`, `che
 tuples (obligation, verdict, mandatory — including every `node.*` row) and `terminal`. Person
 Lookup's manifest is the template.
 
-**The subject registry — `config/test-subjects.json`.** Labels only. Register a label per subject
-with today's dated availability, an arm per workflow (kind = the manifest's `subjectKind`), and any
-sensitive value as a closed protected-store reference, read through the journal-authenticated
-`src/domain/secrets.ts` accessor after database authority opens (D331 supersedes the old `.env`
-source). The registry cites `{ name }`, resolved only from the protected store; provider `.env` keys remain
-separate. A new protected name requires a catalog/contract decision; do not add an environment key.
+**The subject registry — `config/test-data.json` (`subjects`).** Labels only. Register a label per
+subject with today's dated availability, an arm per workflow (kind = the manifest's `subjectKind`), and
+any private value as a closed reference `{ name }` resolved only from ignored
+`config/test-data.local.json` through `src/control/test-data.ts` (D341 supersedes both the old `.env`
+source and the protected-store source). The private file is read lazily after availability admission,
+captured once per start and bound as `test-data-local` with an opaque `sourceId`. A new private input
+name requires a `TEST_DATA_INPUT_NAMES` contract decision; do not add an environment key or a Settings
+name. Provider `.env` keys remain separate.
 Protected workflow inputs such as Separations `timekeeperName` use the descriptor's value-free
 `protectedInputs` declaration and the shared server admission adapter. Admission reads once,
 retains the canonical value and binding identity, and refuses caller override. Rerun, retry,

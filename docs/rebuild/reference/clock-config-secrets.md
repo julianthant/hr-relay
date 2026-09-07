@@ -575,11 +575,28 @@ interface when it supplies the platform backend.
 
 ##### D341 — Test inputs have a separate owner
 
-**Operator-approved 2026-09-07; implementation pending in the test-data foundation detour before
-Task 1.6.7.** Test-only inputs are not application settings. This amendment supersedes D300/D318's
+**Operator-approved 2026-09-07; implemented by the test-data foundation detour (candidate awaiting
+independent review; completion evidence in `ref guards-and-tests` §10.5).** Test-only inputs are not
+application settings. This amendment supersedes D300/D318's
 old source location and the test-target portions of D331/D332/D336, not their privacy, ingress,
-availability, isolation or write-safety requirements. The current implementation remains the
-protected-store reader until the detour is accepted; this contract does not claim a migration ran.
+availability, isolation or write-safety requirements. This contract does not claim the actual private
+conversion ran until §10.5 records it.
+
+**As built.** Schemas: `src/domain/test-data.ts` (`TestDataSharedConfigSchema`,
+`TestDataLocalConfigSchema`, `TEST_DATA_INPUT_NAMES` = the two canary names judged by the workflows'
+own value schemas). Reader: `src/control/test-data.ts` for the tracked file and
+`src/infra/config/test-data-local.ts` for the private file (0600, no symlink, ≤64,000 bytes, unique
+keys, errors name keys only), capture-once `TestDataInputSource` with an opaque `sourceId` carried
+by the `test-data-local` protected-input binding. Retired names: `RETIRED_TEST_TARGET_PROTECTED_NAMES`
+in `src/domain/config/protected-settings-legacy.ts` (the frozen seven-name family and its pinned
+schema hash, used only by migration and D331 historical readers) and
+`RETIRED_TEST_TARGET_ENVIRONMENT_KEYS` in the catalog, refused by name before any value is decoded.
+Credential document schemaVersion 2 (`src/infra/config/credential-store.ts`): the live five-name
+record plus an optional value-free migration `baseline` that retires the legacy command/write/value
+identities and the applied upgrade binding; a schemaVersion-1 document is refused by the ordinary
+reader with `credential-store-migration-required`. Commands: `npm run cli -- test-data check --json
+[--subject <label> [--workflow <id>]] [--file <name>]` and `npm run cli -- test-data migrate
+--from-credentials [--plan] --json`; both bypass `.env` loading and refuse unknown options before work.
 
 **Owners and files.** Tracked `config/test-data.json` owns public subject declarations, named safe
 fixture paths and reusable synthetic data. It incorporates the existing `config/test-subjects.json`
@@ -656,7 +673,7 @@ sees a protected value. A *generation* is D330's runtime token (§D331.7).
 The catalog is CODE, not a document: 1.6 lands it as one parsed and recursively frozen registry
 (`src/domain/config/catalog.ts`, name illustrative) with exactly one row per leaf, and the guard
 lane proves it bidirectionally complete against every source it enumerates — every populated
-`ConfigSchema` leaf, every `SECRET_SPECS` / `TEST_TARGET_SECRET_SPECS` entry, every
+`ConfigSchema` leaf, every `SECRET_SPECS` entry (`TEST_TARGET_SECRET_SPECS` was retired by D341), every
 `SECRET_FAMILY_SPECS` family and every `config-default` / process-ownership channel of
 `runtime-environment.ts` has exactly one row, and no row names a leaf that does not exist. A leaf
 without a row, or a row without a leaf, is a red gate, never a rendering gap (the same posture as
@@ -936,7 +953,9 @@ The rules, each a proof 1.6 owes (§D331.11):
    cleared is `present: false`; the accessor's `requireSecret` throws `SecretMissingError` naming the
    KEY; `inspectSecret` answers `missing`; a store that cannot be read (mode, owner, size, parse)
    is `unknown` and re-throws everything else. "The check failed" is never "the check found nothing".
-6. **Canary inputs are protected, not ordinary.** `config/test-subjects.json` stays the committed
+6. **Canary inputs are protected, not ordinary.** _Superseded by §D341 (2026-09-07): canary values now
+   live in ignored `config/test-data.local.json` and the public registry is the `subjects` member of
+   `config/test-data.json`; the rule below is the D331 design as written._ `config/test-subjects.json` stays the committed
    PUBLIC registry (label → workflow, kind, availability, `lastObserved`, reference NAME);
    `optionalTestTargetSecret` reads the protected store by that name with the same per-kind schema.
    D300's semantics are unchanged — unset is `blocked` by key, malformed is a defect by key, the
@@ -1193,8 +1212,8 @@ row per leaf.
 | `timekeeperName` | `SECRET_SPECS` entry; per-name value schema owed by 1.6 | `required` | `operator` | `protected-identifier` | `next-use` | `protected-store` | `domain/secrets.ts: requireSecret` · `server/settings-runtime.ts: presence readback` · `domain/runtime-dependencies.ts: blocking enqueue preflight` | `[settings.json, env:TIMEKEEPER_NAME] → protected.json` |
 | `sharepointOnboardingRosterUrl` | `SECRET_SPECS` entry; per-name value schema owed by 1.6 | `required` | `operator` | `protected-secret` | `next-use` | `protected-store` | `domain/secrets.ts: requireSecret/optionalSecret` · `server/settings-runtime.ts: presence readback` · `domain/runtime-dependencies.ts: blocking enqueue preflight` | `env:ONBOARDING_ROSTER_URL → protected.json` |
 | `activityPersonPseudonym` (HMAC key + public generation id, one pair) | 64-hex key shape + generation-id shape (`requireActivityPersonPseudonymDomain`) | `required` | `operator` | `protected-secret` | `next-use` | `protected-store` | `domain/secrets.ts: requireActivityPersonPseudonymDomain` · `server/settings-runtime.ts: presence readback` | `env:HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY + env:HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION → protected.json` |
-| `separationsKualiFinalizationCanaryDocumentNumber` | `KualiDocumentNumberSchema` (`TEST_TARGET_SECRET_SPECS`) | `none` | `operator` | `protected-identifier` | `next-start` | `protected-store` | `domain/secrets.ts: optionalTestTargetSecret` · `dry-run start admission: retains the reference NAME only` | `env:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER → protected.json` |
-| `personLookupCanaryEid` | `EidSchema` (`TEST_TARGET_SECRET_SPECS`) | `none` | `operator` | `protected-identifier` | `next-start` | `protected-store` | `domain/secrets.ts: optionalTestTargetSecret` · `dry-run start admission: retains the reference NAME only` | `env:HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID → protected.json` |
+| `separationsKualiFinalizationCanaryDocumentNumber` — **row retired by D341 (2026-09-07)** | `KualiDocumentNumberSchema` (`TEST_TARGET_SECRET_SPECS`) | `none` | `operator` | `protected-identifier` | `next-start` | `protected-store` | `domain/secrets.ts: optionalTestTargetSecret` · `dry-run start admission: retains the reference NAME only` | `env:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER → protected.json` |
+| `personLookupCanaryEid` — **row retired by D341 (2026-09-07)** | `EidSchema` (`TEST_TARGET_SECRET_SPECS`) | `none` | `operator` | `protected-identifier` | `next-start` | `protected-store` | `domain/secrets.ts: optionalTestTargetSecret` · `dry-run start admission: retains the reference NAME only` | `env:HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID → protected.json` |
 | `geminiApiKeys` (pool, ≤8 cells) | `SecretFamilySpecSchema` (`SECRET_FAMILY_SPECS`) | `none` | `operator` | `provider-key` | `process` | `provider-env` | `domain/secrets.ts: requireSecretFamily/optionalSecretFamily` · `server/settings-runtime.ts: inspectSecret-shaped availability` | `env:GEMINI_API_KEY{,2..8} → .env` |
 | `groqApiKeys` (pool, ≤8 cells) | `SecretFamilySpecSchema` | `none` | `operator` | `provider-key` | `process` | `provider-env` | `domain/secrets.ts: requireSecretFamily/optionalSecretFamily` · `server/settings-runtime.ts: availability only` | `env:GROQ_API_KEY{,2..8} → .env` |
 | `mistralApiKeys` (pool, ≤8 cells) | `SecretFamilySpecSchema` | `none` | `operator` | `provider-key` | `process` | `provider-env` | `domain/secrets.ts: requireSecretFamily/optionalSecretFamily` · `server/settings-runtime.ts: availability only` | `env:MISTRAL_API_KEY{,2..8} → .env` |
@@ -1288,7 +1307,7 @@ deleted or renamed proof is a red guard, not silent drift.
 
 | # | Invariant | Proven by | Where (guard/test/file) |
 |---|---|---|---|
-| P1 | The catalog is bidirectionally complete: one row per populated `ConfigSchema` leaf, per `SECRET_SPECS`/`TEST_TARGET_SECRET_SPECS` entry, per `SECRET_FAMILY_SPECS` family and per `config-default`/process-ownership channel — and no row without a leaf | enumerate every source at test time (never a hand-kept list) and diff both directions; adding a leaf without a row, or a row naming nothing, is red | NEW guard `tests/unit/architecture/settings-catalog.test.ts` + `docs/rebuild/guard-inventory.json` |
+| P1 | The catalog is bidirectionally complete: one row per populated `ConfigSchema` leaf, per `SECRET_SPECS` entry (D341 retired `TEST_TARGET_SECRET_SPECS`; 86 rows), per `SECRET_FAMILY_SPECS` family and per `config-default`/process-ownership channel — and no row without a leaf | enumerate every source at test time (never a hand-kept list) and diff both directions; adding a leaf without a row, or a row naming nothing, is red | NEW guard `tests/unit/architecture/settings-catalog.test.ts` + `docs/rebuild/guard-inventory.json` |
 | P2 | One `sourceClass` per row, the `sensitivity` → `sourceClass` pairing is refused when wrong, and every listed consumer exists while every reader of the key is listed | feed the registry's `superRefine` a `protected-secret` row with `sourceClass: ordinary-settings` (and each other illegal pairing) and assert the parse refuses by key; drop a real reader from `consumers` and the guard is red | `settings-catalog.test.ts`; `src/domain/config/catalog.ts` |
 | P3 | `CONFIG_ENV_BINDINGS` is empty and `runtime-environment.ts`'s `config` channel has zero members (the `config-and-secret` dual channel is gone with its leaf) | assert emptiness and zero cardinality directly; any restored binding is red | `settings-catalog.test.ts`, `tests/unit/architecture/runtime-environment-coverage.test.ts` |
 | P4 | The resolver takes no environment input — `resolveConfig(document, hostFacts, clock?)` — and `ConfigProvenanceSchema` is exactly `"settings" \| "default"` | type-level plus runtime: resolve with a hostile `process.env` populated for every retired key and assert byte-identical output and no `"env"` provenance value anywhere | `src/domain/config/resolve.ts`, `provenance.ts`, `tests/unit/config.test.ts` |
@@ -1319,7 +1338,7 @@ deleted or renamed proof is a red guard, not silent drift.
 | P29 | `already-applied` / `command-divergent` for BOTH arms, including the protected value case: same command id + same marked fingerprint + every `set` value byte-equal to the stored value is `already-applied`; a differing `set` value under the same id and fingerprint is `command-divergent`; the same value under a NEW command id is an ordinary revision-advancing apply | replay each combination and assert the result plus a byte-identical store on both refusal paths | `tests/unit/settings-file-service.test.ts`, `tests/unit/command-kernel.test.ts` |
 | P30 | The remaining refusal arms hold: `cross-field-invalid { keys }` on a fully merged candidate the composition's resolver rejects, `document-too-large` leaving the prior file untouched, `authority-unjournaled` / `authority-uncertain` and `directory-integrity` / `lock-unavailable` by name | submit individually valid leaves that break a cross-field invariant; submit a schema-valid oversized leaf; plant surviving prepare/rollback evidence; assert prior bytes unchanged in each | `tests/unit/settings-file-service.test.ts`, `tests/unit/config.test.ts` |
 | P31 | `{ clear: true }` is a journaled, CAS-fenced, revision-advancing write that retires the `valueId`; afterwards the entry is `present: false`, `requireSecret` throws `SecretMissingError` naming the KEY, `inspectSecret` answers `missing`, and an unreadable store answers `unknown` (never `missing`) | clear an entry and assert the revision, journal row and readback; corrupt the store's mode/size/parse and assert `unknown` with the underlying error re-thrown | `tests/unit/settings-file-service.test.ts`, `tests/unit/secrets.test.ts` |
-| P32 | D300 semantics survive the source move: `config/test-subjects.json` stays public (label → workflow, kind, availability, `lastObserved`, reference NAME), `optionalTestTargetSecret` reads the protected store by that name under the same per-kind schema, unset is `blocked` BY KEY before any read, malformed is a registry defect BY KEY, and no canary value reaches a name or EID field | drive unset/malformed/valid through the real admission path and assert the blocked arm precedes any store or browser access; assert the bootstrap's two-arm import allowlist and the document-number smoke read the store, not `.env` | `tests/unit/architecture/test-target-registry.test.ts`, `tests/unit/dry-run-scenario-composition.test.ts`, `scripts/secure-env-bootstrap.ts` |
+| P32 | _Source superseded by D341: the private source is `config/test-data.local.json`, proven in `tests/unit/test-target-registry.test.ts`._ D300 semantics survive the source move: `config/test-subjects.json` stays public (label → workflow, kind, availability, `lastObserved`, reference NAME), `optionalTestTargetSecret` reads the protected store by that name under the same per-kind schema, unset is `blocked` BY KEY before any read, malformed is a registry defect BY KEY, and no canary value reaches a name or EID field | drive unset/malformed/valid through the real admission path and assert the blocked arm precedes any store or browser access; assert the bootstrap's two-arm import allowlist and the document-number smoke read the store, not `.env` | `tests/unit/architecture/test-target-registry.test.ts`, `tests/unit/dry-run-scenario-composition.test.ts`, `scripts/secure-env-bootstrap.ts` |
 | P33 | Restart scopes are exactly §D331.7: a protected apply advances no runtime generation and never touches an in-flight claim; an ordinary apply makes the NEXT `claimNext` refuse `runtime-stale`; and the worker's claim token is REQUIRED IN FULL — the as-built "fields absent, skip the check" arm is closed | apply protected mid-run and assert the claimed row's `version`, generation and settings epoch are byte-identical and the run settles; apply ordinary and assert the next claim refuses `runtime-stale`; call `claimNext` with an absent token and assert refusal, not a skip | `src/infra/sqlite/authority-database.ts`, `tests/unit/worker-composition.test.ts`, `tests/unit/command-kernel.test.ts` |
 | P34 | Every migrated key is `RETIRED_ENVIRONMENT_KEYS`: present in the admitted `.env` it refuses at bootstrap BY KEY NAME with the remedy; present in the parent process environment it refuses dashboard and worker boot BY KEY NAME and is reported by the environment doctor — never read as a value | plant each retired key in `.env` and in `process.env` and assert the two named refusals and that no resolver or accessor read occurred | `runtime-environment-coverage.test.ts`, `tests/unit/secrets.test.ts`, `tests/unit/worker-composition.test.ts` |
 | P35 | The `.env` admission allowlist is exactly the five provider families' pool cells and nothing else; the bootstrap's mechanics (no-follow, `mode & 0o077 === 0`, byte bound, strict grammar, one-to-one `parseEnv` cross-check, explicit parent bindings win) are unchanged | assert the admitted key set against `SECRET_FAMILY_SPECS`; plant a non-family key and assert refusal; re-run the existing mechanics assertions unchanged | `tests/unit/secrets.test.ts`, `scripts/secure-env-bootstrap.ts` |
@@ -1446,8 +1465,8 @@ model chains gives **45 imported names**; the five legacy singular `OCR_*_MODEL`
 | `UCPATH_PASSWORD` | `ucpathPassword` | `settings/protected.json` | per-name schema owed by 1.6 (`secrets.ts:146`) | `present: false`; the blocking enqueue preflight refuses by key |
 | `ONBOARDING_ROSTER_URL` | `sharepointOnboardingRosterUrl` | `settings/protected.json` | per-name schema owed by 1.6 (`secrets.ts:148`) | `present: false`; the blocking enqueue preflight refuses by key |
 | `HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY` **+** `HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION` | `activityPersonPseudonym` — **ONE** entry (`secrets.ts:111–131`) | `settings/protected.json` | the 64-hex key shape + generation-id shape (`requireActivityPersonPseudonymDomain`) | `present: false`; D288 evidence writes refuse by name, and no pseudonym is recomputed (§D332.S6) |
-| `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER` | `separationsKualiFinalizationCanaryDocumentNumber` | `settings/protected.json` | `KualiDocumentNumberSchema` (`TEST_TARGET_SECRET_SPECS`, `valueKind: kuali-document-number`) | `present: false` → the next dry-run start resolves `blocked` by key (D300, §D332.S4) |
-| `HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID` | `personLookupCanaryEid` | `settings/protected.json` | `EidSchema` (`TEST_TARGET_SECRET_SPECS`, `valueKind: ucpath-eid`) | `present: false` → the next dry-run start resolves `blocked` by key (D300, §D332.S4) |
+| `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER` — **D341: refused by name (`retired-test-target-env { key }`); the value belongs in `config/test-data.local.json`** | `separationsKualiFinalizationCanaryDocumentNumber` | `settings/protected.json` | `KualiDocumentNumberSchema` (`TEST_TARGET_SECRET_SPECS`, `valueKind: kuali-document-number`) | `present: false` → the next dry-run start resolves `blocked` by key (D300, §D332.S4) |
+| `HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID` — **D341: refused by name (`retired-test-target-env { key }`); the value belongs in `config/test-data.local.json`** | `personLookupCanaryEid` | `settings/protected.json` | `EidSchema` (`TEST_TARGET_SECRET_SPECS`, `valueKind: ucpath-eid`) | `present: false` → the next dry-run start resolves `blocked` by key (D300, §D332.S4) |
 | — (no environment key) | every other `ordinary-settings` leaf the old document already holds | `settings/settings.json`, leaf-for-leaf (§D332.S2) | the catalog's per-leaf schema | leaf omitted = `default` by its `defaultKind` |
 
 **Annual dates get exactly one fiscal-year entry, chosen at plan time.** As built the three annual
@@ -1606,6 +1625,10 @@ source between the two yields a different digest and re-plans rather than import
 operator never saw in a plan.
 
 ###### D332.S4 — canary references
+
+_Superseded by §D341 (2026-09-07): the upgrade now refuses a retired canary name in a D331 protected
+source (`retired-test-target { key }`) or in `.env` (`retired-test-target-env { key }`) before any
+value is decoded; the registry is the `subjects` member of `config/test-data.json`._
 
 `config/test-subjects.json` stays the committed PUBLIC registry and the upgrade does not touch it
 (§D332.8's file row; §D331.6 rule 6). It carries, today, exactly two closed references:

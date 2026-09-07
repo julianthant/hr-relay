@@ -1956,9 +1956,9 @@ must be registered:
    derives from the new transaction node (`dry-run`, `subject-mismatch`, `committed`,
    `already-present`) — `scenario-coverage` is RED until every one is claimed and walked. ONE
    `dry-run.scenario.ts` beside it: the checkpoint manifest (§10.4) plus the subject LABEL this
-   workflow runs against — a label names a SUBJECT in `config/test-subjects.json`, the subject
-   declares an ARM for this workflow, and the manifest carries one case per arm (§10.5); the
-   subject's value stays outside git. If the migration also wires a dashboard surface, its T3
+   workflow runs against — a label names a SUBJECT in `config/test-data.json` (`subjects`), the
+   subject declares an ARM for this workflow, and the manifest carries one case per arm (§10.5); the
+   subject's private value stays in ignored `config/test-data.local.json` (D341). If the migration also wires a dashboard surface, its T3
    combined pair (§10.7).
 7. **Live proof.** `npm run cli -- dry-run-scenario badge-reissue --subject <label>` runs the
    manifest against the real systems with `dryRun=true` and asserts the durable rows over authority:
@@ -2190,11 +2190,18 @@ when its task evidence supports that verdict; it is not forced to the preview ar
 
 ### 10.5 The subject registry — labels in the repo, values outside it
 
-**D341, approved 2026-09-07; implementation pending.** The test-data foundation detour must finish
-before Task 1.6.7 resumes. Configuration ownership, privacy and conversion are defined in
+**D341, approved 2026-09-07; implemented by the test-data foundation detour (candidate on
+`codex/test-data-foundation`, awaiting independent review; see the completion record at the end of
+this section).** The detour must be accepted before Task 1.6.7 resumes. Configuration ownership,
+privacy and conversion are defined in
 [clock-config-secrets, D341](clock-config-secrets.md#d341--test-inputs-have-a-separate-owner).
-The current code still uses `config/test-subjects.json` and the independent credential store;
-`.env` is already a retired test-target source. Do not mistake this approved target for completed code.
+As built: `config/test-data.json` (tracked; `subjects` is the former `config/test-subjects.json`
+registry, plus named `files` and synthetic `samples`), ignored `config/test-data.local.json` with the
+tracked example `config/test-data.local.example.json`, schemas in `src/domain/test-data.ts`, the ONE
+reader `src/control/test-data.ts` (shared half) re-exporting the private half from
+`src/infra/config/test-data-local.ts`, and the credential conversion in
+`src/infra/config/credential-test-data-migration.ts`. `.env` and protected Settings are retired
+test-target sources, refused by name.
 
 **One public registry.** The target `config/test-data.json` incorporates subjects and their stable
 labels, purposes, one dated availability claim (`available`, `consumed`, `gone`, `unknown`), usage
@@ -2236,8 +2243,33 @@ conflicts, interrupted/repeated migration, accepted identity non-reuse, and veri
 conversion. Follow D191 full candidate/integration gates plus desktop parity and generated freshness.
 Task 1.6.7 owns live workflow acceptance; no live success is inferred from migration or input presence.
 The detour supervisor records accepted commits, review, gate and conversion evidence here and the
-Task-7 resume boundary before removing the temporary execution handoff. Implementation is not yet
-complete. No new roadmap phase/node or deferred consolidation remainder is authorized.
+Task-7 resume boundary before removing the temporary execution handoff. No new roadmap phase/node
+or deferred consolidation remainder is authorized.
+
+**Completion record (detour, 2026-09-07).** Proof matrix as built; every row is an offline test
+run through the repository runner (`npm test -- <files>`), none needs a private file:
+
+| Proof | Where it is proven |
+| --- | --- |
+| P1 clean checkout, isolated samples, synthetic PDF bytes | `tests/unit/test-data-config.test.ts` (copied checkout, child process from another CWD, frozen shared data, isolated `testDataSamples`) |
+| P2 duplicate/unknown keys, invalid values, missing/unreadable file, path escapes, no CWD/upward/other-checkout fallback | `tests/unit/test-data-config.test.ts` |
+| P3 label/workflow/kind admission before private read; malformed private config is a defect by key | `tests/unit/test-target-registry.test.ts`, `tests/unit/architecture/test-target-registry.test.ts`, `tests/unit/test-data-command.test.ts` (`test-data check` reports names/states only) |
+| P4 canaries absent from catalog (86 rows), Settings schemas, readback and secret registries; retired env names and retired Settings names refused by name | `tests/unit/architecture/settings-catalog.test.ts` (P33), `tests/unit/architecture/strict-boundary-schemas.test.ts`, `tests/unit/secrets-redaction.test.ts`, `tests/unit/storage-upgrade-environment.test.ts` (`retired-test-target-env { key }`), `tests/unit/storage-upgrade-d331.test.ts` (`retired-test-target { key }`) |
+| P5 `test-data-local` binding (name + opaque `sourceId`, never a value) through start, receipts, redaction, resume/rerun/archive | `tests/unit/dry-run-scenario-composition.test.ts` (binding captured at `runtime.start`), `tests/unit/source-bound-repeat.test.ts`, `tests/unit/rerun-protected-identity.test.ts`, `tests/unit/archive-protected-identity.test.ts`, `tests/unit/run-record-service/service.test.ts`, `tests/unit/write-sequencer.test.ts`, `tests/unit/run-executor.test.ts` |
+| P6 destination missing/equal/conflict/invalid, source change under lock, failure after staging before source retirement, lock held, retry idempotence | `tests/unit/config/credential-test-data-migration.test.ts` |
+| P7 synthetic v1 history and upgrade binding replayed under the frozen legacy schema (`LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH` pinned), operational entries preserved, retired command/write/value identities fenced, ordinary reader refuses v1 until migrated | `tests/unit/config/credential-test-data-migration.test.ts`, `tests/unit/config/credential-store.test.ts` |
+| P8 fixture accounting: no cross-tier import of `tests/unit/{fixtures,helpers}`, shared fixtures pure at import, tracked shared inputs and ignored private file, README ownership map | `tests/unit/architecture/test-data-ownership.test.ts` (guard `test-data-ownership`), `tests/fixtures/README.md` |
+| P9 actual reset-root preflight, reviewed private conversion, readback, value-safe credential comparison, doctor | recorded below after integration; not inferred from P6/P7 |
+
+Defects the proofs found and fixed in the candidate: the credential store's pre-rename live check
+read the source through the v2-only reader and would have refused every real conversion; the
+under-lock destination re-plan compared only action/count rather than entry identities; committed
+pre-D341 protected-settings audits (seven-name value-free readback) must still parse in historical
+databases, so the audit result grammar admits the legacy readback family beside the live one.
+Actual-root facts rechecked 2026-09-07 (names/shape only): credential document schemaVersion 1,
+revision 2, one history entry, applied upgrade binding, five names including the Separations
+canary and no person-lookup EID; database schema 32 with zero commands; no private file present.
+Review, integration, conversion and cleanup evidence: _pending_ (recorded here when accepted).
 
 **Reset evidence (2026-09-07).** At the operator's explicit request the rebuild database was replaced
 with a fresh schema-32 database; only schema metadata/fresh-baseline marker remained. Doctor exited 0
@@ -2515,11 +2547,12 @@ can execute a second time.
    this workflow addresses — a case is a state a REAL subject can truthfully be in, never a state
    invented for coverage (D284); the negative branches belong to the structural file on synthetic
    subjects.
-4. **Register the subject** in `config/test-subjects.json` — a label per SUBJECT, an arm per
+4. **Register the subject** in `config/test-data.json` (`subjects`) — a label per SUBJECT, an arm per
    workflow, a case per arm: the arm's kind, the subject's ONE availability with today's date, the
    doc section that records what it is, and any canonical leaf a live read cannot yet supply declared
-   `pending` with its reason. Sensitive values go to `.env` and are read only through
-   `src/domain/secrets.ts`. A label the registry cannot resolve, or a declared-pending leaf, makes
+   `pending` with its reason. Private values go to ignored `config/test-data.local.json` under a
+   name in `TEST_DATA_INPUT_NAMES` and are read only through `src/control/test-data.ts` (D341);
+   never `.env` or Settings. A label the registry cannot resolve, or a declared-pending leaf, makes
    the case `blocked`, never `failed`.
 5. **Run it live:** `npm run cli -- dry-run-scenario <workflow> --subject <label>`, once per case.
    The manifest arm determines transaction preview versus transaction-free read; the command name

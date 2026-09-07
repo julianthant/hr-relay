@@ -19,7 +19,7 @@ preserving hand-maintained Known failure modes and Live record sections.
 4. `docs/rebuild/migrations/<id>.md` if present (separations is the worked example — §1 questionnaire, §9 live records) and the workflow's node in `docs/roadmap/roadmap.md` (status, `you:` lines, `log:` lines).
 5. The reference docs it cites: `workflow-model` (run state machine, §5.4 validation/resume), `write-safety` (beats ①–⑦, §3.2 controlled-commit proof, §14 gate), `execution-and-sessions`, `guards-and-tests` §10 (test tiers), `dashboard-surfaces`.
 6. `docs/rebuild/reference/lessons.md` — grep the workflow id and each system; every hit becomes a line in "Known failure modes".
-7. The current public test-subject registry and workflow scenarios — canary labels and existing assertions. `ref guards-and-tests` §10.5 owns the D341 transition from `config/test-subjects.json` to `config/test-data.json`; inspect accepted status rather than guessing a path or reading private values.
+7. `config/test-data.json` (`subjects`; D341) and `tests/scenario/*<id>*` — canary labels and existing assertions. Private values live only in ignored `config/test-data.local.json`; never read or print them. `ref guards-and-tests` §10.5 records the detour's acceptance status.
 8. The platform-wide rails live in `.agents/skills/hr-manage/SKILL.md` and
    `.agents/skill-library/hr-debug/REFERENCE.md` — read both once so the generated resource points to
    them instead of restating them.
