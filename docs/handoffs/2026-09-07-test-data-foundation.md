@@ -244,3 +244,34 @@ is claimed by this planning record. The final launch prompt supplies the verifie
 The assignment is ready for implementation once that committed content/base is reverified. Missing
 person-lookup input and retired-env cleanup remain Task-1.6.7 live prerequisites, not a reason to skip
 this detour’s offline proof or actual private-file conversion. Recheck volatile actual-target facts.
+
+## Execution record (supervisor, 2026-09-07)
+
+Worktree `/Users/julianhein/Projects/hr-worktree-test-data`, branch `codex/test-data-foundation`
+from `f68dc9a5b355336d3a755081d8d99ddd7ad9fed3`. Actual root rechecked before any effect (names and
+shape only): `.tracker/credentials/protected.json` is schemaVersion 1, revision 2, one history
+entry, an applied upgrade binding, five names including the Separations canary and no
+person-lookup EID; `.tracker/state.db` is schema 32 with zero commands/audits; no
+`config/test-data.local.json` exists. The paused foundation-close worktree was not touched.
+
+**TD4 ownership map.** Moved with `git mv` and importer rewrites (typecheck clean after the move):
+to `tests/fixtures/`: `phase1c-contract-fixtures`, `phase1f-run-fixtures`, `receipt-run-fixtures`,
+`run-lifecycle-fixtures`, `operator-command-fixtures`, `archive-fixtures`; to `tests/helpers/`:
+`phase1f-executor-harness`, `ucpath-termination-fixtures`, `separations-composition-fixtures`,
+`kuali-finalization-fixtures`, `duo-ceremony-fixtures`, `protected-secret-source`. Unit-only
+modules stay under `tests/unit/fixtures/` and `tests/unit/helpers/` (new: `test-data-source.ts`).
+The durable map is `tests/fixtures/README.md`, enforced by the `test-data-ownership` guard.
+
+**Proof matrix status.** P1–P8 proven offline (file map in `ref guards-and-tests` §10.5 completion
+record). P9 pending integration. Defects found by the proofs and fixed in the candidate: v2-only
+reader in the credential store's pre-rename check; identity-blind under-lock re-plan in the
+migration; historical seven-name protected readback rejected by the audit grammar.
+
+**Candidate frozen (2026-09-07), awaiting independent review.** Commits on `codex/test-data-foundation`
+above base `f68dc9a5b`: `d69cda56c`, `eec6a9c39`, `ec1a55432`, `e2e6027a0`, then this recording
+commit as the candidate tip. Gate evidence and the parity-refreeze classification are recorded in
+`ref guards-and-tests` §10.5 (candidate paragraph before the pending review line). Excluded from the
+candidate: the paused foundation-close worktree and its handoff, the unrelated stash on master, the
+operator root under `.tracker/`, `.env`, and the still-pending Task 1.6.7 live prerequisites
+(person-lookup EID input, retired-env cleanup). P9 stays open until the reviewed integration and the
+approved private conversion run from the primary checkout.

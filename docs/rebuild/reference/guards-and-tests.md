@@ -2269,6 +2269,25 @@ databases, so the audit result grammar admits the legacy readback family beside 
 Actual-root facts rechecked 2026-09-07 (names/shape only): credential document schemaVersion 1,
 revision 2, one history entry, applied upgrade binding, five names including the Separations
 canary and no person-lookup EID; database schema 32 with zero commands; no private file present.
+**Candidate frozen 2026-09-07 — awaiting independent review.** Base `f68dc9a5b355336d3a755081d8d99ddd7ad9fed3`;
+implementation commits `d69cda56c` (source, config, scripts, generated manifest), `eec6a9c39` (tests,
+fixture moves, `test-data-ownership` guard and inventory), `ec1a55432` (contracts, plans, skills,
+instruction twins), `e2e6027a0` (deliberate parity refreeze); this recording commit is the candidate
+tip. Gate evidence on the `e2e6027a0` tree: `npm run typecheck` clean; `npm run lint` clean at
+`--max-warnings 0`; `git diff --check` clean; `npm test -- --coverage` through the two-worker adapter
+(sha256 `1344b1c8…`, effective workers 2 at root and projects): 437 files / 5504 tests passed,
+coverage statements 85.85 %, branches 77.49 %, functions 89.85 %, lines 87.97 % (floors met, exit 0);
+`suite-size` unit 340 / scenario 17 / architecture 80, exit 0; `npm run test:parity` 259 passed after
+the refreeze; `build:manifest:check`, `stores:catalog:check`, `roadmap:check` current; docs audit PASS;
+instruction twins byte-identical. Parity drifted on 190 cases before the refreeze; every changed
+reference line was classified before refreshing: header/metadata `descriptorHash` and the on-page
+8-character descriptor fingerprint (the person-lookup contract fingerprint moved with the generated
+manifest closure), task `impl` fingerprints and the receipt trace prefix, and explorer-transaction
+totals `107 reads → 108 reads` because the `test-data-local` binding variant adds one `sourceId`
+output leaf to `KualiFinalizationTargetSchema.protectedBindings`. 49 screenshots moved by 7–21
+pixels each where that text renders, including dimmed rows behind modal variants; no layout, copy or
+tolerance change (`maxDiffPixels` stays 0). Two coverage-gate tests read parity references, so the
+coverage gate was rerun after the refreeze rather than reused.
 Review, integration, conversion and cleanup evidence: _pending_ (recorded here when accepted).
 
 **Reset evidence (2026-09-07).** At the operator's explicit request the rebuild database was replaced
