@@ -2254,11 +2254,11 @@ run through the repository runner (`npm test -- <files>`), none needs a private 
 | P1 clean checkout, isolated samples, synthetic PDF bytes | `tests/unit/test-data-config.test.ts` (copied checkout, child process from another CWD, frozen shared data, isolated `testDataSamples`) |
 | P2 duplicate/unknown keys, invalid values, missing/unreadable file, path escapes, no CWD/upward/other-checkout fallback | `tests/unit/test-data-config.test.ts` |
 | P3 label/workflow/kind admission before private read; malformed private config is a defect by key | `tests/unit/test-target-registry.test.ts`, `tests/unit/architecture/test-target-registry.test.ts`, `tests/unit/test-data-command.test.ts` (`test-data check` reports names/states only) |
-| P4 canaries absent from catalog (86 rows), Settings schemas, readback and secret registries; retired env names and retired Settings names refused by name | `tests/unit/architecture/settings-catalog.test.ts` (P33), `tests/unit/architecture/strict-boundary-schemas.test.ts`, `tests/unit/secrets-redaction.test.ts`, `tests/unit/storage-upgrade-environment.test.ts` (`retired-test-target-env { key }`), `tests/unit/storage-upgrade-d331.test.ts` (`retired-test-target { key }`) |
+| P4 canaries absent from catalog (86 rows), Settings schemas, readback and secret registries; retired env names and retired Settings names refused by name | `tests/unit/architecture/settings-catalog.test.ts` (P33), `tests/unit/architecture/strict-boundary-schemas.test.ts`, `tests/unit/secrets-redaction.test.ts`, `tests/unit/storage-upgrade-environment.test.ts` (`retired-test-target-env { key }`), `tests/unit/storage-upgrade-d331.test.ts` (`retired-test-target { key }` reached through a genuine seven-name journal row), `tests/unit/protected-settings-history.test.ts` (frozen pre-D341 command/audit arm: live grammar refuses, historical readers parse, pinned legacy hash, no value) |
 | P5 `test-data-local` binding (name + opaque `sourceId`, never a value) through start, receipts, redaction, resume/rerun/archive | `tests/unit/dry-run-scenario-composition.test.ts` (binding captured at `runtime.start`), `tests/unit/source-bound-repeat.test.ts`, `tests/unit/rerun-protected-identity.test.ts`, `tests/unit/archive-protected-identity.test.ts`, `tests/unit/run-record-service/service.test.ts`, `tests/unit/write-sequencer.test.ts`, `tests/unit/run-executor.test.ts` |
 | P6 destination missing/equal/conflict/invalid, source change under lock, failure after staging before source retirement, lock held, retry idempotence | `tests/unit/config/credential-test-data-migration.test.ts` |
-| P7 synthetic v1 history and upgrade binding replayed under the frozen legacy schema (`LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH` pinned), operational entries preserved, retired command/write/value identities fenced, ordinary reader refuses v1 until migrated | `tests/unit/config/credential-test-data-migration.test.ts`, `tests/unit/config/credential-store.test.ts` |
-| P8 fixture accounting: no cross-tier import of `tests/unit/{fixtures,helpers}`, shared fixtures pure at import, tracked shared inputs and ignored private file, README ownership map | `tests/unit/architecture/test-data-ownership.test.ts` (guard `test-data-ownership`), `tests/fixtures/README.md` |
+| P7 synthetic v1 history and upgrade binding replayed under the frozen legacy schema (`LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH` pinned), operational entries preserved, retired command/write/value identities fenced, ordinary reader refuses v1 until migrated; pre-D341 durable command/audit rows stay readable through `commands-history` | `tests/unit/config/credential-test-data-migration.test.ts`, `tests/unit/config/credential-store.test.ts`, `tests/unit/protected-settings-history.test.ts`, `tests/unit/storage-upgrade-d331.test.ts` |
+| P8 fixture accounting: no cross-tier import of `tests/unit/{fixtures,helpers}`, cross-tier imports of `tests/unit/architecture/helpers/` limited to the three recorded `descriptor-fixtures` importers, shared fixtures pure at import, tracked shared inputs, ignored private file and staging pattern, README ownership map | `tests/unit/architecture/test-data-ownership.test.ts` (guard `test-data-ownership`), `tests/fixtures/README.md` |
 | P9 actual reset-root preflight, reviewed private conversion, readback, value-safe credential comparison, doctor | recorded below after integration; not inferred from P6/P7 |
 
 Defects the proofs found and fixed in the candidate: the credential store's pre-rename live check
@@ -2288,6 +2288,45 @@ output leaf to `KualiFinalizationTargetSchema.protectedBindings`. 49 screenshots
 pixels each where that text renders, including dimmed rows behind modal variants; no layout, copy or
 tolerance change (`maxDiffPixels` stays 0). Two coverage-gate tests read parity references, so the
 coverage gate was rerun after the refreeze rather than reused.
+**Independent review, round 1 (2026-09-07, fresh `sup-review`, Opus, high, bound to candidate
+`a97c8832a` / implementation `e2e6027a0`): BLOCKED** — the reviewer's context compacted before its
+coverage accounting finished (it listed the unreviewed boundaries) and it confirmed one required
+finding. Dispositions, all fixed in `3a3fa427f`:
+
+- F1 (required, P4/P7) — the live command grammar refused every journaled protected-settings
+  command that named a retired canary, so the open-time record sweep, D331 journal authentication,
+  settings history and backup authentication failed with an opaque parse error before the D341
+  refusal by name; the candidate's own D331 guard had filtered retired names out of the journaled
+  command, proving a case that cannot occur. Fixed by the frozen `HistoricalProtectedSettingsCommand`
+  / audit arms in `src/domain/commands-history.ts` (seven-name marked patch, schema hash pinned to
+  the legacy family, never a value), unioned at `storage-records` (record registry), the
+  authority-database settings-history readers, `upgrade-sources`, `d331-protected-journal` and
+  `backup-service`; the D331 guard now journals a genuine seven-name row and asserts only the frozen
+  arm reads it; `tests/unit/protected-settings-history.test.ts` proves refusal by the live grammar,
+  the pinned hash, fingerprint parity and the durable readers.
+- F2 (required, P8) — the README row for `tests/unit/architecture/helpers/` named one cross-tier
+  importer while three exist and the guard did not cover that root. Fixed: the guard pins the exact
+  recorded importer set (a new or vanished importer fails) and the README names all three.
+- A1 — orphaned private staging file `config/.test-data.local.<uuid>.tmp` was not ignored; now
+  ignored and guarded. A2 — stale strict-boundary comment corrected. A3 — `.agents` hr-manage
+  wording aligned with the as-built text (platform files, not twins). A4 — finalization-canary
+  availability reason no longer says the number lives in protected Settings.
+- Not findings (reviewer-verified counterexamples, kept so they are not re-raised): `bindUpgrade`
+  cannot re-admit an import after conversion; identity reuse routes to refusal; availability
+  admission precedes the private read; the destination TOCTOU is closed by the live-vs-prior
+  comparison; conversion stages the destination before the source rewrite and reports names only.
+- Reviewer limits carried to round 2: `secrets-redaction`, `test-target-registry` (unit and
+  architecture), `storage-upgrade-environment` test diffs and ~150 import-path-only test rewrites
+  were not individually diffed; PNG pixels were classified, not independently verified; no gate was
+  independently rerun. Round 2 is a fresh complete assignment over the whole candidate.
+**Candidate refrozen for review round 2 (2026-09-07) — awaiting independent review.** Implementation
+head `3a3fa427f` (review fixes on top of `e2e6027a0`); this recording commit is the candidate tip.
+Gate evidence on the `3a3fa427f` tree: typecheck clean; lint clean at `--max-warnings 0`;
+`git diff --check` clean; full coverage through the same two-worker adapter: 438 files / 5509 tests
+passed, statements 85.86 %, branches 77.49 %, functions 89.86 %, lines 87.98 % (floors met, exit 0);
+`suite-size` unit 341 / scenario 17 / architecture 80, exit 0; `npm run test:parity` 259 passed with
+no reference change (generated manifest unchanged, so no fingerprint moved); generated-output checks
+current; docs audit PASS.
 Review, integration, conversion and cleanup evidence: _pending_ (recorded here when accepted).
 
 **Reset evidence (2026-09-07).** At the operator's explicit request the rebuild database was replaced

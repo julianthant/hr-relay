@@ -275,3 +275,12 @@ candidate: the paused foundation-close worktree and its handoff, the unrelated s
 operator root under `.tracker/`, `.env`, and the still-pending Task 1.6.7 live prerequisites
 (person-lookup EID input, retired-env cleanup). P9 stays open until the reviewed integration and the
 approved private conversion run from the primary checkout.
+
+**Review round 1 (2026-09-07): BLOCKED** on candidate `a97c8832a` — compaction-truncated coverage
+plus required findings F1 (pre-D341 protected journal rows unreadable through the live grammar) and
+F2 (architecture-helper importer accounting), advisories A1–A4. All fixed in `3a3fa427f`; the
+finding ledger and dispositions live in `ref guards-and-tests` §10.5. Round 2 is a fresh complete
+review of the whole candidate.
+
+**Candidate refrozen for round 2:** implementation head `3a3fa427f`, gates green (438 files / 5509 tests,
+parity 259, no reference change); this recording commit is the round-2 tip.
